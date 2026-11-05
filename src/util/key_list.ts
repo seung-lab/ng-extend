@@ -60,13 +60,17 @@ export const PYR_KEYS: PyrKey[] = [
   { keys: ['shift+slash'], shown: '?', label: 'This list of keys', group: 'Panels', owner: 'ExtensionBar' },
   { keys: ['shift+keyt'], label: 'Scout Tag mode', group: 'Tools', owner: 'ExtensionBar' },
   { keys: ['shift+keyh'], label: 'Highlight mode', group: 'Tools', owner: 'ExtensionBar' },
+  { keys: ['keym'], label: 'Quick merge: point at a piece and press M, then the other piece and M', group: 'Editing', owner: 'graphene MergeSegmentsTool', where: 'With Quick merge on in Settings', scoped: true },
   { keys: ['keyh'], label: 'Hold to place a point', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode', scoped: true },
   { keys: ['shift+keyn'], label: 'Lantern on or off', group: 'Tools', owner: 'ExtensionBar' },
   { keys: ['shift+keyl'], label: 'Cell Library', group: 'Panels', owner: 'ExtensionBar' },
+  { keys: ['shift+keys'], label: 'Settings', group: 'Panels', owner: 'ExtensionBar' },
+  { keys: ['backslash'], label: 'Show or hide the top bar', group: 'Panels', owner: 'ExtensionBar', where: 'With Magic Top Bar on in Settings' },
   // Found, not labeled (ExtensionBar).
   { keys: ['shift+keyf'], label: 'Flight mode', group: 'Tools', owner: 'ExtensionBar', hidden: true },
+  { keys: ['shift+keyr'], label: 'Scythe reap on or off', group: 'Tools', owner: 'scythe', where: '3D' },
   { keys: ['keyp'], label: 'Send a pulse along the cell under the mouse', group: 'Tools', owner: 'pulse_key', where: '3D' },
-  { keys: ['escape'], label: 'Leave the merge or cut tool', group: 'Tools', owner: 'main' },
+  { keys: ['escape'], label: 'Leave the merge, cut or Find Path tool', group: 'Tools', owner: 'main' },
   ...UNDELETE_KEYS.map(k => ({ ...k, group: 'Editing' as const, owner: 'undelete' })),
   { keys: ['delete', 'backspace'], label: 'Remove the cells picked in the list', group: 'Editing', owner: 'drag_reorder', where: 'Cells picked in the list', scoped: true },
   { keys: ['control+shift+keyc'], label: 'Mark the selected cell complete', group: 'Editing', owner: 'CommandPalette' },
@@ -117,6 +121,7 @@ const ACTIONS: Record<string, [string, KeyGroup] | null> = {
 };
 /** Families of nine (keys 1 to 9), shown as one row. */
 const LAYER_FAMILIES: [RegExp, string][] = [
+  [/^nge-number-layer-\d$/, 'Make layer 1 to 9 the active one (with Classic Layers in Settings: show or hide it)'],
   [/^toggle-layer-\d$/, 'Show or hide layer 1 to 9'],
   [/^select-layer-\d$/, 'Open layer 1 to 9 in the side panel'],
   [/^toggle-pick-layer-\d$/, 'Picking on or off for layer 1 to 9'],

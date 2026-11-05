@@ -131,3 +131,28 @@ async function syncQuest(input,me,credential,api=(path,init)=>sheetsApi(credenti
   return {ok:true,updated:plan.data.length+plan.userEnteredData.length};
 }
 module.exports={syncSheet,sheetsApi,questList,syncQuest};
+
+// ── The Pyr Users sheet (Ames 2026-10-28, Celia D report 284) ──────────────
+// Everyone on it was invited; a pilot tester who is not on it came from the
+// web (a Beta request). Every tab is read; only its email columns leave here.
+const PYR_USERS_SHEET='1NWwQP9OdoVOq8m_LO_DlFeTeOsAueH_Kwwr3GM0aiAI';
+const EMAIL_HEADER=/email/i;
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** {emails: {address: tab title}} for every address in an email column. */
+async function pilotSheetEmails(credential) {
+  const api=(path,init)=>sheetsApi(credential,path,init);
+  const meta=await api(PYR_USERS_SHEET+'?fields=sheets.properties.title');
+  const emails={};
+  for(const sheet of meta.sheets||[]) {
+    const title=sheet.properties.title;
+    const q="'"+title.replace(/'/g,"''")+"'";
+    const rows=(await api(PYR_USERS_SHEET+'/values/'+encodeURIComponent(q+'!A1:AK2000'))).values||[];
+    const cols=(rows[0]||[]).map((h,i)=>EMAIL_HEADER.test(String(h))?i:-1).filter(i=>i>=0);
+    for(const row of rows.slice(1)) for(const i of cols) {
+      const email=String(row[i]||'').trim().toLowerCase();
+      if(EMAIL.test(email) && !emails[email]) emails[email]=title;
+    }
+  }
+  return {emails};
+}
+module.exports.pilotSheetEmails=pilotSheetEmails;

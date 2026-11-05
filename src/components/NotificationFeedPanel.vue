@@ -1,17 +1,38 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
-import { useProofreadingBackendStore, useHelpRequestStore } from '../store';
+import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
+import { openStartLink } from '../util/start_link';
+import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRecapTitle, yearFromRecapTitle } from '../util/recap_week';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
-import { currentDatasetTag, canonicalDataset } from '../datasets';
+import { currentDatasetTag, canonicalDataset, DATASETS, switchToDataset } from '../datasets';
+import { refreshDatasetPermissions } from '../util/dataset_access';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
+import ConfettiCelebration from 'components/ConfettiCelebration.vue';
+import { launchFireworks } from '../util/special_days';
+import { isCalm } from '../util/calm';
 declare const NGE_BUILD: string | undefined;
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import goldCup from '../../static/images/champions/gold-cup.png';
+import silverCup from '../../static/images/champions/silver-cup.png';
+import bronzeCup from '../../static/images/champions/bronze-cup.png';
+import goldAward from '../../static/images/champions/gold-award.png';
+import silverAward from '../../static/images/champions/silver-award.png';
+import bronzeAward from '../../static/images/champions/bronze-award.png';
+import goldYearAward from '../../static/images/champions/gold-year-award.png';
+import silverYearAward from '../../static/images/champions/silver-year-award.png';
+import bronzeYearAward from '../../static/images/champions/bronze-year-award.png';
+import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
+import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
+import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
+import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
+import { isAwardTitle } from '../util/award_title';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
@@ -62,10 +83,19 @@ function resetHeight() {
 
 // ── Older notifications on request (the feed loads the newest 20) ──
 const loadingMore = ref(false);
+// Older notes come 20 at a time, of every kind together, so one page often
+// held nothing for a quiet tab and Show more looked broken (Ames 2026-11-02).
+// It keeps going until this tab has 10 more, or there are no more.
 async function showMore() {
   if (loadingMore.value) return;
   loadingMore.value = true;
-  try { await backend.loadMoreNotifications(); } finally { loadingMore.value = false; }
+  const had = shownNotes.value.length;
+  try {
+    for (let round = 0; round < 10 && backend.notificationsHaveMore; round++) {
+      await backend.loadMoreNotifications();
+      if (shownNotes.value.length >= had + 10) break;
+    }
+  } finally { loadingMore.value = false; }
 }
 
 function onDocClick(e: MouseEvent) {
@@ -180,14 +210,91 @@ const confirmDeleteAll = ref(false);
 // results and players' answers to replies an admin asked for. Bug reports
 // stay in Triage. Which is which: util/notif_kinds.ts, shared with the bell's
 // red count.
-const feedTab = ref<NotifKind>('main');
+// My Pyr and Pyr Updates, for everyone (Ames 2026-10-25, from annkri's
+// report 248): what was sent to you alone, and what went to everyone or a
+// group. Settings can put them back in one list.
+// Hunt reports (Ames 2026-10-27: "a special category of hunt submission
+// notifications"), a third side of the Admin tab: clicking one opens the
+// reports queue, the oldest first (HuntReportCard).
+type FeedTab = 'mine' | 'updates' | 'access' | 'admin' | 'triage' | 'hunt';
+type AdminSide = 'access' | 'admin' | 'triage' | 'hunt';
+const TAB_KEY = 'nge-notif-tab';
+const feedTab = ref<FeedTab>((() => { try { const t = localStorage.getItem(TAB_KEY); return (['mine', 'updates', 'access', 'admin', 'triage', 'hunt'] as string[]).includes(t || '') ? t as FeedTab : 'mine'; } catch { return 'mine'; } })());
+watch(feedTab, t => { try { localStorage.setItem(TAB_KEY, t); } catch { /* private mode */ } });
 const kindOf = (n: { title?: string | null }) => notifKind(n.title, backend.isAdmin);
 const triageNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'triage'));
 const adminNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'admin'));
+const accessNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'access'));
+const huntNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'hunt'));
 const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
-const showFeedTabs = computed(() => backend.isAdmin && (triageNotes.value.length > 0 || adminNotes.value.length > 0));
-const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications
-  : feedTab.value === 'triage' ? triageNotes.value : feedTab.value === 'admin' ? adminNotes.value : mainNotes.value);
+const mineNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type === 'user'));
+const updateNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type !== 'user'));
+// One feed unless the player chose categories in Settings (Ames 2026-10-27);
+// admins keep their Admin tab either way ("there should still be admin notif
+// feeds"), beside one Pyr tab, or beside My Pyr and Pyr Updates.
+const oneList = computed(() => useUserPreferencesStore().prefs.notifCategories !== true);
+const splitMain = computed(() => !oneList.value);
+const showFeedTabs = computed(() => splitMain.value || showAdminGroup.value);
+watch(splitMain, split => { if (!split && feedTab.value === 'updates') feedTab.value = 'mine'; }, { immediate: true });
+// Player view (store.ts showAdminUi) hides the Admin and Triage tabs and
+// keeps their notes out of the single list; the Player view chip in the top
+// bar shows a dot when any are unread.
+const showAdminTab = computed(() => backend.showAdminUi && adminNotes.value.length > 0);
+// Always there for admins (Ames asked for the tab): empty, it digs back for older requests.
+const showAccessTab = computed(() => backend.showAdminUi && backend.isAdmin);
+const showTriageTab = computed(() => backend.showAdminUi && triageNotes.value.length > 0);
+// Hunt reports only matter while a Hunt is being prepared or running (an
+// admin's try of one included); the rest of the time that side is gone
+// (Ames 2026-10-27: "Hunt Reports don't need to be there always, only during
+// a Hunt or Hunt Prep").
+const huntOn = computed(() => !!huntState.test || huntState.hunts.some(h => phaseNow(h) !== 'ended'));
+const showHuntTab = computed(() => backend.showAdminUi && huntOn.value && huntNotes.value.length > 0);
+watch(huntOn, on => { backend.huntReportsShown = on; }, { immediate: true });
+const isAdminSide = (t: FeedTab): t is AdminSide => t === 'access' || t === 'admin' || t === 'triage' || t === 'hunt';
+watch(() => backend.showAdminUi, on => { if (!on && isAdminSide(feedTab.value)) feedTab.value = 'mine'; }, { immediate: true });
+// Admin and Triage share one tab, so four tabs fit (Ames 2026-10-25: "admins
+// will need a wider notifications tab"). It holds both, with a switch inside
+// it when both have notes; underneath they stay the two lists they were, so
+// Mark read, Delete all and loading more still work on the side you are on.
+const sideNotes = (t: AdminSide) => (t === 'access' ? accessNotes.value : t === 'admin' ? adminNotes.value : t === 'triage' ? triageNotes.value : huntNotes.value);
+const sideShown = (t: AdminSide) => (t === 'access' ? showAccessTab.value : t === 'admin' ? showAdminTab.value : t === 'triage' ? showTriageTab.value : showHuntTab.value);
+const ADMIN_SIDES: AdminSide[] = ['access', 'admin', 'triage', 'hunt'];
+const showAdminGroup = computed(() => ADMIN_SIDES.some(sideShown));
+const onAdminGroup = computed(() => isAdminSide(feedTab.value));
+const showAdminSwitch = computed(() => onAdminGroup.value && ADMIN_SIDES.filter(sideShown).length > 1);
+const adminGroupUnread = computed(() => unreadIn(accessNotes.value) + unreadIn(adminNotes.value) + unreadIn(triageNotes.value) + (huntOn.value ? unreadIn(huntNotes.value) : 0));
+let lastAdminSide: AdminSide = isAdminSide(feedTab.value) ? feedTab.value : 'admin';
+watch(feedTab, t => { if (isAdminSide(t)) lastAdminSide = t; });
+/** The Admin tab opens on the side with the newest unread note, else the side
+ *  used last, else whichever side has notes. */
+function openAdminGroup() {
+  const newest = (list: any[]) => { const n = list.find(x => !isRead(x.id)); return n ? String(n.send_at || n.created_at || '') : ''; };
+  let side: AdminSide = lastAdminSide, best = '';
+  for (const t of ADMIN_SIDES) { const at = sideShown(t) ? newest(sideNotes(t)) : ''; if (at > best) { best = at; side = t; } }
+  if (!sideShown(side)) side = ADMIN_SIDES.find(sideShown) || 'admin';
+  feedTab.value = side;
+}
+const shownNotes = computed(() => !showFeedTabs.value ? (backend.showAdminUi ? backend.notifications : mainNotes.value)
+  : isAdminSide(feedTab.value) && backend.showAdminUi ? sideNotes(feedTab.value)
+  : !splitMain.value ? mainNotes.value
+  : feedTab.value === 'updates' ? updateNotes.value : mineNotes.value);
+/** Opening the bell: the tab with the newest unread notification, or the
+ *  tab used last when nothing is unread. It never moves while open. */
+watch(() => props.visible, open => {
+  if (!open || !showFeedTabs.value) return;
+  const tabs: [FeedTab, any[]][] = splitMain.value ? [['mine', mineNotes.value], ['updates', updateNotes.value]] : [['mine', mainNotes.value]];
+  if (showAccessTab.value) tabs.push(['access', accessNotes.value]);
+  if (showAdminTab.value) tabs.push(['admin', adminNotes.value]);
+  if (showTriageTab.value) tabs.push(['triage', triageNotes.value]);
+  if (showHuntTab.value) tabs.push(['hunt', huntNotes.value]);
+  let best: FeedTab | null = null, bestAt = '';
+  for (const [tab, list] of tabs) {
+    const n = list.find((x: any) => !isRead(x.id));
+    const at = n ? String(n.send_at || n.created_at || '') : '';
+    if (n && at > bestAt) { best = tab; bestAt = at; }
+  }
+  if (best) feedTab.value = best;
+}, { immediate: true });
 // The feed loads the newest notifications of every kind together, so one tab
 // could show only two or three while triage alerts took the rest (Ames
 // 2026-10-21: "this should load more than 2"). While the panel is open, the
@@ -206,7 +313,19 @@ async function fillTab() {
 }
 watch([() => props.visible, feedTab, () => shownNotes.value.length], () => { void fillTab(); });
 const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
-watch(showFeedTabs, on => { if (!on) feedTab.value = 'main'; });
+/** "Mark all read" on My Pyr or Pyr Updates marks both (Ames 2026-10-25);
+ *  Admin and Triage keep their own. */
+function markAllRead() {
+  if (!showFeedTabs.value) return backend.markAllNotificationsRead();
+  const list = isAdminSide(feedTab.value) ? sideNotes(feedTab.value) : mainNotes.value;
+  return backend.markAllNotificationsRead(list.map(n => n.id));
+}
+// "Show Today in Pyr" switched in Settings: read the feed again with it.
+watch(() => useUserPreferencesStore().prefs.showDailyDigest, () => { void backend.loadNotifications(); });
+watch([showAccessTab, showAdminTab, showTriageTab, showHuntTab], () => {
+  // One side of the Admin tab emptied: another side, if one has notes.
+  if (isAdminSide(feedTab.value) && !sideShown(feedTab.value)) feedTab.value = ADMIN_SIDES.find(sideShown) || 'mine';
+});
 watch(feedTab, () => { confirmDeleteAll.value = false; });   // the question was about the other tab
 
 // With the two admin tabs showing, "Delete all" clears the tab you are on
@@ -228,32 +347,85 @@ function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
+/** Read, or a Pyr Update more than 5 days old (store.ts notifRead). */
 function isRead(id: number): boolean {
-  return (backend as any).notificationReads?.has?.(id) ?? false;
+  const n = backend.notifications.find((x: any) => x.id === id);
+  return n ? backend.notifRead(n) : ((backend as any).notificationReads?.has?.(id) ?? false);
 }
 
 function isBadgeNotification(notif: any): boolean {
-  return notif?.title?.includes('New Achievement');
+  return isAwardTitle(notif?.title);
 }
 
 function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
+  // A hunter's report: the reports queue, the oldest open one first, already there (HuntReportCard).
+  const rep = kindOf(notif) === 'hunt' ? String(notif.body || '').match(/#nge-hunt-report=(\d+)/) : null;
+  if (rep) {
+    document.dispatchEvent(new CustomEvent('nge:hunt-report', { detail: { id: Number(rep[1]) } }));
+    emit('hide');
+    return;
+  }
+  // A player's suggested error for a Hunt being built: the suggestions queue, at it (BuildQueueCard).
+  const sug = kindOf(notif) === 'hunt' ? String(notif.body || '').match(/#nge-build-suggestion=(\d+)/) : null;
+  if (sug) {
+    document.dispatchEvent(new CustomEvent('nge:build-queue', { detail: { suggestion: Number(sug[1]) } }));
+    emit('hide');
+    return;
+  }
   // The weekly recap opens the full Week in Science tab in the profile.
   if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Week in Science')) {
+    // The week the recap is about, not the week now (Nseraf, report 250).
+    recapWeekStart.value = weekFromRecapTitle(notif.title || '');
+    recapMonth.value = null;
+    recapYear.value = null;
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
+    emit('hide');
+    return;
+  }
+  // The monthly recap opens the same tab switched to its month.
+  if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Month in Science')) {
+    recapMonth.value = monthFromRecapTitle(notif.title || '');
+    recapWeekStart.value = null;
+    recapYear.value = null;
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
+    emit('hide');
+    return;
+  }
+  // The yearly recap (Sep 28): the same tab, switched to that Pyr year.
+  if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Year in Science')) {
+    recapYear.value = yearFromRecapTitle(notif.title || '');
+    recapMonth.value = null;
+    recapWeekStart.value = null;
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
+    emit('hide');
+    return;
+  }
+  // The Hunt (Ames 2026-10-20): its announcement, start and end open the Hunt panel.
+  if ((notif.title || '').startsWith('🔎 The Hunt')) {
+    document.dispatchEvent(new CustomEvent('nge:hunt-open', { detail: { title: String(notif.title) } }));
     emit('hide');
     return;
   }
   // Retina access requests (Ames 2026-10-16): a reviewer's note opens Admin
   // Hub > Access requests; a player's notes or invite open their panel.
   const accessTitle = String(notif.title || '');
-  if (accessTitle.startsWith('🔬 Retina access request from')) {
+  // A dataset access request opens the same tab, where Dataset requests has
+  // Granted (Ames 2026-10-28).
+  if (accessTitle.startsWith('🔑 Access update') || accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
     emit('hide');
     return;
   }
   if (accessTitle === '🔬 Notes on your retina access request' || (accessTitle === '🎉 Congratulations! Your edit access has been granted!' || accessTitle === '🎉 You are invited to the retina')) {
     document.dispatchEvent(new CustomEvent('nge:access-open'));
+    emit('hide');
+    return;
+  }
+  // A beta access request opens Admin Hub > Pilot testers, where Beta
+  // requests has Let them in (Ames 2026-10-26).
+  if (accessTitle.startsWith('🔑 Beta access request') && backend.isAdmin) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'pilot' } }));
     emit('hide');
     return;
   }
@@ -280,7 +452,9 @@ function openDetail(notif: any) {
       const excerpt = quoted.replace(/\.\.\.$/, '').replace(/\s+/g, ' ').trim();
       if (excerpt) window.localStorage.setItem('nge_triage_focus', JSON.stringify({ excerpt, at: Date.now() }));
     } catch { /* the board still opens */ }
-    window.open(`${window.location.origin}${window.location.pathname}?triage=board`, '_blank', 'noopener');
+    // Newer alerts name their report: open that card exactly.
+    const reportId = String(notif.body || '').match(/#nge-triage-report=([0-9a-f-]{36})/i)?.[1];
+    window.open(`${window.location.origin}${window.location.pathname}?triage=board${reportId ? `&report=${reportId}` : ''}`, '_blank', 'noopener');
     emit('hide');
     return;
   }
@@ -309,17 +483,93 @@ function closeDetail() {
 const helpSolvedNote = ref('');
 async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
+  // A tutorial edit to approve: its before and after show here, and this
+  // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
+  if (a?.getAttribute('href') === '#nge-tutorial-edits') {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
+    emit('hide');
+    return;
+  }
+  // A hunter's report (Ames 2026-10-26): its card opens docked under the top bar (HuntReportCard), the view free.
+  const rep = a?.getAttribute('href')?.match(/^#nge-hunt-report=(\d+)$/);
+  if (rep) {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:hunt-report', { detail: { id: Number(rep[1]) } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
+  // The Hunt Builder (Ames 2026-10-27: "Can we have a button that jumps me to the Hunt Builder?"): a suggestion
+  // opens the queue at it; Help build opens the helper's box on the cell.
+  const sug = a?.getAttribute('href')?.match(/^#nge-build-suggestion=(\d+)$/);
+  if (sug) {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:build-queue', { detail: { suggestion: Number(sug[1]) } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
+  // "Explore MEC" on a dataset access grant (Ames 2026-10-28): CAVE is asked
+  // again (the access is new), then the dataset opens.
+  const go = a?.getAttribute('href')?.match(/^#nge-open-dataset=([a-z0-9_]{2,40})$/);
+  if (go) {
+    e.preventDefault();
+    const ds = DATASETS.find(d => d.id === go[1]);
+    closeDetail();
+    emit('hide');
+    if (ds) { await refreshDatasetPermissions(); await switchToDataset(ds); }
+    return;
+  }
+  if (a?.getAttribute('href') === '#nge-help-build') {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:help-build'));
+    closeDetail();
+    emit('hide');
+    return;
+  }
   const m = a?.getAttribute('href')?.match(/^#nge-help-solved=([0-9a-f-]{1,40})$/i);
   if (!m) return;
   e.preventDefault();
+  await markReminderSolved(m[1]);
+}
+async function markReminderSolved(id: string) {
   const help = useHelpRequestStore();
   if (!help.requests.length) { try { await help.load(); } catch { /* said below */ } }
-  const req = help.requests.find(r => r.id === m[1]);
+  const req = help.requests.find(r => r.id === id);
   if (!req) { helpSolvedNote.value = 'That help request is no longer there.'; return; }
   if (req.resolved) { helpSolvedNote.value = 'This request is already marked solved.'; return; }
   if (req.userId && req.userId !== backend.userId && !backend.isAdmin) { helpSolvedNote.value = 'Only the player who asked can mark this solved.'; return; }
   const ok = await help.resolve(req.id);
   helpSolvedNote.value = ok ? 'Marked solved. Thanks for letting the helpers know!' : 'That did not work. Try Mark solved in the Help tab.';
+}
+
+/** The reminder's own buttons (Ames 2026-10-25): mark it solved, and open the
+ *  view, the helper's from their latest reply or else the one the request
+ *  was asked from. */
+const reminderId = computed(() => String(openNotif.value?.body ?? '').match(/#nge-help-solved=([0-9a-f-]{1,40})/i)?.[1] ?? '');
+const reminderReq = ref<any>(null);
+watch(reminderId, async id => {
+  reminderReq.value = null;
+  if (!id) return;
+  const help = useHelpRequestStore();
+  if (!help.requests.length) { try { await help.load(); } catch { return; } }
+  if (reminderId.value === id) reminderReq.value = help.requests.find(r => r.id === id) ?? null;
+}, { immediate: true });
+const reminderView = computed(() => {
+  const r = reminderReq.value;
+  if (!r) return { url: '', label: '' };
+  const replies = [...(r.responses || [])].reverse();
+  const fromHelper = replies.find((x: any) => x.url)?.url;
+  if (fromHelper) return { url: fromHelper, label: "Open the helper's view" };
+  return r.viewUrl ? { url: r.viewUrl, label: 'Open your view' } : { url: '', label: '' };
+});
+function openReminderView() {
+  const url = reminderView.value.url;
+  if (!url) return;
+  closeDetail();
+  emit('hide');
+  if (!openStartLink(url)) window.open(url, '_blank', 'noopener');
 }
 
 // ── A reply the team asked for (Ames 2026-10-13) ─────────────────────────
@@ -451,10 +701,34 @@ function isHelpNotification(notif: any): boolean {
   return notif?.title?.includes('help request') || notif?.title?.includes('Response to your');
 }
 
-function openHelpTab() {
+async function openHelpTab() {
+  const id = await helpRequestFor(openNotif.value);
   closeDetail();
   emit('hide');
   emit('open-help');
+  if (id) useHelpRequestStore().focusId = id;
+}
+
+/** Which help request a help notification is about (Ames 2026-10-24: "open
+ *  not just the help tab but the specific help request"). The reminder links
+ *  its request; a reply note says only "<name> responded[ on <cell>]: <reply>",
+ *  so it is matched to your request whose reply says the same, then by cell. */
+async function helpRequestFor(n: any): Promise<string | null> {
+  const body = String(n?.body ?? '');
+  const linked = body.match(/#nge-help-solved=([0-9a-f-]{1,40})/i);
+  if (linked) return linked[1];
+  const m = body.match(/^(.*?) responded(?: on (\S+))?: ([\s\S]*)$/);
+  if (!m) return null;
+  const [, who, seg, note] = m;
+  const help = useHelpRequestStore();
+  if (!help.requests.length) { try { await help.load(); } catch { return null; } }
+  const head = note.trim().slice(0, 60);
+  const mineFirst = [...help.requests].sort((a, b) => Number(b.userId === backend.userId) - Number(a.userId === backend.userId));
+  const said = (r: any, byWho: boolean) => (r.responses || []).some((x: any) =>
+    head && String(x.note || '').trim().startsWith(head) && (!byWho || (x.userName || '') === who));
+  const hit = mineFirst.find(r => said(r, true)) || mineFirst.find(r => said(r, false))
+    || (seg ? mineFirst.find(r => r.segId === seg) : undefined);
+  return hit?.id ?? null;
 }
 
 /** Sanitize stored Markdown, including generated URLs; remote images are omitted. */
@@ -470,6 +744,36 @@ const pictureWide = ref(false);
 // point, so the picture keeps its ordinary column and the text gets the room.
 const LONG_READ_CHARS = 600;
 const longRead = computed(() => String(openNotif.value?.body ?? '').length > LONG_READ_CHARS);
+/** Just a title and a picture (Ames 2026-10-24): laid out like a video note,
+ *  the title on top and the picture across the card below it, with no empty
+ *  text column beside the picture. */
+const pictureOnly = computed(() => {
+  const n = openNotif.value;
+  if (!n || !(n.image_url || n.thumbnail_url)) return false;
+  if (champions.value || replyAsked.value || isHelpNotification(n)) return false;
+  return !cleanCopy(String(n.body ?? '')).trim();
+});
+/** Today in Pyr ends with what players did, "Players made 1,234 edits and
+ *  completed 12 cells." (scripts/daily-deploy-digest.mjs). That line is shown
+ *  as two numbers under the picture, to the left of the text (Ames
+ *  2026-10-23), and left out of the text itself. */
+const DIGEST_STATS = /(?:^|\n)\s*Players made ([\d,]+) edits? and completed ([\d,]+) cells?\.\s*$/;
+const digestStats = computed(() => {
+  const n = openNotif.value;
+  if (!n || !String(n.title || '').startsWith('Today in Pyr')) return null;
+  const m = String(n.body || '').match(DIGEST_STATS);
+  return m ? { edits: m[1], cells: m[2], editsOne: m[1] === '1', cellsOne: m[2] === '1' } : null;
+});
+/** A player's reply names its report: the bell opens that card on the triage board. */
+const TRIAGE_MARK = /\s*#nge-triage-report=([0-9a-f-]{36})\s*$/i;
+const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(TRIAGE_MARK)?.[1] ?? '');
+function openTriageReport() {
+  window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
+}
+const detailBody = computed(() => {
+  const body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
+  return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
+});
 function onPictureLoad(e: Event) {
   const img = e.target as HTMLImageElement;
   pictureWide.value = img.naturalWidth >= 600 && img.naturalWidth / Math.max(1, img.naturalHeight) >= 1.25;
@@ -478,13 +782,16 @@ watch(openNotif, () => { pictureWide.value = false; });
 
 /** Markdown stripped to plain text, for the compact card preview line. */
 function plainText(text: string): string {
-  return (text || '')
+  return (text || '').replace(/\s*#nge-triage-report=[0-9a-f-]{36}\s*$/i, '')
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.+?)\*/g, '$1')
     .replace(/_(.+?)_/g, '$1')
     .replace(/`(.+?)`/g, '$1')
     .replace(/^\s*#+\s*/gm, '')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '$1');
+    .replace(/\[(.+?)\]\((.+?)\)/g, '$1')
+    // Escaped characters lose the backslash (the server escapes what a
+    // player typed, so emails read "joe\@mail\.com" here otherwise).
+    .replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
 }
 
 /**
@@ -497,6 +804,13 @@ function plainText(text: string): string {
 function cleanCopy(text: string): string {
   if (!text) return '';
   return String(text)
+    // Achievement notes carry no emoji, and say Achievement (Ames 2026-10-27: "we don't need emoji in the
+    // achievement text"); older ones are cleaned here, including "award! — description" (a stray comma once dashes go).
+    .replace(/^\s*(?:\p{Extended_Pictographic}\uFE0F?\s*)+(?=New Achievement)/u, '')
+    .replace(/" award!\s*[—–]\s*/g, '" Achievement! ')
+    .replace(/" award!/g, '" Achievement!')
+    // Hunt reports sent before 2026-10-27 said "mark it not real" (Ames: "Add it to the answers or Dismiss")
+    .replace(/add it to the answers or mark it not real\./g, 'add it to the answers or dismiss it.')
     // "Sep 21 – Sep 27" and "Dec 29, 2025 – Jan 4, 2026" become "... to ..."
     .replace(/([A-Z][a-z]{2,8}\.?[ \t]+\d{1,2}(?:,[ \t]*\d{4})?)[ \t]*[–—][ \t]*(?=[A-Z][a-z]{2,8}\.?[ \t]+\d{1,2})/g, '$1 to ')
     // "10–20" becomes "10 to 20"
@@ -516,7 +830,7 @@ function cleanCopy(text: string): string {
      **Top Editors**
      🥇  **Name**, 19 edits          (older rows: "**Name** — 19 edits")
      4.  **Name**, 3 edits
-     **Top Completers**
+     **Most Cells**
      _no activity this week_
      Across all datasets, ...
    parseChampions() reads that shape back into sections for the podium view.
@@ -524,12 +838,12 @@ function cleanCopy(text: string): string {
    detail view falls back to the ordinary Markdown rendering. */
 interface ChampEntry { rank: number; name: string; count: string; unit: string }
 interface ChampSection { label: string; entries: ChampEntry[]; empty: boolean }
-interface ChampionsView { range: string; intro: string; sections: ChampSection[]; outro: string }
+interface ChampionsView { kind: string; range: string; intro: string; sections: ChampSection[]; outro: string }
 
 const CHAMP_MEDALS = ['🥇', '🥈', '🥉'];
 const CHAMP_HEAD_RE = /^(?:\*\*([^*]+?)\*\*:?|#{1,4}\s+(.+))$/;
 const CHAMP_ENTRY_RE = /^(🥇|🥈|🥉|\d{1,3}\.)\s*\*\*(.+?)\*\*\s*(?:[–—:,-]\s*)?(\d[\d,.]*)\s*(.*)$/u;
-const CHAMP_EMPTY_RE = /^[_*\s]*no activity this week[_*\s.!]*$/i;
+const CHAMP_EMPTY_RE = /^[_*\s]*no activity this (?:week|month)[_*\s.!]*$/i;
 
 /** Bold markers and a wrapping _emphasis_ off, dashes cleaned. Gentle on
  *  purpose: a display name like "amy_r_s" keeps its underscores. */
@@ -543,9 +857,12 @@ function stripMd(text: string): string {
 
 function parseChampions(notif: any): ChampionsView | null {
   const title = String(notif?.title || '');
-  if (!/weekly champions/i.test(title)) return null;
+  // Weekly, or Monthly from scripts/monthly-champions.mjs (same body shape).
+  // Weekly, Monthly, or the Pyr Year (scripts/monthly-champions.mjs RECAP_PERIOD=year).
+  const kind = /year champions/i.test(title) ? 'Pyr Year Champions' : /monthly champions/i.test(title) ? 'Monthly Champions' : 'Weekly Champions';
+  if (!/(weekly|monthly|year) champions/i.test(title)) return null;
   try {
-    const range = cleanCopy(title.replace(/^[\s\S]*?weekly champions/i, ''))
+    const range = cleanCopy(title.replace(/^[\s\S]*?(weekly|monthly|year) champions/i, ''))
       .replace(/^[\s,:;·|-]+/, '')
       .trim();
 
@@ -593,6 +910,7 @@ function parseChampions(notif: any): ChampionsView | null {
     if (sections.some(s => !s.label || (s.entries.length === 0 && !s.empty))) return null;
 
     return {
+      kind,
       range,
       intro: stripMd(intro.join(' ')),
       sections,
@@ -605,7 +923,62 @@ function parseChampions(notif: any): ChampionsView | null {
 
 const champions = computed<ChampionsView | null>(() =>
   openNotif.value ? parseChampions(openNotif.value) : null);
+/** Trophy art for each broadcast (Ames 2026-10-26: Ames is making one for
+ *  weekly and one for monthly). Put the PNG in static/images/champions/,
+ *  import it at the top of this file and set it here; null shows the cup. */
+const CHAMP_TROPHY: Record<string, string | null> = { 'Weekly Champions': weeklyTrophy, 'Monthly Champions': goldCup, 'Pyr Year Champions': goldYearAward };
+const CHAMP_CHEER = 'Big Congratulations! Thanks for contributing to neuroscience!';
+/** The Pyr year's anniversary (Sep 28, the day the first testers came in 2026). */
+const YEAR_CHEER = 'Happy birthday, Pyr! Thank you for a whole year of neuroscience!';
+const champCheer = computed(() => champions.value?.kind === 'Pyr Year Champions' ? YEAR_CHEER : CHAMP_CHEER);
+/** Longer than a week: the gold and violet card. */
+const champGrand = computed(() => champions.value?.kind === 'Monthly Champions' || champions.value?.kind === 'Pyr Year Champions');
+const champSpan = computed(() => champions.value?.kind === 'Pyr Year Champions' ? 'year' : champions.value?.kind === 'Monthly Champions' ? 'month' : 'week');
+const YEAR_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+/** "Year One" → "Sep 28, 2026 to Sep 27, 2027". */
+const champYearDates = computed(() => {
+  const w = /Year (\w+)/.exec(champions.value?.range || '')?.[1];
+  const n = w ? (YEAR_WORDS.indexOf(w) > 0 ? YEAR_WORDS.indexOf(w) : Number(w)) : 0;
+  return n > 0 ? `Sep 28, ${2025 + n} to Sep 27, ${2026 + n}` : '';
+});
+/** The month's podiums hold trophies instead of medals (Ames 2026-10-26):
+ *  cups for edits, neuron awards for cells. */
+const MONTH_CUPS = [goldCup, silverCup, bronzeCup];
+const MONTH_AWARDS = [goldAward, silverAward, bronzeAward];
+const YEAR_EDITS = [goldYearAward, silverYearAward, bronzeYearAward];
+const YEAR_CELLS = [goldYearTrophy, silverYearTrophy, bronzeYearTrophy];
+const monthTrophy = (label: string, rank: number) => {
+  const cells = /cell|complet/i.test(label);
+  if (champions.value?.kind === 'Pyr Year Champions') return (cells ? YEAR_CELLS : YEAR_EDITS)[rank - 1];
+  return (cells ? MONTH_AWARDS : MONTH_CUPS)[rank - 1];
+};
+const champTrophy = computed(() => champions.value ? CHAMP_TROPHY[champions.value.kind] ?? null : null);
 watch(champions, c => { if (c) void loadChampionIds(); });
+// Opening a Champions card: blue, purple and yellow confetti behind it, a
+// bigger burst for the month. Not for players who asked for calm.
+const champConfetti = ref<InstanceType<typeof ConfettiCelebration> | null>(null);
+const detailBackdrop = ref<HTMLElement | null>(null);
+watch(() => champions.value && openNotif.value, async (open, was) => {
+  if (!open || open === was || isCalm()) return;
+  await nextTick();
+  // After the card has faded in, or the burst shows through it.
+  await new Promise(r => setTimeout(r, 600));
+  if (!champions.value) return;
+  const kind = champions.value?.kind;
+  const monthly = kind === 'Monthly Champions';
+  // Pixel fireworks behind the card for the month and the year (Ames 2026-11-01).
+  if (monthly || kind === 'Pyr Year Champions') launchFireworks(monthly ? 4 : 8, detailBackdrop.value ?? undefined);
+  // The year: a fanfare of four waves, the last one gold.
+  if (kind === 'Pyr Year Champions') {
+    champConfetti.value?.trigger('champions', 3.5);
+    setTimeout(() => champConfetti.value?.trigger('champions', 2.5), 400);
+    setTimeout(() => champConfetti.value?.trigger('champions', 2.5), 900);
+    setTimeout(() => champConfetti.value?.trigger('gold', 3), 1500);
+    return;
+  }
+  champConfetti.value?.trigger('champions', monthly ? 3 : 2);
+  if (monthly) setTimeout(() => champConfetti.value?.trigger('champions', 2), 450);
+});
 
 /** Podium order: silver, gold, bronze, so gold stands in the middle. */
 function podiumOrder(entries: ChampEntry[]): ChampEntry[] {
@@ -634,10 +1007,10 @@ function padRank(rank: number): string {
       <div class="nge-notif-topbar-actions">
         <!-- With the two admin tabs showing, this marks the tab you are on. -->
         <button
-          v-if="showFeedTabs ? unreadIn(shownNotes) > 0 : backend.unreadNotificationCount > 0"
+          v-if="showFeedTabs ? unreadIn(isAdminSide(feedTab) ? sideNotes(feedTab) : mainNotes) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
-          @click="showFeedTabs ? backend.markAllNotificationsRead(shownNotes.map(n => n.id)) : backend.markAllNotificationsRead()"
-        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && feedTab === 'admin' ? 'Mark admin read' : 'Mark all read' }}</button>
+          @click="markAllRead()"
+        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && (feedTab === 'admin' || feedTab === 'access') ? 'Mark admin read' : showFeedTabs && feedTab === 'hunt' ? 'Mark reports read' : 'Mark all read' }}</button>
         <!-- Separate from "mark all read" on purpose: read state controls the
              unread pip, this clears the feed. Only hides them for THIS user —
              the underlying notification rows are untouched. -->
@@ -663,15 +1036,43 @@ function padRank(rank: number): string {
     </div>
 
     <div v-if="showFeedTabs" class="nge-notif-tabs" role="tablist">
-      <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'main' }" role="tab" :aria-selected="feedTab === 'main'" @click="feedTab = 'main'">
-        Notifications<b v-if="unreadIn(mainNotes) > 0">{{ unreadIn(mainNotes) }}</b>
+      <!-- One feed: everything that is not admin, in one Pyr tab. -->
+      <button v-if="!splitMain" class="nge-notif-tab" :class="{ 'nge-notif-tab--on': !onAdminGroup }" role="tab" :aria-selected="!onAdminGroup" @click="feedTab = 'mine'"
+              title="Your notifications and Pyr's updates. Settings can sort them into My Pyr and Pyr Updates.">
+        Pyr<b v-if="unreadIn(mainNotes) > 0">{{ unreadIn(mainNotes) }}</b>
       </button>
-      <button class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
-              title="Access requests, proofreading tests, and players' answers to replies you asked for">
-        Admin<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
+      <template v-else>
+      <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'mine' }" role="tab" :aria-selected="feedTab === 'mine'" @click="feedTab = 'mine'"
+              title="Sent to you: replies, achievements, your week, your results">
+        My Pyr<b v-if="unreadIn(mineNotes) > 0">{{ unreadIn(mineNotes) }}</b>
       </button>
-      <button class="nge-notif-tab nge-notif-tab--triage" :class="{ 'nge-notif-tab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'">
+      <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'updates' }" role="tab" :aria-selected="feedTab === 'updates'" @click="feedTab = 'updates'"
+              title="Sent to everyone: Today in Pyr, announcements, blog posts, Weekly Champions, competitions">
+        Pyr Updates<b v-if="unreadIn(updateNotes) > 0">{{ unreadIn(updateNotes) }}</b>
+      </button>
+      </template>
+      <button v-if="showAdminGroup" class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': onAdminGroup }" role="tab" :aria-selected="onAdminGroup" @click="onAdminGroup || openAdminGroup()"
+              title="Access requests, proofreading tests, players' answers to replies you asked for, triage reports and Hunt reports">
+        Admin<b v-if="adminGroupUnread > 0">{{ adminGroupUnread }}</b>
+      </button>
+    </div>
+    <!-- Inside the Admin tab, when both kinds have notes: which ones to show. -->
+    <div v-if="showFeedTabs && showAdminSwitch" class="nge-notif-subtabs" role="tablist">
+      <button v-if="showAccessTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'access' }" role="tab" :aria-selected="feedTab === 'access'" @click="feedTab = 'access'"
+              title="Access requests: beta, Retina, other datasets, and the daily Access update">
+        Access<b v-if="unreadIn(accessNotes) > 0">{{ unreadIn(accessNotes) }}</b>
+      </button>
+      <button v-if="showAdminTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
+              title="To do board tags, players' answers to replies you asked for, and proofreading tests">
+        To do and replies<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
+      </button>
+      <button v-if="showTriageTab" class="nge-notif-subtab nge-notif-subtab--triage" :class="{ 'nge-notif-subtab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'"
+              title="Triage: bug reports and ideas from players, and what the triage loop did with them">
         Triage<b v-if="unreadIn(triageNotes) > 0">{{ unreadIn(triageNotes) }}</b>
+      </button>
+      <button v-if="showHuntTab" class="nge-notif-subtab nge-notif-subtab--hunt" :class="{ 'nge-notif-subtab--on': feedTab === 'hunt' }" role="tab" :aria-selected="feedTab === 'hunt'" @click="feedTab = 'hunt'"
+              title="Hunt reports: problems hunters say the answers missed. Click one to go through them, the oldest first">
+        Hunt reports<b v-if="unreadIn(huntNotes) > 0">{{ unreadIn(huntNotes) }}</b>
       </button>
     </div>
 
@@ -731,10 +1132,12 @@ function padRank(rank: number): string {
   <!-- ═══ Detail overlay (separate Teleport so it's not clipped by panel) ═══ -->
   <Teleport to="body">
     <Transition name="nge-notif-detail">
-      <div v-if="openNotif" class="nge-notif-detail-backdrop" :class="{ 'nge-notif-detail-backdrop--preview': openNotif.preview }" @click.self="closeDetail">
+      <div v-if="openNotif" ref="detailBackdrop" class="nge-notif-detail-backdrop" :class="{ 'nge-notif-detail-backdrop--preview': openNotif.preview }" @click.self="closeDetail">
+        <!-- Champions: confetti falls behind the card (Ames 2026-10-26). -->
+        <ConfettiCelebration v-if="champions" ref="champConfetti" inline />
         <div
           class="nge-notif-detail"
-          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
+          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--monthly': champGrand, 'nge-notif-detail--yearly': champions?.kind === 'Pyr Year Champions', 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
           role="dialog"
           aria-modal="true"
           :aria-label="cleanCopy(openNotif.title)"
@@ -757,7 +1160,7 @@ function padRank(rank: number): string {
             <button class="nge-notif-detail-close" @click="closeDetail" aria-label="Close">×</button>
           </div>
           <div class="nge-notif-detail-scroll">
-            <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': openNotif.image_url || openNotif.thumbnail_url }">
+            <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': (openNotif.image_url || openNotif.thumbnail_url) && !pictureOnly, 'nge-notif-detail-layout--picture-only': pictureOnly }">
               <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
                 <img
                   :src="openNotif.image_url || openNotif.thumbnail_url"
@@ -765,6 +1168,17 @@ function padRank(rank: number): string {
                   @load="onPictureLoad"
                   @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
                 />
+                <div v-if="digestStats" class="nge-notif-digest-stats" aria-label="What players did">
+                  <div class="nge-notif-digest-stats-kicker">Players made</div>
+                  <div class="nge-notif-digest-stat">
+                    <span class="nge-notif-digest-stat-num">{{ digestStats.edits }}</span>
+                    <span class="nge-notif-digest-stat-label">{{ digestStats.editsOne ? 'edit' : 'edits' }}</span>
+                  </div>
+                  <div class="nge-notif-digest-stat">
+                    <span class="nge-notif-digest-stat-num">{{ digestStats.cells }}</span>
+                    <span class="nge-notif-digest-stat-label">{{ digestStats.cellsOne ? 'cell completed' : 'cells completed' }}</span>
+                  </div>
+                </div>
               </div>
               <div class="nge-notif-detail-text">
                 <!-- Weekly Champions: parsed into a podium. parseChampions()
@@ -772,16 +1186,24 @@ function padRank(rank: number): string {
                      ordinary rendering below. -->
                 <template v-if="champions">
                   <header class="nge-champs-head">
-                    <div class="nge-champs-emblem" aria-hidden="true">🏆</div>
+                    <!-- The trophy: Ames's art when it is in (CHAMP_TROPHY), the cup until then. -->
+                    <div class="nge-champs-emblem" :class="{ 'nge-champs-emblem--art': champTrophy }" aria-hidden="true">
+                      <img v-if="champTrophy" :src="champTrophy" alt="" class="nge-champs-trophy">
+                      <span v-else class="nge-champs-cup">🏆</span>
+                    </div>
                     <div class="nge-champs-head-text">
-                      <div class="nge-champs-kicker">Weekly Champions</div>
-                      <h2 class="nge-champs-range">{{ champions.range || 'This week' }}</h2>
+                      <div class="nge-champs-kicker">{{ champions.kind }}</div>
+                      <h2 class="nge-champs-range">{{ champions.range || `This ${champSpan}` }}</h2>
+                      <div v-if="champYearDates" class="nge-champs-dates">{{ champYearDates }}</div>
                     </div>
                   </header>
-                  <p v-if="champions.intro" class="nge-champs-intro">{{ champions.intro }}</p>
+                  <!-- One line for every Champions card, old and new (Ames 2026-10-26: the date
+                       above already says which week or month). -->
+                  <p class="nge-champs-intro">{{ champCheer }}</p>
 
-                  <!-- Wide screens: the categories sit side by side (Ames 2026-10-05). -->
-                  <div class="nge-champs-columns">
+                  <!-- Wide screens: the categories sit side by side (Ames 2026-10-05),
+                       up to three across (Cilia Questers, Ames 2026-11-05). -->
+                  <div class="nge-champs-columns" :style="{ '--champ-cols': Math.min(3, Math.max(1, champions.sections.length)) }">
                   <section
                     v-for="(section, si) in champions.sections"
                     :key="si + '-' + section.label"
@@ -796,8 +1218,8 @@ function padRank(rank: number): string {
                     <div v-if="section.entries.length === 0" class="nge-champs-empty">
                       <span class="nge-champs-empty-ring" aria-hidden="true"><span></span></span>
                       <div class="nge-champs-empty-text">
-                        <div class="nge-champs-empty-title">No activity this week</div>
-                        <div class="nge-champs-empty-sub">The podium is open. Next week it could be yours.</div>
+                        <div class="nge-champs-empty-title">No activity this {{ champSpan }}</div>
+                        <div class="nge-champs-empty-sub">The podium is open. Next {{ champSpan }} it could be yours.</div>
                       </div>
                     </div>
 
@@ -813,7 +1235,8 @@ function padRank(rank: number): string {
                                :role="championId(entry.name) ? 'button' : undefined" :tabindex="championId(entry.name) ? 0 : undefined"
                                :title="championId(entry.name) ? `Open ${entry.name}'s profile` : undefined"
                                @click="openChampion(entry.name)" @keydown.enter="openChampion(entry.name)">
-                            <span class="nge-champs-medal" aria-hidden="true">{{ champMedal(entry.rank) }}</span>
+                            <img v-if="champGrand && entry.rank <= 3" :src="monthTrophy(section.label, entry.rank)" alt="" class="nge-champs-medal nge-champs-cupimg">
+                            <span v-else class="nge-champs-medal" aria-hidden="true">{{ champMedal(entry.rank) }}</span>
                             <span class="nge-champs-name">{{ entry.name }}</span>
                             <span class="nge-champs-num">{{ entry.count }}</span>
                             <span class="nge-champs-unit">{{ entry.unit }}</span>
@@ -849,7 +1272,7 @@ function padRank(rank: number): string {
                   <div class="nge-notif-detail-rule" aria-hidden="true"></div>
                   <div
                     class="nge-notif-detail-body"
-                    v-html="withVideoEmbeds(renderMarkdown(cleanCopy(openNotif.body)))"
+                    v-html="withVideoEmbeds(renderMarkdown(cleanCopy(detailBody)))"
                     @click="onDetailBodyClick"
                   ></div>
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
@@ -927,8 +1350,17 @@ function padRank(rank: number): string {
                     <div v-if="replyError" class="nge-notif-reply-error" role="alert">{{ replyError }}</div>
                   </template>
                 </div>
+                <div v-if="triageReportId" class="nge-notif-reminder-actions">
+                  <button class="nge-notif-open-help" @click="openTriageReport">Open this report in triage ↗</button>
+                </div>
+                <div v-if="reminderId" class="nge-notif-reminder-actions">
+                  <button class="nge-notif-open-help nge-notif-solve" :disabled="!!reminderReq?.resolved || helpSolvedNote.startsWith('Marked solved')"
+                          @click="markReminderSolved(reminderId)">{{ reminderReq?.resolved || helpSolvedNote.startsWith('Marked solved') ? 'Solved ✓' : '✓ Mark solved' }}</button>
+                  <button v-if="reminderView.url" class="nge-notif-open-help" @click="openReminderView">↗ {{ reminderView.label }}</button>
+                  <button class="nge-notif-open-help" @click="openHelpTab">Open in Help tab →</button>
+                </div>
                 <button
-                  v-if="isHelpNotification(openNotif)"
+                  v-if="isHelpNotification(openNotif) && !reminderId"
                   class="nge-notif-open-help"
                   @click="openHelpTab"
                 >Open in Help tab →</button>
@@ -953,7 +1385,7 @@ function padRank(rank: number): string {
 
 <style scoped>
 /* Dragged taller or shorter by the grip at the bottom (Ames 2026-10-20). */
-.nge-notif-panel.nge-notif-panel--sized { height: var(--nge-notif-h); max-height: calc(100vh - 50px); }
+.nge-notif-panel.nge-notif-panel--sized { height: var(--nge-notif-h); max-height: calc(100 * var(--nge-vh, 1vh) - 50px); }
 .nge-notif-panel--sized .nge-notif-list { max-height: none; flex: 1 1 auto; min-height: 0; }
 .nge-notif-grip {
   flex: 0 0 auto; height: 10px; cursor: row-resize; position: relative; touch-action: none;
@@ -976,7 +1408,7 @@ function padRank(rank: number): string {
   top: 42px;
   right: 8px;
   width: 340px;
-  max-height: min(480px, calc(100vh - 60px));
+  max-height: min(480px, calc(100 * var(--nge-vh, 1vh) - 60px));
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
   border: 1px solid rgba(74, 158, 255, 0.15);
   border-radius: 10px;
@@ -1044,13 +1476,60 @@ function padRank(rank: number): string {
 .nge-notif-tab:hover { color: #dce6f5; }
 .nge-notif-tab--on { color: #ffffff; border-bottom-color: #7ee0ff; }
 .nge-notif-tab--triage.nge-notif-tab--on { border-bottom-color: #ff8f8f; }
-.nge-notif-tab--admin.nge-notif-tab--on { border-bottom-color: #e5484d; }
-.nge-notif-tab--admin b { background: #e5484d; color: #fff; }
+.nge-notif-tab--admin.nge-notif-tab--on { border-bottom-color: #c8a4ff; }
+.nge-notif-tab--admin b { background: #c8a4ff; color: #170a2e; }
 .nge-notif-tab b {
   min-width: 16px; padding: 2px 5px; border-radius: 8px; box-sizing: border-box;
   font-size: 10px; font-weight: 700; text-align: center; color: #06121f; background: #7ee0ff;
 }
 .nge-notif-tab--triage b { background: #ff8f8f; }
+/* A tab name never breaks onto two lines ("My Pyr" did, with four tabs). */
+.nge-notif-tab { white-space: nowrap; flex-shrink: 0; }
+
+/* The Admin tab's switch between its kinds of notes, in the layer tabs' look
+   (ng-override.css .neuroglancer-layer-item; Ames 2026-10-30), lit in Admin's
+   purple: cut corners, a light along the top edge that fades before the foot,
+   and the top bar's lettering. */
+.nge-notif-subtabs {
+  display: flex; align-items: flex-end; gap: 2px; flex-shrink: 0;
+  margin: 8px 0 0; padding: 0 8px;
+  border-bottom: 1px solid rgba(200, 164, 255, 0.25);
+}
+.nge-notif-subtab {
+  --tab-edge: rgba(74, 158, 255, 0.34);
+  --tab-fill: #0a1326;
+  position: relative; isolation: isolate;
+  flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 27px; padding: 3px 11px 0 7px; box-sizing: border-box;
+  font: 600 12.5px/1 'Inter', system-ui, sans-serif;
+  color: #9db1cb; border: 0; border-radius: 0;
+  background: linear-gradient(180deg, var(--tab-edge) 0%, var(--tab-edge) 38%, transparent 96%);
+  clip-path: polygon(5px 3px, calc(100% - 10px) 3px, 100% 13px, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 8px);
+  white-space: nowrap; cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.nge-notif-subtab::before {
+  content: ''; position: absolute; inset: 4px 1px 1px 1px; z-index: -1; pointer-events: none;
+  background: var(--tab-fill);
+  clip-path: polygon(4.6px 0, calc(100% - 9.4px) 0, 100% 9.4px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 4.6px);
+  transition: background 0.15s;
+}
+.nge-notif-subtab:hover { --tab-edge: rgba(111, 196, 255, 0.7); --tab-fill: #0e1b36; color: #d6e4f6; }
+.nge-notif-subtab--on, .nge-notif-subtab--on:hover {
+  /* Only the edge lights and a faint tint: a full fill made the words hard to
+     read (Ames 2026-11-01). */
+  color: #fff;
+  background: linear-gradient(180deg, #e6d6ff 0%, #c8a4ff 34%, rgba(200, 164, 255, 0) 96%);
+}
+.nge-notif-subtab--on::before {
+  inset: 3px 1px 1px 1px;
+  background: linear-gradient(180deg, #2c2150, #171230 80%);
+}
+.nge-notif-subtab b {
+  min-width: 14px; padding: 2px 4px; box-sizing: border-box;
+  clip-path: polygon(0 0, calc(100% - 3.5px) 0, 100% 3.5px, 100% 100%, 0 100%);
+  font: 600 8.5px/1 'Orbitron', 'Inter', sans-serif; text-align: center; color: #170a2e; background: #c8a4ff;
+}
+.nge-notif-subtab--triage b { background: #ff8f8f; color: #06121f; }
 
 .nge-notif-confirm {
   display: flex;
@@ -1420,6 +1899,7 @@ span.nge-notif-reply-part { cursor: default; }
 }
 
 .nge-notif-detail {
+  z-index: 1;   /* in front of the champions confetti */
   --nd-accent: 74 158 255;
   --nd-cyan: 126 224 255;
   --nd-line: 196 228 255;
@@ -1428,8 +1908,8 @@ span.nge-notif-reply-part { cursor: default; }
   position: relative;
   isolation: isolate;
   width: 920px;
-  max-width: 90vw;
-  max-height: 80vh;
+  max-width: calc(90 * var(--nge-vw, 1vw));
+  max-height: calc(80 * var(--nge-vh, 1vh));
   background:
     radial-gradient(120% 60% at 50% -10%, rgb(var(--nd-accent) / 0.10), transparent 60%),
     linear-gradient(158deg, rgba(10, 17, 32, 0.97) 0%, rgba(5, 9, 19, 0.985) 100%);
@@ -1699,6 +2179,24 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-image {
   flex-shrink: 0;
 }
+/* Today in Pyr: what players did, under the picture (Ames 2026-10-23) */
+.nge-notif-digest-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-top: 12px; padding: 12px 14px;
+  border: 1px solid rgba(74, 158, 255, 0.28); border-radius: 8px;
+  background: linear-gradient(180deg, rgba(20, 40, 76, 0.55), rgba(8, 16, 34, 0.55));
+}
+.nge-notif-digest-stats-kicker {
+  grid-column: 1 / -1;
+  font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.85);
+}
+.nge-notif-digest-stat { display: flex; flex-direction: column; gap: 4px; }
+.nge-notif-digest-stat-num {
+  font: 700 30px/1 'Orbitron', 'Inter', sans-serif; color: #f2f8ff;
+  text-shadow: 0 0 14px rgba(126, 224, 255, 0.45);
+}
+.nge-notif-digest-stat-label { font-size: 13px; color: #b6c8e2; }
 .nge-notif-detail-layout--has-image .nge-notif-detail-image {
   width: 440px;
   /* The image stays put while the text scrolls past it (Ames 2026-09-30). */
@@ -1707,16 +2205,16 @@ span.nge-notif-reply-part { cursor: default; }
   align-self: flex-start;
 }
 .nge-notif-detail-layout--has-image .nge-notif-detail-img {
-  max-height: min(600px, calc(100vh - 220px));
+  max-height: min(600px, calc(100 * var(--nge-vh, 1vh) - 220px));
 }
 /* With a picture the card may use more of the window, and a wide picture
    takes the larger column. Phones and narrow windows keep the stacked layout
    below. */
 @media (min-width: 761px) {
-  .nge-notif-detail--picture { width: min(1080px, 94vw); max-width: 94vw; max-height: 88vh; }
-  .nge-notif-detail--wide-picture { width: min(1360px, 94vw); }
+  .nge-notif-detail--picture { width: min(1080px, calc(94 * var(--nge-vw, 1vw))); max-width: calc(94 * var(--nge-vw, 1vw)); max-height: calc(88 * var(--nge-vh, 1vh)); }
+  .nge-notif-detail--wide-picture { width: min(1360px, calc(94 * var(--nge-vw, 1vw))); }
   .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-image { width: 62%; }
-  .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-img { max-height: calc(88vh - 130px); }
+  .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-img { max-height: calc(88 * var(--nge-vh, 1vh) - 130px); }
   .nge-notif-detail--picture .nge-notif-detail-layout--has-image .nge-notif-detail-image { transition: width 0.25s ease; }
   .nge-notif-detail--picture { transition: width 0.25s ease; }
 }
@@ -1724,6 +2222,14 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-text {
   flex: 1;
   min-width: 0;
+}
+/* Title and picture only: the title first, the picture across the card. */
+.nge-notif-detail-layout--picture-only .nge-notif-detail-text { order: -1; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-body:empty { display: none; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-image { width: 100%; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-img {
+  width: auto; max-width: 100%; margin: 0 auto; box-sizing: border-box;
+  max-height: min(900px, calc(88 * var(--nge-vh, 1vh) - 150px));
 }
 
 .nge-notif-detail-img {
@@ -1746,6 +2252,8 @@ span.nge-notif-reply-part { cursor: default; }
   color: rgb(var(--nd-cyan));
   font-size: 14px;
 }
+.nge-notif-reminder-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.nge-notif-solve:disabled { opacity: 0.6; cursor: default; }
 .nge-notif-open-help {
   margin-top: 16px;
   padding: 8px 16px;
@@ -1821,16 +2329,17 @@ span.nge-notif-reply-part { cursor: default; }
   line-height: 1.5;
 }
 
-/* Two columns on a wide window, one category each; the window widens to
-   hold them. Ranks four and below scroll inside their own column, so a top
+/* Side by side on a wide window, one category each; the window spans the
+   screen to hold them. Ranks four and below scroll inside their own column, so a top
    twenty never pushes the podiums apart. */
-.nge-notif-detail--champions { width: 1140px; max-width: 94vw; max-height: 90vh; }
-.nge-champs-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 34px; align-items: start; }
+.nge-notif-detail--champions { width: calc(96 * var(--nge-vw, 1vw)); max-width: calc(96 * var(--nge-vw, 1vw)); max-height: calc(90 * var(--nge-vh, 1vh)); }
+/* Full screen width (Ames 2026-11-05), one column per category, up to three. */
+.nge-champs-columns { display: grid; grid-template-columns: repeat(var(--champ-cols, 2), minmax(0, 1fr)); column-gap: 34px; align-items: start; }
 .nge-champs-columns > .nge-champs-section { margin-top: 4px; }
 /* Side by side, the lists take what height the window has left, so the
    whole broadcast fits without the page itself scrolling. */
 @media (min-width: 901px) {
-  .nge-champs-columns .nge-champs-list { max-height: clamp(128px, calc(90vh - 590px), 300px); }
+  .nge-champs-columns .nge-champs-list { max-height: clamp(128px, calc(90 * var(--nge-vh, 1vh) - 590px), 300px); }
 }
 @media (max-width: 900px) {
   .nge-champs-columns { grid-template-columns: minmax(0, 1fr); }
@@ -1923,6 +2432,9 @@ span.nge-notif-reply-part { cursor: default; }
   filter: drop-shadow(0 0 8px rgb(var(--tier) / 0.45));
 }
 .nge-champs-step--gold .nge-champs-medal { font-size: 2em; }
+/* Monthly podium cups: the art in place of the medal. */
+.nge-champs-cupimg { display: block; width: 46px; height: 46px; object-fit: contain; }
+.nge-champs-step--gold .nge-champs-cupimg { width: 62px; height: 62px; }
 /* A name that is a player: the whole card or row opens their profile. */
 .nge-champs-link { cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
 .nge-champs-card.nge-champs-link:hover, .nge-champs-card.nge-champs-link:focus-visible { transform: translateY(-2px); border-color: rgb(var(--tier) / 0.75); outline: none; }
@@ -1988,7 +2500,7 @@ span.nge-notif-reply-part { cursor: default; }
   flex-direction: column;
   gap: 4px;
   /* about five rows, then it scrolls */
-  max-height: min(214px, 28vh);
+  max-height: min(214px, calc(28 * var(--nge-vh, 1vh)));
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--nd-accent) / 0.35) transparent;
@@ -2087,6 +2599,228 @@ span.nge-notif-reply-part { cursor: default; }
   color: rgb(var(--nd-dim));
 }
 
+/* Trophy art, when it is in: it stands free of the ring. */
+.nge-champs-emblem--art { width: 84px; height: 84px; margin: -10px 0 -8px; border: 0; background: none; box-shadow: none; }
+.nge-champs-trophy { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 14px rgba(255, 211, 90, 0.45)); }
+.nge-champs-cup { line-height: 1; }
+
+/* ═══ Monthly Champions: the grander one (Ames 2026-10-26) ═══
+   Gold and deep violet instead of the weekly blue. The shared accents are
+   retinted through the panel's colour variables, then the header, trophy,
+   winner and plinths get their own touches. */
+.nge-notif-detail--monthly {
+  --nd-accent: 199 150 255;
+  --nd-cyan: 255 214 120;
+  --nd-line: 255 232 180;
+  --nd-dim: 196 186 214;
+  --gold: 255 211 90;
+  background:
+    radial-gradient(70% 45% at 50% 0%, rgb(var(--gold) / 0.16), transparent 70%),
+    radial-gradient(60% 60% at 100% 100%, rgba(120, 60, 200, 0.22), transparent 70%),
+    radial-gradient(50% 50% at 0% 70%, rgba(90, 40, 170, 0.18), transparent 70%),
+    linear-gradient(158deg, rgba(22, 12, 40, 0.97) 0%, rgba(8, 6, 20, 0.985) 100%);
+  border-color: rgb(var(--gold) / 0.45);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.75),
+    0 0 70px rgb(var(--gold) / 0.14),
+    0 0 120px rgba(140, 80, 255, 0.12),
+    inset 0 1px 0 rgb(var(--gold) / 0.25);
+}
+/* A slow twinkle of stars behind the header. */
+.nge-notif-detail--monthly .nge-notif-detail-text { position: relative; isolation: isolate; }
+.nge-notif-detail--monthly .nge-notif-detail-text::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  top: -20px;
+  height: 260px;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgb(var(--gold) / 0.9), transparent),
+    radial-gradient(1px 1px at 28% 62%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 47% 12%, rgba(220, 190, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 63% 40%, rgb(var(--gold) / 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 78% 22%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 90% 55%, rgba(220, 190, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 6% 48%, rgba(255, 255, 255, 0.6), transparent);
+  animation: ngeChampsTwinkle 5s ease-in-out infinite alternate;
+}
+@keyframes ngeChampsTwinkle { from { opacity: 0.45; } to { opacity: 1; } }
+
+/* Header: a big trophy, gold lettering. */
+.nge-notif-detail--monthly .nge-champs-head { gap: 26px; margin-bottom: 18px; padding-left: 10px; }
+.nge-notif-detail--monthly .nge-champs-emblem {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  font-size: 54px;
+  border: 2px solid rgb(var(--gold) / 0.7);
+  background: radial-gradient(circle, rgb(var(--gold) / 0.28), rgba(120, 60, 200, 0.12) 60%, transparent 72%);
+  box-shadow:
+    0 0 0 5px rgba(20, 10, 36, 0.95),
+    0 0 0 7px rgb(var(--gold) / 0.35),
+    0 0 40px rgb(var(--gold) / 0.35),
+    0 0 80px rgba(150, 90, 255, 0.25);
+}
+.nge-notif-detail--monthly .nge-champs-emblem--art { width: 136px; height: 136px; margin: -14px 0 -10px; border: 0; background: radial-gradient(circle, rgba(120, 200, 255, 0.22), rgb(var(--gold) / 0.08) 45%, transparent 68%); box-shadow: none; }
+.nge-notif-detail--monthly .nge-champs-emblem--art .nge-champs-trophy { filter: drop-shadow(0 0 16px rgba(120, 200, 255, 0.45)) drop-shadow(0 0 22px rgb(var(--gold) / 0.3)); animation: ngeChampsTrophy 4s ease-in-out infinite; }
+@keyframes ngeChampsTrophy { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.nge-notif-detail--monthly .nge-champs-cup { filter: drop-shadow(0 0 12px rgb(var(--gold) / 0.7)); }
+.nge-notif-detail--monthly .nge-champs-kicker {
+  font-size: 0.78em;
+  letter-spacing: 0.34em;
+  color: rgb(var(--gold));
+  text-shadow: 0 0 14px rgb(var(--gold) / 0.5);
+}
+.nge-notif-detail--monthly .nge-champs-range {
+  font-size: 1.9em;
+  letter-spacing: 0.06em;
+  background: linear-gradient(100deg, #fff4cf 0%, #ffd35a 30%, #fff8e4 45%, #e9b23c 60%, #ffe39a 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 14px rgb(var(--gold) / 0.35));
+  animation: ngeChampsGilt 6s ease-in-out infinite;
+}
+@keyframes ngeChampsGilt { 0%, 100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
+.nge-notif-detail--champions .nge-champs-intro {
+  /* A gold ribbon on both Champions cards (Ames 2026-10-26: "this doesn't
+     match", "I like the new bar"). The middle takes each card's accent. */
+  position: relative;
+  margin: 8px 0 22px;
+  padding: 10px 40px;
+  border: 0;
+  border-top: 1px solid rgb(var(--gold, 255 211 90) / 0.45);
+  border-bottom: 1px solid rgb(var(--gold, 255 211 90) / 0.45);
+  background: linear-gradient(90deg, transparent, rgb(var(--gold, 255 211 90) / 0.12) 20%, rgb(var(--nd-accent) / 0.10) 50%, rgb(var(--gold, 255 211 90) / 0.12) 80%, transparent);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  text-align: center;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.9em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #ffe6a6;
+  text-shadow: 0 0 12px rgb(var(--gold, 255 211 90) / 0.35);
+}
+.nge-notif-detail--champions .nge-champs-intro::before,
+.nge-notif-detail--champions .nge-champs-intro::after {
+  content: "◆";
+  margin: 0 14px;
+  font-size: 0.7em;
+  vertical-align: 2px;
+  color: rgb(var(--gold, 255 211 90) / 0.8);
+}
+.nge-notif-detail--monthly .nge-champs-section-label { color: rgb(var(--gold)); text-shadow: 0 0 10px rgb(var(--gold) / 0.35); }
+.nge-notif-detail--monthly .nge-champs-section-rule { background: linear-gradient(90deg, rgb(var(--gold) / 0.6), rgba(160, 100, 255, 0.35) 50%, transparent); }
+
+/* The winner: a soft glow behind the gold card, a taller plinth. */
+.nge-notif-detail--monthly .nge-champs-podium { isolation: isolate; }
+.nge-notif-detail--monthly .nge-champs-step--gold { position: relative; }
+.nge-notif-detail--monthly .nge-champs-step--gold::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50px;
+  width: 260px;
+  height: 200px;
+  margin: -100px 0 0 -130px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse, rgb(var(--gold) / 0.16), transparent 65%);
+}
+.nge-notif-detail--monthly .nge-champs-card { background: linear-gradient(180deg, rgb(var(--tier) / 0.16), rgba(26, 14, 44, 0.92) 85%); }
+.nge-notif-detail--monthly .nge-champs-step--gold .nge-champs-card {
+  border-color: rgb(var(--gold) / 0.8);
+  background: linear-gradient(180deg, rgb(var(--gold) / 0.26), rgba(40, 20, 60, 0.92) 88%);
+  box-shadow: 0 0 40px rgb(var(--gold) / 0.28), inset 0 0 30px rgb(var(--gold) / 0.1);
+}
+.nge-notif-detail--monthly .nge-champs-step--gold .nge-champs-plinth { height: 76px; }
+.nge-notif-detail--monthly .nge-champs-medal { animation: ngeChampsMedal 3.2s ease-in-out infinite; }
+.nge-notif-detail--monthly .nge-champs-step--silver .nge-champs-medal { animation-delay: 0.6s; }
+.nge-notif-detail--monthly .nge-champs-step--bronze .nge-champs-medal { animation-delay: 1.2s; }
+@keyframes ngeChampsMedal {
+  0%, 100% { filter: drop-shadow(0 0 6px rgb(var(--tier) / 0.4)); transform: translateY(0); }
+  50% { filter: drop-shadow(0 0 16px rgb(var(--tier) / 0.9)); transform: translateY(-2px); }
+}
+/* Plinths: a band of light sweeps across now and then. */
+.nge-notif-detail--monthly .nge-champs-plinth { position: relative; overflow: hidden; }
+.nge-notif-detail--monthly .nge-champs-plinth::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgb(var(--tier) / 0.35), transparent);
+  animation: ngeChampsSweep 5s ease-in-out infinite;
+}
+.nge-notif-detail--monthly .nge-champs-step--silver .nge-champs-plinth::after { animation-delay: 0.4s; }
+.nge-notif-detail--monthly .nge-champs-step--bronze .nge-champs-plinth::after { animation-delay: 0.8s; }
+@keyframes ngeChampsSweep { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
+
+/* ═══ Pyr Year Champions: the anniversary, every Sep 28 (Ames 2026-10-26:
+   "special pomp and circumstance"). The monthly card, grander: a double gold
+   frame, a warm dawn behind the trophy that breathes (nothing turns), the
+   year's dates under its name. ═══ */
+.nge-notif-detail--yearly {
+  border: 2px solid rgb(var(--gold) / 0.7);
+  outline: 1px solid rgb(var(--gold) / 0.25);
+  outline-offset: 4px;
+  background:
+    radial-gradient(80% 50% at 18% 0%, rgb(var(--gold) / 0.24), transparent 70%),
+    radial-gradient(60% 60% at 100% 100%, rgba(120, 60, 200, 0.26), transparent 70%),
+    radial-gradient(50% 50% at 0% 70%, rgba(90, 40, 170, 0.2), transparent 70%),
+    linear-gradient(158deg, rgba(26, 14, 44, 0.98) 0%, rgba(8, 6, 20, 0.99) 100%);
+  box-shadow:
+    0 24px 90px rgba(0, 0, 0, 0.8),
+    0 0 90px rgb(var(--gold) / 0.22),
+    0 0 160px rgba(140, 80, 255, 0.16),
+    inset 0 1px 0 rgb(var(--gold) / 0.4);
+}
+.nge-notif-detail--yearly .nge-champs-emblem--art { position: relative; width: 168px; height: 168px; margin: -20px 0 -14px; }
+.nge-notif-detail--yearly .nge-champs-emblem--art::before {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--gold) / 0.45), rgba(150, 90, 255, 0.18) 45%, transparent 70%);
+  animation: ngeChampsDawn 5s ease-in-out infinite;
+}
+@keyframes ngeChampsDawn { 0%, 100% { opacity: 0.55; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1.04); } }
+.nge-notif-detail--yearly .nge-champs-kicker { font-size: 0.86em; letter-spacing: 0.4em; }
+.nge-notif-detail--yearly .nge-champs-range { font-size: 2.3em; }
+.nge-champs-dates {
+  margin-top: 4px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.74em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(var(--gold, 255 211 90) / 0.75);
+}
+.nge-notif-detail--yearly .nge-champs-intro {
+  border-top: 3px double rgb(var(--gold) / 0.7);
+  border-bottom: 3px double rgb(var(--gold) / 0.7);
+  font-size: 1em;
+  padding: 12px 40px;
+}
+.nge-notif-detail--yearly .nge-champs-cupimg { width: 54px; height: 54px; }
+.nge-notif-detail--yearly .nge-champs-step--gold .nge-champs-cupimg { width: 76px; height: 76px; }
+
+/* Ranks four and below: gold hairlines. */
+.nge-notif-detail--monthly .nge-champs-row {
+  border-color: rgb(var(--gold) / 0.14);
+  border-left-color: rgb(var(--gold) / 0.6);
+  background: linear-gradient(90deg, rgb(var(--gold) / 0.06), rgba(140, 80, 255, 0.04));
+}
+.nge-notif-detail--monthly .nge-champs-row-rank { color: rgb(var(--gold)); }
+.nge-notif-detail--monthly .nge-champs-outro { border-top-color: rgb(var(--gold) / 0.2); }
+
 /* Narrow windows and phones: the image on top, full width. */
 @media (max-width: 760px) {
   .nge-notif-detail-layout--has-image { flex-direction: column; }
@@ -2101,6 +2835,13 @@ span.nge-notif-reply-part { cursor: default; }
   .nge-champs-num { font-size: 1.5em; }
   .nge-champs-step--gold .nge-champs-num { font-size: 1.85em; }
   .nge-champs-name { font-size: 0.8em; }
+  .nge-notif-detail--monthly .nge-champs-emblem { width: 72px; height: 72px; font-size: 36px; }
+  .nge-champs-emblem--art { width: 64px; height: 64px; margin: -6px 0; }
+  .nge-notif-detail--monthly .nge-champs-emblem--art { width: 92px; height: 92px; margin: -8px 0 -6px; }
+  .nge-notif-detail--monthly .nge-champs-range { font-size: 1.35em; }
+  .nge-notif-detail--yearly .nge-champs-emblem--art { width: 104px; height: 104px; margin: -10px 0 -8px; }
+  .nge-notif-detail--yearly .nge-champs-range { font-size: 1.55em; }
+  .nge-notif-detail--monthly .nge-champs-step--gold::before { width: 180px; margin-left: -90px; }
 }
 
 /* ── Transition ── */
@@ -2120,6 +2861,12 @@ span.nge-notif-reply-part { cursor: default; }
   .nge-notif-detail,
   .nge-notif-bracket,
   .nge-champs-step { animation: none; }
+  .nge-notif-detail--monthly .nge-notif-detail-text::before,
+  .nge-notif-detail--monthly .nge-champs-range,
+  .nge-notif-detail--monthly .nge-champs-medal,
+  .nge-notif-detail--monthly .nge-champs-trophy,
+  .nge-notif-detail--monthly .nge-champs-plinth::after,
+  .nge-notif-detail--yearly .nge-champs-emblem--art::before { animation: none; }
   .nge-notif-detail-scan { animation: none; opacity: 0; display: none; }
   .nge-notif-detail-close,
   .nge-notif-open-help { transition: none; }
@@ -2141,8 +2888,8 @@ span.nge-notif-reply-part { cursor: default; }
   cursor: pointer;
 }
 .nge-notif-lightbox-img {
-  max-width: 90vw;
-  max-height: 90vh;
+  max-width: calc(90 * var(--nge-vw, 1vw));
+  max-height: calc(90 * var(--nge-vh, 1vh));
   object-fit: contain;
   border-radius: 8px;
 }

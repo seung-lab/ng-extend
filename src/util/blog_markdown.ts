@@ -10,7 +10,10 @@
  *   - list items, 1. numbered items, > quotes
  *   **bold**, *italic*, `code`, [text](https://link)
  *   ![description](image)      an image; a line "^ caption" under it is its caption;
+ *   ![description](image){small}  the same at a set size: small, medium or large
+ *                              (no size: as wide as the text, as before);
  *                              two or more image lines together sit side by side
+ *   @[phone](image)            under an image: a tall version phones get instead
  *   !> text                    a callout box (one paragraph per line)
  *   @[youtube](VIDEO_ID)       a YouTube video
  *   ---                        a divider
@@ -19,8 +22,9 @@
  */
 const IMG_OK = /^https:\/\/(javthknksdcrlhiaaptj\.supabase\.co\/storage\/v1\/object\/public\/|connectome\.quest\/assets\/)/;
 const LINK_OK = /^(https:\/\/|\/(?!\/))/;
-const IMG_LINE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
+const IMG_LINE = /^!\[([^\]]*)\]\(([^)\s]+)\)(?:\{(small|medium|large)\})?$/;
 const VIDEO_LINE = /^@\[youtube\]\(([A-Za-z0-9_-]{11})\)$/;
+const PHONE_LINE = /^@\[phone\]\(([^)\s]+)\)$/;
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unamp = (s: string) => s.replace(/&amp;/g, '&');
@@ -34,18 +38,32 @@ function inline(s: string): string {
     .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>');
 }
 
-/** Image lines, each optionally followed by a "^ caption" line. */
+/** Image lines, each optionally followed by a "^ caption" line and an
+ *  "@[phone](url)" line: a tall version of the same picture that phones get
+ *  instead (Ames 2026-11-04: wide diagrams were too small to read on a phone). */
 function figures(para: string[]): string | null {
   const figs: string[] = [];
   for (let k = 0; k < para.length; k++) {
     const m = IMG_LINE.exec(para[k]);
     if (!m || !IMG_OK.test(unamp(m[2]))) return null;
-    let caption = '';
-    if (k + 1 < para.length && /^\^\s?/.test(para[k + 1])) caption = para[++k].replace(/^\^\s?/, '');
-    figs.push(`<figure class="blog-post__figure"><img src="${m[2]}" alt="${m[1]}" loading="lazy" />${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`);
+    let caption = '', phone = '';
+    for (;;) {
+      const next = para[k + 1];
+      if (next === undefined) break;
+      const p = PHONE_LINE.exec(next);
+      if (p && IMG_OK.test(unamp(p[1]))) { phone = p[1]; k++; }
+      else if (/^\^\s?/.test(next) && !caption) { caption = next.replace(/^\^\s?/, ''); k++; }
+      else break;
+    }
+    const img = `<img src="${m[2]}" alt="${m[1]}" loading="lazy" />`;
+    const pic = phone ? `<picture><source media="(max-width: 700px)" srcset="${phone}" />${img}</picture>` : img;
+    // A picture's size (Celia, triage #395: "loads huge and I can't adjust
+    // its size"). Sizes apply to a picture on its own, not to a pair.
+    const size = m[3] ? ` blog-post__figure--${m[3]}` : '';
+    figs.push(`<figure class="blog-post__figure${size}"${m[3] ? ` data-size="${m[3]}"` : ''}>${pic}${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`);
   }
   if (!figs.length) return null;
-  return figs.length === 1 ? figs[0] : `<div class="blog-post__pair">${figs.join('')}</div>`;
+  return figs.length === 1 ? figs[0] : `<div class="blog-post__pair">${figs.map(f => f.replace(/ blog-post__figure--\w+"/, '"').replace(/ data-size="\w+"/, '')).join('')}</div>`;
 }
 
 /** editor: draw a video as a still picture, so it can sit inside the editor. */

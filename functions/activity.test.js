@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {cleanActivityRow,verifyGraphEdit,sameCellAs,lineageTarget,stripCounters,stripDayCounters,MAX_OPERATION_AGE_MS}=require('./activity-policy');
+const {cleanActivityRow,verifyGraphEdit,sameCellAs,lineageTarget,stripCounters,stripDayCounters,MAX_OPERATION_AGE_MS,LATE_OPERATION_AGE_MS}=require('./activity-policy');
 const {recordActivity,serverCounts,resetServerCounts}=require('./activity');
 const who={email:'player@example.invalid',caveId:2455}, me={id:'11111111-1111-4111-8111-111111111111'};
 const graph='https://minnie.microns-daf.com/segmentation/api/v1/table/stroeh_mouse_retina';
@@ -42,12 +42,17 @@ test('the graph server decides whether an edit happened and whose it is',async()
  assert.match(caveCalls[0].url,/^https:\/\/minnie\.microns-daf\.com\/segmentation\/api\/v1\/table\/stroeh_mouse_retina\/operation_details\?int64_as_str=1&operation_ids=%5B77%5D$/);
  assert.equal(caveCalls[0].auth,'Bearer tok');
  const cases=[[{},/no such operation/],[detail({user:'5044'}),/not yours/],[detail({operation_status:1}),/did not succeed/],
-   [detail({timestamp:stamp(now-MAX_OPERATION_AGE_MS-1000)}),/not a current edit/],[detail({timestamp:stamp(now+3600000)}),/not a current edit/],
+   [detail({timestamp:stamp(now-LATE_OPERATION_AGE_MS-1000)}),/not a current edit/],[detail({timestamp:stamp(now+3600000)}),/not a current edit/],
    [detail({removed_edges:undefined}),/not a split or a merge/]];
  for (const [d,why] of cases) {
    const v=await verifyGraphEdit(row,who,'tok',cave(d),now);
    assert.equal(v.state,'rejected'); assert.match(v.why,why);
  }
+ // Reported late (our server was down): still the player's own edit, so it
+ // counts, marked late. A browser cannot mark a row late itself.
+ assert.deepEqual(await verifyGraphEdit(row,who,'tok',cave(detail({timestamp:stamp(now-MAX_OPERATION_AGE_MS-1000)})),now),{state:'verified',operation:'split',late:true});
+ assert.deepEqual(await verifyGraphEdit(row,who,'tok',cave(detail({timestamp:stamp(now-2*24*3600000)})),now),{state:'verified',operation:'split',late:true});
+ assert.equal(cleanActivityRow({operation:'merge',metadata:{operation_id:'77',graph,late:true}}).metadata.late,undefined);
  // No answer is not a rejection.
  assert.equal((await verifyGraphEdit(row,who,'tok',cave({},503),now)).state,'unverified');
  assert.equal((await verifyGraphEdit(row,who,'tok',async()=>{throw new Error('down');},now)).state,'unverified');

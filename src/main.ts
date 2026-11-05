@@ -1,4 +1,6 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startClaimAutosave } from './util/claim_autosave';
+import { startScrollWatch } from './util/scroll_watch';
 import { startImageSource } from './util/image_source';
 import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
@@ -6,7 +8,11 @@ import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
+import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
+import {startColorFamilies} from './util/color_families';
+import {startScytheControls} from './util/scythe';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
+import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
@@ -14,7 +20,12 @@ import { startLockedLayers } from './util/locked_layers';
 import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
+import { startPointParticles } from './util/point_particles';
+import { startTurkey } from './util/turkey';
+import { startLeaves } from './util/leaves';
 import { startTabs } from './util/tabs';
+import { showOutageBanner } from './util/outage_banner';
+import { startPanelFront } from './util/panel_front';
 import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
@@ -29,7 +40,7 @@ import { installTouchTap } from './util/touch_tap';
 import { Uint64 as Uint64ForUndelete } from 'neuroglancer/util/uint64';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
-import { startHighlightTint } from './util/highlight';
+import { startHighlightTint, startAutoEdgeMarks } from './util/highlight';
 import {createApp, nextTick, watch} from 'vue';
 import {createPinia} from 'pinia';
 import {installConsoleBuffer} from './util/console_buffer';
@@ -55,7 +66,7 @@ import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useUserPreferencesStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
-import {exitGrapheneTool} from './widgets/graphene_tool_utils';
+import {exitGrapheneTool, activeGrapheneToolKind} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
@@ -183,6 +194,8 @@ window.addEventListener('DOMContentLoaded', () => {
   startCalm();
   // Other Pyr tabs in this browser, and a notice if the views stop drawing.
   startTabs();
+  showOutageBanner();
+  startPanelFront();
   startContextLostNotice();
   // P over a cell in 3D: it sends a ring of light along itself.
   startPulseKey();
@@ -220,7 +233,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // LoginModal doesn't fire — e.g. already authenticated or bypass).
   autoSelectSegLayer(viewer);
 
-  // Escape key handler: exit split/merge tools.
+  // Escape key handler: exit split/merge tools and Find Path.
   //
   // Attached to BOTH window and document in capture phase so we win against
   // NG's own keybinder no matter how the bubbling resolves. We also check the
@@ -228,10 +241,13 @@ window.addEventListener('DOMContentLoaded', () => {
   // layer.tool.value on activation, leaving store.toolActive stale.
   const escHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
+    // Escape with the scythe in hand puts only the scythe away (util/scythe.ts).
+    if (document.body.classList.contains('nge-scythe')) return;
     const store = useSplitMergeOverlayStore();
     const toolDomPresent = !!(
       document.querySelector('.graphene-multicut') ||
-      document.querySelector('.graphene-merge-segments')
+      document.querySelector('.graphene-merge-segments') ||
+      document.querySelector('.graphene-find-path')
     );
     console.debug('[esc]', e.key, 'toolActive=', store.toolActive, 'toolDom=', toolDomPresent);
     if (!store.toolActive && !toolDomPresent) return;
@@ -266,6 +282,10 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('contextmenu', (e: MouseEvent) => {
     const target = e.target as Element | null;
     if (!target || typeof target.closest !== 'function') return;
+    // A control that has a right click menu of its own (the admin's pin, on
+    // chat's React button) handles the click itself. Stopping it here, as is
+    // done for the rest of chat below, meant its handler never ran.
+    if (target.closest('[data-nge-own-menu]')) return;
     if (target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) {
       e.stopPropagation();
       return;
@@ -389,6 +409,13 @@ function setupViewer() {
       }
     }
   }
+  // \ belongs to the Magic Top Bar (ExtensionBar.vue). neuroglancer had it for
+  // its chunk statistics panel, which then opened whenever the bar was not
+  // taking the key (Ames 2026-10-26).
+  // The binding lives in neuroglancer's default map, a parent of the global one.
+  for (const map of [viewer.inputEventBindings.global, ...viewer.inputEventBindings.global.parents]) {
+    map.delete('backslash');
+  }
 
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
@@ -405,9 +432,16 @@ function setupViewer() {
     }
     hashBinding.parseError;
   }));
+  // A reload of a view too big for the address comes back from this browser
+  // instead (report 371, util/reload_guard.ts).
+  const setAside = setAsideStaleAddress();
   hashBinding.updateFromUrlHash();
+  startReloadGuard(viewer, setAside, () => hashBinding.updateFromUrlHash());
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startScrollWatch();
+  startColorFamilies();
+  startClaimAutosave(viewer);
   // The active quest's annotations, saved to that quest cell as they change.
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
@@ -415,7 +449,12 @@ function setupViewer() {
   startLantern(viewer);
   startSpooky(viewer);
   startPumpkin(viewer);
+  startScytheControls();
+  startPointParticles();
+  startTurkey();
+  startLeaves();
   startInvalidSegmentWatch(viewer);
+  recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
   // Merge or cut mode keeps working in a view loaded in place (Nseraf #203).
@@ -455,6 +494,7 @@ function setupViewer() {
     },
   });
   startHighlightTint(viewer);
+  startAutoEdgeMarks();
   viewer.registerDisposer(bindTitle(viewer.title));
 
   bindDefaultCopyHandler(viewer);
@@ -918,11 +958,17 @@ function observeSplitMergeTools() {
   let lastStatusText = '';
   let lastStatusTime = 0;
   const STATUS_COOLDOWN_MS = 3000;
+  /** Error lines already shown: each is shown once, and stays still. The box
+   *  hid after 10 s while neuroglancer's own line stayed, so it was shown
+   *  again, and again, flashing on and off (Celia, report 369). */
+  const shownErrorLines = new WeakSet<Element>();
 
   /** Scan #statusContainer for split/merge related errors/info */
   function checkStatusMessages() {
     if (!store.toolActive && !store.pendingClose) return;
-    if (store.resultFlash) return; // already showing a result
+    // A success is showing: nothing to add. An error stays up for minutes
+    // now, so new lines (a retry, a new error) are still read under it.
+    if (store.resultFlash === 'success') return;
 
     const statusContainer = document.getElementById('statusContainer');
     if (!statusContainer) return;
@@ -949,12 +995,16 @@ function observeSplitMergeTools() {
       lastStatusTime = Date.now();
 
       if (lower.includes('failed') || lower.includes('error')) {
-        store.showResult('error', cleanText, 10000);  // long enough to read, or ask the guide
+        if (shownErrorLines.has(el)) continue;
+        shownErrorLines.add(el);
+        // Up until it is dismissed, or the next cut or merge replaces it.
+        store.showResult('error', cleanText, 5 * 60 * 1000);
         store.submitting = false;
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
         // Neuroglancer shows "Splitting source from sink..." during processing —
         // the authoritative signal that a split was actually submitted.
         splitSubmitted = true;
+        if (store.resultFlash === 'error') { store.resultFlash = ''; store.resultText = ''; }
         store.submitting = true;
         store.setStatusMessage('Splitting...');
       }
@@ -962,12 +1012,50 @@ function observeSplitMergeTools() {
     }
   }
 
+  const orphanScans = new WeakMap<Element, number>();
+  // A cut the server called failed ("could not acquire root lock") but made
+  // (report 363): the error flash goes, and the cut is shown as done.
+  window.addEventListener('nge-split-recovered', () => {
+    store.dismissResult();
+    splitSubmitted = true;
+    if (store.toolActive === 'multicut') store.beginSuccessClose('Split complete');
+  });
   function scanToolState() {
     // Don't scan during success-hold close animation
     if (store.pendingClose) return;
 
-    const multicutEl = document.querySelector('.graphene-multicut');
-    const mergeEl = document.querySelector('.graphene-merge-segments');
+    // Two bars for one tool: an old one stayed when the tool was opened again
+    // (Nseraf, reports 376 and 386: a second bar under the cut bar, and the
+    // Submit button pressed the old one, so nothing happened). The newest is
+    // the live one; older ones go once they have been seen twice.
+    for (const sel of ['.graphene-multicut', '.graphene-merge-segments']) {
+      const all = Array.from(document.querySelectorAll(sel));
+      for (const old of all.slice(0, -1)) {
+        const n = (orphanScans.get(old) ?? 0) + 1;
+        orphanScans.set(old, n);
+        if (n >= 2) { console.warn('[tool bar] removing an older second bar:', sel); (old.closest('li') ?? old).remove(); }
+      }
+    }
+    let multicutEl = Array.from(document.querySelectorAll('.graphene-multicut')).pop() ?? null;
+    let mergeEl = Array.from(document.querySelectorAll('.graphene-merge-segments')).pop() ?? null;
+    // A tool's bar left behind after the tool went (Nseraf, report 361: the
+    // cut bar stayed under merge, and cut mode could not be left until F5).
+    // Neuroglancer says which tool is really on; a bar it does not back is
+    // set aside, once it has been alone for a few scans.
+    const kind = activeGrapheneToolKind();
+    if (kind !== undefined) {
+      const orphan = (el: Element | null, on: boolean) => {
+        if (!el || on) { if (el) orphanScans.delete(el); return el; }
+        const n = (orphanScans.get(el) ?? 0) + 1;
+        orphanScans.set(el, n);
+        if (n < 4) return el;
+        console.warn('[tool bar] removing a bar its tool no longer backs:', el.className);
+        el.remove();
+        return null;
+      };
+      multicutEl = orphan(multicutEl, kind === 'multicut');
+      mergeEl = orphan(mergeEl, kind === 'merge');
+    }
 
     if (multicutEl) {
       store.setToolState('multicut');

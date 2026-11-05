@@ -43,6 +43,10 @@ const BRAX = 'https://raw.githubusercontent.com/seung-lab/ng-extend/ee4677eeb1a5
 // Fly neurons by neurotransmitter on access granted (Ames 2026-10-16), pinned the same way.
 const GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/18309c4c1fc327d83e7dfff540f83485f8bf52b9/static/access/fly-neurons-by-neurotransmitter.jpg';
 const GRANTED_TITLE = '🎉 Congratulations! Your edit access has been granted!';
+// The open padlock on a dataset grant (Ames 2026-10-28).
+const DATASET_GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
+// The closed padlock on a dataset request, in the admins' bell (Ames 2026-10-28).
+const DATASET_REQUESTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-locked.png';
 const IMAGE = {request: BRAX, notes: NURRO + 'nurro-experiment-recap.png', invited: GRANTED};
 const EW_NAME_MAX = 60;
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
@@ -385,8 +389,541 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
   return {...done[0], redos, pilot_added: pilotAdded, cave_granted: caveGranted};
 }
 
+// ── Beta access (Ames 2026-10-24) ────────────────────────────────────────
+// Pyr is invite only for now: "If they are not on the pilot tester list they
+// should receive a popup". The popup offers Request beta access, once per
+// account. A request becomes a report on the triage board (site_issues,
+// category Beta access, so the Slack bridge files its card), a bell in the
+// Admin tab of every admin and a Slack post. An admin lets the player in by
+// adding their email under Admin Hub, Pilot testers.
+//   access.betaStatus  anyone signed in: {invited, requested}.
+//   access.beta        a player not on the list: send the request.
+const BETA_CATEGORY = 'Beta access';
+const BETA_BELL = '🔑 Beta access request';
+// Clicking the bell opens Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26).
+const LET_IN = 'Click this note, then Let them in.';
+/**
+ * Has this player a Beta request still open? Their newest one counts. A
+ * request an admin removed (Admin Hub, Beta requests) or dismissed on the
+ * triage board is not open: the player may ask again (Ames 2026-10-28: "I
+ * dismissed the request but there is no way for me to request it again").
+ */
+async function betaRequested(sb, me, io = {}) {
+  if (!me) return false;
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id)
+    + '&select=id,created_at&order=created_at.desc&limit=1');
+  const last = Array.isArray(rows) ? rows[0] : null;
+  if (!last) return false;
+  try {
+    const email = String((io.who && io.who.email) || '').toLowerCase();
+    const mark = email && io.marks ? (await io.marks.all())[email] : null;
+    if (mark && mark.mark === 'removed' && String(mark.at || '') >= String(last.created_at || '')) return false;
+  } catch (e) { /* no marks: the request stands */ }
+  try {
+    const t = await sb('feedback_triage?source=eq.site_issue&source_id=eq.' + encodeURIComponent(last.id) + '&select=status&limit=1');
+    if (Array.isArray(t) && t[0] && t[0].status === 'dismissed') return false;
+  } catch (e) { /* no triage row: the request stands */ }
+  return true;
+}
+async function betaStatus(a, io) {
+  if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
+  return {invited: false, requested: await betaRequested(io.sb, io.me, io)};
+}
+// What a player types is checked hard (Ames 2026-10-24: "Make sure it's
+// secure like players can't inject anything"): a name is letters, spaces and
+// . ' and hyphens only; an email is one plain address; the note is plain text and goes
+// only on the triage card, which shows text as text. The bell, which draws
+// markdown, gets the name and emails only, with markdown characters escaped.
+// Slack escapes every report's text itself (postIssueToSlack).
+const BETA_NAME_MAX = 80, BETA_EMAIL_MAX = 254, BETA_NOTE_MAX = 500;
+function betaName(value) {
+  const name = cleanText(value, BETA_NAME_MAX, 'Your name', true).replace(/\s+/g, ' ');
+  if (!/^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u.test(name)) fail(400, 'Your name can have letters, spaces, periods, apostrophes and hyphens only.');
+  return name;
+}
+function betaEmail(value) {
+  const email = cleanText(value, BETA_EMAIL_MAX, 'Your email', true).toLowerCase();
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(email)) fail(400, 'That email does not look right.');
+  return email;
+}
+/** The player's note for the bell (Ames 2026-10-26: "Note from beta request
+ *  should appear here"), every line escaped so it shows as plain text. */
+const noteForBell = note => note ? '\n\nTheir note:\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
+/** Text for a markdown note: every markdown character escaped. */
+const mdText = s => String(s).replace(/[\\`*_{}\[\]()#+\-.!|<>~&:@]/g, c => '\\' + c);
+async function beta(a, io) {
+  if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
+  if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  const name = betaName(a.name);
+  const email = betaEmail(a.email);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
+  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
+  // The sign in email is the one Pilot testers needs; it comes from the
+  // server's own check of their sign in, never from the form.
+  const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
+  const same = email === signIn;
+  // Invited under another address (Ames 2026-11-04: invites went to the
+  // emails on the EyeWire form, many not Google accounts, and Pyr signs in
+  // with Google). The admin still lets them in by hand: anyone could type an
+  // invited address, so the row says to check it is them first.
+  const invitedAs = !same && await invitedEmail(io.sb, email);
+  const message = [
+    `${name} asks to join the Pyr beta.`,
+    same ? '' : `Email they gave: ${email}`,
+    invitedAs ? `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.` : '',
+    `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    ...ewLines(ew),
+    note ? `Their note: ${note}` : '',
+  ].filter(Boolean).join('\n');
+  const title = (invitedAs ? `Invited tester on another Google account: ${name}` : `Beta access request from ${name}`).slice(0, 120);
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
+  // The report is the record; the bell and the post only tell people.
+  const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
+    + (invitedAs ? `Already invited as ${mdText(email)}, and signs in with another Google account.\n\n` : '')
+    + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
+    + ewForBell(ew)
+    + `\n\n${LET_IN}`
+    + noteForBell(note);
+  // Every admin's Admin tab (Ames 2026-10-24: "yes to all admins").
+  try { await (io.notifyAdmins || io.notifyReviewers)({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
+  await wakeBoard(io);
+  return invitedAs ? {invited: false, requested: true, invitedAs: true} : {invited: false, requested: true};
+}
+// ── Use my invite (Ames 2026-11-04) ──────────────────────────────────────
+// Invites go to the email a player gave on the EyeWire form, which often is
+// not a Google account, and Pyr signs in with Google. "I don't want them
+// replying with a gmail to me, I want them to use the site": the blocked
+// screen asks for the email the invite reached, and if it is on Pilot
+// testers the Google account they signed in with is added at once. An
+// invite email is not a secret, so each invite brings in one account, only
+// while nobody has joined under the invite itself, and every admin is told.
+// Anything else becomes a Beta request for an admin to look at.
+//   access.linkInvite  a player not on the list: {email} the invite reached.
+const LINKED_PREFIX = 'Linked to invite: ';
+// Its own category, so no triage card: the player is already in and nothing
+// needs doing (Ames 2026-11-04: "How about no triage card for those"). The
+// record stays, as it is how a second use is caught (earlier ones were filed
+// as Beta access). scripts/slack-triage-bridge.mjs leaves this category out.
+const INVITE_CATEGORY = 'Invite used';
+async function linkInvite(a, io) {
+  if (io.isAdmin || io.isPilot) return {invited: true};
+  if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  const email = betaEmail(a.email);
+  const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  if (!signIn) fail(401, 'Sign in to Pyr again, then retry.');
+  if (email === signIn) fail(400, "That is the account you are signed in with, and it isn't on the invite list. Enter the email address your invite was sent to.");
+  if (!(await invitedEmail(io.sb, email))) fail(404, "We couldn't find an invite for that email. Check the spelling, or ask to join below.");
+  const name = String(io.me.display_name || io.me.username || 'A player').replace(/[\r\n]+/g, ' ').slice(0, BETA_NAME_MAX);
+  // Someone already plays under the invite, or it already brought in an account.
+  let joined = false, linkedBefore = false;
+  try { joined = (await io.sb('users?middleauth_email=eq.' + encodeURIComponent(email) + '&select=id&limit=1')).length > 0; } catch (e) { joined = true; }
+  try {
+    linkedBefore = (await io.sb('site_issues?category=in.' + encodeURIComponent(`("${BETA_CATEGORY}","${INVITE_CATEGORY}")`)
+      + '&message=like.' + encodeURIComponent('*' + LINKED_PREFIX + email + '.*') + '&select=id&limit=1')).length > 0;
+  } catch (e) { linkedBefore = true; }
+  if (joined || linkedBefore) {
+    const why = joined ? 'Someone already plays Pyr with that invite email.' : 'That invite already brought in another Google account.';
+    const message = [
+      `${name} asks to join the Pyr beta.`,
+      `Email they gave: ${email}`,
+      `Invited as: ${email}, already on Pilot testers. They sign in with another Google account. ${why}`,
+      `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    ].join('\n');
+    const title = `Invited tester on another Google account: ${name}`.slice(0, 120);
+    await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
+    const bell = `${mdText(name)} used the invite for ${mdText(email)} from another Google account, ${mdText(signIn)}. ${mdText(why)}\n\n${LET_IN}`;
+    try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+    await wakeBoard(io);
+    return {invited: false, requested: true, review: true};
+  }
+  await io.sb('pilot_members?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email: signIn, enabled: true})});
+  // The record: it is how a second use of this invite is caught.
+  const message = `${name} was invited as ${email} and joined as ${signIn}.\n${LINKED_PREFIX}${email}.\nSign in email: ${signIn}. If this isn't them, turn ${signIn} off under Admin Hub, Pilot testers.`;
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: INVITE_CATEGORY,
+    title: `Invite used: ${name}`.slice(0, 120), message, user_id: io.me.id, user_name: name}])});
+  // Nothing to do (Ames 2026-11-04: "asks to join" read as a request).
+  const bell = `${mdText(name)} is in. They were invited as ${mdText(email)} and signed in as ${mdText(signIn)}. Nothing to do.\n\nIf this isn't them, turn ${mdText(signIn)} off under Admin Hub, Pilot testers.`;
+  try { await io.notifyAdmins({title: `🔑 Invite used by ${name}`.slice(0, 120), body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  return {invited: true, linked: true};
+}
+
+/** Is this address on Pilot testers? A failed look up counts as no: the
+ *  request still goes in, only without the Invited line. */
+async function invitedEmail(sb, email) {
+  try {
+    const rows = await sb('pilot_members?email=eq.' + encodeURIComponent(email) + '&enabled=eq.true&select=email&limit=1');
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (e) { return false; }
+}
+
+// ── Beta access from connectome.quest (Ames 2026-10-26) ─────────────────
+// "update connectome.quest with a request early access thing". A visitor to
+// the site's Access page has no Pyr sign in yet, only a name and an email,
+// so this is access.beta without the sign in: the same report on the triage
+// board, bell to every admin and Slack post, marked as from the site. The
+// email they gave is the one an admin adds under Pilot testers, so they must
+// sign in to Pyr with it. Served by ewAccessRequest as action
+// "access.visitorBeta", before its sign in check; the body size and a per
+// address rate limit are there. Here: the same hard checks as access.beta, a
+// hidden field (website) that only a bot fills, and one request per email.
+const SITE = 'connectome.quest';
+async function visitorBetaRequested(sb, email) {
+  // Any Beta access report already naming this email, from the site or the game.
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY)
+    + '&message=ilike.' + encodeURIComponent('*' + email.replace(/[*%,()]/g, '') + '*') + '&select=id&limit=1');
+  return Array.isArray(rows) && rows.length > 0;
+}
+async function visitorBeta(args, io) {
+  const a = args && typeof args === 'object' ? args : {};
+  // A bot that filled the hidden field is told it worked, and nothing happens.
+  if (a.website) return {requested: true};
+  const name = betaName(a.name);
+  const email = betaEmail(a.email);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
+  if (a.agree !== true) fail(400, 'Please tick the box to say you agree to the community principles.');
+  if (await visitorBetaRequested(io.sb, email)) return {requested: true, already: true};
+  const message = [
+    `${name} asks to join the Pyr beta, from ${SITE}.`,
+    `Email they gave: ${email}. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.`,
+    'They agreed to the community principles.',
+    ...ewLines(ew),
+    note ? `Their note: ${note}` : '',
+  ].filter(Boolean).join('\n');
+  const title = `Beta access request from ${name} (${SITE})`.slice(0, 120);
+  const url = `https://${SITE}/access.html`;
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, url, user_id: null, user_name: name}])});
+  const bell = `${mdText(name)} asks to join the Pyr beta, from ${mdText(SITE)}.\n\nEmail they gave: ${mdText(email)}\n\nThey have not signed in to Pyr yet. ${LET_IN} Then email them to sign in with this address.`
+    + ewForBell(ew)
+    + noteForBell(note);
+  try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name, url}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
+  await wakeBoard(io);
+  return {requested: true};
+}
+
+// ── EyeWire username and rank, both optional (Ames 2026-10-26) ──────────
+// One line each on the report, before the note, so Beta requests in the
+// Admin Hub reads them back from the server's own lines.
+const EW_RANK_MAX = 40;
+function eyewireOf(a) {
+  const username = cleanEwName(a.eyewireUsername);
+  const rank = cleanText(a.eyewireRank, EW_RANK_MAX, 'Your EyeWire rank');
+  if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
+  return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null};
+}
+const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : ''];
+const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '');
+/** A new request goes on the triage board now, not at the next (often late)
+ *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
+async function wakeBoard(io) {
+  try { if (io.wake) await io.wake(); } catch (e) { console.warn('[beta] board not woken', e && e.message); }
+}
+
+// ── Sorting Beta requests (Ames 2026-10-26: "move them from the page and
+// put them in a db list", and "remove request") ─────────────────────────
+// A mark per email: listed (kept on the list for later) or removed (taken
+// off). Waiting clears it. A request newer than its mark shows again. The
+// store is passed in (Firestore in index.js), so this needs no new table.
+//   access.betaMarks  admins: every mark, by email.
+//   access.betaMark   admins: {email, mark: 'listed' | 'removed' | 'waiting'}.
+const BETA_MARKS = ['listed', 'removed', 'waiting'];
+// ── "You're in" by email (Ames 2026-11-05: "let's do resend and we can set up
+// connectome.quest"). Letting someone in sends them this, from
+// welcome@connectome.quest, replies to support@eyewire.ai. Once per address:
+// a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
+const WELCOME_FROM = 'Pyr <welcome@connectome.quest>';
+const WELCOME_REPLY_TO = 'support@eyewire.ai';
+function welcomeMessage(name, email) {
+  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const text = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
+  return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, subject: "You're in: Pyr early access", text };
+}
+async function welcomeEmail(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const name = cleanText(a.name, BETA_NAME_MAX, 'The name') || '';
+  if (!io.sendEmail) return {sent: false, reason: 'not set up'};
+  if (io.welcomeSent && await io.welcomeSent.get(email)) return {sent: false, reason: 'already sent'};
+  const r = await io.sendEmail(welcomeMessage(name, email));
+  if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in.`);
+  if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
+  return {sent: true};
+}
+async function betaMarks(a, io) {
+  needAdmin(io.isAdmin);
+  return io.marks.all();
+}
+async function betaMark(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  if (!BETA_MARKS.includes(a.mark)) fail(400, 'Unknown mark.');
+  await io.marks.set(email, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
+  return io.marks.all();
+}
+
+// ── Access to one dataset (Ames 2026-10-28) ──────────────────────────────
+// "You don't have access to MEC yet. Can we make this have a button to
+// request access?" A player asks from the note on a view they can't load, or
+// from a locked card in the dataset switcher. The request is a report on the
+// triage board (category Dataset access, as Beta requests are), a bell to
+// every admin and a Slack post. An admin adds the player to that dataset's
+// group in CAVE by hand, then presses Granted (or Not now) in the Admin Hub,
+// and the player gets a bell. The decision is a mark per request, kept in
+// io.datasetMarks (Firestore in index.js), so this needs no new table.
+// Retina has its own request with examples (above) and does not come here.
+//   access.datasetStatus  a player: their requests, by dataset id.
+//   access.dataset        a player: {datasetId, label, caveDataset, note}.
+//   access.datasetList    admins: every request, newest first, with its mark.
+//   access.datasetDecide  admins: {id, mark: 'granted' | 'declined' | 'waiting', note}.
+const DATASET_CATEGORY = 'Dataset access';
+/** The CAVE group Granted adds a player to, by dataset id. A dataset not
+ *  here is still granted by hand in CAVE (Ames 2026-10-28: "can we make a way
+ *  for me to grant access?"). MEC_Edit, group 217, made by Marissa. */
+const DATASET_CAVE_GROUPS = {pni_mec: {id: 217, name: 'MEC_Edit'}};
+/** The short name a player knows a dataset by, for the bell. */
+const DATASET_SHORT = {pni_mec: 'MEC'};
+const DATASET_BELL = '🔓 Dataset access request';
+const DATASET_MARKS = ['granted', 'declined', 'waiting'];
+const DS_ID = /^[a-z0-9_]{2,40}$/;
+const UUID = /^[0-9a-f-]{36}$/i;
+function datasetOf(a) {
+  const id = String(a.datasetId || '');
+  if (!DS_ID.test(id) || id === 'stroeh_mouse_retina') fail(400, 'Unknown dataset.');
+  const label = cleanText(a.label, 60, 'The dataset name', true);
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} .'()&,:-]*$/u.test(label)) fail(400, 'Unknown dataset.');
+  const cave = cleanText(a.caveDataset, 60, 'The CAVE dataset') || '';
+  if (cave && !/^[A-Za-z0-9_.-]+$/.test(cave)) fail(400, 'Unknown dataset.');
+  return {id, label, cave};
+}
+const labelOf = title => String(title || '').split(' access request from ')[0];
+const lineOf = (message, lead) => (String(message || '').split('\n').find(l => l.startsWith(lead)) || '').slice(lead.length).trim();
+/** The datasets a player edits in on Pyr, by edit_log tag. */
+const EDIT_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'pinky_nf_v2'];
+/** A player's first and latest split or merge in each of those, where they
+ *  have any: [{dataset, first, last}]. */
+async function editHistory(sb, userId) {
+  const one = async (ds, dir) => {
+    try {
+      const r = await sb('edit_log?user_id=eq.' + encodeURIComponent(userId) + '&dataset=eq.' + ds
+        + '&operation=in.(split,merge)&select=timestamp&order=timestamp.' + dir + '&limit=1');
+      return Array.isArray(r) && r[0] ? r[0].timestamp : null;
+    } catch (e) { return null; }
+  };
+  const out = await Promise.all(EDIT_DATASETS.map(async ds => {
+    const [first, last] = await Promise.all([one(ds, 'asc'), one(ds, 'desc')]);
+    return first ? {dataset: ds, first, last} : null;
+  }));
+  return out.filter(Boolean);
+}
+async function datasetRows(sb, filter) {
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(DATASET_CATEGORY) + filter
+    + '&select=id,user_id,user_name,dataset,title,message,created_at&order=created_at.desc&limit=300');
+  return Array.isArray(rows) ? rows : [];
+}
+async function datasetStatus(a, io) {
+  if (!io.me) return {requests: {}};
+  const marks = await io.datasetMarks.all();
+  const out = {};
+  // Newest first: a dataset's latest request is the one that counts.
+  for (const r of await datasetRows(io.sb, '&user_id=eq.' + encodeURIComponent(io.me.id))) {
+    if (!r.dataset || out[r.dataset]) continue;
+    out[r.dataset] = {at: r.created_at, mark: (marks[r.id] && marks[r.id].mark) || null};
+  }
+  return {requests: out};
+}
+async function datasetRequest(a, io) {
+  if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  const ds = datasetOf(a);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  // Tiers (Ames 2026-10-28): edit access on the retina comes first. Asked of
+  // CAVE with the player's own sign in; when CAVE can't be asked, nobody is
+  // held back (an admin still decides).
+  if (!io.isAdmin && io.canEditRetina && (await io.canEditRetina()) === false) {
+    fail(403, 'Every dataset starts with the retina: first send your edits for retina edit access (menu, Ask for Edit Access). Then you can ask for this one.');
+  }
+  const now = await datasetStatus(a, io);
+  const open = now.requests[ds.id];
+  // One open request per dataset; asking again after Not now is fine.
+  if (open && !open.mark) return {...now, already: true};
+  const name = String(io.me.username || io.me.display_name || 'A player').slice(0, 80);
+  const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  const message = [
+    `${name} asks for access to ${ds.label}.`,
+    `Dataset id: ${ds.id}`,
+    ds.cave ? `CAVE dataset: ${ds.cave}` : '',
+    `Sign in email: ${signIn}`,
+    'To answer, open Admin Hub, Access requests, Dataset requests: Grant adds them to the CAVE group.',
+    note ? `Their note: ${note}` : '',
+  ].filter(Boolean).join('\n');
+  const title = `${ds.label} access request from ${name}`.slice(0, 120);
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: DATASET_CATEGORY, title, message, dataset: ds.id, user_id: io.me.id, user_name: name}])});
+  const bell = `${mdText(name)} asks for access to ${mdText(ds.label)}${ds.cave ? ` (CAVE dataset ${mdText(ds.cave)})` : ''}.\n\n`
+    + `Sign in email: ${mdText(signIn)}\n\n`
+    + 'Open Admin Hub, Access requests, Dataset requests: Grant adds them to the CAVE group.'
+    + noteForBell(note);
+  try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell, image: DATASET_REQUESTED}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
+  try { if (io.postIssue) await io.postIssue({title, message, category: DATASET_CATEGORY, user: name}); } catch (e) { console.warn('[dataset access] slack failed', e && e.message); }
+  await wakeBoard(io);
+  return {...(await datasetStatus(a, io)), requested: true};
+}
+async function datasetList(a, io) {
+  needAdmin(io.isAdmin);
+  const marks = await io.datasetMarks.all();
+  const rows = await datasetRows(io.sb, '');
+  // What each player waiting for an answer can already do in CAVE, and how
+  // long they have been at it here (Ames 2026-10-29: "how long they have been
+  // in the other datasets").
+  const access = {};
+  const history = {};
+  const waiting = [...new Set(rows.filter(r => r.user_id && !(marks[r.id] && marks[r.id].mark)).map(r => r.user_id))].slice(0, 25);
+  if (waiting.length) {
+    const users = await io.sb('users?id=in.(' + waiting.map(encodeURIComponent).join(',') + ')&select=id,cave_user_id,created_at');
+    await Promise.all((Array.isArray(users) ? users : []).map(async u => {
+      const caveId = Number(u.cave_user_id);
+      const [cave, days] = await Promise.all([
+        io.caveAccessOf && Number.isSafeInteger(caveId) && caveId > 0 ? io.caveAccessOf(caveId) : null,
+        editHistory(io.sb, u.id),
+      ]);
+      access[u.id] = cave;
+      history[u.id] = {joined: u.created_at || null, datasets: days};
+    }));
+  }
+  return rows.map(r => ({
+    access: access[r.user_id] || null,
+    history: history[r.user_id] || null,
+    caveGroup: (DATASET_CAVE_GROUPS[r.dataset] && DATASET_CAVE_GROUPS[r.dataset].name) || '',
+    id: r.id, userId: r.user_id, name: r.user_name, dataset: r.dataset, label: labelOf(r.title),
+    cave: lineOf(r.message, 'CAVE dataset:'), email: lineOf(r.message, 'Sign in email:'), note: lineOf(r.message, 'Their note:'),
+    at: r.created_at, mark: (marks[r.id] && marks[r.id].mark) || null, markedAt: (marks[r.id] && marks[r.id].at) || null,
+    markedBy: (marks[r.id] && marks[r.id].by) || '',
+  }));
+}
+async function datasetDecide(a, io) {
+  needAdmin(io.isAdmin);
+  const id = String(a.id || '');
+  if (!UUID.test(id)) fail(400, 'Unknown request.');
+  if (!DATASET_MARKS.includes(a.mark)) fail(400, 'Unknown mark.');
+  const row = (await datasetRows(io.sb, '&id=eq.' + encodeURIComponent(id)))[0];
+  if (!row) fail(404, 'That request is gone.');
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const label = labelOf(row.title);
+  // Granted adds them in CAVE first, where Pyr knows the dataset's group; the
+  // player is told only once CAVE has them. "I added them by hand" skips it.
+  const group = DATASET_CAVE_GROUPS[row.dataset];
+  if (a.mark === 'granted' && group && a.byHand !== true) {
+    const u = row.user_id ? (await io.sb('users?id=eq.' + encodeURIComponent(row.user_id) + '&select=cave_user_id&limit=1'))[0] : null;
+    const caveId = Number(u && u.cave_user_id);
+    if (!Number.isSafeInteger(caveId) || caveId <= 0) {
+      fail(409, `Pyr doesn't know this player's CAVE id. Add them to ${group.name} in CAVE by hand, then press "I added them by hand". Nothing was sent.`);
+    }
+    if (!io.grantCave) fail(503, 'Granting in CAVE is not set up on the server. Nothing was sent.');
+    const r = await io.grantCave(caveId, group.id);
+    if (!r || !r.ok) fail(502, `CAVE did not add them to ${group.name}${r && r.status ? ` (${r.status})` : ''}${r && r.error ? `: ${r.error}` : ''}. Nothing was sent to the player.`);
+  }
+  await io.datasetMarks.set(id, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
+  if (row.user_id && a.mark !== 'waiting') {
+    const said = note ? '\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
+    try {
+      if (a.mark === 'granted') {
+        const short = DATASET_SHORT[row.dataset] || label;
+        await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120), image: DATASET_GRANTED,
+          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
+            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.'
+            // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
+            + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${row.dataset})` + said});
+      } else {
+        await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),
+          body: `Not yet, sorry: your request for ${mdText(label)} was looked at, and access was not given this time.` + said});
+      }
+    } catch (e) { console.warn('[dataset access] player bell failed', e && e.message); }
+  }
+  return datasetList(a, io);
+}
+
+// ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
+// "when the player next logs in, not when the admin approves it". The bell
+// note a grant sends is the record: on a player's first load of a visit the
+// app asks here, and each grant not yet told gets one line. A chat row keyed
+// access:<dataset> is the guard, so it is said once. Grants from before this
+// began stay quiet.
+const GRANT_LINES_SINCE = '2026-10-30T00:00:00Z';
+const RETINA_ID = 'stroeh_mouse_retina';
+const DATASET_GRANT_TITLE = '🔓 You have access to ';
+function grantsIn(notes) {
+  const out = new Map();
+  for (const n of notes || []) {
+    const title = String((n && n.title) || '');
+    if (title === GRANTED_TITLE) out.set(RETINA_ID, 'the Retina');
+    else if (title.startsWith(DATASET_GRANT_TITLE)) {
+      const id = String(n.body || '').match(/#nge-open-dataset=([a-z0-9_]{2,40})/);
+      if (id) out.set(id[1], DATASET_SHORT[id[1]] || title.slice(DATASET_GRANT_TITLE.length));
+    }
+  }
+  return [...out].map(([dataset, label]) => ({dataset, label}));
+}
+async function grantLines(a, io) {
+  if (!io.me) return {announced: 0};
+  const notes = await io.sb('notifications?target_type=eq.user&target_id=eq.' + encodeURIComponent(io.me.id)
+    + '&send_at=gte.' + encodeURIComponent(GRANT_LINES_SINCE)
+    + '&or=' + encodeURIComponent(`(title.eq."${GRANTED_TITLE}",title.like."${DATASET_GRANT_TITLE}*")`)
+    + '&select=title,body&limit=40');
+  let announced = 0;
+  for (const g of grantsIn(notes)) {
+    const key = 'access:' + g.dataset;
+    const said = await io.sb('chat_messages?user_id=eq.' + encodeURIComponent(io.me.id) + '&dataset=eq.' + encodeURIComponent(key) + '&select=id&limit=1');
+    if (said.length) continue;
+    await io.sb('chat_messages', {method: 'POST', body: JSON.stringify({user_id: io.me.id, name: io.me.username || io.me.display_name || 'Player',
+      rank: 'achievement', text: `now has edit access to ${g.label}`, dataset: key})});
+    announced++;
+  }
+  return {announced};
+}
+
+// ── Edit access on a profile (Ames 2026-11-02: "should we show accesses
+// unlocked in profile?" and "I don't see this on Nik's") ── Which of the
+// earned datasets a player can edit, read from CAVE with the admin token, so
+// it is right for grants of any date. Only these three are told, and only
+// "can edit": nothing else about their account. Kept 10 minutes per player.
+const PROFILE_ACCESS = {'stroeh-mouse-retina': 'stroeh_mouse_retina', HiMC: 'pni_mec', BANC: 'banc'};
+const PROFILE_ACCESS_MS = 10 * 60 * 1000;
+const profileAccessSeen = new Map();
+async function profileAccess(a, io) {
+  if (!io.me) fail(401, 'Sign in to see this.');
+  const userId = String(a.userId || '');
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) fail(400, 'Invalid player');
+  const hit = profileAccessSeen.get(userId);
+  if (hit && Date.now() - hit.at < PROFILE_ACCESS_MS) return hit.value;
+  const users = await io.sb('users?id=eq.' + encodeURIComponent(userId) + '&select=cave_user_id&limit=1');
+  const caveId = Number(Array.isArray(users) && users[0] ? users[0].cave_user_id : NaN);
+  if (!io.caveAccessOf || !Number.isSafeInteger(caveId) || caveId <= 0) return {edit: null};
+  const cave = await io.caveAccessOf(caveId);
+  if (!cave) return {edit: null};
+  const value = {edit: (cave.edit || []).map(ds => PROFILE_ACCESS[ds]).filter(Boolean)};
+  profileAccessSeen.set(userId, {at: Date.now(), value});
+  return value;
+}
+
 async function handle(action, args, io) {
   const a = args || {};
+  if (action === 'access.profileAccess') return profileAccess(a, io);
+  if (action === 'access.grantLines') return grantLines(a, io);
+  if (action === 'access.datasetStatus') return datasetStatus(a, io);
+  if (action === 'access.dataset') return datasetRequest(a, io);
+  if (action === 'access.datasetList') return datasetList(a, io);
+  if (action === 'access.datasetDecide') return datasetDecide(a, io);
+  if (action === 'access.betaStatus') return betaStatus(a, io);
+  if (action === 'access.beta') return beta(a, io);
+  if (action === 'access.linkInvite') return linkInvite(a, io);
+  if (action === 'access.betaMarks') return betaMarks(a, io);
+  if (action === 'access.betaMark') return betaMark(a, io);
+  if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
+  if (action === 'access.principlesStatus') return principlesStatus(a, io);
+  if (action === 'access.principlesAgree') return principlesAgree(a, io);
   if (action === 'access.mine') return mine(a, io);
   if (action === 'access.save') return save(a, io);
   if (action === 'access.remove') return remove(a, io);
@@ -399,4 +936,40 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanExample, KINDS, IMAGE, GRANTED_TITLE};
+// ── The Eyewire II Principles (Ames 2026-10-27: "ask players to agree to
+// community principles when they go to Retina dataset",
+// https://eyewire.ai/principles). Asked only ever once per account, even if
+// PRINCIPLES_VERSION changes later. The record (who, when, which version)
+// is kept by the server, in the store passed in (Firestore in
+// index.js, principles_agreements), never taken from the browser.
+//   access.principlesStatus  anyone signed in: {version, agreed, at}.
+//   access.principlesAgree   anyone signed in: {version} they saw; agrees.
+const PRINCIPLES_VERSION = '2026-10-27';
+function principlesKey(io) {
+  if (io.me && io.me.id) return `user:${io.me.id}`;
+  const email = String((io.who && io.who.email) || '').toLowerCase();
+  if (!email) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  return `email:${email}`;
+}
+async function principlesStatus(a, io) {
+  const rec = await io.principles.get(principlesKey(io));
+  // Asked only ever once (Ames 2026-10-27: "it should only ever ask them
+  // this once"): any agreement counts, whatever version it was.
+  const agreed = !!(rec && rec.at);
+  return {version: PRINCIPLES_VERSION, agreed, at: agreed ? rec.at : null};
+}
+async function principlesAgree(a, io) {
+  // Agreeing to an older text than the one the server asks for is not agreeing.
+  if (a.version !== PRINCIPLES_VERSION) fail(409, 'The principles were updated. Reload the page to read the new version.');
+  const key = principlesKey(io);
+  // Already agreed: the first agreement stands, never written over.
+  const had = await io.principles.get(key);
+  if (had && had.at) return {version: PRINCIPLES_VERSION, agreed: true, at: had.at};
+  const at = new Date().toISOString();
+  await io.principles.set(key, {version: PRINCIPLES_VERSION, at,
+    userId: (io.me && io.me.id) || null, email: String((io.who && io.who.email) || '').toLowerCase(),
+    name: (io.me && (io.me.username || io.me.display_name)) || ''});
+  return {version: PRINCIPLES_VERSION, agreed: true, at};
+}
+
+module.exports = {handle, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};

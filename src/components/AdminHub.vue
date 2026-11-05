@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import imgNurroBravo from '../images/bravo-nurro.png';
-import { secureWrite } from '../secure_write';
-import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
+import { secureWrite, caveToken } from '../secure_write';
+import { functionUrl } from '../functions_base';
+import {ref, shallowRef, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
+import { searchNamesOf, serverTagged, type AdminPerson } from '../util/admin_mentions';
+import { vAutogrow } from '../util/autogrow';
 import {useProofreadingBackendStore} from '../store';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
@@ -12,9 +15,25 @@ import {supabase} from '../supabase';
 import RollUp from 'components/RollUp.vue';
 import CellTypeCheck from 'components/CellTypeCheck.vue';
 import AccessRequestsTab from 'components/AccessRequestsTab.vue';
+import HuntsAdminTab from 'components/HuntsAdminTab.vue';
+import InterneuronQuestsAdminTab from 'components/InterneuronQuestsAdminTab.vue';
 import TestTriesTab from 'components/TestTriesTab.vue';
+import TutorialTimesTab from 'components/TutorialTimesTab.vue';
 import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
+import arcane25 from '../../static/badges/arcane/25.png';
+import arcane50 from '../../static/badges/arcane/50.png';
+import arcane75 from '../../static/badges/arcane/75.png';
+import arcane100 from '../../static/badges/arcane/100.png';
+import arcane200 from '../../static/badges/arcane/200.png';
+import arcane300 from '../../static/badges/arcane/300.png';
+import arcane400 from '../../static/badges/arcane/400.png';
+import arcane500 from '../../static/badges/arcane/500.png';
+import arcane600 from '../../static/badges/arcane/600.png';
+import arcane700 from '../../static/badges/arcane/700.png';
+import arcane800 from '../../static/badges/arcane/800.png';
+import arcane900 from '../../static/badges/arcane/900.png';
+import arcane1000 from '../../static/badges/arcane/1000.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
 import nurroMicroscope from '../../static/nurro/nurro-microscope.png';
@@ -32,7 +51,9 @@ import nurroSuccess from '../../static/nurro/nurro-success.png';
 import {loadRepoStats, type RepoStats} from '../util/repo_stats';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
+import TutorialEditsTab from 'components/TutorialEditsTab.vue';
 import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
+import { isAwardTitle } from '../util/award_title';
 
 const backend = useProofreadingBackendStore();
 
@@ -41,8 +62,8 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts' | 'interneurons' | 'tutorialEdits' | 'tutorialTimes'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits' || props.initialSubTab === 'hunts' || props.initialSubTab === 'interneurons'
     ? props.initialSubTab
     : 'notifications');
 
@@ -54,31 +75,72 @@ const pilotBusy = ref(false);
 /** The Pyr name behind each invited email, for those who have signed in
  *  (Ames 2026-10-13: "it should also show username"). By email, lower case. */
 const pilotNames = ref<Record<string, string>>({});
+/** Their Pyr account, to open their profile (Celia D, report 284). */
+const pilotIds = ref<Record<string, string>>({});
 const pilotSearch = ref('');
+/** Who has joined (has a Pyr account under the invited email) and who has
+ *  only been invited (Celia D, report 284). */
+const pilotWho = ref<'all' | 'joined' | 'invited'>('all');
+const PILOT_WHO = ['all', 'joined', 'invited', 'web'] as const;
+/** The Pyr Users sheet (Ames 2026-10-28): everyone on it was invited; a
+ *  tester who is not came from the web, by a Beta request. By email, lower
+ *  case, to the sheet tab they are on. Null until read; '' error when not. */
+const pilotSheet = ref<Record<string, string> | null>(null);
+const pilotSheetError = ref('');
+async function loadPilotSheet() {
+  pilotSheetError.value = '';
+  try {
+    const r = await fetch(functionUrl('ewSheetSync'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
+      body: JSON.stringify({ action: 'pilot_sheet', token: caveToken() }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || `The sheet could not be read (${r.status}).`);
+    pilotSheet.value = data.emails || {};
+  } catch (e: any) {
+    pilotSheet.value = null;
+    pilotSheetError.value = e?.message || 'The Pyr Users sheet could not be read.';
+  }
+}
+const pilotFromWeb = (m: { email: string }) => !!pilotSheet.value && !pilotSheet.value[m.email.toLowerCase()];
+const pilotWebCount = computed(() => pilotRows.value.filter(pilotFromWeb).length);
+const pilotJoined = (m: { email: string }) => !!pilotIds.value[m.email.toLowerCase()];
+const pilotJoinedCount = computed(() => pilotRows.value.filter(pilotJoined).length);
+function openPilotProfile(m: { email: string }) {
+  const id = pilotIds.value[m.email.toLowerCase()];
+  if (id) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: id } }));
+}
 const pilotShown = computed(() => {
   const words = pilotSearch.value.toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return pilotRows.value;
-  return pilotRows.value.filter(m => {
+  const rows = pilotWho.value === 'all' ? pilotRows.value
+    : pilotWho.value === 'web' ? pilotRows.value.filter(pilotFromWeb)
+      : pilotRows.value.filter(m => pilotJoined(m) === (pilotWho.value === 'joined'));
+  if (!words.length) return rows;
+  return rows.filter(m => {
     const hay = (m.email + ' ' + (pilotNames.value[m.email.toLowerCase()] || '')).toLowerCase();
     return words.every(w => hay.includes(w));
   });
 });
 async function loadPilotNames(emails: string[]) {
   const found: Record<string, string> = {};
+  const ids: Record<string, string> = {};
   for (let i = 0; i < emails.length; i += 60) {
-    const {data} = await supabase.from('users').select('username,display_name,middleauth_email').in('middleauth_email', emails.slice(i, i + 60));
+    const {data} = await supabase.from('users').select('id,username,display_name,middleauth_email').in('middleauth_email', emails.slice(i, i + 60));
     for (const u of (data || []) as any[]) {
       const name = u.username || u.display_name;
       if (u.middleauth_email && name) found[String(u.middleauth_email).toLowerCase()] = name;
+      if (u.middleauth_email && u.id) ids[String(u.middleauth_email).toLowerCase()] = u.id;
     }
   }
   pilotNames.value = found;
+  pilotIds.value = ids;
 }
 async function loadPilot() {
   const {data,error} = await supabase.from('pilot_members').select('*').order('email');
   pilotError.value = error?.message || '';
   pilotRows.value = data || [];
   void loadPilotNames(pilotRows.value.map(m => m.email)).catch(() => { /* the emails still show */ });
+  void loadPilotSheet();
 }
 const pilotNote = ref('');
 /** Several emails at once, separated by commas, spaces or new lines (Ames
@@ -105,7 +167,112 @@ async function setPilot(email:string,enabled:boolean) {
   const {error} = await supabase.from('pilot_members').update({enabled}).eq('email',email);
   if(error) pilotError.value=error.message; else await loadPilot();
 }
-watch(adminSubTab,t=>{if(t==='pilot')loadPilot();});
+// ── Beta requests (Ames 2026-10-26: "Where should I see the access request?
+//    Can you grant me a button that adds their email to the pilot tester
+//    list?"). Every Beta access report (functions/access-request.js, from the
+//    game or connectome.quest), newest first, with Let them in. The email to
+//    add is read from the server's own lines of the report, never the note.
+type BetaRequest = { id: string; name: string; email: string; note: string; site: boolean; at: string; ewName: string; ewRank: string; userId: string | null };
+const betaRequests = ref<BetaRequest[]>([]);
+const betaError = ref('');
+const betaBusy = ref('');
+// Which requests show (Ames 2026-10-26: "move them from the page and put
+// them in a db list", and "remove request"). Marks are kept by the server.
+type BetaView = 'waiting' | 'listed' | 'in' | 'removed';
+const betaView = ref<BetaView>('waiting');
+const betaMarks = ref<Record<string, { mark: string; at: string }>>({});
+function parseBetaRequest(r: any): BetaRequest | null {
+  const lines = String(r.message || '').split('\n');
+  const noteAt = lines.findIndex(l => l.startsWith('Their note: '));
+  const head = noteAt < 0 ? lines : lines.slice(0, noteAt);
+  const pick = (label: string) => {
+    for (const l of head) {
+      const m = l.match(new RegExp('^' + label + ': ([^\\s]+@[^\\s]+?)\\.?(?:\\s|$)'));
+      if (m) return m[1].toLowerCase();
+    }
+    return '';
+  };
+  // In the game, the sign in email is the one that counts; from the site, the one they gave.
+  const email = pick('Sign in email') || pick('Email') || pick('Email they gave');
+  if (!email) return null;
+  const note = noteAt < 0 ? '' : lines.slice(noteAt).join('\n').replace(/^Their note: /, '');
+  const line = (label: string) => (head.find(l => l.startsWith(label + ': ')) || '').slice(label.length + 2).trim();
+  return { id: r.id, name: r.user_name || '', email, note, site: /connectome\.quest/.test(String(r.url || '') + String(r.title || '')), at: r.created_at,
+    ewName: line('EyeWire username'), ewRank: line('EyeWire rank'), userId: r.user_id || null };
+}
+async function loadBetaRequests() {
+  betaError.value = '';
+  const { data, error } = await supabase.from('site_issues').select('id,user_id,user_name,title,message,url,created_at')
+    .eq('category', 'Beta access').order('created_at', { ascending: false }).limit(300);
+  if (error) { betaError.value = error.message; return; }
+  const seen = new Set<string>();
+  betaRequests.value = ((data || []) as any[]).map(parseBetaRequest)
+    .filter((r): r is BetaRequest => !!r && !seen.has(r.email) && !!seen.add(r.email));
+  try { betaMarks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}; }
+  catch (e: any) { betaError.value = e?.message || 'The sorted lists could not be loaded.'; }
+}
+const pilotEnabled = computed(() => new Set(pilotRows.value.filter(m => m.enabled).map(m => m.email.toLowerCase())));
+/** Let in wins; then a mark, unless they asked again after it was made. */
+function betaStateOf(r: BetaRequest): BetaView {
+  if (pilotEnabled.value.has(r.email)) return 'in';
+  const m = betaMarks.value[r.email];
+  if (m && (m.mark === 'listed' || m.mark === 'removed') && String(m.at) >= String(r.at)) return m.mark;
+  return 'waiting';
+}
+const BETA_VIEWS: { key: BetaView; label: string }[] = [
+  { key: 'waiting', label: 'Waiting' }, { key: 'listed', label: 'On the list' }, { key: 'in', label: 'Let in' }, { key: 'removed', label: 'Removed' },
+];
+const betaCount = computed(() => {
+  const n = { waiting: 0, listed: 0, in: 0, removed: 0 } as Record<BetaView, number>;
+  for (const r of betaRequests.value) n[betaStateOf(r)]++;
+  return n;
+});
+const betaShown = computed(() => betaRequests.value.filter(r => betaStateOf(r) === betaView.value));
+async function markBeta(r: BetaRequest, mark: 'listed' | 'removed' | 'waiting') {
+  betaBusy.value = r.email; betaError.value = '';
+  try { betaMarks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: r.email, mark })) || {}; }
+  catch (e: any) { betaError.value = e?.message || 'That did not save. Please try again.'; }
+  betaBusy.value = '';
+}
+async function letBetaIn(r: BetaRequest) {
+  betaBusy.value = r.email; betaError.value = '';
+  const { error } = await supabase.from('pilot_members').upsert([{ email: r.email, enabled: true }], { onConflict: 'email' });
+  if (error) betaError.value = error.message; else { await loadPilot(); void welcomeBell(r.userId); void welcomeEmail(r.email, r.name); }
+  betaBusy.value = '';
+}
+/** The "You're in" email, from welcome@connectome.quest (functions/access-request.js
+ *  welcomeEmail); once per address, so a second Let in sends nothing. */
+const welcomeEmailed = ref<Record<string, string>>({});
+async function welcomeEmail(email: string, name: string) {
+  try {
+    const r = await secureWrite<{ sent: boolean; reason?: string }>('access.welcomeEmail', { email, name });
+    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: r?.sent ? 'Emailed them' : r?.reason === 'already sent' ? 'Emailed before' : '' };
+  } catch (e: any) {
+    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: e?.message || 'The email did not go.' };
+  }
+}
+/** Let in: whoever asked from inside Pyr hears it in their bell (Ames
+ *  2026-11-05). Someone still on the waiting screen is let in there too
+ *  (BetaGate.vue). Asked from connectome.quest, with no account yet: no bell,
+ *  the email from the Let in list is the way. */
+async function welcomeBell(userId: string | null | undefined) {
+  if (!userId) return;
+  try {
+    await secureWrite('notification.insert', { row: {
+      title: "🎉 You're in the Pyr beta!",
+      body: "Welcome! You can now claim cells, take the tutorials and help map the brain. Thank you for joining us.\n\nThe Pyr (pronounced \"peer\") team at Princeton University",
+      target_type: 'user', target_id: userId, send_at: new Date().toISOString(),
+    } });
+  } catch { /* they are in either way */ }
+}
+/** An email to tell them, ready to send from the admin's own mail. */
+function betaMailto(r: BetaRequest) {
+  const first = r.name.split(' ')[0] || 'there';
+  const body = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${r.email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
+  return `mailto:${encodeURIComponent(r.email)}?subject=${encodeURIComponent("You're in: Pyr early access")}&body=${encodeURIComponent(body)}`;
+}
+const betaWhen = (at: string) => { try { return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
+watch(adminSubTab,t=>{if(t==='pilot'){loadPilot();void loadBetaRequests();}},{immediate:true});
 
 // ── Feedback triage ──────────────────────────────────────────────────────────
 // A scheduled agent reads incoming feedback (site_issues, client_errors) and
@@ -259,9 +426,38 @@ async function loadReporters(rows: TriageRow[]) {
     for (const i of data) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
       url: web(i.url), shot: web(i.screenshot_url) };
     reporters.value = next;
+    // Dataset access requests are answered in Access requests, not here
+    // (Ames 2026-10-29: "take them out of triage").
+    triageRows.value = triageRows.value.filter(r => reporterOf(r)?.category !== DATASET_ACCESS_CATEGORY);
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
 }
+const DATASET_ACCESS_CATEGORY = 'Dataset access';
 const reporterOf = (r: TriageRow) => (r.source === 'site_issue' ? reporters.value[r.source_id] : undefined);
+
+// ── Let them in from a Beta access card (Ames 2026-10-26: "so admin could
+//    grant them access from here?"). The email is read the same way as in
+//    Beta requests (parseBetaRequest), from the server's own lines.
+const cardLetInBusy = ref('');
+const cardLetInError = ref<Record<string, string>>({});
+function betaEmailOfCard(r: TriageRow): string {
+  const who = reporterOf(r);
+  if (!who || who.category !== 'Beta access') return '';
+  return parseBetaRequest({ id: r.source_id, message: who.message || '', user_name: who.name, created_at: who.at })?.email || '';
+}
+async function letInFromCard(r: TriageRow) {
+  const email = betaEmailOfCard(r);
+  if (!email || cardLetInBusy.value) return;
+  cardLetInBusy.value = r.id; cardLetInError.value = { ...cardLetInError.value, [r.id]: '' };
+  try {
+    const { error } = await supabase.from('pilot_members').upsert([{ email, enabled: true }], { onConflict: 'email' });
+    if (error) { cardLetInError.value = { ...cardLetInError.value, [r.id]: error.message }; return; }
+    const { data: issue } = await supabase.from('site_issues').select('user_id').eq('id', r.source_id).single();
+    void welcomeBell((issue as any)?.user_id);
+    void welcomeEmail(email, reporterOf(r)?.name || '');
+  } finally { cardLetInBusy.value = ''; }
+  await setTriageStatus(r, 'done', false, false, `Let in: ${email} added to Pilot testers.`);
+  if (adminSubTab.value === 'pilot') void loadPilot();
+}
 /** What the player wrote, in full. The triage row only keeps an excerpt,
  *  which ends in "..." when the report was long (Ames 2026-10-10: "make it
  *  so the user's full text appears"). The excerpt stands in until the report
@@ -485,17 +681,19 @@ async function loadTriageNumbers() {
   try {
     const { supabase } = await import('../supabase');
     const next: Record<string, number> = {};
-    let bugs = 0, features = 0, other = 0, today = 0;
+    let bugs = 0, features = 0, other = 0, today = 0, mineHandled = 0;
     const closed: any[] = [];
     const days: Record<string, number> = {};
     const todayIs = new Date().toDateString();
     // 500 at a time: the server refuses a larger page, which is why the
     // numbers did not show at first.
     for (let from = 0, n = 0; ; from += 500) {
-      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at,source,source_id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
+      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at,reviewed_by,source,source_id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
       if (error || !data) return;
       for (const r of data as any[]) {
         next[r.id] = ++n;
+        // Pyr Patchtacular: Done and Dismissed both count, attention was given (Ames 2026-11-04).
+        if ((r.status === 'done' || r.status === 'dismissed') && isMe(r.reviewed_by)) mineHandled++;
         if (r.status === 'done' || r.impl_state === 'deployed') {
           closed.push(r);
           if (r.reviewed_at && new Date(r.reviewed_at).toDateString() === todayIs) today++;
@@ -519,10 +717,93 @@ async function loadTriageNumbers() {
       if (k === 'bug') bugs++; else if (k === 'feature') features++; else other++;
     }
     triageNumbers.value = next;
+    // Mine, for Arcane Fixes: closed with Done by me (below).
+    arcaneReports.value = mineHandled;
+    void loadArcaneCards();
     // Keep the last good counts rather than show wrong ones.
     if (!catsFailed) triageTally.value = { bugs, features, other, today, days };
   } catch { /* the cards simply show no number */ }
 }
+
+// ── Pyr Fixes (first called Arcane Fixes; Ames 2026-11-02: "Pyr related"): each admin's own Achievements (Ames 2026-10-27 to 11-02) ──
+// Reports you closed with Done count one, To do cards you own that reached
+// Done count five ("a finished card should be 5 fixes"). Tech magic art from
+// the badges repo (arcane/), an icon in a frame. A tier at 25, 50, 75, then
+// every 100. On the triage board only ("triage for now").
+// Techy names, never a witch (Ames 2026-11-02).
+const ARCANE: { at: number; name: string; art: string }[] = [
+  { at: 25, name: 'Bit Wrangler', art: arcane25 },
+  { at: 50, name: 'Patch Brewer', art: arcane50 },
+  { at: 75, name: 'Spark Coder', art: arcane75 },
+  { at: 100, name: 'Apprentice Technomancer', art: arcane100 },
+  { at: 200, name: 'Stack Tracer', art: arcane200 },
+  { at: 300, name: 'Rune Compiler', art: arcane300 },
+  { at: 400, name: 'Syntax Smith', art: arcane400 },
+  { at: 500, name: 'Source Keeper', art: arcane500 },
+  { at: 600, name: 'Patch Architect', art: arcane600 },
+  { at: 700, name: 'Debug Seer', art: arcane700 },
+  { at: 800, name: 'Root Access', art: arcane800 },
+  { at: 900, name: 'Build Master', art: arcane900 },
+  { at: 1000, name: 'Grand Technomancer of Pyr', art: arcane1000 },
+];
+const ARCANE_CARD = 5;
+/** Past 1000, a tier every 100 with the crown's art until its own is made. */
+function arcaneTier(at: number) {
+  return ARCANE.find(t => t.at === at) || { at, name: `Grand Technomancer of Pyr, ${Math.floor(at / 100) - 9} stars`, art: arcane1000 };
+}
+const arcaneThresholds = (upTo: number) => {
+  const out = ARCANE.map(t => t.at);
+  for (let at = 1100; at <= Math.max(1100, upTo + 100); at += 100) out.push(at);
+  return out;
+};
+// Who I am, as the board and Slack wrote it: my name, my name without a
+// middle initial, and my Slack id (functions/todos.js SLACK_IDS).
+const SLACK_SELF: [RegExp, string][] = [[/^(amy|ames)\b|^amy/i, 'slack:U02FH1DRC'], [/^celia/i, 'slack:U033NHWDE'], [/^(marissa|m sorek|sorek)/i, 'slack:U033TSX9A']];
+const plainName = (n: string) => String(n || '').toLowerCase().replace(/\b[a-z]\.\s*/g, '').replace(/\s+/g, ' ').trim();
+function isMe(by: string | null | undefined) {
+  const v = String(by || '').trim();
+  const mine = String(backend.userName || '').trim();
+  if (!v || !mine) return false;
+  if (v === mine || plainName(v) === plainName(mine)) return true;
+  if (backend.userEmail && v.toLowerCase() === String(backend.userEmail).toLowerCase()) return true;
+  return SLACK_SELF.some(([re, id]) => re.test(mine) && v === id);
+}
+const arcaneReports = ref(0);
+const arcaneCards = ref(0);
+let arcaneCardsAt = 0;
+async function loadArcaneCards() {
+  if (Date.now() - arcaneCardsAt < 60_000) return;
+  arcaneCardsAt = Date.now();
+  try {
+    const d = await secureWrite<any>('todo.list');
+    const me = (d?.people || []).find((p: any) => isMe(p.name));
+    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)))).length : 0;
+  } catch { /* the cards just do not count this time */ }
+}
+const arcane = computed(() => {
+  const total = arcaneReports.value + ARCANE_CARD * arcaneCards.value;
+  const all = arcaneThresholds(total);
+  const earnedAt = all.filter(at => at <= total);
+  const nextAt = all.find(at => at > total)!;
+  const current = earnedAt.length ? arcaneTier(earnedAt[earnedAt.length - 1]) : null;
+  const prevAt = current ? current.at : 0;
+  return { total, reports: arcaneReports.value, cards: arcaneCards.value, current, next: arcaneTier(nextAt), toGo: nextAt - total,
+    // Earned ones, and the next as a mystery: the rest stay secret (Ames 2026-11-02: "don't reveal what all the achievements are!").
+    fill: Math.round(((total - prevAt) / (nextAt - prevAt)) * 100), tiers: all.slice(0, earnedAt.length + 1).map(arcaneTier), earned: earnedAt.length };
+});
+const arcaneOpen = ref(false);
+// A tier crossed while you watch: its own moment.
+const arcaneUnlock = ref<{ at: number; name: string; art: string } | null>(null);
+let arcaneSeen = -1;
+watch(() => arcane.value.total, (total, before) => {
+  if (arcaneSeen < 0) { if (total > 0) arcaneSeen = total; return; }
+  const crossed = arcaneThresholds(total).filter(at => at > (before ?? arcaneSeen) && at <= total);
+  arcaneSeen = total;
+  if (crossed.length) {
+    arcaneUnlock.value = arcaneTier(crossed[crossed.length - 1]);
+    setTimeout(() => { arcaneUnlock.value = null; }, 7000);
+  }
+});
 
 // ── What has been closed, and a moment of reward for closing one ──
 // Counted over every report, not only the ones on the board (Ames
@@ -604,6 +885,25 @@ function toggleFold(key: TriageGroupKey) {
 /** Folded right now. While searching nothing is folded, so a match in Done
  *  or Dismissed is not hidden. */
 const isFolded = (key: TriageGroupKey) => triageFolded.value[key] && !triageWords.value.length;
+// Triage zero: when the last report under Needs your decision is handled,
+// a party (Ames 2026-10-23: "some celebration when Triage reached zero").
+// Only when it goes from some to none while you watch, never on load.
+const zeroParty = ref(0);
+const decideCount = computed(() => triageGroups.value.find(g => g.key === 'decide')?.rows.length ?? -1);
+let hadDecisions = false;
+watch(decideCount, (n, before) => {
+  if (triageLoading.value) return;
+  if (n > 0) { hadDecisions = true; return; }
+  if (n === 0 && hadDecisions && (before ?? 0) > 0) {
+    hadDecisions = false;
+    zeroParty.value = Date.now();
+    setTimeout(() => { if (Date.now() - zeroParty.value >= 5900) zeroParty.value = 0; }, 6000);
+  }
+});
+const ZERO_BITS = Array.from({ length: 70 }, (_, i) => ({
+  left: (i * 37) % 100, delay: (i % 14) * 0.09, dur: 2.4 + (i % 7) * 0.35, rot: (i * 53) % 360,
+  color: ['#4f8cff', '#2ec4b6', '#f5c542', '#ff6fae', '#38bdf8'][i % 5], wide: i % 3 === 0,
+}));
 const boardColumns = computed(() => triageGroups.value.map(g => (isFolded(g.key) ? '46px' : 'minmax(0, 1fr)')).join(' '));
 
 // ── In progress, by hand ──
@@ -658,6 +958,20 @@ const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r
  *  scripts/slack-triage-bridge.mjs looks for too. */
 const TODO_NOTE = 'To do';
 const isTodo = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(TODO_NOTE);
+/** Moving a card to In progress or Done reads its bell notes for you (Ames 2026-10-27). */
+/** On each load of the board (at most every five minutes): the notes of every
+ *  card already In progress or Done, read for you, however it got there. */
+let notesSweptAt = 0;
+function sweepMovedReportNotes() {
+  if (Date.now() - notesSweptAt < 5 * 60 * 1000) return;
+  notesSweptAt = Date.now();
+  const moved = triageRows.value.filter(r => ['progress', 'done'].includes(triageGroupOf(r)));
+  if (moved.length) void backend.markReportsNotesRead(moved.map(r => ({ id: r.id, excerpt: r.source_excerpt }))).catch(() => {});
+}
+async function readReportNotes(row: TriageRow) {
+  try { await backend.markReportNotesRead(row.id, row.source_excerpt); }
+  catch { /* the card moved; the notes just stay unread */ }
+}
 async function markInProgress(row: TriageRow, later = false) {
   if (triageActing.value) return;
   triageActing.value = row.id;
@@ -673,8 +987,12 @@ async function markInProgress(row: TriageRow, later = false) {
         : `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
+      // Deciding a card is reading its reply, as Done does: an unread one kept
+      // the card on the board after Later (Ames 2026-11-02).
+      ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
     } });
     if (later) { await loadTriage(); return; }
+    void readReportNotes(row);
     triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
@@ -723,8 +1041,43 @@ function openTodoBoard() {
 const noteDrafts = ref<Record<string, string>>({});
 const noteOpen = ref<Record<string, boolean>>({});
 const noteSaving = ref<string | null>(null);
+// A picture on a note (Celia, report 313): pasted or picked, kept with the To
+// do board's images (no 7 day cleanup), and saved in the note as its link, which
+// the note draws as the picture.
+const noteImages = ref<Record<string, { preview: string; url?: string; uploading: boolean; error?: string }>>({});
+const isNoteImage = (href?: string) => !!href && /\/admin-uploads\/todo-images\/[^?#]+\.(png|jpe?g|gif|webp)$/i.test(href);
+function dropNoteImage(row: TriageRow) {
+  const img = noteImages.value[row.id];
+  if (img?.preview) URL.revokeObjectURL(img.preview);
+  delete noteImages.value[row.id];
+}
+async function attachNoteImage(row: TriageRow, file: File | null | undefined) {
+  if (!file) return;
+  dropNoteImage(row);
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { noteImages.value[row.id] = { preview: '', uploading: false, error: 'Use a PNG, JPEG, GIF or WebP image.' }; return; }
+  const preview = URL.createObjectURL(file);
+  noteImages.value[row.id] = { preview, uploading: true };
+  try {
+    const { secureUpload } = await import('../secure_upload');
+    const url = await secureUpload(file, 'todo' as any);
+    if (noteImages.value[row.id]?.preview === preview) noteImages.value[row.id] = { preview, url, uploading: false };
+  } catch (e: any) {
+    if (noteImages.value[row.id]?.preview === preview) noteImages.value[row.id] = { preview, uploading: false, error: e?.message || 'The image did not upload.' };
+  }
+}
+function onNotePaste(e: ClipboardEvent, row: TriageRow) {
+  const file = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+  if (file) { e.preventDefault(); void attachNoteImage(row, file); }
+}
+function onNoteFile(e: Event, row: TriageRow) {
+  const input = e.target as HTMLInputElement;
+  void attachNoteImage(row, input.files?.[0]);
+  input.value = '';
+}
 async function saveNote(row: TriageRow) {
-  const text = (noteDrafts.value[row.id] || '').trim();
+  const img = noteImages.value[row.id];
+  if (img?.uploading) return;
+  const text = [(noteDrafts.value[row.id] || '').trim(), img?.url || ''].filter(Boolean).join('\n');
   if (!text || noteSaving.value) return;
   noteSaving.value = row.id;
   try {
@@ -732,6 +1085,7 @@ async function saveNote(row: TriageRow) {
     row.admin_notes = r?.admin_notes || [...(row.admin_notes || []), { by: backend.userName || 'you', text, at: new Date().toISOString() }];
     noteDrafts.value[row.id] = '';
     noteOpen.value[row.id] = false;
+    dropNoteImage(row);
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
   } finally {
@@ -739,6 +1093,82 @@ async function saveNote(row: TriageRow) {
   }
 }
 
+// ── Tagging with a picker (Ames 2026-11-02: "like autocomplete so visually I
+// can see that they are being tagged") ──
+// "@Ce" lists the admins; Enter, Tab or a click puts in the whole name, which
+// always reaches them. Under the box, who will be tagged, read the server's way.
+const tagPeople = ref<AdminPerson[]>([]);
+let tagPeopleAsked = false;
+function loadTagPeople() {
+  if (tagPeopleAsked) return;
+  tagPeopleAsked = true;
+  secureWrite<any>('todo.list').then(d => { tagPeople.value = d?.people || []; }).catch(() => { tagPeopleAsked = false; });
+}
+const tagPicker = shallowRef<{ el: HTMLTextAreaElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
+const tagMatches = computed(() => {
+  const q = (tagPicker.value?.query || '').toLowerCase();
+  return tagPeople.value.filter(p => searchNamesOf(p).some(n => n.toLowerCase().includes(q))).slice(0, 6);
+});
+function onTagInput(e: Event, set: (v: string) => void) {
+  const el = e.target as HTMLTextAreaElement;
+  const upto = el.value.slice(0, el.selectionStart ?? el.value.length);
+  const m = upto.match(/(^|\s)@([^\s@]{0,30})$/);
+  if (m) loadTagPeople();
+  tagPicker.value = m ? { el, start: upto.length - m[2].length - 1, query: m[2], pick: 0, set } : null;
+}
+function pickTag(p: AdminPerson) {
+  const m = tagPicker.value;
+  if (!m) return;
+  const caret = m.el.selectionStart ?? m.el.value.length;
+  const value = m.el.value.slice(0, m.start) + '@' + p.name + ' ' + m.el.value.slice(caret);
+  m.set(value);
+  const at = m.start + p.name.length + 2;
+  tagPicker.value = null;
+  void nextTick(() => { m.el.focus(); m.el.setSelectionRange(at, at); });
+}
+function onTagKey(e: KeyboardEvent) {
+  e.stopPropagation();
+  const m = tagPicker.value;
+  if (!m || !tagMatches.value.length) return;
+  const n = tagMatches.value.length;
+  if (e.key === 'ArrowDown') { e.preventDefault(); tagPicker.value = { ...m, pick: (m.pick + 1) % n }; }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); tagPicker.value = { ...m, pick: (m.pick + n - 1) % n }; }
+  else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickTag(tagMatches.value[m.pick]); }
+  else if (e.key === 'Escape') { e.preventDefault(); tagPicker.value = null; }
+}
+const taggedIn = (text?: string) => serverTagged(text || '', tagPeople.value);
+// A box that already holds a tag (a draft from before) still shows who it reaches.
+watch(() => [...Object.values(triageNotes.value), ...Object.values(noteDrafts.value)].some(t => hasTag(t)), on => { if (on) loadTagPeople(); });
+
+// A tag typed in the card's comment box (Ames 2026-11-01): that box waits for
+// a decision and tells nobody, so a tag there goes out as a note, now.
+const hasTag = (text?: string) => /(^|\s)@\p{L}/u.test(text || '');
+async function sendCommentTag(row: TriageRow) {
+  noteDrafts.value[row.id] = triageNotes.value[row.id] || '';
+  await saveNote(row);
+  if (!noteDrafts.value[row.id]) triageNotes.value[row.id] = '';
+}
+
+// New reports come in by themselves (Celia, report 391): once a minute, while
+// the triage board is in front, ask for the newest report's id only (a tiny
+// read). Something new reloads the board, unless you are typing or a card is
+// being decided, in which case the next minute tries again.
+let newestReport: string | null = null;
+async function checkNewReports() {
+  if (document.visibilityState !== 'visible' || adminSubTab.value !== 'triage' || todoView.value || triageLoading.value || triageActing.value) return;
+  const el = document.activeElement as HTMLElement | null;
+  if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+  try {
+    const { supabase } = await import('../supabase');
+    const { data } = await supabase.from('feedback_triage').select('id').order('created_at', { ascending: false }).limit(1);
+    const id = (data as any[] | null)?.[0]?.id ?? null;
+    if (!id) return;
+    if (newestReport && id !== newestReport) { newestReport = id; await loadTriage(); void loadTriageNumbers(); }
+    else newestReport = id;
+  } catch { /* the next minute tries again */ }
+}
+const reportWatch = window.setInterval(() => { void checkNewReports(); }, 60 * 1000);
+onUnmounted(() => window.clearInterval(reportWatch));
 async function loadTriage() {
   triageLoading.value = true;
   triageError.value = '';
@@ -764,6 +1194,7 @@ async function loadTriage() {
     }
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
+    sweepMovedReportNotes();
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
     applyTriageFocus();
@@ -870,6 +1301,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     }
     delete triageNotes.value[row.id];
     if (status === 'done') cheerFor(row);
+    if (status === 'done' || (status === 'approved' && !discard)) void readReportNotes(row);
     await loadTriage();
     if (noteLost) {
       triageError.value = `Saved as ${status}, but your comment was not stored: the approver_note column does not exist yet. Run supabase-triage-approver-note.sql in the Supabase SQL editor. Your comment was: "${note}"`;
@@ -941,29 +1373,12 @@ function reporterComposer(row: TriageRow): Composer {
  *  The quote is the whole submission, as the card shows it (the report's full
  *  message once loaded, else the stored excerpt), never cut short: Ames was
  *  pasting the rest in by hand every time (2026-10-12). */
+// Just the report's title (Ames 2026-10-25: "make the default text ...
+// 'you reported: <TITLE>' and that is all"); the rest is hers to write.
 function draftReporterUpdate(row: TriageRow): string {
-  const t = fullTextOf(row).trim();
-  const q = t ? `You reported: "${t}".` : 'Thanks for your report.';
-  if (row.status === 'done' || row.impl_state === 'deployed') {
-    // Same wording as the bridge's fixedNote: thanks, their words, what was built.
-    const fix = String(row.result_note || row.impl_summary || '')
-      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
-      .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
-      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '')
-      // "QUESTION: ..." is Claude asking the approver, not a fix: never sent on.
-      .replace(/^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:[\s\S]*$/i, '');
-    const thanks = t ? `Thank you for submitting: "${t}".` : 'Thank you for your report.';
-    return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
-  }
-  if (row.status === 'dismissed') {
-    return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
-  }
-  if (row.status === 'approved') {
-    return isBuildable(row)
-      ? `${q} Thanks! The team accepted it and a fix is in the works. We'll let you know when it's live.`
-      : `${q} Thanks! The team reviewed it and is following up.`;
-  }
-  return `${q} Thanks! The team has it and is looking into it now.`;
+  const title = String(reporterOf(row)?.title || '').replace(/\*\*/g, '').trim()
+    || fullTextOf(row).split('\n')[0].replace(/\*\*/g, '').trim().slice(0, 140);
+  return title ? `You reported: "${title}"\n\n` : '';
 }
 
 function closeReporterDraft(row: TriageRow) {
@@ -1136,6 +1551,63 @@ function relTime(iso: string): string {
  *  with that same text as its note, so there is no second question to answer
  *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
  *  not be sent, the report is left where it is. */
+// ── Duplicates ──
+const DUP_MARK = /^Same as #(\d+) ([0-9a-f-]{36})/;
+/** The report this one is a duplicate of, if it is one. */
+const dupOf = (r: TriageRow): string | null => String(r.approver_note || '').match(DUP_MARK)?.[2] || null;
+/** The duplicates closed into this report. */
+const dupsOf = (r: TriageRow) => triageRows.value.filter(x => dupOf(x) === r.id);
+const dupNotice = ref('');
+watch(dupNotice, v => { if (v) setTimeout(() => { if (dupNotice.value === v) dupNotice.value = ''; }, 6000); });
+const dupDraft = ref<Record<string, string>>({});
+async function markDuplicate(row: TriageRow) {
+  const n = Number(String(dupDraft.value[row.id] || '').replace(/[^0-9]/g, ''));
+  const mainId = Object.entries(triageNumbers.value).find(([, num]) => num === n)?.[0];
+  if (!n || !mainId) { triageError.value = `There is no report #${dupDraft.value[row.id] || ''} on the board.`; return; }
+  if (mainId === row.id) { triageError.value = 'A report cannot be the same as itself.'; return; }
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    const by = backend.userName || backend.userEmail || 'admin';
+    await secureWrite('triage.update', { id: row.id, fields: {
+      status: 'dismissed',
+      approver_note: `Same as #${n} ${mainId}: grouped by ${by}. Its reporter hears when #${n} is updated.`,
+      reviewed_by: by, reviewed_at: new Date().toISOString(),
+      ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
+    } });
+    delete dupDraft.value[row.id];
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+/** Tell the reporters of this card's duplicates too: a plain note, no reply box. */
+async function notifyDuplicates(row: TriageRow, text: string, art: Record<string, string>) {
+  const dups = dupsOf(row).filter(d => d.source === 'site_issue' && d.source_id);
+  if (!dups.length) return 0;
+  const { supabase } = await import('../supabase');
+  const { data } = await supabase.from('site_issues').select('id,user_id').in('id', dups.map(d => d.source_id));
+  const main = reporterOf(row)?.title || '';
+  let told = 0;
+  const seen = new Set<string>();
+  for (const issue of data || []) {
+    if (!issue.user_id || seen.has(issue.user_id)) continue;
+    seen.add(issue.user_id);
+    try {
+      await secureWrite('notification.insert', { row: {
+        title: '💬 An update on your report',
+        body: `${text}${main ? `\n\n(Others reported this too, as "${main}".)` : ''}`,
+        ...art, target_type: 'user', target_id: issue.user_id, send_at: new Date().toISOString(),
+      } });
+      told++;
+    } catch { /* one missed note does not stop the rest */ }
+  }
+  return told;
+}
+
 async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false, andLater = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
@@ -1175,6 +1647,9 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       target_id: userId,
       send_at: new Date().toISOString(),
     } });
+    // Everyone who reported the same thing hears too (never asked to reply).
+    const toldDups = await notifyDuplicates(row, text, art).catch(() => 0);
+    if (toldDups) dupNotice.value = `Also sent to ${toldDups} other ${toldDups === 1 ? 'person' : 'people'} who reported the same thing.`;
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
@@ -1434,21 +1909,29 @@ function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
  */
 function notifCategory(n: any): string {
   const t = n.title || '';
-  if (t.includes('Weekly Champions')) return 'weeklyChampions';
-  if (t.includes('Week in Science')) return 'weeklyRecap';
-  if (t.includes('Response to your help request')) return 'helpResponse';
-  if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
-  if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
+  if (t.includes('Weekly Champions') || t.includes('Monthly Champions') || t.includes('Year Champions')) return 'weeklyChampions';
+  if (t.includes('Week in Science') || t.includes('Month in Science') || t.includes('Year in Science')) return 'weeklyRecap';
+  if (t.includes('Response to your help request') || t.includes('Was your help request answered')) return 'helpResponse';
+  // Sent one by one from the triage board, or by the robot to admins (Ames
+  // 2026-11-02: Announcements is for what we composed, not these).
+  if (/update on your report|replied to your feedback|Reply to your question from/i.test(t)) return 'reportReply';
+  if (/^(🗂|🎉 Fixed|🔑 |🔬 |🔓 |📋 |Proofreading Test:)/u.test(t) || /tagged you on a report$/.test(t)) return 'adminAlert';
+  if (/^Today in Pyr/.test(t)) return 'daily';
+  if (t === '✨ New Achievement!' || t === 'New Achievement!') return 'customBadge';         // admin-awarded special badge
+  if (isAwardTitle(t)) return 'personalBadge';     // tutorial / building / exploration
   return 'announcement';
 }
 
 const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'announcement',    label: 'Announcements' },
-  { key: 'weeklyChampions', label: 'Weekly champions' },
+  { key: 'weeklyChampions', label: 'Weekly, monthly and yearly champions' },
   { key: 'customBadge',     label: 'Custom badges' },
   { key: 'personalBadge',   label: 'Personal badges' },
-  { key: 'weeklyRecap',     label: 'Weekly recaps' },
+  { key: 'weeklyRecap',     label: 'Weekly, monthly and yearly recaps' },
   { key: 'helpResponse',    label: 'Help replies' },
+  { key: 'reportReply',     label: 'Replies to reports' },
+  { key: 'adminAlert',      label: 'Alerts to admins' },
+  { key: 'daily',           label: 'Today in Pyr' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
 // Default ON: the admin's own broadcasts + the global weekly champions post.
@@ -1474,7 +1957,11 @@ function categoryCount(key: string): number {
   return backend.adminNotifications.filter((n: any) => notifCategory(n) === key).length;
 }
 
-const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n)));
+/** The automatic "Was your help request answered?" a day after a reply
+ *  (functions/help-reminder.js): Ames trusts them and does not need them in
+ *  Scheduled (2026-10-24). They still send, and show once sent. */
+const isHelpReminder = (n: any) => n?.target_type === 'user' && String(n?.body ?? '').includes('#nge-help-solved=');
+const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n) && !isHelpReminder(n)));
 const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'   && isCategoryVisible(n)));
 const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'  && isCategoryVisible(n)));
 
@@ -1591,8 +2078,14 @@ const hasDraft = computed(() =>
 watch([notifTitle, notifBody, notifTargetType, notifTargetId,
        notifPostToChat, notifSendAt, notifExpiresAt], saveDraft);
 
+/** A title is always needed; words only when there is no picture. A title
+ *  and a picture is a note of its own, shown big (Ames 2026-10-24: the
+ *  button stayed grey with no body text). */
+const notifHasPicture = computed(() => !!notifImageFile.value || (editingId.value != null && !!editingImageUrl.value));
+const notifReady = computed(() => !!notifTitle.value.trim() && (!!notifBody.value.trim() || notifHasPicture.value));
+
 async function sendNotification() {
-  if (!notifTitle.value.trim() || !notifBody.value.trim()) return;
+  if (!notifReady.value) return;
   const editing = editingId.value != null;
   notifSteps.value = [
     ...(notifImageFile.value ? [{ key: 'image' as NotifStep, label: 'Uploading the image' }] : []),
@@ -1636,6 +2129,9 @@ async function sendNotification() {
         ...(thumbnailUrl ? { thumbnail_url: thumbnailUrl } : {}),
       });
       notifConfirm.value = `Updated “${notifTitle.value.trim()}”.`;
+      // Post to chat turned on for one that has already gone out: post it now,
+      // not on the next round (Ames 2026-10-27: it did not seem to send).
+      if (notifPostToChat.value && notifTargetType.value === 'all') await backend.postDueChatAnnouncements();
       cancelEdit();
       notifSendStage.value = 'list';
       await backend.loadAdminNotifications();
@@ -1919,8 +2415,8 @@ async function awardToUser(uid: string, displayName: string) {
   if (badge) {
     try {
       await backend.createNotification({
-        title: '✨ New Achievement!',
-        body: `You earned the "${badge.name}" award!${badge.description ? ' — ' + badge.description : ''}`,
+        title: 'New Achievement!',   // no emoji in Achievement notes (Ames 2026-10-27)
+        body: `You earned the "${badge.name}" Achievement!${badge.description ? ' ' + badge.description : ''}`,
         image_url: badge.image_url || '',
         thumbnail_url: badge.thumbnail_url || '',
         target_type: 'user',
@@ -1942,7 +2438,28 @@ async function awardToGroup() {
 
 function selectBadgeForAward(badgeId: number) {
   awardBadgeId.value = awardBadgeId.value === badgeId ? null : badgeId;
+  // The award box sits above the grid: bring it into view.
+  if (awardBadgeId.value) void nextTick(() => awardSectionEl.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 }
+
+// The award grid a page at a time, with a name search (Ames 2026-10-27: "we
+// don't need to see ALL the badges ever here, you can page it").
+const BADGE_PAGE = 15;
+const badgePage = ref(0);
+const badgeFind = ref('');
+const awardSectionEl = ref<HTMLElement | null>(null);
+const filteredBadges = computed(() => {
+  const q = badgeFind.value.trim().toLowerCase();
+  return q ? backend.specialBadges.filter(b => String(b.name || '').toLowerCase().includes(q)) : backend.specialBadges;
+});
+const badgePages = computed(() => Math.max(1, Math.ceil(filteredBadges.value.length / BADGE_PAGE)));
+const pagedBadges = computed(() => filteredBadges.value.slice(badgePage.value * BADGE_PAGE, (badgePage.value + 1) * BADGE_PAGE));
+watch(badgeFind, () => { badgePage.value = 0; });
+watch(badgePages, n => { if (badgePage.value > n - 1) badgePage.value = n - 1; });
+const awardBadge = computed(() => backend.specialBadges.find(b => b.id === awardBadgeId.value) ?? null);
+/** Badges whose picture failed to load show a plain medal instead. */
+const brokenBadgeImg = ref(new Set<number>());
+function onBadgeImgError(id: number) { brokenBadgeImg.value = new Set(brokenBadgeImg.value).add(id); }
 
 onMounted(() => {
   backend.loadGroups();
@@ -2246,10 +2763,20 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'access' }" @click="adminSubTab = 'access'" title="Players' ten examples for retina access">Access requests</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tests' }" @click="adminSubTab = 'tests'" title="Every Proofreading Test try: the score, what was missed, and the player's cell">Test tries</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'hunts' }" @click="adminSubTab = 'hunts'" title="Timed merger hunts, with gold, silver and bronze Achievements">Hunts</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'interneurons' }" @click="adminSubTab = 'interneurons'" title="Super Quests (giant MEC interneurons), and the active time players spend on each claim">Super Quests</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tutorialEdits' }" @click="adminSubTab = 'tutorialEdits'" title="Tutorial boxes admins reworded, and suggestions waiting for approval">Tutorial edits</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tutorialTimes' }" @click="adminSubTab = 'tutorialTimes'" title="How long players spend on each tutorial box">Tutorial times</button>
     </div>
+
+    <!-- ── Tutorial edits (Ames 2026-10-25): the pencil on a tutorial box ── -->
+    <TutorialEditsTab v-if="adminSubTab === 'tutorialEdits'" />
+    <TutorialTimesTab v-if="adminSubTab === 'tutorialTimes'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
+    <HuntsAdminTab v-if="adminSubTab === 'hunts'" />
+    <InterneuronQuestsAdminTab v-if="adminSubTab === 'interneurons'" />
 
     <!-- ── Proofreading Test tries (Ames 2026-10-21): every try, and the player's cell ── -->
     <TestTriesTab v-if="adminSubTab === 'tests'" />
@@ -2276,6 +2803,38 @@ function practiceWhen(iso: string | null) {
 
     <!-- ── Notifications ── -->
     <section v-if="adminSubTab === 'pilot'" class="nge-pilot-admin">
+      <h2>Beta requests</h2>
+      <p>People who asked to join, in the game or on connectome.quest. Let them in adds their email to Pilot testers below; then email them so they know. Add to list keeps them on the list for later, and Remove request takes them off this page.</p>
+      <div class="nge-beta-views" role="tablist" aria-label="Beta requests">
+        <button v-for="v in BETA_VIEWS" :key="v.key" role="tab" :aria-selected="betaView === v.key"
+                :class="{ 'nge-beta-view--on': betaView === v.key }" @click="betaView = v.key">{{ v.label }} <span>{{ betaCount[v.key] }}</span></button>
+      </div>
+      <p v-if="betaError" role="alert">{{ betaError }}</p>
+      <p v-if="!betaShown.length" class="nge-beta-req-empty">{{ betaView === 'waiting' ? (betaRequests.length ? 'Nobody is waiting.' : 'No requests yet.') : 'Nobody here.' }}</p>
+      <ul v-else class="nge-beta-req">
+        <li v-for="r in betaShown" :key="r.id">
+          <span>
+            <b class="nge-pilot-name">{{ r.name || 'No name' }}</b> · {{ r.email }}
+            <i class="nge-beta-req-meta">{{ betaWhen(r.at) }}{{ r.site ? ', from connectome.quest' : ', in the game' }}</i>
+            <span v-if="r.ewName || r.ewRank" class="nge-beta-req-ew">EyeWire: {{ [r.ewName, r.ewRank].filter(Boolean).join(', ') }}</span>
+            <span v-if="r.note" class="nge-beta-req-note">{{ r.note }}</span>
+          </span>
+          <span class="nge-beta-req-acts">
+            <template v-if="betaStateOf(r) === 'in'">
+              <em class="nge-beta-req-in">In</em>
+              <span v-if="welcomeEmailed[r.email]" class="nge-beta-req-mailed">{{ welcomeEmailed[r.email] }}</span>
+              <a class="nge-beta-req-mail" :href="betaMailto(r)" title="Write to them yourself, from your own email">Email them</a>
+            </template>
+            <template v-else>
+              <button :disabled="betaBusy === r.email" @click="letBetaIn(r)">{{ betaBusy === r.email ? 'Saving…' : 'Let them in' }}</button>
+              <button v-if="betaStateOf(r) !== 'listed'" :disabled="betaBusy === r.email" @click="markBeta(r, 'listed')">Add to list</button>
+              <button v-if="betaStateOf(r) !== 'removed'" :disabled="betaBusy === r.email" @click="markBeta(r, 'removed')">Remove request</button>
+              <button v-if="betaStateOf(r) !== 'waiting'" :disabled="betaBusy === r.email" @click="markBeta(r, 'waiting')">Back to waiting</button>
+            </template>
+          </span>
+        </li>
+      </ul>
+
       <h2>Pilot testers</h2>
       <p>Invited testers can claim cells, use practice cells, sync Sheets, and contribute to the site. Existing administrators already have access.</p>
       <form @submit.prevent="invitePilot">
@@ -2289,14 +2848,30 @@ function practiceWhen(iso: string | null) {
       <div v-else class="nge-pilot-find">
         <input v-model="pilotSearch" type="search" autocomplete="off" placeholder="Search by name or email" aria-label="Search testers by name or email"
                @keydown.stop @keyup.stop @keypress.stop />
-        <span>{{ pilotSearch.trim() ? `${pilotShown.length} of ${pilotRows.length}` : `${pilotRows.length} testers` }}</span>
+        <span>{{ pilotSearch.trim() || pilotWho !== 'all' ? `${pilotShown.length} of ${pilotRows.length}` : `${pilotRows.length} testers` }}</span>
       </div>
+      <div v-if="pilotRows.length" class="nge-pilot-who" role="tablist">
+        <button v-for="w in PILOT_WHO.filter(x => x !== 'web' || pilotSheet)" :key="w" class="nge-pilot-who-btn" :class="{ 'is-on': pilotWho === w }"
+                role="tab" :aria-selected="pilotWho === w" @click="pilotWho = w">
+          {{ w === 'all' ? `All ${pilotRows.length}` : w === 'joined' ? `Joined ${pilotJoinedCount}` : w === 'web' ? `From the web ${pilotWebCount}` : `Invited, not joined ${pilotRows.length - pilotJoinedCount}` }}
+        </button>
+      </div>
+      <p v-if="pilotSheetError" class="nge-pilot-sheet-err" role="status">
+        Not checked against the Pyr Users sheet: {{ pilotSheetError }} Share the sheet with eyewire-ii-spreadsheet@eyewire-ii.iam.gserviceaccount.com (Viewer) so Pyr can read it.
+      </p>
       <p v-if="pilotRows.length && !pilotShown.length">Nobody matches "{{ pilotSearch.trim() }}".</p>
       <ul><li v-for="member in pilotShown" :key="member.email">
         <span>
-          <b v-if="pilotNames[member.email.toLowerCase()]" class="nge-pilot-name">{{ pilotNames[member.email.toLowerCase()] }}</b>
+          <button v-if="pilotJoined(member)" type="button" class="nge-pilot-name nge-pilot-name--link" title="Open their profile" @click="openPilotProfile(member)">{{ pilotNames[member.email.toLowerCase()] || 'Their profile' }}</button>
           <i v-else class="nge-pilot-noname" title="No Pyr account was found under this email. They may not have signed in yet, or they sign in with a different address.">no Pyr name yet</i>
-          · {{ member.email }} · {{ member.enabled ? 'Invited' : 'Access paused' }}
+          · {{ member.email }} ·
+          <span v-if="!member.enabled">Access paused</span>
+          <span v-else-if="pilotJoined(member)" class="nge-pilot-joined">Joined</span>
+          <span v-else class="nge-pilot-invited" title="Invited, but nobody has signed in to Pyr with this email yet.">Invited, not joined yet</span>
+          <template v-if="pilotSheet">
+            · <span v-if="pilotFromWeb(member)" class="nge-pilot-web" title="Not on the Pyr Users sheet: they came from the web, by a Beta request.">From the web</span>
+            <span v-else class="nge-pilot-sheet" :title="`On the Pyr Users sheet, tab ${pilotSheet[member.email.toLowerCase()]}`">On the sheet</span>
+          </template>
         </span>
         <button @click="setPilot(member.email,!member.enabled)">{{ member.enabled ? 'Pause access' : 'Restore access' }}</button>
       </li></ul>
@@ -2320,7 +2895,7 @@ function practiceWhen(iso: string | null) {
           <button type="button" title="Link" @click="fmtLink()">Link</button>
           <span class="nge-admin-fmthint">Paste formatted text and it keeps its bold, headings, lists and links.</span>
         </div>
-        <textarea ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste($event)"></textarea>
+        <textarea v-autogrow ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste($event)"></textarea>
         <div v-if="notifBody.trim()" class="nge-admin-fmtpreview">
           <div class="nge-admin-fmtpreview-label">Preview</div>
           <div class="nge-admin-fmtpreview-body" v-html="notifPreview"></div>
@@ -2368,7 +2943,8 @@ function practiceWhen(iso: string | null) {
         </p>
         <p v-else class="nge-admin-hint">Leave "Send at" empty to send immediately</p>
         <div class="nge-admin-row">
-          <label class="nge-admin-check"><input type="checkbox" v-model="notifPostToChat" /> Also post to chat</label>
+          <label class="nge-admin-check" :title="notifTargetType === 'all' ? '' : 'Only notifications sent to everyone can be posted to chat'"><input type="checkbox" v-model="notifPostToChat" :disabled="notifTargetType !== 'all'" /> Also post to chat</label>
+          <span v-if="notifTargetType !== 'all'" class="nge-admin-note-inline">Chat posts are for notifications sent to everyone.</span>
           <span v-if="notifPostToChat && isScheduledForLater" class="nge-admin-note-inline">
             Chat post happens when it sends, not now.
           </span>
@@ -2391,7 +2967,7 @@ function practiceWhen(iso: string | null) {
           <button type="button" class="nge-admin-action-btn" @click="notifImageFile = null">Remove</button>
         </div>
         <div class="nge-admin-row">
-          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
+          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifReady" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>
             <span v-else-if="notifSending">{{ notifSteps.find(x => x.key === notifSendStage)?.label || 'Sending' }}…</span>
             <span v-else-if="editingId != null">Save Changes</span>
@@ -2541,7 +3117,7 @@ function practiceWhen(iso: string | null) {
         <input v-model="badgeName" class="nge-admin-input" placeholder="Badge name" />
         <input v-model="badgeSlug" class="nge-admin-input" placeholder="Code name (optional; made from the name when empty)"
                title="How the game finds this one when it gives it out by itself. The Merger Sandbox award is: merger-sandbox" />
-        <textarea v-model="badgeDesc" class="nge-admin-textarea" rows="2" placeholder="Description..."></textarea>
+        <textarea v-autogrow v-model="badgeDesc" class="nge-admin-textarea" rows="2" placeholder="Description..."></textarea>
         <label class="nge-admin-file-label">
           <input type="file" accept="image/*" @change="onBadgeImageChange" class="nge-admin-file-input" />
           {{ badgeImageFile ? badgeImageFile.name : 'Choose badge image...' }}
@@ -2556,18 +3132,19 @@ function practiceWhen(iso: string | null) {
 
       <div class="nge-admin-block" v-if="backend.specialBadges.length > 0">
         <label class="nge-admin-label">Award Badge <span class="nge-admin-hint" style="font-weight:normal; margin-left:6px">Click a badge to select it</span></label>
-        <div class="nge-admin-badge-grid">
-          <div v-for="b in backend.specialBadges" :key="b.id"
-            class="nge-admin-badge-card" :class="{ 'nge-admin-badge-card--selected': awardBadgeId === b.id }"
-            @click="selectBadgeForAward(b.id)" :title="b.description || b.name">
-            <img v-if="b.thumbnail_url || b.image_url" :src="b.thumbnail_url || b.image_url" class="nge-admin-badge-img" />
-            <div class="nge-admin-badge-name">{{ b.name }}</div>
-          </div>
-        </div>
 
         <div v-if="awardSuccess" class="nge-admin-success">{{ awardSuccess }}</div>
 
-        <div v-if="awardBadgeId" class="nge-admin-award-section">
+        <!-- The chosen badge and how to award it, above the grid (Ames
+             2026-10-27: "if I select one the award input should be added at
+             the top"). -->
+        <div v-if="awardBadgeId" ref="awardSectionEl" class="nge-admin-award-section">
+          <div v-if="awardBadge" class="nge-admin-award-chosen">
+            <img v-if="(awardBadge.thumbnail_url || awardBadge.image_url) && !brokenBadgeImg.has(awardBadge.id)" :src="awardBadge.thumbnail_url || awardBadge.image_url" class="nge-admin-badge-img nge-admin-badge-img--sm" @error="onBadgeImgError(awardBadge.id)" />
+            <span v-else class="nge-admin-badge-fallback nge-admin-badge-fallback--sm">🏅</span>
+            <span class="nge-admin-award-chosen-name">{{ awardBadge.name }}</span>
+            <button class="nge-admin-action-btn" @click="awardBadgeId = null">Change</button>
+          </div>
           <div class="nge-admin-row">
             <label class="nge-admin-file-label">
               <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="nge-admin-file-input" :disabled="badgeImageBusy" @change="replaceBadgeImage" />
@@ -2593,6 +3170,25 @@ function practiceWhen(iso: string | null) {
             </select>
             <button class="nge-admin-action-btn" :disabled="!awardGroupId" @click="awardToGroup">Award to Group</button>
           </div>
+        </div>
+
+        <div class="nge-admin-row nge-admin-badge-tools">
+          <input v-model="badgeFind" class="nge-admin-input" placeholder="Find a badge by name..." />
+          <span class="nge-admin-hint">{{ filteredBadges.length }} {{ filteredBadges.length === 1 ? 'badge' : 'badges' }}</span>
+        </div>
+        <div class="nge-admin-badge-grid">
+          <div v-for="b in pagedBadges" :key="b.id"
+            class="nge-admin-badge-card" :class="{ 'nge-admin-badge-card--selected': awardBadgeId === b.id }"
+            @click="selectBadgeForAward(b.id)" :title="b.description || b.name">
+            <img v-if="(b.thumbnail_url || b.image_url) && !brokenBadgeImg.has(b.id)" :src="b.thumbnail_url || b.image_url" class="nge-admin-badge-img" loading="lazy" @error="onBadgeImgError(b.id)" />
+            <span v-else class="nge-admin-badge-fallback">🏅</span>
+            <div class="nge-admin-badge-name">{{ b.name }}</div>
+          </div>
+        </div>
+        <div v-if="badgePages > 1" class="nge-admin-row nge-admin-badge-pager">
+          <button class="nge-admin-action-btn" :disabled="badgePage === 0" @click="badgePage--">‹ Back</button>
+          <span class="nge-admin-hint">Page {{ badgePage + 1 }} of {{ badgePages }}</span>
+          <button class="nge-admin-action-btn" :disabled="badgePage >= badgePages - 1" @click="badgePage++">Next ›</button>
         </div>
       </div>
     </div>
@@ -2670,6 +3266,29 @@ function practiceWhen(iso: string | null) {
         <TodoBoard v-if="todoView" :light="triageBoard && triageLight" :focus-id="todoFocus" :report-numbers="triageNumbers"
                    :standalone="standalone" @back="todoView = false; loadTriage()" />
         <template v-else>
+        <div v-if="arcaneOpen" class="nge-arcane-shelf" @click.self="arcaneOpen = false">
+          <div class="nge-arcane-shelf-card">
+            <button class="nge-arcane-close" aria-label="Close" @click="arcaneOpen = false">×</button>
+            <div class="nge-arcane-shelf-head">Pyr Patchtacular</div>
+            <div class="nge-arcane-shelf-sub">{{ arcane.reports }} reports closed or dismissed, {{ arcane.cards }} To do {{ arcane.cards === 1 ? 'card' : 'cards' }} finished, at 5 each: <b>{{ arcane.total }}</b></div>
+            <div class="nge-arcane-grid">
+              <div v-for="t in arcane.tiers" :key="t.at" class="nge-arcane-tier" :class="{ 'nge-arcane-tier--locked': t.at > arcane.total }">
+                <img v-if="t.at <= arcane.total" :src="t.art" alt="" />
+                <div v-else class="nge-arcane-mystery" aria-hidden="true">?</div>
+                <div class="nge-arcane-tier-name">{{ t.at <= arcane.total ? t.name : 'A secret' }}</div>
+                <div class="nge-arcane-tier-at">{{ t.at <= arcane.total ? t.at.toLocaleString() : `at ${t.at.toLocaleString()}, ${arcane.toGo} to go` }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="arcaneUnlock" class="nge-arcane-unlock" role="status" @click="arcaneUnlock = null">
+          <div class="nge-arcane-unlock-card">
+            <img :src="arcaneUnlock.art" alt="" />
+            <div class="nge-arcane-unlock-kicker">New Achievement</div>
+            <div class="nge-arcane-unlock-name">{{ arcaneUnlock.name }}</div>
+            <div class="nge-arcane-unlock-at">{{ arcaneUnlock.at.toLocaleString() }} Pyr fixes</div>
+          </div>
+        </div>
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
           <!-- The page on its own has no game around it: a way back, in a new
@@ -2680,6 +3299,17 @@ function practiceWhen(iso: string | null) {
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <button class="nge-admin-action-btn nge-triage-todo-open" @click="openTodoBoard"
                   title="The admins' own planning board: To do, Doing, Done"><span v-html="TODO_ICON"></span>To do board</button>
+          <!-- Pyr Patchtacular: my own Achievements. -->
+          <div v-if="arcane.total > 0" class="nge-arcane" role="button" tabindex="0" @click="arcaneOpen = !arcaneOpen" @keydown.enter="arcaneOpen = !arcaneOpen"
+               :title="`Pyr Patchtacular: ${arcane.reports} reports closed or dismissed, ${arcane.cards} To do cards finished (5 each)`">
+            <img v-if="arcane.current" :src="arcane.current.art" alt="" class="nge-arcane-art" />
+            <span v-else class="nge-arcane-art nge-arcane-art--none" aria-hidden="true">✦</span>
+            <div class="nge-arcane-text">
+              <div class="nge-arcane-name">{{ arcane.current ? arcane.current.name : 'Pyr Patchtacular' }}</div>
+              <div class="nge-arcane-bar"><span :style="{ width: arcane.fill + '%' }"></span></div>
+              <div class="nge-arcane-go"><b>{{ arcane.total }}</b> fixes · {{ arcane.toGo }} to the next</div>
+            </div>
+          </div>
           <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
             <!-- Level: one for every 25 reports closed. The ring fills toward the next. -->
             <div class="nge-hud-level" :class="{ 'nge-hud-level--up': triageCheer?.levelUp }"
@@ -2774,6 +3404,15 @@ function practiceWhen(iso: string | null) {
           reporter. Approving a fix sends it to Claude, who posts a preview in
           the Slack thread for you to test before anything goes live.
         </div>
+        <div v-if="zeroParty" :key="zeroParty" class="nge-zero-party" role="status" @click="zeroParty = 0">
+            <i v-for="(c, i) in ZERO_BITS" :key="i" class="nge-zero-bit" :class="{ 'nge-zero-bit--wide': c.wide }"
+               :style="{ left: c.left + '%', background: c.color, animationDelay: c.delay + 's', animationDuration: c.dur + 's', '--r': c.rot + 'deg' }"></i>
+            <div class="nge-zero-card">
+              <img :src="nurroConfetti" alt="" />
+              <div class="nge-zero-title">Triage zero!</div>
+              <div class="nge-zero-sub">Every report handled. Nurro is so proud of you.</div>
+            </div>
+          </div>
         <Transition name="nge-triage-cheer">
           <div v-if="triageCheer" :key="triageCheer.key" class="nge-triage-cheer" :class="`nge-triage-cheer--${triageCheer.kind}`" role="status">
             <span class="nge-triage-cheer-ring" aria-hidden="true"></span>
@@ -2782,6 +3421,7 @@ function practiceWhen(iso: string | null) {
           </div>
         </Transition>
         <div v-if="triageError" class="nge-admin-error">⚠ {{ triageError }}</div>
+        <div v-if="dupNotice" class="nge-admin-ok">✓ {{ dupNotice }}</div>
         <div v-if="triageLoading && !triageRows.length" class="nge-admin-hint">Loading…</div>
         <div v-else-if="!triageRows.length" class="nge-admin-hint">
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
@@ -2810,6 +3450,9 @@ function practiceWhen(iso: string | null) {
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
+            <span v-if="dupOf(row)" class="nge-triage-dup-badge" :title="'Grouped into report #' + (triageNumbers[dupOf(row) || ''] || '')">Same as #{{ triageNumbers[dupOf(row) || ''] || '?' }}</span>
+            <span v-if="dupsOf(row).length" class="nge-triage-dup-badge nge-triage-dup-badge--main"
+                  :title="'Also reported by ' + dupsOf(row).map(d => (reporterOf(d)?.name || 'someone') + ' (#' + (triageNumbers[d.id] || '?') + ')').join(', ')">+{{ dupsOf(row).length }} same</span>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
             <span v-if="row.admin_notes?.length" class="nge-triage-impl nge-triage-notes-chip" :title="`${row.admin_notes.length} note${row.admin_notes.length === 1 ? '' : 's'} from admins`">📝 {{ row.admin_notes.length }}</span>
             <span v-if="isAwaitingReply(row)" class="nge-triage-rec nge-triage-rec--waiting"
@@ -2848,7 +3491,7 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
           <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale"><template v-for="(pt, pi) in linkParts(row.rationale)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
-          <textarea
+          <textarea v-autogrow
             v-if="row.recommendation === 'message' && row.status === 'proposed'"
             v-model="triageEdits[row.id]"
             class="nge-triage-message"
@@ -2877,14 +3520,23 @@ function practiceWhen(iso: string | null) {
           <div class="nge-triage-notes" @click.stop>
             <div v-for="(n, i) in row.admin_notes || []" :key="i" class="nge-triage-note nge-triage-admin-note">
               <span class="nge-triage-spec-label">Note</span>
-              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
+              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
             </div>
             <template v-if="noteOpen[row.id]">
-              <textarea v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
-                        placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her."
-                        @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <textarea v-autogrow v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
+                        placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her. Paste a screenshot to add it."
+                        @paste="onNotePaste($event, row)"
+                        @input="onTagInput($event, v => noteDrafts[row.id] = v)" @keydown="onTagKey" @blur="tagPicker = null"
+                        @keyup.stop @keypress.stop></textarea>
+              <div v-if="taggedIn(noteDrafts[row.id]).length" class="nge-triage-tagging">Tagging <span v-for="p in taggedIn(noteDrafts[row.id])" :key="p.id" class="nge-triage-tag-chip">@{{ p.name }}</span></div>
+              <div v-if="noteImages[row.id]" class="nge-triage-reply-attach">
+                <img v-if="noteImages[row.id].preview" :src="noteImages[row.id].preview" alt="The image going with this note" />
+                <span class="nge-triage-reply-attach-state">{{ noteImages[row.id].error || (noteImages[row.id].uploading ? 'Uploading…' : 'Goes with this note.') }}</span>
+                <button class="nge-admin-action-btn" type="button" @click="dropNoteImage(row)">Remove</button>
+              </div>
               <div class="nge-triage-actions">
-                <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id || !noteDrafts[row.id]?.trim()" @click="saveNote(row)">{{ noteSaving === row.id ? 'Saving…' : 'Save note' }}</button>
+                <label class="nge-admin-action-btn nge-triage-note-pick">🖼 Add image<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="onNoteFile($event, row)" /></label>
+                <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id || noteImages[row.id]?.uploading || !(noteDrafts[row.id]?.trim() || noteImages[row.id]?.url)" @click="saveNote(row)">{{ noteSaving === row.id ? 'Saving…' : 'Save note' }}</button>
                 <button class="nge-admin-action-btn" :disabled="noteSaving === row.id" @click="noteOpen[row.id] = false">Cancel</button>
               </div>
             </template>
@@ -2893,20 +3545,25 @@ function practiceWhen(iso: string | null) {
           </div>
           <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
                never sent to the reporter (the message box above is). -->
-          <textarea
+          <textarea v-autogrow
             v-if="row.status === 'proposed'"
             v-model="triageNotes[row.id]"
             class="nge-triage-message nge-triage-comment"
             rows="2"
-            placeholder="Comment (optional), saved with your decision"
-            @keydown.stop @keyup.stop @keypress.stop
+            placeholder="Comment (optional), saved with your decision. Type @Celia or @Marissa to tag them."
+            @input="onTagInput($event, v => triageNotes[row.id] = v)" @keydown="onTagKey" @blur="tagPicker = null"
+            @keyup.stop @keypress.stop
           ></textarea>
+          <div v-if="taggedIn(triageNotes[row.id]).length" class="nge-triage-tagging">Tagging <span v-for="p in taggedIn(triageNotes[row.id])" :key="p.id" class="nge-triage-tag-chip">@{{ p.name }}</span></div>
+          <div v-if="row.status === 'proposed' && hasTag(triageNotes[row.id])" class="nge-triage-actions">
+            <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id" title="Saves this as a note on the card and notifies who you tagged, in Pyr and in the report's Slack thread. Nothing else on the card changes."
+                    @click="sendCommentTag(row)">{{ noteSaving === row.id ? 'Sending…' : '💬 Send tag' }}</button>
+          </div>
           <!-- The decision first (Ames 2026-10-05), then the other tools. -->
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
-            <button v-if="isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id || suggestAsked(row)"
-                    title="Asks Claude to read the code and suggest a fix for this report. One Claude run, 20 to 60 cents."
-                    @click="askForSuggestion(row)">{{ suggestAsked(row) ? 'Suggestion on its way…' : '✨ Suggest a fix' }}</button>
-            <button v-else class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
+            <!-- Suggest a fix is paused (Ames 2026-11-02: "I don't want to be
+                 paying for this"); its workflow, Triage Propose, is switched off. -->
+            <button v-if="!isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
             </button>
             <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">
@@ -2971,6 +3628,16 @@ function practiceWhen(iso: string | null) {
           <!-- Optional note to the person who filed the report. Drafted from
                the card's state; edit, send, or close it and nothing is sent.
                Slack threads get the same thing via "update reporter". -->
+          <!-- A beta access request is granted right here (Ames 2026-10-26:
+               "so admin could grant them access from here?"). -->
+          <div v-if="betaEmailOfCard(row) && triageGroupOf(row) !== 'done'" class="nge-triage-beta">
+            <button class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id || cardLetInBusy === row.id"
+                    :title="'Adds ' + betaEmailOfCard(row) + ' to Pilot testers, then moves this card to Done.'"
+                    @click="letInFromCard(row)">{{ cardLetInBusy === row.id ? 'Adding…' : '🔑 Let them in' }}</button>
+            <span class="nge-triage-beta-email">{{ betaEmailOfCard(row) }}</span>
+            <button v-if="!props.standalone" class="nge-triage-link nge-triage-beta-open" type="button" @click="adminSubTab = 'pilot'">Open Beta requests</button>
+          </div>
+          <p v-if="cardLetInError[row.id]" class="nge-triage-beta-error" role="alert">{{ cardLetInError[row.id] }}</p>
           <div v-if="row.source === 'site_issue'" class="nge-triage-reporter">
             <!-- The thread, oldest first: what was sent, and any reply asked for. -->
             <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
@@ -3013,7 +3680,7 @@ function practiceWhen(iso: string | null) {
                 <button type="button" class="nge-triage-preview-toggle" :aria-pressed="replyPreviewOpen[row.id] ? 'true' : 'false'"
                         title="Show the message as the player will see it" @click="replyPreviewOpen[row.id] = !replyPreviewOpen[row.id]">{{ replyPreviewOpen[row.id] ? 'Hide preview' : 'Preview' }}</button>
               </div>
-              <textarea
+              <textarea v-autogrow
                 :ref="el => { reporterEls[row.id] = el; }"
                 v-model="reporterDrafts[row.id]"
                 class="nge-triage-message nge-triage-comment"
@@ -3083,6 +3750,13 @@ function practiceWhen(iso: string | null) {
       </div>
       </Teleport>
     </div>
+    <Teleport to="body">
+      <ul v-if="tagPicker && tagMatches.length" class="nge-todo-mention nge-todo-mention--light" role="listbox"
+          :style="{ left: tagPicker.el.getBoundingClientRect().left + 'px', top: tagPicker.el.getBoundingClientRect().bottom + 4 + 'px' }">
+        <li v-for="(p, i) in tagMatches" :key="p.id" role="option" :aria-selected="i === tagPicker.pick ? 'true' : 'false'"
+            :class="{ 'nge-todo-mention--pick': i === tagPicker.pick }" @mousedown.prevent="pickTag(p)">@{{ p.name }}</li>
+      </ul>
+    </Teleport>
   </div>
 </template>
 
@@ -3463,7 +4137,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-admin-modal {
   width: 340px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 32px);
   padding: 18px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(8, 10, 20, 0.98), rgba(12, 16, 28, 0.98));
@@ -4170,10 +4844,15 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-rationale { font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.45; }
 .nge-triage-message {
+  flex-shrink: 0;
   background: rgba(0,0,0,0.3); border: 1px solid rgba(100,200,255,0.2);
   border-radius: 6px; color: #dde; font-size: 13.5px; padding: 8px 10px; resize: vertical;
 }
 .nge-triage-comment { border-color: rgba(255,255,255,0.14); font-family: inherit; }
+.nge-triage-beta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0 4px; }
+.nge-triage-beta-email { font-size: 0.9em; overflow-wrap: anywhere; }
+.nge-triage-beta-open { background: none; border: 0; padding: 0; font: inherit; font-size: 0.9em; }
+.nge-triage-beta-error { margin: 4px 0; font-size: 0.9em; color: #e05a5a; }
 .nge-triage-reporter {
   display: flex; flex-direction: column; gap: 6px;
   padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08);
@@ -4205,6 +4884,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-admin-note { border-left: 2px solid rgba(160, 140, 255, 0.6); padding-left: 8px; }
 .nge-triage-note-btn { align-self: flex-start; }
 /* An image going with a reply to the submitter. */
+.nge-triage-note-pic { display: block; margin: 6px 0 2px; }
+.nge-triage-note-pic img { display: block; max-width: min(420px, 100%); max-height: 280px; border-radius: 6px; border: 1px solid rgba(120, 140, 170, 0.45); }
+.nge-triage-note-pick { cursor: pointer; }
 .nge-triage-reply-attach { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .nge-triage-reply-attach img { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(120, 170, 255, 0.35); }
 .nge-triage-reply-attach-state { flex: 1 1 auto; font-size: 12px; opacity: 0.8; }
@@ -4309,6 +4991,22 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   height: 56px;
   object-fit: contain;
 }
+.nge-admin-badge-img--sm { width: 36px; height: 36px; }
+.nge-admin-badge-fallback {
+  display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px; font-size: 30px; opacity: 0.55;
+}
+.nge-admin-badge-fallback--sm { width: 36px; height: 36px; font-size: 20px; }
+.nge-admin-award-chosen {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px;
+  background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.4);
+}
+.nge-admin-award-chosen-name { flex: 1; font-weight: 600; color: #e0ecff; }
+.nge-admin-award-section { margin-bottom: 12px; }
+.nge-admin-badge-tools { margin-bottom: 8px; }
+.nge-admin-badge-tools .nge-admin-input { flex: 1; }
+.nge-admin-badge-pager { justify-content: center; margin-top: 10px; }
 .nge-admin-badge-name {
   font-size: 0.78em;
   color: #aab;
@@ -4418,7 +5116,30 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-find span { color:#b6c2d1; font-size:0.9rem; }
 .nge-pilot-name { font-weight:700; color:#fff; }
 .nge-pilot-noname { font-style:normal; color:#93a1b3; }
+/* Celia D, report 284: joined or only invited, and the name opens the profile. */
+.nge-pilot-who { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 4px; }
+.nge-pilot-who .nge-pilot-who-btn { font:inherit; font-size:0.85rem; padding:3px 10px; border-radius:999px; border:1px solid rgba(255,255,255,0.22); background:rgba(255,255,255,0.05); color:#cfd8e6; cursor:pointer; }
+.nge-pilot-who .nge-pilot-who-btn.is-on { border-color:#9fd3ff; color:#fff; background:rgba(159,211,255,0.16); }
+li .nge-pilot-name--link { font:inherit; font-weight:700; color:#9fd3ff; background:none; border:none; padding:0; margin:0; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.nge-pilot-joined { color:#7CFFB2; }
+.nge-pilot-invited { color:#f5d142; }
+.nge-pilot-web { color:#ffb3e6; }
+.nge-pilot-sheet { color:#93a1b3; }
+.nge-pilot-sheet-err { color:#f5d142; font-size:0.85rem; }
 .nge-pilot-admin button { cursor:pointer; }
+.nge-beta-req li { align-items:flex-start; padding:10px 12px; margin:10px 0; border:1px solid rgba(116,133,154,0.45); border-radius:8px; background:rgba(21,36,52,0.55); }
+.nge-beta-req-meta { display:block; font-style:normal; color:#93a1b3; font-size:0.9rem; }
+.nge-beta-req-note { display:block; margin-top:4px; color:#d6deea; white-space:pre-wrap; overflow-wrap:anywhere; }
+.nge-beta-req-in { font-style:normal; color:#7ee0a0; font-weight:700; align-self:center; }
+.nge-beta-req-mail { color:#7ec8ff; align-self:center; }
+.nge-beta-req-empty { color:#b6c2d1; }
+.nge-beta-req { margin-bottom:28px; }
+.nge-beta-req-ew { display:block; margin-top:4px; color:#b6c2d1; }
+.nge-pilot-admin .nge-beta-req-acts { flex:0 1 auto; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.nge-beta-views { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }
+.nge-pilot-admin .nge-beta-views button { padding:6px 12px; border-radius:999px; background:transparent; color:#b6c2d1; }
+.nge-pilot-admin .nge-beta-views button span { opacity:0.75; margin-left:4px; }
+.nge-pilot-admin .nge-beta-views .nge-beta-view--on { background:#1d3a55; color:#fff; border-color:#7ec8ff; }
 .nge-outbox-line { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.86em; line-height: 1.5;
   background: rgba(74, 150, 224, 0.08); border: 1px solid rgba(74, 150, 224, 0.25); }
 .nge-triage-link { color: #7ec8ff; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; cursor: pointer; }
@@ -4438,4 +5159,64 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-console-copy { position: sticky; float: right; top: 6px; margin: 6px 8px -34px 0; z-index: 1; padding: 4px 10px; border-radius: 6px; cursor: pointer;
   font: 600 12px Inter, system-ui, sans-serif; color: #fff; background: #4f8cff; border: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
 .nge-triage-console-copy:hover { background: #3a74e8; }
+/* Triage zero party. */
+.nge-zero-party { position: fixed; inset: 0; z-index: 10070; pointer-events: auto; overflow: hidden; display: grid; place-items: center; background: rgba(255, 255, 255, 0.35); animation: nge-zero-fade 6s ease-out forwards; cursor: pointer; }
+@keyframes nge-zero-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.nge-zero-bit { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation-name: nge-zero-fall; animation-timing-function: cubic-bezier(.3,.6,.5,1); animation-fill-mode: both; }
+.nge-zero-bit--wide { width: 14px; height: 8px; border-radius: 50%; }
+@keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(calc(110 * var(--nge-vh, 1vh))) rotate(calc(var(--r) * 3)); } }
+.nge-zero-card { text-align: center; padding: 20px 34px 24px; border-radius: 20px; background: #ffffff; border: 2px solid #f5c542;
+  box-shadow: 0 20px 50px rgba(40, 70, 140, 0.22), 0 0 30px rgba(245, 197, 66, 0.3); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes nge-zero-pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.nge-zero-card img { width: 220px; height: 220px; object-fit: contain; animation: nge-zero-bob 8s ease-in-out infinite; }
+.nge-zero-title { font: 800 40px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em;
+  color: #2f6fe0; }
+.nge-zero-sub { margin-top: 6px; color: #3a4a66; font: 600 16px Inter, system-ui, sans-serif; }
+@media (prefers-reduced-motion: reduce) { .nge-zero-bit { display: none; } .nge-zero-card, .nge-zero-card img { animation: none; } }
+/* Duplicates. */
+.nge-triage-dup { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 12.5px; color: #62738c; }
+.nge-triage-dup input { width: 52px; margin-left: 2px; padding: 3px 6px; border-radius: 6px; border: 1px solid #c3d3ec; font: inherit; }
+.nge-triage-dup-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: #fde7f1; color: #b0306f; margin-left: 4px; }
+.nge-triage-dup-badge--main { background: #e6f6f4; color: #11766c; }
+.nge-admin-ok { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #e6f6ee; color: #1d7038; font-size: 13px; }
+.nge-triage-tagging { margin: 4px 0 2px; font-size: 12.5px; color: #4a5b78; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.nge-triage-tag-chip { background: #e3ecff; color: #2450c8; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
+/* Arcane Fixes. */
+.nge-arcane { display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(135deg, rgba(79, 140, 255, 0.14), rgba(167, 139, 250, 0.16)); border: 1px solid rgba(124, 156, 255, 0.4); }
+.nge-arcane:hover { border-color: #7c9cff; box-shadow: 0 0 14px rgba(124, 156, 255, 0.35); }
+.nge-arcane-art { width: 48px; height: 48px; filter: drop-shadow(0 2px 6px rgba(60, 80, 200, 0.45)); }
+.nge-arcane-art--none { display: grid; place-items: center; font-size: 26px; color: #7c9cff; }
+.nge-arcane-text { min-width: 150px; }
+.nge-arcane-name { font: 700 13px Inter, system-ui, sans-serif; color: #3d4fc4; }
+.nge-arcane-bar { height: 5px; border-radius: 3px; background: rgba(124, 156, 255, 0.2); margin: 4px 0 3px; overflow: hidden; }
+.nge-arcane-bar span { display: block; height: 100%; background: linear-gradient(90deg, #4f8cff, #a78bfa, #f5c542); }
+.nge-arcane-go { font-size: 11.5px; color: #5a6787; }
+.nge-arcane-shelf { position: fixed; inset: 0; z-index: 10040; background: rgba(12, 18, 40, 0.55); display: grid; place-items: center; }
+.nge-arcane-shelf-card { position: relative; width: min(860px, 92vw); max-height: 86vh; overflow: auto; padding: 22px 26px; border-radius: 18px;
+  background: #0f1630; color: #e6ecff; border: 1px solid rgba(124, 156, 255, 0.45); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+.nge-arcane-close { position: absolute; top: 10px; right: 14px; background: none; border: none; color: #9db3ff; font-size: 22px; cursor: pointer; }
+.nge-arcane-shelf-head { font: 800 22px Inter, system-ui, sans-serif; letter-spacing: 0.02em; background: linear-gradient(90deg, #7cc4ff, #c4b5fd, #f5d142);
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nge-arcane-shelf-sub { font-size: 13px; color: #aab8e0; margin: 4px 0 16px; }
+.nge-arcane-shelf-sub b { color: #f5d142; }
+.nge-arcane-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+.nge-arcane-tier { text-align: center; }
+.nge-arcane-tier img { width: 110px; height: 110px; filter: drop-shadow(0 4px 12px rgba(80, 110, 255, 0.4)); }
+.nge-arcane-mystery { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center;
+  font: 800 46px Inter, system-ui, sans-serif; color: #7c9cff; background: radial-gradient(circle, #1b2552 0%, #0f1630 70%);
+  border: 3px dashed rgba(124, 156, 255, 0.45); box-shadow: 0 0 22px rgba(124, 156, 255, 0.25) inset; }
+.nge-arcane-tier-name { font: 700 12.5px Inter, system-ui, sans-serif; margin-top: 4px; }
+.nge-arcane-tier--locked .nge-arcane-tier-name { color: #6f7ba3; }
+.nge-arcane-tier-at { font-size: 11.5px; color: #8fa0d0; }
+.nge-arcane-unlock { position: fixed; inset: 0; z-index: 10060; display: grid; place-items: center; background: rgba(12, 18, 40, 0.5); cursor: pointer; }
+.nge-arcane-unlock-card { text-align: center; padding: 26px 40px 30px; border-radius: 22px; background: #0f1630; color: #e6ecff;
+  border: 2px solid #f5c542; box-shadow: 0 0 60px rgba(124, 156, 255, 0.55), 0 0 30px rgba(245, 197, 66, 0.4); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+.nge-arcane-unlock-card img { width: 200px; height: 200px; animation: nge-arcane-spin-in 0.9s ease-out both; filter: drop-shadow(0 0 24px rgba(124, 156, 255, 0.8)); }
+.nge-arcane-unlock-kicker { margin-top: 8px; font: 700 12px Inter, system-ui, sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #9db3ff; }
+.nge-arcane-unlock-name { font: 800 26px Inter, system-ui, sans-serif; margin-top: 4px; color: #fff; }
+.nge-arcane-unlock-at { font-size: 13px; color: #f5d142; margin-top: 4px; }
+@keyframes nge-arcane-spin-in { from { transform: scale(0.3) rotate(-200deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nge-arcane-unlock-card, .nge-arcane-unlock-card img { animation: none; } }
+.nge-beta-req-mailed { font-size: 12.5px; color: #5ee8a8; margin-right: 8px; }
 </style>

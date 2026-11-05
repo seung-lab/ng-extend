@@ -7,18 +7,32 @@
  *   answer to a reply an admin asked for (functions/report-reply.js).
  * - triage: the triage loop's alerts about reports (Ames 2026-10-06: "they are
  *   clogging up my feed"), and an admin tagging you on a report.
+ * - hunt: hunters' reports of a problem a Hunt's answers missed (Ames
+ *   2026-10-27: "a special category of hunt submission notifications").
  * - main: everything else.
  */
-export type NotifKind = 'main' | 'triage' | 'admin';
+export type NotifKind = 'main' | 'triage' | 'admin' | 'access' | 'hunt';
 
 // To do board tags and hand overs start with 📋 (functions/todos.js makeTagger; Ames 2026-10-23).
-const ADMIN_STARTS = ['🔬 Retina access request', 'Proofreading Test:', '💬 Reply to your question from', '📋 '];
+// Beta access requests from players not on Pilot testers (Ames 2026-10-24).
+// Dataset access requests too (Ames 2026-10-29: "these should be in Admin").
+// Access requests have a tab of their own again (Ames 2026-11-02: "access
+// requests can go back in own tab 'access'").
+const ACCESS_STARTS = ['🔑 Access update', '🔑 Beta access request', '🔬 Retina access request', '🔓 Dataset access request'];
+// An invite used to get in (functions/access-request.js, linkInvite), Admin
+// not Pyr (Ames 2026-11-04: "These belong in admin tab").
+const ADMIN_STARTS = ['⏰ Still waiting on you', 'Proofreading Test:', '💬 Reply to your question from', '📋 ', '🔑 Invite used'];
 const TRIAGE_STARTS = ['🗂', '🎉 Fixed'];
 
 export function notifKind(title: string | null | undefined, isAdmin: boolean): NotifKind {
   if (!isAdmin) return 'main';
   const t = title || '';
+  if (ACCESS_STARTS.some(s => t.startsWith(s))) return 'access';
   if (ADMIN_STARTS.some(s => t.startsWith(s))) return 'admin';
+  // Hunters' reports of what the answers missed (functions/hunts.js), a tab of their own (Ames 2026-10-27).
+  if (t.startsWith('🔎 Hunt report')) return 'hunt';
+  // Players' suggested errors for a Hunt being built (functions/hunt_build.js), with them.
+  if (t.startsWith('💡 Hunt suggestion')) return 'hunt';
   if (TRIAGE_STARTS.some(s => t.startsWith(s)) || /tagged you on a report$/.test(t)) return 'triage';
   return 'main';
 }

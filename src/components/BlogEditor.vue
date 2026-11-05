@@ -11,17 +11,27 @@
  * buttons"). The page is an editable area; the toolbar formats what is
  * selected. On save the document becomes the blog's safe stored text
  * (util/blog_document.ts), so nothing an author pastes can carry code.
+ *
+ * The same editor runs on the blog itself (Ames 2026-10-28: an Edit button
+ * on each post at connectome.quest/blog), packaged by
+ * scripts/build-blog-site-editor.cjs with src/blog_site/editor.ts. There it
+ * is given `site` and the post to open (`startSlug`: a slug, or '' for a
+ * new post), and it tells the page when it is closed.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { supabase } from '../supabase';
 import { secureUpload } from '../secure_upload';
 import { blogSlug, renderBlogMarkdown } from '../util/blog_markdown';
-import { documentToMarkdown, tidyLink, youtubeId } from '../util/blog_document';
+import { documentToMarkdown, figureSize, tidyDocument, tidyLink, youtubeId } from '../util/blog_document';
 
 interface Post {
   id: number; slug: string; title: string; summary: string | null; body: string; cover_url: string | null;
   status: 'draft' | 'published'; author_name: string; published_at: string | null; updated_at: string;
 }
+
+// reauth: on the blog page, sign in again when the sign in ran out mid edit.
+const props = defineProps<{ site?: boolean; startSlug?: string | null; reauth?: () => Promise<void> }>();
+const emit = defineEmits<{ (e: 'close'): void }>();
 
 const SITE = 'https://connectome.quest/blog/';
 const posts = ref<Post[]>([]);
@@ -45,7 +55,11 @@ const previewHtml = ref('');
 const docEl = ref<HTMLElement | null>(null);
 const confirmDelete = ref(false);
 
-const postUrl = computed(() => `${SITE}post.html?p=${encodeURIComponent(slug.value)}`);
+// Each post has its own page at connectome.quest/blog/<slug>/, built from the
+// published posts every 15 minutes (seunglabdata tools/build-blog.mjs). That
+// page is what a shared link previews with the post's title and picture. In
+// the first minutes after publishing it falls back to post.html by itself.
+const postUrl = computed(() => `${SITE}${encodeURIComponent(slug.value)}/`);
 watch(title, t => { if (!slugTouched.value && id.value === null) slug.value = blogSlug(t); });
 
 async function load() {
@@ -57,7 +71,20 @@ async function load() {
   if (error) { problem.value = 'Could not load posts: ' + error.message; return; }
   posts.value = (data ?? []) as Post[];
 }
-onMounted(load);
+onMounted(async () => {
+  await load();
+  // On the blog: go straight to the post the Edit button was pressed on.
+  if (props.startSlug == null) return;
+  const p = props.startSlug ? posts.value.find(x => x.slug === props.startSlug) : null;
+  if (props.startSlug && !p && !problem.value) problem.value = 'That post could not be opened. Only blog authors can edit posts.';
+  else void open(p ?? null);
+});
+/** On the blog: put the editor away (the page asks first if work is unsaved). */
+function closeEditor() {
+  if (unsaved() && !window.confirm('Leave the editor? Your changes are kept in this browser and offered back next time.')) return;
+  keepLocalNow();
+  emit('close');
+}
 
 const EMPTY = '<p><br></p>';
 async function open(p: Post | null) {
@@ -83,17 +110,83 @@ async function open(p: Post | null) {
     docEl.value.querySelectorAll('figure').forEach(f => { if (!f.querySelector('figcaption')) f.appendChild(document.createElement('figcaption')); });
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); document.execCommand('styleWithCSS', false, 'false'); } catch { /* old browser */ }
   }
+  savedSnapshot.value = snapshot();
+  const local = readLocal(id.value);
+  offerLocal.value = local && local.html !== (docEl.value?.innerHTML ?? '') ? local : null;
 }
-function back() { editing.value = false; message.value = ''; problem.value = ''; void load(); }
+function back() {
+  keepLocalNow();
+  editing.value = false; message.value = ''; problem.value = ''; void load();
+}
+
+// ── Never lose a post (Ames 2026-10-28: "I edited the whole blog AND IT
+// DIDN'T SAVE bc the site refreshed") ───────────────────────────────────
+// Every change is kept in this browser a moment after you stop typing, by
+// post (a new post under "new"). Opening the post again offers it back while
+// it differs from what the server has. A save to the server clears it. A
+// reload or a closed tab with unsaved work asks first.
+const LOCAL_PREFIX = 'nge_blog_unsaved_';
+interface LocalCopy { id: number | null; title: string; slug: string; summary: string; coverUrl: string; html: string; at: string; }
+const localKey = (pid: number | null) => LOCAL_PREFIX + (pid ?? 'new');
+function readLocal(pid: number | null): LocalCopy | null {
+  try { const v = JSON.parse(localStorage.getItem(localKey(pid)) || 'null'); return v && typeof v.html === 'string' ? v : null; } catch { return null; }
+}
+function clearLocal(pid: number | null) { try { localStorage.removeItem(localKey(pid)); } catch { /* storage blocked */ } }
+/** What is on the page now, to tell whether it changed. */
+const snapshot = () => JSON.stringify([title.value, slug.value, summary.value, coverUrl.value, docEl.value?.innerHTML ?? '']);
+const savedSnapshot = ref('');
+const unsaved = () => editing.value && !!docEl.value && snapshot() !== savedSnapshot.value;
+function keepLocalNow() {
+  if (!unsaved()) return;
+  const copy: LocalCopy = { id: id.value, title: title.value, slug: slug.value, summary: summary.value,
+    coverUrl: coverUrl.value, html: docEl.value?.innerHTML ?? '', at: new Date().toISOString() };
+  try { localStorage.setItem(localKey(id.value), JSON.stringify(copy)); } catch { /* storage full or blocked */ }
+}
+let keepTimer: ReturnType<typeof setTimeout> | null = null;
+function keepLocalSoon() {
+  if (keepTimer) clearTimeout(keepTimer);
+  keepTimer = setTimeout(() => { keepTimer = null; keepLocalNow(); }, 800);
+}
+watch([title, slug, summary, coverUrl], () => { if (editing.value) keepLocalSoon(); });
+/** An unsaved copy that differs from the post: offered at the top of the editor. */
+const offerLocal = ref<LocalCopy | null>(null);
+function restoreLocal() {
+  const c = offerLocal.value;
+  offerLocal.value = null;
+  if (!c || !docEl.value) return;
+  title.value = c.title; slug.value = c.slug; summary.value = c.summary; coverUrl.value = c.coverUrl;
+  slugTouched.value = true;
+  docEl.value.innerHTML = c.html || EMPTY;
+  message.value = 'Your unsaved changes are back. Save or publish to keep them.';
+}
+function dropLocal() { if (offerLocal.value) clearLocal(offerLocal.value.id); offerLocal.value = null; }
+// Leaving the page with unsaved work: kept here, and the browser asks first.
+function onLeave(e: BeforeUnloadEvent) {
+  if (!unsaved()) return;
+  keepLocalNow();
+  e.preventDefault();
+  e.returnValue = '';
+}
+function onHide() { if (document.hidden) keepLocalNow(); }
+window.addEventListener('beforeunload', onLeave);
+document.addEventListener('visibilitychange', onHide);
+onBeforeUnmount(() => {
+  keepLocalNow();
+  window.removeEventListener('beforeunload', onLeave);
+  document.removeEventListener('visibilitychange', onHide);
+});
 
 const bodyText = () => docEl.value ? documentToMarkdown(docEl.value) : '';
 function togglePreview() {
-  if (!showPreview.value) previewHtml.value = renderBlogMarkdown(bodyText());
+  if (!showPreview.value) { tidyKeepingCaret(); previewHtml.value = renderBlogMarkdown(bodyText()); }
   showPreview.value = !showPreview.value;
 }
 
 async function save(next: 'draft' | 'published') {
   problem.value = ''; message.value = '';
+  tidyKeepingCaret();
+  // Kept in this browser first, so a failed save never loses the work.
+  keepLocalNow();
   const body = bodyText();
   if (!title.value.trim()) { problem.value = 'Give the post a title.'; return; }
   if (!body.trim()) { problem.value = 'Write something first.'; return; }
@@ -106,22 +199,38 @@ async function save(next: 'draft' | 'published') {
     cover_url: coverUrl.value || '', status: next,
   };
   if (next === 'published' && publishedAt.value) row.published_at = publishedAt.value;
-  const q = id.value === null
+  const wasPublished = status.value === 'published' && id.value !== null;
+  const send = () => id.value === null
     ? supabase.from('blog_posts').insert(row).select('id,status,published_at').single()
     : supabase.from('blog_posts').update(row).eq('id', id.value).select('id,status,published_at').single();
-  const { data, error } = await q;
+  let { data, error } = await send();
+  // The sign in ran out while writing (Celia, triage #395: saving and
+  // publishing did nothing). On the blog page, sign in again and send the
+  // same save once more; the work is kept in this browser either way.
+  const signedOut = (e: any) => !!e && /sign in|401|jwt|expired/i.test(String(e.message || '') + ' ' + String(e.code || ''));
+  if (signedOut(error) && props.reauth) {
+    try { await props.reauth(); ({ data, error } = await send()); }
+    catch (e: any) { busy.value = false; problem.value = (e?.message || 'Sign in did not finish.') + ' Your changes are kept in this browser; sign in and press the button again.'; return; }
+  }
   busy.value = false;
   if (error || !data) {
     problem.value = /duplicate|unique|409/i.test(error?.message || '') || (error as any)?.code === '23505'
       ? 'Another post already uses that web address. Change it and try again.'
-      : 'Could not save: ' + (error?.message || 'no answer from the server');
+      : signedOut(error)
+        ? 'Your sign in ran out, so this was not saved. Sign in to Pyr again (reload the game), then press the button again. Your changes are kept in this browser.'
+        : 'Could not save: ' + (error?.message || 'no answer from the server') + '. Your changes are kept in this browser.';
     return;
   }
+  clearLocal(id.value);
   id.value = (data as any).id;
+  clearLocal(id.value);
+  savedSnapshot.value = snapshot();
   status.value = (data as any).status;
   publishedAt.value = (data as any).published_at ?? null;
   slugTouched.value = true;
-  message.value = next === 'published' ? 'Published. It is on the blog now.' : 'Saved as a draft. Only authors can see it.';
+  message.value = next === 'draft'
+    ? (wasPublished ? 'Unpublished. It is a draft again; only authors can see it.' : 'Saved as a draft. Only authors can see it.')
+    : (wasPublished ? 'Updated. The post on the blog shows your changes now.' : 'Published. It is on the blog now.');
 }
 
 async function remove() {
@@ -154,7 +263,36 @@ function restoreSelection() {
   sel.removeAllRanges();
   sel.addRange(savedRange);
 }
-const cmd = (name: string, value?: string) => { restoreSelection(); document.execCommand(name, false, value); keepSelection(); refreshState(); };
+const cmd = (name: string, value?: string) => {
+  restoreSelection();
+  document.execCommand(name, false, value);
+  tidyKeepingCaret();
+  keepSelection(); refreshState(); keepLocalSoon();
+};
+/** Tidy the page (util/blog_document.ts tidyDocument) without losing the
+ *  caret: a marker element holds its place while things move around it. */
+function tidyKeepingCaret() {
+  const el = docEl.value;
+  if (!el) return;
+  const sel = window.getSelection();
+  let marker: HTMLElement | null = null;
+  if (sel && sel.rangeCount && inDoc(sel.anchorNode)) {
+    const r = sel.getRangeAt(0).cloneRange();
+    r.collapse(false);
+    marker = document.createElement('nge-caret');
+    try { r.insertNode(marker); } catch { marker = null; }
+  }
+  tidyDocument(el);
+  if (marker && marker.isConnected) {
+    const r = document.createRange();
+    r.setStartBefore(marker);
+    r.collapse(true);
+    marker.remove();
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+    savedRange = r.cloneRange();
+  } else marker?.remove();
+}
 
 /** The top-level block of the document that holds the caret. */
 function currentBlock(): HTMLElement | null {
@@ -173,11 +311,23 @@ function caretInto(node: Node, atEnd = false) {
   sel?.addRange(r);
   savedRange = r.cloneRange();
 }
-/** Put a block after the one holding the caret, with a fresh paragraph to carry on in. */
+/** Put a block after the one holding the caret (or where "+" was pressed,
+ *  between two blocks), with a paragraph after it to carry on in. */
 function insertBlock(node: HTMLElement) {
   const el = docEl.value;
   if (!el) return;
   el.focus();
+  if (insertAt !== null) {
+    el.insertBefore(node, el.children[insertAt] ?? null);
+    insertAt = null;
+    gap.value = null;
+    let after = node.nextElementSibling as HTMLElement | null;
+    if (!after) { after = document.createElement('p'); after.appendChild(document.createElement('br')); node.after(after); }
+    caretInto(after);
+    keepLocalSoon();
+    refreshState();
+    return;
+  }
   const here = currentBlock();
   const emptyHere = here && here.tagName === 'P' && !here.textContent?.trim() && !here.querySelector('img');
   if (here) here.after(node); else el.appendChild(node);
@@ -220,7 +370,9 @@ function toolsMouseDown(e: MouseEvent) {
 }
 function setStyle(e: Event) {
   const v = (e.target as HTMLSelectElement).value;
-  cmd('formatBlock', v);
+  // A heading cannot sit inside a list: take the line out of the list first.
+  if (v !== 'p' && (isUl.value || isOl.value)) cmd(isUl.value ? 'insertUnorderedList' : 'insertOrderedList');
+  cmd('formatBlock', `<${v}>`);
 }
 function toggleQuote() {
   if (isQuote.value) cmd('outdent'); else cmd('formatBlock', 'blockquote');
@@ -244,6 +396,76 @@ function toggleCallout() {
   }
   refreshState();
 }
+// ── Add a block between blocks (Ames 2026-10-29: "more like squarespace
+// editor where I can add an image in between text blocks") ──────────────
+// Move the mouse over the post: a "+" and a line show at the nearest place
+// between two blocks (or above the first, or below the last). Press it to
+// put a picture, a video or anything else exactly there, wherever the
+// cursor happens to be.
+const docWrap = ref<HTMLElement | null>(null);
+const gap = ref<{ y: number; index: number } | null>(null);   // y from the top of the post area
+const gapMenu = ref(false);
+let insertAt: number | null = null;                             // where the next block goes, or null: at the caret
+const GAP_REACH = 16;                                            // px from a boundary that shows the "+"
+function onDocMove(e: MouseEvent) {
+  if (gapMenu.value || showPreview.value) return;
+  const wrap = docWrap.value, doc = docEl.value;
+  if (!wrap || !doc || (e.target as HTMLElement).closest('.nge-blog-gap')) return;
+  const top = wrap.getBoundingClientRect().top;
+  const blocks = Array.from(doc.children) as HTMLElement[];
+  const places: { y: number; index: number }[] = [];
+  if (!blocks.length) places.push({ y: doc.offsetTop + 18, index: 0 });
+  blocks.forEach((b, i) => {
+    const r = b.getBoundingClientRect();
+    if (i === 0) places.push({ y: Math.max(4, r.top - top - 6), index: 0 });
+    const next = blocks[i + 1];
+    const y = next ? (r.bottom - top + next.getBoundingClientRect().top - top) / 2 : r.bottom - top + 8;
+    places.push({ y, index: i + 1 });
+  });
+  const py = e.clientY - top;
+  let best: { y: number; index: number } | null = null, far = Infinity;
+  for (const g of places) { const d = Math.abs(g.y - py); if (d < far) { far = d; best = g; } }
+  gap.value = best && far <= GAP_REACH ? best : null;
+}
+function onDocLeave() { if (!gapMenu.value) gap.value = null; }
+function closeGap() { gapMenu.value = false; gap.value = null; }
+function onGapAway(e: MouseEvent) {
+  if (gapMenu.value && !(e.target as HTMLElement).closest('.nge-blog-gap')) closeGap();
+}
+onMounted(() => document.addEventListener('mousedown', onGapAway, true));
+onBeforeUnmount(() => document.removeEventListener('mousedown', onGapAway, true));
+type GapKind = 'text' | 'heading' | 'image' | 'pair' | 'video' | 'button' | 'divider' | 'callout' | 'quote';
+async function addAtGap(kind: GapKind) {
+  const at = gap.value?.index ?? null;
+  gapMenu.value = false;
+  if (at === null || !docEl.value) return;
+  insertAt = at;
+  const para = (tag = 'p') => { const p = document.createElement(tag); p.appendChild(document.createElement('br')); return p; };
+  if (kind === 'text' || kind === 'heading') {
+    const p = para(kind === 'heading' ? 'h2' : 'p');
+    docEl.value.insertBefore(p, docEl.value.children[at] ?? null);
+    insertAt = null; gap.value = null;
+    docEl.value.focus();
+    caretInto(p);
+    refreshState();
+    return;
+  }
+  if (kind === 'callout' || kind === 'quote') {
+    const box = document.createElement(kind === 'callout' ? 'aside' : 'blockquote');
+    if (kind === 'callout') box.className = 'blog-post__callout';
+    const p = para();
+    box.appendChild(p);
+    insertBlock(box);
+    caretInto(p);
+    return;
+  }
+  if (kind === 'divider') { insertBlock(document.createElement('hr')); return; }
+  if (kind === 'video' || kind === 'button') { void openAsk(kind); return; }     // applyAsk puts it at insertAt
+  if (kind === 'image') await addImage(); else await addImagePair();
+  insertAt = null;                                                                 // a cancelled picker
+  gap.value = null;
+}
+
 function addDivider() {
   restoreSelection();
   insertBlock(document.createElement('hr'));
@@ -251,21 +473,35 @@ function addDivider() {
 
 // Small questions asked under the toolbar (a link, a button, a video).
 const ask = ref<null | 'link' | 'button' | 'video'>(null);
+// A question put away without an answer: the next block goes to the caret again.
+watch(() => ask.value, v => { if (!v) setTimeout(() => { insertAt = null; }, 0); });
 const askUrl = ref('');
 const askText = ref('');
 const askError = ref('');
 const askEl = ref<HTMLInputElement | null>(null);
-async function openAsk(kind: 'link' | 'button' | 'video') {
+// The link (or button) being changed, when the caret is in one or it was
+// clicked (Celia, triage #395: links were hard to edit; changing a link used
+// to add a second one beside it).
+const linkEl = ref<HTMLAnchorElement | null>(null);
+async function openAsk(kind: 'link' | 'button' | 'video', existing: HTMLAnchorElement | null = null) {
   keepSelection();
   askError.value = '';
-  askText.value = kind === 'button' ? (savedRange && !savedRange.collapsed ? savedRange.toString().slice(0, 60) : '') : '';
   const sel = window.getSelection();
   const at = sel?.anchorNode ? (sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode as HTMLElement : sel.anchorNode.parentElement) : null;
-  askUrl.value = kind === 'link' ? (at?.closest('a')?.getAttribute('href') || '') : '';
-  ask.value = ask.value === kind ? null : kind;
+  const a = existing || (kind !== 'video' ? at?.closest('a') as HTMLAnchorElement | null : null);
+  linkEl.value = a && inDoc(a) ? a : null;
+  if (linkEl.value) {
+    askUrl.value = linkEl.value.getAttribute('href') || '';
+    askText.value = (linkEl.value.textContent || '').trim();
+  } else {
+    askUrl.value = '';
+    askText.value = savedRange && !savedRange.collapsed ? savedRange.toString().slice(0, 120) : '';
+  }
+  ask.value = existing ? kind : (ask.value === kind ? null : kind);
   await nextTick();
   askEl.value?.focus();
 }
+function closeAsk() { ask.value = null; linkEl.value = null; }
 function applyAsk() {
   askError.value = '';
   if (ask.value === 'video') {
@@ -278,7 +514,13 @@ function applyAsk() {
   } else {
     const url = tidyLink(askUrl.value);
     if (!url) { askError.value = 'That does not look like a web address.'; return; }
-    if (ask.value === 'button') {
+    if (linkEl.value) {                                   // change the one that is there
+      const text = askText.value.trim();
+      if (ask.value === 'button' && !text) { askError.value = 'Say what the button should read.'; return; }
+      linkEl.value.setAttribute('href', url);
+      if (text && text !== (linkEl.value.textContent || '').trim()) linkEl.value.textContent = text;
+      keepLocalSoon();
+    } else if (ask.value === 'button') {
       const text = askText.value.trim();
       if (!text) { askError.value = 'Say what the button should read.'; return; }
       restoreSelection();
@@ -295,16 +537,26 @@ function applyAsk() {
       if (savedRange && savedRange.collapsed) {
         const a = document.createElement('a');
         a.href = url;
-        a.textContent = url.replace(/^https:\/\//, '');
+        a.textContent = askText.value.trim() || url.replace(/^https:\/\//, '');
         savedRange.insertNode(a);
         caretInto(a, true);
       } else document.execCommand('createLink', false, url);
     }
   }
-  ask.value = null;
+  closeAsk();
   keepSelection();
+  keepLocalSoon();
 }
-function removeLink() { cmd('unlink'); ask.value = null; }
+function removeLink() {
+  const a = linkEl.value;
+  if (a && inDoc(a)) {                                    // keep the words, drop the link
+    const p = a.closest('p.blog-post__cta');
+    a.replaceWith(...Array.from(a.childNodes));
+    p?.classList.remove('blog-post__cta');
+    keepLocalSoon();
+  } else cmd('unlink');
+  closeAsk();
+}
 
 async function pickImages(many: boolean): Promise<string[]> {
   keepSelection();
@@ -325,9 +577,31 @@ async function pickImages(many: boolean): Promise<string[]> {
   } catch (e: any) { problem.value = e?.message || 'Image upload failed.'; return []; }
   finally { busy.value = false; }
 }
+// A picture's size, for a picture on its own (Celia, triage #395: "loads
+// huge and I can't adjust its size"). New pictures start medium.
+const pickedFig = ref<HTMLElement | null>(null);
+const pickedSize = ref('');
+function setFigureSize(fig: HTMLElement, size: string) {
+  fig.className = 'blog-post__figure' + (size ? ` blog-post__figure--${size}` : '');
+  if (size) fig.dataset.size = size; else delete fig.dataset.size;
+}
+function sizePicked(size: string) {
+  if (!pickedFig.value || !inDoc(pickedFig.value)) { pickedFig.value = null; return; }
+  setFigureSize(pickedFig.value, size);
+  pickedSize.value = size;
+  keepLocalSoon();
+}
+function removePicked() {
+  const f = pickedFig.value;
+  pickedFig.value = null;
+  if (!f || !inDoc(f)) return;
+  f.remove();
+  if (docEl.value && !docEl.value.firstElementChild) docEl.value.innerHTML = EMPTY;
+  keepLocalSoon();
+}
 function figure(url: string): HTMLElement {
   const fig = document.createElement('figure');
-  fig.className = 'blog-post__figure';
+  setFigureSize(fig, 'medium');
   const img = document.createElement('img');
   img.src = url;
   img.alt = '';
@@ -346,7 +620,9 @@ async function addImagePair() {
   if (urls.length < 2) { problem.value = 'Pick two images to put them side by side. One was added on its own.'; restoreSelection(); insertBlock(figure(urls[0])); return; }
   const pair = document.createElement('div');
   pair.className = 'blog-post__pair';
-  pair.append(figure(urls[0]), figure(urls[1]));
+  const a = figure(urls[0]), b = figure(urls[1]);
+  setFigureSize(a, ''); setFigureSize(b, '');           // a pair shares the width
+  pair.append(a, b);
   restoreSelection();
   insertBlock(pair);
 }
@@ -374,6 +650,7 @@ function onPaste(e: ClipboardEvent) {
     const html = renderBlogMarkdown(text.replace(/\r\n?/g, '\n'), true);
     if (html) {
       document.execCommand('insertHTML', false, html);
+      tidyKeepingCaret();
       return;
     }
   }
@@ -397,10 +674,21 @@ async function pastePictures(files: File[]) {
     problem.value = err?.message || 'The pasted picture could not be uploaded.';
   } finally { busy.value = false; }
 }
-// Click a picture or a video to select it, so Delete removes it.
+// Click a picture or a video to select it, so Delete removes it. A picture on
+// its own also gets the size bar. Click a link or button to change it.
 function onDocClick(e: MouseEvent) {
   const t = e.target as HTMLElement;
+  const link = t.closest('a') as HTMLAnchorElement | null;
+  if (link && inDoc(link)) {
+    e.preventDefault();
+    pickedFig.value = null;
+    void openAsk(link.classList.contains('blog-post__button') ? 'button' : 'link', link);
+    return;
+  }
   const block = t.closest('.blog-post__video') || (t.tagName === 'IMG' ? t.closest('figure') : null);
+  const single = block && block.tagName === 'FIGURE' && !block.closest('.blog-post__pair') ? block as HTMLElement : null;
+  pickedFig.value = single && inDoc(single) ? single : null;
+  pickedSize.value = single ? (figureSize(single) || 'large') : '';
   if (!block || !inDoc(block)) return;
   const r = document.createRange();
   r.selectNode(block);
@@ -419,7 +707,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 </script>
 
 <template>
-  <div class="nge-blog">
+  <div class="nge-blog" :class="{ 'nge-blog--site': site }">
     <!-- List -->
     <template v-if="!editing">
       <div class="nge-blog-head">
@@ -427,7 +715,10 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
           <h3>Blog</h3>
           <p>Posts appear on <a :href="SITE" target="_blank" rel="noopener noreferrer">connectome.quest/blog</a> as soon as you publish.</p>
         </div>
-        <button class="nge-blog-btn nge-blog-btn--primary" @click="open(null)">Write a post</button>
+        <span class="nge-blog-head-actions">
+          <button class="nge-blog-btn nge-blog-btn--primary" @click="open(null)">Write a post</button>
+          <button v-if="site" class="nge-blog-btn" @click="closeEditor">Close</button>
+        </span>
       </div>
       <p v-if="problem" class="nge-blog-problem" role="alert">{{ problem }}</p>
       <p v-if="loading" class="nge-blog-note">Loading posts...</p>
@@ -445,7 +736,15 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
     <template v-else>
       <div class="nge-blog-head">
         <button class="nge-blog-btn" @click="back">← All posts</button>
-        <span class="nge-blog-pill" :class="'nge-blog-pill--' + status">{{ id === null ? 'New post' : status === 'published' ? 'Published' : 'Draft' }}</span>
+        <span class="nge-blog-head-actions">
+          <span class="nge-blog-pill" :class="'nge-blog-pill--' + status">{{ id === null ? 'New post' : status === 'published' ? 'Published' : 'Draft' }}</span>
+          <button v-if="site" class="nge-blog-btn" @click="closeEditor">Close editor</button>
+        </span>
+      </div>
+      <div v-if="offerLocal" class="nge-blog-restore" role="status">
+        <span>You have unsaved changes to this post from {{ when(offerLocal.at) }}.</span>
+        <button class="nge-blog-btn nge-blog-btn--primary" @click="restoreLocal">Restore them</button>
+        <button class="nge-blog-btn" @click="dropLocal">Discard</button>
       </div>
 
       <label class="nge-blog-field">
@@ -455,7 +754,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
       <label class="nge-blog-field">
         <span>Web address</span>
         <div class="nge-blog-slug">
-          <code>connectome.quest/blog/post.html?p=</code>
+          <code>connectome.quest/blog/</code>
           <input v-model="slug" maxlength="80" placeholder="made-from-the-title" @input="slugTouched = true" />
         </div>
       </label>
@@ -505,20 +804,51 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
           </div>
 
           <form v-if="ask && !showPreview" class="nge-blog-ask" @submit.prevent="applyAsk">
-            <input v-if="ask === 'button'" v-model="askText" maxlength="60" placeholder="What the button says" aria-label="Button text" @keydown.stop @keydown.esc.prevent="ask = null" />
+            <input v-if="ask === 'button' || (ask === 'link' && linkEl)" v-model="askText" maxlength="120"
+                   :placeholder="ask === 'button' ? 'What the button says' : 'The words that are linked'"
+                   :aria-label="ask === 'button' ? 'Button text' : 'Link text'" @keydown.stop @keydown.esc.prevent="closeAsk" />
             <input ref="askEl" v-model="askUrl" :placeholder="ask === 'video' ? 'Paste a YouTube link' : 'Paste or type a web address'"
-                   :aria-label="ask === 'video' ? 'YouTube link' : 'Web address'" @keydown.stop @keydown.esc.prevent="ask = null" />
-            <button class="nge-blog-btn nge-blog-btn--primary" type="submit">{{ ask === 'video' ? 'Add video' : ask === 'button' ? 'Add button' : 'Add link' }}</button>
-            <button v-if="ask === 'link'" class="nge-blog-btn" type="button" @click="removeLink">Remove link</button>
-            <button class="nge-blog-btn" type="button" @click="ask = null">Cancel</button>
+                   :aria-label="ask === 'video' ? 'YouTube link' : 'Web address'" @keydown.stop @keydown.esc.prevent="closeAsk" />
+            <button class="nge-blog-btn nge-blog-btn--primary" type="submit">{{ ask === 'video' ? 'Add video' : linkEl ? 'Save' : ask === 'button' ? 'Add button' : 'Add link' }}</button>
+            <a v-if="linkEl && tidyLink(askUrl)" class="nge-blog-btn" :href="tidyLink(askUrl)" target="_blank" rel="noopener noreferrer">Open</a>
+            <button v-if="ask === 'link' || linkEl" class="nge-blog-btn" type="button" @click="removeLink">{{ ask === 'button' ? 'Remove button' : 'Remove link' }}</button>
+            <button class="nge-blog-btn" type="button" @click="closeAsk">Cancel</button>
             <span v-if="askError" class="nge-blog-problem" role="alert">{{ askError }}</span>
           </form>
 
-          <div v-show="!showPreview" ref="docEl" class="nge-blog-doc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Post"
-               spellcheck="true" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
-          <div v-if="showPreview" class="nge-blog-doc nge-blog-doc--preview" v-html="previewHtml"></div>
+          <div v-if="pickedFig && !showPreview" class="nge-blog-ask nge-blog-sizes" role="group" aria-label="Picture size">
+            <span>Picture size</span>
+            <button v-for="s in ['small', 'medium', 'large']" :key="s" type="button" class="nge-blog-tool" :class="{ on: pickedSize === s }"
+                    @mousedown.prevent @click="sizePicked(s)">{{ s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large' }}</button>
+            <span class="nge-blog-grow"></span>
+            <button type="button" class="nge-blog-btn nge-blog-btn--danger" @mousedown.prevent @click="removePicked">Remove picture</button>
+            <button type="button" class="nge-blog-btn" @mousedown.prevent @click="pickedFig = null">Done</button>
+          </div>
+
+                    <div ref="docWrap" class="nge-blog-docwrap" @mousemove="onDocMove" @mouseleave="onDocLeave">
+            <div v-show="!showPreview" ref="docEl" class="nge-blog-doc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Post"
+                 spellcheck="true" @input="keepLocalSoon" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
+            <div v-if="showPreview" class="nge-blog-doc nge-blog-doc--preview" v-html="previewHtml"></div>
+            <!-- "+" between blocks: add a picture, a video and so on exactly here -->
+            <div v-if="gap && !showPreview" class="nge-blog-gap" :style="{ top: gap.y + 'px' }">
+              <span class="nge-blog-gap-line" aria-hidden="true"></span>
+              <button type="button" class="nge-blog-gap-plus" :class="{ on: gapMenu }" title="Add something here" aria-label="Add something here"
+                      :aria-expanded="gapMenu" @mousedown.prevent @click="gapMenu = !gapMenu">+</button>
+              <div v-if="gapMenu" class="nge-blog-gap-menu" role="menu" @mousedown.prevent @keydown.esc="closeGap">
+                <button type="button" role="menuitem" @click="addAtGap('image')"><span aria-hidden="true">🖼</span>Image</button>
+                <button type="button" role="menuitem" @click="addAtGap('pair')"><span aria-hidden="true">◫</span>Two images</button>
+                <button type="button" role="menuitem" @click="addAtGap('video')"><span aria-hidden="true">▶</span>Video</button>
+                <button type="button" role="menuitem" @click="addAtGap('text')"><span aria-hidden="true">¶</span>Text</button>
+                <button type="button" role="menuitem" @click="addAtGap('heading')"><span aria-hidden="true">H</span>Heading</button>
+                <button type="button" role="menuitem" @click="addAtGap('quote')"><span aria-hidden="true">❝</span>Quote</button>
+                <button type="button" role="menuitem" @click="addAtGap('callout')"><span aria-hidden="true">!</span>Callout</button>
+                <button type="button" role="menuitem" @click="addAtGap('button')"><span aria-hidden="true">⬭</span>Button</button>
+                <button type="button" role="menuitem" @click="addAtGap('divider')"><span aria-hidden="true">―</span>Divider</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Click a picture or video and press Delete to remove it.</p>
+        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. Click a picture to change its size, or a link to change or remove it.</p>
       </div>
 
       <p v-if="problem" class="nge-blog-problem" role="alert">{{ problem }}</p>
@@ -527,8 +857,8 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
       </p>
 
       <div class="nge-blog-actions">
-        <button class="nge-blog-btn nge-blog-btn--primary" :disabled="busy" @click="save('published')">{{ status === 'published' ? 'Publish changes' : 'Publish' }}</button>
-        <button class="nge-blog-btn" :disabled="busy" @click="save('draft')">{{ status === 'published' ? 'Unpublish (back to draft)' : 'Save draft' }}</button>
+        <button class="nge-blog-btn nge-blog-btn--primary" :disabled="busy" @click="save('published')">{{ busy ? 'Saving...' : status === 'published' && id !== null ? 'Update post' : 'Publish' }}</button>
+        <button class="nge-blog-btn" :disabled="busy" @click="save('draft')">{{ status === 'published' && id !== null ? 'Unpublish' : 'Save draft' }}</button>
         <span class="nge-blog-grow"></span>
         <template v-if="id !== null">
           <button v-if="!confirmDelete" class="nge-blog-btn nge-blog-btn--danger" :disabled="busy" @click="confirmDelete = true">Delete</button>
@@ -544,9 +874,17 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 </template>
 
 <style scoped>
-.nge-blog { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 24px; overflow-y: auto; max-height: calc(90vh - 100px);
+/* On the blog page: the editor takes the page's width and scrolls with it. */
+.nge-blog.nge-blog--site { max-height: none; overflow: visible; width: 100%; border-radius: 14px; }
+.nge-blog-head-actions { display: inline-flex; align-items: center; gap: 8px; }
+.nge-blog-restore {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px;
+  border-radius: 8px; border: 1px solid rgba(245, 209, 66, 0.5); background: rgba(245, 209, 66, 0.08); color: #f3e7b5;
+}
+.nge-blog-restore span { flex: 1 1 260px; }
+.nge-blog { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 24px; overflow-y: auto; max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   /* A page width of its own: long lines of text must not stretch the profile window. */
-  width: min(900px, calc(100vw - 48px)); max-width: 100%; box-sizing: border-box;
+  width: min(900px, calc(100 * var(--nge-vw, 1vw) - 48px)); max-width: 100%; box-sizing: border-box;
   font-size: var(--nge-fs-base, 14px); color: #dce6f5; }
 .nge-blog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .nge-blog-head h3 { margin: 0 0 2px; font-size: 1.25em; color: #eaf6ff; }
@@ -628,9 +966,89 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog-doc :deep(.blog-post__button) { display: inline-block; padding: 8px 14px; border-radius: 9px; background: #e6c760; color: #10131c; font-weight: 700; text-decoration: none; }
 .nge-blog-doc :deep(::selection) { background: rgba(127, 212, 255, 0.35); }
 
+.nge-blog-docwrap { position: relative; }
+.nge-blog-doc { padding-left: 42px !important; }
+.nge-blog-gap { position: absolute; left: 0; right: 0; height: 0; z-index: 3; pointer-events: none; }
+.nge-blog-gap-line { position: absolute; left: 40px; right: 14px; top: -1px; border-top: 2px dashed rgba(127, 212, 255, 0.65); }
+.nge-blog-gap-plus { pointer-events: auto; position: absolute; left: 9px; top: -13px; width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  border: 0; cursor: pointer; font: inherit; font-size: 18px; font-weight: 700; line-height: 26px; text-align: center; color: #06121f; background: #7fd4ff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); transition: transform 0.12s ease; }
+.nge-blog-gap-plus:hover, .nge-blog-gap-plus.on { transform: scale(1.12) rotate(90deg); }
+.nge-blog-gap-menu { pointer-events: auto; position: absolute; left: 40px; top: 14px; display: grid; grid-template-columns: repeat(3, auto); gap: 4px; padding: 8px;
+  border-radius: 12px; background: #0d1526; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); }
+.nge-blog-gap-menu button { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 8px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 0.95em; color: #dce6f5; white-space: nowrap; text-align: left; }
+.nge-blog-gap-menu button span { width: 18px; text-align: center; opacity: 0.8; }
+.nge-blog-gap-menu button:hover, .nge-blog-gap-menu button:focus-visible { background: rgba(127, 212, 255, 0.14); outline: none; }
 .nge-blog-help { margin: 0; font-size: 0.85em; color: rgba(220, 230, 245, 0.6); }
 .nge-blog-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nge-blog-note { color: rgba(220, 230, 245, 0.7); margin: 0; }
 .nge-blog-problem { margin: 0; color: #ff9aa8; }
 .nge-blog-ok { margin: 0; color: #8ef0b8; }
+</style>
+
+<style scoped>
+/* ── On the blog page: light, like the blog it sits in (Ames 2026-10-29:
+      "make the composer light bg"). In the game the editor stays dark.
+      The post area is drawn like the published post, so what you write is
+      what readers see. Colors are the blog's own (seunglabdata styles.css,
+      body.blog-light). ── */
+.nge-blog--site { color: #151b27; background: #ffffff; border: 1px solid rgba(20, 30, 50, 0.14); box-shadow: 0 10px 30px rgba(20, 30, 50, 0.10); }
+.nge-blog--site a { color: #0a7286; }
+.nge-blog--site .nge-blog-head h3, .nge-blog--site .nge-blog-row-title { color: #0b101a; }
+.nge-blog--site .nge-blog-head p, .nge-blog--site .nge-blog-row-meta, .nge-blog--site .nge-blog-note,
+.nge-blog--site .nge-blog-field > span, .nge-blog--site .nge-blog-slug code, .nge-blog--site .nge-blog-help { color: #5a6578; }
+.nge-blog--site .nge-blog-btn { color: #151b27; background: #ffffff; border-color: rgba(20, 30, 50, 0.22); }
+.nge-blog--site .nge-blog-btn:hover:not(:disabled) { background: #eef2f7; }
+.nge-blog--site .nge-blog-btn--primary { color: #ffffff; background: #0a7286; border-color: #0a7286; }
+.nge-blog--site .nge-blog-btn--primary:hover:not(:disabled) { background: #08606f; }
+.nge-blog--site .nge-blog-btn--danger { color: #b3263a; border-color: rgba(179, 38, 58, 0.45); }
+.nge-blog--site .nge-blog-btn:focus-visible, .nge-blog--site .nge-blog-row:focus-visible, .nge-blog--site .nge-blog-tool:focus-visible { outline-color: #0a7286; }
+.nge-blog--site .nge-blog-row { background: #f7f9fc; border-color: rgba(20, 30, 50, 0.12); }
+.nge-blog--site .nge-blog-row:hover { background: #eef2f7; }
+.nge-blog--site .nge-blog-pill { color: #3a4557; border-color: rgba(20, 30, 50, 0.25); }
+.nge-blog--site .nge-blog-pill--published { color: #157a45; border-color: rgba(21, 122, 69, 0.45); }
+.nge-blog--site input, .nge-blog--site textarea { color: #151b27; background: #ffffff; border-color: rgba(20, 30, 50, 0.22); }
+.nge-blog--site input::placeholder, .nge-blog--site textarea::placeholder { color: #8a93a3; }
+.nge-blog--site input:focus, .nge-blog--site textarea:focus { border-color: #0a7286; }
+.nge-blog--site .nge-blog-cover img { border-color: rgba(20, 30, 50, 0.18); }
+.nge-blog--site .nge-blog-restore { color: #6b4e00; background: #fff7dc; border-color: rgba(170, 130, 20, 0.45); }
+
+.nge-blog--site .nge-blog-editor { background: #ffffff; border-color: rgba(20, 30, 50, 0.22); }
+.nge-blog--site .nge-blog-editor:focus-within { border-color: #0a7286; }
+.nge-blog--site .nge-blog-tools { top: 0; background: #f4f6fa; border-bottom-color: rgba(20, 30, 50, 0.14); }
+.nge-blog--site .nge-blog-tool { color: #151b27; }
+.nge-blog--site .nge-blog-tool:hover:not(:disabled) { background: #e3e8ef; }
+.nge-blog--site .nge-blog-tool.on { color: #0a7286; border-color: rgba(10, 114, 134, 0.55); background: rgba(10, 114, 134, 0.08); }
+.nge-blog--site .nge-blog-style { color: #151b27; background: #ffffff; border-color: rgba(20, 30, 50, 0.22); color-scheme: light; }
+.nge-blog--site .nge-blog-sep { background: rgba(20, 30, 50, 0.16); }
+.nge-blog--site .nge-blog-ask { border-bottom-color: rgba(20, 30, 50, 0.14); }
+
+.nge-blog--site .nge-blog-doc { color: #151b27; font-size: 1.1em; }
+.nge-blog--site .nge-blog-doc :deep(h2), .nge-blog--site .nge-blog-doc :deep(h3) {
+  font-family: 'Orbitron', ui-sans-serif, system-ui, sans-serif; font-weight: 600; font-size: 15px; line-height: 1.4;
+  letter-spacing: 0.18em; text-transform: uppercase; margin: 30px 0 10px; color: #0a7286; }
+.nge-blog--site .nge-blog-doc :deep(h3) { font-size: 13.5px; }
+.nge-blog--site .nge-blog-doc :deep(strong), .nge-blog--site .nge-blog-doc :deep(b) { color: #0b101a; }
+.nge-blog--site .nge-blog-doc :deep(a) { color: #0a7286; }
+.nge-blog--site .nge-blog-doc :deep(li::marker) { color: #17a2bd; }
+.nge-blog--site .nge-blog-doc :deep(hr) { border-top-color: rgba(20, 30, 50, 0.18); }
+.nge-blog--site .nge-blog-doc :deep(blockquote) { border-left-color: #17a2bd; background: rgba(23, 162, 189, 0.07); padding: 8px 0 8px 16px; }
+.nge-blog--site .nge-blog-doc :deep(aside) { background: rgba(230, 199, 96, 0.2); border-color: rgba(170, 130, 20, 0.5); }
+.nge-blog--site .nge-blog-doc :deep(pre) { background: #e9edf3; }
+.nge-blog--site .nge-blog-doc :deep(figcaption) { color: #5a6578; }
+.nge-blog--site .nge-blog-doc :deep(::selection) { background: rgba(10, 114, 134, 0.22); }
+.nge-blog--site .nge-blog-gap-line { border-top-color: rgba(10, 114, 134, 0.55); }
+.nge-blog--site .nge-blog-gap-plus { color: #ffffff; background: #0a7286; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.25); }
+.nge-blog--site .nge-blog-gap-menu { background: #ffffff; border-color: rgba(20, 30, 50, 0.16); box-shadow: 0 12px 32px rgba(20, 30, 50, 0.18); }
+.nge-blog--site .nge-blog-gap-menu button { color: #151b27; }
+.nge-blog--site .nge-blog-gap-menu button:hover, .nge-blog--site .nge-blog-gap-menu button:focus-visible { background: #eef4f7; }
+.nge-blog--site .nge-blog-problem { color: #b3263a; }
+.nge-blog--site .nge-blog-ok { color: #157a45; }
+/* Picture sizes (blog_markdown.ts {small|medium|large}); no size is full width. */
+.nge-blog-doc :deep(figure[data-size='small']) { max-width: 40%; margin-left: auto; margin-right: auto; }
+.nge-blog-doc :deep(figure[data-size='medium']) { max-width: 70%; margin-left: auto; margin-right: auto; }
+.nge-blog-doc :deep(figure[data-size='large']) { max-width: 100%; }
+.nge-blog-doc :deep(figure img) { width: 100%; height: auto; }
+.nge-blog-sizes > span:first-child { font-size: 0.9em; opacity: 0.8; }
 </style>

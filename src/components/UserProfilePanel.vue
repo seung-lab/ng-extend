@@ -2,7 +2,7 @@
 import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
 import {supabase} from '../supabase';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
-import {listQuests, nameKey as questNameKey} from '../annotation_quests';
+import {listQuests, nameKey as questNameKey, questCounts} from '../annotation_quests';
 import {nextDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
@@ -11,6 +11,7 @@ import BlogEditor from 'components/BlogEditor.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { loadContribution, showsAllStats, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
 import { datasetKey } from '../util/completion_rule';
+import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
@@ -24,12 +25,28 @@ import MyCellsTab from 'components/MyCellsTab.vue';
 import { isMobileRef } from '../util/mobile';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
-import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, LEGACY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
+import {datasetAccess} from '../util/dataset_access';
+import {secureWrite} from '../secure_write';
+import lockIcon from '../images/lock-icon.png';
+import unlockIcon from '../images/unlock-icon.png';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import goldCup from '../../static/images/champions/gold-cup.png';
+import silverCup from '../../static/images/champions/silver-cup.png';
+import bronzeCup from '../../static/images/champions/bronze-cup.png';
+import goldAward from '../../static/images/champions/gold-award.png';
+import silverAward from '../../static/images/champions/silver-award.png';
+import bronzeAward from '../../static/images/champions/bronze-award.png';
+import goldYearAward from '../../static/images/champions/gold-year-award.png';
+import silverYearAward from '../../static/images/champions/silver-year-award.png';
+import bronzeYearAward from '../../static/images/champions/bronze-year-award.png';
+import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
+import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
+import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -81,7 +98,7 @@ async function loadQuestsCompleted(who?: string | null) {
   try {
     const r = await listQuests();
     const key = questNameKey(who ?? r.you);
-    questsCompleted.value = key ? r.rows.filter(x => x.status && questNameKey(x.annotator) === key).length : 0;
+    questsCompleted.value = key ? r.rows.filter(x => questCounts(x.status) && questNameKey(x.annotator) === key).length : 0;
   } catch { questsCompleted.value = null; }
 }
 // Annotations placed: their total, or mine plus what this browser has yet to send.
@@ -109,7 +126,8 @@ async function loadOtherUser() {
     void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
     otherDays.value = null;
     void backendStore.loadDayTotal(props.viewUserId).then(n => { otherDays.value = n; });
-    void loadQuestsCompleted(otherUserProfile.value?.display_name || null);
+    // '' (not null) for a player with no name: null would count the viewer's own.
+    void loadQuestsCompleted(otherUserProfile.value?.display_name || '');
   } else {
     otherUserProfile.value = null;
     backendStore.loadUserStats();
@@ -120,7 +138,13 @@ async function loadOtherUser() {
 }
 loadOtherUser();
 // Clicking another name while a profile is open swaps the profile shown.
-watch(() => props.viewUserId, () => { void loadOtherUser(); });
+watch(() => props.viewUserId, () => {
+  void loadOtherUser();
+  // Opening someone's profile from inside your own (a name in Admin Hub's
+  // Pilot testers or Dataset requests) shows theirs: the Admin Hub tab stayed
+  // up, so the click seemed to do nothing (Celia D, report 284).
+  activeTab.value = 'overview';
+});
 // Your own awards are read again each time the profile opens: they were read
 // once at sign in, so one given during the session (a group award included)
 // stayed hidden until a reload (Ames 2026-10-16, Alpha 20).
@@ -201,14 +225,30 @@ const profileSpecialBadges = computed(() => {
   return backendStore.mySpecialBadges;
 });
 
-// Player assists — help requests resolved by current user
-const helpStore = useHelpRequestStore();
-const playerAssists = computed(() => {
-  if (viewingOtherUser.value) return 0;
-  const name = backendStore.userName || backendStore.userEmail?.split('@')[0];
-  if (!name) return 0;
-  return helpStore.requests.filter(r => r.resolved && r.resolvedByName === name && inScope(r.dataset)).length;
-});
+// Assists (Ames 2026-10-24): other players' help requests you replied to,
+// one each however many replies you wrote; your own requests do not count.
+// It used to count requests solved under your NAME among the 200 newest.
+// Read from help_responses, per account, a number only, for whichever
+// player's profile is open (Ames: "I see it in my profile but not in Nik's").
+const assistRequests = ref<{ id: string; dataset: string | null }[]>([]);
+async function loadAssists(uid: string) {
+  const { data: replies } = await supabase.from('help_responses').select('request_id').eq('user_id', uid).limit(5000);
+  const ids = [...new Set((replies ?? []).map((r: any) => r.request_id).filter(Boolean))] as string[];
+  const out: { id: string; dataset: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await supabase.from('help_requests').select('id,user_id,dataset').in('id', ids.slice(i, i + 100));
+    for (const r of (data ?? []) as any[]) if (r.user_id !== uid) out.push({ id: r.id, dataset: r.dataset ?? null });
+  }
+  if (assistsFor.value === uid) assistRequests.value = out;
+}
+const assistsFor = computed(() => props.viewUserId || backendStore.userId || '');
+watch(assistsFor, uid => {
+  assistRequests.value = [];
+  if (uid) void loadAssists(uid).catch(() => { /* stays empty */ });
+}, { immediate: true });
+/** Every dataset, on your profile and on anyone else's, like the
+ *  annotations beside it. */
+const playerAssists = computed(() => assistRequests.value.length);
 
 // ── Local state ───────────────────────────────────────────────────────────────
 const closing        = ref(false);
@@ -218,8 +258,6 @@ const showFlagPicker = ref(false);
 const showAllBuilding    = ref(false);
 const showAllExploration = ref(false);
 const showAllSpecialModal = ref(false);
-const BADGE_PREVIEW_LIMIT = 5;  // one row of five (Ames 2026-10-01: no scrolling)
-const BADGE_PREVIEW_WITH_VIEWALL = 4; // four + the View all tile
 const SPECIAL_PREVIEW_LIMIT = 5;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
@@ -329,10 +367,22 @@ onMounted(() => {
     // Back from a Proofreading Test try in the view (TestReviewBar).
     activeTab.value = 'adminHub';
     adminInitialSubTab.value = 'tests';
+  } else if (props.initialTab === 'hunts' && !viewingOtherUser.value) {
+    // Back from checking a Hunt's places in the view (HuntPlacesBox).
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'hunts';
   } else if (props.initialTab === 'access' && !viewingOtherUser.value) {
     // Back from reviewing an access request in the view (AccessReviewBar).
     activeTab.value = 'adminHub';
     adminInitialSubTab.value = 'access';
+  } else if (props.initialTab === 'pilot' && !viewingOtherUser.value) {
+    // From a "🔑 Beta access request" notification: Beta requests, Let them in.
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'pilot';
+  } else if (props.initialTab === 'tutorialEdits' && !viewingOtherUser.value) {
+    // From a "Tutorial edit to approve" notification.
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'tutorialEdits';
   }
 });
 
@@ -408,7 +458,55 @@ async function loadDatasetStats() {
   }
 }
 
-watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
+// ── Edit access (Ames 2026-11-02: "should we show accesses unlocked in
+// profile?") ── The datasets that are earned: Retina, MEC and BANC. Your own
+// profile asks CAVE, so it is always right, with the date from the grant's
+// chat line when there is one. Someone else's shows only the grants on record
+// (since 2026-10-30): an older one is simply not shown, never "not yet".
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'banc'];
+/** Short names for the tiles. */
+const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', banc: 'BANC' };
+const accessGrants = ref<Record<string, string>>({});
+/** Someone else's edit access as CAVE has it (functions/access-request.js,
+ *  access.profileAccess); null until it answers, or when it cannot say. */
+const otherEdit = ref<string[] | null>(null);
+let accessFor = '';
+// Asked once per player per visit, however often the tab is opened (Ames:
+// "make sure to clean up the querying"); the server keeps its CAVE answer
+// 10 minutes as well.
+const accessAsked = new Map<string, Promise<{ grants: Record<string, string>; edit: string[] | null }>>();
+function askAccess(uid: string, other: boolean) {
+  let p = accessAsked.get(uid);
+  if (!p) {
+    p = Promise.all([
+      backendStore.loadAccessGrants(uid),
+      other ? secureWrite<{ edit: string[] | null }>('access.profileAccess', { userId: uid })
+        .then(r => (Array.isArray(r?.edit) ? r.edit : null))
+        .catch(e => { console.warn('[profile] edit access lookup failed:', e?.message || e); return null; }) : Promise.resolve(null),
+    ]).then(([grants, edit]) => ({ grants, edit }));
+    accessAsked.set(uid, p);
+  }
+  return p;
+}
+async function loadAccess() {
+  const uid = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
+  if (!uid) return;
+  if (accessFor !== uid) { accessGrants.value = {}; otherEdit.value = null; }
+  accessFor = uid;
+  const got = await askAccess(uid, viewingOtherUser.value);
+  if (accessFor !== uid) return;
+  accessGrants.value = got.grants;
+  otherEdit.value = got.edit;
+}
+const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d.id === id)).filter((d): d is DatasetEntry => !!d).map(ds => {
+  const at = accessGrants.value[ds.id];
+  const state = viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
+  const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], state, when };
+}).filter(r => !viewingOtherUser.value || otherEdit.value || r.state === 'edit'));
+
+watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loadAccess(); } });
+watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') void loadAccess(); });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -536,6 +634,24 @@ function isBadgeEarned(badge: BadgeDefinition): boolean {
   return backendStore.holdsSaved(props.viewUserId || backendStore.userId, badge.track, badge.id);
 }
 
+/** Legacy Achievements: saved on the old ladder, or reached by its old number. */
+function isLegacyEarned(badge: BadgeDefinition): boolean {
+  if (statForTrack(badge.track) >= badge.threshold) return true;
+  return backendStore.holdsLegacy(props.viewUserId || backendStore.userId, badge.track, badge.id);
+}
+const legacyCells = computed(() => LEGACY_BADGES.filter(b => b.track === 'exploration' && isLegacyEarned(b)).reverse());
+const legacyEdits = computed(() => LEGACY_BADGES.filter(b => b.track === 'building' && isLegacyEarned(b)).reverse());
+function onLegacyClick(badge: BadgeDefinition) {
+  selectedSpecialBadge.value = null;
+  selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
+}
+/** A favorite's Achievement: the new ladder first, else the old one it was chosen from. */
+function favoriteDef(slug: string): BadgeDefinition | null {
+  const found = BADGE_DEFINITIONS.find(b => b.slug === slug);
+  if (found && isBadgeEarned(found)) return found;
+  return LEGACY_BADGES.find(b => b.slug === slug && isLegacyEarned(b)) || null;
+}
+
 function onBadgeClick(badge: BadgeDefinition) {
   if (!isBadgeEarned(badge)) return;
   selectedSpecialBadge.value = null;
@@ -602,8 +718,8 @@ const latestEarnedBadge = computed(() => {
 const favoriteBadgeSlug = computed(() => viewingOtherUser.value ? String(otherUserProfile.value?.favorite_badge || '') : backendStore.favoriteBadgeSlug);
 const favoriteBadge = computed<BadgeDefinition | null>(() => {
   if (favoriteBadgeSlug.value) {
-    const found = BADGE_DEFINITIONS.find(b => b.slug === favoriteBadgeSlug.value);
-    if (found && isBadgeEarned(found)) return found;
+    const found = favoriteDef(favoriteBadgeSlug.value);
+    if (found) return found;
   }
   return null;
 });
@@ -648,8 +764,8 @@ type FavTier = 'gold' | 'silver' | 'bronze';
 interface FavItem { slug: string; name: string; img: string; gold: boolean; tier: FavTier; def?: BadgeDefinition; award?: any }
 function favItem(slug: string, tier: FavTier): FavItem | null {
   const gold = tier === 'gold';
-  const def = BADGE_DEFINITIONS.find(b => b.slug === slug);
-  if (def) return isBadgeEarned(def) ? { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, tier, def } : null;
+  const def = favoriteDef(slug);
+  if (def) return { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, tier, def };
   const award = profileSpecialBadges.value.find((a: any) => specialSlug(a) === slug);
   const img = award?.badge?.thumbnail_url || award?.badge?.image_url;
   return award && img ? { slug, name: award.badge?.name || 'Award', img, gold, tier, award } : null;
@@ -739,10 +855,66 @@ function favDrop(f: FavItem) {
 }
 function favDragEnd() { draggingFav.value = null; dropFav.value = ''; }
 
+// ── Trophy Case sections: two rows, then Show all (Ames 2026-11-02) ──────────
+// A laptop showed only Cell Completions: one long grid hid every section under it.
+// Each grid shows two full rows (its column count follows the window), most recent
+// first, and 'Show all N' opens it in place. On your own profile a section you open
+// stays open in this browser; someone else's starts closed.
+const TROPHY_OPEN_KEY = 'nge_trophy_open_v1';
+function readOpenSections(): string[] { try { const v = JSON.parse(localStorage.getItem(TROPHY_OPEN_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
+const ownOpenSections = ref<Set<string>>(new Set(readOpenSections()));
+const otherOpenSections = ref<Set<string>>(new Set());
+watch(() => props.viewUserId, () => { otherOpenSections.value = new Set(); });
+const openSections = computed(() => viewingOtherUser.value ? otherOpenSections.value : ownOpenSections.value);
+function toggleTrophySection(k: string) {
+  const next = new Set(openSections.value);
+  if (next.has(k)) next.delete(k); else next.add(k);
+  if (viewingOtherUser.value) { otherOpenSections.value = next; return; }
+  ownOpenSections.value = next;
+  try { localStorage.setItem(TROPHY_OPEN_KEY, JSON.stringify([...next])); } catch { /* private window */ }
+}
+const gridCols = ref<Record<string, number>>({});
+const gridObservers = new Map<string, { el: HTMLElement; ro: ResizeObserver }>();
+function watchTrophyGrid(k: string, el: unknown) {
+  const old = gridObservers.get(k);
+  if (old && old.el === el) return;
+  old?.ro.disconnect(); gridObservers.delete(k);
+  if (!(el instanceof HTMLElement)) return;
+  const measure = () => {
+    const n = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+    if (gridCols.value[k] !== n) gridCols.value = { ...gridCols.value, [k]: n };
+  };
+  const ro = new ResizeObserver(measure); ro.observe(el); gridObservers.set(k, { el, ro }); measure();
+}
+onUnmounted(() => { for (const g of gridObservers.values()) g.ro.disconnect(); gridObservers.clear(); });
+const TROPHY_ROWS = 2;
+function trophyLimit(k: string): number { return (gridCols.value[k] || 6) * TROPHY_ROWS; }
+// Closed, the last slot of the second row is the '+N more' tile, so one fewer Achievement shows.
+function shownTrophies<T>(k: string, list: T[]): T[] {
+  if (openSections.value.has(k) || list.length <= trophyLimit(k)) return list;
+  return list.slice(0, trophyLimit(k) - 1);
+}
+function hiddenTrophies<T>(k: string, list: T[]): T[] {
+  if (openSections.value.has(k) || list.length <= trophyLimit(k)) return [];
+  return list.slice(trophyLimit(k) - 1);
+}
+/** The picture for any Trophy Case item, for the previews on the '+N more' tile. */
+function trophyArt(k: string, item: any): string {
+  if (k === 'competitions') return medalArt(item);
+  if (k === 'special') return item?.badge?.thumbnail_url || item?.badge?.image_url || '';
+  return getBadgeUrl(item?.imageKey || '');
+}
+/** The button under a section, or '' when everything already fits in two rows. */
+function trophyMoreLabel(k: string, list: unknown[]): string {
+  if (list.length <= trophyLimit(k)) return '';
+  return openSections.value.has(k) ? 'Show fewer' : '';
+}
+
 // ── Trophy Case sections in the player's own order ─────────────────────────
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
-const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'special'] as const;
+// Competitions first by default (Ames 2026-11-04); a player's own saved order still wins.
+const TROPHY_SECTIONS = ['competitions', 'cells', 'editor', 'loyalty', 'special'] as const;
 type TrophySection = typeof TROPHY_SECTIONS[number];
 const otherTrophyOrder = ref<string[]>([]);
 const trophyOrder = computed<TrophySection[]>(() => {
@@ -792,28 +964,102 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// The latest of each track is featured beside its numbers in the left
-// column, so these rows start with the one before it (Ames 2026-10-11).
+// Each track's row: its three most recent Achievements, bigger, then View
+// all when there are more. The latest is no longer featured beside the
+// numbers (Ames 2026-10-27: "get rid of the achievement to the far left and
+// maybe we want to just show the 3 most recent").
+const ROW_RECENT = 3;
 const displayedBuildingBadges = computed(() => {
-  const all = earnedBuildingBadges.value.earned.slice(1);
-  if (showAllBuilding.value) return all;
-  return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
+  const all = earnedBuildingBadges.value.earned;
+  return showAllBuilding.value ? all : all.slice(0, ROW_RECENT);
 });
 const displayedExplorationBadges = computed(() => {
-  const all = earnedExplorationBadges.value.earned.slice(1);
-  if (showAllExploration.value) return all;
-  return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
+  const all = earnedExplorationBadges.value.earned;
+  return showAllExploration.value ? all : all.slice(0, ROW_RECENT);
 });
-const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
-const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
+const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length > ROW_RECENT);
+const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length > ROW_RECENT);
+
+// ── Competitions (Ames 2026-10-21): "a separate section in profile for Competitions ... the
+// gold / silver / bronze are special badges that count up, so user can win gold multiple times
+// and it shows the # times, not repeating the same badge". Each Hunt gives its own Achievements
+// (slug hunt-<id>-<medal>); here they are one tile per medal, with how many times it was won.
+const HUNT_MEDAL = /^hunt-(\d+)-(gold|silver|bronze|fastest|laser)$/;
+// Monthly Champions places (scripts/monthly-champions.mjs, Ames 2026-10-26):
+// slug month-YYYY-MM-<edits|cells>-<place>; cups for edits, neuron awards for cells.
+const MONTH_MEDAL = /^month-\d{4}-\d{2}-(edits|cells)-(gold|silver|bronze)$/;
+// Pyr Year Champions (every Sep 28): slug year-<n>-<edits|cells>-<place>.
+const YEAR_MEDAL = /^year-\d+-(edits|cells)-(gold|silver|bronze)$/;
+type MonthMedal = `${'month' | 'year'}-${'edits' | 'cells'}-${'gold' | 'silver' | 'bronze'}`;
+type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest' | 'laser' | MonthMedal;
+const MEDAL_ORDER: HuntMedal[] = ['year-edits-gold', 'year-cells-gold', 'year-edits-silver', 'year-cells-silver', 'year-edits-bronze', 'year-cells-bronze',
+  'month-edits-gold', 'month-cells-gold', 'month-edits-silver', 'month-cells-silver', 'month-edits-bronze', 'month-cells-bronze',
+  'gold', 'silver', 'bronze', 'fastest', 'laser'];
+const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed', laser: 'Laser Eyes',
+  'month-edits-gold': 'Gold', 'month-edits-silver': 'Silver', 'month-edits-bronze': 'Bronze',
+  'month-cells-gold': 'Gold', 'month-cells-silver': 'Silver', 'month-cells-bronze': 'Bronze',
+  'year-edits-gold': 'Gold', 'year-edits-silver': 'Silver', 'year-edits-bronze': 'Bronze',
+  'year-cells-gold': 'Gold', 'year-cells-silver': 'Silver', 'year-cells-bronze': 'Bronze' };
+/** Under a medal in the Trophy Case: what it is for, when the picture alone does not say. */
+const MEDAL_SUB: Record<HuntMedal, string> = { gold: '', silver: '', bronze: '', fastest: 'the fastest', laser: 'what the key missed',
+  'month-edits-gold': 'monthly edits', 'month-edits-silver': 'monthly edits', 'month-edits-bronze': 'monthly edits',
+  'month-cells-gold': 'monthly cells', 'month-cells-silver': 'monthly cells', 'month-cells-bronze': 'monthly cells',
+  'year-edits-gold': 'Pyr year, edits', 'year-edits-silver': 'Pyr year, edits', 'year-edits-bronze': 'Pyr year, edits',
+  'year-cells-gold': 'Pyr year, cells', 'year-cells-silver': 'Pyr year, cells', 'year-cells-bronze': 'Pyr year, cells' };
+const MONTH_ART: Record<string, string> = {
+  'month-edits-gold': goldCup, 'month-edits-silver': silverCup, 'month-edits-bronze': bronzeCup,
+  'month-cells-gold': goldAward, 'month-cells-silver': silverAward, 'month-cells-bronze': bronzeAward,
+  'year-edits-gold': goldYearAward, 'year-edits-silver': silverYearAward, 'year-edits-bronze': bronzeYearAward,
+  'year-cells-gold': goldYearTrophy, 'year-cells-silver': silverYearTrophy, 'year-cells-bronze': bronzeYearTrophy };
+function huntMedalOf(a: any): HuntMedal | null {
+  const slug = String(a?.badge?.slug || '');
+  const mm = MONTH_MEDAL.exec(slug);
+  if (mm) return `month-${mm[1]}-${mm[2]}` as HuntMedal;
+  const ym = YEAR_MEDAL.exec(slug);
+  if (ym) return `year-${ym[1]}-${ym[2]}` as HuntMedal;
+  const m = HUNT_MEDAL.exec(slug);
+  return m ? (m[2] as HuntMedal) : null;
+}
+/** The Special Awards that are not Hunt medals (those are under Competitions). */
+const plainSpecialBadges = computed(() => profileSpecialBadges.value.filter((a: any) => !huntMedalOf(a)));
+interface MedalTile { tier: HuntMedal; count: number; awards: any[]; latest: any }
+const competitionMedals = computed<MedalTile[]>(() => MEDAL_ORDER.map((tier) => {
+  const awards = profileSpecialBadges.value.filter((a: any) => huntMedalOf(a) === tier)
+    .sort((x: any, y: any) => (Date.parse(y.awarded_at) || 0) - (Date.parse(x.awarded_at) || 0));
+  return { tier, count: awards.length, awards, latest: awards[0] ?? null };
+}).filter((m) => m.count > 0));
+/** The Hunt (or month) a medal was won in: its Achievement is named "<Hunt title>: Gold"
+ *  or "October 2026 Top Editors: Gold". */
+function huntTitleOf(a: any): string {
+  return String(a?.badge?.name || '').replace(/:\s*(Gold|Silver|Bronze|Fastest|Laser Eyes)\s*$/i, '').trim() || 'a Hunt';
+}
+function medalTooltip(m: MedalTile): string {
+  const head = `${MEDAL_WORD[m.tier]}${MEDAL_SUB[m.tier] ? `, ${MEDAL_SUB[m.tier]}` : ''}: won ${m.count === 1 ? 'once' : `${m.count} times`}`;
+  const lines = m.awards.slice(0, 12).map((a: any) => `${huntTitleOf(a)}, ${formatDate(a.awarded_at)}`);
+  const more = m.awards.length > 12 ? [`and ${m.awards.length - 12} more`] : [];
+  return [head, ...lines, ...more].join('\n');
+}
+/** Ames's medal art, the same for every Hunt (the cheetah for Speed). */
+const medalArt = (m: MedalTile) => MONTH_ART[m.tier] ?? `hunt/${m.tier}-128.png`;
+const medalSelected = (m: MedalTile) => !!selectedSpecialBadge.value && m.awards.some((a: any) => a.id === selectedSpecialBadge.value.id);
+function onMedalClick(m: MedalTile) { if (m.latest) onSpecialBadgeClick(m.latest); }
+/** For a medal won more than once, the Hunts it was won in, under its picture. */
+function medalWins(a: any): string {
+  const tier = huntMedalOf(a); if (!tier) return '';
+  const m = competitionMedals.value.find((x) => x.tier === tier);
+  if (!m || m.count < 2) return '';
+  const names = m.awards.slice(0, 5).map(huntTitleOf);
+  const more = m.count > 5 ? `, and ${m.count - 5} more` : '';
+  return `${MEDAL_WORD[tier]} ${m.count} times: ${names.join(', ')}${more}.`;
+}
 
 // ── Special Awards "View all" preview ───────────────────────────────────────
 const displayedSpecialBadges = computed(() => {
-  const all = profileSpecialBadges.value;
+  const all = plainSpecialBadges.value;
   if (all.length > SPECIAL_PREVIEW_LIMIT) return all.slice(0, SPECIAL_PREVIEW_LIMIT - 1); // leave one slot for tile
   return all.slice(0, SPECIAL_PREVIEW_LIMIT);
 });
-const showSpecialViewAll = computed(() => profileSpecialBadges.value.length > SPECIAL_PREVIEW_LIMIT);
+const showSpecialViewAll = computed(() => plainSpecialBadges.value.length > SPECIAL_PREVIEW_LIMIT);
 
 // ── Tooltip helpers for badges ───────────────────────────────────────────────
 function badgeTooltip(badge: BadgeDefinition): string {
@@ -927,6 +1173,46 @@ const scopedIdentifiedFailed = ref(false);
 let scopedIdentifiedReq = 0;
 const SANDBOX_CANON = new Set(DATASETS.filter(d => d.section === 'sandbox').map(d => canonicalDataset(d.id)));
 const NOT_A_TYPE = /^\s*$|unknown|unsure|not sure|unclear/i;
+
+/** Every row of a query, 1,000 a request (PostgREST's cap), three requests at
+ *  a time instead of one after another: a player with 3,000 cells waited on
+ *  three trips in a row before the Overview could show anything (Ames
+ *  2026-11-04, Nseraf's profile). */
+async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data: any[] | null; error: any }>): Promise<T[]> {
+  const PAGE = 1000, AT_ONCE = 3;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE * AT_ONCE) {
+    const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE, from + (i + 1) * PAGE - 1)));
+    for (const { data, error } of got) {
+      if (error) throw error;
+      out.push(...(data ?? []));
+      if (!data || data.length < PAGE) return out;
+    }
+  }
+}
+
+// The Overview's numbers from the last visit to this profile, kept in this
+// browser, so they show as it opens and the fresh ones replace them when they
+// arrive (Ames 2026-11-04: "a long delay in loading cell completions and the
+// next stage"). Only for showing: nothing is saved from them.
+interface OverviewKept {
+  cells?: { today: number; week: number; all: number }; cellDays?: EffortDay[]; cellsDay?: string;
+  rows?: Array<{ cell: string; done_at: string; dataset: string }>;
+  edits?: { today: EditWindow; week: EditWindow; all: EditWindow }; editDays?: EffortDay[]; editsDay?: string;
+}
+const KEPT_KEY = 'nge-profile-overview:';
+function readKept(uid: string): OverviewKept {
+  try { return JSON.parse(localStorage.getItem(KEPT_KEY + uid) || '{}') || {}; } catch { return {}; }
+}
+function keep(uid: string, part: OverviewKept) {
+  try { localStorage.setItem(KEPT_KEY + uid, JSON.stringify({ ...readKept(uid), ...part })); } catch { /* full or private */ }
+}
+/** A curve's days, left as they are when the fresh ones match the kept
+ *  copy, so the curve does not draw itself a second time. */
+function setDays(target: { value: EffortDay[] | null }, days: EffortDay[]) {
+  if (target.value && JSON.stringify(target.value) === JSON.stringify(days)) return;
+  target.value = days;
+}
 async function loadScopedIdentifications() {
   const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
   const req = ++scopedIdentifiedReq;
@@ -934,18 +1220,12 @@ async function loadScopedIdentifications() {
   if (!uid) { scopedIdentified.value = null; return; }
   try {
     const { supabase } = await import('../supabase');
-    const rows: Array<{ segment_after: string | null; dataset: string | null; success: boolean | null; metadata: any }> = [];
-    const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('edit_log')
+    const rows = await allRows<{ segment_after: string | null; dataset: string | null; success: boolean | null; metadata: any }>((a, b) =>
+      supabase.from('edit_log')
         .select('segment_after, dataset, success, metadata')
         .eq('user_id', uid).eq('operation', 'set_cell_type')
         .order('id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+        .range(a, b));
     if (req !== scopedIdentifiedReq) return;
     const latest = new Map<string, string>();  // oldest first, so the last word on a cell wins
     for (const r of rows) {
@@ -975,16 +1255,17 @@ function localDay(t: number): string {
   const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-/** A dense run of days from the first stamp to today, zeros where nothing happened. */
-function denseDays(stamps: number[]): EffortDay[] {
+/** A dense run of days from the first stamp to today, zeros where nothing
+ *  happened. `weights[i]` is how many stamp i stands for (an hour's edits). */
+function denseDays(stamps: number[], weights?: number[]): EffortDay[] {
   if (!stamps.length) return [];
   const counts = new Map<string, number>();
   let first = Infinity;
-  for (const t of stamps) {
+  stamps.forEach((t, i) => {
     first = Math.min(first, t);
     const k = localDay(t);
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
+    counts.set(k, (counts.get(k) ?? 0) + (weights ? weights[i] : 1));
+  });
   const out: EffortDay[] = [];
   const d = new Date(first); d.setHours(0, 0, 0, 0);
   const end = new Date(); end.setHours(0, 0, 0, 0);
@@ -993,6 +1274,28 @@ function denseDays(stamps: number[]): EffortDay[] {
     out.push({ date: k, n: counts.get(k) ?? 0 });
   }
   return out;
+}
+
+/** A kept copy's windows. Today and the past 7 days move on with the clock,
+ *  so a copy from another day shows only its all time number (the others at
+ *  0) until the fresh ones arrive. */
+function keptWindows<W>(w: { today: W; week: W; all: W }, sameDay: boolean, zero: W) {
+  return sameDay ? w : { today: zero, week: zero, all: w.all };
+}
+function showKeptEdits(uid: string) {
+  if (scopedEdits.value) return;  // already showing this player's numbers
+  const k = readKept(uid);
+  if (!k.edits) return;
+  scopedEdits.value = keptWindows(k.edits, k.editsDay === localDay(Date.now()), { edits: 0, merges: 0, splits: 0 });
+  scopedEditDays.value = k.editDays ?? null;
+}
+function showKeptCells(uid: string) {
+  if (scopedCells.value) return;
+  const k = readKept(uid);
+  if (!k.cells) return;
+  scopedCells.value = keptWindows(k.cells, k.cellsDay === localDay(Date.now()), 0);
+  scopedCellDays.value = k.cellDays ?? null;
+  scopedCompletionRows.value = k.rows ?? null;
 }
 
 async function loadScopedEdits() {
@@ -1006,20 +1309,42 @@ async function loadScopedEdits() {
   // Sandbox profile said 0). Only the game's own log, as before.
   void canon;
   if (!uid) { scopedEdits.value = null; scopedEditDays.value = null; return; }
+  showKeptEdits(uid);
   try {
+    // The player's hourly totals (Ames 2026-10-25: reading every edit on
+    // every open was a large share of the database's load). An hour's edits
+    // fall on the day and window its first minute does, so Today and the 7
+    // days can differ from the edit by edit count by an hour at the edge.
+    const hours = await editHours(uid);
+    if (hours) {
+      if (req !== scopedEditsReq) return;
+      const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+      const weekAgo = Date.now() - 7 * 86400000;
+      const blank = (): EditWindow => ({ edits: 0, merges: 0, splits: 0 });
+      const out = { today: blank(), week: blank(), all: blank() };
+      const stamps: number[] = [], weights: number[] = [];
+      for (const h of hours) {
+        const n = h.merges + h.splits;
+        if (n <= 0) continue;
+        stamps.push(h.hour); weights.push(n);
+        const wins = [out.all];
+        if (h.hour >= weekAgo) wins.push(out.week);
+        if (h.hour >= startOfToday.getTime()) wins.push(out.today);
+        for (const w of wins) { w.edits += n; w.merges += h.merges; w.splits += h.splits; }
+      }
+      scopedEdits.value = out;
+      setDays(scopedEditDays, denseDays(stamps, weights));
+      keep(uid, { edits: out, editDays: scopedEditDays.value, editsDay: localDay(Date.now()) });
+      return;
+    }
+    // Before the hourly totals exist (supabase-db-load.sql step 6): every edit.
     const { supabase } = await import('../supabase');
-    const rows: Array<{ operation: string; timestamp: string; success: boolean | null }> = [];
-    const PAGE = 1000;  // PostgREST's default row cap per request
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('edit_log')
+    const rows = await allRows<{ operation: string; timestamp: string; success: boolean | null }>((a, b) =>
+      supabase.from('edit_log')
         .select('operation, timestamp, success')
         .eq('user_id', uid).in('operation', ['merge', 'split'])
         .order('id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+        .range(a, b));
     if (req !== scopedEditsReq) return;  // a newer load superseded this one
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const weekAgo = Date.now() - 7 * 86400000;
@@ -1039,7 +1364,7 @@ async function loadScopedEdits() {
       }
     }
     scopedEdits.value = out;
-    scopedEditDays.value = denseDays(stamps);
+    setDays(scopedEditDays, denseDays(stamps));
   } catch (e) {
     if (req !== scopedEditsReq) return;
     console.warn('[profile] per-dataset edits failed, showing all datasets:', e);
@@ -1060,17 +1385,12 @@ async function loadScopedCompletions() {
   scopedCellsFailed.value = false;
   void canon;
   if (!uid) { scopedCells.value = null; scopedCellDays.value = null; scopedCompletionRows.value = null; return; }
+  showKeptCells(uid);
   try {
     const { supabase } = await import('../supabase');
-    const rows: Array<{ dataset: string; cell: string; done_at: string }> = [];
-    const PAGE = 1000;  // PostgREST's default row cap per request
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell,done_at')
-        .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+    const rows = await allRows<{ dataset: string; cell: string; done_at: string }>((a, b) =>
+      supabase.from('ew_cell_completions').select('dataset,cell,done_at')
+        .eq('user_id', uid).order('cell', { ascending: true }).range(a, b));
     if (req !== scopedCellsReq) return;  // a newer load superseded this one
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const weekAgo = Date.now() - 7 * 86400000;
@@ -1087,8 +1407,10 @@ async function loadScopedCompletions() {
       if (t >= startOfToday.getTime()) out.today++;
     }
     scopedCells.value = out;
-    scopedCellDays.value = denseDays(stamps);
+    setDays(scopedCellDays, denseDays(stamps));
     scopedCompletionRows.value = kept.sort((a, b) => b.t - a.t).map(r => ({ cell: r.cell, done_at: r.done_at, dataset: r.dataset }));
+    // The newest rows are enough for the Recently completed list.
+    keep(uid, { cells: out, cellDays: scopedCellDays.value, rows: scopedCompletionRows.value.slice(0, 40), cellsDay: localDay(Date.now()) });
   } catch (e) {
     if (req !== scopedCellsReq) return;
     console.warn('[profile] per-dataset completions failed:', e);
@@ -1099,12 +1421,20 @@ async function loadScopedCompletions() {
   }
 }
 
-loadScopedEdits();
-loadScopedCompletions();
-loadScopedIdentifications();
-watch(() => backendStore.userId, () => { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); });
+// When the Overview's numbers were last read, and whose. Coming back to
+// Overview within 30 seconds reuses them (2026-10-25: every tab switch read
+// the whole record again).
+let overviewRead = { uid: '' as string | null | undefined, at: 0 };
+function loadOverview(force = false) {
+  const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
+  if (!force && overviewRead.uid === uid && Date.now() - overviewRead.at < 30_000) return;
+  overviewRead = { uid, at: Date.now() };
+  loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications();
+}
+loadOverview(true);
+watch(() => backendStore.userId, () => loadOverview(true));
 // Re-scope when coming back to Overview (the Datasets tab can switch datasets).
-watch(activeTab, tab => { if (tab === 'overview') { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); } });
+watch(activeTab, tab => { if (tab === 'overview') loadOverview(); });
 
 /** Edits section numbers: this dataset's, or career-wide if edit_log failed. */
 const overviewEdits = computed(() => {
@@ -1367,18 +1697,8 @@ onUnmounted(() => clearTimeout(stageTimer));
   >
     <div ref="shellEl" class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--dstats': activeTab === 'datasetStats', 'nge-profile-shell--settings': activeTab === 'settings' }">
 
-      <!-- ── Topbar ─────────────────────────────────────────── -->
-      <div class="nge-profile-topbar">
-        <span class="nge-profile-topbar-label">◈ RESEARCHER PROFILE
-          <!-- Which dataset the Overview's numbers belong to (Ames 2026-10-01:
-               up here, in the bar's own style, instead of a box in the column
-               and the username, which is already shown below). Clicking opens
-               the Datasets tab, where every dataset's totals sit side by side. -->
-          <!-- the dataset scope button went with the per dataset Overview (Ames 2026-10-11) -->
-        </span>
-        <button class="nge-profile-exit" @click="handleClose">×</button>
-      </div>
-
+      <!-- The "Researcher profile" bar went (Ames 2026-10-22: "the top bar can go, put X on same line
+           as Overview"): the × closes from the end of the tab row. -->
       <!-- ── Tab bar ─────────────────────────────────────────── -->
       <div class="nge-profile-tabbar">
         <button
@@ -1425,7 +1745,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           @click="activeTab = 'settings'"
         >⚙️ Settings</button>
         <button
-          v-if="!viewingOtherUser && backendStore.isAdmin"
+          v-if="!viewingOtherUser && backendStore.showAdminUi"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"
@@ -1436,6 +1756,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           :class="{ 'nge-profile-tab--active': activeTab === 'blog' }"
           @click="activeTab = 'blog'"
         >✍️ Blog</button>
+        <button class="nge-profile-exit nge-profile-exit--tabs" title="Close" aria-label="Close the profile" @click="handleClose">×</button>
       </div>
 
       <!-- ── Three-column body (Overview tab) ────────────────── -->
@@ -1497,6 +1818,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                  public identifier; the address stays private. -->
 
 
+            <!-- Someone else's bio too (Nseraf, report 354: bios were only
+                 ever shown to their owner). -->
+            <div v-if="viewingOtherUser && otherUserProfile?.bio" class="nge-profile-bio">{{ otherUserProfile.bio }}</div>
             <template v-if="!viewingOtherUser">
               <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
               <button v-else class="nge-profile-bio-add" @click="activeTab = 'settings'">
@@ -1509,9 +1833,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                  building Pyr to the top row"). -->
             <div class="nge-profile-header-side">
           <!-- Special Awards (admin-awarded badges) -->
-          <template v-if="profileSpecialBadges.length > 0">
+          <template v-if="plainSpecialBadges.length > 0 || competitionMedals.length > 0">
             <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
-              <div class="nge-profile-section-label">★ Special Awards</div>
+              <div v-if="plainSpecialBadges.length > 0" class="nge-profile-section-label">★ Special Awards</div>
               <div class="nge-profile-badges-grid">
                 <div
                   v-for="award in displayedSpecialBadges"
@@ -1525,6 +1849,22 @@ onUnmounted(() => clearTimeout(stageTimer));
                     <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
+                </div>
+                <!-- The Hunt medals, each once with how many times it was won (Ames 2026-10-21) -->
+                <span v-if="plainSpecialBadges.length > 0 && competitionMedals.length > 0" class="nge-profile-medal-gap" aria-hidden="true"></span>
+                <div
+                  v-for="m in competitionMedals"
+                  :key="m.tier"
+                  class="nge-profile-badge nge-profile-badge--medal"
+                  :class="{ 'nge-profile-badge--selected': medalSelected(m) }"
+                  :title="medalTooltip(m)"
+                  @click="onMedalClick(m)"
+                >
+                  <div class="nge-profile-badge-img">
+                    <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
+                    <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
+                  </div>
+                  <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
                 </div>
                 <!-- View All tile when overflow -->
                 <div
@@ -1583,10 +1923,6 @@ onUnmounted(() => clearTimeout(stageTimer));
           <div class="nge-profile-section nge-profile-section--completions nge-profile-section--windows">
             <div v-if="scopedCellsFailed" class="nge-profile-stat-unavailable">Not available right now</div>
             <div v-else class="nge-profile-feature-row">
-              <!-- the latest Cell Completions Achievement; its name is the tooltip -->
-              <div v-if="latestExplorationBadge" class="nge-profile-feature" :title="badgeTooltip(latestExplorationBadge)" @click="onBadgeClick(latestExplorationBadge)">
-                <img :src="getBadgeUrl(latestExplorationBadge.imageKey)" :alt="latestExplorationBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestExplorationBadge.slug}`" />
-              </div>
             <div class="nge-profile-windows">
               <!-- No curve on the compact layout (a laptop, or a small screen
                    zoomed in): the draw stuttered and the sliver it had there
@@ -1683,10 +2019,6 @@ onUnmounted(() => clearTimeout(stageTimer));
                  A player with months of earlier work elsewhere read a small
                  number here as their work having gone missing. -->
             <div class="nge-profile-feature-row">
-              <!-- the latest Editor Achievement; its name is the tooltip -->
-              <div v-if="latestBuildingBadge" class="nge-profile-feature" :title="badgeTooltip(latestBuildingBadge)" @click="onBadgeClick(latestBuildingBadge)">
-                <img :src="getBadgeUrl(latestBuildingBadge.imageKey)" :alt="latestBuildingBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestBuildingBadge.slug}`" />
-              </div>
             <div class="nge-profile-windows">
             <!-- The same rows as the three numbers, as a line from the first
                  day to today (Ames 2026-10-11). Nothing while they load, and
@@ -1806,9 +2138,6 @@ onUnmounted(() => clearTimeout(stageTimer));
               <!-- The latest Days Achievement, at the left. Streak and best
                    streak are not repeated here: they sit on the right under
                    Streak (Ames 2026-10-11). -->
-              <div v-if="latestLoyaltyBadge" class="nge-profile-feature" :title="badgeTooltip(latestLoyaltyBadge)" @click="onBadgeClick(latestLoyaltyBadge)">
-                <img :src="getBadgeUrl(latestLoyaltyBadge.imageKey)" :alt="latestLoyaltyBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestLoyaltyBadge.slug}`" />
-              </div>
               <div class="nge-profile-stat-col" title="Every day you have shown up, ever. This never resets.">
                 <div class="nge-profile-stat-label">Total days</div>
                 <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="revealStage >= 3 ? totalDays : 0" /></div>
@@ -1825,7 +2154,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           <div v-if="LOYALTY_BADGES.length" class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-badges-grid">
               <div
-                v-for="badge in earnedLoyaltyBadges.earned.slice(1, 5)"
+                v-for="badge in earnedLoyaltyBadges.earned.slice(0, ROW_RECENT)"
                 :key="badge.id"
                 class="nge-profile-badge nge-profile-badge--loyalty"
                 :class="{ 'nge-profile-badge--selected': selectedBadge?.id === badge.id }"
@@ -1838,7 +2167,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
               <div
-                v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length < 5"
+                v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length <= ROW_RECENT"
                 class="nge-profile-badge nge-profile-badge--locked"
                 :title="`Next: ${earnedLoyaltyBadges.next.threshold} days of science`"
               >
@@ -1849,7 +2178,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 </div>
               </div>
               <div
-                v-if="earnedLoyaltyBadges.earned.length >= 5"
+                v-if="earnedLoyaltyBadges.earned.length > ROW_RECENT"
                 class="nge-profile-badge nge-profile-badge--viewall"
                 title="View all achievements in Trophy Case"
                 @click="activeTab = 'trophyCase'"
@@ -1900,11 +2229,13 @@ onUnmounted(() => clearTimeout(stageTimer));
                     @click.stop="historyStore.toggleFavorite(cell.segId)"
                     title="Toggle favorite"
                   >{{ cell.isFavorite ? '★' : '☆' }}</button>
+                  <!-- Its spot is kept on every row, so the columns line up (Ames 2026-10-29). -->
+                  <span v-else class="nge-cell-fav nge-cell-fav--none" aria-hidden="true"></span>
                   <span class="nge-cell-pip" :class="cellStatusClass(cell)">{{ cellStatusIcon(cell) }}</span>
                   <span class="nge-cell-id" @click="handleJumpToCell(cell.segId)">
                     {{ cell.nickname || truncateId(cell.segId) }}
                   </span>
-                  <span class="nge-cell-type" v-if="cell.cellType" @click="handleJumpToCell(cell.segId)">{{ cell.cellType }}</span>
+                  <span class="nge-cell-type" :title="cell.cellType || ''" @click="handleJumpToCell(cell.segId)">{{ cell.cellType || '' }}</span>
                   <span class="nge-cell-time" @click="handleJumpToCell(cell.segId)">{{ relativeTime(cell.updatedAt) }}</span>
                   <button
                     v-if="!cell.serverOnly"
@@ -1912,6 +2243,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                     @click.stop="promptNickname(cell.segId)"
                     title="Rename this cell"
                   >✎</button>
+                  <span v-else class="nge-cell-rename" aria-hidden="true"></span>
                 </div>
               </div>
               <button v-if="recentCells.length > RECENT_SHOWN" class="nge-cell-list-more" @click="activeTab = 'myCells'">{{ (recentCells.length - RECENT_SHOWN).toLocaleString() }} more in {{ viewingOtherUser ? 'All cells' : 'My cells' }} →</button>
@@ -1940,7 +2272,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-label">You Fixed</div>
                 <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
               </div>
-              <div class="nge-profile-stat-col" title="Cells where you helped answer another player's request">
+              <div class="nge-profile-stat-col" title="Other players' help requests you replied to, one each, on every dataset">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
               </div>
@@ -1951,7 +2283,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
               </div>
               <!-- Annotation quests completed, from the quest sheet (2026-10-13). -->
-              <div class="nge-profile-stat-col" title="Annotation quests you completed: cells whose cilia you marked and sent to the lab's sheet">
+              <div class="nge-profile-stat-col" title="Annotation quests you completed: cells whose cilium you marked, or found none, and sent to the lab's sheet">
                 <div class="nge-profile-stat-label">Quests</div>
                 <div class="nge-profile-stat-val" style="color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35);">
                   <RollUp v-if="questsCompleted !== null" :value="questsCompleted" />
@@ -1961,11 +2293,23 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             </template>
             <template v-else>
-            <div class="nge-profile-section-label">▌ Annotations</div>
+            <div class="nge-profile-section-label">▌ Annotations, Assists and Quests</div>
             <div class="nge-profile-stat-row" style="margin-bottom: 12px;">
               <div class="nge-profile-stat-col" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
-                <div class="nge-profile-stat-label">All Time</div>
+                <div class="nge-profile-stat-label">Annotations</div>
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Other players' help requests this player replied to, one each, on every dataset">
+                <div class="nge-profile-stat-label">Assists</div>
+                <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
+              </div>
+              <!-- Their Cilia Quests, as the leaderboard counts them (Ames 2026-11-05). -->
+              <div class="nge-profile-stat-col" title="Annotation quests this player completed: cells whose cilium they marked, or found none, and sent to the lab's sheet">
+                <div class="nge-profile-stat-label">Quests</div>
+                <div class="nge-profile-stat-val" style="color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35);">
+                  <RollUp v-if="questsCompleted !== null" :value="questsCompleted" />
+                  <span v-else class="nge-profile-stat-na" title="The quest sheet could not be read just now">not available</span>
+                </div>
               </div>
             </div>
             </template>
@@ -2006,6 +2350,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               />
               <div class="nge-profile-viz-badge-name">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-profile-viz-badge-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div v-if="medalWins(selectedSpecialBadge)" class="nge-profile-viz-badge-desc nge-medal-wins">{{ medalWins(selectedSpecialBadge) }}</div>
               <div class="nge-profile-viz-badge-threshold">
                 Awarded {{ relativeTime(selectedSpecialBadge.awarded_at) }}
               </div>
@@ -2228,16 +2573,17 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div v-if="medalWins(selectedSpecialBadge)" class="nge-trophy-featured-desc nge-medal-wins">{{ medalWins(selectedSpecialBadge) }}</div>
               <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">Won for being awesome</div>
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
               </div>
-              <div v-if="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`)" class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
+              <div v-if="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`)" class="nge-trophy-featured-fav-label">★ Your favorite Achievement</div>
             </div>
             <button
               class="nge-trophy-featured-star"
               :class="{ 'nge-trophy-featured-star--active': favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) }"
-              :title="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? 'Remove from favorites' : 'Set as favorite badge'"
+              :title="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? 'Remove from favorites' : 'Set as your favorite Achievement'"
               @click="toggleFavoriteSpecialBadge(selectedSpecialBadge)"
             >{{ favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? '★' : '☆' }}</button>
           </div>
@@ -2264,7 +2610,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(favoriteSpecialBadge.awarded_at) }}</strong>
               </div>
-              <div class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
+              <div class="nge-trophy-featured-fav-label">★ Your favorite Achievement</div>
             </div>
             <button
               class="nge-trophy-featured-star nge-trophy-featured-star--active"
@@ -2295,12 +2641,12 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <div class="nge-trophy-featured-threshold">
                 Unlocked at <strong>{{ featuredBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(featuredBadge) }}
               </div>
-              <div v-if="favoriteBadgeSlug === featuredBadge.slug" class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
+              <div v-if="favoriteBadgeSlug === featuredBadge.slug" class="nge-trophy-featured-fav-label">★ Your favorite Achievement</div>
             </div>
             <button
               class="nge-trophy-featured-star"
               :class="{ 'nge-trophy-featured-star--active': favoriteBadgeSlug === featuredBadge.slug }"
-              :title="favoriteBadgeSlug === featuredBadge.slug ? 'Remove from favorites' : 'Set as favorite badge'"
+              :title="favoriteBadgeSlug === featuredBadge.slug ? 'Remove from favorites' : 'Set as your favorite Achievement'"
               @click="toggleFavoriteBadge(featuredBadge)"
             >{{ favoriteBadgeSlug === featuredBadge.slug ? '★' : '☆' }}</button>
           </div>
@@ -2342,7 +2688,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 </button>
               </div>
             </template>
-            <div v-else class="nge-trophy-favs-empty">Pick a badge on the right, then star it.</div>
+            <div v-else class="nge-trophy-favs-empty">Pick an Achievement on the right, then star it.</div>
           </div>
           </div><!-- end side -->
 
@@ -2358,11 +2704,12 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('cells', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('cells', el)">
               <div
-                v-for="badge in earnedExplorationBadges.earned"
+                v-for="badge in shownTrophies('cells', earnedExplorationBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--exploration"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
@@ -2375,7 +2722,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
+              <button v-if="hiddenTrophies('cells', earnedExplorationBadges.earned).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${earnedExplorationBadges.earned.length}`" :aria-expanded="false" @click="toggleTrophySection('cells')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('cells', earnedExplorationBadges.earned).slice(0, 3)" :key="i" :src="trophyArt('cells', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('cells', earnedExplorationBadges.earned).length }}</span>
+                <span class="nge-moretile-t">Show all {{ earnedExplorationBadges.earned.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('cells', earnedExplorationBadges.earned)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('cells')">Show fewer</button>
           </div>
 
           <!-- Proofreading track -->
@@ -2389,11 +2742,12 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('editor', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('editor', el)">
               <div
-                v-for="badge in earnedBuildingBadges.earned"
+                v-for="badge in shownTrophies('editor', earnedBuildingBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--building"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
@@ -2406,7 +2760,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
+              <button v-if="hiddenTrophies('editor', earnedBuildingBadges.earned).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${earnedBuildingBadges.earned.length}`" :aria-expanded="false" @click="toggleTrophySection('editor')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('editor', earnedBuildingBadges.earned).slice(0, 3)" :key="i" :src="trophyArt('editor', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('editor', earnedBuildingBadges.earned).length }}</span>
+                <span class="nge-moretile-t">Show all {{ earnedBuildingBadges.earned.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('editor', earnedBuildingBadges.earned)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('editor')">Show fewer</button>
           </div>
 
           <!-- Loyalty track -->
@@ -2420,11 +2780,12 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('loyalty', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('loyalty', el)">
               <div
-                v-for="badge in earnedLoyaltyBadges.earned"
+                v-for="badge in shownTrophies('loyalty', earnedLoyaltyBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--loyalty"
+                :title="`${badge.name}: ${badge.threshold} days of science`"
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
@@ -2437,11 +2798,108 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days of science</div>
               </div>
+              <button v-if="hiddenTrophies('loyalty', earnedLoyaltyBadges.earned).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${earnedLoyaltyBadges.earned.length}`" :aria-expanded="false" @click="toggleTrophySection('loyalty')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('loyalty', earnedLoyaltyBadges.earned).slice(0, 3)" :key="i" :src="trophyArt('loyalty', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('loyalty', earnedLoyaltyBadges.earned).length }}</span>
+                <span class="nge-moretile-t">Show all {{ earnedLoyaltyBadges.earned.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('loyalty', earnedLoyaltyBadges.earned)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('loyalty')">Show fewer</button>
+          </div>
+
+          <!-- Competitions -->
+          <div v-if="competitionMedals.length" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'competitions', 'is-drop': dropSection === 'competitions' }" :style="sectionOrder('competitions')" @dragover="sectionDragOver('competitions', $event)" @drop.prevent="sectionDrop('competitions')">
+            <div class="nge-trophy-track-label">◆ Competitions
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('competitions', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('competitions', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('competitions', 1)">▼</button>
+              </span>
+            </div>
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('competitions', el)">
+              <div
+                v-for="m in shownTrophies('competitions', competitionMedals)"
+                :key="m.tier"
+                class="nge-trophy-badge nge-trophy-badge--medal"
+                :class="{ 'nge-trophy-badge--selected': medalSelected(m) }"
+                :title="medalTooltip(m)"
+                @click="onMedalClick(m)"
+              >
+                <span class="nge-trophy-medal-img">
+                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
+                  <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
+                </span>
+                <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
+                <div v-if="MEDAL_SUB[m.tier]" class="nge-trophy-medal-place">{{ MEDAL_SUB[m.tier] }}</div>
+              </div>
+              <button v-if="hiddenTrophies('competitions', competitionMedals).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${competitionMedals.length}`" :aria-expanded="false" @click="toggleTrophySection('competitions')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('competitions', competitionMedals).slice(0, 3)" :key="i" :src="trophyArt('competitions', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('competitions', competitionMedals).length }}</span>
+                <span class="nge-moretile-t">Show all {{ competitionMedals.length }}</span>
+              </button>
+            </div>
+            <button v-if="trophyMoreLabel('competitions', competitionMedals)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('competitions')">Show fewer</button>
+          </div>
+
+          <!-- Legacy Achievements (Ames 2026-11-02): what this player earned on the old cell and edit
+               ladders, always at the foot of the case. -->
+          <div v-if="legacyCells.length + legacyEdits.length > 0" class="nge-trophy-track nge-trophy-track--legacy" style="order: 100;">
+            <div class="nge-trophy-track-label" style="color: #c9d4e6;">Legacy Achievements
+              <span class="nge-trophy-track-count">{{ legacyCells.length + legacyEdits.length }} earned before the update</span>
+            </div>
+            <div v-if="legacyCells.length" class="nge-trophy-legacy-sub">Cell Completions</div>
+            <div v-if="legacyCells.length" class="nge-trophy-grid" :ref="el => watchTrophyGrid('legacy-cells', el)">
+              <div
+                v-for="badge in shownTrophies('legacy-cells', legacyCells)"
+                :key="'legacy-' + badge.id"
+                class="nge-trophy-badge nge-trophy-badge--exploration nge-trophy-badge--legacy"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                }"
+                @click="onLegacyClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
+              </div>
+              <button v-if="hiddenTrophies('legacy-cells', legacyCells).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${legacyCells.length}`" :aria-expanded="false" @click="toggleTrophySection('legacy-cells')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('legacy-cells', legacyCells).slice(0, 3)" :key="i" :src="trophyArt('legacy-cells', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('legacy-cells', legacyCells).length }}</span>
+                <span class="nge-moretile-t">Show all {{ legacyCells.length }}</span>
+              </button>
+            </div>
+            <button v-if="trophyMoreLabel('legacy-cells', legacyCells)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('legacy-cells')">Show fewer</button>
+            <div v-if="legacyEdits.length" class="nge-trophy-legacy-sub">Editor Achievements</div>
+            <div v-if="legacyEdits.length" class="nge-trophy-grid" :ref="el => watchTrophyGrid('legacy-edits', el)">
+              <div
+                v-for="badge in shownTrophies('legacy-edits', legacyEdits)"
+                :key="'legacy-' + badge.id"
+                class="nge-trophy-badge nge-trophy-badge--building nge-trophy-badge--legacy"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                }"
+                @click="onLegacyClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
+              </div>
+              <button v-if="hiddenTrophies('legacy-edits', legacyEdits).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${legacyEdits.length}`" :aria-expanded="false" @click="toggleTrophySection('legacy-edits')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('legacy-edits', legacyEdits).slice(0, 3)" :key="i" :src="trophyArt('legacy-edits', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('legacy-edits', legacyEdits).length }}</span>
+                <span class="nge-moretile-t">Show all {{ legacyEdits.length }}</span>
+              </button>
+            </div>
+            <button v-if="trophyMoreLabel('legacy-edits', legacyEdits)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('legacy-edits')">Show fewer</button>
           </div>
 
           <!-- Special Awards -->
-          <div v-if="profileSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
+          <div v-if="plainSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
             <div class="nge-trophy-track-label">★ Special Awards
               <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
                 <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
@@ -2450,9 +2908,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('special', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('special', el)">
               <div
-                v-for="award in profileSpecialBadges"
+                v-for="award in shownTrophies('special', plainSpecialBadges)"
                 :key="award.id"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)), 'nge-trophy-badge--bronze': bronzeSlugs.includes(specialSlug(award)) }"
@@ -2462,7 +2920,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
               </div>
+              <button v-if="hiddenTrophies('special', plainSpecialBadges).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${plainSpecialBadges.length}`" :aria-expanded="false" @click="toggleTrophySection('special')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('special', plainSpecialBadges).slice(0, 3)" :key="i" :src="trophyArt('special', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('special', plainSpecialBadges).length }}</span>
+                <span class="nge-moretile-t">Show all {{ plainSpecialBadges.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('special', plainSpecialBadges)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('special')">Show fewer</button>
           </div>
 
           </div><!-- end main -->
@@ -2484,6 +2948,19 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
         <div class="nge-ds-tab-intro">
           {{ viewingOtherUser ? `The datasets ${profileName} has contributed to.` : 'The datasets you have contributed to.' }}
           Click one to switch your viewer to it.
+        </div>
+        <div v-if="accessRows.length" class="nge-ds-access">
+          <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Edit access</div>
+          <div class="nge-ds-access-row">
+            <div v-for="r in accessRows" :key="r.id" class="nge-ds-access-tile" :class="'nge-ds-access-tile--' + r.state"
+                 :title="r.state === 'edit' ? `${r.label}: edit access${r.when ? ` since ${r.when}` : ''}` : r.state === 'locked' ? (viewingOtherUser ? `${r.label}: not unlocked yet` : `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.`) : `${r.label}: checking…`">
+              <img :src="r.state === 'edit' ? unlockIcon : lockIcon" class="nge-ds-access-icon" alt="" draggable="false" />
+              <span class="nge-ds-access-text">
+                <span class="nge-ds-access-name">{{ r.name }}</span>
+                <span class="nge-ds-access-state">{{ r.state === 'edit' ? (r.when ? `Unlocked · ${r.when}` : 'Unlocked') : r.state === 'locked' ? 'Locked' : 'Checking' }}</span>
+              </span>
+            </div>
+          </div>
         </div>
         <button class="nge-ds-tab-progress" @click="openDatasetProgress">Dataset stats: what has been done on each dataset →</button>
         <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
@@ -2580,7 +3057,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           </div>
           <div class="nge-special-modal-grid">
             <div
-              v-for="award in profileSpecialBadges"
+              v-for="award in plainSpecialBadges"
               :key="award.id"
               class="nge-special-modal-tile"
               :title="specialBadgeTooltip(award)"
@@ -2697,45 +3174,45 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
      ModalOverlay's overlay-content is overflow: visible; the hard cap plus
      overflow hidden means nothing can render past the shell edge, and each
      tab body scrolls internally. */
-  max-height: min(90vh, calc(100vh - 32px));
+  max-height: min(calc(90 * var(--nge-vh, 1vh)), calc(100 * var(--nge-vh, 1vh) - 32px));
   overflow: hidden;
   transition: width 0.25s ease;
 }
 .nge-profile-shell--trophy {
-  width: 85vw;
+  width: calc(85 * var(--nge-vw, 1vw));
   max-width: 1200px;
 }
 .nge-profile-shell--admin {
   width: 720px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
 }
 /* Give Week in Science a real, consistent width instead of letting the shell
    shrink to the recap's old fixed content width (which read as a tiny box). */
 .nge-profile-shell--week {
   /* Wide enough for the recap's three columns to fit without scrolling. */
   width: 1180px;
-  max-width: 94vw;
+  max-width: calc(94 * var(--nge-vw, 1vw));
 }
 .nge-profile-shell--dstats {
   /* Wide enough for the three columns of dataset stats. */
   width: 1180px;
-  max-width: 94vw;
+  max-width: calc(94 * var(--nge-vw, 1vw));
 }
 .nge-profile-body--dstats {
   display: block;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow-y: auto;
 }
 .nge-profile-shell--datasets {
   width: 640px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
 }
 .nge-profile-shell--settings {
   /* Full profile size with three columns (Ames 2026-09-29). */
   width: 1120px;
-  max-width: 94vw;
-  height: min(760px, calc(100vh - 32px));
+  max-width: calc(94 * var(--nge-vw, 1vw));
+  height: min(760px, calc(100 * var(--nge-vh, 1vh) - 32px));
 }
 .nge-profile-body--settings {
   flex-direction: column;
@@ -2753,7 +3230,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* More datasets: one toggle row per optional volume */
 /* A block, not the profile body's row: as a row its title, intro and
    toggles sat side by side in thin columns. */
-.nge-profile-body.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: 38vh; overflow-y: auto; }
+.nge-profile-body.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: calc(38 * var(--nge-vh, 1vh)); overflow-y: auto; }
 .nge-ds-more-title { font-size: 0.78em; letter-spacing: 0.12em; text-transform: uppercase; color: #8fb8e8; font-weight: 700; margin-bottom: 4px; }
 .nge-ds-more-intro { font-size: 0.86em; color: #9fb0c8; line-height: 1.45; margin-bottom: 10px; }
 .nge-ds-more-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
@@ -2944,6 +3421,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-topbar-scope:hover .nge-profile-topbar-scope-name { color: #fff; border-bottom-color: #fff; }
 .nge-profile-topbar-scope--fallback .nge-profile-topbar-scope-name { color: #f5a623; }
 
+.nge-profile-exit--tabs { margin-left: auto; padding: 4px 2px 4px 12px; }
 .nge-profile-exit {
   background: none; border: none;
   color: #666; font-size: 1.5em; cursor: pointer; line-height: 1; padding: 0;
@@ -3590,6 +4068,19 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-section--special {
   border-top: none;
 }
+/* Competitions: the medal with how many times it was won (Ames 2026-10-21) */
+.nge-profile-badge--medal .nge-profile-badge-img, .nge-trophy-medal-img { position: relative; display: inline-flex; }
+.nge-medal-count {
+  position: absolute; right: -6px; bottom: -2px; min-width: 20px; padding: 0 5px; border-radius: 999px;
+  background: #0b1424; border: 1px solid rgba(245, 209, 66, 0.75); color: #f8e08a;
+  font: 700 10.5px/16px 'Orbitron', 'Inter', sans-serif; text-align: center; letter-spacing: 0.02em;
+  box-shadow: 0 0 8px rgba(245, 209, 66, 0.25);
+}
+.nge-trophy-medal-img .nge-medal-count { right: -8px; bottom: 4px; font-size: 11.5px; line-height: 18px; min-width: 24px; }
+.nge-trophy-medal-place { margin-top: 1px; font-size: 0.72em; color: rgba(196, 228, 255, 0.55); }
+.nge-medal-wins { color: #f8e08a; }
+
+.nge-profile-medal-gap { align-self: center; width: 1px; height: 30px; margin: 0 4px; background: rgba(100, 180, 255, 0.25); }
 
 .nge-profile-badges-empty {
   font-size: 0.75em;
@@ -3724,7 +4215,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
 .nge-profile-viz-badge-icon--large { width: 240px; height: 240px; max-width: 100%; }
 /* Sized to the window, so the silver favorites and the streak chart fit under it. */
-.nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, 25vh); height: min(220px, 25vh); }
+.nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, calc(25 * var(--nge-vh, 1vh))); height: min(220px, calc(25 * var(--nge-vh, 1vh))); }
 .nge-profile-viz-panel { max-width: 100%; box-sizing: border-box; }
 .nge-profile-viz-badge-name,
 .nge-profile-viz-badge-desc { max-width: 100%; overflow-wrap: break-word; padding: 0 10px; box-sizing: border-box; }
@@ -3785,10 +4276,17 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   font-style: normal;
 }
 
+/* Rows and headings share one grid: star, tick, segment, type, when, rename
+   (Ames 2026-10-29: "these are all out of alignment"). */
+.nge-cell-list-columns,
+.nge-cell-row {
+  display: grid !important;
+  grid-template-columns: 18px 16px minmax(0, 1fr) minmax(0, 1.2fr) 64px 18px;
+  column-gap: 6px;
+}
 .nge-cell-list-columns {
-  display: flex;
   align-items: center;
-  padding: 0 2px 4px 42px; /* align with cell rows (past fav + pip) */
+  padding: 0 8px 4px;
   border-bottom: 1px solid rgba(74, 158, 255, 0.08);
   margin-bottom: 2px;
 }
@@ -3799,9 +4297,9 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   letter-spacing: 0.08em;
   color: rgba(180, 195, 220, 0.55);
 }
-.nge-cell-col-label--id { flex: 1; }
-.nge-cell-col-label--type { width: 110px; text-align: left; }
-.nge-cell-col-label--time { width: 64px; text-align: right; padding-right: 18px; }
+.nge-cell-col-label--id { grid-column: 3; }
+.nge-cell-col-label--type { grid-column: 4; text-align: left; }
+.nge-cell-col-label--time { grid-column: 5; text-align: right; }
 
 .nge-cell-list-more {
   display: block; margin: 6px 0 0 auto;
@@ -3849,7 +4347,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 .nge-cell-list-scroll {
   /* As tall as the window allows, so the column never needs its own scroll. */
-  max-height: max(52px, min(200px, calc(90vh - 580px)));
+  max-height: max(52px, min(200px, calc(90 * var(--nge-vh, 1vh) - 580px)));
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -3905,7 +4403,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 150px;
 }
 
 .nge-cell-type {
@@ -3920,6 +4417,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 .nge-cell-time {
   flex-shrink: 0;
+  text-align: right;
   font-size: 0.92em;
   color: #889;
   white-space: nowrap;
@@ -3965,6 +4463,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-tabbar {
   display: flex;
+  align-items: center;
   /* Wrap rather than crop: in the narrower Settings / Datasets shells the
      tabs are wider than the box and "Admin Hub" was cut off (fit audit). */
   flex-wrap: wrap;
@@ -4018,7 +4517,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-body--week {
   display: block;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow-y: auto;
 }
 
@@ -4034,7 +4533,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   display: flex;
   flex-direction: column;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow: hidden;
 }
 .nge-profile-body--admin > :deep(.nge-admin-hub) {
@@ -4046,7 +4545,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-trophy-scroll {
   overflow-y: auto;
   padding: 16px 24px 24px;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
 }
@@ -4129,6 +4628,19 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   margin-bottom: 6px;
   filter: drop-shadow(0 0 4px rgba(100, 180, 255, 0.2));
 }
+
+/* In the Trophy Case grid the art is the card: bigger, and the name and
+   count move to the tooltip (Ames 2026-10-27: "badges are too small -- we
+   don't want to have the title on display - they can appear on hover"). */
+.nge-trophy-grid .nge-trophy-badge { padding: 10px; justify-content: center; }
+.nge-trophy-grid .nge-trophy-badge-icon {
+  width: 82%; max-width: 150px; height: auto; aspect-ratio: 1; margin-bottom: 0;
+}
+.nge-trophy-grid .nge-trophy-medal-img { display: block; width: 82%; max-width: 150px; }
+.nge-trophy-grid .nge-trophy-medal-img .nge-trophy-badge-icon { width: 100%; }
+.nge-trophy-grid .nge-trophy-badge-name,
+.nge-trophy-grid .nge-trophy-badge-threshold,
+.nge-trophy-grid .nge-trophy-medal-place { display: none; }
 
 .nge-trophy-badge-mystery {
   width: 56px;
@@ -4293,6 +4805,35 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* Sections in the player's own order: dragged by the grip in the heading */
 .nge-trophy-main { display: flex; flex-direction: column; }
 .nge-trophy-track { transition: opacity 0.15s ease, box-shadow 0.15s ease; border-radius: 10px; }
+.nge-trophy-more-old {
+  display: block; margin: 10px auto 0; padding: 6px 16px; border-radius: 999px; font: inherit; font-size: 0.8em; font-weight: 600;
+  letter-spacing: 0.03em; cursor: pointer; color: #b9d6ff; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(74, 158, 255, 0.3);
+  transition: background 0.15s, border-color 0.15s;
+}
+.nge-trophy-more-old:hover { background: rgba(74, 158, 255, 0.16); border-color: rgba(120, 190, 255, 0.6); outline: none; }
+/* the '+N more' tile: a tile like its neighbours, with the next pictures fanned behind the count */
+.nge-trophy-moretile {
+  position: relative; overflow: hidden; justify-content: center; gap: 2px; min-height: 96px; font: inherit; color: #dcebff;
+  background: rgba(74, 158, 255, 0.07); border: 1px solid rgba(110, 175, 255, 0.28);
+}
+.nge-trophy-moretile:hover, .nge-trophy-moretile:focus-visible {
+  background: rgba(74, 158, 255, 0.14); border-color: rgba(140, 195, 255, 0.6); box-shadow: 0 0 16px rgba(74, 158, 255, 0.25); outline: none;
+}
+.nge-moretile-stack { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.nge-moretile-stack img {
+  grid-area: 1 / 1; width: 62%; height: 62%; object-fit: contain; opacity: 0.45; filter: saturate(0.8);
+  transform: translateX(calc((var(--i) - 1) * 26%)) rotate(calc((var(--i) - 1) * 10deg)) scale(calc(1 - var(--i) * 0.06));
+  transition: opacity 0.2s, transform 0.2s;
+}
+.nge-trophy-moretile:hover .nge-moretile-stack img { opacity: 0.6; transform: translateX(calc((var(--i) - 1) * 32%)) rotate(calc((var(--i) - 1) * 14deg)) scale(calc(1 - var(--i) * 0.06)); }
+.nge-moretile-n { position: relative; font-family: "Orbitron", "Rajdhani", ui-monospace, Consolas, monospace; font-size: 1.7em; font-weight: 700; letter-spacing: 0.04em; color: #e6f2ff; text-shadow: 0 0 14px rgba(110, 180, 255, 0.7); }
+.nge-moretile-t { position: relative; font-size: 0.72em; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(190, 215, 250, 0.85); }
+.nge-trophy-grid .nge-trophy-moretile .nge-moretile-t { display: block; }
+.nge-trophy-fewer { display: block; margin: 8px 0 0 auto; padding: 2px 4px; border: 0; background: none; font: inherit; font-size: 0.78em; font-weight: 600; color: rgba(160, 195, 240, 0.8); cursor: pointer; }
+.nge-trophy-fewer:hover, .nge-trophy-fewer:focus-visible { color: #dcebff; text-decoration: underline; outline: none; }
+@media (prefers-reduced-motion: reduce) { .nge-moretile-stack img { transition: none; } }
+.nge-trophy-track--legacy { margin-top: 8px; padding-top: 18px; border-top: 1px solid rgba(160, 180, 210, 0.14); }
+.nge-trophy-legacy-sub { font-size: 0.78em; font-weight: 600; letter-spacing: 0.04em; color: rgba(190, 205, 228, 0.7); margin: 10px 0 8px; }
 .nge-trophy-track.is-dragging { opacity: 0.45; }
 .nge-trophy-track.is-drop { box-shadow: 0 -3px 0 0 rgba(120, 190, 255, 0.85); }
 .nge-trophy-track-move { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.15s ease; }
@@ -4309,18 +4850,19 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 @media (hover: none), (pointer: coarse) { .nge-trophy-track-move { opacity: 1; } }
 
 @media (min-width: 901px) {
-  body:not(.nge-mobile) .nge-profile-shell--trophy { width: 97vw; max-width: none; height: 94vh; max-height: 94vh; }
+  body:not(.nge-mobile) .nge-profile-shell--trophy { width: calc(97 * var(--nge-vw, 1vw)); max-width: none; height: calc(94 * var(--nge-vh, 1vh)); max-height: calc(94 * var(--nge-vh, 1vh)); }
   body:not(.nge-mobile) .nge-profile-body--trophy > .nge-trophy-scroll {
-    display: grid; grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
+    /* one third for the Achievement on show, two thirds for the case (Ames 2026-11-02) */
+    display: grid; grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr);
     overflow: hidden; padding: 0;
   }
   body:not(.nge-mobile) .nge-trophy-side {
-    --trophy-icon: min(300px, 24vw, 38vh);
+    --trophy-icon: min(300px, calc(24 * var(--nge-vw, 1vw)), calc(38 * var(--nge-vh, 1vh)));
     overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-    padding: 28px 22px 22px; border-right: 1px solid rgba(74, 158, 255, 0.1);
+    padding: 36px 40px 32px; border-right: 1px solid rgba(74, 158, 255, 0.1);
   }
   body:not(.nge-mobile) .nge-trophy-main {
-    overflow-y: auto; padding: 22px 26px 26px;
+    overflow-y: auto; padding: 32px 48px 40px;
     scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
   }
   body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured {
@@ -4536,8 +5078,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   animation: ngeSectionRollIn 0.18s ease-out;
 }
 .nge-special-modal {
-  width: min(720px, 92vw);
-  max-height: 80vh;
+  width: min(720px, calc(92 * var(--nge-vw, 1vw)));
+  max-height: calc(80 * var(--nge-vh, 1vh));
   background: linear-gradient(135deg, rgba(8, 12, 24, 0.98), rgba(12, 18, 32, 0.97));
   border: 1px solid rgba(74, 158, 255, 0.25);
   border-radius: 12px;
@@ -4631,8 +5173,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(90vw, 420px);
-  height: min(90vw, 420px);
+  width: min(calc(90 * var(--nge-vw, 1vw)), 420px);
+  height: min(calc(90 * var(--nge-vw, 1vw)), 420px);
   transform: translate(-50%, -62%);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(53, 181, 255, 0.28) 0%, rgba(53, 181, 255, 0.08) 45%, transparent 70%);
@@ -4643,8 +5185,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(74vw, 340px);
-  height: min(74vw, 340px);
+  width: min(calc(74 * var(--nge-vw, 1vw)), 340px);
+  height: min(calc(74 * var(--nge-vw, 1vw)), 340px);
   transform: translate(-50%, -62%);
   border-radius: 50%;
   border: 1px solid rgba(53, 181, 255, 0.55);
@@ -4654,8 +5196,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   pointer-events: none;
 }
 .nge-badge-zoom-img {
-  width: min(64vw, 300px);
-  height: min(64vw, 300px);
+  width: min(calc(64 * var(--nge-vw, 1vw)), 300px);
+  height: min(calc(64 * var(--nge-vw, 1vw)), 300px);
   object-fit: contain;
   margin-bottom: 6px;
   filter: drop-shadow(0 0 24px rgba(100, 180, 255, 0.55));
@@ -4732,16 +5274,16 @@ body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
    shell instead. Test page: experimental-UI/components/profile.html.
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
-  width: 100vw;
-  height: 100vh;
+  width: calc(100 * var(--nge-vw, 1vw));
+  height: calc(100 * var(--nge-vh, 1vh));
   /* ng-override sizes every overlay to its content (min-width: max-content):
      here that is about 1340 px, so on a narrower window the profile spilled
      off both sides with its close button out of sight (Celia, report 171,
      2026-10-19). The frame is the window; the Overview scrolls inside it. */
   min-width: 0 !important;
   /* ng-override caps every modal at 100vw - 24px, with !important */
-  max-width: 100vw !important;
-  max-height: 100vh !important;
+  max-width: calc(100 * var(--nge-vw, 1vw)) !important;
+  max-height: calc(100 * var(--nge-vh, 1vh)) !important;
   border-radius: 0;
   box-sizing: border-box;
 }
@@ -4755,7 +5297,7 @@ body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
   width: 100%;
   max-width: none;
   height: 100%;
-  max-height: 100vh;
+  max-height: calc(100 * var(--nge-vh, 1vh));
 }
 .nge-profile-modal .nge-profile-col--main { flex: 1 1 0; min-width: 0; }
 .nge-profile-modal .nge-profile-col--right  { flex: 0 1 420px; min-width: 300px; }
@@ -4775,7 +5317,8 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 .nge-profile-modal .nge-profile-body--admin { width: 100%; max-width: 720px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--week { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--dstats { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
-.nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1200px; align-self: center; }
+/* the Trophy Case takes the frame like the Overview (Ames 2026-11-02) */
+.nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1880px; align-self: center; }
 /* the Overview keeps the proportions it has at 1920 px: on a wider screen
    (Ames 2026-10-13, a 2560 px window: "look how bad this looks on a super
    wide screen") the rows no longer stretch, the body is capped and centred
@@ -4816,8 +5359,18 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
    The Overview's rows show the art alone; the name shows on hover. The
    rows are shorter for it, with the shelf line redrawn under the art. */
 :is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge .nge-profile-badge-name { display: none; }
+/* Bigger art in the Overview rows too (Ames 2026-10-27: "these can be bigger
+   as well - so tiny"): each fills most of its column, up to 84 px from 42. */
+.nge-track-achievements .nge-profile-badges-grid { grid-template-columns: repeat(4, 1fr); }
+.nge-track-achievements .nge-profile-badge:not(.nge-profile-badge--viewall):not(.nge-profile-badge--locked) .nge-profile-badge-img {
+  width: 100%; max-width: 96px; height: auto; aspect-ratio: 1;
+}
+.nge-track-achievements .nge-profile-badge:not(.nge-profile-badge--viewall):not(.nge-profile-badge--locked) .nge-profile-badge-icon {
+  width: 92%; height: 92%;
+}
+.nge-track-achievements .nge-profile-badge { justify-content: center; }
 .nge-track-achievements .nge-profile-badges-grid {
-  grid-auto-rows: 56px;
+  grid-auto-rows: minmax(56px, auto);
   /* no shelf line: with the names gone it read as a stray border under
      each row (Ames 2026-10-11); the section's own border is enough */
   background-image: none;
@@ -4989,11 +5542,14 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 /* ── No scroll on the Overview (Ames 2026-10-11) ──────────────────────────
    The three rows take their natural height, the last row takes what is
    left, and the list scrolls inside its own box. Phones keep scrolling as
-   one page (mobile.css). */
-body:not(.nge-mobile) .nge-profile-col--main { overflow: hidden; display: flex; flex-direction: column; }
+   one page (mobile.css). On a short screen the last row keeps room for the
+   Scout report and several cells, and the Overview scrolls instead of
+   cutting them off (Ames 2026-10-24: "keep in mind smaller screens, we may
+   have to enable scroll"). Tall screens never see a scrollbar. */
+body:not(.nge-mobile) .nge-profile-col--main { overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
 body:not(.nge-mobile) .nge-track-rows { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
 body:not(.nge-mobile) .nge-track-row { flex: none; }
-body:not(.nge-mobile) .nge-track-row--rest { flex: 1 1 0; min-height: 0; }
+body:not(.nge-mobile) .nge-track-row--rest { flex: 1 1 0; min-height: 240px; }
 body:not(.nge-mobile) .nge-track-row--rest > .nge-track-stats { display: flex; flex-direction: column; min-height: 0; }
 body:not(.nge-mobile) .nge-track-row--rest .nge-profile-section--cells { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 body:not(.nge-mobile) .nge-track-row--rest .nge-cell-list { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: 0; }
@@ -5132,7 +5688,7 @@ body.nge-mobile .nge-track-achievements { padding-left: 0; border-left: none; }
 /* A number that can not be read says so; it is never shown as zero. */
 .nge-profile-stat-unavailable { font-size: 0.82em; color: rgba(200, 215, 240, 0.55); }
 
-/* ══ Calm screen (body.nge-calm; Settings > User Interface, off by default) ══
+/* ══ Calm screen (body.nge-calm; Settings > Screen, off by default) ══
    Annkri (#144): "too many glowing / bright elements stealing focus ... it
    gets too much and strenuous to look at over time". The base in
    ng-override.css already stops every animation and transition and clears
@@ -5208,7 +5764,33 @@ body.nge-calm .nge-profile-windows :deep(.nge-effort-span.is-on) { color: #e6eef
 /* the Scout report's numbers in one colour (inline colours otherwise) */
 body.nge-calm .nge-profile-stat-row--scout .nge-profile-stat-val { color: #d8dde8 !important; }
 /* the favourite, the brightest thing on the page, a size down */
-body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, 18vh); height: min(150px, 18vh); }
+body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, calc(18 * var(--nge-vh, 1vh))); height: min(150px, calc(18 * var(--nge-vh, 1vh))); }
 /* the streak's flame and count sit still in the plain colours */
 body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
+.nge-ds-access { margin: 8px 0 14px; }
+.nge-ds-access-title { display: flex; align-items: center; gap: 8px; font: 600 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(160, 225, 255, 0.85); margin-bottom: 8px; }
+.nge-ds-access-tick { width: 14px; height: 2px; background: linear-gradient(90deg, #7cf2ff, transparent); box-shadow: 0 0 6px #7cf2ff; }
+.nge-ds-access-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.nge-ds-access-tile {
+  --c: 124, 242, 255;
+  position: relative; display: flex; align-items: center; gap: 10px; min-width: 150px; padding: 8px 16px 8px 8px; overflow: hidden;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: linear-gradient(135deg, rgba(var(--c), 0.16), rgba(20, 40, 80, 0.55) 55%, rgba(var(--c), 0.08));
+  box-shadow: inset 0 0 0 1px rgba(var(--c), 0.55), inset 0 0 18px rgba(var(--c), 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.nge-ds-access-tile::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px); }
+.nge-ds-access-tile::after { content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; pointer-events: none; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.18), transparent); transform: skewX(-18deg); opacity: 0; }
+.nge-ds-access-tile--edit:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px rgba(var(--c), 0.9), inset 0 0 22px rgba(var(--c), 0.22), 0 0 14px rgba(var(--c), 0.25); }
+.nge-ds-access-tile--edit:hover::after { opacity: 1; animation: nge-ds-access-sweep 0.9s ease; }
+@keyframes nge-ds-access-sweep { from { left: -60%; } to { left: 120%; } }
+.nge-ds-access-icon { width: 34px; height: 34px; flex-shrink: 0; object-fit: contain; filter: drop-shadow(0 0 6px rgba(var(--c), 0.55)); }
+.nge-ds-access-text { display: flex; flex-direction: column; gap: 3px; }
+.nge-ds-access-name { font: 700 14px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; text-shadow: 0 0 8px rgba(var(--c), 0.45); }
+.nge-ds-access-state { font: 600 10px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(var(--c)); }
+.nge-ds-access-tile--edit { --c: 110, 240, 170; }
+.nge-ds-access-tile--locked { --c: 150, 170, 200; opacity: 0.7; }
+.nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(0.6) brightness(0.85); }
+.nge-ds-access-tile--unknown { opacity: 0.55; }
+@media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 </style>

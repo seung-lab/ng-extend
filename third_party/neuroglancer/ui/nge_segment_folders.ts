@@ -7,6 +7,7 @@
  * opens with the same folders. Only membership is kept here: the order of the
  * cells inside a folder is the list's own order, which drag still changes.
  */
+import type {SegmentNotes} from 'neuroglancer/ui/nge_segment_notes';
 import {NullarySignal} from 'neuroglancer/util/signal';
 
 export interface SegmentFolder {
@@ -24,6 +25,8 @@ export interface SegmentFolder {
   /** The tallest its box may be, in px, once dragged by the grip under it
    *  (Nseraf, report 179); none = the panel's own cap. */
   height?: number;
+  /** Annotation folders: its annotations are not drawn (annkri, report 225). */
+  hidden?: boolean;
 }
 
 /** nge: cells picked with Ctrl+click or Shift+click, to move, show, hide,
@@ -71,6 +74,17 @@ export const FOLDERS_JSON_KEY = 'ngeFolders';
 export class SegmentFolders {
   value: SegmentFolder[] = [];
   changed = new NullarySignal();
+  /** Annotation folders: the folder that annotations placed from now on go
+   *  into (annkri, report 225: "chose a folder and all the annotations you
+   *  place go into there"). Saved by the layer under its own key. */
+  activeFolder: string|undefined = undefined;
+
+  setActive(id: string|undefined) {
+    const next = id !== undefined && this.value.some(f => f.id === id) ? id : undefined;
+    if (next === this.activeFolder) return;
+    this.activeFolder = next;
+    this.changed.dispatch();
+  }
 
   /** The Seg panel's folders hold cell IDs; annotation folders
    *  (nge_annotation_folders.ts) hold annotation IDs and keep their own
@@ -91,6 +105,7 @@ export class SegmentFolders {
           parent: typeof f.parent === 'string' && f.parent ? f.parent : undefined,
           color: typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : undefined,
           paint: f.paint === true,
+          hidden: f.hidden === true ? true : undefined,
           height: typeof f.height === 'number' && Number.isFinite(f.height) ?
               Math.round(Math.max(FOLDER_MIN_HEIGHT, Math.min(FOLDER_MAX_HEIGHT, f.height))) : undefined,
         });
@@ -116,6 +131,7 @@ export class SegmentFolders {
       ...(f.parent ? {parent: f.parent} : {}),
       ...(f.color ? {color: f.color} : {}),
       ...(f.paint ? {paint: true} : {}),
+      ...(f.hidden ? {hidden: true} : {}),
       ...(f.height ? {height: f.height} : {}),
     }));
   }
@@ -195,6 +211,22 @@ export class SegmentFolders {
     this.changed.dispatch();
   }
 
+  setHidden(id: string, hidden: boolean) {
+    this.value = this.value.map(f => f.id === id ? {...f, hidden: hidden || undefined} : f);
+    this.changed.dispatch();
+  }
+
+  /** True when the folder or one it sits inside is hidden. */
+  isHidden(id: string|undefined): boolean {
+    for (let cur = id, guard = 0; cur !== undefined && guard < 100; ++guard) {
+      const f = this.value.find(x => x.id === cur);
+      if (f === undefined) return false;
+      if (f.hidden) return true;
+      cur = f.parent;
+    }
+    return false;
+  }
+
   setColor(id: string, color: string) {
     this.value = this.value.map(f => f.id === id ? {...f, color} : f);
     this.changed.dispatch();
@@ -247,6 +279,7 @@ export class SegmentFolders {
   /** Ungroup: the folder goes, its cells go back to the main list and the
    *  folders inside it move up a level. */
   remove(id: string) {
+    if (this.activeFolder === id) this.activeFolder = undefined;
     const gone = this.value.find(f => f.id === id);
     this.value = this.value.filter(f => f.id !== id)
                      .map(f => f.parent === id ? {...f, parent: gone?.parent} : f);
@@ -282,7 +315,8 @@ export const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb92
  */
 export function followReplacements(
     selectedSegments: {changed: {add(fn: (x: any, add: boolean) => void): () => void}},
-    folders: SegmentFolders, pasted?: () => {ids: string[], changed: NullarySignal}) {
+    folders: SegmentFolders, pasted?: () => {ids: string[], changed: NullarySignal},
+    notes?: SegmentNotes) {
   let removed: string[] = [];
   let added: string[] = [];
   let pending = false;
@@ -292,6 +326,7 @@ export function followReplacements(
     removed = [];
     added = [];
     if (!gone.length || !came.length) return;
+    notes?.replace(gone.filter(id => !came.includes(id)), came.filter(id => !gone.includes(id)));
     const fresh = came.filter(id => !gone.includes(id) && !folders.folderOf(id));
     if (!fresh.length) return;
     const home = gone.map(id => folders.folderOf(id)).find(f => f !== undefined);

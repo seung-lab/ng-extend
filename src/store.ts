@@ -3,12 +3,16 @@ import { startViewHash } from './util/start_view';
 import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
 import { taskAction } from './pilot_actions';
+import { startClaimTimer, countsTime, noteClaimSave, noteClaimFinished, type TimedClaim } from './util/claim_time';
+// A congratulations at 10, 25, 50 and 100 hours on a cell, and a finished Super Quest.
+import './util/claim_congrats';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
+import { achievementTestTrack } from './widgets/badge_definitions';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -38,6 +42,7 @@ import {Uint64} from "neuroglancer/util/uint64";
 import {NGE_KEEP_CUT_OPEN_KEY, ngeKeepCutOpen} from 'neuroglancer/datasource/graphene/frontend';
 import {setStatedColor} from "./widgets/widget_utils";
 import {mintShortStateLink} from "./util/state_link";
+import {anyTabVisible, leadership, onSharedResult, shareResult} from './util/tabs';
 
 declare const CONFIG: Config|undefined;
 declare const DEFAULT_SETTINGS: {  [key: string]: any }
@@ -1020,11 +1025,30 @@ export interface UserPreferences {
   /** Show neuroglancer's "?" controls button in the top bar. Off by default
    *  (Amy 2026-09-30); the controls panel is still in the command palette. */
   showNgControlsButton?: boolean;
+  /** Show neuroglancer's x y z corner in each view (it opens into the scale
+   *  and depth panel on hover). Off by default (Ames 2026-10-27: "get rid of
+   *  this"); the Neuroglancer box in Settings brings it back. */
+  showXyzCorner?: boolean;
   /** What a completed cell shows: the full congratulations in the middle of
    *  the screen (the default), a small note at the top that does not cover
    *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
    *  distracting from the workflow"). */
   cellCompleteMessage?: 'full' | 'small' | 'off';
+  /** Settings, "Achievement celebration" (toknow, report 239; Ames
+   *  2026-10-25). False: no card and no confetti when one is earned; it is
+   *  still in the Trophy Case and the bell. */
+  achievementCelebration?: boolean;
+  /** Settings: every notification in one list instead of My Pyr and Pyr
+   *  Updates (Ames 2026-10-25). */
+  notifOneList?: boolean;
+  /** Settings, "Organize my notifications into categories": the bell's
+   *  tabs (My Pyr, Pyr Updates, and Admin for admins). Off by default, so
+   *  the bell is one feed (Ames 2026-10-27: "default it back to 1 feed and
+   *  put an option to organize my notifs into categories in settings"). */
+  notifCategories?: boolean;
+  /** Settings, "Show Today in Pyr": false keeps the daily update out of the
+   *  bell (Ames 2026-10-25). */
+  showDailyDigest?: boolean;
   /** 2D image detail: 1 full (default), 2 half, 4 quarter, as neuroglancer's
    *  render scale target for image layers. Coarser loads far less on a slow
    *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
@@ -1043,16 +1067,33 @@ export interface UserPreferences {
   hoverStyleAuto?: boolean;
   /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
   pulseColor?: string;
+  /** Preferred colour families for cells (util/color_families.ts); empty or unset: neuroglancer's own colours. */
+  colorFamilies?: string[];
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
-   *  selects, right click hides (Ames 2026-10-06). */
+   *  selects, right click hides (Ames 2026-10-06). It also sets the number
+   *  keys: on, 1 to 9 show and hide layers; off, a number makes its layer the
+   *  active one and Shift + the number shows or hides it (Ames 2026-10-24). */
   classicLayerClicks?: boolean;
+  /** Quick merge: with the cursor on a piece, M places a merge point there
+   *  (opening merge if needed); the second M on another piece sends that
+   *  merge. Defaults to false: M only opens and closes merge (Ames 2026-11-04). */
+  quickMergeKey?: boolean;
+  /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
+   *  Defaults to false: it shows. */
+  hideRadio?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
   /** Hide the Halloween pumpkin on the Sandbox cell (src/util/pumpkin.ts).
    *  Defaults to false: the pumpkin shows in season. */
   hidePumpkin?: boolean;
+  /** Hide the Thanksgiving turkey (src/util/turkey.ts). Defaults to false:
+   *  it walks by in Thanksgiving week. */
+  hideTurkey?: boolean;
+  /** Hide the falling autumn leaves (src/util/leaves.ts). Defaults to false:
+   *  they fall now and then in the fall. */
+  hideLeaves?: boolean;
   /** The tab the Cell Library opens on (Nik 2026-10-09). Unset: My Cells. */
   cellLibraryStartTab?: 'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links';
   /** Jumping to a cell ADDS it to the view instead of replacing what is
@@ -1096,9 +1137,20 @@ export interface UserPreferences {
   /** Calm screen: no animations or glows in the interface (src/util/calm.ts,
    *  annkri #144, Ames 2026-10-16). Defaults to false. */
   calmScreen?: boolean;
+  /** Settings, "Particles": a small burst where a Highlight, Tag, cut, merge
+   *  or Find Path point lands (src/util/point_particles.ts, Ames 2026-11-02).
+   *  On unless false. */
+  pointParticles?: boolean;
   /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
    *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
   cursorXL?: boolean;
+  /** Large text: Pyr's windows and the layer side panel drawn a fifth bigger
+   *  (body.nge-large-text, src/large_text.css; Ames 2026-10-25, for older
+   *  players). Defaults to false. */
+  largeText?: boolean;
+  /** The top bar hides until the mouse comes to the top edge of the window
+   *  (ExtensionBar.vue, Nik #243, Ames 2026-10-25). Defaults to false. */
+  hideTopBar?: boolean;
   /** Advanced: a click on the 2D image layer's tab opens its side panel, as
    *  in neuroglancer. Off (default): it shows or hides the 2D view. */
   imageLayerPanel?: boolean;
@@ -1150,7 +1202,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1220,9 +1272,32 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
     } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }
   }
 
+  /** Flag and bio live on the public profile row, and this browser keeps a
+   *  copy that the profile and Settings show. A browser new to the player
+   *  started with an empty copy, so the country and bio looked deleted
+   *  (AzureJay, report 229, first sign in on Firefox), and saving Settings
+   *  there would have blanked them for real. The row's values fill the copy. */
+  let profilePulledFor = '';
+  async function pullProfile(userId: string) {
+    if (!userId || profilePulledFor === userId) return;
+    try {
+      const { data, error } = await supabase.from('users').select('flag, bio').eq('id', userId).maybeSingle();
+      if (error || !data) return;
+      profilePulledFor = userId;
+      const flag = typeof (data as any).flag === 'string' ? (data as any).flag : '';
+      const bio = typeof (data as any).bio === 'string' ? (data as any).bio : '';
+      let changed = false;
+      if (flag && prefs.value.flag !== flag) { prefs.value.flag = flag; changed = true; }
+      if (bio && prefs.value.bio !== bio) { prefs.value.bio = bio; changed = true; }
+      if (changed) localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+    } catch (e) { console.warn('[prefs] could not read your profile:', e); }
+  }
+
   load(); // hydrate from localStorage on store init
   // The cursor size follows the setting, on every computer the account uses.
   watch(() => prefs.value.cursorXL === true, on => { document.body?.classList.toggle('nge-cursor-xl', on); }, { immediate: true });
+  watch(() => prefs.value.largeText === true, on => { document.body?.classList.toggle('nge-large-text', on); }, { immediate: true });
+  watch(() => prefs.value.showXyzCorner === true, on => { document.body?.classList.toggle('nge-show-xyz', on); }, { immediate: true });
   // The renderer reads the hover style and pulse colour from these.
   watch(() => [prefs.value.hoverStyle, prefs.value.pulseColor], () => {
     ngeHoverStyle.value = ngeParseHoverStyle(prefs.value);
@@ -1238,7 +1313,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // Once signed in, the account's copy wins over this browser's.
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
-  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
+  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) { pullFromAccount(String(id)); void pullProfile(String(id)); } }, { immediate: true }), 0);
   return { prefs, save, resetToDefaults, accountLoaded };
 });
 
@@ -1449,6 +1524,12 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
           if (!keep && segId && segId !== '0') {
             const only = groupState.visibleSegments.size === 1 && groupState.visibleSegments.has(seg);
             if (!only) groupState.visibleSegments.clear();
+            // The list too: a jump replaces the view, and the cell before
+            // stayed in the segment list, hidden (Nseraf, report 365: a
+            // completed Hunt cell lingered after jumping to the next claim).
+            // The claim left was saved first (Cell Library leaveCurrentWork).
+            const listed = groupState.selectedSegments;
+            if (listed && !(listed.size === 1 && listed.has(seg))) listed.clear();
           }
           if (!groupState.visibleSegments.has(seg)) {
             groupState.visibleSegments.add(seg);
@@ -1824,7 +1905,17 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         requests.value.unshift(newReq);
       }
       const live = isLiveHelp(req);
-      if (live || opts.chat !== false) {
+      // A Hunt candidate is not named in chat: only admins and players with
+      // Retina edit access see those cells (Nseraf, report 366). The request
+      // itself is kept and answered as usual.
+      const huntCell = (() => {
+        try {
+          const id = String(req.segId || '');
+          return !!id && useProofreadingQueueStore().items.some(i =>
+            (i.segId === id || i.finalSegId === id) && /^Hunt (cell|candidate)/.test(i.notes || ''));
+        } catch { return false; }
+      })();
+      if (!huntCell && (live || opts.chat !== false)) {
         try {
           const note = (req.note || '').replace(/\s+/g, ' ').trim().slice(0, 110);
           const issue = live ? req.issueType.slice(LIVE_HELP.length).replace(/^[\s·:]+/, '') : (req.issueType || '');
@@ -1890,7 +1981,10 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   load();
   subscribe();
 
-  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
+  /** A request the Help tab should open on and show (a reply notification's
+   *  "Open in Help tab", Ames 2026-10-24). CellLibraryPanel clears it. */
+  const focusId = ref<string | null>(null);
+  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe, focusId };
 });
 
 // ── Issue Tags (Scout tags) ────────────────────────────────────────────────
@@ -3494,7 +3588,17 @@ export interface ProofreadingTask {
   supervoxel_id: string | null;
   /** The claimer's saved view of this cell, annotation layers included. */
   working_link?: string | null;
+  /** 'interneuron': a long term quest (supabase-interneuron-quests.sql). One
+   *  at a time, never expires, not counted against the claim limit. */
+  kind?: 'cell' | 'interneuron' | null;
+  /** A Super Quest's category, such as "Pyramidal Target" (supabase-super-quest-categories.sql). */
+  quest_category?: string | null;
+  /** When a Super Quest claim ends, 2 months after it was claimed (supabase-super-quest-two-months.sql). */
+  quest_ends_at?: string | null;
 }
+
+/** An interneuron quest: a claim of its own kind, listed apart in the Cell Library. */
+export const isQuestTask = (t: { kind?: string | null } | null | undefined) => t?.kind === 'interneuron';
 
 export interface EditLogEntry {
   task_id?: number | null;
@@ -3621,16 +3725,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     userName.value = displayName;
     console.info('[backend] syncUser called for', email);
     try {
-      // Try to find existing user by email
-      const { data: existing, error: selectErr } = await supabase
-        .from('users')
-        .select('id, username')
-        .eq('middleauth_email', email)
-        .single();
-
-      if (selectErr && selectErr.code !== 'PGRST116') {
+      // Find the player's row by email. A failed read (server busy, too many
+      // requests, a network blip) used to fall through to "create a new
+      // user", which failed too, and left the whole visit without a profile:
+      // chat said "Log in to chat" to a signed in player (Ames 2026-10-25).
+      // Now a failed read is tried again, and only a real "no row" creates one.
+      let existing: { id: string; username?: string | null } | null = null;
+      for (let attempt = 0; ; attempt++) {
+        const { data, error: selectErr } = await supabase
+          .from('users')
+          .select('id, username')
+          .eq('middleauth_email', email)
+          .single();
         // PGRST116 = "no rows returned" (expected for new users)
-        console.warn('[backend] syncUser SELECT error:', selectErr.message);
+        if (!selectErr || selectErr.code === 'PGRST116') { existing = data as any; break; }
+        console.warn(`[backend] syncUser SELECT error (try ${attempt + 1}):`, selectErr.message);
+        if (attempt >= 5) throw new Error('Could not read your profile: ' + selectErr.message);
+        await new Promise(r => setTimeout(r, [2000, 5000, 10000, 20000, 40000][attempt]));
+        if (userEmail.value !== email) return;   // signed in as someone else meanwhile
       }
 
       if (existing) {
@@ -3754,16 +3866,143 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // ── Task management ───────────────────────────────────────────────────
   /** Load tasks for a dataset, with optional status filter. */
   // Incremental sync (Amy 2026-09-28: "don't go through thousands of rows each
-  // time"). The first load of a dataset pages through every task once; after
-  // that only rows whose updated_at moved are fetched and merged in. Every
-  // claim, release, completion and expiry bumps updated_at (pilot_task_action,
-  // expire_stale_assignments), so a claim or release costs one tiny query.
+  // time"). After the first load of a dataset only rows whose updated_at moved
+  // are fetched and merged in. Every claim, release, completion and expiry
+  // bumps updated_at (pilot_task_action, expire_stale_assignments), so a claim
+  // or release costs one tiny query.
+  //
+  // A dataset of more than WHOLE_LIST_MAX tasks is paged (Ames 2026-10-25):
+  // Retina's 16,000+ rows (17 reads, 10 MB) were pulled by every player who
+  // opened the Cell Library while its database sat at full CPU. Such a dataset
+  // loads the player's own tasks in full, the first TASK_PAGE available ones,
+  // and the tab counts from count queries. Load more, search, tab switches and
+  // findTasks fetch the rest as they are needed.
   let tasksSyncedDataset = '';
   let tasksSyncedAt = '';
+
+  /** A task row names a cell. One with a blank id showed as an empty first
+   *  entry in MEC's Cell Library (Krzysztof Kruk, report 223), and Claim a
+   *  new cell could pick it. */
+  const hasCellId = (t: ProofreadingTask) => /^[1-9]\d*$/.test(String(t.segment_id ?? '').trim());
+  /** hasCellId, as a server filter. */
+  const CELL_ID_RE = '^ *[1-9][0-9]* *$';
+  const TASK_PAGE = 100;
+  const WHOLE_LIST_MAX = 1000;
+  /** Load more asks again for a few rows it already has, so a row that left
+   *  the tab meanwhile does not push one past the page edge unseen. */
+  const PAGE_OVERLAP = 10;
+  type TaskTab = 'available' | 'claimed' | 'completed' | 'all';
+  const TAB_STATUSES: Record<TaskTab, string[] | null> = {
+    available: ['pending'], claimed: ['assigned', 'in_progress'], completed: ['completed'], all: null,
+  };
+  const freshPages = (): Record<TaskTab, { next: number; done: boolean }> => ({
+    available: { next: 0, done: false }, claimed: { next: 0, done: false },
+    completed: { next: 0, done: false }, all: { next: 0, done: false },
+  });
+  /** True when `tasks` holds only part of the dataset (see above). */
+  const tasksPaged = ref(false);
+  /** Server counts per tab while paged, else null. */
+  const taskCounts = ref<Record<TaskTab, number> | null>(null);
+  /** How far each tab has been read from the server while paged. */
+  const taskPages = ref(freshPages());
+  const loadingMore = ref<TaskTab | null>(null);
+  /** The player whose own tasks are loaded in full. */
+  let tasksMineFor = '';
+
+  /** List order. A paged list puts the sheet's cells first, as the sheet
+   *  backed Cell Library does, so its first page holds cells from the sheet. */
+  const sheetRank = (t: ProofreadingTask) => (t.source_sheet_url ? 0 : 1);
+  function taskOrder(a: ProofreadingTask, b: ProofreadingTask): number {
+    return (tasksPaged.value ? sheetRank(a) - sheetRank(b) || String(a.source_sheet_url ?? '').localeCompare(String(b.source_sheet_url ?? '')) : 0)
+      || (b.priority ?? 0) - (a.priority ?? 0)
+      || String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id;
+  }
+  function orderedQuery(q: any) {
+    return q.order('source_sheet_url', { ascending: true, nullsFirst: false })
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+  }
+  /** One tab's rows of a dataset, cells with an ID only. */
+  function tabQuery(dataset: string, tab: TaskTab, select = '*', opts?: { count?: 'exact'; head?: boolean }) {
+    let q: any = supabase.from('proofreading_tasks').select(select, opts)
+      .eq('dataset', dataset).filter('segment_id', 'match', CELL_ID_RE);
+    const st = TAB_STATUSES[tab];
+    if (st) q = st.length === 1 ? q.eq('status', st[0]) : q.in('status', st);
+    return q;
+  }
+  async function countTab(dataset: string, tab: TaskTab): Promise<number> {
+    const { count, error: e } = await tabQuery(dataset, tab, 'id', { count: 'exact', head: true });
+    if (e) throw e;
+    return count ?? 0;
+  }
+  async function refreshTaskCounts(dataset: string) {
+    const tabs: TaskTab[] = ['available', 'claimed', 'completed', 'all'];
+    const got = await Promise.all(tabs.map(t => countTab(dataset, t)));
+    if (dataset !== tasksSyncedDataset || !tasksPaged.value) return;
+    taskCounts.value = Object.fromEntries(tabs.map((t, i) => [t, got[i]])) as Record<TaskTab, number>;
+  }
+  /** Merge rows into `tasks`: a known row is replaced, a new one added in order. */
+  function mergeTasks(rows: ProofreadingTask[]) {
+    const ok = rows.filter(hasCellId);
+    if (!ok.length) return;
+    const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
+    const next = tasks.value.slice();
+    let added = false;
+    for (const r of ok) {
+      const i = byId.get(r.id);
+      if (i === undefined) { byId.set(r.id, next.length); next.push(r); added = true; } else next[i] = r;
+    }
+    if (added) next.sort(taskOrder);
+    tasks.value = next;
+  }
+  /** The player's own tasks in a dataset (claimed, completed), all of them. */
+  async function fetchMyTasks(dataset: string): Promise<ProofreadingTask[]> {
+    const out: ProofreadingTask[] = [];
+    for (let from = 0; from <= 20_000; from += 1000) {
+      const { data, error: e } = await supabase.from('proofreading_tasks').select('*')
+        .eq('dataset', dataset).eq('assigned_to', userId.value).order('id', { ascending: true })
+        .range(from, from + 999);
+      if (e) throw e;
+      out.push(...((data ?? []) as ProofreadingTask[]));
+      if ((data ?? []).length < 1000) break;
+    }
+    return out;
+  }
+  /** Every row of a dataset, 1,000 a read (the API's cap), AT_ONCE reads at once. */
+  async function fetchWholeList(dataset: string, statusFilter?: string, AT_ONCE = 4): Promise<ProofreadingTask[]> {
+    const PAGE = 1000;
+    const page = async (from: number) => {
+      let query = supabase
+        .from('proofreading_tasks')
+        .select('*')
+        .eq('dataset', dataset)
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (statusFilter) query = query.eq('status', statusFilter);
+      const { data, error: fetchErr } = await query;
+      if (fetchErr) throw fetchErr;
+      return (data ?? []) as ProofreadingTask[];
+    };
+    const all: ProofreadingTask[] = [];
+    for (let from = 0; from <= 50_000; from += PAGE * AT_ONCE) {
+      const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE)));
+      for (const g of got) all.push(...g);
+      if (got.some(g => g.length < PAGE)) break;
+    }
+    return all;
+  }
 
   async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string, opts: { full?: boolean } = {}) {
     if (!statusFilter && !opts.full && dataset === tasksSyncedDataset && tasksSyncedAt) {
       try {
+        // Signed in since the list loaded: bring in the player's own cells.
+        if (tasksPaged.value && userId.value && tasksMineFor !== userId.value) {
+          mergeTasks(await fetchMyTasks(dataset));
+          tasksMineFor = userId.value;
+        }
         const { data, error: fetchErr } = await supabase
           .from('proofreading_tasks')
           .select('*')
@@ -3772,21 +4011,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .order('updated_at', { ascending: true })
           .limit(1000);
         if (fetchErr) throw fetchErr;
-        const rows = (data ?? []) as ProofreadingTask[];
-        if (rows.length < 1000) {
-          const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
-          const next = tasks.value.slice();
-          let added = false;
-          for (const r of rows) {
-            const i = byId.get(r.id);
-            if (i === undefined) { next.push(r); added = true; } else next[i] = r;
-            if (r.updated_at > tasksSyncedAt) tasksSyncedAt = r.updated_at;
+        const fetched = (data ?? []) as ProofreadingTask[];
+        if (fetched.length < 1000) {
+          const since = tasksSyncedAt;
+          for (const r of fetched) if (r.updated_at > tasksSyncedAt) tasksSyncedAt = r.updated_at;
+          // A paged list takes changes to rows it holds, and rows that are
+          // now the player's. Other rows stay unloaded; the counts follow.
+          const known = new Set(tasks.value.map(t => t.id));
+          mergeTasks(tasksPaged.value
+            ? fetched.filter(r => known.has(r.id) || (!!userId.value && r.assigned_to === userId.value))
+            : fetched);
+          // The read starts at the newest change already seen, so that row
+          // comes back every time: only a later one changes the counts.
+          if (tasksPaged.value && fetched.some(r => r.updated_at > since)) {
+            await refreshTaskCounts(dataset).catch((e: any) => console.warn('[backend] task counts not refreshed:', e?.message));
           }
-          if (added) {
-            next.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)
-              || String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id);
-          }
-          if (rows.length) tasks.value = next;
           return;
         }
         // Too much changed since the last sync: fall through to a full load.
@@ -3797,55 +4036,107 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loading.value = true;
     error.value = '';
     try {
-      // Page through everything: the API returns at most 1,000 rows per read,
-      // and Retina has 2,300+ tasks, so new claims (the newest ids) were cut off
-      // and never showed in My Cells (Amy 2026-09-28).
-      const PAGE = 1000;
-      // Retina has 16,000+ tasks (17 pages, ~10 MB), and My Cells waited for
-      // all of them (Ames 2026-10-01: "my cells take a long time to load").
-      // On the first load of a dataset, show the player's own cells at once,
-      // then fetch the rest four pages at a time instead of one by one.
-      if (!statusFilter && dataset !== tasksSyncedDataset && userId.value) {
-        const { data: mine } = await supabase
-          .from('proofreading_tasks').select('*')
-          .eq('dataset', dataset).eq('assigned_to', userId.value)
-          .order('priority', { ascending: false })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .limit(PAGE);
-        if (mine) tasks.value = mine as ProofreadingTask[];
-      }
-      const page = async (from: number) => {
-        let query = supabase
-          .from('proofreading_tasks')
-          .select('*')
-          .eq('dataset', dataset)
-          .order('priority', { ascending: false })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (statusFilter) query = query.eq('status', statusFilter);
-        const { data, error: fetchErr } = await query;
-        if (fetchErr) throw fetchErr;
-        return (data ?? []) as ProofreadingTask[];
-      };
-      const all: ProofreadingTask[] = [];
-      const AT_ONCE = 4;
-      for (let from = 0; from <= 50_000; from += PAGE * AT_ONCE) {
-        const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE)));
-        for (const g of got) all.push(...g);
-        if (got.some(g => g.length < PAGE)) break;
-      }
-      tasks.value = all;
-      if (!statusFilter) {
+      if (statusFilter) {
+        tasks.value = (await fetchWholeList(dataset, statusFilter)).filter(hasCellId);
+      } else {
+        const total = await countTab(dataset, 'all');
+        if (total <= WHOLE_LIST_MAX) {
+          const all = await fetchWholeList(dataset, undefined, 1);
+          tasksPaged.value = false;
+          taskCounts.value = null;
+          tasks.value = all.filter(hasCellId);
+          tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
+        } else {
+          // The newest change before anything is read: the next sync starts there.
+          const { data: newest, error: markErr } = await supabase.from('proofreading_tasks').select('updated_at')
+            .eq('dataset', dataset).order('updated_at', { ascending: false }).limit(1);
+          if (markErr) throw markErr;
+          const me = userId.value;
+          const [mine, firstPage, claimed, completed] = await Promise.all([
+            me ? fetchMyTasks(dataset) : Promise.resolve([] as ProofreadingTask[]),
+            orderedQuery(tabQuery(dataset, 'available', '*', { count: 'exact' })).range(0, TASK_PAGE - 1),
+            countTab(dataset, 'claimed'),
+            countTab(dataset, 'completed'),
+          ]);
+          if (firstPage.error) throw firstPage.error;
+          const rows = (firstPage.data ?? []) as ProofreadingTask[];
+          tasksPaged.value = true;
+          taskPages.value = { ...freshPages(), available: { next: rows.length, done: rows.length < TASK_PAGE } };
+          taskCounts.value = { available: firstPage.count ?? rows.length, claimed, completed, all: total };
+          tasks.value = [];
+          mergeTasks([...mine, ...rows]);
+          tasksMineFor = me;
+          tasksSyncedAt = String(newest?.[0]?.updated_at ?? '');
+        }
         tasksSyncedDataset = dataset;
-        tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
       }
     } catch (e: any) {
       error.value = e.message || 'Failed to load tasks';
       console.warn('[backend] loadTasks error:', e.message);
     }
     loading.value = false;
+  }
+
+  /** Paged list: read the next page of one tab. Returns how many rows were new. */
+  async function loadMoreTasks(tab: TaskTab, dataset: string = currentDatasetTag()): Promise<number> {
+    if (!tasksPaged.value || dataset !== tasksSyncedDataset || loadingMore.value) return 0;
+    const p = taskPages.value[tab];
+    if (p.done) return 0;
+    loadingMore.value = tab;
+    try {
+      const from = Math.max(0, p.next - PAGE_OVERLAP);
+      const want = p.next - from + TASK_PAGE;
+      const { data, error: e } = await orderedQuery(tabQuery(dataset, tab)).range(from, from + want - 1);
+      if (e) throw e;
+      const rows = (data ?? []) as ProofreadingTask[];
+      const before = tasks.value.length;
+      mergeTasks(rows);
+      taskPages.value = { ...taskPages.value, [tab]: { next: from + rows.length, done: rows.length < want } };
+      return tasks.value.length - before;
+    } catch (e: any) {
+      console.warn('[backend] loadMoreTasks error:', e?.message);
+      return 0;
+    } finally {
+      loadingMore.value = null;
+    }
+  }
+
+  /** Paged list: fetch the tasks of these cells, and with `text`, the tasks
+   *  whose cell ID, final ID or notes contain it (the Cell Library search). */
+  async function findTasks(dataset: string, segIds: string[], text = ''): Promise<void> {
+    if (!tasksPaged.value || dataset !== tasksSyncedDataset) return;
+    const known = new Set(tasks.value.map(t => String(t.segment_id)));
+    const want = [...new Set(segIds.map(s => String(s || '').trim()))].filter(s => /^\d+$/.test(s) && !known.has(s)).slice(0, 300);
+    const reads: PromiseLike<any>[] = [];
+    for (let i = 0; i < want.length; i += 100) {
+      reads.push(supabase.from('proofreading_tasks').select('*').eq('dataset', dataset).in('segment_id', want.slice(i, i + 100)));
+    }
+    const term = text.replace(/[^\w #.-]/g, '').trim();
+    if (term.length >= 3) {
+      const like = `"*${term}*"`;
+      reads.push(orderedQuery(tabQuery(dataset, 'all'))
+        .or(`segment_id.ilike.${like},final_segment_id.ilike.${like},notes.ilike.${like}`).limit(TASK_PAGE));
+    }
+    if (!reads.length) return;
+    const got = await Promise.all(reads);
+    const rows: ProofreadingTask[] = [];
+    for (const g of got) {
+      if (g.error) { console.warn('[backend] findTasks error:', g.error.message); continue; }
+      rows.push(...((g.data ?? []) as ProofreadingTask[]));
+    }
+    mergeTasks(rows);
+  }
+
+  /** Paged list: the available cells that follow `task` in list order (Claim
+   *  this + next N from a search). */
+  async function loadAvailableAfter(task: ProofreadingTask, n: number): Promise<void> {
+    if (!tasksPaged.value || task.dataset !== tasksSyncedDataset) return;
+    let q: any = orderedQuery(tabQuery(task.dataset, 'available'))
+      .eq('priority', task.priority ?? 0).gte('created_at', task.created_at);
+    q = task.source_sheet_url ? q.eq('source_sheet_url', task.source_sheet_url) : q.is('source_sheet_url', null);
+    const { data, error: e } = await q.limit(n + 1);
+    if (e) { console.warn('[backend] loadAvailableAfter error:', e.message); return; }
+    mergeTasks((data ?? []) as ProofreadingTask[]);
   }
 
   /** Player scripts (window.eyewire) hear about claims, releases and completions. */
@@ -3927,6 +4218,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     try {
       await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
       tellScripts('complete', taskId, finalSegId);
+      noteClaimFinished(taskId, tasks.value.find(t => t.id === taskId)?.kind);
 
       await logEdit({
         operation: 'complete_task',
@@ -4004,7 +4296,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       mergesAllTime: result.total_merges ?? 0,
       splitsAllTime: result.total_splits ?? 0,
       cellsSubmitted: result.cells_completed ?? 0,
-      currentStreak: result.current_streak ?? 0,
+      currentStreak: Math.max(result.current_streak ?? 0, streakFloor),
       longestStreak: result.longest_streak ?? 0,
       ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
       ...(typeof result.total_days === 'number' ? { totalDays: result.total_days } : {}),
@@ -4168,6 +4460,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  only these titles, only when the saved streak has reached the number,
    *  and never the same one twice within six days. */
   async function sendStreakMilestone(days: number) {
+    // The chip agrees with the note (lalonso: "shows 1 when my notification
+    // says 2"): a slower answer read before the streak grew can't undo it.
+    streakFloor = Math.max(streakFloor, days);
+    const stats = useUserStatsStore();
+    if (stats.stats.currentStreak < days) stats.setStats({ currentStreak: days });
     if (!isStreakMilestone(days) || !userId.value) return;
     const next = nextStreakMilestone(days);
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
@@ -4187,6 +4484,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * full year also get the big centre celebration. A first count of old days
    * is a correction, not a day earned just now, so it celebrates nothing.
    */
+  const DAY_NOTES_OFF = true;
   function celebrateDays(before: unknown, now: unknown, recounted: boolean) {
     if (recounted || typeof before !== 'number' || typeof now !== 'number' || now <= before) return;
     // Loyalty achievements listen for this (AchievementToast.vue); the note is
@@ -4195,6 +4493,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       (window as any).__ngeLoyaltyDays = { before, now };
       document.dispatchEvent(new CustomEvent('nge:loyalty-days', { detail: { before, now } }));
     } catch { /* no document */ }
+    // The Loyalty Achievements (badge_definitions.ts) now mark these same days
+    // with their own note, art and celebration, so the older "Day 60 at
+    // EyeWire II" note doubled up (Ames 2026-10-28: "is this right? two
+    // notifications?"). It is no longer sent; the profile still counts the
+    // days to the next step.
+    if (DAY_NOTES_OFF) return;
     const reached = dayMilestonesReached(before, now);
     const days = reached[reached.length - 1];
     if (!days || !userId.value) return;
@@ -4219,6 +4523,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const { data, error } = await supabase.from('users').select('total_days').eq('id', id).single();
       return error || !data ? null : Number((data as any).total_days) || 0;
     } catch { return null; }
+  }
+
+  /** When a player was given edit access to each dataset, from the chat line
+   *  each grant gets (functions/access-request.js, rows keyed access:<id>,
+   *  grants since 2026-10-30). {datasetId: ISO time}; {} when unreadable. */
+  async function loadAccessGrants(id: string): Promise<Record<string, string>> {
+    try {
+      const { data, error } = await supabase.from('chat_messages').select('dataset,created_at')
+        .eq('user_id', id).like('dataset', 'access:%').limit(20);
+      if (error || !data) return {};
+      const out: Record<string, string> = {};
+      for (const r of data as any[]) {
+        const ds = String(r.dataset || '').slice('access:'.length);
+        if (ds && (!out[ds] || r.created_at < out[ds])) out[ds] = r.created_at;
+      }
+      return out;
+    } catch { return {}; }
   }
 
   /** A personal "thank you, for science" notification after someone's third
@@ -4385,6 +4706,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // (supabase-streak-local-days.sql). Days used to be UTC days, which end at
   // 8 pm in New York, so an evening session broke or skipped a day.
   const VISIT_KEY = 'nge-streak-visit';
+  let streakFloor = 0;
   let visitStreak: { currentStreak: number; longestStreak: number; lastEditDate: string; totalDays?: number } | null = null;
   let visiting = false;
   async function recordVisit() {
@@ -4436,7 +4758,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           mergesAllTime: data.total_merges || 0,
           splitsAllTime: data.total_splits || 0,
           cellsSubmitted: data.cells_completed || 0,
-          currentStreak: data.current_streak || 0,
+          currentStreak: Math.max(data.current_streak || 0, streakFloor),
           longestStreak: data.longest_streak || 0,
           lastEditDate: data.last_edit_date || '',
         });
@@ -4459,7 +4781,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // NOTE: middleauth_email is deliberately NOT selected. This loads OTHER
         // users' profiles, and fetching their address shipped it to the client
         // (visible in devtools) even once it stopped being rendered.
-        .select('id, display_name, username, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
+        .select('id, display_name, username, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
         .eq('id', targetUserId)
         .single();
       if (!user) return null;
@@ -4591,6 +4913,71 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
     // Keep whatever was on the board; just say it could not be refreshed.
     leaderboardState.value = 'unavailable';
+  }
+
+  // ── Quests board: Cilia Quests on the Retina (Ames 2026-11-05) ────────
+  /** One row per annotator on the quest sheet: quests submitted today (US
+   *  Eastern day, the sheet's Date column), in the last 7 days and all time.
+   *  Counted the way the profile counts them (questCounts: cilium annotated
+   *  or no cilium), by the annotator's name. The
+   *  sheet list is the one the Cell Library reads (cached 5 minutes on the
+   *  server); the only database read is the players matching those names. */
+  const questBoard: Ref<any[]> = ref([]);
+  const questBoardState: Ref<'loading' | 'ok' | 'unavailable'> = ref('loading');
+  const questBoardAt: Ref<number> = ref(0);
+  /** M/D/YYYY to a day number, or null. */
+  const sheetDay = (v: string) => {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim());
+    return m ? Date.UTC(+m[3], +m[1] - 1, +m[2]) / 86400000 : null;
+  };
+  async function loadQuestBoard() {
+    try {
+      const { listQuests, nameKey, questCounts } = await import('./annotation_quests');
+      const { rows } = await listQuests();
+      const today = sheetDay(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date()))!;
+      const byKey = new Map<string, { name: string; today: number; week: number; all: number }>();
+      for (const r of rows) {
+        const key = nameKey(r.annotator);
+        if (!questCounts(r.status) || !key) continue;
+        const c = byKey.get(key) ?? { name: r.annotator.trim(), today: 0, week: 0, all: 0 };
+        const d = sheetDay(r.date);
+        c.all++;
+        if (d !== null && d > today - 7 && d <= today) c.week++;
+        if (d === today) c.today++;
+        byKey.set(key, c);
+      }
+      // The players behind the sheet's names, matched like the profile does.
+      const names = [...new Set([...byKey.values()].map(c => c.name))].slice(0, 300);
+      const players = new Map<string, any>();
+      if (names.length) {
+        const COLS = 'id, display_name, username, flag, current_streak';
+        const [byName, byUser] = await Promise.all([
+          supabase.from('users').select(COLS).in('display_name', names),
+          supabase.from('users').select(COLS).in('username', names),
+        ]);
+        for (const u of [...(byName.data ?? []), ...(byUser.data ?? [])] as any[]) {
+          for (const k of [nameKey(u.display_name), nameKey(u.username)]) if (k && byKey.has(k) && !players.has(k)) players.set(k, u);
+        }
+      }
+      questBoard.value = [...byKey.entries()].map(([key, c]) => {
+        const u = players.get(key);
+        return {
+          id: u?.id ?? `sheet:${key}`,
+          display_name: u?.display_name || c.name,
+          flag: u?.flag ?? '',
+          current_streak: u?.current_streak ?? 0,
+          quests_today: c.today,
+          quests_week: c.week,
+          quests_alltime: c.all,
+        };
+      });
+      questBoardState.value = 'ok';
+      questBoardAt.value = Date.now();
+      return;
+    } catch (e: any) {
+      console.warn('[backend] loadQuestBoard error:', e?.message ?? e);
+    }
+    questBoardState.value = 'unavailable';
   }
 
   // ── Weekly podium counts: how many times a user finished top-3 ──────
@@ -4732,7 +5119,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** True when this claim is the cell `segId`: the ID it was listed under, or
    *  the cell's ID now, after edits. */
   function isTaskCell(t: ProofreadingTask, segId: string): boolean {
-    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId;
+    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId
+      || (t.assigned_to === userId.value && !!laterRoots.value[t.id]?.includes(segId));
   }
 
   /** Put back the listed ID of my open claims whose segment_id was rewritten
@@ -4884,11 +5272,83 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     for (let i = 0; i < 14 && !(sv = supervoxelAt(at)); i++) await new Promise(r => setTimeout(r, 500));
     return sv ? anchorWith(t, sv) : null;
   }
+  // Active time on each claim (src/util/claim_time.ts): the player's open
+  // claims, each with its listed ID and its IDs after edits.
+  /** See refreshLaterRoots. */
+  const laterRoots = ref<Record<number, string[]>>({});
+  const timedClaims = computed<TimedClaim[]>(() => myActiveClaims().filter(countsTime).map(t => ({
+    id: t.id, dataset: t.dataset, kind: t.kind,
+    roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
+      .filter((r): r is string => !!r))],
+  })));
+  /** Each of my claims' cell as it is now, from the server's edit history of
+   *  its listed ID: every merge and cut since, whoever made it, with or
+   *  without an anchor, and after a reload (Ames 2026-11-02: active time "is
+   *  not accurately tracking segs after merge and cuts"). Pieces cut off are
+   *  in it too; time spent on one is still time on the claim. The claim
+   *  itself is known by these IDs too (isTaskCell): a cut no longer leaves a
+   *  claim that neither new piece belongs to (st0ck53y, report 360).
+   *  Asked only for claims whose cell is on screen, or never asked yet, so an
+   *  edit costs one lookup, not one per claim (Ames: "clean up the querying"). */
+  /** When each of my claims last had its cell on screen (noteClaimsOnScreen). */
+  const claimSeenAt = new Map<number, number>();
+  /** Note which claims are on screen now: cheap, no lookups. Every 2 s. */
+  function noteClaimsOnScreen() {
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!vis) return;
+    const now = Date.now();
+    for (const t of myActiveClaims()) {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) {
+        try { if (r && /^\d+$/.test(r) && vis.has(Uint64.parseString(r))) { claimSeenAt.set(t.id, now); break; } } catch { /* not an ID */ }
+      }
+    }
+  }
+  setInterval(() => { if (!document.hidden) noteClaimsOnScreen(); }, 2000);
+  async function refreshLaterRoots(): Promise<void> {
+    const ds = canonicalDataset(currentDatasetTag());
+    const mine = myActiveClaims().filter(t => canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    const shown = (t: ProofreadingTask) => {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) { try { if (r && /^\d+$/.test(r) && vis?.has(Uint64.parseString(r))) return true; } catch { /* not an ID */ } }
+      return false;
+    };
+    // On screen now, or in the last half minute: an edit takes the claim's
+    // old ID out of the view before this runs, and a claim checked only
+    // "now" was skipped right after its own cut.
+    const now = Date.now();
+    for (const t of mine) if (shown(t)) claimSeenAt.set(t.id, now);
+    const next: Record<number, string[]> = {};
+    await Promise.all(mine.map(async t => {
+      const recent = now - (claimSeenAt.get(t.id) ?? 0) < 30_000;
+      if (laterRoots.value[t.id] && !recent) { next[t.id] = laterRoots.value[t.id]; return; }
+      const listed = String(t.segment_id);
+      let ends = descendantsSeen.get(listed);
+      if (!ends) { ends = latestDescendants(listed).catch(() => null); descendantsSeen.set(listed, ends); }
+      const found = await ends;
+      // A failed lookup keeps what was known.
+      if (found) next[t.id] = found.slice(0, 50); else if (laterRoots.value[t.id]) next[t.id] = laterRoots.value[t.id];
+    }));
+    laterRoots.value = next;
+  }
+  setTimeout(() => { refreshLaterRoots().catch(() => {}); }, 8000);
+  setInterval(() => { if (!document.hidden) refreshLaterRoots().catch(() => {}); }, 3 * 60_000);
+  watch(() => myActiveClaims().map(t => t.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
+  startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
+
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
+  let laterAgainTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
+    // Its later versions changed with this edit: ask again (AzureJay, report
+    // 344: active time stopped counting after a split).
+    descendantsSeen.clear();
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
-    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); }, 1500);
+    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
+    // Once more a little later, in case the server's history was not ready.
+    if (laterAgainTimer) clearTimeout(laterAgainTimer);
+    laterAgainTimer = setTimeout(() => { descendantsSeen.clear(); refreshLaterRoots().catch(() => {}); }, 10_000);
   });
 
   function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
@@ -4911,11 +5371,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     return CLAIM_LIMITS[canonicalDataset(dataset)] ?? MAX_CLAIMS;
   }
 
-  /** How many active claims does the current user have in this dataset? */
+  /** How many active claims does the current user have in this dataset?
+   *  An interneuron quest is not counted (it has a limit of its own). */
   function myActiveClaimCount(): number {
     if (!userId.value) return 0;
     return tasks.value.filter(
-      t => t.assigned_to === userId.value && (t.status === 'assigned' || t.status === 'in_progress'),
+      t => t.assigned_to === userId.value && (t.status === 'assigned' || t.status === 'in_progress') && !isQuestTask(t),
     ).length;
   }
 
@@ -5018,8 +5479,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       await taskAction('save_link', { id: taskId, link });
       const t = tasks.value.find(x => x.id === taskId);
       if (t) t.working_link = link;
+      noteClaimSave(taskId);
       return true;
     } catch (e: any) {
+      // The claim has ended (completed or released, from any menu): nothing is
+      // left to save to, so that is no failure to warn a player about (Nseraf,
+      // reports 339 and 341).
+      if (/no longer active/i.test(String(e?.message))) return true;
       console.warn('[backend] saveWorkingLink error:', e.message);
       return false;
     }
@@ -5120,6 +5586,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (isAdmin.value) console.info('[backend] Admin access granted for', email);
   }
 
+  /** Player view (Ames 2026-10-25): an admin sees the game as a player does.
+   *  Display only: isAdmin, and everything the server allows, stay the same.
+   *  Interface that only admins see asks showAdminUi instead of isAdmin.
+   *  Remembered per browser. */
+  const PLAYER_VIEW_KEY = 'nge-player-view';
+  const playerView = ref((() => { try { return localStorage.getItem(PLAYER_VIEW_KEY) === '1'; } catch { return false; } })());
+  function setPlayerView(on: boolean) {
+    playerView.value = on;
+    try { if (on) localStorage.setItem(PLAYER_VIEW_KEY, '1'); else localStorage.removeItem(PLAYER_VIEW_KEY); } catch { /* storage blocked */ }
+  }
+  const showAdminUi = computed(() => isAdmin.value && !playerView.value);
+
   // ── Notifications ─────────────────────────────────────────────────────
 
   interface Notification {
@@ -5167,13 +5645,33 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
   const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string } | null>(null);
 
+  /** Read, or a Pyr Update (sent to everyone) more than 5 days old: those
+   *  count as read, so the daily updates do not pile up as unread (Ames
+   *  2026-10-25). Nothing is saved for them. */
+  const UPDATE_STALE_MS = 5 * 24 * 60 * 60 * 1000;
+  function notifRead(n: Notification): boolean {
+    if (notificationReads.value.has(n.id)) return true;
+    if (n.target_type === 'user') return false;
+    const at = Date.parse(String((n as any).send_at || (n as any).created_at || ''));
+    return Number.isFinite(at) && Date.now() - at > UPDATE_STALE_MS;
+  }
+  /** Whether Hunt reports count right now: only during a Hunt or its
+   *  preparation (NotificationFeedPanel keeps this in step with the Hunts;
+   *  Ames 2026-10-27). Off, the bell's counts leave them out. */
+  const huntReportsShown = ref(true);
+  const counted = (n: { title?: string | null }) => huntReportsShown.value || notifKind(n.title, isAdmin.value) !== 'hunt';
   const unreadNotificationCount = computed(() =>
-    notifications.value.filter(n => !notificationReads.value.has(n.id)).length
+    notifications.value.filter(n => !notifRead(n) && counted(n)).length
   );
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
-    notifications.value.filter(n => !notificationReads.value.has(n.id) && notifKind(n.title, isAdmin.value) === 'admin').length
+    notifications.value.filter(n => !notifRead(n) && ['admin', 'access'].includes(notifKind(n.title, isAdmin.value))).length
+  );
+  /** Unread in the bell's Admin and Triage tabs together: the dot on the
+   *  Player view chip, so admin alerts still show while those tabs are hidden. */
+  const unreadStaffNotificationCount = computed(() =>
+    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) !== 'main' && counted(n)).length
   );
 
   // The bell used to ask for the 50 newest notifications in full, twice a
@@ -5202,10 +5700,19 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifLimit.value += NOTIF_PAGE;
     await loadNotifications();
   }
-  async function loadNotifications(opts: { newOnly?: boolean } = {}) {
+  let grantLinesAsked = false;
+  /** What the leader tab read on its minute check, for the other tabs
+   *  (util/tabs.ts). reads and dismissed come with a full check only. */
+  interface SharedNotifs { user: string; at: string; rows: any[]; groupIds: string[]; reads?: number[]; dismissed?: number[] }
+  /** shared: rows another tab's check read. They are merged as a check of
+   *  this tab's own would be, without asking the server. share: hand what
+   *  this check read to the other tabs. */
+  async function loadNotifications(opts: { newOnly?: boolean; share?: boolean; shared?: SharedNotifs } = {}) {
     if (!userId.value) return;
-    const now = new Date().toISOString();
-    const newOnly = !!opts.newOnly && !!notifCheckedAt;
+    const s = opts.shared;
+    if (s && s.user !== userId.value) return;
+    const now = s ? s.at : new Date().toISOString();
+    const newOnly = s ? true : !!opts.newOnly && !!notifCheckedAt;
 
     if (!newOnly) {
       // Get user's group IDs for group-targeted notifications
@@ -5225,16 +5732,32 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .limit(newOnly ? 50 : notifLimit.value);
     if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
-    const { data: allNotifs } = await query;
+    const allNotifs = s ? s.rows : (await query).data;
     if (!allNotifs) return;
+    // A grant is said in chat the next time the player comes in, not when the
+    // admin approves it (Ames 2026-10-30): only the first load of a visit
+    // looks, so a grant that lands mid visit waits for the next one.
+    if (!grantLinesAsked) {
+      grantLinesAsked = true;
+      if ((allNotifs as any[]).some(n => n.target_type === 'user' && String(n.send_at) >= '2026-10-30' && (n.title === '🎉 Congratulations! Your edit access has been granted!' || String(n.title || '').startsWith('🔓 You have access to ')))) {
+        void secureWrite('access.grantLines').catch(() => {});
+      }
+    }
     if (!newOnly) notificationsHaveMore.value = allNotifs.length >= notifLimit.value;
     for (const n of allNotifs as any[]) if (Number(n.id) > notifMaxId) notifMaxId = Number(n.id);
-    notifCheckedAt = now;
-    if (newOnly && !allNotifs.length) return;
+    if (!s || now > notifCheckedAt) notifCheckedAt = now;
+    if (s) {
+      // What the leader knows of groups, reads and dismissals, added to what
+      // this tab knows (a read or dismissal never goes back).
+      notifGroupIds = s.groupIds;
+      if (s.reads) notificationReads.value = new Set([...notificationReads.value, ...s.reads]);
+      if (s.dismissed) notificationDismissals.value = new Set([...notificationDismissals.value, ...s.dismissed]);
+    }
+    if (newOnly && !allNotifs.length && !s?.dismissed?.length) return;
     // The server already picks what is meant for this player. A group
     // notification for a group joined since the last full load: read the
     // memberships again so it is not filtered out here.
-    if (newOnly && (allNotifs as any[]).some(n => n.target_type === 'group' && !notifGroupIds.includes(String(n.target_id)))) {
+    if (!s && newOnly && (allNotifs as any[]).some(n => n.target_type === 'group' && !notifGroupIds.includes(String(n.target_id)))) {
       const { data: memberships } = await supabase
         .from('user_group_members')
         .select('group_id')
@@ -5269,6 +5792,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const gone = reads.filter((r: any) => r.dismissed).map((r: any) => r.notification_id);
       notificationReads.value = readsFailed ? new Set([...notificationReads.value, ...ids]) : new Set(ids);
       notificationDismissals.value = readsFailed ? new Set([...notificationDismissals.value, ...gone]) : new Set(gone);
+      if (opts.share) shareResult('notifications', { user: userId.value, at: now, rows: allNotifs, groupIds: notifGroupIds, reads: ids, dismissed: gone } as SharedNotifs);
+    } else if (opts.share && !s) {
+      shareResult('notifications', { user: userId.value, at: now, rows: allNotifs, groupIds: notifGroupIds } as SharedNotifs);
     }
 
     // "Stop sending at" is a deadline for DELIVERY, not for the notification
@@ -5280,7 +5806,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const prefsStore = useUserPreferencesStore();
     const delivered = new Set<number>([...(prefsStore.prefs.notifDelivered || []), ...notificationReads.value]);
     const groupIds = notifGroupIds;
-    const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && (
+    // Settings, "Show Today in Pyr" off: the daily update stays out of the bell.
+    const hideDigest = prefsStore.prefs.showDailyDigest === false;
+    const mine = (n: Notification) => !notificationDismissals.value.has(n.id)
+      && !(hideDigest && n.target_type !== 'user' && String(n.title || '').startsWith('Today in Pyr')) && (
       n.target_type === 'all'
       || (n.target_type === 'user' && n.target_id === userId.value)
       || (n.target_type === 'group' && groupIds.includes(n.target_id || '')));
@@ -5401,6 +5930,55 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }).then(() => {}, () => {}); // ignore duplicate errors
   }
 
+  /**
+   * Moving a triage card to In progress or Done reads its bell notes (Ames
+   * 2026-10-27): a note that names the report (a reply, a tag, newer alerts),
+   * or a 🗂 alert that quotes it. Works on the triage board's own page too,
+   * where the game never signed in: the account is looked up by email only,
+   * so nothing else (a visit, a streak) starts. Other Pyr tabs hear at once.
+   */
+  let reportReaderId: string | null = null;
+  async function markReportNotesRead(reportId: string, excerpt: string | null) {
+    return markReportsNotesRead([{ id: reportId, excerpt }]);
+  }
+  /** Several reports at once: the triage board, on load, reads the notes of
+   *  every card already In progress or Done (Ames 2026-11-02: "Triage and
+   *  Notifs should be in sync"), whoever moved it and from wherever. */
+  async function markReportsNotesRead(reports: { id: string; excerpt: string | null }[]) {
+    let uid = userId.value || reportReaderId;
+    if (!uid && userEmail.value) {
+      const { data } = await supabase.from('users').select('id').eq('middleauth_email', userEmail.value).single();
+      uid = reportReaderId = (data as any)?.id ?? null;
+    }
+    const wanted = reports.filter(r => r && r.id);
+    if (!uid || !wanted.length) return 0;
+    const flat = (t: any) => String(t || '').replace(/\s+/g, ' ').trim();
+    const quotes = wanted.map(r => flat(r.excerpt).slice(0, 60)).filter(Boolean);
+    const { data: recent } = await supabase.from('notifications').select('id,title,body')
+      .lte('send_at', new Date().toISOString()).order('send_at', { ascending: false }).limit(150);
+    const hits = ((recent || []) as any[]).filter(n => {
+      const body = String(n.body || '');
+      if (wanted.some(r => body.includes(r.id))) return true;
+      if (!String(n.title || '').startsWith('🗂')) return false;
+      const b = flat(body);
+      return quotes.some(q => b.startsWith('"' + q));
+    }).map(n => Number(n.id));
+    if (!hits.length) return 0;
+    // The gateway takes at most 100 values in one in().
+    const seen = new Set<number>();
+    for (let i = 0; i < hits.length; i += 90) {
+      const { data: had } = await supabase.from('notification_reads').select('notification_id').eq('user_id', uid).in('notification_id', hits.slice(i, i + 90));
+      for (const r of (had || []) as any[]) seen.add(Number(r.notification_id));
+    }
+    const fresh = hits.filter(id => !seen.has(id));
+    if (!fresh.length) return 0;
+    const { error } = await supabase.from('notification_reads').upsert(fresh.map(id => ({ notification_id: id, user_id: uid })), { onConflict: 'notification_id,user_id' });
+    if (error) return 0;
+    for (const id of fresh) notificationReads.value.add(id);
+    try { readsChannel?.postMessage({ user: uid, ids: fresh }); } catch { /* closed */ }
+    return fresh.length;
+  }
+
   /** only: mark just these (one tab of the feed) instead of everything. */
   async function markAllNotificationsRead(only?: number[]) {
     if (!userId.value) return;
@@ -5475,13 +6053,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (data.post_to_chat && !isScheduledForLater) {
       try {
         const chatStore = useChatStore();
-        if (chatStore.connected || chatStore.polling) {
-          chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
+        if ((chatStore.connected || chatStore.polling) && newNotifId != null) {
           // Record that the announcement already went out, so the every-10-min
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
-          // Only mark it when we actually sent: if chat was offline we couldn't
-          // post, so leave chat_posted_at null and let the cron be the fallback.
-          if (newNotifId != null) {
+          // Only mark it when it was really posted: if chat was offline or the
+          // server refused it, leave chat_posted_at null for a later try.
+          if (await chatStore.postAnnouncement(data.title, newNotifId)) {
             await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: new Date().toISOString() } })
               .catch(() => { /* the cron's copy check is the fallback */ });
           }
@@ -5514,8 +6091,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .from('notifications')
       .select('id,title')
       .eq('post_to_chat', true)
+      // Only public ones: the server refuses a chat post for any other, and a
+      // refused claim is let go below, so it would be tried again forever.
+      .eq('target_type', 'all')
       .is('chat_posted_at', null)
       .lte('send_at', now)
+      // Monthly Champions is the job's: Nurro and each winner's award line
+      // (scripts/post-due-chat-announcements.mjs), not one announcement here.
+      .not('title', 'like', '🏆 Monthly Champions,%')
       // Don't announce something that already expired — this also skips a stale
       // backlog of expired test notifications when this poster first ships.
       .or(`expires_at.is.null,expires_at.gt.${now}`)
@@ -5528,8 +6111,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       let claimed = false;
       try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: n.id })).claimed; }
       catch (claimErr: any) { console.warn('[admin] claim chat announcement failed:', claimErr?.message); continue; }
-      if (claimed) {
-        chatStore.sendMessage(`📢 ${n.title}`, n.id);
+      if (!claimed) continue;
+      // Posted, or the claim is let go so a later round tries again (it was
+      // set before the post, so a refused or failed post used to stay "done"
+      // for good: Ames 2026-10-27, an edit that added Post to chat).
+      if (!(await chatStore.postAnnouncement(n.title, n.id))) {
+        await secureWrite('notification.update', { id: n.id, fields: { chat_posted_at: null } }).catch(() => {});
       }
     }
   }
@@ -5540,6 +6127,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  failure is silent (the achievement itself is unaffected). */
   function announceAchievement(track: string, badgeId: number, forUserId?: string) {
     if (!userId.value) return;
+    if (achievementTestTrack(track)) return;   // the new ladders: never in live chat from a test site
     // forUserId: a special award an admin has just given to someone else.
     if (forUserId || track === 'special') {
       secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
@@ -5667,28 +6255,51 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (error) console.warn('[notifications] dismiss-all failed:', error.message);
   }
 
+  let notifStopShared: (() => void)[] = [];
+  // Chosen among the tabs that are checking (signed in), so the leader is
+  // never a signed-out tab with nothing to ask for.
+  const notifLeader = leadership('pyr-leader-notifications');
   function subscribeToNotifications() {
     if (notifSubscription) return;
+    // Only a signed-in tab stands: a signed-out one holding the lock would
+    // keep every signed-in tab from checking.
+    const stopStanding = watch(userId, id => { if (id) notifLeader.join(); else notifLeader.leave(); }, { immediate: true });
     // Private notifications cannot use an anonymous Realtime subscription.
     // Refresh through the identity-verified route, without overlapping requests.
     let refreshing = false;
     let checks = 0;
-    notifSubscription = setInterval(async () => {
-      if (refreshing || document.hidden) return;
+    // A new achievement in the feed opens its celebration, in every tab.
+    const celebrateNew = (existing: Set<number>) => {
+      const row = notifications.value.find(n => !existing.has(n.id) &&
+        n.title?.includes('New Achievement') && n.target_type !== 'group' &&
+        (!n.target_id || n.target_id === userId.value));
+      if (row) pendingBadgeCelebration.value = {
+        title: row.title, body: row.body || '', imageUrl: row.image_url || row.thumbnail_url || '',
+      };
+    };
+    // Only the leader tab asks (Ames 2026-10-25: one check per browser, not
+    // one per tab), while any Pyr tab is in front, and shares what it read.
+    const check = async () => {
+      if (refreshing || !notifLeader.isLeader() || !anyTabVisible()) return;
       refreshing = true;
       checks++;
       const existing = new Set(notifications.value.map(n => n.id));
       try {
-        await loadNotifications({ newOnly: checks % 10 !== 0 });
-        const row = notifications.value.find(n => !existing.has(n.id) &&
-          n.title?.includes('New Achievement') && n.target_type !== 'group' &&
-          (!n.target_id || n.target_id === userId.value));
-        if (row) pendingBadgeCelebration.value = {
-          title: row.title, body: row.body || '', imageUrl: row.image_url || row.thumbnail_url || '',
-        };
+        await loadNotifications({ newOnly: checks % 10 !== 0, share: true });
+        celebrateNew(existing);
       } catch { /* retry on the next refresh */ }
       finally { refreshing = false; }
-    }, 60_000);
+    };
+    notifSubscription = setInterval(() => { void check(); }, 60_000);
+    notifStopShared = [
+      stopStanding,
+      onSharedResult<SharedNotifs>('notifications', async shared => {
+        const existing = new Set(notifications.value.map(n => n.id));
+        try { await loadNotifications({ shared }); celebrateNew(existing); } catch { /* the next one */ }
+      }),
+      // The leader closed and this tab took over: its check is due now.
+      notifLeader.onChange((leader, takeover) => { if (leader && takeover) void check(); }),
+    ];
   }
 
   function unsubscribeFromNotifications() {
@@ -5696,6 +6307,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       clearInterval(notifSubscription);
       notifSubscription = null;
     }
+    for (const stop of notifStopShared) stop();
+    notifStopShared = [];
+    notifLeader.leave();
   }
 
   // ── User Groups ───────────────────────────────────────────────────────
@@ -5902,12 +6516,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** This player holds this Achievement as a saved record. */
   function holdsSaved(who: string | null | undefined, track: string, badgeId: number | null | undefined): boolean {
     if (!who || badgeId == null) return false;
+    if (achievementTestTrack(track)) return false;   // saved ids belong to the live ladder
+    const key = badgeAwardKey(track, badgeId);
+    if (who === userId.value && myBadgeAwards.value.has(key)) return true;
+    return !!savedAwards.value[who]?.has(key);
+  }
+  /** A saved award on the old ladder (Legacy Achievements): read as saved, on every site. */
+  function holdsLegacy(who: string | null | undefined, track: string, badgeId: number): boolean {
+    if (!who) return false;
     const key = badgeAwardKey(track, badgeId);
     if (who === userId.value && myBadgeAwards.value.has(key)) return true;
     return !!savedAwards.value[who]?.has(key);
   }
   async function recordBadgeAward(track: string, badgeId: number) {
     if (!userId.value || badgeId == null) return;
+    if (achievementTestTrack(track)) return;   // the new ladders save nothing from a test site
     const key = badgeAwardKey(track, badgeId);
     if (myBadgeAwards.value.has(key)) return;   // already recorded this session
     myBadgeAwards.value.add(key);
@@ -6136,8 +6759,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
-    leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt, loadLeaderboardDetail,
+    questBoard, questBoardState, questBoardAt, loadQuestBoard,
+    leaderboard, leaderboardMyRanks, loadDayTotal, loadAccessGrants, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
+    tasksPaged, taskCounts, taskPages, loadingMore, loadMoreTasks, findTasks, loadAvailableAfter,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
@@ -6146,12 +6771,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     liveRoots, refreshLiveRoots, anchorClaimAt,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub
-    isAdmin, checkAdmin, isBlogAuthor,
+    isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, unreadNotificationCount, unreadAdminNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
-    markNotificationRead, markAllNotificationsRead,
+    markNotificationRead, markAllNotificationsRead, markReportNotesRead, markReportsNotesRead,
     createNotification, createSelfNotification, announceAchievement, postDueChatAnnouncements, deleteNotification, dismissNotification,
     dismissAllNotifications,
     subscribeToNotifications, unsubscribeFromNotifications,
@@ -6162,7 +6787,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
-    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved,
+    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved, holdsLegacy,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload
@@ -6394,7 +7019,10 @@ function readMentionNotifyPref(): boolean {
 
 /** Reactions offered on chat messages. The ewCommunityData gateway accepts
  *  exactly these, so keep functions/community-data.js in step. */
-export const CHAT_REACTION_QUICK = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+/** The Pyr gem as a reaction (Ames 2026-10-27). Not an emoji: stored as this
+ *  code and drawn as the gem picture (ChatPanel). */
+export const CHAT_REACTION_GEM = ':pyr-gem:';
+export const CHAT_REACTION_QUICK = [CHAT_REACTION_GEM, '👍', '❤️', '🔥', '😂', '🎉', '🧠'];
 /** More reactions, behind the picker's "+" (Nseraf 2026-10-11 asked for
  *  more; Ames approved this list). All friendly or neutral. */
 export const CHAT_REACTION_MORE = ['👋', '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈'];
@@ -6415,6 +7043,8 @@ export const useChatStore = defineStore('chat', () => {
    *  the chat panel can flash to draw your eye. */
   const mentionPing = ref(0);
   const lastMentionFrom = ref('');
+  /** The message that @mentioned you (or replied to you) last. */
+  const lastMentionId = ref('');
   /** History paging: the oldest message loaded, and whether older ones exist. */
   const hasMoreHistory = ref(true);
   const loadingHistory = ref(false);
@@ -6478,9 +7108,8 @@ export const useChatStore = defineStore('chat', () => {
     void loadMissed();
     pollTimer = setInterval(() => { void loadMissed(); }, POLL_MS);
     // Being online, and who else is, never needed the live connection either.
-    void heartbeat().then(loadOnline);
-    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
-    if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; if (!document.hidden) void loadOnline(); }, 60_000);
+    void heartbeat().then(() => loadOnline());
+    startPresenceLoops();
   }
   function stopPolling() {
     polling.value = false;
@@ -6506,7 +7135,8 @@ export const useChatStore = defineStore('chat', () => {
   // trigger stamps joined_at when someone returns after 2+ minutes away
   // (supabase-chat-presence-and-link-screenshots.sql). So a join notice can't
   // be forged, unlike the old open broadcast the security fix removed.
-  const ONLINE_MS = 90_000;
+  // A hidden tab's heartbeat can come up to about 2 minutes apart.
+  const ONLINE_MS = 150_000;
   const HEARTBEAT_MS = 60_000;
   const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
@@ -6518,6 +7148,34 @@ export const useChatStore = defineStore('chat', () => {
   });
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let staleTimer: ReturnType<typeof setInterval> | null = null;
+  // One tab per browser says the player is here and reads who else is
+  // (Ames 2026-10-25), among the tabs with chat connected; the rest are
+  // handed the list. presenceTick runs in every tab so stale names drop.
+  const presenceLeader = leadership('pyr-leader-chat');
+  // Only a signed-in tab stands, as for notifications: a signed-out one
+  // holding the lock would send no heartbeat for anyone.
+  let standingWatched = false;
+  function startPresenceLoops() {
+    if (!standingWatched) {
+      standingWatched = true;
+      watch(() => useProofreadingBackendStore().userId, id => {
+        if (id && heartbeatTimer) presenceLeader.join(); else presenceLeader.leave();
+      });
+    }
+    if (useProofreadingBackendStore().userId) presenceLeader.join();
+    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader()) void heartbeat(); }, HEARTBEAT_MS);
+    if (!staleTimer) staleTimer = setInterval(() => {
+      presenceTick.value++;
+      if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
+    }, 60_000);
+  }
+  // The leader closed: this tab says so at once instead of up to a minute on.
+  presenceLeader.onChange((leader, takeover) => {
+    if (leader && takeover && channel) void heartbeat().then(() => loadOnline(true));
+  });
+  onSharedResult<{ user: string; online: typeof online.value }>('chat-online', m => {
+    if (channel && m && m.user === useProofreadingBackendStore().userId) online.value = m.online;
+  });
 
   function sysLine(type: 'join' | 'leave', name: string) {
     const now = new Date();
@@ -6668,7 +7326,16 @@ export const useChatStore = defineStore('chat', () => {
   let presenceRetryAt = 0;
   const presenceTakesDataset = () => Date.now() >= presenceRetryAt;
   const presenceWithoutDataset = () => { presenceRetryAt = Date.now() + 5 * 60_000; };
+  // Online means the tab is open, looked at or not (Ames 2026-10-30), so a
+  // hidden tab keeps its heartbeat even with its timers slowed down. One that
+  // was asleep (a closed laptop, a frozen tab) stays quiet until someone looks
+  // at it, so it never announces anyone at 3 am (Nseraf, report 307).
+  let lastBeatAt = 0;
+  const BEAT_GONE_MS = 10 * 60_000;
+  function beatWhenBack() { if (!document.hidden) void heartbeat(); }
   async function heartbeat() {
+    if (document.hidden && Date.now() - lastBeatAt > BEAT_GONE_MS) return;
+    lastBeatAt = Date.now();
     if (presenceTakesDataset()) {
       const { error } = await supabase.from('chat_presence').upsert({ dataset: currentDatasetTag() }, { onConflict: 'user_id' });
       if (!error) return;
@@ -6678,7 +7345,7 @@ export const useChatStore = defineStore('chat', () => {
     if (error) console.warn('[chat] presence heartbeat failed:', error.message);
   }
 
-  async function loadOnline() {
+  async function loadOnline(share = false) {
     const since = new Date(Date.now() - ONLINE_MS).toISOString();
     let { data, error } = await supabase.from('chat_presence')
       .select(presenceTakesDataset() ? 'user_id,name,last_seen_at,dataset' : 'user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
@@ -6690,6 +7357,7 @@ export const useChatStore = defineStore('chat', () => {
     const next: Record<string, { name: string; lastSeen: number; dataset?: string }> = {};
     for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime(), ...(r.dataset ? { dataset: r.dataset } : {}) };
     online.value = next;
+    if (share) shareResult('chat-online', { user: useProofreadingBackendStore().userId, online: next });
   }
 
   function onPresence(payload: any) {
@@ -6698,7 +7366,7 @@ export const useChatStore = defineStore('chat', () => {
       const old = payload.old || {};
       const name = old.name || online.value[old.user_id]?.name;
       if (old.user_id) delete online.value[old.user_id];
-      if (name && old.user_id !== me) sysLine('leave', name);
+      if (name && old.user_id !== me && mayAnnounce('leave', old.user_id)) sysLine('leave', name);
       return;
     }
     const row = payload.new || {};
@@ -6709,9 +7377,25 @@ export const useChatStore = defineStore('chat', () => {
     // tab) is not news: Ames saw "celiad joined the chat" three times in a
     // row. Only announce people who weren't here.
     const wasOnline = !!online.value[row.user_id];
+    // Seen a short while ago: a slowed tab or a reload, not someone arriving.
+    const seenLately = seen - (lastSeenBy.get(row.user_id) ?? 0) < BACK_AFTER_MS;
+    lastSeenBy.set(row.user_id, seen);
     online.value[row.user_id] = { name: row.name, lastSeen: seen, ...(row.dataset ? { dataset: row.dataset } : {}) };
     // joined_at is only moved on a real (re)join, so a routine heartbeat is silent.
-    if (row.user_id !== me && !wasOnline && Math.abs(seen - joined) < 5000) sysLine('join', row.name);
+    if (row.user_id !== me && !wasOnline && !seenLately && Math.abs(seen - joined) < 5000 && mayAnnounce('join', row.user_id)) sysLine('join', row.name);
+  }
+
+  // Two tabs, a reload or a shaky connection can still come and go: one line
+  // per person per quarter hour (report 307).
+  const ANNOUNCE_EVERY_MS = 15 * 60_000;
+  const announced = new Map<string, number>();
+  const lastSeenBy = new Map<string, number>();
+  const BACK_AFTER_MS = 15 * 60_000;
+  function mayAnnounce(kind: 'join' | 'leave', userId: string): boolean {
+    const key = `${kind}:${userId}`, now = Date.now();
+    if (now - (announced.get(key) ?? 0) < ANNOUNCE_EVERY_MS) return false;
+    announced.set(key, now);
+    return true;
   }
 
   function addTimeSeparatorIfNeeded(date: Date) {
@@ -6737,7 +7421,7 @@ export const useChatStore = defineStore('chat', () => {
     return {
       type: 'message',
       name: r.name,
-      rank: r.user_id ? (r.rank || 'player') : 'player',
+      rank: r.user_id || (r.rank === 'bot' && r.name === NURRO_NAME) ? (r.rank || 'player') : 'player',
       time: formatTime(date),
       dateTime: date,
       parts: parseMessageParts(r.name, r.text, r.dataset),
@@ -7069,7 +7753,8 @@ export const useChatStore = defineStore('chat', () => {
     channel = mine;
     mine.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
       const row = payload.new;
-      if (!row.user_id) return;
+      // No sender: only Nurro's own lines, the Monthly Champions announcement.
+      if (!row.user_id && !(row.rank === 'bot' && row.name === NURRO_NAME)) return;
       notePinRow(row);
       const date = new Date(row.created_at);
       addTimeSeparatorIfNeeded(date);
@@ -7084,7 +7769,12 @@ export const useChatStore = defineStore('chat', () => {
       const target = mine && row.notification_id == null ? onlineTarget(row.text || '') : null;
       if (target) void answerOnline(target);
       // nkem_test takes a beat to answer, like it used to.
-      const reply = botReplyTo(chatMessages.value[chatMessages.value.length - 1], true);
+      // Lines sent close together can arrive out of order (Ames 2026-11-01).
+      const pushed = chatMessages.value[chatMessages.value.length - 1], before = chatMessages.value[chatMessages.value.length - 2];
+      if (before && before.dateTime.getTime() > pushed.dateTime.getTime()) {
+        chatMessages.value = [...chatMessages.value].sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
+      }
+      const reply = botReplyTo(pushed, true);
       if (reply && (reply.name !== NURRO_NAME || mine)) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.
@@ -7092,6 +7782,7 @@ export const useChatStore = defineStore('chat', () => {
         const repliedToMe = !!row.reply_to && chatMessages.value.some(m => m.id === row.reply_to && m.userId === backend.userId);
         const mention = repliedToMe || (mentionsMe(row.text || '') && !onlineTarget(row.text || ''));
         if (mention) {
+          lastMentionId.value = row.id != null ? String(row.id) : '';
           mentionPing.value++; lastMentionFrom.value = row.name || '';
           alertMentionAway(row.name || 'Someone', row.text || '', true);
         } else if (!useUserPreferencesStore().prefs.chatMuted && row.notification_id == null && row.rank !== 'achievement') {
@@ -7131,14 +7822,14 @@ export const useChatStore = defineStore('chat', () => {
           if (subscribedOnce) void loadMissed();
           subscribedOnce = true;
           // Say we're here (other open chats show the join), then who else is.
-          void heartbeat().then(loadOnline);
-          if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
-          if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; if (!document.hidden) void loadOnline(); }, 60_000);
+          void heartbeat().then(() => loadOnline());
+          startPresenceLoops();
         }
       });
     };
     openChannel();
     window.addEventListener('pagehide', leavePresence);
+    document.addEventListener('visibilitychange', beatWhenBack);
     connecting = false; // channel is now assigned; the guard above holds
   }
 
@@ -7163,7 +7854,7 @@ export const useChatStore = defineStore('chat', () => {
     // A Nurro command is answered on your screen only and never posted, so
     // asking Nurro does not fill everyone's chat (Amy 2026-09-30). "!science"
     // belongs to nkem_test's public joke and is still posted.
-    if (notificationId == null && /^\s*!([a-z]+)\b/i.test(text)) {
+    if (notificationId == null && /^\s*(!([a-z]+)|@nurro)\b/i.test(text)) {
       const probe = botReply('probe', text, []);
       if (!probe || probe.name === NURRO_NAME) { askNurroPrivately(name, rank, text); return; }
     }
@@ -7180,6 +7871,20 @@ export const useChatStore = defineStore('chat', () => {
       console.warn('[chat] reply link not stored, sent as a plain message:', error.message);
       post(row).then(({ error: e2 }) => { if (e2) console.warn('[chat] persist failed:', e2.message); });
     });
+  }
+
+  /** An announcement in chat for a notification: true once the server kept
+   *  it, false when chat is not open or the server refused it (only public
+   *  notifications may be posted), so the caller can try again later. */
+  async function postAnnouncement(text: string, notificationId: number): Promise<boolean> {
+    if (!connected.value && !polling.value) return false;
+    const backend = useProofreadingBackendStore();
+    const { error } = await supabase.from('chat_messages').insert({
+      name: backend.chatHandle, rank: backend.isAdmin ? 'admin' : 'player', text, dataset: currentDatasetName(), notification_id: notificationId,
+    });
+    if (error) { console.warn('[chat] announcement not posted:', error.message); return false; }
+    if (polling.value) void loadMissed();
+    return true;
   }
 
   function askNurroPrivately(name: string, rank: string, text: string) {
@@ -7247,7 +7952,9 @@ export const useChatStore = defineStore('chat', () => {
       leavePresence();
       if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
       if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
+      presenceLeader.leave();
       window.removeEventListener('pagehide', leavePresence);
+      document.removeEventListener('visibilitychange', beatWhenBack);
       online.value = {};
       const old = channel;
       channel = null;
@@ -7260,8 +7967,8 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
     pinned, loadPin, pinMessage,
-    panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
+    panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
 });

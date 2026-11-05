@@ -729,13 +729,37 @@ export class Viewer extends RefCounted implements ViewerState {
       this.bindAction(`toggle-layer-${i}`, () => {
         const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
         if (layer !== undefined) {
-          layer.setVisible(!layer.visible);
+          // nge: with Classic Layers, the plain number hides and shows, and
+          // Shift + the number makes it the active layer: the two swap
+          // (Nseraf, "tab change option").
+          let classic = false;
+          try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true; } catch { /* default */ }
+          if (classic) {
+            this.selectedLayer.layer = layer;
+            this.selectedLayer.visible = true;
+          } else {
+            layer.setVisible(!layer.visible);
+          }
         }
       });
       this.bindAction(`toggle-pick-layer-${i}`, () => {
         const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
         if (layer !== undefined) {
           layer.pickEnabled = !layer.pickEnabled;
+        }
+      });
+      this.bindAction(`nge-number-layer-${i}`, () => {
+        const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
+        if (layer === undefined) return;
+        let classic = false;
+        // Classic Layers in Settings: the number keys go back with the clicks.
+        try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true; } catch { /* default */ }
+        if (classic) {
+          layer.setVisible(!layer.visible);
+        } else {
+          // The same as a left click on its tab: the active layer, its panel open.
+          this.selectedLayer.layer = layer;
+          this.selectedLayer.visible = true;
         }
       });
       this.bindAction(`select-layer-${i}`, () => {

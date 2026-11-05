@@ -18,7 +18,7 @@ import './graphene.css';
 
 import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
 import {LayerChunkProgressInfo} from 'neuroglancer/chunk_manager/base';
-import {Annotation, AnnotationReference, AnnotationSource, AnnotationType, Line, LocalAnnotationSource, makeDataBoundsBoundingBoxAnnotationSet, Point} from 'neuroglancer/annotation';
+import {Annotation, AnnotationReference, AnnotationSource, AnnotationType, Line, LocalAnnotationSource, makeAnnotationId, makeDataBoundsBoundingBoxAnnotationSet, Point} from 'neuroglancer/annotation';
 import {ChunkManager, WithParameters} from 'neuroglancer/chunk_manager/frontend';
 import {makeIdentityTransform} from 'neuroglancer/coordinate_transform';
 import {CredentialsManager} from 'neuroglancer/credentials_provider';
@@ -33,7 +33,7 @@ import {MeshLayer, MeshSource, MultiscaleMeshLayer} from 'neuroglancer/mesh/fron
 import {DisplayDimensionRenderInfo} from 'neuroglancer/navigation_state';
 import {ChunkTransformParameters, getChunkPositionFromCombinedGlobalLocalPositions, getChunkTransformParameters, RenderLayerTransformOrError} from 'neuroglancer/render_coordinate_transform';
 import {RenderLayer, RenderLayerRole} from 'neuroglancer/renderlayer';
-import {augmentSegmentId, resetTemporaryVisibleSegmentsState, SegmentationDisplayState3D, SegmentationLayerSharedObject, SegmentWidgetFactory, Uint64MapEntry} from 'neuroglancer/segmentation_display_state/frontend';
+import {augmentSegmentId, getBaseObjectColor, resetTemporaryVisibleSegmentsState, SegmentationDisplayState3D, SegmentationLayerSharedObject, SegmentWidgetFactory, Uint64MapEntry} from 'neuroglancer/segmentation_display_state/frontend';
 import {VisibleSegmentEquivalencePolicy} from 'neuroglancer/segmentation_graph/segment_id';
 import {ComputedSplit, SegmentationGraphSource, SegmentationGraphSourceConnection, SegmentationGraphSourceTab} from 'neuroglancer/segmentation_graph/source';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
@@ -41,6 +41,7 @@ import {SharedWatchableValue} from 'neuroglancer/shared_watchable_value';
 import {FrontendTransformedSource, getVolumetricTransformedSources, serializeAllTransformedSources, SliceViewChunkSource, SliceViewSingleResolutionSource} from 'neuroglancer/sliceview/frontend';
 import {SliceViewPanelRenderLayer, SliceViewRenderLayer} from 'neuroglancer/sliceview/renderlayer';
 import {StatusMessage} from 'neuroglancer/status';
+import {ngeConfirm} from 'neuroglancer/ui/nge_confirm';
 import {TrackableBoolean, TrackableBooleanCheckbox} from 'neuroglancer/trackable_boolean';
 import {makeCachedLazyDerivedWatchableValue, NestedStateManager, registerNested, TrackableValue, WatchableSet, WatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {AnnotationLayerView, MergedAnnotationStates, PlaceLineTool, makeAnnotationListElement} from 'neuroglancer/ui/annotations';
@@ -58,7 +59,7 @@ import {parseArray, parseFixedLengthArray, verify3dVec, verifyBoolean, verifyEnu
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {NullarySignal} from 'neuroglancer/util/signal';
 import {cancellableFetchSpecialOk, parseSpecialUrl, SpecialProtocolCredentials, SpecialProtocolCredentialsProvider} from 'neuroglancer/util/special_protocol_request';
-import {CancellationToken, CancellationTokenSource} from 'neuroglancer/util/cancellation';
+import {CancellationToken, CancellationTokenSource, uncancelableToken} from 'neuroglancer/util/cancellation';
 import {Trackable} from 'neuroglancer/util/trackable';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {makeDeleteButton} from 'neuroglancer/widget/delete_button';
@@ -978,6 +979,20 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       this.visibleSegmentsChanged(segmentIds, add);
     }));
 
+    // nge: merge two cells picked in the Seg list (src/drag_reorder.ts,
+    // ui/segment_list.ts send this).
+    this.registerEventListener(window, 'nge-merge-cells', ((e: CustomEvent) => {
+      const ids: string[] = e.detail?.ids ?? [];
+      const parsed: Uint64[] = [];
+      for (const id of ids) {
+        const u = new Uint64();
+        if (!u.tryParseString(id) || !segmentsState.selectedSegments.has(u)) return;
+        if (!parsed.some(p => Uint64.equal(p, u))) parsed.push(u);
+      }
+      if (parsed.length < 2) return;
+      void this.ngeMergeCells(parsed);
+    }) as EventListener);
+
     const {annotationLayerStates, state: {multicutState, findPathState}} = this;
     const loadedSubsource = getGraphLoadedSubsource(layer)!;
     const redGroup = makeColoredAnnotationState(layer, loadedSubsource, 'sinks', RED_COLOR);
@@ -1089,10 +1104,10 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       const {path, source, target} = findPathState;
       const annotationSource = findPathGroup.source;
       if (source.value && !source.value.annotationReference) {
-        addSelection(annotationSource, source.value, "find path source");
+        addSelection(annotationSource, source.value, "source");
       }
       if (target.value && !target.value.annotationReference) {
-        addSelection(annotationSource, target.value, "find path target");
+        addSelection(annotationSource, target.value, "target");
       }
       for (const annotation of annotationSource) {
         if (annotation.id !== source.value?.annotationReference?.id &&
@@ -1219,10 +1234,62 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     const {state: {findPathState}} = this;
     const {source, target} = findPathState;
     if (!source.value || !target.value) return false;
-    const centroids = await this.graph.graphServer.findPath(source.value, target.value, precisionMode, annotationToNanometers);
-    StatusMessage.showTemporaryMessage('Path found!', 5000);    
-    findPathState.centroids.value = centroids;
-    return true;
+    // nge: one search at a time; closing Find Path stops it (ngeStopFindPath),
+    // and a search that runs too long gives up and says why (Ames
+    // 2026-10-24: stuck at 3 minutes on MEC with Precision mode, still going
+    // after the tool was closed).
+    ngeFindPathRun?.cancel();
+    const run = ngeFindPathRun = new CancellationTokenSource();
+    let tooSlow = false;
+    const timer = setTimeout(() => { tooSlow = true; run.cancel(); }, (precisionMode ? 90 : 60) * 1000);
+    try {
+      const centroids = await this.graph.graphServer.findPath(source.value, target.value, precisionMode, annotationToNanometers, run);
+      StatusMessage.showTemporaryMessage('Path found!', 5000);
+      findPathState.centroids.value = centroids;
+      return true;
+    } catch (e) {
+      if (run.isCanceled) {
+        if (tooSlow) {
+          StatusMessage.showTemporaryMessage(precisionMode
+              ? 'Path finding failed: the server took too long. Turn Precision mode off and try again, or pick two closer points.'
+              : 'Path finding failed: the server took too long. Try two closer points.', 10000);
+        }
+        return false;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+      if (ngeFindPathRun === run) ngeFindPathRun = undefined;
+    }
+  }
+
+  /** nge: the colour a cell shows now (its own, or the one its ID gives it),
+   *  packed as neuroglancer keeps chosen colours; null when it can't be read. */
+  private ngeColorOf(root: Uint64|undefined): Uint64|null {
+    try {
+      if (!root) return null;
+      const c = getBaseObjectColor(this.layer.displayState, root, new Float32Array(4));
+      const packed = Math.round(c[0] * 255) | (Math.round(c[1] * 255) << 8) | (Math.round(c[2] * 255) << 16);
+      return new Uint64(packed >>> 0, 0);
+    } catch { return null; }
+  }
+  /** nge: a cell keeps its colour through an edit (Nseraf, report 359: after
+   *  a merge or cut it took a new random colour, often one his annotations
+   *  could not be read against). */
+  private ngeKeepColor(color: Uint64|null, root: Uint64|undefined) {
+    if (!color || !root) return;
+    try {
+      this.layer.displayState.segmentationColorGroupState.value.segmentStatedColors.set(root, color);
+      // Remembered, so L (re-colour) can still change it (Nseraf, report 370).
+      ((window as any).__ngeKeptColors ??= new Set<string>()).add(root.toString());
+      // Kept across a refresh too: the colour is in the saved view, and L
+      // must still be able to let it go (Nseraf, report 375).
+      try {
+        const saved: string[] = JSON.parse(localStorage.getItem('nge-kept-colors') || '[]');
+        saved.push(root.toString());
+        localStorage.setItem('nge-kept-colors', JSON.stringify(saved.slice(-3000)));
+      } catch { /* this visit only */ }
+    } catch { /* colours stay as they were */ }
   }
 
   async submitMulticut(annotationToNanometers: Float64Array): Promise<boolean> {
@@ -1233,8 +1300,27 @@ class GraphConnection extends SegmentationGraphSourceConnection {
           'Must select both red and blue groups to perform a multi-cut.', 7000);
       return false;
     } else {
-      const splitRoots = await this.graph.graphServer.splitSegments(
-          [...sinks], [...sources], annotationToNanometers);
+      const keptColor = this.ngeColorOf(multicutState.focusSegment.value);
+      const blueSv = [...sources][0]?.segmentId;
+      let splitRoots: Uint64[];
+      try {
+        splitRoots = await this.graph.graphServer.splitSegments(
+            [...sinks], [...sources], annotationToNanometers);
+      } catch (e) {
+        // nge: "could not acquire root lock" can come back for a cut the
+        // server did make (Nseraf, report 363). Look again: if the cell has
+        // newer IDs now, the cut went through, and it is shown as done.
+        const done = /root lock/i.test(String((e as any)?.message ?? e))
+            ? await this.graph.graphServer.ngeSplitLanded(multicutState.focusSegment.value) : null;
+        if (!done) throw e;
+        splitRoots = done;
+        try {
+          for (const el of Array.from(document.querySelectorAll('#statusContainer > *'))) {
+            if (/root lock/i.test(el.textContent || '')) (el.querySelector('button') as HTMLElement | null)?.click();
+          }
+          window.dispatchEvent(new CustomEvent('nge-split-recovered'));
+        } catch { /* the message stays; the cut is still shown */ }
+      }
       if (splitRoots.length === 0) {
         StatusMessage.showTemporaryMessage(`No split found.`, 3000);
         return false;
@@ -1247,6 +1333,9 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         for (const segment of [...sinks, ...sources]) {
           segmentsState.selectedSegments.delete(segment.rootId);
         }
+        if (keptColor && blueSv) {
+          this.graph.getRoot(blueSv).then(r => this.ngeKeepColor(keptColor, r), () => {});
+        }
         this.meshAddNewSegments(splitRoots);
         segmentsState.selectedSegments.add(splitRoots);
         segmentsState.visibleSegments.add(splitRoots);
@@ -1258,6 +1347,110 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         return true;
       }
     }
+  }
+
+  /**
+   * nge: merge two whole cells, picked in the Seg list, without placing
+   * points (Ames 2026-11-04: "control click two of them and then press M").
+   * The merge goes where the two cells come closest, found from their 3D
+   * shapes as loaded in the view. The server finds the piece of each cell at
+   * that spot. It is then an ordinary merge: bulkMerge, the edit guard, the
+   * edit count and the ID tidying after it.
+   */
+  async ngeMergeCells(cells: Uint64[]) {
+    const say = (text: string, ms = 6000) => StatusMessage.showTemporaryMessage(text, ms);
+    if (cells.length < 2) { say('Pick two or more different cells to merge.'); return; }
+    if (cells.length > NGE_MERGE_CELLS_MAX_COUNT) { say(`Pick up to ${NGE_MERGE_CELLS_MAX_COUNT} cells to merge at once.`); return; }
+    const {visibleSegments} = this.segmentsState;
+    if (cells.some(c => !visibleSegments.has(c))) { say('Show all the picked cells first: Pyr finds where they touch from their 3D shapes.'); return; }
+    const verts = cells.map(c => ngeCellVertices(this.layer, c));
+    if (verts.some(v => !v.length)) { say('The 3D shape of one of these cells has not loaded yet. Wait a moment, then try again.'); return; }
+    // Where each pair of cells comes closest, then the shortest set of
+    // joins that links them all: one merge per join, closest first.
+    const pairs: {i: number, j: number, d: number, p: [number[], number[]]}[] = [];
+    for (let i = 0; i < cells.length; i++) {
+      for (let j = i + 1; j < cells.length; j++) {
+        const p = ngeClosestPair(verts[i], verts[j], NGE_MERGE_CELLS_MAX_NM);
+        if (p) pairs.push({i, j, d: Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1], p[0][2] - p[1][2]), p});
+      }
+    }
+    pairs.sort((x, y) => x.d - y.d);
+    const group = cells.map((_, k) => k);
+    const top = (k: number): number => group[k] === k ? k : (group[k] = top(group[k]));
+    const joins: typeof pairs = [];
+    for (const pr of pairs) {
+      const a = top(pr.i), b = top(pr.j);
+      if (a === b) continue;
+      group[a] = b;
+      joins.push(pr);
+    }
+    const apart = cells.length - 1 - joins.length;
+    if (!joins.length) {
+      say(`${cells.length === 2 ? 'These two cells do' : 'None of these cells'} touch (nowhere within ${NGE_MERGE_CELLS_MAX_NM / 1000} µm of each other), so Pyr cannot merge them. Use merge mode to place the points yourself.`, 9000);
+      return;
+    }
+    if (apart > 0 && !await ngeConfirm(
+        `${apart === 1 ? 'One cell does' : `${apart} cells do`} not touch the others (nowhere within ${NGE_MERGE_CELLS_MAX_NM / 1000} µm) and will be left out. Merge the rest?`,
+        {title: 'Merge cells'})) return;
+    const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
+    const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
+    const inLayer = (p: number[]) => Float32Array.from(p.map((v, i) => v / toNm[i]));
+    // Each cell's id now: after a merge, both cells have the merged id.
+    const now = cells.map(c => c.clone());
+    let done = 0;
+    for (const join of joins) {
+      const a = now[join.i], b = now[join.j];
+      if (Uint64.equal(a, b)) continue;
+      const merged = await this.ngeSendCellMerge(a, b, inLayer(join.p[0]), inLayer(join.p[1]));
+      if (!merged) {
+        if (done) say(`${done} of ${joins.length} merges went through; the next one failed. Check the cell, then try again.`, 9000);
+        return;
+      }
+      done++;
+      const was = [a.clone(), b.clone()];
+      for (let k = 0; k < now.length; k++) {
+        if (was.some(w => Uint64.equal(w, now[k]))) now[k] = merged.clone();
+      }
+    }
+    say(joins.length === 1 ? 'Merged.' : `Merged ${joins.length + 1} cells into one.`, 4000);
+  }
+
+  /** nge: one merge of two whole cells at the given points (layer coordinates).
+   *  The cell's merged id, or undefined (the status bar says why). */
+  private async ngeSendCellMerge(a: Uint64, b: Uint64, pa: Float32Array, pb: Float32Array): Promise<Uint64|undefined> {
+    const say = (text: string, ms = 6000) => StatusMessage.showTemporaryMessage(text, ms);
+    const submission: MergeSubmission = {
+      id: makeAnnotationId(),
+      locked: false,
+      // The cell's own id: the server takes the piece of it at the point.
+      sink: {rootId: a.clone(), segmentId: a.clone(), position: pa},
+      source: {rootId: b.clone(), segmentId: b.clone(), position: pb},
+    };
+    const {merges} = this.state.mergeState;
+    if (merges.value.length >= MAX_MERGE_COUNT) { say(`Maximum of ${MAX_MERGE_COUNT} simultanous merges allowed.`); return undefined; }
+    // Drawn as a merge line, and listed in merge mode, like any other.
+    this.mergeAnnotationState.source.add(mergeToLine(submission), /*commit=*/false);
+    const listed = merges.value.find(x => x.id === submission.id);
+    const sent = listed ?? submission;
+    sent.source = submission.source;
+    sent.sink = submission.sink;
+    if (!listed) merges.value = [...merges.value, sent];
+    try {
+      const ref = this.mergeAnnotationState.source.getReference(submission.id);
+      try { if (ref.value) this.mergeAnnotationState.source.commit(ref); } finally { ref.dispose(); }
+    } catch { /* the line is only a picture */ }
+    if (!sent.locked) {
+      await this.bulkMerge([sent]);
+    } else {
+      // Auto-submit already sent it: wait for the answer.
+      await new Promise<void>(resolve => {
+        const check = () => { if (sent.mergedRoot || (sent.error && !sent.locked)) { off(); resolve(); } };
+        const off = merges.changed.add(check);
+        check();
+      });
+    }
+    if (sent.error || !sent.mergedRoot) { say(`Merge failed: ${sent.error || 'no answer'}`, 9000); return undefined; }
+    return sent.mergedRoot;
   }
 
   deleteMergeSubmission = (submission: MergeSubmission) => {
@@ -1284,7 +1477,9 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     for (let i = 1; i <= attempts; i++) {
       try {
         if (stop.isCanceled) throw new Error(submission.error || 'Stopped.');
+        const keptColor = this.ngeColorOf(submission.sink.rootId);
         const newRoot = await this.graph.graphServer.mergeSegments(submission.sink, submission.source!, annotationToNanometers, stop);
+        this.ngeKeepColor(keptColor, newRoot);
         const oldValues = new Uint64Set();
         oldValues.add(submission.sink.rootId);
         oldValues.add(submission.source!.rootId);
@@ -1368,6 +1563,11 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       };
 
       submissions = submissions.filter(x => !x.locked && x.source);
+      // nge: every ID these merges touched, as sent. A failed merge (the same
+      // two pieces merged twice) left its old ID in the segment list, out of
+      // date (Nseraf, report 349); Pyr swaps such IDs for the current one.
+      const touched = new Set<string>();
+      for (const s of submissions) { touched.add(s.sink.rootId.toString()); touched.add(s.source!.rootId.toString()); }
       const segmentsToRemove = await bulkMergeHelper(submissions);
       const segmentsToAdd: Uint64[] = [];
       for (const submission of submissions) {
@@ -1386,6 +1586,10 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       selectedSegments.add(latestRoots);
       visibleSegments.add(latestRoots);
       merges.changed.dispatch();
+      try {
+        for (const s of submissions) { touched.add(s.sink.rootId.toString()); if (s.source) touched.add(s.source.rootId.toString()); }
+        window.dispatchEvent(new CustomEvent('nge-merge-batch-done', {detail: {roots: [...touched]}}));
+      } catch { /* tidying is never worth breaking a merge for */ }
     }
 }
 
@@ -1405,6 +1609,8 @@ async function parseGrapheneError(e: HttpError) {
 async function withErrorMessageHTTP(promise: Promise<Response>, options: {
     initialMessage?: string,
     errorPrefix: string,
+    /** nge: the error bar it leaves up, so the caller can take it down. */
+    onErrorStatus?: (status: StatusMessage) => void,
   }): Promise<Response> {
     let status: StatusMessage|undefined = undefined;
     let dispose = () => {};
@@ -1426,13 +1632,28 @@ async function withErrorMessageHTTP(promise: Promise<Response>, options: {
         }
         status.setErrorMessage(errorPrefix + msg);
         status.setVisible(true);
+        options.onErrorStatus?.(status);
         throw new Error(`[${e.response.status}] ${errorPrefix}${msg}`);
       }
+      // nge: a request that was stopped (Find Path closed, or too slow) or
+      // never reached the server took its "Finding path" line with it; it
+      // stayed and kept counting (Ames 2026-10-24).
+      dispose();
       throw e;
     }
 }
 
+/** nge: the error bar the last refused cut left up, if any. */
+let ngeLastSplitError: StatusMessage|undefined;
+
 export const GRAPH_SERVER_NOT_SPECIFIED = Symbol('Graph Server Not Specified.');
+
+/** nge: the Find Path tool's search under way, if any. */
+let ngeFindPathRun: CancellationTokenSource|undefined;
+export function ngeStopFindPath() {
+  ngeFindPathRun?.cancel();
+  ngeFindPathRun = undefined;
+}
 
 
 /**
@@ -1453,6 +1674,30 @@ function ngeGraphEdit(kind: 'merge'|'split', graph: string, jsonResp: any) {
       }
     }));
   } catch { /* counting is never worth breaking an edit for */ }
+}
+/**
+ * nge: Pyr can refuse an edit before it is sent. The Hunt freezes its cells
+ * while it runs, so a merge or cut that touches one stops here, with the
+ * reason in the status bar. The app sets window.__ngeEditGuard(kind, roots),
+ * which answers a sentence to refuse or null to let the edit through.
+ */
+function ngeEditRefusal(kind: 'merge'|'split', roots: Uint64[], edit?: any): string|null {
+  try {
+    const guard = (window as any)['__ngeEditGuard'];
+    if (typeof guard !== 'function') return null;
+    // The edit itself, as it would be sent, so a Hunt Builder helper's merge or cut can be kept as a
+    // suggestion instead (src/hunt_build.ts): a merge [[sv, x, y, z], [sv, x, y, z]], a cut {sources, sinks}, nm.
+    const why = guard(kind, roots.map(r => String(r)), edit);
+    return typeof why === 'string' && why ? why : null;
+  } catch {
+    return null;  // a broken guard never blocks an edit
+  }
+}
+function ngeRefuseEdit(kind: 'merge'|'split', roots: Uint64[], edit?: any) {
+  const why = ngeEditRefusal(kind, roots, edit);
+  if (!why) return;
+  StatusMessage.showTemporaryMessage(why, 8000);
+  throw new Error(why);
 }
 class GrapheneGraphServerInterface {
   constructor(
@@ -1481,20 +1726,22 @@ class GrapheneGraphServerInterface {
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     }
+    const mergeBody = [
+      [
+        String(first.segmentId),
+        ...first.position.map((val, i) => val * annotationToNanometers[i])
+      ],
+      [
+        String(second.segmentId),
+        ...second.position.map((val, i) => val * annotationToNanometers[i])
+      ]
+    ];
+    ngeRefuseEdit('merge', [first.rootId, second.rootId], mergeBody);
 
     const promise = cancellableFetchSpecialOk(
         this.credentialsProvider, `${url}/merge?int64_as_str=1`, {
           method: 'POST',
-          body: JSON.stringify([
-            [
-              String(first.segmentId),
-              ...first.position.map((val, i) => val * annotationToNanometers[i])
-            ],
-            [
-              String(second.segmentId),
-              ...second.position.map((val, i) => val * annotationToNanometers[i])
-            ]
-          ])
+          body: JSON.stringify(mergeBody)
         },
         responseIdentity, cancellationToken);
 
@@ -1519,27 +1766,35 @@ class GrapheneGraphServerInterface {
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     }
+    const splitBody = {
+      'sources': first.map(
+          x =>
+              [String(x.segmentId),
+               ...x.position.map((val, i) => val * annotationToNanometers[i])]),
+      'sinks': second.map(
+          x =>
+              [String(x.segmentId),
+               ...x.position.map((val, i) => val * annotationToNanometers[i])])
+    };
+    ngeRefuseEdit('split', [...first, ...second].map(x => x.rootId), splitBody);
+    // nge: a refused cut's "Split failed" bar stayed up after the next cut
+    // went through, so a cut that worked looked like it failed (Ames
+    // 2026-11-04). Each new cut takes the last one's error down.
+    ngeLastSplitError?.dispose();
+    ngeLastSplitError = undefined;
 
     const promise =
         cancellableFetchSpecialOk(
             this.credentialsProvider, `${url}/split?int64_as_str=1`, {
               method: 'POST',
-              body: JSON.stringify({
-                'sources': first.map(
-                    x =>
-                        [String(x.segmentId),
-                         ...x.position.map((val, i) => val * annotationToNanometers[i])]),
-                'sinks': second.map(
-                    x =>
-                        [String(x.segmentId),
-                         ...x.position.map((val, i) => val * annotationToNanometers[i])])
-              })
+              body: JSON.stringify(splitBody)
             },
             responseIdentity);
 
     const response = await withErrorMessageHTTP(promise, {
       initialMessage: `Splitting ${first.length} sources from ${second.length} sinks`,
-      errorPrefix: 'Split failed: '
+      errorPrefix: 'Split failed: ',
+      onErrorStatus: status => { ngeLastSplitError = status; },
     });
     const jsonResp = await response.json();
     ngeGraphEdit('split', url, jsonResp);
@@ -1548,6 +1803,34 @@ class GrapheneGraphServerInterface {
       final[i] = Uint64.parseString(jsonResp['new_root_ids'][i]);
     }
     return final;
+  }
+
+  /** nge: after a split reported as failed, did it happen anyway? The
+   *  cell's latest IDs when it has been replaced since, else null. */
+  async ngeSplitLanded(root: Uint64|undefined): Promise<Uint64[]|null> {
+    if (!root || this.url === '') return null;
+    try {
+      await new Promise(r => setTimeout(r, 2500));
+      const latest = await this.filterLatestRoots([root]);
+      if (latest.length) return null;  // still current: nothing was cut
+      const promise = cancellableFetchSpecialOk(this.credentialsProvider,
+          `${this.url}/root/${root.toJSON()}/lineage_graph`, {}, responseIdentity);
+      const body = await (await promise).text();
+      const next = new Map<string, string[]>();
+      for (const m of body.matchAll(/"source"\s*:\s*"?(\d+)"?\s*,\s*"target"\s*:\s*"?(\d+)/g)) {
+        (next.get(m[1]) ?? next.set(m[1], []).get(m[1])!).push(m[2]);
+      }
+      const start = root.toJSON(), ends: string[] = [], seen = new Set([start]), todo = [start];
+      while (todo.length) {
+        const n = todo.pop()!;
+        const kids = next.get(n) ?? [];
+        if (!kids.length && n !== start) ends.push(n);
+        for (const k of kids) if (!seen.has(k)) { seen.add(k); todo.push(k); }
+      }
+      return ends.length ? ends.map(x => Uint64.parseString(x)) : null;
+    } catch {
+      return null;
+    }
   }
 
   async filterLatestRoots(segments: Uint64[]): Promise<Uint64[]> {
@@ -1574,7 +1857,8 @@ class GrapheneGraphServerInterface {
     return res;
   }
 
-  async findPath(first: SegmentSelection, second: SegmentSelection, precisionMode: boolean, annotationToNanometers: Float64Array):
+  async findPath(first: SegmentSelection, second: SegmentSelection, precisionMode: boolean, annotationToNanometers: Float64Array,
+      cancellationToken: CancellationToken = uncancelableToken):
       Promise<number[][]> {
     const {url} = this;
     if (url === '') {
@@ -1588,7 +1872,7 @@ class GrapheneGraphServerInterface {
             [String(first.rootId), ...first.position.map((val, i) => val * annotationToNanometers[i])],
             [String(second.rootId), ...second.position.map((val, i) => val * annotationToNanometers[i])],
           ]),
-        }, responseIdentity);
+        }, responseIdentity, cancellationToken);
 
     const response = await withErrorMessageHTTP(promise, {
       initialMessage: `Finding path between ${first.segmentId} and ${second.segmentId}`,
@@ -1720,6 +2004,34 @@ class GrapheneGraphServerInterface {
   }
 
   private ngeNoPiecePoints = new Set<string>();
+
+  /** How thick the cell is in each piece: the distance, in NANOMETERS, from
+   *  the piece's innermost point to its surface (the server's max_dt_nm).
+   *  The soma is by far the thickest part of a cell. Empty where the
+   *  dataset keeps no such store (the Sandbox). */
+  async ngePieceThickness(ids: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    const m = this.url.match(/^(https:\/\/[^/]+)\/segmentation\/(?:api\/v1\/)?table\/([^/?#]+)/);
+    if (!m || this.ngeNoPiecePoints.has(`${m[1]}/${m[2]}`)) return out;
+    const wanted = ids.filter(id => /^\d+$/.test(id));
+    try {
+      const BATCH = 2000;
+      for (let i = 0; i < wanted.length; i += BATCH) {
+        const batch = wanted.slice(i, i + BATCH);
+        const response = await cancellableFetchSpecialOk(
+            this.credentialsProvider,
+            `${m[1]}/l2cache/api/v1/table/${m[2]}/attributes?attribute_names=max_dt_nm&int64_as_str=1`,
+            {method: 'POST', headers: {'Content-Type': 'application/json'}, body: `{"l2_ids":[${batch.join(',')}]}`},
+            responseIdentity);
+        const json = await response.json();
+        for (const id of batch) {
+          const v = Number(json?.[id]?.['max_dt_nm']);
+          if (Number.isFinite(v) && v > 0) out.set(id, v);
+        }
+      }
+    } catch { /* none: the caller guesses another way */ }
+    return out;
+  }
 
   /** The block of the volume each piece lies in, in NANOMETERS, as
    *  [x0, y0, z0, x1, y1, z1]. Read from the piece's id, so it asks the
@@ -2070,6 +2382,8 @@ const MULTICUT_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:touchtap1x2': {action: 'nge-tap-double'},
   'at:shift?+keyg': {action: 'swap-group'},
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
 });
 
 /** nge: "Keep open after a cut", the preference at the right end of the cut
@@ -2140,12 +2454,24 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
         multicutState.reset();
       }
     }));
+    // nge: one cut at a time. Enter pressed twice, or Enter and the button,
+    // sent the same cut twice: the first went through and the second was
+    // refused, so a cut that worked showed "Split failed" (Ames 2026-11-04).
+    let cutSending = false;
+    let cutSentAt = 0;
     const submitAction = async () => {
+      // A cut the server never answers (it was down, and the request kept
+      // retrying) held this lock until F5, and every cut after it did
+      // nothing (Nseraf, report 376). After 30 s another try may go.
+      if (cutSending && Date.now() - cutSentAt < 30_000) return;
+      cutSending = true;
+      cutSentAt = Date.now();
       submitIcon.classList.toggle('disabled', true);
       const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
       const annotationToNanometers =
           loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
       graphConnection.submitMulticut(annotationToNanometers).then(success => {
+        cutSending = false;
         submitIcon.classList.toggle('disabled', false);
         // nge: the cut bar shows how it went (in place, when the tool stays).
         window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success}}));
@@ -2157,6 +2483,7 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       }, () => {
         // The server refused or failed: the status bar has said why. The
         // Submit icon comes back so the next try can go.
+        cutSending = false;
         submitIcon.classList.toggle('disabled', false);
         window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success: false}}));
       });
@@ -2411,6 +2738,87 @@ function mergeToLine(submission: MergeSubmission): Line {
   return res;
 }
 
+/** nge: quick merge with M is on (Settings > Merging; off by default). */
+function ngeQuickMergeOn(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').quickMergeKey === true; } catch { return false; }
+}
+/** When the player last pressed M themselves (not a button pressing it for them). */
+let ngeLastMKeyDown = -Infinity;
+/** The open merge tool's quick merge M, while merge is open with quick merge on. */
+let ngeQuickMergeKey: (() => void)|undefined;
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (!e.isTrusted || e.code !== 'KeyM' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const t = e.target as HTMLElement|null;
+    if (t && (t.closest?.('input, textarea, select') || t.isContentEditable)) return;
+    if (e.repeat) { if (ngeQuickMergeKey) { e.preventDefault(); e.stopPropagation(); } return; }
+    ngeLastMKeyDown = performance.now();
+    // Merge open with quick merge on: M is a merge point (or closes merge
+    // over empty space), and neuroglancer's own M does not also run.
+    if (ngeQuickMergeKey && ngeQuickMergeOn()) {
+      e.preventDefault();
+      e.stopPropagation();
+      ngeQuickMergeKey();
+    }
+  }, true);
+}
+
+/** nge: how far apart two picked cells may be and still be merged by Pyr. */
+const NGE_MERGE_CELLS_MAX_NM = 2000;
+/** nge: how many picked cells Pyr merges at once. */
+const NGE_MERGE_CELLS_MAX_COUNT = 10;
+
+/** nge: every vertex of a cell's 3D shape as loaded in the view, in nm. */
+function ngeCellVertices(layer: SegmentationUserLayer, root: Uint64): Float32Array[] {
+  const out: Float32Array[] = [];
+  const key = `${root.low},${root.high}`;  // the mesh layer's key (getObjectKey)
+  for (const rl of (layer as any).renderLayers ?? []) {
+    const src = rl?.source;
+    if (!src?.fragmentSource?.chunks || !src?.chunks || typeof src.getFragmentKey !== 'function') continue;
+    const manifest = src.chunks.get(key);
+    for (const fid of manifest?.fragmentIds ?? []) {
+      const vp: Float32Array|undefined = src.fragmentSource.chunks.get(src.getFragmentKey(key, fid).key)?.meshData?.vertexPositions;
+      if (vp && vp.length >= 3) out.push(vp);
+    }
+  }
+  return out;
+}
+
+/** nge: the closest vertex of `a` to a vertex of `b`, if any pair is within
+ *  maxNm: [pointA, pointB]. A grid over b's vertices, searched coarse to fine. */
+function ngeClosestPair(a: Float32Array[], b: Float32Array[], maxNm: number): [number[], number[]]|undefined {
+  for (const cell of [250, maxNm]) {
+    const grid = new Map<string, number[]>();
+    const keyOf = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+    for (const vp of b) {
+      for (let p = 0; p + 2 < vp.length; p += 3) {
+        const k = keyOf(vp[p], vp[p + 1], vp[p + 2]);
+        const list = grid.get(k);
+        // Each cell keeps up to 64 points: plenty to find the touching spot.
+        if (!list) grid.set(k, [vp[p], vp[p + 1], vp[p + 2]]);
+        else if (list.length < 192) list.push(vp[p], vp[p + 1], vp[p + 2]);
+      }
+    }
+    let best = cell * cell, found: [number[], number[]]|undefined;
+    for (const vp of a) {
+      for (let p = 0; p + 2 < vp.length; p += 3) {
+        const x = vp[p], y = vp[p + 1], z = vp[p + 2];
+        const i = Math.floor(x / cell), j = Math.floor(y / cell), k = Math.floor(z / cell);
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dk = -1; dk <= 1; dk++) {
+          const list = grid.get(`${i + di},${j + dj},${k + dk}`);
+          if (!list) continue;
+          for (let q = 0; q < list.length; q += 3) {
+            const d = (list[q] - x) ** 2 + (list[q + 1] - y) ** 2 + (list[q + 2] - z) ** 2;
+            if (d <= best) { best = d; found = [[x, y, z], [list[q], list[q + 1], list[q + 2]]]; }
+          }
+        }
+      }
+    }
+    if (found) return found;
+  }
+  return undefined;
+}
+
 // nge: 20, as in stock neuroglancer (was 10 here; player request 2026-10-08).
 const MAX_MERGE_COUNT = 20;
 
@@ -2418,6 +2826,8 @@ const MAX_MERGE_COUNT = 20;
 
 const MERGE_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
   // EyeWire II: merge places its own points. Without this, ctrl+click ran the
   // viewer's general "annotate" action, which uses whichever layer is
   // selected: entering merge straight from an annotation layer dropped an
@@ -2503,6 +2913,75 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
       event.stopPropagation();
       submitAction();
     });
+    // nge: quick merge (Ames 2026-11-04: "control click two of them and then
+    // press M"). With the setting on, M places a merge point on the piece
+    // under the cursor, as Ctrl+click does; the M that finishes a line sends
+    // that merge at once. The M that opened merge places the first point.
+    // M on empty space sends the merges waiting, or closes merge as before.
+    // The merge goes through bulkMerge like any other, so the edit guard,
+    // the edit count and the ID tidying after it all still apply.
+    if (ngeQuickMergeOn()) {
+      const onPiece = () => ngeGrapheneSelectionUnderMouse(this.layer, this.mouseState) !== undefined;
+      const sendNew = () => {
+        const fresh = merges.value.filter(x => x.source && !x.locked && !x.status);
+        if (fresh.length) graphConnection.bulkMerge(fresh);
+      };
+      const quickKey = () => {
+        if (onPiece()) {
+          const finishing = lineTool.inProgressAnnotation.value !== undefined;
+          lineTool.trigger(this.mouseState);
+          if (finishing) sendNew();
+          else StatusMessage.showTemporaryMessage('Merge point placed. Click the other piece (or point at it and press M).', 4000);
+          return;
+        }
+        // A first point with no second: closing drops it, as M always did.
+        const waiting = merges.value.filter(x => x.source && !x.locked && !x.status);
+        if (waiting.length && lineTool.inProgressAnnotation.value === undefined) { submitAction(); return; }
+        activation.cancel();
+      };
+      // M is taken on the page itself (ngeQuickMergeKeydown), wherever the
+      // keyboard is: the 3D view does not always have it, and then
+      // neuroglancer's own M closed merge instead (Ames 2026-11-04).
+      ngeQuickMergeKey = quickKey;
+      activation.registerDisposer(() => { if (ngeQuickMergeKey === quickKey) ngeQuickMergeKey = undefined; });
+      // With a first point placed, a plain click on the other piece is the
+      // second point (Ames 2026-11-04: "shouldn't it just let me click").
+      // A drag still turns the view; only a short, still click counts.
+      let down: {x: number, y: number, t: number, id: number}|undefined;
+      const inView = (t: EventTarget|null) => {
+        const el = t as HTMLElement|null;
+        return !!el?.closest?.('.neuroglancer-rendered-data-panel') &&
+            !el.closest('button, a, input, select, textarea, [role="button"], .neuroglancer-data-panel-layout-controls');
+      };
+      activation.registerEventListener(window, 'pointerdown', (e: PointerEvent) => {
+        down = undefined;
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.pointerType === 'touch') return;
+        if (lineTool.inProgressAnnotation.value === undefined || !inView(e.target)) return;
+        down = {x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId};
+      }, true);
+      activation.registerEventListener(window, 'pointerup', (e: PointerEvent) => {
+        const d = down;
+        down = undefined;
+        if (!d || d.id !== e.pointerId || lineTool.inProgressAnnotation.value === undefined) return;
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 600) return;
+        if (!onPiece()) return;
+        e.stopPropagation();
+        quickKey();
+      }, true);
+      // Opened by a real M press: that press is the first point, if the
+      // cursor is on a piece. The view may take a moment to say what is
+      // under the cursor once merge has opened.
+      if (performance.now() - ngeLastMKeyDown < 300) {
+        let tries = 0;
+        const firstPoint = () => {
+          if (activation.wasDisposed) return;
+          if (onPiece()) { quickKey(); return; }
+          if (++tries < 4) { setTimeout(firstPoint, 60); return; }
+          StatusMessage.showTemporaryMessage('Merge is open. Point at a piece and press M to place a merge point.', 4000);
+        };
+        setTimeout(firstPoint, 0);
+      }
+    }
     body.appendChild(makeIcon({
       text: 'Clear',
       title: 'Clear pending merges',
@@ -2592,6 +3071,8 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
 
 const FIND_PATH_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
   'at:shift?+control+mousedown0': {action: 'add-point'},
   'at:touchtap1x1': {action: 'nge-tap-place'},
   'at:touchtap1x2': {action: 'nge-tap-double'},
@@ -2610,6 +3091,8 @@ class FindPathTool extends LayerTool<SegmentationUserLayer> {
 
     const {body, header} = makeToolActivationStatusMessageWithHeader(activation);
     header.textContent = 'Find Path';
+    // nge: closing the tool stops a search still running.
+    activation.registerDisposer(ngeStopFindPath);
     body.classList.add('graphene-tool-status', 'graphene-find-path');
 
     const submitAction = () => {
@@ -2734,6 +3217,26 @@ registerLegacyTool(
 // ── EyeWire II Highlight mode (src/util/highlight.ts) ─────────────────────
 // The same two things Find Path does, without its single source/target state:
 // what is under the cursor, and the path through a cell between two picks.
+
+/** A position in a graphene layer's own coordinates (as a SegmentSelection,
+ *  the cut and merge points, keeps it) in the viewer's global coordinates,
+ *  matched axis by axis by name. Undefined until the layer has loaded. Where
+ *  the view's voxel size differs from the data's, the raw position lands far
+ *  from the cell (Celia D, report 258: "it jumps you to outerspace"). */
+export function ngeGrapheneLayerToGlobal(
+    layer: SegmentationUserLayer, position: ArrayLike<number>,
+    global: {rank: number, names: readonly string[], scales: Float64Array}): Float32Array|undefined {
+  const sub = getGraphLoadedSubsource(layer);
+  if (sub === undefined) return undefined;
+  const input = sub.loadedDataSource.transform.inputSpace.value;
+  const out = new Float32Array(global.rank);
+  for (let g = 0; g < global.rank; ++g) {
+    const i = input.names.indexOf(global.names[g]);
+    if (i < 0 || i >= position.length || !global.scales[g]) return undefined;
+    out[g] = position[i] * input.scales[i] / global.scales[g];
+  }
+  return out;
+}
 
 /** The cell under the cursor on a graphene layer: its root and the position
  *  in the layer's own coordinates. Undefined when the cursor is not on a
@@ -2996,6 +3499,14 @@ export async function ngeGraphenePiecesOf(layer: SegmentationUserLayer, supervox
   };
   await Promise.all([next(), next(), next(), next(), next(), next()]);
   return out;
+}
+
+/** How thick a cell is in each of its pieces, nm (empty where the dataset
+ *  keeps no such store). Lantern's Clicked branch finds the soma with it. */
+export async function ngeGrapheneThickness(layer: SegmentationUserLayer, ids: string[]): Promise<Map<string, number>> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) return new Map();
+  return (connection.graph.graphServer as any).ngePieceThickness(ids);
 }
 
 /** The piece of its cell that a pick landed in, or undefined. */

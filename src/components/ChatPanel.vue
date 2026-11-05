@@ -8,10 +8,11 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { richPieces, plainChatText, toggleMark, parseChatQuery, matchesChatQuery } from '../util/chat_text';
 import { booGhost, isBoo, inSeason } from '../util/spooky';
-import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
+import { BADGE_DEFINITIONS, LEGACY_BADGES } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_MAX_CHARS, chatTextLength } from '../store';
+import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_REACTION_GEM, CHAT_MAX_CHARS, chatTextLength } from '../store';
+import pyrGemUrl from '../../static/badges/pyr/pyr-icon.png';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
@@ -28,19 +29,32 @@ import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
-import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch } from '../util/pumpkin';
+import { huntNoteNow } from '../hunt';
+import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
-// The pumpkin button (Ames 2026-10-20): on a patch cell it turns the
-// pumpkin off and on; anywhere else it offers a trip to the pumpkin patch.
+import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
+import { leavesSeason, toggleLeaves, leavesHidden } from '../util/leaves';
+// The pumpkin button (Ames 2026-10-20): opens the field report card, which
+// hides or shows the pumpkins, goes to the patch, or hands out the hammer
+// (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
+// patch, smash the pumpkins"). It used to hide the pumpkins straight away on
+// a patch cell, so the card only ever showed on other datasets.
 const showPumpkinBtn = pumpkinSeason();
 const askPatch = ref(false);
 function pumpkinOff(): boolean { return pumpkinUi.here && useUserPreferencesStore().prefs.hidePumpkin === true; }
 function pumpkinTitle(): string {
   if (!pumpkinUi.here) return 'A rare cell type has been spotted';
-  return useUserPreferencesStore().prefs.hidePumpkin === true ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell';
+  return 'The pumpkin patch: hide, show or smash the pumpkins';
 }
-function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
+function onPumpkin() { askPatch.value = true; }
+function togglePatch() { askPatch.value = false; togglePumpkin(); }
 function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
+function smashPatch() { askPatch.value = false; smashPumpkins(); }
+const showTurkeyBtn = turkeySeason();
+// The leaf button, in the fall; the turkey's takes its place in Thanksgiving week.
+const showLeavesBtn = leavesSeason() && !showTurkeyBtn;
+function leavesTitle(): string { return leavesHidden() ? 'Bring back the falling leaves' : 'Stop the falling leaves'; }
+function turkeyTitle(): string { return turkeyHidden() ? 'Bring the turkey back' : 'Send the turkey away'; }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -55,6 +69,7 @@ const inputEl = ref<HTMLTextAreaElement | null>(null);
 const searchEl = ref<HTMLInputElement | null>(null);
 // Search state lives up here because the fade rule below reads it.
 const searchOpen = ref(false);
+const tipsOpen = ref(false);
 const searchText = ref('');
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
@@ -185,7 +200,12 @@ function stopResize() {
 // Click away and chat shrinks to its latest messages, background fading out;
 // click back in and it takes its full size again. The bottom edge stays put.
 const QUIET_H = 150;
-const chatFocused = ref(true);
+// Chat opens in its clicked away view, and left open stays open after a
+// reload (Celia, report 316; Ames 2026-11-01: "should already be on this by
+// default").
+const FADED_KEY = 'nge_chat_faded';
+const chatFocused = ref((() => { try { return localStorage.getItem(FADED_KEY) === '0'; } catch { return false; } })());
+watch(chatFocused, v => { try { localStorage.setItem(FADED_KEY, v ? '0' : '1'); } catch { /* a private window */ } });
 function onDocPointerDown(e: PointerEvent) {
   const t = e.target as HTMLElement | null;
   const inside = !!t && (!!panelEl.value?.contains(t) || !!t.closest?.('.nge-shotdlg-overlay'));
@@ -195,7 +215,7 @@ function onPanelFocusIn() { chatFocused.value = true; }
 document.addEventListener('pointerdown', onDocPointerDown, true);
 // Settings > "Fade chat when I click away" can switch quiet mode off.
 const isQuiet = computed(() => useUserPreferencesStore().prefs.chatFadeAway !== false
-  && !searchOpen.value && !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
+  && !searchOpen.value && !tipsOpen.value && !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
   && panelHeight.value > QUIET_H && !document.body.classList.contains('nge-mobile'));
 const shownHeight = computed(() => isQuiet.value ? QUIET_H : panelHeight.value);
 /** The last few messages stay faintly readable when chat fades (Amy
@@ -279,13 +299,25 @@ watch(collapsed, (c) => chatStore.setPanelVisible(!c), { immediate: true });
 // Someone @mentioned you: flash the panel so it catches your eye mid-trace.
 const mentionFlash = ref(false);
 let mentionTimer: ReturnType<typeof setTimeout> | null = null;
+// While you are working elsewhere (chat open but clicked away), the glow
+// stays until you click back into chat, as EyeWire's did (Nseraf, report
+// 357: three flashes were easy to miss mid-trace).
+const mentionWaiting = ref(false);
 watch(() => chatStore.mentionPing, () => {
   mentionFlash.value = false;
   nextTick(() => {
     mentionFlash.value = true;
     if (mentionTimer) clearTimeout(mentionTimer);
-    mentionTimer = setTimeout(() => { mentionFlash.value = false; }, 3200);
+    if (chatFocused.value) mentionTimer = setTimeout(() => { mentionFlash.value = false; }, 3200);
+    else mentionWaiting.value = true;
   });
+});
+// Cleared just after the click, not at its start: clearing on pointerdown
+// removed the "@ from" tag under the pointer, the click never reached the
+// header, and chat did not open (Ames 2026-11-04).
+watch(chatFocused, f => {
+  if (!f || !mentionWaiting.value) return;
+  setTimeout(() => { if (chatFocused.value) { mentionWaiting.value = false; mentionFlash.value = false; } }, 400);
 });
 
 onUnmounted(() => {
@@ -500,6 +532,22 @@ function repliedMsg(msg: ChatMessage): ChatMessage | null {
 }
 const flashedMsgId = ref<string | null>(null);
 let flashTimer = 0;
+/** A message meant for you (Ames 2026-11-04: "draw inspiration at how other
+ *  chats do this"): it @mentions you, or replies to one of your messages.
+ *  Shown as Discord and Slack do, with a warm band and a bar at its left. */
+function isForMe(msg: ChatMessage): boolean {
+  if (isMine(msg)) return false;
+  if ((msg.text || '').split(/\s+/).some(t => t.startsWith('@') && isSelfMention(t))) return true;
+  const to = (msg as any).replyTo;
+  return !!to && chatStore.chatMessages.some(m => String(m.id) === String(to) && isMine(m));
+}
+/** Open chat at the message that pinged you. */
+function goToMention() {
+  const id = chatStore.lastMentionId;
+  mentionWaiting.value = false;
+  mentionFlash.value = false;
+  if (id) goToMessage(id);
+}
 function goToMessage(id: string | null | undefined) {
   if (!id) return;
   const el = document.querySelector<HTMLElement>(`.nge-chat-float [data-msg-id="${CSS.escape(String(id))}"]`);
@@ -529,20 +577,35 @@ const searchHits = computed<ChatMessage[]>(() => {
   const q = chatQuery.value;
   // a day that could not be read finds nothing, rather than everything
   if (!q || q.badDate) return [];
-  return chatMessages.value.filter(m => m.type === 'message' && m.rank !== 'pin' && matchesChatQuery(q, m.name || '', messageText(m), m.dateTime.getTime()));
+  return chatMessages.value.filter(m => m.type === 'message' && m.rank !== 'pin' && inSearchRange(m) && matchesChatQuery(q, m.name || '', messageText(m), m.dateTime.getTime()));
 });
-// A search for a day further back than chat has loaded brings the earlier
-// messages in by itself, a page at a time, until it reaches that day (or
-// the start of chat, or forty pages).
+// Search reaches back fourteen days and no further (Ames 2026-10-10: "we
+// don't need ALL history"). While a search is open, the earlier messages of
+// those fourteen days are brought in by themselves, a page at a time, so the
+// search covers the whole stretch without a button to keep pressing. A day
+// asked for with on: or after: stops the loading as soon as it is reached.
+const SEARCH_DAYS = 14;
+const searchFloor = () => Date.now() - SEARCH_DAYS * 86_400_000;
+const oldestLoaded = () => chatMessages.value.find(m => m.type !== 'time')?.dateTime.getTime() ?? Date.now();
+/** Is there more of the searchable stretch still to bring in? */
+const searchCanReachBack = computed(() => {
+  void chatMessages.value.length;
+  if (!chatQuery.value || !chatStore.hasMoreHistory) return false;
+  const goal = Math.max(searchFloor(), chatQuery.value.fromTime ?? 0);
+  return oldestLoaded() > goal;
+});
 let searchPages = 0;
-watch(searchText, () => { searchPages = 0; });
+/** Earlier messages could not be brought in (offline, say): search what is here. */
+const searchStalled = ref(false);
+watch(searchText, () => { searchPages = 0; searchStalled.value = false; });
 watch([chatQuery, () => chatMessages.value.length, () => chatStore.loadingHistory], () => {
-  const q = chatQuery.value;
-  if (!q || q.fromTime == null || chatStore.loadingHistory || !chatStore.hasMoreHistory || searchPages >= 40) return;
-  const first = chatMessages.value.find(m => m.type !== 'time');
-  if (first && first.dateTime.getTime() > q.fromTime) { searchPages++; void chatStore.loadOlder(); }
+  if (!searchCanReachBack.value || chatStore.loadingHistory || searchStalled.value || searchPages >= 120) return;
+  searchPages++;
+  void Promise.resolve(chatStore.loadOlder()).then(n => { if (!n) searchStalled.value = true; }, () => { searchStalled.value = true; });
 });
-const searchingBack = computed(() => !!chatQuery.value && chatQuery.value.fromTime != null && chatStore.loadingHistory);
+const searchingBack = computed(() => !!chatQuery.value && !searchStalled.value && (chatStore.loadingHistory || searchCanReachBack.value));
+/** The search does not look at messages older than the fourteen days. */
+const inSearchRange = (m: ChatMessage) => m.dateTime.getTime() >= searchFloor();
 /** What the list draws: everything, or only the matches while searching. */
 /** Announcements this player closed with their × (Ames 2026-10-23: "I want
  *  to be able to X to delete these and the Today in Pyr update"). Hidden in
@@ -559,8 +622,17 @@ function hideAnnouncement(id: number | string | null | undefined) {
   hiddenAnnouncements.value = next;
   try { localStorage.setItem(HIDDEN_ANNOUNCE_KEY, JSON.stringify([...next].slice(-200))); } catch { /* private window */ }
 }
-const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value)
-  .filter(m => !(m.type === 'message' && m.notificationId && hiddenAnnouncements.value.has(Number(m.notificationId)))));
+/** A Hunt's notes in chat: only the newest card for each Hunt (coming, then on, then over), so an old
+ *  "is coming" never sits beside "is on" (Ames 2026-10-26). */
+const huntNoteOf = (m: ChatMessage) => (m.type === 'message' && m.notificationId ? huntNoteNow(rawAnnounceText(m)) : null);
+const listedMessages = computed<ChatMessage[]>(() => {
+  const all = (chatQuery.value ? searchHits.value : chatMessages.value)
+    .filter(m => !(m.type === 'message' && m.notificationId && hiddenAnnouncements.value.has(Number(m.notificationId))));
+  const newest = new Map<string, number>();
+  for (const m of all) { const n = huntNoteOf(m); if (n) newest.set(n.title, Math.max(newest.get(n.title) ?? -1, n.stage)); }
+  if (!newest.size) return all;
+  return all.filter(m => { const n = huntNoteOf(m); return !n || n.stage >= (newest.get(n.title) ?? 0); });
+});
 function openSearch() {
   searchOpen.value = true;
   if (collapsed.value) toggleCollapse();
@@ -645,6 +717,21 @@ const isPinRow = (m: ChatMessage) => m.type === 'message' && m.rank === 'pin';
 const pinRowSays = (m: ChatMessage) => (String(m.dataset || '') === 'pin:none' ? 'took the pinned message down' : 'pinned a message');
 const isPinnedMsg = (m: ChatMessage) => m.id != null && chatStore.pinned?.messageId === String(m.id);
 const pinBusy = ref(false);
+// How an admin pins: right click the React button on a message, then Pin.
+// There is no pin button on the messages themselves.
+const pinMenuFor = ref<string | null>(null);
+const canPin = (m: ChatMessage) => backendStore.showAdminUi && m.id != null && m.rank !== 'bot' && m.rank !== 'pin' && !m.notificationId;
+function openPinMenu(m: ChatMessage, e: MouseEvent) {
+  if (!canPin(m)) return;            // everyone else keeps the browser's own menu
+  e.preventDefault();
+  e.stopPropagation();
+  pickerFor.value = null;
+  pinMenuFor.value = pinMenuFor.value === String(m.id) ? null : String(m.id);
+}
+async function pinFromMenu(m: ChatMessage) {
+  pinMenuFor.value = null;
+  await togglePin(m);
+}
 async function togglePin(m: ChatMessage | null) {
   if (pinBusy.value) return;
   pinBusy.value = true;
@@ -676,8 +763,23 @@ watch(() => chatMessages.value.length, () => {
   if (isBoo(m.parts.filter(p => p.type !== 'sender').map(p => p.text).join(''))) booGhost();
 });
 
+// ── Chat tips (Ames 2026-10-28: "Do we have a way for players to see chat
+// controls?") ─────────────────────────────────────────────────────────────
+// One short card of what chat can do, opened by the ? in the top strip or by
+// typing /help. Nothing is posted. (tipsOpen sits with searchOpen above.)
+function openTips() {
+  tipsOpen.value = true;
+  if (collapsed.value) toggleCollapse();
+}
+
 // ── Send message ──
 function send() {
+  if (/^\/help\s*$/i.test(messageInput.value.trim())) {
+    messageInput.value = '';
+    emojiOpen.value = false;
+    openTips();
+    return;
+  }
   // New lines are kept, but never a wall of blank ones.
   let text = messageInput.value.trim().replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
   // A view waiting on the message box goes out with the message.
@@ -691,6 +793,7 @@ function send() {
   replyingTo.value = null;
   messageInput.value = '';
   mentionQuery.value = null;
+  emojiOpen.value = false;         // sent, so the emoji panel is done too (Nik, #305)
   inputEl.value?.focus();
 }
 
@@ -780,6 +883,7 @@ function onInputKeydown(e: KeyboardEvent) {
     markSelection(e.key.toLowerCase() === 'b' ? '*' : '_');
     return;
   }
+  if (e.key === 'Escape' && tipsOpen.value) { tipsOpen.value = false; e.preventDefault(); return; }
   if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
     send();
@@ -927,8 +1031,18 @@ function toggleMore(e: MouseEvent) {
 }
 function togglePicker(id: string, e?: MouseEvent) {
   pickerMore.value = false;
+  pinMenuFor.value = null;
   pickerFor.value = pickerFor.value === id ? null : id;
-  if (e && pickerFor.value) placeInlinePicker(e);
+  if (e && pickerFor.value) {
+    placeInlinePicker(e);
+    // Measured once drawn: the row grew (the Pyr gem), so a fixed width put
+    // it past the edge of a narrow chat.
+    const btn = e.currentTarget as HTMLElement;
+    void nextTick(() => {
+      const el = document.querySelector('.nge-chat-react-picker--placed') as HTMLElement | null;
+      if (el) placeInlinePickerAt(btn, el.offsetWidth, el.offsetHeight);
+    });
+  }
 }
 /** On an announcement the row of emoji opened to the left of the button and
  *  ran off the chat's left edge, so the first ones could not be picked
@@ -937,7 +1051,9 @@ function togglePicker(id: string, e?: MouseEvent) {
 const inlinePickerPlace = ref<Record<string, string>>({});
 const PICK_W = 196, PICK_H = 32;
 function placeInlinePicker(e: MouseEvent) {
-  const btn = e.currentTarget as HTMLElement;
+  placeInlinePickerAt(e.currentTarget as HTMLElement, PICK_W, PICK_H);
+}
+function placeInlinePickerAt(btn: HTMLElement, PICK_W: number, PICK_H: number) {
   const at = btn.getBoundingClientRect();
   // Kept inside the chat itself, so on a narrow chat the first emoji are not
   // past its left edge (Nseraf, 2026-10-23); every message, not only
@@ -945,7 +1061,9 @@ function placeInlinePicker(e: MouseEvent) {
   const box = btn.closest('.nge-chat-float')?.getBoundingClientRect();
   const lo = Math.max(6, (box?.left ?? 0) + 4);
   const hi = Math.min(window.innerWidth - 6, (box?.right ?? window.innerWidth) - 4) - PICK_W;
-  const left = Math.max(lo, Math.min(hi, at.right - PICK_W));
+  // A chat narrower than the row: keep it on the screen instead.
+  const left = hi >= lo ? Math.max(lo, Math.min(hi, at.right - PICK_W))
+    : Math.max(6, Math.min(window.innerWidth - PICK_W - 6, lo));
   const above = at.top - PICK_H - 6;
   const top = above >= 6 ? above : Math.min(window.innerHeight - PICK_H - 6, at.bottom + 6);
   inlinePickerPlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` };
@@ -973,7 +1091,9 @@ function achievementOf(msg: ChatMessage): ChatAchievement | null {
     const name = b?.name || (msg.parts.map(p => p.text || '').join('').match(/earned the (.+) award/)?.[1] ?? 'a special award');
     return { track: 'special', name, art: b?.thumbnail_url || b?.image_url || '', why: 'special award', specialId: Number(m[2]) };
   }
-  const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]));
+  // An 'earned' line from before the 2026-11 redesign names an old ladder id (1 to 200): it keeps its art.
+  const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]))
+    ?? LEGACY_BADGES.find(x => x.track === m[1] && x.id === Number(m[2]));
   if (!d) return null;
   const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : d.track === 'loyalty' ? 'days of science' : (d.threshold === 1 ? 'cell' : 'cells');
   return { track: d.track, name: d.name, art: BADGE_IMAGE_MAP[d.imageKey] || '', why: `${d.threshold.toLocaleString()} ${unit}`, slug: d.slug };
@@ -991,6 +1111,9 @@ const foldedAchievements = computed(() => {
   }
   return hidden;
 });
+/** A grant's line (functions/access-request.js): only the server's own rank is drawn this way. */
+const ACCESS_LINE_ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
+const isAccessLine = (msg: ChatMessage) => msg.type === 'message' && msg.rank === 'achievement' && /^access:[a-z0-9_]+$/.test(String(msg.dataset || ''));
 const achTrack = (msg: ChatMessage) => achievementOf(msg)?.track || '';
 const achArt = (msg: ChatMessage) => achievementOf(msg)?.art || '';
 const achWhy = (msg: ChatMessage) => achievementOf(msg)?.why || '';
@@ -1010,19 +1133,40 @@ function reactedByMe(list: Array<{ userId: string }>) {
 }
 function closePopovers(e: MouseEvent) {
   const t = e.target as HTMLElement;
-  if (!t.closest?.('.nge-chat-react-add') && !t.closest?.('.nge-chat-react-more')) pickerFor.value = null;
+  if (!t.closest?.('.nge-chat-react-add') && !t.closest?.('.nge-chat-react-more')) { pickerFor.value = null; pinMenuFor.value = null; }
   if (!t.closest?.('.nge-chat-share')) shareMenuOpen.value = false;
   if (!t.closest?.('.nge-chat-emoji')) emojiOpen.value = false;
 }
 
 // ── Emoji for writing messages (Amy 2026-09-30), not just reactions ──
 const CHAT_EMOJI = [
-  '👋', '😊', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
+  '👋', '😊', '😉', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
   '👍', '👏', '🙌', '💪', '👀', '✨', '🔥', '💯', '🎉', '❤️',
   '🧠', '🔬', '🧬', '⚡', '👁️', '🐭', '🪰', '🐟', '🦉', '🐙',
   '🚀', '🌟', '🎯', '✅', '❌', '⚠️', '☕', '🍕', '🌈', '😴',
 ];
 const emojiOpen = ref(false);
+/** The emoji panel opened leftwards from its button, so in a narrow chat
+ *  at the left of the screen its first columns were off the screen (Nik,
+ *  2026-10-27). It is placed on the page now, above the button, measured and
+ *  kept inside the window. */
+const emojiPlace = ref<Record<string, string>>({});
+function toggleEmoji(e: MouseEvent) {
+  emojiOpen.value = !emojiOpen.value;
+  if (!emojiOpen.value) return;
+  const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const place = (w: number, h: number) => {
+    const left = Math.max(6, Math.min(window.innerWidth - w - 6, at.right - w));
+    const above = at.top - h - 4;
+    const top = above >= 6 ? above : Math.min(window.innerHeight - h - 6, at.bottom + 4);
+    emojiPlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` };
+  };
+  place(266, 140);
+  void nextTick(() => {
+    const el = document.querySelector('.nge-chat-emoji-grid') as HTMLElement | null;
+    if (el) place(el.offsetWidth, el.offsetHeight);
+  });
+}
 function insertEmoji(emo: string) {
   const el = inputEl.value;
   const v = messageInput.value;
@@ -1048,10 +1192,31 @@ function isSelfMention(token: string): boolean {
   return isSelfMentionToken(token, backendStore.username, backendStore.userName);
 }
 
+/** An announcement's line, without the 📢 older ones carry in their text.
+ *  The card draws its own: the picture, or 📢 when there is none (Ames
+ *  2026-10-24). */
+function rawAnnounceText(msg: ChatMessage): string {
+  return msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('').replace(/^\s*📢\s*/u, '');
+}
+function announceText(msg: ChatMessage): string {
+  const text = rawAnnounceText(msg);
+  // A Hunt's note says where the Hunt is now: not "is coming" once it runs (Ames 2026-10-26).
+  return huntNoteNow(text)?.text ?? text;
+}
 /** Open the notification an announcement message refers to. */
 /** The 🗑 on chat messages is hidden for now (Ames 2026-09-28). Deleting still
  *  works server side; flip this to bring the button back. */
 const SHOW_CHAT_DELETE = false;
+
+/** "/me claps hands" (Ames 2026-10-27): shown as a quiet grey line,
+ *  "Nseraf claps hands", like the other asides. Stored as the plain message,
+ *  so nothing else changes; null when the message is not one. */
+function meAction(msg: ChatMessage): string | null {
+  if (msg.type !== 'message' || msg.notificationId) return null;
+  const text = msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('');
+  const m = /^\/me\s+(\S[\s\S]*)$/i.exec(text.trim());
+  return m ? plainChatText(m[1]).replace(/\s+/g, ' ').trim() : null;
+}
 
 /** Admin moderation: delete a message for everyone (the gateway enforces admin). */
 async function deleteChatMessage(msg: ChatMessage) {
@@ -1286,7 +1451,7 @@ function toggleCollapse() {
     <div
       ref="panelEl"
       class="nge-chat-float"
-      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing, 'nge-chat-selecting': selectingText }"
+      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--mention-waiting': mentionFlash && mentionWaiting, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing, 'nge-chat-selecting': selectingText }"
       @focusin="onPanelFocusIn"
       :style="{
         ...(collapsed ? {} : { width: panelWidth + 'px', height: shownHeight + 'px' }),
@@ -1316,8 +1481,14 @@ function toggleCollapse() {
           </div>
         </span>
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
-        <span v-if="mentionFlash && chatStore.lastMentionFrom" class="nge-chat-mentioned-by">@ from {{ chatStore.lastMentionFrom }}</span>
+        <button v-if="mentionFlash && chatStore.lastMentionFrom" :key="chatStore.mentionPing" type="button" class="nge-chat-mentioned-by"
+                :title="`${chatStore.lastMentionFrom} mentioned you. Click to see the message.`" @click.stop="goToMention">
+          <span class="nge-chat-mentioned-at" aria-hidden="true">@</span>{{ chatStore.lastMentionFrom }}
+        </button>
         <span class="nge-chat-strip-spacer"></span>
+        <button class="nge-chat-strip-btn nge-chat-tips-btn" :class="{ 'nge-chat-tips-btn--on': tipsOpen }"
+                @click.stop="tipsOpen ? (tipsOpen = false) : openTips()" :aria-pressed="tipsOpen"
+                :title="tipsOpen ? 'Close chat tips' : 'Chat tips: what chat can do'" aria-label="Chat tips">?</button>
         <button v-if="isLoggedIn" class="nge-chat-strip-btn nge-chat-search-btn" :class="{ 'nge-chat-search-btn--on': searchOpen }"
                 @click.stop="toggleSearch" :aria-pressed="searchOpen"
                 :title="searchOpen ? 'Close search (Esc)' : 'Search chat'">
@@ -1346,28 +1517,46 @@ function toggleCollapse() {
         <div v-if="shownPin && !searchOpen" class="nge-chat-pin" role="note">
           <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to go to the message.'"
                   @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></span>{{ plainChatText(shownPin.text) }}</button>
-          <button v-if="backendStore.isAdmin" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
+          <button v-if="backendStore.showAdminUi" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
           <button type="button" class="nge-chat-pin-x" title="Hide this pin for me" aria-label="Hide this pin for me" @click.stop="hidePin">×</button>
         </div>
         <div class="nge-chat-messages-wrap">
           <div class="nge-chat-fade"></div>
+          <div v-if="tipsOpen" class="nge-chat-tips" role="dialog" aria-label="Chat tips" @click.stop>
+            <div class="nge-chat-tips-head">
+              <b>Chat tips</b>
+              <button type="button" class="nge-chat-tips-x" title="Close (Esc)" aria-label="Close chat tips" @click="tipsOpen = false">×</button>
+            </div>
+            <ul>
+              <li><code>@name</code> mentions someone and lets them know.</li>
+              <li><code>#</code> and a cell ID, like <code>#864691135012345678</code>, makes a link that opens the cell.</li>
+              <li><code>/me waves</code> shows a grey line, like <i>Nseraf waves</i>.</li>
+              <li><code>*bold*</code> and <code>_underline_</code>. Shift+Enter for a new line.</li>
+              <li>Point at a message to react (the Pyr gem too) or reply with ↩.</li>
+              <li>A pinned message from the team sits at the top. Click it to jump there, or × to hide it.</li>
+              <li>🔍 searches. Try <code>from:name</code>, <code>on:10/8</code>, <code>-word</code>, <code>"two words"</code>.</li>
+              <li>The bell sends notifications while Pyr is in the background. To hide the unread count, use Settings, Mute the chat unread count.</li>
+              <li>📍 shares your view, with a screenshot if you like. 🙂 adds an emoji.</li>
+              <li>Ask Nurro with <code>!</code>: <code>!faq</code>, <code>!cut</code>, <code>!merge</code>, <code>!online</code>. <code>!help</code> lists them all. Only you see the answer.</li>
+            </ul>
+          </div>
           <div
             class="nge-chat-messages"
             ref="scrollContainer"
             @scroll="handleScroll" @wheel.passive="markScrolling"
           >
             <div class="nge-chat-messages-inner">
-              <div v-if="isLoggedIn && chatMessages.length" class="nge-chat-history-top">
+              <div v-if="isLoggedIn && chatMessages.length && !searchOpen" class="nge-chat-history-top">
                 <button v-if="chatStore.hasMoreHistory" class="nge-chat-history-btn" :disabled="chatStore.loadingHistory"
-                        @click="chatStore.loadOlder()">{{ chatStore.loadingHistory ? 'Loading…' : chatQuery ? 'Search earlier messages too' : 'Load earlier messages' }}</button>
+                        @click="chatStore.loadOlder()">{{ chatStore.loadingHistory ? 'Loading…' : 'Load earlier messages' }}</button>
                 <span v-else>Beginning of chat</span>
               </div>
               <div v-if="searchOpen" class="nge-chat-search-note" role="status">
-                <template v-if="!chatQuery">Type to search. Use -word to leave messages out, "two words" for a phrase, from:name for one player, and on:10/8, after:yesterday or before:2026-10-01 for a day.</template>
+                <template v-if="!chatQuery">Type to search the last 14 days. Use -word to leave messages out, "two words" for a phrase, from:name for one player, and on:10/8 or after:yesterday for a day.</template>
                 <template v-else-if="chatQuery.badDate">That day could not be read: "{{ chatQuery.badDate }}". Try today, yesterday, 10/8 or 2026-10-08.</template>
-                <template v-else-if="searchingBack">Looking further back…</template>
-                <template v-else-if="!searchHits.length">No messages match{{ chatStore.hasMoreHistory ? ' in what is loaded so far.' : '.' }}</template>
-                <template v-else>{{ searchHits.length.toLocaleString() }} {{ searchHits.length === 1 ? 'message' : 'messages' }}. Click one to see it in the conversation.</template>
+                <template v-else-if="searchingBack">{{ searchHits.length ? searchHits.length.toLocaleString() + ' so far. ' : '' }}Looking back through the last 14 days…</template>
+                <template v-else-if="!searchHits.length">No messages match in the last 14 days.</template>
+                <template v-else>{{ searchHits.length.toLocaleString() }} {{ searchHits.length === 1 ? 'message' : 'messages' }} in the last 14 days. Click one to see it in the conversation.</template>
               </div>
               <template v-for="(msg, i) in listedMessages" :key="msg.id ?? ('i' + i)">
                 <div v-if="msg === firstNewMsg" class="nge-chat-new-line" role="separator"><span>New since you left</span></div>
@@ -1400,6 +1589,18 @@ function toggleCollapse() {
                   <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b> <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span></span>
                 </div>
 
+                <!-- "Nseraf now has edit access to MEC": said when they next come in. -->
+                <div v-else-if="isAccessLine(msg)" class="nge-chat-sys nge-chat-ach nge-chat-ach--access" :class="{ 'nge-chat-fresh': isFresh(msg) }">
+                  <img class="nge-chat-ach-art" :src="ACCESS_LINE_ART" alt="" />
+                  <span><b>{{ shortName(msg.name) }}</b> {{ msg.parts.map(p => p.text || '').join('') }}</span>
+                </div>
+
+                <!-- /me: "Nseraf claps hands", a quiet grey line. -->
+                <div v-else-if="meAction(msg)" class="nge-chat-sys nge-chat-me" :class="{ 'nge-chat-fresh': isFresh(msg) }"
+                     :data-msg-id="msg.id != null ? String(msg.id) : undefined">
+                  <b>{{ shortName(msg.name) }}</b> {{ meAction(msg) }}
+                </div>
+
                 <!-- Announcement: carries a notification id, so the whole
                      message opens that notification instead of telling the
                      reader to go and look for it. -->
@@ -1415,7 +1616,9 @@ function toggleCollapse() {
                        sits at the left edge (Ames 2026-10-11). -->
                   <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <img v-if="announcePicture(msg.notificationId)" class="nge-chat-announce-thumb" :src="announcePicture(msg.notificationId)" alt="" loading="lazy" />
-                  <span class="nge-chat-announce-text">{{ msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('') }}</span>
+                  <!-- 📢 only where there is no picture to mark it (Ames 2026-10-24). -->
+                  <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-announce-icon" aria-hidden="true">📢</span>
+                  <span class="nge-chat-announce-text">{{ announceText(msg) }}</span>
                   <!-- Announcements take reactions like any message (Ames
                        2026-10-07). The picker sits in the row, beside Open,
                        and a click on it never opens the notification. -->
@@ -1423,7 +1626,7 @@ function toggleCollapse() {
                     <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                             @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
                     <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
-                      <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                      <button v-for="e in CHAT_REACTION_QUICK" :key="e" :title="e === CHAT_REACTION_GEM ? 'Pyr gem' : undefined" @click.stop="react(String(msg.id), e)"><img v-if="e === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ e }}</template></button>
                       <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                     </span>
                   </span>
@@ -1435,7 +1638,7 @@ function toggleCollapse() {
                             :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
                             :title="list.map(r => r.name).join(', ')"
                             :disabled="!isLoggedIn"
-                            @click.stop="react(String(msg.id), String(emo))">{{ emo }}<span>{{ list.length }}</span></button>
+                            @click.stop="react(String(msg.id), String(emo))"><img v-if="emo === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ emo }}</template><span>{{ list.length }}</span></button>
                   </div>
                 </div>
 
@@ -1467,7 +1670,7 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery, 'nge-chat-msg--help': !!helpLead(msg) }"
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery, 'nge-chat-msg--help': !!helpLead(msg), 'nge-chat-msg--forme': isForMe(msg), 'nge-chat-msg--ping': mentionFlash && msg.id != null && String(msg.id) === chatStore.lastMentionId }"
                      @click="onMessageClick(msg, $event)"
                      :data-msg-id="msg.id != null ? String(msg.id) : undefined"
                      :title="msg.private ? 'Only you can see this' : undefined">
@@ -1526,26 +1729,31 @@ function toggleCollapse() {
                           :title="joinOffered.has(joinKey(msg)) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${msg.name}'s view and help, live. They choose whether to accept.`"
                           @click="joinHelp(msg)">{{ joinOffered.has(joinKey(msg)) ? '🤝 Offered' : '🤝 Join' }}</button>
                   <span v-if="msg.botLanguage" class="nge-chat-bot-lang">{{ msg.botLanguage }}</span>
-                  <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
+                  <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.showAdminUi || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
                           :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
                           @click.stop="deleteChatMessage(msg)">🗑</button>
                   <template v-if="msg.id != null && isLoggedIn">
                     <span class="nge-chat-react-add">
                       <button v-if="msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-reply-btn" @click.stop="startReply(msg)" title="Reply">↩</button>
-                      <button v-if="backendStore.isAdmin && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
-                              @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></button>
-                      <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
-                              @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
+                      <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) || pinMenuFor === String(msg.id) }"
+                              @click.stop="togglePicker(String(msg.id), $event)" @contextmenu="openPinMenu(msg, $event)"
+                              :data-nge-own-menu="canPin(msg) ? '' : undefined"
+                              :title="canPin(msg) ? 'React. Right click to pin this message.' : 'React'">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
-                        <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                        <button v-for="e in CHAT_REACTION_QUICK" :key="e" :title="e === CHAT_REACTION_GEM ? 'Pyr gem' : undefined" @click.stop="react(String(msg.id), e)"><img v-if="e === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ e }}</template></button>
                         <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
+                      </span>
+                      <!-- Admins: a right click on React offers the pin (Ames 2026-10-10:
+                           no pin button on every message). -->
+                      <span v-if="pinMenuFor === String(msg.id)" class="nge-chat-react-picker nge-chat-pin-menu" role="menu">
+                        <button type="button" role="menuitem" :disabled="pinBusy" @click.stop="pinFromMenu(msg)">📌 {{ isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin for everyone' }}</button>
                       </span>
                     </span>
                     <div v-if="Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row">
                       <button v-for="(list, emo) in reactionsOf(msg)" :key="emo" class="nge-chat-react"
                               :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
                               :title="list.map(r => r.name).join(', ')"
-                              @click.stop="react(String(msg.id), String(emo))">{{ emo }}<span>{{ list.length }}</span></button>
+                              @click.stop="react(String(msg.id), String(emo))"><img v-if="emo === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ emo }}</template><span>{{ list.length }}</span></button>
                     </div>
                   </template>
                 </div>
@@ -1648,8 +1856,8 @@ function toggleCollapse() {
                   :title="`Up to ${CHAT_MAX_CHARS} characters, links don't count`">{{ CHAT_MAX_CHARS - messageLength }}</span>
             <span class="nge-chat-emoji">
               <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !chatUsable"
-                      @mousedown.prevent @click.stop="emojiOpen = !emojiOpen" title="Add an emoji">🙂</button>
-              <span v-if="emojiOpen" class="nge-chat-emoji-grid">
+                      @mousedown.prevent @click.stop="toggleEmoji($event)" title="Add an emoji">🙂</button>
+              <span v-if="emojiOpen" class="nge-chat-emoji-grid" :style="emojiPlace">
                 <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
               </span>
             </span>
@@ -1657,7 +1865,14 @@ function toggleCollapse() {
                  on a patch cell, a trip to the patch anywhere else. -->
             <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
                     @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
-            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" />
+            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" @toggle="togglePatch()" />
+            <!-- The turkey button (Ames 2026-11-02), Thanksgiving week only:
+                 the turkey on and off, grey while off, as the pumpkin's is. -->
+            <button v-if="showTurkeyBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: turkeyHidden() }"
+                    @mousedown.prevent @click.stop="toggleTurkey()" :title="turkeyTitle()" :aria-label="turkeyTitle()">🦃</button>
+            <!-- The leaf button (Ames 2026-11-04), in the fall: leaves off and on. -->
+            <button v-if="showLeavesBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: leavesHidden() }"
+                    @mousedown.prevent @click.stop="toggleLeaves()" :title="leavesTitle()" :aria-label="leavesTitle()">🍁</button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
@@ -1970,10 +2185,9 @@ function toggleCollapse() {
 .nge-chat-pin-x:hover:not(:disabled), .nge-chat-pin-x:focus-visible { color: #fff6d6; border-color: rgba(230, 199, 96, 0.5); outline: none; }
 .nge-chat-pin-line { font-size: 12px; font-style: normal; color: #8f98a8; }
 .nge-chat-pin-line b { font-weight: 600; color: #c9d4e6; }
-.nge-chat-pin-btn { font-size: 11px; display: inline-flex; align-items: center; color: #e6eefc; }
-.nge-chat-pin-ico { display: inline-block; vertical-align: -1.5px; flex: 0 0 auto; }
-.nge-chat-pin-btn.is-on { color: #f3d98a; }
-.nge-chat-pin-btn.is-on { background: rgba(230, 199, 96, 0.25); border-color: rgba(230, 199, 96, 0.6); }
+.nge-chat-pin-menu { border-color: rgba(230, 199, 96, 0.45); }
+.nge-chat-pin-menu button { width: auto; padding: 3px 10px; font-size: 12px; white-space: nowrap; color: #f1e3b0; }
+.nge-chat-pin-menu button:hover:not(:disabled) { color: #fff6d6; }
 /* Your own messages: a bar on the left edge, drawn inside the row so nothing
    moves (Krzysztof 2026-10-09). */
 .nge-chat-msg--mine { box-shadow: inset 2px 0 0 rgba(124, 200, 255, 0.85); }
@@ -1989,6 +2203,21 @@ function toggleCollapse() {
 .nge-chat-b { font-weight: 700; color: #f2f6fc; }
 .nge-chat-u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 /* Search */
+.nge-chat-tips-btn { font-size: 12px; font-weight: 700; padding: 1px 5px; }
+.nge-chat-tips-btn--on { color: #9fdcff !important; background: rgba(120, 190, 255, 0.14); }
+.nge-chat-tips {
+  position: absolute; z-index: 5; top: 6px; left: 6px; right: 6px; max-height: calc(100% - 12px); overflow-y: auto;
+  background: rgba(14, 20, 32, 0.97); border: 1px solid rgba(120, 190, 255, 0.28); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.45; color: #c9d6e8; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.nge-chat-tips-head { display: flex; align-items: center; margin-bottom: 4px; color: #e6eefa; font-size: 13px; }
+.nge-chat-tips-head b { flex: 1; font-weight: 600; }
+.nge-chat-tips-x { background: none; border: none; color: #8a96a8; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; border-radius: 3px; }
+.nge-chat-tips-x:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.nge-chat-tips ul { margin: 0; padding-left: 16px; }
+.nge-chat-tips li { margin: 3px 0; }
+.nge-chat-tips li::marker { color: rgba(120, 190, 255, 0.55); }
+.nge-chat-tips code { font-family: inherit; color: #9fdcff; background: rgba(120, 190, 255, 0.1); border-radius: 3px; padding: 0 3px; word-break: break-all; }
 .nge-chat-search-btn--on { color: #9fdcff !important; background: rgba(120, 190, 255, 0.14); }
 .nge-chat-search-note { padding: 6px 6px 8px; font-size: 12px; line-height: 1.4; color: rgba(190, 205, 225, 0.75); }
 .nge-chat-msg--hit { cursor: pointer; }
@@ -2164,6 +2393,8 @@ function toggleCollapse() {
 }
 .nge-chat-announce-hide:hover { color: #fff; }
 .nge-chat-announce-thumb {
+  /* a little more room before the words (Ames 2026-10-24) */
+  margin-right: 6px;
   flex: 0 0 auto; width: 46px; height: 46px; object-fit: cover; border-radius: 6px;
   background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(120, 170, 255, 0.3);
 }
@@ -2186,22 +2417,92 @@ function toggleCollapse() {
 }
 .nge-chat-mention:hover { background: rgba(74, 158, 255, 0.25); color: #cfe0ff; }
 /* Flash when someone @mentions you: an amber ring pulses three times. */
-.nge-chat-float--mentioned {
-  animation: nge-chat-mention-flash 1s ease-in-out 3;
+/* A mention no longer rings the whole box (Ames 2026-11-04: "we don't want a
+   circle around the box"). The message itself lights up, and a pill pops
+   into the header (below). */
+.nge-chat-float--mentioned { animation: none; }
+.nge-chat-float--mention-waiting { animation: none; }
+@keyframes nge-chat-mention-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.45), 0 0 10px rgba(245, 166, 35, 0.2); }
+  50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8), 0 0 22px rgba(245, 166, 35, 0.45); }
+}
+/* Messages meant for you: a cyan hologram, a lit bar at the left and faint
+   scan lines, fading out by the middle of the row (Ames 2026-11-05: blue
+   or cyan instead of yellow, and the gradient need not reach so far). */
+.nge-chat-msg--forme {
+  background:
+    repeating-linear-gradient(180deg, rgba(150, 235, 255, 0.05) 0 1px, transparent 1px 3px),
+    linear-gradient(90deg, rgba(80, 210, 255, 0.2), rgba(80, 210, 255, 0.06) 30%, transparent 50%);
+  box-shadow: inset 3px 0 0 #5fd8ff, inset 6px 0 8px -4px rgba(95, 216, 255, 0.55);
+  border-radius: 4px;
+}
+/* The one that just pinged you arrives with a little flourish: the bar
+   draws down, the band fills in, a glint runs across. */
+.nge-chat-msg--ping { position: relative; overflow: hidden; animation: nge-chat-ping-band 0.9s cubic-bezier(.2, .9, .3, 1.2) both; }
+.nge-chat-msg--ping::before {
+  content: ''; position: absolute; left: 0; top: 0; width: 3px; height: 100%;
+  background: linear-gradient(180deg, #c8f4ff, #5fd8ff); transform-origin: top;
+  animation: nge-chat-ping-bar 0.45s ease-out both;
+}
+.nge-chat-msg--ping::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 35%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(190, 245, 255, 0.35), transparent);
+  transform: skewX(-18deg); animation: nge-chat-ping-glint 0.9s 0.25s ease-out both;
+}
+@keyframes nge-chat-ping-band { from { background-color: rgba(90, 210, 255, 0.3); } to { background-color: transparent; } }
+@keyframes nge-chat-ping-bar { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes nge-chat-ping-glint { from { left: -40%; } to { left: 120%; } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-chat-msg--ping, .nge-chat-msg--ping::before, .nge-chat-msg--ping::after { animation: none; }
+  .nge-chat-mentioned-by, .nge-chat-mentioned-by::before, .nge-chat-mentioned-at { animation: none !important; }
 }
 @keyframes nge-chat-mention-flash {
   0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.25), 0 0 0 rgba(245, 166, 35, 0); }
   50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.95), 0 0 28px rgba(245, 166, 35, 0.55); }
 }
+/* The pill: pops in with a bounce and a burst of sparks, then breathes
+   softly until you look. Clicking it goes to the message. */
 .nge-chat-mentioned-by {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 4px;
   margin-left: 8px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #1a1204;
-  background: #f5a623;
-  white-space: nowrap;
+  padding: 2px 9px 2px 3px;
+  border: 0; border-radius: 999px;
+  font: 700 10.5px/1.3 inherit;
+  color: #2a1a00;
+  background: linear-gradient(135deg, #ffe28a, #f5b13d);
+  box-shadow: 0 2px 8px rgba(245, 170, 50, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  white-space: nowrap; cursor: pointer;
+  animation: nge-chat-pill-pop 0.55s cubic-bezier(.2, 1.6, .4, 1) both, nge-chat-pill-breathe 2.6s 0.8s ease-in-out infinite;
+}
+.nge-chat-mentioned-by:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.nge-chat-mentioned-at {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #2a1a00; color: #ffd36b; font-size: 10px; line-height: 1;
+  animation: nge-chat-at-spin 0.6s 0.1s ease-out both;
+}
+/* sparks: a ring of dots that bursts out once */
+.nge-chat-mentioned-by::before {
+  content: ''; position: absolute; left: 10px; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%;
+  pointer-events: none; opacity: 0;
+  box-shadow: 0 -12px #ffd36b, 10px -7px #ffb84d, 12px 4px #ffe28a, 4px 12px #ffd36b, -7px 10px #ffb84d, -12px 0 #ffe28a, -8px -9px #ffd36b;
+  animation: nge-chat-pill-sparks 0.7s 0.15s ease-out both;
+}
+@keyframes nge-chat-pill-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  80% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+@keyframes nge-chat-pill-breathe {
+  0%, 100% { box-shadow: 0 2px 8px rgba(245, 170, 50, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+  50% { box-shadow: 0 2px 14px rgba(245, 170, 50, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+}
+@keyframes nge-chat-at-spin { from { transform: rotate(-200deg) scale(0.4); } to { transform: none; } }
+@keyframes nge-chat-pill-sparks {
+  0% { opacity: 1; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(1.5); }
 }
 .nge-chat-mention--me {
   color: #ffe6a8;
@@ -2254,6 +2555,7 @@ function toggleCollapse() {
   padding: 1px 4px;
 }
 .nge-chat-sys--warn { color: #c08030; }
+.nge-chat-me b { font-weight: 600; color: #8b97ad; }
 /* an achievement line: quiet like the other asides, but upright, with its art, and clickable */
 .nge-chat-ach {
   display: flex; align-items: center; gap: 7px;
@@ -2516,9 +2818,7 @@ function toggleCollapse() {
 .nge-chat-pumpkin-btn { flex: 0 0 auto; margin-left: 4px; display: flex; align-items: center; justify-content: center; padding: 0; }
 .nge-chat-pumpkin-btn.off { filter: grayscale(1); opacity: 0.55; }
 .nge-chat-emoji-grid {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
+  position: fixed;
   display: grid;
   grid-template-columns: repeat(8, 30px);
   gap: 2px;
@@ -2527,7 +2827,7 @@ function toggleCollapse() {
   border: 1px solid rgba(74, 158, 255, 0.3);
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-  z-index: 6;
+  z-index: 10000;
 }
 .nge-chat-emoji-grid button {
   width: 30px; height: 30px;
@@ -2695,6 +2995,8 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
 .nge-chat-react-more button:hover { transform: scale(1.25); background: rgba(74, 158, 255, 0.15); }
 .nge-chat-react-more button { width: 27px; height: 27px; padding: 0; border-radius: 6px; }
 .nge-chat-react-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+/* The Pyr gem reaction: a picture the size of the emoji beside it. */
+.nge-chat-gem { width: 1.15em; height: 1.15em; object-fit: contain; vertical-align: -0.2em; pointer-events: none; }
 .nge-chat-react {
   display: inline-flex;
   align-items: center;

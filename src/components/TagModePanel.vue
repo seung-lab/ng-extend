@@ -21,6 +21,7 @@ import scytheIcon from '../../static/tags/scythe-icon.png';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
 import { runPanelTrace, runParticleBurst, runPanelDraw, runBurstBuild, runPanelLap, runParticleWrite } from '../util/holo_trace';
+import { pointParticlesOn } from '../util/point_particles';
 
 const pinSvg = scoutPinSvg();
 import superScytheUrl from '../../static/tags/super-scythe.png';
@@ -109,7 +110,7 @@ function placePoint(pos: number[], screenX?: number, screenY?: number) {
   placeScreen = screenX != null && screenY != null ? { x: screenX, y: screenY } : null;
   // A spark right where the click landed in the 2D/3D view, so placing a
   // point answers back at the point itself, in the tag type's color.
-  if (placeScreen) runParticleBurst(placeScreen.x, placeScreen.y, LIGHT_RGB);
+  if (placeScreen && pointParticlesOn()) runParticleBurst(placeScreen.x, placeScreen.y, LIGHT_RGB);
   showFlash('Point placed, hit Submit');
 }
 function clearPending() {

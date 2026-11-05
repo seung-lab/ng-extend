@@ -16,6 +16,8 @@
 // pulses, the hint says it is tracing). Nothing of neuroglancer's is changed:
 // if it rewrites the line (e.g. working -> error) the rescan re-classifies it.
 
+import { exitGrapheneTool } from './widgets/graphene_tool_utils';
+
 const UI_ATTR = 'data-nge-fp-ui';
 type Kind = 'working' | 'done' | 'error' | '';
 
@@ -262,7 +264,26 @@ function pointsNow(): string {
   return document.querySelector('.graphene-find-path .find-path-annotations')?.textContent ?? '';
 }
 
+/** Find Path's bar had no way out but the toolbar button (Ames 2026-11-04:
+ *  "there is no X on find path"). A Cancel like the Cut and Merge bars',
+ *  after Clear; Esc does the same (main.ts). */
+function addCancel() {
+  const body = document.querySelector<HTMLElement>('.graphene-find-path');
+  if (!body || body.querySelector('.nge-fp-cancel')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'neuroglancer-icon nge-fp-cancel';
+  btn.title = 'Leave Find Path (Esc)';
+  const key = document.createElement('kbd');
+  key.textContent = 'Esc';
+  btn.append(key, ' Cancel');
+  btn.addEventListener('click', e => { e.stopPropagation(); exitGrapheneTool(); });
+  const label = body.querySelector(':scope > label');
+  if (label) body.insertBefore(btn, label); else body.appendChild(btn);
+}
+
 function rescan() {
+  addCancel();
   const container = document.getElementById('statusContainer');
   let working = false;
   if (container) {

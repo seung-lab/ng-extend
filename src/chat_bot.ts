@@ -93,7 +93,7 @@ export const NURRO_ANSWERS: Record<string, string> = {
   tags: 'Found something odd but not sure how to fix it? Press Shift+T for Tag Mode and tag a spot for another player to review.',
 };
 const ALIASES: Record<string, string> = { commands: 'help', split: 'cut', cell: 'cells', dataset: 'datasets', tag: 'tags', stat: 'stats', point: 'points' };
-const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags, !leaders, !online or !online @username. Or just say "for science!"';
+const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags, !leaders, !online or !online @username. Or just say "for science!" For what chat itself can do, click the ? at the top of chat or type /help.';
 
 /** "!online celiad" / "!online @celiad": whose status to look up, or null. */
 export function onlineTarget(text: string): string | null {
@@ -151,6 +151,9 @@ export function botReply(seed: string, text: string, online: string[] | null): B
     if (NURRO_ANSWERS[key]) return { name: NURRO_NAME, text: NURRO_ANSWERS[key] };
     return { name: NURRO_NAME, text: `I don't know !${cmd} yet. ${HELP}` };
   }
+  // "@nurro how does chat work" (Amy 2026-10-28): Nurro only knows "!"
+  // commands, so it points the way rather than saying nothing.
+  if (/^\s*@nurro\b/i.test(text)) return { name: NURRO_NAME, text: `Hi! I only answer messages that start with "!", like !help. ${HELP}` };
   if (isForScience(text)) return { name: BOT_NAME, ...forScienceReply(seed) };
   return null;
 }

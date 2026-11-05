@@ -80,8 +80,8 @@ onUnmounted(() => cancelAnimationFrame(raf));
 <style scoped>
 .nge-np {
   position: relative;
-  width: min(760px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  width: min(760px, calc(100 * var(--nge-vw, 1vw) - 32px));
+  max-height: calc(100 * var(--nge-vh, 1vh) - 48px);
   overflow-y: auto;
   padding: 26px 28px 20px;
   color: #d8e8ff;

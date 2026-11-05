@@ -23,7 +23,14 @@
  */
 import { Step } from "./store-pyr";
 import { makeCellTour, VIEW_TOP, type TourCell } from "./dataset_tour_kit";
-import { T4A, KCAB, R7, R7_COLUMN, LC10A, CLP02, DNP01, DMS_B, MOTOR, PI } from "./data/flywire-tour-cells";
+import { T4A as T4A_ALL, KCAB, R7, R7_COLUMN, LC10A, CLP02, DNP01, DMS_B, MOTOR, PI } from "./data/flywire-tour-cells";
+
+/** Cells FlyWire labels as the type but that are not one to look at: left out
+ *  of "show all" (the lists are generated, so they are filtered here).
+ *  720575940625311305, labelled T4a in v783, has its soma outside the brain
+ *  outline, far from the other 700-odd (wolfryder101, report 274). */
+const ODD_CELLS = new Set(["720575940625311305"]);
+const T4A = { ...T4A_ALL, ids: T4A_ALL.ids.filter(id => !ODD_CELLS.has(id)) };
 import flywireHero from "../static/images/datasets/flywire-welcome.jpg";
 import imgOptic from "../static/images/flywire-superclass/optic.png";
 import imgCentral from "../static/images/flywire-superclass/central.png";

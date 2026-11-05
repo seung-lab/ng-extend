@@ -166,7 +166,11 @@ async function send(args, {sb, me, wake}) {
   // already on the card and in Slack either way.
   if (note.created_by && UUID.test(String(note.created_by))) {
     const who = String(me.display_name || me.username || 'A player').slice(0, 60);
-    const bell = {title: `${REPLIED_TITLE} ${who}`.slice(0, 120), body: text.slice(0, 500),
+    // The report it is about rides at the end, so the bell can open that card
+    // on the triage board (Ames 2026-10-26); the bell hides the marker.
+    const bell = {title: `${REPLIED_TITLE} ${who}`.slice(0, 120), body: `${text.slice(0, 440)}
+
+#nge-triage-report=${note.reply_triage_id}`,
       thumbnail_url: ASK_IMAGE, image_url: ASK_IMAGE, target_type: 'user', target_id: String(note.created_by),
       send_at: at, created_by: me.id};
     await sb('notifications', {method: 'POST', body: JSON.stringify(bell)}).catch(() => {});

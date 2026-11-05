@@ -385,6 +385,10 @@ export class ChunkedGraphLayer extends withSegmentationLayerBackendState
   }, 100);
 
   private updateDisplayState() {
+    // EyeWire II: the debounced call can land after the layer was disposed (the browser's Back, a
+    // Hunt or a dataset opening replace the layers within 100 ms), when its equivalences are gone:
+    // "Cannot read properties of undefined (reading 'has')" in the worker (annkri, 2026-10-26).
+    if (this.wasDisposed || !(this.segmentEquivalences as any)?.disjointSets) return;
     const visibleLeaves = new Map<string, Uint64Set>();
     const capacities = new Map<string, number>();
 

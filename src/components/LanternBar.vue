@@ -5,7 +5,8 @@
  * util/lantern.ts for what the two settings do.
  */
 import { computed, ref } from 'vue';
-import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
+import { lantern, lanternBranch, unpinLantern, LANTERN_LIMITS as L } from '../util/lantern';
+import { isTouchRef } from '../util/mobile';
 import { spooky, callGhost, callTheReaper, shoo } from '../util/spooky';
 import { useProofreadingBackendStore } from '../store';
 import ghostIcon from '../images/ghost-icon.png';
@@ -14,7 +15,17 @@ import reaperIcon from '../images/reaper-icon.png';
 // The ghost button (Halloween: util/spooky.ts). Everyone has it in Halloween
 // week; outside it, admins only, for trying it out.
 const backend = useProofreadingBackendStore();
-const showGhost = computed(() => spooky.season || backend.isAdmin);
+
+// What the bar says in Clicked branch mode.
+const branchHint = computed(() => {
+  const tap = isTouchRef.value ? 'Tap' : 'Click';
+  if (lanternBranch.message) return lanternBranch.message;
+  if (lanternBranch.status === 'finding') return 'Finding the branch';
+  if (lanternBranch.status === 'lit') return `${tap} another branch, or empty space to put it out`;
+  return `${tap} a branch to light it`;
+});
+// Halloween week only, admins too (Ames 2026-11-02).
+const showGhost = computed(() => spooky.season);
 
 // The bar can be dragged anywhere by its grip (Ames 2026-10-10: "I need to be
 // able to move the lantern box"). Its place is remembered in this browser;
@@ -75,7 +86,24 @@ function resetPlace() {
         Lantern
       </button>
       <template v-if="lantern.open">
-        <label class="nge-lantern-set" title="How far the light reaches">
+        <!-- What is lit: the cell round the middle of the view, or only the branch you click (Ames 2026-10-27). -->
+        <span class="nge-lantern-mode" role="radiogroup" aria-label="What the Lantern lights">
+          <button type="button" role="radio" :aria-checked="lantern.mode === 'cell'" :class="{ 'is-on': lantern.mode === 'cell' }"
+                  title="Light the cell around the middle of your view" @click="lantern.mode = 'cell'">Whole cell</button>
+          <button type="button" role="radio" :aria-checked="lantern.mode === 'branch'" :class="{ 'is-on': lantern.mode === 'branch' }"
+                  title="Light only the branch you click on" @click="lantern.mode = 'branch'">Clicked branch</button>
+        </span>
+        <span v-if="lantern.mode === 'branch'" class="nge-lantern-hint" :class="{ 'is-failed': lanternBranch.status === 'failed' }" aria-live="polite">
+          <span v-if="lanternBranch.status === 'finding'" class="nge-lantern-spin" aria-hidden="true"></span>{{ branchHint }}
+        </span>
+        <!-- Whole cell: the light follows the view until a click pins it (Ames 2026-10-28). -->
+        <span v-if="lantern.mode === 'cell'" class="nge-lantern-hint">
+          <template v-if="lanternBranch.pinnedNm">Pinned.
+            <button type="button" class="nge-lantern-mini nge-lantern-follow" title="Let the light follow the middle of your view again" @click="unpinLantern">Follow view</button>
+          </template>
+          <template v-else>{{ isTouchRef ? 'Tap' : 'Ctrl + click' }} the cell to place the light</template>
+        </span>
+        <label v-if="lantern.mode === 'cell'" class="nge-lantern-set" title="How far the light reaches">
           <span>Size</span>
           <input type="range" v-model.number="lantern.sizeUm" :min="L.sizeUm.min" :max="L.sizeUm.max" :step="L.sizeUm.step" @keydown.stop />
           <output>{{ lantern.sizeUm }} <span class="nge-lantern-unit">µm</span></output>
@@ -91,7 +119,7 @@ function resetPlace() {
           <img :src="ghostIcon" alt="" draggable="false" />
         </button>
         <!-- The reaper is held back from players for now: admins only, to try him out. -->
-        <button v-if="backend.isAdmin" type="button" class="nge-lantern-ghost nge-lantern-ghost--reaper" title="Call the reaper (admins only, for testing)" aria-label="Call the reaper" @click="callTheReaper">
+        <button v-if="backend.showAdminUi" type="button" class="nge-lantern-ghost nge-lantern-ghost--reaper" title="Call the reaper (admins only, for testing)" aria-label="Call the reaper" @click="callTheReaper">
           <img :src="reaperIcon" alt="" draggable="false" />
         </button>
         <button v-if="spooky.on" type="button" class="nge-lantern-mini" title="Send them away" aria-label="Send them away" @click="shoo">shoo</button>
@@ -99,6 +127,16 @@ function resetPlace() {
       <button type="button" class="nge-lantern-off" title="Turn the Lantern off (Shift+N)" aria-label="Turn the Lantern off" @click="lantern.on = false">×</button>
     </div>
     </Transition>
+    <!-- The gem where the branch was clicked: it glows while the branch is
+         found, and goes once it lights (Ames 2026-10-27). -->
+    <div v-if="lantern.on && lanternBranch.marker" :key="lanternBranch.marker.at" class="nge-lantern-gem"
+         :class="'is-' + lanternBranch.marker.state" :style="{ left: lanternBranch.marker.x + 'px', top: lanternBranch.marker.y + 'px' }" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <path d="M7 4h10l4 5-9 11L3 9z" fill="#ffc878"/>
+        <path d="M7 4h10l-2 5H9z" fill="#fff2d6" opacity="0.75"/>
+        <path d="M3 9h18M7 4l5 16M17 4l-5 16" stroke="#8a5512" stroke-width="0.8" fill="none" opacity="0.55"/>
+      </svg>
+    </div>
   </Teleport>
 </template>
 
@@ -174,6 +212,42 @@ function resetPlace() {
   background: none; cursor: pointer; font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #ffc878;
 }
 .nge-lantern-name:hover, .nge-lantern-name:focus-visible { border-color: rgba(255, 196, 110, 0.45); outline: none; }
+.nge-lantern-mode { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid rgba(255, 196, 110, 0.28); border-radius: 7px; }
+.nge-lantern-mode button {
+  padding: 3px 8px; border: 0; border-radius: 5px; background: none; cursor: pointer;
+  font: 500 11px/1.2 'Inter', system-ui, sans-serif; color: rgba(190, 205, 225, 0.85); white-space: nowrap;
+}
+.nge-lantern-mode button:hover, .nge-lantern-mode button:focus-visible { color: #fff; outline: none; background: rgba(255, 196, 110, 0.1); }
+.nge-lantern-mode button.is-on { color: #1a1206; background: #ffc878; }
+.nge-lantern-hint { font-size: 11px; color: rgba(190, 205, 225, 0.8); white-space: nowrap; }
+.nge-lantern-spin {
+  display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; box-sizing: border-box;
+  border: 2px solid rgba(255, 200, 120, 0.25); border-top-color: #ffc878; border-radius: 50%;
+  animation: nge-lantern-spin 0.8s linear infinite;
+}
+@keyframes nge-lantern-spin { to { transform: rotate(360deg); } }
+/* The gem at the click: its tip on the point, a ring going out from it while
+   the branch is found; it rises and fades once the branch lights. */
+.nge-lantern-gem { position: fixed; z-index: 899; width: 0; height: 0; pointer-events: none; }
+.nge-lantern-gem svg { position: absolute; left: -11px; top: -24px; filter: drop-shadow(0 0 6px rgba(255, 200, 120, 0.9)); animation: nge-lantern-gem-bob 0.9s ease-in-out infinite alternate; }
+.nge-lantern-gem::after {
+  content: ''; position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; box-sizing: border-box;
+  border: 2px solid rgba(255, 200, 120, 0.85); border-radius: 50%; animation: nge-lantern-gem-ring 1.1s ease-out infinite;
+}
+.nge-lantern-gem.is-done svg { animation: nge-lantern-gem-done 0.65s ease-out forwards; }
+.nge-lantern-gem.is-done::after, .nge-lantern-gem.is-failed::after { display: none; }
+.nge-lantern-gem.is-failed svg { animation: nge-lantern-gem-fail 0.6s ease-in forwards; }
+@keyframes nge-lantern-gem-bob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+@keyframes nge-lantern-gem-ring { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+@keyframes nge-lantern-gem-done { 0% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 200, 120, 0.9)) brightness(1); } 35% { transform: scale(1.35); filter: drop-shadow(0 0 12px rgba(255, 220, 160, 1)) brightness(1.6); } 100% { transform: translateY(-14px) scale(0.6); opacity: 0; } }
+@keyframes nge-lantern-gem-fail { to { transform: translateY(6px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-lantern-spin { animation: none; border-color: #ffc878; border-top-color: #ffc878; opacity: 0.8; }
+  .nge-lantern-gem svg, .nge-lantern-gem.is-done svg, .nge-lantern-gem.is-failed svg { animation: none; }
+  .nge-lantern-gem::after { animation: none; transform: scale(1.3); opacity: 0.6; }
+}
+.nge-lantern-follow { display: inline-flex; margin-left: 4px; height: 22px; vertical-align: middle; }
+.nge-lantern-hint.is-failed { color: #ffb4a0; white-space: normal; max-width: 260px; }
 .nge-lantern-set { display: inline-flex; align-items: center; gap: 7px; color: rgba(190, 205, 225, 0.85); }
 .nge-lantern-set > span:first-child { font: 500 10px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 208, 138, 0.72); }
 .nge-lantern-set input[type='range'] { width: 92px; accent-color: #ffc878; }

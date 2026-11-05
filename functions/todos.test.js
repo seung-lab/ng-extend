@@ -127,3 +127,87 @@ test('card images must be ones added on the board', () => {
   assert.deepEqual(cleanFields({ images: [ok] }, false).images, [ok]);
   assert.throws(() => cleanFields({ images: ['https://evil.example/1.png'] }, false), /added on the board/);
 });
+
+// Subtasks, followers (Ames 2026-11-02, from Asana).
+function memFollows() { const m = {}; return { m, all: async () => ({ ...m }), get: async id => m[id] || [], set: async (id, ids) => { m[id] = ids; } }; }
+test('a checklist item keeps its own owner and due day', () => {
+  const f = cleanFields({ checklist: [{ text: 'Write it', done: false, due: '2026-11-10', owner_id: CELIA.id }, { text: 'Plain', done: true }] }, false);
+  assert.deepEqual(f.checklist, [{ text: 'Write it', done: false, due: '2026-11-10', owner_id: CELIA.id }, { text: 'Plain', done: true }]);
+  assert.throws(() => cleanFields({ checklist: [{ text: 'x', due: 'soon' }] }, false), /due date/);
+});
+test('the maker follows; a follower hears of changes, never of their own', async () => {
+  const db = memDb(), follows = memFollows(), told = [];
+  const bell = async (ids, card, what) => told.push({ ids, what });
+  const base = { db, byName: 'Ames', tag: async () => {}, follows, bell };
+  const { card } = await todoAction('todo.save', { fields: { title: 'Ship it' } }, { ...base, me: { id: AMES.id } });
+  assert.deepEqual(follows.m[card.id], [AMES.id]);
+  await todoAction('todo.follow', { id: card.id }, { ...base, me: { id: CELIA.id } });
+  assert.deepEqual(follows.m[card.id], [AMES.id, CELIA.id]);
+  await todoAction('todo.save', { id: card.id, fields: { list: 'done' } }, { ...base, me: { id: AMES.id } });
+  assert.deepEqual(told, [{ ids: [CELIA.id], what: 'finished' }]);
+  await todoAction('todo.save', { id: card.id, fields: { rank: 3 } }, { ...base, me: { id: AMES.id } });
+  assert.equal(told.length, 1, 'a drag in the list tells nobody');
+  await todoAction('todo.comment', { id: card.id, text: 'nice' }, { ...base, me: { id: CELIA.id } });
+  assert.equal(told.length, 1, 'a comment tells followers nothing; only Done does');
+  await todoAction('todo.save', { id: card.id, fields: { list: 'doing' } }, { ...base, me: { id: CELIA.id } });
+  assert.equal(told.length, 1, 'a move to Doing tells followers nothing');
+  await todoAction('todo.follow', { id: card.id, on: false }, { ...base, me: { id: CELIA.id } });
+  assert.deepEqual(follows.m[card.id], [AMES.id]);
+  const list = await todoAction('todo.list', {}, { ...base, me: { id: AMES.id } });
+  assert.deepEqual(list.followers[card.id], [AMES.id]);
+});
+
+test('a nickname tags too: @Marissa reaches M Sorek', () => {
+  const { tagIdsIn } = require('./todo-connector');
+  const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };
+  const people = [AMES, CELIA, MARISSA];
+  assert.deepEqual(tagIdsIn('@Marissa can you look?', people), [MARISSA.id]);
+  assert.deepEqual(tagIdsIn('thanks @ames and @celia', people), [AMES.id, CELIA.id]);
+  assert.deepEqual(tagIdsIn('email marissa@x.org, no tag', people), []);
+  assert.deepEqual(tagIdsIn('@Marissanne is someone else', people), []);
+});
+
+test('a comment can be changed by its writer, and its first wording is kept', async () => {
+  const db = memDb();
+  const base = { db, tag: async () => {} };
+  const { card } = await todoAction('todo.save', { fields: { title: 'x' } }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  await todoAction('todo.comment', { id: card.id, text: 'first try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  const r1 = await todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'second try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  assert.equal(r1.card.comments[0].text, 'second try');
+  assert.equal(r1.card.comments[0].original, 'first try');
+  const r2 = await todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'third try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  assert.equal(r2.card.comments[0].original, 'first try', 'the first wording stays the original');
+  await assert.rejects(todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'mine now' }, { ...base, me: { id: CELIA.id }, byName: 'Celia' }), /Only the person/);
+});
+
+test('a card can have collaborators: they hear, and they follow it', async () => {
+  const db = memDb(), follows = memFollows(), helpers = memFollows(), tags = [];
+  const base = { db, byName: 'Ames', tag: async (who, card, what) => tags.push({ who: who.map(p => p.name), what }), follows, helpers, me: { id: AMES.id } };
+  const { card } = await todoAction('todo.save', { fields: { title: 'Two of us' } }, base);
+  const r = await todoAction('todo.helpers', { id: card.id, ids: [CELIA.id] }, base);
+  assert.deepEqual(r.helpers, [CELIA.id]);
+  assert.deepEqual(tags.at(-1), { who: ['Celia D.'], what: 'added you as a collaborator on' });
+  assert.ok(follows.m[card.id].includes(CELIA.id));
+  const n = tags.length;
+  await todoAction('todo.helpers', { id: card.id, ids: [CELIA.id] }, base);
+  assert.equal(tags.length, n, 'nobody is told twice');
+  await assert.rejects(todoAction('todo.helpers', { id: card.id, ids: ['99999999-9999-9999-9999-999999999999'] }, base), /must be an admin/);
+  assert.deepEqual((await todoAction('todo.list', {}, base)).helpers[card.id], [CELIA.id]);
+});
+
+test('a reply joins its thread, one level deep, and its writer hears', async () => {
+  const db = memDb(), tags = [];
+  const ctxOf = (who, name) => ({ db, byName: name, me: { id: who.id }, tag: async (w, card, what) => tags.push({ who: w.map(p => p.name), what }) });
+  const { card } = await todoAction('todo.save', { fields: { title: 'Thread' } }, ctxOf(AMES, 'Amy R. Sterling'));
+  const c1 = await todoAction('todo.comment', { id: card.id, text: 'first' }, ctxOf(AMES, 'Amy R. Sterling'));
+  const rootAt = c1.card.comments[0].at;
+  await new Promise(r => setTimeout(r, 5));
+  const c2 = await todoAction('todo.comment', { id: card.id, text: 'an answer', replyTo: rootAt }, ctxOf(CELIA, 'Celia D.'));
+  assert.equal(c2.card.comments[1].reply_to, rootAt);
+  assert.deepEqual(tags.at(-1), { who: ['Amy R. Sterling'], what: 'replied to you on' });
+  await new Promise(r => setTimeout(r, 5));
+  const c3 = await todoAction('todo.comment', { id: card.id, text: 'and back', replyTo: c2.card.comments[1].at }, ctxOf(AMES, 'Amy R. Sterling'));
+  assert.equal(c3.card.comments[2].reply_to, rootAt, 'a reply to a reply stays in the same thread');
+  assert.deepEqual(tags.at(-1), { who: ['Celia D.'], what: 'replied to you on' });
+  await assert.rejects(todoAction('todo.comment', { id: card.id, text: 'x', replyTo: '1999-01-01T00:00:00Z' }, ctxOf(AMES, 'Amy R. Sterling')), /gone/);
+});

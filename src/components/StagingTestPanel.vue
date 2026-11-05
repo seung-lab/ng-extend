@@ -17,6 +17,7 @@ import { steps as advancedSteps } from '../tutorial-2';
 import { steps as mergeSteps } from '../tutorial-3';
 import { steps as cutSteps } from '../tutorial-cut';
 import { steps as sandboxSteps } from '../merger-sandbox';
+import { extensionSteps } from '../extension-sandbox';
 import { steps as testSteps } from '../proofreading-test';
 
 const OPEN_KEY = 'nge-staging-panel-open';
@@ -54,7 +55,7 @@ const newIcons: Record<string, string[]> = {};
 const FILLS_IN = ['day2', 'day3', 'production'];
 
 // ── The check: is staging still wired, and does the top bar follow it? ──
-const STEPS: Record<number, any[]> = { 2: advancedSteps, 3: mergeSteps, 5: cutSteps, 9: sandboxSteps, 11: testSteps };
+const STEPS: Record<number, any[]> = { 2: advancedSteps, 3: mergeSteps, 5: cutSteps, 9: sandboxSteps, 11: testSteps, 13: extensionSteps };
 const checking = ref(false);
 const results = ref<{ ok: boolean; text: string }[]>([]);
 const problems = computed(() => results.value.filter(r => !r.ok).length);

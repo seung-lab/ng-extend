@@ -29,6 +29,19 @@ async function supabaseGet(table, query = '') {
   return res.json();
 }
 
+/** Every row of a query, 1,000 at a time: the server returns at most 1,000
+ *  rows a request, and one busy player makes more than that in a week, so a
+ *  single read undercounted everyone (Nseraf, report 250). */
+async function supabaseGetAll(table, query) {
+  const rows = [];
+  for (let from = 0; from < 1000000; from += 1000) {
+    const page = await supabaseGet(table, `${query}&order=timestamp.asc&offset=${from}&limit=1000`);
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
+  return rows;
+}
+
 async function supabasePost(table, rows) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
@@ -66,7 +79,7 @@ async function main() {
 
   // 1. Get active users from edit_log in the past 7 days
   //    Aggregate: count by operation per user
-  const editLogs = await supabaseGet(
+  const editLogs = await supabaseGetAll(
     'edit_log',
     `select=user_id,operation&timestamp=gte.${sevenDaysAgo}&success=not.is.false`
   );
@@ -99,8 +112,9 @@ async function main() {
   const userMap = {};
   for (const u of users) userMap[u.id] = u;
 
-  // 3. Community total
-  const communityTotal = editLogs.length;
+  // 3. Community total: the week's merges and cuts. It was every logged
+  // action, so each player's share came out too small.
+  const communityTotal = Object.values(userStats).reduce((n, s) => n + s.total, 0);
 
   // 4. Build and insert notifications
   const weekLabel = weekRangeLabel();
@@ -143,8 +157,35 @@ async function main() {
   const title = `✨ Your Week in Science: ${weekLabel}`;
   const already = new Set((await supabaseGet('notifications',
     `select=target_id&target_type=eq.user&title=eq.${encodeURIComponent(title)}`)).map(r => r.target_id));
+  // RECAP_CORRECT=true (a manual run): the cards already sent this week get
+  // the right numbers in place instead of being skipped. The 2026-10-25 cards
+  // counted only the first 1,000 rows of the week (report 250).
+  const dry = process.env.RECAP_DRY === 'true';
+  if (dry) {
+    console.log(`DRY RUN: community edits this week ${communityTotal}. Biggest weeks:`);
+    const top = Object.entries(userStats).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+    for (const [uid, s] of top) console.log(`  ${userMap[uid]?.display_name || uid}: ${s.total} edits (${s.merges} merges, ${s.splits} cuts)`);
+    console.log(`DRY RUN: ${already.size} already sent (would ${process.env.RECAP_CORRECT === 'true' ? 'be corrected' : 'be left alone'}); ${notifications.filter(n => !already.has(n.target_id)).length} new would be sent.`);
+    return;
+  }
+  if (process.env.RECAP_CORRECT === 'true' && already.size) {
+    const sent = await supabaseGet('notifications',
+      `select=id,target_id&target_type=eq.user&title=eq.${encodeURIComponent(title)}`);
+    const byUser = new Map(notifications.map(n => [n.target_id, n]));
+    let fixed = 0;
+    for (const row of sent) {
+      const n = byUser.get(row.target_id);
+      if (!n) continue;
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/notifications?id=eq.${row.id}`, {
+        method: 'PATCH', headers, body: JSON.stringify({ body: n.body }),
+      });
+      if (!res.ok) throw new Error(`PATCH notifications ${row.id}: ${res.status} ${await res.text()}`);
+      fixed++;
+    }
+    console.log(`Corrected ${fixed} recap(s) already sent this week.`);
+  }
   const fresh = notifications.filter(n => !already.has(n.target_id));
-  if (already.size) console.log(`${notifications.length - fresh.length} already have this week's recap; skipping them.`);
+  if (already.size) console.log(`${notifications.length - fresh.length} already have this week's recap; not sending a second.`);
   notifications.length = 0;
   notifications.push(...fresh);
 

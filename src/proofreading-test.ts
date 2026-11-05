@@ -20,7 +20,7 @@ import imgProfessorNurro from './images/professor-nurro.png';
 import imgInspectorNurro from './images/inspector-nurro.png';
 import { setStateRewriter, useLayersStore, useProofreadingBackendStore } from './store';
 import { refreshDatasetPermissions } from './util/dataset_access';
-import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
+import { startDatasetTransition, releaseDatasetTransition, updateDatasetTransitionSteps } from './util/dataset_transition';
 import { endPractice } from './practice';
 import { makeLayer } from 'neuroglancer/layer';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -515,7 +515,7 @@ async function startWork() {
   // The loading card (Ames, 2026-10-13): up until the cell is on screen.
   startDatasetTransition({
     id: 'proofreading-test', label: 'Your cell', eyebrow: 'Proofreading Test · Getting', thumbnail: imgProfessorNurro, contain: true, hold: true,
-    steps: ['Holding the cell for you', 'Putting it back to its start', 'Loading the cell', 'Almost there'],
+    steps: ['Holding the cell for you', 'Putting it back to its start', 'Loading the cell', 'Almost there'], maxMs: 15 * 60000,
   });
   let got: StartResult | null = null;
   // A long history is put back over several calls (2026-10-19): each call
@@ -524,10 +524,8 @@ async function startWork() {
     try { got = await secureWrite<StartResult>('test.start'); }
     catch (e: any) { session.error = String(e?.message || e); got = null; break; }
     if (!got?.resetting) break;
-    startDatasetTransition({
-      id: 'proofreading-test', label: 'Your cell', eyebrow: 'Proofreading Test · Getting', thumbnail: imgProfessorNurro, contain: true, hold: true,
-      steps: [`Putting the cell back: ${got.left ?? 'a few'} edits to go`, 'Still putting it back', 'Almost there'],
-    });
+    // The same card says how far it is, rather than playing again.
+    updateDatasetTransitionSteps('proofreading-test', [`Putting the cell back: ${got.left ?? 'a few'} edits to go`]);
   }
   if (got?.resetting) { session.error = 'The test cell is taking a while to put back. Try again in a few minutes.'; got = null; }
   if (!got) {
@@ -570,6 +568,9 @@ async function startWork() {
   await new Promise(r => setTimeout(r, 800));
   if (root) showExactly(dataset, root);
   ensureEndLayer();
+  // The saved view opens the 2D EM layer's panel and the Selection panel;
+  // neither is any use here (Ames 2026-10-29: "this shouldn't be showing").
+  closeSidePanel();
   releaseDatasetTransition();
   session.phase = 'working';
   startHold();
@@ -593,7 +594,7 @@ async function submitWork() {
   // The loading card (Ames, 2026-10-13): scoring reads the whole cell and
   // then puts it back, which takes a while.
   startDatasetTransition({
-    id: 'proofreading-test-score', label: 'Your cell', eyebrow: 'Proofreading Test · Scoring', thumbnail: imgInspectorNurro, contain: true, hold: true,
+    id: 'proofreading-test-score', label: 'Your cell', eyebrow: 'Proofreading Test · Scoring', thumbnail: imgInspectorNurro, contain: true, hold: true, maxMs: 150000,
     steps: ['Reading the cell from the server', 'Checking every fix', 'Checking the branch ends', 'Putting the cell back for the next person'],
   });
   try {

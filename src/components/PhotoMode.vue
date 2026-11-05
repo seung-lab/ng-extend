@@ -12,6 +12,7 @@
  * the recording is drawn and copied in the same breath (as page_capture.ts).
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { GifWriter } from '../gif_writer';
 
 const emit = defineEmits({ hide: null });
 
@@ -26,12 +27,34 @@ const SPEEDS = [
   { id: 'medium', label: 'Medium', turnSeconds: 20 },
   { id: 'fast', label: 'Fast', turnSeconds: 9 },
 ] as const;
-/** One full turn of the recording takes this long. */
-const RECORD_SECONDS = 6;
+/** The way the cell turns (Nseraf, report 246: "spin on the vertical axis
+ *  too"): around the screen's up line, or over the top. */
+const AXES = [
+  { id: 'side', label: 'Left right', axis: [0, 1, 0] },
+  { id: 'over', label: 'Over the top', axis: [1, 0, 0] },
+] as const;
+/** What a recording is saved as. MP4 plays everywhere (VLC, the forum);
+ *  GIF is small and loops; WebM is only used when MP4 cannot be made. */
+const FORMATS = [
+  { id: 'mp4', label: 'MP4' },
+  { id: 'gif', label: 'GIF' },
+] as const;
+/** Recordings keep the view's own pixels up to this width. */
+const MAX_RECORD_WIDTH = 1920;
+/** GIFs are smaller: this wide at most, and this many hundredths of a second a frame. */
+const GIF_WIDTH = 640;
+const GIF_DELAY_CS = 7;
 const IDLE_MS = 2500;
 
 const spinning = ref(true);
 const speedId = ref<string>('medium');
+const axisId = ref<string>('side');
+/** Speed changes and fades take this many seconds (Nseraf: "speed up or
+ *  slow down gradually", with a number for how long). 0 is at once. */
+const changeSeconds = ref(2);
+const formatId = ref<string>('mp4');
+/** Cells fading: 'in', 'out', or null. */
+const fading = ref<'in' | 'out' | null>(null);
 const bgId = ref<string>('black');
 const watermark = ref(true);
 const idle = ref(false);
@@ -46,8 +69,16 @@ const picking = ref(false);
 const coordText = ref('');
 
 const recordPercent = computed(() => Math.round(recordProgress.value * 100));
+const changeSecs = () => Math.max(0, Math.min(60, Number(changeSeconds.value) || 0));
 
 function viewer(): any { return (window as any)['viewer']; }
+
+/** The cell layers on screen, the ones a fade works on. */
+function cellLayers(): any[] {
+  const v = viewer();
+  return Array.from<any>(v?.layerManager?.managedLayers ?? [])
+    .filter(ml => ml?.visible && ml?.layer?.displayState?.objectAlpha);
+}
 
 /* ── setting up and putting back ── */
 let saved: Record<string, any> | null = null;
@@ -66,6 +97,7 @@ function enter() {
     bg: Array.from(v.perspectiveViewBackgroundColor?.value ?? [0, 0, 0]),
     position: Array.from(v.navigationState?.position?.value ?? []),
     orientation: Array.from(v.perspectiveNavigationState?.pose?.orientation?.orientation ?? []),
+    alphas: cellLayers().map(ml => [ml, ml.layer.displayState.objectAlpha.value]),
   };
   document.body.classList.add('nge-photo-mode');
   try {
@@ -100,6 +132,7 @@ function leave() {
     () => { v.uiConfiguration.showUIControls.value = s.controls; },
     () => { v.uiConfiguration.showPanelBorders.value = s.borders; },
     () => { v.perspectiveViewBackgroundColor.value = Float32Array.from(s.bg); },
+    () => { for (const [ml, a] of s.alphas) ml.layer.displayState.objectAlpha.value = a; },
     () => { if (s.position.length) v.navigationState.position.value = Float32Array.from(s.position); },
     () => {
       if (s.orientation.length !== 4) return;
@@ -167,19 +200,78 @@ function onPickClick(e: PointerEvent) {
 let raf = 0;
 let last = 0;
 let pointerDown = false;
+/** How fast it turns now (radians a second), the speed it is heading for,
+ *  and how quickly it gets there. */
+let rate = 0;
+let aim = -1;
+let ramp = Infinity;
 
 function turn(angle: number) {
-  try { viewer().perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), angle); } catch { /* no viewer */ }
+  const a = AXES.find(x => x.id === axisId.value) ?? AXES[0];
+  try { viewer().perspectiveNavigationState.pose.rotateRelative(Float32Array.from(a.axis), angle); } catch { /* no viewer */ }
+}
+
+function wantedRate(): number {
+  if (!spinning.value) return 0;
+  const sp = SPEEDS.find(s => s.id === speedId.value) ?? SPEEDS[1];
+  return 2 * Math.PI / sp.turnSeconds;
 }
 
 function frame(now: number) {
   raf = requestAnimationFrame(frame);
   const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
   last = now;
-  if (recording.value) { recordFrame(dt); return; }
-  if (!spinning.value || pointerDown || dt === 0) return;
-  const sp = SPEEDS.find(s => s.id === speedId.value) ?? SPEEDS[1];
-  turn((2 * Math.PI / sp.turnSeconds) * dt);
+  stepFade(now);
+  if (dt === 0) return;
+  if (pointerDown) {
+    // Dragging turns it by hand; the spin picks up again from still.
+    rate = 0;
+    aim = -1;
+  } else {
+    const want = wantedRate();
+    if (want !== aim) {
+      aim = want;
+      const secs = changeSecs();
+      ramp = secs > 0 ? Math.abs(want - rate) / secs : Infinity;
+    }
+    const step = ramp * dt;
+    rate = Math.abs(want - rate) <= step ? want : rate + Math.sign(want - rate) * step;
+  }
+  // A recording ends on exactly one full turn.
+  const angle = rec ? Math.min(rate * dt, 2 * Math.PI - rec.turned) : rate * dt;
+  if (angle) turn(angle);
+  if (recording.value) recordFrame(dt, angle);
+}
+
+/* ── cells fading in and out (Nseraf: "for videos of neurons fading in and
+ *    out"). Every cell layer on screen fades together. ── */
+let fade: { from: number; to: number; start: number; secs: number; layers: any[]; full: Map<any, number> } | null = null;
+
+/** A layer's own see-through setting from before photo mode, as "fully in". */
+function fullAlpha(ml: any): number {
+  const kept = (saved?.alphas as [any, number][] | undefined)?.find(([m]) => m === ml)?.[1];
+  return kept && kept > 0 ? kept : 1;
+}
+
+function startFade(dir: 'in' | 'out') {
+  const layers = cellLayers();
+  if (!layers.length) { say('There are no cells on screen to fade.'); return; }
+  const full = new Map(layers.map(ml => [ml, fullAlpha(ml)]));
+  const levels = layers.map(ml => ml.layer.displayState.objectAlpha.value / full.get(ml)!);
+  const from = Math.max(0, Math.min(1, levels.reduce((a, b) => a + b, 0) / levels.length));
+  fade = { from, to: dir === 'in' ? 1 : 0, start: performance.now(), secs: changeSecs(), layers, full };
+  fading.value = dir;
+  stepFade(performance.now());
+}
+
+function stepFade(now: number) {
+  if (!fade) return;
+  const t = fade.secs > 0 ? Math.min(1, (now - fade.start) / 1000 / fade.secs) : 1;
+  const level = fade.from + (fade.to - fade.from) * t * t * (3 - 2 * t);
+  for (const ml of fade.layers) {
+    try { ml.layer.displayState.objectAlpha.value = level * fade.full.get(ml)!; } catch { /* layer gone */ }
+  }
+  if (t >= 1) { fade = null; fading.value = null; }
 }
 
 /* ── pictures ── */
@@ -267,52 +359,90 @@ function savePicture() {
 }
 
 /* ── one-turn recording ── */
-let rec: { recorder: MediaRecorder; ctx: CanvasRenderingContext2D; rect: any; turned: number; chunks: Blob[] } | null = null;
+/** A recording follows the spin on screen, speed changes and fades included,
+ *  until the cell has gone once all the way round. */
+type Rec = {
+  ctx: CanvasRenderingContext2D; rect: any; turned: number;
+  video?: { recorder: MediaRecorder };
+  gif?: { writer: GifWriter; since: number };
+};
+let rec: Rec | null = null;
 
-function pickMime(): string {
-  for (const m of ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']) {
-    if ((window as any).MediaRecorder?.isTypeSupported?.(m)) return m;
+function pickVideo(): { mime: string; ext: string } | null {
+  const can = (m: string) => !!(window as any).MediaRecorder?.isTypeSupported?.(m);
+  if (formatId.value === 'mp4') {
+    for (const m of ['video/mp4;codecs=avc1.640033', 'video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4']) {
+      if (can(m)) return { mime: m, ext: 'mp4' };
+    }
   }
-  return '';
+  for (const m of ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']) {
+    if (can(m)) return { mime: m, ext: 'webm' };
+  }
+  return null;
 }
 
 function recordSpin() {
   if (recording.value) return;
   const gl: HTMLCanvasElement | undefined = viewer()?.display?.canvas;
   if (!gl || !gl.width) { say('The 3D view is not ready yet.'); return; }
-  const mime = pickMime();
-  if (!mime) { say('This browser cannot record video. Pyr needs Chrome.'); return; }
+  const gif = formatId.value === 'gif';
+  const video = gif ? null : pickVideo();
+  if (!gif && !video) { say('This browser cannot record video. Pyr needs Chrome.'); return; }
   const rect = viewRect(gl);
-  // Keep files a sensible size: at most 1280 pixels wide, even sizes for the encoder.
-  const scale = Math.min(1, 1280 / rect.w);
+  // Thin branches are one pixel wide on screen. Shrinking the frame (it was
+  // capped at 1280 wide) or starving the encoder broke them into dots or lost
+  // them (Ames 2026-10-24, a whole class in Meet the cells). So: the view's own
+  // size up to 1920 wide, smooth shrinking past that, and bits to match.
+  const scale = Math.min(1, (gif ? GIF_WIDTH : MAX_RECORD_WIDTH) / rect.w);
   const out = document.createElement('canvas');
   out.width = Math.max(2, Math.round(rect.w * scale / 2) * 2);
   out.height = Math.max(2, Math.round(rect.h * scale / 2) * 2);
-  const ctx = out.getContext('2d')!;
+  const ctx = out.getContext('2d', { willReadFrequently: gif })!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   drawInto(ctx, rect);
-  const stream = out.captureStream(30);
-  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
-  const chunks: Blob[] = [];
-  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-  recorder.onstop = () => {
-    stream.getTracks().forEach(t => t.stop());
-    download(new Blob(chunks, { type: 'video/webm' }), stampName('webm'));
-    say('Spin saved to your downloads.');
-  };
-  rec = { recorder, ctx, rect, turned: 0, chunks };
+  const r: Rec = { ctx, rect, turned: 0 };
+  if (gif) {
+    r.gif = { writer: new GifWriter(out.width, out.height), since: 0 };
+    r.gif.writer.addFrame(ctx.getImageData(0, 0, out.width, out.height).data, GIF_DELAY_CS);
+  } else {
+    const { mime, ext } = video!;
+    const stream = out.captureStream(30);
+    const bits = Math.max(8_000_000, Math.min(24_000_000, out.width * out.height * 10));
+    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bits });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      download(new Blob(chunks, { type: mime.split(';')[0] }), stampName(ext));
+      say('Spin saved to your downloads.');
+    };
+    r.video = { recorder };
+    recorder.start(250);
+  }
+  rec = r;
+  // A still cell makes no spin: start it turning.
+  spinning.value = true;
   recordProgress.value = 0;
   recording.value = true;
-  recorder.start(250);
 }
 
-function recordFrame(dt: number) {
-  if (!rec || dt === 0) return;
+function recordFrame(dt: number, angle: number) {
+  if (!rec) return;
   const full = 2 * Math.PI;
-  const step = Math.min(full - rec.turned, (full / RECORD_SECONDS) * dt);
-  turn(step);
-  rec.turned += step;
-  drawInto(rec.ctx, rec.rect);
-  recordProgress.value = rec.turned / full;
+  rec.turned += Math.abs(angle);
+  recordProgress.value = Math.min(1, rec.turned / full);
+  if (rec.gif) {
+    rec.gif.since += dt;
+    if (rec.gif.since >= GIF_DELAY_CS / 100) {
+      rec.gif.since -= GIF_DELAY_CS / 100;
+      drawInto(rec.ctx, rec.rect);
+      const c = rec.ctx.canvas;
+      rec.gif.writer.addFrame(rec.ctx.getImageData(0, 0, c.width, c.height).data, GIF_DELAY_CS);
+    }
+  } else {
+    drawInto(rec.ctx, rec.rect);
+  }
   if (rec.turned >= full - 1e-6) stopRecording();
 }
 
@@ -321,8 +451,14 @@ function stopRecording() {
   const r = rec;
   rec = null;
   recording.value = false;
+  if (r.gif) {
+    download(r.gif.writer.finish(), stampName('gif'));
+    say('Spin saved to your downloads.');
+    return;
+  }
   // One more frame so the last angle is in the file.
-  setTimeout(() => { if (r.recorder.state !== 'inactive') r.recorder.stop(); }, 120);
+  const recorder = r.video!.recorder;
+  setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop(); }, 120);
 }
 
 /* ── the bar fades when the mouse rests ── */
@@ -388,7 +524,7 @@ onBeforeUnmount(() => {
          @mouseenter="wake" @pointerdown.stop>
       <span class="nge-photo-title">Photo mode</span>
 
-      <button class="nge-photo-btn" :class="{ on: spinning }" :disabled="recording"
+      <button class="nge-photo-btn" :class="{ on: spinning }"
               :title="spinning ? 'Stop the spin (Space)' : 'Spin (Space)'" @click="spinning = !spinning">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/>
@@ -398,7 +534,23 @@ onBeforeUnmount(() => {
 
       <div class="nge-photo-group" title="Spin speed">
         <button v-for="s in SPEEDS" :key="s.id" class="nge-photo-chip" :class="{ on: speedId === s.id }"
-                :disabled="recording" @click="speedId = s.id; spinning = true">{{ s.label }}</button>
+                @click="speedId = s.id; spinning = true">{{ s.label }}</button>
+      </div>
+
+      <div class="nge-photo-group" title="Which way it turns">
+        <button v-for="a in AXES" :key="a.id" class="nge-photo-chip" :class="{ on: axisId === a.id }"
+                @click="axisId = a.id">{{ a.label }}</button>
+      </div>
+
+      <label class="nge-photo-check" title="How many seconds a speed change or a fade takes. 0 is at once.">
+        Change over
+        <input v-model.number="changeSeconds" class="nge-photo-secs" type="number" min="0" max="60" step="0.5"
+               @keydown.stop /> s
+      </label>
+
+      <div class="nge-photo-group" title="Fade the cells in or out">
+        <button class="nge-photo-chip" :class="{ on: fading === 'in' }" @click="startFade('in')">Fade in</button>
+        <button class="nge-photo-chip" :class="{ on: fading === 'out' }" @click="startFade('out')">Fade out</button>
       </div>
 
       <div class="nge-photo-group" title="Background">
@@ -427,8 +579,13 @@ onBeforeUnmount(() => {
         Save picture
       </button>
 
+      <div class="nge-photo-group" title="MP4 plays almost anywhere. GIF is smaller and loops, good for the forum.">
+        <button v-for="f in FORMATS" :key="f.id" class="nge-photo-chip" :class="{ on: formatId === f.id }"
+                :disabled="recording" @click="formatId = f.id">{{ f.label }}</button>
+      </div>
+
       <button class="nge-photo-btn primary" :class="{ rec: recording }"
-              :title="recording ? 'Stop recording (Esc)' : 'Record one full turn as a video'"
+              :title="recording ? 'Stop recording (Esc)' : 'Record one full turn, as it turns on screen'"
               @click="recording ? stopRecording() : recordSpin()">
         <span class="nge-photo-dot"></span>
         <template v-if="recording">Recording {{ recordPercent }}%</template>
@@ -527,6 +684,10 @@ body.nge-photo-mode { cursor: default; }
 }
 .nge-photo-swatch.on { border-color: #5be3ff; box-shadow: 0 0 0 2px rgba(91, 227, 255, 0.3); }
 .nge-photo-check { display: inline-flex; align-items: center; gap: 5px; color: #b8c4d6; cursor: pointer; font-size: 12px; }
+.nge-photo-secs {
+  width: 46px; padding: 3px 5px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35); color: #fff; font: 12px/1.2 Roboto, system-ui, sans-serif;
+}
 .nge-photo-note {
   position: fixed; left: 50%; bottom: 136px; transform: translateX(-50%);
   z-index: 2147483000; padding: 7px 14px; border-radius: 10px;

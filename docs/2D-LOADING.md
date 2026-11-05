@@ -202,6 +202,83 @@ live 6 grey episodes per run, 6.6 and 8.0 s in total (2 runs); with the fix
 none in 3 runs, and the first full view equally fast (about 8 s). On the fast
 link, scrolling steadily, none either way except one at the start on live.
 
+## MEC (report 290, 2026-10-28)
+
+Nik: "MEC 2D too slow to load". The MEC image
+(`c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/img/v2`, unchanged
+since 2025-12-23) is laid out unlike the other datasets:
+
+| Level | Chunk | Encoding | On the wire |
+|---|---|---|---|
+| 16 nm | 2048x2048x1 | raw (gzip) | 3.5 MB, one slice deep |
+| 32 nm | 256x256x32 | raw (gzip) | 1.8 MB |
+| 64 nm and coarser | 256x256x32 | JPEG | 0.7 to 0.8 MB |
+
+The server answers in about 0.15 s and sends 3 to 12 MB/s here, HTTP/1.1. So
+the cost is bytes. At crossSectionScale 1 the single 2D panel (Pyr shows
+xy-3d) needs four 16 nm chunks, 14.5 MB, for every slice: the chunks are one
+slice deep, so each slice step fetches a fresh 14.5 MB. Every coarse level has
+2 MiB uncompressed chunks, so the fallback rule kept the nearest one, 32 nm,
+which is stored raw: 9 chunks and 16 MB per view, more than the sharp view.
+
+Fix (`sliceview/base.ts` `selectFallbackScales`): the expensive fallback kept
+is the nearest one not stored raw, when there is one. MEC now keeps 64 nm
+JPEG (4 chunks, 3.2 MB). A pyramid raw throughout (the Sandbox) and cheap ones
+(Retina) are unchanged.
+
+Measured with `--state mec-image` (x 115000, y 115000, z 5000), one run each,
+live / fix:
+
+| | full | bytes per cold view | blurry picture |
+|---|---|---|---|
+| fast link | 3.4 s / 2.4 s | 30.8 MB / 17.9 MB | 16.5 MB / 3.6 MB |
+| 20 Mbps | 16.3 s / 14.7 s | same | about 6.6 s / 1.4 s of transfer |
+| one slice step, 20 Mbps | 6.3 s / 6.2 s | 14.5 MB both | stays on screen both |
+
+What Pyr cannot fix: the 14.5 MB per slice at 16 nm. Rechunking that level
+like the others (256x256x32, JPEG) would cut a slice step to well under 1 MB
+on average; that is the PNI lab's data. Super Quests (deployed 18:45 UTC the
+same day) were checked and are not a cause: the claim timer reads a few layer
+fields once a second and sends one small request a minute, and the MEC layers
+it adds are local annotation layers that fetch nothing.
+
+## MEC: a black 2D view after a jump (Nik, 2026-10-29)
+
+Nik's recordings (Brave and Firefox, 1 Gbps, about 30 cells shown) after the
+report 290 fix: scrolling a little better, but after each jump (a right click
+on a far branch) the 2D view went fully black for about 2 s, then blurry, then
+sharp. A jump of more than 32 slices needs new chunks at every level, the
+coarsest too, since no level is downsampled in z.
+
+Cause (`chunk_manager/backend.ts`): when the view moves on, a chunk still
+downloading drops to the RECENT tier but keeps downloading; neuroglancer only
+cancels it when its 100-slot pool is full, which it rarely is. Scrolling at
+16 nm keeps a dozen or more 3.5 MB MEC chunks in flight on one HTTP/1.1 host,
+so after a jump the new spot's chunks waited behind the old spot's. The
+Sandbox prefetch fix (`SPECULATIVE_YIELDS_TO_VISIBLE`) covered prefetch only.
+
+Fix: `STALE_YIELDS_TO_VISIBLE`. When a VISIBLE chunk is promoted, the RECENT
+downloads still in flight at that queue level are cancelled first.
+
+Measured with `scroll:8>to:x/y/z` (8 slices at 80 ms, then a jump without
+waiting), `--state mec-image`, fast link. Blank is the time until the new spot
+shows anything.
+
+| Jump | live: blank, full, MB | fix: blank, full, MB |
+|---|---|---|
+| to 125000/105000/5600 (3 live runs, 2 fix runs) | 1.2 to 1.5 s, 1.6 to 3.5 s, 155 to 174 | 0.55 s, 0.55 s, 62 to 73 |
+| to 170000/120000/3000 | 0.44 s, 0.44 to 0.66 s, 56 | 0.54 s, 0.54 s, 63 to 65 |
+| to 110000/125000/7500 | 0.45 to 0.56 s, 0.45 to 0.99 s, 73 | 0.54 s, 0.54 s, 55 to 65 |
+
+Retina (one run each, live / fix): cold 3.9 / 4.6 s, a slab 0.88 / 1.07 s, a
+pan 0.56 / 0.56 s, a scroll and jump 1.30 / 1.20 s, same bytes: within noise.
+
+Not measured: a session with about 30 cells shown, as Nik has. The graphene
+chunked-graph layer asks the CAVE server for the leaves of every shown cell in
+every chunk on screen (about 0.5 s each on MEC's server, in the same download
+pool), so many cells may still slow a jump down. Firefox also logs WebGL
+pipeline stall warnings (readPixels, getBufferSubData) from picking.
+
 ## Open items
 
 - The curated production start states (nglstate 5631012797153280 and

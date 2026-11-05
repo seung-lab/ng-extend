@@ -49,6 +49,7 @@ import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, listFilterOf, loadCellAtPlace, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
 import {ngeChoose, ngeConfirm} from 'neuroglancer/ui/nge_confirm';
+import {addNoteToRow, SegmentNotes, updateNoteRow} from 'neuroglancer/ui/nge_segment_notes';
 import {FOLDER_MIN_HEIGHT, openColorPalette, pickedSegments, SegmentFolders, touchPick} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
@@ -99,7 +100,7 @@ class StarredSegmentsListSource extends SegmentListSource {
       public segmentationDisplayState: SegmentationDisplayState,
       public parentElement: HTMLElement, public mode: ListMode = 'inview',
       protected filterText?: WatchableValueInterface<string>,
-      protected folders?: SegmentFolders) {
+      protected folders?: SegmentFolders, protected notes?: SegmentNotes) {
     super(segmentationDisplayState, parentElement);
     this.update();
     const group = segmentationDisplayState.segmentationGroupState.value;
@@ -177,7 +178,9 @@ class StarredSegmentsListSource extends SegmentListSource {
   render = (index: number) => {
     const {explicitSegments} = this;
     const id = explicitSegments![index];
-    return this.segmentWidgetFactory.get(id);
+    const row = this.segmentWidgetFactory.get(id);
+    if (this.notes !== undefined) addNoteToRow(row, this.notes);
+    return row;
   };
 }
 
@@ -893,6 +896,28 @@ function renderTagSummary(
  * back to its usual size.
  */
 function makeFolderGrip(list: HTMLElement, folders: SegmentFolders, folderId: string) {
+  return makeListGrip(list, h => folders.setHeight(folderId, h),
+      () => !!folders.value.find(f => f.id === folderId)?.height);
+}
+
+/** The Pasted list's height, kept in this browser (Ames 2026-10-27: "why
+ *  can't I drag to expand this?" It stopped at 220 px with room below). */
+const PASTED_HEIGHT_KEY = 'nge-pasted-list-h';
+function makePastedGrip(list: HTMLElement) {
+  try {
+    const h = Number(localStorage.getItem(PASTED_HEIGHT_KEY));
+    if (h >= FOLDER_MIN_HEIGHT) { list.dataset.ngeSized = ''; list.style.setProperty('--nge-folder-h', `${h}px`); }
+  } catch { /* storage blocked */ }
+  return makeListGrip(list, h => {
+    try {
+      if (h === undefined) localStorage.removeItem(PASTED_HEIGHT_KEY);
+      else localStorage.setItem(PASTED_HEIGHT_KEY, String(Math.round(h)));
+    } catch { /* storage blocked */ }
+    if (h === undefined) list.style.removeProperty('--nge-folder-h');
+  }, () => { try { return !!localStorage.getItem(PASTED_HEIGHT_KEY); } catch { return false; } });
+}
+
+function makeListGrip(list: HTMLElement, setHeight: (h: number|undefined) => void, hasHeight: () => boolean) {
   const grip = document.createElement('div');
   grip.className = 'nge-seg-folder-grip';
   grip.title = 'Drag to make this folder taller or shorter. Double click for its usual size.';
@@ -916,8 +941,8 @@ function makeFolderGrip(list: HTMLElement, folders: SegmentFolders, folderId: st
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
       grip.classList.remove('nge-seg-folder-grip--active');
-      if (Math.abs(h - startH) >= 2) folders.setHeight(folderId, h);
-      else if (!folders.value.find(f => f.id === folderId)?.height) delete list.dataset.ngeSized;
+      if (Math.abs(h - startH) >= 2) setHeight(h);
+      else if (!hasHeight()) delete list.dataset.ngeSized;
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
@@ -926,7 +951,7 @@ function makeFolderGrip(list: HTMLElement, folders: SegmentFolders, folderId: st
   grip.addEventListener('dblclick', (e) => {
     e.stopPropagation();
     delete list.dataset.ngeSized;
-    folders.setHeight(folderId, undefined);
+    setHeight(undefined);
   });
   return grip;
 }
@@ -1838,6 +1863,7 @@ export class SegmentDisplayTab extends Tab {
                       segmentQuery, segmentPropertyMap, layer.displayState, parent));
                   const group = layer.displayState.segmentationGroupState.value;
                   const folders: SegmentFolders = (layer as any).ngeFolders;
+                  const notes: SegmentNotes = (layer as any).ngeNotes;
                   const list = context.registerDisposer(
                       new VirtualList({source: listSource, horizontalScroll: true}));
                   const segList = context.registerDisposer(new SegmentListGroupQuery(
@@ -1890,7 +1916,7 @@ export class SegmentDisplayTab extends Tab {
                   };
                   const makeSection = (owner: RefCounted, mode: ListMode): Section => {
                     const source = owner.registerDisposer(new StarredSegmentsListSource(
-                        layer.displayState, parent, mode, segmentQuery, folders));
+                        layer.displayState, parent, mode, segmentQuery, folders, notes));
                     // a segment's row is the same wherever it sits in the list
                     const vlist = owner.registerDisposer(new VirtualList(
                         {source, horizontalScroll: true, keepRowsOnSplice: true}));
@@ -1902,6 +1928,11 @@ export class SegmentDisplayTab extends Tab {
                     if (mode === 'pasted') vlist.element.classList.add('nge-seg-list--pasted');
                     owner.registerDisposer(layer.bindSegmentListWidth(vlist.element));
                     owner.registerDisposer(new MouseEventBinder(vlist.element, getDefaultSelectBindings()));
+                    // a row with a note is taller: the list is told
+                    owner.registerDisposer(notes.changed.add(() => vlist.forEachRenderedItem(row => {
+                      updateNoteRow(row, notes);
+                      (vlist as any).remeasureItem?.(row);
+                    })));
                     source.segmentWidgetFactory = new SegmentWidgetWithExtraColumnsFactory(
                         source.segmentationDisplayState, source.parentElement,
                         property => queryIncludesColumn(undefined, property.id));
@@ -1911,6 +1942,9 @@ export class SegmentDisplayTab extends Tab {
                     let grip: HTMLElement|undefined;
                     if (typeof mode === 'object' && folders !== undefined) {
                       grip = makeFolderGrip(vlist.element, folders, mode.folder);
+                      grp.element.appendChild(grip);
+                    } else if (mode === 'pasted') {
+                      grip = makePastedGrip(vlist.element);
                       grp.element.appendChild(grip);
                     }
                     return {source, vlist, grp, grip};
@@ -2015,6 +2049,29 @@ export class SegmentDisplayTab extends Tab {
                       sectionActions.recolor(pickedIds().map(id => id.toString()), hex);
                     }, 'Color for the picked cells');
                   });
+                  // nge: two picked cells can be merged straight from here
+                  // (Ames 2026-11-04). Only this button: no key merges them, so a merge is never an accident.
+                  const mergePicked = barBtn('Merge', 'Merge the picked cells where they touch', () => {
+                    const ids = pickedIds().map(id => id.toString());
+                    if (ids.length < 2) return;
+                    window.dispatchEvent(new CustomEvent('nge-merge-cells', {detail: {ids}}));
+                    pickedSegments.clear();
+                  }, 'nge-pick-merge');
+                  // Its own row, with an (i) that says what it does (Ames 2026-11-04).
+                  const mergeRow = document.createElement('div');
+                  mergeRow.className = 'nge-pick-merge-row';
+                  const mergeInfo = document.createElement('p');
+                  mergeInfo.className = 'nge-pick-merge-info';
+                  mergeInfo.textContent = 'Merges the picked cells into one, joined where they come closest (up to 10 at once). ' +
+                      'They need to be showing in 3D. A cell more than 2 µm from the others is left out: use merge mode for those.';
+                  mergeInfo.style.display = 'none';
+                  const mergeInfoBtn = barBtn('i', 'What does Merge do?', () => {
+                    const open = mergeInfo.style.display === 'none';
+                    mergeInfo.style.display = open ? '' : 'none';
+                    mergeInfoBtn.classList.toggle('nge-pick-info--on', open);
+                  }, 'nge-pick-info');
+                  mergeInfoBtn.setAttribute('aria-label', 'What does Merge do?');
+                  mergeRow.append(mergePicked, mergeInfoBtn, mergeInfo);
                   bar.append(
                       barCount, moveTo,
                       barBtn('Show', 'Show the picked cells', () => group.visibleSegments.set(pickedIds(), true)),
@@ -2026,7 +2083,8 @@ export class SegmentDisplayTab extends Tab {
                         group.selectedSegments.delete(ids);
                         pickedSegments.clear();
                       }, 'nge-pick-remove'),
-                      barBtn('\u2715', 'Unpick (Esc)', () => pickedSegments.clear(), 'nge-pick-clear'));
+                      barBtn('\u2715', 'Unpick (Esc)', () => pickedSegments.clear(), 'nge-pick-clear'),
+                      mergeRow);
                   moveTo.addEventListener('change', () => {
                     const v = moveTo.value;
                     moveTo.value = '';
@@ -2050,6 +2108,7 @@ export class SegmentDisplayTab extends Tab {
                     const n = pickedSegments.ids.size;
                     bar.style.display = n ? '' : 'none';
                     barCount.textContent = `${n} picked`;
+                    mergeRow.style.display = n >= 2 ? '' : 'none';
                     removeChildren(moveTo);
                     const opt = (value: string, text: string) => {
                       const o = document.createElement('option');

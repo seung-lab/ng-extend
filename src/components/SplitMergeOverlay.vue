@@ -5,6 +5,7 @@ import { ngeCutPointScale } from 'neuroglancer/annotation/point';
 import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points';
+import { reapAfterCut, setReapAfterCut } from '../util/scythe';
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -33,6 +34,23 @@ function jumpToSegment(id: string) {
     if (!/^\d+$/.test(id)) return;
     (currentSegLayer()?.layer as any)?.displayState?.moveToSegment?.(Uint64.parseString(id));
   } catch { /* the layer went away */ }
+}
+/** Go to where queued merge i joins its two pieces: the middle of its line
+ *  (toknow, report 368: "add button jump to merge point"). The queue is
+ *  neuroglancer's, in the same order as the rows here. */
+function mergePoint(i: number): Float32Array | null {
+  try {
+    const gc = (currentSegLayer()?.layer as any)?.graphConnection?.value;
+    const m = gc?.state?.mergeState?.merges?.value?.[i];
+    const a = m?.sink?.position, b = m?.source?.position;
+    if (!a) return null;
+    return Float32Array.from(a, (v: number, k: number) => (b ? (v + b[k]) / 2 : v));
+  } catch { return null; }
+}
+function goToMergePoint(i: number) {
+  const p = mergePoint(i);
+  if (!p) return;
+  try { (window as any).viewer.navigationState.position.value = p; } catch { /* the view went away */ }
 }
 function hoverSegment(id: string | null) {
   try {
@@ -71,7 +89,8 @@ const isRedActive = computed(() => store.activeGroup === 'red');
 // colour (Ames, 2026-10-07). The G key and the hint keep pulsing until the
 // colour is switched.
 const needsSwap = computed(() => isMulticut.value && !store.pendingClose
-  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red');
+  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red'
+  && !moreRedWanted.value);
 // The large "Press G" prompt is for learners only: it shows while a step of
 // the Merge, Cut or Merger Sandbox tutorial is up (Ames, 2026-10-08). Outside
 // a tutorial the lit G key on the bar is the only nudge, and it holds still.
@@ -81,10 +100,19 @@ const tutorialStore = useTutorialStore();
  *  G" banner and the learning styles showed during real cuts (Nseraf,
  *  Ames 2026-10-22: "we gotta do something about that giant G"). */
 const tutorialOnScreen = ref(false);
-setInterval(() => { tutorialOnScreen.value = !!document.querySelector('.introductionStep'); }, 500);
+/** Red points a tutorial step still waits for before it asks for G
+ *  (tutorial-3.ts watchCutStep sets window.__ngeCutRedNeed). The Cut
+ *  tutorial wants two, and "Now press G" came up after the first (annkri,
+ *  report 217). */
+const cutRedNeed = ref(0);
+setInterval(() => {
+  tutorialOnScreen.value = !!document.querySelector('.introductionStep');
+  cutRedNeed.value = Number((window as any).__ngeCutRedNeed) || 0;
+}, 300);
+const moreRedWanted = computed(() => tutorialOnScreen.value && store.redPointCount < cutRedNeed.value);
 const inPracticeTutorial = computed(() => {
   const step = tutorialStore.getTutorialStep();
-  return tutorialOnScreen.value && [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
+  return tutorialOnScreen.value && [3, 5, 9, 13].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
 });
 const groupPulse = ref(false);
 let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -127,12 +155,17 @@ const contextHint = computed(() => {
   const touch = isTouchRef.value;
   if (isMulticut.value && !store.pendingClose) {
     if (totalPoints.value === 0) return touch ? 'Tap supervoxels to mark them' : 'Ctrl+Click on supervoxels to mark them';
+    if (moreRedWanted.value) return touch ? 'Tap another red point' : 'Ctrl+Click another red point';
     if (store.redPointCount > 0 && store.bluePointCount === 0) return touch ? 'Tap Blue, then tap the other side' : 'Press G to swap to Blue group, then Ctrl+Click';
+    // One point a side often cuts off only part of the piece (lalonso, report 318).
+    if (store.redPointCount === 1 || store.bluePointCount === 1) return touch ? 'Ready. A few more points on each side give a cleaner cut' : 'Ready: press Enter. A few more points on each side give a cleaner cut';
     if (store.redPointCount > 0 && store.bluePointCount > 0) return touch ? 'Ready to submit' : 'Ready to submit. Press Enter';
     return touch ? 'Tap to add more points' : 'Ctrl+Click to add more points';
   }
   if (isMerge.value && !store.pendingClose) {
-    if (store.mergeSubmissionCount === 0) return touch ? 'Tap two segments to draw a merge line' : 'Ctrl+Click on two segments to draw a merge line';
+    if (store.mergeSubmissionCount === 0) return touch ? 'Tap two segments to draw a merge line'
+      : prefsStore.prefs.quickMergeKey === true ? 'Point at a piece and press M, then the other piece and M (or Ctrl+Click both)'
+      : 'Ctrl+Click on two segments to draw a merge line';
     return `${store.mergeSubmissionCount} merge${store.mergeSubmissionCount !== 1 ? 's' : ''} queued`;
   }
   return '';
@@ -255,6 +288,19 @@ function resetQueuePlace() {
 }
 watch(hasMergeSegments, shown => { if (shown) placeBesideChat(); }, { immediate: true });
 
+// Minimized to the Merge Mode bar (Krzysztof Kruk, report 255: "on smaller
+// screens the popup ... can cover a significant useful space"). The bar then
+// shows "Merge Queue (n)" with a button to open it again. Remembered across
+// reloads and datasets.
+const QUEUE_MIN_KEY = 'nge-merge-queue-min';
+const queueMin = ref(false);
+try { queueMin.value = localStorage.getItem(QUEUE_MIN_KEY) === '1'; } catch { /* not remembered */ }
+function setQueueMin(on: boolean) {
+  queueMin.value = on;
+  try { localStorage.setItem(QUEUE_MIN_KEY, on ? '1' : '0'); } catch { /* not remembered */ }
+  if (!on) placeBesideChat();
+}
+
 // Each queued merge says where it stands while a batch is going through
 // (Ames 2026-10-08), and loses its remove button once it has been sent.
 const rowStatus = (i: number) => store.mergeRows[i]?.status || '';
@@ -305,7 +351,9 @@ function toggleAutoSubmit() {
  *  left mouse users, and anyone in a tutorial, without a way to submit. */
 function submitTool(kind: 'multicut' | 'merge') {
   const title = kind === 'multicut' ? 'Submit multicut' : 'Submit merge';
-  const icon = document.querySelector(`.neuroglancer-icon[title="${title}"]`) as HTMLElement | null;
+  // The newest bar's button: an older bar left behind had a Submit that did
+  // nothing (report 376).
+  const icon = (Array.from(document.querySelectorAll(`.neuroglancer-icon[title="${title}"]`)).pop() ?? null) as HTMLElement | null;
   if (icon) { icon.click(); return; }
   // Fallback: the tool's own Enter binding.
   const viewer = (window as any)['viewer'];
@@ -392,6 +440,14 @@ function cancelTool() {
             <button class="nge-smo-action-btn clear-btn" :disabled="!cutReady || previewBusy" @click="previewCut"
                     :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">{{ previewBusy ? 'Previewing…' : 'Preview' }}</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
+            <!-- Clears a piece from view; never edits (src/util/scythe.ts). -->
+            <button v-if="!tutorialOnScreen" type="button" role="switch" class="nge-smo-reap" :class="{ 'is-on': reapAfterCut }" :aria-checked="reapAfterCut"
+                    @click="setReapAfterCut(!reapAfterCut)"
+                    title="Shift+R: take up the scythe, or put it away. On: after each cut, your next click on a piece in 3D reaps it from view. Turning it off puts the scythe away. Ctrl+Z brings a piece back.">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 22 L11 4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M12 3 C7 1.5 2.5 5.5 1 13 C4.5 9 8.5 7.5 14 7 Z" fill="#fff"/></svg>
+              Scythe reap
+              <span class="nge-smo-reap-track"><span class="nge-smo-reap-knob"></span></span>
+            </button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
           </div>
 
@@ -441,7 +497,11 @@ function cancelTool() {
               auto-submit
             </label>
             <span v-if="!isTouchRef" class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
+            <span v-if="!isTouchRef && prefsStore.prefs.quickMergeKey === true" class="nge-smo-key-hint"><kbd>M</kbd> Point at a piece</span>
           </div>
+
+          <button v-if="queueMin && hasMergeSegments" class="nge-smo-action-btn nge-smo-queue-chip" @click="setQueueMin(false)"
+                  title="Show the Merge Queue">Merge Queue ({{ store.mergeSegments.length }}) <span aria-hidden="true">▴</span></button>
 
           <div class="nge-smo-hint nge-smo-hint--left merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
         </template>
@@ -451,14 +511,20 @@ function cancelTool() {
 
     <!-- Merge segment queue (vertical list, left side) -->
     <transition name="merge-list-fade">
-      <div v-if="isMerge && hasMergeSegments && !isPendingClose" ref="queueEl" class="nge-smo-merge-panel" :style="queueStyle">
+      <div v-if="isMerge && hasMergeSegments && !isPendingClose && !queueMin" ref="queueEl" class="nge-smo-merge-panel" :style="queueStyle">
         <div class="nge-smo-merge-panel-header" title="Drag to move. Double click to put it back."
              @mousedown="startQueueDrag" @dblclick="resetQueuePlace">
           Merge Queue ({{ store.mergeSegments.length }})
           <span class="nge-smo-merge-grip" aria-hidden="true">⠿</span>
+          <button class="nge-smo-merge-min" @mousedown.stop @dblclick.stop @click.stop="setQueueMin(true)"
+                  title="Minimize to the Merge Mode bar" aria-label="Minimize the Merge Queue">–</button>
         </div>
         <div class="nge-smo-merge-panel-list">
           <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
+            <!-- One line that never wraps: the IDs shorten instead, so the ×
+                 stays beside its pair (toknow, report 389: it fell to a line
+                 of its own under every pair). -->
+            <div class="nge-smo-merge-line">
             <span class="nge-smo-merge-num">{{ i + 1 }}.</span>
             <span class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[0])" title="Hover to light this segment up in the views. Right click to go to it."
                   @mouseenter="hoverSegment(pair[0])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[0])">{{ pair[0] }}</span>
@@ -466,7 +532,9 @@ function cancelTool() {
             <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[1])" title="Hover to light this segment up in the views. Right click to go to it."
                   @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[1])">{{ pair[1] }}</span>
             <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
+            <button v-if="pair[1]" class="nge-smo-merge-go" @click.stop="goToMergePoint(i)" title="Jump to where these two join" aria-label="Jump to this merge point">↗</button>
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
+            </div>
             <!-- why it failed, in the server's words, on a line of its own -->
             <div v-if="rowWhy(i)" class="nge-smo-merge-why">{{ rowWhy(i) }}</div>
           </div>
@@ -492,6 +560,23 @@ function cancelTool() {
 </template>
 
 <style scoped>
+.nge-smo-reap {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px; pointer-events: auto;
+  font: inherit; font-size: 12px; font-weight: 600; color: #fff; background: none; border: 0; cursor: pointer; white-space: nowrap;
+}
+.nge-smo-reap:disabled { opacity: .45; cursor: not-allowed; }
+.nge-smo-reap-track {
+  position: relative; width: 28px; height: 15px; border-radius: 999px;
+  background: rgb(255 255 255 / .16); border: 1px solid rgb(255 255 255 / .45);
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.nge-smo-reap-knob {
+  position: absolute; top: 2px; left: 2px; width: 9px; height: 9px; border-radius: 50%;
+  background: #fff; transition: transform .15s ease;
+}
+.nge-smo-reap.is-on .nge-smo-reap-track { background: #e8b93e; border-color: #ffe08a; box-shadow: 0 0 8px rgb(232 185 62 / .7); }
+.nge-smo-reap.is-on .nge-smo-reap-knob { transform: translateX(13px); }
+@media (prefers-reduced-motion: reduce) { .nge-smo-reap-track, .nge-smo-reap-knob { transition: none; } }
 .nge-split-merge-overlay {
   position: fixed;
   /* On the bottom edge (Krzysztof: a bare 28px strip showed under it), and
@@ -923,6 +1008,15 @@ function cancelTool() {
   border-bottom: 1px solid rgba(0, 220, 120, 0.15);
 }
 
+.nge-smo-merge-panel-header { display: flex; align-items: center; gap: 6px; }
+.nge-smo-merge-grip { margin-left: auto; }
+.nge-smo-merge-min {
+  background: none; border: 1px solid rgba(0, 220, 120, 0.3); border-radius: 4px; color: #80ffc0;
+  font-size: 13px; line-height: 1; width: 20px; height: 18px; padding: 0; cursor: pointer;
+}
+.nge-smo-merge-min:hover { background: rgba(0, 220, 120, 0.18); color: #fff; }
+.nge-smo-queue-chip { white-space: nowrap; }
+
 .nge-smo-merge-panel-list {
   overflow-y: auto;
   max-height: 300px;
@@ -981,6 +1075,18 @@ function cancelTool() {
 .nge-smo-merge-row:hover .nge-smo-merge-remove {
   opacity: 0.7;
 }
+.nge-smo-merge-go {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  opacity: 0.75;
+  pointer-events: auto;
+}
+.nge-smo-merge-go:hover { opacity: 1; }
+.nge-smo-merge-go + .nge-smo-merge-remove { margin-left: 0; }
 .nge-smo-merge-remove:hover {
   opacity: 1 !important;
 }
@@ -1461,6 +1567,8 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
 .nge-smo-seg-id--colored:hover { outline: 1.5px solid rgba(255, 255, 255, 0.85); outline-offset: 1px; }
 .nge-smo-merge-num { font-variant-numeric: tabular-nums; }
 .nge-smo-merge-remove { color: #ff8a8a; border-radius: 4px; }
+.nge-smo-merge-go { color: #7ee8ff; border-radius: 4px; font-size: 14px; line-height: 1; }
+.nge-smo-merge-go:hover, .nge-smo-merge-go:focus-visible { background: rgb(126 232 255 / .14); outline: none; }
 .nge-smo-merge-status {
   margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
   letter-spacing: .06em; text-transform: uppercase; border: 1px solid rgb(196 228 255 / .25); color: rgb(196 228 255 / .85);
@@ -1472,9 +1580,12 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
 .nge-smo-merge-remove:hover, .nge-smo-merge-remove:focus-visible { background: rgb(255 90 90 / .14); outline: none; }
 /* A failed merge says why, under its row: the server's own words, wrapped.
    (Not a hover card: the list scrolls, and would clip one.) */
-.nge-smo-merge-row { flex-wrap: wrap; }
+.nge-smo-merge-row { display: block; }
+.nge-smo-merge-line { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; min-width: 0; }
+.nge-smo-merge-line .nge-smo-seg-id { flex: 0 1 auto; min-width: 0; }
+.nge-smo-merge-line > :not(.nge-smo-seg-id) { flex-shrink: 0; }
 .nge-smo-merge-why {
-  flex: 0 0 100%; box-sizing: border-box; margin: 1px 0 3px; padding-left: 23px;
+  box-sizing: border-box; margin: 1px 0 3px; padding-left: 23px;
   font-family: 'Inter', system-ui, sans-serif; font-size: 11px; line-height: 1.35; color: #ffb4b4;
   white-space: normal; overflow-wrap: anywhere; user-select: text;
 }

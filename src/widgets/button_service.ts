@@ -5,13 +5,15 @@ import {addPastedSegments, segmentLabels, segmentLabelsChanged, setPlaceCellLoad
 import {StatusMessage} from 'neuroglancer/status';
 import {cellAtCrosshair, supervoxelAtPlace} from '../util/crosshair_cell';
 import {getPcgInfo} from './pcg_service';
+import {makeNoteEditor} from 'neuroglancer/ui/nge_segment_notes';
+import {openCellHistory} from '../util/cell_history';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes, cellTypeLabel} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
-import {completeStatusesFor, CANT_COMPLETE, marksProofread} from '../sheet_sync';
-import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
+import {completeStatusesFor, CANT_COMPLETE, AXON_COMPLETE, marksProofread} from '../sheet_sync';
+import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer, labelAxonComplete} from './lightbulb_service';
 
 /** The name Pyr shows for a cell: its type, with its classification. */
 function cellLabel(status: CellStatus|null|undefined): string {
@@ -35,11 +37,23 @@ setPlaceCellLoader(async (group: any) => {
   const direct = place.length ? await supervoxelAtPlace(place) : null;
   if (mine !== placeLoad) return;
   if (direct) found = { position: place.slice(0, 3).map(Math.round) as [number, number, number], supervoxel: direct, root: direct === '0' ? null : await getRootFromSupervoxel(direct) };
-  for (let i = 0; !found && i < 30; ++i) {
-    await new Promise(r => setTimeout(r, 500));
-    if (mine !== placeLoad) return;  // a newer paste took over
-    const f = await cellAtCrosshair();
-    if (f.supervoxel) found = f;
+  // Otherwise the 2D view has to load that spot. In 3D only there was none,
+  // so nothing ever loaded and the paste did nothing (Ames 2026-10-24, MEC,
+  // whose stored segmentation can not be read directly). Open split screen
+  // for the look, and go back to 3D only after.
+  const viewer: any = (window as any).viewer;
+  const layoutOf = () => { try { const j = viewer?.layout?.toJSON?.(); return typeof j === 'string' ? j : (j?.type ?? ''); } catch { return ''; } };
+  const opened2D = !found && layoutOf() === '3d' && typeof (window as any).ngeToggle2D === 'function';
+  if (opened2D) (window as any).ngeToggle2D();
+  try {
+    for (let i = 0; !found && i < 30; ++i) {
+      await new Promise(r => setTimeout(r, 500));
+      if (mine !== placeLoad) return;  // a newer paste took over
+      const f = await cellAtCrosshair();
+      if (f.supervoxel) found = f;
+    }
+  } finally {
+    if (opened2D && layoutOf() !== '3d') (window as any).ngeToggle2D();
   }
   if (!found || !found.supervoxel) {
     StatusMessage.showTemporaryMessage('Nothing has loaded at that place yet. Look at the 2D view, then paste again.', 4000);
@@ -125,6 +139,7 @@ import {useHelpRequestStore, useProofreadingBackendStore, useProofreadingQueueSt
 import {getRootFromSupervoxel, getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
 import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
+import {isLiveHuntCell} from '../hunt';
 import {labSheetRowsFor, labSheetLines, labSheetSummary, type LabSheetRow} from '../util/lab_sheet';
 
 const br = () => document.createElement('br');
@@ -159,8 +174,10 @@ export class ButtonService {
     // cell a new ID, and an old one in the list kept looking fine. The old
     // lightbulb said so; this marks the button amber and the menu offers to
     // update it (Ames 2026-10-08).
+    // A Hunt cell made from a proofread cell's edits is an old ID on purpose: its
+    // current ID is the finished cell, so the Hunt's answers (docs/HUNT-FROM-EDITS.md).
     void isCurrentId(segmentIDString).then(current => {
-      if (current !== false) return;
+      if (current !== false || isLiveHuntCell(segmentIDString)) return;
       button.classList.add('nge-lb-outdated');
       button.title = 'This ID is out of date: the cell has been edited since. Click to update it.';
     });
@@ -515,7 +532,7 @@ export class ButtonService {
     });
     menu.appendChild(stale);
     void isCurrentId(segmentIDString).then(current => {
-      if (current !== false) return;
+      if (current !== false || isLiveHuntCell(segmentIDString)) return;
       stale.hidden = false;
       void currentIdsOf(segmentIDString).then(showCurrent);
     });
@@ -672,9 +689,12 @@ export class ButtonService {
       // Can't Complete: no proofread mark in CAVE (sheet_sync.ts); the claim
       // ends, counts as completed, and the sheet records it with the note.
       if (willBeComplete && plan?.row && !marksProofread(details.status)) {
-        statusLine.textContent = "Writing Can't Complete to the sheet…";
+        const ending = details.status || CANT_COMPLETE;
+        statusLine.textContent = `Writing ${ending} to the sheet…`;
+        // Axon complete (MEC) also gets its label (lightbulb_service).
+        if (ending === AXON_COMPLETE) void labelAxonComplete(localServerURL, plan?.cellRoot ?? segmentIDString);
         try {
-          statusLine.textContent = "Can't Complete, not marked proofread. " + await finishMenuCompletion(plan, details);
+          statusLine.textContent = `${ending}, not marked proofread. ` + await finishMenuCompletion(plan, details);
         } catch (e: any) {
           statusLine.textContent = e?.message || 'The sheet could not be updated.';
         }
@@ -991,6 +1011,32 @@ export class ButtonService {
     });
     colorSection.appendChild(resetColorBtn);
 
+    // ── Watch it grow (Nseraf, triage #194) ─────────────────────────────
+    // The cell's edits on a slider, shown in 3D. Proofreading datasets only:
+    // the history comes from the chunked graph.
+    const historySection = document.createElement('div');
+    historySection.classList.add('nge-lb-section');
+    const historyTitle = document.createElement('div');
+    historyTitle.classList.add('nge-lb-section-title');
+    historyTitle.textContent = 'History';
+    const historyBtn = document.createElement('button');
+    historyBtn.type = 'button';
+    historyBtn.classList.add('nge-lb-section-button', 'nge-lb-history-btn');
+    historyBtn.textContent = '▶ Watch it grow';
+    historyBtn.title = 'Step through every edit of this cell in the 3D view, with who made it and when. Has a play button for recordings.';
+    historyBtn.addEventListener('click', () => {
+      contextMenu.hide();
+      openCellHistory(segmentIDString);
+    });
+    historySection.append(historyTitle, historyBtn);
+    // Not on a running Hunt's cells, for players: the edits would show what the Hunt hides (Nseraf, report #267:
+    // "it *can* give away stuff added (mergers)"). Admins keep it.
+    const hasHistory = !!getPcgInfo() && !(isLiveHuntCell(segmentIDString) && !useProofreadingBackendStore().isAdmin);
+
+    // ── Your note (annkri, report 303) ──────────────────────────────────
+    const noteSection = makeNoteEditor(
+        parent.closest<HTMLElement>('.neuroglancer-segment-list-entry'), segmentIDString, () => contextMenu.hide());
+
     // ── Section 4: Claim Cell ────────────────────────────────────────────
     const claimSection = document.createElement('div');
     claimSection.classList.add('nge-lb-section');
@@ -1302,9 +1348,15 @@ export class ButtonService {
       exploreNote.classList.add('nge-lb-readonly-note');
       exploreNote.textContent = 'This dataset is here to look around. There is nothing to proofread, label or claim in it.';
       exploreSection.append(exploreTitle, exploreNote);
-      menu.append(br(), exploreSection, br(), colorSection, br());
+      menu.append(br(), exploreSection, br());
+      if (noteSection) menu.append(noteSection, br());
+      menu.append(colorSection, br());
     } else {
-      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection, colorSection, br(), claimSection, br(), helpSection, br());
+      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection);
+      if (noteSection) menu.append(noteSection, br());
+      menu.append(colorSection, br());
+      if (hasHistory) menu.append(historySection, br());
+      menu.append(claimSection, br(), helpSection, br());
     }
     return contextMenu;
   }

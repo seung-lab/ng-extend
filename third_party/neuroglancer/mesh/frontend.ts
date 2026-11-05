@@ -16,7 +16,8 @@
 
 import {NgeShell} from 'neuroglancer/mesh/nge_hover';
 import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine} from 'neuroglancer/mesh/nge_tint';
-import {getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
+import {bindNgeLanternMask, ngeLanternLights, getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
+import {getNgeMeshEdge} from 'neuroglancer/mesh/nge_edge';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
 import {VisibleLayerInfo} from 'neuroglancer/layer';
@@ -170,6 +171,11 @@ const ngeFineMat = mat4.create();
 // EyeWire II Lantern mode: the cell is lit around where you are, and left in
 // shadow elsewhere (mesh/nge_lantern.ts).
 const ngeLanternMat = mat4.create();
+// Its "Clicked branch": a map of the branch that is lit.
+const ngeLanternMaskSymbol = Symbol('ngeLanternMask');
+const ngeLanternMaskMat = mat4.create();
+// The edge of the dataset in the Hunt (mesh/nge_edge.ts): model to nanometres.
+const ngeEdgeMat = mat4.create();
 
 // ── EyeWire II hover effects (ngeHoverStyle, wolfryder101 #181) ─────────────
 /** How far behind the cell its outline and halo shells sit, in clip space
@@ -346,6 +352,39 @@ function ngePulseFor(gl: GL, shader: ShaderProgram, key: string, hovered: boolea
 }
 const ngeLanternPos = new Float32Array(3);
 
+// ── EyeWire II scythe (src/util/scythe.ts, Ames 2026-10-25) ────────────────
+// A cell clicked with the scythe bursts into particles (Ames 2026-11-01: "the
+// pieces get really large", "explode into particles and turn dark after a
+// couple seconds"): for that segment its mesh is drawn as points, one per
+// vertex, a fixed few pixels across however near the camera they drift. They
+// fly out from the click, slowing as they go, and darken to nothing. All in
+// the shader; nothing in the data changes. The scythe hides the cell once it
+// is gone.
+const ngeCrumbles = new Map<string, {t0: number, ms: number, center: Float32Array}>();
+/** Start crumbling the cell with this key (`low,high`, getObjectKey). It
+ *  stays crumbled (gone) until ngeCrumbleClear. */
+export function ngeCrumble(key: string, ms: number) {
+  ngeCrumbles.set(key, {t0: performance.now(), ms, center: ngePulseCenter.slice()});
+}
+export function ngeCrumbleClear(key: string) {
+  ngeCrumbles.delete(key);
+}
+/** The cell being drawn is bursting: draw points, not triangles. */
+let ngeCrumbleDrawPoints = false;
+function ngeCrumbleFor(gl: GL, shader: ShaderProgram, key: string) {
+  const c = ngeCrumbles.size ? ngeCrumbles.get(key) : undefined;
+  ngeCrumbleDrawPoints = c !== undefined;
+  if (c === undefined) {
+    gl.uniform4f(shader.uniform('uNgeCrumble'), 0, 1, 0, 0);
+    return;
+  }
+  const t = Math.min(1, (performance.now() - c.t0) / c.ms);
+  if (t < 1) ngePulseRunning = true;
+  gl.uniform3fv(shader.uniform('uNgeCrumbleCenter'), c.center);
+  // They fly a few percent of the view, in nm.
+  gl.uniform4f(shader.uniform('uNgeCrumble'), Math.max(1e-4, t), 1, ngePulseViewNm * 0.035, 0);
+}
+
 export class MeshShaderManager {
   private tempLightVec = new Float32Array(4);
   private vertexPositionHandler = vertexPositionHandlers[this.vertexPositionFormat];
@@ -356,6 +395,7 @@ export class MeshShaderManager {
   beginLayer(
       gl: GL, shader: ShaderProgram, renderContext: PerspectiveViewRenderContext,
       displayState: MeshDisplayState) {
+    ngeCrumbleDrawPoints = false;
     let {lightDirection, ambientLighting, directionalLighting} = renderContext;
     let lightVec = <vec3>this.tempLightVec;
     vec3.scale(lightVec, lightDirection, directionalLighting);
@@ -422,6 +462,8 @@ export class MeshShaderManager {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 1);
       const glow = tint.glow;
       gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
+      const dim = tint.dim;
+      gl.uniform4f(shader.uniform('uNgeTintDim'), dim?.[0] ?? 0, dim?.[1] ?? 0, dim?.[2] ?? 0, dim ? 1 : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
     }
@@ -445,7 +487,14 @@ export class MeshShaderManager {
           shader.uniform('uNgeLanternModel'), false, ngeLanternNmFromModel(ngeLanternMat, lantern, modelMat));
       gl.uniform4f(
           shader.uniform('uNgeLantern'), ngeLanternPos[0], ngeLanternPos[1], ngeLanternPos[2], lantern.radiusNm);
-      gl.uniform3f(shader.uniform('uNgeLanternLight'), 1, lantern.intensity, lantern.shadow);
+      const mask = lantern.mask ?? null;
+      if (mask !== null) {
+        bindNgeLanternMask(gl, shader.textureUnit(ngeLanternMaskSymbol), mask);
+        gl.uniformMatrix4fv(
+            shader.uniform('uNgeLanternMaskMatrix'), false, mat4.multiply(ngeLanternMaskMat, mask.gridFromGlobal, modelMat));
+      }
+      // x: 1 lights round the lantern, 2 lights the mapped branch.
+      gl.uniform3f(shader.uniform('uNgeLanternLight'), mask !== null ? 2 : 1, lantern.intensity, lantern.shadow);
       const second = getNgeLanternSecond();
       if (second !== null && second.radiusNm > 0) {
         gl.uniform4f(shader.uniform('uNgeLantern2'), second.posNm[0], second.posNm[1], second.posNm[2], second.radiusNm);
@@ -455,6 +504,16 @@ export class MeshShaderManager {
       }
     } else {
       gl.uniform3f(shader.uniform('uNgeLanternLight'), 0, 1, 1);
+    }
+    // The edge of the dataset (the Hunt): only where colour is drawn.
+    const edge = renderContext.emitColor ? getNgeMeshEdge() : null;
+    if (edge !== null) {
+      gl.uniformMatrix4fv(shader.uniform('uNgeEdgeModel'), false, ngeLanternNmFromModel(ngeEdgeMat, edge, modelMat));
+      gl.uniform4f(shader.uniform('uNgeEdgeLo'), edge.lo[0], edge.lo[1], edge.lo[2], edge.marginNm);
+      gl.uniform4f(shader.uniform('uNgeEdgeHi'), edge.hi[0], edge.hi[1], edge.hi[2], 1);
+      gl.uniform3f(shader.uniform('uNgeEdgeColor'), edge.color[0], edge.color[1], edge.color[2]);
+    } else {
+      gl.uniform4f(shader.uniform('uNgeEdgeHi'), 0, 0, 0, 0);
     }
   }
 
@@ -469,6 +528,7 @@ export class MeshShaderManager {
     const {indices} = meshData;
     fragmentChunk.indexBuffer.bind();
     gl.drawElements(
+        ngeCrumbleDrawPoints ? WebGL2RenderingContext.POINTS :
         meshData.strips ? WebGL2RenderingContext.TRIANGLE_STRIP : WebGL2RenderingContext.TRIANGLES,
         indexEnd - indexBegin,
         indices.BYTES_PER_ELEMENT === 2 ? WebGL2RenderingContext.UNSIGNED_SHORT :
@@ -526,6 +586,18 @@ export class MeshShaderManager {
         builder.addUniform('highp vec3', 'uNgePulseScale');
         builder.addUniform('highp vec4', 'uNgePulseColor');
         builder.addUniform('highp vec4', 'uNgeRim');
+        // Scythe burst: x how far along (0 off, 1 gone), z how far the
+        // particles fly, nm. The centre is where the scythe clicked.
+        builder.addUniform('highp vec4', 'uNgeCrumble');
+        builder.addUniform('highp vec3', 'uNgeCrumbleCenter');
+        const crumbleHash = `
+highp float ngeCrumbleHash(highp vec3 p3) {
+  p3 = fract(p3 * 0.1031);
+  p3 += dot(p3, p3.zyx + 31.32);
+  return fract((p3.x + p3.y) * p3.z);
+}
+`;
+        builder.addVertexCode(crumbleHash);
         builder.addVarying('highp vec4', 'vNgeHolo');
         builder.addVarying('highp vec3', 'vNgeHoloPos');
         builder.addVarying('highp vec3', 'vNgeHoloN');
@@ -549,6 +621,8 @@ highp float ngeHoloDot(highp vec2 p) {
 `);
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
+        // Dim checked: the Checked colour (rgb) and on (w).
+        builder.addUniform('highp vec4', 'uNgeTintDim');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
         builder.addUniform('highp mat4', 'uNgeFineMatrix');
         builder.addUniform('highp float', 'uNgeFineOn');
@@ -558,9 +632,19 @@ highp float ngeHoloDot(highp vec2 p) {
         builder.addUniform('highp mat4', 'uNgeLanternModel');
         builder.addUniform('highp vec4', 'uNgeLantern');
         builder.addUniform('highp vec3', 'uNgeLanternLight');
+        builder.addUniform('highp mat4', 'uNgeLanternMaskMatrix');
+        // Clicked branch: 1 on the clicked cell, 0 on any other.
+        builder.addUniform('highp float', 'uNgeLanternMine');
+        builder.addTextureSampler('sampler3D', 'uNgeLanternMask', ngeLanternMaskSymbol);
         // A second, coloured light (the reaper's red lantern): xyz nm, w reach.
         builder.addUniform('highp vec4', 'uNgeLantern2');
         builder.addUniform('highp vec3', 'uNgeLantern2Color');
+        // The edge of the dataset: model to nanometres; the volume's low corner
+        // (xyz, nm) and the margin (w, nm); its high corner (xyz) and on (w).
+        builder.addUniform('highp mat4', 'uNgeEdgeModel');
+        builder.addUniform('highp vec4', 'uNgeEdgeLo');
+        builder.addUniform('highp vec4', 'uNgeEdgeHi');
+        builder.addUniform('highp vec3', 'uNgeEdgeColor');
         if (silhouetteRenderingEnabled) {
           builder.addUniform('highp float', 'uSilhouettePower');
         }
@@ -645,7 +729,14 @@ if (uNgeTintOn > 0.5) {
       // 0.95 + 0.35 a large mark (a whole arbor from Beyond) burned out to a
       // pale blank, most of all in yellow (Ames 2026-10-10).
       highp float tintLight = mix(lightingFactor, min(1.0, 0.58 + 0.44 * lightingFactor), isGlow);
-      vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
+      // Dim checked: a Checked mark (its newest, lighter shade too) is drawn
+      // as a dim grey of the cell, so what is left to check stands out.
+      if (uNgeTintDim.w > 0.5 && distance(tintRgb, uNgeTintDim.rgb) < 0.16) {
+        highp float cellGrey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
+        vColor.rgb = mix(vColor.rgb, vec3(cellGrey) * 0.32, min(1.0, tint.a * 1.15));
+      } else {
+        vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
+      }
     }
   }
 }
@@ -656,10 +747,27 @@ if (uNgeFineOn > 0.5) {
     if (fineTint.a > 0.5) vColor.rgb = lightingFactor * fineTint.rgb;
   }
 }
+if (uNgeEdgeHi.w > 0.5) {
+  // EyeWire II Hunt: where the cell runs out of the data, within the margin of
+  // the volume's sides, it takes the edge colour, lit a little from within so
+  // it shows on the far side too (Ames 2026-10-23: "highlight the 3D mesh").
+  highp vec3 edgeAt = (uNgeEdgeModel * vec4(vertexPosition, 1.0)).xyz;
+  highp vec3 edgeFromLo = edgeAt - uNgeEdgeLo.xyz;
+  highp vec3 edgeFromHi = uNgeEdgeHi.xyz - edgeAt;
+  highp float edgeDist = min(min(min(edgeFromLo.x, edgeFromLo.y), edgeFromLo.z), min(min(edgeFromHi.x, edgeFromHi.y), edgeFromHi.z));
+  highp float edgeAmount = 1.0 - smoothstep(0.95 * uNgeEdgeLo.w, uNgeEdgeLo.w, edgeDist);
+  vColor.rgb = mix(vColor.rgb, min(uNgeEdgeColor * (0.45 + 0.6 * lightingFactor), vec3(1.0)) * uColor.a, edgeAmount);
+}
 if (uNgeLanternLight.x > 0.5) {
   highp vec3 lanternFrom = (uNgeLanternModel * vec4(vertexPosition, 1.0)).xyz - uNgeLantern.xyz;
   // Fully lit inside four fifths of the reach, fading out just past it.
   highp float lit = 1.0 - smoothstep(0.8 * uNgeLantern.w, 1.2 * uNgeLantern.w, length(lanternFrom));
+  if (uNgeLanternLight.x > 1.5) {
+    // Clicked branch: only the mapped branch, as far as the light has spread.
+    highp vec3 maskCoord = (uNgeLanternMaskMatrix * vec4(vertexPosition, 1.0)).xyz;
+    highp float inMap = all(greaterThanEqual(maskCoord, vec3(0.0))) && all(lessThanEqual(maskCoord, vec3(1.0))) ? 1.0 : 0.0;
+    lit *= uNgeLanternMine * inMap * smoothstep(0.15, 0.6, texture(uNgeLanternMask, maskCoord).r);
+  }
   // In shadow a cell keeps its shape and loses its colour.
   highp float grey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
   vColor.rgb = mix(vec3(grey) * uNgeLanternLight.z, min(vColor.rgb * uNgeLanternLight.y, vec3(1.0)), lit);
@@ -690,9 +798,29 @@ if (uNgeShell.w > 0.5) {
   gl_Position.z += uNgeShell.y * gl_Position.w;
   vColor = uNgeShellColor;
 }
+if (uNgeCrumble.x > 0.0) {
+  // EyeWire II scythe: one particle per vertex. Each starts a moment apart and
+  // flies out from the click, slowing as it goes, then darkens away.
+  highp vec3 crumbleAt = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale;
+  highp float crumbleH = ngeCrumbleHash(floor(crumbleAt));
+  highp float crumbleWait = crumbleH * 0.2;
+  highp float crumbleT = clamp((uNgeCrumble.x - crumbleWait) / (1.0 - crumbleWait), 0.0, 1.0);
+  highp vec3 crumbleFrom = crumbleAt - uNgeCrumbleCenter * uNgePulseScale;
+  highp vec3 crumbleJitter = vec3(crumbleH, fract(crumbleH * 91.7), fract(crumbleH * 47.3)) - 0.5;
+  highp vec3 crumbleDir = normalize(crumbleFrom / max(length(crumbleFrom), 1.0) + 1.2 * crumbleJitter + vec3(1e-3));
+  highp float crumbleEase = 1.0 - pow(1.0 - crumbleT, 3.0);
+  highp vec3 crumbleMove = crumbleDir * crumbleEase * uNgeCrumble.z * (0.3 + 1.2 * fract(crumbleH * 13.1));
+  gl_Position += uModelViewProjection * vec4(inverse(mat3(uNgeModel)) * (crumbleMove / uNgePulseScale), 0.0);
+  gl_PointSize = 1.5 + 1.5 * fract(crumbleH * 7.3);
+  vColor.rgb *= 1.0 - smoothstep(0.4, 1.0, crumbleT);
+  // A cell has far more vertices than a burst wants particles, and they thin
+  // out as they go.
+  if (fract(crumbleH * 29.3) < 0.65 + 0.3 * crumbleT) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+}
 `;
         builder.setVertexMain(vertexMain);
         builder.setFragmentMain(`
+if (uNgeCrumble.x > 0.0 && (uNgeCrumble.x >= 1.0 || length(gl_PointCoord - 0.5) > 0.5)) discard;
 if (vNgeHolo.w > 0.5) {
   if (vNgeHolo.z > 0.5) {
     // Metallic (Ames 2026-10-21: "this does not look like a hologram, but it
@@ -804,6 +932,7 @@ export class MeshLayer extends
         renderContext.emitPickID ? renderContext.pickIDs : undefined,
         (objectId, color, pickIndex) => {
           const key = getObjectKey(objectId);
+          if (renderContext.emitColor) gl.uniform1f(shader.uniform('uNgeLanternMine'), ngeLanternLights(key) ? 1 : 0);
           const manifestChunk = manifestChunks.get(key);
           ++totalChunks;
           if (manifestChunk === undefined) return;
@@ -820,9 +949,10 @@ export class MeshLayer extends
               }
             }
           };
+          ngeCrumbleFor(gl, shader, key);
           // EyeWire II: the outline and halo pass draws only the hovered cell's shells.
           if (shells !== null) {
-            if (!hovered) return;
+            if (!hovered || ngeCrumbleDrawPoints) return;
             for (const shell of shells) {
               meshShaderManager.setShell(gl, shader, shell.widthPx, ngeShellColorFor(color!, shell.alpha));
               drawFragments();
@@ -1069,6 +1199,7 @@ export class MultiscaleMeshLayer extends
         renderContext.emitPickID ? renderContext.pickIDs : undefined,
         (objectId, color, pickIndex) => {
           const key = getObjectKey(objectId);
+          if (renderContext.emitColor) gl.uniform1f(shader.uniform('uNgeLanternMine'), ngeLanternLights(key) ? 1 : 0);
           const manifestChunk = chunks.get(key);
           ++totalManifestChunks;
           if (manifestChunk === undefined) return;
@@ -1085,6 +1216,8 @@ export class MultiscaleMeshLayer extends
           const hovered = displayState.hoverHighlight.value &&
               displayState.segmentSelectionState.isSelected(objectId);
           if (shells !== null && !hovered) return;
+          ngeCrumbleFor(gl, shader, key);
+          if (shells !== null && ngeCrumbleDrawPoints) return;
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
             const pulsing = ngePulseFor(gl, shader, key, hovered);

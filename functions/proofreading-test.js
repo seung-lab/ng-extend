@@ -260,6 +260,9 @@ async function putBack(test, checks, cave, assertLease, budgetMs = Infinity) {
 /** How long one start may spend putting the cell back before it hands the
  *  rest to the next call (the function itself stops at 120 s). */
 const RESET_BUDGET_MS = 75000;
+/** How long a submit may spend putting the cell back before the score is
+ *  recorded: reading the cell and the grants take the rest of the 120 s. */
+const SUBMIT_BUDGET_MS = 45000;
 
 /** Add the player to each CAVE group the test names. 422 means already a
  *  member, which is as good. */
@@ -507,12 +510,17 @@ async function handle({action, args, who, me, io}) {
       endpoints = {given: annotations, hit: ends.results.filter(r => r.ok).length, stray: ends.stray};
       if (decision.passed) granted = {pilot: !!full.grant_pilot, groups: await grantGroups(full, who, io)};
     }
-    // The cell goes back for the next player, whatever happened.
+    // The cell goes back for the next player, whatever happened, within a
+    // budget: undoing a long history ran past the function's 120 s, the call
+    // was cut off and the score was never recorded (Ames 2026-10-29: "I
+    // submitted but no score?"). What is left comes off at the next start,
+    // which puts the cell back from its baseline anyway.
     let clean = false, error = null;
     try {
-      const put = await putBack(full, checks, cave, lease);
+      const put = await putBack(full, checks, cave, lease, io.submitBudgetMs ?? SUBMIT_BUDGET_MS);
       clean = put.clean;
-      if (!clean) error = 'Not at its start after the undo: ' + put.wrong.join('; ');
+      if (put.partial) error = `Put back in part: ${put.left} edits left for the next start`;
+      else if (!clean) error = 'Not at its start after the undo: ' + put.wrong.join('; ');
     } catch (e) { error = String(e && e.message).slice(0, 300); }
     const recorded = await rpc('record', decision
       ? {id, session, outcome: decision.passed ? 'pass' : 'fail', found: decision.found, errors: decision.errors, damaged: decision.damaged,
@@ -529,4 +537,4 @@ async function handle({action, args, who, me, io}) {
   fail(400, 'Unknown test action');
 }
 
-module.exports = {handle, keepUnfinished, listTries, oneTry, adminNote, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoPass, grantGroups, RESET_BUDGET_MS, EXPECT};
+module.exports = {handle, keepUnfinished, listTries, oneTry, adminNote, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoPass, grantGroups, RESET_BUDGET_MS, SUBMIT_BUDGET_MS, EXPECT};

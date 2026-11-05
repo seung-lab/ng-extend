@@ -23,6 +23,19 @@ const RETINA_HOWTO: string[] = [
   'Questions or problems? Use the <b>(!)</b> button in the top bar.',
 ];
 
+/** MEC's steps in the Cell Library (Ames 2026-10-24, from the lab's sheet).
+ *  The start link and the soma coordinates are the Cell Library's job here,
+ *  so those steps of the sheet are left out. Admins can edit these in the game
+ *  (howto.mec). */
+const MEC_HOWTO: string[] = [
+  // Shortened (Ames 2026-10-28): only the AIS is marked now, and only the axon is proofread.
+  `Click <b>Available</b>, choose a cell and <b>Claim</b> it.`,
+  `Open <b>Marks</b> under your cell, pick <b>AIS</b> and press <b>Go to the lab's AIS point</b>, where the axon leaves the cell body. If it is off, move the crosshairs there, then press <b>Confirm AIS here</b>.`,
+  `Proofread the <b>axon only</b>: follow it from the AIS to every end. Skip spines and the rest of the cell. <b>Do not merge mitochondria.</b>`,
+  `When the axon is done, <b>Complete</b> it (here, or with &Delta; next to its segment ID) and choose <b>Axon complete</b>.`,
+  `Example proofread cells: <a href="https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5179547678932992" target="_blank" rel="noopener">Stellate &amp; Pyramidal ↗</a>`,
+];
+
 export interface DatasetCaveConfig {
   caveServer: string;
   datastack: string;
@@ -78,6 +91,10 @@ export interface DatasetCaveConfig {
    *  (server-stamped user, cell ID, point) and read back from there. Each row
    *  keeps its point, so the log can be replayed into CAVE once it exists. */
   annotationLog?: 'edit_log';
+  /** No segment-ID sheet, but the Cell Library tasks are still the list a
+   *  completion is matched against (Sandbox, Ames 2026-11-01: its cells come
+   *  a batch at a time from a list of soma positions). */
+  cellsFromTasks?: boolean;
   /** Proofreading instructions for this dataset, linked from the Cell
    *  Library header (MEC only for now, Ames 2026-09-29). */
   instructionsUrl?: string;
@@ -164,7 +181,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
     skipStateUrlIfTutorialActive: true,
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
   pinky_training3: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -175,7 +192,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
     defaultSegments:  ['648518346355727683'],
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
   // Same pinky100 volume as the other pinky rows, different PCG table. Without
   // this key `getDatasetCaveConfig('pinky_training6')` matched nothing and fell
@@ -194,7 +211,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // Taken from a working pinky_training6 state, so these resolve in THIS
     // table's graph. Root ids are per PCG table and do not carry across.
     defaultSegments:  ['648518346354708544', '648518346355322263'],
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
   pinky_nf_v2: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -207,7 +224,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
     skipStateUrlIfTutorialActive: true,
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
 
   // ── Minnie (MICrONS) ────────────────────────────────────────────────────
@@ -237,6 +254,9 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // Ames's labelled view (2026-09-29).
     cellTypesUrl:     'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718150469386240',
     instructionsUrl:  'https://docs.google.com/spreadsheets/d/1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw/edit?gid=1005852930#gid=1005852930',
+    howToSteps:       MEC_HOWTO,
+    // v2 (Ames 2026-10-28): the short steps; the long edit saved as howto.mec stays behind.
+    howToKey:         'howto.mec.v2',
     // Root ids and camera lifted from the team proofreading state
     // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
     defaultSegments:  ['720575947322423718', '720575947401560895', '720575947322485926'],

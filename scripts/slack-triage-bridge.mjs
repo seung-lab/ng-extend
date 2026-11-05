@@ -513,7 +513,11 @@ const BOARD_ASK = 'Suggest:';
 async function fileNewReports() {
   const since = encodeURIComponent(new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString());
   const [issuesRes, triageRes] = await Promise.all([
-    sb(`site_issues?created_at=gte.${since}&select=id,message,created_at&order=created_at.asc&limit=200`),
+    // Dataset access requests are answered in Admin Hub, Access requests,
+    // with their own bell: not a card (Ames 2026-10-29: "take them out of
+    // triage"). Nor an invite someone used to get in: they are already in
+    // (Ames 2026-11-04: "How about no triage card for those").
+    sb(`site_issues?created_at=gte.${since}&or=${encodeURIComponent('(category.is.null,and(category.neq.Dataset access,category.neq.Invite used))')}&select=id,message,created_at&order=created_at.asc&limit=200`),
     sb(`feedback_triage?source=eq.site_issue&created_at=gte.${since}&select=source_id`),
   ]);
   if (!issuesRes.ok || !triageRes.ok) { console.warn(`[bridge] new reports not filed (${issuesRes.status}/${triageRes.status})`); return 0; }
@@ -547,7 +551,7 @@ async function fileNewReports() {
  *  feed files a 🗂 title under its Triage tab). Once per card. */
 async function notifyAdminsOfReport(row) {
   const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
-  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" A new report is on the triage board. Click this note to open it. Press Suggest a fix there if you want Claude to look.`;
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" A new report is on the triage board. Click this note to open it. Press Suggest a fix there if you want Claude to look.\n\n#nge-triage-report=${row.id}`;
   let sent = 0;
   for (const id of await adminUserIds()) {
     if (await notifyUser(id, '🗂️ Feedback triage: new report', body)) sent++;
@@ -637,7 +641,7 @@ async function postProposals() {
  *  its card is posted, so it never comes round again. */
 async function notifyAdminsOfProposal(row) {
   const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
-  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it on the triage board (click this note), or in the Slack thread.`;
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it on the triage board (click this note), or in the Slack thread.\n\n#nge-triage-report=${row.id}`;
   let sent = 0;
   for (const id of await adminUserIds()) {
     if (await notifyUser(id, '🗂️ Feedback triage: new suggestion', body)) sent++;
@@ -1221,6 +1225,19 @@ async function collectNotes() {
   return kept;
 }
 
+/** Tags that wait more than a day (scripts/tag-nudge.mjs). */
+async function nudgeTags() {
+  const { nudgeWaitingTags } = await import('./tag-nudge.mjs');
+  const get = async path => { const r = await sb(path); if (!r.ok) throw new Error(`${path.split('?')[0]} ${r.status}`); return r.json(); };
+  const sent = await nudgeWaitingTags({
+    get, channel: CHANNEL,
+    post: async (table, rows) => { const r = await sb(table, { method: 'POST', body: JSON.stringify(rows) }); if (!r.ok) throw new Error(`${table} ${r.status}`); },
+    slack: (channel, threadTs, text) => slack('chat.postMessage', { channel, text, unfurl_links: false, ...(threadTs ? { thread_ts: threadTs } : {}) }),
+  });
+  if (sent) console.log(`[bridge] tag reminders: ${sent} sent`);
+  return sent;
+}
+
 /** During a quiet period, one summary to Amy at QUIET_REMIND_AT. */
 async function quietReminder() {
   const at = Date.parse(QUIET_REMIND_AT), now = Date.now();
@@ -1265,6 +1282,7 @@ async function announceDone() {
   const rows = await res.json();
   let announced = 0;
   for (const row of rows) {
+    // Shipped still tags the approvers (Ames 2026-11-04: "Change shipped tag is ok").
     const tags = APPROVERS.map(id => `<@${id}>`).join(' ');
     const note = (row.result_note || '').trim();
     const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ${tags} ✓`);
@@ -1346,6 +1364,8 @@ let LOOP = false;
   if ((process.env.BRIDGE_PASS || '1') === '1') {
     await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
     if (LOOP) await quietReminder().catch(e => console.warn('[bridge] quiet reminder failed:', e.message));
+    // Tags not answered in a day: a Slack ping each weekday until they are (tag-nudge.mjs, Ames 2026-11-04).
+    await nudgeTags().catch(e => console.warn('[bridge] tag reminders failed:', e.message));
   }
   console.log(`[bridge] done: ${posted} posted, ${halted} stopped, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);
 })().catch(e => { console.error('[bridge] fatal:', e.message); process.exit(1); });

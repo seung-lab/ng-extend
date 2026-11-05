@@ -23,7 +23,8 @@ import thumbManc from '../static/images/datasets/manc.jpg';
 import thumbHemibrain from '../static/images/datasets/hemibrain.jpg';
 import thumbMcns from '../static/images/datasets/mcns.jpg';
 import thumbMaol from '../static/images/datasets/maol.jpg';
-import { useLayersStore, useUserPreferencesStore } from './store';
+import { useLayersStore, useUserPreferencesStore, useProofreadingBackendStore } from './store';
+import { StatusMessage } from 'neuroglancer/status';
 import { datasetAccess } from './util/dataset_access';
 import { getDatasetCaveConfig, cellTypesForDataset, cellTypeLabel } from './config';
 export { cellTypeLabel };
@@ -34,6 +35,10 @@ export interface DatasetEntry {
   label: string;
   /** Compact name for inline UI (chat chips, badges) where `label` is too long. */
   shortLabel: string;
+  /** Production levels (Ames 2026-10-28): the retina is Level 1, earned with
+   *  edit access; MEC is Level 2, asked for once Level 1 is unlocked. Shown on
+   *  the dataset's card. */
+  level?: number;
   /** Shortest name, for the top bar's "Data:" button. */
   abbrev: string;
   /** Organism the volume comes from; drives the species icon. */
@@ -82,6 +87,14 @@ export interface DatasetEntry {
    *  long stretches (502, taking the segmentation service down for a minute)
    *  and it has no L2 cache, 2026-10-02. Remove the line when that is fixed. */
   highlightOff?: string;
+  /** Highlight opens here, but never asks the server to trace: no paths and
+   *  no branch map, only marks that need no server (MEC's lab marks, Ames
+   *  2026-10-24). The text says why, in the box. */
+  highlightNoTrace?: string;
+  /** The dataset has cells to claim in the Cell Library, so its card in the
+   *  switcher offers Available cells and My cells (2026-10-23). Set it when a
+   *  dataset gets proofreading tasks; FlyWire production has none yet. */
+  cellTasks?: boolean;
   layers: any[];
 }
 
@@ -124,8 +137,10 @@ export function isDatasetShown(ds: DatasetEntry): boolean {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    level: 1,
     origin: 'Princeton',
     section: 'production',
+    cellTasks: true,
     caveDataset: 'stroeh-mouse-retina',
     thumbnail: thumbRetina,
     label: 'EyeWire II: Retina',
@@ -154,6 +169,7 @@ export const DATASETS: DatasetEntry[] = [
     id: 'pinky_sandbox',
     origin: 'MICrONS Consortium',
     section: 'sandbox',
+    cellTasks: true,
     caveDataset: 'pinky100',
     thumbnail: thumbMicrons,
     label: 'Pinky Sandbox',
@@ -529,9 +545,13 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    level: 2,
     origin: 'Princeton',
     section: 'production',
-    highlightOff: 'Highlight is not available on this dataset yet: its server cannot trace paths along a cell.',
+    cellTasks: true,
+    // Highlight's lab marks need no server; tracing stays off, for the
+    // reason highlightOff gives (2026-10-02).
+    highlightNoTrace: "MEC's server can't trace along a cell yet, so here marks are spots, not stretches.",
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',
@@ -730,7 +750,24 @@ export function datasetSpeciesIcon(name: string | undefined | null): string {
  * Returns true on success. Caller is responsible for any post-switch action
  * (e.g. navigating to a segment) — wait one tick before doing so.
  */
+/** Retina, 2D EM included, opens once a player has edit access, earned with
+ *  the edit test (Ames 2026-10-29, report 304: "I don't think we should take
+ *  them even to retina 2d EM until they have passed the edit test"). While
+ *  CAVE has not answered, nobody is held back. The lock is in the game: the EM
+ *  files themselves are public. */
+export function datasetLocked(ds: DatasetEntry | undefined): boolean {
+  if (!ds || ds.id !== 'stroeh_mouse_retina') return false;
+  const access = datasetAccess(ds.caveDataset);
+  if (access === 'edit' || access === 'unknown') return false;
+  try { if (useProofreadingBackendStore().isAdmin) return false; } catch { /* store not ready */ }
+  return true;
+}
+
 export async function switchToDataset(ds: DatasetEntry, opts: {forJump?: boolean} = {}): Promise<boolean> {
+  if (datasetLocked(ds)) {
+    StatusMessage.showTemporaryMessage('Retina opens once you unlock Level 1: send your edits with Ask for Edit Access in the menu.', 6000);
+    return false;
+  }
   try {
     const layerStore = useLayersStore();
     // Offer the player's autosaved view of the new dataset once it is up,

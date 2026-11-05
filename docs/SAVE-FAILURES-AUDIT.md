@@ -19,11 +19,20 @@ answer, and what changed.
 
 ## Limits
 
-- A split or merge is only counted by the server within 15 minutes of the
-  edit (`MAX_OPERATION_AGE_MS` in functions/activity-policy.js). A retry later
-  than that is refused and dropped, so an outage longer than 15 minutes still
-  loses the credit for its graph edits. The waiting list stops retrying a row
-  the server refuses for good (a 4xx), so it never loops.
+- A split or merge reported more than 15 minutes after the edit used to be
+  refused (`MAX_OPERATION_AGE_MS` in functions/activity-policy.js), so an
+  outage longer than that lost the credit for its graph edits. Since
+  2026-10-24 (Ames: "we should still count edits even if there is an
+  outage") the server counts the player's own split or merge up to 3 days
+  old (`LATE_OPERATION_AGE_MS`), after the same graph server check (it
+  exists, succeeded, is this player's). Such rows carry `metadata.late`,
+  set by the server only, so they can be audited. The browser keeps a
+  waiting save for 3 days too, then lets it go.
+- The trade-off: a player could report their own edits made in another tool
+  in the last 3 days. They are still real edits by that player on a Pyr
+  dataset, and the late mark shows them.
+- A late edit lands in the day and week it was recorded, not the day it
+  was made.
 - A split or merge without an operation id (the old visible segment fallback)
   is not queued: the server has no key to dedupe it on.
 - The waiting list belongs to one player in one browser; rows saved by one
@@ -31,9 +40,6 @@ answer, and what changed.
 
 ## Follow ups
 
-- Let the server accept a queued graph edit older than 15 minutes when it was
-  first reported in time (needs a server change and care, it is the
-  leaderboard's anti-cheat rule).
 - The Cell Library sheet write on release could join a waiting list too.
 
 ## How it was checked

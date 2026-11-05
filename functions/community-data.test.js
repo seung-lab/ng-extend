@@ -118,6 +118,8 @@ test('chat reactions are your own, from the offered set, and removable only by y
  const p=plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'\u{1F525}',user_id:b,name:'Admin'});
  assert.equal(p.body.user_id,a);assert.equal(p.body.name,'Player');assert.equal(p.body.message_id,'33333333-3333-4333-8333-333333333333');
  assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'<script>'}),/Unsupported reaction/);
+ assert.equal(plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:':pyr-gem:'}).body.emoji,':pyr-gem:');
+ assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:':pyr-gem'}),/Unsupported reaction/);
  assert.throws(()=>plan('chat_reactions','POST','',{message_id:42,emoji:'\u{1F525}'}),/Unknown message/);
  assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'\u{1F525}'},anon),/Sign in/);
  assert.throws(()=>plan('chat_reactions','PATCH','id=eq.1',{emoji:'\u{1F525}'}),/cannot be edited/);
@@ -238,4 +240,18 @@ test('site texts: anyone reads, only admins save or delete, by key, stamped with
  assert.throws(()=>plan('site_texts','DELETE','',undefined,admin),/key is required/);
  assert.equal(plan('site_texts','DELETE','key=eq.howto.retina',undefined,admin).method,'DELETE');
  assert.throws(()=>plan('site_texts','POST','on_conflict=updated_by',body,admin),/conflict target/);
+});
+
+test('tutorial step timings: players add their own, admins read', () => {
+  const row = {tutorial: 13, step: 0, box: 'Can you finish this cell?', item: 'abc', seconds: 42, left_by: 'next', help: 1, build: 'deadbee', run: 'r1', user_id: b};
+  const p = plan('tutorial_step_events', 'POST', '', [row]);
+  assert.equal(p.body[0].user_id, a);
+  assert.equal(p.body[0].seconds, 42);
+  assert.throws(() => plan('tutorial_step_events', 'POST', '', [{...row, left_by: 'teleport'}]), /left_by/);
+  assert.throws(() => plan('tutorial_step_events', 'POST', '', [{...row, seconds: 99999}]), /seconds/);
+  assert.throws(() => plan('tutorial_step_events', 'PATCH', 'id=eq.1', {seconds: 1}), /append only/);
+  assert.throws(() => plan('tutorial_step_events', 'GET', 'select=*'), /Admins only/);
+  assert.throws(() => plan('tutorial_step_stats', 'GET', 'select=*'), /Admins only/);
+  assert.equal(plan('tutorial_step_stats', 'GET', 'select=*', undefined, {...user, isAdmin: true}).table, 'tutorial_step_stats');
+  assert.throws(() => plan('tutorial_step_stats', 'POST', '', {n: 1}), /verified action/);
 });

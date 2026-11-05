@@ -10,6 +10,7 @@
  */
 import { ref } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
+import { ngeGrapheneLayerToGlobal } from 'neuroglancer/datasource/graphene/frontend';
 import { secureWrite } from './secure_write';
 import { mintShortStateLink } from './util/state_link';
 import { currentSegLayer, currentDatasetTag } from './datasets';
@@ -160,12 +161,31 @@ export async function submitAccess(eyewireUsername: string, note: string): Promi
 }
 
 /** Move the view to a point (viewer coordinates). */
-export function flyTo(position: number[] | null | undefined) {
+export function flyTo(position: ArrayLike<number> | null | undefined) {
   try {
     const viewer = (window as any).viewer;
     if (!viewer || !position || position.length !== 3) return;
     viewer.position.value = Float32Array.from(position);
   } catch (e) { console.warn('[access] fly to failed:', e); }
+}
+
+/** A cut or merge point as saved (in the cell layer's own voxels, as the
+ *  tools keep them) in the view's coordinates; null until the cell layer has
+ *  loaded. The two differ wherever the view's voxel size is not the data's,
+ *  and the raw point drew in empty space and flew there (Celia D, 258). */
+export function pointInView(position: number[]): Float32Array | null {
+  try {
+    const viewer = (window as any).viewer;
+    const layer = currentSegLayer()?.layer;
+    const space = viewer?.coordinateSpace?.value;
+    if (!layer || !space?.valid) return null;
+    return ngeGrapheneLayerToGlobal(layer as any, position, space) ?? null;
+  } catch { return null; }
+}
+/** Fly to a cut or merge point. */
+export function flyToPoint(position: number[]) {
+  const p = pointInView(position);
+  if (p) flyTo(p);
 }
 
 /** A point's name in a list: "red 2", or "merge 1a" for the first end of merge 1. */
@@ -302,21 +322,23 @@ function segLayers(): any[] {
   return (v?.layerManager?.managedLayers ?? []).filter((ml: any) => ml?.layer?.displayState?.objectAlpha);
 }
 
+/** The layer of one colour's points, in the view's coordinates; null while
+ *  the cell layer is still loading (they can't be placed yet). */
 function reviewLayerSpec(it: AccessItem, color: AccessColor) {
-  const pts = it.points[color] ?? [];
+  const pts = (it.points[color] ?? []).map(p => pointInView(p.position));
+  if (pts.some(p => !p)) return null;
   return { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: REVIEW_POINT_SIZE,
-    annotations: pts.map((p, i) => ({ type: 'point', id: `${color}-${i}`, point: p.position, description: pointName(color, i) })) };
+    annotations: pts.map((p, i) => ({ type: 'point', id: `${color}-${i}`, point: Array.from(p!), description: pointName(color, i) })) };
 }
 
-/** A saved view with this example's review points added and its cells see
- *  through, before it loads. */
-function withReviewLayers(state: any, it: AccessItem): any {
+/** A saved view with its cells see through and no old review points, before
+ *  it loads. The points are placed once it has (showReviewPoints): they need
+ *  the loaded cell layer to land in the right place, and points written in
+ *  here were missing after a jump (Celia D, 258). */
+function withReviewLayers(state: any, _it: AccessItem): any {
   if (!state || typeof state !== 'object') return state;
   const names = new Set(Object.values(REVIEW_LAYERS).map(r => r.name));
   const add: any[] = [];
-  for (const color of ['red', 'blue', 'merge'] as const) {
-    if ((it.points[color] ?? []).length) add.push({ ...reviewLayerSpec(it, color), name: REVIEW_LAYERS[color].name });
-  }
   const seeThrough = (l: any) => { if (l?.type === 'segmentation') l.objectAlpha = REVIEW_ALPHA; };
   if (Array.isArray(state.layers)) {
     state.layers = state.layers.filter((l: any) => !names.has(l?.name));
@@ -333,14 +355,39 @@ function withReviewLayers(state: any, it: AccessItem): any {
 function placeReviewPoints(it: AccessItem): boolean {
   const v = (window as any).viewer;
   if (!v?.layerSpecification) return false;
+  const colors = (['red', 'blue', 'merge'] as const).filter(c => (it.points[c] ?? []).length);
+  const specs = colors.map(c => reviewLayerSpec(it, c));
+  // The cell layer is still loading: try again on the next beat.
+  if (specs.some(s => !s)) return false;
   const managed = v.layerManager?.managedLayers ?? [];
   for (const ml of [...managed]) if (Object.values(REVIEW_LAYERS).some(r => r.name === ml.name)) v.layerManager.removeManagedLayer(ml);
-  for (const color of ['red', 'blue', 'merge'] as const) {
-    if (!(it.points[color] ?? []).length) continue;
-    v.layerSpecification.add(makeLayer(v.layerSpecification, REVIEW_LAYERS[color].name, reviewLayerSpec(it, color)));
-  }
+  colors.forEach((c, k) => v.layerSpecification.add(makeLayer(v.layerSpecification, REVIEW_LAYERS[c].name, specs[k])));
   for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = REVIEW_ALPHA;
   return true;
+}
+
+/** The review point picked in the 2D or 3D view (clicked, or under the
+ *  mouse), as the review box's key ("red:2"), so the box lights up its row
+ *  (Celia D, 258: "selecting a point in the 2d or 3d view also jumps you to
+ *  that point on the list or at least highlights it"). */
+export const pickedReviewPoint = ref<string | null>(null);
+let pickWatched: any = null;
+function watchPickedPoint() {
+  const sel = (window as any).viewer?.selectionDetailsState;
+  if (!sel || pickWatched === sel) return;
+  pickWatched = sel;
+  sel.changed.add(() => {
+    let key: string | null = null;
+    try {
+      for (const l of sel.value?.layers ?? []) {
+        const name = l?.layer?.managedLayer?.name;
+        const color = (Object.keys(REVIEW_LAYERS) as AccessColor[]).find(c => REVIEW_LAYERS[c].name === name);
+        const m = String(l?.state?.annotationId ?? '').match(/^(red|blue|merge)-(\d+)$/);
+        if (color && m && m[1] === color) { key = `${color}:${m[2]}`; break; }
+      }
+    } catch { /* nothing picked */ }
+    if (reviewing.value) pickedReviewPoint.value = key;
+  });
 }
 
 /** The link loads a while after the hash changes (seconds, on real data)
@@ -349,6 +396,8 @@ function placeReviewPoints(it: AccessItem): boolean {
  *  the opacity are put back whenever they are gone. */
 export function showReviewPoints(it: AccessItem) {
   window.clearInterval(reviewTimer);
+  pickedReviewPoint.value = null;
+  watchPickedPoint();
   const want = (['red', 'blue', 'merge'] as const).filter(c => (it.points[c] ?? []).length)
     .map(c => ({ name: REVIEW_LAYERS[c].name, n: (it.points[c] ?? []).length }));
   const have = () => {
@@ -371,6 +420,7 @@ export function showReviewPoints(it: AccessItem) {
 /** Review mode ends: the drawn points go, the cells are solid again. */
 export function endReview() {
   window.clearInterval(reviewTimer);
+  pickedReviewPoint.value = null;
   try { sessionStorage.removeItem(REVIEW_KEY); } catch { /* storage blocked */ }
   try {
     const v = (window as any).viewer;
@@ -379,6 +429,13 @@ export function endReview() {
     }
     for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 1;
   } catch (e) { console.warn('[access] could not end review mode:', e); }
+}
+
+/** Leave review mode where you are: the box, the points and the see through
+ *  cells go (Celia D, 258: "no way to exit out of the review view"). */
+export function exitReview() {
+  reviewing.value = null;
+  endReview();
 }
 
 /** Back to the list in the Admin Hub. */

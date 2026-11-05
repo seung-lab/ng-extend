@@ -2,18 +2,19 @@
 /**
  * weekly-leaderboard-broadcast.mjs
  * Posts a single celebratory notification to the whole community
- * showing the past week's top 10 editors AND top 10 completers
- * (across all datasets).
+ * showing the past week's top editors, top completers (across all datasets)
+ * and top Cilia Questers on the Retina (scripts/weekly-quests.mjs).
  *
  * Targets `notifications.target_type = 'all'` — surfaces in every
  * user's notification feed and (optionally) chat.
  *
- * Runs via GitHub Actions cron (Monday 00:10 UTC, 5 min after the
- * weekly-winners snapshot) or manually:
+ * Runs via GitHub Actions cron (Monday just after midnight US Eastern,
+ * after the weekly-winners snapshot) or manually:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-leaderboard-broadcast.mjs
  */
 
-import { topCompleters } from './weekly-completions.mjs';
+import { weekRange, topCompleters, topEditors } from './weekly-completions.mjs';
+import { topQuesters } from './weekly-quests.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -47,50 +48,21 @@ async function supabasePost(path, row) {
 }
 
 // ── Week range ──────────────────────────────────────────────────────
-/** Returns [mondayStartISO, mondayStartLabel, sundayEndLabel] for the
- *  most recently completed Monday→Sunday week. */
+/** The most recently completed Monday to Sunday week on US Eastern time
+ *  (weekly-completions.mjs weekRange), with its label. It was UTC. */
 function lastCompletedWeek() {
-  const now = new Date();
-  // Most recent Monday at 00:00 UTC
-  const dow = now.getUTCDay() || 7; // Sun → 7
-  const thisMonday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (dow - 1)));
-  const lastMonday = new Date(thisMonday); lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
-  const lastSunday = new Date(thisMonday); lastSunday.setUTCDate(thisMonday.getUTCDate() - 1);
-  const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  return {
-    startISO: lastMonday.toISOString(),
-    endISO: thisMonday.toISOString(),
-    // "Sep 21 to Sep 27, 2026". No en dash: Amy's copy rules forbid em and en
-    // dashes anywhere user facing, and the detail view parses this label.
-    label: `${fmt(lastMonday)} to ${fmt(lastSunday)}, ${lastSunday.getUTCFullYear()}`,
-  };
+  const w = weekRange();
+  const [y, m, d] = w.weekStart.split('-').map(Number);
+  const fmt = (dd) => new Date(Date.UTC(y, m - 1, dd)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const sunYear = new Date(Date.UTC(y, m - 1, d + 6)).getUTCFullYear();
+  // "Sep 21 to Sep 27, 2026". No en dash: Amy's copy rules forbid em and en
+  // dashes anywhere user facing, and the detail view parses this label.
+  return { ...w, label: `${fmt(d)} to ${fmt(d + 6)}, ${sunYear}` };
 }
 
 // ── Aggregations ────────────────────────────────────────────────────
-/** Top N editors by split+merge count from edit_log. */
-async function topEditors(startISO, endISO, n = 10) {
-  // edit_log can be large — stream by user, group client-side. For a
-  // typical week this is small enough to pull in one or two pages.
-  // Filter to split/merge so it matches the leaderboard view.
-  const rows = await supabaseGet(
-    `edit_log?select=user_id,operation` +
-    `&timestamp=gte.${encodeURIComponent(startISO)}` +
-    `&timestamp=lt.${encodeURIComponent(endISO)}` +
-    `&operation=in.(split,merge)` +
-    `&limit=200000`,
-  );
-  const counts = new Map();
-  for (const r of rows) {
-    if (!r.user_id) continue;
-    counts.set(r.user_id, (counts.get(r.user_id) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, n)
-    .map(([user_id, count]) => ({ user_id, count }));
-}
-
-// Top completers: scripts/weekly-completions.mjs, shared with the saved podium.
+// Top editors and completers: scripts/weekly-completions.mjs, shared with
+// the saved podium.
 
 /** Resolve user_ids to display names. */
 async function resolveNames(userIds) {
@@ -123,29 +95,34 @@ async function main() {
   const week = lastCompletedWeek();
   console.log(`[broadcast] Computing leaderboard for ${week.label} (${week.startISO} → ${week.endISO})`);
 
-  const [editorsRaw, completersRaw] = await Promise.all([
+  const [editorsRaw, completersRaw, questersRaw] = await Promise.all([
     // The top twenty of each: the podium takes three, the rest scroll.
-    topEditors(week.startISO, week.endISO, 20),
+    topEditors(supabaseGet, week.startISO, week.endISO, 20),
     topCompleters(supabaseGet, week.startISO, week.endISO, 20),
+    // Cilia Quests (Ames 2026-11-05). A copy that cannot be read leaves the
+    // section out; it never holds up the rest of the broadcast.
+    topQuesters(supabaseGet, week.weekStart, 20).catch(e => { console.warn('[broadcast] quest champions skipped:', e.message); return null; }),
   ]);
 
-  if (editorsRaw.length === 0 && completersRaw.length === 0) {
+  if (editorsRaw.length === 0 && completersRaw.length === 0 && !questersRaw?.length) {
     console.log('[broadcast] No activity this week, skipping notification.');
     return;
   }
 
   const allIds = [...new Set([...editorsRaw, ...completersRaw].map(r => r.user_id))];
   const names = await resolveNames(allIds);
+  for (const q of questersRaw ?? []) names.set(q.user_id, q.name);
 
   const body = [
-    `🎉 **Big congratulations to this week's champions!**`,
+    `🎉 **Big Congratulations! Thanks for contributing to neuroscience!**`,
     ``,
     `**Top Editors**`,
     formatList(editorsRaw, names, 'edit', 'edits'),
     ``,
-    `**Top Completers**`,
+    `**Most Cells**`,  // "Most Cells", not "Top Completers" (Ames 2026-11-05)
     formatList(completersRaw, names, 'cell', 'cells'),
     ``,
+    ...(questersRaw ? [`**Top Cilia Questers**`, formatList(questersRaw, names, 'quest', 'quests'), ``] : []),
     `Across all datasets, every edit and every completion brings the connectome a little closer to done. Keep going! 🧬`,
   ].join('\n');
 
@@ -182,7 +159,7 @@ async function main() {
   if (DRY) { console.log('[broadcast] DRY RUN, would post:\n' + body); return; }
   await supabasePost('notifications', notification);
   console.log(`[broadcast] Posted weekly champions notification for ${week.label}`);
-  console.log(`  ${editorsRaw.length} top editors, ${completersRaw.length} top completers`);
+  console.log(`  ${editorsRaw.length} top editors, ${completersRaw.length} most cells, ${questersRaw?.length ?? 'no'} top questers`);
 }
 
 main().catch(err => {

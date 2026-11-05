@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {pendingAnnotations} from '../util/annotation_counter';
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { recapWeekStart, recapMonth, recapYear, weekPeriodET, monthPeriodET, yearPeriodET, monthStartET } from '../util/recap_week';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import RollUp from 'components/RollUp.vue';
@@ -12,6 +13,7 @@ import recapBanner from '../../static/images/recap/week-in-science-ca3.jpg';
 import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
 import { SCIENCE_FACTS } from '../data/science-facts';
+import { superQuestSecondsBetween, refreshClaimTimes } from '../util/claim_time';
 
 const { stats } = storeToRefs(useUserStatsStore());
 const emit = defineEmits({ hide: null });
@@ -19,21 +21,21 @@ const emit = defineEmits({ hide: null });
 // modal chrome and render the content inline.
 const props = defineProps<{ embedded?: boolean }>();
 
-// ── Week date range label: "Feb 23 – Mar 1, 2026" ────────────────────────
-const weekRange = computed<string>(() => {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun … 6=Sat
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diffToMon);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+// ── The week shown: the one a recap notification is about, or this week ──
+// (util/recap_week.ts). Everything weekly below counts from start up to end.
+// The monthly recap notification shows a whole month the same way ("My
+// Month in Science", Ames 2026-10-25): every count below then spans it.
+// The yearly one shows a whole Pyr year (Sep 28 to Sep 28 ET). isMonth means
+// "longer than a week" below: a month or a year.
+const isYear = computed(() => !!recapYear.value);
+const isMonth = computed(() => !!recapMonth.value || isYear.value);
+const period = computed(() => recapYear.value ? yearPeriodET(recapYear.value)
+  : recapMonth.value ? monthPeriodET(recapMonth.value) : weekPeriodET(recapWeekStart.value));
+const span = computed(() => isYear.value ? 'this year' : isMonth.value ? 'this month' : 'this week');
+onUnmounted(() => { recapWeekStart.value = null; recapMonth.value = null; recapYear.value = null; });
 
-  const fmt = (d: Date) =>
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-  return `${fmt(monday)} to ${fmt(sunday)}, ${sunday.getFullYear()}`;
-});
+// ── Week date range label: "Feb 23 to Mar 1, 2026" ───────────────────────
+const weekRange = computed<string>(() => period.value.label);
 
 // ── Scout and help activity this week (Amy: the recap was missing tag
 // and help stats). Tags scope by their own timestamps; help requests have
@@ -64,6 +66,15 @@ const serverCounts = ref<{ week: [number, number]; month: [number, number]; cell
 // tallied and not sent yet.
 const cellsCompletedWeek = computed(() => serverCounts.value ? Math.max(serverCounts.value.cells, 0) : cellsCompleted.value.length);
 const annotationsWeek = computed(() => (serverCounts.value?.annotations ?? 0) + pendingAnnotations.value);
+// ── Time on Super Quests (Ames 2026-10-28): MEC's giant interneurons, from
+// the active time Pyr counts on each claim (util/claim_time.ts). Shown only
+// when there is some in the period.
+onMounted(() => { void refreshClaimTimes(); });
+const superQuestSecs = computed(() => superQuestSecondsBetween(period.value.start, period.value.end));
+const superQuestTime = computed(() => {
+  const s = superQuestSecs.value, h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+});
 const shown = computed(() => {
   const s = stats.value;
   const c = serverCounts.value;
@@ -79,18 +90,29 @@ onMounted(async () => {
   if (!uid) return;
   try {
     const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setHours(0, 0, 0, 0);
-    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // Monday
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const since = weekStart < monthStart ? weekStart : monthStart;
+    const weekStart = period.value.start, weekEnd = period.value.end;
+    const monthStart = monthStartET();
     const { supabase } = await import('../supabase');
-    const { data, error } = await supabase.from('edit_log')
-      .select('operation, timestamp, success, metadata')
-      .eq('user_id', uid)
-      .gte('timestamp', since.toISOString())
-      .limit(20000);
-    if (error || !data) return;
+    // Only the week's completions and annotations come back as rows; merges
+    // and splits are counted by the server below. Reading every row of the
+    // month stopped at the server's 1,000-row cap, so a busy player's month
+    // showed 24 edits where the log had 20,750 (Nseraf, report 250).
+    // A page at a time: a month of a busy player's completions and
+    // annotations is more than one 1,000-row read.
+    const data: any[] = [];
+    for (let from = 0; from < 50000; from += 1000) {
+      const { data: page, error } = await supabase.from('edit_log')
+        .select('operation, timestamp, success, metadata')
+        .eq('user_id', uid)
+        .in('operation', ['annotate', 'mark_complete', 'complete_task', 'unmark_complete'])
+        .gte('timestamp', weekStart.toISOString())
+        .lt('timestamp', weekEnd.toISOString())
+        .order('timestamp').order('id')
+        .range(from, from + 999);
+      if (error || !page) return;
+      data.push(...page);
+      if (page.length < 1000) break;
+    }
     const week: [number, number] = [0, 0];
     const month: [number, number] = [0, 0];
     // Cells completed this week: one per cell, and a cell un-marked after
@@ -120,6 +142,25 @@ onMounted(async () => {
       if (t >= weekStart) week[i]++;
       if (t >= monthStart) month[i]++;
     }
+    // Merges and splits, exact counts from the server: no rows, no cap.
+    const edits = async (op: string, from: Date, to?: Date) => {
+      let q = supabase.from('edit_log').select('user_id', { count: 'exact', head: true })
+        .eq('user_id', uid).eq('operation', op).not('success', 'is', false).gte('timestamp', from.toISOString());
+      if (to) q = q.lt('timestamp', to.toISOString());
+      const { count, error: e } = await q;
+      return e ? null : (count ?? 0);
+    };
+    const [wm, ws, mm, ms] = await Promise.all([edits('merge', weekStart, weekEnd), edits('split', weekStart, weekEnd), edits('merge', monthStart), edits('split', monthStart)]);
+    if (wm != null) week[0] = wm;
+    if (ws != null) week[1] = ws;
+    if (mm != null) month[0] = mm;
+    if (ms != null) month[1] = ms;
+    // Cells completed, counted the leaderboard's way (ew_cell_completions).
+    try {
+      const { count, error: e } = await supabase.from('ew_cell_completions').select('user_id', { count: 'exact', head: true })
+        .eq('user_id', uid).gte('done_at', weekStart.toISOString()).lt('done_at', weekEnd.toISOString());
+      if (!e && count != null) cells = Math.max(cells, count);
+    } catch { /* the log's own count stands */ }
     serverCounts.value = { week, month, cells, annotations };
   } catch { /* keep the local tally */ }
 });
@@ -141,15 +182,33 @@ onMounted(async () => {
       scientists: data.filter((r: any) => (r.edits_alltime || 0) > 0 || (r.completions_alltime || 0) > 0).length,
       mineWeek: me?.edits_week || 0,
     };
+    // The month view: the whole community over the same ET month, exact
+    // counts with no rows read (Ames 2026-10-26).
+    if (isMonth.value) {
+      const from = period.value.start.toISOString(), to = period.value.end.toISOString();
+      const count = async (q: any) => { const { count: n, error: e } = await q; return e ? null : (n ?? 0); };
+      const edits = (uid?: string) => {
+        let q = supabase.from('edit_log').select('user_id', { count: 'exact', head: true })
+          .in('operation', ['merge', 'split']).not('success', 'is', false).gte('timestamp', from).lt('timestamp', to);
+        if (uid) q = q.eq('user_id', uid);
+        return count(q);
+      };
+      const [all, cells, mine] = await Promise.all([
+        edits(),
+        count(supabase.from('ew_cell_completions').select('user_id', { count: 'exact', head: true }).gte('done_at', from).lt('done_at', to)),
+        backendW.userId ? edits(backendW.userId) : Promise.resolve(0),
+      ]);
+      if (all != null && cells != null && globalStats.value) {
+        globalStats.value = { ...globalStats.value, editsWeek: all, cellsWeek: cells, mineWeek: mine ?? 0 };
+      }
+    }
   } catch { /* the section just stays hidden */ }
 });
-const weekStartMs = computed(() => {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon).getTime();
-});
-const inWeek = (iso?: string) => !!iso && new Date(iso).getTime() >= weekStartMs.value;
+const inWeek = (iso?: string) => {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return t >= period.value.start.getTime() && t < period.value.end.getTime();
+};
 const tagsPlacedThisWeek = computed(() =>
   tagStoreW.tags.filter(t => t.userId && t.userId === backendW.userId && inWeek(t.createdAt)).length);
 const tagsFixedThisWeek = computed(() =>
@@ -247,21 +306,21 @@ const currentFact = computed<string>(() => {
 // ── Cell activity this week ──────────────────────────────────────────────
 const historyStore = useCellHistoryStore();
 
-const mondayStart = computed<Date>(() => {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  const mon = new Date(now);
-  mon.setDate(now.getDate() + diffToMon);
-  mon.setHours(0, 0, 0, 0);
-  return mon;
-});
-
 const cellsThisWeek = computed(() =>
-  historyStore.cells.filter(c => new Date(c.updatedAt) >= mondayStart.value)
+  historyStore.cells.filter(c => { const t = new Date(c.updatedAt); return t >= period.value.start && t < period.value.end; })
 );
 const cellsCompleted = computed(() => cellsThisWeek.value.filter(c => c.isComplete));
 const cellsIdentified = computed(() => cellsThisWeek.value.filter(c => c.cellType));
+
+/** A player's share of everyone's edits: whole numbers from 10%, one decimal
+ *  below, and "under 0.1%" for the tiniest, never "0%" for someone who made
+ *  edits (Ames 2026-10-25: 11 of 10,990 showed as 0%). */
+function sharePct(mine: number, all: number): string {
+  const p = all > 0 ? mine / all * 100 : 0;
+  if (p >= 10) return `${Math.round(p)}%`;
+  if (p >= 0.1) return `${(Math.round(p * 10) / 10).toFixed(1).replace(/\.0$/, '')}%`;
+  return 'under 0.1%';
+}
 
 function truncateId(id: string): string {
   return id.length > 12 ? id.slice(0, 6) + '…' + id.slice(-4) : id;
@@ -295,7 +354,7 @@ function jumpToCell(segId: string) {
         <div class="nge-recap-hero">
           <!-- "My" when shown inside your own profile, "Your" when it appears
                as a standalone toast/panel addressed to the reader. -->
-          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} Week in Science</div>
+          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} {{ isYear ? 'Year' : isMonth ? 'Month' : 'Week' }} in Science</div>
           <div class="nge-recap-hero-daterange">{{ weekRange }}</div>
         </div>
 
@@ -303,7 +362,7 @@ function jumpToCell(segId: string) {
         <div class="nge-recap-big-stat nge-recap-trio">
           <div class="nge-recap-trio-col">
             <div class="nge-recap-big-number"><RollUp :value="shown.editsThisWeek" /></div>
-            <div class="nge-recap-big-label">edits this week</div>
+            <div class="nge-recap-big-label">edits {{ span }}</div>
             <div class="nge-recap-big-sub">
               {{ shown.mergesThisWeek.toLocaleString() }} merges
               + {{ shown.splitsThisWeek.toLocaleString() }} splits
@@ -312,12 +371,21 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-trio-col">
             <div class="nge-recap-big-number nge-recap-big-number--cells"><RollUp :value="cellsCompletedWeek" /></div>
             <div class="nge-recap-big-label">cell{{ cellsCompletedWeek === 1 ? '' : 's' }} completed</div>
-            <div class="nge-recap-big-sub">this week</div>
+            <div class="nge-recap-big-sub">{{ span }}</div>
           </div>
           <div class="nge-recap-trio-col">
             <div class="nge-recap-big-number nge-recap-big-number--ann"><RollUp :value="annotationsWeek" /></div>
             <div class="nge-recap-big-label">annotation{{ annotationsWeek === 1 ? '' : 's' }} placed</div>
-            <div class="nge-recap-big-sub">this week</div>
+            <div class="nge-recap-big-sub">{{ span }}</div>
+          </div>
+        </div>
+
+        <!-- Time on Super Quests, when there is some -->
+        <div class="nge-recap-section nge-recap-sq" v-if="superQuestSecs >= 60">
+          <div class="nge-recap-section-label">Super Quests</div>
+          <div class="nge-recap-sq-row">
+            <span class="nge-recap-sq-num">{{ superQuestTime }}</span>
+            <span class="nge-recap-sq-text">of active time on giant interneurons {{ span }}, cells no one has mapped before</span>
           </div>
         </div>
 
@@ -344,7 +412,7 @@ function jumpToCell(segId: string) {
         </div>
 
         <!-- Month summary -->
-        <div class="nge-recap-section nge-recap-month">
+        <div class="nge-recap-section nge-recap-month" v-if="!isMonth">
           <div class="nge-recap-section-label">{{ monthLabel }}</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
@@ -461,13 +529,13 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">Global Stats</div>
           <div class="nge-recap-global-halves">
           <div class="nge-recap-global-half">
-          <div class="nge-recap-global-sub">Everyone in EyeWire II, last 7 days</div>
+          <div class="nge-recap-global-sub">Everyone in Pyr, {{ isMonth ? period.label : 'last 7 days' }}</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
               <div class="nge-recap-month-num" style="color: #42d5ec;"><RollUp :value="globalStats.editsWeek" /></div>
               <div class="nge-recap-month-key">edits</div>
             </div>
-            <div class="nge-recap-month-cell">
+            <div class="nge-recap-month-cell" v-if="!isMonth">
               <div class="nge-recap-month-num" style="color: #c98bff;"><RollUp :value="globalStats.activeWeek" /></div>
               <div class="nge-recap-month-key">scientists editing</div>
             </div>
@@ -478,7 +546,7 @@ function jumpToCell(segId: string) {
           </div>
           <div class="nge-recap-global-share" v-if="globalStats.mineWeek > 0 && globalStats.editsWeek > 0">
             You made <strong><RollUp :value="globalStats.mineWeek" /></strong> of them,
-            <strong>{{ Math.round(globalStats.mineWeek / globalStats.editsWeek * 100) }}%</strong> of the community's edits.
+            <strong>{{ sharePct(globalStats.mineWeek, globalStats.editsWeek) }}</strong> of the community's edits.
           </div>
           </div>
           <div class="nge-recap-global-half">
@@ -515,7 +583,7 @@ function jumpToCell(segId: string) {
 .nge-recap-shell {
   display: flex;
   flex-direction: column;
-  max-height: 88vh;
+  max-height: calc(88 * var(--nge-vh, 1vh));
 }
 /* Embedded in the profile tab: no modal height cap, let the profile body scroll.
    Fill the profile shell's width instead of the standalone modal's fixed 580px,
@@ -1004,4 +1072,7 @@ function jumpToCell(segId: string) {
 .nge-recap-badge-track--exploration .nge-recap-badge-kind { background: rgba(94, 234, 212, 0.14); color: #5eead4; }
 .nge-recap-badge-track--building .nge-recap-progress-fill { background: linear-gradient(90deg, #f5a623, #ffd08a); }
 .nge-recap-badge-track--exploration .nge-recap-progress-fill { background: linear-gradient(90deg, #14b8a6, #5eead4); }
+.nge-recap-sq-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+.nge-recap-sq-num { font-size: 26px; font-weight: 700; color: #d3b0ff; font-variant-numeric: tabular-nums; }
+.nge-recap-sq-text { font-size: 14px; color: #c4d2e0; }
 </style>

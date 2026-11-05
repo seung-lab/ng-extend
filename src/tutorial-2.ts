@@ -140,7 +140,7 @@ function findPathStep() {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const segLayers = () => ((window as any).viewer?.layerManager?.managedLayers ?? [])
     .filter((ml: any) => ml?.layer?.displayState?.objectAlpha);
-  setTimeout(() => { for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 0.35; }, 1500);
+  setTimeout(() => { for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 0.6; }, 1500);  // 0.35 lost the thin branches (lalonso, report 321)
   const restore = setInterval(() => {
     const s = store.getTutorialStep();
     if (store.activeTutorial === tutorial && (s === step || s === step + 1)) return;
@@ -625,13 +625,15 @@ This is your new layer's side panel. Let's give the layer a name of its own.
     text: `
 The Pyr gem tool is already picked. <strong>CTRL+CLICK anywhere on the cell</strong> to drop a gem. Try placing a few!
 
-Each gem is listed in the panel: click one there to add a note to it. Your gems stay with you for the rest of the tutorial. Press Next when you're ready to move on.`,
+Each gem is listed in the panel. Hover its row: the pencil adds a note to it, and the trash icon removes it. Your gems stay with you for the rest of the tutorial. Press Next when you're ready to move on.`,
     position: OVER_3D,
   },
   {
     part: "Part 2 of 4 · Working with cells",
     text: `
-This LAYER has a light running around its border: that means it is the one selected.`,
+Now for something new: LAYERS. Each tab up here is one layer, one kind of thing in your view, like the 2D images or the 3D cells.
+
+The selected layer is the one with the bright line around its border and the brighter background.`,
     position: {
       element: ".neuroglancer-layer-panel > .neuroglancer-layer-item[data-selected=\"true\"]",
       side: "bottom",
@@ -645,7 +647,7 @@ This LAYER has a light running around its border: that means it is the one selec
     get text() { return `
 <strong>${SELECT_CLICK()}</strong> on <strong>3D segmentation</strong> to select it instead.
 
-If it worked, the light moves to its border!`; },
+If it worked, the bright line moves to its border! Each layer also has a number on its tab, and ${classicLayers() ? '<strong>CTRL</strong> and that number' : 'that number key'} selects it.`; },
     onEnter: () => { markSegChip(); nextWhenSegSelected(); },
     position: {
       element: ".nge-tut-seg-chip",
@@ -660,7 +662,7 @@ Try both ways to HIDE and SHOW <strong>3D segmentation</strong>:
 
 <ol class="nge-tut-steps">
 <li><strong>${HIDE_CLICK()}</strong> on it to hide it, then again to show it.</li>
-<li>Press its <strong>LAYER NUMBER</strong>, <strong>2</strong>, on your keyboard, twice.</li>
+<li>Press <strong>${classicLayers() ? '2' : 'SHIFT+2'}</strong> on your keyboard to hide it, and again to show it.</li>
 </ol>`; },
     onEnter: () => { markSegChip(); nextWhenSegHiddenAndShown(2); },
     position: {
@@ -802,7 +804,7 @@ If you get confused in the future, hovering may help!`,
   {
     part: "Part 3 of 4 · Find your way",
     text: `
-Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
+Right now we are centered in the cell's <strong>soma</strong>, the round cell body where its branches start. <strong>Press the "A" key</strong> to reveal the axis lines. 
 
 These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
 

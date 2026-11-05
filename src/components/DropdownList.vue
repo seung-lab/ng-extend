@@ -167,7 +167,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
   border: 1px solid rgba(74, 158, 255, 0.15);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(74, 158, 255, 0.04);
   backdrop-filter: blur(12px);
-  overflow: hidden;
+  /* Never past the bottom of the window: a long menu scrolls (Ames 2026-10-23: the Resources menu
+     ran off the screen, Edit Access cut off). */
+  max-height: calc(100vh - 60px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.35) transparent;
   z-index: 10;
   padding: 6px 0;
   list-style: none;

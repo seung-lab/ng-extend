@@ -40,11 +40,19 @@ const you = ref('');
 /** The row last clicked, opened or jumped to (Ames 2026-10-13: "I have no
  *  idea what cell I'm on"). */
 const current = ref('');
+/** The Cell Library's slim bar (toknow, report 288): only the quest cell you
+ *  are on (the active one, else the one you last opened, else your first). */
+const props = defineProps<{ slim?: boolean }>();
 
 const myKeys = computed(() => new Set([you.value, backend.userName, backend.username].map(nameKey).filter(Boolean)));
 const isMine = (r: QuestRow) => !!r.annotator && myKeys.value.has(nameKey(r.annotator));
 const isDone = (r: QuestRow) => !!r.status;
 const mine = computed(() => rows.value.filter(r => isMine(r) && !isDone(r)));
+const mineShown = computed(() => {
+  if (!props.slim) return mine.value;
+  const pick = mine.value.find(isActive) ?? mine.value.find(r => r.segmentId === current.value) ?? mine.value[0];
+  return pick ? [pick] : [];
+});
 /** When to use the status chosen, in the lab's words (its reference sheet). */
 const statusHint = computed(() => QUEST_STATUS_GUIDE[form.value.status] || '');
 /** At the limit of cells held at once: Claim waits for a Submit or a Release. */
@@ -306,6 +314,8 @@ async function send(r: QuestRow, e?: Event) {
     const link = await mintShortStateLink();
     if (!link) throw new Error('A share link of this view could not be made. Sign in and try again.');
     const placed = points.value;
+    const at = mine.value.findIndex(m => m.segmentId === r.segmentId);
+    const afterThis = [...mine.value.slice(at + 1), ...mine.value.slice(0, Math.max(at, 0))];
     await submitQuest(r.segmentId, { status: form.value.status, splitMerged: form.value.splitMerged, link, notes: form.value.notes });
     open.value = '';
     if (isActive(r)) { setActiveQuest(null); markQuestOnScreen(null); }
@@ -313,6 +323,13 @@ async function send(r: QuestRow, e?: Event) {
     await load();
     // The celebration: a toast with the counts, and confetti (AchievementToast.vue).
     document.dispatchEvent(new CustomEvent('nge:quest-complete', { detail: { index: r.index, points: placed, done: mineDone.value, origin } }));
+    // On to your next claimed cell (toknow, report 326), the one after this in
+    // your list. With none left, the view stays where it is.
+    const next = afterThis.find(x => mine.value.some(m => m.segmentId === x.segmentId));
+    if (next) {
+      message.value = `${r.index || 'The cell'} is submitted. Thank you. Opening ${label(next)}.`;
+      try { await openCell(next); } catch (e) { console.warn('[quests] the next cell did not open:', e); }
+    }
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -322,7 +339,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 
 <template>
   <div class="nge-aq">
-    <div class="nge-aq-head">
+    <div v-if="!slim" class="nge-aq-head">
       <div class="nge-aq-titlerow">
         <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
         <button ref="infoEl" class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp, 'nge-aq-info--nudge': nudging }" @click="toggleHelp" title="How to do a Cilia Quest">
@@ -350,22 +367,29 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div v-if="loading && !rows.length" class="nge-aq-empty">Reading the quest sheet…</div>
       <template v-else-if="rows.length">
         <!-- Yours: taken, not yet submitted -->
-        <template v-if="mine.length">
-          <div class="nge-aq-section">Yours</div>
-          <template v-for="r in mine" :key="r.segmentId">
+        <div v-if="slim && !mineShown.length" class="nge-aq-empty nge-aq-empty--tight">No quest cell of yours yet. Open the full view to claim one.</div>
+        <template v-if="mineShown.length">
+          <div v-if="!slim" class="nge-aq-section">Yours</div>
+          <template v-for="r in mineShown" :key="r.segmentId">
             <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r) }">
               <div class="nge-aq-row-left">
                 <span class="nge-aq-pip nge-aq-pip--claimed"></span>
                 <div class="nge-aq-row-info">
-                  <div class="nge-aq-row-name">{{ label(r) }}<span v-if="isActive(r)" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
-                  <div class="nge-aq-row-meta nge-aq-cellid" title="This quest's cell, as the segment list shows it">Cell {{ r.segmentId }}</div>
-                  <div class="nge-aq-row-meta nge-aq-saved" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }">
+                  <div class="nge-aq-row-name" :title="slim ? `Cell ${r.segmentId}` : undefined">{{ label(r) }}<span v-if="isActive(r)" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
+                  <!-- Slim view: the essentials on one line (toknow, report 387).
+                       The cell ID is the name's tooltip; the save line sits with the buttons. -->
+                  <div v-if="!slim" class="nge-aq-row-meta nge-aq-cellid" title="This quest's cell, as the segment list shows it">Cell {{ r.segmentId }}</div>
+                  <div v-if="!slim" class="nge-aq-row-meta nge-aq-saved" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }">
                     <span>{{ savedLine(r) }}</span>
                     <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save now</button>
                   </div>
                 </div>
               </div>
               <div class="nge-aq-row-actions">
+                <span v-if="slim" class="nge-aq-saved nge-aq-saved--slim" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }" :title="savedLine(r)">
+                  <span>{{ savedLine(r) }}</span>
+                  <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
+                </span>
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
@@ -401,6 +425,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
           </template>
         </template>
 
+        <template v-if="!slim">
         <!-- Open: nobody's yet -->
         <div class="nge-aq-section">Open <span class="nge-aq-count">{{ available.length }}</span>
           <button v-if="nextRoom > 0" class="nge-aq-btn nge-aq-btn--take nge-aq-btn--next" :disabled="!!busy" @click="takeNext"
@@ -485,9 +510,10 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
             </div>
           </template>
         </template>
+        </template>
       </template>
       <div v-else-if="!loading && !error" class="nge-aq-empty">The quest sheet has no cells yet.</div>
-      <div v-if="message" class="nge-aq-msg">{{ message }}</div>
+      <div v-if="message && !slim" class="nge-aq-msg">{{ message }}</div>
     </template>
   </div>
 </template>
@@ -596,7 +622,9 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-row-info { min-width: 0; flex: 1; }
 .nge-aq-row-name { font-size: 15px; font-weight: 600; color: #e4e8f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-meta { font-size: 13px; color: #93a0b6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; }
+.nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; align-items: center; }
+.nge-aq-saved--slim { align-items: center; margin-right: 6px; font-size: 12px; max-width: 160px; white-space: nowrap; }
+.nge-aq-saved--slim .nge-aq-save { font-size: 12px; }
 .nge-aq-btn {
   padding: 5px 11px;
   border: 1px solid rgba(120, 140, 255, 0.15);

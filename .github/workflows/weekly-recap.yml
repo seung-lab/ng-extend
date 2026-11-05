@@ -7,6 +7,15 @@ on:
     # week it reports on is (nearly) over. It used to run Saturday.
     - cron: '0 23 * * 0'
   workflow_dispatch: # Allow manual trigger
+    inputs:
+      correct:
+        description: Correct this week's recaps already sent, in place
+        type: boolean
+        default: false
+      dry_run:
+        description: Print what would be sent or corrected, change nothing
+        type: boolean
+        default: false
 
 jobs:
   send-recap:
@@ -27,4 +36,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RECAP_CORRECT: ${{ inputs.correct }}
+          RECAP_DRY: ${{ inputs.dry_run }}
         run: node scripts/weekly-recap.mjs

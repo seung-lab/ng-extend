@@ -6,8 +6,9 @@
  * redos or invite. An invite adds the player to the pilot testers; the CAVE
  * group (Eyewire_2_Edit) is still given by hand, and the tab says so.
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
+import DatasetRequestsList from 'components/DatasetRequestsList.vue';
 import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing, resetAccess,
   type AccessRequest, type AccessItem, type AccessFilter } from '../access_request';
 
@@ -17,7 +18,17 @@ const requests = ref<AccessRequest[]>([]);
 const loading = ref(false);
 const error = ref('');
 const openId = ref<number | null>(null);
-const notes = ref<Record<number, string>>({});
+// The answer being written to each requester is kept as it is typed, so it is
+// still there after reviewing an example in the view (Celia D, report 258:
+// "overall feedback is deleted"). It goes once the answer is sent.
+const NOTES_KEY = 'nge_access_answer_drafts';
+const notes = ref<Record<number, string>>((() => {
+  try { const v = JSON.parse(localStorage.getItem(NOTES_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+})());
+watch(notes, v => {
+  const keep = Object.fromEntries(Object.entries(v).filter(([, t]) => typeof t === 'string' && t.trim()));
+  try { localStorage.setItem(NOTES_KEY, JSON.stringify(keep)); } catch { /* private window: kept for this visit */ }
+}, { deep: true });
 const busy = ref('');
 const done = ref<Record<number, string>>({});
 
@@ -80,6 +91,7 @@ async function decide(r: AccessRequest, outcome: 'redo' | 'invited', byHand = fa
   try {
     const out = await decideAccess(r.id, outcome, notes.value[r.id] || '', byHand);
     Object.assign(r, out);
+    delete notes.value[r.id];
     done.value[r.id] = outcome === 'invited'
       ? (out.cave_granted
         ? `Access granted: ${r.player_name || r.email} is in Eyewire_2_Edit, on the pilot testers, and was told.`
@@ -116,6 +128,8 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
         </button>
       </div>
     </div>
+    <DatasetRequestsList />
+    <h3 class="nge-accr-retina">Retina requests</h3>
     <p class="nge-accr-how">
       Each player sends 7 cuts (red and blue Multicut points where they would cut) and 3 merges (merge points on the two pieces), placed but not submitted.
       Open an example in the view to judge every point, mark it good or redo, then ask for redos or grant edit access.
@@ -227,6 +241,7 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
 .nge-accr-row--good .nge-accr-kind { color: #7CFFB2; }
 .nge-accr-row--redo .nge-accr-kind { color: #f5d142; }
 .nge-accr-marks { color: #9fb0c4; }
+.nge-accr-retina { margin: 4px 0 0; font-size: 1.05rem; color: #e4ecf5; }
 .nge-accr-note { color: #b6c4d4; font-size: 0.9rem; white-space: pre-wrap; }
 .nge-accr-note--you { color: #e4ecf5; }
 .nge-accr-acts { white-space: nowrap; text-align: right; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { datasetAccess } from '../util/dataset_access';
 import { reportWriteFailure } from '../util/error_reporting';
 import EditableText from './EditableText.vue';
 import { otherTabCount } from '../util/tabs';
@@ -23,11 +24,14 @@ import {
   jumpAddsToView,
   LIVE_HELP,
   isLiveHelp,
+  isQuestTask,
 } from '../store';
+import { claimTime, claimTimeLabel, claimStartedLabel, setTimerWorkingClaim } from '../util/claim_time';
+import { showClaimNotice } from '../util/claim_congrats';
 import { getDatasetCaveConfig } from '../config';
-import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem } from '../widgets/lightbulb_service';
+import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
-import { syncCellToSheet, completeStatusesFor, marksProofread } from '../sheet_sync';
+import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
@@ -35,10 +39,16 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
-import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
+import RetinaCastTab from './RetinaCastTab.vue';
+import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
+import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
+import MecMarkStatus from './MecMarkStatus.vue';
+import { mecKindOfLayer } from '../util/mec_marks';
+import { buildState } from '../hunt_build';
+import { datasetLocked, findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -51,6 +61,7 @@ import { applyShowcaseWhenLoaded } from '../showcase';
 import { datasetHasTour, startDatasetTour } from '../dataset_tour';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import ScreenshotDialog from './ScreenshotDialog.vue';
+import { useDragBox } from '../util/drag_box';
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -147,7 +158,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -227,7 +238,7 @@ async function loadCellsForActiveDataset() {
   // No fallback sheet: borrowing the pinky sheet here tagged its rows with the
   // current dataset, so MEC listed pinky cells (6485... ids) that have no
   // segmentation in the MEC graph (Ames 2026-09-28). A dataset without its own
-  // segment-ID sheet (MEC, MICrONS) lists only its Supabase tasks.
+  // segment-ID sheet (MEC, Sandbox, MICrONS) lists only its Supabase tasks.
   const sheetUrl = cfg.cellLibrarySheetUrl;
   if (!sheetUrl) { queue.items = []; return; }
   if (queue.sheetUrl !== sheetUrl || queue.items.length === 0) {
@@ -344,6 +355,8 @@ const cells = computed(() => {
         liveSegId: (task && backend.liveRoots[task.id] && backend.liveRoots[task.id] !== item.segId) ? backend.liveRoots[task.id] : null as string | null,
         // What the lab's AI predicts this cell is (the sheet's AI column).
         aiType: item.aiType || '',
+        quest: isQuestTask(task),
+        questCategory: task?.quest_category || '',
       };
     });
 
@@ -369,10 +382,15 @@ const cells = computed(() => {
         startLink: '',
         svId: t.supervoxel_id ?? null,
         nucleusId: t.final_nucleus_id ?? null,
-        liveSegId: null as string | null,
+        // A quest has no sheet row: its ID after edits shows as on any claim.
+        liveSegId: (backend.liveRoots[t.id] && backend.liveRoots[t.id] !== t.segment_id) ? backend.liveRoots[t.id] : null as string | null,
+        quest: isQuestTask(t),
+        questCategory: t.quest_category || '',
       }));
 
-    return [...sheetCells, ...extraTasks];
+    // A paged list (Retina) holds only some of the tasks: the sheet rows it
+    // shows are the ones whose task is loaded, so Load more adds to the list.
+    return [...(backend.tasksPaged ? sheetCells.filter(c => c.taskId != null) : sheetCells), ...extraTasks];
   }
 
   // Fallback: use Supabase tasks directly
@@ -395,6 +413,8 @@ const cells = computed(() => {
     startLink: '',
     svId: t.supervoxel_id ?? null,
     nucleusId: t.final_nucleus_id ?? null,
+    quest: isQuestTask(t),
+    questCategory: t.quest_category || '',
   }));
 });
 
@@ -405,20 +425,93 @@ const cells = computed(() => {
  *  this so "Available (N)" always matches the list you can actually claim. */
 const datasetScopedCells = computed(() => {
   const activeDs = canonicalDataset(activeDataset.value);
-  if (!activeDs) return cells.value;
-  return cells.value.filter(c => {
+  // A Hunt being built (hunt_build.ts) is out of the Library for players: its cell, and any ID a planting touched.
+  const building = backend.isAdmin ? null : new Set(buildState.cells.flatMap(c => c.protected));
+  let shown = building?.size ? cells.value.filter(c => !building.has(c.segId) && !((c as any).liveSegId && building.has((c as any).liveSegId))) : cells.value;
+  // Hunt candidates are for players with edit access (Level 1, the retina)
+  // and admins; a Sandbox player never sees them (Ames 2026-10-28: "hunt
+  // candidates shouldn't appear in cell library for sandbox users"). While
+  // CAVE has not answered they stay hidden.
+  if (!backend.isAdmin && datasetAccess('stroeh-mouse-retina') !== 'edit') shown = shown.filter(c => !isHuntCandidate(c));
+  // The Sandbox's earlier cells stay hidden, on every tab (Ames 2026-11-01: replaced by the list of somas).
+  if (getDatasetCaveConfig(activeDataset.value).cellsFromTasks) shown = shown.filter(c => c.status !== 'skipped');
+  if (!activeDs) return shown;
+  return shown.filter(c => {
     const cd = canonicalDataset(c.dataset);
     return !cd || cd === activeDs;
   });
 });
 
+/** A Hunt candidate (the Hunt Builder): a Sandbox task whose note starts "Hunt candidate" ("Hunt cell", the first 8). */
+const isHuntCandidate = (c: { notes?: string | null }) => /^Hunt (cell|candidate)/.test(c.notes || '');
+/** Hunt candidates on this dataset, every state: the Hunt chip shows only when there are some (Ames 2026-10-27). */
+const huntCells = computed(() => datasetScopedCells.value.filter(isHuntCandidate));
+const huntOpenCount = computed(() => huntCells.value.filter(c => c.status !== 'completed').length);
+/** Interneuron quests (Ames 2026-10-28): giant MEC interneurons, a claim of
+ *  their own kind, listed apart. The chip shows only on a dataset that has
+ *  some. Yours comes first, then the open ones, then the rest. */
+const questCells = computed(() => {
+  const qs = datasetScopedCells.value.filter(c => c.quest && c.status !== 'skipped');
+  const rank = (c: CellRow) => (isMyClaim(c) ? 0 : c.status === 'pending' ? 1 : c.status === 'completed' ? 3 : 2);
+  // Within each, by category ("Pyramidal Target", "Non-Pyramidal Target").
+  return qs.slice().sort((a, b) => rank(a) - rank(b) || (a.questCategory || '~').localeCompare(b.questCategory || '~'));
+});
+const questOpenHere = computed(() => questCells.value.filter(c => c.status === 'pending').length);
+/** Every other cell: the ordinary tabs, counts and Claim a new cell. */
+/** The blog post about Super Quests (docs/blog-super-quests.md, posted from the game's blog editor). */
+// ── A Super Quest ending soon (Ames 2026-10-28: "a warning before a Super
+// Quest ends"). In its last 7 days the row says so, and once a day a notice
+// says it too. When it ends, the cell is let go (supabase-super-quest-two-months.sql).
+const QUEST_WARN_DAYS = 7;
+function questEndsSoon(cell: CellRow): string {
+  if (!cell.quest || !isMyClaim(cell)) return '';
+  const ends = backend.tasks.find(t => t.id === cell.taskId)?.quest_ends_at;
+  const d = ends ? new Date(ends) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  const days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+  if (days > QUEST_WARN_DAYS) return '';
+  const day = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return days <= 1 ? `Ends ${day}, within a day. Finish it, or save your view so your work is kept.`
+    : `Ends ${day}, in ${days} days. Finish it, or save your view so your work is kept.`;
+}
+// Set up once mounted: isMyClaim is defined further down this file.
+onMounted(() => watch(() => datasetScopedCells.value.filter(c => c.quest && isMyClaim(c)).map(c => [c.taskId, questEndsSoon(c)] as const), rows => {
+  for (const [id, line] of rows) {
+    if (!line || !id) continue;
+    const key = `nge_sq_warned_${id}`;
+    const today = new Date().toDateString();
+    try { if (localStorage.getItem(key) === today) continue; localStorage.setItem(key, today); } catch { /* private mode */ }
+    showClaimNotice({ title: 'Your Super Quest ends soon', sub: line, image: false });
+  }
+}, { immediate: true }));
+
+/** Marks' first line: when you started, and for a Super Quest, the day it is yours until. */
+function marksStartLine(cell: CellRow): string {
+  const started = claimStartedLabel(cell.taskId);
+  const ends = cell.quest ? backend.tasks.find(t => t.id === cell.taskId)?.quest_ends_at : null;
+  const d = ends ? new Date(ends) : null;
+  const until = d && !Number.isNaN(d.getTime()) ? `Yours until ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.` : '';
+  return [started && started + '.', until].filter(Boolean).join(' ');
+}
+const SUPER_QUEST_BLOG = 'https://connectome.quest/blog/super-quests-mec-inhibitory-interneurons/';
+const libraryCells = computed(() => datasetScopedCells.value.filter(c => !c.quest));
 const filteredCells = computed(() => {
-  let list = datasetScopedCells.value;
-  if (filter.value === 'mine') {
-    // My claimed cells first, then my completed cells
+  let list = libraryCells.value;
+  if (filter.value === 'hunt') {
+    list = huntCells.value;
+  } else if (filter.value === 'giants') {
+    list = questCells.value;
+  } else if (filter.value === 'mine') {
+    // My claimed cells first, then my completed cells. My Super Quest leads:
+    // its Marks show under it here too (Ames 2026-10-28).
+    const myQuests = questCells.value.filter(c => isMyClaim(c));
     const myClaimed = list.filter(c => isMyClaim(c));
-    const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId);
-    list = [...myClaimed, ...myCompleted];
+    // Completed: the latest first (annkri, report 352: they kept the cell
+    // list's order). A completion stamps the claim's updated time.
+    const doneAt = (c: CellRow) => backend.tasks.find(t => t.id === c.taskId)?.updated_at || '';
+    const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId)
+      .sort((a, b) => doneAt(b).localeCompare(doneAt(a)));
+    list = [...myQuests, ...myClaimed, ...myCompleted];
   } else if (filter.value === 'available') {
     list = list.filter(c => c.status === 'pending');
   } else if (filter.value === 'claimed') {
@@ -435,7 +528,10 @@ const filteredCells = computed(() => {
       (history.getNickname(c.segId) || '').toLowerCase().includes(q),
     );
   }
-  return list;
+  // Hunt candidates first (Ames 2026-10-27: "should I see Hunt Candidates here?"): the sheet's cells came first,
+  // so the eight sat at the very bottom of the list.
+  const hunt = list.filter(isHuntCandidate);
+  return hunt.length ? [...hunt, ...list.filter(c => !isHuntCandidate(c))] : list;
 });
 
 // Draw the list a slice at a time: thousands of rows made the panel slow to
@@ -448,9 +544,72 @@ const shownCells = computed(() => filteredCells.value.slice(0, rowsShown.value))
 
 const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
 
-const availableCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'pending').length);
-const completedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'completed').length);
-const claimedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
+const isClaimedStatus = (s: string) => s === 'assigned' || s === 'in_progress';
+/** A paged list counts on the server. A sheet hold ("WIP", "Complete" by
+ *  hand) moves an available cell to Claimed or Completed here, so the loaded
+ *  cells that are held move between the server's counts the same way. */
+const heldShift = computed(() => {
+  const status = new Map(backend.tasks.map(t => [t.id, t.status] as [number, string]));
+  let claimed = 0, completed = 0;
+  for (const c of datasetScopedCells.value) {
+    if (c.taskId == null || status.get(c.taskId) !== 'pending' || c.status === 'pending') continue;
+    if (c.status === 'completed') completed++; else if (isClaimedStatus(c.status)) claimed++;
+  }
+  return { claimed, completed };
+});
+const serverCounts = computed(() => (backend.tasksPaged ? backend.taskCounts : null));
+const availableCount = computed(() => serverCounts.value
+  ? Math.max(0, serverCounts.value.available - heldShift.value.claimed - heldShift.value.completed)
+  : libraryCells.value.filter(c => c.status === 'pending').length);
+const completedCount = computed(() => serverCounts.value
+  ? serverCounts.value.completed + heldShift.value.completed
+  : libraryCells.value.filter(c => c.status === 'completed').length);
+const claimedCount = computed(() => serverCounts.value
+  ? serverCounts.value.claimed + heldShift.value.claimed
+  : libraryCells.value.filter(c => isClaimedStatus(c.status)).length);
+const allCount = computed(() => serverCounts.value ? serverCounts.value.all : libraryCells.value.length);
+
+// ── Paged list (Retina): Load more, tabs and search reach the server ─────
+/** The server tab behind a cell tab; My Cells is always loaded in full. */
+const PAGED_TABS: Record<string, 'available' | 'claimed' | 'completed' | 'all'> = {
+  available: 'available', claimed: 'claimed', completed: 'completed', all: 'all',
+};
+const pagedTab = computed(() => (backend.tasksPaged ? PAGED_TABS[filter.value] ?? null : null));
+/** More of this tab is on the server than is loaded. */
+const serverHasMore = computed(() => !!pagedTab.value && !backend.taskPages[pagedTab.value].done);
+const tabTotal = computed(() => {
+  switch (filter.value) {
+    case 'available': return availableCount.value;
+    case 'claimed': return claimedCount.value;
+    case 'completed': return completedCount.value;
+    case 'all': return allCount.value;
+    default: return filteredCells.value.length;
+  }
+});
+async function loadMore() {
+  if (filteredCells.value.length > shownCells.value.length) { rowsShown.value += ROWS_STEP; return; }
+  const tab = pagedTab.value;
+  if (!tab) return;
+  await backend.loadMoreTasks(tab);
+  rowsShown.value = Math.max(rowsShown.value, filteredCells.value.length);
+}
+// A tab opened for the first time reads its first page.
+watch(pagedTab, tab => { if (tab && backend.taskPages[tab].next === 0) void backend.loadMoreTasks(tab); });
+// A search asks the server for cells that are not loaded: the sheet rows
+// whose number, notes or name match, and tasks whose IDs or notes do.
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(search, q => {
+  if (searchTimer) clearTimeout(searchTimer);
+  if (!backend.tasksPaged || !q.trim()) return;
+  searchTimer = setTimeout(() => {
+    const term = q.trim().toLowerCase();
+    const segIds = queue.items.filter(i =>
+      i.segId.includes(term) || (i.index || '').toLowerCase().includes(term) ||
+      (i.notes || '').toLowerCase().includes(term) || (history.getNickname(i.segId) || '').toLowerCase().includes(term),
+    ).slice(0, 300).map(i => i.segId);
+    void backend.findTasks(currentDatasetTag(), segIds, term);
+  }, 350);
+});
 
 // ── Dataset labels for the empty-Available prompt ────────────────────
 /** Friendly label of the dataset currently in the viewer. */
@@ -530,15 +689,82 @@ let workingSet = false;
 try { workingSet = sessionStorage.getItem(WORKING_KEY) !== null; } catch {}
 // The other tabs answer within a moment of this one opening.
 if (!workingSet) setTimeout(() => { if (!workingSet && !otherTabCount()) workingTaskId = readWorking(localStorage); }, 1200);
+/** The claim last worked on, once none is: completed or released, it is no
+ *  longer the working claim, but its marks are still on screen. The next
+ *  claim opened counts as leaving it, and starts with fresh layers (Nseraf,
+ *  report 393: completed a cell, claimed a Super Quest, and its annotations
+ *  stayed on the new cell). */
+let lastLeftId: number | null = null;
+const leftClaimId = () => workingTaskId ?? lastLeftId;
 function setWorkingTask(id: number | null) {
+  if (id === null && workingTaskId !== null) lastLeftId = workingTaskId;
+  if (id !== null) lastLeftId = null;
   workingTaskId = id;
   workingSet = true;
+  setTimerWorkingClaim(id);
+  // An MEC cell opens with the lab's AIS, True End, Can't Fix and Hits Edge
+  // layers; a Super Quest with AIS only.
+  if (id) {
+    const quest = isQuestTask(backend.tasks.find(t => t.id === id));
+    ensureMecLayers(quest ? SUPER_QUEST_LAYERS : undefined, quest ? SUPER_QUEST_DROP : undefined);
+  }
   try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
   try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
 }
+// The cast shows its cells over the player's view: the claim being worked on
+// is saved first and stops being the open one, so a cast cell is never saved
+// into it, and Back to my view makes it the open one again.
+setCastClaimHooks({
+  async leave() {
+    const id = workingTaskId;
+    if (!(await leaveCurrentWork(null))) return false;
+    if (id) setWorkingTask(null);
+    return id;
+  },
+  reopen(id) { setWorkingTask(id); },
+});
+/** The lab's MEC marks on screen belong to the claim just left (saved with
+ *  it): a claim opened without a view of its own starts with none. They
+ *  stayed, and counted under the new claim (wolfryder101, report 350: a Super
+ *  Quest showed the 56 Checked of the cell before it). */
+/** The claim just left was saved with its view; a claim with no view of its
+ *  own (MEC has no curated start views) starts from the dataset's own fresh
+ *  layers, not the last cell's (st0ck53y, report 373: "MEC managed layers do
+ *  not reset when claiming a new cell"). The player's display settings stay. */
+function freshLayersForClaim() {
+  try {
+    const ds = findDatasetBySegName(currentSegLayerName());
+    const viewer: any = (window as any).viewer;
+    if (!ds?.layers?.length || !viewer?.layerSpecification) { clearLeftMarks(); return; }
+    const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
+    viewer.layerSpecification.restoreState(ds.layers);
+    restoreDisplayAfterLoad(snap);
+  } catch (e) {
+    console.warn('[cell library] could not start the claim with fresh layers:', e);
+    clearLeftMarks();
+  }
+}
+function clearLeftMarks() {
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    if (ml.archived || !mecKindOfLayer(ml.name)) continue;
+    const src = ml.layer?.localAnnotations;
+    if (!src) continue;
+    try {
+      for (const a of [...src]) { const ref = src.getReference(a.id); try { src.delete(ref); } finally { ref.dispose(); } }
+    } catch (e) { console.warn('[cell library] could not clear the marks left from the last claim:', e); }
+  }
+}
 /** Save the view to the claim being worked on. False = stay put. */
+/** Claims completed or released here: finished, whatever the list says yet. */
+const endedClaims = new Set<number>();
 async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
-  const id = workingTaskId;
+  // Nothing marked as the working claim, but one of yours is on screen: that
+  // is the work, so it is saved too (annkri: lost a cell opening a help request).
+  // Only when it is plainly that one, and never a claim just completed or let
+  // go: the list may not have dropped it yet, and the server refuses a save on
+  // it, which asked "could not be saved" over nothing (Nseraf, report 339).
+  const onScreen = myOpenClaims.value.filter(c => c.taskId != null && !endedClaims.has(c.taskId) && claimInView(c));
+  const id = workingTaskId ?? (onScreen.length === 1 ? onScreen[0].taskId : null);
   if (!id || id === nextTaskId) return true;
   const t = backend.tasks.find(x => x.id === id);
   if (!t || t.assigned_to !== backend.userId || (t.status !== 'assigned' && t.status !== 'in_progress')) return true;
@@ -552,8 +778,19 @@ async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
 // dataset switch or opening a link would lose anything unsaved (Ames).
 const savingView = ref<number | null>(null);
 const savedViewAt = ref<Record<number, number>>({});
+/** The MEC claim in view: its lab marks show under its row (MecMarkStatus). */
+const showsMecMarks = (cell: CellRow) => canonicalDataset(cell.dataset) === 'pni_mec' && isWorkingClaim(cell) && cell.status !== 'completed';
 const isWorkingClaim = (cell: CellRow) =>
   !!cell.taskId && isMyClaim(cell) && (cell.taskId === workingTaskId || cell.segId === jumpedSegId.value);
+/** When a claim's view was last saved, for the My Cells row (toknow, report
+ *  282). A save (by Save view, or the save made when you leave a claim) is
+ *  what stamps the claim's updated time once it has a saved view. */
+function savedAtLabel(cell: CellRow): { text: string; title: string } {
+  const t = backend.tasks.find(x => x.id === cell.taskId);
+  if (!t?.working_link || !t.updated_at) return { text: 'Not saved yet', title: 'No view saved for this claim yet. Save view keeps your layers and camera with it.' };
+  return { text: `Saved ${relativeTime(t.updated_at)}`, title: `View last saved ${new Date(t.updated_at).toLocaleString()}` };
+}
+
 async function saveClaimView(cell: CellRow) {
   if (!cell.taskId || savingView.value) return;
   savingView.value = cell.taskId;
@@ -574,17 +811,40 @@ async function saveClaimView(cell: CellRow) {
   }
 }
 
+/** Is any of this cell's IDs showing? */
+function claimInView(cell: CellRow): boolean {
+  try {
+    const shown = new Set<string>();
+    for (const id of currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? []) shown.add(String(id));
+    const now = cell.taskId ? backend.currentRoots[cell.taskId] : null;
+    return [cell.segId, cell.liveSegId, cell.finalSegId, now].some(id => !!id && shown.has(String(id)));
+  } catch { return true; }
+}
+
 /** Go to one of your claims with its own layers. */
 async function switchToClaim(cell: CellRow) {
   // Already working on this claim: its layers are loaded, so just move the
   // camera. Reloading its saved view would drop anything done since the save.
-  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+  // (Only if it IS on screen: a cell claimed after a Super Quest was added to
+  // the quest's cell, Nseraf 2026-10-30. It replaces it now.)
+  // The same with nothing marked as the working claim (a second tab, say): the
+  // cell on screen IS the work. Opening its saved view over it threw away
+  // everything since that save (toknow, report 325: "All edits and highlight
+  // marks lost").
+  if (!cell.taskId || ((cell.taskId === workingTaskId || !workingTaskId) && claimInView(cell))) {
+    if (cell.taskId && !workingTaskId) setWorkingTask(cell.taskId);
+    return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+  }
   // A quest on screen is saved and its layers put away BEFORE the claim's
   // view is saved or opened, so they never end up in the claim (annkri #145).
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
+  const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+  if (!openStartLink(t?.working_link || cell.startLink)) {
+    if (leftId && leftId !== cell.taskId) freshLayersForClaim();
+    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+  }
   else void backend.anchorClaimAt(cell.taskId).catch(() => null);
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
@@ -655,8 +915,9 @@ async function claimCell(cell: typeof cells.value[0]) {
 async function claimCellNow(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
   claimError.value = '';
-  // The limit is per dataset (10 on Retina, 8 elsewhere).
-  const held = heldHere(await backend.loadMyActiveClaims());
+  // The limit is per dataset (10 on Retina, 8 elsewhere). An interneuron
+  // quest has its own: one at a time, which the server checks.
+  const held = cell.quest ? [] : heldHere(await backend.loadMyActiveClaims());
   if (held.length >= backend.claimLimitFor()) { pendingClaim = cell; showClaimLimit(held); return; }
   // Derive claim point: use cell's existing claim point, parse nucCoords, or use viewer position
   let point: ClaimPoint;
@@ -677,21 +938,33 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     return;
   }
   if (!result.ok) {
-    claimError.value = result.reason || 'Claim failed';
+    // The server's words for a second quest (supabase-interneuron-quests.sql), in the game's.
+    claimError.value = /already hold an interneuron quest/i.test(result.reason || '')
+      ? 'You already hold a Super Quest. Finish or release it first.'
+      : result.reason || 'Claim failed';
     if (claimErrorTimer) clearTimeout(claimErrorTimer);
     claimErrorTimer = setTimeout(() => { claimError.value = ''; }, 5000);
     return;
   }
-  // Write claim to Google Sheet (best-effort)
-  syncCellToSheet('claim', cell.segId, undefined, cell.dataset).catch(showSheetError);
+  // Write claim to Google Sheet (best-effort). A quest added by root ID has no row there.
+  if (inSheet(cell)) syncCellToSheet('claim', cell.segId, undefined, cell.dataset).catch(showSheetError);
   await backend.loadTasks();
   // Open the cell's curated starting view (sheet "Start link", column E), so
   // the claimer lands with its Soma / True End / Can't Fix / Hits Edge / Notes
   // layers (Amy 2026-09-28). Save the claim you were on first.
   const claimed = backend.tasks.find(t => t.segment_id === cell.segId && t.assigned_to === backend.userId
     && (t.status === 'assigned' || t.status === 'in_progress'));
+  const leftId = leftClaimId();
   if (await leaveCurrentWork(claimed?.id ?? null)) {
-    openStartLink(cell.startLink);
+    // A quest, or a Hunt candidate, has no start view: go to the cell (a candidate's soma, the cell meant:
+    // Ames 2026-10-28, report 279).
+    // A cell with no start view (MEC) is opened too when you were on another
+    // claim, so the new claim is on screen and not the last one (report 373).
+    const leftOther = !!leftId && leftId !== claimed?.id;
+    if (!openStartLink(cell.startLink) && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
+      if (leftOther) freshLayersForClaim();
+      jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+    }
     if (claimed) setWorkingTask(claimed.id);
   }
   // Give the claim its soma anchor as soon as that part of the volume loads.
@@ -712,8 +985,10 @@ function showClaimLimit(held: ProofreadingTask[]) {
 /** Your active claims in the dataset on screen (the limit is per dataset). */
 function heldHere(held: ProofreadingTask[]): ProofreadingTask[] {
   const here = canonicalDataset(getCurrentDatasetName());
-  return held.filter(t => canonicalDataset((t as any).dataset) === here);
+  return held.filter(t => canonicalDataset((t as any).dataset) === here && !isQuestTask(t));
 }
+/** An interneuron quest added by root ID is in no sheet: nothing is written there for it. */
+const inSheet = (cell: { quest?: boolean; index?: string }) => !cell.quest || !!cell.index;
 
 // ── Batch claim (Amy 2026-09-30): fill your claims in one click ─────────
 // Claims the next available cells from the list, top down, up to your limit
@@ -722,7 +997,7 @@ const batchClaiming = ref<{ done: number; total: number } | null>(null);
 const batchRoom = computed(() => Math.max(0, backend.claimLimitFor() - backend.myActiveClaimCount()));
 /** A cell Claim N can take: available, with a point to claim it at. */
 function claimable(c: CellRow): boolean {
-  if (c.status !== 'pending' || !c.segId) return false;
+  if (c.status !== 'pending' || !c.segId || c.quest) return false;
   const p = c.claimPoint ?? parseCoords(c.somaCoords || c.nucCoords);
   return !!(p[0] || p[1] || p[2]);
 }
@@ -758,6 +1033,16 @@ async function batchClaim() {
   const room = heldHere(await backend.loadMyActiveClaims());
   const n = backend.claimLimitFor() - room.length;
   if (n <= 0) { showClaimLimit(room); return; }
+  // A paged list reads the cells to claim first: the ones after a searched
+  // cell, or more of Available when the loaded part has too few.
+  if (backend.tasksPaged) {
+    const start = batchStart.value;
+    const startTask = start?.taskId != null ? backend.tasks.find(t => t.id === start.taskId) : undefined;
+    if (startTask) await backend.loadAvailableAfter(startTask, n);
+    else if (!search.value.trim()) {
+      for (let i = 0; i < 5 && batchCandidates.value.length < n && !backend.taskPages.available.done; i++) await backend.loadMoreTasks('available');
+    }
+  }
   const picks = batchCandidates.value.slice(0, n);
   if (!picks.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
   batchClaiming.value = { done: 0, total: picks.length };
@@ -798,6 +1083,7 @@ async function releaseHeld(t: ProofreadingTask) {
   releasing.add(key);
   let ok = false;
   try { ok = await backend.releaseTaskById(t.id); } finally { releasing.delete(key); }
+  if (ok) endedClaims.add(t.id);
   if (ok && workingTaskId === t.id) setWorkingTask(null);
   if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
   const held = heldHere(await backend.loadMyActiveClaims());
@@ -860,33 +1146,30 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 
 // ── How the cell ended (Nseraf 2026-09-30) ─────────────────────────────────
 // Retina's sheet has four endings and the form could only write "Complete".
-// The proofreader picks one; the last pick is offered again next time, since
-// most cells in a session end the same way. A dataset with one ending shows
-// no choice.
-const STATUS_KEY = 'nge_cl_complete_status';
-function rememberedStatus(cell: CellRow): string {
-  const options = completeStatusesFor(cell.dataset);
-  if (!options.length) return '';
-  try {
-    const last = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}')[canonicalDataset(cell.dataset)];
-    if (options.some(o => o.value === last)) return last;
-  } catch { /* nothing remembered */ }
-  return '';   // first time: no default, the choice is the proofreader's
-}
-function rememberStatus(cell: CellRow, status: string) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}');
-    all[canonicalDataset(cell.dataset)] = status;
-    localStorage.setItem(STATUS_KEY, JSON.stringify(all));
-  } catch { /* private mode */ }
-}
+// The proofreader picks one, every time: the last pick used to be offered
+// again, and went in by mistake (toknow, report 237). A dataset with one
+// ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
+/** Why Mark complete can't be pressed yet, or '' when it can. */
+function completeBlocked(cell: CellRow): string {
+  const c = completing.value;
+  if (!c) return '';
+  if (c.submitting || c.checking) return 'Working on it…';
+  if (statusMissing(cell)) return 'Pick how the cell ended first (How did it end?).';
+  if (!c.ok) return 'Move the crosshairs inside the finished cell, then press Check again.';
+  if (!linkLooksValid(c.link)) return 'Add a link to your finished cell: press Use my current view.';
+  return '';
+}
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
 /** The type list, when the cell is on the dataset on screen and that
  *  dataset's types may be written here (as in the Cell Profile). */
 function cellTypesFor(cell: CellRow): string[] {
-  if (canonicalDataset(cell.dataset || '') !== currentDatasetTag()) return [];
+  // A row of the cell list on screen carries no dataset of its own (''):
+  // it is this dataset's. Only a cell of another dataset is left without the
+  // picker. It was hidden for every list row, so a type could be set in the
+  // Cell Profile but not on Complete (Nseraf, report 355).
+  if (cell.dataset && canonicalDataset(cell.dataset) !== currentDatasetTag()) return [];
   if (getDatasetCaveConfig(currentSegLayerName()).cellTypeReadOnly) return [];
   return currentCellTypes();
 }
@@ -910,7 +1193,9 @@ async function prefillCellType(root: string) {
 
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
-  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
+  // No ending picked to start with: the last one carried over, and a player
+  // who forgot to change it sent the wrong one (toknow, report 237).
+  completing.value = { key: cellKey(cell), link: '', notes: '', status: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
     cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '', correcting: false };
   void runCrosshairCheck(cell).then(() => {
     const root = completing.value?.check?.root;
@@ -1023,7 +1308,6 @@ async function submitComplete(cell: CellRow) {
       // The player's type, to the sheet's "CitSci Suggested Type" (Celia).
       cellType: type || undefined,
     });
-    if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
     // Straight on to your next claim; with none left, the slim bar offers a
     // new one (Ames 2026-10-21; it used to open the full library).
@@ -1046,10 +1330,20 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // (sheet_sync.ts marksProofread).
   const proofread = marksProofread(done.status);
   const cavePromise = proofread ? writeCaveCompletion(cell, done) : Promise.resolve(true);
+  // The view it was finished in stays with the claim, for anyone jumping to
+  // the completed cell (report 308). The server only takes it on an open claim.
+  if (done.link) await backend.saveWorkingLink(cell.taskId, done.link).catch(() => false);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  endedClaims.add(cell.taskId);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
+  // Axon complete: labelled as such, not marked proofread (lightbulb_service).
+  if (done.status === AXON_COMPLETE) {
+    const nums = (done.coords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));
+    void labelAxonComplete(activeCaveServer() || '', done.finalSegId || cell.finalSegId || cell.segId,
+      nums.length === 3 ? (nums as [number, number, number]) : undefined);
+  }
   // Write completion to the source sheet, including the Final Link.
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
+  if (inSheet(cell)) syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;
   if (!loggedViaCave && proofread) {
     // Log as mark_complete for stats (CAVE write didn't record it)
@@ -1135,6 +1429,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
   }
   if (completing.value?.key === cellKey(cell)) completing.value = null;
   if (slimSeg.value === cell.segId) expandFull();
+  if (cell.taskId) endedClaims.add(cell.taskId);
   if (cell.taskId && workingTaskId === cell.taskId) setWorkingTask(null);
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
@@ -1196,9 +1491,46 @@ onMounted(() => watch([pendingCompleteRequest, datasetScopedCells, () => backend
 }, { immediate: true }));
 // ── Help request helpers ────────────────────────────────────────────
 const showResolved = ref(false);
+/** Open on one request and bring it into view: a help notification's "Open
+ *  in Help tab" names it (helpStore.focusId, Ames 2026-10-24). */
+async function focusHelpRequest(id: string) {
+  filter.value = 'help';
+  if (!helpStore.requests.some(r => r.id === id)) { try { await helpStore.load(); } catch { /* said below */ } }
+  const req = helpStore.requests.find(r => r.id === id);
+  if (!req) { flashJumpError('That help request is no longer there.'); return; }
+  if (helpScope.value === 'mine' && !isMineReq(req)) helpScope.value = 'all';
+  if (req.resolved) showResolved.value = true;
+  else {
+    // Its group stays open, also when the dataset on screen is learned a
+    // moment later and the other groups fold for the first time.
+    const key = canonicalDataset(req.dataset || '') || req.dataset || '';
+    if (key) { autoFolded.add(key); collapsedDatasets.value.delete(key); }
+  }
+  activeHelpId.value = id;
+  for (let i = 0; i < 30; i++) {
+    await nextTick();
+    const el = document.querySelector(`.nge-cl-panel [data-help-id="${id}"]`);
+    if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    await new Promise(r => setTimeout(r, 150));
+  }
+}
+onMounted(() => watch(() => helpStore.focusId, id => {
+  if (!id) return;
+  helpStore.focusId = null;
+  void focusHelpRequest(id);
+}, { immediate: true }));
 const activeHelpId = ref<string | null>(null);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
-const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
+/** Everyone's requests or only yours (Ames 2026-10-24: "a way to see my help
+ *  requests vs all"). Remembered in this browser. The Help tab's number
+ *  stays everyone's open requests. */
+const HELP_SCOPE_KEY = 'nge_cl_help_scope';
+const helpScope = ref<'all' | 'mine'>((() => { try { return localStorage.getItem(HELP_SCOPE_KEY) === 'mine' ? 'mine' : 'all'; } catch { return 'all'; } })());
+watch(helpScope, v => { try { localStorage.setItem(HELP_SCOPE_KEY, v); } catch { /* private window */ } });
+const isMineReq = (r: HelpRequest) => !!backend.userId && r.userId === backend.userId;
+const myOpenHelpCount = computed(() => pendingHelp.value.filter(isMineReq).length);
+const scopedPendingHelp = computed(() => helpScope.value === 'mine' ? pendingHelp.value.filter(isMineReq) : pendingHelp.value);
+const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved && (helpScope.value === 'all' || isMineReq(r))));
 
 // ── Dataset grouping for pending help requests ──────────────────────
 // `activeDataset` holds the segmentation-layer name currently in the viewer.
@@ -1207,6 +1539,10 @@ const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 // requests are tucked under a collapsible header so they don't disappear.
 const activeDataset = ref('');
 const collapsedDatasets = ref<Set<string>>(new Set());
+/** Groups already folded once. Another dataset's group starts folded, but
+ *  only the first time: refolding on every recompute undid opening it (the
+ *  header's own toggle, and a notification's jump to a request in it). */
+const autoFolded = new Set<string>();
 
 interface HelpDatasetGroup {
   dataset: string;
@@ -1222,7 +1558,7 @@ const pendingHelpByDataset = computed<HelpDatasetGroup[]>(() => {
   const currentRaw = activeDataset.value;
   const currentKey = canonicalDataset(currentRaw);
 
-  for (const req of pendingHelp.value) {
+  for (const req of scopedPendingHelp.value) {
     // Treat empty/missing dataset as belonging to the current viewer dataset.
     const raw = req.dataset || currentRaw || 'Unknown';
     const key = canonicalDataset(raw) || raw;
@@ -1248,7 +1584,8 @@ const pendingHelpByDataset = computed<HelpDatasetGroup[]>(() => {
     const isCurr = !currentKey && firstFallback;
     firstFallback = false;
     result.push({ dataset: key, label: g.label, isCurrent: isCurr, requests: g.requests });
-    if (currentKey && key !== currentKey && !collapsedDatasets.value.has(key)) {
+    if (currentKey && key !== currentKey && !autoFolded.has(key)) {
+      autoFolded.add(key);
       collapsedDatasets.value.add(key);
     }
   }
@@ -1522,6 +1859,13 @@ function getCurrentDatasetName(): string {
 }
 
 async function submitNewHelp() {
+  // A request says what is wrong, in words or a picture. An empty note sent
+  // on a stray Enter put "New help request from Nseraf (Unsure)" in chat
+  // while he was replying to someone else (2026-10-24).
+  if (!newHelpNote.value.trim() && !newHelpScreenshotUrl.value) {
+    newHelpError.value = 'Say what looks wrong first, or attach a screenshot.';
+    return;
+  }
   // The cell is whatever is selected in the viewer; the link is the view.
   // Either one is enough to find the problem (Amy 2026-09-29).
   const selected = (newHelpSegId.value.trim() || getActiveSegId()).trim();
@@ -1625,7 +1969,32 @@ async function submitResponse(req: HelpRequest, andResolve = false) {
   respondingTo.value = null;
   responseScreenshotUrl.value = '';
   helpStore.refreshPending();
+  if (andResolve && helpStore.requests.find(r => r.id === req.id)?.resolved) showSolved(req.id);
 }
+
+// ── Pop-out: one help request in its own window ─────────────────────
+// The list packs every request, its links and its buttons into one box, so
+// the question itself got lost (annkri, report #227, 2026-10-24). The ⧉
+// button opens just that request in a box of its own that can be moved and
+// resized. It lives in the game, not a browser window, so Jump still flies
+// the view. It is remembered for this tab, so a dataset switch (which
+// reloads the page) brings it back.
+const POPOUT_KEY = 'nge_help_popout';
+const popoutEl = ref<HTMLElement | null>(null);
+const poppedHelpId = ref<string | null>((() => { try { return sessionStorage.getItem(POPOUT_KEY); } catch { return null; } })());
+const poppedReq = computed(() => helpStore.requests.find(r => r.id === poppedHelpId.value) ?? null);
+const { dragging: popoutDragging, posStyle: popoutPosStyle, startDrag: startPopoutDrag } = useDragBox('nge_help_popout_pos', popoutEl);
+function popOutReq(req: HelpRequest) {
+  poppedHelpId.value = req.id;
+  try { sessionStorage.setItem(POPOUT_KEY, req.id); } catch { /* private window */ }
+}
+function closePopout() {
+  if (respondingTo.value === poppedHelpId.value) respondingTo.value = null;
+  poppedHelpId.value = null;
+  try { sessionStorage.removeItem(POPOUT_KEY); } catch { /* private window */ }
+}
+// Closing the library closes the pop-out too (it uses the library's buttons).
+onBeforeUnmount(() => { try { sessionStorage.removeItem(POPOUT_KEY); } catch { /* */ } });
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -1681,6 +2050,14 @@ function rememberAfterSwitch(reqId?: string, tab: string = 'help') {
   try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab, reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
 }
 function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ } }
+/** Asked for a tab while already open (the Switch Dataset window's chips on
+ *  the dataset on screen): go to it. */
+function onOpenAsked(e: Event) {
+  const tab = (e as CustomEvent).detail?.tab;
+  if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+}
+onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
+onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
 function isOnDataset(raw: string | undefined | null): boolean {
   return !raw || canonicalDataset(raw) === canonicalDataset(getCurrentDatasetName() || activeDataset.value);
 }
@@ -1775,7 +2152,13 @@ watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value =
  *  says so and offers the switch (Ames 2026-10-13: "it's not clear that my
  *  tasks don't show up until I realize I'm in the wrong dataset"). */
 const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
+/** The cast of the retina (Ames 2026-10-24): one example of each cell type,
+ *  on the Retina only. */
+const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
+/** No access to the quests' dataset: this button was a way around the lock
+ *  on the dataset switcher (양동호, report 304). */
+const questsLocked = computed(() => datasetLocked(questDatasetEntry.value));
 /** The quests' dataset as the top bar names it, "Retina" (Ames 2026-10-13:
  *  "this should say Switch to Retina"; its longer name reads "EyeWire II"). */
 const questDatasetName = computed(() => (questDatasetEntry.value && datasetAbbrev(questDatasetEntry.value.id)) || 'Retina');
@@ -2017,17 +2400,31 @@ function jumpToAiTag(tag: IssueTag) {
 
 /** Who may close a help request: the player who asked, and admins. */
 function canResolve(req: HelpRequest): boolean {
-  return backend.isAdmin || (!!req.userId && req.userId === backend.userId);
+  return backend.showAdminUi || (!!req.userId && req.userId === backend.userId);
 }
 /** A note longer than its two shown lines gets a Show more button. */
 function noteIsLong(note: string): boolean {
   return note.length > 90 || note.includes('\n');
 }
 
-function resolveReq(req: HelpRequest) {
-  helpStore.resolve(req.id);
+async function resolveReq(req: HelpRequest) {
+  const ok = await helpStore.resolve(req.id);
   helpStore.refreshPending();
+  if (ok) showSolved(req.id);
 }
+
+// A small success moment when a request is marked solved (Ames 2026-10-27:
+// "a little success state for marked solved"). The request moves to Resolved
+// at once; this card says so for a few seconds, in the Help tab and, when it
+// was solved there, in the pop-out.
+const solvedFlash = ref<string | null>(null);
+let solvedTimer: ReturnType<typeof setTimeout> | null = null;
+function showSolved(id: string) {
+  solvedFlash.value = id;
+  if (solvedTimer) clearTimeout(solvedTimer);
+  solvedTimer = setTimeout(() => { solvedFlash.value = null; }, 4200);
+}
+onBeforeUnmount(() => { if (solvedTimer) clearTimeout(solvedTimer); });
 
 function openResponseUrl(url: string) {
   if (url.startsWith('http')) {
@@ -2309,6 +2706,8 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'links',     label: 'My Links' },
   // Annotation Quests (Ames 2026-10-12): shown on datasets that have one.
   { key: 'quests',    label: 'Quests' },
+  // The cast of the retina (Ames 2026-10-24): Retina only.
+  { key: 'cast',      label: 'Meet the cells' },
 ];
 /** Hidden by default (still in the gear picker): the tab bar was cropping
  *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
@@ -2324,6 +2723,11 @@ const visibleTabs = ref<string[]>((() => {
       if (!localStorage.getItem('nge_cl_tabs_teams_added_v1')) {
         localStorage.setItem('nge_cl_tabs_teams_added_v1', '1');
         if (!saved.includes('teams')) { saved.push('teams'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
+      }
+      // Cast arrived 2026-10-24: a tab list saved before then gets it once.
+      if (!localStorage.getItem('nge_cl_tabs_cast_added_v1')) {
+        localStorage.setItem('nge_cl_tabs_cast_added_v1', '1');
+        if (!saved.includes('cast')) { saved.push('cast'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
       }
       // Quests arrived 2026-10-12: a tab list saved before then gets it once.
       if (!localStorage.getItem('nge_cl_tabs_quests_added_v1')) {
@@ -2459,10 +2863,20 @@ const slimCell = computed<CellRow | null>(() => {
  *  last claim just completed. It offers "Claim a new cell" (Ames 2026-10-21,
  *  report 191: "slim view on" with nothing to shrink to left the panel full). */
 const slimEmpty = ref(false);
-const slim = computed(() => slimCell.value !== null || slimEmpty.value);
+/** Slim on the Quests tab: the bar shows the quest cell you are on (toknow,
+ *  report 288: "show current Quest cell in slim Cell Library when I select
+ *  Quests tab"). */
+const slimQuest = ref(false);
+const slim = computed(() => slimCell.value !== null || slimEmpty.value || slimQuest.value);
+// With slim view on, opening the Quests tab while a quest is under way goes
+// straight to that cell's slim bar (toknow, report 288).
+watch(filter, f => {
+  if (f === 'quests' && slimMode.value && questWork.active) { slimQuest.value = true; void nextTick(clampPanelPos); }
+  else if (f !== 'quests') slimQuest.value = false;
+});
 /** The rows the cell list draws: one in the slim view, none on the empty bar. */
 const listCells = computed(() => (slimCell.value ? [slimCell.value] : slimEmpty.value ? [] : shownCells.value));
-const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed'];
+const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed', 'hunt', 'giants'];
 /** The cell the caret shrinks to: the one on screen, else the claim being
  *  worked on, else your first claim. */
 function currentCell(): CellRow | null {
@@ -2484,17 +2898,47 @@ function setSlimMode(on: boolean) {
 }
 function collapseToCurrent() {
   setSlimMode(true);
+  if (filter.value === 'quests') {
+    showTabSettings.value = false;
+    showHowTo.value = false;
+    slimQuest.value = true;
+    void nextTick(clampPanelPos);
+    return;
+  }
   // Nothing to shrink to yet: the bar alone, with "Claim a new cell".
   void collapseTo(currentCell());
 }
+// The library opens the way it was left (st0ck53y, report 306): slim stays
+// slim once the claims are in. Opened to a given tab, or to complete a cell,
+// it stays full, since it was opened for that.
+onMounted(() => {
+  if (!slimMode.value || props.initialTab) return;
+  const go = () => {
+    if (slim.value || pendingCompleteRequest.value || !CELL_TABS.includes(filter.value)) return;
+    void collapseTo(currentCell());
+  };
+  if (!backend.loading) { void nextTick(go); return; }
+  const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); go(); } });
+});
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
-const nextAvailableCell = computed(() => datasetScopedCells.value.find(c => c.status === 'pending') ?? null);
+const nextAvailableCell = computed(() => libraryCells.value.find(c => c.status === 'pending') ?? null);
+/** A paged list may hold no available cell yet while the server has more. */
+const canClaimNew = computed(() => !!nextAvailableCell.value || (backend.tasksPaged && !backend.taskPages.available.done));
+/** The top available cell, reading more of the paged list when the loaded
+ *  part has none left (all claimed meanwhile, or held in the sheet). */
+async function findNextAvailable(): Promise<CellRow | null> {
+  for (let i = 0; i < 5 && !nextAvailableCell.value && backend.tasksPaged && !backend.taskPages.available.done; i++) {
+    await backend.loadMoreTasks('available');
+  }
+  return nextAvailableCell.value;
+}
 const claimingNew = ref(false);
 async function claimNewCell() {
-  const cell = nextAvailableCell.value;
-  if (!cell || claimingNew.value) return;
+  if (!canClaimNew.value || claimingNew.value) return;
   claimingNew.value = true;
   try {
+    const cell = await findNextAvailable();
+    if (!cell) return;
     await claimCell(cell);
     await nextTick();
     // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
@@ -2548,6 +2992,52 @@ function expandAndStay() {
   setSlimMode(false);
   expandFull();
 }
+
+// ── Back as it was after a refresh (Nseraf, report 232) ─────────────────
+// F5, Ctrl+F5, Pyr's gem or "Reload now": the library comes back open, on
+// the same tab, slimmed to the same cell. The note lives in this tab only
+// (sessionStorage), is written as the page goes, and is dropped when the
+// library is closed, so a closed library stays closed. ExtensionBar reads
+// it to reopen the library; the slim part is restored here.
+const REFRESH_KEY = 'nge_cl_on_refresh';
+function rememberForRefresh() {
+  try {
+    sessionStorage.setItem(REFRESH_KEY, JSON.stringify({
+      tab: filter.value, slimSeg: slimSeg.value, slimEmpty: slimEmpty.value, at: Date.now(),
+    }));
+  } catch { /* private window */ }
+}
+window.addEventListener('pagehide', rememberForRefresh);
+onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', rememberForRefresh);
+  try { sessionStorage.removeItem(REFRESH_KEY); } catch { /* */ }
+});
+onMounted(async () => {
+  let want: { slimSeg?: string | null; slimEmpty?: boolean; at?: number } | null = null;
+  try { want = JSON.parse(sessionStorage.getItem(REFRESH_KEY) || 'null'); } catch { want = null; }
+  try { sessionStorage.removeItem(REFRESH_KEY); } catch { /* */ }
+  if (!want || Date.now() - (want.at || 0) > 30 * 60_000) return;
+  if (want.slimEmpty) {
+    slimEmpty.value = true;
+    await nextTick();
+    clampPanelPos();
+    return;
+  }
+  if (!want.slimSeg) return;
+  // The cells load after the panel opens: wait for that one to be listed.
+  // A paged list may not hold it: ask for it once the list is in.
+  let asked = false;
+  for (let i = 0; i < 60; i++) {
+    if (datasetScopedCells.value.some(c => c.segId === want!.slimSeg)) {
+      slimSeg.value = want.slimSeg;
+      await nextTick();
+      clampPanelPos();
+      return;
+    }
+    if (!asked && backend.tasksPaged && !backend.loading) { asked = true; void backend.findTasks(currentDatasetTag(), [want.slimSeg]); }
+    await new Promise(r => setTimeout(r, 500));
+  }
+});
 async function collapseTo(cell: CellRow | null) {
   if (cell ? slimSeg.value === cell.segId : slimEmpty.value) return;
   const el = panelEl.value;
@@ -2570,7 +3060,7 @@ async function collapseTo(cell: CellRow | null) {
   morphIntoSlim(ghost, el, parts);
 }
 function expandFull() {
-  if (!slimSeg.value && !slimEmpty.value) return;
+  if (!slimSeg.value && !slimEmpty.value && !slimQuest.value) return;
   // Hide the slim row before the full list renders (a long list takes a
   // moment), so the panel never flashes open ahead of the beam.
   if (panelEl.value && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -2578,6 +3068,7 @@ function expandFull() {
   }
   slimSeg.value = null;
   slimEmpty.value = false;
+  slimQuest.value = false;
   void nextTick(() => {
     clampPanelPos();
     // revealWithBeam waits for the panel to settle (the clamp above moves it
@@ -2598,7 +3089,13 @@ async function onRowJump(cell: CellRow) {
   else {
     const left = await prepareJump(cell.segId);
     if (!left.ok) return;
-    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep, cell.liveSegId);
+    // A completed cell opens as it was finished, not as it started (Nseraf,
+    // report 308: two pyramids merged showed the merged segment, not the two
+    // final ones): its saved view, else its final segment.
+    const done = cell.status === 'completed';
+    const view = done ? backend.tasks.find(x => x.id === cell.taskId)?.working_link : null;
+    if (view && openStartLink(view)) jumpedSegId.value = cell.segId;
+    else jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep, (done && cell.finalSegId) || cell.liveSegId);
   }
   if (slimMode.value && jumpedSegId.value === cell.segId) void collapseTo(cell);
 }
@@ -2693,6 +3190,16 @@ const panelStyle = computed(() => ({
               </span>
             </div>
             <div class="nge-cl-tabgroup-row">
+              <!-- Hunt candidates (the Hunt Builder), only while there are some: cells that may become a Hunt. -->
+              <button v-if="huntCells.length" :class="{ active: filter === 'hunt', 'nge-cl-hunt-tab': true }" @click="filter = 'hunt'"
+                      title="Hunt candidates: cells that may become a Hunt. Proofread one fully, to every end. A claim on one is let go 24 hours after you claim it, so the cell is not held up.">
+                Hunt <b>{{ huntOpenCount }}</b>
+              </button>
+              <!-- Super Quests (Ames 2026-10-28): giant MEC interneurons, only on a dataset that has some. -->
+              <button v-if="questCells.length" :class="{ active: filter === 'giants', 'nge-cl-giants-tab': true }" @click="filter = 'giants'"
+                      title="Super Quests: giant interneurons that have never been mapped before. One can take weeks. You hold one at a time, beside your other claims, for up to 2 months. The number is the Super Quests open to claim.">
+                Super Quests <b>{{ questOpenHere }}</b>
+              </button>
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
                       title="Cells you have claimed, and cells you completed">
                 My Cells <b>{{ myClaimCount }}</b>
@@ -2706,12 +3213,16 @@ const panelStyle = computed(() => ({
                 Claimed <b>{{ claimedCount }}</b>
               </button>
               <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'" title="Every cell in this dataset">
-                All <b>{{ datasetScopedCells.length }}</b>
+                All <b>{{ allCount }}</b>
               </button>
               <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
               <button v-if="tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
                       :title="questsHere ? 'Annotation quests: mark the cilia on a starburst amacrine cell, without completing it. The number is the cells open to claim.' : 'Annotation quests are on Retina for now'">
                 Quests <b v-if="questsHere && questState.loaded">{{ questOpenCount() }}</b>
+              </button>
+              <button v-if="castHere && tabShown('cast')" :class="{ active: filter === 'cast', 'nge-cl-cast-tab': true }" @click="filter = 'cast'"
+                      title="One example cell of each retinal type, to turn in 3D, alone or all together">
+                Meet the cells <b>{{ CAST.length }}</b>
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
@@ -2757,7 +3268,7 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
-        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams'" class="nge-cl-search">
+        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams' && filter !== 'cast'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
@@ -2794,6 +3305,11 @@ const panelStyle = computed(() => ({
           <!-- Always-visible quick-add: submit a new help request from the top -->
           <!-- Collapsed by default: a permanently-open form at the top of the
                tab read as an alert rather than an action. -->
+<div v-if="solvedFlash" class="nge-cl-solved" role="status" aria-live="polite">
+            <span class="nge-cl-solved-check" aria-hidden="true">✓</span>
+            <img :src="nurroCelebrate" class="nge-cl-solved-nurro" alt="" />
+            <span class="nge-cl-solved-text"><b>Solved!</b> Thanks for closing the loop. It moved to Resolved.</span>
+          </div>
           <button
             v-if="!helpFormOpen"
             class="nge-cl-help-open-btn"
@@ -2903,11 +3419,17 @@ const panelStyle = computed(() => ({
             <div v-if="newHelpError" class="nge-cl-help-create-err">{{ newHelpError }}</div>
           </div>
 
-          <!-- Pending help requests -->
-          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
-            No help requests yet. Use the box above to submit one.
+          <!-- Everyone's requests or only yours -->
+          <div v-if="isLoggedIn" class="nge-cl-help-scope" role="group" aria-label="Which help requests to show">
+            <button type="button" :class="{ active: helpScope === 'all' }" :aria-pressed="helpScope === 'all' ? 'true' : 'false'" @click="helpScope = 'all'">All requests <b>{{ pendingHelp.length }}</b></button>
+            <button type="button" :class="{ active: helpScope === 'mine' }" :aria-pressed="helpScope === 'mine' ? 'true' : 'false'" @click="helpScope = 'mine'">Mine <b>{{ myOpenHelpCount }}</b></button>
           </div>
-          <div v-else-if="pendingHelp.length === 0" class="nge-cl-no-results">No pending requests</div>
+
+          <!-- Pending help requests -->
+          <div v-if="scopedPendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
+            {{ helpScope === 'mine' ? 'You have no help requests. Use the box above to ask for help.' : 'No help requests yet. Use the box above to submit one.' }}
+          </div>
+          <div v-else-if="scopedPendingHelp.length === 0" class="nge-cl-no-results">{{ helpScope === 'mine' ? 'None of your requests are open' : 'No pending requests' }}</div>
 
           <div
             v-for="group in pendingHelpByDataset"
@@ -2941,6 +3463,7 @@ const panelStyle = computed(() => ({
               <div
                 v-for="req in group.requests"
                 :key="req.id"
+                :data-help-id="req.id"
                 class="nge-cl-help-item"
                 :class="{
                   'nge-cl-help-item--active': activeHelpId === req.id,
@@ -2974,6 +3497,9 @@ const panelStyle = computed(() => ({
                     </div>
                   </div>
                   <div class="nge-cl-row-actions">
+                    <button class="nge-cl-btn nge-cl-btn--jump nge-cl-btn--popout" :class="{ 'nge-cl-btn--jump-active': poppedHelpId === req.id }"
+                            title="Open this request in its own window, easy to read" aria-label="Open in its own window"
+                            @click="popOutReq(req)">⧉</button>
                     <button
                       class="nge-cl-btn nge-cl-btn--jump"
                       @click="jumpToReq(req)"
@@ -3011,7 +3537,7 @@ const panelStyle = computed(() => ({
             </div>
 
             <!-- Inline response form (below existing thread) -->
-            <div v-if="respondingTo === req.id" class="nge-cl-response-form">
+            <div v-if="respondingTo === req.id && poppedHelpId !== req.id" class="nge-cl-response-form">
               <textarea
                 v-model="responseNote"
                 placeholder="Write your response... (Enter to submit, Shift+Enter for newline)"
@@ -3075,7 +3601,9 @@ const panelStyle = computed(() => ({
             <div
               v-for="req in resolvedHelp"
               :key="req.id"
+              :data-help-id="req.id"
               class="nge-cl-help-item"
+              :class="{ 'nge-cl-help-item--active': activeHelpId === req.id }"
             >
               <div class="nge-cl-row nge-cl-row--done">
                 <div class="nge-cl-row-left">
@@ -3092,6 +3620,9 @@ const panelStyle = computed(() => ({
                   </div>
                 </div>
                 <div class="nge-cl-row-actions">
+                  <button class="nge-cl-btn nge-cl-btn--jump nge-cl-btn--popout" :class="{ 'nge-cl-btn--jump-active': poppedHelpId === req.id }"
+                          title="Open this request in its own window, easy to read" aria-label="Open in its own window"
+                          @click="popOutReq(req)">⧉</button>
                   <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
                   <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
                 </div>
@@ -3139,12 +3670,21 @@ const panelStyle = computed(() => ({
 
         <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
         <div v-else-if="filter === 'quests'" class="nge-cl-list">
-          <annotation-quests-tab v-if="questsHere" />
+          <annotation-quests-tab v-if="questsHere" :slim="slimQuest" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
             <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
-            <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
+            <div v-if="questsLocked" class="nge-cl-quests-elsewhere-text">Unlock Level 1 ({{ questDatasetName }}) to take them.</div>
+            <button v-else-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
                     title="Switch this view to the quests' dataset">Switch to {{ questDatasetName }}</button>
           </div>
+          <button v-if="slimQuest" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <!-- ═══ CAST TAB (one example of each retinal cell type) ═══ -->
+        <div v-else-if="filter === 'cast' && castHere" class="nge-cl-list">
+          <retina-cast-tab />
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
@@ -3534,6 +4074,12 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0 && !backend.loading && !slim" class="nge-cl-no-results">No matching cells</div>
 
+          <div v-if="filter === 'giants' && !slim" class="nge-cl-giants-intro">
+            Help discover giant interneurons. These cell types have never been mapped before!
+            You may hold one Super Quest at a time for up to 2 months.
+            Pyr counts your active time on it, which helps the lab learn how long these cells take.
+            For more info, see <a :href="SUPER_QUEST_BLOG" target="_blank" rel="noopener">the Super Quests blog post</a>.
+          </div>
           <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
           <img v-if="slim" :src="neuronIcon" class="nge-cl-icon nge-cl-slim-icon" alt="" aria-hidden="true" />
           <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
@@ -3546,11 +4092,11 @@ const panelStyle = computed(() => ({
           </button>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
-            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!nextAvailableCell || claimingNew || !isLoggedIn"
+            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
                     :title="!isLoggedIn ? 'Sign in to claim cells'
-                      : nextAvailableCell ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
+                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
                       : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
-                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : nextAvailableCell ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
+                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : canClaimNew ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
           </div>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
@@ -3575,13 +4121,36 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
-                  <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
+                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, for up to 2 months, and Pyr counts your active time on it.">Super Quest</span>
+                  <span v-if="cell.quest && cell.questCategory" class="nge-cl-notes nge-cl-giant-cat" :title="cell.questCategory">{{ cell.questCategory }}</span>
+                  <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
+                  <!-- The Hunt candidate tag says it (its tooltip has the note) -->
+                  <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
+                <div v-if="questEndsSoon(cell)" class="nge-cl-time nge-cl-quest-ends">{{ questEndsSoon(cell) }}</div>
+                <div v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
+                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have worked on it in the last 5 minutes: moving, turning or zooming the view, a mark, a highlight, a merge or cut, or Save view.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
               </div>
             </div>
 
             <!-- Right: actions -->
             <div class="nge-cl-row-actions">
+              <!-- Save view comes first: it shows on the claim being worked on
+                   only, so the buttons after it stay put on every row (toknow,
+                   report 236). -->
+              <button
+                v-if="isWorkingClaim(cell)"
+                class="nge-cl-btn nge-cl-btn--saveview"
+                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
+                :disabled="savingView === cell.taskId"
+                @click="saveClaimView(cell)"
+                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
+              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+              <!-- Your other open claims: when their view was last saved, in the
+                   spot Save view takes on the one you are working on. -->
+              <span v-else-if="isMyClaim(cell) && cell.taskId && cell.status !== 'completed'" class="nge-cl-saved-at"
+                    :title="savedAtLabel(cell).title">{{ savedAtLabel(cell).text }}</span>
+
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
                 :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
@@ -3595,15 +4164,6 @@ const panelStyle = computed(() => ({
                 :disabled="claiming.has(cellKey(cell))"
                 @click="claimCell(cell)"
               ><span v-if="claiming.has(cellKey(cell))" class="nge-cl-spin" />{{ claiming.has(cellKey(cell)) ? 'Claiming…' : 'Claim' }}</button>
-
-              <button
-                v-if="isWorkingClaim(cell)"
-                class="nge-cl-btn nge-cl-btn--saveview"
-                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
-                :disabled="savingView === cell.taskId"
-                @click="saveClaimView(cell)"
-                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
-              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
 
               <button
                 v-if="isMyClaim(cell) && teamsHere && teamsOnDataset(cell.dataset) && cell.status !== 'completed'"
@@ -3630,10 +4190,15 @@ const panelStyle = computed(() => ({
             </div>
           </div>
 
+          <!-- MEC: the lab marks on the cell in view, one line that opens
+               into a checklist (Ames 2026-10-24). In the Complete form
+               instead while that is open. -->
+          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" :super-quest="cell.quest" :started="marksStartLine(cell)" />
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell</div>
+            <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="marksStartLine(cell)" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
               <div class="nge-cl-complete-statuses" role="radiogroup" aria-label="How did it end?">
@@ -3708,17 +4273,20 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-complete-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
-                :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link) || statusMissing(cell)"
-                :title="statusMissing(cell) ? 'Pick how the cell ended first' : undefined"
+                :disabled="!!completeBlocked(cell)"
+                :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
               ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
+            <!-- Why Mark complete can't be pressed yet, said plainly (a player
+                 could not tell why it stayed grey, Ames 2026-11-05). -->
+            <div v-if="completeBlocked(cell) && !completing.submitting && !completing.checking" class="nge-cl-complete-msg nge-cl-complete-why">{{ completeBlocked(cell) }}</div>
           </div>
           </template>
-          <div v-if="!slimCell && filteredCells.length > shownCells.length" class="nge-cl-more">
-            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ filteredCells.length.toLocaleString() }}. Search finds any of them.</span>
-            <button class="nge-cl-btn" @click="rowsShown += ROWS_STEP">Show {{ Math.min(ROWS_STEP, filteredCells.length - shownCells.length) }} more</button>
+          <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
+            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ Math.max(tabTotal, filteredCells.length).toLocaleString() }}. Search finds any of them.</span>
+            <button class="nge-cl-btn" :disabled="!!backend.loadingMore" @click="loadMore"><span v-if="backend.loadingMore" class="nge-cl-spin" />{{ backend.loadingMore ? 'Loading…' : 'Load more' }}</button>
           </div>
         </div>
 
@@ -3736,6 +4304,100 @@ const panelStyle = computed(() => ({
 
       </div>
     </Transition>
+  </Teleport>
+
+  <!-- One help request in its own window (⧉ on a request; annkri, #227). -->
+  <Teleport to="body">
+    <div v-if="poppedHelpId" ref="popoutEl" class="nge-cl-popout" :class="{ 'nge-cl-popout--dragging': popoutDragging }"
+         :style="popoutPosStyle" role="dialog" aria-label="Help request">
+      <div class="nge-cl-popout-head" title="Drag to move" @pointerdown="startPopoutDrag">
+        <span class="nge-cl-title">HELP REQUEST</span>
+        <button class="nge-cl-close" title="Close this window" aria-label="Close" @click="closePopout">×</button>
+      </div>
+      <div v-if="!poppedReq" class="nge-cl-popout-body nge-cl-popout-muted">
+        {{ helpStore.requests.length ? 'This help request is no longer in the list.' : 'Loading…' }}
+      </div>
+      <div v-else class="nge-cl-popout-body">
+        <div class="nge-cl-popout-who">
+          <b>{{ poppedReq.userName || 'A player' }}</b> asked {{ relativeTime(poppedReq.createdAt) }}
+          <span class="nge-cl-badge nge-cl-status--help" :class="{ 'nge-cl-badge--live': isLiveHelp(poppedReq) }">{{ poppedReq.issueType }}</span>
+          <span v-if="poppedReq.resolved" class="nge-cl-popout-solved">✓ Solved{{ poppedReq.resolvedByName ? ' by ' + poppedReq.resolvedByName : '' }}</span>
+        </div>
+        <div class="nge-cl-popout-cell">
+          <span v-if="poppedReq.segId" class="nge-cl-row-name" @click="copyId(poppedReq.segId)" :title="'Click to copy ' + poppedReq.segId">
+            Cell {{ poppedReq.segId }}<span v-if="copiedId === poppedReq.segId" class="nge-cl-copied">copied</span>
+          </span>
+          <span v-if="poppedReq.dataset" class="nge-cl-popout-muted">{{ datasetHeading(poppedReq.dataset) }}</span>
+        </div>
+        <div v-if="poppedReq.note" class="nge-cl-popout-question">{{ poppedReq.note }}</div>
+        <div v-else class="nge-cl-popout-question nge-cl-popout-muted">They did not write a question.</div>
+        <a v-if="poppedReq.screenshotUrl" :href="poppedReq.screenshotUrl" target="_blank" rel="noopener"
+           class="nge-cl-popout-shot" title="Open the full picture">
+          <img :src="poppedReq.screenshotUrl" alt="Their picture" />
+        </a>
+        <div class="nge-cl-popout-links">
+          <a v-if="poppedReq.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(poppedReq.viewUrl)"
+             title="Load the view they were looking at">↗ Open their view</a>
+          <span v-if="poppedReq.annotationLayer" class="nge-cl-response-layer">📐 {{ poppedReq.annotationLayer === 'All annotation layers' ? poppedReq.annotationLayer : (poppedReq.annotationLayer.includes(', ') ? 'Layers: ' : 'Layer: ') + poppedReq.annotationLayer }}</span>
+        </div>
+
+        <div v-if="solvedFlash && solvedFlash === poppedReq.id" class="nge-cl-solved" role="status" aria-live="polite">
+            <span class="nge-cl-solved-check" aria-hidden="true">✓</span>
+            <img :src="nurroCelebrate" class="nge-cl-solved-nurro" alt="" />
+            <span class="nge-cl-solved-text"><b>Solved!</b> Thanks for closing the loop. It moved to Resolved.</span>
+          </div>
+        <div class="nge-cl-popout-actions">
+          <button class="nge-cl-btn" @click="jumpToReq(poppedReq)" title="Fly the view to this cell">↗ Jump to the cell</button>
+          <button v-if="!poppedReq.resolved" class="nge-cl-btn" @click="toggleResponseForm(poppedReq.id)">{{ respondingTo === poppedReq.id ? 'Cancel reply' : '💬 Reply' }}</button>
+          <button v-if="teamAllowed && !poppedReq.resolved && isLiveHelp(poppedReq) && poppedReq.userId && poppedReq.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
+                  :disabled="offeredTo.has(poppedReq.id)" @click="offerToJoin(poppedReq)">{{ offeredTo.has(poppedReq.id) ? 'Offered' : 'Join' }}</button>
+          <button v-if="!poppedReq.resolved && canResolve(poppedReq)" class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(poppedReq)"
+                  :title="poppedReq.userId === backend.userId ? 'Your question is answered: move it to Resolved for everyone' : 'Close this request for everyone: it moves to Resolved'">Mark solved</button>
+        </div>
+
+        <div v-if="respondingTo === poppedReq.id" class="nge-cl-response-form nge-cl-popout-form">
+          <textarea
+            v-model="responseNote"
+            placeholder="Write your reply... (Enter to send, Shift+Enter for a new line)"
+            class="nge-cl-response-textarea"
+            rows="3"
+            @keydown.stop @keyup.stop @keypress.stop
+            @keydown.enter.exact.prevent="submitResponse(poppedReq)"
+          ></textarea>
+          <div class="nge-cl-response-url-row">
+            <input v-model="responseUrl" placeholder="Neuroglancer state URL (optional)" class="nge-cl-response-input" @keydown.stop @keyup.stop @keypress.stop />
+            <button class="nge-cl-btn nge-cl-btn--copy-state" @click="copyCurrentState" title="Copy current viewer state URL">📋 State</button>
+          </div>
+          <select v-if="getAnnotationLayers().length > 0" v-model="responseAnnotationLayer" class="nge-cl-response-input">
+            <option value="">Select annotation layer (optional)</option>
+            <option v-for="layer in getAnnotationLayers()" :key="layer" :value="layer">{{ layer }}</option>
+          </select>
+          <button v-if="!responseScreenshotUrl" class="nge-cl-btn nge-cl-help-shot-btn" @click="showResponseScreenshotDialog = true"
+                  title="Attach a screenshot of the current view">📷 Attach screenshot</button>
+          <div v-else class="nge-cl-help-shot-preview">
+            <img :src="responseScreenshotUrl" alt="Reply screenshot" />
+            <button class="nge-cl-help-shot-remove" @click="clearResponseScreenshot" title="Remove screenshot">×</button>
+          </div>
+          <button class="nge-cl-btn nge-cl-btn--submit-response" :disabled="!responseNote.trim() && !responseScreenshotUrl"
+                  @click="submitResponse(poppedReq)">Send reply</button>
+          <button v-if="canResolve(poppedReq)" class="nge-cl-btn nge-cl-btn--submit-response nge-cl-btn--resolve"
+                  :disabled="!responseNote.trim() && !responseScreenshotUrl"
+                  title="Send the reply and move the request to Resolved for everyone"
+                  @click="submitResponse(poppedReq, true)">Reply and mark solved</button>
+        </div>
+
+        <div class="nge-cl-popout-replies-title">{{ poppedReq.responses?.length ? (poppedReq.responses.length === 1 ? '1 reply' : poppedReq.responses.length + ' replies') : 'No replies yet' }}</div>
+        <div v-for="resp in poppedReq.responses || []" :key="resp.id" class="nge-cl-popout-reply">
+          <div class="nge-cl-response-label">💬 {{ resp.userName || 'Reply' }}<span v-if="resp.resolved"> · solved it</span></div>
+          <div v-if="resp.note" class="nge-cl-popout-reply-text">{{ resp.note }}</div>
+          <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
+          <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
+          <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener" class="nge-cl-popout-shot" title="Open the full picture">
+            <img :src="resp.screenshotUrl" alt="Reply picture" />
+          </a>
+        </div>
+      </div>
+    </div>
   </Teleport>
 
   <!-- Cross-dataset jump confirmation modal -->
@@ -3819,7 +4481,7 @@ const panelStyle = computed(() => ({
   position: fixed;
   z-index: 10010;
   width: 480px;
-  max-height: 70vh;
+  max-height: calc(70 * var(--nge-vh, 1vh));
   display: flex;
   flex-direction: column;
   /* scifi-ui .holopanel surface: dark gradient, soft rim, lit inset line.
@@ -4247,6 +4909,8 @@ const panelStyle = computed(() => ({
 .nge-cl-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* Complete form: link + crosshairs check (Amy 2026-09-28) */
+/* The marks checklist sits flush in the Complete form. */
+.nge-cl-complete-marks { padding: 0 0 6px; }
 .nge-cl-complete {
   margin: 2px 6px 8px;
   padding: 10px 12px;
@@ -4274,6 +4938,18 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-linkrow { display: flex; gap: 6px; align-items: center; }
 .nge-cl-complete-typerow { display: flex; gap: 6px; }
 .nge-cl-ai-type { background: rgba(178, 140, 255, 0.14); color: #c9b2ff; text-transform: none; }
+.nge-cl-hunt-cell { background: rgba(66, 213, 236, 0.12); color: #7fe6f5; text-transform: none; }
+.nge-cl-hunt-tab b { color: #7fe6f5; }
+.nge-cl-giant-cell { background: rgba(196, 140, 255, 0.14); color: #d3b0ff; text-transform: none; }
+.nge-cl-giant-cat { color: #d3b0ff; }
+.nge-cl-giants-tab b { color: #d3b0ff; }
+.nge-cl-giants-tab.active { border-color: rgba(196, 140, 255, 0.7) !important; }
+.nge-cl-time { margin-top: 2px; font-size: 12px; color: #9fb3c8; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nge-cl-time--on { color: #8fe3a8; }
+.nge-cl-quest-ends { color: #ffc46b; white-space: normal; }
+.nge-cl-giants-intro { margin: 6px 0 12px; padding: 0 16px; font-size: 14px; line-height: 1.5; color: #c4d2e0; }
+.nge-cl-giants-intro a { color: #d3b0ff; text-decoration: underline; }
+.nge-cl-hunt-tab.active { border-color: rgba(66, 213, 236, 0.7) !important; }
 .nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
 .nge-cl-complete-ai b { color: #c9b2ff; }
 .nge-cl-complete-type { flex: 1 1 0; min-width: 0; }
@@ -4282,6 +4958,7 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-msg { font-size: 0.8em; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nge-cl-complete-msg--ok { color: #6d9; }
 .nge-cl-complete-msg--bad { color: #f98; }
+.nge-cl-complete-why { color: #ffcf8a; margin-top: 6px; }
 .nge-cl-complete-recheck {
   margin-left: auto;
   background: none;
@@ -4301,6 +4978,7 @@ const panelStyle = computed(() => ({
   color: #a86;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-saved-at { align-self: center; font-size: 11px; color: rgba(200, 212, 228, 0.6); white-space: nowrap; padding: 0 4px; }
 .nge-cl-btn--saveview {
   border-color: rgba(100, 200, 255, 0.3);
   color: #8fd3ff;
@@ -4392,15 +5070,15 @@ const panelStyle = computed(() => ({
   align-items: center;
   gap: 6px;
   padding: 10px 12px 6px;
-  font-size: 0.72em;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #667;
+  color: #8b97ad;
   cursor: pointer;
   user-select: none;
 }
-.nge-cl-help-resolved-header:hover { color: #889; }
+.nge-cl-help-resolved-header:hover { color: #c9d3e6; }
 .nge-cl-help-resolved-arrow {
   display: inline-block;
   transition: transform 0.15s;
@@ -4488,8 +5166,10 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 6px;
   background: rgba(10, 10, 30, 0.6);
-  color: #ccd;
-  font-size: 0.76em;
+  color: #dde4f0;
+  /* readable in a narrow panel (Ames 2026-10-24: "this text is way too small") */
+  font-size: 14px;
+  line-height: 1.45;
   font-family: inherit;
   resize: vertical;
   outline: none;
@@ -4504,8 +5184,8 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.12);
   border-radius: 5px;
   background: rgba(10, 10, 30, 0.5);
-  color: #ccd;
-  font-size: 0.72em;
+  color: #dde4f0;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -4523,7 +5203,7 @@ const panelStyle = computed(() => ({
   min-width: 0;
 }
 .nge-cl-btn--copy-state {
-  font-size: 0.68em;
+  font-size: 13px;
   padding: 4px 8px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -4532,7 +5212,8 @@ const panelStyle = computed(() => ({
   align-self: flex-end;
   border-color: rgba(68, 170, 102, 0.25);
   color: #4a6;
-  padding: 5px 12px;
+  padding: 6px 14px;
+  font-size: 14px;
 }
 .nge-cl-btn--submit-response:hover { background: rgba(68, 170, 102, 0.12); }
 .nge-cl-btn--submit-response:disabled {
@@ -4896,6 +5577,17 @@ select.nge-cl-complete-type:hover {
 .nge-cl-tabgroup--cells { flex: 1 1 100%; }
 .nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }
 .nge-cl-tabgroup-row { display: flex; gap: 4px; flex-wrap: wrap; }
+/* Help: All requests or Mine, a small two way switch above the list. */
+.nge-cl-help-scope { display: inline-flex; margin: 10px 12px 2px; border: 1px solid rgba(100, 200, 255, 0.28); border-radius: 7px; overflow: hidden; }
+.nge-cl-help-scope button {
+  background: transparent; border: 0; padding: 5px 12px; cursor: pointer;
+  font: 600 12.5px 'Inter', 'Segoe UI', sans-serif; color: rgba(200, 225, 255, 0.7);
+  transition: background 0.15s, color 0.15s;
+}
+.nge-cl-help-scope button + button { border-left: 1px solid rgba(100, 200, 255, 0.28); }
+.nge-cl-help-scope button b { margin-left: 4px; color: #64c8ff; font-weight: 600; }
+.nge-cl-help-scope button:hover { color: #e6f4ff; background: rgba(100, 200, 255, 0.08); }
+.nge-cl-help-scope button.active { color: #fff; background: rgba(100, 200, 255, 0.18); }
 .nge-cl-tabgroup-head { display: flex; align-items: center; gap: 10px; }
 /* Dataset links (MEC): small HUD labels, a diamond marker each, a thin
    divider between, glow and a sweeping underline on hover (Ames: "not very
@@ -4930,6 +5622,11 @@ select.nge-cl-complete-type:hover {
   background: rgba(66, 213, 236, 0.06);
   border: 1px solid rgba(66, 213, 236, 0.28);
   animation: nge-cl-howto-in 0.2s ease-out both;
+  /* Scrolls on a laptop screen instead of filling the panel (M Sorek, report 293). */
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(66, 213, 236, 0.4) transparent;
 }
 @keyframes nge-cl-howto-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .nge-cl-howto-panel-head {
@@ -5333,6 +6030,29 @@ select.nge-cl-complete-type:hover {
   max-height: 250px;
 }
 
+/* Marked solved: a short, happy card (Ames 2026-10-27). */
+.nge-cl-solved {
+  display: flex; align-items: center; gap: 10px;
+  margin: 6px 0 8px; padding: 8px 12px;
+  border-radius: 10px; border: 1px solid rgba(111, 224, 160, 0.55);
+  background: linear-gradient(90deg, rgba(111, 224, 160, 0.16), rgba(111, 224, 160, 0.05));
+  color: #d8f7e6; font: 500 13px/1.35 'Inter', system-ui, sans-serif;
+  animation: ngeSolvedIn 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both, ngeSolvedOut 0.5s ease-in 3.7s both;
+}
+.nge-cl-solved b { color: #fff; }
+.nge-cl-solved-check {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #6fe0a0; color: #062014; font-weight: 800; font-size: 14px;
+  box-shadow: 0 0 0 0 rgba(111, 224, 160, 0.6);
+  animation: ngeSolvedRing 1.1s ease-out 0.25s;
+}
+.nge-cl-solved-nurro { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; }
+@keyframes ngeSolvedIn { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes ngeSolvedOut { to { opacity: 0; } }
+@keyframes ngeSolvedRing { to { box-shadow: 0 0 0 12px rgba(111, 224, 160, 0); } }
+@media (prefers-reduced-motion: reduce) { .nge-cl-solved, .nge-cl-solved-check { animation: none; } }
+body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: none; }
 /* ── Dataset grouping for Help tab ── */
 .nge-cl-help-ds-group {
   margin-bottom: 4px;
@@ -5357,8 +6077,8 @@ select.nge-cl-complete-type:hover {
   background: rgba(120, 140, 255, 0.08);
 }
 .nge-cl-help-ds-arrow {
-  font-size: 0.7em;
-  color: #667;
+  font-size: 10px;
+  color: #8b97ad;
   display: inline-block;
   transition: transform 0.15s;
   width: 8px;
@@ -5367,15 +6087,14 @@ select.nge-cl-complete-type:hover {
 .nge-cl-help-ds-arrow--collapsed {
   transform: rotate(-90deg);
 }
+/* Readable at a glance (Ames 2026-10-26: "this text is too small"). */
 .nge-cl-help-ds-name {
-  font-family: ui-monospace, 'Cascadia Code', monospace;
-  font-size: 0.78em;
-  font-weight: 600;
-  color: #bcd;
+  font: 600 13px/1.3 'Inter', system-ui, sans-serif;
+  color: #dce6f5;
   flex: 1;
 }
 .nge-cl-help-ds-tag {
-  font-size: 0.62em;
+  font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -5392,14 +6111,14 @@ select.nge-cl-complete-type:hover {
   border: 1px solid rgba(245, 166, 35, 0.18);
   color: rgba(245, 166, 35, 0.85);
 }
-.nge-cl-help-ds-switch { cursor: pointer; font: inherit; }
+.nge-cl-help-ds-switch { cursor: pointer; font-family: inherit; font-size: 11px; }
 .nge-cl-help-ds-switch:hover {
   background: rgba(245, 166, 35, 0.22);
   border-color: rgba(245, 166, 35, 0.5);
   color: #ffd27a;
 }
 .nge-cl-help-ds-count {
-  font-size: 0.7em;
+  font-size: 11px;
   font-weight: 700;
   color: #889;
   background: rgba(255, 255, 255, 0.06);
@@ -5431,7 +6150,7 @@ select.nge-cl-complete-type:hover {
   border-radius: 10px;
   padding: 22px 24px;
   width: 460px;
-  max-width: 92vw;
+  max-width: calc(92 * var(--nge-vw, 1vw));
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
               0 0 40px rgba(245, 166, 35, 0.08) inset;
   color: #e0e0e0;
@@ -5616,7 +6335,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-topbar .nge-cl-title { margin-right: auto; }
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
 .nge-cl-caret { margin-right: 10px; }
-.nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
+.nge-cl-panel--slim { max-height: calc(100 * var(--nge-vh, 1vh) - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
@@ -5677,4 +6396,48 @@ select.nge-cl-complete-type:hover {
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 46px; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-right: -46px; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -46px; }
+
+/* ── Pop-out: one help request in its own window (#227) ── */
+.nge-cl-popout {
+  position: fixed; right: 520px; top: 80px; z-index: 10011;
+  width: 420px; height: 520px; min-width: 300px; min-height: 220px;
+  max-width: calc(100 * var(--nge-vw, 1vw) - 16px); max-height: calc(100 * var(--nge-vh, 1vh) - 56px);
+  resize: both; overflow: hidden; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  background: linear-gradient(158deg, rgba(15, 18, 24, 0.97) 0%, rgba(6, 10, 18, 0.98) 100%);
+  border: 1px solid rgba(74, 150, 224, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 0 60px rgba(74, 150, 224, 0.06), inset 0 1px 0 rgba(196, 228, 255, 0.10);
+  backdrop-filter: blur(10px) saturate(1.2);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--nge-fs-base);
+  color: #ccd;
+}
+.nge-cl-popout-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: rgba(30, 30, 60, 0.9);
+  border-bottom: 1px solid rgba(120, 140, 255, 0.08);
+  cursor: grab; user-select: none; touch-action: none; flex: none;
+}
+.nge-cl-popout--dragging .nge-cl-popout-head { cursor: grabbing; }
+.nge-cl-popout-body { flex: 1; overflow-y: auto; padding: 12px 16px 16px; }
+.nge-cl-popout-muted { color: #889; font-size: 13px; }
+.nge-cl-popout-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; color: #aab; }
+.nge-cl-popout-who b { color: #eef; }
+.nge-cl-popout-solved { color: #7f8; font-size: 13px; }
+.nge-cl-popout-cell { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-top: 6px; }
+.nge-cl-popout-question {
+  margin: 12px 0 4px; padding: 10px 12px;
+  font-size: 16px; line-height: 1.5; color: #eef; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: rgba(74, 150, 224, 0.08); border-left: 3px solid rgba(74, 150, 224, 0.6); border-radius: 6px;
+}
+.nge-cl-popout-shot { display: block; margin-top: 8px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.12); }
+.nge-cl-popout-shot img { display: block; width: 100%; height: auto; max-height: 360px; object-fit: contain; background: #000; }
+.nge-cl-popout-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.nge-cl-popout-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(120, 140, 255, 0.1); }
+.nge-cl-popout-form { margin-top: 10px; padding: 0; }
+.nge-cl-popout-replies-title { margin-top: 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #889; }
+.nge-cl-popout-reply { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); font-size: 14px; }
+.nge-cl-popout-reply-text { color: #dde; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 960px) { .nge-cl-popout { right: 8px; } }
 </style>

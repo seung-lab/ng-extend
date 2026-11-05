@@ -45,7 +45,7 @@ async function recordActivity({rpc, insertLegacy, who, me, token, value, fetchIm
   }
   const check = await verifyGraphEdit(row, who, token, fetchImpl);
   if (check.state === 'rejected') fail(403, check.why);
-  if (check.state === 'verified') { row.operation = check.operation; row.metadata = {...row.metadata, verified: true}; }
+  if (check.state === 'verified') { row.operation = check.operation; row.metadata = {...row.metadata, verified: true, ...(check.late ? {late: true} : {})}; }
   else if (check.state === 'unverified') row.metadata = {...(row.metadata || {}), verified: false};
   // A cell completed again after an edit is the same cell: tie a root id the
   // player has not logged before to the cell it came from. Until

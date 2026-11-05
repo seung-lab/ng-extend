@@ -37,8 +37,11 @@ export const COLUMNS = {
   ew2_type: 'EW2 type',
   type_guess: 'Proofreader Cell Type Guess',
 };
-/** Without these the sheet is not the sheet we know: write nothing. */
-const REQUIRED = ['sheet_index', 'soma_supervoxel_id', 'latest_seg_id', 'status'];
+/** Without these the sheet is not the sheet we know: write nothing.
+ *  Soma SupervoxID is not among them: the lab took it (and EW2 type) out of
+ *  the sheet on 2026-11-04, and every hourly sync failed. A column the sheet
+ *  no longer has keeps the values the table already holds (diffRows). */
+const REQUIRED = ['sheet_index', 'latest_seg_id', 'status'];
 const ID_COLUMNS = ['soma_supervoxel_id', 'latest_seg_id', 'proofread_seg_id'];
 
 /** Quote-aware CSV parser (cells hold commas and line breaks). */
@@ -92,7 +95,9 @@ export function extractRows(csvRows) {
     if (!index) continue;
     const row = {};
     for (const col of Object.keys(COLUMNS)) {
-      const v = at[col] < 0 ? null : r[at[col]];
+      // undefined: not in the sheet any more, so the table's value stands.
+      if (at[col] < 0) { row[col] = undefined; continue; }
+      const v = r[at[col]];
       row[col] = ID_COLUMNS.includes(col) ? cleanId(v) : cleanText(v);
     }
     // A row with no cell ID can never be matched to a cell on screen (the lab
@@ -111,6 +116,13 @@ export function sameRow(a, b) {
 /** What the table needs to become the sheet: rows to write, indexes to drop. */
 export function diffRows(sheetRows, tableRows) {
   const have = new Map(tableRows.map(r => [r.sheet_index, r]));
+  // A column the sheet no longer has: keep what the table holds.
+  sheetRows = sheetRows.map(r => {
+    const old = have.get(r.sheet_index);
+    const out = { ...r };
+    for (const c of Object.keys(COLUMNS)) if (out[c] === undefined) out[c] = old?.[c] ?? null;
+    return out;
+  });
   const upserts = sheetRows.filter(r => !sameRow(r, have.get(r.sheet_index)));
   const keep = new Set(sheetRows.map(r => r.sheet_index));
   const removals = tableRows.map(r => r.sheet_index).filter(i => !keep.has(i));

@@ -44,6 +44,12 @@ const PREFETCH_WAITS_FOR_VISIBLE = true;
 // otherwise waited about 50 s at 20 Mbps behind stale 3.7 MB prefetch chunks that neuroglancer
 // never cancelled because its 100-slot pool was never full.
 const SPECULATIVE_YIELDS_TO_VISIBLE = true;
+// When a VISIBLE chunk is promoted, also cancel the downloads still in flight for chunks nothing
+// wants any more (RECENT tier: the view moved on). neuroglancer only drops those once its pool is
+// full, and the pool is rarely full, so after a jump the old spot's chunks kept downloading ahead
+// of the new one. MEC (Nik, report 290): scrolling at 16 nm keeps a dozen 3.5 MB chunks in flight
+// on one HTTP/1.1 host, and the 2D view stayed black for about 2 s after each jump.
+const STALE_YIELDS_TO_VISIBLE = true;
 // An in-flight VISIBLE download is never cancelled to make room for a higher-priority VISIBLE
 // request (mesh manifests and fragments outrank 2D image chunks). Cancelling throws away the
 // bytes received and refetches from byte zero (a Sandbox chunk is 3.7 MB). RECENT and PREFETCH
@@ -934,6 +940,19 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
     }
   }
 
+  /** Pyr: cancel in-flight downloads of RECENT (no longer wanted) chunks, see
+   *  STALE_YIELDS_TO_VISIBLE. The queue lists RECENT chunks first and yields each until it leaves
+   *  the queue; a cancelled RECENT chunk set back to QUEUED is deleted. */
+  cancelStaleDownloads(downloadQueue: ChunkPriorityQueue) {
+    let previous: Chunk|undefined;
+    for (const chunk of downloadQueue.candidates()) {
+      if (chunk === previous || chunk.priorityTier !== ChunkPriorityTier.RECENT) break;
+      previous = chunk;
+      cancelChunkDownload(chunk);
+      this.updateChunkState(chunk, ChunkState.QUEUED);
+    }
+  }
+
   private processQueuePromotions_() {
     let queueManager = this;
     const evict = (chunk: Chunk) => {
@@ -975,6 +994,9 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
               }
               if (SPECULATIVE_YIELDS_TO_VISIBLE && priorityTier === ChunkPriorityTier.VISIBLE) {
                 this.cancelSpeculativeDownloads(promotionCandidate.source!.sourceQueueLevel);
+              }
+              if (STALE_YIELDS_TO_VISIBLE && priorityTier === ChunkPriorityTier.VISIBLE) {
+                this.cancelStaleDownloads(downloadQueue);
               }
             }
             // console.log("Download capacity: " + downloadCapacity);

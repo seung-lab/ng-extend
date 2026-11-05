@@ -621,16 +621,27 @@ function selectFallbackScales(walked: readonly TransformedSource[], cap: boolean
   const keep = walked.map(() => true);
   if (!cap || walked.length < 2) return keep;
   const target = walked.length - 1;
-  let expensiveKept = 0;
+  const expensive = (i: number) => uncompressedChunkBytes(walked[i]) > EXPENSIVE_FALLBACK_CHUNK_BYTES;
+  // Pyr: the expensive fallbacks kept are the nearest ones stored compressed, when there are
+  // any. MEC (report 290) stores its 32 nm level raw, 256x256x32, 1.8 MB a chunk on the wire,
+  // and 64 nm and coarser as JPEG: keeping the 32 nm level cost 16 MB a view, more than the
+  // 16 nm view itself. A pyramid that is raw throughout (the Sandbox) keeps the nearest, as before.
+  let candidates: number[] = [];
+  for (let i = target - 1; i >= 0; --i) if (expensive(i) && !isStoredRaw(walked[i])) candidates.push(i);
+  if (candidates.length === 0) for (let i = target - 1; i >= 0; --i) if (expensive(i)) candidates.push(i);
+  const kept = new Set(candidates.slice(0, MAX_EXPENSIVE_FALLBACK_SCALES));
   for (let i = target - 1; i >= 0; --i) {
-    if (uncompressedChunkBytes(walked[i]) <= EXPENSIVE_FALLBACK_CHUNK_BYTES) continue;
-    if (expensiveKept < MAX_EXPENSIVE_FALLBACK_SCALES) {
-      ++expensiveKept;
-      continue;
-    }
+    if (!expensive(i) || kept.has(i)) continue;
     keep[i] = KEEP_COARSEST_SCALE && i === 0;
   }
   return keep;
+}
+
+/** Pyr: true when a scale's chunks are stored raw (precomputed encoding "raw"), so the bytes
+ *  fetched are about the uncompressed size. Unknown sources count as not raw. */
+function isStoredRaw(source: TransformedSource): boolean {
+  const encoding = (source.source as any).parameters?.encoding;
+  return encoding === 0;  // VolumeChunkEncoding.RAW in datasource/precomputed/base.ts
 }
 
 export function*

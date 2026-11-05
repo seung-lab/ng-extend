@@ -28,7 +28,10 @@
   border-top: 2px solid rgba(200, 164, 255, 0.55);
   backdrop-filter: blur(8px);
   box-sizing: border-box;
-  width: 100%;
+  /* The whole width of the window, like the Cut and Merge bars. 100% was the
+     width of its own buttons, so the bar stopped partway across and the 3D
+     view showed past it (Ames 2026-11-04: "cut off by 3D"). */
+  width: 100vw;
   padding: 5px 16px !important;
   color: #e0e0e0;
   font: 13px/1.3 'Inter', 'Roboto', sans-serif;
@@ -121,6 +124,19 @@ body.nge-fp-found .graphene-find-path > .neuroglancer-icon:first-child { animati
   50%      { box-shadow: 0 0 0 6px rgba(200, 164, 255, 0); }
 }
 
+/* Cancel (find_path_status.ts): the Cut and Merge bars' key chip. */
+.graphene-find-path > .nge-fp-cancel { gap: 6px; }
+.graphene-find-path > .nge-fp-cancel kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.3);
+  font: 600 9.5px 'Inter', sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+@media (hover: none) and (pointer: coarse) { .graphene-find-path > .nge-fp-cancel kbd { display: none; } }
+
 /* Precision mode: a toggle pill. The checkbox itself stays neuroglancer's. */
 .graphene-find-path > label {
   display: inline-flex !important;
@@ -161,6 +177,48 @@ body.nge-fp-found .graphene-find-path > .neuroglancer-icon:first-child { animati
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
+/* The site-wide annotation row look (annotations_restyle.css: two lines, a
+   coloured left edge, its own type mark) reaches these rows too and made
+   each chip tall with two markers (Ames 2026-10-24: "styling is off"). Here
+   a chip is one line: the dot, the numbers, then the name. */
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 0 10px 0 22px !important;
+  box-shadow: none;
+  font: 500 11px/16px 'JetBrains Mono', 'Consolas', monospace !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry > *,
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-coordinate { flex-shrink: 0; }
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry + .neuroglancer-annotation-list-entry { margin-top: 0; }
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-icon { display: none !important; }
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-coordinate {
+  color: rgba(214, 232, 250, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-description {
+  margin: 0 0 0 2px;
+  font: 400 12px/16px 'Inter', 'Roboto', sans-serif !important;
+  color: rgba(234, 220, 255, 0.72);
+}
+/* The row's buttons sit in the line, not over the text. Clicking the chip
+   already jumps, so only the x stays. */
+.graphene-find-path .find-path-annotations .nge-ann-row-actions {
+  position: static !important;
+  transform: none !important;
+  visibility: visible;
+  margin-left: 2px;
+}
+.graphene-find-path .find-path-annotations .nge-ann-row-jump { display: none !important; }
+.graphene-find-path .find-path-annotations .nge-ann-row-actions > .neuroglancer-icon {
+  width: 18px; min-width: 18px; height: 18px; min-height: 18px; line-height: 18px; font-size: 13px;
+}
+.graphene-find-path .find-path-annotations .nge-ann-row-actions > .neuroglancer-icon > svg { width: 14px; height: 14px; }
 .graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry:hover {
   border-color: rgba(200, 164, 255, 0.7);
   background: rgba(40, 26, 70, 0.85) !important;
@@ -204,7 +262,7 @@ body.nge-fp-found .graphene-find-path > .neuroglancer-icon:first-child { animati
       "Path found!", "Path finding failed: ..." restyled to match the bar. ── */
 #statusContainer li.nge-fp-status {
   box-sizing: border-box;
-  width: 100%;
+  width: 100vw;
   display: flex;
   align-items: center;
   gap: 12px;

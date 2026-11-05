@@ -380,6 +380,8 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
     pickedSegments.clear();
     return;
   }
+  // No key merges the picked cells: only the Merge button on the bar, so a
+  // merge is never an accident (Ames 2026-11-04).
   if (e.key !== 'Delete' && e.key !== 'Backspace') return;
   const panel = document.querySelector('.neuroglancer-segment-display-tab');
   const got = getSelectedSegmentsSet(panel);

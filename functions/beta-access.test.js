@@ -1,0 +1,240 @@
+'use strict';
+// Beta access (Ames 2026-10-24): status, the one request per account, and
+// that nothing a player types can inject anything, against a fake database.
+// Run: cd functions && node --test beta-access.test.js
+const test = require('node:test');
+const assert = require('node:assert');
+const path = require('node:path');
+const {handle, BETA_CATEGORY, BETA_BELL} = require('./access-request');
+// The game draws a bell's body with marked (src/util/safe_markdown.ts).
+let marked = null;
+try { ({marked} = require(path.join(__dirname, '..', 'node_modules', 'marked'))); } catch (e) { /* checked below */ }
+
+const GOOD = {name: 'New Player', email: 'New.Player@Example.org'};
+
+function world() {
+  const issues = [];
+  const triage = [];
+  const told = [], posted = [], pilots = ['invited@hotmail.example', 'joined@hotmail.example'], users = ['joined@hotmail.example'];
+  const sb = async (p, init = {}) => {
+    if (p.startsWith('pilot_members?on_conflict=') && init.method === 'POST') { pilots.push(JSON.parse(init.body).email); return []; }
+    if (p.startsWith('users?')) {
+      const e = (new URLSearchParams(p.split('?')[1]).get('middleauth_email') || '').replace(/^eq\./, '');
+      return users.includes(e) ? [{id: 'u-' + e}] : [];
+    }
+    if (p.startsWith('site_issues?') && p.includes('message=like.')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      if (!/"Beta access"/.test(q.get('category') || '') || !/"Invite used"/.test(q.get('category') || '')) throw new Error('both categories: ' + q.get('category'));
+      const want = (q.get('message') || '').replace(/^like\./, '').replace(/^\*|\*$/g, '');
+      return issues.filter(i => String(i.message).includes(want)).map(i => ({id: i.id}));
+    }
+    if (p.startsWith('site_issues?')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const cat = (q.get('category') || '').replace(/^eq\./, '');
+      const uid = (q.get('user_id') || '').replace(/^eq\./, '');
+      return issues.filter(i => i.category === cat && i.user_id === uid).slice().reverse().map(i => ({id: i.id, created_at: i.created_at}));
+    }
+    if (p.startsWith('feedback_triage?')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const sid = (q.get('source_id') || '').replace(/^eq\./, '');
+      return triage.filter(t => t.source_id === sid);
+    }
+    if (p.startsWith('pilot_members?')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const e = (q.get('email') || '').replace(/^eq\./, '');
+      return pilots.includes(e) ? [{email: e}] : [];
+    }
+    if (p === 'site_issues' && init.method === 'POST') {
+      for (const r of JSON.parse(init.body)) issues.push({id: 'i' + (issues.length + 1), created_at: new Date(Date.now() + issues.length).toISOString(), ...r});
+      return [];
+    }
+    throw new Error('unexpected ' + p);
+  };
+  const me = {id: 'u-new', display_name: 'Profile Name', username: 'newbie'};
+  const io = (over = {}) => ({sb, me, who: {email: 'signin@example.org'}, isAdmin: false, isPilot: false,
+    notifyAdmins: async n => { told.push(n); }, notifyReviewers: async () => { throw new Error('beta goes to every admin'); },
+    postIssue: async p => { posted.push(p); }, ...over});
+  return {issues, triage, told, posted, pilots, io};
+}
+
+test('a tester or an admin is invited, and nothing is filed', async () => {
+  const w = world();
+  assert.deepStrictEqual(await handle('access.betaStatus', {}, w.io({isPilot: true})), {invited: true, requested: false});
+  assert.deepStrictEqual(await handle('access.betaStatus', {}, w.io({isAdmin: true})), {invited: true, requested: false});
+  assert.deepStrictEqual(await handle('access.beta', GOOD, w.io({isPilot: true})), {invited: true, requested: false});
+  assert.strictEqual(w.issues.length, 0);
+});
+
+test('a player not on the list: not invited, not yet requested', async () => {
+  const w = world();
+  assert.deepStrictEqual(await handle('access.betaStatus', {}, w.io()), {invited: false, requested: false});
+});
+
+test('the request: one triage report, one bell to every admin, one Slack post', async () => {
+  const w = world();
+  const out = await handle('access.beta', {...GOOD, note: 'I proofread on EyeWire for years.'}, w.io());
+  assert.deepStrictEqual(out, {invited: false, requested: true});
+  assert.strictEqual(w.issues.length, 1);
+  const r = w.issues[0];
+  assert.strictEqual(r.category, BETA_CATEGORY);
+  assert.strictEqual(r.user_id, 'u-new');
+  assert.strictEqual(r.title, 'Beta access request from New Player');
+  assert.match(r.message, /^New Player asks to join the Pyr beta\./);
+  assert.match(r.message, /Email they gave: new\.player@example\.org/);
+  // The email for Pilot testers is the server's own, not the form's.
+  assert.match(r.message, /Sign in email: signin@example\.org\. To let them in, add this one under Admin Hub, Pilot testers\./);
+  assert.match(r.message, /Their note: I proofread on EyeWire for years\./);
+  assert.strictEqual(w.told.length, 1);
+  assert.ok(w.told[0].title.startsWith(BETA_BELL + ' from New Player'), w.told[0].title);
+  // The note is in the bell too (Ames 2026-10-26: "Note from beta request should appear here").
+  assert.match(w.told[0].body, /Their note:\n\nI proofread on EyeWire for years/);
+  assert.strictEqual(w.posted.length, 1);
+  for (const t of [r.title, r.message, w.told[0].title, w.told[0].body]) assert.doesNotMatch(t, /[–—]/);
+});
+
+test('invited under another address: the request says so, and the sign in email is still the one to add', async () => {
+  const w = world();
+  const out = await handle('access.beta', {name: 'New Player', email: 'Invited@Hotmail.example'}, w.io());
+  assert.deepStrictEqual(out, {invited: false, requested: true, invitedAs: true});
+  const r = w.issues[0];
+  assert.strictEqual(r.title, 'Invited tester on another Google account: New Player');
+  assert.match(r.message, /Invited as: invited@hotmail\.example, already on Pilot testers\./);
+  assert.match(r.message, /Sign in email: signin@example\.org\. To let them in/);
+  assert.match(w.told[0].body, /Already invited as invited\\@hotmail\\\.example/);
+  // An address not on the list gets no Invited line.
+  const w2 = world();
+  assert.deepStrictEqual(await handle('access.beta', GOOD, w2.io()), {invited: false, requested: true});
+  assert.doesNotMatch(w2.issues[0].message, /Invited as/);
+});
+
+test('use my invite: the sign in account joins Pilot testers at once, and every admin is told', async () => {
+  const w = world();
+  const out = await handle('access.linkInvite', {email: ' Invited@Hotmail.example '}, w.io());
+  assert.deepStrictEqual(out, {invited: true, linked: true});
+  assert.ok(w.pilots.includes('signin@example.org'));
+  assert.strictEqual(w.issues.length, 1);
+  assert.match(w.issues[0].message, /was invited as invited@hotmail\.example and joined as signin@example\.org/);
+  // Not a Beta request: no triage card, and the bell says nothing is needed.
+  assert.strictEqual(w.issues[0].category, 'Invite used');
+  assert.ok(w.told[0].body.includes('Nothing to do.'), w.told[0].body);
+  assert.doesNotMatch(w.told[0].body + w.told[0].title, /asks to join/);
+  assert.strictEqual(w.told.length, 1);
+  assert.ok(w.told[0].body.includes(String.raw`turn signin\@example\.org off`), w.told[0].body);
+  // The same invite from a second Google account goes to an admin instead.
+  const again = await handle('access.linkInvite', {email: 'invited@hotmail.example'}, w.io({who: {email: 'other@example.org'}, me: {id: 'u-other', display_name: 'Other'}}));
+  assert.deepStrictEqual(again, {invited: false, requested: true, review: true});
+  assert.ok(!w.pilots.includes('other@example.org'));
+  assert.match(w.issues[1].message, /already brought in another Google account/);
+});
+
+test('use my invite: not invited, own address, or someone already plays under it', async () => {
+  const w = world();
+  await assert.rejects(handle('access.linkInvite', {email: 'nobody@example.org'}, w.io()), /couldn't find an invite/);
+  await assert.rejects(handle('access.linkInvite', {email: 'signin@example.org'}, w.io()), /the account you are signed in with/);
+  await assert.rejects(handle('access.linkInvite', {email: 'not an email'}, w.io()), /does not look right/);
+  const r = await handle('access.linkInvite', {email: 'joined@hotmail.example'}, w.io());
+  assert.deepStrictEqual(r, {invited: false, requested: true, review: true});
+  assert.ok(!w.pilots.includes('signin@example.org'));
+  assert.match(w.issues[0].message, /Someone already plays Pyr with that invite email/);
+  // A tester already in is just in.
+  assert.deepStrictEqual(await handle('access.linkInvite', {email: 'x@y.org'}, w.io({isPilot: true})), {invited: true});
+});
+
+test('once only: a second request files nothing, and status says requested', async () => {
+  const w = world();
+  await handle('access.beta', GOOD, w.io());
+  const again = await handle('access.beta', {...GOOD, note: 'again'}, w.io());
+  assert.deepStrictEqual(again, {invited: false, requested: true, already: true});
+  assert.strictEqual(w.issues.length, 1);
+  assert.strictEqual(w.told.length, 1);
+  assert.deepStrictEqual(await handle('access.betaStatus', {}, w.io()), {invited: false, requested: true});
+});
+
+test('name and email are required and checked; the note is optional and capped', async () => {
+  const w = world();
+  await assert.rejects(handle('access.beta', {email: GOOD.email}, w.io()), /Your name is empty/);
+  await assert.rejects(handle('access.beta', {name: GOOD.name}, w.io()), /Your email is empty/);
+  await assert.rejects(handle('access.beta', {...GOOD, name: {toString: () => 'x'}}, w.io()), /must be text/);
+  await assert.rejects(handle('access.beta', {...GOOD, note: 'x'.repeat(501)}, w.io()), /too long/);
+  await assert.rejects(handle('access.beta', {...GOOD, name: 'x'.repeat(81)}, w.io()), /too long/);
+  await assert.rejects(handle('access.beta', GOOD, w.io({me: null})), /profile is not ready/);
+  // Accents, apostrophes, periods and hyphens are names.
+  await handle('access.beta', {name: "Zoë O'Brien-Núñez Jr.", email: GOOD.email}, w.io());
+  assert.strictEqual(w.issues.length, 1);
+});
+
+test('injection: markup, links, Slack pings and fake emails are refused', async () => {
+  const w = world();
+  const names = ['<img src=x onerror=alert(1)>', '[Grant access](https://evil.example)', '<!channel>', 'Amy *admin*',
+    'https://evil.example', 'Bob\u202Eevil', '=HYPERLINK("x")', '`code`'];
+  for (const name of names) await assert.rejects(handle('access.beta', {...GOOD, name}, w.io()), /name/i, name);
+  const emails = ['a@b', 'a b@example.org', '<a@example.org>', 'a@example.org\nBcc: x@example.org', 'a@example.org, b@example.org',
+    'javascript:alert(1)@example.org', '[x](https://evil.example)@example.org', 'x@-bad.example', 'a@example..org'];
+  for (const email of emails) await assert.rejects(handle('access.beta', {...GOOD, email}, w.io()), /email/i, email);
+  assert.strictEqual(w.issues.length, 0);
+  // Invisible control characters are taken out, not stored.
+  await handle('access.beta', {...GOOD, name: 'Ann\u0000a\u0007'}, w.io());
+  assert.strictEqual(w.issues[0].title, 'Beta access request from Anna');
+  // A line break in a name becomes a space: one line, always.
+  const w2 = world();
+  await handle('access.beta', {...GOOD, name: 'Anna\nAdmin'}, w2.io());
+  assert.strictEqual(w2.issues[0].title, 'Beta access request from Anna Admin');
+});
+
+test('the bell draws no link, tag or emphasis from what a player typed', async () => {
+  if (!marked) { assert.fail('marked not found in node_modules: cannot check the bell'); return; }
+  const w = world();
+  await handle('access.beta', {name: "Mary O'Neil-Smith", email: 'mary_o.neil+pyr@example.co.uk', note: '<script>alert(1)</script> [x](https://evil.example)\nwww.evil.example **loud** <!channel>'}, w.io());
+  const html = marked.parse(w.told[0].body, {gfm: true, breaks: true, async: false});
+  assert.doesNotMatch(html, /<a |<em>|<strong>|<script|<img|mailto:/i, html);
+  assert.match(html, /Mary O&#39;Neil-Smith asks to join/, html);
+  assert.match(html, /mary_o\.neil\+pyr@example\.co\.uk/, html);
+  // The note shows in the bell as the words typed, never as markup.
+  assert.match(html, /Their note:/, html);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/, html);
+  assert.match(w.issues[0].message, /<script>alert\(1\)<\/script>/);
+});
+
+test('a failed bell or Slack post still keeps the request', async () => {
+  const w = world();
+  const out = await handle('access.beta', GOOD, w.io({notifyAdmins: async () => { throw new Error('down'); }, postIssue: async () => { throw new Error('down'); }}));
+  assert.strictEqual(out.requested, true);
+  assert.strictEqual(w.issues.length, 1);
+});
+
+test('a request an admin removed, or dismissed on the triage board, may be sent again', async () => {
+  const w = world();
+  await handle('access.beta', GOOD, w.io());
+  assert.strictEqual((await handle('access.betaStatus', {}, w.io())).requested, true);
+  // Removed in the Admin Hub, after the request.
+  const marks = {'signin@example.org': {mark: 'removed', at: new Date(Date.now() + 1000).toISOString()}};
+  const removed = w.io({marks: {all: async () => marks}});
+  assert.strictEqual((await handle('access.betaStatus', {}, removed)).requested, false);
+  const again = await handle('access.beta', GOOD, removed);
+  assert.strictEqual(again.requested, true);
+  assert.strictEqual(w.issues.length, 2);
+  // Only "On the list" keeps it open.
+  marks['signin@example.org'] = {mark: 'listed', at: new Date(Date.now() + 2000).toISOString()};
+  assert.strictEqual((await handle('access.betaStatus', {}, w.io({marks: {all: async () => marks}}))).requested, true);
+  // Dismissed on the triage board.
+  w.triage.push({source_id: w.issues[1].id, status: 'dismissed'});
+  assert.strictEqual((await handle('access.betaStatus', {}, w.io())).requested, false);
+});
+
+// "You're in" by email (Ames 2026-11-05).
+test('letting someone in emails them once, from connectome.quest', async () => {
+  const sent = [], kept = {};
+  const io = { isAdmin: true, who: { email: 'ames@x.org' },
+    sendEmail: async m => { sent.push(m); return { ok: true, id: 'e1' }; },
+    welcomeSent: { get: async e => kept[e], set: async (e, v) => { kept[e] = v; } } };
+  const r = await handle('access.welcomeEmail', { email: 'Ryan@Example.org', name: 'Ryan Tian' }, io);
+  assert.deepEqual(r, { sent: true });
+  assert.equal(sent[0].from, 'Pyr <welcome@connectome.quest>');
+  assert.deepEqual(sent[0].to, ['ryan@example.org']);
+  assert.equal(sent[0].reply_to, 'support@eyewire.ai');
+  assert.match(sent[0].text, /^Hi Ryan,\n\nYou're in!/);
+  assert.deepEqual(await handle('access.welcomeEmail', { email: 'ryan@example.org', name: 'Ryan' }, io), { sent: false, reason: 'already sent' });
+  assert.equal(sent.length, 1);
+  await assert.rejects(handle('access.welcomeEmail', { email: 'x@y.org' }, { ...io, isAdmin: false }));
+  assert.deepEqual(await handle('access.welcomeEmail', { email: 'z@y.org' }, { isAdmin: true }), { sent: false, reason: 'not set up' });
+});

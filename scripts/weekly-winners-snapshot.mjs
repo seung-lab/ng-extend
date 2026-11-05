@@ -6,7 +6,8 @@
  * metric and once for completions. Idempotent: snapshot_weekly_winners()
  * uses ON CONFLICT DO NOTHING so re-runs for the same week are safe.
  *
- * Runs via GitHub Actions cron (Monday 00:05 UTC) or manually:
+ * Weeks are Monday to Sunday on US Eastern time (weekly-completions.mjs).
+ * Runs via GitHub Actions cron (Monday just after midnight ET) or manually:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-winners-snapshot.mjs
  *
  * Optional argument — pass a YYYY-MM-DD week-start date to backfill a
@@ -14,7 +15,7 @@
  *   node scripts/weekly-winners-snapshot.mjs 2026-04-21
  */
 
-import { weekRange, topCompleters } from './weekly-completions.mjs';
+import { weekRange, topCompleters, topEditors } from './weekly-completions.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,26 +26,6 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 
 const targetWeekStart = process.argv[2] || null;
-
-async function callSnapshot(weekStart, metric) {
-  const body = {};
-  if (weekStart) body.target_week_start = weekStart;
-  body.target_metric = metric;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/snapshot_weekly_winners`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_KEY,
-      ...(SUPABASE_KEY.startsWith('sb_') ? {} : { Authorization: `Bearer ${SUPABASE_KEY}` }),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`RPC failed: ${res.status} ${text}`);
-  }
-  return res.json();
-}
 
 const HEADERS = {
   apikey: SUPABASE_KEY,
@@ -77,28 +58,27 @@ async function snapshotCompletions(weekStartArg) {
   await rest('weekly_winners', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(top) });
 }
 
+/** The Edits podium, counted here on the ET week. It was the database's
+ *  snapshot_weekly_winners, which counts UTC weeks. A podium already saved is
+ *  left as it is, as that function did (ON CONFLICT DO NOTHING). */
+async function snapshotEdits(weekStartArg) {
+  const { weekStart, startISO, endISO } = weekRange(weekStartArg);
+  const saved = await rest(`weekly_winners?select=rank&week_start=eq.${weekStart}&metric=eq.edits`);
+  if (saved.length) { console.log(`[snapshot] edits: podium for ${weekStart} is already saved, leaving it.`); return; }
+  const top = (await topEditors(path => rest(path), startISO, endISO, 3))
+    .map((r, i) => ({ week_start: weekStart, rank: i + 1, user_id: r.user_id, edits: r.count, metric: 'edits' }));
+  console.log(`[snapshot] edits: saving the podium for ${weekStart}:`);
+  for (const w of top) console.log(`  rank ${w.rank}: user_id=${w.user_id} count=${w.edits}`);
+  if (process.env.DRY_RUN === '1') { console.log('[snapshot] DRY RUN, nothing written.'); return; }
+  if (!top.length) return;
+  await rest('weekly_winners', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(top) });
+}
+
 (async () => {
-  const metrics = ['edits'];
-  try { await snapshotCompletions(targetWeekStart); }
-  catch (e) { console.error('[snapshot] completions: failed:', e.message); process.exitCode = 1; }
   let failed = 0;
-  for (const metric of metrics) {
-    try {
-      const winners = await callSnapshot(targetWeekStart, metric);
-      if (!winners || winners.length === 0) {
-        console.log(targetWeekStart
-          ? `[snapshot] ${metric}: no new rows for ${targetWeekStart} (already captured or no activity).`
-          : `[snapshot] ${metric}: no new rows for the previous week (already captured or no activity).`);
-        continue;
-      }
-      console.log(`[snapshot] ${metric}: captured ${winners.length} winners:`);
-      for (const w of winners) {
-        console.log(`  rank ${w.rank}: user_id=${w.user_id} count=${w.edits}`);
-      }
-    } catch (e) {
-      console.error(`[snapshot] ${metric}: failed:`, e.message);
-      failed++;
-    }
-  }
+  try { await snapshotCompletions(targetWeekStart); }
+  catch (e) { console.error('[snapshot] completions: failed:', e.message); failed++; }
+  try { await snapshotEdits(targetWeekStart); }
+  catch (e) { console.error('[snapshot] edits: failed:', e.message); failed++; }
   if (failed > 0) process.exit(1);
 })();

@@ -1051,6 +1051,16 @@ export class AnnotationSource extends RefCounted implements AnnotationSourceSign
     this.childDeleted.dispatch(reference.id);
   }
 
+  /** nge: annotations kept but not drawn (their folder is hidden, report
+   *  225); the list still shows them. Set from the folders, never saved. */
+  ngeHidden: ReadonlySet<AnnotationId> = new Set();
+  ngeSetHidden(ids: Set<AnnotationId>) {
+    const cur = this.ngeHidden;
+    if (cur.size === ids.size && [...ids].every(id => cur.has(id))) return;
+    this.ngeHidden = ids;
+    this.changed.dispatch();
+  }
+
   /** nge: put the annotations in this order (the list's order, and the order
    *  they are saved in). Ids not given keep their place after those given. */
   ngeReorder(ids: AnnotationId[]) {

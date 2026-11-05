@@ -8,7 +8,7 @@
  * Logic: src/access_request.ts.
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, resetAccess, flyTo,
+import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, resetAccess, flyToPoint,
   type AccessKind, type AccessItem } from '../access_request';
 import { openStartLink } from '../util/start_link';
 import { pointName } from '../access_request';
@@ -230,7 +230,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
             <div v-if="openKey === kind + row.s" class="nge-acc-marks">
               <p v-if="row.it.feedback" class="nge-acc-quote">{{ row.it.feedback }}</p>
               <button v-for="p in pointList(row.it)" :key="p.key" class="nge-acc-pt" :class="`nge-acc-pt--${p.color}`"
-                      title="Fly to this point" @click="flyTo(p.position)">
+                      title="Fly to this point" @click="flyToPoint(p.position)">
                 <span class="nge-acc-dot"></span>{{ p.n }}<span v-if="p.mark" class="nge-acc-ptmark" :class="`nge-acc-ptmark--${p.mark}`">{{ p.mark }}</span>
               </button>
             </div>
@@ -262,7 +262,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </template>
 
       <p v-if="message" class="nge-acc-msg" :class="{ 'nge-acc-msg--bad': messageBad }" role="status">{{ message }}</p>
-      <div v-if="backend.isAdmin && request && !slim" class="nge-acc-admin">
+      <div v-if="backend.showAdminUi && request && !slim" class="nge-acc-admin">
         <button class="nge-acc-rep" :disabled="!!busy" @click="askingReset = true">Start over (admins, for testing)</button>
         <ConfirmDialog v-if="askingReset" title="Start over?"
           text="This deletes your request, its ten examples and every mark and note on them, for good. It cannot be undone."
@@ -270,7 +270,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </div>
       <p v-if="!slim" class="nge-acc-help">
         Taking more than one try is normal. You are never locked out.
-        <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
+        <a href="https://connectome.quest/blog/how-to-unlock-edit-access-in-pyr/" target="_blank" rel="noopener">How access works ↗</a>
       </p>
     </template>
   </div>

@@ -214,7 +214,7 @@ function relativeTime(iso: string): string {
 .nge-help-shell {
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
+  max-height: calc(80 * var(--nge-vh, 1vh));
 }
 
 .nge-help-topbar {

@@ -49,6 +49,10 @@ export interface NgeProp {
   /** How brightly its own colours are lit: 1 as painted, less for a figure
    *  that should stand in the dark as a shape with a lit edge. */
   shade: number;
+  /** 0 = whole. Above 0 the prop is drawn as pieces flying apart and
+   *  falling, further apart as it goes up (the Sandbox pumpkins smashed with
+   *  the hammer, src/util/pumpkin.ts). Fade it out with alpha as it ends. */
+  shatter?: number;
 }
 
 /** Each part of the app keeps its own list, so one clearing its props (the
@@ -68,13 +72,40 @@ precision highp float;
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUv;
+// Centre of the triangle this vertex belongs to (the shatter copy only).
+layout(location = 3) in vec3 aCentroid;
 uniform mat4 uModelViewProjection;
+uniform vec2 uShatter;   // amount 0..1, seed
 out vec3 vNormal;
 out vec3 vPosition;
 out vec2 vUv;
+float h3(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+vec3 turn(vec3 v, vec3 k, float a) {
+  float c = cos(a), s = sin(a);
+  return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c);
+}
 void main() {
-  gl_Position = uModelViewProjection * vec4(aPosition, 1.0);
-  vNormal = aNormal;
+  vec3 p = aPosition;
+  vec3 n = aNormal;
+  if (uShatter.x > 0.0) {
+    // Triangles are grouped into chunks by where they sit; each chunk flies
+    // out from the middle, tumbles, and falls (model +y is up).
+    float t = uShatter.x;
+    vec3 cell = floor(aCentroid * 6.0);
+    vec3 c = (cell + 0.5) / 6.0;
+    float r1 = h3(cell + uShatter.y), r2 = h3(cell + 3.1 + uShatter.y), r3 = h3(cell + 7.7 + uShatter.y);
+    vec3 dir = normalize(c + (vec3(r1, r2, r3) - 0.5) * 0.9 + vec3(0.0, 0.45, 0.0) + 1e-4);
+    vec3 axis = normalize(vec3(r2, r3, r1) - 0.5 + 1e-4);
+    float a = (r3 * 2.0 - 1.0) * 8.0 * t;
+    p = c + turn(p - c, axis, a) + dir * (0.8 + 1.2 * r1) * t - vec3(0.0, 2.4 * t * t, 0.0);
+    n = turn(n, axis, a);
+  }
+  gl_Position = uModelViewProjection * vec4(p, 1.0);
+  vNormal = n;
   vPosition = aPosition;
   vUv = aUv;
 }
@@ -126,6 +157,35 @@ void main() {
 `;
 
 interface GpuMesh { vao: WebGLVertexArrayObject; texture: WebGLTexture; count: number; buffers: WebGLBuffer[]; }
+/** The shatter copy of a mesh: every triangle on its own three vertices, with
+ *  its centre, so pieces can come apart. Made the first time a mesh shatters. */
+const shardMeshes = new WeakMap<object, NgePropMesh & {centroids: Float32Array}>();
+function shardsOf(mesh: NgePropMesh) {
+  let shard = shardMeshes.get(mesh.key);
+  if (shard !== undefined) return shard;
+  const {positions: P, normals: N, uvs: U, indices: I} = mesh;
+  const n = I.length;
+  const positions = new Float32Array(n * 3), normals = new Float32Array(n * 3), uvs = new Float32Array(n * 2);
+  const centroids = new Float32Array(n * 3);
+  for (let t = 0; t + 2 < n; t += 3) {
+    const cx = (P[I[t] * 3] + P[I[t + 1] * 3] + P[I[t + 2] * 3]) / 3;
+    const cy = (P[I[t] * 3 + 1] + P[I[t + 1] * 3 + 1] + P[I[t + 2] * 3 + 1]) / 3;
+    const cz = (P[I[t] * 3 + 2] + P[I[t + 1] * 3 + 2] + P[I[t + 2] * 3 + 2]) / 3;
+    for (let k = 0; k < 3; k++) {
+      const v = I[t + k], o = t + k;
+      positions.set(P.subarray(v * 3, v * 3 + 3), o * 3);
+      normals.set(N.subarray(v * 3, v * 3 + 3), o * 3);
+      uvs.set(U.subarray(v * 2, v * 2 + 2), o * 2);
+      centroids[o * 3] = cx; centroids[o * 3 + 1] = cy; centroids[o * 3 + 2] = cz;
+    }
+  }
+  const indices = new Uint32Array(n);
+  for (let i = 0; i < n; i++) indices[i] = i;
+  shard = {key: {}, positions, normals, uvs, indices, image: mesh.image, centroids};
+  shardMeshes.set(mesh.key, shard);
+  return shard;
+}
+
 interface GpuState {
   program: WebGLProgram|null;
   failed: boolean;
@@ -159,13 +219,13 @@ function build(gl: GL): GpuState {
     return state;
   }
   state.program = program;
-  for (const name of ['uModelViewProjection', 'uTexture', 'uLook', 'uGlow', 'uRim', 'uShade']) {
+  for (const name of ['uModelViewProjection', 'uTexture', 'uLook', 'uGlow', 'uRim', 'uShade', 'uShatter']) {
     state.uniforms[name] = gl.getUniformLocation(program, name);
   }
   return state;
 }
 
-function upload(gl: GL, mesh: NgePropMesh): GpuMesh {
+function upload(gl: GL, mesh: NgePropMesh & {centroids?: Float32Array}): GpuMesh {
   const T = WebGL2RenderingContext;
   const vao = gl.createVertexArray()!;
   gl.bindVertexArray(vao);
@@ -181,6 +241,7 @@ function upload(gl: GL, mesh: NgePropMesh): GpuMesh {
   attribute(0, mesh.positions, 3);
   attribute(1, mesh.normals, 3);
   attribute(2, mesh.uvs, 2);
+  if (mesh.centroids) attribute(3, mesh.centroids, 3);
   const index = gl.createBuffer()!;
   buffers.push(index);
   gl.bindBuffer(T.ELEMENT_ARRAY_BUFFER, index);
@@ -228,12 +289,15 @@ export function drawNgeProps(gl: GL, viewProjectionMat: mat4) {
   gl.depthMask(true);
   for (const prop of props) {
     if (prop.alpha <= 0 || prop.dissolve >= 1) continue;
-    let gpu = state.meshes.get(prop.mesh.key);
+    const shatter = prop.shatter ?? 0;
+    const mesh = shatter > 0 ? shardsOf(prop.mesh) : prop.mesh;
+    let gpu = state.meshes.get(mesh.key);
     if (gpu === undefined) {
-      gpu = upload(gl, prop.mesh);
-      state.meshes.set(prop.mesh.key, gpu);
+      gpu = upload(gl, mesh);
+      state.meshes.set(mesh.key, gpu);
       gl.useProgram(state.program);
     }
+    gl.uniform2f(u.uShatter, shatter, prop.seed * 13.0);
     gl.bindVertexArray(gpu.vao);
     gl.bindTexture(T.TEXTURE_2D, gpu.texture);
     gl.uniformMatrix4fv(u.uModelViewProjection, false, mat4.multiply(mvp, viewProjectionMat, prop.modelMat));

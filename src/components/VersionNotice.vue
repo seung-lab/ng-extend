@@ -17,6 +17,14 @@ startVersionWatch();
 
 const folded = ref(false);
 const panelEl = ref<HTMLElement | null>(null);
+// The chip's x (Nseraf, report 340): the reminder goes, the update still waits
+// for the next reload.
+const dismissed = ref(false);
+let dismissedAt = 0;
+async function dismiss() {
+  dismissed.value = true;
+  try { dismissedAt = (await readChanges()).since.length; } catch { dismissedAt = Infinity; }
+}
 const reloading = ref(false);
 
 watch(() => version.newer, async (now, was) => {
@@ -24,9 +32,20 @@ watch(() => version.newer, async (now, was) => {
   // the next time it is opened, not the one from an earlier update.
   changes.value = null;
   if (showChanges.value) void loadChanges();
+  // Waved away: it stays away until an update has something new for players.
+  if (dismissed.value) {
+    try { if ((await readChanges()).since.length > dismissedAt) dismissed.value = false; } catch { /* stays away */ }
+  }
   // The first newer version opens the panel. One after that changes nothing:
   // the player has already been told, and has the chip.
   if (!now || was) return;
+  // An update with no notes for players (marked [no player change]) gets only
+  // the chip: opening the panel then showed the same older notes again, as if
+  // they were new (Ames 2026-10-25: "it seems to be repeating").
+  try {
+    const { since } = await readChanges();
+    if (!since.length) { folded.value = true; return; }
+  } catch { /* open it as before */ }
   await nextTick();
   if (panelEl.value) runPanelTrace(panelEl.value);
   panelEl.value?.querySelector<HTMLButtonElement>('.nge-ver-go')?.focus({ preventScroll: true });
@@ -74,7 +93,8 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
         <div v-if="!changes" class="nge-ver-changes-note">Reading what changed.</div>
         <div v-else-if="!changes.length" class="nge-ver-changes-note">No notes were written for this update. It is likely a small fix.</div>
         <template v-else>
-          <div class="nge-ver-changes-head">{{ changesAreNew ? 'What changed' : 'Latest changes' }}</div>
+          <div class="nge-ver-changes-head">{{ changesAreNew ? 'What changed' : 'Earlier changes' }}</div>
+          <div v-if="!changesAreNew" class="nge-ver-changes-note">This update has no new notes: it is a fix behind the scenes. These came before it.</div>
           <div v-for="(c, i) in changes" :key="i" class="nge-ver-change">
             <div class="nge-ver-change-title">{{ c.title }}<span class="nge-ver-change-day">{{ dayOf(c.at) }}</span></div>
             <ul><li v-for="(item, j) in c.items" :key="j">{{ item }}</li></ul>
@@ -87,11 +107,15 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
       </div>
     </div>
   </Teleport>
-  <Teleport v-if="version.newer && folded" :to="inBar ? '.nge-toolbar-icons' : 'body'">
-    <button type="button" class="nge-ver-chip" :class="{ 'nge-ver-chip--bar': inBar }" :disabled="reloading"
-            title="A newer version of Pyr is out. Click to reload and get it." @click="reload">
-      <span class="nge-ver-pip" aria-hidden="true"></span>{{ reloading ? 'Reloading' : 'Update ready' }}
-    </button>
+  <Teleport v-if="version.newer && folded && !dismissed" :to="inBar ? '.nge-toolbar-icons' : 'body'">
+    <!-- One pill (Ames 2026-11-02: the x sat outside the box): Reload, then x. -->
+    <span class="nge-ver-chip" :class="{ 'nge-ver-chip--bar': inBar, 'nge-ver-chip--busy': reloading }">
+      <button type="button" class="nge-ver-chip-go" :disabled="reloading"
+              title="A newer version of Pyr is out. Click to reload and get it." @click="reload">
+        <span class="nge-ver-pip" aria-hidden="true"></span>{{ reloading ? 'Reloading' : 'Update ready' }}
+      </button>
+      <button type="button" class="nge-ver-chip-x" title="Hide this. The update comes with your next reload." aria-label="Hide the update reminder" @click="dismiss">×</button>
+    </span>
   </Teleport>
 </template>
 
@@ -170,7 +194,7 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
 .nge-ver-btn:hover:not(:disabled), .nge-ver-btn.holo-on { border-color: rgba(var(--ver-line), 0.9); color: #fff; }
 .nge-ver-go:hover:not(:disabled), .nge-ver-go.holo-on { background: rgba(var(--ver-line), 0.3); box-shadow: 0 0 14px rgba(var(--ver-line), 0.35); }
 .nge-ver-btn:focus-visible, .nge-ver-chip:focus-visible { outline: 2px solid rgb(124, 196, 255); outline-offset: 2px; }
-.nge-ver-btn:disabled, .nge-ver-chip:disabled { opacity: 0.6; cursor: default; }
+.nge-ver-btn:disabled, .nge-ver-chip--busy { opacity: 0.6; cursor: default; }
 .nge-ver-chip {
   display: inline-flex; align-items: center; gap: 7px;
   font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase;
@@ -179,11 +203,16 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
   background: rgba(8, 13, 26, 0.95); border: 1px solid rgba(var(--ver-line), 0.5);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.nge-ver-chip:hover:not(:disabled), .nge-ver-chip.holo-on { border-color: rgba(var(--ver-line), 0.95); box-shadow: 0 0 12px rgba(var(--ver-line), 0.3); }
+.nge-ver-chip:hover:not(.nge-ver-chip--busy), .nge-ver-chip.holo-on { border-color: rgba(var(--ver-line), 0.95); box-shadow: 0 0 12px rgba(var(--ver-line), 0.3); }
 @media (prefers-reduced-motion: reduce) {
   .nge-ver, .nge-ver-corner, .nge-ver-changes { animation: none; }
 }
 /* In the top bar it is one of the row's own items, first in line. */
+.nge-ver-chip-go { display: inline-flex; align-items: center; gap: 7px; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.nge-ver-chip-go:disabled { cursor: default; }
+.nge-ver-chip--busy { opacity: 0.6; }
+.nge-ver-chip-x { margin-left: 4px; width: 16px; height: 16px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font: 700 12px/1 system-ui, sans-serif; letter-spacing: 0; color: #cfe6ff; background: none; border: 0; border-radius: 50%; cursor: pointer; opacity: 0.7; }
+.nge-ver-chip-x:hover { opacity: 1; background: rgba(124, 196, 255, 0.2); }
 .nge-ver-chip.nge-ver-chip--bar { position: static; transform: none; order: -1; margin-right: 8px; flex-shrink: 0; }
 /* The bar strips its buttons bare; this one keeps its outline and its light. */
 #extensionBar .nge-ver-chip.nge-ver-chip--bar {
@@ -192,7 +221,12 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
   background: rgba(8, 13, 26, 0.95) !important; border: 1px solid rgba(var(--ver-line), 0.55) !important;
   color: #dbe7f7 !important; font: 600 10px 'Orbitron', 'Inter', sans-serif !important; letter-spacing: 0.14em !important;
 }
-#extensionBar .nge-ver-chip.nge-ver-chip--bar:hover:not(:disabled),
+#extensionBar .nge-ver-chip.nge-ver-chip--bar:hover:not(.nge-ver-chip--busy),
 #extensionBar .nge-ver-chip.nge-ver-chip--bar.holo-on { border-color: rgba(var(--ver-line), 0.95) !important; box-shadow: 0 0 12px rgba(var(--ver-line), 0.3); }
+/* The bar's own button rules (10pt text, display block) reached the two
+   buttons inside the pill: the words came out big and the light sat against
+   the edge (Ames 2026-11-02). Put them back to the pill's own look. */
+#extensionBar .nge-ver-chip .nge-ver-chip-go { display: inline-flex !important; align-items: center; gap: 7px; font: 600 10px 'Orbitron', 'Inter', sans-serif !important; letter-spacing: 0.14em; }
+#extensionBar .nge-ver-chip .nge-ver-chip-x { display: inline-flex !important; align-items: center; justify-content: center; font: 700 12px/1 system-ui, sans-serif !important; letter-spacing: 0; }
 #extensionBar .nge-ver-chip .nge-ver-pip { display: inline-block !important; width: 7px !important; height: 7px !important; border-radius: 50%; background: rgb(var(--ver-line)) !important; box-shadow: 0 0 8px rgba(var(--ver-line), 0.9); }
 </style>

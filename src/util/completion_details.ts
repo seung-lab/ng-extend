@@ -9,30 +9,13 @@
  *
  * This asks the same two things, in the same words, before such a completion
  * goes ahead. A dataset with one ending (no entry in COMPLETE_STATUSES) is not
- * asked anything, as in the Cell Library. The last ending picked is offered
- * again, shared with the Cell Library's own memory of it.
+ * asked anything, as in the Cell Library. No ending is picked to start with
+ * (toknow, report 237).
  */
 import { completeStatusesFor } from '../sheet_sync';
-import { canonicalDataset } from '../datasets';
 
 export interface CompletionDetails { status?: string; notes?: string; }
 
-// The Cell Library's key (CellLibraryPanel.vue), so both remember one choice.
-const STATUS_KEY = 'nge_cl_complete_status';
-
-function remembered(dataset: string, options: { value: string }[]): string {
-  try {
-    const last = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}')[canonicalDataset(dataset)];
-    return options.some(o => o.value === last) ? last : '';
-  } catch { return ''; }
-}
-function remember(dataset: string, status: string) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}');
-    all[canonicalDataset(dataset)] = status;
-    localStorage.setItem(STATUS_KEY, JSON.stringify(all));
-  } catch { /* private mode */ }
-}
 
 const CSS = `
 .nge-cd-backdrop { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: center; justify-content: center;
@@ -74,7 +57,9 @@ export function askCompletionDetails(dataset: string, cellLabel = '', preset = '
   }
   return new Promise(resolve => {
     // preset: the Δ menu's Can't complete button opens with that status picked.
-    let status = preset && options.some(o => o.value === preset) ? preset : remembered(dataset, options);
+    // No ending picked to start with, as in the Cell Library (toknow,
+    // report 237): the last one carried over and could go in by mistake.
+    let status = preset && options.some(o => o.value === preset) ? preset : '';
     const backdrop = document.createElement('div');
     backdrop.className = 'nge-cd-backdrop';
     const box = document.createElement('div');
@@ -120,7 +105,6 @@ export function askCompletionDetails(dataset: string, cellLabel = '', preset = '
     };
     const submit = () => {
       if (!status) return;
-      remember(dataset, status);
       const text = notes.value.trim();
       done({ status, ...(text ? { notes: text } : {}) });
     };

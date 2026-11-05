@@ -181,7 +181,7 @@ You did it. The piece that didn't belong is its own segment now.
   {
     title: "You can also cut in 2D",
     text: `
-**Ctrl+Click** places points on the 2D images too, not only on the 3D shape: <strong style="color:#ff5c5c">red</strong> inside one cell's outline, <strong style="color:#5c8cff">blue</strong> inside the other's. It helps when the join is hard to see in 3D.
+**Ctrl+Click** places points on the 2D images too, not only on the 3D shape: 3 or 4 <strong style="color:#ff5c5c">red</strong> inside one cell's outline and 3 or 4 <strong style="color:#5c8cff">blue</strong> inside the other's, spread over a few slices. With one point a side the cut may take only part of the piece, or break off small extra pieces. It helps when the join is hard to see in 3D.
 
 <span class="nge-cut-2d-next">Press next to try it on a new cell.</span>`,
     position: OVER_2D,

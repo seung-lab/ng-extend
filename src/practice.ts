@@ -1,5 +1,5 @@
 import { practiceAction } from './pilot_actions';
-import { SANDBOX_IDS } from './practice_pools';
+import { EXTENSION_CELLS, SANDBOX_IDS } from './practice_pools';
 /**
  * practice.ts — resettable practice cells for the Cut & Merge tutorial.
  *
@@ -257,9 +257,12 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   }
   const activeOps = { length: undoneCount };
   await assertLease();
-  const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
-  const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
-  if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${ex.supervoxel_a} and ${ex.supervoxel_b} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
+  // The spots the game itself checks: a cell whose own pair differs from them
+  // was marked ready while it still read as solved (report 331).
+  const [sa, sb] = checkSupervoxels(ex);
+  const a = await rootOfSupervoxel(ex, sa);
+  const b = await rootOfSupervoxel(ex, sb);
+  if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${sa} and ${sb} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';
   if ((a === b) !== wantFused) {
@@ -880,6 +883,9 @@ function resumeTool() {
   if (tool) setTimeout(() => ensureTool(tool), 600);
 }
 
+/** For the tutorials: whether the merge or cut tool is on right now. */
+export function practiceToolOn(): boolean { return toolActive(); }
+
 /** True while a tool (merge, cut) is switched on. */
 function toolActive(): boolean {
   const viewer = getViewer();
@@ -1036,6 +1042,14 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     showOnlyAndKeep(ex, [ex.root_b, ex.root_a], [[ex.root_b, PURPLE], [ex.root_a, YELLOW]]);
     return;
   }
+  // A cell missing pieces (Extension Sandbox) opens on the cell alone:
+  // finding where it stops and what belongs there is the exercise. Every
+  // extension cell, one piece or several (Ames, 2026-10-24: the one-piece
+  // cell opened with its piece already showing, "half way complete").
+  if (CHECK_GROUPS[ex.id] || EXTENSION_CELLS.some(c => c.id === ex.id)) {
+    showOnlyAndKeep(ex, [session.rootA], [[session.rootA, PURPLE]]);
+    return;
+  }
   // Merge example: cell purple, loose piece yellow. Cut example: the fused
   // segment purple, so the piece cut off it stands out in its own colour.
   showOnlyAndKeep(ex, session.rootA === session.rootB ? [session.rootA] : [session.rootA, session.rootB],
@@ -1088,6 +1102,70 @@ export async function practiceLeftover(id?: string): Promise<{ message: string; 
   } catch { return null; }
 }
 
+/**
+ * A cell missing more than one piece (Extension Sandbox, Ames 2026-10-24).
+ * The first supervoxel is on the cell, the rest one on each missing piece.
+ * Merged means every one of them is on the cell's segment. The row's own
+ * pair (supervoxel_a and _b) is the cell and the first piece, so the reset
+ * job's start check still holds.
+ */
+const CHECK_GROUPS: Record<string, string[]> = {
+  // The cell (58256, 36905, 1161), its pieces (77321, 49937, 213) and
+  // (87334, 52032, 994).
+  '63a057ed-ce08-4a6f-915d-eca29214e48c': ['73535750519863797', '74873580823075327', '75507037362320389'],
+  // Extension Sandbox cell 2: the cell (62612, 39202, 558), its pieces
+  // (62448, 39130, 537) and (61025, 38968, 394).
+  'f3dfed18-9592-46ed-8ca7-90310aea0d60': ['73817362666812872', '73817362666662242', '73746993788759465'],
+};
+
+/** For a cell with a group: how many of its missing pieces are back on. */
+export async function groupProgress(id?: string): Promise<{ joined: number; total: number } | null> {
+  try {
+    const ex = id ? [...Object.values(session.held), ...Object.values(riders)].find(c => c.id === id) : session.example;
+    const group = ex ? CHECK_GROUPS[ex.id] : undefined;
+    if (!ex || !group) return null;
+    const roots = await Promise.all(group.map(sv => rootOfSupervoxel(ex, sv)));
+    if (roots.some(r => !r)) return null;
+    return { joined: roots.slice(1).filter(r => r === roots[0]).length, total: group.length - 1 };
+  } catch { return null; }
+}
+
+/** Whether a merge cell is finished: every piece on the cell's segment.
+ *  Asked directly, for the sandbox's check box. null when it cannot be told. */
+export async function cellIsJoined(id: string): Promise<boolean | null> {
+  try {
+    let ex = [...Object.values(session.held), ...Object.values(riders)].find(c => c.id === id) as PracticeExample | undefined;
+    if (!ex) {
+      const { data } = await supabase.from('tutorial_practice_examples').select('*').eq('id', id).limit(1);
+      ex = data?.[0] as PracticeExample | undefined;
+    }
+    if (!ex) return null;
+    const group = CHECK_GROUPS[ex.id] ?? checkSupervoxels(ex);
+    const roots = await Promise.all(group.map(sv => rootOfSupervoxel(ex!, sv)));
+    if (roots.some(r => !r)) return null;
+    return roots.every(r => r === roots[0]);
+  } catch { return null; }
+}
+
+/**
+ * Help on an extension cell: show the missing pieces too, in yellow. The
+ * cell opens alone, so without this the hint gems sat over empty space
+ * (Ames, 2026-10-28: "a help point floating in space").
+ */
+export async function revealMissingPieces(): Promise<void> {
+  const ex = session.example;
+  if (!ex || !EXTENSION_CELLS.some(c => c.id === ex.id)) return;
+  const pieces = (CHECK_GROUPS[ex.id] ?? [ex.supervoxel_a, ex.supervoxel_b]).slice(1);
+  const cellRoot = await rootOfSupervoxel(ex, CHECK_GROUPS[ex.id]?.[0] ?? ex.supervoxel_a);
+  const roots = (await Promise.all(pieces.map(sv => rootOfSupervoxel(ex, sv)))).filter((r): r is string => !!r && r !== cellRoot);
+  if (!roots.length) return;
+  const layer = segLayer(ex.dataset);
+  const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? layer?.displayState?.rootSegments;
+  if (!set) return;
+  for (const r of roots) { try { set.add(Uint64.parseString(r)); } catch { /* skip a bad id */ } }
+  colorSegments(ex.dataset, roots.map(r => [r, YELLOW] as [string, number]));
+}
+
 /** True when the two pieces currently share a root. */
 export async function piecesMerged(): Promise<boolean | null> {
   const ex = session.example;
@@ -1096,6 +1174,16 @@ export async function piecesMerged(): Promise<boolean | null> {
   const [sa, sb] = checkSupervoxels(ex);
   const [a, b] = await Promise.all([rootOfSupervoxel(ex, sa), rootOfSupervoxel(ex, sb)]);
   if (!a || !b) return null;
+  // A cell with several missing pieces is merged only when all are on.
+  const group = CHECK_GROUPS[ex.id];
+  if (group) {
+    const roots = await Promise.all(group.slice(2).map(sv => rootOfSupervoxel(ex, sv)));
+    if (roots.some(r => !r)) return null;
+    if (a === b && roots.some(r => r !== a)) {
+      session.rootA = a; session.rootB = b;
+      return false;
+    }
+  }
   const changed = a !== session.rootA || b !== session.rootB;
   session.rootA = a;
   session.rootB = b;

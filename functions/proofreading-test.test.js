@@ -443,3 +443,16 @@ test('heat map: each try keeps the piece to color for each mistake, and the part
     [['cut', '5550001', undefined], ['keep', '700', undefined], ['merge', '5550002', undefined], ['endpoint', null, 1500], ['endpoint', null, 1500]],
     'segment ids only when they are ids; every end says its radius');
 });
+
+test('submit: a long history is put back only as far as time allows; the score is recorded first, the rest comes off at the next start', async () => {
+  const g = fakeGraph(START);
+  const base = Date.parse(T.baseline_at);
+  for (let i = 0; i < 5; i++) g.edit({201: i % 2 ? '900' : '700'}, base + 60000 * (i + 1));
+  const slow = async (url, init) => { if (String(url).includes('/undo')) await new Promise(r => setTimeout(r, 30)); return g.fetch(url, init); };
+  const {rpc, calls} = fakeRpc({});
+  const out = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me, io: {...io(g, rpc), fetch: slow, submitBudgetMs: 50}});
+  assert.equal(typeof out.percent, 'number', 'the player gets their score');
+  assert.ok(g.undone.length > 0 && g.undone.length < 5, 'only part of the history came off');
+  const rec = calls.find(c => c.action === 'record');
+  assert.equal(rec.args.clean, false); assert.match(rec.args.error, /Put back in part: \d+ edits left/);
+});

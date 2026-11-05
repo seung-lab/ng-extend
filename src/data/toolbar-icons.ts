@@ -130,7 +130,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed' },
   { id: 'notif',       emoji: '🔔', svg: NOTIF_SVG,       label: 'Notifications' },
   { id: 'chat',        emoji: '💬', svg: CHAT_SVG,        label: 'Chat' },
-  { id: 'settings',    emoji: '⚙️', svg: SETTINGS_SVG,    label: 'Profile Settings' },
+  { id: 'settings',    emoji: '⚙️', svg: SETTINGS_SVG,    label: 'Settings (Shift+S)' },
 ];
 
 export function getToolbarIconDef(id: string): ToolbarIconDef | undefined {
@@ -143,7 +143,9 @@ export function getToolbarIconDef(id: string): ToolbarIconDef | undefined {
  * (ExtensionBar) and the Settings customization grid stay in sync — the grid
  * must only offer icons that can really appear in the top bar.
  */
-export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed', 'settings'];
+// 'settings' is back as a choice (Celia, report 277, 2026-10-27): not in the
+// default order, so it shows only for players who tick it in Settings.
+export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed'];
 
 /**
  * Default toolbar icon order for a user with no saved preference. Shared by the

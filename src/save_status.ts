@@ -7,7 +7,8 @@
  *   Saved                     the waiting saves went through (a few seconds)
  *
  * Hidden the rest of the time, so a normal edit shows nothing. Clicking it
- * while saves wait tries them again now.
+ * while saves wait opens a box that says what is going on, with Try now
+ * (toknow's "save problem", Ames 2026-11-01: "let's add an info box").
  */
 type Source = 'activity' | 'cave';
 
@@ -19,6 +20,42 @@ let slow = false;
 let savedUntil = 0;
 let tick: ReturnType<typeof setInterval> | null = null;
 let el: HTMLButtonElement | null = null;
+let box: HTMLDivElement | null = null;
+
+function closeBox() { box?.remove(); box = null; }
+/** The info box, over the chip. Plain text only. */
+function openBox() {
+  closeBox();
+  box = document.createElement('div');
+  box.id = 'nge-save-info';
+  box.setAttribute('role', 'status');
+  Object.assign(box.style, {
+    position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '76px', zIndex: '9001', width: 'min(360px, calc(100vw - 32px))',
+    padding: '12px 14px', borderRadius: '10px', font: '13px/1.45 system-ui, sans-serif', color: '#e8eef5',
+    background: 'rgba(16, 22, 30, 0.97)', border: '1px solid rgba(245, 165, 36, 0.45)', boxShadow: '0 6px 22px rgba(0, 0, 0, 0.5)',
+  } as Partial<CSSStyleDeclaration>);
+  const lead = document.createElement('div');
+  lead.textContent = 'Your work is safe.';
+  Object.assign(lead.style, { fontWeight: '700', marginBottom: '4px' });
+  const why: string[] = [];
+  if (waiting.cave) why.push(`${waiting.cave} save${waiting.cave === 1 ? ' is' : 's are'} waiting for CAVE, the lab's data server.`);
+  if (waiting.activity) why.push(`${waiting.activity} edit${waiting.activity === 1 ? ' is' : 's are'} waiting for Pyr's server.`);
+  const body = document.createElement('div');
+  body.textContent = `${why.join(' ')} This happens when the servers are slow, and it usually clears by itself. It is kept in this browser and sent automatically, even if you reload, so there is nothing to redo.`;
+  const row = document.createElement('div');
+  Object.assign(row.style, { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' });
+  const button = (label: string, onClick: () => void) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    Object.assign(b.style, { padding: '4px 12px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.25)', background: 'transparent', color: '#e8eef5', cursor: 'pointer', font: 'inherit' });
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  row.append(button('Close', closeBox), button('Try now', () => { closeBox(); window.dispatchEvent(new CustomEvent('nge:save-retry-now')); }));
+  box.append(lead, body, row);
+  document.body.appendChild(box);
+}
 
 function chip(): HTMLButtonElement | null {
   if (el) return el;
@@ -36,7 +73,7 @@ function chip(): HTMLButtonElement | null {
   } as Partial<CSSStyleDeclaration>);
   el.addEventListener('click', () => {
     if (waiting.activity + waiting.cave === 0) return;
-    window.dispatchEvent(new CustomEvent('nge:save-retry-now'));
+    if (box) closeBox(); else openBox();
   });
   document.body.appendChild(el);
   return el;
@@ -70,15 +107,24 @@ function render() {
     title = 'Everything that was waiting has been saved.';
     c.style.cursor = 'default';
   }
+  if (total === 0) closeBox();
   if (!text) { c.style.display = 'none'; return; }
   c.style.display = 'inline-flex';
-  c.title = title;
+  c.title = total > 0 ? "Your work is safe. Click for what's going on." : title;
   c.innerHTML = '';
   const d = document.createElement('span');
   Object.assign(d.style, { width: '8px', height: '8px', borderRadius: '50%', background: dot, flex: 'none' });
   const t = document.createElement('span');
   t.textContent = text;
   c.append(d, t);
+  // Says there is more to read.
+  if (total > 0) {
+    const i = document.createElement('span');
+    i.textContent = 'ⓘ';
+    i.setAttribute('aria-hidden', 'true');
+    i.style.opacity = '0.75';
+    c.append(i);
+  }
 }
 
 function ensureTick() {
@@ -122,3 +168,6 @@ if (typeof document !== 'undefined') {
     noteSaveWaiting('cave', Number(d.waiting) || 0, Number(d.nextAt) || 0);
   });
 }
+
+// For checking from the console and in tests.
+if (typeof window !== 'undefined') (window as any).__ngeNoteSaveWaiting = noteSaveWaiting;

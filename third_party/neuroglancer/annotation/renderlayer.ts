@@ -85,7 +85,10 @@ function segmentationFilter(segmentationStates: readonly OptionalSegmentationDis
 function serializeAnnotationSet(
     annotationSet: AnnotationSource, filter?: (annotation: AnnotationBase) => boolean) {
   const serializer = new AnnotationSerializer(annotationSet.annotationPropertySerializers);
+  // nge: annotations in a hidden folder are not drawn (report 225)
+  const hidden = annotationSet.ngeHidden;
   for (const annotation of annotationSet) {
+    if (hidden.size && hidden.has(annotation.id)) continue;
     if (filter === undefined || filter(annotation)) {
       serializer.add(annotation);
     }

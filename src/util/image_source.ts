@@ -8,7 +8,7 @@
  * answer fastest from Taipei (about 40 ms) and are slow from Europe (about
  * 1.7 s to the first byte), so Europe stays on the Americas.
  *
- * Settings > User Interface > "2D images load from" holds the choice
+ * Settings > 2D images > "2D images load from" holds the choice
  * (userPrefs.imageSource): Automatic, Americas or Asia. Automatic times one
  * small file from each copy, once per browser every 30 days, and only for
  * a browser whose time zone is outside the Americas; until then it guesses

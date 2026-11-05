@@ -39,6 +39,8 @@ const slackSigningSecret = defineSecret("SLACK_SIGNING_SECRET");
 // Fine-grained GitHub token: Actions read/write on seung-lab/ng-extend only.
 // Lets events start the triage workflows instead of them polling.
 const githubDispatchToken = defineSecret("GITHUB_DISPATCH_TOKEN");
+// Resend, for the "You're in" email from welcome@connectome.quest (Ames 2026-11-05).
+const resendKey = defineSecret("RESEND_API_KEY");
 
 /**
  * Start a triage workflow now, because something just happened (a report was
@@ -89,6 +91,8 @@ BE BRIEF. Slack replies should be 1-4 sentences unless asked for detail. Use bul
 KEY CONTEXT you know about:
 
 **ng-extend** — Vue 3 + Pinia Chrome extension on top of neuroglancer. Repo: seung-lab/ng-extend. Amy's fork: amyleesterling/ng-extend. Active branch: eyewire-ii-community. Deploys via App Engine (service: brain-wire). Also GitHub Pages at amyleesterling.github.io/eyewire-ii/.
+
+**Pyr, snapshot 2026-10-27.** Players know the game as **Pyr**; EyeWire II survives only in internal names (branch, Firebase project, tables), so say Pyr to anyone asking about the game. Pyr is invite only since 2026-10-24: a signed-in player who is not on the Pilot testers list sees a closed beta popup and can ask to join; the request lands on the triage board and an admin lets them in. connectome.quest also has a "Request early access to Pyr" form (since 2026-10-26). **The Hunt** went live to players on 2026-10-26: a timed event where everyone searches the same cells for mergers and missing extensions, drops gems where they think the mistakes are, and earns gold, silver or bronze Hunt Achievements by how many they found; players can report a problem the Hunt missed, and an admin who confirms it awards Laser Eyes. Code: src/components/BetaGate.vue, functions/access-request.js, and the Hunt in functions (ewHunt) and src. Say "Achievement", never "badge".
 
 **Datasets** — the app is MULTI-SERVER as of 2026-09-22. Do not assume minnie.
 - stroeh_mouse_retina on minnie.microns-daf.com. ~22,686 segments. Layer name "stroeh_mouse_retina", alias "eyewire_ii". This is production.
@@ -1116,33 +1120,54 @@ function clientIp(req) {
 }
 
 // Atomically check+increment the per-IP windows. Returns {ok} or {ok:false,scope}.
-async function rateLimit(req, loggedIn, prefix = "a") {
+async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
   // Browser login flags do not establish identity. Keep the anonymous tier.
   // Quest list reads (Krzysztof #159, #161, 2026-10-17): a quest player reads
   // the list about five times a cell, and the anonymous 60 a day ran out by
   // mid-day. The list is served from the server's five minute copy, so these
   // reads cost the sheet nothing; they get limits of their own.
   const QUEST_READS = prefix === "read:quests";
-  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
+  // Beta access from connectome.quest (Ames 2026-10-26): a person asks once.
+  // and the symposium RSVP (visitor:rsvp, 2026-10-29) shares the same small allowance.
+  const VISITOR = prefix.startsWith("visitor:");
+  // Players: 60 a minute, 5,000 a day (Ames 2026-10-24: "players don't need
+  // that high of a limit"). Admins get the bigger allowance below.
+  // Admins get far more room (Ames 2026-10-24: "you can give me a higher
+  // allowance than regular users"): triage, the To do board and tests add up.
+  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : VISITOR ? {perMin:2,perDay:5} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
-  const refs = [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
+  // Signed in writes count per person only (Ames 2026-10-24: "Please wait
+  // before sending another change" on the triage board and the Cell
+  // Library). Every signed in write used to bump one shared "global" counter
+  // too, in the same transaction: one Firestore document written by every
+  // player's every save, far past the one write a second a document takes,
+  // so busy moments made transactions fail, and a failure read as "slow down".
+  const perPersonOnly = loggedIn && prefix.startsWith("write:");
+  const refs = perPersonOnly ? [db.collection("guide_ratelimit").doc(prefix+":"+id)]
+    : [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
   try {
     return await db.runTransaction(async tx => {
       const snapshots = await Promise.all(refs.map(ref=>tx.get(ref)));
       const now=Date.now(), next=[];
       for(let i=0;i<refs.length;i++) {
         const d=snapshots[i].exists?snapshots[i].data():{};
-        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : {perMin:60,perDay:1500}) : tier;
+        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : VISITOR ? {perMin:10,perDay:200} : {perMin:60,perDay:1500}) : tier;
         const minute=now-(d.minStart||0)>=60000, day=now-(d.dayStart||0)>=86400000;
         const minCount=minute?0:(d.minCount||0), dayCount=day?0:(d.dayCount||0);
-        if(minCount>=limits.perMin || dayCount>=limits.perDay) return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
+        if(minCount>=limits.perMin || dayCount>=limits.perDay) {
+          console.warn("[rateLimit] limited", prefix, i ? "global" : "person", dayCount>=limits.perDay ? "day" : "minute", minCount, dayCount);
+          return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
+        }
         next.push({minStart:minute?now:d.minStart,minCount:minCount+1,dayStart:day?now:d.dayStart,dayCount:dayCount+1});
       }
       refs.forEach((ref,i)=>tx.set(ref,next[i]));
       return {ok:true};
     });
   } catch(e) {
-    console.error("[rateLimit] unavailable");
+    // The counter could not be read or written. A signed in write goes
+    // through rather than telling a player to wait for nothing.
+    console.error("[rateLimit] unavailable", prefix, e && e.message);
+    if (perPersonOnly) return {ok:true,scope:"unchecked"};
     return {ok:false,scope:"unavailable"};
   }
 }
@@ -1344,8 +1369,9 @@ const BOT_FEEDBACK_CHANNEL_ID = "C0BGTNRRA75";
 const BOT_FEEDBACK_CHANNEL_NAME = "citsci_bot_feedback";
 // Hardcoded member IDs (amy, celia, marissa/sorek.m) so @-mentions resolve to
 // live pings without the users:read scope. Falls back to name lookup if empty.
-const REVIEW_MENTION_IDS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"];
-const REVIEW_MENTION_HANDLES = ["amy", "celia", "sorek.m"];
+// Marissa (sorek.m, U033TSX9A) is no longer tagged (Ames 2026-10-27).
+const REVIEW_MENTION_IDS = ["U02FH1DRC", "U033NHWDE"];
+const REVIEW_MENTION_HANDLES = ["amy", "celia"];
 const _channelIdCache = {};
 let _reviewMentionIds = null;
 
@@ -1446,15 +1472,22 @@ async function postCorrectionReview(token, entry) {
 // (#citsci_feedback) and keeps a durable Firestore record in `site_issues`.
 const ISSUE_CATEGORIES = ["Bug", "Idea", "Data problem", "Other"];
 const ISSUE_EMOJI = {
-  "Bug": ":beetle:", "Idea": ":bulb:", "Data problem": ":warning:", "Other": ":speech_balloon:",
+  "Bug": ":beetle:", "Idea": ":bulb:", "Data problem": ":warning:", "Other": ":speech_balloon:", "Beta access": ":key:",
 };
 
-async function postIssueToSlack(token, issue) {
+// Slack reads <...> as a mention or a link and & as an entity: a report's
+// own words must never ping a channel or hide a link (Ames 2026-10-24).
+const slackText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// Nothing posted to triage tags Amy and Celia any more (Ames 2026-11-04: "I'm
+// mostly updating them via triage now", then "I thought u were gonna stop
+// tagging me and Celia in triage?"): not reports, not access requests.
+async function postIssueToSlack(token, raw, { mention = false } = {}) {
+  const issue = { ...raw, title: raw.title && slackText(raw.title), message: raw.message && slackText(raw.message),
+    user: raw.user && slackText(raw.user), dataset: raw.dataset && slackText(raw.dataset), url: raw.url && slackText(raw.url) };
   try {
     const channel = await resolveReviewChannel(token);
     if (!channel) { console.error("[issue] review channel not found"); return; }
-    const mentionIds = await resolveReviewMentionIds(token);
-    const mentions = mentionIds.map((id) => `<@${id}>`).join(" ");
+    const mentions = mention ? (await resolveReviewMentionIds(token)).map((id) => `<@${id}>`).join(" ") : "";
     const emoji = ISSUE_EMOJI[issue.category] || ISSUE_EMOJI.Other;
     const lines = [
       `${emoji} *New site issue submitted* — _${issue.category}_`,
@@ -1479,7 +1512,7 @@ async function postIssueToSlack(token, issue) {
 }
 
 exports.submitIssue = onRequest(
-  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken, ewServiceKey] },
+  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken, ewServiceKey, githubDispatchToken] },
   async (req, res) => {
     const origin = req.get("origin") || "";
     const originOk = GUIDE_ALLOWED_ORIGIN_RE.test(origin);
@@ -1520,6 +1553,9 @@ exports.submitIssue = onRequest(
         user: user || null, dataset: dataset || null, url: pageUrl || null,
         origin, at: FieldValue.serverTimestamp(),
       });
+      // Onto the triage board now, not at the next late timed run of the
+      // Slack bridge (Ames 2026-10-26: "fix the slack triage robot").
+      await wakeWorkflow("slack-triage-bridge.yml", "new report");
       res.json({ ok: true });
       // Fire-and-forget Slack post (response already sent).
       postIssueToSlack(slackBotToken.value(), { title, message, category, user, dataset, url: pageUrl });
@@ -1622,8 +1658,11 @@ exports.guideFeedback = onRequest(
 // service key and does not come through here.
 // ════════════════════════════════════════════════════════════════════════
 const { authorizeData, isPersonalProfileEdit } = require("./community-data");
+const { syncProductionGroup } = require("./production-group");
 const EW_SB = "https://javthknksdcrlhiaaptj.supabase.co/rest/v1/";
-const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^http:\/\/localhost(:\d+)?$/];
+// connectome.quest: the blog's own editor (Ames 2026-10-28). Who may write is
+// still decided per request (blog_authors), as from the game.
+const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^https:\/\/connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/];
 const ewIdentityCache = new Map(); // token -> { email, caveId, at }
 
 // Production access, for the colour of a name in chat (Ames 2026-10-06):
@@ -1778,11 +1817,15 @@ exports.ewSecureWrite = onRequest(
     }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to EyeWire II again, then retry." }); return; }
-    if (!(await rateLimit({ip:who.email}, true, "write:secure")).ok) return res.status(429).json({error:"Please wait before sending another change."});
+    // Which actions are called, and by whom (a hash, never the email), so a
+    // runaway caller shows in the logs (Ames hit 5,000 in a day, 2026-10-24).
+    console.log("[secureWrite] call", String(action).slice(0, 40), crypto.createHash("sha256").update(String(who.email)).digest("hex").slice(0, 8));
     const sb = ewSb(ewServiceKey.value().trim()); // a pasted key can carry a stray newline
     try {
       const ctx = await pilotContext(sb,who);
       const {me,isAdmin} = ctx;
+      // Checked once we know whether this is an admin, who gets a bigger allowance.
+      if (!(await rateLimit({ip:who.email}, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({error:"Please wait before sending another change."});
       if(action === "pilot.status") return res.json({ok:true,data:{invited:!!(isAdmin||ctx.isPilot),admin:isAdmin}});
       requirePilot(ctx);
       const needAdmin = () => { if (!isAdmin) throw ewErr(403, "Admins only"); };
@@ -1823,13 +1866,33 @@ exports.ewSecureWrite = onRequest(
             out = await sb("rpc/pilot_task_reopen", { method: "POST", body: JSON.stringify({ p_user: me.id, p_args: args.args || {} }) });
             break;
           }
+          // Active time on a claim, about once a minute while the player
+          // works on it (supabase-interneuron-quests.sql caps each beat).
+          if (action === "pilot.task" && args.operation === "time") {
+            const step = args.args && args.args.step === "mine" ? "mine" : "beat";
+            out = await sb("rpc/pilot_claim_time", { method: "POST", body: JSON.stringify({ p_user: me.id, p_action: step, p_args: args.args || {} }) });
+            break;
+          }
           const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat","save_link"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
+          // A Hunt being built on the Sandbox (hunt_build.js) cannot be claimed, even outside the Cell Library.
+          if (action === "pilot.task") {
+            const no = await require("./hunt_build").claimGuard(sb, args.operation, args.args || {}, { isAdmin, hasProduction: () => ewHasProduction(token) });
+            if (no) throw ewErr(409, no);
+          }
           const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};
           out=await sb("rpc/"+(action === "pilot.task"?"pilot_task_action":"pilot_practice_action"),{method:"POST",body:JSON.stringify(payload)});
           break;
         }
         // ── admins ──
+        // Interneuron quests: add cells to the list, take one off, and the
+        // active time report (supabase-interneuron-quests.sql).
+        case "quest.admin": {
+          needAdmin();
+          if (!["add", "remove", "report"].includes(args.operation)) throw ewErr(400, "Unknown quest action");
+          out = await sb("rpc/pilot_quest_admin", { method: "POST", body: JSON.stringify({ p_user: me.id, p_action: args.operation, p_args: args.args || {} }) });
+          break;
+        }
         case "notification.insert": {
           needAdmin();
           const row = { ...ewPick(args.row, EW_NOTIF_FIELDS), created_by: (me && me.id) || null };
@@ -2070,14 +2133,15 @@ exports.ewSecureWrite = onRequest(
           // twice: the bell in Pyr, and a Slack message that pings them.
           if (typeof action === "string" && action.startsWith("todo.")) {
             needAdmin();
-            const { todoAction, restDb, makeTagger } = require("./todos");
+            const { todoAction, restDb, makeTagger, makeFollowBell } = require("./todos");
             if (!me) throw ewErr(403, "no EyeWire II profile");
             const byName = me.display_name || me.username || who.email;
             const site = EW_ORIGINS.some(o => o.test(String(req.headers.origin || ""))) && !/localhost/.test(String(req.headers.origin))
               ? String(req.headers.origin) : EW_LIVE_SITE;
             const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
             try {
-              out = await todoAction(action, args, { db: restDb(sb), me, byName, tag });
+              out = await todoAction(action, args, { db: restDb(sb), me, byName, tag,
+                follows: todoFollowStore, helpers: todoHelperStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
             } catch (e) {
               // Until the SQL is run the table is missing: say so plainly.
               if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
@@ -2125,7 +2189,7 @@ exports.ewSecureWrite = onRequest(
 // minutes both times. This function is deployed only from the branch that
 // has it, and it alone binds the CAVE token:
 //   firebase deploy --only functions:ewProofreadingTest --project eyewire-ii-e4d52
-const EW_TEST_CODE_VERSION = "2026-10-21-proofreading-test-9";
+const EW_TEST_CODE_VERSION = "2026-10-29-proofreading-test-10";
 exports.ewProofreadingTest = onRequest(
   // 120 s: scoring reads the graph and undoes the player's edits.
   { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, timeoutSeconds: 120 },
@@ -2142,10 +2206,11 @@ exports.ewProofreadingTest = onRequest(
     if (typeof action !== "string" || !action.startsWith("test.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to EyeWire II again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait before sending another change." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
-      const { me } = await pilotContext(sb, who);
+      const { me, isAdmin: limitAdmin } = await pilotContext(sb, who);
+      // After we know who it is: admins get the bigger allowance (2026-10-24).
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!limitAdmin)).ok) return res.status(429).json({ error: "Please wait before sending another change." });
       const { handle: testHandle } = require("./proofreading-test");
       const data = await testHandle({ action, args, who, me, io: {
         fetch, caveToken: ewCaveToken.value().trim(), sb,
@@ -2202,10 +2267,11 @@ exports.ewReportReply = onRequest(
     if (typeof action !== "string" || !action.startsWith("reply.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
       const { me, isAdmin } = await pilotContext(sb, who);
+      // After we know who it is: admins get the bigger allowance (Ames hit it sending a reply, 2026-10-24).
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
       const data = await require("./report-reply").handle(action, args, { sb, me, isAdmin,
         wake: () => wakeWorkflow("slack-triage-bridge.yml", "report reply") });
       res.json({ ok: true, data });
@@ -2222,11 +2288,12 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-11";
+const EW_ACCESS_CODE_VERSION = "2026-10-30-grant-lines-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
-const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m (REVIEW_MENTION_IDS)
+// Marissa stays tagged on access requests (Ames 2026-10-27); Amy and Celia no longer (Ames 2026-11-04).
+const ACCESS_SLACK_MENTIONS = ["U033TSX9A"]; // sorek.m
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 // Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
 const ACCESS_CAVE_GROUP = 203;
@@ -2246,14 +2313,123 @@ async function postAccessRequestToSlack(token, { name, email, tries, eyewireUser
   }
   if (!r.ok) throw new Error(r.error || "slack post failed");
 }
+// Every admin's user id, for a bell to all of them.
+async function adminUserIds(sb) {
+  const emails = (await sb("admins?select=email")).map((r) => String(r.email || "").replace(/[",()]/g, "")).filter(Boolean);
+  if (!emails.length) return [];
+  const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(emails.map((e) => `"${e}"`).join(",")) + ")");
+  return people.map((p) => p.id);
+}
+// The connectome.quest Access page asks for beta access here too, with no
+// Pyr sign in (Ames 2026-10-26), so this one function takes that address.
+const ACCESS_ORIGINS = [...EW_ORIGINS, /^https:\/\/(www\.)?connectome\.quest$/];
+// A beta request goes on the triage board now (Ames 2026-10-26: "fix the
+// slack triage robot"): the bridge only runs when woken, or on its timer,
+// which GitHub starts late (gaps of two hours seen 2026-10-26).
+const wakeBetaBoard = () => wakeWorkflow("slack-triage-bridge.yml", "beta request");
+// Beta requests sorted in the Admin Hub: listed or removed, by email
+// (access-request.js, access.betaMark). Firestore, so no new table.
+// Who agreed to the Eyewire II Principles, and when (access-request.js,
+// access.principlesAgree, Ames 2026-10-27). One document per account.
+const principlesStore = {
+  get: async (key) => {
+    const d = await db.collection("principles_agreements").doc(crypto.createHash("sha256").update(key).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (key, v) => {
+    await db.collection("principles_agreements").doc(crypto.createHash("sha256").update(key).digest("hex")).set({ key, ...v });
+  },
+};
+// Who follows each To do card (todos.js todo.follow, Ames 2026-11-02): one
+// Firestore document per card, so the cards table needs no new column.
+const todoFollowStore = {
+  all: async () => {
+    const snap = await db.collection("todo_followers").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && Array.isArray(v.ids)) out[d.id] = v.ids; });
+    return out;
+  },
+  get: async (cardId) => { const d = await db.collection("todo_followers").doc(String(cardId)).get(); return d.exists && Array.isArray(d.data().ids) ? d.data().ids : []; },
+  set: async (cardId, ids) => { await db.collection("todo_followers").doc(String(cardId)).set({ ids, at: new Date().toISOString() }); },
+};
+// A To do card's collaborators (todos.js todo.helpers, Ames 2026-11-05), the same way.
+const todoHelperStore = {
+  all: async () => {
+    const snap = await db.collection("todo_helpers").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && Array.isArray(v.ids) && v.ids.length) out[d.id] = v.ids; });
+    return out;
+  },
+  get: async (cardId) => { const d = await db.collection("todo_helpers").doc(String(cardId)).get(); return d.exists && Array.isArray(d.data().ids) ? d.data().ids : []; },
+  set: async (cardId, ids) => { await db.collection("todo_helpers").doc(String(cardId)).set({ ids, at: new Date().toISOString() }); },
+};
+// Who has had the "You're in" email (access-request.js welcomeEmail), so a
+// second Let in never sends it twice. One document per address.
+const welcomeSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+};
+const betaMarkStore = {
+  all: async () => {
+    const snap = await db.collection("beta_request_marks").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { mark: v.mark, at: v.at, by: v.by || "" }; });
+    return out;
+  },
+  set: async (email, v) => {
+    const ref = db.collection("beta_request_marks").doc(crypto.createHash("sha256").update(email).digest("hex"));
+    if (!v) await ref.delete(); else await ref.set({ email, ...v });
+  },
+};
+// Dataset access requests, Granted or Not now (access-request.js,
+// access.datasetDecide, Ames 2026-10-28). A mark per request id, in Firestore.
+const datasetMarkStore = {
+  all: async () => {
+    const snap = await db.collection("dataset_request_marks").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.id) out[v.id] = { mark: v.mark, at: v.at, by: v.by || "" }; });
+    return out;
+  },
+  set: async (id, v) => {
+    const ref = db.collection("dataset_request_marks").doc(String(id));
+    if (!v) await ref.delete(); else await ref.set({ id, ...v });
+  },
+};
+async function visitorBetaRequest(req, res, args) {
+  if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long. Please shorten your note." });
+  if (!(await rateLimit(req, false, "visitor:beta")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+  const sb = ewSb(ewServiceKey.value().trim());
+  try {
+    const data = await require("./access-request").visitorBeta(args, { sb, wake: wakeBetaBoard,
+      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
+      notifyAdmins: async ({ title, body }) => {
+        const rows = (await adminUserIds(sb)).map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500),
+          target_type: "user", target_id: id, send_at: new Date().toISOString(), created_by: null }));
+        if (rows.length) await sb("notifications", { method: "POST", body: JSON.stringify(rows) });
+      },
+    });
+    res.json({ ok: true, data });
+  } catch (e) {
+    if (e.status) { res.status(e.status).json({ error: e.message }); return; }
+    console.warn("[visitorBeta]", e.message);
+    res.status(500).json({ error: "That did not go through. Please try again." });
+  }
+}
 exports.ewAccessRequest = onRequest(
   // EW_CAVE_TOKEN (Ames's, a CAVE superadmin): Grant edit access adds the
   // player to Eyewire_2_Edit, group 203 (Ames 2026-10-16).
-  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken, githubDispatchToken, resendKey], cors: ACCESS_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
     const { action, token, ...args } = req.body || {};
+    // A visitor to connectome.quest, not signed in to Pyr.
+    if (action === "access.visitorBeta") return visitorBetaRequest(req, res, args);
     if (action === "health") {
       const probe = ewSb(ewServiceKey.value().trim());
       try { await probe("admins?select=id&limit=1"); }
@@ -2266,35 +2442,86 @@ exports.ewAccessRequest = onRequest(
     if (typeof action !== "string" || !action.startsWith("access.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
-      const { me, isAdmin } = await pilotContext(sb, who);
+      const { me, isAdmin, isPilot } = await pilotContext(sb, who);
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
       const note = (userIds, title, body, image) => {
         const rows = userIds.map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500), target_type: "user",
           ...(image ? { image_url: image, thumbnail_url: image } : {}),
           target_id: id, send_at: new Date().toISOString(), created_by: (me && me.id) || null }));
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
-      const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin,
+      const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
+        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
+        welcomeSent: welcomeSentStore,
+        sendEmail: async (msg) => {
+          try {
+            const r = await fetch("https://api.resend.com/emails", {
+              method: "POST", headers: { Authorization: `Bearer ${resendKey.value().trim()}`, "Content-Type": "application/json" },
+              body: JSON.stringify(msg), redirect: "error", signal: AbortSignal.timeout(15000) });
+            const j = await r.json().catch(() => ({}));
+            console.log("[welcome email]", r.status, j && j.id ? "sent" : "");
+            return r.ok ? { ok: true, id: j.id } : { ok: false, error: String((j && (j.message || j.name)) || r.status).slice(0, 200) };
+          } catch (e) { return { ok: false, error: String(e && e.message).slice(0, 200) }; }
+        },
+        // Can this player edit the retina? From CAVE, with their own sign in
+        // (dataset access tiers, Ames 2026-10-28). null when CAVE can't say.
+        canEditRetina: async () => {
+          try {
+            const r = await fetch("https://global.daf-apis.com/auth/api/v1/user/cache", {
+              headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return null;
+            const u = await r.json();
+            const perms = [...((u.permissions_v2 || {})["stroeh-mouse-retina"] || []), ...((u.permissions_v2_ignore_tos || {})["stroeh-mouse-retina"] || [])];
+            return perms.includes("edit");
+          } catch (e) { return null; }
+        },
+        // Beta access requests post like any report (Ames 2026-10-24).
+        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
           // A reviewer testing with their own request is told too (Ames 2026-10-16).
           await note(people.map((p) => p.id), title, body, image);
         },
+        // Beta access requests reach every admin (Ames 2026-10-24).
+        notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
-        // Add a player to Eyewire_2_Edit. 422 means already a member: as good.
-        grantCave: async (caveId) => {
+        // A player's CAVE access, read with the admin token: the datasets they
+        // can edit or view, and their groups (Ames 2026-10-29: "we need to see
+        // what other permissions users have"). null when CAVE can't say.
+        caveAccessOf: async (caveId) => {
+          const get = async (path) => {
+            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/user/${caveId}/${path}`, {
+              headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+            return r.ok ? r.json() : null;
+          };
           try {
-            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/group/${ACCESS_CAVE_GROUP}/user`, {
+            const [perms, groups] = await Promise.all([get("permissions"), get("group")]);
+            if (!perms) return null;
+            const merged = {};
+            for (const src of [perms.permissions_v2_ignore_tos, perms.permissions_v2]) {
+              for (const [ds, list] of Object.entries(src || {})) merged[ds] = [...new Set([...(merged[ds] || []), ...list])];
+            }
+            const edit = Object.keys(merged).filter(ds => merged[ds].includes("edit")).sort();
+            const view = Object.keys(merged).filter(ds => !merged[ds].includes("edit") && merged[ds].includes("view")).sort();
+            const names = Array.isArray(groups) ? groups.map(g => String((g && g.name) || g)).filter(Boolean).sort() : [];
+            return { edit, view, groups: names };
+          } catch (e) { return null; }
+        },
+        // Add a player to Eyewire_2_Edit, or the group a dataset request
+        // names (MEC_Edit). 422 means already a member: as good.
+        grantCave: async (caveId, group = ACCESS_CAVE_GROUP) => {
+          try {
+            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/group/${group}/user`, {
               method: "POST", headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}`, "Content-Type": "application/json" },
               body: JSON.stringify({ user_id: caveId }), redirect: "error", signal: AbortSignal.timeout(15000),
             });
             let error = "";
             if (!r.ok && r.status !== 422) { try { error = String((await r.text()) || "").slice(0, 200); } catch (e) { error = ""; } }
-            console.log("[access] CAVE grant", caveId, "group", ACCESS_CAVE_GROUP, "status", r.status);
+            console.log("[access] CAVE grant", caveId, "group", group, "status", r.status);
             return { ok: r.ok || r.status === 422, status: r.status, already: r.status === 422, error };
           } catch (e) { return { ok: false, error: String(e && e.message).slice(0, 200) }; }
         },
@@ -2302,6 +2529,91 @@ exports.ewAccessRequest = onRequest(
       res.json({ ok: true, data });
     } catch (e) {
       console.warn("[ewAccessRequest]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That did not go through. Please try again." });
+    }
+  }
+);
+
+// The Hunt (Ames 2026-10-20): timed merger hunts with gold, silver and bronze
+// special Achievements. A function of its own, like ewAccessRequest, so a
+// deploy of the shared gateway from a checkout without hunts.js can never take
+// it away. The answer key lives in hunt_keys, read only here. Every rule is in
+// hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
+const EW_HUNT_CODE_VERSION = "2026-10-29-hunt-43-builder";
+exports.ewHunt = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    // An admin's view (the players' starting state) can be a large state.
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 200000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_HUNT_CODE_VERSION }); return; }
+      let tables = true;
+      try { await probe("hunts?select=id&limit=1"); await probe("hunt_keys?select=hunt_id&limit=1"); await probe("hunt_submissions?select=id&limit=1"); } catch (e) { tables = false; }
+      res.json({ ok: true, db: true, tables, code: EW_HUNT_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !(action.startsWith("hunt.") || action.startsWith("build."))) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      const origin = String(req.headers.origin || "");
+      // The award art is served by the game itself (dist/min/hunt/); a test site serves its own copy.
+      const site = EW_ORIGINS.some((o) => o.test(origin)) && !/localhost/.test(origin) ? origin : EW_LIVE_SITE;
+      // A branch test site (or a local build) is for testing: its Hunts are admins only, so a test
+      // never reaches the players' bells or chat (Ames 2026-10-21: "we want to be testing on the test site").
+      const liveSite = origin === EW_LIVE_SITE || /^https:\/\/princeton-tracers-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/.test(origin);
+      const hunts = require("./hunts");
+      const notify = async (rows) => {
+        const out = rows.map((r) => ({ title: String(r.title).slice(0, 120), body: String(r.body).slice(0, 1500), target_type: "user",
+          target_id: r.user_id, send_at: new Date().toISOString(), ...(r.image ? { image_url: r.image, thumbnail_url: r.image } : {}),
+          created_by: (me && me.id) || null }));
+        if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
+      };
+      // The Hunt Builder (players help build a Hunt on the Sandbox): hunt_build.js, tested in hunt_build.test.js.
+      if (action.startsWith("build.")) {
+        const build = require("./hunt_build");
+        // Production access (CAVE edit on a production dataset, as chat's name colour): who may suggest.
+        res.json({ ok: true, data: await build.buildAction(action, args, { db: build.restDb(sb), me, isAdmin, now: new Date(), notify, site, production: () => ewHasProduction(token) }) });
+        return;
+      }
+      const data = await hunts.huntAction(action, args, {
+        db: hunts.restDb(sb), me, isAdmin, now: new Date(), site, testSite: !liveSite,
+        // Launched (Ames 2026-10-26, "Hunt to live, open to players"): a Hunt reaches every
+        // player unless it is set admins only (every Hunt saved from a test site is).
+        huntPublic: true,
+        notify,
+        // Helpers whose suggestions were planted in this Hunt (the maker Achievement at the end).
+        makers: async (huntId) => { try { return await require("./hunt_build").makersOf(require("./hunt_build").restDb(sb), huntId); } catch (e) { return []; } },
+        // The chat line an award gets anyway (chat.achievement), one per player.
+        chatAward: async (userId, badge) => {
+          const line = specialAwardRow(badge);
+          const who_ = (await sb(`users?id=eq.${encodeURIComponent(userId)}&select=id,username,display_name&limit=1`))[0];
+          if (!who_) return;
+          const dup = await sb(`chat_messages?user_id=eq.${who_.id}&dataset=eq.${encodeURIComponent(line.dataset)}&select=id&limit=1`);
+          if (dup.length) return;
+          await sb("chat_messages", { method: "POST", body: JSON.stringify({
+            user_id: who_.id, name: who_.username || who_.display_name || "Player", rank: "achievement", text: line.text, dataset: line.dataset }) });
+        },
+      });
+      res.json({ ok: true, data });
+    } catch (e) {
+      // Until supabase-hunts.sql is run the tables are missing: say so plainly.
+      if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "hunt.current") { res.json({ ok: true, data: { now: new Date().toISOString(), hunts: [], installed: false } }); return; }
+      if (!e.status && /supabase 404/.test(String(e && e.message)) && action.startsWith("build.")) {
+        // Before supabase-hunt-build.sql is run: the guard has nothing to guard, the rest says so.
+        if (action === "build.guard") { res.json({ ok: true, data: { cells: [], installed: false } }); return; }
+        if (action === "build.mine") { res.json({ ok: true, data: { cells: [], installed: false } }); return; }
+        res.status(503).json({ error: "The Hunt Builder is not set up yet: run supabase-hunt-build.sql in Supabase." }); return;
+      }
+      if (!e.status && /supabase 404/.test(String(e && e.message))) { res.status(503).json({ error: "The Hunt is not set up yet: its tables are not in the database." }); return; }
+      console.warn("[ewHunt]", action, who.email, e.message);
       res.status(e.status || 500).json({ error: e.status ? e.message : "That did not go through. Please try again." });
     }
   }
@@ -2320,6 +2632,9 @@ exports.ewCommunityData = onRequest(
       const key = ewServiceKey.value().trim(), sb = ewSb(key);
       const ctx=await pilotContext(sb,who), {me,isAdmin}=ctx;
       const groups = me ? (await sb("user_group_members?user_id=eq."+me.id+"&select=group_id")).map(r=>r.group_id) : [];
+      // Keep the Production editors group in step (production-group.js): at
+      // most every few hours a player, so nearly every request skips it.
+      if (me && input.token) await syncProductionGroup(sb, me, groups, () => ewHasProduction(input.token));
       const context={...ctx,groups,now:new Date().toISOString()};
       // The blog has its own short list of authors (blog_authors), separate from admins and the pilot.
       if (input.table === "blog_posts" && me) context.isBlogAuthor = (await sb("blog_authors?user_id=eq."+me.id+"&select=user_id&limit=1")).length > 0;
@@ -2329,7 +2644,7 @@ exports.ewCommunityData = onRequest(
       // Own settings are personal, not pilot data: any signed in player may save them.
       // Personal, not pilot data: creating your profile, your own settings, and
       // your own username / name / flag / bio / avatar.
-      if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","user_views","blog_posts"].includes(input.table) && !isPersonalProfileEdit(input)) requirePilot(context);
+      if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","user_views","blog_posts","tutorial_step_events"].includes(input.table) && !isPersonalProfileEdit(input)) requirePilot(context);
       const plan=authorizePilotData(input,context)||authorizeData(input,context);
       if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
@@ -2350,7 +2665,7 @@ exports.ewCommunityData = onRequest(
         }
       }
       if (plan.method !== "GET" && plan.method !== "HEAD") {
-        const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table);
+        const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table, !!isAdmin);
         if (!quota.ok) throw ewErr(429,"Please wait before sending another change.");
       }
       // Counted activity is recorded by the server, never written as a number
@@ -2382,7 +2697,10 @@ exports.ewCommunityData = onRequest(
       headers.Accept = input.accept === "application/vnd.pgrst.object+json" ? input.accept : "application/json";
       const preferences = ["return=representation"];
       if (String(input.prefer).includes("count=exact")) preferences.push("count=exact");
-      if (["notification_reads","user_group_members","chat_presence","user_settings","user_views",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
+      // An upsert replaces the row with that key. Without this a second save of a site text (Admin
+      // edits of instructions, Tutorial edits) is a plain insert and fails on the existing key
+      // (Ames 2026-10-26, saving the Hunt's instructions again: "Not saved").
+      if (["notification_reads","user_group_members","chat_presence","user_settings","user_views","site_texts",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
       headers.Prefer = preferences.join(",");
       if (typeof input.range === "string" && /^\d+-\d+$/.test(input.range)) {
         const [from,to] = input.range.split("-").map(Number);
@@ -2436,6 +2754,55 @@ exports.ewSecureUpload = onRequest(
  }
 );
 
+// RSVPs for the MEC symposium from connectome.quest/symposium/ (Ames
+// 2026-10-29). No sign in. Each RSVP is kept in Firestore first (so nothing is
+// lost if the sheet is unreachable) and then added as a row to Ames's sheet,
+// written by the Cell Library's sheet identity (symposium-rsvp.js).
+exports.ewSymposiumRsvp = onRequest(
+ {region:"us-central1",serviceAccount:`eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`,cors:[/^https:\/\/(www\.)?connectome\.quest$/,/^http:\/\/localhost(:\d+)?$/],invoker:"public",maxInstances:5},
+ async(req,res)=>{
+  res.set("Cache-Control","no-store");
+  if(req.method!=="POST") return res.status(405).json({error:"POST only"});
+  if(Buffer.byteLength(JSON.stringify(req.body||{}))>8000) return res.status(413).json({error:"That is too long. Please shorten your question."});
+  try {
+   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
+   const plan=planRsvp(req.body||{});
+   if(!(await rateLimit(req,false,"visitor:rsvp")).ok) throw ewErr(429,"Please wait a little while, then try again.");
+   const ref=db.collection("symposium_rsvps").doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
+   const before=await ref.get();
+   if(before.exists) plan.row[NOTE_COLUMN]="Sent again (latest answers)";
+   await ref.set({name:plan.row[1],email:plan.email,username:plan.row[3],question:plan.row[4],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
+   try {
+    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+      {method:"POST",body:JSON.stringify({values:[plan.row]})});
+    await ref.update({sheet:true});
+   } catch(e) {
+    // Kept in Firestore (sheet:false) to add later; the person is still on the list.
+    console.error("[ewSymposiumRsvp] sheet append failed:",e.message);
+   }
+   return res.json({ok:true,again:before.exists});
+  } catch(e) {
+   if(e.status) return res.status(e.status).json({error:e.message});
+   console.error("[ewSymposiumRsvp]",e.message);
+   return res.status(500).json({error:"That did not go through. Please try again."});
+  }
+ }
+);
+
+// A copy of each quest tab in Supabase (supabase-quest-sheet-mirror.sql), for
+// the weekly champions broadcast (scripts/weekly-quests.mjs), which cannot
+// read the lab's sheet itself (Ames 2026-11-05). Made from a list the game
+// read anyway, at most every 10 minutes per instance and right after a write.
+// The game never waits on it failing.
+const questMirrorAt={};
+async function mirrorQuestRows(sb,quest,rows) {
+  if(!Array.isArray(rows)||!rows.length||Date.now()-(questMirrorAt[quest]||0)<600000) return;
+  questMirrorAt[quest]=Date.now();
+  try {
+    await sb("rpc/ew_quest_mirror",{method:"POST",body:JSON.stringify({p_quest:quest,
+      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.status,date:r.date}))})});
+  } catch(e) { console.warn("[ewSheetSync] quest copy not saved",String(e&&e.message||e).slice(0,200)); }
+}
 exports.ewSheetSync = onRequest(
  {region:"us-central1",serviceAccount:`eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`,secrets:[ewServiceKey],cors:EW_ORIGINS,invoker:"public",maxInstances:1,concurrency:1,timeoutSeconds:90},
  async(req,res)=>{
@@ -2487,6 +2854,16 @@ exports.ewSheetSync = onRequest(
    }
    const who=await ewVerify(input.token);
    if(!who) throw ewErr(401,"Sign in before syncing a cell.");
+   // Pilot testers: who is on the Pyr Users sheet (Ames 2026-10-28: "if they
+   // are on that sheet then they are invited, if they are not then they came
+   // like from the web"). Admins only; read only, every tab, the email
+   // columns alone. The sheet must be shared with the Sheets identity.
+   if(input.action==='pilot_sheet') {
+    if(!(await rateLimit({ip:who.email},true,'read:pilotSheet')).ok) throw ewErr(429,'Please wait a moment.');
+    const sb=ewSb(ewServiceKey.value().trim());
+    if(!(await pilotContext(sb,who)).isAdmin) throw ewErr(403,'Admins only');
+    return res.json(await require('./sheet-sync').pilotSheetEmails(admin.applicationDefault()));
+   }
    // Annotation Quests (Ames 2026-10-12): the quest's own sheet tab is the
    // record. No proofreading task is involved: the row's Annotator Name says
    // whose cell it is, and sheet-policy.js decides what each action may write.
@@ -2501,8 +2878,14 @@ exports.ewSheetSync = onRequest(
     if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
     // `you` is the name the sheet would carry for this player, so the game
     // can tell their rows apart however the sheet spells them.
-    if(listing) return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows:await questList(input.quest,admin.applicationDefault())});
-    return res.json(await syncQuest(input,me,admin.applicationDefault()));
+    if(listing) {
+      const rows=await questList(input.quest,admin.applicationDefault());
+      await mirrorQuestRows(sb,input.quest,rows);
+      return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows});
+    }
+    const done=await syncQuest(input,me,admin.applicationDefault());
+    questMirrorAt[input.quest]=0;  // the next list copies this write
+    return res.json(done);
    }
    require('./sheet-policy').sourceFor(input);
    if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");
@@ -2530,4 +2913,62 @@ exports.ewSheetSync = onRequest(
    return res.status(e.status||503).json({error:e.status?e.message:"Sheet syncing is temporarily unavailable. Your cell is saved; retry syncing shortly."});
   }
  }
+);
+
+// ── The mentor program, a proof of concept (supabase-mentors.sql) ───────────
+// Nseraf's idea (triage report 317), asked for by Ames 2026-11-04. A function of
+// its own, like ewAccessRequest and ewHunt: deploying it never replaces the
+// shared ewSecureWrite. Every rule is in mentors.js (tests: mentors.test.js).
+const EW_MENTOR_CODE_VERSION = "2026-11-05-mentor-art";
+// The bells' texts as admins changed them (mentors.js TEXTS; Ames 2026-11-05:
+// "add an edit button so Celia can change it"). One Firestore doc per message.
+const mentorTextStore = {
+  all: async () => {
+    const snap = await db.collection("mentor_texts").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.title && v.body) out[d.id] = { title: v.title, body: v.body, by: v.by || "", at: v.at || "" }; });
+    return out;
+  },
+  set: async (key, v) => {
+    const ref = db.collection("mentor_texts").doc(String(key));
+    if (v) await ref.set(v); else await ref.delete();
+  },
+};
+exports.ewMentor = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_MENTOR_CODE_VERSION }); return; }
+      let tables = true;
+      try { await probe("ew_mentor_reviews?select=id&limit=1"); await probe("ew_apprentices?select=user_id&limit=1"); await probe("ew_mentors?select=user_id&limit=1"); } catch (e) { tables = false; }
+      res.json({ ok: true, db: true, tables, code: EW_MENTOR_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("mentor.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
+      if (!me) throw ewErr(403, "No Pyr profile.");
+      const { mentorAction, restDb } = require("./mentors");
+      const key = ewServiceKey.value().trim();
+      const data = await mentorAction(action, args, { db: restDb(sb), me, isAdmin, now: new Date(), texts: mentorTextStore,
+        // The apprentice's completion, recorded as saved teams credit a member (team.complete).
+        credit: (userId, row) => recordActivity({ rpc: ewRpc(key), who, me: { id: userId }, token, value: row,
+          insertLegacy: (r) => sb("edit_log", { method: "POST", body: JSON.stringify(r) }) }) });
+      res.json({ ok: true, data });
+    } catch (e) {
+      // Until the SQL is run the tables are missing: say so plainly, and the game hides the tab.
+      if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "mentor.status") { res.json({ ok: true, data: { installed: false } }); return; }
+      console.warn("[ewMentor]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That could not be done. Try again in a moment." });
+    }
+  }
 );

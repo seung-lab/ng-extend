@@ -10,6 +10,7 @@
  * overhang), runs once, and removes the canvas when done. The host needs
  * position: relative (or any positioned ancestor role) and visible size.
  */
+import { addParticleShape, currentParticleShape, particleTurn, shapeIsStroked } from './season';
 
 // a point at fraction t around a rounded rectangle (shared by the trace
 // and the zip; t=0 starts on the top edge just past the top-left corner,
@@ -447,9 +448,10 @@ export function runPanelDraw(
 /**
  * A one-shot radial particle burst with light streaks, same additive-glow
  * family as the panel trace. Fired at a screen point (e.g. the tag panel on
- * submit). Sky blue by default; pass "r,g,b" to recolor.
+ * submit). Sky blue by default; pass "r,g,b" to recolor. `scale` shrinks or
+ * grows the throw and the streaks (the cut and merge points use 0.6).
  */
-export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): void {
+export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255', scale = 1): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   // Bigger and slower (Amy: the click burst was too small and faded too
   // fast): wider throw, longer life, gentler fade.
@@ -466,18 +468,20 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
   cv.width = SIZE * dpr; cv.height = SIZE * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+  const shape = currentParticleShape(), stroked = shapeIsStroked(shape);
   const parts = Array.from({ length: 30 }, () => {
     const a = Math.random() * 6.283;
     return {
       a,
-      sp: 70 + Math.random() * 135,         // px travelled over the burst
+      seed: Math.random(),
+      sp: (70 + Math.random() * 135) * scale, // px travelled over the burst
       r: 1.1 + Math.random() * 2.0,
       drag: 0.5 + Math.random() * 0.5,      // eases the tail of the flight
     };
   });
   const streaks = Array.from({ length: 9 }, () => ({
     a: Math.random() * 6.283,
-    len: 90 + Math.random() * 100,
+    len: (90 + Math.random() * 100) * scale,
   }));
 
   let raf = 0;
@@ -509,17 +513,17 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
       ctx!.fillRect(0, 0, SIZE, SIZE);
     }
 
-    // Particles: fly out with ease-out, fade with (1-k)^2.
+    // Particles: fly out with ease-out, fade with (1-k)^2. In season they
+    // are snowflakes, bats or eggs (src/util/season.ts), all in one path.
+    const al = Math.pow(1 - k, 1.3) * 0.85, col = `rgba(${rgb},${al.toFixed(3)})`;
+    ctx!.beginPath();
     for (const p of parts) {
       const eo = 1 - Math.pow(1 - k, 1.6 + p.drag);
       const x = HALF + Math.cos(p.a) * p.sp * eo;
       const y = HALF + Math.sin(p.a) * p.sp * eo;
-      const al = Math.pow(1 - k, 1.3) * 0.85;
-      ctx!.beginPath();
-      ctx!.arc(x, y, p.r * (1 - k * 0.35), 0, 6.283);
-      ctx!.fillStyle = `rgba(${rgb},${al.toFixed(3)})`;
-      ctx!.fill();
+      addParticleShape(ctx!, shape, x, y, p.r * (1 - k * 0.35), particleTurn(shape, p.seed, k));
     }
+    if (stroked) { ctx!.strokeStyle = col; ctx!.lineWidth = 1.2; ctx!.stroke(); } else { ctx!.fillStyle = col; ctx!.fill(); }
     raf = requestAnimationFrame(draw);
   }
   raf = requestAnimationFrame(draw);

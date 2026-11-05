@@ -32,7 +32,7 @@
   min-width: 0;
 }
 #extensionBar {
-  max-width: 100vw;
+  max-width: calc(100 * var(--nge-vw, 1vw));
   box-sizing: border-box;
 }
 
@@ -141,8 +141,8 @@
    Matching ModalOverlay's specificity (0,4,0 here) lets the scroll win. */
 .nge-overlay-blocker .nge-overlay-content,
 .nge-overlay-blocker .nge-overlay.modal.overlay-content {
-  max-width: calc(100vw - 24px);
-  max-height: calc(100vh - 24px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 24px);
+  max-height: calc(100 * var(--nge-vh, 1vh) - 24px);
   overflow-y: auto;
   box-sizing: border-box;
 }
@@ -157,7 +157,7 @@
 .nge-tag-panel,
 .nge-ann-panel,
 .nge-chat-float {
-  max-width: calc(100vw - 20px);
-  max-height: calc(100vh - 52px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 20px);
+  max-height: calc(100 * var(--nge-vh, 1vh) - 52px);
   box-sizing: border-box;
 }

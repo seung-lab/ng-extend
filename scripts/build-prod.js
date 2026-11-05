@@ -199,7 +199,7 @@ const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-
 const OUT_DIR = path.join(__dirname, '..', 'dist', 'min', 'center-art');
 
 // 'loyalty' is copied only while LOYALTY_ENABLED is true (src/widgets/badge_definitions.ts).
-for (const track of ['building', 'exploration', 'loyalty']) {
+for (const track of ['building', 'exploration', 'loyalty', 'legacy-building', 'legacy-exploration']) {
   const srcDir = path.join(BADGE_ART, track);
   const destDir = path.join(OUT_DIR, track);
   if (fs.existsSync(srcDir)) {
@@ -224,6 +224,18 @@ for (const file of fs.readdirSync(STATIC_DIR)) {
   }
 }
 
+// ── Copy the Hunt's medals (the art of its gold, silver and bronze
+// Achievements: functions/hunts.js points special_badges at <site>/hunt/). ──
+const HUNT_DIR = path.join(STATIC_DIR, 'hunt');
+if (fs.existsSync(HUNT_DIR)) {
+  const dest = path.join(DIST_MIN, 'hunt');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(HUNT_DIR)) {
+    if (/\.(svg|png|jpg)$/.test(file)) fs.copyFileSync(path.join(HUNT_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the Hunt's medals to ${dest}`);
+}
+
 // ── Copy the Halloween models (the ghost in Lantern mode: src/util/spooky.ts) ──
 // Fetched by the game only when it is needed, so they are files, not part of
 // the bundle.
@@ -235,6 +247,24 @@ if (fs.existsSync(HALLOWEEN_DIR)) {
     if (file.endsWith('.glb')) fs.copyFileSync(path.join(HALLOWEEN_DIR, file), path.join(dest, file));
   }
   console.log(`Copied the Halloween models to ${dest}`);
+}
+// ── Copy the Thanksgiving turkey (src/util/turkey.ts): three.js and the model,
+// fetched only in Thanksgiving week.
+const THANKSGIVING_DIR = path.join(STATIC_DIR, 'thanksgiving');
+if (fs.existsSync(THANKSGIVING_DIR)) {
+  const dest = path.join(DIST_MIN, 'thanksgiving');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(THANKSGIVING_DIR)) fs.copyFileSync(path.join(THANKSGIVING_DIR, file), path.join(dest, file));
+  console.log(`Copied the Thanksgiving turkey to ${dest}`);
+}
+const SFX_DIR = path.join(STATIC_DIR, 'sfx');
+if (fs.existsSync(SFX_DIR)) {
+  const dest = path.join(DIST_MIN, 'sfx');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(SFX_DIR)) {
+    if (file.endsWith('.mp3')) fs.copyFileSync(path.join(SFX_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the sound effects to ${dest}`);
 }
 
 // ── Stamp bundle URLs with a build version ──────────────────────────────────

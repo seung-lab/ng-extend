@@ -2,8 +2,10 @@ name: Weekly Winners Snapshot
 
 on:
   schedule:
-    # Every Monday at 00:05 UTC — captures the previous Mon→Sun week.
-    - cron: '5 0 * * 1'
+    # Monday 05:05 UTC: 00:05 EST or 01:05 EDT, just after the Monday to
+    # Sunday week on US Eastern time has ended (it was 00:05 UTC, which is
+    # Sunday evening in New York, before the week was over).
+    - cron: '5 5 * * 1'
   workflow_dispatch:
     inputs:
       week_start:

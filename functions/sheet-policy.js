@@ -15,7 +15,10 @@ const SOURCES = Object.freeze({
   pinky_nf_v2: {id:'1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU', gid:0},
   // MEC (Ames 2026-09-28): no segment IDs in this sheet. Rows are found by
   // "Starting XYZ Coords", which the importer stores as the task's claim point.
-  pni_mec: {id:'1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw', gid:869365415, matchBy:'startcoords'},
+  // Axon complete (Ames 2026-10-27): MEC players proofread the axon only. The
+  // sheet's Status dropdown needs the option spelled the same.
+  pni_mec: {id:'1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw', gid:869365415, matchBy:'startcoords',
+    completeStatuses:['Axon complete','Complete']},
 });
 /**
  * Annotation Quests (Ames 2026-10-12): a cell is annotated as a quest, apart
