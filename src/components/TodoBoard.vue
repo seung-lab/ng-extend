@@ -15,7 +15,7 @@ import { ref, shallowRef, computed, nextTick, onMounted, onUnmounted, watch } fr
 import { secureWrite } from '../secure_write';
 import { secureUpload } from '../secure_upload';
 import { renderSafeMarkdown } from '../util/safe_markdown';
-import { htmlToMarkdown } from '../util/html_to_markdown';
+import { htmlToMarkdown, htmlHasFormatting } from '../util/html_to_markdown';
 import { useProofreadingBackendStore } from '../store';
 import { vAutogrow } from '../util/autogrow';
 import imgNurroHome from '../images/nurro-at-home600.png';
@@ -336,6 +336,39 @@ const openWidth = (c: Card) => { const z = cardSizes.value[c.id]; return z ? { m
 const DONE_COLORS = ['#4f8cff', '#7c9cff', '#38bdf8', '#2ec4b6', '#f5c542', '#ff6fae', '#a78bfa'];
 const party = ref<{ key: number; x: number; y: number; bits: { dx: number; dy: number; r: number; c: string; d: number; wide: boolean }[] } | null>(null);
 const winning = ref<string | null>(null);
+function burst(x: number, y: number, n = 64, speed = 1) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  party.value = { key: Date.now(), x, y, bits: Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.4, v = (120 + Math.random() * 220) * speed;
+    return { dx: Math.cos(a) * v, dy: Math.sin(a) * v - 80 * speed, r: Math.random() * 720 - 360, c: DONE_COLORS[i % DONE_COLORS.length], d: 0.8 + Math.random() * 0.7, wide: i % 3 === 0 };
+  }) };
+  const key = party.value.key;
+  setTimeout(() => { if (party.value?.key === key) party.value = null; }, 1800);
+}
+// ── A satisfying checklist (Ames 2026-11-05: "confetti at check off, we want
+// a counter for checklist as well - animate a laser line strike through").
+// Ticking an item bursts a little confetti from its box and a laser line
+// strikes it through; the last item bursts big, and says so. ──
+const justTicked = ref<string | null>(null);
+const allDoneFor = ref<string | null>(null);
+function checkItem(c: Card, i: number, e: Event) {
+  const turningOn = !c.checklist[i]?.done;
+  void toggleItem(c, i);
+  if (!turningOn) return;
+  const box = (e.target as HTMLElement).getBoundingClientRect();
+  justTicked.value = c.id + ':' + i;
+  setTimeout(() => { if (justTicked.value === c.id + ':' + i) justTicked.value = null; }, 900);
+  const willAll = c.checklist.every((x, k) => (k === i ? true : x.done));
+  if (willAll) {
+    const panel = (e.target as HTMLElement).closest('.nge-todo-check') as HTMLElement | null;
+    const pb = panel?.getBoundingClientRect() || box;
+    burst(pb.left + pb.width / 2, pb.top + 20, 80, 1.1);
+    allDoneFor.value = c.id;
+    setTimeout(() => { if (allDoneFor.value === c.id) allDoneFor.value = null; }, 3200);
+  } else {
+    burst(box.left + box.width / 2, box.top + box.height / 2, 22, 0.45);
+  }
+}
 async function finish(c: Card, e?: MouseEvent) {
   if (winning.value) return;
   const card = (e?.currentTarget as HTMLElement | null)?.closest?.('.nge-todo-card, .nge-todo-panel') as HTMLElement | null;
@@ -1177,7 +1210,8 @@ function imageFiles(e: ClipboardEvent | DragEvent): File[] {
 }
 function onNotesPaste(e: ClipboardEvent, to: 'new' | Card) {
   const files = imageFiles(e);
-  if (files.length) { e.preventDefault(); void addImages(files, to); }
+  if (files.length) { e.preventDefault(); void addImages(files, to); return; }
+  if (to === 'new' && (e.target as HTMLElement).tagName === 'TEXTAREA') pasteFormatted(e, v => { draft.value.notes = v; });
 }
 function onNotesDrop(e: DragEvent, to: 'new' | Card) {
   const files = imageFiles(e);
@@ -1226,7 +1260,21 @@ async function addCommentImages(files: FileList | File[] | null | undefined) {
 }
 function onCommentPaste(e: ClipboardEvent) {
   const files = imageFiles(e);
-  if (files.length) { e.preventDefault(); void addCommentImages(files); }
+  if (files.length) { e.preventDefault(); void addCommentImages(files); return; }
+  pasteFormatted(e, v => { comment.value = v; });
+}
+/** Pasted bold, italics, lists and links stay, as Markdown in a plain box
+ *  (Ames 2026-11-05: "Let me paste formatted text here"). Plain text pastes as usual. */
+function pasteFormatted(e: ClipboardEvent, set: (v: string) => void) {
+  const html = e.clipboardData?.getData('text/html');
+  if (!html || !htmlHasFormatting(html)) return;
+  const el = e.target as HTMLTextAreaElement;
+  const md = htmlToMarkdown(html).replace(/\n{3,}/g, '\n\n').trim();
+  if (!md) return;
+  e.preventDefault();
+  const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+  set(el.value.slice(0, a) + md + el.value.slice(b));
+  void nextTick(() => { el.focus(); el.setSelectionRange(a + md.length, a + md.length); });
 }
 function onCommentDrop(e: DragEvent) {
   const files = imageFiles(e);
@@ -1603,13 +1651,19 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </template>
         <button v-if="!notesEditing" type="button" class="nge-todo-btn nge-todo-add-btn" @click="pickImages(openCard)">🖼 Add an image</button>
 
-        <div class="nge-todo-label">Checklist<template v-if="openCard.checklist.length"> · {{ checkCount(openCard).done }}/{{ checkCount(openCard).all }}</template></div>
+        <div class="nge-todo-label nge-todo-check-head">Checklist
+          <template v-if="openCard.checklist.length">
+            <span :key="checkCount(openCard).done" class="nge-todo-check-count" :class="{ 'nge-todo-check-count--all': checkCount(openCard).done === checkCount(openCard).all }">{{ checkCount(openCard).done }}/{{ checkCount(openCard).all }}</span>
+            <span class="nge-todo-check-bar" aria-hidden="true"><span :style="{ width: (100 * checkCount(openCard).done / checkCount(openCard).all) + '%' }"></span></span>
+            <span v-if="allDoneFor === openCard.id" class="nge-todo-check-yay" role="status">All done! 🎉</span>
+          </template>
+        </div>
         <ul class="nge-todo-check">
-          <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done }">
-            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <input v-if="itemEdit === openCard.id + ':' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
+          <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done, 'nge-todo-check--now': justTicked === openCard.id + ':' + i }">
+            <label><input type="checkbox" class="nge-todo-tick" :checked="it.done" @change="checkItem(openCard, i, $event)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <input v-if="itemEdit === openCard.id + ':' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
                      @click.prevent @keydown.enter.prevent="saveItemText(openCard, i)" @keydown.esc="itemEdit = null" @blur="saveItemText(openCard, i)"
                      @input="onMentionInput($event, v => itemDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
-              <span v-else><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+              <span v-else class="nge-todo-check-text"><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
             <button class="nge-todo-mini" title="Change this item" aria-label="Edit" @click="beginItemEdit(openCard.id + ':' + i, it.text)">✎</button>
             <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
                     @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
@@ -1635,6 +1689,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text">✎ Edit</button></div>
           <template v-if="commentEdit === i">
             <textarea v-autogrow v-model="commentDraft" class="nge-todo-input" rows="2" maxlength="2000" aria-label="Edit comment"
+                      @paste="pasteFormatted($event, v => commentDraft = v)"
                       @input="onMentionInput($event, v => commentDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
             <div class="nge-todo-row">
               <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !commentDraft.trim()" @click="saveCommentEdit(openCard, i)">Save</button>
@@ -1647,7 +1702,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <textarea v-autogrow ref="replyEl" v-model="replyText" class="nge-todo-input" rows="2" maxlength="2000" aria-label="Reply"
                       :placeholder="'Reply to ' + threadStarter(openCard, rootAt) + '. Type @ to tag someone.'"
                       @input="onMentionInput($event, v => replyText = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
-                      @keydown.ctrl.enter="sendReply(openCard)"></textarea>
+                      @paste="pasteFormatted($event, v => replyText = v)" @keydown.ctrl.enter="sendReply(openCard)"></textarea>
             <div class="nge-todo-row">
               <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !replyText.trim()" @click="sendReply(openCard)">Reply</button>
               <button class="nge-todo-btn" @click="replyTo = null">Cancel</button>
@@ -1952,7 +2007,30 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-check li { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; }
 .nge-todo-check label { flex: 1 1 auto; display: flex; gap: 6px; align-items: flex-start; cursor: pointer; overflow-wrap: anywhere; }
 .nge-todo-check input { accent-color: var(--accent-strong); margin-top: 3px; }
-.nge-todo-check--done span { text-decoration: line-through; color: var(--dim); }
+.nge-todo-check--done .nge-todo-check-text { color: var(--dim); }
+/* The laser: a bright line draws across a ticked item, then stays as its strike. */
+.nge-todo-check-text { position: relative; transition: color 0.4s 0.2s; }
+.nge-todo-check-text::after { content: ''; position: absolute; left: -2px; top: 52%; height: 2px; width: 0; border-radius: 2px;
+  background: linear-gradient(90deg, #7cf4ff, #4f8cff); box-shadow: 0 0 6px rgba(79, 195, 255, 0.9), 0 0 12px rgba(79, 140, 255, 0.6); transition: width 0.45s cubic-bezier(.2,.8,.3,1); }
+.nge-todo-check--done .nge-todo-check-text::after { width: calc(100% + 4px); box-shadow: 0 0 2px rgba(79, 195, 255, 0.4); background: var(--dim); }
+.nge-todo-check--now .nge-todo-check-text::after { background: linear-gradient(90deg, #7cf4ff, #4f8cff); box-shadow: 0 0 6px rgba(79, 195, 255, 0.9), 0 0 14px rgba(79, 140, 255, 0.7); }
+/* The box: round corners, fills blue, and a tick that pops in. */
+.nge-todo-check input.nge-todo-tick { appearance: none; -webkit-appearance: none; flex: 0 0 auto; width: 17px; height: 17px; margin-top: 2px; border-radius: 5px;
+  border: 2px solid var(--accent); background: transparent; cursor: pointer; display: grid; place-items: center; transition: background 0.15s, transform 0.15s; }
+.nge-todo-check input.nge-todo-tick:hover { transform: scale(1.1); }
+.nge-todo-check input.nge-todo-tick:checked { background: var(--accent); }
+.nge-todo-check input.nge-todo-tick:checked::after { content: ''; width: 5px; height: 9px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) translate(-1px, -1px); }
+.nge-todo-check--now input.nge-todo-tick { animation: nge-todo-tick-pop 0.4s cubic-bezier(.2,1.8,.4,1); }
+@keyframes nge-todo-tick-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.35); } 100% { transform: scale(1); } }
+/* The counter: a number that bumps, and a bar that fills. */
+.nge-todo-check-head { display: flex; align-items: center; gap: 8px; }
+.nge-todo-check-count { font-weight: 800; color: var(--accent); animation: nge-todo-count-bump 0.35s ease-out; }
+.nge-todo-check-count--all { color: #1f9d55; }
+@keyframes nge-todo-count-bump { 0% { transform: scale(1.5); } 100% { transform: scale(1); } }
+.nge-todo-check-bar { flex: 0 0 140px; height: 6px; border-radius: 3px; background: rgba(127, 127, 127, 0.18); overflow: hidden; }
+.nge-todo-check-bar span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #4f8cff, #7cf4ff); transition: width 0.45s cubic-bezier(.2,.8,.3,1); }
+.nge-todo-check-yay { font-size: 12.5px; font-weight: 800; color: #1f9d55; text-transform: none; letter-spacing: 0; animation: nge-zero-pop 0.5s cubic-bezier(.2,1.6,.4,1) both; }
+@media (prefers-reduced-motion: reduce) { .nge-todo-check-text::after { transition: none; } .nge-todo-check--now input.nge-todo-tick, .nge-todo-check-count { animation: none; } }
 /* An item's avatar sits by its words (the card face one sits at the far right). */
 .nge-todo-check .nge-todo-avatar--small { margin-left: 0; flex: 0 0 auto; margin-top: 2px; }
 .nge-todo-mini { background: none; border: none; color: var(--dim); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
