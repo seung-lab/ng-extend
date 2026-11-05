@@ -3,10 +3,11 @@
   "entries": [
     {
       "at": "2026-11-05T19:15:00Z",
-      "title": "Tidier Merge Queue",
+      "title": "Tidier Merge Queue, fresh claims",
       "digest": "minor",
       "items": [
-        "In the Merge Queue, each pair's remove button sits on the same line as the pair again, so the list is half as tall."
+        "In the Merge Queue, each pair's remove button sits on the same line as the pair again, so the list is half as tall.",
+        "Claiming a new cell right after completing one starts it with fresh layers: the last cell's annotations no longer stay on screen."
       ]
     },
     {

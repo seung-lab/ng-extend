@@ -689,7 +689,16 @@ let workingSet = false;
 try { workingSet = sessionStorage.getItem(WORKING_KEY) !== null; } catch {}
 // The other tabs answer within a moment of this one opening.
 if (!workingSet) setTimeout(() => { if (!workingSet && !otherTabCount()) workingTaskId = readWorking(localStorage); }, 1200);
+/** The claim last worked on, once none is: completed or released, it is no
+ *  longer the working claim, but its marks are still on screen. The next
+ *  claim opened counts as leaving it, and starts with fresh layers (Nseraf,
+ *  report 393: completed a cell, claimed a Super Quest, and its annotations
+ *  stayed on the new cell). */
+let lastLeftId: number | null = null;
+const leftClaimId = () => workingTaskId ?? lastLeftId;
 function setWorkingTask(id: number | null) {
+  if (id === null && workingTaskId !== null) lastLeftId = workingTaskId;
+  if (id !== null) lastLeftId = null;
   workingTaskId = id;
   workingSet = true;
   setTimerWorkingClaim(id);
@@ -829,7 +838,7 @@ async function switchToClaim(cell: CellRow) {
   // A quest on screen is saved and its layers put away BEFORE the claim's
   // view is saved or opened, so they never end up in the claim (annkri #145).
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
-  const leftId = workingTaskId;
+  const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
   if (!openStartLink(t?.working_link || cell.startLink)) {
@@ -945,7 +954,7 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   // layers (Amy 2026-09-28). Save the claim you were on first.
   const claimed = backend.tasks.find(t => t.segment_id === cell.segId && t.assigned_to === backend.userId
     && (t.status === 'assigned' || t.status === 'in_progress'));
-  const leftId = workingTaskId;
+  const leftId = leftClaimId();
   if (await leaveCurrentWork(claimed?.id ?? null)) {
     // A quest, or a Hunt candidate, has no start view: go to the cell (a candidate's soma, the cell meant:
     // Ames 2026-10-28, report 279).
