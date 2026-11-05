@@ -148,7 +148,9 @@ test('the maker follows; a follower hears of changes, never of their own', async
   await todoAction('todo.save', { id: card.id, fields: { rank: 3 } }, { ...base, me: { id: AMES.id } });
   assert.equal(told.length, 1, 'a drag in the list tells nobody');
   await todoAction('todo.comment', { id: card.id, text: 'nice' }, { ...base, me: { id: CELIA.id } });
-  assert.deepEqual(told[1], { ids: [AMES.id], what: 'commented on' });
+  assert.equal(told.length, 1, 'a comment tells followers nothing; only Done does');
+  await todoAction('todo.save', { id: card.id, fields: { list: 'doing' } }, { ...base, me: { id: CELIA.id } });
+  assert.equal(told.length, 1, 'a move to Doing tells followers nothing');
   await todoAction('todo.follow', { id: card.id, on: false }, { ...base, me: { id: CELIA.id } });
   assert.deepEqual(follows.m[card.id], [AMES.id]);
   const list = await todoAction('todo.list', {}, { ...base, me: { id: AMES.id } });

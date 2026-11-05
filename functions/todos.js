@@ -142,8 +142,11 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
   const now = new Date().toISOString();
   const meId = me && me.id;
   /** Followers hear, but never the one who did it, nor anyone already told. */
+  // Followers hear only that a card is finished (Ames 2026-11-05: "I don't want
+  // all these notifications - only ones where I am tagged or something is
+  // marked done"). Tags, and being given a card, still reach people as before.
   const tellFollowers = async (card, what, said, skip = []) => {
-    if (!what) return;
+    if (what !== 'finished') return;
     const ids = (await follows.get(card.id)).filter(id => id !== meId && !skip.includes(id));
     if (ids.length) await bell(ids, card, what, said);
   };
