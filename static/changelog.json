@@ -2,11 +2,27 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-05T20:00:00Z",
+      "at": "2026-11-05T20:40:00Z",
       "title": "No false mark warnings after a cut",
       "digest": "minor",
       "items": [
         "Removing a piece you just cut off a cell no longer asks about deleting the cell's own marks."
+      ]
+    },
+    {
+      "at": "2026-11-05T20:31:00Z",
+      "title": "Cilia Quests in Weekly Champions",
+      "items": [
+        "Weekly Champions has a new Top Cilia Questers podium beside Top Editors and Most Cells, counting the Cilia Quests finished on the Retina that week.",
+        "The Weekly Champions window now spans the screen, with each podium in its own column."
+      ]
+    },
+    {
+      "at": "2026-11-05T20:28:00Z",
+      "title": "Hear the moment you are in",
+      "digest": "minor",
+      "items": [
+        "Waiting for beta access? The waiting screen now notices when you are let in and opens the game for you, and a welcome note arrives in your bell."
       ]
     },
     {

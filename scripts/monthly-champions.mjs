@@ -135,7 +135,7 @@ async function main() {
     `**Top Editors**`,
     formatList(editors, names, 'edit', 'edits', span),
     ``,
-    `**Top Completers**`,
+    `**Most Cells**`,  // "Most Cells", not "Top Completers" (Ames 2026-11-05)
     formatList(completers, names, 'cell', 'cells', span),
     ``,
     isYear ? `${month.dates}. Every edit and every completion this year brought the connectome closer to done. Here's to the next one! 🧬`

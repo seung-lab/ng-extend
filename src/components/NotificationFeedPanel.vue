@@ -830,7 +830,7 @@ function cleanCopy(text: string): string {
      **Top Editors**
      🥇  **Name**, 19 edits          (older rows: "**Name** — 19 edits")
      4.  **Name**, 3 edits
-     **Top Completers**
+     **Most Cells**
      _no activity this week_
      Across all datasets, ...
    parseChampions() reads that shape back into sections for the podium view.
@@ -1201,8 +1201,9 @@ function padRank(rank: number): string {
                        above already says which week or month). -->
                   <p class="nge-champs-intro">{{ champCheer }}</p>
 
-                  <!-- Wide screens: the categories sit side by side (Ames 2026-10-05). -->
-                  <div class="nge-champs-columns">
+                  <!-- Wide screens: the categories sit side by side (Ames 2026-10-05),
+                       up to three across (Cilia Questers, Ames 2026-11-05). -->
+                  <div class="nge-champs-columns" :style="{ '--champ-cols': Math.min(3, Math.max(1, champions.sections.length)) }">
                   <section
                     v-for="(section, si) in champions.sections"
                     :key="si + '-' + section.label"
@@ -2328,11 +2329,12 @@ span.nge-notif-reply-part { cursor: default; }
   line-height: 1.5;
 }
 
-/* Two columns on a wide window, one category each; the window widens to
-   hold them. Ranks four and below scroll inside their own column, so a top
+/* Side by side on a wide window, one category each; the window spans the
+   screen to hold them. Ranks four and below scroll inside their own column, so a top
    twenty never pushes the podiums apart. */
-.nge-notif-detail--champions { width: 1140px; max-width: calc(94 * var(--nge-vw, 1vw)); max-height: calc(90 * var(--nge-vh, 1vh)); }
-.nge-champs-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 34px; align-items: start; }
+.nge-notif-detail--champions { width: calc(96 * var(--nge-vw, 1vw)); max-width: calc(96 * var(--nge-vw, 1vw)); max-height: calc(90 * var(--nge-vh, 1vh)); }
+/* Full screen width (Ames 2026-11-05), one column per category, up to three. */
+.nge-champs-columns { display: grid; grid-template-columns: repeat(var(--champ-cols, 2), minmax(0, 1fr)); column-gap: 34px; align-items: start; }
 .nge-champs-columns > .nge-champs-section { margin-top: 4px; }
 /* Side by side, the lists take what height the window has left, so the
    whole broadcast fits without the page itself scrolling. */

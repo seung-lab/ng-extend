@@ -119,7 +119,7 @@ async function main() {
     `**Top Editors**`,
     formatList(editorsRaw, names, 'edit', 'edits'),
     ``,
-    `**Top Completers**`,
+    `**Most Cells**`,  // "Most Cells", not "Top Completers" (Ames 2026-11-05)
     formatList(completersRaw, names, 'cell', 'cells'),
     ``,
     ...(questersRaw ? [`**Top Cilia Questers**`, formatList(questersRaw, names, 'quest', 'quests'), ``] : []),
@@ -159,7 +159,7 @@ async function main() {
   if (DRY) { console.log('[broadcast] DRY RUN, would post:\n' + body); return; }
   await supabasePost('notifications', notification);
   console.log(`[broadcast] Posted weekly champions notification for ${week.label}`);
-  console.log(`  ${editorsRaw.length} top editors, ${completersRaw.length} top completers, ${questersRaw?.length ?? 'no'} top questers`);
+  console.log(`  ${editorsRaw.length} top editors, ${completersRaw.length} most cells, ${questersRaw?.length ?? 'no'} top questers`);
 }
 
 main().catch(err => {
