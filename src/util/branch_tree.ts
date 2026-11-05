@@ -55,6 +55,10 @@ function neighbours(graph: BranchGraph): Map<string, string[]> {
  * a missing position neither blocks a way nor makes it look free.
  */
 function shortestWaysBack(graph: BranchGraph, adj: Map<string, string[]>, ref: string): Map<string, string | null> {
+  return shortestWays(graph, adj, ref).parent;
+}
+/** As shortestWaysBack, with each piece's distance from `ref` along the cell. */
+function shortestWays(graph: BranchGraph, adj: Map<string, string[]>, ref: string): { parent: Map<string, string | null>; dist: Map<string, number>; typical: number } {
   const lengths: number[] = [];
   const span = (a: string, b: string): number | undefined => {
     const p = graph.points.get(a), q = graph.points.get(b);
@@ -100,7 +104,7 @@ function shortestWaysBack(graph: BranchGraph, adj: Map<string, string[]>, ref: s
       if (!(dist.get(next)! <= nd)) { dist.set(next, nd); push([nd, next, n]); }
     }
   }
-  return parent;
+  return { parent, dist, typical };
 }
 
 /**
@@ -180,7 +184,38 @@ export function branchSegments(graph: BranchGraph, from: string, ref: string, wa
       stack.push([child, p ?? anchor]);
     }
   }
-  if (pieces === 1) throw new Error('Nothing lies beyond that point: it is at the tip of its branch.');
+  // Nothing on the strict rule: in a cell whose map has loops (touching or
+  // merged branches), the pieces past the click can have a slightly shorter
+  // way back that misses it, so the click looked like a tip (Ames
+  // 2026-11-05: "keep getting this issue"). Then a piece counts as beyond
+  // when going back through the click is nearly as short as its best way.
+  if (pieces === 1) {
+    const fromRef = shortestWays(graph, adj, ref);
+    const fromClick = shortestWays(graph, adj, from);
+    const dFrom = fromRef.dist.get(from) ?? 0;
+    const slack = 2 * fromRef.typical;
+    const behind = new Set<string>();
+    for (const [n, d] of fromRef.dist) {
+      if (n === from || !(d > dFrom)) continue;
+      const via = fromClick.dist.get(n);
+      if (via !== undefined && dFrom + via <= d * 1.1 + slack) behind.add(n);
+    }
+    // Only pieces joined to the click through other such pieces.
+    const joined = (n: string) => {
+      for (let p = fromClick.parent.get(n) ?? null; p != null; p = fromClick.parent.get(p) ?? null) {
+        if (p === from) return true;
+        if (!behind.has(p)) return false;
+      }
+      return false;
+    };
+    for (const n of behind) {
+      if (!joined(n)) continue;
+      pieces++;
+      const p = fromClick.parent.get(n)!;
+      join(p === from ? start : graph.points.get(p), graph.points.get(n));
+    }
+  }
+  if (pieces === 1) throw new Error('Nothing was found beyond that point. If it is not the tip of its branch, click a little farther out, or mark the stretch with a second click instead.');
   if (!segments.length) throw new Error('The server has no positions for that part of the cell.');
   return { segments, pieces };
 }
