@@ -2685,7 +2685,8 @@ function mentorFor(cell: CellRow): MentorReview | null {
 /** Sent and not back yet: the claim waits, with no Complete or Release. */
 const withMentor = (cell: CellRow) => { const r = mentorFor(cell); return !!r && (r.state === 'waiting' || r.state === 'looking'); };
 const MENTOR_CHIP: Record<MentorReview['state'], string> = {
-  waiting: '🧭 Waiting for a mentor', looking: '🧭 With your mentor', suggestions: '🧭 Mentor suggestions', complete: '🧭 Mentor notes',
+  // Short: with suggestions the row also carries Release and Complete.
+  waiting: '🧭 Waiting for a mentor', looking: '🧭 With your mentor', suggestions: '🧭 Suggestions', complete: '🧭 Mentor notes',
 };
 const mentorChip = (cell: CellRow) => { const r = mentorFor(cell); return r ? MENTOR_CHIP[r.state] : ''; };
 function openMentorCell(cell: CellRow) {
