@@ -107,7 +107,7 @@ const STATE: Record<string, string> = {
       <span class="nge-mblk-corner nge-mblk-corner--tl" aria-hidden="true"></span>
       <span class="nge-mblk-corner nge-mblk-corner--br" aria-hidden="true"></span>
       <div class="nge-mblk-kicker">Mentor program</div>
-      <h2 id="nge-mblk-title" class="nge-mblk-title">🧭 Your mentor takes a second look first</h2>
+      <h2 id="nge-mblk-title" class="nge-mblk-title">Your mentor takes a second look first</h2>
       <p id="nge-mblk-text" class="nge-mblk-text">For your first {{ apprenticeFlag.cellsNeeded }} cells, complete a claimed cell from the Cell Library. It goes to your mentor, who completes it with you or sends suggestions.</p>
       <div class="nge-mblk-actions">
         <button class="nge-mblk-btn" @click="blocked = false">OK</button>

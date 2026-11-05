@@ -1342,7 +1342,7 @@ function padRank(rank: number): string {
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
                   <!-- A mentor program bell: straight to its cell, notes and all. -->
                   <div v-if="mentorJump" class="nge-notif-mentorjump">
-                    <button class="nge-notif-mentorjump-btn" @click="openBellCell">🧭 {{ mentorJump.role === 'mentor' ? 'Take a look' : 'See it in the view' }}</button>
+                    <button class="nge-notif-mentorjump-btn" @click="openBellCell">{{ mentorJump.role === 'mentor' ? 'Take a look' : 'See it in the view' }}</button>
                     <span v-if="mentorJumpNote" class="nge-notif-textedit-err" role="alert">{{ mentorJumpNote }}</span>
                   </div>
                   <!-- Admins: the text every bell of this kind is sent with. -->

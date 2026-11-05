@@ -2705,7 +2705,7 @@ function mentorFor(cell: CellRow): MentorReview | null {
 const withMentor = (cell: CellRow) => { const r = mentorFor(cell); return !!r && (r.state === 'waiting' || r.state === 'looking'); };
 const MENTOR_CHIP: Record<MentorReview['state'], string> = {
   // Short: with suggestions the row also carries Release and Complete.
-  waiting: '🧭 Waiting for a mentor', looking: '🧭 With your mentor', suggestions: '🧭 Suggestions', complete: '🧭 Mentor notes',
+  waiting: 'Waiting for a mentor', looking: 'With your mentor', suggestions: 'Suggestions', complete: 'Mentor notes',
 };
 /** Which of the apprentice's mentor cells this one is (Ames 2026-11-05: "add
  *  like a n/5 here"): its own number if it went before (sent back with
@@ -4328,7 +4328,7 @@ const panelStyle = computed(() => ({
               <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
-              <span v-if="mentorCellNumber(cell)" class="nge-cl-mentor-n" :title="`Your mentor looks at your first ${mentorState.apprentice?.cellsNeeded ?? 5} cells`">🧭 Mentor cell {{ mentorCellNumber(cell) }} of {{ mentorState.apprentice?.cellsNeeded ?? 5 }}</span>
+              <span v-if="mentorCellNumber(cell)" class="nge-cl-mentor-n" :title="`Your mentor looks at your first ${mentorState.apprentice?.cellsNeeded ?? 5} cells`">Mentor cell {{ mentorCellNumber(cell) }} of {{ mentorState.apprentice?.cellsNeeded ?? 5 }}</span>
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
                 :disabled="!!completeBlocked(cell)"
