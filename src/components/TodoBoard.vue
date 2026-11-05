@@ -244,7 +244,7 @@ const saveSizes = () => { try { localStorage.setItem(SIZE_KEY, JSON.stringify(ca
 const resizingId = ref<string | null>(null);
 function cardStyle(c: Card) {
   const z = cardSizes.value[c.id];
-  return z ? { width: z.w + 'px', height: z.h + 'px', overflow: 'hidden' } : {};
+  return z ? { width: z.w + 'px', height: z.h + 'px', overflowY: 'auto' as const } : {};
 }
 function startResize(e: PointerEvent, c: Card) {
   e.preventDefault(); e.stopPropagation();
@@ -537,6 +537,20 @@ const editTitle = ref('');
 const editNotes = ref('');
 const newItem = ref('');
 const comment = ref('');
+/** Open a card and go straight to a part of it. */
+const commentsHead = ref<HTMLElement | null>(null);
+function toComments() {
+  void nextTick(() => {
+    commentsHead.value?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    setTimeout(() => commentEl.value?.focus({ preventScroll: true }), 350);
+  });
+}
+function openAt(c: Card, part: 'comments') {
+  openUp(c);
+  if (part === 'comments') setTimeout(toComments, 60);
+}
+/** A comment as one plain line for the card's face. */
+const plainLine = (t: string) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 140);
 function openUp(c: Card) {
   connectOpen.value = false;
   openId.value = c.id;
@@ -1136,8 +1150,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
             </div>
-            <span class="nge-todo-card-resize" title="Drag to resize this card. Double click to put it back." aria-hidden="true"
-                  @pointerdown="startResize($event, c)" @click.stop @dblclick.stop="resetSize(c)" @dragstart.prevent></span>
             <img v-if="(c.images || []).length" class="nge-todo-card-cover" :src="c.images[0]" alt="" loading="lazy" />
             <div class="nge-todo-card-title">{{ c.title }}</div>
             <div v-if="isLive(c) || buildBadges(c).length" class="nge-todo-badges" @click.stop>
@@ -1156,15 +1168,20 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span v-for="pp in perPerson(c)" :key="pp.id" class="nge-todo-chip nge-todo-chip--person" :class="{ 'nge-todo-chip--all': pp.done === pp.all }"
                     :style="{ '--pc': colorOf(pp.id) }" :title="`${pp.name}: ${pp.done} of ${pp.all} done`">{{ firstName(pp.name) }} {{ pp.done }}/{{ pp.all }}</span>
               <span v-if="(c.images || []).length" class="nge-todo-chip" title="Images">🖼 {{ c.images.length }}</span>
-              <span v-if="c.comments.length" class="nge-todo-chip" title="Comments">💬 {{ c.comments.length }}</span>
+              <button v-if="c.comments.length" type="button" class="nge-todo-chip nge-todo-chip--btn" title="Open the comments" @click.stop="openAt(c, 'comments')">💬 {{ c.comments.length }}</button>
               <span v-if="c.triage_id" class="nge-todo-chip" title="Made from a player report">{{ reportLabel(c.triage_id) }}</span>
             </div>
+            <button v-if="c.comments.length" type="button" class="nge-todo-card-last" title="Open the comments" @click.stop="openAt(c, 'comments')">
+              <b>💬 {{ c.comments[c.comments.length - 1].by }}</b> {{ ago(c.comments[c.comments.length - 1].at) }}: {{ plainLine(c.comments[c.comments.length - 1].text) }}
+            </button>
             <div class="nge-todo-card-foot">
               <span class="nge-todo-card-by">{{ c.owner_id ? nameOf(c.owner_id) : (c.created_by || '') }}<template v-if="c.updated_at"> · {{ ago(c.updated_at) }}</template></span>
               <button v-if="c.list !== 'done'" type="button" class="nge-todo-done-btn" title="Move to Done" @click.stop="finish(c, $event)">✓ Done</button>
               <span v-if="c.owner_id" class="nge-todo-avatar" :style="{ background: colorOf(c.owner_id) }" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
             </div>
             <div v-if="waitingOn(c).length" class="nge-todo-waiting">Waiting on {{ waitingOn(c).map(p => firstName(p.name)).join(', ') }}</div>
+            <span class="nge-todo-card-resize" title="Drag to resize this card. Double click to put it back." aria-hidden="true"
+                  @pointerdown="startResize($event, c)" @click.stop @dblclick.stop="resetSize(c)" @dragstart.prevent></span>
           </article>
           <div v-if="dropAt?.list === col.key && !dropAt.id" class="nge-todo-drop-end"></div>
           <div v-if="!col.rows.length && !loading" class="nge-todo-list-empty"><img :src="imgNurroWhere" alt="" class="nge-todo-nurro-empty" />{{ mineOnly ? 'Nothing of yours here.' : col.empty }}</div>
@@ -1242,6 +1259,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <select class="nge-todo-select" :value="openCard.list" aria-label="List" @change="onListChange(openCard, $event)">
             <option v-for="l in LISTS" :key="l.key" :value="l.key">{{ l.title }}</option>
           </select>
+          <button type="button" class="nge-todo-btn" title="Jump to the comments" @click="toComments()">💬 Comments<b v-if="openCard.comments.length" class="nge-todo-follow-n">{{ openCard.comments.length }}</b></button>
           <button v-if="openCard.list !== 'done'" type="button" class="nge-todo-btn nge-todo-done-big" @click="finish(openCard, $event)">✓ Done</button>
           <button type="button" class="nge-todo-btn nge-todo-follow" :class="{ 'nge-todo-follow--on': iFollow(openCard) }" :disabled="!myId" @click="toggleFollow(openCard)"
                   :title="(followerNames(openCard).length ? 'Following: ' + followerNames(openCard).join(', ') + '. ' : '') + 'Followers get a bell in Pyr when this card changes.'">{{ iFollow(openCard) ? '🔔 Following' : '🔕 Follow' }}<b v-if="followerNames(openCard).length" class="nge-todo-follow-n">{{ followerNames(openCard).length }}</b></button>
@@ -1339,7 +1357,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button type="submit" class="nge-todo-btn" :disabled="!newItem.trim()">Add</button>
         </form>
 
-        <div class="nge-todo-label">Comments</div>
+        <div ref="commentsHead" class="nge-todo-label">Comments</div>
         <div v-for="(cm, i) in openCard.comments" :key="i" class="nge-todo-comment">
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}</div>
           <div class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
@@ -1439,6 +1457,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-card-resize { position: absolute; right: 2px; bottom: 2px; width: 14px; height: 14px; cursor: nwse-resize; opacity: 0; transition: opacity 0.15s; touch-action: none;
   background: linear-gradient(135deg, transparent 0 45%, var(--dim) 45% 52%, transparent 52% 65%, var(--dim) 65% 72%, transparent 72%); border-radius: 0 0 6px 0; }
 .nge-todo-card:hover .nge-todo-card-resize { opacity: 0.8; }
+.nge-todo-card-resize { position: sticky !important; display: block; bottom: 0; margin: -12px 0 0 auto; z-index: 2; }
+.nge-todo-card-last { display: block; width: 100%; margin-top: 8px; padding: 6px 8px; text-align: left; border: none; border-left: 3px solid var(--accent);
+  border-radius: 6px; background: rgba(79, 140, 255, 0.08); color: var(--text); font: inherit; font-size: 12.5px; line-height: 1.4; cursor: pointer;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nge-todo-card-last:hover { background: rgba(79, 140, 255, 0.16); }
+.nge-todo-card-last b { font-weight: 700; color: var(--accent-strong); }
+.nge-todo-chip--btn { cursor: pointer; font: inherit; font-size: 11.5px; color: inherit; background: transparent; appearance: none; -webkit-appearance: none; }
+.nge-todo-chip--btn:hover { border-color: var(--accent); }
 .nge-todo-card-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 22px; }
 .nge-todo-card-foot .nge-todo-card-by { margin: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nge-todo-card-foot .nge-todo-avatar { margin-left: 0; flex: 0 0 auto; }
