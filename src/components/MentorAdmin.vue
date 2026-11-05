@@ -40,7 +40,7 @@ const addA = () => { const n = apprenticeName.value.trim(); if (n) void act(() =
     <summary>Mentor program <span v-if="data?.overdue.length" class="nge-madm-late">{{ data.overdue.length }} waiting over 2 days</span></summary>
     <p class="nge-madm-how">
       A proof of concept. An apprentice's next {{ data?.cellsNeeded ?? 5 }} cells go to a mentor before they count.
-      Mentors take cells in Cell Library, Mentoring, at most {{ data?.maxApprentices ?? 2 }} apprentices each. For now apprentices are added here by hand.
+      Mentors take cells in Cell Library, Mentoring, at most {{ data?.maxApprentices ?? 5 }} apprentices each. Admins can mentor too. For now apprentices are added here by hand.
     </p>
     <p v-if="error" class="nge-madm-err" role="alert">{{ error }}</p>
     <p v-else-if="said" class="nge-madm-said" role="status">{{ said }}</p>

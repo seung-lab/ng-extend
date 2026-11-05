@@ -30,10 +30,10 @@ The notes stay readable in the apprentice's My Cells.
   has claimed, oldest first, with the apprentice's name and how long it has waited) and **Yours**.
 - **Take a look** claims the cell and opens it. The first mentor to claim an apprentice's cell
   becomes that apprentice's mentor for the rest, so one person follows their progress.
-  At most **2 apprentices** per mentor at a time; Take a look is greyed out past that.
+  At most **5 apprentices** per mentor at a time (Ames, 2026-11-04); Take a look is greyed out past that.
 - The review box is the access review box (`AccessReviewBar.vue`) reshaped: a list of notes,
   each a point in the view with a short text, fly to it; a note to the whole cell; **Send suggestions** and **Complete**.
-- **Mentor** Achievement when their first apprentice finishes.
+- **Mentor** Achievement when their first apprentice finishes. Admins can mentor too (Ames, 2026-11-04).
 - "Hand back" lets a mentor return an apprentice to the queue.
 
 ## Keeping the overhead low (Ames's worry)

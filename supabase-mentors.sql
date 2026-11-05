@@ -77,12 +77,15 @@ alter table public.ew_mentor_reviews enable row level security;
 revoke all on public.ew_mentors, public.ew_apprentices, public.ew_mentor_reviews from anon, authenticated;
 grant all on public.ew_mentors, public.ew_apprentices, public.ew_mentor_reviews to service_role;
 
+-- Run 2026-11-04 with Nseraf, Annkri, azurejay and KrzysztofKruk added as
+-- mentors (Ames). Admins mentor too, without a row here.
+--
 -- No mentors are added here: a test site shares the live data, and a new
 -- apprentice's first cell rings every mentor. Add them in the Admin Hub
 -- (Access, Mentor program) once real players should hear about it; for
 -- the old guard (Nseraf, annkri, kk, azurejay) when the program goes live:
 -- insert into public.ew_mentors (user_id, user_name)
--- select id, username from public.users where lower(username) in ('nseraf', 'annkri', 'kk', 'azurejay')
+-- select id, username from public.users where lower(username) in ('nseraf', 'annkri', 'azurejay', 'krzysztofkruk')
 -- on conflict (user_id) do nothing;
 
 notify pgrst, 'reload schema';

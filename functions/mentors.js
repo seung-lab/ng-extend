@@ -7,6 +7,8 @@
  * the view and either sends suggestions back or completes it, and then it
  * counts for the APPRENTICE.
  *
+ * Mentors are the players an admin lists, and the admins themselves.
+ *
  * Low overhead (Ames's worry): nobody matches people. Mentors take cells from
  * a queue; the first mentor to take an apprentice's cell stays with them, at
  * most MAX_APPRENTICES at a time. Anything left 48 hours shows as overdue to
@@ -24,7 +26,9 @@
  * data, so nothing here writes to chat or to everyone.
  */
 const CELLS_NEEDED = 5;
-const MAX_APPRENTICES = 2;
+// Ames 2026-11-04: 5, not 2. New players take a while over each cell, and
+// meanwhile a mentor can be helping others.
+const MAX_APPRENTICES = 5;
 const OVERDUE_MS = 48 * 3600 * 1000;
 const NOTE_MAX = 300;
 const CELL_NOTE_MAX = 2000;
@@ -77,8 +81,9 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
   const t = now.getTime();
   const stamp = now.toISOString();
   const mentorRow = await db.getMentor(meId);
-  const isMentor = !!(mentorRow && mentorRow.active);
-  const mayReview = isMentor || isAdmin;
+  // Admins can mentor too (Ames 2026-11-04), as any mentor does.
+  const isMentor = !!(mentorRow && mentorRow.active) || !!isAdmin;
+  const mayReview = isMentor;
   const needReviewer = () => { if (!mayReview) fail(403, 'Mentors only.'); };
   const needAdmin = () => { if (!isAdmin) fail(403, 'Admins only.'); };
 
@@ -197,7 +202,6 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         if (!isAdmin) fail(409, `${r.mentor_name || 'Another mentor'} is looking at this cell.`);
       }
       const a = await db.getApprentice(r.apprentice_id);
-      // An admin taking a cell does not become anyone's mentor.
       if (isMentor && a && a.status === 'active' && !a.mentor_id) {
         if ((await slotsUsed()) >= MAX_APPRENTICES) fail(409, `You are mentoring ${MAX_APPRENTICES} players already. Finish with one first, or hand one back.`);
         await db.patchApprentice(a.user_id, {mentor_id: meId, mentor_name: nameOf(me)});
@@ -256,7 +260,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
         await db.notify(r.apprentice_id, '🏆 Apprentice Achievement',
           `You finished the mentor program. From now on your cells count the moment you complete them. Thank you, ${nameOf(me)}, too.`, meId);
-        if (a.mentor_id && (await db.getMentor(a.mentor_id))) {
+        if (a.mentor_id) {
           await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
           await db.notify(a.mentor_id, '🏆 Mentor Achievement', `${a.user_name} finished the mentor program with you.`, meId);
         }

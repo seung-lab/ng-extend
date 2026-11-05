@@ -67,19 +67,24 @@ test('a first cell bells each mentor with room once, then the first mentor to ta
   assert.deepEqual(db._state.notes.map(n => n.to), [U(2)]);
 });
 
-test('a mentor takes at most two apprentices', async () => {
-  const {call, admin} = setup();
-  await admin('mentor.addMentor', {username: 'Nseraf'});
-  for (const n of ['newbie', 'second', 'third']) await admin('mentor.addApprentice', {username: n});
-  const a = (await send(call, 4, 1)).review, b = (await send(call, 5, 2)).review, c = (await send(call, 6, 3)).review;
-  await call(2, 'mentor.claim', {reviewId: a.id});
-  await call(2, 'mentor.claim', {reviewId: b.id});
-  await assert.rejects(call(2, 'mentor.claim', {reviewId: c.id}), new RegExp(`mentoring ${MAX_APPRENTICES}`));
-  await call(2, 'mentor.handBack', {apprenticeId: U(5)});
-  await call(2, 'mentor.claim', {reviewId: c.id});
+test('a mentor takes at most MAX_APPRENTICES apprentices', async () => {
+  const extra = Array.from({length: MAX_APPRENTICES + 1}, (_, i) => ({id: U(100 + i), username: `p${i}`}));
+  const db = memDb([...users, ...extra]);
+  const call = (n, action, args = {}, admin = false) => mentorAction(action, args, {db, me: typeof n === 'number' ? who(n) : n, isAdmin: admin, credit: async () => {}});
+  await call(1, 'mentor.addMentor', {username: 'Nseraf'}, true);
+  const reviews = [];
+  for (const [i, u] of extra.entries()) {
+    await call(1, 'mentor.addApprentice', {username: u.username}, true);
+    reviews.push((await call(u, 'mentor.send', {taskId: 10 + i, dataset: 'pinky100', rootId: String(900 + i)})).review);
+  }
+  for (const r of reviews.slice(0, MAX_APPRENTICES)) await call(2, 'mentor.claim', {reviewId: r.id});
+  await assert.rejects(call(2, 'mentor.claim', {reviewId: reviews[MAX_APPRENTICES].id}), new RegExp(`mentoring ${MAX_APPRENTICES}`));
+  await call(2, 'mentor.handBack', {apprenticeId: extra[0].id});
+  await call(2, 'mentor.claim', {reviewId: reviews[MAX_APPRENTICES].id});
   const q = await call(2, 'mentor.queue');
-  assert.equal(q.slots.used, 2);
-  assert.ok(q.waiting.some(r => r.id === b.id), 'the handed back cell is in the queue again');
+  assert.equal(q.slots.used, MAX_APPRENTICES);
+  assert.equal(q.slots.max, 5);
+  assert.ok(q.waiting.some(r => r.id === reviews[0].id), 'the handed back cell is in the queue again');
 });
 
 test('suggestions: nothing counts, the apprentice keeps the cell, sends it back to the same mentor', async () => {
@@ -147,6 +152,17 @@ test('a claim that cannot be completed counts nothing and stays with the mentor'
   assert.equal((await db.getReview(r.id)).state, 'looking');
 });
 
+test('an admin who mentors someone to the end gets the Mentor Achievement too', async () => {
+  const {db, call, admin} = setup();
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  for (let i = 1; i <= CELLS_NEEDED; i++) {
+    const r = (await send(call, 4, i)).review;
+    await admin('mentor.claim', {reviewId: r.id});
+    await admin('mentor.complete', {reviewId: r.id});
+  }
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Apprentice', U(4)], ['Mentor', U(1)]]);
+});
+
 test('five cells end the apprenticeship with both Achievements; no sixth can be sent', async () => {
   const {db, credited, call, admin} = setup();
   await admin('mentor.addMentor', {username: 'Nseraf'});
@@ -194,9 +210,12 @@ test('who may see what', async () => {
   await assert.rejects(call(5, 'mentor.review', {reviewId: r.id}), /Not your cell/);
   await assert.rejects(call(5, 'mentor.sheetDone', {reviewId: r.id}), /Not your cell/);
   assert.equal((await call(4, 'mentor.review', {reviewId: r.id})).id, r.id);
-  // An admin can take any cell without becoming a mentor.
+  // Admins mentor too: an admin who takes a cell becomes that apprentice's mentor.
+  assert.equal((await admin('mentor.status')).mentor, true);
   await admin('mentor.claim', {reviewId: r.id});
-  assert.equal((await call(4, 'mentor.status')).apprentice.mentorId, null);
+  assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, 'ames');
+  // ...and a mentor cannot take a cell an admin is looking at.
+  await assert.rejects(call(2, 'mentor.claim', {reviewId: r.id}), /ames is looking/);
   await assert.rejects(call(2, 'mentor.addMentor', {username: 'second'}), /Admins only/);
 });
 
