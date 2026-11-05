@@ -14,6 +14,12 @@
  *   todo.save     a new card (no id) or changed fields of one card
  *   todo.comment  adds one comment to a card
  *   todo.delete   removes a card for good
+ *   todo.commentEdit  {id, index, text}: its writer changes a comment; the
+ *                 first wording is kept as `original` (Ames 2026-11-05: "edit
+ *                 ... comments with show original")
+ *   todo.helpers  {id, ids}: a card's collaborators, beside its one owner
+ *                 (Ames 2026-11-05: "add a second person to todo card"). They
+ *                 hear they were added, and follow the card.
  *   todo.follow   follow or stop following a card (Ames 2026-11-02, from
  *                 Asana): followers hear in the bell when it changes
  *
@@ -130,8 +136,9 @@ function changeWords(fields, before) {
   return '';
 }
 const noFollows = { all: async () => ({}), get: async () => [], set: async () => {} };
+const HELPERS_MAX = 6;
 
-async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
+async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
   const meId = me && me.id;
   /** Followers hear, but never the one who did it, nor anyone already told. */
@@ -146,8 +153,41 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (next.length !== had.length) await follows.set(cardId, next);
   };
   if (action === 'todo.list') {
-    const [cards, people, followers] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({}))]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers };
+    const [cards, people, followers, helping] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({}))]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping };
+  }
+  if (action === 'todo.commentEdit') {
+    const id = uuid(args.id, 'card');
+    const body = text(args.text, COMMENT_MAX, 'The comment').trim();
+    if (!body) fail(400, 'Write something first.');
+    const before = await db.card(id);
+    if (!before) fail(404, 'That card is gone. Refresh the board.');
+    const i = Number(args.index);
+    const list = [...(before.comments || [])];
+    const old = Number.isInteger(i) ? list[i] : null;
+    if (!old) fail(404, 'That comment is gone. Refresh the board.');
+    if (old.by !== byName) fail(403, 'Only the person who wrote a comment can change it.');
+    if (old.text === body) return { card: before };
+    list[i] = { ...old, text: body, edited_at: now, original: old.original ?? old.text };
+    return { card: await db.patch(id, { comments: list, updated_at: now }) };
+  }
+  if (action === 'todo.helpers') {
+    const id = uuid(args.id, 'card');
+    if (!Array.isArray(args.ids) || args.ids.length > HELPERS_MAX) fail(400, `At most ${HELPERS_MAX} collaborators.`);
+    const ids = [...new Set(args.ids.map(x => uuid(x, 'collaborator')))];
+    const card = await db.card(id);
+    if (!card) fail(404, 'That card is gone. Refresh the board.');
+    const people = await db.people();
+    if (ids.some(x => !people.some(p => p.id === x))) fail(400, 'A collaborator must be an admin on the board.');
+    const had = await helpers.get(id);
+    await helpers.set(id, ids);
+    const added = ids.filter(x => !had.includes(x));
+    if (added.length) {
+      await follow(id, added).catch(() => {});
+      const told = people.filter(p => added.includes(p.id) && p.id !== meId);
+      if (told.length) await tag(told, card, 'added you as a collaborator on');
+    }
+    return { id, helpers: ids };
   }
   if (action === 'todo.follow') {
     const id = uuid(args.id, 'card');

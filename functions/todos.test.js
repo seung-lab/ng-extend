@@ -164,3 +164,31 @@ test('a nickname tags too: @Marissa reaches M Sorek', () => {
   assert.deepEqual(tagIdsIn('email marissa@x.org, no tag', people), []);
   assert.deepEqual(tagIdsIn('@Marissanne is someone else', people), []);
 });
+
+test('a comment can be changed by its writer, and its first wording is kept', async () => {
+  const db = memDb();
+  const base = { db, tag: async () => {} };
+  const { card } = await todoAction('todo.save', { fields: { title: 'x' } }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  await todoAction('todo.comment', { id: card.id, text: 'first try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  const r1 = await todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'second try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  assert.equal(r1.card.comments[0].text, 'second try');
+  assert.equal(r1.card.comments[0].original, 'first try');
+  const r2 = await todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'third try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  assert.equal(r2.card.comments[0].original, 'first try', 'the first wording stays the original');
+  await assert.rejects(todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'mine now' }, { ...base, me: { id: CELIA.id }, byName: 'Celia' }), /Only the person/);
+});
+
+test('a card can have collaborators: they hear, and they follow it', async () => {
+  const db = memDb(), follows = memFollows(), helpers = memFollows(), tags = [];
+  const base = { db, byName: 'Ames', tag: async (who, card, what) => tags.push({ who: who.map(p => p.name), what }), follows, helpers, me: { id: AMES.id } };
+  const { card } = await todoAction('todo.save', { fields: { title: 'Two of us' } }, base);
+  const r = await todoAction('todo.helpers', { id: card.id, ids: [CELIA.id] }, base);
+  assert.deepEqual(r.helpers, [CELIA.id]);
+  assert.deepEqual(tags.at(-1), { who: ['Celia D.'], what: 'added you as a collaborator on' });
+  assert.ok(follows.m[card.id].includes(CELIA.id));
+  const n = tags.length;
+  await todoAction('todo.helpers', { id: card.id, ids: [CELIA.id] }, base);
+  assert.equal(tags.length, n, 'nobody is told twice');
+  await assert.rejects(todoAction('todo.helpers', { id: card.id, ids: ['99999999-9999-9999-9999-999999999999'] }, base), /must be an admin/);
+  assert.deepEqual((await todoAction('todo.list', {}, base)).helpers[card.id], [CELIA.id]);
+});

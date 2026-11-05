@@ -126,7 +126,8 @@ async function loadOtherUser() {
     void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
     otherDays.value = null;
     void backendStore.loadDayTotal(props.viewUserId).then(n => { otherDays.value = n; });
-    void loadQuestsCompleted(otherUserProfile.value?.display_name || null);
+    // '' (not null) for a player with no name: null would count the viewer's own.
+    void loadQuestsCompleted(otherUserProfile.value?.display_name || '');
   } else {
     otherUserProfile.value = null;
     backendStore.loadUserStats();
@@ -2292,7 +2293,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             </template>
             <template v-else>
-            <div class="nge-profile-section-label">▌ Annotations and Assists</div>
+            <div class="nge-profile-section-label">▌ Annotations, Assists and Quests</div>
             <div class="nge-profile-stat-row" style="margin-bottom: 12px;">
               <div class="nge-profile-stat-col" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
                 <div class="nge-profile-stat-label">Annotations</div>
@@ -2301,6 +2302,14 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <div class="nge-profile-stat-col" title="Other players' help requests this player replied to, one each, on every dataset">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
+              </div>
+              <!-- Their Cilia Quests, as the leaderboard counts them (Ames 2026-11-05). -->
+              <div class="nge-profile-stat-col" title="Annotation quests this player completed: cells whose cilium they marked, or found none, and sent to the lab's sheet">
+                <div class="nge-profile-stat-label">Quests</div>
+                <div class="nge-profile-stat-val" style="color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35);">
+                  <RollUp v-if="questsCompleted !== null" :value="questsCompleted" />
+                  <span v-else class="nge-profile-stat-na" title="The quest sheet could not be read just now">not available</span>
+                </div>
               </div>
             </div>
             </template>

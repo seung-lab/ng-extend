@@ -29,7 +29,7 @@ type Size = 'S' | 'M' | 'L';
 interface Card {
   id: string; title: string; notes: string; list: ListKey; rank: number; size: Size | null;
   owner_id: string | null; checklist: Item[];
-  comments: { by: string; text: string; at: string }[];
+  comments: { by: string; text: string; at: string; edited_at?: string; original?: string }[];
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
   // Optional (supabase-admin-todos-fields.sql).
   links?: Link[]; status?: string; due_on?: string | null; images?: string[];
@@ -51,6 +51,28 @@ const cards = ref<Card[]>([]);
 const people = ref<Person[]>([]);
 /** Who follows each card (functions/todos.js todo.follow). */
 const followers = ref<Record<string, string[]>>({});
+/** A card's collaborators, beside its owner (functions/todos.js todo.helpers). */
+const helpers = ref<Record<string, string[]>>({});
+const helpersOf = (c: Card) => (helpers.value[c.id] || []).filter(id => id !== c.owner_id);
+async function setHelpers(c: Card, ids: string[]) {
+  const before = helpers.value[c.id] || [];
+  helpers.value = { ...helpers.value, [c.id]: ids };
+  try {
+    const r = await secureWrite<any>('todo.helpers', { id: c.id, ids });
+    helpers.value = { ...helpers.value, [c.id]: r?.helpers || ids };
+  } catch (e: any) {
+    helpers.value = { ...helpers.value, [c.id]: before };
+    error.value = e?.message ?? String(e);
+  }
+}
+function addHelper(c: Card, e: Event) {
+  const sel = e.target as HTMLSelectElement;
+  const id = sel.value;
+  sel.value = '';
+  if (id && !(helpers.value[c.id] || []).includes(id)) void setHelpers(c, [...(helpers.value[c.id] || []), id]);
+}
+const addable = (c: Card) => people.value.filter(p => p.id !== c.owner_id && !helpersOf(c).includes(p.id));
+const dropHelper = (c: Card, id: string) => setHelpers(c, (helpers.value[c.id] || []).filter(x => x !== id));
 const loading = ref(true);
 const error = ref('');
 const notInstalled = ref(false);
@@ -67,6 +89,7 @@ async function load() {
     cards.value = data.cards || [];
     people.value = data.people || [];
     followers.value = data.followers || {};
+    helpers.value = data.helpers || {};
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
@@ -194,6 +217,7 @@ function isMine(c: Card): boolean {
   const id = myId.value;
   if (!id) return true;
   if (c.owner_id === id) return true;
+  if ((helpers.value[c.id] || []).includes(id)) return true;
   if (c.checklist.some(it => it.owner_id === id || tagsIn(it.text).includes(id))) return true;
   return tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
 }
@@ -609,7 +633,7 @@ const myTasks = computed(() => {
   const out: Task[] = [];
   for (const c of cards.value) {
     if (c.list === 'done') continue;
-    if (c.owner_id === me) out.push({ key: c.id, card: c, text: c.title, due: c.due_on || null, item: null });
+    if (c.owner_id === me || (helpers.value[c.id] || []).includes(me)) out.push({ key: c.id, card: c, text: c.title, due: c.due_on || null, item: null });
     c.checklist.forEach((it, i) => {
       if (!it.done && itemOwner(it)?.id === me) out.push({ key: `${c.id}:${i}`, card: c, text: it.text, due: it.due || null, item: i });
     });
@@ -649,6 +673,40 @@ const taggedPeople = (text: string) => { const ids = tagsIn(text || ''); return 
 const sentTags = ref('');
 let sentTimer: any = null;
 function flashSent(text: string) { sentTags.value = text; clearTimeout(sentTimer); sentTimer = setTimeout(() => { sentTags.value = ''; }, 6000); }
+// ── Changing what was written (Ames 2026-11-05: "need a way to edit already
+// submitted stuff ... with show original"). Checklist items change in place;
+// a comment changes for its writer, and keeps its first wording to show. ──
+const itemEdit = ref<string | null>(null);
+const itemDraft = ref('');
+function beginItemEdit(key: string, text: string) { itemEdit.value = key; itemDraft.value = text; }
+async function saveItemText(c: Card, i: number) {
+  if (itemEdit.value !== c.id + ':' + i) return;
+  itemEdit.value = null;
+  const t = itemDraft.value.trim();
+  if (!t || t === c.checklist[i]?.text) return;
+  await save(c, { checklist: c.checklist.map((x, k) => (k === i ? { ...x, text: t } : x)) }, { tagIds: newTags(c.checklist[i]?.text || '', t) });
+}
+const commentEdit = ref<number | null>(null);
+const commentDraft = ref('');
+const shownOriginal = ref<Record<string, boolean>>({});
+const toggleOriginal = (cardId: string, i: number) => { const k = cardId + ':' + i; shownOriginal.value = { ...shownOriginal.value, [k]: !shownOriginal.value[k] }; };
+const isMyComment = (cm: { by: string }) => !!backend.userName && cm.by === backend.userName;
+async function saveCommentEdit(c: Card, i: number) {
+  const t = commentDraft.value.trim();
+  if (!t || busy.value) return;
+  busy.value = true;
+  try {
+    const { card } = await secureWrite<any>('todo.commentEdit', { id: c.id, index: i, text: t });
+    if (card) put(card);
+    commentEdit.value = null;
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  } finally {
+    busy.value = false;
+  }
+}
+/** A date box opens its calendar on any click (Ames 2026-11-05: "click for a calendar"). */
+function openCalendar(e: Event) { try { (e.target as HTMLInputElement).showPicker?.(); } catch { /* the browser opens it its own way */ } }
 async function sendComment(c: Card) {
   const t = comment.value.trim();
   if (!t || busy.value) return;
@@ -1106,7 +1164,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                         @input="onMentionInput($event, v => draft.notes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
                         data-nge-notes-paste @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
               <ul v-if="draft.checklist.length" class="nge-todo-check">
-                <li v-for="(it, i) in draft.checklist" :key="i"><label><input type="checkbox" disabled /> <span>{{ it.text }}</span></label>
+                <li v-for="(it, i) in draft.checklist" :key="i"><label><input type="checkbox" disabled />
+                  <input v-if="itemEdit === 'draft:' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
+                         @keydown.stop @keydown.enter.prevent="draft.checklist[i].text = itemDraft.trim() || it.text; itemEdit = null" @keydown.esc="itemEdit = null"
+                         @blur="draft.checklist[i].text = itemDraft.trim() || it.text; itemEdit = null" @keyup.stop @keypress.stop />
+                  <span v-else>{{ it.text }}</span></label>
+                  <button type="button" class="nge-todo-mini" title="Change this item" aria-label="Edit" @click="beginItemEdit('draft:' + i, it.text)">✎</button>
                   <button type="button" class="nge-todo-mini" aria-label="Remove" @click="draft.checklist.splice(i, 1)">×</button></li>
               </ul>
               <div v-if="draft.images.length || imageBusy" class="nge-todo-images">
@@ -1131,7 +1194,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                   <option value="">Owner (optional)</option>
                   <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
                 </select>
-                <input v-model="draft.due_on" type="date" class="nge-todo-select" aria-label="Due day (optional)" title="Due day (optional)" />
+                <input v-model="draft.due_on" type="date" @click="openCalendar($event)" class="nge-todo-select" aria-label="Due day (optional)" title="Due day (optional)" />
                 <button v-if="linkDraft?.for !== 'new'" type="button" class="nge-todo-btn" @click="linkDraft = { for: 'new', kind: '', url: '', label: '' }">＋ Link</button>
               </div>
               <div class="nge-todo-row">
@@ -1178,6 +1241,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span class="nge-todo-card-by">{{ c.owner_id ? nameOf(c.owner_id) : (c.created_by || '') }}<template v-if="c.updated_at"> · {{ ago(c.updated_at) }}</template></span>
               <button v-if="c.list !== 'done'" type="button" class="nge-todo-done-btn" title="Move to Done" @click.stop="finish(c, $event)">✓ Done</button>
               <span v-if="c.owner_id" class="nge-todo-avatar" :style="{ background: colorOf(c.owner_id) }" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
+              <span v-for="h in helpersOf(c)" :key="h" class="nge-todo-avatar nge-todo-avatar--helper" :style="{ background: colorOf(h) }" :title="'With ' + nameOf(h)">{{ initialOf(h) }}</span>
             </div>
             <div v-if="waitingOn(c).length" class="nge-todo-waiting">Waiting on {{ waitingOn(c).map(p => firstName(p.name)).join(', ') }}</div>
             <span class="nge-todo-card-resize" title="Drag to resize this card. Double click to put it back." aria-hidden="true"
@@ -1276,6 +1340,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <option value="">Nobody yet</option>
             <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
+          <span class="nge-todo-label">With</span>
+          <span v-for="h in helpersOf(openCard)" :key="h" class="nge-todo-helper-chip" :style="{ '--pc': colorOf(h) }">{{ nameOf(h) }}
+            <button type="button" class="nge-todo-mini" :aria-label="'Remove ' + nameOf(h)" @click="dropHelper(openCard, h)">×</button></span>
+          <select class="nge-todo-select" value="" aria-label="Add a collaborator" title="Someone working on this with the owner" @change="addHelper(openCard, $event)">
+            <option value="">＋ Add a collaborator</option>
+            <option v-for="p in addable(openCard)" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
         </div>
 
         <input v-model="editStatus" class="nge-todo-input nge-todo-status-input" maxlength="200" placeholder="Status, in a line (optional)" aria-label="Status"
@@ -1286,7 +1357,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </div>
         <div class="nge-todo-field">
           <span class="nge-todo-label">Due</span>
-          <input type="date" class="nge-todo-select" :value="openCard.due_on || ''" aria-label="Due day" @change="onDueChange(openCard, $event)" />
+          <input type="date" @click="openCalendar($event)" class="nge-todo-select" :value="openCard.due_on || ''" aria-label="Due day" @change="onDueChange(openCard, $event)" />
           <button v-if="openCard.due_on" type="button" class="nge-todo-mini" @click="save(openCard, { due_on: null })">Clear</button>
         </div>
 
@@ -1325,7 +1396,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </div>
         </template>
         <button v-else-if="!openCard.notes" class="nge-todo-btn nge-todo-add-btn" @click="notesEditing = true">＋ Add notes</button>
-        <div v-else class="nge-todo-notes nge-todo-notes--edit nge-todo-md" title="Click to edit" @click="notesEditing = true" v-html="notesHtml(openCard.notes)"></div>
+        <div v-else class="nge-todo-notes nge-todo-md" v-html="notesHtml(openCard.notes)"></div>
 
         <template v-if="(openCard.images || []).length || imageBusy">
           <div class="nge-todo-label">Images</div>
@@ -1339,13 +1410,17 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <div class="nge-todo-label">Checklist<template v-if="openCard.checklist.length"> · {{ checkCount(openCard).done }}/{{ checkCount(openCard).all }}</template></div>
         <ul class="nge-todo-check">
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done }">
-            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <input v-if="itemEdit === openCard.id + ':' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
+                     @click.prevent @keydown.enter.prevent="saveItemText(openCard, i)" @keydown.esc="itemEdit = null" @blur="saveItemText(openCard, i)"
+                     @input="onMentionInput($event, v => itemDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+              <span v-else><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+            <button class="nge-todo-mini" title="Change this item" aria-label="Edit" @click="beginItemEdit(openCard.id + ':' + i, it.text)">✎</button>
             <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
                     @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
               <option value="">{{ itemOwner(it) && !it.owner_id ? '@ in the text' : 'Nobody' }}</option>
               <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
-            <input type="date" class="nge-todo-item-due" :class="{ 'nge-todo-item-due--late': !it.done && it.due && it.due < todayIso() }"
+            <input type="date" @click="openCalendar($event)" class="nge-todo-item-due" :class="{ 'nge-todo-item-due--late': !it.done && it.due && it.due < todayIso() }"
                    :value="it.due || ''" aria-label="Due day" title="Due day" @change="setItem(openCard, i, { due: fieldValue($event) })" />
             <button class="nge-todo-mini" title="Comment on this item" @click="commentOn(it.text)">💬 Comment</button>
             <button class="nge-todo-mini" title="Remove this item" aria-label="Remove" @click="removeItem(openCard, i)">×</button>
@@ -1359,8 +1434,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 
         <div ref="commentsHead" class="nge-todo-label">Comments</div>
         <div v-for="(cm, i) in openCard.comments" :key="i" class="nge-todo-comment">
-          <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}</div>
-          <div class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
+          <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}<template v-if="cm.edited_at"> · edited <button type="button" class="nge-todo-linkish" @click="toggleOriginal(openCard.id, i)">{{ shownOriginal[openCard.id + ':' + i] ? 'Hide original' : 'Show original' }}</button></template>
+            <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text">✎ Edit</button></div>
+          <template v-if="commentEdit === i">
+            <textarea v-autogrow v-model="commentDraft" class="nge-todo-input" rows="2" maxlength="2000" aria-label="Edit comment"
+                      @input="onMentionInput($event, v => commentDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+            <div class="nge-todo-row">
+              <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !commentDraft.trim()" @click="saveCommentEdit(openCard, i)">Save</button>
+              <button class="nge-todo-btn" @click="commentEdit = null">Cancel</button>
+            </div>
+          </template>
+          <div v-else class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
+          <div v-if="cm.original && shownOriginal[openCard.id + ':' + i]" class="nge-todo-original"><span>Original</span> {{ cm.original }}</div>
         </div>
         <textarea v-autogrow ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
                   @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
@@ -1469,6 +1554,17 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-card-foot .nge-todo-card-by { margin: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nge-todo-card-foot .nge-todo-avatar { margin-left: 0; flex: 0 0 auto; }
 .nge-todo-card-foot .nge-todo-done-btn { flex: 0 0 auto; }
+.nge-todo-helper-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 8px; border-radius: 12px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--pc); color: var(--text); background: color-mix(in srgb, var(--pc) 14%, transparent); }
+.nge-todo-avatar--helper { margin-left: -6px; box-shadow: 0 0 0 2px var(--card); }
+.nge-todo-item-edit { flex: 1 1 auto; min-width: 0; padding: 2px 6px; font-size: inherit; }
+.nge-todo-linkish { background: none; border: none; padding: 0; margin-left: 4px; color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; }
+.nge-todo-linkish:hover { text-decoration: underline; }
+.nge-todo-comment-edit { opacity: 0; transition: opacity 0.15s; }
+.nge-todo-comment:hover .nge-todo-comment-edit { opacity: 1; }
+.nge-todo-original { margin: 4px 0 2px; padding: 6px 8px; border-radius: 6px; background: rgba(127, 127, 127, 0.1); font-size: 12.5px; color: var(--dim); white-space: pre-wrap; }
+.nge-todo-original span { font-weight: 700; margin-right: 4px; }
+.nge-todo input[type="date"] { cursor: pointer; }
 .nge-todo-card-status { font-size: 12px; color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 .nge-todo-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .nge-todo-linkchip {
