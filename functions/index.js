@@ -39,6 +39,8 @@ const slackSigningSecret = defineSecret("SLACK_SIGNING_SECRET");
 // Fine-grained GitHub token: Actions read/write on seung-lab/ng-extend only.
 // Lets events start the triage workflows instead of them polling.
 const githubDispatchToken = defineSecret("GITHUB_DISPATCH_TOKEN");
+// Resend, for the "You're in" email from welcome@connectome.quest (Ames 2026-11-05).
+const resendKey = defineSecret("RESEND_API_KEY");
 
 /**
  * Start a triage workflow now, because something just happened (a report was
@@ -2361,6 +2363,17 @@ const todoHelperStore = {
   get: async (cardId) => { const d = await db.collection("todo_helpers").doc(String(cardId)).get(); return d.exists && Array.isArray(d.data().ids) ? d.data().ids : []; },
   set: async (cardId, ids) => { await db.collection("todo_helpers").doc(String(cardId)).set({ ids, at: new Date().toISOString() }); },
 };
+// Who has had the "You're in" email (access-request.js welcomeEmail), so a
+// second Let in never sends it twice. One document per address.
+const welcomeSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+};
 const betaMarkStore = {
   all: async () => {
     const snap = await db.collection("beta_request_marks").get();
@@ -2410,7 +2423,7 @@ async function visitorBetaRequest(req, res, args) {
 exports.ewAccessRequest = onRequest(
   // EW_CAVE_TOKEN (Ames's, a CAVE superadmin): Grant edit access adds the
   // player to Eyewire_2_Edit, group 203 (Ames 2026-10-16).
-  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken, githubDispatchToken], cors: ACCESS_ORIGINS, invoker: "public", maxInstances: 10 },
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken, githubDispatchToken, resendKey], cors: ACCESS_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
@@ -2441,6 +2454,17 @@ exports.ewAccessRequest = onRequest(
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
         wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
+        welcomeSent: welcomeSentStore,
+        sendEmail: async (msg) => {
+          try {
+            const r = await fetch("https://api.resend.com/emails", {
+              method: "POST", headers: { Authorization: `Bearer ${resendKey.value().trim()}`, "Content-Type": "application/json" },
+              body: JSON.stringify(msg), redirect: "error", signal: AbortSignal.timeout(15000) });
+            const j = await r.json().catch(() => ({}));
+            console.log("[welcome email]", r.status, j && j.id ? "sent" : "");
+            return r.ok ? { ok: true, id: j.id } : { ok: false, error: String((j && (j.message || j.name)) || r.status).slice(0, 200) };
+          } catch (e) { return { ok: false, error: String(e && e.message).slice(0, 200) }; }
+        },
         // Can this player edit the retina? From CAVE, with their own sign in
         // (dataset access tiers, Ames 2026-10-28). null when CAVE can't say.
         canEditRetina: async () => {
@@ -2765,6 +2789,20 @@ exports.ewSymposiumRsvp = onRequest(
  }
 );
 
+// A copy of each quest tab in Supabase (supabase-quest-sheet-mirror.sql), for
+// the weekly champions broadcast (scripts/weekly-quests.mjs), which cannot
+// read the lab's sheet itself (Ames 2026-11-05). Made from a list the game
+// read anyway, at most every 10 minutes per instance and right after a write.
+// The game never waits on it failing.
+const questMirrorAt={};
+async function mirrorQuestRows(sb,quest,rows) {
+  if(!Array.isArray(rows)||!rows.length||Date.now()-(questMirrorAt[quest]||0)<600000) return;
+  questMirrorAt[quest]=Date.now();
+  try {
+    await sb("rpc/ew_quest_mirror",{method:"POST",body:JSON.stringify({p_quest:quest,
+      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.status,date:r.date}))})});
+  } catch(e) { console.warn("[ewSheetSync] quest copy not saved",String(e&&e.message||e).slice(0,200)); }
+}
 exports.ewSheetSync = onRequest(
  {region:"us-central1",serviceAccount:`eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`,secrets:[ewServiceKey],cors:EW_ORIGINS,invoker:"public",maxInstances:1,concurrency:1,timeoutSeconds:90},
  async(req,res)=>{
@@ -2840,8 +2878,14 @@ exports.ewSheetSync = onRequest(
     if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
     // `you` is the name the sheet would carry for this player, so the game
     // can tell their rows apart however the sheet spells them.
-    if(listing) return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows:await questList(input.quest,admin.applicationDefault())});
-    return res.json(await syncQuest(input,me,admin.applicationDefault()));
+    if(listing) {
+      const rows=await questList(input.quest,admin.applicationDefault());
+      await mirrorQuestRows(sb,input.quest,rows);
+      return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows});
+    }
+    const done=await syncQuest(input,me,admin.applicationDefault());
+    questMirrorAt[input.quest]=0;  // the next list copies this write
+    return res.json(done);
    }
    require('./sheet-policy').sourceFor(input);
    if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");

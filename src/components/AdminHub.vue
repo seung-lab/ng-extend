@@ -172,7 +172,7 @@ async function setPilot(email:string,enabled:boolean) {
 //    list?"). Every Beta access report (functions/access-request.js, from the
 //    game or connectome.quest), newest first, with Let them in. The email to
 //    add is read from the server's own lines of the report, never the note.
-type BetaRequest = { id: string; name: string; email: string; note: string; site: boolean; at: string; ewName: string; ewRank: string };
+type BetaRequest = { id: string; name: string; email: string; note: string; site: boolean; at: string; ewName: string; ewRank: string; userId: string | null };
 const betaRequests = ref<BetaRequest[]>([]);
 const betaError = ref('');
 const betaBusy = ref('');
@@ -198,11 +198,11 @@ function parseBetaRequest(r: any): BetaRequest | null {
   const note = noteAt < 0 ? '' : lines.slice(noteAt).join('\n').replace(/^Their note: /, '');
   const line = (label: string) => (head.find(l => l.startsWith(label + ': ')) || '').slice(label.length + 2).trim();
   return { id: r.id, name: r.user_name || '', email, note, site: /connectome\.quest/.test(String(r.url || '') + String(r.title || '')), at: r.created_at,
-    ewName: line('EyeWire username'), ewRank: line('EyeWire rank') };
+    ewName: line('EyeWire username'), ewRank: line('EyeWire rank'), userId: r.user_id || null };
 }
 async function loadBetaRequests() {
   betaError.value = '';
-  const { data, error } = await supabase.from('site_issues').select('id,user_name,title,message,url,created_at')
+  const { data, error } = await supabase.from('site_issues').select('id,user_id,user_name,title,message,url,created_at')
     .eq('category', 'Beta access').order('created_at', { ascending: false }).limit(300);
   if (error) { betaError.value = error.message; return; }
   const seen = new Set<string>();
@@ -237,8 +237,33 @@ async function markBeta(r: BetaRequest, mark: 'listed' | 'removed' | 'waiting') 
 async function letBetaIn(r: BetaRequest) {
   betaBusy.value = r.email; betaError.value = '';
   const { error } = await supabase.from('pilot_members').upsert([{ email: r.email, enabled: true }], { onConflict: 'email' });
-  if (error) betaError.value = error.message; else await loadPilot();
+  if (error) betaError.value = error.message; else { await loadPilot(); void welcomeBell(r.userId); void welcomeEmail(r.email, r.name); }
   betaBusy.value = '';
+}
+/** The "You're in" email, from welcome@connectome.quest (functions/access-request.js
+ *  welcomeEmail); once per address, so a second Let in sends nothing. */
+const welcomeEmailed = ref<Record<string, string>>({});
+async function welcomeEmail(email: string, name: string) {
+  try {
+    const r = await secureWrite<{ sent: boolean; reason?: string }>('access.welcomeEmail', { email, name });
+    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: r?.sent ? 'Emailed them' : r?.reason === 'already sent' ? 'Emailed before' : '' };
+  } catch (e: any) {
+    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: e?.message || 'The email did not go.' };
+  }
+}
+/** Let in: whoever asked from inside Pyr hears it in their bell (Ames
+ *  2026-11-05). Someone still on the waiting screen is let in there too
+ *  (BetaGate.vue). Asked from connectome.quest, with no account yet: no bell,
+ *  the email from the Let in list is the way. */
+async function welcomeBell(userId: string | null | undefined) {
+  if (!userId) return;
+  try {
+    await secureWrite('notification.insert', { row: {
+      title: "🎉 You're in the Pyr beta!",
+      body: "Welcome! You can now claim cells, take the tutorials and help map the brain. Thank you for joining us.\n\nThe Pyr (pronounced \"peer\") team at Princeton University",
+      target_type: 'user', target_id: userId, send_at: new Date().toISOString(),
+    } });
+  } catch { /* they are in either way */ }
 }
 /** An email to tell them, ready to send from the admin's own mail. */
 function betaMailto(r: BetaRequest) {
@@ -426,6 +451,9 @@ async function letInFromCard(r: TriageRow) {
   try {
     const { error } = await supabase.from('pilot_members').upsert([{ email, enabled: true }], { onConflict: 'email' });
     if (error) { cardLetInError.value = { ...cardLetInError.value, [r.id]: error.message }; return; }
+    const { data: issue } = await supabase.from('site_issues').select('user_id').eq('id', r.source_id).single();
+    void welcomeBell((issue as any)?.user_id);
+    void welcomeEmail(email, reporterOf(r)?.name || '');
   } finally { cardLetInBusy.value = ''; }
   await setTriageStatus(r, 'done', false, false, `Let in: ${email} added to Pilot testers.`);
   if (adminSubTab.value === 'pilot') void loadPilot();
@@ -2794,7 +2822,8 @@ function practiceWhen(iso: string | null) {
           <span class="nge-beta-req-acts">
             <template v-if="betaStateOf(r) === 'in'">
               <em class="nge-beta-req-in">In</em>
-              <a class="nge-beta-req-mail" :href="betaMailto(r)">Email them</a>
+              <span v-if="welcomeEmailed[r.email]" class="nge-beta-req-mailed">{{ welcomeEmailed[r.email] }}</span>
+              <a class="nge-beta-req-mail" :href="betaMailto(r)" title="Write to them yourself, from your own email">Email them</a>
             </template>
             <template v-else>
               <button :disabled="betaBusy === r.email" @click="letBetaIn(r)">{{ betaBusy === r.email ? 'Saving…' : 'Let them in' }}</button>
@@ -5189,4 +5218,5 @@ li .nge-pilot-name--link { font:inherit; font-weight:700; color:#9fd3ff; backgro
 .nge-arcane-unlock-at { font-size: 13px; color: #f5d142; margin-top: 4px; }
 @keyframes nge-arcane-spin-in { from { transform: scale(0.3) rotate(-200deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .nge-arcane-unlock-card, .nge-arcane-unlock-card img { animation: none; } }
+.nge-beta-req-mailed { font-size: 12.5px; color: #5ee8a8; margin-right: 8px; }
 </style>

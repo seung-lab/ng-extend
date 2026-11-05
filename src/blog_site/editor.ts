@@ -71,7 +71,9 @@ async function open(host: HTMLElement, slug: string, onClose: () => void): Promi
   try { localStorage.setItem('pyr-blog-author', '1'); } catch { /* storage blocked */ }
   if (app) { app.unmount(); app = null; }
   // '*' opens the list of posts (connectome.quest/blog/write), '' a new post.
-  app = createApp(BlogEditor, { site: true, startSlug: slug === '*' ? undefined : slug, onClose: () => { close(); onClose(); } });
+  app = createApp(BlogEditor, { site: true, startSlug: slug === '*' ? undefined : slug, onClose: () => { close(); onClose(); },
+    // A save refused because the sign in ran out: sign in again, then the editor resends it.
+    reauth: async () => { try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage blocked */ } await signIn(); } });
   app.mount(host);
 }
 function close() { if (app) { app.unmount(); app = null; } }

@@ -632,6 +632,28 @@ async function wakeBoard(io) {
 //   access.betaMarks  admins: every mark, by email.
 //   access.betaMark   admins: {email, mark: 'listed' | 'removed' | 'waiting'}.
 const BETA_MARKS = ['listed', 'removed', 'waiting'];
+// ── "You're in" by email (Ames 2026-11-05: "let's do resend and we can set up
+// connectome.quest"). Letting someone in sends them this, from
+// welcome@connectome.quest, replies to support@eyewire.ai. Once per address:
+// a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
+const WELCOME_FROM = 'Pyr <welcome@connectome.quest>';
+const WELCOME_REPLY_TO = 'support@eyewire.ai';
+function welcomeMessage(name, email) {
+  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const text = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
+  return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, subject: "You're in: Pyr early access", text };
+}
+async function welcomeEmail(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const name = cleanText(a.name, BETA_NAME_MAX, 'The name') || '';
+  if (!io.sendEmail) return {sent: false, reason: 'not set up'};
+  if (io.welcomeSent && await io.welcomeSent.get(email)) return {sent: false, reason: 'already sent'};
+  const r = await io.sendEmail(welcomeMessage(name, email));
+  if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in.`);
+  if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
+  return {sent: true};
+}
 async function betaMarks(a, io) {
   needAdmin(io.isAdmin);
   return io.marks.all();
@@ -899,6 +921,7 @@ async function handle(action, args, io) {
   if (action === 'access.linkInvite') return linkInvite(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
+  if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
   if (action === 'access.principlesStatus') return principlesStatus(a, io);
   if (action === 'access.principlesAgree') return principlesAgree(a, io);
   if (action === 'access.mine') return mine(a, io);

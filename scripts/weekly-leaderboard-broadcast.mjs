@@ -2,8 +2,8 @@
 /**
  * weekly-leaderboard-broadcast.mjs
  * Posts a single celebratory notification to the whole community
- * showing the past week's top 10 editors AND top 10 completers
- * (across all datasets).
+ * showing the past week's top editors, top completers (across all datasets)
+ * and top Cilia Questers on the Retina (scripts/weekly-quests.mjs).
  *
  * Targets `notifications.target_type = 'all'` — surfaces in every
  * user's notification feed and (optionally) chat.
@@ -14,6 +14,7 @@
  */
 
 import { weekRange, topCompleters, topEditors } from './weekly-completions.mjs';
+import { topQuesters } from './weekly-quests.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -94,19 +95,23 @@ async function main() {
   const week = lastCompletedWeek();
   console.log(`[broadcast] Computing leaderboard for ${week.label} (${week.startISO} → ${week.endISO})`);
 
-  const [editorsRaw, completersRaw] = await Promise.all([
+  const [editorsRaw, completersRaw, questersRaw] = await Promise.all([
     // The top twenty of each: the podium takes three, the rest scroll.
     topEditors(supabaseGet, week.startISO, week.endISO, 20),
     topCompleters(supabaseGet, week.startISO, week.endISO, 20),
+    // Cilia Quests (Ames 2026-11-05). A copy that cannot be read leaves the
+    // section out; it never holds up the rest of the broadcast.
+    topQuesters(supabaseGet, week.weekStart, 20).catch(e => { console.warn('[broadcast] quest champions skipped:', e.message); return null; }),
   ]);
 
-  if (editorsRaw.length === 0 && completersRaw.length === 0) {
+  if (editorsRaw.length === 0 && completersRaw.length === 0 && !questersRaw?.length) {
     console.log('[broadcast] No activity this week, skipping notification.');
     return;
   }
 
   const allIds = [...new Set([...editorsRaw, ...completersRaw].map(r => r.user_id))];
   const names = await resolveNames(allIds);
+  for (const q of questersRaw ?? []) names.set(q.user_id, q.name);
 
   const body = [
     `🎉 **Big Congratulations! Thanks for contributing to neuroscience!**`,
@@ -114,9 +119,10 @@ async function main() {
     `**Top Editors**`,
     formatList(editorsRaw, names, 'edit', 'edits'),
     ``,
-    `**Top Completers**`,
+    `**Most Cells**`,  // "Most Cells", not "Top Completers" (Ames 2026-11-05)
     formatList(completersRaw, names, 'cell', 'cells'),
     ``,
+    ...(questersRaw ? [`**Top Cilia Questers**`, formatList(questersRaw, names, 'quest', 'quests'), ``] : []),
     `Across all datasets, every edit and every completion brings the connectome a little closer to done. Keep going! 🧬`,
   ].join('\n');
 
@@ -153,7 +159,7 @@ async function main() {
   if (DRY) { console.log('[broadcast] DRY RUN, would post:\n' + body); return; }
   await supabasePost('notifications', notification);
   console.log(`[broadcast] Posted weekly champions notification for ${week.label}`);
-  console.log(`  ${editorsRaw.length} top editors, ${completersRaw.length} top completers`);
+  console.log(`  ${editorsRaw.length} top editors, ${completersRaw.length} most cells, ${questersRaw?.length ?? 'no'} top questers`);
 }
 
 main().catch(err => {

@@ -22,14 +22,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { supabase } from '../supabase';
 import { secureUpload } from '../secure_upload';
 import { blogSlug, renderBlogMarkdown } from '../util/blog_markdown';
-import { documentToMarkdown, tidyLink, youtubeId } from '../util/blog_document';
+import { documentToMarkdown, figureSize, tidyDocument, tidyLink, youtubeId } from '../util/blog_document';
 
 interface Post {
   id: number; slug: string; title: string; summary: string | null; body: string; cover_url: string | null;
   status: 'draft' | 'published'; author_name: string; published_at: string | null; updated_at: string;
 }
 
-const props = defineProps<{ site?: boolean; startSlug?: string | null }>();
+// reauth: on the blog page, sign in again when the sign in ran out mid edit.
+const props = defineProps<{ site?: boolean; startSlug?: string | null; reauth?: () => Promise<void> }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
 const SITE = 'https://connectome.quest/blog/';
@@ -177,12 +178,15 @@ onBeforeUnmount(() => {
 
 const bodyText = () => docEl.value ? documentToMarkdown(docEl.value) : '';
 function togglePreview() {
-  if (!showPreview.value) previewHtml.value = renderBlogMarkdown(bodyText());
+  if (!showPreview.value) { tidyKeepingCaret(); previewHtml.value = renderBlogMarkdown(bodyText()); }
   showPreview.value = !showPreview.value;
 }
 
 async function save(next: 'draft' | 'published') {
   problem.value = ''; message.value = '';
+  tidyKeepingCaret();
+  // Kept in this browser first, so a failed save never loses the work.
+  keepLocalNow();
   const body = bodyText();
   if (!title.value.trim()) { problem.value = 'Give the post a title.'; return; }
   if (!body.trim()) { problem.value = 'Write something first.'; return; }
@@ -195,15 +199,26 @@ async function save(next: 'draft' | 'published') {
     cover_url: coverUrl.value || '', status: next,
   };
   if (next === 'published' && publishedAt.value) row.published_at = publishedAt.value;
-  const q = id.value === null
+  const wasPublished = status.value === 'published' && id.value !== null;
+  const send = () => id.value === null
     ? supabase.from('blog_posts').insert(row).select('id,status,published_at').single()
     : supabase.from('blog_posts').update(row).eq('id', id.value).select('id,status,published_at').single();
-  const { data, error } = await q;
+  let { data, error } = await send();
+  // The sign in ran out while writing (Celia, triage #395: saving and
+  // publishing did nothing). On the blog page, sign in again and send the
+  // same save once more; the work is kept in this browser either way.
+  const signedOut = (e: any) => !!e && /sign in|401|jwt|expired/i.test(String(e.message || '') + ' ' + String(e.code || ''));
+  if (signedOut(error) && props.reauth) {
+    try { await props.reauth(); ({ data, error } = await send()); }
+    catch (e: any) { busy.value = false; problem.value = (e?.message || 'Sign in did not finish.') + ' Your changes are kept in this browser; sign in and press the button again.'; return; }
+  }
   busy.value = false;
   if (error || !data) {
     problem.value = /duplicate|unique|409/i.test(error?.message || '') || (error as any)?.code === '23505'
       ? 'Another post already uses that web address. Change it and try again.'
-      : 'Could not save: ' + (error?.message || 'no answer from the server');
+      : signedOut(error)
+        ? 'Your sign in ran out, so this was not saved. Sign in to Pyr again (reload the game), then press the button again. Your changes are kept in this browser.'
+        : 'Could not save: ' + (error?.message || 'no answer from the server') + '. Your changes are kept in this browser.';
     return;
   }
   clearLocal(id.value);
@@ -213,7 +228,9 @@ async function save(next: 'draft' | 'published') {
   status.value = (data as any).status;
   publishedAt.value = (data as any).published_at ?? null;
   slugTouched.value = true;
-  message.value = next === 'published' ? 'Published. It is on the blog now.' : 'Saved as a draft. Only authors can see it.';
+  message.value = next === 'draft'
+    ? (wasPublished ? 'Unpublished. It is a draft again; only authors can see it.' : 'Saved as a draft. Only authors can see it.')
+    : (wasPublished ? 'Updated. The post on the blog shows your changes now.' : 'Published. It is on the blog now.');
 }
 
 async function remove() {
@@ -246,7 +263,36 @@ function restoreSelection() {
   sel.removeAllRanges();
   sel.addRange(savedRange);
 }
-const cmd = (name: string, value?: string) => { restoreSelection(); document.execCommand(name, false, value); keepSelection(); refreshState(); };
+const cmd = (name: string, value?: string) => {
+  restoreSelection();
+  document.execCommand(name, false, value);
+  tidyKeepingCaret();
+  keepSelection(); refreshState(); keepLocalSoon();
+};
+/** Tidy the page (util/blog_document.ts tidyDocument) without losing the
+ *  caret: a marker element holds its place while things move around it. */
+function tidyKeepingCaret() {
+  const el = docEl.value;
+  if (!el) return;
+  const sel = window.getSelection();
+  let marker: HTMLElement | null = null;
+  if (sel && sel.rangeCount && inDoc(sel.anchorNode)) {
+    const r = sel.getRangeAt(0).cloneRange();
+    r.collapse(false);
+    marker = document.createElement('nge-caret');
+    try { r.insertNode(marker); } catch { marker = null; }
+  }
+  tidyDocument(el);
+  if (marker && marker.isConnected) {
+    const r = document.createRange();
+    r.setStartBefore(marker);
+    r.collapse(true);
+    marker.remove();
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+    savedRange = r.cloneRange();
+  } else marker?.remove();
+}
 
 /** The top-level block of the document that holds the caret. */
 function currentBlock(): HTMLElement | null {
@@ -324,7 +370,9 @@ function toolsMouseDown(e: MouseEvent) {
 }
 function setStyle(e: Event) {
   const v = (e.target as HTMLSelectElement).value;
-  cmd('formatBlock', v);
+  // A heading cannot sit inside a list: take the line out of the list first.
+  if (v !== 'p' && (isUl.value || isOl.value)) cmd(isUl.value ? 'insertUnorderedList' : 'insertOrderedList');
+  cmd('formatBlock', `<${v}>`);
 }
 function toggleQuote() {
   if (isQuote.value) cmd('outdent'); else cmd('formatBlock', 'blockquote');
@@ -431,17 +479,29 @@ const askUrl = ref('');
 const askText = ref('');
 const askError = ref('');
 const askEl = ref<HTMLInputElement | null>(null);
-async function openAsk(kind: 'link' | 'button' | 'video') {
+// The link (or button) being changed, when the caret is in one or it was
+// clicked (Celia, triage #395: links were hard to edit; changing a link used
+// to add a second one beside it).
+const linkEl = ref<HTMLAnchorElement | null>(null);
+async function openAsk(kind: 'link' | 'button' | 'video', existing: HTMLAnchorElement | null = null) {
   keepSelection();
   askError.value = '';
-  askText.value = kind === 'button' ? (savedRange && !savedRange.collapsed ? savedRange.toString().slice(0, 60) : '') : '';
   const sel = window.getSelection();
   const at = sel?.anchorNode ? (sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode as HTMLElement : sel.anchorNode.parentElement) : null;
-  askUrl.value = kind === 'link' ? (at?.closest('a')?.getAttribute('href') || '') : '';
-  ask.value = ask.value === kind ? null : kind;
+  const a = existing || (kind !== 'video' ? at?.closest('a') as HTMLAnchorElement | null : null);
+  linkEl.value = a && inDoc(a) ? a : null;
+  if (linkEl.value) {
+    askUrl.value = linkEl.value.getAttribute('href') || '';
+    askText.value = (linkEl.value.textContent || '').trim();
+  } else {
+    askUrl.value = '';
+    askText.value = savedRange && !savedRange.collapsed ? savedRange.toString().slice(0, 120) : '';
+  }
+  ask.value = existing ? kind : (ask.value === kind ? null : kind);
   await nextTick();
   askEl.value?.focus();
 }
+function closeAsk() { ask.value = null; linkEl.value = null; }
 function applyAsk() {
   askError.value = '';
   if (ask.value === 'video') {
@@ -454,7 +514,13 @@ function applyAsk() {
   } else {
     const url = tidyLink(askUrl.value);
     if (!url) { askError.value = 'That does not look like a web address.'; return; }
-    if (ask.value === 'button') {
+    if (linkEl.value) {                                   // change the one that is there
+      const text = askText.value.trim();
+      if (ask.value === 'button' && !text) { askError.value = 'Say what the button should read.'; return; }
+      linkEl.value.setAttribute('href', url);
+      if (text && text !== (linkEl.value.textContent || '').trim()) linkEl.value.textContent = text;
+      keepLocalSoon();
+    } else if (ask.value === 'button') {
       const text = askText.value.trim();
       if (!text) { askError.value = 'Say what the button should read.'; return; }
       restoreSelection();
@@ -471,16 +537,26 @@ function applyAsk() {
       if (savedRange && savedRange.collapsed) {
         const a = document.createElement('a');
         a.href = url;
-        a.textContent = url.replace(/^https:\/\//, '');
+        a.textContent = askText.value.trim() || url.replace(/^https:\/\//, '');
         savedRange.insertNode(a);
         caretInto(a, true);
       } else document.execCommand('createLink', false, url);
     }
   }
-  ask.value = null;
+  closeAsk();
   keepSelection();
+  keepLocalSoon();
 }
-function removeLink() { cmd('unlink'); ask.value = null; }
+function removeLink() {
+  const a = linkEl.value;
+  if (a && inDoc(a)) {                                    // keep the words, drop the link
+    const p = a.closest('p.blog-post__cta');
+    a.replaceWith(...Array.from(a.childNodes));
+    p?.classList.remove('blog-post__cta');
+    keepLocalSoon();
+  } else cmd('unlink');
+  closeAsk();
+}
 
 async function pickImages(many: boolean): Promise<string[]> {
   keepSelection();
@@ -501,9 +577,31 @@ async function pickImages(many: boolean): Promise<string[]> {
   } catch (e: any) { problem.value = e?.message || 'Image upload failed.'; return []; }
   finally { busy.value = false; }
 }
+// A picture's size, for a picture on its own (Celia, triage #395: "loads
+// huge and I can't adjust its size"). New pictures start medium.
+const pickedFig = ref<HTMLElement | null>(null);
+const pickedSize = ref('');
+function setFigureSize(fig: HTMLElement, size: string) {
+  fig.className = 'blog-post__figure' + (size ? ` blog-post__figure--${size}` : '');
+  if (size) fig.dataset.size = size; else delete fig.dataset.size;
+}
+function sizePicked(size: string) {
+  if (!pickedFig.value || !inDoc(pickedFig.value)) { pickedFig.value = null; return; }
+  setFigureSize(pickedFig.value, size);
+  pickedSize.value = size;
+  keepLocalSoon();
+}
+function removePicked() {
+  const f = pickedFig.value;
+  pickedFig.value = null;
+  if (!f || !inDoc(f)) return;
+  f.remove();
+  if (docEl.value && !docEl.value.firstElementChild) docEl.value.innerHTML = EMPTY;
+  keepLocalSoon();
+}
 function figure(url: string): HTMLElement {
   const fig = document.createElement('figure');
-  fig.className = 'blog-post__figure';
+  setFigureSize(fig, 'medium');
   const img = document.createElement('img');
   img.src = url;
   img.alt = '';
@@ -522,7 +620,9 @@ async function addImagePair() {
   if (urls.length < 2) { problem.value = 'Pick two images to put them side by side. One was added on its own.'; restoreSelection(); insertBlock(figure(urls[0])); return; }
   const pair = document.createElement('div');
   pair.className = 'blog-post__pair';
-  pair.append(figure(urls[0]), figure(urls[1]));
+  const a = figure(urls[0]), b = figure(urls[1]);
+  setFigureSize(a, ''); setFigureSize(b, '');           // a pair shares the width
+  pair.append(a, b);
   restoreSelection();
   insertBlock(pair);
 }
@@ -550,6 +650,7 @@ function onPaste(e: ClipboardEvent) {
     const html = renderBlogMarkdown(text.replace(/\r\n?/g, '\n'), true);
     if (html) {
       document.execCommand('insertHTML', false, html);
+      tidyKeepingCaret();
       return;
     }
   }
@@ -573,10 +674,21 @@ async function pastePictures(files: File[]) {
     problem.value = err?.message || 'The pasted picture could not be uploaded.';
   } finally { busy.value = false; }
 }
-// Click a picture or a video to select it, so Delete removes it.
+// Click a picture or a video to select it, so Delete removes it. A picture on
+// its own also gets the size bar. Click a link or button to change it.
 function onDocClick(e: MouseEvent) {
   const t = e.target as HTMLElement;
+  const link = t.closest('a') as HTMLAnchorElement | null;
+  if (link && inDoc(link)) {
+    e.preventDefault();
+    pickedFig.value = null;
+    void openAsk(link.classList.contains('blog-post__button') ? 'button' : 'link', link);
+    return;
+  }
   const block = t.closest('.blog-post__video') || (t.tagName === 'IMG' ? t.closest('figure') : null);
+  const single = block && block.tagName === 'FIGURE' && !block.closest('.blog-post__pair') ? block as HTMLElement : null;
+  pickedFig.value = single && inDoc(single) ? single : null;
+  pickedSize.value = single ? (figureSize(single) || 'large') : '';
   if (!block || !inDoc(block)) return;
   const r = document.createRange();
   r.selectNode(block);
@@ -692,16 +804,28 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
           </div>
 
           <form v-if="ask && !showPreview" class="nge-blog-ask" @submit.prevent="applyAsk">
-            <input v-if="ask === 'button'" v-model="askText" maxlength="60" placeholder="What the button says" aria-label="Button text" @keydown.stop @keydown.esc.prevent="ask = null" />
+            <input v-if="ask === 'button' || (ask === 'link' && linkEl)" v-model="askText" maxlength="120"
+                   :placeholder="ask === 'button' ? 'What the button says' : 'The words that are linked'"
+                   :aria-label="ask === 'button' ? 'Button text' : 'Link text'" @keydown.stop @keydown.esc.prevent="closeAsk" />
             <input ref="askEl" v-model="askUrl" :placeholder="ask === 'video' ? 'Paste a YouTube link' : 'Paste or type a web address'"
-                   :aria-label="ask === 'video' ? 'YouTube link' : 'Web address'" @keydown.stop @keydown.esc.prevent="ask = null" />
-            <button class="nge-blog-btn nge-blog-btn--primary" type="submit">{{ ask === 'video' ? 'Add video' : ask === 'button' ? 'Add button' : 'Add link' }}</button>
-            <button v-if="ask === 'link'" class="nge-blog-btn" type="button" @click="removeLink">Remove link</button>
-            <button class="nge-blog-btn" type="button" @click="ask = null">Cancel</button>
+                   :aria-label="ask === 'video' ? 'YouTube link' : 'Web address'" @keydown.stop @keydown.esc.prevent="closeAsk" />
+            <button class="nge-blog-btn nge-blog-btn--primary" type="submit">{{ ask === 'video' ? 'Add video' : linkEl ? 'Save' : ask === 'button' ? 'Add button' : 'Add link' }}</button>
+            <a v-if="linkEl && tidyLink(askUrl)" class="nge-blog-btn" :href="tidyLink(askUrl)" target="_blank" rel="noopener noreferrer">Open</a>
+            <button v-if="ask === 'link' || linkEl" class="nge-blog-btn" type="button" @click="removeLink">{{ ask === 'button' ? 'Remove button' : 'Remove link' }}</button>
+            <button class="nge-blog-btn" type="button" @click="closeAsk">Cancel</button>
             <span v-if="askError" class="nge-blog-problem" role="alert">{{ askError }}</span>
           </form>
 
-          <div ref="docWrap" class="nge-blog-docwrap" @mousemove="onDocMove" @mouseleave="onDocLeave">
+          <div v-if="pickedFig && !showPreview" class="nge-blog-ask nge-blog-sizes" role="group" aria-label="Picture size">
+            <span>Picture size</span>
+            <button v-for="s in ['small', 'medium', 'large']" :key="s" type="button" class="nge-blog-tool" :class="{ on: pickedSize === s }"
+                    @mousedown.prevent @click="sizePicked(s)">{{ s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large' }}</button>
+            <span class="nge-blog-grow"></span>
+            <button type="button" class="nge-blog-btn nge-blog-btn--danger" @mousedown.prevent @click="removePicked">Remove picture</button>
+            <button type="button" class="nge-blog-btn" @mousedown.prevent @click="pickedFig = null">Done</button>
+          </div>
+
+                    <div ref="docWrap" class="nge-blog-docwrap" @mousemove="onDocMove" @mouseleave="onDocLeave">
             <div v-show="!showPreview" ref="docEl" class="nge-blog-doc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Post"
                  spellcheck="true" @input="keepLocalSoon" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
             <div v-if="showPreview" class="nge-blog-doc nge-blog-doc--preview" v-html="previewHtml"></div>
@@ -724,7 +848,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
             </div>
           </div>
         </div>
-        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. Click a picture or video and press Delete to remove it.</p>
+        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. Click a picture to change its size, or a link to change or remove it.</p>
       </div>
 
       <p v-if="problem" class="nge-blog-problem" role="alert">{{ problem }}</p>
@@ -733,8 +857,8 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
       </p>
 
       <div class="nge-blog-actions">
-        <button class="nge-blog-btn nge-blog-btn--primary" :disabled="busy" @click="save('published')">{{ status === 'published' ? 'Publish changes' : 'Publish' }}</button>
-        <button class="nge-blog-btn" :disabled="busy" @click="save('draft')">{{ status === 'published' ? 'Unpublish (back to draft)' : 'Save draft' }}</button>
+        <button class="nge-blog-btn nge-blog-btn--primary" :disabled="busy" @click="save('published')">{{ busy ? 'Saving...' : status === 'published' && id !== null ? 'Update post' : 'Publish' }}</button>
+        <button class="nge-blog-btn" :disabled="busy" @click="save('draft')">{{ status === 'published' && id !== null ? 'Unpublish' : 'Save draft' }}</button>
         <span class="nge-blog-grow"></span>
         <template v-if="id !== null">
           <button v-if="!confirmDelete" class="nge-blog-btn nge-blog-btn--danger" :disabled="busy" @click="confirmDelete = true">Delete</button>
@@ -921,4 +1045,10 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog--site .nge-blog-gap-menu button:hover, .nge-blog--site .nge-blog-gap-menu button:focus-visible { background: #eef4f7; }
 .nge-blog--site .nge-blog-problem { color: #b3263a; }
 .nge-blog--site .nge-blog-ok { color: #157a45; }
+/* Picture sizes (blog_markdown.ts {small|medium|large}); no size is full width. */
+.nge-blog-doc :deep(figure[data-size='small']) { max-width: 40%; margin-left: auto; margin-right: auto; }
+.nge-blog-doc :deep(figure[data-size='medium']) { max-width: 70%; margin-left: auto; margin-right: auto; }
+.nge-blog-doc :deep(figure[data-size='large']) { max-width: 100%; }
+.nge-blog-doc :deep(figure img) { width: 100%; height: auto; }
+.nge-blog-sizes > span:first-child { font-size: 0.9em; opacity: 0.8; }
 </style>

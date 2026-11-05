@@ -20,7 +20,7 @@ import { StatusMessage } from 'neuroglancer/status';
 import { strokeRuns } from './stroke_shape';
 import { supervoxelAtPlace } from './crosshair_cell';
 import { rootsAt } from './cell_history';
-import { ancestorAmong } from '../widgets/pcg_service';
+import { ancestorAmong, latestDescendants } from '../widgets/pcg_service';
 
 export interface HighlightStyle {
   key: string; label: string; layer: string; color: string;
@@ -887,7 +887,7 @@ function startOf(ann: any): number[] | null {
  * it was placed on is an ancestor of the cell. After a split that can also
  * count a mark on the other half, which is why the player is asked.
  */
-export async function marksNowOn(roots: string[]): Promise<TrackedMark[]> {
+export async function marksNowOn(roots: string[], stillShown: string[] = []): Promise<TrackedMark[]> {
   const want = new Set(roots.map(String));
   const items: (TrackedMark & { at: number[] | null; cell: string; piece?: string })[] = [];
   for (const m of listHighlights()) {
@@ -913,11 +913,26 @@ export async function marksNowOn(roots: string[]): Promise<TrackedMark[]> {
   if (pieces.length) {
     try { (await rootsAt(pieces, Date.now() - 2000)).forEach((r, i) => rootOf.set(pieces[i], r)); } catch (e) { console.warn('[highlight] marks not followed by place:', e); }
   }
+  // A mark whose place can't be looked up goes by the cell it was made on.
+  // After a cut both halves come from that cell, so the half removed only
+  // takes the mark when no segment still shown comes from it too (Nseraf,
+  // report 397: removed the merger he cut off, and was asked about the
+  // cell's AIS marks).
+  const shown = new Set(stillShown.map(String));
+  const shownComesFrom = async (cell: string) => {
+    if (shown.has(cell)) return true;
+    const now = await latestDescendants(cell).catch(() => null);
+    // A history the server can't give counts as coming from it: ask less, not more.
+    return !now || now.some(r => shown.has(r));
+  };
   const ancestors = new Map<string, boolean>();
   const descends = async (cell: string) => {
     if (!ancestors.has(cell)) {
       let hit = want.has(cell);
-      for (const r of want) if (!hit) hit = !!(await ancestorAmong(r, [cell]).catch(() => null));
+      if (!hit) {
+        for (const r of want) if (!hit) hit = !!(await ancestorAmong(r, [cell]).catch(() => null));
+        if (hit && await shownComesFrom(cell)) hit = false;
+      }
       ancestors.set(cell, hit);
     }
     return ancestors.get(cell)!;

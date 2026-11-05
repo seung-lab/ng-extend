@@ -36,12 +36,19 @@ function inlineOf(node: Node): string {
   return out;
 }
 
-function figureLines(fig: HTMLElement): string[] {
+const SIZES = ['small', 'medium', 'large'];
+/** The size chosen for a picture on its own, or '' (as wide as the text). */
+export function figureSize(fig: Element | null): string {
+  const s = (fig as HTMLElement | null)?.dataset?.size || '';
+  return SIZES.includes(s) ? s : '';
+}
+function figureLines(fig: HTMLElement, inPair = false): string[] {
   const img = fig.tagName === 'IMG' ? fig as HTMLImageElement : fig.querySelector('img');
   if (!img) return [];
   const caption = clean(inlineOf(fig.querySelector('figcaption') || document.createElement('i'))).trim();
   const alt = clean(img.getAttribute('alt') || '').replace(/[\[\]]/g, '').trim() || caption.replace(/[*`\[\]()]/g, '');
-  const lines = [`![${alt}](${img.getAttribute('src') || ''})`];
+  const size = inPair || fig.tagName !== 'FIGURE' ? '' : figureSize(fig);
+  const lines = [`![${alt}](${img.getAttribute('src') || ''})${size ? `{${size}}` : ''}`];
   if (caption) lines.push('^ ' + caption);
   // a phone version (<picture><source>) is kept as its own line under the image
   const phone = img.parentElement?.tagName === 'PICTURE' ? img.parentElement.querySelector('source')?.getAttribute('srcset') : null;
@@ -91,7 +98,7 @@ function blocksOf(root: Node, out: string[]) {
       if (paras.length) out.push(paras.map(x => '!> ' + x).join('\n'));
     } else if (el.classList.contains('blog-post__pair')) {
       const lines: string[] = [];
-      el.querySelectorAll('figure').forEach(f => lines.push(...figureLines(f as HTMLElement)));
+      el.querySelectorAll('figure').forEach(f => lines.push(...figureLines(f as HTMLElement, true)));
       if (lines.length) out.push(lines.join('\n'));
     } else if (el.dataset?.yt) {
       if (/^[A-Za-z0-9_-]{11}$/.test(el.dataset.yt)) out.push(`@[youtube](${el.dataset.yt})`);
@@ -105,6 +112,57 @@ function blocksOf(root: Node, out: string[]) {
     }
   });
   flush();
+}
+
+/**
+ * Keep the editor's page in the shapes the blog can store, so what an author
+ * sees is what gets saved (Celia, triage #395: lists and text styles that
+ * needed fiddling). The browser's own formatting commands leave behind
+ * <div>s, <span style>s, <font>s, headings inside list items and lists inside
+ * list items; none of those exist in a saved post. Run after every toolbar
+ * command and before saving or previewing, never while the person types.
+ */
+export function tidyDocument(root: HTMLElement): boolean {
+  let changed = false;
+  const unwrap = (el: Element) => { el.replaceWith(...Array.from(el.childNodes)); changed = true; };
+  // Styling the browser added: plain text inside instead.
+  root.querySelectorAll('span, font').forEach(unwrap);
+  root.querySelectorAll('[style]').forEach(el => { el.removeAttribute('style'); changed = true; });
+  // A list item holds words only: unwrap blocks inside it, and move a list
+  // inside a list item out after its parent list (the blog has one level).
+  root.querySelectorAll('li').forEach(li => {
+    li.querySelectorAll(':scope > p, :scope > div, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > blockquote').forEach(unwrap);
+  });
+  root.querySelectorAll('li > ul, li > ol').forEach(inner => {
+    const outer = inner.parentElement!.closest('ul, ol')!;
+    const li = inner.parentElement!;
+    let after: Element = li;
+    Array.from(inner.children).forEach(item => { after.after(item); after = item; });
+    inner.remove();
+    changed = true;
+    void outer;
+  });
+  // Top level: no <div> paragraphs, no loose words, no heading wrapped in a list.
+  Array.from(root.children).forEach(el => {
+    if (el.tagName === 'DIV' && !el.className && !(el as HTMLElement).dataset.yt) {
+      const p = document.createElement('p');
+      p.append(...Array.from(el.childNodes));
+      el.replaceWith(p);
+      changed = true;
+    }
+  });
+  Array.from(root.childNodes).forEach(n => {
+    if (n.nodeType === Node.TEXT_NODE && (n.textContent || '').trim()) {
+      const p = document.createElement('p');
+      n.replaceWith(p);
+      p.appendChild(n);
+      changed = true;
+    }
+  });
+  // Empty lists left behind by toggling a list off.
+  root.querySelectorAll('ul:empty, ol:empty').forEach(el => { el.remove(); changed = true; });
+  if (!root.firstElementChild) { root.innerHTML = '<p><br></p>'; changed = true; }
+  return changed;
 }
 
 /** The editor's document as the blog's stored text. */

@@ -67,7 +67,7 @@ async function decide() {
   if (replaced || !roots.length || roots.length > MAX_REMOVED) return;
   if (!(await stillLatest(roots))) return;
   let marks: TrackedMark[] = [];
-  try { marks = await marksNowOn(roots); } catch (e) { console.warn('[marks] could not look for this segment\'s marks:', e); }
+  try { marks = await marksNowOn(roots, [...known]); } catch (e) { console.warn('[marks] could not look for this segment\'s marks:', e); }
   if (!marks.length) return;
   const counts = new Map<string, number>();
   for (const m of marks) counts.set(m.label, (counts.get(m.label) ?? 0) + 1);

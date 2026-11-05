@@ -10,6 +10,8 @@
  *   - list items, 1. numbered items, > quotes
  *   **bold**, *italic*, `code`, [text](https://link)
  *   ![description](image)      an image; a line "^ caption" under it is its caption;
+ *   ![description](image){small}  the same at a set size: small, medium or large
+ *                              (no size: as wide as the text, as before);
  *                              two or more image lines together sit side by side
  *   @[phone](image)            under an image: a tall version phones get instead
  *   !> text                    a callout box (one paragraph per line)
@@ -20,7 +22,7 @@
  */
 const IMG_OK = /^https:\/\/(javthknksdcrlhiaaptj\.supabase\.co\/storage\/v1\/object\/public\/|connectome\.quest\/assets\/)/;
 const LINK_OK = /^(https:\/\/|\/(?!\/))/;
-const IMG_LINE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
+const IMG_LINE = /^!\[([^\]]*)\]\(([^)\s]+)\)(?:\{(small|medium|large)\})?$/;
 const VIDEO_LINE = /^@\[youtube\]\(([A-Za-z0-9_-]{11})\)$/;
 const PHONE_LINE = /^@\[phone\]\(([^)\s]+)\)$/;
 
@@ -55,10 +57,13 @@ function figures(para: string[]): string | null {
     }
     const img = `<img src="${m[2]}" alt="${m[1]}" loading="lazy" />`;
     const pic = phone ? `<picture><source media="(max-width: 700px)" srcset="${phone}" />${img}</picture>` : img;
-    figs.push(`<figure class="blog-post__figure">${pic}${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`);
+    // A picture's size (Celia, triage #395: "loads huge and I can't adjust
+    // its size"). Sizes apply to a picture on its own, not to a pair.
+    const size = m[3] ? ` blog-post__figure--${m[3]}` : '';
+    figs.push(`<figure class="blog-post__figure${size}"${m[3] ? ` data-size="${m[3]}"` : ''}>${pic}${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`);
   }
   if (!figs.length) return null;
-  return figs.length === 1 ? figs[0] : `<div class="blog-post__pair">${figs.join('')}</div>`;
+  return figs.length === 1 ? figs[0] : `<div class="blog-post__pair">${figs.map(f => f.replace(/ blog-post__figure--\w+"/, '"').replace(/ data-size="\w+"/, '')).join('')}</div>`;
 }
 
 /** editor: draw a video as a still picture, so it can sit inside the editor. */
