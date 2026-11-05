@@ -51,6 +51,28 @@ const cards = ref<Card[]>([]);
 const people = ref<Person[]>([]);
 /** Who follows each card (functions/todos.js todo.follow). */
 const followers = ref<Record<string, string[]>>({});
+/** A card's collaborators, beside its owner (functions/todos.js todo.helpers). */
+const helpers = ref<Record<string, string[]>>({});
+const helpersOf = (c: Card) => (helpers.value[c.id] || []).filter(id => id !== c.owner_id);
+async function setHelpers(c: Card, ids: string[]) {
+  const before = helpers.value[c.id] || [];
+  helpers.value = { ...helpers.value, [c.id]: ids };
+  try {
+    const r = await secureWrite<any>('todo.helpers', { id: c.id, ids });
+    helpers.value = { ...helpers.value, [c.id]: r?.helpers || ids };
+  } catch (e: any) {
+    helpers.value = { ...helpers.value, [c.id]: before };
+    error.value = e?.message ?? String(e);
+  }
+}
+function addHelper(c: Card, e: Event) {
+  const sel = e.target as HTMLSelectElement;
+  const id = sel.value;
+  sel.value = '';
+  if (id && !(helpers.value[c.id] || []).includes(id)) void setHelpers(c, [...(helpers.value[c.id] || []), id]);
+}
+const addable = (c: Card) => people.value.filter(p => p.id !== c.owner_id && !helpersOf(c).includes(p.id));
+const dropHelper = (c: Card, id: string) => setHelpers(c, (helpers.value[c.id] || []).filter(x => x !== id));
 const loading = ref(true);
 const error = ref('');
 const notInstalled = ref(false);
@@ -67,6 +89,7 @@ async function load() {
     cards.value = data.cards || [];
     people.value = data.people || [];
     followers.value = data.followers || {};
+    helpers.value = data.helpers || {};
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
@@ -194,6 +217,7 @@ function isMine(c: Card): boolean {
   const id = myId.value;
   if (!id) return true;
   if (c.owner_id === id) return true;
+  if ((helpers.value[c.id] || []).includes(id)) return true;
   if (c.checklist.some(it => it.owner_id === id || tagsIn(it.text).includes(id))) return true;
   return tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
 }
@@ -609,7 +633,7 @@ const myTasks = computed(() => {
   const out: Task[] = [];
   for (const c of cards.value) {
     if (c.list === 'done') continue;
-    if (c.owner_id === me) out.push({ key: c.id, card: c, text: c.title, due: c.due_on || null, item: null });
+    if (c.owner_id === me || (helpers.value[c.id] || []).includes(me)) out.push({ key: c.id, card: c, text: c.title, due: c.due_on || null, item: null });
     c.checklist.forEach((it, i) => {
       if (!it.done && itemOwner(it)?.id === me) out.push({ key: `${c.id}:${i}`, card: c, text: it.text, due: it.due || null, item: i });
     });
@@ -1217,6 +1241,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span class="nge-todo-card-by">{{ c.owner_id ? nameOf(c.owner_id) : (c.created_by || '') }}<template v-if="c.updated_at"> · {{ ago(c.updated_at) }}</template></span>
               <button v-if="c.list !== 'done'" type="button" class="nge-todo-done-btn" title="Move to Done" @click.stop="finish(c, $event)">✓ Done</button>
               <span v-if="c.owner_id" class="nge-todo-avatar" :style="{ background: colorOf(c.owner_id) }" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
+              <span v-for="h in helpersOf(c)" :key="h" class="nge-todo-avatar nge-todo-avatar--helper" :style="{ background: colorOf(h) }" :title="'With ' + nameOf(h)">{{ initialOf(h) }}</span>
             </div>
             <div v-if="waitingOn(c).length" class="nge-todo-waiting">Waiting on {{ waitingOn(c).map(p => firstName(p.name)).join(', ') }}</div>
             <span class="nge-todo-card-resize" title="Drag to resize this card. Double click to put it back." aria-hidden="true"
@@ -1314,6 +1339,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                   @change="onOwnerChange(openCard, $event)">
             <option value="">Nobody yet</option>
             <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <span class="nge-todo-label">With</span>
+          <span v-for="h in helpersOf(openCard)" :key="h" class="nge-todo-helper-chip" :style="{ '--pc': colorOf(h) }">{{ nameOf(h) }}
+            <button type="button" class="nge-todo-mini" :aria-label="'Remove ' + nameOf(h)" @click="dropHelper(openCard, h)">×</button></span>
+          <select class="nge-todo-select" value="" aria-label="Add a collaborator" title="Someone working on this with the owner" @change="addHelper(openCard, $event)">
+            <option value="">＋ Add a collaborator</option>
+            <option v-for="p in addable(openCard)" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </div>
 
@@ -1522,6 +1554,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-card-foot .nge-todo-card-by { margin: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nge-todo-card-foot .nge-todo-avatar { margin-left: 0; flex: 0 0 auto; }
 .nge-todo-card-foot .nge-todo-done-btn { flex: 0 0 auto; }
+.nge-todo-helper-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 8px; border-radius: 12px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--pc); color: var(--text); background: color-mix(in srgb, var(--pc) 14%, transparent); }
+.nge-todo-avatar--helper { margin-left: -6px; box-shadow: 0 0 0 2px var(--card); }
 .nge-todo-item-edit { flex: 1 1 auto; min-width: 0; padding: 2px 6px; font-size: inherit; }
 .nge-todo-linkish { background: none; border: none; padding: 0; margin-left: 4px; color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; }
 .nge-todo-linkish:hover { text-decoration: underline; }
