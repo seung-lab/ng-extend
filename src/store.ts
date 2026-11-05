@@ -5646,7 +5646,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   /** Trigger badge celebration from notification click — AchievementToast watches this */
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
-  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string } | null>(null);
+  // mentor: a mentor program cell (src/mentor.ts): sent for a second look, or completed with the mentor.
+  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; mentor?: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; needed: number; practice?: boolean } } | null>(null);
 
   /** Read, or a Pyr Update (sent to everyone) more than 5 days old: those
    *  count as read, so the daily updates do not pile up as unread (Ames

@@ -479,7 +479,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /** The all-datasets count the last celebration showed, to notice a list that
  *  has not caught up with the cell just completed. */
 let lastCelebratedCount: number | null = null;
-const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean } | null>(null);
+const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; mentor?: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; needed: number; practice?: boolean } } | null>(null);
 
 /** How much a completed cell shows (Settings): the full congratulations, a
  *  small note at the top, or nothing. Read when a cell is completed, so a
@@ -504,6 +504,19 @@ watch(() => backend.pendingCellCelebration, (pending) => {
   const shown = { ...pending };
   cellCelebration.value = shown;
   backend.pendingCellCelebration = null;
+  // A mentor program cell (Ames 2026-11-05: "we need that back but a mentor
+  // mode style"): its own words and the mentor cells done, no totals to count.
+  if (pending.mentor) {
+    cellCelebration.value = { ...shown, counted: true };
+    if (mode === 'small') {
+      setTimeout(() => { if (cellCelebration.value === shown || cellCelebration.value?.segId === shown.segId) cellCelebration.value = null; }, 5000);
+    } else {
+      fireConfetti('cyan', 1.6);
+      setTimeout(() => fireConfetti('gold', 1.4), 450);
+      setTimeout(() => { if (cellCelebration.value?.mentor && cellCelebration.value.segId === shown.segId) cellCelebration.value = null; }, 7000);
+    }
+    return;
+  }
   // Cells on THIS dataset (Amy 2026-09-28) and on all of them, both counted
   // from the same list so they can not contradict each other. The completion
   // is logged a moment before this shows; look again once if the list has not
@@ -689,8 +702,9 @@ function playBatchChime() {
     <Transition name="nge-cell-chip">
       <button v-if="cellCelebration && cellMessageMode === 'small'" type="button" class="nge-cell-chip" title="Click to dismiss" @click="dismissCellCelebration">
         <span class="nge-cell-chip-check" aria-hidden="true">✓</span>
-        <span class="nge-cell-chip-title">{{ cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
-        <span v-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
+        <span class="nge-cell-chip-title">{{ cellCelebration.mentor ? (cellCelebration.mentor.kind === 'sent' ? 'Sent to your mentor' : 'Cell complete with your mentor') : cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
+        <span v-if="cellCelebration.mentor" class="nge-cell-chip-count"><b>{{ cellCelebration.mentor.done }}</b> of {{ cellCelebration.mentor.needed }}</span>
+        <span v-else-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
         <template v-else-if="cellCelebration.counted">
           <span v-if="cellCelebration.datasetLabel" class="nge-cell-chip-count">{{ cellCelebration.datasetLabel }} <b>{{ cellCelebration.datasetCells }}</b></span>
           <span v-else class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
@@ -701,9 +715,23 @@ function playBatchChime() {
     <!-- Single-cell celebration overlay (compact) -->
     <Transition name="nge-cell-celebrate">
       <div v-if="cellCelebration && cellMessageMode === 'full' && (!cellCelebration.batchCount || cellCelebration.batchCount <= 1)" class="nge-cell-overlay" @click="dismissCellCelebration">
-        <div class="nge-cell-card">
+        <div class="nge-cell-card" :class="{ 'nge-cell-card--mentor': cellCelebration.mentor }">
           <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
-          <div class="nge-cell-text">
+          <!-- Mentor program: sent for a second look, or completed with the mentor. -->
+          <div v-if="cellCelebration.mentor" class="nge-cell-text">
+            <div class="nge-cell-mentor-kicker">🧭 Mentor program{{ cellCelebration.mentor.practice ? ', practice' : '' }}</div>
+            <div class="nge-cell-congrats nge-cell-congrats--mentor">{{ cellCelebration.mentor.kind === 'sent' ? 'Sent to your mentor!' : 'Cell complete!' }}</div>
+            <div class="nge-cell-thanks">{{ cellCelebration.mentor.kind === 'sent'
+              ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a bell when it is done.` : 'A mentor takes a second look. You get a bell when it is done.')
+              : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
+              : `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. It counts for you. For science!` }}</div>
+            <div class="nge-cell-mentor-dots" :aria-label="`${cellCelebration.mentor.done} of ${cellCelebration.mentor.needed} mentor cells done`">
+              <span v-for="i in cellCelebration.mentor.needed" :key="i" class="nge-cell-mentor-dot"
+                    :class="{ 'nge-cell-mentor-dot--done': i <= cellCelebration.mentor.done, 'nge-cell-mentor-dot--now': cellCelebration.mentor.kind === 'complete' && i === cellCelebration.mentor.done }"></span>
+            </div>
+            <div class="nge-cell-stats"><strong>{{ cellCelebration.mentor.done }}</strong> of {{ cellCelebration.mentor.needed }} mentor cells done</div>
+          </div>
+          <div v-else class="nge-cell-text">
             <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
             <div class="nge-cell-thanks">Thank you for helping to map the brain. For science!</div>
             <!-- No number until both are counted, so a stale one never flashes first. -->
@@ -1522,6 +1550,16 @@ function playBatchChime() {
   animation: nge-cell-fade-in 0.4s ease-out 0.9s both;
 }
 .nge-cell-stats--all { font-size: 13px; color: #9ab; margin-top: 4px; }
+/* Mentor program: blue and gold, with the five cells as dots. */
+.nge-cell-card--mentor .nge-cell-thanks { font-style: normal; color: #c3d2e6; }
+.nge-cell-card--mentor .nge-cell-nurro { filter: drop-shadow(0 0 22px rgba(245, 209, 66, 0.35)); }
+.nge-cell-mentor-kicker { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #9fc8ff; animation: nge-cell-fade-in 0.4s ease-out 0.2s both; }
+.nge-cell-congrats--mentor { background: linear-gradient(135deg, #cfe3ff 0%, #7fb6ff 45%, #f5d142 100%); -webkit-background-clip: text; background-clip: text; }
+.nge-cell-mentor-dots { display: flex; justify-content: center; gap: 10px; margin-top: 8px; animation: nge-cell-fade-in 0.4s ease-out 0.8s both; }
+.nge-cell-mentor-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(159, 200, 255, 0.5); }
+.nge-cell-mentor-dot--done { background: #7fb6ff; border-color: #7fb6ff; box-shadow: 0 0 8px rgba(127, 182, 255, 0.6); }
+.nge-cell-mentor-dot--now { background: #f5d142; border-color: #f5d142; box-shadow: 0 0 12px rgba(245, 209, 66, 0.8); }
+.nge-cell-card--mentor .nge-cell-stats strong { color: #f5d142; text-shadow: 0 0 10px rgba(245, 209, 66, 0.4); }
 .nge-cell-stats strong {
   font-size: 22px;
   color: #00dca0;

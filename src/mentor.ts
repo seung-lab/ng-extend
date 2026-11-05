@@ -17,7 +17,7 @@
  * After a mentor's Complete, the apprentice's own browser writes the cell's
  * sheet row (the sheet only takes a row from the player whose claim it is).
  */
-import { reactive, ref } from 'vue';
+import { reactive, ref, watch } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
 import { secureWrite } from './secure_write';
 import { apprenticeFlag } from './util/mentor_flag';
@@ -94,6 +94,32 @@ export async function loadMentor(): Promise<void> {
     if (mentorState.apprentice) apprenticeFlag.cellsNeeded = mentorState.apprentice.cellsNeeded;
   }
   if (isApprentice() || mentorState.apprentice) void finishApprovedCells();
+  celebrateCompleted();
+}
+
+// ── Celebrating a mentor program cell (Ames 2026-11-05: "we need that back but a mentor mode style") ──
+const NURRO = ['nurro-success', 'nurro-trophy', 'nurro-celebrate', 'nurro-dance', 'nurro-confetti', 'nurro-celebrate2', 'nurro-celebrate3']
+  .map(n => `https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/${n}.png`);
+function celebrate(mentor: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; needed: number; practice?: boolean }, segId?: string) {
+  try {
+    useProofreadingBackendStore().pendingCellCelebration = { totalCells: 0, imageUrl: NURRO[Math.floor(Math.random() * NURRO.length)], segId: segId || '', mentor };
+  } catch { /* no store */ }
+}
+/** A cell the mentor completed since this player last saw: celebrated once,
+ *  when the game notices (a new bell, or the next status read). Cells
+ *  completed more than a day ago are not celebrated late. */
+const CELEBRATED = 'pyr-mentor-celebrated';
+function celebrateCompleted() {
+  let seen: number[] = [];
+  try { seen = JSON.parse(localStorage.getItem(CELEBRATED) || '[]'); } catch { seen = []; }
+  const fresh = mentorState.mine.filter(r => r.state === 'complete' && !seen.includes(r.id)
+    && Date.now() - Date.parse(r.decidedAt || '') < 24 * 3600 * 1000)
+    .sort((x, y) => Date.parse(y.decidedAt || '') - Date.parse(x.decidedAt || ''));
+  if (!fresh.length) return;
+  try { localStorage.setItem(CELEBRATED, JSON.stringify([...seen, ...fresh.map(r => r.id)].slice(-50))); } catch { /* private window */ }
+  const r = fresh[0], a = mentorState.apprentice;
+  const needed = a?.cellsNeeded ?? 5;
+  celebrate({ kind: 'complete', mentorName: r.mentorName, done: Math.min(a?.cellsDone ?? 0, needed), needed, practice: !!r.done?.practice }, r.rootId);
 }
 
 export async function loadQueue(): Promise<void> {
@@ -108,6 +134,15 @@ export function startMentor() {
   if (started || !useProofreadingBackendStore().userId) return;
   started = true;
   void loadMentor().then(offerPractice);
+  // A new bell may be the mentor's answer: read the status again, so the
+  // apprentice sees it at once (and a graduate's Complete works again).
+  const backend = useProofreadingBackendStore();
+  let lastTop = -1;
+  watch(() => backend.notifications.length, () => {
+    const top = Math.max(0, ...backend.notifications.map((n: any) => Number(n.id)).filter(Number.isFinite));
+    if (lastTop >= 0 && top > lastTop && mentorState.apprentice) void loadMentor();
+    lastTop = Math.max(lastTop, top);
+  });
   window.setInterval(() => { if (document.visibilityState === 'visible') void loadMentor(); }, 10 * 60 * 1000);
 }
 
@@ -142,6 +177,9 @@ export async function sendForSecondLook(cell: { taskId?: number | null; segId: s
   mentorState.apprentice = out.apprentice;
   const at = mentorState.mine.findIndex(r => r.id === out.review.id);
   if (at >= 0) mentorState.mine[at] = out.review; else mentorState.mine.unshift(out.review);
+  // The cell complete celebration, mentor style (Ames 2026-11-05).
+  const a = out.apprentice;
+  celebrate({ kind: 'sent', mentorName: a?.mentorName ?? null, done: a?.cellsDone ?? 0, needed: a?.cellsNeeded ?? 5, practice: !!a?.practice }, done.finalSegId);
   return out.review;
 }
 
