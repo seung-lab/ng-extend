@@ -2765,6 +2765,20 @@ exports.ewSymposiumRsvp = onRequest(
  }
 );
 
+// A copy of each quest tab in Supabase (supabase-quest-sheet-mirror.sql), for
+// the weekly champions broadcast (scripts/weekly-quests.mjs), which cannot
+// read the lab's sheet itself (Ames 2026-11-05). Made from a list the game
+// read anyway, at most every 10 minutes per instance and right after a write.
+// The game never waits on it failing.
+const questMirrorAt={};
+async function mirrorQuestRows(sb,quest,rows) {
+  if(!Array.isArray(rows)||!rows.length||Date.now()-(questMirrorAt[quest]||0)<600000) return;
+  questMirrorAt[quest]=Date.now();
+  try {
+    await sb("rpc/ew_quest_mirror",{method:"POST",body:JSON.stringify({p_quest:quest,
+      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.status,date:r.date}))})});
+  } catch(e) { console.warn("[ewSheetSync] quest copy not saved",String(e&&e.message||e).slice(0,200)); }
+}
 exports.ewSheetSync = onRequest(
  {region:"us-central1",serviceAccount:`eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`,secrets:[ewServiceKey],cors:EW_ORIGINS,invoker:"public",maxInstances:1,concurrency:1,timeoutSeconds:90},
  async(req,res)=>{
@@ -2840,8 +2854,14 @@ exports.ewSheetSync = onRequest(
     if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
     // `you` is the name the sheet would carry for this player, so the game
     // can tell their rows apart however the sheet spells them.
-    if(listing) return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows:await questList(input.quest,admin.applicationDefault())});
-    return res.json(await syncQuest(input,me,admin.applicationDefault()));
+    if(listing) {
+      const rows=await questList(input.quest,admin.applicationDefault());
+      await mirrorQuestRows(sb,input.quest,rows);
+      return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows});
+    }
+    const done=await syncQuest(input,me,admin.applicationDefault());
+    questMirrorAt[input.quest]=0;  // the next list copies this write
+    return res.json(done);
    }
    require('./sheet-policy').sourceFor(input);
    if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");
