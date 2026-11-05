@@ -830,7 +830,7 @@ function cleanCopy(text: string): string {
      **Top Editors**
      🥇  **Name**, 19 edits          (older rows: "**Name** — 19 edits")
      4.  **Name**, 3 edits
-     **Top Completers**
+     **Most Cells**
      _no activity this week_
      Across all datasets, ...
    parseChampions() reads that shape back into sections for the podium view.
