@@ -653,7 +653,7 @@ async function loadTriageNumbers() {
   try {
     const { supabase } = await import('../supabase');
     const next: Record<string, number> = {};
-    let bugs = 0, features = 0, other = 0, today = 0;
+    let bugs = 0, features = 0, other = 0, today = 0, mineHandled = 0;
     const closed: any[] = [];
     const days: Record<string, number> = {};
     const todayIs = new Date().toDateString();
@@ -664,6 +664,8 @@ async function loadTriageNumbers() {
       if (error || !data) return;
       for (const r of data as any[]) {
         next[r.id] = ++n;
+        // Pyr Patchtacular: Done and Dismissed both count, attention was given (Ames 2026-11-04).
+        if ((r.status === 'done' || r.status === 'dismissed') && isMe(r.reviewed_by)) mineHandled++;
         if (r.status === 'done' || r.impl_state === 'deployed') {
           closed.push(r);
           if (r.reviewed_at && new Date(r.reviewed_at).toDateString() === todayIs) today++;
@@ -688,7 +690,7 @@ async function loadTriageNumbers() {
     }
     triageNumbers.value = next;
     // Mine, for Arcane Fixes: closed with Done by me (below).
-    arcaneReports.value = closed.filter(r => r.status === 'done' && isMe(r.reviewed_by)).length;
+    arcaneReports.value = mineHandled;
     void loadArcaneCards();
     // Keep the last good counts rather than show wrong ones.
     if (!catsFailed) triageTally.value = { bugs, features, other, today, days };
@@ -3219,7 +3221,7 @@ function practiceWhen(iso: string | null) {
           <div class="nge-arcane-shelf-card">
             <button class="nge-arcane-close" aria-label="Close" @click="arcaneOpen = false">×</button>
             <div class="nge-arcane-shelf-head">Pyr Patchtacular</div>
-            <div class="nge-arcane-shelf-sub">{{ arcane.reports }} reports closed with Done, {{ arcane.cards }} To do {{ arcane.cards === 1 ? 'card' : 'cards' }} finished, at 5 each: <b>{{ arcane.total }}</b></div>
+            <div class="nge-arcane-shelf-sub">{{ arcane.reports }} reports closed or dismissed, {{ arcane.cards }} To do {{ arcane.cards === 1 ? 'card' : 'cards' }} finished, at 5 each: <b>{{ arcane.total }}</b></div>
             <div class="nge-arcane-grid">
               <div v-for="t in arcane.tiers" :key="t.at" class="nge-arcane-tier" :class="{ 'nge-arcane-tier--locked': t.at > arcane.total }">
                 <img v-if="t.at <= arcane.total" :src="t.art" alt="" />
@@ -3250,7 +3252,7 @@ function practiceWhen(iso: string | null) {
                   title="The admins' own planning board: To do, Doing, Done"><span v-html="TODO_ICON"></span>To do board</button>
           <!-- Pyr Patchtacular: my own Achievements. -->
           <div v-if="arcane.total > 0" class="nge-arcane" role="button" tabindex="0" @click="arcaneOpen = !arcaneOpen" @keydown.enter="arcaneOpen = !arcaneOpen"
-               :title="`Pyr Patchtacular: ${arcane.reports} reports closed with Done, ${arcane.cards} To do cards finished (5 each)`">
+               :title="`Pyr Patchtacular: ${arcane.reports} reports closed or dismissed, ${arcane.cards} To do cards finished (5 each)`">
             <img v-if="arcane.current" :src="arcane.current.art" alt="" class="nge-arcane-art" />
             <span v-else class="nge-arcane-art nge-arcane-art--none" aria-hidden="true">✦</span>
             <div class="nge-arcane-text">

@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-04T22:01:00Z",
+      "title": "Use your invite to get in",
+      "items": [
+        "If your Pyr invite went to an email that isn't the Google account you sign in with, enter the invited email on the closed beta screen and you're in straight away."
+      ]
+    },
+    {
       "at": "2026-11-04T21:31:26Z",
       "title": "Clearer cut help",
       "digest": "minor",

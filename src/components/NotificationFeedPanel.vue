@@ -788,7 +788,10 @@ function plainText(text: string): string {
     .replace(/_(.+?)_/g, '$1')
     .replace(/`(.+?)`/g, '$1')
     .replace(/^\s*#+\s*/gm, '')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '$1');
+    .replace(/\[(.+?)\]\((.+?)\)/g, '$1')
+    // Escaped characters lose the backslash (the server escapes what a
+    // player typed, so emails read "joe\@mail\.com" here otherwise).
+    .replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
 }
 
 /**

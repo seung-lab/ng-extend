@@ -515,8 +515,9 @@ async function fileNewReports() {
   const [issuesRes, triageRes] = await Promise.all([
     // Dataset access requests are answered in Admin Hub, Access requests,
     // with their own bell: not a card (Ames 2026-10-29: "take them out of
-    // triage").
-    sb(`site_issues?created_at=gte.${since}&or=${encodeURIComponent('(category.is.null,category.neq.Dataset access)')}&select=id,message,created_at&order=created_at.asc&limit=200`),
+    // triage"). Nor an invite someone used to get in: they are already in
+    // (Ames 2026-11-04: "How about no triage card for those").
+    sb(`site_issues?created_at=gte.${since}&or=${encodeURIComponent('(category.is.null,and(category.neq.Dataset access,category.neq.Invite used))')}&select=id,message,created_at&order=created_at.asc&limit=200`),
     sb(`feedback_triage?source=eq.site_issue&created_at=gte.${since}&select=source_id`),
   ]);
   if (!issuesRes.ok || !triageRes.ok) { console.warn(`[bridge] new reports not filed (${issuesRes.status}/${triageRes.status})`); return 0; }

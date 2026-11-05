@@ -1476,14 +1476,15 @@ const ISSUE_EMOJI = {
 // Slack reads <...> as a mention or a link and & as an entity: a report's
 // own words must never ping a channel or hide a link (Ames 2026-10-24).
 const slackText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-async function postIssueToSlack(token, raw) {
+// A new player report no longer tags Amy and Celia (Ames 2026-11-04: "I'm
+// mostly updating them via triage now"); access requests still do.
+async function postIssueToSlack(token, raw, { mention = false } = {}) {
   const issue = { ...raw, title: raw.title && slackText(raw.title), message: raw.message && slackText(raw.message),
     user: raw.user && slackText(raw.user), dataset: raw.dataset && slackText(raw.dataset), url: raw.url && slackText(raw.url) };
   try {
     const channel = await resolveReviewChannel(token);
     if (!channel) { console.error("[issue] review channel not found"); return; }
-    const mentionIds = await resolveReviewMentionIds(token);
-    const mentions = mentionIds.map((id) => `<@${id}>`).join(" ");
+    const mentions = mention ? (await resolveReviewMentionIds(token)).map((id) => `<@${id}>`).join(" ") : "";
     const emoji = ISSUE_EMOJI[issue.category] || ISSUE_EMOJI.Other;
     const lines = [
       `${emoji} *New site issue submitted* — _${issue.category}_`,
@@ -2379,7 +2380,7 @@ async function visitorBetaRequest(req, res, args) {
   const sb = ewSb(ewServiceKey.value().trim());
   try {
     const data = await require("./access-request").visitorBeta(args, { sb, wake: wakeBetaBoard,
-      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
+      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p, { mention: true }),
       notifyAdmins: async ({ title, body }) => {
         const rows = (await adminUserIds(sb)).map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500),
           target_type: "user", target_id: id, send_at: new Date().toISOString(), created_by: null }));
@@ -2440,7 +2441,7 @@ exports.ewAccessRequest = onRequest(
           } catch (e) { return null; }
         },
         // Beta access requests post like any report (Ames 2026-10-24).
-        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
+        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p, { mention: true }),
         notifyReviewers: async ({ title, body, image }) => {
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
@@ -2855,4 +2856,48 @@ exports.ewSheetSync = onRequest(
    return res.status(e.status||503).json({error:e.status?e.message:"Sheet syncing is temporarily unavailable. Your cell is saved; retry syncing shortly."});
   }
  }
+);
+
+// ── The mentor program, a proof of concept (supabase-mentors.sql) ───────────
+// Nseraf's idea (triage report 317), asked for by Ames 2026-11-04. A function of
+// its own, like ewAccessRequest and ewHunt: deploying it never replaces the
+// shared ewSecureWrite. Every rule is in mentors.js (tests: mentors.test.js).
+const EW_MENTOR_CODE_VERSION = "2026-11-04-mentor-poc-1";
+exports.ewMentor = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_MENTOR_CODE_VERSION }); return; }
+      let tables = true;
+      try { await probe("ew_mentor_reviews?select=id&limit=1"); await probe("ew_apprentices?select=user_id&limit=1"); await probe("ew_mentors?select=user_id&limit=1"); } catch (e) { tables = false; }
+      res.json({ ok: true, db: true, tables, code: EW_MENTOR_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("mentor.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
+      if (!me) throw ewErr(403, "No Pyr profile.");
+      const { mentorAction, restDb } = require("./mentors");
+      const key = ewServiceKey.value().trim();
+      const data = await mentorAction(action, args, { db: restDb(sb), me, isAdmin, now: new Date(),
+        // The apprentice's completion, recorded as saved teams credit a member (team.complete).
+        credit: (userId, row) => recordActivity({ rpc: ewRpc(key), who, me: { id: userId }, token, value: row,
+          insertLegacy: (r) => sb("edit_log", { method: "POST", body: JSON.stringify(r) }) }) });
+      res.json({ ok: true, data });
+    } catch (e) {
+      // Until the SQL is run the tables are missing: say so plainly, and the game hides the tab.
+      if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "mentor.status") { res.json({ ok: true, data: { installed: false } }); return; }
+      console.warn("[ewMentor]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That could not be done. Try again in a moment." });
+    }
+  }
 );

@@ -89,6 +89,37 @@ async function request() {
     sending.value = false;
   }
 }
+// Use my invite (Ames 2026-11-04: "I don't want them replying with a gmail
+// to me, I want them to use the site"). Invites went to the email on the
+// EyeWire form, which often isn't the Google account they sign in with: the
+// email the invite reached brings this account in at once
+// (functions/access-request.js, access.linkInvite).
+const inviteEmail = ref('');
+const inviteBusy = ref(false);
+const inviteError = ref('');
+const inviteState = ref<'' | 'in' | 'review'>('');
+async function useInvite() {
+  if (inviteBusy.value) return;
+  const e = inviteEmail.value.trim();
+  inviteError.value = !e ? 'Enter the email address your invite was sent to.' : EMAIL_OK.test(e) ? '' : 'That email does not look right.';
+  if (inviteError.value) return;
+  inviteBusy.value = true;
+  try {
+    const r = await secureWrite<{ invited?: boolean; review?: boolean }>('access.linkInvite', { email: e });
+    if (r?.invited) {
+      inviteState.value = 'in';
+      // Everything that asked whether this player is a tester asks again.
+      setTimeout(() => location.reload(), 1500);
+    } else if (r?.review) {
+      inviteState.value = 'review';
+      requested.value = true;
+    }
+  } catch (err: any) {
+    inviteError.value = err?.message || 'That did not go through. Please try again.';
+  } finally {
+    inviteBusy.value = false;
+  }
+}
 function signOut() {
   for (const s of [...login.sessions]) login.logout(s);
   show.value = false;
@@ -112,8 +143,25 @@ onUnmounted(() => window.removeEventListener('keydown', swallow, true));
       <div ref="panelEl" class="nge-beta-panel" role="dialog" aria-modal="true" aria-labelledby="nge-beta-title">
         <div class="nge-beta-kicker"><span class="nge-beta-dot" aria-hidden="true"></span>Closed beta</div>
         <h2 id="nge-beta-title" class="nge-beta-title">Pyr is invite only for now</h2>
+        <div class="nge-beta-invite">
+          <template v-if="inviteState === 'in'">
+            <p class="nge-beta-invite-done" role="status"><span aria-hidden="true">✓</span> You're in! Loading Pyr...</p>
+          </template>
+          <template v-else-if="inviteState === 'review'">
+            <p class="nge-beta-invite-done" role="status"><span aria-hidden="true">✓</span> Thanks! That invite needs a quick check by our team. We'll let you in soon.</p>
+          </template>
+          <template v-else>
+            <label class="nge-beta-label" for="nge-beta-invite">Got an invite? Enter the email address it was sent to.</label>
+            <div class="nge-beta-invite-row">
+              <input id="nge-beta-invite" v-model="inviteEmail" class="nge-beta-field" type="email" maxlength="254" autocomplete="email"
+                     placeholder="you@example.com" @input="inviteError = ''" @keydown.enter="useInvite" />
+              <button class="nge-beta-btn nge-beta-btn--small" :disabled="inviteBusy" @click="useInvite">{{ inviteBusy ? 'Checking...' : 'Use my invite' }}</button>
+            </div>
+            <p v-if="inviteError" class="nge-beta-error" role="alert">{{ inviteError }}</p>
+          </template>
+        </div>
         <template v-if="!requested">
-          <p class="nge-beta-text">Thanks for signing in! Pyr is in a closed beta while we get it ready. Ask to join and we'll add you as soon as we can.</p>
+          <p class="nge-beta-text">No invite yet? Pyr is in a closed beta while we get it ready. Ask to join and we'll add you as soon as we can.</p>
           <label class="nge-beta-label" for="nge-beta-name">Your name</label>
           <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-email">Your email</label>
@@ -250,6 +298,14 @@ onUnmounted(() => window.removeEventListener('keydown', swallow, true));
 }
 .nge-beta-btn:hover:not(:disabled), .nge-beta-btn:focus-visible { filter: brightness(1.12); outline: none; }
 .nge-beta-btn:disabled { cursor: default; filter: saturate(0.5) brightness(0.8); }
+.nge-beta-invite { margin: 0 0 18px; padding: 14px 14px 4px; border: 1px solid rgba(79, 207, 255, 0.3); border-radius: 10px; background: rgba(79, 207, 255, 0.06); }
+.nge-beta-invite-row { display: flex; gap: 8px; align-items: flex-start; }
+.nge-beta-invite-row .nge-beta-field { flex: 1; min-width: 0; }
+.nge-beta-btn--small { width: auto; flex: none; height: 38px; padding: 0 14px; font-size: 11px; letter-spacing: 0.1em; }
+.nge-beta-invite .nge-beta-error { margin: -4px 0 10px; }
+.nge-beta-invite-done { margin: 0 0 10px; font-size: 14px; line-height: 1.5; color: rgba(215, 230, 250, 0.9); }
+.nge-beta-invite-done span { color: #7ee0ff; font-weight: 700; margin-right: 4px; }
+@media (max-width: 420px) { .nge-beta-invite-row { flex-direction: column; align-items: stretch; } .nge-beta-btn--small { width: 100%; } }
 .nge-beta-error { margin: 10px 0 0; font-size: 13px; color: #ff9a9a; }
 .nge-beta-foot {
   margin: 20px 0 0; padding-top: 14px;

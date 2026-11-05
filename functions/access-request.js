@@ -464,17 +464,24 @@ async function beta(a, io) {
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
   // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
   const same = email === signIn;
+  // Invited under another address (Ames 2026-11-04: invites went to the
+  // emails on the EyeWire form, many not Google accounts, and Pyr signs in
+  // with Google). The admin still lets them in by hand: anyone could type an
+  // invited address, so the row says to check it is them first.
+  const invitedAs = !same && await invitedEmail(io.sb, email);
   const message = [
     `${name} asks to join the Pyr beta.`,
     same ? '' : `Email they gave: ${email}`,
+    invitedAs ? `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.` : '',
     `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
     ...ewLines(ew),
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
-  const title = `Beta access request from ${name}`.slice(0, 120);
+  const title = (invitedAs ? `Invited tester on another Google account: ${name}` : `Beta access request from ${name}`).slice(0, 120);
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
   const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
+    + (invitedAs ? `Already invited as ${mdText(email)}, and signs in with another Google account.\n\n` : '')
     + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
     + ewForBell(ew)
     + `\n\n${LET_IN}`
@@ -483,7 +490,74 @@ async function beta(a, io) {
   try { await (io.notifyAdmins || io.notifyReviewers)({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
   await wakeBoard(io);
-  return {invited: false, requested: true};
+  return invitedAs ? {invited: false, requested: true, invitedAs: true} : {invited: false, requested: true};
+}
+// ── Use my invite (Ames 2026-11-04) ──────────────────────────────────────
+// Invites go to the email a player gave on the EyeWire form, which often is
+// not a Google account, and Pyr signs in with Google. "I don't want them
+// replying with a gmail to me, I want them to use the site": the blocked
+// screen asks for the email the invite reached, and if it is on Pilot
+// testers the Google account they signed in with is added at once. An
+// invite email is not a secret, so each invite brings in one account, only
+// while nobody has joined under the invite itself, and every admin is told.
+// Anything else becomes a Beta request for an admin to look at.
+//   access.linkInvite  a player not on the list: {email} the invite reached.
+const LINKED_PREFIX = 'Linked to invite: ';
+// Its own category, so no triage card: the player is already in and nothing
+// needs doing (Ames 2026-11-04: "How about no triage card for those"). The
+// record stays, as it is how a second use is caught (earlier ones were filed
+// as Beta access). scripts/slack-triage-bridge.mjs leaves this category out.
+const INVITE_CATEGORY = 'Invite used';
+async function linkInvite(a, io) {
+  if (io.isAdmin || io.isPilot) return {invited: true};
+  if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  const email = betaEmail(a.email);
+  const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  if (!signIn) fail(401, 'Sign in to Pyr again, then retry.');
+  if (email === signIn) fail(400, "That is the account you are signed in with, and it isn't on the invite list. Enter the email address your invite was sent to.");
+  if (!(await invitedEmail(io.sb, email))) fail(404, "We couldn't find an invite for that email. Check the spelling, or ask to join below.");
+  const name = String(io.me.display_name || io.me.username || 'A player').replace(/[\r\n]+/g, ' ').slice(0, BETA_NAME_MAX);
+  // Someone already plays under the invite, or it already brought in an account.
+  let joined = false, linkedBefore = false;
+  try { joined = (await io.sb('users?middleauth_email=eq.' + encodeURIComponent(email) + '&select=id&limit=1')).length > 0; } catch (e) { joined = true; }
+  try {
+    linkedBefore = (await io.sb('site_issues?category=in.' + encodeURIComponent(`("${BETA_CATEGORY}","${INVITE_CATEGORY}")`)
+      + '&message=like.' + encodeURIComponent('*' + LINKED_PREFIX + email + '.*') + '&select=id&limit=1')).length > 0;
+  } catch (e) { linkedBefore = true; }
+  if (joined || linkedBefore) {
+    const why = joined ? 'Someone already plays Pyr with that invite email.' : 'That invite already brought in another Google account.';
+    const message = [
+      `${name} asks to join the Pyr beta.`,
+      `Email they gave: ${email}`,
+      `Invited as: ${email}, already on Pilot testers. They sign in with another Google account. ${why}`,
+      `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    ].join('\n');
+    const title = `Invited tester on another Google account: ${name}`.slice(0, 120);
+    await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
+    const bell = `${mdText(name)} used the invite for ${mdText(email)} from another Google account, ${mdText(signIn)}. ${mdText(why)}\n\n${LET_IN}`;
+    try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+    await wakeBoard(io);
+    return {invited: false, requested: true, review: true};
+  }
+  await io.sb('pilot_members?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email: signIn, enabled: true})});
+  // The record: it is how a second use of this invite is caught.
+  const message = `${name} was invited as ${email} and joined as ${signIn}.\n${LINKED_PREFIX}${email}.\nSign in email: ${signIn}. If this isn't them, turn ${signIn} off under Admin Hub, Pilot testers.`;
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: INVITE_CATEGORY,
+    title: `Invite used: ${name}`.slice(0, 120), message, user_id: io.me.id, user_name: name}])});
+  // Nothing to do (Ames 2026-11-04: "asks to join" read as a request).
+  const bell = `${mdText(name)} is in. They were invited as ${mdText(email)} and signed in as ${mdText(signIn)}. Nothing to do.\n\nIf this isn't them, turn ${mdText(signIn)} off under Admin Hub, Pilot testers.`;
+  try { await io.notifyAdmins({title: `🔑 Invite used by ${name}`.slice(0, 120), body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  return {invited: true, linked: true};
+}
+
+/** Is this address on Pilot testers? A failed look up counts as no: the
+ *  request still goes in, only without the Invited line. */
+async function invitedEmail(sb, email) {
+  try {
+    const rows = await sb('pilot_members?email=eq.' + encodeURIComponent(email) + '&enabled=eq.true&select=email&limit=1');
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (e) { return false; }
 }
 
 // ── Beta access from connectome.quest (Ames 2026-10-26) ─────────────────
@@ -822,6 +896,7 @@ async function handle(action, args, io) {
   if (action === 'access.datasetDecide') return datasetDecide(a, io);
   if (action === 'access.betaStatus') return betaStatus(a, io);
   if (action === 'access.beta') return beta(a, io);
+  if (action === 'access.linkInvite') return linkInvite(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
   if (action === 'access.principlesStatus') return principlesStatus(a, io);
