@@ -654,7 +654,7 @@ const followerNames = (c: Card) => (followers.value[c.id] || []).map(id => peopl
 // ── My Tasks (Ames 2026-11-02, from Asana): everything that is mine in one
 // list, cards I own and checklist items that are mine, by due day. ──
 const myTasksOpen = ref(false);
-type Task = { key: string; card: Card; text: string; due: string | null; item: number | null };
+type Task = { key: string; card: Card; text: string; due: string | null; item: number | null; at?: string };
 const myTasks = computed(() => {
   const me = myId.value;
   if (!me) return [] as { head: string; rows: Task[]; late?: boolean }[];
@@ -678,10 +678,24 @@ const myTasks = computed(() => {
     else if (day(t.due) < week) groups[2].rows.push(t);
     else groups[3].rows.push(t);
   }
+  // Tagged and not answered yet (Ames 2026-11-05: "how do I find the things
+  // I've been tagged in here?"): a card whose newest tag of you, in a comment
+  // or its notes, came after your last comment there. First, as the most urgent.
+  const tagged: Task[] = [];
+  const myName = people.value.find(p => p.id === me)?.name || '';
+  for (const c of cards.value) {
+    if (c.list === 'done') continue;
+    let tagAt = '', tagBy = '';
+    for (const cm of c.comments) if (cm.by !== myName && tagsIn(cm.text).includes(me) && cm.at > tagAt) { tagAt = cm.at; tagBy = cm.by; }
+    if (!tagAt) continue;
+    const answered = c.comments.some(cm => cm.by === myName && cm.at > tagAt);
+    if (!answered) tagged.push({ key: 'tag:' + c.id, card: c, text: `${tagBy} tagged you`, due: null, item: -1, at: tagAt });
+  }
+  if (tagged.length) groups.unshift({ head: 'Tagged, waiting on you', rows: tagged.sort((a, b) => (b.at || '').localeCompare(a.at || '')), late: true });
   return groups.filter(g => g.rows.length);
 });
 const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.length, 0));
-function openTask(t: Task) { myTasksOpen.value = false; openUp(t.card); }
+function openTask(t: Task) { myTasksOpen.value = false; if (t.item === -1) openAt(t.card, 'comments'); else openUp(t.card); }
 const toggleItem = (c: Card, i: number) => save(c, { checklist: c.checklist.map((x, k) => (k === i ? { ...x, done: !x.done } : x)) });
 const removeItem = (c: Card, i: number) => save(c, { checklist: c.checklist.filter((_, k) => k !== i) });
 /** A checklist item becomes a card of its own, under this one. */
@@ -1036,6 +1050,7 @@ const cardNotesEl = ref<HTMLTextAreaElement | null>(null);
 // The add form sits inside the lists' v-for, where a plain ref becomes a list.
 const setDraftNotesEl = (el: unknown) => { if (el) draftNotesEl.value = el as HTMLTextAreaElement; };
 const draftBox: TextBox = { get el() { return draftNotesEl.value; }, get: () => draft.value.notes, set: v => { draft.value.notes = v; } } as TextBox;
+const commentBox: TextBox = { get el() { return commentEl.value; }, get: () => comment.value, set: v => { comment.value = v; } } as TextBox;
 const cardBox: TextBox = { get el() { return cardNotesEl.value; }, get: () => editNotes.value, set: v => { editNotes.value = v; } } as TextBox;
 function draftToChecklist() {
   const items = takeLines(draftBox);
@@ -1046,6 +1061,22 @@ async function cardToChecklist(c: Card) {
   const items = takeLines(cardBox);
   if (!items.length) { error.value = 'Select the lines that should become checklist items.'; return; }
   await save(c, { notes: editNotes.value, checklist: [...c.checklist, ...items.map(text => ({ text, done: false }))] }, { tagIds: tagsIn(items.join(' ')) });
+}
+/** A comment: formatted like the notes, and a board picture shown as itself. */
+function commentHtml(text: string) {
+  const t = document.createElement('template');
+  t.innerHTML = notesHtml(text);
+  for (const a of [...t.content.querySelectorAll('a')]) {
+    const href = a.getAttribute('href') || '';
+    if (!isBoardImage(href)) continue;
+    const link = document.createElement('a');
+    link.className = 'nge-todo-comment-pic'; link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = 'Open full size';
+    const img = document.createElement('img');
+    img.src = href; img.alt = 'A picture in this comment'; img.loading = 'lazy';
+    link.appendChild(img);
+    a.replaceWith(link);
+  }
+  return t.innerHTML;
 }
 /** Notes with formatting and lit @tags; renderSafeMarkdown escapes the rest. */
 function notesHtml(text: string) {
@@ -1211,8 +1242,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
         <h4 :class="{ 'nge-todo-mytasks-late': g.late }">{{ g.head }} · {{ g.rows.length }}</h4>
         <button v-for="t in g.rows" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
-          <span class="nge-todo-mytask-kind">{{ t.item === null ? '▣' : '☐' }}</span>
+          <span class="nge-todo-mytask-kind">{{ t.item === null ? '▣' : t.item === -1 ? '💬' : '☐' }}</span>
           <span class="nge-todo-mytask-text">{{ t.text }}<small v-if="t.item !== null"> in {{ t.card.title }}</small></span>
+          <span v-if="t.at" class="nge-todo-mytask-due">{{ ago(t.at) }}</span>
           <span v-if="t.due" class="nge-todo-mytask-due" :class="{ 'nge-todo-mytasks-late': g.late }">{{ dueWords(t.due) }}</span>
         </button>
       </section>
@@ -1340,7 +1372,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span v-for="b in buildBadges(c)" :key="b.url" class="nge-todo-badge" :class="'nge-todo-badge--' + b.state" :title="b.title">{{ b.word }}</span>
             </div>
             <div v-if="c.status" class="nge-todo-card-status">{{ c.status }}</div>
-            <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt">{{ excerpt(c.notes) }}</div>
+            <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt nge-todo-md" v-html="notesHtml(c.notes)"></div>
             <div v-if="(c.links || []).length" class="nge-todo-links" @click.stop>
               <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url" draggable="false">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
             </div>
@@ -1566,8 +1598,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button class="nge-todo-btn" @click="commentEdit = null">Cancel</button>
             </div>
           </template>
-          <div v-else class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="isBoardImage(pt.href)" class="nge-todo-comment-pic" :href="pt.href" target="_blank" rel="noopener noreferrer" title="Open full size"><img :src="pt.href" alt="A picture in this comment" loading="lazy" /></a><a v-else-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
+          <div v-else class="nge-todo-notes nge-todo-md" v-html="commentHtml(cm.text)"></div>
           <div v-if="cm.original && shownOriginal[openCard.id + ':' + i]" class="nge-todo-original"><span>Original</span> {{ cm.original }}</div>
+        </div>
+        <div class="nge-todo-fmtbar" role="toolbar" aria-label="Comment formatting">
+          <button type="button" title="Bold" @mousedown.prevent @click="fmtBold(commentBox)"><b>B</b></button>
+          <button type="button" title="Italic" @mousedown.prevent @click="fmtItalic(commentBox)"><i>I</i></button>
+          <button type="button" title="Bulleted list" @mousedown.prevent @click="fmtList(commentBox, false)">• Bullets</button>
+          <button type="button" title="Numbered list" @mousedown.prevent @click="fmtList(commentBox, true)">1. Numbers</button>
         </div>
         <textarea v-autogrow ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone. Paste or drop a picture to add it." aria-label="Comment"
                   data-nge-notes-paste @paste="onCommentPaste" @dragover.prevent @drop="onCommentDrop"
@@ -1954,8 +1992,11 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-card-title { font-size: 16.5px; font-weight: 700; line-height: 1.3; margin-right: 44px; }
 .nge-todo-card-excerpt {
   margin-top: 6px; font-size: 13.5px; line-height: 1.45; color: var(--text); opacity: 0.85;
-  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+  max-height: 6.4em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent);
 }
+.nge-todo-card-excerpt p { margin: 0 0 4px; }
+.nge-todo-card-excerpt ul, .nge-todo-card-excerpt ol { margin: 0 0 4px; padding-left: 20px; }
+.nge-todo-card-excerpt img { display: none; }
 .nge-todo-card-by { margin-top: 8px; font-size: 12px; color: var(--dim); }
 .nge-todo-list-icon { font-size: 15px; }
 .nge-todo-list-title { font-size: 16px; }
