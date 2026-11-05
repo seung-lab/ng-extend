@@ -1141,6 +1141,16 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 // again, and went in by mistake (toknow, report 237). A dataset with one
 // ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
+/** Why Mark complete can't be pressed yet, or '' when it can. */
+function completeBlocked(cell: CellRow): string {
+  const c = completing.value;
+  if (!c) return '';
+  if (c.submitting || c.checking) return 'Working on it…';
+  if (statusMissing(cell)) return 'Pick how the cell ended first (How did it end?).';
+  if (!c.ok) return 'Move the crosshairs inside the finished cell, then press Check again.';
+  if (!linkLooksValid(c.link)) return 'Add a link to your finished cell: press Use my current view.';
+  return '';
+}
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
 /** The type list, when the cell is on the dataset on screen and that
@@ -4254,12 +4264,15 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-complete-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
-                :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link) || statusMissing(cell)"
-                :title="statusMissing(cell) ? 'Pick how the cell ended first' : undefined"
+                :disabled="!!completeBlocked(cell)"
+                :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
               ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
+            <!-- Why Mark complete can't be pressed yet, said plainly (a player
+                 could not tell why it stayed grey, Ames 2026-11-05). -->
+            <div v-if="completeBlocked(cell) && !completing.submitting && !completing.checking" class="nge-cl-complete-msg nge-cl-complete-why">{{ completeBlocked(cell) }}</div>
           </div>
           </template>
           <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
@@ -4936,6 +4949,7 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-msg { font-size: 0.8em; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nge-cl-complete-msg--ok { color: #6d9; }
 .nge-cl-complete-msg--bad { color: #f98; }
+.nge-cl-complete-why { color: #ffcf8a; margin-top: 6px; }
 .nge-cl-complete-recheck {
   margin-left: auto;
   background: none;
