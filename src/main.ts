@@ -10,6 +10,7 @@ import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
 import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
 import {startColorFamilies} from './util/color_families';
+import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { recoverCellHistory } from './util/cell_history';
@@ -441,6 +442,7 @@ function setupViewer() {
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
   startScrollWatch();
   startColorFamilies();
+  startSlowFrameLog();
   startClaimAutosave(viewer);
   // The active quest's annotations, saved to that quest cell as they change.
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
