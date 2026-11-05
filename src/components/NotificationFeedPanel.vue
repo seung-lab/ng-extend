@@ -1341,7 +1341,7 @@ function padRank(rank: number): string {
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
                   <!-- A mentor program bell: straight to its cell, notes and all. -->
                   <div v-if="mentorJump" class="nge-notif-mentorjump">
-                    <button class="nge-notif-mentorjump-btn" @click="openBellCell">{{ mentorJump.role === 'mentor' && mentorJump.review.state !== 'complete' ? 'Take a look' : 'See it in the view' }}</button>
+                    <button class="nge-notif-open-help nge-notif-mentorjump-btn" @click="openBellCell">{{ mentorJump.role === 'mentor' && mentorJump.review.state !== 'complete' ? 'Take a look' : 'See it in the view' }}</button>
                     <span v-if="mentorJumpNote" class="nge-notif-textedit-err" role="alert">{{ mentorJumpNote }}</span>
                   </div>
                   <!-- Admins: the text every bell of this kind is sent with. -->
@@ -2186,8 +2186,7 @@ span.nge-notif-reply-part { cursor: default; }
 }
 
 .nge-notif-mentorjump { margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.nge-notif-mentorjump-btn { font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 7px; border: 1px solid rgb(var(--nd-cyan) / 0.65); background: rgb(var(--nd-cyan) / 0.1); color: rgb(var(--nd-cyan)); cursor: pointer; }
-.nge-notif-mentorjump-btn:hover { background: rgb(var(--nd-cyan) / 0.18); }
+.nge-notif-mentorjump .nge-notif-mentorjump-btn { margin-top: 0; }
 .nge-notif-detail-body :deep(a.nge-notif-player) { color: rgb(var(--nd-cyan)); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .nge-notif-textedit { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgb(var(--nd-cyan) / 0.18); display: flex; flex-direction: column; gap: 6px; }
 .nge-notif-textedit > .nge-notif-textedit-btn { align-self: flex-start; }

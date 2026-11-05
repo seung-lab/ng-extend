@@ -82,19 +82,19 @@ const TEXTS = {
     body: 'Your next {needed} cells go to a mentor when you complete them. This is practice: nothing you complete is recorded, and each cell is let go when your mentor completes it.'},
   newApprentice: {label: 'A new apprentice is waiting', to: 'mentors', vars: ['apprentice'], image: MENTOR_ICON,
     title: 'A new apprentice is waiting for a mentor',
-    body: '{apprentice} sent their first cell for a second look. Open Cell Library, Mentoring, to take it.'},
+    body: '{apprentice} sent their first cell for a second look. Mentored cells are available in Cell Library → Mentoring.'},
   sent: {label: 'A cell sent to the mentor', to: 'mentor', vars: ['apprentice', 'cell'], image: MENTOR_ICON,
     title: '{apprentice} sent you a cell',
-    body: '{apprentice} sent cell {cell} for a second look. Open Cell Library, Mentoring.'},
+    body: '{apprentice} sent cell {cell} for a second look. Mentored cells are available in Cell Library → Mentoring.'},
   sentAgain: {label: 'A cell sent back after suggestions', to: 'mentor', vars: ['apprentice', 'cell'], image: MENTOR_ICON,
     title: '{apprentice} sent a cell back to you',
-    body: '{apprentice} sent cell {cell} for a second look. Open Cell Library, Mentoring.'},
+    body: '{apprentice} sent cell {cell} for a second look. Mentored cells are available in Cell Library → Mentoring.'},
   haveMentor: {label: 'You have a mentor', to: 'apprentice', vars: ['mentor', 'needed'], image: MENTOR_PICTURE,
     title: 'You have a mentor',
     body: '{mentor} is your mentor. They will look at your first {needed} cells and give you feedback before each one counts.'},
   suggestions: {label: 'Suggestions', to: 'apprentice', vars: ['mentor', 'cell'],
     title: 'Your mentor has suggestions',
-    body: '{mentor} left suggestions on cell {cell}. Open Cell Library, Mentoring, to see them in the view. When you are done, send it again.'},
+    body: '{mentor} left suggestions on cell {cell}. See them in the view. When you are done, send it again. Mentored cells are available in Cell Library → Mentoring.'},
   complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed'],
     title: '🎉 Your cell is complete',
     body: '{mentor} completed cell {cell} with you. It counts for you. {done} of {needed} mentor cells done.'},
@@ -128,7 +128,8 @@ const segId = v => (/^\d{1,24}$/.test(String(v || '')) ? String(v) : '');
 const short = id => (id ? `...${String(id).slice(-4)}` : 'a cell');
 const point = v => (Array.isArray(v) && v.length === 3 && v.every(n => Number.isFinite(Number(n))) ? v.map(Number) : null);
 const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, max);
-const cellName = r => short(r.root_id || r.segment_id);
+// The whole cell ID in a bell (Ames 2026-11-05: "can you put the whole cell ID?").
+const cellName = r => String(r.root_id || r.segment_id || 'a cell');
 
 /** What a review looks like to a browser. */
 function reviewOut(r) {

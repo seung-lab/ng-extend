@@ -452,6 +452,7 @@ test('a bell finds its cell, completed too, only for the players in it; the ment
   const r2 = (await send(call, 4, 2)).review;
   const sentBell = db._state.notes.find(n => n.title === 'newbie sent you a cell');
   assert.match(sentBell.image, /tiers\/mentor-1\.png$/);
+  assert.match(sentBell.body, /sent cell \d+ for a second look\. Mentored cells are available in Cell Library → Mentoring\.$/, 'the whole cell ID, and where to find it');
   assert.ok(db._state.notes.every(n => !n.title.startsWith('🧭')), 'no compass');
   assert.ok(r2);
 });

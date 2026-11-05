@@ -408,8 +408,10 @@ export async function saveMentorText(key: string, title: string, body: string): 
 export const PROGRAM_TITLE = /^(🧭 |🎉 |🏆 )?(Welcome to the mentor program|A new apprentice is waiting for a mentor|.+ sent you a cell|.+ sent a cell back to you|You have a mentor|Your mentor has suggestions|Your cell is complete|.+ finished the mentor program|Practice finished)/u;
 export async function reviewForBell(title: string, body: string): Promise<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null> {
   if (!PROGRAM_TITLE.test(title)) return null;
-  const m = String(body || '').match(/\.\.\.(\d{4})\b/);
-  if (!m) return null;
+  // The whole ID (bells from 2026-11-05 on) or the old "...1234": matched by its last four digits.
+  const found = String(body || '').match(/cell (?:\.\.\.)?(\d{4,24})\b/);
+  if (!found) return null;
+  const m = [found[0], found[1].slice(-4)];
   const hit = (r: MentorReview) => [r.rootId, r.segmentId].some(id => !!id && id.endsWith(m[1]));
   if (!mentorState.loaded) await loadMentor();
   // "Your mentor ..." bells are the apprentice's; "... sent you a cell" the mentor's.
