@@ -756,6 +756,9 @@ function toggleFavoriteSpecialBadge(award: any) {
 // show more). An achievement holds one star: giving it another takes the
 // first away.
 const specialSlug = (a: any): string => a?.badge?.slug || `special-${a?.id}`;
+/** The Mentor Achievement's counter: apprentices graduated, from its line
+ *  ("3 apprentices graduated", kept by the server). 0 for any other award. */
+const mentorCount = (a: any): number => specialSlug(a) === 'mentor-program-mentor' ? Number(String(a?.reason || '').match(/^(\d+)/)?.[1] || 1) : 0;
 const otherSilver = ref<string[]>([]);
 const otherBronze = ref<string[]>([]);
 const silverSlugs = computed<string[]>(() => viewingOtherUser.value ? otherSilver.value : backendStore.silverBadgeSlugs);
@@ -1845,8 +1848,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                   :title="specialBadgeTooltip(award)"
                   @click="onSpecialBadgeClick(award)"
                 >
-                  <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-img" :class="{ 'nge-badge-img--counted': mentorCount(award) }">
                     <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
+                    <span v-if="mentorCount(award)" class="nge-medal-count" :aria-label="`${mentorCount(award)} apprentices graduated`">×{{ mentorCount(award) }}</span>
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
                 </div>
@@ -2918,6 +2922,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 @click="onSpecialBadgeClick(award)"
               >
                 <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
+                <span v-if="mentorCount(award)" class="nge-medal-count nge-trophy-count" :aria-label="`${mentorCount(award)} apprentices graduated`">×{{ mentorCount(award) }}</span>
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
               </div>
               <button v-if="hiddenTrophies('special', plainSpecialBadges).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${plainSpecialBadges.length}`" :aria-expanded="false" @click="toggleTrophySection('special')">
@@ -4076,6 +4081,10 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   font: 700 10.5px/16px 'Orbitron', 'Inter', sans-serif; text-align: center; letter-spacing: 0.02em;
   box-shadow: 0 0 8px rgba(245, 209, 66, 0.25);
 }
+/* The Mentor Achievement's counter, the same bubble (Ames 2026-11-05) */
+.nge-badge-img--counted { position: relative; }
+.nge-trophy-badge:has(.nge-trophy-count) { position: relative; }
+.nge-trophy-count { top: 8px; right: 8px; bottom: auto; }
 .nge-trophy-medal-img .nge-medal-count { right: -8px; bottom: 4px; font-size: 11.5px; line-height: 18px; min-width: 24px; }
 .nge-trophy-medal-place { margin-top: 1px; font-size: 0.72em; color: rgba(196, 228, 255, 0.55); }
 .nge-medal-wins { color: #f8e08a; }

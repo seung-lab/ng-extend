@@ -362,7 +362,13 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         if (a.mentor_id && a.mentor_id !== a.user_id) {
           // Once per mentor: the Achievement and its celebration the first time,
           // a plain bell for every apprentice after that.
-          const m = await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
+          // One Mentor Achievement with a counter (Ames 2026-11-05: "a counter on the
+          // mentor achievement for now"): its line says how many graduated with them,
+          // and the Trophy Case shows the number on it.
+          const graduates = (await db.apprenticesOf(a.mentor_id)).filter(x => x.status === 'finished').length;
+          const line = `${graduates} apprentice${graduates === 1 ? '' : 's'} graduated`;
+          const m = await db.award(MENTOR_BADGE, a.mentor_id, line);
+          if (!m.first) await db.setAwardReason(MENTOR_BADGE, a.mentor_id, line);
           if (m.first) await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name}, m.image);
           else await bell(a.mentor_id, 'mentorFinishedAgain', {apprentice: a.user_name});
         }
@@ -562,6 +568,10 @@ function restDb(sb) {
       const rows = await post('special_badge_awards?on_conflict=badge_id,user_id', {badge_id: b.id, user_id: userId, reason: String(reason).slice(0, 200)}, 'resolution=ignore-duplicates,return=representation');
       return {first: Array.isArray(rows) && rows.length > 0, image: b.image_url || b.thumbnail_url || badge.image_url};
     },
+    setAwardReason: async (badge, userId, reason) => {
+      const b = await one(sb(`special_badges?slug=eq.${enc(badge.slug)}&select=id&limit=1`));
+      if (b) await sb(`special_badge_awards?badge_id=eq.${b.id}&user_id=eq.${userId}`, {method: 'PATCH', body: JSON.stringify({reason: String(reason).slice(0, 200)}), headers: {Prefer: 'return=minimal'}});
+    },
     notify: (userId, title, body, by, image) => post('notifications', {title, body, target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: by || null,
       ...(image ? {image_url: image, thumbnail_url: image} : {})}, 'return=minimal')
       .catch(e => console.error('[mentors] notification not sent', e && e.message)),
@@ -605,6 +615,7 @@ function memDb(users = []) {
       if (s.awards.some(a => a.slug === badge.slug && a.userId === userId)) return {first: false, image};
       s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); return {first: true, image};
     },
+    setAwardReason: async (badge, userId, reason) => { const a = s.awards.find(x => x.slug === badge.slug && x.userId === userId); if (a) a.reason = reason; },
     notify: async (userId, title, body, by, image) => { s.notes.push({to: userId, title, body, ...(image ? {image} : {})}); },
   };
 }

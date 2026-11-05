@@ -378,6 +378,25 @@ test('the welcome and You have a mentor bells carry the program picture and say 
   assert.equal(have.body, 'Nseraf is your mentor. They will look at your first 5 cells and give you feedback before each one counts.');
 });
 
+test('the Mentor Achievement counts its graduates', async () => {
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  const finish = async n => {
+    await admin('mentor.addApprentice', {username: who(n).username});
+    for (let i = 1; i <= CELLS_NEEDED; i++) {
+      const r = (await send(call, n, n * 100 + i)).review;
+      await call(2, 'mentor.claim', {reviewId: r.id});
+      await call(2, 'mentor.complete', {reviewId: r.id});
+    }
+  };
+  await finish(4);
+  const award = () => db._state.awards.find(x => x.name === 'Mentor' && x.userId === U(2));
+  assert.equal(award().reason, '1 apprentice graduated');
+  await finish(5);
+  assert.equal(award().reason, '2 apprentices graduated');
+  assert.equal(db._state.awards.filter(x => x.name === 'Mentor').length, 1, 'still one Achievement');
+});
+
 test('copy has no dashes and says Achievement, never badge', () => {
   const src = require('fs').readFileSync(require.resolve('./mentors'), 'utf8');
   const strings = src.match(/(['`])(?:(?!\1)[^\\\n]|\\.)*\1/g).filter(s => / /.test(s) && /^['`][A-Z🧭🎉🏆]/u.test(s));
