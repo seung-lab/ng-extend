@@ -17,8 +17,8 @@ type Tab = 'day' | 'week' | 'alltime';
 const activeTab    = ref<Tab>('day');
 
 // Metric toggle: ranks by edits (split+merge), completions (mark_complete),
-// or Quests: active time on Super Quests (Ames 2026-11-05,
-// supabase-quest-leaderboard.sql). Persists across sessions in localStorage.
+// or Quests: Cilia Quests submitted on the Retina, as the profile counts them
+// (Ames 2026-11-05). Persists across sessions in localStorage.
 type Metric = 'edits' | 'completions' | 'quests';
 const METRIC_STORAGE_KEY = 'nge-leaderboard-metric';
 const initialMetric = (() => { try { return localStorage.getItem(METRIC_STORAGE_KEY); } catch { return null; } })();
@@ -149,25 +149,24 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 // view isn't deployed yet. The DemoUser stats fields are reused as
 // generic time-window slots — the leaderboard's metric/tab selection
 // decides how to interpret them.
-// Quests: the stats slots hold seconds of Super Quest time (24h slot = the
-// current US Eastern day, as claim_active_days counts), and cellsSubmitted
-// holds the Super Quests finished.
+// Quests: the stats slots hold Cilia Quests submitted (24h slot = the current
+// US Eastern day, the sheet's Date column).
 const questUsers = computed<DemoUser[]>(() => backendStore.questBoard.map((u: any) => ({
   id: u.id,
   name: u.display_name || 'Anonymous',
   flag: u.flag || '',
   bio: '',
   stats: {
-    editsAllTime: u.quest_seconds_alltime ?? 0,
+    editsAllTime: u.quests_alltime ?? 0,
     mergesAllTime: 0,
     splitsAllTime: 0,
-    editsThisWeek: u.quest_seconds_week ?? 0,
+    editsThisWeek: u.quests_week ?? 0,
     mergesThisWeek: 0,
     splitsThisWeek: 0,
-    editsThisMonth: u.quest_seconds_today ?? 0,
+    editsThisMonth: u.quests_today ?? 0,
     mergesThisMonth: 0,
     splitsThisMonth: 0,
-    cellsSubmitted: u.quests_finished ?? 0,
+    cellsSubmitted: 0,
     currentStreak: u.current_streak || 0,
     longestStreak: 0,
   },
@@ -203,23 +202,16 @@ const supabaseUsers = computed<DemoUser[]>(() => {
   });
 });
 
-const metricLabel = computed(() => isQuests.value ? 'Time' : metric.value === 'completions' ? 'Cells' : 'Edits');
+const metricLabel = computed(() => isQuests.value ? 'Quests' : metric.value === 'completions' ? 'Cells' : 'Edits');
 
 // Only real players, ever. With nothing to show the board says why (below);
 // it used to fill itself with made-up demo players (audit, 2026-10-05).
 // On Quests, only players with time in the window shown.
 const userSource = computed(() => isQuests.value ? questUsers.value.filter(u => editCountForTab(u) > 0) : supabaseUsers.value);
 
-/** Quest time as players read it: "45m", "3h 12m". */
-function questTime(seconds: number): string {
-  const m = Math.floor(Math.max(0, seconds) / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60).toLocaleString()}h ${String(m % 60).padStart(2, '0')}m`;
-}
-/** The score cell: a count, or quest time. Counts up with the rows. */
+/** The score cell. Counts up with the rows. */
 function scoreText(user: DemoUser): string {
-  const v = editCountForTab(user) * rollK.value;
-  return isQuests.value ? questTime(v) : Math.round(v).toLocaleString();
+  return Math.round(editCountForTab(user) * rollK.value).toLocaleString();
 }
 
 /** Why there are no rows, or a note above the rows; '' when all is well. */
@@ -229,10 +221,10 @@ const boardNote = computed(() => {
     if (qs === 'loading' && !questUsers.value.length) return 'Loading the board';
     if (qs === 'unavailable') return questUsers.value.length
       ? 'The board could not be refreshed just now. These are the last numbers it read.'
-      : 'The Quests board is not available right now. Please try again in a moment.';
+      : 'The quest sheet could not be read just now. Please try again in a moment.';
     if (!boardRows.value.length) return activeTab.value === 'alltime'
-      ? 'Nobody has spent time on a Super Quest yet.'
-      : activeTab.value === 'day' ? 'Nobody has worked on a Super Quest today yet.' : 'Nobody has worked on a Super Quest this week yet.';
+      ? 'Nobody has finished a Cilia Quest yet.'
+      : activeTab.value === 'day' ? 'Nobody has finished a Cilia Quest today yet.' : 'Nobody has finished a Cilia Quest this week yet.';
     return '';
   }
   const st = backendStore.leaderboardState;
@@ -348,8 +340,8 @@ const earnedExplorationForUser = computed(() => {
 
 function selectUser(user: DemoUser) {
   // The card shows edits and Achievements; on the Quests board a row opens
-  // the player's profile instead.
-  if (isQuests.value) { openFullProfile(user.id); return; }
+  // the player's profile instead (a sheet name with no player opens nothing).
+  if (isQuests.value) { if (!user.id.startsWith('sheet:')) openFullProfile(user.id); return; }
   selectedUser.value = user;
   selectedBadgeId.value = null;
   // The board's rows carry only what the board draws; the card's all-time
@@ -535,11 +527,11 @@ onUnmounted(() => {
           <button
             class="nge-lb-metric"
             :class="{ 'nge-lb-metric--active': metric === 'quests' }"
-            title="Time spent working on Super Quests"
+            title="Cilia Quests finished on the Retina"
             @click="setMetric('quests')"
           >Quests</button>
         </div>
-        <div v-if="isQuests" class="nge-lb-quest-lead">Time spent working on Super Quests. Days are US Eastern time.</div>
+        <div v-if="isQuests" class="nge-lb-quest-lead">Cilia Quests finished on the Retina. Days are US Eastern time.</div>
 
         <div ref="contentEl" class="nge-lb-content">
           <div v-if="boardNote" class="nge-lb-note" role="status">{{ boardNote }}</div>
@@ -549,8 +541,7 @@ onUnmounted(() => {
                 <th class="nge-lb-th nge-lb-th--rank">#</th>
                 <th class="nge-lb-th">Name</th>
                 <th class="nge-lb-th nge-lb-th--num">{{ metricLabel }}</th>
-                <th v-if="isQuests" class="nge-lb-th nge-lb-th--badge" title="Super Quests finished">Done</th>
-                <th v-else class="nge-lb-th nge-lb-th--badge">★</th>
+                <th v-if="!isQuests" class="nge-lb-th nge-lb-th--badge">★</th>
               </tr>
             </thead>
             <tbody>
@@ -577,7 +568,7 @@ onUnmounted(() => {
                        class="nge-lb-flag-img"
                        :src="flagImgUrl(userFlag(user))" />
                   <span v-else class="nge-lb-flag-fallback">🌐</span>
-                  <span class="nge-lb-name nge-lb-name--clickable" @click.stop="openFullProfile(user.id)" title="View profile">{{ user.name }}</span>
+                  <span class="nge-lb-name nge-lb-name--clickable" @click.stop="user.id.startsWith('sheet:') ? undefined : openFullProfile(user.id)" title="View profile">{{ user.name }}</span>
                   <span v-if="isYou(user)" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
                         :title="`${user.stats.currentStreak}-day streak`">
@@ -587,12 +578,7 @@ onUnmounted(() => {
                 <td class="nge-lb-td nge-lb-td--num">
                   {{ scoreText(user) }}
                 </td>
-                <td v-if="isQuests" class="nge-lb-td nge-lb-td--badge"
-                    :title="`${user.stats.cellsSubmitted.toLocaleString()} Super Quest${user.stats.cellsSubmitted === 1 ? '' : 's'} finished`">
-                  <span v-if="user.stats.cellsSubmitted > 0" class="nge-lb-quests-done">{{ user.stats.cellsSubmitted.toLocaleString() }}</span>
-                  <span v-else class="nge-lb-badge-none">—</span>
-                </td>
-                <td v-else class="nge-lb-td nge-lb-td--badge">
+                <td v-if="!isQuests" class="nge-lb-td nge-lb-td--badge">
                   <img
                     v-if="topBadge(user)"
                     :src="getBadgeUrl(topBadge(user)?.imageKey ?? '')"
@@ -1401,7 +1387,6 @@ onUnmounted(() => {
 }
 
 .nge-lb-badge-none { color: #444; }
-.nge-lb-quests-done { font-weight: 600; color: #ffd08a; }
 .nge-lb-quest-lead {
   padding: 6px 16px 0; text-align: center; flex-shrink: 0;
   font-size: 11.5px; color: rgba(160, 195, 230, 0.7);
