@@ -20,6 +20,28 @@ const a = computed(() => mentorState.apprentice);
 const STATE: Record<MentorReview['state'], string> = {
   waiting: 'Waiting for a mentor', looking: 'With your mentor', suggestions: 'Your mentor has suggestions', complete: 'Complete, it counts for you',
 };
+/** The apprentice's cells, as a status anyone can read at a glance (Ames
+ *  2026-11-05: "can we make it clearer the status here?"): numbered in the
+ *  order sent, the one waiting on the player first, then those with the
+ *  mentor, then the completed ones, newest first. */
+const ORDER: Record<MentorReview['state'], number> = { suggestions: 0, looking: 1, waiting: 2, complete: 3 };
+const myCells = computed(() => {
+  const sent = [...mentorState.mine].sort((x, y) => Date.parse(x.sentAt) - Date.parse(y.sentAt));
+  return sent.map((r, i) => ({ r, n: i + 1 }))
+    .sort((x, y) => ORDER[x.r.state] - ORDER[y.r.state] || Date.parse(y.r.decidedAt || y.r.sentAt) - Date.parse(x.r.decidedAt || x.r.sentAt));
+});
+function pill(r: MentorReview): string {
+  if (r.state === 'suggestions') return 'Your turn: suggestions';
+  if (r.state === 'looking') return r.mentorName ? `With ${r.mentorName}` : 'With your mentor';
+  if (r.state === 'waiting') return 'Waiting for a mentor';
+  return r.done?.practice ? 'Complete, practice' : 'Complete';
+}
+function rowHint(r: MentorReview): string {
+  if (r.state === 'suggestions') return 'Open it to see the notes, fix the cell, then press Complete on it to send it again.';
+  if (r.state === 'looking') return 'Your mentor is looking at it.';
+  if (r.state === 'waiting') return 'A mentor takes it soon.';
+  return r.done?.practice ? 'Practice, nothing was recorded.' : 'It counts for you.';
+}
 
 async function refresh() {
   error.value = '';
@@ -68,8 +90,11 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
     <!-- The apprentice -->
     <section v-if="a" class="nge-mt-sec">
       <h4>Your mentor cells <span v-if="a.practice" class="nge-mt-n">practice</span></h4>
+      <div class="nge-mt-progress" :aria-label="`${a.cellsDone} of ${a.cellsNeeded} mentor cells done`">
+        <span v-for="i in a.cellsNeeded" :key="i" class="nge-mt-dot" :class="{ 'nge-mt-dot--done': i <= a.cellsDone }"></span>
+        <span class="nge-mt-progress-text"><b>{{ a.cellsDone }}</b> of {{ a.cellsNeeded }} done</span>
+      </div>
       <p class="nge-mt-how" v-if="a.status === 'active'">
-        {{ a.cellsDone }} of {{ a.cellsNeeded }} done.
         {{ a.mentorName ? `${a.mentorName} is your mentor.` : 'A mentor takes your first cell when you send it.' }}
         When you complete a claimed cell, it goes to your mentor, who completes it with you or sends suggestions.
       </p>
@@ -79,11 +104,12 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
       </p>
       <p class="nge-mt-how" v-else-if="a.status === 'finished'">You finished the mentor program{{ a.mentorName ? ` with ${a.mentorName}` : '' }}. Your mentor's notes stay here.</p>
       <p v-if="!mentorState.mine.length" class="nge-mt-empty">No cells sent yet. Claim a cell, proofread it, and press Complete.</p>
-      <div v-for="r in mentorState.mine" :key="r.id" class="nge-mt-row" :class="`nge-mt-row--${r.state}`">
+      <div v-for="{ r, n } in myCells" :key="r.id" class="nge-mt-row" :class="`nge-mt-row--${r.state}`">
         <div class="nge-mt-main">
-          <span class="nge-mt-cell">{{ shortCell(r) }}</span>
-          <span class="nge-mt-state">{{ r.state === 'complete' && r.done?.practice ? 'Complete (practice, nothing recorded)' : STATE[r.state] }}</span>
-          <span v-if="r.notes.length || r.cellNote" class="nge-mt-meta">{{ r.notes.length }} note{{ r.notes.length === 1 ? '' : 's' }} in the view</span>
+          <span class="nge-mt-cell">Cell {{ n }}</span>
+          <span class="nge-mt-pill" :class="`nge-mt-pill--${r.state}`">{{ pill(r) }}</span>
+          <span class="nge-mt-meta">{{ shortCell(r) }}<template v-if="r.notes.length">, {{ r.notes.length }} note{{ r.notes.length === 1 ? '' : 's' }} in the view</template></span>
+          <span class="nge-mt-hint">{{ rowHint(r) }}</span>
         </div>
         <p v-if="r.cellNote && (r.state === 'suggestions' || r.state === 'complete')" class="nge-mt-quote">{{ r.mentorName || 'Mentor' }}: {{ r.cellNote }}</p>
         <button class="nge-mt-btn" :title="cannotOpen(r) || 'Open this cell with the notes'" @click="open(r, 'apprentice')">Open</button>
@@ -144,7 +170,19 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
 .nge-mt-empty { margin: 0 0 6px; color: rgba(220, 230, 245, 0.55); }
 .nge-mt-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; padding: 6px 8px; margin-bottom: 4px;
   border: 1px solid rgba(255, 255, 255, 0.08); border-left: 3px solid rgba(120, 180, 255, 0.5); border-radius: 6px; background: rgba(255, 255, 255, 0.03); }
-.nge-mt-row--suggestions { border-left-color: #f5d142; }
+.nge-mt-row--suggestions { border-left-color: #f5d142; background: rgba(245, 209, 66, 0.06); }
+.nge-mt-row--waiting { border-left-color: rgba(220, 230, 245, 0.35); }
+.nge-mt-pill { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.nge-mt-pill--waiting { color: rgba(220, 230, 245, 0.75); border-color: rgba(220, 230, 245, 0.3); }
+.nge-mt-pill--looking { color: #9fc8ff; border-color: rgba(120, 180, 255, 0.55); background: rgba(120, 180, 255, 0.1); }
+.nge-mt-pill--suggestions { color: #f5d142; border-color: rgba(245, 209, 66, 0.6); background: rgba(245, 209, 66, 0.12); }
+.nge-mt-pill--complete { color: #9fe8c0; border-color: rgba(124, 255, 178, 0.45); background: rgba(124, 255, 178, 0.08); }
+.nge-mt-hint { flex-basis: 100%; font-size: 12px; color: rgba(220, 230, 245, 0.6); }
+.nge-mt-progress { display: flex; align-items: center; gap: 7px; margin: 2px 0 8px; }
+.nge-mt-dot { width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(159, 200, 255, 0.5); }
+.nge-mt-dot--done { background: #7fb6ff; border-color: #7fb6ff; }
+.nge-mt-progress-text { margin-left: 6px; font-size: 13px; color: rgba(220, 230, 245, 0.85); }
+.nge-mt-progress-text b { color: #f5d142; }
 .nge-mt-row--complete { border-left-color: rgba(124, 255, 178, 0.6); }
 .nge-mt-main { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
 .nge-mt-cell { font-weight: 600; overflow-wrap: anywhere; }
