@@ -2875,7 +2875,7 @@ exports.ewSheetSync = onRequest(
 // Nseraf's idea (triage report 317), asked for by Ames 2026-11-04. A function of
 // its own, like ewAccessRequest and ewHunt: deploying it never replaces the
 // shared ewSecureWrite. Every rule is in mentors.js (tests: mentors.test.js).
-const EW_MENTOR_CODE_VERSION = "2026-11-04-mentor-poc-1";
+const EW_MENTOR_CODE_VERSION = "2026-11-05-mentor-practice";
 exports.ewMentor = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {

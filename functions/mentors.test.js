@@ -219,6 +219,30 @@ test('who may see what', async () => {
   await assert.rejects(call(2, 'mentor.addMentor', {username: 'second'}), /Admins only/);
 });
 
+test('an admin can be their own apprentice to test alone: no one else is rung, no Mentor Achievement to themself', async () => {
+  const {db, credited, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'ames'});
+  assert.equal((await admin('mentor.status')).apprentice.status, 'active');
+  db._state.notes.length = 0;
+  const {review} = await call(1, 'mentor.send', {taskId: 1, dataset: 'pinky100', rootId: '901'}, {admin: true});
+  assert.deepEqual(db._state.notes, [], 'a real mentor is not rung by an admin test');
+  // A player apprentice still cannot take their own cell.
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const own = (await send(call, 4, 2)).review;
+  await assert.rejects(call(4, 'mentor.claim', {reviewId: own.id}), /Mentors only|not you/);
+  // The admin takes their own and goes through all five.
+  await admin('mentor.claim', {reviewId: review.id});
+  await admin('mentor.complete', {reviewId: review.id});
+  for (let i = 3; i <= CELLS_NEEDED + 1; i++) {
+    const r = (await call(1, 'mentor.send', {taskId: 10 + i, dataset: 'pinky100', rootId: String(900 + i)}, {admin: true})).review;
+    assert.equal(r.state, 'looking', 'straight back to themself as mentor');
+    await admin('mentor.complete', {reviewId: r.id});
+  }
+  assert.equal(credited.filter(c => c.userId === U(1)).length, CELLS_NEEDED);
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Apprentice', U(1)]]);
+});
+
 test('copy has no dashes and says Achievement, never badge', () => {
   const src = require('fs').readFileSync(require.resolve('./mentors'), 'utf8');
   const strings = src.match(/(['`])(?:(?!\1)[^\\\n]|\\.)*\1/g).filter(s => / /.test(s) && /^['`][A-Z🧭🎉🏆]/u.test(s));
@@ -226,4 +250,48 @@ test('copy has no dashes and says Achievement, never badge', () => {
     assert.ok(!/ [-–—] |—|–/.test(s), `dash in: ${s}`);
     assert.ok(!/badge/i.test(s), `badge in: ${s}`);
   }
+});
+
+test('practice: a player joins by themself, the loop rings as usual, and a Complete records nothing', async () => {
+  const {db, credited, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await assert.rejects(call(2, 'mentor.join'), /You are a mentor/);
+  const joined = await call(4, 'mentor.join');
+  assert.equal(joined.apprentice.practice, true);
+  await assert.rejects(call(4, 'mentor.join'), /already/);
+  db._state.notes.length = 0;
+  const {review} = await send(call, 4, 7, {done: {status: 'Complete', coords: '1, 2, 3'}});
+  assert.equal(review.done.practice, true);
+  assert.deepEqual(db._state.notes.map(n => n.to), [U(2)], 'the first cell rings the mentor');
+  await call(2, 'mentor.claim', {reviewId: review.id});
+  await call(2, 'mentor.suggest', {reviewId: review.id, notes: [{position: [1, 2, 3], text: 'check this branch'}], cellNote: 'nearly'});
+  await send(call, 4, 7);
+  db._state.notes.length = 0;
+  const out = await call(2, 'mentor.complete', {reviewId: review.id});
+  assert.equal(out.practice, true);
+  assert.equal(credited.length, 0, 'nothing counts');
+  assert.equal(db._state.tasks.size, 0, 'the claim is not completed');
+  assert.deepEqual(db._state.released, [{taskId: 7, userId: U(4)}], 'the claim is let go');
+  assert.match(db._state.notes[0].title, /practice/);
+  assert.equal((await call(4, 'mentor.status')).apprentice.cellsDone, 1);
+  await call(4, 'mentor.leave');
+  assert.equal((await call(4, 'mentor.status')).apprentice.status, 'left');
+  // An admin-added apprentice is not practice and cannot leave alone.
+  await admin('mentor.addApprentice', {username: 'second'});
+  assert.equal((await call(5, 'mentor.status')).apprentice.practice, false);
+  await assert.rejects(call(5, 'mentor.leave'), /Ask an admin/);
+});
+
+test('practice: five practice cells finish the loop with no Achievement', async () => {
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await call(4, 'mentor.join');
+  for (let i = 1; i <= CELLS_NEEDED; i++) {
+    const {review} = await send(call, 4, i);
+    if (i === 1) await call(2, 'mentor.claim', {reviewId: review.id});
+    const out = await call(2, 'mentor.complete', {reviewId: review.id});
+    assert.equal(out.finished, i === CELLS_NEEDED);
+  }
+  assert.equal(db._state.awards.length, 0);
+  assert.equal((await call(4, 'mentor.status')).apprentice.status, 'finished');
 });

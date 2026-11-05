@@ -24,6 +24,12 @@
  * surface. `db` is restDb (the service key) or memDb (tests, stand-in server).
  * Every bell goes to one named person: a branch test site shares the live
  * data, so nothing here writes to chat or to everyone.
+ *
+ * Practice (Ames 2026-11-05: testers mark themselves as a new player): a
+ * player who joins by themself (mentor.join) is a practice apprentice. Their
+ * cells go through the whole loop, bells and notes included, but a mentor's
+ * Complete records nothing: no CAVE mark, no completion, no sheet row, no
+ * Achievement. The claim is let go instead, so the cell is as it was.
  */
 const CELLS_NEEDED = 5;
 // Ames 2026-11-04: 5, not 2. New players take a while over each cell, and
@@ -67,8 +73,11 @@ function reviewOut(r) {
     sheetDone: !!r.sheet_done,
   };
 }
+/** Joined by themself (mentor.join): a practice apprentice. mentor.join is
+ *  the only way in with no added_by; an admin always leaves their id. */
+const isPractice = a => !!a && !a.added_by;
 const apprenticeOut = a => a && ({
-  id: a.user_id, name: a.user_name, status: a.status, mentorId: a.mentor_id || null, mentorName: a.mentor_name || null,
+  id: a.user_id, name: a.user_name, status: a.status, practice: isPractice(a), mentorId: a.mentor_id || null, mentorName: a.mentor_name || null,
   cellsDone: a.cells_done || 0, cellsNeeded: a.cells_needed || CELLS_NEEDED, startedAt: a.started_at, finishedAt: a.finished_at || null,
 });
 
@@ -132,7 +141,8 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const rootId = segId(args.rootId);
       if (!rootId) fail(400, 'Put the crosshairs in the cell first.');
       const d = args.done && typeof args.done === 'object' ? args.done : {};
-      const done = {status: clean(d.status, 80), notes: clean(d.notes, 2000), cellType: clean(d.cellType, 120), coords: clean(d.coords, 200)};
+      const done = {status: clean(d.status, 80), notes: clean(d.notes, 2000), cellType: clean(d.cellType, 120), coords: clean(d.coords, 200),
+        ...(isPractice(a) ? {practice: true} : {})};
       const fields = {dataset, log_dataset: logDataset, segment_id: segId(args.segmentId) || null, root_id: rootId,
         position: point(args.position), link: /^https:\/\/\S{1,2000}$/.test(String(args.link || '')) ? String(args.link) : null, done, touched_at: stamp};
       const mine = await db.reviewsOfApprentice(meId);
@@ -156,8 +166,9 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (r.mentor_id) {
         await db.notify(r.mentor_id, again ? `🧭 ${who} sent a cell back to you` : `🧭 ${who} sent you a cell`,
           `${who} sent cell ${cellName(r)} for a second look. Open Cell Library, Mentoring.`, meId);
-      } else if (!mine.length) {
+      } else if (!mine.length && !isAdmin) {
         // A new apprentice's first cell: one bell to each mentor with room. Never one per cell.
+        // An admin apprentice is a test (Ames 2026-11-04: no test players yet): nobody is rung.
         for (const m of await db.activeMentors()) {
           if (m.user_id === meId) continue;
           if ((await db.apprenticesOf(m.user_id)).filter(x => x.status === 'active').length >= MAX_APPRENTICES) continue;
@@ -195,7 +206,8 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
     case 'mentor.claim': {
       needReviewer();
       const r = await loadReview(args.reviewId);
-      if (r.apprentice_id === meId) fail(409, 'A mentor looks at your cell, not you.');
+      // An admin may take their own cell, to try both sides alone (Ames 2026-11-04).
+      if (r.apprentice_id === meId && !isAdmin) fail(409, 'A mentor looks at your cell, not you.');
       if (r.state === 'complete') fail(409, 'That cell is complete already.');
       if (r.state === 'suggestions') fail(409, 'That cell is back with the apprentice.');
       if (r.mentor_id && r.mentor_id !== meId) {
@@ -240,6 +252,22 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const won = await db.decideReview(r.id, meId, {...n, state: 'complete', decided_at: stamp, touched_at: stamp});
       if (!won) fail(409, 'That cell is not waiting for you.');
       const finalSeg = segId(args.root) || r.root_id;
+      const practice = !!(r.done && r.done.practice);
+      if (practice) {
+        // Practice: nothing is recorded. The claim is let go, so the cell is
+        // as it was before the test; the count moves so the loop can end.
+        await db.releaseClaim(r.apprentice_id, r.task_id).catch(e => console.warn('[mentors] practice claim not let go', e && e.message));
+        const a = await db.getApprentice(r.apprentice_id);
+        const doneCount = ((a && a.cells_done) || 0) + 1;
+        const needed = (a && a.cells_needed) || CELLS_NEEDED;
+        const finished = !!a && a.status === 'active' && doneCount >= needed;
+        if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
+        await db.notify(r.apprentice_id, '🎉 Your cell is complete (practice)',
+          `${nameOf(me)} completed cell ${cellName(r)} with you. This was practice, so nothing was recorded and the cell is free again. ${Math.min(doneCount, needed)} of ${needed} mentor cells done.`, meId);
+        if (finished) await db.notify(r.apprentice_id, '🏆 Practice finished',
+          `You finished the practice mentor program with ${nameOf(me)}. In the real program this is when the Apprentice Achievement comes.`, meId);
+        return {review: reviewOut(await db.getReview(r.id)), finished, practice: true};
+      }
       try {
         await db.completeTask(r.apprentice_id, r.task_id, finalSeg, (r.done && r.done.coords) || '');
         await credit(r.apprentice_id, {operation: 'complete_task', task_id: r.task_id, dataset: r.log_dataset || r.dataset,
@@ -260,7 +288,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
         await db.notify(r.apprentice_id, '🏆 Apprentice Achievement',
           `You finished the mentor program. From now on your cells count the moment you complete them. Thank you, ${nameOf(me)}, too.`, meId);
-        if (a.mentor_id) {
+        if (a.mentor_id && a.mentor_id !== a.user_id) {
           await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
           await db.notify(a.mentor_id, '🏆 Mentor Achievement', `${a.user_name} finished the mentor program with you.`, meId);
         }
@@ -276,6 +304,25 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       for (const r of await db.reviewsOfApprentice(target)) {
         if (r.mentor_id === meId && r.state !== 'complete') await db.patchReview(r.id, {mentor_id: null, mentor_name: null, claimed_at: null, ...(r.state === 'looking' ? {state: 'waiting'} : {})});
       }
+      return {ok: true};
+    }
+
+    // ── Practice: a player marks themself as a new player ───────────────
+    case 'mentor.join': {
+      if (isMentor && !isAdmin) fail(409, 'You are a mentor. An admin can take you off the mentor list first.');
+      const was = await db.getApprentice(meId);
+      if (was && was.status === 'active') fail(409, 'You are in the mentor program already.');
+      await db.putApprentice({user_id: meId, user_name: nameOf(me), mentor_id: null, mentor_name: null, status: 'active',
+        cells_needed: CELLS_NEEDED, cells_done: 0, started_at: stamp, finished_at: null, added_by: null});
+      await db.notify(meId, '🧭 Welcome to the mentor program (practice)',
+        `Your next ${CELLS_NEEDED} cells go to a mentor when you complete them. This is practice: nothing you complete is recorded, and each cell is let go when your mentor completes it.`, meId);
+      return {ok: true, apprentice: apprenticeOut(await db.getApprentice(meId))};
+    }
+    case 'mentor.leave': {
+      const a = await db.getApprentice(meId);
+      if (!a || a.status !== 'active') fail(409, 'You are not in the mentor program.');
+      if (!isPractice(a)) fail(403, 'An admin added you. Ask an admin to take you out.');
+      await db.patchApprentice(meId, {status: 'left', finished_at: stamp});
       return {ok: true};
     }
 
@@ -388,6 +435,9 @@ function restDb(sb) {
     // An ordinary claim lapses after 30 minutes; one waiting for a mentor must not.
     holdClaim: (taskId, userId) => sb(`task_assignments?task_id=eq.${taskId}&user_id=eq.${userId}&status=eq.active`,
       {method: 'PATCH', body: JSON.stringify({expires_at: 'infinity'}), headers: {Prefer: 'return=minimal'}}),
+    // A practice cell: the apprentice's claim let go, as Release does.
+    releaseClaim: (userId, taskId) => sb('rpc/pilot_task_action', {method: 'POST',
+      body: JSON.stringify({p_user: userId, p_action: 'release', p_args: {id: taskId}})}),
     // The apprentice's own claim, completed as the game completes any claim.
     completeTask: (userId, taskId, finalSeg, coords) => sb('rpc/pilot_task_action', {method: 'POST',
       body: JSON.stringify({p_user: userId, p_action: 'complete', p_args: {id: taskId, final_segment_id: finalSeg || undefined, soma_coords: coords || undefined}})}),
@@ -426,6 +476,7 @@ function memDb(users = []) {
     patchReview: async (id, p) => { const r = rev(id); if (r) Object.assign(r, p); return copy(r || null); },
     decideReview: async (id, mentorId, p) => { const r = rev(id); if (!r || r.state !== 'looking' || r.mentor_id !== mentorId) return false; Object.assign(r, p); return true; },
     holdClaim: async (taskId, userId) => { s.held.push({taskId, userId}); },
+    releaseClaim: async (userId, taskId) => { s.released = (s.released || []).concat({taskId, userId}); },
     completeTask: async (userId, taskId, finalSeg) => {
       const task = s.tasks.get(taskId);
       if (task && task.assigned_to !== userId) throw Object.assign(new Error('Only the current owner can change this claim'), {status: 409});
