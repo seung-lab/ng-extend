@@ -9,7 +9,7 @@
  * anyone: the first mentor to take an apprentice's cell stays with them.
  */
 import { computed, onMounted, ref } from 'vue';
-import { mentorState, loadMentor, loadQueue, takeCell, handBack, openInView, cannotOpen, shortCell, ago, practiceOffered, joinPractice, leavePractice, type MentorReview } from '../mentor';
+import { mentorState, loadMentor, loadQueue, handBack, openInView, cannotOpen, shortCell, ago, practiceOffered, joinPractice, leavePractice, type MentorReview } from '../mentor';
 
 const busy = ref<number | string | null>(null);
 const error = ref('');
@@ -54,12 +54,10 @@ function open(r: MentorReview, role: 'mentor' | 'apprentice') {
   error.value = '';
   try { openInView(r, role); } catch (e: any) { error.value = e?.message || 'That cell cannot be opened here.'; }
 }
-async function take(r: MentorReview) {
-  busy.value = r.id; error.value = '';
-  try { const fresh = await takeCell(r); open(fresh, 'mentor'); }
-  catch (e: any) { error.value = e?.message || 'Could not take that cell.'; await loadQueue().catch(() => {}); }
-  finally { busy.value = null; }
-}
+/** A look first (Ames 2026-11-05: "that should not let me claim to be their
+ *  mentor"): the cell opens in the view and nothing is taken until the box's
+ *  own button is pressed. */
+function take(r: MentorReview) { open(r, 'mentor'); }
 async function giveBack(id: string, name: string) {
   if (!window.confirm(`Hand ${name} back? Their cells go back to the queue for another mentor.`)) return;
   busy.value = id; error.value = '';
@@ -73,7 +71,7 @@ async function practice(join: boolean) {
   catch (e: any) { error.value = e?.message || 'That did not go through.'; }
   finally { busy.value = null; }
 }
-const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.sentAt) > 48 * 3600 * 1000;
+const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.sentAt) > 24 * 3600 * 1000;
 </script>
 
 <template>
@@ -121,7 +119,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
       <section class="nge-mt-sec">
         <h4>Waiting for a mentor <span class="nge-mt-n">{{ q.waiting.length }}</span></h4>
         <p class="nge-mt-how" v-if="mentorState.mentor">
-          Take a cell to look at it. The first cell you take from a new player makes you their mentor for the rest of their {{ mentorState.apprentice?.cellsNeeded || 5 }} cells.
+          Take a look at a cell first. Nothing changes until you press Mentor in its box: then you are that player's mentor for the rest of their {{ mentorState.apprentice?.cellsNeeded || 5 }} cells. A cell left a day goes back here for another mentor.
           You are mentoring {{ q.slots.used }} of {{ q.slots.max }}.
         </p>
         <p v-if="!q.waiting.length" class="nge-mt-empty">Nothing is waiting.</p>
@@ -130,7 +128,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
             <span class="nge-mt-cell">{{ r.apprenticeName }}, {{ shortCell(r) }}</span>
             <span class="nge-mt-meta" :class="{ 'nge-mt-late': idleLong(r) }">sent {{ ago(r.sentAt) }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
           </div>
-          <button class="nge-mt-btn nge-mt-btn--go" :disabled="busy === r.id" :title="cannotOpen(r)" @click="take(r)">{{ busy === r.id ? 'Taking…' : 'Take a look' }}</button>
+          <button class="nge-mt-btn nge-mt-btn--go" :disabled="busy === r.id" :title="cannotOpen(r)" @click="take(r)">Take a look</button>
         </div>
       </section>
 

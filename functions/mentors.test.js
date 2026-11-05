@@ -417,6 +417,26 @@ test('the Mentor row: a tier at 1, 5, 10, 25 and 50 graduates, each celebrated o
   assert.deepEqual(db2._state.notes.filter(n => n.to === U(2) && n.title.startsWith('New Achievement')).map(n => n.title), ['New Achievement: Sheath Shaper']);
 });
 
+test('24 hours: a cell sent to a mentor who never opens it goes back to the queue, and the next mentor to take it is the mentor', async () => {
+  const {call, admin, tick} = setup();
+  assert.equal(OVERDUE_MS, 24 * 3600 * 1000);
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addMentor', {username: 'annkri'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r1 = (await send(call, 4, 1)).review;
+  await call(2, 'mentor.claim', {reviewId: r1.id});
+  await call(2, 'mentor.complete', {reviewId: r1.id});
+  // The second cell goes straight to Nseraf, who never opens it.
+  const r2 = (await send(call, 4, 2)).review;
+  assert.equal(r2.mentorId, U(2));
+  assert.equal((await call(3, 'mentor.queue')).waiting.length, 0, 'not open to others yet');
+  tick(OVERDUE_MS + 1000);
+  const q = await call(3, 'mentor.queue');
+  assert.ok(q.waiting.some(x => x.id === r2.id), 'open to any mentor after a day');
+  await call(3, 'mentor.claim', {reviewId: r2.id});
+  assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, 'annkri');
+});
+
 test('copy has no dashes and says Achievement, never badge', () => {
   const src = require('fs').readFileSync(require.resolve('./mentors'), 'utf8');
   const strings = src.match(/(['`])(?:(?!\1)[^\\\n]|\\.)*\1/g).filter(s => / /.test(s) && /^['`][A-Z🧭🎉🏆]/u.test(s));

@@ -6,7 +6,7 @@ import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore } from '../store';
 import { secureWrite } from '../secure_write';
-import { mentorTextFor, saveMentorText, reviewForBell, knownPlayers, linkPlayers, openInView as openMentorCell, takeCell, cannotOpen as mentorCannotOpen, type MentorText, type MentorReview } from '../mentor';
+import { mentorTextFor, saveMentorText, reviewForBell, knownPlayers, linkPlayers, openInView as openMentorCell, cannotOpen as mentorCannotOpen, type MentorText, type MentorReview } from '../mentor';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
 import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRecapTitle, yearFromRecapTitle } from '../util/recap_week';
@@ -226,9 +226,8 @@ async function openBellCell() {
   try {
     const why = mentorCannotOpen(j.review);
     if (why) { mentorJumpNote.value = why; return; }
-    // A mentor's cell nobody has taken yet is taken first.
-    const r = j.role === 'mentor' && j.review.state === 'waiting' && !j.review.mentorId ? await takeCell(j.review) : j.review;
-    openMentorCell(r, j.role);
+    // Only a look: the box's own button takes the cell (Ames 2026-11-05).
+    openMentorCell(j.review, j.role);
     closeDetail();
     emit('hide');
   } catch (e: any) { mentorJumpNote.value = e?.message || 'That cell could not be opened.'; }

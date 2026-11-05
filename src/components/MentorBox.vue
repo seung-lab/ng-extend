@@ -3,7 +3,7 @@
  * MentorBox: one mentor program cell open in the view (src/mentor.ts).
  *
  * A mentor drops notes as points ("cut here", "you missed an extension"),
- * either with Add here (at the view's center) or with the annotation tools in
+ * either with Pin at crosshairs or with the annotation tools in
  * the Mentor notes layer (a point's description is its note), writes a note
  * for the whole cell, then sends suggestions or completes the cell, which
  * counts for the apprentice. The apprentice sees the same notes, read only.
@@ -13,6 +13,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useDragBox } from '../util/drag_box';
 import { useProofreadingBackendStore } from '../store';
 import { apprenticeFlag } from '../util/mentor_flag';
+import { takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
 import { inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
   completeForApprentice, startMentor, loadMentor, shortCell, type MentorNote } from '../mentor';
 
@@ -37,7 +38,19 @@ const { dragging, posStyle, startDrag } = useDragBox('nge_mentor_box_pos', boxEl
 const cur = computed(() => inView.value);
 const r = computed(() => cur.value?.review ?? null);
 const mentor = computed(() => cur.value?.role === 'mentor');
-const canAct = computed(() => mentor.value && r.value?.state === 'looking');
+const canAct = computed(() => mentor.value && r.value?.state === 'looking' && r.value?.mentorId === backend.userId);
+/** Only looking (Ames 2026-11-05): a mentor's cell they have not taken yet.
+ *  The button takes it, and with a player's first cell, them as an apprentice. */
+const preview = computed(() => mentor.value && !!r.value && r.value.state !== 'complete' && r.value.state !== 'suggestions' && !canAct.value);
+const takeLabel = computed(() => r.value && r.value.mentorId === backend.userId ? 'Review this cell' : `Mentor ${r.value?.apprenticeName || 'this player'}`);
+async function takeIt() {
+  const cur = inView.value;
+  if (!cur) return;
+  busy.value = true; error.value = '';
+  try { cur.review = await takeCell(cur.review); said.value = cur.review.mentorId === backend.userId ? 'This cell is yours. Leave notes, then send suggestions or complete it.' : ''; }
+  catch (e: any) { error.value = e?.message || 'Could not take that cell.'; }
+  finally { busy.value = false; }
+}
 
 const notes = ref<MentorNote[]>([]);
 const cellNote = ref('');
@@ -50,7 +63,7 @@ const said = ref('');
 let timer: number | undefined;
 watch(cur, c => {
   window.clearInterval(timer);
-  error.value = ''; said.value = ''; newNote.value = '';
+  error.value = ''; said.value = ''; newNote.value = ''; nextCell.value = null;
   cellNote.value = c?.review.cellNote ?? '';
   notes.value = c?.review.notes ?? [];
   if (c) timer = window.setInterval(() => {
@@ -73,6 +86,26 @@ function remove(id: string) {
   notes.value = list;
 }
 
+// The next cell for this mentor once one is answered (Ames 2026-11-05: "Can we
+// make a Next UI if there is another cell?"): their own first, then any
+// nobody has taken, oldest first.
+const nextCell = ref<MentorReview | null>(null);
+async function findNext() {
+  nextCell.value = null;
+  try { await loadQueue(); } catch { return; }
+  const q = mentorState.queue, here = r.value?.id;
+  if (!q) return;
+  const mine = q.yours.filter(x => x.id !== here && (x.state === 'waiting' || x.state === 'looking'));
+  const open = q.waiting.filter(x => x.id !== here);
+  nextCell.value = [...mine, ...open].find(x => !cannotOpen(x)) ?? null;
+}
+function openNext() {
+  const n = nextCell.value;
+  if (!n) return;
+  nextCell.value = null;
+  try { openInView(n, 'mentor'); } catch (e: any) { error.value = e?.message || 'That cell could not be opened.'; }
+}
+const THANKS = 'Thank you for helping a new citizen scientist!';
 async function run(what: 'save' | 'suggest' | 'complete') {
   if (!r.value) return;
   if (what === 'complete' && !window.confirm(r.value.done?.practice
@@ -81,12 +114,14 @@ async function run(what: 'save' | 'suggest' | 'complete') {
   busy.value = true; error.value = ''; said.value = '';
   try {
     if (what === 'save') { await saveNotes(cellNote.value); said.value = 'Saved. Only you see them until you send them.'; }
-    else if (what === 'suggest') { await sendSuggestions(cellNote.value); said.value = `Sent. ${r.value.apprenticeName} gets a bell with your suggestions.`; }
+    else if (what === 'suggest') { await sendSuggestions(cellNote.value); said.value = `Sent. ${r.value.apprenticeName} gets a bell with your suggestions. ${THANKS}`; void findNext(); }
     else {
       const out = await completeForApprentice(cellNote.value);
       said.value = r.value.done?.practice
         ? (out.finished ? `Complete. That was ${r.value.apprenticeName}'s last practice cell.` : 'Complete (practice). Nothing was recorded.')
         : out.finished ? `Complete. That was ${r.value.apprenticeName}'s last mentor cell: you both get an Achievement.` : `Complete. It counts for ${r.value.apprenticeName}.`;
+      said.value += ` ${THANKS}`;
+      void findNext();
     }
   } catch (e: any) { error.value = e?.message || 'That did not go through.'; }
   finally { busy.value = false; }
@@ -137,10 +172,14 @@ const STATE: Record<string, string> = {
       <p v-if="!notes.length" class="nge-mbx-meta">{{ mentor ? 'No notes in the view yet.' : 'No notes in the view.' }}</p>
     </div>
 
+    <div v-if="preview" class="nge-mbx-preview">
+      <p class="nge-mbx-meta">You are only looking: nothing changes and nobody is told{{ r.mentorId ? '' : `, and ${r.apprenticeName} is not yours` }} until you press the button.</p>
+      <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="takeIt">{{ busy ? 'Taking…' : takeLabel }}</button>
+    </div>
     <template v-if="canAct">
       <div class="nge-mbx-add">
-        <input v-model="newNote" maxlength="300" placeholder="A note at the center of the view" @keydown.enter.prevent="addHere" />
-        <button class="nge-mbx-btn" :disabled="!newNote.trim()" @click="addHere">Add here</button>
+        <input v-model="newNote" maxlength="300" placeholder="A note to pin at the crosshairs" @keydown.enter.prevent="addHere" />
+        <button class="nge-mbx-btn" :disabled="!newNote.trim()" title="Pins the note where the crosshairs are, the center of the view" @click="addHere">Pin at crosshairs</button>
       </div>
       <p class="nge-mbx-meta">Or place points in the Mentor notes layer with the annotation tools. A point's description is its note.</p>
       <textarea v-model="cellNote" class="nge-mbx-text" rows="3" maxlength="2000" placeholder="A note on the whole cell"></textarea>
@@ -157,6 +196,7 @@ const STATE: Record<string, string> = {
 
     <p v-if="error" class="nge-mbx-err" role="alert">{{ error }}</p>
     <p v-else-if="said" class="nge-mbx-said" role="status">{{ said }}</p>
+    <button v-if="nextCell && mentor" class="nge-mbx-btn nge-mbx-next" @click="openNext">Next cell: {{ nextCell.apprenticeName }}, {{ cellLabel(nextCell) }}</button>
   </div>
 </template>
 
@@ -213,5 +253,7 @@ const STATE: Record<string, string> = {
 .nge-mbx-btn--suggest { border-color: #f5d142; color: #f5d142; background: rgba(245, 209, 66, 0.1); margin-left: auto; }
 .nge-mbx-btn--done { border-color: #7CFFB2; color: #7CFFB2; background: rgba(124, 255, 178, 0.1); }
 .nge-mbx-err { color: #f5d142; margin: 8px 0 0; }
+.nge-mbx-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; }
 .nge-mbx-said { color: rgba(124, 255, 178, 0.9); margin: 8px 0 0; font-size: 14px; }
+.nge-mbx-next { margin-top: 10px; border-color: rgba(120, 180, 255, 0.6); color: #9fc8ff; background: rgba(120, 180, 255, 0.1); }
 </style>

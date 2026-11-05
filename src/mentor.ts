@@ -369,7 +369,7 @@ export function ago(iso: string | null | undefined): string {
 }
 
 // For tests and for looking around in the console, as window.ngeTeam is.
-(window as any).ngeMentor = { setCellComplete, state: mentorState, inView, loadMentor, loadQueue, sendForSecondLook, openInView, closeView, readNotesLayer, isApprentice };
+(window as any).ngeMentor = { tag: () => currentDatasetTag(), setCellComplete, state: mentorState, inView, loadMentor, loadQueue, sendForSecondLook, openInView, closeView, readNotesLayer, isApprentice };
 
 // ── The bells' texts (admins, Ames 2026-11-05: "an edit button so Celia can change it") ──
 export interface MentorText { key: string; label: string; to: string; vars: string[]; title: string; body: string; defaultTitle: string; defaultBody: string; edited: boolean; editedBy: string | null }

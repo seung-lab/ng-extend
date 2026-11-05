@@ -3,7 +3,7 @@
  * MentorAdmin: Admin Hub > Access, Mentor program (a proof of concept,
  * src/mentor.ts). Admins pick the mentors and, for now, add apprentices by
  * hand: a test site shares the live data, so no new player is enrolled
- * without an admin choosing them. Cells left 48 hours show here, and an admin
+ * without an admin choosing them. Cells left 24 hours show here, and an admin
  * can take any of them in the Cell Library's Mentoring tab.
  */
 import { onMounted, ref } from 'vue';
@@ -37,7 +37,7 @@ const addA = () => { const n = apprenticeName.value.trim(); if (n) void act(() =
 
 <template>
   <details class="nge-madm" :open="open" @toggle="onToggle">
-    <summary>Mentor program <span v-if="data?.overdue.length" class="nge-madm-late">{{ data.overdue.length }} waiting over 2 days</span></summary>
+    <summary>Mentor program <span v-if="data?.overdue.length" class="nge-madm-late">{{ data.overdue.length }} waiting over a day</span></summary>
     <p class="nge-madm-how">
       A proof of concept. An apprentice's next {{ data?.cellsNeeded ?? 5 }} cells go to a mentor before they count.
       Mentors take cells in Cell Library, Mentoring, at most {{ data?.maxApprentices ?? 5 }} apprentices each. Admins can mentor too. For now apprentices are added here by hand.
@@ -46,7 +46,7 @@ const addA = () => { const n = apprenticeName.value.trim(); if (n) void act(() =
     <p v-else-if="said" class="nge-madm-said" role="status">{{ said }}</p>
     <template v-if="data">
       <div v-if="data.overdue.length" class="nge-madm-block">
-        <h4>Waiting over 2 days</h4>
+        <h4>Waiting over a day</h4>
         <div v-for="r in data.overdue" :key="r.id" class="nge-madm-row">
           <span>{{ r.apprenticeName }}, {{ shortCell(r) }}, {{ r.mentorName ? `with ${r.mentorName}` : 'not taken' }}, sent {{ ago(r.sentAt) }}</span>
         </div>

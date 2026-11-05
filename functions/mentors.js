@@ -11,7 +11,7 @@
  *
  * Low overhead (Ames's worry): nobody matches people. Mentors take cells from
  * a queue; the first mentor to take an apprentice's cell stays with them, at
- * most MAX_APPRENTICES at a time. Anything left 48 hours shows as overdue to
+ * most MAX_APPRENTICES at a time. Anything left 24 hours shows as overdue to
  * the admins, and a cell taken and then left alone that long goes back to the
  * queue.
  *
@@ -35,7 +35,8 @@ const CELLS_NEEDED = 5;
 // Ames 2026-11-04: 5, not 2. New players take a while over each cell, and
 // meanwhile a mentor can be helping others.
 const MAX_APPRENTICES = 5;
-const OVERDUE_MS = 48 * 3600 * 1000;
+// Ames 2026-11-05: "if mentor doesn't answer in 24h it is open".
+const OVERDUE_MS = 24 * 3600 * 1000;
 const NOTE_MAX = 300;
 const CELL_NOTE_MAX = 2000;
 const NOTES_MAX = 40;
@@ -170,12 +171,13 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
   };
   const bell = async (to, key, vars, image) => { const t = await textOf(key); await db.notify(to, fill(t.title, vars), fill(t.body, vars), meId, image || TEXTS[key].image); };
 
-  /** A cell taken by a mentor and then left 48 hours goes back to the queue,
+  /** A mentor's cell left 24 hours (taken and not answered, or theirs and
+   *  never opened) goes back to the queue,
    *  and so does the apprentice, so another mentor can take them. Done on
    *  read, so nothing has to run on a timer. */
   async function returnIdle(reviews) {
     for (const r of reviews) {
-      if (r.state !== 'looking' || idleFor(r, t) <= OVERDUE_MS) continue;
+      if (!r.mentor_id || (r.state !== 'looking' && r.state !== 'waiting') || idleFor(r, t) <= OVERDUE_MS) continue;
       await db.patchReview(r.id, {state: 'waiting', mentor_id: null, mentor_name: null, claimed_at: null});
       const a = await db.getApprentice(r.apprentice_id);
       if (a && a.mentor_id === r.mentor_id) await db.patchApprentice(a.user_id, {mentor_id: null, mentor_name: null});
