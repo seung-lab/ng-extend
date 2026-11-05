@@ -43,6 +43,9 @@ function figureLines(fig: HTMLElement): string[] {
   const alt = clean(img.getAttribute('alt') || '').replace(/[\[\]]/g, '').trim() || caption.replace(/[*`\[\]()]/g, '');
   const lines = [`![${alt}](${img.getAttribute('src') || ''})`];
   if (caption) lines.push('^ ' + caption);
+  // a phone version (<picture><source>) is kept as its own line under the image
+  const phone = img.parentElement?.tagName === 'PICTURE' ? img.parentElement.querySelector('source')?.getAttribute('srcset') : null;
+  if (phone) lines.push(`@[phone](${phone})`);
   return lines;
 }
 
