@@ -2972,3 +2972,92 @@ exports.ewMentor = onRequest(
     }
   }
 );
+
+// ── Blog email (Ames 2026-11-05) ──────────────────────────────────────────
+// New blog posts, emailed to the connectome.quest subscribers through Resend
+// Broadcasts, each with its own one click unsubscribe. Rules in blog-mail.js.
+// The signup forms (connectome.quest home and blog) post {action:"subscribe"};
+// the blog build (seunglabdata blog-build.yml) posts {action:"check"} after
+// every run. Needs RESEND_FULL_KEY, a FULL ACCESS Resend key: the sending
+// only RESEND_API_KEY cannot manage contacts or broadcasts.
+//   firebase deploy --only functions:ewBlogMail --project eyewire-ii-e4d52
+const resendFullKey = defineSecret("RESEND_FULL_KEY");
+const blogMailCache = {};
+let blogRenderer = null;
+function blogMailIo() {
+  const key = resendFullKey.value().trim();
+  const resend = async (p, init = {}) => {
+    const r = await fetch("https://api.resend.com" + p, {
+      method: init.method || "GET", redirect: "error", signal: AbortSignal.timeout(15000),
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "User-Agent": "eyewire-ii-functions" },
+      ...(init.body ? { body: JSON.stringify(init.body) } : {}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(`resend ${r.status} ${String(j.message || j.name || "").slice(0, 200)}`); e.status = r.status; e.resend = true; throw e; }
+    return j;
+  };
+  const doc = (col, id) => db.collection(col).doc(crypto.createHash("sha256").update(String(id)).digest("hex"));
+  return {
+    resend, cache: blogMailCache,
+    subscribers: {
+      set: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
+      update: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
+    },
+    sentPosts: {
+      get: async (id) => { const d = await doc("blog_mail_posts", id).get(); return d.exists ? d.data() : null; },
+      set: (id, v) => doc("blog_mail_posts", id).set(v, { merge: true }),
+      // Only if nobody changed it since we looked (two checks at once).
+      claim: (id, v, seen) => db.runTransaction(async (tx) => {
+        const ref = doc("blog_mail_posts", id), d = await tx.get(ref);
+        if ((d.exists ? d.data().at : null) !== (seen ? seen.at : null)) return false;
+        tx.set(ref, v, { merge: true });
+        return true;
+      }),
+    },
+    posts: () => ewSb(ewServiceKey.value().trim())("blog_posts?select=id,slug,title,summary,body,cover_url,author_name,published_at&status=eq.published&order=published_at.desc&limit=200"),
+    // A fresh copy, past GitHub Pages' ten minute cache.
+    page: async (url) => {
+      const r = await fetch(`${url}?mail=${Date.now()}`, { redirect: "follow", signal: AbortSignal.timeout(10000) });
+      return r.ok ? r.text() : null;
+    },
+    // The blog's own renderer (assets/blog.js), as the blog build loads it, so
+    // the email shows a post as the blog does. Kept ten minutes.
+    renderer: async () => {
+      if (blogRenderer && Date.now() - blogRenderer.at < 600000) return blogRenderer.fn;
+      const r = await fetch(`https://connectome.quest/assets/blog.js?mail=${Date.now()}`, { redirect: "error", signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error(`blog.js ${r.status}`);
+      const sandbox = { document: { getElementById: () => null, querySelector: () => null, documentElement: { getAttribute: () => null } },
+        location: { search: "" }, URLSearchParams, fetch: () => Promise.reject(new Error("no fetch here")), console };
+      sandbox.globalThis = sandbox;
+      require("vm").runInNewContext(await r.text(), sandbox, { filename: "blog.js", timeout: 2000 });
+      if (!sandbox.BlogRender || !sandbox.BlogRender.renderBlogMarkdown) throw new Error("blog.js has no BlogRender");
+      blogRenderer = { at: Date.now(), fn: (md) => sandbox.BlogRender.renderBlogMarkdown(md) };
+      return blogRenderer.fn;
+    },
+  };
+}
+exports.ewBlogMail = onRequest(
+  { region: "us-central1", secrets: [resendFullKey, ewServiceKey], cors: [/^https:\/\/(www\.)?connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/], invoker: "public", maxInstances: 5 },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long." });
+    const { action, ...args } = req.body || {};
+    try {
+      if (action === "subscribe" && !(await rateLimit(req, false, "visitor:subscribe")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+      // A test goes only to Ames, but not over and over.
+      if (action === "test" && !(await rateLimit({ ip: "blogmail-test" }, false, "visitor:blogmailtest")).ok) return res.status(429).json({ error: "Enough tests for today." });
+      // The blog build asks every 15 minutes; one check a minute is plenty.
+      if (action === "check") {
+        try { await db.collection("blog_mail_checks").doc(String(Math.floor(Date.now() / 60000))).create({ at: new Date().toISOString() }); }
+        catch (e) { return res.json({ ok: true, skipped: true }); }
+      }
+      const data = await require("./blog-mail").handle(action, args, blogMailIo());
+      res.json({ ok: true, ...data });
+    } catch (e) {
+      if (e.status && !e.resend) return res.status(e.status).json({ error: e.message });
+      console.error("[ewBlogMail]", action, e.message);
+      res.status(500).json({ error: action === "subscribe" ? "We couldn't sign you up just now. Please try again in a moment." : "That did not go through." });
+    }
+  }
+);
