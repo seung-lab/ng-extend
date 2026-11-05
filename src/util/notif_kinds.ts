@@ -19,7 +19,9 @@ export type NotifKind = 'main' | 'triage' | 'admin' | 'access' | 'hunt';
 // Access requests have a tab of their own again (Ames 2026-11-02: "access
 // requests can go back in own tab 'access'").
 const ACCESS_STARTS = ['🔑 Access update', '🔑 Beta access request', '🔬 Retina access request', '🔓 Dataset access request'];
-const ADMIN_STARTS = ['⏰ Still waiting on you', 'Proofreading Test:', '💬 Reply to your question from', '📋 '];
+// An invite used to get in (functions/access-request.js, linkInvite), Admin
+// not Pyr (Ames 2026-11-04: "These belong in admin tab").
+const ADMIN_STARTS = ['⏰ Still waiting on you', 'Proofreading Test:', '💬 Reply to your question from', '📋 ', '🔑 Invite used'];
 const TRIAGE_STARTS = ['🗂', '🎉 Fixed'];
 
 export function notifKind(title: string | null | undefined, isAdmin: boolean): NotifKind {
