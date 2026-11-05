@@ -500,9 +500,10 @@ const commentEl = ref<HTMLTextAreaElement | null>(null);
 function commentOn(text: string) {
   const quote = `Re: "${text.length > 80 ? text.slice(0, 79) + '…' : text}" `;
   comment.value = quote + comment.value.replace(/^Re: "[^"]*" /, '');
-  void nextTick(() => { const el = commentEl.value; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); el.scrollIntoView({ block: 'center' }); } });
+  rxLoad('comment', comment.value, true);
+  void nextTick(() => rxEls.comment?.scrollIntoView({ block: 'center' }));
 }
-const mention = shallowRef<{ el: HTMLTextAreaElement | HTMLInputElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
+const mention = shallowRef<{ el: HTMLElement; start: number; query: string; pick: number; set: (v: string) => void; range?: Range; sync?: () => void } | null>(null);
 const mentionMatches = computed(() => {
   const q = (mention.value?.query || '').toLowerCase();
   return people.value.filter(p => namesOf(p).some(n => n.toLowerCase().includes(q))).slice(0, 6);
@@ -516,12 +517,25 @@ function onMentionInput(e: Event, set: (v: string) => void) {
 function pickMention(p: Person) {
   const m = mention.value;
   if (!m) return;
-  const caret = m.el.selectionStart ?? m.el.value.length;
-  const value = m.el.value.slice(0, m.start) + '@' + p.name + ' ' + m.el.value.slice(caret);
+  if (m.range) {
+    // A formatted box: the "@Ce" typed so far becomes the whole name.
+    m.range.deleteContents();
+    const t = document.createTextNode('@' + p.name + '\u00a0');
+    m.range.insertNode(t);
+    const r = document.createRange(); r.setStartAfter(t); r.collapse(true);
+    const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r);
+    mention.value = null;
+    m.el.focus();
+    m.sync?.();
+    return;
+  }
+  const el = m.el as HTMLTextAreaElement;
+  const caret = el.selectionStart ?? el.value.length;
+  const value = el.value.slice(0, m.start) + '@' + p.name + ' ' + el.value.slice(caret);
   m.set(value);
   const at = m.start + p.name.length + 2;
   mention.value = null;
-  void nextTick(() => { m.el.focus(); m.el.setSelectionRange(at, at); });
+  void nextTick(() => { el.focus(); el.setSelectionRange(at, at); });
 }
 function onMentionKey(e: KeyboardEvent) {
   e.stopPropagation();
@@ -638,7 +652,7 @@ const commentsHead = ref<HTMLElement | null>(null);
 function toComments() {
   void nextTick(() => {
     commentsHead.value?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    setTimeout(() => commentEl.value?.focus({ preventScroll: true }), 350);
+    setTimeout(() => rxEls.comment?.focus({ preventScroll: true }), 350);
   });
 }
 function openAt(c: Card, part: 'comments') {
@@ -818,7 +832,7 @@ const replyEl = ref<HTMLTextAreaElement | HTMLTextAreaElement[] | null>(null);
 const threadStarter = (c: Card, at: string) => c.comments.find(x => x.at === at)?.by || 'this';
 function startReply(at: string) {
   replyTo.value = at; replyText.value = '';
-  void nextTick(() => { const el = Array.isArray(replyEl.value) ? replyEl.value[0] : replyEl.value; el?.focus(); });
+  rxLoad('reply', '', true);
 }
 async function sendReply(c: Card) {
   const t = replyText.value.trim();
@@ -1265,7 +1279,10 @@ async function addCommentImages(files: FileList | File[] | null | undefined) {
     commentImageBusy.value++;
     try {
       const url = await uploadImage(f);
-      if (url) comment.value = (comment.value.replace(/\s+$/, '') + (comment.value.trim() ? '\n' : '') + url + '\n');
+      if (!url) continue;
+      const el = rxEls.comment;
+      if (el) { el.insertAdjacentHTML('beforeend', `<p>${url.replace(/[<>"&]/g, '')}</p>`); comment.value = rxMd(el); }
+      else comment.value = (comment.value.replace(/\s+$/, '') + (comment.value.trim() ? '\n' : '') + url + '\n');
     } finally { commentImageBusy.value--; }
   }
 }
@@ -1276,6 +1293,94 @@ function onCommentPaste(e: ClipboardEvent) {
 }
 /** Pasted bold, italics, lists and links stay, as Markdown in a plain box
  *  (Ames 2026-11-05: "Let me paste formatted text here"). Plain text pastes as usual. */
+const rxEls: Record<string, HTMLElement | null> = {};
+const rxRef = (key: string) => (el: unknown) => { rxEls[key] = (el as HTMLElement | null) || null; };
+const rxMd = (el: HTMLElement) => htmlToMarkdown(el.innerHTML).replace(/^[ \t]*(?:[-*]|\d+\.)[ \t]*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+/** The box always types into a paragraph, so lists and the first line behave as in a document. */
+function rxFocus(e: FocusEvent) {
+  const el = e.currentTarget as HTMLElement;
+  try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch { /* older browsers */ }
+  if (!el.innerHTML.trim() || el.innerHTML === '<br>') {
+    el.innerHTML = '<p><br></p>';
+    const r = document.createRange(); r.setStart(el.firstChild as Node, 0); r.collapse(true);
+    const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r);
+  }
+  rxMark(el);
+}
+/** Whether to show the placeholder. */
+function rxMark(el: HTMLElement) { el.dataset.empty = el.innerText.trim() ? 'false' : 'true'; }
+function rxLoad(key: string, md: string, focus = false) {
+  void nextTick(() => {
+    const el = rxEls[key];
+    if (!el) return;
+    el.innerHTML = md ? renderSafeMarkdown(md, true) : '';
+    rxMark(el);
+    if (focus) {
+      el.focus();
+      const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+      const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r);
+    }
+  });
+}
+/** "- " or "* " starts a bulleted list, "1. " a numbered one, as in a document. */
+function autoListAtCaret() {
+  const sel = window.getSelection();
+  const node = sel?.anchorNode;
+  if (!node || node.nodeType !== Node.TEXT_NODE || (sel!.anchorOffset > 3)) return;
+  const t = (node as Text).data.replace(/\u00a0/g, ' ');
+  const m = t.match(/^([-*•]|1[.)]) /);
+  if (m && !(node.parentElement && node.parentElement.closest('li')) && sel!.anchorOffset === m[0].length) {
+    const r = document.createRange(); r.setStart(node, 0); r.setEnd(node, m[0].length);
+    sel!.removeAllRanges(); sel!.addRange(r);
+    document.execCommand('delete');
+    document.execCommand(m[1].startsWith('1') ? 'insertOrderedList' : 'insertUnorderedList');
+  }
+}
+/** The @ picker, in a box that formats as you type. */
+function richMention(el: HTMLElement, sync: () => void) {
+  const sel = window.getSelection();
+  const node = sel?.anchorNode;
+  const clear = () => { if (mention.value?.range) mention.value = null; };
+  if (!sel || !node || node.nodeType !== Node.TEXT_NODE || !el.contains(node)) return clear();
+  const upto = (node as Text).data.slice(0, sel.anchorOffset);
+  const m = upto.match(/(^|[\s\u00a0])@([^\s@\u00a0]{0,30})$/);
+  if (!m) return clear();
+  const r = document.createRange();
+  r.setStart(node, sel.anchorOffset - m[2].length - 1); r.setEnd(node, sel.anchorOffset);
+  mention.value = { el, start: 0, query: m[2], pick: 0, set: () => {}, range: r, sync };
+}
+function rxInput(e: Event, set: (v: string) => void) {
+  const el = e.currentTarget as HTMLElement;
+  autoListAtCaret();
+  rxMark(el);
+  set(rxMd(el));
+  richMention(el, () => set(rxMd(el)));
+}
+function rxKey(e: KeyboardEvent, onSend?: () => void) {
+  onMentionKey(e);
+  if (e.defaultPrevented) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && onSend) { e.preventDefault(); onSend(); }
+}
+function rxPaste(e: ClipboardEvent, set: (v: string) => void, onImages?: (files: File[]) => void) {
+  const files = imageFiles(e);
+  if (files.length && onImages) { e.preventDefault(); onImages(files); return; }
+  const el = e.currentTarget as HTMLElement;
+  const html = e.clipboardData?.getData('text/html');
+  const text = e.clipboardData?.getData('text/plain') || '';
+  e.preventDefault();
+  if (html) document.execCommand('insertHTML', false, renderSafeMarkdown(htmlToMarkdown(html), true));
+  else document.execCommand('insertText', false, text);
+  set(rxMd(el));
+}
+function rxCmd(key: string, cmd: string, set: (v: string) => void) {
+  const el = rxEls[key];
+  if (!el) return;
+  el.focus();
+  document.execCommand(cmd);
+  set(rxMd(el));
+}
+// A sent comment empties its box.
+watch(comment, v => { const el = rxEls.comment; if (!v && el && el.innerText.trim()) { el.innerHTML = ''; rxMark(el); } });
 function pasteFormatted(e: ClipboardEvent, set: (v: string) => void) {
   const html = e.clipboardData?.getData('text/html');
   if (!html || !htmlHasFormatting(html)) return;
@@ -1697,11 +1802,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <div v-for="{ cm, i, depth, rootAt, last } in commentRows(openCard)" :key="i" class="nge-todo-comment" :class="{ 'nge-todo-comment--reply': depth }">
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}<template v-if="cm.edited_at"> · edited <button type="button" class="nge-todo-linkish" @click="toggleOriginal(openCard.id, i)">{{ shownOriginal[openCard.id + ':' + i] ? 'Hide original' : 'Show original' }}</button></template>
             <button type="button" class="nge-todo-linkish nge-todo-comment-reply" @click="startReply(rootAt)">↩ Reply</button>
-            <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text">✎ Edit</button></div>
+            <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text; rxLoad('edit', cm.text, true)">✎ Edit</button></div>
           <template v-if="commentEdit === i">
-            <textarea v-autogrow v-model="commentDraft" class="nge-todo-input" rows="2" maxlength="2000" aria-label="Edit comment"
-                      @paste="pasteFormatted($event, v => commentDraft = v)"
-                      @input="onMentionInput($event, v => commentDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+            <div :ref="rxRef('edit')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Edit comment"
+                 @input="rxInput($event, v => commentDraft = v)" @keydown="rxKey($event, () => saveCommentEdit(openCard, i))" @keyup.stop @keypress.stop
+                 @paste="rxPaste($event, v => commentDraft = v)"></div>
             <div class="nge-todo-row">
               <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !commentDraft.trim()" @click="saveCommentEdit(openCard, i)">Save</button>
               <button class="nge-todo-btn" @click="commentEdit = null">Cancel</button>
@@ -1710,10 +1815,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <div v-else class="nge-todo-notes nge-todo-md" v-html="commentHtml(cm.text)"></div>
           <div v-if="cm.original && shownOriginal[openCard.id + ':' + i]" class="nge-todo-original"><span>Original</span> {{ cm.original }}</div>
           <div v-if="last && replyTo === rootAt" class="nge-todo-reply-box">
-            <textarea v-autogrow ref="replyEl" v-model="replyText" class="nge-todo-input" rows="2" maxlength="2000" aria-label="Reply"
-                      :placeholder="'Reply to ' + threadStarter(openCard, rootAt) + '. Type @ to tag someone.'"
-                      @input="onMentionInput($event, v => replyText = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
-                      @paste="pasteFormatted($event, v => replyText = v)" @keydown.ctrl.enter="sendReply(openCard)"></textarea>
+            <div :ref="rxRef('reply')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Reply"
+                 :data-placeholder="'Reply to ' + threadStarter(openCard, rootAt) + '. Type @ to tag someone.'"
+                 @input="rxInput($event, v => replyText = v)" @keydown="rxKey($event, () => sendReply(openCard))" @keyup.stop @keypress.stop
+                 @paste="rxPaste($event, v => replyText = v)"></div>
             <div class="nge-todo-row">
               <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !replyText.trim()" @click="sendReply(openCard)">Reply</button>
               <button class="nge-todo-btn" @click="replyTo = null">Cancel</button>
@@ -1721,14 +1826,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </div>
         </div>
         <div class="nge-todo-fmtbar" role="toolbar" aria-label="Comment formatting">
-          <button type="button" title="Bold" @mousedown.prevent @click="fmtBold(commentBox)"><b>B</b></button>
-          <button type="button" title="Italic" @mousedown.prevent @click="fmtItalic(commentBox)"><i>I</i></button>
-          <button type="button" title="Bulleted list" @mousedown.prevent @click="fmtList(commentBox, false)">• Bullets</button>
-          <button type="button" title="Numbered list" @mousedown.prevent @click="fmtList(commentBox, true)">1. Numbers</button>
+          <button type="button" title="Bold (Ctrl+B)" @mousedown.prevent @click="rxCmd('comment', 'bold', v => comment = v)"><b>B</b></button>
+          <button type="button" title="Italic (Ctrl+I)" @mousedown.prevent @click="rxCmd('comment', 'italic', v => comment = v)"><i>I</i></button>
+          <button type="button" title="Bulleted list (or type - and a space)" @mousedown.prevent @click="rxCmd('comment', 'insertUnorderedList', v => comment = v)">• Bullets</button>
+          <button type="button" title="Numbered list (or type 1. and a space)" @mousedown.prevent @click="rxCmd('comment', 'insertOrderedList', v => comment = v)">1. Numbers</button>
         </div>
-        <textarea v-autogrow ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone. Paste or drop a picture to add it." aria-label="Comment"
-                  data-nge-notes-paste @paste="onCommentPaste" @dragover.prevent @drop="onCommentDrop"
-                  @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+        <div :ref="rxRef('comment')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Comment"
+             data-placeholder="Write a comment. Type @ to tag someone. Paste or drop a picture to add it. Ctrl+Enter sends." data-nge-notes-paste
+             @input="rxInput($event, v => comment = v)" @keydown="rxKey($event, () => sendComment(openCard))" @keyup.stop @keypress.stop
+             @paste="rxPaste($event, v => comment = v, addCommentImages)" @dragover.prevent @drop="onCommentDrop"></div>
         <div v-if="taggedPeople(comment).length" class="nge-todo-tagging">Tagging <span v-for="p in taggedPeople(comment)" :key="p.id" class="nge-todo-tag-chip" :style="{ background: colorOf(p.id) }">@{{ p.name }}</span></div>
         <div class="nge-todo-row">
           <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !!commentImageBusy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
@@ -1842,6 +1948,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-avatar--helper { margin-left: -6px; box-shadow: 0 0 0 2px var(--card); }
 .nge-todo-rich { min-height: 140px; max-height: 60vh; overflow-y: auto; padding: 10px 12px; line-height: 1.55; font-size: 14px; cursor: text; outline: none; white-space: normal; }
 .nge-todo-rich:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.18); }
+.nge-todo-rich--small { min-height: 56px; position: relative; }
+.nge-todo-rich--small:empty::before { content: none; }
+.nge-todo-rich--small[data-empty="true"]::before { content: attr(data-placeholder); position: absolute; left: 12px; top: 10px; color: var(--dim); pointer-events: none; }
+.nge-todo-rich--small p { margin: 0 0 4px; }
 .nge-todo-rich:empty::before { content: attr(data-placeholder); color: var(--dim); pointer-events: none; }
 .nge-todo-rich p { margin: 0 0 8px; }
 .nge-todo-rich ul, .nge-todo-rich ol { margin: 0 0 8px; padding-left: 22px; }
