@@ -451,9 +451,9 @@ function onKeyDown(e: KeyboardEvent) {
     if (editing.value) return;
     const tag = (document.activeElement as HTMLElement)?.tagName;
     const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable;
-    if ((e.code === 'Enter' || e.code === 'Space') && viewerToolActive()) return;
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') && viewerToolActive()) return;
 
-    if (e.code === 'Enter' && !isTyping) {
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !isTyping) {
         e.preventDefault();
         e.stopPropagation();
         if (props.last && !props.step.noConfetti) {

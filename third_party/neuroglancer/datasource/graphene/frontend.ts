@@ -2382,6 +2382,8 @@ const MULTICUT_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:touchtap1x2': {action: 'nge-tap-double'},
   'at:shift?+keyg': {action: 'swap-group'},
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
 });
 
 /** nge: "Keep open after a cut", the preference at the right end of the cut
@@ -2819,6 +2821,8 @@ const MAX_MERGE_COUNT = 20;
 
 const MERGE_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
   // EyeWire II: merge places its own points. Without this, ctrl+click ran the
   // viewer's general "annotate" action, which uses whichever layer is
   // selected: entering merge straight from an annotation layer dropped an
@@ -3062,6 +3066,8 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
 
 const FIND_PATH_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
   'at:shift?+control+mousedown0': {action: 'add-point'},
   'at:touchtap1x1': {action: 'nge-tap-place'},
   'at:touchtap1x2': {action: 'nge-tap-double'},
