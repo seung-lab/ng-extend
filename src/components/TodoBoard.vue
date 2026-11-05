@@ -334,7 +334,18 @@ const openWidth = (c: Card) => { const z = cardSizes.value[c.id]; return z ? { m
 // "✓ Done" on a card's face: the card shines gold, a burst of confetti flies
 // out of it, then it moves to Done and Nurro cheers.
 const DONE_COLORS = ['#4f8cff', '#7c9cff', '#38bdf8', '#2ec4b6', '#f5c542', '#ff6fae', '#a78bfa'];
-const party = ref<{ key: number; x: number; y: number; bits: { dx: number; dy: number; r: number; c: string; d: number; wide: boolean }[] } | null>(null);
+const party = ref<{ key: number; x: number; y: number; spark?: boolean; bits: { dx: number; dy: number; r: number; c: string; d: number; wide: boolean }[] } | null>(null);
+/** Tiny glowing sparkles, for a checklist tick (Ames 2026-11-05: "tiny sparkles in stead of huge confetti"). */
+const SPARK_COLORS = ['#4f8cff', '#2ec4b6', '#f5c542', '#a78bfa', '#38bdf8'];
+function sparkle(x: number, y: number, n = 12, reach = 34) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  party.value = { key: Date.now(), x, y, spark: true, bits: Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.5, v = reach * (0.5 + Math.random() * 0.7);
+    return { dx: Math.cos(a) * v, dy: Math.sin(a) * v, r: 0, c: SPARK_COLORS[i % SPARK_COLORS.length], d: 0.45 + Math.random() * 0.35, wide: i % 4 === 0 };
+  }) };
+  const key = party.value.key;
+  setTimeout(() => { if (party.value?.key === key) party.value = null; }, 1000);
+}
 const winning = ref<string | null>(null);
 function burst(x: number, y: number, n = 64, speed = 1) {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
@@ -362,11 +373,11 @@ function checkItem(c: Card, i: number, e: Event) {
   if (willAll) {
     const panel = (e.target as HTMLElement).closest('.nge-todo-check') as HTMLElement | null;
     const pb = panel?.getBoundingClientRect() || box;
-    burst(pb.left + pb.width / 2, pb.top + 20, 80, 1.1);
+    sparkle(pb.left + 60, pb.top + 10, 26, 80);
     allDoneFor.value = c.id;
     setTimeout(() => { if (allDoneFor.value === c.id) allDoneFor.value = null; }, 3200);
   } else {
-    burst(box.left + box.width / 2, box.top + box.height / 2, 22, 0.45);
+    sparkle(box.left + box.width / 2, box.top + box.height / 2);
   }
 }
 async function finish(c: Card, e?: MouseEvent) {
@@ -1352,9 +1363,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       </div>
     </div>
     <Teleport to="body">
-      <div v-if="party" :key="party.key" class="nge-todo-party" aria-hidden="true" :style="{ left: party.x + 'px', top: party.y + 'px' }">
+      <div v-if="party" :key="party.key" class="nge-todo-party" :class="{ 'nge-todo-party--spark': party.spark }" aria-hidden="true" :style="{ left: party.x + 'px', top: party.y + 'px' }">
         <i v-for="(b, i) in party.bits" :key="i" :class="{ 'nge-todo-party-bit--wide': b.wide }" class="nge-todo-party-bit"
-           :style="{ background: b.c, '--dx': b.dx + 'px', '--dy': b.dy + 'px', '--r': b.r + 'deg', animationDuration: b.d + 's' }"></i>
+           :style="{ background: b.c, color: b.c, '--dx': b.dx + 'px', '--dy': b.dy + 'px', '--r': b.r + 'deg', animationDuration: b.d + 's' }"></i>
       </div>
     </Teleport>
     <div v-if="nurroCheer" class="nge-todo-cheer" role="status"><img :src="imgNurroBravo" alt="" /><span>{{ nurroCheer }}</span></div>
@@ -2055,6 +2066,14 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-party-bit { position: absolute; left: -4px; top: -7px; width: 8px; height: 14px; border-radius: 2px;
   animation: nge-todo-burst 1.2s cubic-bezier(.15,.7,.35,1) both; }
 .nge-todo-party-bit--wide { width: 12px; height: 8px; border-radius: 50%; }
+.nge-todo-party--spark .nge-todo-party-bit { left: -3px; top: -3px; width: 5px; height: 5px; border-radius: 50%;
+  box-shadow: 0 0 6px 1px currentColor, 0 0 10px rgba(124, 244, 255, 0.6); animation-name: nge-todo-sparkle; animation-timing-function: ease-out; }
+.nge-todo-party--spark .nge-todo-party-bit--wide { width: 7px; height: 7px; left: -4px; top: -4px; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); box-shadow: none; }
+@keyframes nge-todo-sparkle {
+  0% { transform: translate(0, 0) scale(0.4); opacity: 1; }
+  60% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(0.1); opacity: 0; }
+}
 @keyframes nge-todo-burst {
   0% { transform: translate(0, 0) rotate(0) scale(0.4); opacity: 1; }
   70% { opacity: 1; }
