@@ -16,15 +16,18 @@ const backendStore = useProofreadingBackendStore();
 type Tab = 'day' | 'week' | 'alltime';
 const activeTab    = ref<Tab>('day');
 
-// Metric toggle: ranks by edits (split+merge) or completions (mark_complete).
-// Persists across sessions in localStorage.
-type Metric = 'edits' | 'completions';
+// Metric toggle: ranks by edits (split+merge), completions (mark_complete),
+// or Quests: active time on Super Quests (Ames 2026-11-05,
+// supabase-quest-leaderboard.sql). Persists across sessions in localStorage.
+type Metric = 'edits' | 'completions' | 'quests';
 const METRIC_STORAGE_KEY = 'nge-leaderboard-metric';
-const initialMetric = (localStorage.getItem(METRIC_STORAGE_KEY) as Metric) || 'edits';
-const metric = ref<Metric>(initialMetric === 'completions' ? 'completions' : 'edits');
+const initialMetric = (() => { try { return localStorage.getItem(METRIC_STORAGE_KEY); } catch { return null; } })();
+const metric = ref<Metric>(initialMetric === 'completions' || initialMetric === 'quests' ? initialMetric : 'edits');
+const isQuests = computed(() => metric.value === 'quests');
 function setMetric(m: Metric) {
   metric.value = m;
   try { localStorage.setItem(METRIC_STORAGE_KEY, m); } catch {}
+  if (m === 'quests') void backendStore.loadQuestBoard();
 }
 const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
@@ -129,8 +132,14 @@ function depart(): Promise<void> {
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
   backendStore.loadLeaderboard();
+  // The Quests board is read only while it is the one shown.
+  if (isQuests.value) void backendStore.loadQuestBoard();
   // Every two minutes: each refresh is a read in every tab with the board open.
-  refreshTimer = setInterval(() => { if (!document.hidden) backendStore.loadLeaderboard(); }, 120_000);
+  refreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (isQuests.value) void backendStore.loadQuestBoard();
+    else backendStore.loadLeaderboard();
+  }, 120_000);
 });
 onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 
@@ -140,6 +149,30 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 // view isn't deployed yet. The DemoUser stats fields are reused as
 // generic time-window slots — the leaderboard's metric/tab selection
 // decides how to interpret them.
+// Quests: the stats slots hold seconds of Super Quest time (24h slot = the
+// current US Eastern day, as claim_active_days counts), and cellsSubmitted
+// holds the Super Quests finished.
+const questUsers = computed<DemoUser[]>(() => backendStore.questBoard.map((u: any) => ({
+  id: u.id,
+  name: u.display_name || 'Anonymous',
+  flag: u.flag || '',
+  bio: '',
+  stats: {
+    editsAllTime: u.quest_seconds_alltime ?? 0,
+    mergesAllTime: 0,
+    splitsAllTime: 0,
+    editsThisWeek: u.quest_seconds_week ?? 0,
+    mergesThisWeek: 0,
+    splitsThisWeek: 0,
+    editsThisMonth: u.quest_seconds_today ?? 0,
+    mergesThisMonth: 0,
+    splitsThisMonth: 0,
+    cellsSubmitted: u.quests_finished ?? 0,
+    currentStreak: u.current_streak || 0,
+    longestStreak: 0,
+  },
+})));
+
 const supabaseUsers = computed<DemoUser[]>(() => {
   return backendStore.leaderboard.map((u: any) => {
     const isCompletions = metric.value === 'completions';
@@ -170,14 +203,38 @@ const supabaseUsers = computed<DemoUser[]>(() => {
   });
 });
 
-const metricLabel = computed(() => metric.value === 'completions' ? 'Cells' : 'Edits');
+const metricLabel = computed(() => isQuests.value ? 'Time' : metric.value === 'completions' ? 'Cells' : 'Edits');
 
 // Only real players, ever. With nothing to show the board says why (below);
 // it used to fill itself with made-up demo players (audit, 2026-10-05).
-const userSource = computed(() => supabaseUsers.value);
+// On Quests, only players with time in the window shown.
+const userSource = computed(() => isQuests.value ? questUsers.value.filter(u => editCountForTab(u) > 0) : supabaseUsers.value);
+
+/** Quest time as players read it: "45m", "3h 12m". */
+function questTime(seconds: number): string {
+  const m = Math.floor(Math.max(0, seconds) / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60).toLocaleString()}h ${String(m % 60).padStart(2, '0')}m`;
+}
+/** The score cell: a count, or quest time. Counts up with the rows. */
+function scoreText(user: DemoUser): string {
+  const v = editCountForTab(user) * rollK.value;
+  return isQuests.value ? questTime(v) : Math.round(v).toLocaleString();
+}
 
 /** Why there are no rows, or a note above the rows; '' when all is well. */
 const boardNote = computed(() => {
+  if (isQuests.value) {
+    const qs = backendStore.questBoardState;
+    if (qs === 'loading' && !questUsers.value.length) return 'Loading the board';
+    if (qs === 'unavailable') return questUsers.value.length
+      ? 'The board could not be refreshed just now. These are the last numbers it read.'
+      : 'The Quests board is not available right now. Please try again in a moment.';
+    if (!boardRows.value.length) return activeTab.value === 'alltime'
+      ? 'Nobody has spent time on a Super Quest yet.'
+      : activeTab.value === 'day' ? 'Nobody has worked on a Super Quest today yet.' : 'Nobody has worked on a Super Quest this week yet.';
+    return '';
+  }
   const st = backendStore.leaderboardState;
   if (st === 'loading' && !supabaseUsers.value.length) return 'Loading the board';
   if (st === 'unavailable') return supabaseUsers.value.length
@@ -189,10 +246,12 @@ const boardNote = computed(() => {
   return '';
 });
 /** No rows at all on the tab being shown. */
-const boardBlank = computed(() =>
+const boardBlank = computed(() => isQuests.value ? !questUsers.value.length :
   !supabaseUsers.value.length || (backendStore.leaderboardState === 'alltime-only' && activeTab.value !== 'alltime'));
-const readAt = computed(() => backendStore.leaderboardAt
-  ? new Date(backendStore.leaderboardAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+const readAt = computed(() => {
+  const at = isQuests.value ? backendStore.questBoardAt : backendStore.leaderboardAt;
+  return at ? new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+});
 
 // Sort users by the active tab's edit metric.
 //   day → editsThisMonth field (now repurposed to hold edits_24h)
@@ -225,7 +284,8 @@ const boardRows = computed<{ user: DemoUser; rank: number; below: boolean }[]>((
   if (at >= BOARD_SIZE) {
     // The loaded list only holds the top of each ranking, so the true place
     // comes from the server's count of players ahead.
-    const rank = Math.max(backendStore.leaderboardMyRanks[rankingColumn.value] ?? 0, at + 1);
+    // The Quests board holds every player with quest time, so its place is exact.
+    const rank = isQuests.value ? at + 1 : Math.max(backendStore.leaderboardMyRanks[rankingColumn.value] ?? 0, at + 1);
     rows.push({ user: all[at], rank, below: true });
   }
   return rows;
@@ -287,6 +347,9 @@ const earnedExplorationForUser = computed(() => {
 });
 
 function selectUser(user: DemoUser) {
+  // The card shows edits and Achievements; on the Quests board a row opens
+  // the player's profile instead.
+  if (isQuests.value) { openFullProfile(user.id); return; }
   selectedUser.value = user;
   selectedBadgeId.value = null;
   // The board's rows carry only what the board draws; the card's all-time
@@ -449,7 +512,8 @@ onUnmounted(() => {
 
         <div class="nge-lb-tabs">
           <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'day' }"
-                  @click="activeTab = 'day'">24h</button>
+                  :title="isQuests ? 'Today, in US Eastern time' : undefined"
+                  @click="activeTab = 'day'">{{ isQuests ? 'Today' : '24h' }}</button>
           <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'week' }"
                   @click="activeTab = 'week'">Week</button>
           <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'alltime' }"
@@ -468,7 +532,14 @@ onUnmounted(() => {
             :class="{ 'nge-lb-metric--active': metric === 'completions' }"
             @click="setMetric('completions')"
           >Cells</button>
+          <button
+            class="nge-lb-metric"
+            :class="{ 'nge-lb-metric--active': metric === 'quests' }"
+            title="Time spent working on Super Quests"
+            @click="setMetric('quests')"
+          >Quests</button>
         </div>
+        <div v-if="isQuests" class="nge-lb-quest-lead">Time spent working on Super Quests. Days are US Eastern time.</div>
 
         <div ref="contentEl" class="nge-lb-content">
           <div v-if="boardNote" class="nge-lb-note" role="status">{{ boardNote }}</div>
@@ -478,7 +549,8 @@ onUnmounted(() => {
                 <th class="nge-lb-th nge-lb-th--rank">#</th>
                 <th class="nge-lb-th">Name</th>
                 <th class="nge-lb-th nge-lb-th--num">{{ metricLabel }}</th>
-                <th class="nge-lb-th nge-lb-th--badge">★</th>
+                <th v-if="isQuests" class="nge-lb-th nge-lb-th--badge" title="Super Quests finished">Done</th>
+                <th v-else class="nge-lb-th nge-lb-th--badge">★</th>
               </tr>
             </thead>
             <tbody>
@@ -513,9 +585,14 @@ onUnmounted(() => {
                   </span>
                 </td>
                 <td class="nge-lb-td nge-lb-td--num">
-                  {{ Math.round(editCountForTab(user) * rollK).toLocaleString() }}
+                  {{ scoreText(user) }}
                 </td>
-                <td class="nge-lb-td nge-lb-td--badge">
+                <td v-if="isQuests" class="nge-lb-td nge-lb-td--badge"
+                    :title="`${user.stats.cellsSubmitted.toLocaleString()} Super Quest${user.stats.cellsSubmitted === 1 ? '' : 's'} finished`">
+                  <span v-if="user.stats.cellsSubmitted > 0" class="nge-lb-quests-done">{{ user.stats.cellsSubmitted.toLocaleString() }}</span>
+                  <span v-else class="nge-lb-badge-none">—</span>
+                </td>
+                <td v-else class="nge-lb-td nge-lb-td--badge">
                   <img
                     v-if="topBadge(user)"
                     :src="getBadgeUrl(topBadge(user)?.imageKey ?? '')"
@@ -1324,6 +1401,11 @@ onUnmounted(() => {
 }
 
 .nge-lb-badge-none { color: #444; }
+.nge-lb-quests-done { font-weight: 600; color: #ffd08a; }
+.nge-lb-quest-lead {
+  padding: 6px 16px 0; text-align: center; flex-shrink: 0;
+  font-size: 11.5px; color: rgba(160, 195, 230, 0.7);
+}
 .nge-lb-note {
   margin: 14px 16px; padding: 10px 12px; border-radius: 8px;
   font-size: 12.5px; line-height: 1.45; color: #cfe3ff;

@@ -4915,6 +4915,32 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     leaderboardState.value = 'unavailable';
   }
 
+  // ── Quests board: active time on Super Quests (supabase-quest-leaderboard.sql)
+  /** One row per player with any Super Quest time: seconds today (ET day),
+   *  in the last 7 ET days and all time, and quests finished. The view is a
+   *  cache refreshed every 5 minutes; the board reads all of it at once. */
+  const questBoard: Ref<any[]> = ref([]);
+  const questBoardState: Ref<'loading' | 'ok' | 'unavailable'> = ref('loading');
+  const questBoardAt: Ref<number> = ref(0);
+  async function loadQuestBoard() {
+    try {
+      const { data, error } = await supabase.from('quest_leaderboard_cache')
+        .select('id, display_name, flag, current_streak, quest_seconds_today, quest_seconds_week, quest_seconds_alltime, quests_finished')
+        .order('quest_seconds_alltime', { ascending: false }).order('id', { ascending: true })
+        .limit(500);
+      if (!error && data) {
+        questBoard.value = data;
+        questBoardState.value = 'ok';
+        questBoardAt.value = Date.now();
+        return;
+      }
+      if (error) console.warn('[backend] quest_leaderboard_cache read failed:', error.message);
+    } catch (e: any) {
+      console.warn('[backend] loadQuestBoard error:', e.message);
+    }
+    questBoardState.value = 'unavailable';
+  }
+
   // ── Weekly podium counts: how many times a user finished top-3 ──────
   /** Result shape: { gold, silver, bronze } counts for one user.
    *  metric defaults to 'edits' for backward compatibility. Pass 'completions'
@@ -6694,6 +6720,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
+    questBoard, questBoardState, questBoardAt, loadQuestBoard,
     leaderboard, leaderboardMyRanks, loadDayTotal, loadAccessGrants, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     tasksPaged, taskCounts, taskPages, loadingMore, loadMoreTasks, findTasks, loadAvailableAfter,
