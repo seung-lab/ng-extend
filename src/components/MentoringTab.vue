@@ -9,7 +9,7 @@
  * anyone: the first mentor to take an apprentice's cell stays with them.
  */
 import { computed, onMounted, ref } from 'vue';
-import { mentorState, loadMentor, loadQueue, takeCell, handBack, openInView, cannotOpen, shortCell, ago, type MentorReview } from '../mentor';
+import { mentorState, loadMentor, loadQueue, takeCell, handBack, openInView, cannotOpen, shortCell, ago, practiceOffered, joinPractice, leavePractice, type MentorReview } from '../mentor';
 
 const busy = ref<number | string | null>(null);
 const error = ref('');
@@ -44,6 +44,13 @@ async function giveBack(id: string, name: string) {
   try { await handBack(id); } catch (e: any) { error.value = e?.message || 'Could not hand them back.'; }
   finally { busy.value = null; }
 }
+async function practice(join: boolean) {
+  if (!join && !window.confirm('Leave practice? Cells you sent stay where they are; new ones count as usual.')) return;
+  busy.value = 'practice'; error.value = '';
+  try { await (join ? joinPractice() : leavePractice()); }
+  catch (e: any) { error.value = e?.message || 'That did not go through.'; }
+  finally { busy.value = null; }
+}
 const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.sentAt) > 48 * 3600 * 1000;
 </script>
 
@@ -51,20 +58,31 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
   <div class="nge-mt">
     <p v-if="error" class="nge-mt-err" role="alert">{{ error }}</p>
 
+    <!-- Practice: a tester marks themself as a new player (test site only) -->
+    <section v-if="practiceOffered() && (!a || a.status !== 'active') && !mentorState.mentor" class="nge-mt-sec">
+      <h4>Try it as a new player</h4>
+      <p class="nge-mt-how">Practice the mentor program from the new player's side. Your next {{ mentorState.apprentice?.cellsNeeded || 5 }} cells go to a mentor when you press Complete. Nothing you complete is recorded, and each cell is free again once your mentor completes it.</p>
+      <button class="nge-mt-btn nge-mt-btn--go" :disabled="busy === 'practice'" @click="practice(true)">{{ busy === 'practice' ? 'Joining…' : 'Practice as a new player' }}</button>
+    </section>
+
     <!-- The apprentice -->
     <section v-if="a" class="nge-mt-sec">
-      <h4>Your mentor cells</h4>
+      <h4>Your mentor cells <span v-if="a.practice" class="nge-mt-n">practice</span></h4>
       <p class="nge-mt-how" v-if="a.status === 'active'">
         {{ a.cellsDone }} of {{ a.cellsNeeded }} done.
         {{ a.mentorName ? `${a.mentorName} is your mentor.` : 'A mentor takes your first cell when you send it.' }}
         When you complete a claimed cell, it goes to your mentor, who completes it with you or sends suggestions.
+      </p>
+      <p v-if="a.practice && a.status === 'active'" class="nge-mt-how">
+        Practice: nothing you complete is recorded.
+        <button class="nge-mt-btn" :disabled="busy === 'practice'" @click="practice(false)">Leave practice</button>
       </p>
       <p class="nge-mt-how" v-else-if="a.status === 'finished'">You finished the mentor program{{ a.mentorName ? ` with ${a.mentorName}` : '' }}. Your mentor's notes stay here.</p>
       <p v-if="!mentorState.mine.length" class="nge-mt-empty">No cells sent yet. Claim a cell, proofread it, and press Complete.</p>
       <div v-for="r in mentorState.mine" :key="r.id" class="nge-mt-row" :class="`nge-mt-row--${r.state}`">
         <div class="nge-mt-main">
           <span class="nge-mt-cell">{{ shortCell(r) }}</span>
-          <span class="nge-mt-state">{{ STATE[r.state] }}</span>
+          <span class="nge-mt-state">{{ r.state === 'complete' && r.done?.practice ? 'Complete (practice, nothing recorded)' : STATE[r.state] }}</span>
           <span v-if="r.notes.length || r.cellNote" class="nge-mt-meta">{{ r.notes.length }} note{{ r.notes.length === 1 ? '' : 's' }} in the view</span>
         </div>
         <p v-if="r.cellNote && (r.state === 'suggestions' || r.state === 'complete')" class="nge-mt-quote">{{ r.mentorName || 'Mentor' }}: {{ r.cellNote }}</p>

@@ -63,14 +63,18 @@ function remove(id: string) {
 
 async function run(what: 'save' | 'suggest' | 'complete') {
   if (!r.value) return;
-  if (what === 'complete' && !window.confirm(`Complete this cell for ${r.value.apprenticeName}? It counts for them now, and they can still read your notes.`)) return;
+  if (what === 'complete' && !window.confirm(r.value.done?.practice
+    ? `Complete this practice cell for ${r.value.apprenticeName}? Nothing is recorded; the cell is free again and they can still read your notes.`
+    : `Complete this cell for ${r.value.apprenticeName}? It counts for them now, and they can still read your notes.`)) return;
   busy.value = true; error.value = ''; said.value = '';
   try {
     if (what === 'save') { await saveNotes(cellNote.value); said.value = 'Saved. Only you see them until you send them.'; }
     else if (what === 'suggest') { await sendSuggestions(cellNote.value); said.value = `Sent. ${r.value.apprenticeName} gets a bell with your suggestions.`; }
     else {
       const out = await completeForApprentice(cellNote.value);
-      said.value = out.finished ? `Complete. That was ${r.value.apprenticeName}'s last mentor cell: you both get an Achievement.` : `Complete. It counts for ${r.value.apprenticeName}.`;
+      said.value = r.value.done?.practice
+        ? (out.finished ? `Complete. That was ${r.value.apprenticeName}'s last practice cell.` : 'Complete (practice). Nothing was recorded.')
+        : out.finished ? `Complete. That was ${r.value.apprenticeName}'s last mentor cell: you both get an Achievement.` : `Complete. It counts for ${r.value.apprenticeName}.`;
     }
   } catch (e: any) { error.value = e?.message || 'That did not go through.'; }
   finally { busy.value = false; }
@@ -98,7 +102,7 @@ const STATE: Record<string, string> = {
       <p v-if="r.done.notes" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
       <p v-if="r.done.status" class="nge-mbx-meta">Ending: {{ r.done.status }}</p>
     </template>
-    <p v-else class="nge-mbx-how">{{ STATE[r.state] }}</p>
+    <p v-else class="nge-mbx-how">{{ r.state === 'complete' && r.done?.practice ? 'Complete. This was practice, so nothing was recorded.' : STATE[r.state] }}</p>
 
     <div class="nge-mbx-notes">
       <div v-for="(n, i) in notes" :key="n.id" class="nge-mbx-note">

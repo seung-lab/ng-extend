@@ -31,13 +31,15 @@ export interface MentorReview {
   id: number; state: 'waiting' | 'looking' | 'suggestions' | 'complete'; rounds: number;
   apprenticeId: string; apprenticeName: string; mentorId: string | null; mentorName: string | null;
   dataset: string; logDataset: string; taskId: number; segmentId: string; rootId: string;
-  position: number[] | null; link: string; done: { status?: string; notes?: string; cellType?: string; coords?: string; sheet?: boolean };
+  position: number[] | null; link: string; done: { status?: string; notes?: string; cellType?: string; coords?: string; sheet?: boolean; practice?: boolean };
   notes: MentorNote[]; cellNote: string;
   sentAt: string; claimedAt: string | null; decidedAt: string | null; touchedAt: string; sheetDone: boolean;
 }
 export interface Apprentice {
   id: string; name: string; status: 'active' | 'finished' | 'left'; mentorId: string | null; mentorName: string | null;
   cellsDone: number; cellsNeeded: number; startedAt: string; finishedAt: string | null;
+  /** Joined by themself to try the program: nothing they complete is recorded. */
+  practice?: boolean;
 }
 
 export const mentorState = reactive({
@@ -58,8 +60,16 @@ export const mentorState = reactive({
 
 const call = <T = any>(action: Parameters<typeof secureWrite>[0], args: Record<string, any> = {}) => secureWrite<T>(action, args);
 
-/** Shown to mentors, admins and apprentices once the program is installed. */
-export const mentoringShown = () => mentorState.installed && (mentorState.mentor || mentorState.admin || !!mentorState.apprentice);
+/** Practice (Ames 2026-11-05): on the mentor test site, any player can mark
+ *  themself as a new player and try the program. Never on the live game. */
+export const practiceOffered = () => typeof location !== 'undefined'
+  && (/^claude-mentor-poc-dot-/.test(location.hostname) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname));
+/** Shown to mentors, admins and apprentices once the program is installed,
+ *  and to everyone on the test site, so they can practice. */
+export const mentoringShown = () => mentorState.installed && (mentorState.mentor || mentorState.admin || !!mentorState.apprentice || practiceOffered());
+/** Join as a practice apprentice, or leave. */
+export async function joinPractice() { await call('mentor.join'); await loadMentor(); }
+export async function leavePractice() { await call('mentor.leave'); await loadMentor(); }
 /** An apprentice right now: Complete sends to a mentor. */
 export const isApprentice = () => mentorState.apprentice?.status === 'active';
 
@@ -97,8 +107,26 @@ let started = false;
 export function startMentor() {
   if (started || !useProofreadingBackendStore().userId) return;
   started = true;
-  void loadMentor();
+  void loadMentor().then(offerPractice);
   window.setInterval(() => { if (document.visibilityState === 'visible') void loadMentor(); }, 10 * 60 * 1000);
+}
+
+/** On the test site, a tester who is not in the program yet is asked once
+ *  per visit whether to join as a new player (Ames 2026-11-05: "make it easy
+ *  to sign up"). Yes joins and opens the Mentoring tab. Mentors and admins
+ *  are never asked. */
+const PRACTICE_ASKED = 'pyr-mentor-practice-asked';
+async function offerPractice() {
+  if (!practiceOffered() || !mentorState.installed || mentorState.mentor || mentorState.admin) return;
+  if (mentorState.apprentice?.status === 'active') return;
+  try { if (sessionStorage.getItem(PRACTICE_ASKED)) return; sessionStorage.setItem(PRACTICE_ASKED, '1'); } catch { /* private window */ }
+  // Let the game finish opening first.
+  await new Promise(r => window.setTimeout(r, 2500));
+  if (!window.confirm('Welcome to the mentor program test!\n\nPress OK to practice as a new player: the next cells you complete go to a mentor, who sends you feedback. Nothing you complete is recorded.')) return;
+  try {
+    await joinPractice();
+    document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mentoring' } }));
+  } catch (e: any) { window.alert(`Could not join: ${e?.message || 'please try again in a moment.'}`); }
 }
 
 // ── The apprentice ──────────────────────────────────────────────────────
@@ -127,6 +155,8 @@ async function finishApprovedCells() {
     for (const r of mentorState.mine) {
       if (r.state !== 'complete' || r.sheetDone) continue;
       try {
+        // Practice: no sheet row and no label; just note it as handled.
+        if (r.done?.practice) { await call('mentor.sheetDone', { reviewId: r.id }); r.sheetDone = true; continue; }
         if (r.done?.sheet) await syncCellToSheet('complete', r.segmentId, undefined, r.dataset, r.link || undefined, r.done.notes || undefined, r.done.status || undefined, r.done.cellType || undefined);
         if (r.done?.status === AXON_COMPLETE && r.position?.length === 3) await labelAxonComplete(activeCaveServer() || '', r.rootId, r.position as [number, number, number]);
         await call('mentor.sheetDone', { reviewId: r.id });
@@ -267,7 +297,8 @@ export async function completeForApprentice(cellNote: string): Promise<{ finishe
   const cur = inView.value;
   if (!cur) throw new Error('No cell open.');
   const r = cur.review;
-  if (marksProofread(r.done?.status)) {
+  // Practice: no CAVE mark; the server records nothing and lets the claim go.
+  if (!r.done?.practice && marksProofread(r.done?.status)) {
     const server = activeCaveServer();
     if (!server) throw new Error('No CAVE server for this dataset. Open the cell in its dataset first.');
     const ok = await setCellComplete(server, r.rootId, true, undefined, (r.position?.length === 3 ? r.position : viewerPosition() || undefined) as any, true, [], { forApprentice: true });
