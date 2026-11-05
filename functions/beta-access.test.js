@@ -24,6 +24,7 @@ function world() {
     }
     if (p.startsWith('site_issues?') && p.includes('message=like.')) {
       const q = new URLSearchParams(p.split('?')[1]);
+      if (!/"Beta access"/.test(q.get('category') || '') || !/"Invite used"/.test(q.get('category') || '')) throw new Error('both categories: ' + q.get('category'));
       const want = (q.get('message') || '').replace(/^like\./, '').replace(/^\*|\*$/g, '');
       return issues.filter(i => String(i.message).includes(want)).map(i => ({id: i.id}));
     }
@@ -113,6 +114,10 @@ test('use my invite: the sign in account joins Pilot testers at once, and every 
   assert.ok(w.pilots.includes('signin@example.org'));
   assert.strictEqual(w.issues.length, 1);
   assert.match(w.issues[0].message, /was invited as invited@hotmail\.example and joined as signin@example\.org/);
+  // Not a Beta request: no triage card, and the bell says nothing is needed.
+  assert.strictEqual(w.issues[0].category, 'Invite used');
+  assert.ok(w.told[0].body.includes('Nothing to do.'), w.told[0].body);
+  assert.doesNotMatch(w.told[0].body + w.told[0].title, /asks to join/);
   assert.strictEqual(w.told.length, 1);
   assert.ok(w.told[0].body.includes(String.raw`turn signin\@example\.org off`), w.told[0].body);
   // The same invite from a second Google account goes to an admin instead.

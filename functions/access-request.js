@@ -503,6 +503,11 @@ async function beta(a, io) {
 // Anything else becomes a Beta request for an admin to look at.
 //   access.linkInvite  a player not on the list: {email} the invite reached.
 const LINKED_PREFIX = 'Linked to invite: ';
+// Its own category, so no triage card: the player is already in and nothing
+// needs doing (Ames 2026-11-04: "How about no triage card for those"). The
+// record stays, as it is how a second use is caught (earlier ones were filed
+// as Beta access). scripts/slack-triage-bridge.mjs leaves this category out.
+const INVITE_CATEGORY = 'Invite used';
 async function linkInvite(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true};
   if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
@@ -516,7 +521,7 @@ async function linkInvite(a, io) {
   let joined = false, linkedBefore = false;
   try { joined = (await io.sb('users?middleauth_email=eq.' + encodeURIComponent(email) + '&select=id&limit=1')).length > 0; } catch (e) { joined = true; }
   try {
-    linkedBefore = (await io.sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY)
+    linkedBefore = (await io.sb('site_issues?category=in.' + encodeURIComponent(`("${BETA_CATEGORY}","${INVITE_CATEGORY}")`)
       + '&message=like.' + encodeURIComponent('*' + LINKED_PREFIX + email + '.*') + '&select=id&limit=1')).length > 0;
   } catch (e) { linkedBefore = true; }
   if (joined || linkedBefore) {
@@ -538,9 +543,10 @@ async function linkInvite(a, io) {
     body: JSON.stringify({email: signIn, enabled: true})});
   // The record: it is how a second use of this invite is caught.
   const message = `${name} was invited as ${email} and joined as ${signIn}.\n${LINKED_PREFIX}${email}.\nSign in email: ${signIn}. If this isn't them, turn ${signIn} off under Admin Hub, Pilot testers.`;
-  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY,
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: INVITE_CATEGORY,
     title: `Invite used: ${name}`.slice(0, 120), message, user_id: io.me.id, user_name: name}])});
-  const bell = `${mdText(name)} was invited as ${mdText(email)} and joined as ${mdText(signIn)}.\n\nIf this isn't them, turn ${mdText(signIn)} off under Admin Hub, Pilot testers.`;
+  // Nothing to do (Ames 2026-11-04: "asks to join" read as a request).
+  const bell = `${mdText(name)} is in. They were invited as ${mdText(email)} and signed in as ${mdText(signIn)}. Nothing to do.\n\nIf this isn't them, turn ${mdText(signIn)} off under Admin Hub, Pilot testers.`;
   try { await io.notifyAdmins({title: `🔑 Invite used by ${name}`.slice(0, 120), body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
   return {invited: true, linked: true};
 }
