@@ -43,6 +43,10 @@ export const QUEST_STATUSES = [
   'Skipped (low quality)',
 ];
 export const QUEST_SPLIT_MERGED = ['Split', 'Merged'];
+/** A quest that counts as done, on the profile and the leaderboard: the
+ *  cilium was annotated, or there is none (Ames 2026-11-05). "Need help" and
+ *  "Skipped" do not count. */
+export const questCounts = (status: string | null | undefined) => /^\s*(cilium annotated|no cilium)/i.test(String(status ?? ''));
 /** How many cells a player may hold at once, claimed and not completed
  *  (Ames 2026-10-13). The server keeps the same number and refuses the next. */
 export const QUEST_CLAIM_LIMIT = 3;

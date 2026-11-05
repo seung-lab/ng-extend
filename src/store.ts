@@ -4918,8 +4918,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // ── Quests board: Cilia Quests on the Retina (Ames 2026-11-05) ────────
   /** One row per annotator on the quest sheet: quests submitted today (US
    *  Eastern day, the sheet's Date column), in the last 7 days and all time.
-   *  Counted the way the profile counts them (UserProfilePanel
-   *  loadQuestsCompleted): a row with a status, by the annotator's name. The
+   *  Counted the way the profile counts them (questCounts: cilium annotated
+   *  or no cilium), by the annotator's name. The
    *  sheet list is the one the Cell Library reads (cached 5 minutes on the
    *  server); the only database read is the players matching those names. */
   const questBoard: Ref<any[]> = ref([]);
@@ -4932,13 +4932,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   };
   async function loadQuestBoard() {
     try {
-      const { listQuests, nameKey } = await import('./annotation_quests');
+      const { listQuests, nameKey, questCounts } = await import('./annotation_quests');
       const { rows } = await listQuests();
       const today = sheetDay(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date()))!;
       const byKey = new Map<string, { name: string; today: number; week: number; all: number }>();
       for (const r of rows) {
         const key = nameKey(r.annotator);
-        if (!r.status || !key) continue;
+        if (!questCounts(r.status) || !key) continue;
         const c = byKey.get(key) ?? { name: r.annotator.trim(), today: 0, week: 0, all: 0 };
         const d = sheetDay(r.date);
         c.all++;

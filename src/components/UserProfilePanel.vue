@@ -2,7 +2,7 @@
 import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
 import {supabase} from '../supabase';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
-import {listQuests, nameKey as questNameKey} from '../annotation_quests';
+import {listQuests, nameKey as questNameKey, questCounts} from '../annotation_quests';
 import {nextDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
@@ -98,7 +98,7 @@ async function loadQuestsCompleted(who?: string | null) {
   try {
     const r = await listQuests();
     const key = questNameKey(who ?? r.you);
-    questsCompleted.value = key ? r.rows.filter(x => x.status && questNameKey(x.annotator) === key).length : 0;
+    questsCompleted.value = key ? r.rows.filter(x => questCounts(x.status) && questNameKey(x.annotator) === key).length : 0;
   } catch { questsCompleted.value = null; }
 }
 // Annotations placed: their total, or mine plus what this browser has yet to send.
@@ -2282,7 +2282,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
               </div>
               <!-- Annotation quests completed, from the quest sheet (2026-10-13). -->
-              <div class="nge-profile-stat-col" title="Annotation quests you completed: cells whose cilia you marked and sent to the lab's sheet">
+              <div class="nge-profile-stat-col" title="Annotation quests you completed: cells whose cilium you marked, or found none, and sent to the lab's sheet">
                 <div class="nge-profile-stat-label">Quests</div>
                 <div class="nge-profile-stat-val" style="color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35);">
                   <RollUp v-if="questsCompleted !== null" :value="questsCompleted" />
