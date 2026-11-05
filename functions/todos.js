@@ -259,11 +259,22 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (!body) fail(400, 'Write something first.');
     const before = await db.card(id);
     if (!before) fail(404, 'That card is gone. Refresh the board.');
-    const comments = [...(before.comments || []), { by: byName, text: body, at: now }].slice(-COMMENTS_MAX);
+    // A reply (Ames 2026-11-05: "we need replies like nested replies") names the
+    // comment it answers by its time; replies to a reply join the same thread,
+    // one level deep. Whoever wrote that comment hears, as if tagged.
+    const parent = args.replyTo ? (before.comments || []).find(c => c.at === String(args.replyTo)) : null;
+    if (args.replyTo && !parent) fail(404, 'That comment is gone. Refresh the board.');
+    const root = parent ? (parent.reply_to || parent.at) : null;
+    const comments = [...(before.comments || []), { by: byName, text: body, at: now, ...(root ? { reply_to: root } : {}) }].slice(-COMMENTS_MAX);
     const card = await db.patch(id, { comments, updated_at: now });
-    const people = (Array.isArray(args.tagIds) && args.tagIds.length) ? await db.people() : [];
+    const needPeople = (Array.isArray(args.tagIds) && args.tagIds.length) || (parent && parent.by !== byName);
+    const people = needPeople ? await db.people() : [];
     const who = tagged(people, args.tagIds).filter(p => p.id !== (me && me.id));
     if (who.length) await tag(who, card, 'tagged you on', body);
+    if (parent && parent.by !== byName) {
+      const writer = people.filter(p => p.name === parent.by && p.id !== meId && !who.some(w => w.id === p.id));
+      if (writer.length) await tag(writer, card, 'replied to you on', body);
+    }
     await follow(id, [meId]).catch(() => {});
     await tellFollowers(card, 'commented on', body, who.map(p => p.id)).catch(e => console.warn('[todo] followers not told:', e.message));
     return { card };

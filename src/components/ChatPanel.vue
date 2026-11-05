@@ -2426,10 +2426,14 @@ function toggleCollapse() {
   0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.45), 0 0 10px rgba(245, 166, 35, 0.2); }
   50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8), 0 0 22px rgba(245, 166, 35, 0.45); }
 }
-/* Messages meant for you: a warm band, a gold bar at the left. */
+/* Messages meant for you: a cyan hologram, a lit bar at the left and faint
+   scan lines, fading out by the middle of the row (Ames 2026-11-05: blue
+   or cyan instead of yellow, and the gradient need not reach so far). */
 .nge-chat-msg--forme {
-  background: linear-gradient(90deg, rgba(255, 190, 80, 0.16), rgba(255, 190, 80, 0.05) 70%, transparent);
-  box-shadow: inset 3px 0 0 #f5b942;
+  background:
+    repeating-linear-gradient(180deg, rgba(150, 235, 255, 0.05) 0 1px, transparent 1px 3px),
+    linear-gradient(90deg, rgba(80, 210, 255, 0.2), rgba(80, 210, 255, 0.06) 30%, transparent 50%);
+  box-shadow: inset 3px 0 0 #5fd8ff, inset 6px 0 8px -4px rgba(95, 216, 255, 0.55);
   border-radius: 4px;
 }
 /* The one that just pinged you arrives with a little flourish: the bar
@@ -2437,15 +2441,15 @@ function toggleCollapse() {
 .nge-chat-msg--ping { position: relative; overflow: hidden; animation: nge-chat-ping-band 0.9s cubic-bezier(.2, .9, .3, 1.2) both; }
 .nge-chat-msg--ping::before {
   content: ''; position: absolute; left: 0; top: 0; width: 3px; height: 100%;
-  background: linear-gradient(180deg, #ffe08a, #f5b942); transform-origin: top;
+  background: linear-gradient(180deg, #c8f4ff, #5fd8ff); transform-origin: top;
   animation: nge-chat-ping-bar 0.45s ease-out both;
 }
 .nge-chat-msg--ping::after {
   content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 35%; pointer-events: none;
-  background: linear-gradient(100deg, transparent, rgba(255, 236, 180, 0.35), transparent);
+  background: linear-gradient(100deg, transparent, rgba(190, 245, 255, 0.35), transparent);
   transform: skewX(-18deg); animation: nge-chat-ping-glint 0.9s 0.25s ease-out both;
 }
-@keyframes nge-chat-ping-band { from { background-color: rgba(255, 200, 90, 0.35); } to { background-color: transparent; } }
+@keyframes nge-chat-ping-band { from { background-color: rgba(90, 210, 255, 0.3); } to { background-color: transparent; } }
 @keyframes nge-chat-ping-bar { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes nge-chat-ping-glint { from { left: -40%; } to { left: 120%; } }
 @media (prefers-reduced-motion: reduce) {
