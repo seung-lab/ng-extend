@@ -1121,6 +1121,26 @@ async function sendCommentTag(row: TriageRow) {
   if (!noteDrafts.value[row.id]) triageNotes.value[row.id] = '';
 }
 
+// New reports come in by themselves (Celia, report 391): once a minute, while
+// the triage board is in front, ask for the newest report's id only (a tiny
+// read). Something new reloads the board, unless you are typing or a card is
+// being decided, in which case the next minute tries again.
+let newestReport: string | null = null;
+async function checkNewReports() {
+  if (document.visibilityState !== 'visible' || adminSubTab.value !== 'triage' || todoView.value || triageLoading.value || triageActing.value) return;
+  const el = document.activeElement as HTMLElement | null;
+  if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+  try {
+    const { supabase } = await import('../supabase');
+    const { data } = await supabase.from('feedback_triage').select('id').order('created_at', { ascending: false }).limit(1);
+    const id = (data as any[] | null)?.[0]?.id ?? null;
+    if (!id) return;
+    if (newestReport && id !== newestReport) { newestReport = id; await loadTriage(); void loadTriageNumbers(); }
+    else newestReport = id;
+  } catch { /* the next minute tries again */ }
+}
+const reportWatch = window.setInterval(() => { void checkNewReports(); }, 60 * 1000);
+onUnmounted(() => window.clearInterval(reportWatch));
 async function loadTriage() {
   triageLoading.value = true;
   triageError.value = '';
