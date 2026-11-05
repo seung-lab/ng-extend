@@ -256,7 +256,8 @@ test('admins change a bell text; the next bell uses it; names in braces are fill
   await assert.rejects(call(1, 'mentor.setText', {key: 'nope', title: 'a', body: 'b'}, true), /Unknown message/);
   await call(1, 'mentor.setText', {key: 'welcome', title: '🧭 Hello, new proofreader', body: 'Your first {needed} cells come with a guide.'}, true);
   await call(1, 'mentor.addApprentice', {username: 'newbie'}, true);
-  assert.deepEqual(db._state.notes.at(-1), {to: U(4), title: '🧭 Hello, new proofreader', body: 'Your first 5 cells come with a guide.'});
+  const last = db._state.notes.at(-1);
+  assert.deepEqual([last.to, last.title, last.body], [U(4), '🧭 Hello, new proofreader', 'Your first 5 cells come with a guide.']);
   assert.equal((await call(1, 'mentor.texts', {}, true)).find(t => t.key === 'welcome').edited, true);
   // Back to the original: the change is forgotten.
   const d = TEXTS.welcome;
@@ -362,6 +363,19 @@ test('one mentor per apprentice: cells sent before pairing go with them, and ano
   await call(2, 'mentor.handBack', {apprenticeId: U(4)});
   await call(3, 'mentor.claim', {reviewId: c2.id});
   assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, 'annkri');
+});
+
+test('the welcome and You have a mentor bells carry the program picture and say how many cells', async () => {
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r = (await send(call, 4, 1)).review;
+  await call(2, 'mentor.claim', {reviewId: r.id});
+  const welcome = db._state.notes.find(n => n.title === '🧭 Welcome to the mentor program');
+  const have = db._state.notes.find(n => n.title === '🧭 You have a mentor');
+  assert.match(welcome.image, /mentor-bell\.jpg$/);
+  assert.match(have.image, /mentor-bell\.jpg$/);
+  assert.equal(have.body, 'Nseraf is your mentor. They will look at your first 5 cells and give you feedback before each one counts.');
 });
 
 test('copy has no dashes and says Achievement, never badge', () => {

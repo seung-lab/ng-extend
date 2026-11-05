@@ -57,11 +57,13 @@ const MENTOR_BADGE = {slug: 'mentor-program-mentor', name: 'Mentor',
  * bell is sent; `vars` lists the names a text may use. An admin's change is
  * kept in `texts` (Firestore, mentor_texts) and used for every bell after it.
  */
+// The program's picture (Ames 2026-11-05: "we need an image"), pinned to the commit that added it.
+const MENTOR_PICTURE = 'https://raw.githubusercontent.com/seung-lab/ng-extend/553d8af8606204d3270e8fbb441926866927c049/static/mentor/mentor-bell.jpg';
 const TEXTS = {
-  welcome: {label: 'Welcome (added by an admin)', to: 'apprentice', vars: ['needed'],
+  welcome: {label: 'Welcome (added by an admin)', to: 'apprentice', vars: ['needed'], image: MENTOR_PICTURE,
     title: '🧭 Welcome to the mentor program',
     body: 'Your next {needed} cells get a second look from an experienced player. When you complete a cell from the Cell Library, it goes to a mentor, who completes it with you or sends you suggestions. Each one counts for you once your mentor completes it.'},
-  practiceWelcome: {label: 'Welcome (practice)', to: 'apprentice', vars: ['needed'],
+  practiceWelcome: {label: 'Welcome (practice)', to: 'apprentice', vars: ['needed'], image: MENTOR_PICTURE,
     title: '🧭 Welcome to the mentor program (practice)',
     body: 'Your next {needed} cells go to a mentor when you complete them. This is practice: nothing you complete is recorded, and each cell is let go when your mentor completes it.'},
   newApprentice: {label: 'A new apprentice is waiting', to: 'mentors', vars: ['apprentice'],
@@ -73,9 +75,9 @@ const TEXTS = {
   sentAgain: {label: 'A cell sent back after suggestions', to: 'mentor', vars: ['apprentice', 'cell'],
     title: '🧭 {apprentice} sent a cell back to you',
     body: '{apprentice} sent cell {cell} for a second look. Open Cell Library, Mentoring.'},
-  haveMentor: {label: 'You have a mentor', to: 'apprentice', vars: ['mentor'],
+  haveMentor: {label: 'You have a mentor', to: 'apprentice', vars: ['mentor', 'needed'], image: MENTOR_PICTURE,
     title: '🧭 You have a mentor',
-    body: '{mentor} is your mentor for your first cells. They will look at each one you send.'},
+    body: '{mentor} is your mentor. They will look at your first {needed} cells and give you feedback before each one counts.'},
   suggestions: {label: 'Suggestions', to: 'apprentice', vars: ['mentor', 'cell'],
     title: '🧭 Your mentor has suggestions',
     body: '{mentor} left suggestions on cell {cell}. Open Cell Library, Mentoring, to see them in the view. When you are done, send it again.'},
@@ -155,7 +157,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
     const t = edited[key] || {};
     return {title: t.title || TEXTS[key].title, body: t.body || TEXTS[key].body};
   };
-  const bell = async (to, key, vars, image) => { const t = await textOf(key); await db.notify(to, fill(t.title, vars), fill(t.body, vars), meId, image); };
+  const bell = async (to, key, vars, image) => { const t = await textOf(key); await db.notify(to, fill(t.title, vars), fill(t.body, vars), meId, image || TEXTS[key].image); };
 
   /** A cell taken by a mentor and then left 48 hours goes back to the queue,
    *  and so does the apprentice, so another mentor can take them. Done on
@@ -289,7 +291,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         // Their other cells still waiting come with them.
         for (const o of await db.reviewsOfApprentice(a.user_id))
           if (o.id !== r.id && o.state === 'waiting' && !o.mentor_id) await db.patchReview(o.id, {mentor_id: meId, mentor_name: nameOf(me)});
-        await bell(a.user_id, 'haveMentor', {mentor: nameOf(me)});
+        await bell(a.user_id, 'haveMentor', {mentor: nameOf(me), needed: a.cells_needed || CELLS_NEEDED});
       }
       const out = await db.patchReview(r.id, {mentor_id: meId, mentor_name: nameOf(me), state: 'looking', claimed_at: r.claimed_at || stamp, touched_at: stamp});
       return reviewOut(out);
