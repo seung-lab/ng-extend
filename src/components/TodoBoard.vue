@@ -11,7 +11,7 @@
  * It lives on the triage page ("?triage=board&todo"), where it is opened from
  * the board's header, the Admin Hub's "To do" tab, or a tag's link.
  */
-import { ref, shallowRef, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, shallowRef, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { secureWrite } from '../secure_write';
 import { secureUpload } from '../secure_upload';
 import { renderSafeMarkdown } from '../util/safe_markdown';
@@ -80,9 +80,9 @@ const showAllDone = ref(false);
 const openId = ref<string | null>(props.focusId || null);
 const busy = ref(false);
 
-async function load() {
-  loading.value = true;
-  error.value = '';
+async function load(quiet = false) {
+  if (!quiet) loading.value = true;
+  if (!quiet) error.value = '';
   try {
     const data = await secureWrite<any>('todo.list');
     if (data?.installed === false) { notInstalled.value = true; return; }
@@ -97,12 +97,39 @@ async function load() {
     }
     if (openId.value && !cards.value.some(c => c.id === openId.value)) openId.value = null;
   } catch (e: any) {
-    error.value = e?.message ?? String(e);
+    if (!quiet) error.value = e?.message ?? String(e);
   } finally {
     loading.value = false;
   }
 }
-onMounted(load);
+onMounted(() => load());
+
+// The address follows the board (Celia, report 391: "When I manually refresh
+// the ToDo list on the overview page it is instead jumping me into the last
+// ToDo I had opened"). A tag's link opens "&todo=<card>"; closing the card now
+// puts the address back to "&todo", so a refresh stays where you are.
+watch(openId, id => {
+  try {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has('todo')) return;
+    u.searchParams.set('todo', id || '');
+    window.history.replaceState(window.history.state, '', u.toString().replace(/([?&]todo)=(&|$)/, '$1$2'));
+  } catch { /* the address just stays */ }
+});
+
+// New cards come in by themselves (Celia, report 391): every two minutes
+// while this tab is in front, never while something is being typed, dragged
+// or changed, so nothing you are doing moves under you.
+function busyHere() {
+  const el = document.activeElement as HTMLElement | null;
+  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) || !!el?.isContentEditable
+    || !!resizingId.value || !!dragId.value || !!itemEdit.value || commentEdit.value !== null || notesEditing.value || !!adding.value || busy.value;
+}
+const autoRefresh = window.setInterval(() => {
+  if (document.visibilityState !== 'visible' || loading.value || busyHere()) return;
+  void load(true);
+}, 2 * 60 * 1000);
+onUnmounted(() => window.clearInterval(autoRefresh));
 
 const nameOf = (id: string | null) => people.value.find(p => p.id === id)?.name || '';
 const initialOf = (id: string | null) => (nameOf(id) || '?').slice(0, 1).toUpperCase();
@@ -1084,7 +1111,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; openId = null"
               title="Everything that is yours: cards you own and checklist items for you, by due day">📌 My Tasks<b v-if="myTaskCount" class="nge-todo-mytasks-n">{{ myTaskCount }}</b></button>
       <button class="nge-todo-btn" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
-      <button class="nge-todo-btn" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
+      <button class="nge-todo-btn" :disabled="loading" @click="load()">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
     </div>
     <div v-if="myTasksOpen && !openCard" class="nge-todo-mytasks-panel">
       <div class="nge-todo-mytasks-head">📌 My Tasks <span>{{ myTaskCount }} open</span></div>
