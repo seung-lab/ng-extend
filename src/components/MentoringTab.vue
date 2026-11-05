@@ -59,14 +59,16 @@ function open(r: MentorReview, role: 'mentor' | 'apprentice') {
  *  mentor"): the cell opens in the view and nothing is taken until the box's
  *  own button is pressed. */
 function take(r: MentorReview) { open(r, 'mentor'); }
-async function giveBack(id: string, name: string) {
-  if (!window.confirm(`Hand ${name} back? Their cells go back to the queue for another mentor.`)) return;
+// Asked in the row, never the browser's own box (Ames 2026-11-05).
+const asking = ref<string | null>(null);
+async function giveBack(id: string) {
+  asking.value = null;
   busy.value = id; error.value = '';
   try { await handBack(id); } catch (e: any) { error.value = e?.message || 'Could not hand them back.'; }
   finally { busy.value = null; }
 }
 async function practice(join: boolean) {
-  if (!join && !window.confirm('Leave practice? Cells you sent stay where they are; new ones count as usual.')) return;
+  asking.value = null;
   busy.value = 'practice'; error.value = '';
   try { await (join ? joinPractice() : leavePractice()); }
   catch (e: any) { error.value = e?.message || 'That did not go through.'; }
@@ -99,7 +101,11 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
       </p>
       <p v-if="a.practice && a.status === 'active'" class="nge-mt-how">
         Practice: nothing you complete is recorded.
-        <button class="nge-mt-btn" :disabled="busy === 'practice'" @click="practice(false)">Leave practice</button>
+        <button v-if="asking !== 'leave'" class="nge-mt-btn" :disabled="busy === 'practice'" @click="asking = 'leave'">Leave practice</button>
+        <span v-else class="nge-mt-ask">Leave practice? Cells you sent stay where they are; new ones count as usual.
+          <button class="nge-mt-btn" @click="asking = null">Cancel</button>
+          <button class="nge-mt-btn nge-mt-btn--go" @click="practice(false)">Leave</button>
+        </span>
       </p>
       <p class="nge-mt-how" v-else-if="a.status === 'finished'">You finished the mentor program{{ a.mentorName ? ` with ${a.mentorName}` : '' }}. Completed cells stay here for a week; your mentor's notes stay on each cell in My Cells.</p>
       <p v-if="!myCells.length" class="nge-mt-empty">{{ mentorState.mine.length ? 'Nothing waiting. Claim your next cell, proofread it, and press Complete.' : 'No cells sent yet. Claim a cell, proofread it, and press Complete.' }}</p>
@@ -152,7 +158,11 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
             <span class="nge-mt-cell">{{ p.name }}</span>
             <span class="nge-mt-meta">{{ p.cellsDone }} of {{ p.cellsNeeded }} done</span>
           </div>
-          <button class="nge-mt-btn" :disabled="busy === p.id" title="Another mentor takes them from the queue" @click="giveBack(p.id, p.name)">Hand back</button>
+          <button v-if="asking !== p.id" class="nge-mt-btn" :disabled="busy === p.id" title="Another mentor takes them from the queue" @click="asking = p.id">Hand back</button>
+          <span v-else class="nge-mt-ask">Hand {{ p.name }} back? Their cells go to another mentor.
+            <button class="nge-mt-btn" @click="asking = null">Cancel</button>
+            <button class="nge-mt-btn nge-mt-btn--go" @click="giveBack(p.id)">Hand back</button>
+          </span>
         </div>
       </section>
     </template>
@@ -195,5 +205,6 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
 .nge-mt-btn:disabled { opacity: 0.5; cursor: default; }
 .nge-mt-btn--go { border-color: rgba(120, 180, 255, 0.5); color: #9fc8ff; }
 .nge-mt-err { color: #f5d142; margin: 0 0 8px; }
+.nge-mt-ask { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: rgba(220, 230, 245, 0.85); }
 .nge-mt-link { font: inherit; font-size: 12px; background: none; border: none; color: #9fd3ff; cursor: pointer; padding: 0; }
 </style>

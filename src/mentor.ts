@@ -166,11 +166,8 @@ async function offerPractice() {
   try { if (sessionStorage.getItem(PRACTICE_ASKED)) return; sessionStorage.setItem(PRACTICE_ASKED, '1'); } catch { /* private window */ }
   // Let the game finish opening first.
   await new Promise(r => window.setTimeout(r, 2500));
-  if (!window.confirm('Welcome to the mentor program test!\n\nPress OK to practice as a new player: the next cells you complete go to a mentor, who sends you feedback. Nothing you complete is recorded.')) return;
-  try {
-    await joinPractice();
-    document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mentoring' } }));
-  } catch (e: any) { window.alert(`Could not join: ${e?.message || 'please try again in a moment.'}`); }
+  // Asked in a Pyr card (MentorBox), never the browser's own box (Ames 2026-11-05: "why did I get this weird popup?").
+  document.dispatchEvent(new CustomEvent('nge:mentor-practice-offer'));
 }
 
 // ── The apprentice ──────────────────────────────────────────────────────
@@ -287,7 +284,9 @@ export function writeNotesLayer(notes: MentorNote[]): boolean {
   if (!v?.layerSpecification) return false;
   const old = notesLayer();
   if (old) v.layerManager.removeManagedLayer(old);
-  const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: NOTES_COLOR, pointSize: 2, tab: 'annotations',
+  // tool: the point tool is active, so annotating in this layer places a note
+  // (Ames 2026-11-05: "selected layer mentor notes does not have an active annotation").
+  const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: NOTES_COLOR, pointSize: 2, tab: 'annotations', tool: 'annotatePoint',
     annotations: notes.map(n => ({ type: 'point', id: n.id, point: n.position, description: n.text })) };
   v.layerSpecification.add(makeLayer(v.layerSpecification, NOTES_LAYER, spec));
   return true;

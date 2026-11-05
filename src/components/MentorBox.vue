@@ -13,7 +13,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useDragBox } from '../util/drag_box';
 import { useProofreadingBackendStore } from '../store';
 import { apprenticeFlag } from '../util/mentor_flag';
-import { takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
+import { joinPractice, takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
 import { inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
   completeForApprentice, startMentor, loadMentor, shortCell, type MentorNote } from '../mentor';
 
@@ -23,6 +23,22 @@ const blocked = ref(false);
 const onBlocked = () => { blocked.value = true; };
 document.addEventListener('nge:mentor-blocked', onBlocked);
 onBeforeUnmount(() => document.removeEventListener('nge:mentor-blocked', onBlocked));
+// The test site's practice offer, in the same card (src/mentor.ts offerPractice).
+const practiceAsk = ref(false);
+const practiceNote = ref('');
+const onPracticeOffer = () => { practiceAsk.value = true; practiceNote.value = ''; };
+document.addEventListener('nge:mentor-practice-offer', onPracticeOffer);
+onBeforeUnmount(() => document.removeEventListener('nge:mentor-practice-offer', onPracticeOffer));
+async function startPractice() {
+  practiceNote.value = '';
+  try {
+    await joinPractice();
+    practiceAsk.value = false;
+    document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mentoring' } }));
+  } catch (e: any) { practiceNote.value = `Could not join: ${e?.message || 'please try again in a moment.'}`; }
+}
+// Complete asks in the box first (no browser box).
+const confirmComplete = ref(false);
 function openLibrary() {
   blocked.value = false;
   document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } }));
@@ -66,7 +82,7 @@ const said = ref('');
 let timer: number | undefined;
 watch(cur, c => {
   window.clearInterval(timer);
-  error.value = ''; said.value = ''; newNote.value = ''; nextCell.value = null;
+  error.value = ''; said.value = ''; newNote.value = ''; nextCell.value = null; confirmComplete.value = false;
   cellNote.value = c?.review.cellNote ?? '';
   notes.value = c?.review.notes ?? [];
   if (c) timer = window.setInterval(() => {
@@ -111,9 +127,8 @@ function openNext() {
 const THANKS = 'Thank you for helping a new citizen scientist!';
 async function run(what: 'save' | 'suggest' | 'complete') {
   if (!r.value) return;
-  if (what === 'complete' && !window.confirm(r.value.done?.practice
-    ? `Complete this practice cell for ${r.value.apprenticeName}? Nothing is recorded; the cell is free again and they can still read your notes.`
-    : `Complete this cell for ${r.value.apprenticeName}? It counts for them now, and they can still read your notes.`)) return;
+  if (what === 'complete' && !confirmComplete.value) { confirmComplete.value = true; return; }
+  confirmComplete.value = false;
   busy.value = true; error.value = ''; said.value = '';
   try {
     if (what === 'save') { await saveNotes(cellNote.value); said.value = 'Saved. Only you see them until you send them.'; }
@@ -140,6 +155,20 @@ const STATE: Record<string, string> = {
 </script>
 
 <template>
+  <div v-if="practiceAsk" class="nge-mblk" @click.self="practiceAsk = false">
+    <div class="nge-mblk-card" role="dialog" aria-labelledby="nge-mprac-title">
+      <span class="nge-mblk-corner nge-mblk-corner--tl" aria-hidden="true"></span>
+      <span class="nge-mblk-corner nge-mblk-corner--br" aria-hidden="true"></span>
+      <div class="nge-mblk-kicker">Mentor program test</div>
+      <h2 id="nge-mprac-title" class="nge-mblk-title">Practice as a new player?</h2>
+      <p class="nge-mblk-text">The next cells you complete go to a mentor, who sends you feedback. Nothing you complete is recorded.</p>
+      <p v-if="practiceNote" class="nge-mbx-err" role="alert">{{ practiceNote }}</p>
+      <div class="nge-mblk-actions">
+        <button class="nge-mblk-btn" @click="practiceAsk = false">Not now</button>
+        <button class="nge-mblk-btn nge-mblk-btn--go" @click="startPractice">Practice as a new player</button>
+      </div>
+    </div>
+  </div>
   <div v-if="blocked" class="nge-mblk" @click.self="blocked = false">
     <div class="nge-mblk-card" role="alertdialog" aria-labelledby="nge-mblk-title" aria-describedby="nge-mblk-text">
       <span class="nge-mblk-corner nge-mblk-corner--tl" aria-hidden="true"></span>
@@ -198,7 +227,7 @@ const STATE: Record<string, string> = {
       <div class="nge-mbx-actions">
         <button class="nge-mbx-btn" :disabled="busy" @click="run('save')">Save notes</button>
         <button class="nge-mbx-btn nge-mbx-btn--suggest" :disabled="busy" @click="run('suggest')">Send suggestions</button>
-        <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="run('complete')">Complete</button>
+        <button v-if="!confirmComplete" class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="run('complete')">Complete</button>
       </div>
     </template>
     <template v-else>
@@ -206,6 +235,15 @@ const STATE: Record<string, string> = {
       <p v-if="mentor" class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : 'This cell is back with the apprentice.' }}</p>
     </template>
 
+    <div v-if="confirmComplete && canAct" class="nge-mbx-confirm" role="group" aria-label="Confirm complete">
+      <p class="nge-mbx-confirm-q">{{ r.done?.practice
+        ? `Complete this practice cell for ${r.apprenticeName}? Nothing is recorded, the cell is free again, and they can still read your notes.`
+        : `Complete this cell for ${r.apprenticeName}? It counts for them now, and they can still read your notes.` }}</p>
+      <div class="nge-mbx-actions">
+        <button class="nge-mbx-btn" :disabled="busy" @click="confirmComplete = false">Cancel</button>
+        <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="run('complete')">{{ busy ? 'Completing…' : 'Yes, complete' }}</button>
+      </div>
+    </div>
     <p v-if="error" class="nge-mbx-err" role="alert">{{ error }}</p>
     <p v-else-if="said" class="nge-mbx-said" role="status">{{ said }}</p>
     <button v-if="nextCell && mentor" class="nge-mbx-btn nge-mbx-next" @click="openNext">Next cell: {{ nextCell.apprenticeName }}, {{ cellLabel(nextCell) }}</button>
@@ -265,6 +303,9 @@ const STATE: Record<string, string> = {
 .nge-mbx-btn--suggest { border-color: #f5d142; color: #f5d142; background: rgba(245, 209, 66, 0.1); margin-left: auto; }
 .nge-mbx-btn--done { border-color: #7CFFB2; color: #7CFFB2; background: rgba(124, 255, 178, 0.1); }
 .nge-mbx-err { color: #f5d142; margin: 8px 0 0; }
+.nge-mbx-confirm { margin-top: 10px; padding: 10px 12px; border: 1px solid rgba(124, 255, 178, 0.35); border-radius: 8px; background: rgba(124, 255, 178, 0.06); }
+.nge-mbx-confirm-q { margin: 0; font-size: 14px; line-height: 1.45; }
+.nge-mbx-confirm .nge-mbx-actions { justify-content: flex-end; margin-top: 8px; }
 .nge-mbx-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .nge-mbx-ask { margin: 0; font-size: 16px; font-weight: 600; color: #eef4fb; }
 .nge-mbx-terms { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.45; color: rgba(220, 230, 245, 0.85); }
