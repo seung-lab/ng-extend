@@ -44,12 +44,23 @@ const OPEN = ['waiting', 'looking', 'suggestions'];
 
 // The two Achievements. Art is a stand in until Ames picks some.
 const ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/';
-const APPRENTICE_BADGE = {slug: 'mentor-program-apprentice', name: 'Apprentice',
-  description: 'Finished the mentor program: five cells completed with a mentor.',
-  image_url: ART + 'nurro-experiment.png', thumbnail_url: ART + 'nurro-experiment.png'};
-const MENTOR_BADGE = {slug: 'mentor-program-mentor', name: 'Mentor',
-  description: 'Saw an apprentice through the mentor program.',
-  image_url: ART + 'nurro-trophy.png', thumbnail_url: ART + 'nurro-trophy.png'};
+// Ames's art (2026-11-05), pinned to the commits that added it. Names and
+// pictures can be changed in Special Badges; the server never writes over them.
+const RAW = 'https://raw.githubusercontent.com/seung-lab/ng-extend/';
+const APPRENTICE_ART = RAW + 'f4cdbc1d8d2662e8f1b7316ab7e49e8a1c9b6d57/static/mentor/achievement-apprentice.png';
+const APPRENTICE_BADGE = {slug: 'mentor-program-apprentice', name: 'Myelinated',
+  description: 'Five cells wrapped up with a mentor. Your signals travel on their own now.',
+  image_url: APPRENTICE_ART, thumbnail_url: APPRENTICE_ART};
+/** The Mentor row (Ames 2026-11-05: a tier at 1, 5, 10, 25 and 50 apprentices
+ *  graduated). Same list as src/util/mentor_tiers.ts. */
+const tierArt = n => RAW + `4e2fa0fc71d7997feea1ef2e44d8e5011a4ecb23/static/mentor/tiers/mentor-${n}.png`;
+const MENTOR_TIERS = [
+  {n: 1, name: 'First Wrap', description: 'Saw your first apprentice through the mentor program.'},
+  {n: 5, name: 'Myelin Maker', description: 'Five apprentices graduated with you.'},
+  {n: 10, name: 'Sheath Shaper', description: 'Ten apprentices graduated with you.'},
+  {n: 25, name: 'Saltatory Sensei', description: 'Twenty five apprentices graduated with you. Their signals leap.'},
+  {n: 50, name: 'Grand Oligodendrocyte', description: 'Fifty apprentices graduated with you.'},
+].map(t => ({...t, slug: `mentor-program-mentor-${t.n}`, image_url: tierArt(t.n), thumbnail_url: tierArt(t.n)}));
 
 /**
  * Every bell the program sends, as a template (Ames 2026-11-05: an Edit
@@ -89,18 +100,18 @@ const TEXTS = {
     body: '{mentor} completed cell {cell} with you. This was practice, so nothing was recorded and the cell is free again. {done} of {needed} mentor cells done.'},
   // The two Achievement bells keep the form the game celebrates (src/util/award_title.ts): a title
   // starting "New Achievement:" and a text starting 'You earned the "<name>" Achievement!'.
-  apprenticeAchievement: {label: 'Apprentice Achievement (keep "New Achievement:" so it celebrates)', to: 'apprentice', vars: ['mentor'],
-    title: 'New Achievement: Apprentice',
-    body: 'You earned the "Apprentice" Achievement! You finished the mentor program with {mentor}. From now on your cells count the moment you complete them.'},
+  apprenticeAchievement: {label: 'Apprentice graduate Achievement (keep "New Achievement:" so it celebrates)', to: 'apprentice', vars: ['mentor', 'achievement'],
+    title: 'New Achievement: {achievement}',
+    body: 'You earned the "{achievement}" Achievement! You finished the mentor program with {mentor}. From now on your cells count the moment you complete them.'},
   practiceFinished: {label: 'Practice finished', to: 'apprentice', vars: ['mentor'],
     title: '🏆 Practice finished',
     body: 'You finished the practice mentor program with {mentor}. In the real program this is when the Apprentice Achievement comes.'},
-  mentorAchievement: {label: 'Mentor Achievement (keep "New Achievement:" so it celebrates)', to: 'mentor', vars: ['apprentice'],
-    title: 'New Achievement: Mentor',
-    body: 'You earned the "Mentor" Achievement! {apprentice} finished the mentor program with you.'},
-  mentorFinishedAgain: {label: 'Another apprentice finished', to: 'mentor', vars: ['apprentice'],
+  mentorAchievement: {label: 'Mentor Achievement tier (keep "New Achievement:" so it celebrates)', to: 'mentor', vars: ['apprentice', 'achievement', 'graduates'],
+    title: 'New Achievement: {achievement}',
+    body: 'You earned the "{achievement}" Achievement! {apprentice} finished the mentor program with you. Apprentices graduated with you: {graduates}.'},
+  mentorFinishedAgain: {label: 'Another apprentice finished', to: 'mentor', vars: ['apprentice', 'graduates'],
     title: '🧭 {apprentice} finished the mentor program',
-    body: '{apprentice} finished the mentor program with you. Thank you for mentoring.'},
+    body: '{apprentice} finished the mentor program with you. Apprentices graduated with you: {graduates}. Thank you for mentoring.'},
 };
 const TITLE_MAX = 120;
 const BODY_MAX = 1500;
@@ -358,19 +369,20 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         // The picture is the Achievement's own (an admin may change it in Special Badges).
         const won = await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
         // In the form the game celebrates: the unlock card and confetti (Ames 2026-11-05).
-        await bell(r.apprentice_id, 'apprenticeAchievement', {mentor: nameOf(me)}, won.image);
+        await bell(r.apprentice_id, 'apprenticeAchievement', {mentor: nameOf(me), achievement: won.name}, won.image);
         if (a.mentor_id && a.mentor_id !== a.user_id) {
-          // Once per mentor: the Achievement and its celebration the first time,
-          // a plain bell for every apprentice after that.
-          // One Mentor Achievement with a counter (Ames 2026-11-05: "a counter on the
-          // mentor achievement for now"): its line says how many graduated with them,
-          // and the Trophy Case shows the number on it.
+          // The Mentor row (Ames 2026-11-05): a tier at 1, 5, 10, 25 and 50
+          // graduates. Every tier reached and not yet held is awarded; the
+          // highest new one is celebrated, and a graduate that reaches no new
+          // tier gets a plain bell.
           const graduates = (await db.apprenticesOf(a.mentor_id)).filter(x => x.status === 'finished').length;
-          const line = `${graduates} apprentice${graduates === 1 ? '' : 's'} graduated`;
-          const m = await db.award(MENTOR_BADGE, a.mentor_id, line);
-          if (!m.first) await db.setAwardReason(MENTOR_BADGE, a.mentor_id, line);
-          if (m.first) await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name}, m.image);
-          else await bell(a.mentor_id, 'mentorFinishedAgain', {apprentice: a.user_name});
+          let top = null;
+          for (const t of MENTOR_TIERS.filter(x => x.n <= graduates)) {
+            const got = await db.award(t, a.mentor_id, `${t.n} apprentice${t.n === 1 ? '' : 's'} graduated`);
+            if (got.first) top = got;
+          }
+          if (top) await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name, achievement: top.name, graduates}, top.image);
+          else await bell(a.mentor_id, 'mentorFinishedAgain', {apprentice: a.user_name, graduates});
         }
       }
       return {review: reviewOut(await db.getReview(r.id)), finished};
@@ -560,13 +572,14 @@ function restDb(sb) {
     // picture. The Achievement is made only if it is missing, so a name or
     // picture an admin set in Special Badges is never written over.
     award: async (badge, userId, reason) => {
-      const bySlug = () => one(sb(`special_badges?slug=eq.${enc(badge.slug)}&select=id,image_url,thumbnail_url&limit=1`));
+      const bySlug = () => one(sb(`special_badges?slug=eq.${enc(badge.slug)}&select=id,name,image_url,thumbnail_url&limit=1`));
       let b = await bySlug();
-      if (!b) { await post('special_badges?on_conflict=slug', badge, 'resolution=ignore-duplicates,return=minimal'); b = await bySlug(); }
-      if (!b) return {first: false, image: badge.image_url};
+      const row = {slug: badge.slug, name: badge.name, description: badge.description, image_url: badge.image_url, thumbnail_url: badge.thumbnail_url};
+      if (!b) { await post('special_badges?on_conflict=slug', row, 'resolution=ignore-duplicates,return=minimal'); b = await bySlug(); }
+      if (!b) return {first: false, image: badge.image_url, name: badge.name};
       // Only a row that was not there before comes back.
       const rows = await post('special_badge_awards?on_conflict=badge_id,user_id', {badge_id: b.id, user_id: userId, reason: String(reason).slice(0, 200)}, 'resolution=ignore-duplicates,return=representation');
-      return {first: Array.isArray(rows) && rows.length > 0, image: b.image_url || b.thumbnail_url || badge.image_url};
+      return {first: Array.isArray(rows) && rows.length > 0, image: b.image_url || b.thumbnail_url || badge.image_url, name: b.name || badge.name};
     },
     setAwardReason: async (badge, userId, reason) => {
       const b = await one(sb(`special_badges?slug=eq.${enc(badge.slug)}&select=id&limit=1`));
@@ -612,8 +625,8 @@ function memDb(users = []) {
     findUserByName: async name => copy(users.find(u => String(u.username).toLowerCase() === name.toLowerCase()) || null),
     award: async (badge, userId, reason) => {
       const image = (s.badgeArt && s.badgeArt[badge.slug]) || badge.image_url;
-      if (s.awards.some(a => a.slug === badge.slug && a.userId === userId)) return {first: false, image};
-      s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); return {first: true, image};
+      if (s.awards.some(a => a.slug === badge.slug && a.userId === userId)) return {first: false, image, name: badge.name};
+      s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); return {first: true, image, name: badge.name};
     },
     setAwardReason: async (badge, userId, reason) => { const a = s.awards.find(x => x.slug === badge.slug && x.userId === userId); if (a) a.reason = reason; },
     notify: async (userId, title, body, by, image) => { s.notes.push({to: userId, title, body, ...(image ? {image} : {})}); },
@@ -626,4 +639,4 @@ function memTexts() {
   return {_m: m, all: async () => JSON.parse(JSON.stringify(m)), set: async (k, v) => { if (v) m[k] = v; else delete m[k]; }};
 }
 
-module.exports = {mentorAction, restDb, memDb, memTexts, TEXTS, CELLS_NEEDED, MAX_APPRENTICES, OVERDUE_MS, APPRENTICE_BADGE, MENTOR_BADGE};
+module.exports = {mentorAction, restDb, memDb, memTexts, TEXTS, MENTOR_TIERS, CELLS_NEEDED, MAX_APPRENTICES, OVERDUE_MS, APPRENTICE_BADGE};

@@ -47,6 +47,7 @@ import bronzeYearAward from '../../static/images/champions/bronze-year-award.png
 import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
 import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
+import { MENTOR_TIERS, isMentorTierSlug, type MentorTier } from '../util/mentor_tiers';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -756,9 +757,6 @@ function toggleFavoriteSpecialBadge(award: any) {
 // show more). An achievement holds one star: giving it another takes the
 // first away.
 const specialSlug = (a: any): string => a?.badge?.slug || `special-${a?.id}`;
-/** The Mentor Achievement's counter: apprentices graduated, from its line
- *  ("3 apprentices graduated", kept by the server). 0 for any other award. */
-const mentorCount = (a: any): number => specialSlug(a) === 'mentor-program-mentor' ? Number(String(a?.reason || '').match(/^(\d+)/)?.[1] || 1) : 0;
 const otherSilver = ref<string[]>([]);
 const otherBronze = ref<string[]>([]);
 const silverSlugs = computed<string[]>(() => viewingOtherUser.value ? otherSilver.value : backendStore.silverBadgeSlugs);
@@ -905,6 +903,7 @@ function hiddenTrophies<T>(k: string, list: T[]): T[] {
 function trophyArt(k: string, item: any): string {
   if (k === 'competitions') return medalArt(item);
   if (k === 'special') return item?.badge?.thumbnail_url || item?.badge?.image_url || '';
+  if (k === 'mentor') return item?.award?.badge?.thumbnail_url || item?.award?.badge?.image_url || item?.t?.image || '';
   return getBadgeUrl(item?.imageKey || '');
 }
 /** The button under a section, or '' when everything already fits in two rows. */
@@ -917,7 +916,7 @@ function trophyMoreLabel(k: string, list: unknown[]): string {
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
 // Competitions first by default (Ames 2026-11-04); a player's own saved order still wins.
-const TROPHY_SECTIONS = ['competitions', 'cells', 'editor', 'loyalty', 'special'] as const;
+const TROPHY_SECTIONS = ['competitions', 'cells', 'editor', 'loyalty', 'mentor', 'special'] as const;
 type TrophySection = typeof TROPHY_SECTIONS[number];
 const otherTrophyOrder = ref<string[]>([]);
 const trophyOrder = computed<TrophySection[]>(() => {
@@ -1024,7 +1023,12 @@ function huntMedalOf(a: any): HuntMedal | null {
   return m ? (m[2] as HuntMedal) : null;
 }
 /** The Special Awards that are not Hunt medals (those are under Competitions). */
-const plainSpecialBadges = computed(() => profileSpecialBadges.value.filter((a: any) => !huntMedalOf(a)));
+const plainSpecialBadges = computed(() => profileSpecialBadges.value.filter((a: any) => !huntMedalOf(a) && !isMentorTierSlug(a?.badge?.slug)));
+/** The Mentor row (Ames 2026-11-05): every tier, earned ones with their award.
+ *  Shown only to a player who holds at least one. */
+interface MentorTile { t: MentorTier; award: any | null }
+const mentorTiles = computed<MentorTile[]>(() => MENTOR_TIERS.map(t => ({ t, award: profileSpecialBadges.value.find((a: any) => a?.badge?.slug === t.slug) ?? null })));
+const mentorEarned = computed(() => mentorTiles.value.filter(x => x.award).length);
 interface MedalTile { tier: HuntMedal; count: number; awards: any[]; latest: any }
 const competitionMedals = computed<MedalTile[]>(() => MEDAL_ORDER.map((tier) => {
   const awards = profileSpecialBadges.value.filter((a: any) => huntMedalOf(a) === tier)
@@ -1848,9 +1852,8 @@ onUnmounted(() => clearTimeout(stageTimer));
                   :title="specialBadgeTooltip(award)"
                   @click="onSpecialBadgeClick(award)"
                 >
-                  <div class="nge-profile-badge-img" :class="{ 'nge-badge-img--counted': mentorCount(award) }">
+                  <div class="nge-profile-badge-img">
                     <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
-                    <span v-if="mentorCount(award)" class="nge-medal-count" :aria-label="`${mentorCount(award)} apprentices graduated`">×{{ mentorCount(award) }}</span>
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
                 </div>
@@ -2811,6 +2814,33 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             <button v-if="trophyMoreLabel('loyalty', earnedLoyaltyBadges.earned)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('loyalty')">Show fewer</button>
           </div>
 
+          <!-- Mentor (Ames 2026-11-05): a tier at 1, 5, 10, 25 and 50 apprentices graduated, the ones still ahead dimmed -->
+          <div v-if="mentorEarned > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'mentor', 'is-drop': dropSection === 'mentor' }" :style="sectionOrder('mentor')" @dragover="sectionDragOver('mentor', $event)" @drop.prevent="sectionDrop('mentor')">
+            <div class="nge-trophy-track-label" style="color: #f2d27a;">Mentor Achievements
+              <span class="nge-trophy-track-count">{{ mentorEarned }} of {{ mentorTiles.length }} earned</span>
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('mentor', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('mentor', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('mentor', 1)">▼</button>
+              </span>
+            </div>
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('mentor', el)">
+              <div
+                v-for="x in mentorTiles"
+                :key="x.t.slug"
+                class="nge-trophy-badge"
+                :class="{ 'nge-trophy-badge--locked': !x.award, 'nge-trophy-badge--selected': x.award && selectedSpecialBadge?.id === x.award.id }"
+                :title="x.award ? specialBadgeTooltip(x.award) : `${x.t.name}: ${x.t.n} apprentice${x.t.n === 1 ? '' : 's'} graduated`"
+                @click="x.award && onSpecialBadgeClick(x.award)"
+              >
+                <img :src="trophyArt('mentor', x)" :alt="x.award?.badge?.name || x.t.name" class="nge-trophy-badge-icon" />
+                <div class="nge-trophy-badge-name">{{ x.award?.badge?.name || x.t.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ x.t.n }} graduate{{ x.t.n === 1 ? '' : 's' }}</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Competitions -->
           <div v-if="competitionMedals.length" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'competitions', 'is-drop': dropSection === 'competitions' }" :style="sectionOrder('competitions')" @dragover="sectionDragOver('competitions', $event)" @drop.prevent="sectionDrop('competitions')">
             <div class="nge-trophy-track-label">◆ Competitions
@@ -2922,7 +2952,6 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 @click="onSpecialBadgeClick(award)"
               >
                 <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
-                <span v-if="mentorCount(award)" class="nge-medal-count nge-trophy-count" :aria-label="`${mentorCount(award)} apprentices graduated`">×{{ mentorCount(award) }}</span>
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
               </div>
               <button v-if="hiddenTrophies('special', plainSpecialBadges).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${plainSpecialBadges.length}`" :aria-expanded="false" @click="toggleTrophySection('special')">
@@ -4073,6 +4102,10 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-section--special {
   border-top: none;
 }
+/* The Mentor row: tiers still ahead, dimmed (Ames 2026-11-05) */
+.nge-trophy-badge--locked { cursor: default; }
+.nge-trophy-badge--locked .nge-trophy-badge-icon { filter: grayscale(0.7) brightness(0.8); opacity: 0.6; }
+.nge-trophy-badge--locked .nge-trophy-badge-name { opacity: 0.7; }
 /* Competitions: the medal with how many times it was won (Ames 2026-10-21) */
 .nge-profile-badge--medal .nge-profile-badge-img, .nge-trophy-medal-img { position: relative; display: inline-flex; }
 .nge-medal-count {
@@ -4081,10 +4114,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   font: 700 10.5px/16px 'Orbitron', 'Inter', sans-serif; text-align: center; letter-spacing: 0.02em;
   box-shadow: 0 0 8px rgba(245, 209, 66, 0.25);
 }
-/* The Mentor Achievement's counter, the same bubble (Ames 2026-11-05) */
-.nge-badge-img--counted { position: relative; }
-.nge-trophy-badge:has(.nge-trophy-count) { position: relative; }
-.nge-trophy-count { top: 8px; right: 8px; bottom: auto; }
 .nge-trophy-medal-img .nge-medal-count { right: -8px; bottom: 4px; font-size: 11.5px; line-height: 18px; min-width: 24px; }
 .nge-trophy-medal-place { margin-top: 1px; font-size: 0.72em; color: rgba(196, 228, 255, 0.55); }
 .nge-medal-wins { color: #f8e08a; }

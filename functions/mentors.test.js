@@ -161,7 +161,7 @@ test('an admin who mentors someone to the end gets the Mentor Achievement too', 
     await admin('mentor.claim', {reviewId: r.id});
     await admin('mentor.complete', {reviewId: r.id});
   }
-  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Apprentice', U(4)], ['Mentor', U(1)]]);
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Myelinated', U(4)], ['First Wrap', U(1)]]);
 });
 
 test('five cells end the apprenticeship with both Achievements; no sixth can be sent', async () => {
@@ -178,7 +178,7 @@ test('five cells end the apprenticeship with both Achievements; no sixth can be 
   const st = await call(4, 'mentor.status');
   assert.equal(st.apprentice.status, 'finished');
   assert.equal(st.mine.length, CELLS_NEEDED, 'the notes stay readable afterwards');
-  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Apprentice', U(4)], ['Mentor', U(2)]]);
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Myelinated', U(4)], ['First Wrap', U(2)]]);
   await assert.rejects(send(call, 4, 100), /not in the mentor program/);
   assert.equal((await call(2, 'mentor.queue')).slots.used, 0, 'the mentor has room again');
 });
@@ -241,7 +241,7 @@ test('an admin can be their own apprentice to test alone: no one else is rung, n
     await admin('mentor.complete', {reviewId: r.id});
   }
   assert.equal(credited.filter(c => c.userId === U(1)).length, CELLS_NEEDED);
-  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Apprentice', U(1)]]);
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Myelinated', U(1)]]);
 });
 
 test('admins change a bell text; the next bell uses it; names in braces are filled in', async () => {
@@ -289,9 +289,9 @@ test('graduating celebrates: both Achievement bells match the award pattern of t
   };
   await finish(4);
   const first = db._state.notes.filter(x => AWARD.test(x.title));
-  assert.deepEqual(first.map(x => [x.to, x.title]), [[U(4), 'New Achievement: Apprentice'], [U(2), 'New Achievement: Mentor']]);
+  assert.deepEqual(first.map(x => [x.to, x.title]), [[U(4), 'New Achievement: Myelinated'], [U(2), 'New Achievement: First Wrap']]);
   for (const b of first) {
-    assert.match(b.body, /^You earned the "(Apprentice|Mentor)" Achievement! /, 'the game reads the name from the quotes');
+    assert.match(b.body, /^You earned the "(Myelinated|First Wrap)" Achievement! /, 'the game reads the name from the quotes');
     assert.ok(b.image, 'with the Achievement picture');
   }
   await finish(5);
@@ -299,7 +299,7 @@ test('graduating celebrates: both Achievement bells match the award pattern of t
   assert.equal(mentorBells.length, 2);
   assert.ok(!AWARD.test(mentorBells[1].title), 'no second unlock card for the same Achievement');
   assert.equal(mentorBells[1].title, '🧭 second finished the mentor program');
-  assert.equal(db._state.awards.filter(a => a.name === 'Mentor').length, 1);
+  assert.equal(db._state.awards.filter(a => a.name === 'First Wrap').length, 1);
 });
 
 test('an Achievement an admin changed in Special Badges is never written over, and its bell carries their picture', async () => {
@@ -307,12 +307,12 @@ test('an Achievement an admin changed in Special Badges is never written over, a
   const calls = [];
   const sb = async (path, opts = {}) => {
     calls.push(`${opts.method || 'GET'} ${path.split('?')[0]}`);
-    if (path.startsWith('special_badges?slug=eq.')) return [{id: 7, image_url: 'https://art.test/ames.png'}];
+    if (path.startsWith('special_badges?slug=eq.')) return [{id: 7, name: APPRENTICE_BADGE.name, image_url: 'https://art.test/ames.png'}];
     if (path.startsWith('special_badge_awards')) return [{badge_id: 7}];
     return [];
   };
   const out = await restDb(sb).award(APPRENTICE_BADGE, U(4), 'test');
-  assert.deepEqual(out, {first: true, image: 'https://art.test/ames.png'});
+  assert.deepEqual(out, {first: true, image: 'https://art.test/ames.png', name: APPRENTICE_BADGE.name});
   assert.ok(!calls.includes('POST special_badges'), `the Achievement was written: ${calls.join(', ')}`);
   // Missing: made once, then read back.
   const calls2 = []; let made = false;
@@ -323,7 +323,7 @@ test('an Achievement an admin changed in Special Badges is never written over, a
     return [];
   };
   const out2 = await restDb(sb2).award(APPRENTICE_BADGE, U(4), 'test');
-  assert.deepEqual(out2, {first: false, image: APPRENTICE_BADGE.image_url});
+  assert.deepEqual(out2, {first: false, image: APPRENTICE_BADGE.image_url, name: APPRENTICE_BADGE.name});
   assert.equal(calls2.filter(c => c === 'POST special_badges').length, 1);
 });
 
@@ -337,7 +337,7 @@ test('the graduation bell carries the picture the Achievement has now', async ()
     await call(2, 'mentor.claim', {reviewId: r.id});
     await call(2, 'mentor.complete', {reviewId: r.id});
   }
-  assert.equal(db._state.notes.find(n => n.title === 'New Achievement: Apprentice').image, 'https://art.test/apprentice.png');
+  assert.equal(db._state.notes.find(n => n.title === 'New Achievement: Myelinated').image, 'https://art.test/apprentice.png');
 });
 
 test('one mentor per apprentice: cells sent before pairing go with them, and another mentor can neither see nor take them', async () => {
@@ -378,23 +378,43 @@ test('the welcome and You have a mentor bells carry the program picture and say 
   assert.equal(have.body, 'Nseraf is your mentor. They will look at your first 5 cells and give you feedback before each one counts.');
 });
 
-test('the Mentor Achievement counts its graduates', async () => {
-  const {db, call, admin} = setup();
-  await admin('mentor.addMentor', {username: 'Nseraf'});
-  const finish = async n => {
-    await admin('mentor.addApprentice', {username: who(n).username});
+test('the Mentor row: a tier at 1, 5, 10, 25 and 50 graduates, each celebrated once, plain bells between', async () => {
+  const {MENTOR_TIERS} = require('./mentors');
+  assert.deepEqual(MENTOR_TIERS.map(t => t.n), [1, 5, 10, 25, 50]);
+  const extra = Array.from({length: 6}, (_, i) => ({id: U(200 + i), username: `grad${i}`}));
+  const db = memDb([...users, ...extra]);
+  const as = (me, action, args = {}, admin = false) => mentorAction(action, args, {db, me, isAdmin: admin, credit: async () => {}});
+  await as(who(1), 'mentor.addMentor', {username: 'Nseraf'}, true);
+  const finish = async (u, k) => {
+    await as(who(1), 'mentor.addApprentice', {username: u.username}, true);
     for (let i = 1; i <= CELLS_NEEDED; i++) {
-      const r = (await send(call, n, n * 100 + i)).review;
-      await call(2, 'mentor.claim', {reviewId: r.id});
-      await call(2, 'mentor.complete', {reviewId: r.id});
+      const r = (await as(u, 'mentor.send', {taskId: 1000 + k * 10 + i, dataset: 'pinky100', rootId: String(5000 + k * 10 + i)})).review;
+      await as(who(2), 'mentor.claim', {reviewId: r.id});
+      await as(who(2), 'mentor.complete', {reviewId: r.id});
     }
   };
-  await finish(4);
-  const award = () => db._state.awards.find(x => x.name === 'Mentor' && x.userId === U(2));
-  assert.equal(award().reason, '1 apprentice graduated');
-  await finish(5);
-  assert.equal(award().reason, '2 apprentices graduated');
-  assert.equal(db._state.awards.filter(x => x.name === 'Mentor').length, 1, 'still one Achievement');
+  const tiers = () => db._state.awards.filter(a => a.userId === U(2)).map(a => a.name);
+  const bells = () => db._state.notes.filter(n => n.to === U(2) && /finished the mentor program/.test(n.body)).map(n => n.title);
+  await finish(extra[0], 0);
+  assert.deepEqual(tiers(), ['First Wrap']);
+  for (let k = 1; k < 5; k++) await finish(extra[k], k);
+  assert.deepEqual(tiers(), ['First Wrap', 'Myelin Maker']);
+  assert.deepEqual(bells(), ['New Achievement: First Wrap', '🧭 grad1 finished the mentor program', '🧭 grad2 finished the mentor program',
+    '🧭 grad3 finished the mentor program', 'New Achievement: Myelin Maker']);
+  const five = db._state.notes.find(n => n.title === 'New Achievement: Myelin Maker');
+  assert.match(five.body, /^You earned the "Myelin Maker" Achievement! grad4 finished the mentor program with you\. Apprentices graduated with you: 5\.$/);
+  assert.match(five.image, /mentor-5\.png$/);
+  // Reaching a tier late gives every tier below it too, and only the top one is celebrated.
+  const db2 = memDb(users), as2 = (me, action, args = {}, admin = false) => mentorAction(action, args, {db: db2, me, isAdmin: admin, credit: async () => {}});
+  for (let i = 0; i < 9; i++) db2._state.apprentices.push({user_id: `x${i}`, user_name: `x${i}`, mentor_id: U(2), status: 'finished'});
+  await as2(who(1), 'mentor.addApprentice', {username: 'newbie'}, true);
+  for (let i = 1; i <= CELLS_NEEDED; i++) {
+    const r = (await as2(who(4), 'mentor.send', {taskId: i, dataset: 'pinky100', rootId: String(900 + i)})).review;
+    await as2(who(2), 'mentor.claim', {reviewId: r.id}, true);
+    await as2(who(2), 'mentor.complete', {reviewId: r.id}, true);
+  }
+  assert.deepEqual(db2._state.awards.filter(a => a.userId === U(2)).map(a => a.name), ['First Wrap', 'Myelin Maker', 'Sheath Shaper']);
+  assert.deepEqual(db2._state.notes.filter(n => n.to === U(2) && n.title.startsWith('New Achievement')).map(n => n.title), ['New Achievement: Sheath Shaper']);
 });
 
 test('copy has no dashes and says Achievement, never badge', () => {

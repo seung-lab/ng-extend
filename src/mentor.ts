@@ -21,6 +21,7 @@ import { reactive, ref, watch } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
 import { secureWrite } from './secure_write';
 import { apprenticeFlag } from './util/mentor_flag';
+import { MENTOR_TIERS, APPRENTICE_ACHIEVEMENT } from './util/mentor_tiers';
 import { setStateRewriter, useLayersStore, useCellHistoryStore, useProofreadingBackendStore } from './store';
 import { currentDatasetTag } from './datasets';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem, labelAxonComplete } from './widgets/lightbulb_service';
@@ -382,7 +383,8 @@ const titlePattern = (t: string) => new RegExp('^' + t.replace(/[.*+?^$()|[\]\\]
 /** The program's message a bell was sent from (by its title, as written now
  *  or originally), or null for any other bell. Admins only. */
 export async function mentorTextFor(title: string): Promise<MentorText | null> {
-  if (!/^(🧭|🎉|🏆|New Achievement: (Apprentice|Mentor)$)/u.test(title)) return null;
+  const ours = [APPRENTICE_ACHIEVEMENT, ...MENTOR_TIERS.map(t => t.name)].map(n => `New Achievement: ${n}`);
+  if (!/^(🧭|🎉|🏆)/u.test(title) && !ours.includes(title)) return null;
   const list = await loadMentorTexts();
   return list.find(t => titlePattern(t.title).test(title) || titlePattern(t.defaultTitle).test(title)) ?? null;
 }
