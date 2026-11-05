@@ -220,3 +220,21 @@ test('a request an admin removed, or dismissed on the triage board, may be sent 
   w.triage.push({source_id: w.issues[1].id, status: 'dismissed'});
   assert.strictEqual((await handle('access.betaStatus', {}, w.io())).requested, false);
 });
+
+// "You're in" by email (Ames 2026-11-05).
+test('letting someone in emails them once, from connectome.quest', async () => {
+  const sent = [], kept = {};
+  const io = { isAdmin: true, who: { email: 'ames@x.org' },
+    sendEmail: async m => { sent.push(m); return { ok: true, id: 'e1' }; },
+    welcomeSent: { get: async e => kept[e], set: async (e, v) => { kept[e] = v; } } };
+  const r = await handle('access.welcomeEmail', { email: 'Ryan@Example.org', name: 'Ryan Tian' }, io);
+  assert.deepEqual(r, { sent: true });
+  assert.equal(sent[0].from, 'Pyr <welcome@connectome.quest>');
+  assert.deepEqual(sent[0].to, ['ryan@example.org']);
+  assert.equal(sent[0].reply_to, 'support@eyewire.ai');
+  assert.match(sent[0].text, /^Hi Ryan,\n\nYou're in!/);
+  assert.deepEqual(await handle('access.welcomeEmail', { email: 'ryan@example.org', name: 'Ryan' }, io), { sent: false, reason: 'already sent' });
+  assert.equal(sent.length, 1);
+  await assert.rejects(handle('access.welcomeEmail', { email: 'x@y.org' }, { ...io, isAdmin: false }));
+  assert.deepEqual(await handle('access.welcomeEmail', { email: 'z@y.org' }, { isAdmin: true }), { sent: false, reason: 'not set up' });
+});
