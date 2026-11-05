@@ -2751,7 +2751,10 @@ exports.ewSecureUpload = onRequest(
    const isBlogAuthor=input.kind==="blog"&&!!uploader.me&&(await sb("blog_authors?user_id=eq."+uploader.me.id+"&select=user_id&limit=1")).length>0;
    if(!isBlogAuthor)requirePilot(uploader);
    const upload=require("./upload-policy").prepareUpload(input,who,isAdmin,isBlogAuthor);
-   if(!(await rateLimit({ip:who.email},false,"upload")).ok)throw ewErr(429,"Please wait before uploading another image.");
+   // A blog gallery uploads a dozen pictures at once (Ames 2026-11-05): blog
+   // authors and admins get the admin write allowance, others keep 8 a minute.
+   const roomy=isAdmin||isBlogAuthor;
+   if(!(await rateLimit({ip:who.email},false,roomy?"write:upload":"upload",roomy)).ok)throw ewErr(429,"Please wait before uploading another image.");
    const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/admin-uploads/"+upload.path;
    const r=await fetch(url,{method:"POST",headers:{apikey:key,...(key.startsWith("sb_")?{}:{Authorization:"Bearer "+key}),"Content-Type":upload.contentType,"x-upsert":"false"},body:upload.bytes,redirect:"error",signal:AbortSignal.timeout(30000)});
    if(!r.ok)throw ewErr(502,"Image storage is temporarily unavailable.");
