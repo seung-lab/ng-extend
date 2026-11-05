@@ -344,7 +344,7 @@ const titlePattern = (t: string) => new RegExp('^' + t.replace(/[.*+?^$()|[\]\\]
 /** The program's message a bell was sent from (by its title, as written now
  *  or originally), or null for any other bell. Admins only. */
 export async function mentorTextFor(title: string): Promise<MentorText | null> {
-  if (!/^(🧭|🎉|🏆)/u.test(title)) return null;
+  if (!/^(🧭|🎉|🏆|New Achievement: (Apprentice|Mentor)$)/u.test(title)) return null;
   const list = await loadMentorTexts();
   return list.find(t => titlePattern(t.title).test(title) || titlePattern(t.defaultTitle).test(title)) ?? null;
 }

@@ -85,15 +85,20 @@ const TEXTS = {
   practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed'],
     title: '🎉 Your cell is complete (practice)',
     body: '{mentor} completed cell {cell} with you. This was practice, so nothing was recorded and the cell is free again. {done} of {needed} mentor cells done.'},
-  apprenticeAchievement: {label: 'Apprentice Achievement', to: 'apprentice', vars: ['mentor'],
-    title: '🏆 Apprentice Achievement',
-    body: 'You finished the mentor program. From now on your cells count the moment you complete them. Thank you, {mentor}, too.'},
+  // The two Achievement bells keep the form the game celebrates (src/util/award_title.ts): a title
+  // starting "New Achievement:" and a text starting 'You earned the "<name>" Achievement!'.
+  apprenticeAchievement: {label: 'Apprentice Achievement (keep "New Achievement:" so it celebrates)', to: 'apprentice', vars: ['mentor'],
+    title: 'New Achievement: Apprentice',
+    body: 'You earned the "Apprentice" Achievement! You finished the mentor program with {mentor}. From now on your cells count the moment you complete them.'},
   practiceFinished: {label: 'Practice finished', to: 'apprentice', vars: ['mentor'],
     title: '🏆 Practice finished',
     body: 'You finished the practice mentor program with {mentor}. In the real program this is when the Apprentice Achievement comes.'},
-  mentorAchievement: {label: 'Mentor Achievement', to: 'mentor', vars: ['apprentice'],
-    title: '🏆 Mentor Achievement',
-    body: '{apprentice} finished the mentor program with you.'},
+  mentorAchievement: {label: 'Mentor Achievement (keep "New Achievement:" so it celebrates)', to: 'mentor', vars: ['apprentice'],
+    title: 'New Achievement: Mentor',
+    body: 'You earned the "Mentor" Achievement! {apprentice} finished the mentor program with you.'},
+  mentorFinishedAgain: {label: 'Another apprentice finished', to: 'mentor', vars: ['apprentice'],
+    title: '🧭 {apprentice} finished the mentor program',
+    body: '{apprentice} finished the mentor program with you. Thank you for mentoring.'},
 };
 const TITLE_MAX = 120;
 const BODY_MAX = 1500;
@@ -150,7 +155,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
     const t = edited[key] || {};
     return {title: t.title || TEXTS[key].title, body: t.body || TEXTS[key].body};
   };
-  const bell = async (to, key, vars) => { const t = await textOf(key); await db.notify(to, fill(t.title, vars), fill(t.body, vars), meId); };
+  const bell = async (to, key, vars, image) => { const t = await textOf(key); await db.notify(to, fill(t.title, vars), fill(t.body, vars), meId, image); };
 
   /** A cell taken by a mentor and then left 48 hours goes back to the queue,
    *  and so does the apprentice, so another mentor can take them. Done on
@@ -336,10 +341,14 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       await bell(r.apprentice_id, 'complete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed});
       if (finished) {
         await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
-        await bell(r.apprentice_id, 'apprenticeAchievement', {mentor: nameOf(me)});
+        // In the form the game celebrates: the unlock card and confetti (Ames 2026-11-05).
+        await bell(r.apprentice_id, 'apprenticeAchievement', {mentor: nameOf(me)}, APPRENTICE_BADGE.image_url);
         if (a.mentor_id && a.mentor_id !== a.user_id) {
-          await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
-          await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name});
+          // Once per mentor: the Achievement and its celebration the first time,
+          // a plain bell for every apprentice after that.
+          const first = await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
+          if (first) await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name}, MENTOR_BADGE.image_url);
+          else await bell(a.mentor_id, 'mentorFinishedAgain', {apprentice: a.user_name});
         }
       }
       return {review: reviewOut(await db.getReview(r.id)), finished};
@@ -516,12 +525,24 @@ function restDb(sb) {
     completeTask: (userId, taskId, finalSeg, coords) => sb('rpc/pilot_task_action', {method: 'POST',
       body: JSON.stringify({p_user: userId, p_action: 'complete', p_args: {id: taskId, final_segment_id: finalSeg || undefined, soma_coords: coords || undefined}})}),
     findUser: id => one(sb(`users?id=eq.${id}&select=id,username,display_name&limit=1`)),
-    findUserByName: name => one(sb(`users?username=ilike.${enc(name.replace(/[%_*,()]/g, ''))}&select=id,username,display_name&limit=1`)),
+    // Case is ignored, nothing else: "_" is kept (it was stripped, so m_sorek
+    // was looked for as msorek, Ames 2026-11-05), and as "_" also matches any
+    // one letter in ilike, only an exact name is taken from what comes back.
+    findUserByName: async name => {
+      const want = String(name).trim().toLowerCase();
+      if (!want || /[%*,()"\\]/.test(want)) return null;
+      const rows = await sb(`users?username=ilike.${enc(want)}&select=id,username,display_name&limit=10`);
+      return (rows || []).find(u => String(u.username || '').toLowerCase() === want) || null;
+    },
     award: async (badge, userId, reason) => {
       const b = await one(upsert('special_badges', 'slug', badge));
-      if (b) await post('special_badge_awards?on_conflict=badge_id,user_id', {badge_id: b.id, user_id: userId, reason: String(reason).slice(0, 200)}, 'resolution=ignore-duplicates,return=minimal');
+      if (!b) return false;
+      // Only a row that was not there before comes back.
+      const rows = await post('special_badge_awards?on_conflict=badge_id,user_id', {badge_id: b.id, user_id: userId, reason: String(reason).slice(0, 200)}, 'resolution=ignore-duplicates,return=representation');
+      return Array.isArray(rows) && rows.length > 0;
     },
-    notify: (userId, title, body, by) => post('notifications', {title, body, target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: by || null}, 'return=minimal')
+    notify: (userId, title, body, by, image) => post('notifications', {title, body, target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: by || null,
+      ...(image ? {image_url: image, thumbnail_url: image} : {})}, 'return=minimal')
       .catch(e => console.error('[mentors] notification not sent', e && e.message)),
   };
 }
@@ -558,8 +579,8 @@ function memDb(users = []) {
     },
     findUser: async id => copy(users.find(u => u.id === id) || null),
     findUserByName: async name => copy(users.find(u => String(u.username).toLowerCase() === name.toLowerCase()) || null),
-    award: async (badge, userId, reason) => { if (!s.awards.some(a => a.slug === badge.slug && a.userId === userId)) s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); },
-    notify: async (userId, title, body) => { s.notes.push({to: userId, title, body}); },
+    award: async (badge, userId, reason) => { if (s.awards.some(a => a.slug === badge.slug && a.userId === userId)) return false; s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); return true; },
+    notify: async (userId, title, body, by, image) => { s.notes.push({to: userId, title, body, ...(image ? {image} : {})}); },
   };
 }
 

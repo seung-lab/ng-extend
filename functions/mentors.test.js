@@ -272,6 +272,34 @@ test('every default text uses only its own names, and has no dashes or "badge"',
   }
 });
 
+test('graduating celebrates: both Achievement bells match the award pattern of the game, with the picture; a second graduate gives the mentor a plain bell', async () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/util/award_title.ts'), 'utf8');
+  const AWARD = new RegExp(src.match(/const AWARD_TITLE = \/(.+)\/u;/)[1], 'u');
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  const finish = async n => {
+    await admin('mentor.addApprentice', {username: who(n).username});
+    for (let i = 1; i <= CELLS_NEEDED; i++) {
+      const r = (await send(call, n, n * 100 + i)).review;
+      await call(2, 'mentor.claim', {reviewId: r.id});
+      await call(2, 'mentor.complete', {reviewId: r.id});
+    }
+  };
+  await finish(4);
+  const first = db._state.notes.filter(x => AWARD.test(x.title));
+  assert.deepEqual(first.map(x => [x.to, x.title]), [[U(4), 'New Achievement: Apprentice'], [U(2), 'New Achievement: Mentor']]);
+  for (const b of first) {
+    assert.match(b.body, /^You earned the "(Apprentice|Mentor)" Achievement! /, 'the game reads the name from the quotes');
+    assert.ok(b.image, 'with the Achievement picture');
+  }
+  await finish(5);
+  const mentorBells = db._state.notes.filter(x => x.to === U(2) && /finished the mentor program/.test(x.body));
+  assert.equal(mentorBells.length, 2);
+  assert.ok(!AWARD.test(mentorBells[1].title), 'no second unlock card for the same Achievement');
+  assert.equal(mentorBells[1].title, '🧭 second finished the mentor program');
+  assert.equal(db._state.awards.filter(a => a.name === 'Mentor').length, 1);
+});
+
 test('copy has no dashes and says Achievement, never badge', () => {
   const src = require('fs').readFileSync(require.resolve('./mentors'), 'utf8');
   const strings = src.match(/(['`])(?:(?!\1)[^\\\n]|\\.)*\1/g).filter(s => / /.test(s) && /^['`][A-Z🧭🎉🏆]/u.test(s));
