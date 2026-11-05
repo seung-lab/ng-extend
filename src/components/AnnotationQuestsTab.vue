@@ -375,15 +375,21 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-row-left">
                 <span class="nge-aq-pip nge-aq-pip--claimed"></span>
                 <div class="nge-aq-row-info">
-                  <div class="nge-aq-row-name">{{ label(r) }}<span v-if="isActive(r)" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
-                  <div class="nge-aq-row-meta nge-aq-cellid" title="This quest's cell, as the segment list shows it">Cell {{ r.segmentId }}</div>
-                  <div class="nge-aq-row-meta nge-aq-saved" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }">
+                  <div class="nge-aq-row-name" :title="slim ? `Cell ${r.segmentId}` : undefined">{{ label(r) }}<span v-if="isActive(r)" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
+                  <!-- Slim view: the essentials on one line (toknow, report 387).
+                       The cell ID is the name's tooltip; the save line sits with the buttons. -->
+                  <div v-if="!slim" class="nge-aq-row-meta nge-aq-cellid" title="This quest's cell, as the segment list shows it">Cell {{ r.segmentId }}</div>
+                  <div v-if="!slim" class="nge-aq-row-meta nge-aq-saved" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }">
                     <span>{{ savedLine(r) }}</span>
                     <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save now</button>
                   </div>
                 </div>
               </div>
               <div class="nge-aq-row-actions">
+                <span v-if="slim" class="nge-aq-saved nge-aq-saved--slim" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }" :title="savedLine(r)">
+                  <span>{{ savedLine(r) }}</span>
+                  <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
+                </span>
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
@@ -507,7 +513,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         </template>
       </template>
       <div v-else-if="!loading && !error" class="nge-aq-empty">The quest sheet has no cells yet.</div>
-      <div v-if="message" class="nge-aq-msg">{{ message }}</div>
+      <div v-if="message && !slim" class="nge-aq-msg">{{ message }}</div>
     </template>
   </div>
 </template>
@@ -616,7 +622,9 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-row-info { min-width: 0; flex: 1; }
 .nge-aq-row-name { font-size: 15px; font-weight: 600; color: #e4e8f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-meta { font-size: 13px; color: #93a0b6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; }
+.nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; align-items: center; }
+.nge-aq-saved--slim { align-items: center; margin-right: 6px; font-size: 12px; max-width: 160px; white-space: nowrap; }
+.nge-aq-saved--slim .nge-aq-save { font-size: 12px; }
 .nge-aq-btn {
   padding: 5px 11px;
   border: 1px solid rgba(120, 140, 255, 0.15);
