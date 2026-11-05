@@ -1758,7 +1758,11 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-label-row { display: flex; align-items: center; gap: 8px; }
 .nge-todo-md :deep(p) { margin: 0 0 6px; }
 .nge-todo-md :deep(ul), .nge-todo-md :deep(ol) { margin: 0 0 6px; padding-left: 20px; }
-.nge-todo-md { white-space: normal; }
+.nge-todo-md, .nge-todo-notes.nge-todo-md { white-space: normal; }
+/* Lists sit close, as in a document (Ames 2026-11-05: "too spaced out"). */
+.nge-todo-md :deep(li) { margin: 0; }
+.nge-todo-md :deep(li > p) { margin: 0; }
+.nge-todo-md :deep(p:last-child), .nge-todo-md :deep(ul:last-child), .nge-todo-md :deep(ol:last-child) { margin-bottom: 0; }
 .nge-todo-list--folded { padding: 0; overflow: hidden; }
 .nge-todo-rail {
   width: 100%; height: 100%; border: none; background: transparent; color: var(--text); cursor: pointer;
