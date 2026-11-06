@@ -733,10 +733,18 @@ function playBatchChime() {
               ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a bell when it is done.` : 'A mentor takes a second look. You get a bell when it is done.')
               : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
               : `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. It counts for you. For science!` }}</div>
-            <!-- No dots: two counts read plainer (Ames 2026-11-06). -->
+            <!-- One colour per count (Ames 2026-11-06: "fix the color"): completed
+                 cells blue, submitted ones still with the mentor gold, the rest empty.
+                 The numbers below wear the same colours. -->
+            <div class="nge-cell-mentor-dots" :aria-label="`${mentorSent(cellCelebration.mentor)} of ${cellCelebration.mentor.needed} submitted, ${cellCelebration.mentor.done} of ${cellCelebration.mentor.needed} completed`">
+              <span v-for="i in cellCelebration.mentor.needed" :key="i" class="nge-cell-mentor-dot"
+                    :class="{ 'nge-cell-mentor-dot--done': i <= cellCelebration.mentor.done,
+                              'nge-cell-mentor-dot--sent': i > cellCelebration.mentor.done && i <= mentorSent(cellCelebration.mentor),
+                              'nge-cell-mentor-dot--now': i === (cellCelebration.mentor.kind === 'complete' ? cellCelebration.mentor.done : mentorSent(cellCelebration.mentor)) }"></span>
+            </div>
             <div class="nge-cell-stats nge-cell-stats--mentor">
-              <span><strong>{{ mentorSent(cellCelebration.mentor) }}</strong>/{{ cellCelebration.mentor.needed }} submitted</span>
-              <span><strong>{{ cellCelebration.mentor.done }}</strong>/{{ cellCelebration.mentor.needed }} completed</span>
+              <span><strong class="nge-cell-n--sent">{{ mentorSent(cellCelebration.mentor) }}</strong>/{{ cellCelebration.mentor.needed }} submitted</span>
+              <span><strong class="nge-cell-n--done">{{ cellCelebration.mentor.done }}</strong>/{{ cellCelebration.mentor.needed }} completed</span>
             </div>
           </div>
           <div v-else class="nge-cell-text">
@@ -1567,10 +1575,14 @@ function playBatchChime() {
 .nge-cell-congrats--mentor { background: linear-gradient(135deg, #cfe3ff 0%, #7fb6ff 45%, #f5d142 100%); -webkit-background-clip: text; background-clip: text; }
 .nge-cell-mentor-dots { display: flex; justify-content: center; gap: 10px; margin-top: 8px; animation: nge-cell-fade-in 0.4s ease-out 0.8s both; }
 .nge-cell-mentor-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(159, 200, 255, 0.5); }
-.nge-cell-mentor-dot--sent { border-color: #f5d142; }
+.nge-cell-mentor-dot--sent { background: #f5d142; border-color: #f5d142; }
 .nge-cell-stats--mentor { display: flex; justify-content: center; gap: 22px; }
 .nge-cell-mentor-dot--done { background: #7fb6ff; border-color: #7fb6ff; box-shadow: 0 0 8px rgba(127, 182, 255, 0.6); }
-.nge-cell-mentor-dot--now { background: #f5d142; border-color: #f5d142; box-shadow: 0 0 12px rgba(245, 209, 66, 0.8); }
+/* The newest only glows: its colour stays the one it counts as. */
+.nge-cell-mentor-dot--now { box-shadow: 0 0 12px currentColor; transform: scale(1.15); }
+.nge-cell-mentor-dot--sent.nge-cell-mentor-dot--now { color: rgba(245, 209, 66, 0.9); }
+.nge-cell-mentor-dot--done.nge-cell-mentor-dot--now { color: rgba(127, 182, 255, 0.9); }
+.nge-cell-card--mentor .nge-cell-stats strong.nge-cell-n--done { color: #7fb6ff; text-shadow: 0 0 10px rgba(127, 182, 255, 0.4); }
 .nge-cell-card--mentor .nge-cell-stats strong { color: #f5d142; text-shadow: 0 0 10px rgba(245, 209, 66, 0.4); }
 .nge-cell-stats strong {
   font-size: 22px;

@@ -285,12 +285,12 @@ const STATE: Record<string, string> = {
       <span class="nge-mbx-bar-label">{{ mentor ? 'Mentor Mode' : adminView ? 'Mentor notes, admin view' : 'Mentor notes' }}</span>
       <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
-    <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
+    <div v-if="!slim || mentor || adminView || (side === 'apprentice' && r.state === 'suggestions' && r.taskId != null)" class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
       <!-- The apprentice's box has no title line: the bar says Mentor notes (Ames 2026-11-06). -->
       <span v-if="mentor || adminView" class="nge-mbx-title">{{ mentor ? r.apprenticeName : `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` }}</span>
       <!-- Slim: the apprentice's send sits on this line (Ames 2026-11-06: "more compact"). -->
       <button v-if="slim && side === 'apprentice' && r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--headsend" title="Opens this cell's Complete form in the Cell Library, which checks the crosshairs and sends it" @pointerdown.stop @click="sendAgain">{{ busy ? 'Sending…' : `Send to ${otherName}` }}</button>
-      <span class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
+      <span v-if="!slim" class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
     <!-- Slim (Ames 2026-11-06): pin a note, send suggestions or complete,
@@ -482,7 +482,7 @@ const STATE: Record<string, string> = {
 .nge-mbx-how { margin: 6px 0; line-height: 1.45; color: rgba(220, 230, 245, 0.8); }
 .nge-mbx-meta { margin: 4px 0; font-size: 13px; color: rgba(220, 230, 245, 0.6); }
 .nge-mbx-quote { margin: 6px 0; padding: 4px 8px; border-left: 2px solid rgba(255, 255, 255, 0.3); white-space: pre-wrap; overflow-wrap: anywhere; }
-.nge-mbx-notes { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-height: 30vh; overflow-y: auto; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+.nge-mbx-notes { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-height: 30vh; overflow-y: auto; overflow-x: hidden; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
 .nge-mbx-note { display: flex; align-items: flex-start; gap: 6px; }
 .nge-mbx-pin { display: flex; flex-direction: column; gap: 3px; }
 .nge-mbx-replylink { flex: 0 0 auto; font: inherit; font-size: 13px; color: #9fc8ff; background: none; border: none; cursor: pointer; padding: 3px 2px; }
@@ -497,7 +497,9 @@ const STATE: Record<string, string> = {
 .nge-mbx-unsent { font-size: 12px; color: rgba(220, 230, 245, 0.6); }
 .nge-mbx-msg .nge-mbx-rm { margin-left: auto; }
 .nge-mbx-add--reply { margin-left: 15px; }
-.nge-mbx-fly { flex: 1; display: inline-flex; align-items: baseline; gap: 6px; font: inherit; color: #dce6f5; background: none; border: none; cursor: pointer; text-align: left; padding: 2px 0; overflow-wrap: anywhere; }
+/* A block, so a long note wraps in the box (Ames 2026-11-06: "def not horizontal scroll"). */
+.nge-mbx-fly { flex: 1; min-width: 0; display: block; font: inherit; color: #dce6f5; background: none; border: none; cursor: pointer; text-align: left; padding: 2px 0 2px 16px; text-indent: -16px; white-space: normal; overflow-wrap: anywhere; }
+.nge-mbx-fly .nge-mbx-dot { display: inline-block; margin-right: 6px; text-indent: 0; vertical-align: 1px; }
 .nge-mbx-fly:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nge-mbx-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #ffd166; transform: translateY(-1px); }
 .nge-mbx-rm { font: inherit; font-size: 16px; line-height: 1; background: none; border: none; color: rgba(220, 230, 245, 0.55); cursor: pointer; }
