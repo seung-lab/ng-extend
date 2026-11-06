@@ -64,7 +64,7 @@ function nextWhenAt(spot: string) {
 }
 /** Step 4 needs an annotation layer: the player's own if they made one,
  *  otherwise the + makes it now (so it gets the Pyr gem tool). */
-export function ensureAnnotationLayer() {
+function ensureAnnotationLayer() {
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const open = (addIfNone: boolean) => {

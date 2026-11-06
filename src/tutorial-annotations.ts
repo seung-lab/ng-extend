@@ -11,7 +11,7 @@
  */
 import { Step, useTutorialStore } from "./store-pyr";
 import {
-  advance, ensureAnnotationLayer, findPathStep, MIDDLE, nextWhenAnnotationLayerAdded,
+  advance, findPathStep, MIDDLE, nextWhenAnnotationLayerAdded,
   OVER_3D, SELECT_CLICK, waitForAction,
 } from "./tutorial-2";
 import imgNurroAtHome from './images/nurro-at-home600.png';
@@ -32,6 +32,28 @@ function annotationsOf(ml: any): any[] {
   try { return ml.layer?.localAnnotations?.toJSON?.() ?? []; } catch { return []; }
 }
 const allAnnotations = () => annotationLayers().flatMap(annotationsOf);
+
+/** Keeps an annotation layer's panel open: the selected one if it is an
+ *  annotation layer (the player may just have switched to it), else the
+ *  newest. Advanced Interface's ensureAnnotationLayer always takes the newest,
+ *  which undid the switch back made in the box before. */
+function openAnnotationPanel() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const open = (addIfNone: boolean) => {
+    if (store.activeTutorial !== tutorial || store.getTutorialStep() !== step) return;
+    const v = viewer();
+    const layers = annotationLayers();
+    // Skipped the first box: make the layer it would have made.
+    if (!layers.length && addIfNone) (document.querySelector('.neuroglancer-layer-add-button') as HTMLElement | null)?.click();
+    if (!v || !layers.length) return;
+    const mine = layers.includes(v.selectedLayer.layer) ? v.selectedLayer.layer : layers[layers.length - 1];
+    if (v.selectedLayer.layer !== mine) v.selectedLayer.layer = mine;
+    if (!v.selectedLayer.visible) v.selectedLayer.visible = true;
+  };
+  setTimeout(() => open(true), 600);
+  setTimeout(() => open(false), 2000);
+}
 
 /**
  * Runs `tick` every 400 ms while the player is on this box. A box with a
@@ -113,7 +135,7 @@ This is your layer's panel, and the Pyr gem tool is already picked.
 <strong>CTRL+CLICK three spots on the cell</strong> to drop three gems.`,
     position: OVER_3D,
     onEnter() {
-      ensureAnnotationLayer();
+      openAnnotationPanel();
       watchChecks(() => {
         const base = allAnnotations().length;
         return { three: () => allAnnotations().length >= base + 3 };
@@ -126,7 +148,7 @@ This is your layer's panel, and the Pyr gem tool is already picked.
 Make them yours: <strong>click the color pill</strong> at the top of the panel and pick a color.`,
     position: { element: ".nge-ann-panel input.neuroglancer-color-widget", side: "left", offset: { x: 0, y: 0 } },
     onEnter() {
-      ensureAnnotationLayer();
+      openAnnotationPanel();
       watchChecks(() => {
         const colorOf = (ml: any) => String(ml.layer?.annotationDisplayState?.color?.toString?.() ?? '').toLowerCase();
         const base = new Map(annotationLayers().map(ml => [ml, colorOf(ml)]));
@@ -143,9 +165,10 @@ Now get around your gems. Each line ticks itself off:
 <li data-check="step">Fly from gem to gem with the <strong>‹ ›</strong> arrows</li>
 <li data-check="jump"><strong>RIGHT-CLICK</strong> a gem's row in the list to jump straight to it</li>
 </ol>`,
-    position: { element: ".nge-ann-panel .nge-ann-stepper", side: "left", offset: { x: 0, y: 0 } },
+    // Left of the whole list, so the rows it asks for stay uncovered.
+    position: { element: ".nge-ann-panel .nge-ann-list-tools", side: "left", offset: { x: 0, y: 0 } },
     onEnter() {
-      ensureAnnotationLayer();
+      openAnnotationPanel();
       const used = countPanelUse();
       watchChecks(() => ({ step: () => used.steps >= 2, jump: () => used.jumps >= 1 }));
     },
@@ -184,7 +207,7 @@ These buttons pick what CTRL+CLICK draws. The top row makes points (Pyr gem, dot
 </ol>`,
     position: { element: ".nge-ann-panel .neuroglancer-annotation-toolbox", side: "left", offset: { x: 0, y: 0 } },
     onEnter() {
-      ensureAnnotationLayer();
+      openAnnotationPanel();
       watchChecks(() => {
         const shapes = () => allAnnotations().filter(a => a?.type && a.type !== 'point').length;
         const sizeOf = (ml: any) => ml.layer?.annotationDisplayState?.ngeSize?.value;
@@ -204,7 +227,7 @@ Last one: <strong>Find Path</strong> draws the route through a cell between two 
 
 <strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>on the tip of a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or click <strong>Submit</strong> in the Find Path bar).
 
-We've made the cell see through, so the path stands out. Your annotation layers come along.`,
+We've made the cell see through, so the path stands out. Your marks come along.`,
     width: "500px",
     position: OVER_3D,
     reveals: ['findPath'],
@@ -216,11 +239,9 @@ We've made the cell see through, so the path stands out. Your annotation layers 
     text: `
 That route is how you find where a merger joins: one point on the soma, one on the odd branch.
 
-Two more things to know:
-<ul>
-<li><strong>+ Folder</strong> sorts your marks, and a folder's target button sends every new mark into it.</li>
-<li>The <strong>Proofreading Test</strong> asks for a point at the end of every branch, in its End layer.</li>
-</ul>`,
+<strong>+ Folder</strong> sorts your marks, and a folder's target button sends every new mark into it.
+
+The <strong>Proofreading Test</strong> asks for a point at the end of every branch, in its End layer.`,
     image: imgNurroAtHome,
     position: MIDDLE,
     width: "440px",
