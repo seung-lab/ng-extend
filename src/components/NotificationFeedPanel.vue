@@ -414,7 +414,9 @@ function openDetail(notif: any) {
   const accessTitle = String(notif.title || '');
   // A dataset access request opens the same tab, where Dataset requests has
   // Granted (Ames 2026-10-28).
-  if (accessTitle.startsWith('🔑 Access update') || accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
+  // The Access update itself opens to its own list of who asked and who was
+  // let in (Ames 2026-11-06), with a link to the full list at the end.
+  if (accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
     emit('hide');
     return;
@@ -487,6 +489,13 @@ async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
   // A tutorial edit to approve: its before and after show here, and this
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
+  if (a?.getAttribute('href') === ACCESS_LIST_LINK) {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
   if (a?.getAttribute('href') === '#nge-tutorial-edits') {
     e.preventDefault();
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
@@ -848,8 +857,15 @@ const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(
 function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
 }
+const ACCESS_LIST_LINK = '#nge-access-requests';
 const detailBody = computed(() => {
-  const body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
+  let body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
+  // The daily and weekly Access notes end with the way to the full list.
+  if (String(openNotif.value?.title ?? '').startsWith('🔑 Access') && !body.includes(ACCESS_LIST_LINK)) {
+    body += `
+
+[Open all access requests](${ACCESS_LIST_LINK})`;
+  }
   return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
 });
 function onPictureLoad(e: Event) {
@@ -1137,7 +1153,7 @@ function padRank(rank: number): string {
     <!-- Inside the Admin tab, when both kinds have notes: which ones to show. -->
     <div v-if="showFeedTabs && showAdminSwitch" class="nge-notif-subtabs" role="tablist">
       <button v-if="showAccessTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'access' }" role="tab" :aria-selected="feedTab === 'access'" @click="feedTab = 'access'"
-              title="Access requests: beta, Retina, other datasets, and the daily Access update">
+              title="Access requests: beta, Retina, other datasets, and the daily and weekly Access notes">
         Access<b v-if="unreadIn(accessNotes) > 0">{{ unreadIn(accessNotes) }}</b>
       </button>
       <button v-if="showAdminTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"

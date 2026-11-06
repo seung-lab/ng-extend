@@ -3,6 +3,8 @@
 // daily-deploy-digest.mjs at its 4:30 pm run. No robot writes it, so it costs nothing.
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACCESS_TITLE = '🔑 Access update';
+// The week's note (Ames 2026-11-06), on Sunday's run: the same lists over 7 days.
+export const ACCESS_WEEK_TITLE = '🔑 Access this week';
 const RETINA_GRANT = '🎉 Congratulations! Your edit access has been granted!';
 const DATASET_GRANT = '🔓 You have access to ';
 // The open padlock on a dataset grant.
@@ -42,13 +44,27 @@ export async function gatherAccess(get, sinceIso) {
   return { requests, approvals };
 }
 
+const shortDay = d => d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+
+/** Sunday in US Eastern, when the week's note goes too. */
+export function isEasternSunday(now) {
+  return now.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Sunday';
+}
+
 export async function sendAccessUpdate({ get, post, now, day, dryRun, preview }) {
-  const { requests, approvals } = await gatherAccess(get, new Date(now.getTime() - DAY_MS).toISOString());
+  await sendAccessNote({ get, post, now, dryRun, preview, days: 1, title: `${ACCESS_TITLE}: ${day}`, quiet: 'today' });
+  if (isEasternSunday(now)) {
+    const from = shortDay(new Date(now.getTime() - 6 * DAY_MS));
+    await sendAccessNote({ get, post, now, dryRun, preview, days: 7, title: `${ACCESS_WEEK_TITLE}: ${from} – ${shortDay(now)}`, quiet: 'this week' });
+  }
+}
+
+async function sendAccessNote({ get, post, now, dryRun, preview, days, title, quiet }) {
+  const { requests, approvals } = await gatherAccess(get, new Date(now.getTime() - days * DAY_MS).toISOString());
   const body = accessBody(requests, approvals);
-  if (!body) { console.log('[access update] nothing new today.'); return; }
-  const title = `${ACCESS_TITLE}: ${day}`;
+  if (!body) { console.log(`[access update] nothing new ${quiet}.`); return; }
   if (dryRun || preview) { console.log(`[access update] would send "${title}":\n${body}`); return; }
-  // Once a day, like the digest.
+  // Once each, like the digest.
   const had = await get('notifications', `select=id&title=eq.${encodeURIComponent(title)}&limit=1`);
   if (had.length) { console.log('[access update] already sent today.'); return; }
   const admins = await get('admins', 'select=user_id,email');

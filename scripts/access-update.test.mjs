@@ -29,3 +29,14 @@ test('a dataset request names its dataset', async () => {
   const { requests } = await gatherAccess(get, '2026-11-01T00:00:00Z');
   assert.deepEqual(requests, [{ name: 'toknow', what: 'Medial Entorhinal Cortex' }]);
 });
+test('Sunday also sends the week', async () => {
+  const sent = [];
+  const get = async (t, q) => {
+    if (t === 'access_requests') return [{ player_name: 'Rae' }];
+    if (t === 'admins') return [{ user_id: 'a1' }];
+    return [];
+  };
+  // 2026-11-08 is a Sunday; 20:30Z is 3:30 pm Eastern.
+  await sendAccessUpdate({ get, post: async (_, r) => sent.push(...r), now: new Date('2026-11-08T20:30:00Z'), day: 'Nov 8' });
+  assert.deepEqual(sent.map(r => r.title), ['🔑 Access update: Nov 8', '🔑 Access this week: Nov 2 – Nov 8']);
+});
