@@ -72,6 +72,8 @@ const MENTOR_TIERS = [
 // The program's picture (Ames 2026-11-05: "we need an image"), pinned to the commit that added it.
 const MENTOR_PICTURE = 'https://raw.githubusercontent.com/seung-lab/ng-extend/553d8af8606204d3270e8fbb441926866927c049/static/mentor/mentor-bell.jpg';
 // The mentor's bells wear the first Mentor tier (Ames's "mentor 1" art).
+// A completed mentor cell (Ames 2026-11-06: "maybe a different image for completion"): Nurro's thank you, for science.
+const THANKS_PICTURE = 'https://raw.githubusercontent.com/seung-lab/ng-extend/5a7603de1789a54f5e14b600cb0c6781684d7b72/static/nurro/nurro-thank-you-science.jpg';
 const MENTOR_ICON = RAW + '4e2fa0fc71d7997feea1ef2e44d8e5011a4ecb23/static/mentor/tiers/mentor-1.png';
 const TEXTS = {
   welcome: {label: 'Welcome (added by an admin)', to: 'apprentice', vars: ['needed'], image: MENTOR_PICTURE,
@@ -97,12 +99,12 @@ const TEXTS = {
     title: 'Your mentor has suggestions on mentor cell #{n}',
     body: '{mentor} left suggestions on cell {cell}. See them in the view. When you are done, send it again. Mentored cells are available in Cell Library → Mentoring.'},
   // Ames 2026-11-06: "~ marissa congratulates you on completing your nth apprentice cell".
-  complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth', 'n'], image: MENTOR_ICON,
+  complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth', 'n'], image: THANKS_PICTURE,
     title: '🎉 Mentor cell #{n}: {mentor} congratulates you',
-    body: '{mentor} congratulates you on completing your {nth} apprentice cell! Your cell {cell} counts for you. {done} of {needed} mentor cells completed.'},
-  practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth', 'n'], image: MENTOR_ICON,
+    body: '{mentor} congratulates you on completing your **{nth} apprentice cell**!\n\nYour cell {cell} counts for you. For science!\n\n**{done} of {needed}** mentor cells completed.'},
+  practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth', 'n'], image: THANKS_PICTURE,
     title: '🎉 Practice cell #{n}: {mentor} congratulates you',
-    body: '{mentor} congratulates you on completing your {nth} practice cell! This was practice, so nothing was recorded and the cell is free again. {done} of {needed} mentor cells completed.'},
+    body: '{mentor} congratulates you on completing your **{nth} practice cell**!\n\nThis was practice, so nothing was recorded and the cell is free again.\n\n**{done} of {needed}** mentor cells completed.'},
   // The two Achievement bells keep the form the game celebrates (src/util/award_title.ts): a title
   // starting "New Achievement:" and a text starting 'You earned the "<name>" Achievement!'.
   apprenticeAchievement: {label: 'Apprentice graduate Achievement (keep "New Achievement:" so it celebrates)', to: 'apprentice', vars: ['mentor', 'achievement'],

@@ -97,7 +97,8 @@ export async function leavePractice() { await call('mentor.leave'); await loadMe
  *  crosshairs are not on the cell, nothing is sent and the reason is given. */
 export async function resendFromBox(r: MentorReview, note: string): Promise<{ ok: boolean; message: string }> {
   const at = await cellAtCrosshair();
-  if (!at.root) return { ok: false, message: at.problem || 'Could not check the crosshairs.' };
+  // Ames 2026-11-06: "crosshairs must be inside the cell. Put the crosshairs inside the cell in 2D".
+  if (!at.root) return { ok: false, message: 'The crosshairs must be inside the cell. Put them inside the cell in the 2D view, then send again.' };
   const task: any = useProofreadingBackendStore().tasks.find((t: any) => t.id === r.taskId);
   const known = [r.rootId, r.segmentId, task?.segment_id, task?.final_segment_id].filter(Boolean).map(String);
   let root: string | null = known.includes(at.root) ? at.root : ((await ancestorAmong(at.root, known).catch(() => null)) ? at.root : null);
@@ -107,7 +108,7 @@ export async function resendFromBox(r: MentorReview, note: string): Promise<{ ok
     const root2 = sv2 && sv2 !== '0' ? await getRootFromSupervoxel(sv2).catch(() => null) : null;
     if (root2 && (known.includes(root2) || await ancestorAmong(root2, known).catch(() => null))) root = root2;
   }
-  if (!root) return { ok: false, message: `The crosshairs are on ...${at.root.slice(-4)}, not this cell. Move them into the cell and send again.` };
+  if (!root) return { ok: false, message: `The crosshairs must be inside the cell, and they are on ...${at.root.slice(-4)}. Put them inside the cell in the 2D view, then send again.` };
   const link = await mintShortStateLink().catch(() => null) || r.link || '';
   const d: any = r.done || {};
   const out = await sendForSecondLook({ taskId: r.taskId, segId: r.segmentId, dataset: r.dataset },

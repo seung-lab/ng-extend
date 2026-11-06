@@ -132,13 +132,24 @@ const replyOpen = ref<string | null>(null);
 const replyText = ref('');
 const wholeText = ref('');
 function openReply(id: string) { replyOpen.value = replyOpen.value === id ? null : id; replyText.value = ''; }
+/** One message not sent yet per place, under a note or on the whole cell
+ *  (Ames 2026-11-06: "it shouldn't let me submit this many messages? One
+ *  note with edit pencil"). A second one changes it instead. */
+const myUnsent = (noteId: string | null) => thread.value.find(m => !m.sent && m.by === side.value && (m.noteId ?? null) === noteId) ?? null;
+const editingWhole = ref(false);
+function editMessage(m: MentorMessage) {
+  if (m.noteId) { replyOpen.value = m.noteId; replyText.value = m.text; }
+  else { editingWhole.value = true; wholeText.value = m.text; }
+}
 async function sendReply(noteId: string | null) {
   const text = (noteId ? replyText.value : wholeText.value).trim();
   if (!text) return;
   busy.value = true; error.value = '';
   try {
-    await replyTo(text, noteId);
-    if (noteId) { replyText.value = ''; replyOpen.value = null; } else wholeText.value = '';
+    const old = myUnsent(noteId);
+    if (old && old.text === text) { /* nothing changed */ }
+    else { if (old) await takeBackReply(old.id); await replyTo(text, noteId); }
+    if (noteId) { replyText.value = ''; replyOpen.value = null; } else { wholeText.value = ''; editingWhole.value = false; }
   } catch (e: any) { error.value = e?.message || 'That reply did not go through.'; }
   finally { busy.value = false; }
 }
@@ -285,11 +296,9 @@ const STATE: Record<string, string> = {
       <span class="nge-mbx-bar-label">{{ mentor ? 'Mentor Mode' : adminView ? 'Mentor notes, admin view' : 'Mentor notes' }}</span>
       <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
-    <div v-if="!slim || mentor || adminView || (side === 'apprentice' && r.state === 'suggestions' && r.taskId != null)" class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
+    <div v-if="!slim || mentor || adminView" class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
       <!-- The apprentice's box has no title line: the bar says Mentor notes (Ames 2026-11-06). -->
       <span v-if="mentor || adminView" class="nge-mbx-title">{{ mentor ? r.apprenticeName : `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` }}</span>
-      <!-- Slim: the apprentice's send sits on this line (Ames 2026-11-06: "more compact"). -->
-      <button v-if="slim && side === 'apprentice' && r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--headsend" title="Opens this cell's Complete form in the Cell Library, which checks the crosshairs and sends it" @pointerdown.stop @click="sendAgain">{{ busy ? 'Sending…' : `Send to ${otherName}` }}</button>
       <span v-if="!slim" class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
@@ -315,12 +324,11 @@ const STATE: Record<string, string> = {
         <button class="nge-mbx-btn" :disabled="busy" title="Leave this cell for another mentor and look at the next one" @click="skip">Skip</button>
         <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="takeIt">{{ busy ? 'Taking…' : takeLabel }}</button>
       </div>
-      <template v-else-if="side === 'apprentice'">
-        <div class="nge-mbx-add">
-          <input v-model="wholeText" maxlength="1000" :placeholder="`A message for ${otherName}`" @keydown.enter.prevent="sendReply(null)" />
-          <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
-        </div>
-      </template>
+      <!-- Slim (Ames 2026-11-06: "a lot of empty space"): one row, the message goes with the send. -->
+      <div v-else-if="side === 'apprentice'" class="nge-mbx-add">
+        <input v-model="wholeText" maxlength="1000" :placeholder="myUnsent(null) ? 'Your message is ready to go' : `A message (optional)`" @keydown.enter.prevent="sendAgain" />
+        <button v-if="r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done" title="Checks the crosshairs are inside the cell, saves the view and sends it, with your message" :disabled="busy" @click="sendAgain">{{ busy ? 'Sending…' : `Send to ${otherName}` }}</button>
+      </div>
       <p v-else class="nge-mbx-meta">{{ shortCell(r) }}: {{ r.state === 'complete' ? 'This cell is complete.' : mentor ? 'This cell is back with the apprentice.' : STATE[r.state] }}</p>
     </template>
     <template v-else>
@@ -341,18 +349,19 @@ const STATE: Record<string, string> = {
       <div v-for="(n, i) in notes" :key="n.id" class="nge-mbx-pin">
         <div class="nge-mbx-note">
           <button class="nge-mbx-fly" title="Fly to this note" @click="flyTo(n.position)"><span class="nge-mbx-dot"></span>{{ i + 1 }}. {{ n.text }}</button>
-          <button v-if="side" class="nge-mbx-replylink" :aria-expanded="replyOpen === n.id" @click="openReply(n.id)">Reply</button>
+          <button v-if="side && !myUnsent(n.id)" class="nge-mbx-replylink" :aria-expanded="replyOpen === n.id" @click="openReply(n.id)">Reply</button>
           <button v-if="canAct" class="nge-mbx-rm" title="Remove this note" @click="remove(n.id)">×</button>
         </div>
         <div v-for="m in repliesTo(n.id)" :key="m.id" class="nge-mbx-msg nge-mbx-msg--reply" :class="`nge-mbx-msg--${m.by}`">
           <span class="nge-mbx-who">{{ whoLabel(m) }}</span>
           <span class="nge-mbx-said-text">{{ m.text }}</span>
           <span v-if="!m.sent" class="nge-mbx-unsent">Not sent yet</span>
+          <button v-if="!m.sent && side === m.by" class="nge-mbx-edit" title="Change this reply" aria-label="Change this reply" @click="editMessage(m)">✎</button>
           <button v-if="!m.sent && side === m.by" class="nge-mbx-rm" title="Take this reply back" @click="takeBack(m.id)">×</button>
         </div>
         <div v-if="replyOpen === n.id && side" class="nge-mbx-add nge-mbx-add--reply">
           <input v-model="replyText" maxlength="1000" :placeholder="`Reply to note ${i + 1}`" @keydown.enter.prevent="sendReply(n.id)" />
-          <button class="nge-mbx-btn" :disabled="busy || !replyText.trim()" @click="sendReply(n.id)">Add reply</button>
+          <button class="nge-mbx-btn" :disabled="busy || !replyText.trim()" @click="sendReply(n.id)">{{ myUnsent(n.id) ? 'Save' : 'Add reply' }}</button>
         </div>
       </div>
       <p v-if="!notes.length && !mentor && r.state !== 'waiting' && r.state !== 'looking'" class="nge-mbx-meta">No notes in the view.</p>
@@ -364,13 +373,14 @@ const STATE: Record<string, string> = {
         <span class="nge-mbx-who">{{ whoLabel(m) }}{{ m.noteId ? ', on a note since removed' : '' }}</span>
         <span class="nge-mbx-said-text">{{ m.text }}</span>
         <span v-if="!m.sent" class="nge-mbx-unsent">Not sent yet</span>
+        <button v-if="!m.sent && side === m.by" class="nge-mbx-edit" title="Change this message" aria-label="Change this message" @click="editMessage(m)">✎</button>
         <button v-if="!m.sent && side === m.by" class="nge-mbx-rm" title="Take this back" @click="takeBack(m.id)">×</button>
       </div>
     </div>
     <template v-if="side === 'apprentice'">
-      <div class="nge-mbx-add">
+      <div v-if="!myUnsent(null) || editingWhole" class="nge-mbx-add">
         <input v-model="wholeText" maxlength="1000" :placeholder="`A message for ${otherName}`" @keydown.enter.prevent="sendReply(null)" />
-        <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
+        <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">{{ editingWhole ? 'Save' : 'Add' }}</button>
       </div>
       <p class="nge-mbx-meta">Answer a note with Reply under it. Your replies go to {{ otherName }} when you send the cell again.</p>
       <button v-if="r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--send" title="Checks the crosshairs are inside the cell, saves the view and sends it, with your replies and the message above" :disabled="busy" @click="sendAgain">{{ busy ? 'Sending…' : `Send to ${otherName} again` }}</button>
@@ -478,7 +488,11 @@ const STATE: Record<string, string> = {
 .nge-mbx-caret:hover { background: rgba(100, 200, 255, 0.22); border-color: rgba(100, 200, 255, 0.75); color: #d4f0ff; }
 .nge-mbx-caret--on { background: rgba(79, 207, 255, 0.26); border-color: #4fcfff; color: #e6f7ff; }
 .nge-mbx-btn--send { margin-top: 8px; }
-.nge-mbx-notes--slim { margin: 4px 0 6px; padding: 4px 0; max-height: 18vh; }
+.nge-mbx-notes--slim { margin: 0 0 6px; padding: 0; border: none; gap: 2px; max-height: 18vh; }
+.nge-mbx-edit { font: inherit; font-size: 13px; line-height: 1; padding: 0 3px; background: none; border: none; color: rgba(220, 230, 245, 0.6); cursor: pointer; }
+.nge-mbx-edit:hover { color: #fff; }
+.nge-mbx-msg .nge-mbx-edit { margin-left: auto; }
+.nge-mbx-msg .nge-mbx-edit + .nge-mbx-rm { margin-left: 0; }
 .nge-mbx-btn--headsend { padding: 3px 10px; font-size: 13px; }
 .nge-mbx-btn--next { margin-left: auto; }
 .nge-mbx-x { font: inherit; font-size: 20px; line-height: 1; padding: 0 4px; margin-left: 4px; background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
