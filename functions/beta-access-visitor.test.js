@@ -153,3 +153,22 @@ test('admins sort requests: listed, removed, back to waiting; players cannot', a
   await assert.rejects(handle('access.betaMark', {email: 'vic@example.org', mark: 'listed'}, {...io, isAdmin: false}), /Admins only/);
   await assert.rejects(handle('access.betaMarks', {}, {...io, isAdmin: false}), /Admins only/);
 });
+
+// ── How did you find us? (Ames 2026-11-06) ──────────────────────────────
+test('how they found us: optional, one line, on the report and the bell as plain text', async () => {
+  const {state, io} = world();
+  await visitorBeta(visitor({foundUs: 'The EyeWire\nforum **post**'}), io);
+  assert.match(state.site_issues[0].message, /How they found us: The EyeWire forum \*\*post\*\*/);
+  assert.ok(state.bells[0].body.includes('How they found us: The EyeWire forum \\*\\*post\\*\\*'), state.bells[0].body);
+  await assert.rejects(visitorBeta(visitor({email: 'long@example.org', foundUs: 'x'.repeat(201)}), io), /too long/);
+  const {state: s2, io: io2} = world();
+  await visitorBeta(visitor(), io2);
+  assert.ok(!/found us/.test(s2.site_issues[0].message), 'nothing said when left empty');
+});
+
+test('in the game too: how they found us', async () => {
+  const {state, io} = world();
+  await handle('access.beta', {name: 'Sam', email: 'sam@example.org', foundUs: 'A friend'},
+    {...io, me: {id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000011'}, who: {email: 'sam@example.org'}});
+  assert.match(state.site_issues[0].message, /How they found us: A friend/);
+});
