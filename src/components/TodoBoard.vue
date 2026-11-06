@@ -295,6 +295,7 @@ const cardSizes = ref<Record<string, { w: number; h: number }>>((() => {
 const saveSizes = () => { try { localStorage.setItem(SIZE_KEY, JSON.stringify(cardSizes.value)); } catch { /* storage blocked */ } };
 const resizingId = ref<string | null>(null);
 function cardStyle(c: Card) {
+  if (isPhone.value) return {};
   const z = cardSizes.value[c.id];
   return z ? { width: z.w + 'px', height: z.h + 'px', overflowY: 'auto' as const } : {};
 }
@@ -328,7 +329,7 @@ function resetSize(c: Card) {
   saveSizes();
 }
 /** The open card is as wide as its card was made, never narrower than reads well. */
-const openWidth = (c: Card) => { const z = cardSizes.value[c.id]; return z ? { maxWidth: Math.max(520, z.w) + 'px' } : {}; };
+const openWidth = (c: Card) => { if (isPhone.value) return {}; const z = cardSizes.value[c.id]; return z ? { maxWidth: Math.max(520, z.w) + 'px' } : {}; };
 
 // ── Done, with pomp and circumstance (Ames 2026-11-02) ──
 // "✓ Done" on a card's face: the card shines gold, a burst of confetti flies
@@ -1035,7 +1036,16 @@ function toggleFold(key: string) {
   folded.value = { ...folded.value, [key]: !folded.value[key] };
   try { localStorage.setItem(FOLDS_KEY, JSON.stringify(folded.value)); } catch { /* not remembered */ }
 }
-const listColumns = computed(() => LISTS.map(l => (folded.value[l.key] ? '44px' : 'minmax(0, 1fr)')).join(' '));
+const listColumns = computed(() => isPhone.value ? '1fr' : LISTS.map(l => (folded.value[l.key] ? '44px' : 'minmax(0, 1fr)')).join(' '));
+// ── On a phone (Ames 2026-11-05: "To Do page doesn't work on a phone"): one
+// list at a time with tabs, cards the full width, the page scrolling as a
+// page, and the header and numbers kept small. ──
+const phoneQuery = window.matchMedia?.('(max-width: 700px)');
+const isPhone = ref(!!phoneQuery?.matches);
+const onPhoneChange = (e: MediaQueryListEvent) => { isPhone.value = e.matches; };
+phoneQuery?.addEventListener?.('change', onPhoneChange);
+onUnmounted(() => phoneQuery?.removeEventListener?.('change', onPhoneChange));
+const phoneList = ref<ListKey>('todo');
 const LIST_ICONS: Record<string, string> = { todo: '🎯', doing: '⚡', done: '🏆' };
 /** The start of a card's notes, as plain words, for its face. */
 function excerpt(notes: string): string {
@@ -1482,10 +1492,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
+      <div v-if="isPhone && !openCard && !myTasksOpen" class="nge-todo-phonetabs" role="tablist">
+        <button v-for="col in columns" :key="col.key" type="button" role="tab" class="nge-todo-phonetab" :class="['nge-todo-phonetab--' + col.key, { 'nge-todo-phonetab--on': phoneList === col.key }]"
+                :aria-selected="phoneList === col.key" @click="phoneList = col.key">{{ col.title }} <b>{{ col.rows.length }}</b></button>
+      </div>
       <div v-if="!openCard && !myTasksOpen" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
-        <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) }]"
+        <section v-for="col in columns" v-show="!isPhone || phoneList === col.key" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) && !isPhone }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
-          <button v-if="isFolded(col.key)" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
+          <button v-if="isFolded(col.key) && !isPhone" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
             <span class="nge-todo-list-icon">{{ LIST_ICONS[col.key] }}</span><span class="nge-todo-list-title">{{ col.title }}</span><span class="nge-todo-count">{{ col.rows.length }}</span>
           </button>
           <template v-else>
@@ -2175,6 +2189,27 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
   .nge-todo-panel { flex-basis: auto; max-width: none; }
   /* A narrow screen gives the card all of it. */
   .nge-todo-strip { display: none; }
+}
+@media (max-width: 700px) {
+  .nge-todo { height: auto; }
+  .nge-todo-body, .nge-todo-lists, .nge-todo-list { display: block; height: auto; overflow: visible; }
+  .nge-todo-list { padding: 0 6px 10px; }
+  .nge-todo-list > .nge-todo-card { width: 100% !important; height: auto !important; overflow: visible !important; margin-bottom: 10px; }
+  .nge-todo-sub, .nge-todo-stats { display: none; }
+  .nge-todo-head { flex-wrap: wrap; gap: 6px; }
+  .nge-todo-head .nge-todo-btn { padding: 6px 10px; font-size: 13px; }
+  .nge-todo-card-resize { display: none !important; }
+  .nge-todo-panel, .nge-todo-panel.nge-todo-panel--focus { max-width: none !important; width: 100%; padding: 12px; }
+  .nge-todo-panel-top { flex-wrap: wrap; gap: 6px; }
+  .nge-todo-check li { flex-wrap: wrap; }
+  .nge-todo-item-owner, .nge-todo-item-due { font-size: 12px; }
+  .nge-todo-phonetabs { display: flex; gap: 6px; position: sticky; top: 0; z-index: 3; padding: 6px 0; background: var(--bg); }
+  .nge-todo-phonetab { flex: 1 1 0; padding: 9px 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text);
+    font: 700 14px Inter, system-ui, sans-serif; cursor: pointer; }
+  .nge-todo-phonetab b { margin-left: 4px; font-size: 12px; padding: 0 6px; border-radius: 8px; background: rgba(127, 127, 127, 0.15); }
+  .nge-todo-phonetab--on.nge-todo-phonetab--todo { border-color: var(--blue); color: var(--blue); box-shadow: inset 0 -3px 0 var(--blue); }
+  .nge-todo-phonetab--on.nge-todo-phonetab--doing { border-color: var(--teal); color: var(--teal); box-shadow: inset 0 -3px 0 var(--teal); }
+  .nge-todo-phonetab--on.nge-todo-phonetab--done { border-color: var(--gold); color: #b8860b; box-shadow: inset 0 -3px 0 var(--gold); }
 }
 </style>
 
