@@ -115,6 +115,14 @@ function watchHandPoints(src: any) {
   } catch { /* no signal: Undo keeps to Highlight's own marks */ }
 }
 
+/** Every highlight colour in play: the player's styles and the marks in
+ *  the view (another player's, in the colours they were made with). */
+export function highlightColorsInView(): string[] {
+  const out = new Set(highlightStyles().map(s => s.color.toLowerCase()));
+  try { for (const l of highlightLayers()) out.add(l.style.color.toLowerCase()); } catch { /* no view */ }
+  return [...out].filter(c => HEX.test(c));
+}
+
 function highlightLayers(): { managed: any; src: any; style: HighlightStyle }[] {
   const styles = highlightStyles();
   const out: { managed: any; src: any; style: HighlightStyle }[] = [];

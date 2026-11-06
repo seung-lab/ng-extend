@@ -23,7 +23,10 @@ import { secureWrite } from './secure_write';
 import { apprenticeFlag } from './util/mentor_flag';
 import { MENTOR_TIERS, APPRENTICE_ACHIEVEMENT } from './util/mentor_tiers';
 import { setStateRewriter, useLayersStore, useCellHistoryStore, useProofreadingBackendStore } from './store';
-import { currentDatasetTag } from './datasets';
+import { currentDatasetTag, currentSegLayer } from './datasets';
+import { highlightColorsInView } from './util/highlight';
+import { Uint64 } from 'neuroglancer/util/uint64';
+import { setStatedColor } from './widgets/widget_utils';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem, labelAxonComplete } from './widgets/lightbulb_service';
 import { syncCellToSheet, marksProofread, AXON_COMPLETE } from './sheet_sync';
 
@@ -314,16 +317,76 @@ export function writeNotesLayer(notes: MentorNote[], readOnly = false): boolean 
   v.layerSpecification.add(makeLayer(v.layerSpecification, NOTES_LAYER, spec));
   return true;
 }
+// ── The cell's colour (Marissa, Ames 2026-11-06) ──────────────────────
+// A highlight tints the cell, so a cell whose own colour is near a
+// highlight's (a green cell, a Checked mark) hides it. In Mentor Mode the
+// cell under review takes the first of these that is far from every
+// highlight colour in play; with the built in colours that is the blue.
+const CELL_COLORS = [
+  { hex: '#5b9dff', name: 'blue' },
+  { hex: '#d8dde6', name: 'pale gray' },
+  { hex: '#b48cff', name: 'lavender' },
+];
+const rgbOf = (hex: string) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+/** "Redmean" colour distance, 0 to about 765: closer to what the eye sees than plain RGB. */
+function colorDistance(a: string, b: string): number {
+  const [r1, g1, b1] = rgbOf(a), [r2, g2, b2] = rgbOf(b);
+  const rm = (r1 + r2) / 2, dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+  return Math.sqrt((2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db);
+}
+const FAR_ENOUGH = 200;
+export function mentorCellColor(highlights: string[] = highlightColorsInView()): { hex: string; name: string } {
+  const room = (c: string) => Math.min(Infinity, ...highlights.map(h => colorDistance(c, h)));
+  return CELL_COLORS.find(c => room(c.hex) >= FAR_ENOUGH)
+    ?? CELL_COLORS.reduce((best, c) => (room(c.hex) > room(best.hex) ? c : best));
+}
+/** Said in the Mentor box once the cell is recoloured. */
+export const cellColorNote = ref('');
+/** The colour states already done, so a player's own recolour afterwards stays. */
+let coloredStates = new WeakSet<object>();
+/** Colours the cell under review in the segmentation layer on screen: its
+ *  root and first id, and the one cell a saved view shows if it shows one
+ *  (the root may have changed since with an edit). True once done. */
+function colorReviewCell(r: MentorReview): boolean {
+  try {
+    const layer = currentSegLayer()?.layer;
+    const ds = layer?.displayState;
+    const stated = ds?.segmentationColorGroupState?.value?.segmentStatedColors;
+    const visible = ds?.segmentationGroupState?.value?.visibleSegments;
+    if (!stated || !visible) return false;
+    if (coloredStates.has(stated)) return true;
+    const ids = new Set([r.rootId, r.segmentId].filter(Boolean).map(String));
+    const shown: string[] = [];
+    for (const id of visible) shown.push(String(id));
+    if (shown.length === 1) ids.add(shown[0]);
+    if (!shown.some(id => ids.has(id))) return false;   // the view has not loaded the cell yet
+    const c = mentorCellColor();
+    const [rr, gg, bb] = rgbOf(c.hex);
+    for (const id of ids) {
+      const seg = new Uint64();
+      if (seg.tryParseString(id)) setStatedColor(stated, seg, rr | (gg << 8) | (bb << 16));
+    }
+    coloredStates.add(stated);
+    cellColorNote.value = `Cell shown in ${c.name} so highlights stand out.`;
+    return true;
+  } catch (e) { console.warn('[mentor] could not color the cell', e); return false; }
+}
+
 let keepTimer: number | undefined;
 /** A saved view loads seconds after it is asked for and replaces every
  *  layer, the notes too (as access review points do): put them back while
  *  the view settles. */
-function keepNotes(notes: MentorNote[], readOnly = false) {
+function keepNotes(notes: MentorNote[], readOnly = false, review?: MentorReview) {
   window.clearInterval(keepTimer);
   let beats = 0;
   keepTimer = window.setInterval(() => {
-    if (++beats > 25) { window.clearInterval(keepTimer); return; }
-    if (!notesLayer()) writeNotesLayer(notes, readOnly);
+    ++beats;
+    // A saved view replaces the layers as it loads, colours too: colour the
+    // new one once, and leave it to the player after. A slow view gets a
+    // minute for its colour.
+    const colored = !review || colorReviewCell(review);
+    if (beats > 100 || (beats > 25 && colored)) { window.clearInterval(keepTimer); return; }
+    if (beats <= 25 && !notesLayer()) writeNotesLayer(notes, readOnly);
   }, 600);
 }
 
@@ -334,12 +397,15 @@ export function openInView(review: MentorReview, role: 'mentor' | 'apprentice' |
   // Out of the way, so the cell can be seen: the library and the profile close.
   document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
   document.dispatchEvent(new CustomEvent('nge:mentor-view'));
+  coloredStates = new WeakSet();
+  cellColorNote.value = '';
   loadView(review);
-  keepNotes(review.notes || [], role !== 'mentor');
+  keepNotes(review.notes || [], role !== 'mentor', review);
 }
 export function closeView() {
   window.clearInterval(keepTimer);
   inView.value = null;
+  cellColorNote.value = '';
   try {
     const v = (window as any).viewer; const l = notesLayer();
     // Its side panel closes with the box (Ames 2026-11-06).

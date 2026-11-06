@@ -16,7 +16,7 @@ import { apprenticeFlag } from '../util/mentor_flag';
 import { MENTOR_TIERS } from '../util/mentor_tiers';
 const MENTOR_ICON = MENTOR_TIERS[0].image;
 import { joinPractice, takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
-import { inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
+import { cellColorNote, inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
   completeForApprentice, startMentor, loadMentor, shortCell, replyTo, takeBackReply, type MentorNote, type MentorMessage } from '../mentor';
 
 // An apprentice who completes a cell any other way gets this in the middle
@@ -285,6 +285,7 @@ const STATE: Record<string, string> = {
       <p v-if="!notes.length" class="nge-mbx-meta">{{ mentor ? 'No notes in the view yet.' : 'No notes in the view.' }}</p>
     </div>
     <p v-if="layerNote" class="nge-mbx-said" role="status">{{ layerNote }}</p>
+    <p v-if="cellColorNote" class="nge-mbx-meta" role="status">{{ cellColorNote }}</p>
 
     <div v-if="cellMessages.length" class="nge-mbx-thread" aria-label="Messages on this cell">
       <div v-for="m in cellMessages" :key="m.id" class="nge-mbx-msg" :class="`nge-mbx-msg--${m.by}`">
