@@ -100,7 +100,7 @@ watch(cur, c => {
     const key = (l: MentorNote[]) => JSON.stringify(l.map(n => [n.id, n.text]));
     if (key(readNotesLayer()) !== key(saved)) {
       writeNotesLayer(saved, true);
-      layerNote.value = mentor.value || adminView.value ? 'These notes cannot be changed here.' : 'These are your mentor\'s notes, so they cannot be changed. To answer one, press Reply under it in this box.';
+      layerNote.value = mentor.value || adminView.value ? 'These notes cannot be changed here.' : 'These are your mentor\'s notes, so they cannot be changed.';
     }
     notes.value = saved;
   }, 1000);
