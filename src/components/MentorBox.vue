@@ -358,7 +358,6 @@ const STATE: Record<string, string> = {
       <p v-if="!notes.length && !mentor && r.state !== 'waiting' && r.state !== 'looking'" class="nge-mbx-meta">No notes in the view.</p>
     </div>
     <p v-if="layerNote" class="nge-mbx-said" role="status">{{ layerNote }}</p>
-    <p v-if="cellColorNote" class="nge-mbx-meta" role="status">{{ cellColorNote }}</p>
 
     <div v-if="cellMessages.length" class="nge-mbx-thread" aria-label="Messages on this cell">
       <div v-for="m in cellMessages" :key="m.id" class="nge-mbx-msg" :class="`nge-mbx-msg--${m.by}`">
@@ -461,9 +460,11 @@ const STATE: Record<string, string> = {
 }
 .nge-mbx-bar { display: flex; align-items: center; gap: 8px; cursor: grab; user-select: none; touch-action: none; margin: -12px -14px 8px; padding: 7px 10px 7px 12px;
   border-bottom: 1px solid rgba(120, 180, 255, 0.3); border-radius: 12px 12px 0 0;
-  background: linear-gradient(90deg, rgba(120, 180, 255, 0.16), rgba(245, 209, 66, 0.08)); }
+  /* Stays at the top while the box scrolls (Ames 2026-11-06: "keep a header bar"), so opaque. */
+  position: sticky; top: -12px; z-index: 3;
+  background: linear-gradient(90deg, rgba(120, 180, 255, 0.16), rgba(245, 209, 66, 0.08)), #0a1020; }
 .nge-mbx--dragging .nge-mbx-bar { cursor: grabbing; }
-.nge-mbx-bar-icon { width: 26px; height: 26px; object-fit: contain; filter: drop-shadow(0 0 6px rgba(120, 180, 255, 0.5)); }
+.nge-mbx-bar-icon { width: 26px; height: 26px; object-fit: contain; }
 .nge-mbx-bar-label { flex: 1; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #cfe3ff; }
 .nge-mbx-head { display: flex; align-items: baseline; gap: 8px; cursor: grab; user-select: none; touch-action: none; padding: 0 0 4px; }
 .nge-mbx--dragging .nge-mbx-head { cursor: grabbing; }
