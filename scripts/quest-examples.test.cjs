@@ -101,7 +101,29 @@ print(n)
     check('Instructions open a box of their own, wider than the panel, outside it', box.dialog === 'dialog' && !box.inPanel && box.w >= 700, box);
     check('the box is on top: nothing, the Cell Library included, covers it', box.onTop, box);
     check('the box has the title, the lead and the six steps, at 14.5px', box.title === 'How to do a Cilia Quest' && box.lead && box.steps === 6 && box.stepsSize === '14.5px', box);
+    // Once it has arrived (the arrival lasts 0.72 s; the picture decodes first).
+    await page.waitForFunction(() => { const q = document.querySelector('.nge-qi'); return q && q.getAnimations().every(x => x.playState === 'finished') && getComputedStyle(q).opacity === '1'; }, null, { timeout: 8000 })
+      .then(() => check('the box finishes arriving and is fully shown', true), () => check('the box finishes arriving and is fully shown', false));
+    await page.waitForTimeout(400);
     await page.screenshot({ path: path.join(OUT, 'instructions-box.png') });
+    // The picture on the left: an annotated cilium (Ames 2026-11-06), with its key.
+    const pic = await page.evaluate(() => {
+      const img = document.querySelector('.nge-qi-img'), text = document.querySelector('.nge-qi-text');
+      if (!img) return null;
+      const a = img.getBoundingClientRect(), b = text.getBoundingClientRect();
+      return { natural: [img.naturalWidth, img.naturalHeight], left: a.right <= b.left, w: Math.round(a.width), alt: img.alt,
+        key: [...document.querySelectorAll('.nge-qi-key-item')].map(k => k.textContent.trim()) };
+    });
+    check('the picture loads, on the left of the words, with the three layers as its key', pic && pic.natural[0] === 1065 && pic.natural[1] === 686 && pic.left && pic.w >= 300 &&
+      JSON.stringify(pic.key) === JSON.stringify(['Basal body', 'Daughter centriole', 'Cilium centerline']) && /annotated cilium/.test(pic.alt), pic);
+    await page.click('.nge-qi-img');
+    await page.waitForTimeout(300);
+    const big = await page.evaluate(() => { const i = document.querySelector('.nge-qi-lightbox-img'); return i ? Math.round(i.getBoundingClientRect().width) : 0; });
+    check('a click shows the picture full size', big > (pic ? pic.w : 0), { big, small: pic && pic.w });
+    await page.screenshot({ path: path.join(OUT, 'instructions-picture.png') });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    check('Escape closes the full size picture first, leaving the box open', !(await page.$('.nge-qi-lightbox')) && !!(await page.$('.nge-qi')));
     const links = await page.evaluate(() => [...document.querySelectorAll('.nge-qi a')].map(a => [a.textContent.trim(), a.getAttribute('href')]));
     check('the instructions link the guide, the video and the reference', links.length === 3 && links[0][0] === 'this guide' && /^https:\/\/unitc-my\.sharepoint\.com\/:p:\//.test(links[0][1]) && links[1][0] === 'training video' && links[1][1] === 'https://www.youtube.com/watch?v=-l2-R-9vX6o&t=1525s' && links[2][0] === "Here's a reference", links.map(l => [l[0], l[1].slice(0, 60)]));
     const before = await page.evaluate(() => JSON.stringify(window.viewer.state.toJSON()).length);
