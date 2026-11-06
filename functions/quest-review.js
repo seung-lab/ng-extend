@@ -78,6 +78,7 @@ function rowView(line, cols, rowNumber) {
   const at = key => cols[key] >= 0 ? String((line || [])[cols[key]] ?? '').trim() : '';
   return {
     row: rowNumber, index: at('index'), segmentId: at('segment'), annotator: at('name'),
+    startLink: at('startLink'), soma: at('soma'),
     link: at('link'), notes: at('notes'),
     reviewNotes: at('reviewNotes'), reviewer: at('reviewer'), reviewLink: at('reviewLink'),
     status: at('reviewStatus'), playerLink: at('playerLink'), playerNotes: at('playerNotes'), accepted: at('accepted'),
@@ -219,7 +220,10 @@ async function get(args, {api, me, questKey = 'retina_cilia'}) {
   const quest = QUESTS[questKey];
   const title = await tabTitle(api, quest);
   const {r} = await ownRow(api, quest, title, me, args.segmentId);
-  return {status: r.status, accepted: r.accepted, playerLink: r.playerLink, playerNotes: r.playerNotes, reviewer: r.reviewer, index: r.index};
+  // The Start Link and soma, for the notification's Jump to cell (Celia
+  // 2026-11-06: the buttons did nothing; a bare segment ID had no place to go).
+  return {status: r.status, accepted: r.accepted, playerLink: r.playerLink, playerNotes: r.playerNotes, reviewer: r.reviewer, index: r.index,
+    startLink: isLink(r.startLink) ? r.startLink : '', soma: /^\[?\s*-?\d+(\.\d+)?[\s,]+-?\d+(\.\d+)?[\s,]+-?\d+(\.\d+)?\s*\]?$/.test(r.soma) ? r.soma : ''};
 }
 
 /** The player's updated link and notes, checked. */
@@ -251,5 +255,60 @@ async function reply(args, {api, me, questKey = 'retina_cilia'}) {
   return {status: STATUS.reviewed, playerLink: link, playerNotes: notes};
 }
 
+// ── The reviewers' morning note (Celia 2026-11-06) ────────────────────────
+// "Marissa and Celia [should] get a notification of pending returned reviews
+// ... once a day in the morning saying how many are waiting, rather than
+// individual notifications every time a review response is submitted."
+// One bell note each, only on a morning with something waiting: every row a
+// player answered ("Reviewed"), and every new player's quest ("New Player").
+const REVIEWERS = Object.freeze([
+  {id: '942bda30-fcf0-424c-8785-91db4d62d2aa', name: 'Celia D'},
+  {id: '19812b86-6374-48f4-b116-4ec60843c78e', name: 'Marissa Pratt'},
+]);
+const DIGEST_TITLE = '📝 Cilia Quest reviews waiting';
+const NEW_PLAYER = 'New Player';
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/** The note's words for the waiting rows, or null when nothing waits. */
+function digestNotice(answered, newcomers, sheetUrl) {
+  if (!answered.length && !newcomers.length) return null;
+  const line = r => `• **${r.index || 'a cell'}** from ${r.annotator || 'a player'}`;
+  const lines = [];
+  if (answered.length) {
+    lines.push(`**${plural(answered.length, 'player has', 'players have')} sent an update** (Review status "Reviewed"):`);
+    lines.push(...answered.slice(0, 15).map(line));
+    if (answered.length > 15) lines.push(`and ${answered.length - 15} more`);
+  }
+  if (newcomers.length) {
+    if (lines.length) lines.push('');
+    lines.push(`**${plural(newcomers.length, 'quest', 'quests')} from new players** (Review status "New Player"):`);
+    lines.push(...newcomers.slice(0, 15).map(line));
+    if (newcomers.length > 15) lines.push(`and ${newcomers.length - 15} more`);
+  }
+  lines.push('', `[Open the quest sheet](${sheetUrl})`);
+  const parts = [answered.length && plural(answered.length, 'update', 'updates'), newcomers.length && plural(newcomers.length, 'new player quest', 'new player quests')].filter(Boolean);
+  return {title: cap(`${DIGEST_TITLE}: ${parts.join(', ')}`, 120), body: lines.join('\n')};
+}
+
+/** Send the morning note to each reviewer. `dryRun` reports it unsent. */
+async function digest({api, sb, questKey = 'retina_cilia', to = REVIEWERS, dryRun = false, now = () => new Date().toISOString()}) {
+  const quest = QUESTS[questKey];
+  if (!quest) fail(400, 'There is no such quest.');
+  const title = await tabTitle(api, quest);
+  const {rows} = await findRows(api, quest, title, 'reviewStatus', v => v === STATUS.reviewed || v === NEW_PLAYER);
+  const answered = rows.filter(r => r.status === STATUS.reviewed), newcomers = rows.filter(r => r.status === NEW_PLAYER);
+  const notice = digestNotice(answered, newcomers, `https://docs.google.com/spreadsheets/d/${quest.id}/edit#gid=${quest.gid}`);
+  if (!notice || dryRun) return {answered: answered.length, newcomers: newcomers.length, sent: 0, notice};
+  let sent = 0;
+  for (const r of to) {
+    await sb('notifications', {method: 'POST', body: JSON.stringify({
+      title: notice.title, body: notice.body, image_url: IMAGE, thumbnail_url: IMAGE,
+      target_type: 'user', target_id: r.id, send_at: now(), created_by: null,
+    })});
+    sent++;
+  }
+  return {answered: answered.length, newcomers: newcomers.length, sent};
+}
+
 module.exports = {STATUS, REVIEW_COLUMNS, TITLE_START, reviewHeader, rowView, reviewNotice, segmentOfNotice, playerFor,
-  replyValues, check, get, reply, findRows};
+  replyValues, check, get, reply, findRows, REVIEWERS, DIGEST_TITLE, digestNotice, digest};

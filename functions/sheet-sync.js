@@ -84,7 +84,7 @@ async function syncSheet(input,me,task,credential,api=(path,init)=>sheetsApi(cre
   return {ok:true,updated:plan.data.length+plan.userEnteredData.length};
 }
 // ── Annotation Quests (Ames 2026-10-12) ──────────────────────────────────
-const {QUESTS,questRows,planQuestUpdate,questClaimRoom}=require('./sheet-policy');
+const {QUESTS,questRows,planQuestUpdate,questClaimRoom,isNewPlayerSubmit}=require('./sheet-policy');
 /** The quest tab's title, from the sheet (the tab is found by its gid, so a
  *  rename does not break it). */
 async function questTab(api,quest) {
@@ -95,7 +95,7 @@ async function questTab(api,quest) {
 }
 const listCache=new Map(), tabCache=new Map();
 /** Every row of the quest tab, read whole (a quest tab is a few hundred rows,
- *  columns A to Q). Kept for five minutes (Ames 2026-10-13: the list took a
+ *  columns A to Z: Review status is U). Kept for five minutes (Ames 2026-10-13: the list took a
  *  while), and dropped by every write from this function, which is the only
  *  writer the game has (one instance, so the cache is the whole picture). The
  *  tab's title is kept for an hour: finding it is a second round trip. */
@@ -105,7 +105,7 @@ async function questList(questKey,credential,api=(path,init)=>sheetsApi(credenti
   if(hit && hit.expires>Date.now()) return hit.rows;
   const title=await questTabCached(api,questKey,quest);
   const q="'"+title.replace(/'/g,"''")+"'";
-  const grid=(await api(quest.id+'/values/'+encodeURIComponent(q+'!A1:Q2000')+'?valueRenderOption=FORMATTED_VALUE')).values||[];
+  const grid=(await api(quest.id+'/values/'+encodeURIComponent(q+'!A1:Z2000')+'?valueRenderOption=FORMATTED_VALUE')).values||[];
   const rows=questRows(grid);
   listCache.set(questKey,{rows,expires:Date.now()+300000});
   return rows;
@@ -123,8 +123,11 @@ async function syncQuest(input,me,credential,api=(path,init)=>sheetsApi(credenti
   const title=await questTabCached(api,input.quest,quest);
   // A claim counts the cells the player already holds, from the whole tab.
   if(input.action==='quest_claim') questClaimRoom(await questList(input.quest,credential,api),me,quest);
+  // A submit counts the player's quests so far: their first few are marked
+  // "New Player" for the reviewers (Celia 2026-11-06).
+  const newPlayer=input.action==='quest_submit' && isNewPlayerSubmit(await questList(input.quest,credential,api),me,input.segmentId);
   const grid=await readRowsForMatch(api,quest.id,title,false,String(input.segmentId));
-  const plan=planQuestUpdate(grid,title,quest,input,me,today);
+  const plan=planQuestUpdate(grid,title,quest,input,me,today,{newPlayer});
   if(plan.data.length) await api(quest.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data:plan.data})});
   if(plan.userEnteredData.length) await api(quest.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'USER_ENTERED',data:plan.userEnteredData})});
   listCache.delete(input.quest);  // the next list shows this write

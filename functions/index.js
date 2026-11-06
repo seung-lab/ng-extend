@@ -2846,7 +2846,9 @@ async function mirrorQuestRows(sb,quest,rows) {
   questMirrorAt[quest]=Date.now();
   try {
     await sb("rpc/ew_quest_mirror",{method:"POST",body:JSON.stringify({p_quest:quest,
-      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.status,date:r.date}))})});
+      // A quest held for review (sheet-policy REVIEW_HOLDS) is copied with no
+      // status, so the weekly count leaves it out until the player sends their update.
+      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.held?"":r.status,date:r.date}))})});
   } catch(e) { console.warn("[ewSheetSync] quest copy not saved",String(e&&e.message||e).slice(0,200)); }
 }
 exports.ewSheetSync = onRequest(
@@ -3034,7 +3036,9 @@ exports.ewMentor = onRequest(
 //            {dryRun:true} to see what would be sent).
 //   get      the player: where their review of a cell stands.
 //   reply    the player: their updated link and notes, to the sheet.
-//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck --project eyewire-ii-e4d52
+//   digest   admins: the reviewers' morning note ({dryRun:true} to see it
+//            unsent, {toMe:true} to send it only to yourself).
+//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck,functions:ewQuestReviewDigest --project eyewire-ii-e4d52
 const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
 const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
 exports.ewQuestReview = onRequest(
@@ -3052,7 +3056,7 @@ exports.ewQuestReview = onRequest(
         const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
         return res.json({ ok: true, waiting: out.checked });
       }
-      if (!["check", "get", "reply"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      if (!["check", "get", "reply", "digest"].includes(action)) throw ewErr(400, `unknown action ${action}`);
       const who = await ewVerify(token);
       if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
       const sb = ewSb(ewServiceKey.value().trim());
@@ -3063,6 +3067,11 @@ exports.ewQuestReview = onRequest(
         if (!isAdmin) throw ewErr(403, "Admins only");
         const out = await review.check({ api, sb, only: args.segmentId ? String(args.segmentId) : "", dryRun: !!args.dryRun });
         console.info("[ewQuestReview] check by", who.email, JSON.stringify(out.results.map(r => ({ row: r.row, sent: r.sent, why: r.why }))));
+        return res.json({ ok: true, ...out });
+      }
+      if (action === "digest") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await review.digest({ api, sb, dryRun: !!args.dryRun, ...(args.toMe ? { to: [{ id: me.id, name: me.display_name || "you" }] } : {}) });
         return res.json({ ok: true, ...out });
       }
       return res.json({ ok: true, data: await review[action](args, { api, me }) });
@@ -3082,6 +3091,17 @@ exports.ewQuestReviewCheck = onSchedule(
   async () => {
     const out = await require("./quest-review").check({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
     console.info("[ewQuestReviewCheck]", JSON.stringify({ checked: out.checked, results: out.results.map(r => ({ row: r.row, index: r.index, sent: r.sent, why: r.why })) }));
+  }
+);
+// The reviewers' morning note (Celia 2026-11-06): once a day at 8 Eastern,
+// how many players have sent their update, and how many new players' quests
+// wait, to Celia and Marissa (quest-review.js REVIEWERS). Nothing on a
+// morning with nothing waiting.
+exports.ewQuestReviewDigest = onSchedule(
+  { schedule: "0 8 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
+  async () => {
+    const out = await require("./quest-review").digest({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
+    console.info("[ewQuestReviewDigest]", JSON.stringify(out));
   }
 );
 

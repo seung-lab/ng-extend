@@ -78,7 +78,10 @@ const statusHint = computed(() => QUEST_STATUS_GUIDE[form.value.status] || '');
 const atLimit = computed(() => mine.value.length >= QUEST_CLAIM_LIMIT);
 /** Cells this player has completed (Ames 2026-10-13: "a count of how many I
  *  have completed"), from the sheet rows that carry their name and a status. */
-const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r)).length);
+// A cell a reviewer sent back counts again once the player sends their
+// update (Celia 2026-11-06), as on the leaderboard and profile.
+const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && !r.held).length);
+const mineHeld = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && r.held).length);
 const available = computed(() => rows.value.filter(r => !r.annotator && !r.status));
 const taken = computed(() => rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)));
 const done = computed(() => rows.value.filter(isDone).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
@@ -371,6 +374,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
+        <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Open the review in your notifications and send your update, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
         <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
         <button v-if="backend.showAdminUi" class="nge-aq-btn" :disabled="sendingReviews" @click="sendReviews"
                 title="Admins: send every review marked Send Review in the sheet now. Pyr also does this at 8 am and 4 pm Eastern.">{{ sendingReviews ? 'Sending…' : 'Send waiting reviews now' }}</button>
@@ -490,6 +494,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <div class="nge-aq-row-info">
                   <div class="nge-aq-row-name">{{ label(r) }}</div>
                   <div class="nge-aq-row-meta">{{ r.status }}{{ r.annotator ? ', ' + (isMine(r) ? 'you' : r.annotator) : '' }}{{ r.date ? ', ' + r.date : '' }}</div>
+                  <div v-if="r.held && isMine(r)" class="nge-aq-row-held">A review is waiting for your update. Open it from your notifications.</div>
                 </div>
               </div>
               <div class="nge-aq-row-actions">
@@ -614,6 +619,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-pip--done { background: #4af; }
 .nge-aq-row-info { min-width: 0; flex: 1; }
 .nge-aq-row-name { font-size: 15px; font-weight: 600; color: #e4e8f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nge-aq-row-held { font-size: 12px; color: #ffd27a; margin-top: 2px; }
+.nge-aq-tally--held b { color: #ffd27a; }
 .nge-aq-row-meta { font-size: 13px; color: #93a0b6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; align-items: center; }
 .nge-aq-saved--slim { align-items: center; margin-right: 6px; font-size: 12px; max-width: 160px; white-space: nowrap; }
