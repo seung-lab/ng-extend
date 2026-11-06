@@ -8,17 +8,27 @@
  * lead and the steps are the same EditableTexts as before, so an admin still
  * edits them in the game.
  *
- * The picture is QUEST_INSTRUCTIONS_IMAGE (annotation_quests.ts): one the lab
- * or Ames provides. Until there is one, the words take the whole width.
+ * The picture is QUEST_INSTRUCTIONS_IMAGE (annotation_quests.ts), and admins
+ * change it in the game (EditableImage, key quest.retina_cilia.image: Ames
+ * 2026-11-06, "add an 'add image'"). Without a picture players see the words
+ * across the whole width; admins see the empty slot with Add image.
  */
-import { ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import EditableText from './EditableText.vue';
+import EditableImage from './EditableImage.vue';
 import { QUEST_TITLE, QUEST_INSTRUCTIONS_IMAGE, QUEST_INSTRUCTIONS_IMAGE_ALT } from '../annotation_quests';
+import { pictureFor } from '../site_texts';
+import { useProofreadingBackendStore } from '../store';
 
 const props = defineProps<{ lead: string; steps: string[] }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'action', name: string): void }>();
 
-const zoomed = ref(false);
+const IMAGE_KEY = 'quest.retina_cilia.image';
+const backend = useProofreadingBackendStore();
+const picture = computed(() => pictureFor(IMAGE_KEY, QUEST_INSTRUCTIONS_IMAGE));
+/** The left column: the picture, or for an admin the slot to add one. */
+const showFigure = computed(() => !!picture.value || !!backend.showAdminUi);
+const zoomed = ref('');
 // The layers' own colors in the quest (annotation_quests.ts QUEST_LAYER_COLORS).
 const KEY = [
   { name: 'Basal body', color: '#f5d142' },
@@ -29,7 +39,7 @@ const KEY = [
 function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return;
   e.stopPropagation();
-  if (zoomed.value) zoomed.value = false; else emit('close');
+  if (zoomed.value) zoomed.value = ''; else emit('close');
 }
 onMounted(() => window.addEventListener('keydown', onKey, true));
 onUnmounted(() => window.removeEventListener('keydown', onKey, true));
@@ -38,7 +48,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
 <template>
   <Teleport to="body">
     <div class="nge-qi-backdrop" @click.self="emit('close')">
-      <div class="nge-qi" :class="{ 'nge-qi--picture': !!QUEST_INSTRUCTIONS_IMAGE }" role="dialog" aria-modal="true" aria-labelledby="nge-qi-title">
+      <div class="nge-qi" :class="{ 'nge-qi--picture': showFigure }" role="dialog" aria-modal="true" aria-labelledby="nge-qi-title">
         <span class="nge-qi-bracket nge-qi-bracket--tl" aria-hidden="true"></span>
         <span class="nge-qi-bracket nge-qi-bracket--br" aria-hidden="true"></span>
         <div class="nge-qi-topbar">
@@ -52,10 +62,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
         </div>
         <div class="nge-qi-scroll">
           <div class="nge-qi-layout">
-            <figure v-if="QUEST_INSTRUCTIONS_IMAGE" class="nge-qi-figure">
-              <img :src="QUEST_INSTRUCTIONS_IMAGE" :alt="QUEST_INSTRUCTIONS_IMAGE_ALT" class="nge-qi-img"
-                   title="Click to see it full size" @click="zoomed = true" />
-              <figcaption class="nge-qi-key">
+            <figure v-if="showFigure" class="nge-qi-figure">
+              <EditableImage :text-key="IMAGE_KEY" :original="QUEST_INSTRUCTIONS_IMAGE" :alt="QUEST_INSTRUCTIONS_IMAGE_ALT"
+                             img-class="nge-qi-img" @zoom="u => zoomed = u" />
+              <figcaption v-if="picture" class="nge-qi-key">
                 <span v-for="k in KEY" :key="k.name" class="nge-qi-key-item">
                   <span class="nge-qi-key-dot" :style="{ background: k.color, boxShadow: `0 0 8px ${k.color}` }" aria-hidden="true"></span>{{ k.name }}
                 </span>
@@ -69,8 +79,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
           </div>
         </div>
       </div>
-      <div v-if="zoomed" class="nge-qi-lightbox" title="Click to close" @click="zoomed = false">
-        <img :src="QUEST_INSTRUCTIONS_IMAGE" :alt="QUEST_INSTRUCTIONS_IMAGE_ALT" class="nge-qi-lightbox-img" />
+      <div v-if="zoomed" class="nge-qi-lightbox" title="Click to close" @click="zoomed = ''">
+        <img :src="zoomed" :alt="QUEST_INSTRUCTIONS_IMAGE_ALT" class="nge-qi-lightbox-img" />
       </div>
     </div>
   </Teleport>
@@ -148,7 +158,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
 .nge-qi-layout { display: flex; gap: 24px; align-items: flex-start; }
 /* The picture stays put while the words scroll past it, as in a notification. */
 .nge-qi-figure { margin: 0; width: 46%; flex-shrink: 0; position: sticky; top: 0; }
-.nge-qi-img {
+:deep(.nge-qi-img) {
   display: block; width: 100%; max-height: min(560px, calc(88 * var(--nge-vh, 1vh) - 200px)); object-fit: contain;
   border-radius: 8px; border: 1px solid rgb(var(--nd-accent) / 0.22);
   box-shadow: 0 0 24px rgb(var(--nd-accent) / 0.10);

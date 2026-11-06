@@ -2719,6 +2719,18 @@ exports.ewCommunityData = onRequest(
         if (to < from || to-from > 499 || to > 100000) throw ewErr(400,"Invalid range");
         headers.Range = input.range;
       }
+      // Admin edits of in-game windows: the text before, for Ames's note (functions/edit-notify.js).
+      let editsBefore = null;
+      if (plan.table === "site_texts" && ["POST","PATCH","DELETE"].includes(plan.method)) {
+        try {
+          const keys = require("./edit-notify").editedKeys(plan.method, plan.query, plan.body).slice(0, 5);
+          editsBefore = {};
+          for (const k of keys) {
+            const rows = await sb("site_texts?key=eq."+encodeURIComponent(k)+"&select=body&limit=1");
+            editsBefore[k] = rows.length ? String(rows[0].body ?? "") : null;
+          }
+        } catch (e) { editsBefore = null; console.warn("[edit-notify] before", e.message); }
+      }
       const upstream = await fetch(EW_SB+plan.table+"?"+plan.query.toString(), {method:plan.method,headers,
         body:plan.body === undefined ? undefined : JSON.stringify(plan.body), redirect:"error", signal:AbortSignal.timeout(15000)});
       let body = await upstream.text();
@@ -2727,6 +2739,25 @@ exports.ewCommunityData = onRequest(
       if (!upstream.ok) {
         let code; try { code = JSON.parse(body).code; } catch {}
         body = JSON.stringify({code, message:upstream.status===406 ? "Requested row was not found or was not unique." : "The requested operation could not be completed."});
+      }
+      // The edit went through: tell Ames, before and after (Ames 2026-11-06).
+      if (upstream.ok && editsBefore) {
+        try {
+          const {planEditNote, OWNER_EMAILS} = require("./edit-notify");
+          const rowsAfter = plan.method === "DELETE" ? [] : (Array.isArray(plan.body) ? plan.body : [plan.body]);
+          const notes = Object.keys(editsBefore).map((k) => {
+            const row = rowsAfter.find((r) => r && r.key === k);
+            const after = plan.method === "DELETE" ? null : row ? String(row.body ?? "") : (plan.body && typeof plan.body.body === "string" ? plan.body.body : null);
+            return planEditNote({ key: k, before: editsBefore[k], after, editor: { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" } });
+          }).filter(Boolean);
+          if (notes.length) {
+            const owners = await sb("users?select=id&middleauth_email=in.("+encodeURIComponent(OWNER_EMAILS.map((e) => `"${e}"`).join(","))+")");
+            const out = [];
+            for (const n of notes) for (const o of owners) out.push({ title: n.title, body: n.body, target_type: "user", target_id: o.id,
+              ...(n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+            if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
+          }
+        } catch (e) { console.warn("[edit-notify] note", e.message); }
       }
       // A new report exists now: have Claude write its suggestion straight away.
       // A new report no longer starts a suggestion by itself (2026-10-10):
