@@ -16,7 +16,7 @@ import { apprenticeFlag } from '../util/mentor_flag';
 import { MENTOR_TIERS } from '../util/mentor_tiers';
 const MENTOR_ICON = MENTOR_TIERS[0].image;
 import { joinPractice, takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
-import { askResubmit, cellColorNote, inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
+import { resendFromBox, cellColorNote, inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
   completeForApprentice, startMentor, loadMentor, shortCell, replyTo, takeBackReply, type MentorNote, type MentorMessage } from '../mentor';
 
 // An apprentice who completes a cell any other way gets this in the middle
@@ -198,6 +198,19 @@ function goUpNext() {
   if (!n) return;
   try { openInView(n, 'mentor'); } catch (e: any) { error.value = e?.message || 'That cell could not be opened.'; }
 }
+/** Send the cell back to the mentor from here: the message in the box goes with it. */
+async function sendAgain() {
+  if (!r.value || busy.value) return;
+  busy.value = true; error.value = ''; said.value = '';
+  try {
+    const out = await resendFromBox(r.value, wholeText.value.trim());
+    if (!out.ok) { error.value = out.message; return; }
+    wholeText.value = '';
+    said.value = `Sent to ${otherName.value}.`;
+  } catch (e: any) {
+    error.value = e?.message || 'Could not send the cell.';
+  } finally { busy.value = false; }
+}
 const SLIM_KEY = 'pyr-mentor-box-slim';
 const slim = ref((() => { try { return localStorage.getItem(SLIM_KEY) === '1'; } catch { return false; } })());
 function toggleSlim() {
@@ -229,7 +242,7 @@ function close() {
   if (!mentor.value) void loadMentor();
 }
 const STATE: Record<string, string> = {
-  waiting: 'Sent. Waiting for a mentor to take it. You get a bell when it is answered.', looking: 'Your mentor is looking at it. You get a bell when they answer.', suggestions: 'Your mentor has suggestions. Fix the cell, then press Send to mentor again below.',
+  waiting: 'Sent. Waiting for a mentor to take it. You get a bell when it is answered.', looking: 'Your mentor is looking at it. You get a bell when they answer.', suggestions: 'Your mentor has suggestions. Fix the cell, then send it again with the button below.',
   complete: 'Complete. It counts for you.',
 };
 </script>
@@ -273,13 +286,20 @@ const STATE: Record<string, string> = {
       <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
-      <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : adminView ? `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` : slim || r.state === 'waiting' || r.state === 'looking' ? 'Your cell' : 'Your mentor\'s notes' }}</span>
+      <!-- The apprentice's box has no title line: the bar says Mentor notes (Ames 2026-11-06). -->
+      <span v-if="mentor || adminView" class="nge-mbx-title">{{ mentor ? r.apprenticeName : `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` }}</span>
+      <!-- Slim: the apprentice's send sits on this line (Ames 2026-11-06: "more compact"). -->
+      <button v-if="slim && side === 'apprentice' && r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--headsend" title="Opens this cell's Complete form in the Cell Library, which checks the crosshairs and sends it" @pointerdown.stop @click="sendAgain">{{ busy ? 'Sending…' : `Send to ${otherName}` }}</button>
       <span class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
     <!-- Slim (Ames 2026-11-06): pin a note, send suggestions or complete,
          and on to the next cell, in a box that leaves the view free. -->
     <template v-if="slim">
+      <!-- The notes stay in slim (Ames 2026-11-06): one line each, click to fly there. -->
+      <div v-if="notes.length" class="nge-mbx-notes nge-mbx-notes--slim">
+        <button v-for="(n, i) in notes" :key="n.id" class="nge-mbx-fly" title="Fly to this note" @click="flyTo(n.position)"><span class="nge-mbx-dot"></span>{{ i + 1 }}. {{ n.text }}</button>
+      </div>
       <template v-if="canAct">
         <div class="nge-mbx-add">
           <input v-model="newNote" maxlength="300" placeholder="A note to pin at the crosshairs" @keydown.enter.prevent="addHere" />
@@ -300,7 +320,6 @@ const STATE: Record<string, string> = {
           <input v-model="wholeText" maxlength="1000" :placeholder="`A message for ${otherName}`" @keydown.enter.prevent="sendReply(null)" />
           <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
         </div>
-        <button v-if="r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--send" @click="askResubmit(r.taskId)">Send to mentor again</button>
       </template>
       <p v-else class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : mentor ? 'This cell is back with the apprentice.' : STATE[r.state] }}</p>
     </template>
@@ -355,7 +374,7 @@ const STATE: Record<string, string> = {
         <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
       </div>
       <p class="nge-mbx-meta">Answer a note with Reply under it. Your replies go to {{ otherName }} when you send the cell again.</p>
-      <button v-if="r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--send" title="Opens this cell's Complete form in the Cell Library, which checks the crosshairs and sends it" @click="askResubmit(r.taskId)">Send to mentor again</button>
+      <button v-if="r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--send" title="Checks the crosshairs are inside the cell, saves the view and sends it, with your replies and the message above" :disabled="busy" @click="sendAgain">{{ busy ? 'Sending…' : `Send to ${otherName} again` }}</button>
     </template>
 
     <div v-if="preview" class="nge-mbx-preview">
@@ -455,6 +474,8 @@ const STATE: Record<string, string> = {
 .nge-mbx-caret:hover { background: rgba(100, 200, 255, 0.22); border-color: rgba(100, 200, 255, 0.75); color: #d4f0ff; }
 .nge-mbx-caret--on { background: rgba(79, 207, 255, 0.26); border-color: #4fcfff; color: #e6f7ff; }
 .nge-mbx-btn--send { margin-top: 8px; }
+.nge-mbx-notes--slim { margin: 4px 0 6px; padding: 4px 0; max-height: 18vh; }
+.nge-mbx-btn--headsend { padding: 3px 10px; font-size: 13px; }
 .nge-mbx-btn--next { margin-left: auto; }
 .nge-mbx-x { font: inherit; font-size: 20px; line-height: 1; padding: 0 4px; margin-left: 4px; background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
 .nge-mbx-x:hover { color: #fff; }

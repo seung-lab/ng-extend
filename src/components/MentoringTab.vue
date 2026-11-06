@@ -95,7 +95,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
       <!-- Submitted and reviewed, as the Sent to your mentor screen counts them (Ames 2026-11-06):
            reviewed cells filled, submitted ones waiting for review ringed in gold. -->
       <div class="nge-mt-progress" :aria-label="`${submitted} of ${a.cellsNeeded} submitted, ${a.cellsDone} of ${a.cellsNeeded} completed`">
-        <span v-for="i in a.cellsNeeded" :key="i" class="nge-mt-dot" :class="{ 'nge-mt-dot--done': i <= a.cellsDone, 'nge-mt-dot--sent': i > a.cellsDone && i <= submitted }"></span>
+        <!-- No dots: two counts read plainer (Ames 2026-11-06: "the dots are confusing"). -->
         <span class="nge-mt-progress-text"><b>{{ submitted }}</b>/{{ a.cellsNeeded }} submitted</span>
         <span class="nge-mt-progress-text"><b>{{ a.cellsDone }}</b>/{{ a.cellsNeeded }} completed</span>
       </div>

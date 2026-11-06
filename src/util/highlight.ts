@@ -118,7 +118,9 @@ function watchHandPoints(src: any) {
 /** Every highlight colour in play: the player's styles and the marks in
  *  the view (another player's, in the colours they were made with). */
 export function highlightColorsInView(): string[] {
-  const out = new Set(highlightStyles().map(s => s.color.toLowerCase()));
+  // The three built in colours, and the marks actually in the view (a colour
+  // the player made but never used here does not count).
+  const out = new Set(DEFAULT_HIGHLIGHT_STYLES.map(s => s.color.toLowerCase()));
   try { for (const l of highlightLayers()) out.add(l.style.color.toLowerCase()); } catch { /* no view */ }
   return [...out].filter(c => HEX.test(c));
 }

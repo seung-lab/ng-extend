@@ -22,9 +22,12 @@ import { makeLayer } from 'neuroglancer/layer';
 import { secureWrite } from './secure_write';
 import { apprenticeFlag } from './util/mentor_flag';
 import { MENTOR_TIERS, APPRENTICE_ACHIEVEMENT } from './util/mentor_tiers';
-import { setStateRewriter, useLayersStore, useCellHistoryStore, useProofreadingBackendStore } from './store';
+import { setStateRewriter, useLayersStore, useCellHistoryStore, useProofreadingBackendStore, useIssueTagStore } from './store';
 import { currentDatasetTag, currentSegLayer } from './datasets';
 import { highlightColorsInView } from './util/highlight';
+import { cellAtCrosshair, supervoxelAtPlace } from './util/crosshair_cell';
+import { ancestorAmong, getRootFromSupervoxel } from './widgets/pcg_service';
+import { mintShortStateLink } from './util/state_link';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from './widgets/widget_utils';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem, labelAxonComplete } from './widgets/lightbulb_service';
@@ -87,6 +90,32 @@ export const mentoringShown = () => mentorState.installed && (mentorState.mentor
 export async function joinPractice() { await call('mentor.join'); await loadMentor(); }
 export async function leavePractice() { await call('mentor.leave'); await loadMentor(); }
 /** An apprentice right now: Complete sends to a mentor. */
+/** Send to mentor again straight from the Mentor box (Ames 2026-11-06: "if
+ *  crosshairs are inside the cell resubmit, no need to reopen cell
+ *  library"). The same crosshair check as the Complete form, a fresh link
+ *  to the view, and the ending and type sent the first time. If the
+ *  crosshairs are not on the cell, nothing is sent and the reason is given. */
+export async function resendFromBox(r: MentorReview, note: string): Promise<{ ok: boolean; message: string }> {
+  const at = await cellAtCrosshair();
+  if (!at.root) return { ok: false, message: at.problem || 'Could not check the crosshairs.' };
+  const task: any = useProofreadingBackendStore().tasks.find((t: any) => t.id === r.taskId);
+  const known = [r.rootId, r.segmentId, task?.segment_id, task?.final_segment_id].filter(Boolean).map(String);
+  let root: string | null = known.includes(at.root) ? at.root : ((await ancestorAmong(at.root, known).catch(() => null)) ? at.root : null);
+  if (!root) {
+    // A second reading, from the stored segmentation (what is on screen can be stale).
+    const sv2 = await supervoxelAtPlace(at.position).catch(() => null);
+    const root2 = sv2 && sv2 !== '0' ? await getRootFromSupervoxel(sv2).catch(() => null) : null;
+    if (root2 && (known.includes(root2) || await ancestorAmong(root2, known).catch(() => null))) root = root2;
+  }
+  if (!root) return { ok: false, message: `The crosshairs are on ...${at.root.slice(-4)}, not this cell. Move them into the cell and send again.` };
+  const link = await mintShortStateLink().catch(() => null) || r.link || '';
+  const d: any = r.done || {};
+  const out = await sendForSecondLook({ taskId: r.taskId, segId: r.segmentId, dataset: r.dataset },
+    { finalSegId: root, coords: at.position.join(', '), link, notes: note, status: d.status || '', cellType: d.cellType || '', sheet: d.sheet !== false });
+  if (inView.value?.review.id === out.id) inView.value.review = out;
+  return { ok: true, message: '' };
+}
+
 export const isApprentice = () => mentorState.apprentice?.status === 'active';
 /** All of the apprentice's mentor cells are sent (done, or with a mentor).
  *  Then they keep playing (Ames 2026-11-06: "let players continue doing cells
@@ -279,8 +308,32 @@ export function cannotOpen(r: MentorReview): string {
   return '';
 }
 
+/** Set by the Cell Library: opens one of the player's claims the way its row
+ *  does. True if it did. */
+export let openClaimHook: ((taskId: number) => Promise<boolean>) | null = null;
+export function setOpenClaimHook(f: typeof openClaimHook) { openClaimHook = f; }
+/** Annotation layers the apprentice's saved view brought in. */
+let viewAnnotationLayers: string[] = [];
+/** The cell is complete (Ames 2026-11-06): the apprentice's annotation layers
+ *  leave the mentor's view, as a player's own markup goes when they complete. */
+function removeApprenticeLayers() {
+  const v = (window as any).viewer;
+  if (!v || !viewAnnotationLayers.length) return;
+  let tags: any = null;
+  try { tags = useIssueTagStore(); } catch { /* no store */ }
+  for (const ml of [...(v.layerManager?.managedLayers ?? [])]) {
+    if (!viewAnnotationLayers.includes(ml.name) || tags?.isTagStoreLayer?.(ml.name)) continue;
+    try {
+      if (v.selectedLayer?.layer === ml) { v.selectedLayer.visible = false; v.selectedLayer.layer = undefined; }
+      v.layerManager.removeManagedLayer(ml);
+    } catch (e) { console.warn('[mentor] could not remove', ml.name, e); }
+  }
+  viewAnnotationLayers = [];
+}
+
 /** The apprentice's saved view if there is one, else a jump to the cell. */
 function loadView(r: MentorReview) {
+  viewAnnotationLayers = [];
   try {
     const hash = r.link ? new URL(r.link).hash : '';
     if (hash.startsWith('#!')) {
@@ -293,6 +346,9 @@ function loadView(r: MentorReview) {
         setStateRewriter(async (state: any) => {
           if (Array.isArray(state?.layers)) state.layers = state.layers.filter((l: any) => l?.name !== NOTES_LAYER);
           else if (state?.layers && typeof state.layers === 'object') delete state.layers[NOTES_LAYER];
+          // The apprentice's annotation layers, taken away when the cell is complete.
+          const list = Array.isArray(state?.layers) ? state.layers : Object.entries(state?.layers ?? {}).map(([name, l]: any) => ({ ...l, name }));
+          viewAnnotationLayers = list.filter((l: any) => l?.type === 'annotation' && l?.name && l.name !== NOTES_LAYER).map((l: any) => String(l.name));
           return state;
         });
         const pinia = (document.querySelector('#app') as any)?.__vue_app__?.config?.globalProperties?.$pinia;
@@ -338,9 +394,10 @@ export function writeNotesLayer(notes: MentorNote[], readOnly = false): boolean 
 // highlight's (a green cell, a Checked mark) hides it. In Mentor Mode the
 // cell under review takes the first of these that is far from every
 // highlight colour in play; with the built in colours that is the blue.
+// Blue (Ames 2026-11-06: "it should be blue", not the pale gray that looked
+// like a ghost). Lavender only when a mark in the view is blue.
 const CELL_COLORS = [
   { hex: '#5b9dff', name: 'blue' },
-  { hex: '#d8dde6', name: 'pale gray' },
   { hex: '#b48cff', name: 'lavender' },
 ];
 const rgbOf = (hex: string) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
@@ -350,7 +407,7 @@ function colorDistance(a: string, b: string): number {
   const rm = (r1 + r2) / 2, dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
   return Math.sqrt((2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db);
 }
-const FAR_ENOUGH = 200;
+const FAR_ENOUGH = 140;
 export function mentorCellColor(highlights: string[] = highlightColorsInView()): { hex: string; name: string } {
   const room = (c: string) => Math.min(Infinity, ...highlights.map(h => colorDistance(c, h)));
   return CELL_COLORS.find(c => room(c.hex) >= FAR_ENOUGH)
@@ -418,7 +475,14 @@ export function openInView(review: MentorReview, role: 'mentor' | 'apprentice' |
   document.dispatchEvent(new CustomEvent('nge:mentor-view'));
   coloredStates = new WeakSet();
   cellColorNote.value = '';
-  loadView(review);
+  // The apprentice goes to their own claim as the Cell Library opens one, with
+  // the work since their last save: their old saved view would undo their
+  // fixes (Ames 2026-11-06: "suggestions is not jumping me to the cell").
+  if (role === 'apprentice') {
+    const go = openClaimHook && review.taskId != null ? openClaimHook(review.taskId) : Promise.resolve(false);
+    void go.then(done => { if (!done) useCellHistoryStore().jumpToCell(review.rootId || review.segmentId, review.position?.length === 3 ? review.position as [number, number, number] : undefined, { keep: true }); })
+      .catch(e => console.warn('[mentor] could not go to the claim', e));
+  } else loadView(review);
   keepNotes(review.notes || [], role !== 'mentor', review);
 }
 export function closeView() {
@@ -485,6 +549,7 @@ export async function completeForApprentice(cellNote: string): Promise<{ finishe
     if (!ok) throw new Error(getLastCompletionProblem() || 'CAVE did not take the mark. Nothing was completed. Try again in a moment.');
   }
   const out = await call<{ review: MentorReview; finished: boolean }>('mentor.complete', { reviewId: r.id, root: r.rootId, notes: readNotesLayer(), cellNote });
+  removeApprenticeLayers();
   markBellsRead(r, /sent (you|a cell back to you)/);
   cur.review = out.review;
   void loadQueue().catch(() => {});

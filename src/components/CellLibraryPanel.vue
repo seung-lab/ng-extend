@@ -39,7 +39,7 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import MentoringTab from './MentoringTab.vue';
-import { inView as mentorInView, resubmitAsk, mentorState, mentoringShown, isApprentice, goesToMentor, sendForSecondLook, openInView as openMentorView, type MentorReview } from '../mentor';
+import { setOpenClaimHook, inView as mentorInView, resubmitAsk, mentorState, mentoringShown, isApprentice, goesToMentor, sendForSecondLook, openInView as openMentorView, type MentorReview } from '../mentor';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
@@ -2085,6 +2085,14 @@ function onOpenAsked(e: Event) {
   if (tab && (ALL_CL_TABS.some(t => t.key === tab) || (tab === 'mentoring' && mentoringShown()))) filter.value = tab;
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
+// The Mentor box opens an apprentice's claim as its row would (switchToClaim).
+onMounted(() => setOpenClaimHook(async taskId => {
+  const cell = cells.value.find(c => c.taskId === taskId);
+  if (!cell) return false;
+  await switchToClaim(cell);
+  return true;
+}));
+onBeforeUnmount(() => setOpenClaimHook(null));
 // Send to mentor again, asked from the Mentor box: My Cells, that claim's Complete form, in view.
 watch([resubmitAsk, () => cells.value.length], async ([taskId]) => {
   if (taskId == null) return;
@@ -4186,7 +4194,7 @@ const panelStyle = computed(() => ({
             :class="{
               'nge-cl-row--done': cell.status === 'completed',
               'nge-cl-row--mine': isMyClaim(cell),
-              'nge-cl-row--jumped': cell.segId === jumpedSegId || (cell.taskId != null && mentorInView?.review.taskId === cell.taskId),
+              'nge-cl-row--jumped': mentorInView ? cell.taskId != null && mentorInView.review.taskId === cell.taskId : cell.segId === jumpedSegId,
             }"
           >
             <!-- Left: status pip + name -->

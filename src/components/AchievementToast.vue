@@ -733,13 +733,7 @@ function playBatchChime() {
               ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a bell when it is done.` : 'A mentor takes a second look. You get a bell when it is done.')
               : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
               : `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. It counts for you. For science!` }}</div>
-            <!-- Reviewed cells filled, submitted ones ringed in gold, the one just now lit. -->
-            <div class="nge-cell-mentor-dots" :aria-label="`${mentorSent(cellCelebration.mentor)} of ${cellCelebration.mentor.needed} submitted, ${cellCelebration.mentor.done} of ${cellCelebration.mentor.needed} completed`">
-              <span v-for="i in cellCelebration.mentor.needed" :key="i" class="nge-cell-mentor-dot"
-                    :class="{ 'nge-cell-mentor-dot--done': i <= cellCelebration.mentor.done,
-                              'nge-cell-mentor-dot--sent': i > cellCelebration.mentor.done && i <= mentorSent(cellCelebration.mentor),
-                              'nge-cell-mentor-dot--now': i === (cellCelebration.mentor.kind === 'complete' ? cellCelebration.mentor.done : mentorSent(cellCelebration.mentor)) }"></span>
-            </div>
+            <!-- No dots: two counts read plainer (Ames 2026-11-06). -->
             <div class="nge-cell-stats nge-cell-stats--mentor">
               <span><strong>{{ mentorSent(cellCelebration.mentor) }}</strong>/{{ cellCelebration.mentor.needed }} submitted</span>
               <span><strong>{{ cellCelebration.mentor.done }}</strong>/{{ cellCelebration.mentor.needed }} completed</span>
