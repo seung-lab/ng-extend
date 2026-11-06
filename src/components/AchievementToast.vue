@@ -711,7 +711,7 @@ function playBatchChime() {
       <button v-if="cellCelebration && cellMessageMode === 'small'" type="button" class="nge-cell-chip" title="Click to dismiss" @click="dismissCellCelebration">
         <span class="nge-cell-chip-check" aria-hidden="true">✓</span>
         <span class="nge-cell-chip-title">{{ cellCelebration.mentor ? (cellCelebration.mentor.kind === 'sent' ? 'Sent to your mentor' : 'Cell complete with your mentor') : cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
-        <span v-if="cellCelebration.mentor" class="nge-cell-chip-count"><b>{{ mentorSent(cellCelebration.mentor) }}</b>/{{ cellCelebration.mentor.needed }} submitted, <b>{{ cellCelebration.mentor.done }}</b>/{{ cellCelebration.mentor.needed }} reviewed</span>
+        <span v-if="cellCelebration.mentor" class="nge-cell-chip-count"><b>{{ mentorSent(cellCelebration.mentor) }}</b>/{{ cellCelebration.mentor.needed }} submitted, <b>{{ cellCelebration.mentor.done }}</b>/{{ cellCelebration.mentor.needed }} completed</span>
         <span v-else-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
         <template v-else-if="cellCelebration.counted">
           <span v-if="cellCelebration.datasetLabel" class="nge-cell-chip-count">{{ cellCelebration.datasetLabel }} <b>{{ cellCelebration.datasetCells }}</b></span>
@@ -734,7 +734,7 @@ function playBatchChime() {
               : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
               : `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. It counts for you. For science!` }}</div>
             <!-- Reviewed cells filled, submitted ones ringed in gold, the one just now lit. -->
-            <div class="nge-cell-mentor-dots" :aria-label="`${mentorSent(cellCelebration.mentor)} of ${cellCelebration.mentor.needed} submitted, ${cellCelebration.mentor.done} of ${cellCelebration.mentor.needed} reviewed`">
+            <div class="nge-cell-mentor-dots" :aria-label="`${mentorSent(cellCelebration.mentor)} of ${cellCelebration.mentor.needed} submitted, ${cellCelebration.mentor.done} of ${cellCelebration.mentor.needed} completed`">
               <span v-for="i in cellCelebration.mentor.needed" :key="i" class="nge-cell-mentor-dot"
                     :class="{ 'nge-cell-mentor-dot--done': i <= cellCelebration.mentor.done,
                               'nge-cell-mentor-dot--sent': i > cellCelebration.mentor.done && i <= mentorSent(cellCelebration.mentor),
@@ -742,7 +742,7 @@ function playBatchChime() {
             </div>
             <div class="nge-cell-stats nge-cell-stats--mentor">
               <span><strong>{{ mentorSent(cellCelebration.mentor) }}</strong>/{{ cellCelebration.mentor.needed }} submitted</span>
-              <span><strong>{{ cellCelebration.mentor.done }}</strong>/{{ cellCelebration.mentor.needed }} reviewed</span>
+              <span><strong>{{ cellCelebration.mentor.done }}</strong>/{{ cellCelebration.mentor.needed }} completed</span>
             </div>
           </div>
           <div v-else class="nge-cell-text">

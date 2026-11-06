@@ -39,7 +39,7 @@ function pill(r: MentorReview): string {
   return r.done?.practice ? 'Complete, practice' : 'Complete';
 }
 function rowHint(r: MentorReview): string {
-  if (r.state === 'suggestions') return 'Open it to see the notes, fix the cell, then press Complete on it to send it again.';
+  if (r.state === 'suggestions') return 'Open it to see the notes, fix the cell, then press Send to mentor again in the box.';
   if (r.state === 'looking') return 'Your mentor is looking at it.';
   if (r.state === 'waiting') return 'A mentor takes it soon.';
   return r.done?.practice ? 'Practice, nothing was recorded.' : 'It counts for you.';
@@ -94,10 +94,10 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
       <h4>Your mentor cells <span v-if="a.practice" class="nge-mt-n">practice</span></h4>
       <!-- Submitted and reviewed, as the Sent to your mentor screen counts them (Ames 2026-11-06):
            reviewed cells filled, submitted ones waiting for review ringed in gold. -->
-      <div class="nge-mt-progress" :aria-label="`${submitted} of ${a.cellsNeeded} submitted, ${a.cellsDone} of ${a.cellsNeeded} reviewed`">
+      <div class="nge-mt-progress" :aria-label="`${submitted} of ${a.cellsNeeded} submitted, ${a.cellsDone} of ${a.cellsNeeded} completed`">
         <span v-for="i in a.cellsNeeded" :key="i" class="nge-mt-dot" :class="{ 'nge-mt-dot--done': i <= a.cellsDone, 'nge-mt-dot--sent': i > a.cellsDone && i <= submitted }"></span>
         <span class="nge-mt-progress-text"><b>{{ submitted }}</b>/{{ a.cellsNeeded }} submitted</span>
-        <span class="nge-mt-progress-text"><b>{{ a.cellsDone }}</b>/{{ a.cellsNeeded }} reviewed</span>
+        <span class="nge-mt-progress-text"><b>{{ a.cellsDone }}</b>/{{ a.cellsNeeded }} completed</span>
       </div>
       <p class="nge-mt-how" v-if="a.status === 'active'">
         {{ a.mentorName ? `${a.mentorName} is your mentor.` : 'A mentor takes your first cell when you send it.' }}
