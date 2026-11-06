@@ -485,7 +485,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /** The all-datasets count the last celebration showed, to notice a list that
  *  has not caught up with the cell just completed. */
 let lastCelebratedCount: number | null = null;
-const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; mentor?: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; needed: number; practice?: boolean } } | null>(null);
+/** Submitted mentor cells: at least the reviewed ones (an older celebration has no count). */
+const mentorSent = (m: { done: number; sent?: number }) => Math.max(m.sent ?? 0, m.done);
+const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; mentor?: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; sent?: number; needed: number; practice?: boolean } } | null>(null);
 
 /** How much a completed cell shows (Settings): the full congratulations, a
  *  small note at the top, or nothing. Read when a cell is completed, so a
@@ -709,7 +711,7 @@ function playBatchChime() {
       <button v-if="cellCelebration && cellMessageMode === 'small'" type="button" class="nge-cell-chip" title="Click to dismiss" @click="dismissCellCelebration">
         <span class="nge-cell-chip-check" aria-hidden="true">✓</span>
         <span class="nge-cell-chip-title">{{ cellCelebration.mentor ? (cellCelebration.mentor.kind === 'sent' ? 'Sent to your mentor' : 'Cell complete with your mentor') : cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
-        <span v-if="cellCelebration.mentor" class="nge-cell-chip-count"><b>{{ cellCelebration.mentor.done }}</b> of {{ cellCelebration.mentor.needed }}</span>
+        <span v-if="cellCelebration.mentor" class="nge-cell-chip-count"><b>{{ mentorSent(cellCelebration.mentor) }}</b>/{{ cellCelebration.mentor.needed }} submitted, <b>{{ cellCelebration.mentor.done }}</b>/{{ cellCelebration.mentor.needed }} reviewed</span>
         <span v-else-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
         <template v-else-if="cellCelebration.counted">
           <span v-if="cellCelebration.datasetLabel" class="nge-cell-chip-count">{{ cellCelebration.datasetLabel }} <b>{{ cellCelebration.datasetCells }}</b></span>
@@ -731,11 +733,17 @@ function playBatchChime() {
               ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a bell when it is done.` : 'A mentor takes a second look. You get a bell when it is done.')
               : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
               : `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. It counts for you. For science!` }}</div>
-            <div class="nge-cell-mentor-dots" :aria-label="`${cellCelebration.mentor.done} of ${cellCelebration.mentor.needed} mentor cells done`">
+            <!-- Reviewed cells filled, submitted ones ringed in gold, the one just now lit. -->
+            <div class="nge-cell-mentor-dots" :aria-label="`${mentorSent(cellCelebration.mentor)} of ${cellCelebration.mentor.needed} submitted, ${cellCelebration.mentor.done} of ${cellCelebration.mentor.needed} reviewed`">
               <span v-for="i in cellCelebration.mentor.needed" :key="i" class="nge-cell-mentor-dot"
-                    :class="{ 'nge-cell-mentor-dot--done': i <= cellCelebration.mentor.done, 'nge-cell-mentor-dot--now': cellCelebration.mentor.kind === 'complete' && i === cellCelebration.mentor.done }"></span>
+                    :class="{ 'nge-cell-mentor-dot--done': i <= cellCelebration.mentor.done,
+                              'nge-cell-mentor-dot--sent': i > cellCelebration.mentor.done && i <= mentorSent(cellCelebration.mentor),
+                              'nge-cell-mentor-dot--now': i === (cellCelebration.mentor.kind === 'complete' ? cellCelebration.mentor.done : mentorSent(cellCelebration.mentor)) }"></span>
             </div>
-            <div class="nge-cell-stats"><strong>{{ cellCelebration.mentor.done }}</strong> of {{ cellCelebration.mentor.needed }} mentor cells done</div>
+            <div class="nge-cell-stats nge-cell-stats--mentor">
+              <span><strong>{{ mentorSent(cellCelebration.mentor) }}</strong>/{{ cellCelebration.mentor.needed }} submitted</span>
+              <span><strong>{{ cellCelebration.mentor.done }}</strong>/{{ cellCelebration.mentor.needed }} reviewed</span>
+            </div>
           </div>
           <div v-else class="nge-cell-text">
             <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
@@ -1565,6 +1573,8 @@ function playBatchChime() {
 .nge-cell-congrats--mentor { background: linear-gradient(135deg, #cfe3ff 0%, #7fb6ff 45%, #f5d142 100%); -webkit-background-clip: text; background-clip: text; }
 .nge-cell-mentor-dots { display: flex; justify-content: center; gap: 10px; margin-top: 8px; animation: nge-cell-fade-in 0.4s ease-out 0.8s both; }
 .nge-cell-mentor-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(159, 200, 255, 0.5); }
+.nge-cell-mentor-dot--sent { border-color: #f5d142; }
+.nge-cell-stats--mentor { display: flex; justify-content: center; gap: 22px; }
 .nge-cell-mentor-dot--done { background: #7fb6ff; border-color: #7fb6ff; box-shadow: 0 0 8px rgba(127, 182, 255, 0.6); }
 .nge-cell-mentor-dot--now { background: #f5d142; border-color: #f5d142; box-shadow: 0 0 12px rgba(245, 209, 66, 0.8); }
 .nge-cell-card--mentor .nge-cell-stats strong { color: #f5d142; text-shadow: 0 0 10px rgba(245, 209, 66, 0.4); }

@@ -132,7 +132,14 @@ export async function loadMentor(): Promise<void> {
 // ── Celebrating a mentor program cell (Ames 2026-11-05: "we need that back but a mentor mode style") ──
 const NURRO = ['nurro-success', 'nurro-trophy', 'nurro-celebrate', 'nurro-dance', 'nurro-confetti', 'nurro-celebrate2', 'nurro-celebrate3']
   .map(n => `https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/${n}.png`);
-function celebrate(mentor: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; needed: number; practice?: boolean }, segId?: string) {
+/** Mentor cells submitted so far: reviewed ones and the ones with a mentor
+ *  (Ames 2026-11-06: "should say n/5 submitted and n/5 reviewed"). */
+function cellsSubmitted(): number {
+  const a = mentorState.apprentice;
+  const needed = a?.cellsNeeded ?? 5;
+  return Math.min(needed, (a?.cellsDone ?? 0) + mentorState.mine.filter(r => r.state !== 'complete').length);
+}
+function celebrate(mentor: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; sent?: number; needed: number; practice?: boolean }, segId?: string) {
   try {
     useProofreadingBackendStore().pendingCellCelebration = { totalCells: 0, imageUrl: NURRO[Math.floor(Math.random() * NURRO.length)], segId: segId || '', mentor };
   } catch { /* no store */ }
@@ -151,7 +158,7 @@ function celebrateCompleted() {
   try { localStorage.setItem(CELEBRATED, JSON.stringify([...seen, ...fresh.map(r => r.id)].slice(-50))); } catch { /* private window */ }
   const r = fresh[0], a = mentorState.apprentice;
   const needed = a?.cellsNeeded ?? 5;
-  celebrate({ kind: 'complete', mentorName: r.mentorName, done: Math.min(a?.cellsDone ?? 0, needed), needed, practice: !!r.done?.practice }, r.rootId);
+  celebrate({ kind: 'complete', mentorName: r.mentorName, done: Math.min(a?.cellsDone ?? 0, needed), sent: Math.max(cellsSubmitted(), Math.min(a?.cellsDone ?? 0, needed)), needed, practice: !!r.done?.practice }, r.rootId);
 }
 
 export async function loadQueue(): Promise<void> {
@@ -210,7 +217,7 @@ export async function sendForSecondLook(cell: { taskId?: number | null; segId: s
   markBellsRead(out.review, /suggestions/);
   // The cell complete celebration, mentor style (Ames 2026-11-05).
   const a = out.apprentice;
-  celebrate({ kind: 'sent', mentorName: a?.mentorName ?? null, done: a?.cellsDone ?? 0, needed: a?.cellsNeeded ?? 5, practice: !!a?.practice }, done.finalSegId);
+  celebrate({ kind: 'sent', mentorName: a?.mentorName ?? null, done: a?.cellsDone ?? 0, sent: cellsSubmitted(), needed: a?.cellsNeeded ?? 5, practice: !!a?.practice }, done.finalSegId);
   return out.review;
 }
 

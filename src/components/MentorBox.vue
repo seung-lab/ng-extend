@@ -250,11 +250,13 @@ const STATE: Record<string, string> = {
     </div>
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : adminView ? `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` : 'Your mentor\'s notes' }}</span>
-      <span class="nge-mbx-pos">{{ shortCell(r) }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
+      <span class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
     <template v-if="mentor">
-      <p class="nge-mbx-how">Look over the cell. Leave notes where something needs work, then send suggestions, or complete it if it is done.</p>
+      <!-- Before they take the apprentice on, what a mentor is for (Ames 2026-11-06). -->
+      <p v-if="preview && becoming" class="nge-mbx-how">Mentors help new players with their first {{ apprenticeFlag.cellsNeeded }} production access cells by double checking that everything looks good.</p>
+      <p v-else class="nge-mbx-how">Look over the cell. Leave notes where something needs work, then send suggestions, or complete it if it is done.</p>
       <p v-if="r.done.notes && !thread.length" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
       <p v-if="r.done.status" class="nge-mbx-meta">Ending: {{ r.done.status }}</p>
     </template>
@@ -264,7 +266,7 @@ const STATE: Record<string, string> = {
     </template>
     <p v-else class="nge-mbx-how">{{ r.state === 'complete' && r.done?.practice ? 'Complete. This was practice, so nothing was recorded.' : STATE[r.state] }}</p>
 
-    <div class="nge-mbx-notes">
+    <div v-if="notes.length || !mentor" class="nge-mbx-notes">
       <div v-for="(n, i) in notes" :key="n.id" class="nge-mbx-pin">
         <div class="nge-mbx-note">
           <button class="nge-mbx-fly" title="Fly to this note" @click="flyTo(n.position)"><span class="nge-mbx-dot"></span>{{ i + 1 }}. {{ n.text }}</button>
@@ -282,7 +284,7 @@ const STATE: Record<string, string> = {
           <button class="nge-mbx-btn" :disabled="busy || !replyText.trim()" @click="sendReply(n.id)">Add reply</button>
         </div>
       </div>
-      <p v-if="!notes.length" class="nge-mbx-meta">{{ mentor ? 'No notes in the view yet.' : 'No notes in the view.' }}</p>
+      <p v-if="!notes.length && !mentor" class="nge-mbx-meta">No notes in the view.</p>
     </div>
     <p v-if="layerNote" class="nge-mbx-said" role="status">{{ layerNote }}</p>
     <p v-if="cellColorNote" class="nge-mbx-meta" role="status">{{ cellColorNote }}</p>
@@ -393,7 +395,7 @@ const STATE: Record<string, string> = {
 .nge-mbx-head { display: flex; align-items: baseline; gap: 8px; cursor: grab; user-select: none; touch-action: none; padding: 0 0 4px; }
 .nge-mbx--dragging .nge-mbx-head { cursor: grabbing; }
 .nge-mbx-title { font-size: 17px; font-weight: 600; color: #9fc8ff; }
-.nge-mbx-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); }
+.nge-mbx-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); font-variant-numeric: tabular-nums; user-select: text; cursor: text; }
 .nge-mbx-x { font: inherit; font-size: 20px; line-height: 1; padding: 0 4px; margin-left: 4px; background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
 .nge-mbx-x:hover { color: #fff; }
 .nge-mbx-how { margin: 6px 0; line-height: 1.45; color: rgba(220, 230, 245, 0.8); }
@@ -435,8 +437,8 @@ const STATE: Record<string, string> = {
 .nge-mbx-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .nge-mbx-ask { margin: 0; font-size: 16px; font-weight: 600; color: #eef4fb; }
 .nge-mbx-terms li { list-style: none; position: relative; }
-.nge-mbx-terms li::before { content: '•'; position: absolute; left: -12px; color: #9fc8ff; }
-.nge-mbx-terms { margin: 0; padding-left: 14px; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.45; color: rgba(220, 230, 245, 0.85); }
+.nge-mbx-terms li::before { content: '•'; position: absolute; left: -14px; color: #9fc8ff; }
+.nge-mbx .nge-mbx-terms { margin: 0; padding: 0 0 0 18px !important; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.45; color: rgba(220, 230, 245, 0.85); }
 .nge-mbx-said { color: rgba(124, 255, 178, 0.9); margin: 8px 0 0; font-size: 14px; }
 .nge-mbx-actions--preview { margin-top: 0; }
 .nge-mbx-alldone { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(124, 255, 178, 0.35); background: rgba(124, 255, 178, 0.06); color: #c9f5dc; font-size: 14px; }

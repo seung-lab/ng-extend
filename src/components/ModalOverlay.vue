@@ -102,6 +102,13 @@ body:has(.nge-overlay-blocker) .nge-smo-merge-panel,
 body:has(.nge-overlay-blocker) .nge-split-merge-overlay,
 /* And the Mentor Mode box: it sat on top of Submit an issue (Marissa, 2026-11-06). */
 body:has(.nge-overlay-blocker) .nge-mbx,
+/* A notification opened full screen (z-index 9500) goes over the floating
+   boxes too: the Cell Library covered "You have a mentor" (Ames 2026-11-06). */
+body:has(.nge-notif-detail-backdrop) .nge-cl-panel,
+body:has(.nge-notif-detail-backdrop) .nge-mbx,
+body:has(.nge-notif-detail-backdrop) .nge-hl-panel,
+body:has(.nge-notif-detail-backdrop) .nge-bp-panel,
+body:has(.nge-notif-detail-backdrop) .nge-quest-board,
 /* Phones dock chat as a sheet at z-index 950 (mobile.css); a window opened
    from chat (a profile, Nurro's page) has to land on top of it too. */
 body.nge-mobile:has(.nge-overlay-blocker) .nge-chat-float {
