@@ -19,6 +19,7 @@ import { mintShortStateLink } from '../util/state_link';
 import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
 import EditableText from './EditableText.vue';
+import QuestInstructions from './QuestInstructions.vue';
 import { sendWaitingReviews } from '../quest_review';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -115,7 +116,8 @@ const QUEST_STEPS: string[] = [
   'You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.',
 ];
 function onQuestTextAction(name: string) { if (name === 'examples') void openQuestExamples(); }
-/** The Instructions box with the lab's steps (Ames 2026-10-13). */
+/** The Instructions box with the lab's steps (Ames 2026-10-13), in a box of
+ *  its own with room for a picture since 2026-11-06 (QuestInstructions). */
 const showHelp = ref(false);
 /** The first time a player opens the tab, the Instructions button is lit
  *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
@@ -365,13 +367,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         </button>
       </div>
       <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
-      <div v-if="showHelp" class="nge-aq-help">
-        <div class="nge-aq-help-head">
-          <span>How to do a Cilia Quest</span>
-          <button class="nge-aq-help-close" @click="showHelp = false" title="Close">×</button>
-        </div>
-        <EditableText text-key="quest.retina_cilia.steps" :original="QUEST_STEPS" list-class="nge-aq-help-steps" @action="onQuestTextAction" />
-      </div>
+      <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
@@ -578,29 +574,6 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   100% { box-shadow: 0 0 10px rgba(126, 202, 255, 0.4); transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) { .nge-aq-info--nudge { animation: none; box-shadow: 0 0 0 2px rgba(126, 202, 255, 0.5); } }
-.nge-aq-help {
-  margin: 4px 0 2px;
-  padding: 10px 12px 8px;
-  border-radius: 10px;
-  background: rgba(66, 213, 236, 0.06);
-  border: 1px solid rgba(66, 213, 236, 0.28);
-  animation: nge-aq-help-in 0.2s ease-out both;
-}
-@keyframes nge-aq-help-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .nge-aq-help { animation: none; } }
-.nge-aq-help-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-  color: #7ee8ff; margin-bottom: 6px;
-}
-.nge-aq-help-close { background: none; border: none; color: #8aa; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
-.nge-aq-help-close:hover { color: #fff; }
-:deep(.nge-aq-help-steps) { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.5; color: #cfdcef; }
-:deep(.nge-aq-help-steps li) { margin: 4px 0; padding-left: 2px; }
-:deep(.nge-aq-help-steps li::marker) { color: #42d5ec; font-weight: 700; }
-:deep(.nge-aq-help-steps b) { color: #fff; font-weight: 600; }
-:deep(.nge-aq-help-steps a) { color: #7ecaff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-:deep(.nge-aq-help-steps a:hover) { color: #fff; }
 .nge-aq-section {
   padding: 10px 12px 4px;
   font-family: 'Orbitron', 'Inter', sans-serif;

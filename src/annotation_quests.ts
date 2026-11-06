@@ -25,6 +25,12 @@ export const QUEST_LEAD = 'We\'re on the hunt for primary cilia, important cellu
 export const QUEST_GUIDE_URL = 'https://unitc-my.sharepoint.com/:p:/g/personal/ojxjl01_cloud_uni-tuebingen_de/IQDBsH6sbIjZRY5Gc3Flt5iaAUvXSDf4QLsyamGQ72f8rOo';
 /** The training video, on YouTube, starting where the cilia part begins
  *  (Ames 2026-10-13). Left empty, the instructions do not mention a video. */
+/** The picture on the left of the Instructions box (Ames 2026-11-06: "an
+ *  image on left that we can make/provide"): an annotated cilium, a file
+ *  under static/quests/ the lab or Ames provides. Empty: the box shows the
+ *  words across its whole width. */
+export const QUEST_INSTRUCTIONS_IMAGE = '';
+export const QUEST_INSTRUCTIONS_IMAGE_ALT = 'An annotated cilium: its basal body, daughter centriole and centerline marked in the quest\'s three layers';
 export const QUEST_VIDEO_URL = 'https://www.youtube.com/watch?v=-l2-R-9vX6o&t=1525s';
 /** The sheet says "ON SAC" and "OFF SAC"; players read "Starburst" (Ames 2026-10-13). */
 export const cellTypeForPlayers = (t: string) => String(t || '').replace(/\bSACs?\b/g, 'Starburst');

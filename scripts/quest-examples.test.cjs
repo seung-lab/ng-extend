@@ -9,7 +9,14 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
 
-const BASE = 'http://localhost:3488/';
+const BASE = process.env.BASE || 'http://localhost:3488/';
+// Opened on a Retina view: Quests show on Retina only (Ames 2026-11-06 update).
+const RETINA_VIEW = '#!' + encodeURIComponent(JSON.stringify({
+  dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layout: 'xy-3d',
+  layers: [
+    { type: 'image', source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2', name: 'em' },
+    { type: 'segmentation', source: { url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/stroeh_mouse_retina', subsources: { default: true, mesh: true, graph: true }, enableDefaultSubsources: true }, name: 'stroeh_mouse_retina', segments: [] },
+  ] }));
 const CHROME = 'C:/Users/amyle/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe';
 const OUT = process.argv[2] || path.join(__dirname, 'shots-examples');
 fs.mkdirSync(OUT, { recursive: true });
@@ -47,7 +54,8 @@ print(n)
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
   await context.route(/minnie\.microns-daf\.com\/(segmentation|meshing|info)/, r => r.abort());
-  await context.route(/sticky_auth\/api\/v1\/user\/me|\/auth\/api\/v1\/user\/(me|cache)/, r => r.fulfill(json({ id: 1, email: 't@example.org', name: 'Test Player' })));
+  await context.route(/sticky_auth\/api\/v1\/user\/me|\/auth\/api\/v1\/user\/(me|cache)/, r => r.fulfill(json({ id: 1, email: 't@example.org', name: 'Test Player',
+    permissions_v2: { 'stroeh-mouse-retina': ['view', 'edit'] } })));
   await context.route(/cloudfunctions\.net|run\.app/, r => {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     if (/ewSheetSync/.test(r.request().url())) return r.fulfill(json({ ok: true, you: 'Test Player', rows: [] }));
@@ -71,7 +79,7 @@ print(n)
     }, HIDE_CSS);
   };
   try {
-    await page.goto(BASE, { waitUntil: 'load' });
+    await page.goto(BASE + RETINA_VIEW, { waitUntil: 'load' });
     await ready(page);
     await page.waitForTimeout(3000);
     await page.evaluate(() => { const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend'); pb.userId = 'test-user'; });
@@ -80,11 +88,34 @@ print(n)
     await page.click('.nge-cl-quests-tab');
     await page.waitForSelector('.nge-aq', { timeout: 10000 });
     await page.click('.nge-aq-info');
-    await page.waitForSelector('.nge-aq-help', { timeout: 5000 });
-    const links = await page.evaluate(() => [...document.querySelectorAll('.nge-aq-help a')].map(a => [a.textContent.trim(), a.getAttribute('href')]));
+    await page.waitForSelector('.nge-qi', { timeout: 5000 });
+    // A box of its own, laid out like a notification (Ames 2026-11-06).
+    await page.waitForTimeout(900);
+    const box = await page.evaluate(() => {
+      const q = document.querySelector('.nge-qi'), r = q.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height), dialog: q.getAttribute('role'), title: q.querySelector('.nge-qi-title').innerText.trim(),
+        kicker: q.querySelector('.nge-qi-kicker').innerText.replace(/\s+/g, ' ').trim(), steps: q.querySelectorAll('.nge-qi-steps li').length,
+        lead: !!q.querySelector('.nge-qi-lead'), inPanel: !!q.closest('.nge-cl-panel'),
+        onTop: [[0.25, 0.3], [0.5, 0.5], [0.75, 0.7]].every(([fx, fy]) => { const el = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy); return !!(el && el.closest('.nge-qi')); }), stepsSize: getComputedStyle(q.querySelector('.nge-qi-steps')).fontSize };
+    });
+    check('Instructions open a box of their own, wider than the panel, outside it', box.dialog === 'dialog' && !box.inPanel && box.w >= 700, box);
+    check('the box is on top: nothing, the Cell Library included, covers it', box.onTop, box);
+    check('the box has the title, the lead and the six steps, at 14.5px', box.title === 'How to do a Cilia Quest' && box.lead && box.steps === 6 && box.stepsSize === '14.5px', box);
+    await page.screenshot({ path: path.join(OUT, 'instructions-box.png') });
+    const links = await page.evaluate(() => [...document.querySelectorAll('.nge-qi a')].map(a => [a.textContent.trim(), a.getAttribute('href')]));
     check('the instructions link the guide, the video and the reference', links.length === 3 && links[0][0] === 'this guide' && /^https:\/\/unitc-my\.sharepoint\.com\/:p:\//.test(links[0][1]) && links[1][0] === 'training video' && links[1][1] === 'https://www.youtube.com/watch?v=-l2-R-9vX6o&t=1525s' && links[2][0] === "Here's a reference", links.map(l => [l[0], l[1].slice(0, 60)]));
     const before = await page.evaluate(() => JSON.stringify(window.viewer.state.toJSON()).length);
-    const [popup] = await Promise.all([context.waitForEvent('page', { timeout: 15000 }), page.click('.nge-aq-help a:has-text("Here\'s a reference")')]);
+    const [popup] = await Promise.all([context.waitForEvent('page', { timeout: 15000 }), page.click('.nge-qi a:has-text("Here\'s a reference")')]);
+    // Escape closes the box, and Instructions opens it again.
+    await page.bringToFront();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    check('Escape closes the box', !(await page.$('.nge-qi')));
+    await page.click('.nge-aq-info');
+    await page.waitForSelector('.nge-qi', { timeout: 5000 });
+    await page.click('.nge-qi-close');
+    await page.waitForTimeout(300);
+    check('the close button closes it', !(await page.$('.nge-qi')));
     check('the reference opens in a new tab and leaves this view alone', !!popup && before === await page.evaluate(() => JSON.stringify(window.viewer.state.toJSON()).length));
     await popup.waitForLoadState('load');
     await ready(popup);
@@ -177,6 +208,7 @@ print(n)
     check('at the first example the basal body is drawn (gold, against the layers hidden)', sum(first.shown) > sum(first.hidden) + 15, first);
   } catch (e) {
     check('the test ran to the end', false, String(e).slice(0, 400));
+    try { await page.screenshot({ path: path.join(OUT, 'failed.png') }); } catch (e2) { /* no picture */ }
   } finally {
     await browser.close();
   }
