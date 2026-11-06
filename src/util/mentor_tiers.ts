@@ -13,7 +13,7 @@ import m50 from '../../static/mentor/tiers/mentor-50.png';
 
 export interface MentorTier { n: number; slug: string; name: string; image: string }
 export const MENTOR_TIERS: MentorTier[] = [
-  { n: 1, name: 'First Wrap', image: m1 },
+  { n: 1, name: 'Mentor', image: m1 },
   { n: 5, name: 'Myelin Maker', image: m5 },
   { n: 10, name: 'Sheath Shaper', image: m10 },
   { n: 25, name: 'Saltatory Sensei', image: m25 },

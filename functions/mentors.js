@@ -56,7 +56,7 @@ const APPRENTICE_BADGE = {slug: 'mentor-program-apprentice', name: 'Myelinated',
  *  graduated). Same list as src/util/mentor_tiers.ts. */
 const tierArt = n => RAW + `4e2fa0fc71d7997feea1ef2e44d8e5011a4ecb23/static/mentor/tiers/mentor-${n}.png`;
 const MENTOR_TIERS = [
-  {n: 1, name: 'First Wrap', description: 'Saw your first apprentice through the mentor program.'},
+  {n: 1, name: 'Mentor', description: 'Saw your first apprentice through the mentor program.'},
   {n: 5, name: 'Myelin Maker', description: 'Five apprentices graduated with you.'},
   {n: 10, name: 'Sheath Shaper', description: 'Ten apprentices graduated with you.'},
   {n: 25, name: 'Saltatory Sensei', description: 'Twenty five apprentices graduated with you. Their signals leap.'},

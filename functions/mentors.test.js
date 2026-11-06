@@ -161,7 +161,7 @@ test('an admin who mentors someone to the end gets the Mentor Achievement too', 
     await admin('mentor.claim', {reviewId: r.id});
     await admin('mentor.complete', {reviewId: r.id});
   }
-  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Myelinated', U(4)], ['First Wrap', U(1)]]);
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Myelinated', U(4)], ['Mentor', U(1)]]);
 });
 
 test('five cells end the apprenticeship with both Achievements; no sixth can be sent', async () => {
@@ -178,7 +178,7 @@ test('five cells end the apprenticeship with both Achievements; no sixth can be 
   const st = await call(4, 'mentor.status');
   assert.equal(st.apprentice.status, 'finished');
   assert.equal(st.mine.length, CELLS_NEEDED, 'the notes stay readable afterwards');
-  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Myelinated', U(4)], ['First Wrap', U(2)]]);
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Myelinated', U(4)], ['Mentor', U(2)]]);
   await assert.rejects(send(call, 4, 100), /not in the mentor program/);
   assert.equal((await call(2, 'mentor.queue')).slots.used, 0, 'the mentor has room again');
 });
@@ -289,9 +289,9 @@ test('graduating celebrates: both Achievement bells match the award pattern of t
   };
   await finish(4);
   const first = db._state.notes.filter(x => AWARD.test(x.title));
-  assert.deepEqual(first.map(x => [x.to, x.title]), [[U(4), 'New Achievement: Myelinated'], [U(2), 'New Achievement: First Wrap']]);
+  assert.deepEqual(first.map(x => [x.to, x.title]), [[U(4), 'New Achievement: Myelinated'], [U(2), 'New Achievement: Mentor']]);
   for (const b of first) {
-    assert.match(b.body, /^You earned the "(Myelinated|First Wrap)" Achievement! /, 'the game reads the name from the quotes');
+    assert.match(b.body, /^You earned the "(Myelinated|Mentor)" Achievement! /, 'the game reads the name from the quotes');
     assert.ok(b.image, 'with the Achievement picture');
   }
   await finish(5);
@@ -299,7 +299,7 @@ test('graduating celebrates: both Achievement bells match the award pattern of t
   assert.equal(mentorBells.length, 2);
   assert.ok(!AWARD.test(mentorBells[1].title), 'no second unlock card for the same Achievement');
   assert.equal(mentorBells[1].title, 'second finished the mentor program');
-  assert.equal(db._state.awards.filter(a => a.name === 'First Wrap').length, 1);
+  assert.equal(db._state.awards.filter(a => a.name === 'Mentor').length, 1);
 });
 
 test('an Achievement an admin changed in Special Badges is never written over, and its bell carries their picture', async () => {
@@ -396,10 +396,10 @@ test('the Mentor row: a tier at 1, 5, 10, 25 and 50 graduates, each celebrated o
   const tiers = () => db._state.awards.filter(a => a.userId === U(2)).map(a => a.name);
   const bells = () => db._state.notes.filter(n => n.to === U(2) && /finished the mentor program/.test(n.body)).map(n => n.title);
   await finish(extra[0], 0);
-  assert.deepEqual(tiers(), ['First Wrap']);
+  assert.deepEqual(tiers(), ['Mentor']);
   for (let k = 1; k < 5; k++) await finish(extra[k], k);
-  assert.deepEqual(tiers(), ['First Wrap', 'Myelin Maker']);
-  assert.deepEqual(bells(), ['New Achievement: First Wrap', 'grad1 finished the mentor program', 'grad2 finished the mentor program',
+  assert.deepEqual(tiers(), ['Mentor', 'Myelin Maker']);
+  assert.deepEqual(bells(), ['New Achievement: Mentor', 'grad1 finished the mentor program', 'grad2 finished the mentor program',
     'grad3 finished the mentor program', 'New Achievement: Myelin Maker']);
   const five = db._state.notes.find(n => n.title === 'New Achievement: Myelin Maker');
   assert.match(five.body, /^You earned the "Myelin Maker" Achievement! grad4 finished the mentor program with you\.\nApprentices that graduated with you: 5$/);
@@ -413,7 +413,7 @@ test('the Mentor row: a tier at 1, 5, 10, 25 and 50 graduates, each celebrated o
     await as2(who(2), 'mentor.claim', {reviewId: r.id}, true);
     await as2(who(2), 'mentor.complete', {reviewId: r.id}, true);
   }
-  assert.deepEqual(db2._state.awards.filter(a => a.userId === U(2)).map(a => a.name), ['First Wrap', 'Myelin Maker', 'Sheath Shaper']);
+  assert.deepEqual(db2._state.awards.filter(a => a.userId === U(2)).map(a => a.name), ['Mentor', 'Myelin Maker', 'Sheath Shaper']);
   assert.deepEqual(db2._state.notes.filter(n => n.to === U(2) && n.title.startsWith('New Achievement')).map(n => n.title), ['New Achievement: Sheath Shaper']);
 });
 
