@@ -340,7 +340,12 @@ export function openInView(review: MentorReview, role: 'mentor' | 'apprentice' |
 export function closeView() {
   window.clearInterval(keepTimer);
   inView.value = null;
-  try { const v = (window as any).viewer; const l = notesLayer(); if (v && l) v.layerManager.removeManagedLayer(l); } catch { /* gone */ }
+  try {
+    const v = (window as any).viewer; const l = notesLayer();
+    // Its side panel closes with the box (Ames 2026-11-06).
+    if (v && l && v.selectedLayer?.layer === l) { v.selectedLayer.visible = false; v.selectedLayer.layer = undefined; }
+    if (v && l) v.layerManager.removeManagedLayer(l);
+  } catch { /* gone */ }
 }
 
 /** A reply under a pin (noteId) or on the whole cell (Ames 2026-11-06). It

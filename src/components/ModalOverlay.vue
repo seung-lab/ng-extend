@@ -100,6 +100,8 @@ body:has(.nge-overlay-blocker) .nge-quest-board,
    bug report box (KrzysztofKruk, report 255). */
 body:has(.nge-overlay-blocker) .nge-smo-merge-panel,
 body:has(.nge-overlay-blocker) .nge-split-merge-overlay,
+/* And the Mentor Mode box: it sat on top of Submit an issue (Marissa, 2026-11-06). */
+body:has(.nge-overlay-blocker) .nge-mbx,
 /* Phones dock chat as a sheet at z-index 950 (mobile.css); a window opened
    from chat (a profile, Nurro's page) has to land on top of it too. */
 body.nge-mobile:has(.nge-overlay-blocker) .nge-chat-float {
