@@ -44,6 +44,17 @@ export async function resetSiteText(key: string): Promise<void> {
   delete siteTexts[key];
 }
 
+/** A picture an admin chose for an in-game window (Ames 2026-11-06, Add image):
+ *  its site text holds the picture's address in our own uploads, or "none".
+ *  Anything else is ignored, so only pictures uploaded through the game show. */
+export const OWN_PICTURE = /^https:\/\/javthknksdcrlhiaaptj\.supabase\.co\/storage\/v1\/object\/public\/admin-uploads\/[A-Za-z0-9/_.-]+$/;
+export function pictureFor(key: string, original: string): string {
+  const body = siteTexts[key]?.body?.trim();
+  if (body === 'none') return '';
+  if (body && OWN_PICTURE.test(body)) return body;
+  return original;
+}
+
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** One line of saved text as safe HTML: escaped, then **bold** and links. */
