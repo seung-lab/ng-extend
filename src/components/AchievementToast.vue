@@ -113,6 +113,15 @@ let initialized = false;
 let editsSeenReal = false;
 let cellsSeenReal = false;
 let streakSeenReal = false;
+/** A real count seen while settling is the baseline: the next change after
+ *  that is a real one. Without this the first cell or edit of a visit was
+ *  taken for the late load and never celebrated (Nseraf 2026-11-06: reloaded,
+ *  then his 3,000th cell gave no Seismograph card and no chat line). */
+function seeReal() {
+  if (stats.value.editsAllTime > 0) editsSeenReal = true;
+  if (stats.value.cellsSubmitted > 0) cellsSeenReal = true;
+  if (stats.value.currentStreak > 0) streakSeenReal = true;
+}
 
 
 // ── Idempotent badge awards ──────────────────────────────────────────────────
@@ -144,6 +153,8 @@ onMounted(() => {
   prevEdits = stats.value.editsAllTime;
   prevCells = stats.value.cellsSubmitted;
   prevStreak = stats.value.currentStreak;
+  // Counts already here are the real ones (seeReal, above).
+  seeReal();
   // Wait for stats to settle — stats may load from server after mount
   setTimeout(() => { initialized = true; }, 8000);
 
@@ -166,7 +177,7 @@ onMounted(() => {
 
 // Watch for building badge unlocks (edits)
 watch(() => stats.value.editsAllTime, (newEdits) => {
-  if (!initialized) { prevEdits = newEdits; return; }
+  if (!initialized) { prevEdits = newEdits; seeReal(); return; }
   // First real update after init — just capture baseline, don't celebrate
   if (!editsSeenReal && newEdits > 0) { editsSeenReal = true; prevEdits = newEdits; return; }
   for (const badge of BUILDING_BADGES) {
@@ -210,7 +221,7 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
 
 // Watch for exploration badge unlocks + cell milestones
 watch(() => stats.value.cellsSubmitted, (newCells) => {
-  if (!initialized) { prevCells = newCells; return; }
+  if (!initialized) { prevCells = newCells; seeReal(); return; }
   // First real update from Supabase — just capture baseline, don't celebrate
   // already-earned badges. Fixes phantom Astrolabe popup on every incognito load.
   if (!cellsSeenReal && newCells > 0) { cellsSeenReal = true; prevCells = newCells; return; }
@@ -244,7 +255,7 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
 
 // Watch for streak milestones
 watch(() => stats.value.currentStreak, (newStreak) => {
-  if (!initialized) { prevStreak = newStreak; return; }
+  if (!initialized) { prevStreak = newStreak; seeReal(); return; }
   if (!streakSeenReal && newStreak > 0) { streakSeenReal = true; prevStreak = newStreak; return; }
   // The milestone itself arrives as a notification in the bell (sent by the
   // store when the streak is saved); here, only the confetti, once, sized
