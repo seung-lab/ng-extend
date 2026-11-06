@@ -1037,6 +1037,9 @@ const plainSpecialBadges = computed(() => profileSpecialBadges.value.filter((a: 
 interface MentorTile { t: MentorTier; award: any | null }
 const mentorTiles = computed<MentorTile[]>(() => MENTOR_TIERS.map(t => ({ t, award: profileSpecialBadges.value.find((a: any) => a?.badge?.slug === t.slug) ?? null })));
 const mentorEarned = computed(() => mentorTiles.value.filter(x => x.award).length);
+/** Earned tiers only; the next one is a blank tile with its count, no art or name. */
+const mentorShown = computed(() => mentorTiles.value.filter(x => x.award));
+const mentorNext = computed(() => mentorTiles.value.find(x => !x.award) ?? null);
 // Cells this player reviewed as a mentor (Ames 2026-11-05: "cells reviewed count").
 const mentorReviewed = ref(0);
 watch(() => props.viewUserId || backendStore.userId, async id => {
@@ -2596,7 +2599,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ selectedSpecialBadge.badge.description }}</div>
               <div v-if="medalWins(selectedSpecialBadge)" class="nge-trophy-featured-desc nge-medal-wins">{{ medalWins(selectedSpecialBadge) }}</div>
-              <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">Won for being awesome</div>
+              <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">{{ /^mentor-program-/.test(selectedSpecialBadge.badge?.slug || '') && selectedSpecialBadge.reason ? selectedSpecialBadge.reason : 'Won for being awesome' }}</div>
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
               </div>
@@ -2628,7 +2631,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ favoriteSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="favoriteSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ favoriteSpecialBadge.badge.description }}</div>
-              <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">Won for being awesome</div>
+              <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">{{ /^mentor-program-/.test(favoriteSpecialBadge.badge?.slug || '') && favoriteSpecialBadge.reason ? favoriteSpecialBadge.reason : 'Won for being awesome' }}</div>
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(favoriteSpecialBadge.awarded_at) }}</strong>
               </div>
@@ -2832,7 +2835,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           <!-- Mentor (Ames 2026-11-05): a tier at 1, 5, 10, 25 and 50 apprentices graduated, the ones still ahead dimmed -->
           <div v-if="mentorEarned > 0 || mentorReviewed > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'mentor', 'is-drop': dropSection === 'mentor' }" :style="sectionOrder('mentor')" @dragover="sectionDragOver('mentor', $event)" @drop.prevent="sectionDrop('mentor')">
             <div class="nge-trophy-track-label" style="color: #f2d27a;">Mentor Achievements
-              <span class="nge-trophy-track-count">{{ mentorReviewed }} cell{{ mentorReviewed === 1 ? '' : 's' }} reviewed, {{ mentorEarned }} of {{ mentorTiles.length }} earned</span>
+              <span class="nge-trophy-track-count">{{ mentorReviewed }} cell{{ mentorReviewed === 1 ? '' : 's' }} reviewed, {{ mentorEarned }} earned</span>
               <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
                 <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
                         @dragstart="sectionDragStart('mentor', $event)" @dragend="sectionDragEnd">⠿</button>
@@ -2842,7 +2845,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('mentor', el)">
               <div
-                v-for="x in mentorTiles"
+                v-for="x in mentorShown"
                 :key="x.t.slug"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--locked': !x.award, 'nge-trophy-badge--selected': x.award && selectedSpecialBadge?.id === x.award.id }"
@@ -2852,6 +2855,11 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <img :src="trophyArt('mentor', x)" :alt="x.award?.badge?.name || x.t.name" class="nge-trophy-badge-icon" />
                 <div class="nge-trophy-badge-name">{{ x.award?.badge?.name || x.t.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ x.t.n }} graduate{{ x.t.n === 1 ? '' : 's' }}</div>
+              </div>
+              <div v-if="mentorNext && !viewingOtherUser" class="nge-trophy-badge nge-trophy-badge--locked nge-trophy-badge--hidden" title="The next Mentor Achievement is a surprise">
+                <div class="nge-trophy-badge-icon nge-trophy-badge-mystery" aria-hidden="true">?</div>
+                <div class="nge-trophy-badge-name">Next</div>
+                <div class="nge-trophy-badge-threshold">{{ mentorNext.t.n }} graduate{{ mentorNext.t.n === 1 ? '' : 's' }}</div>
               </div>
             </div>
           </div>
@@ -4121,6 +4129,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-trophy-badge--locked { cursor: default; }
 .nge-trophy-badge--locked .nge-trophy-badge-icon { filter: grayscale(0.7) brightness(0.8); opacity: 0.6; }
 .nge-trophy-badge--locked .nge-trophy-badge-name { opacity: 0.7; }
+.nge-trophy-badge-mystery { display: grid; place-items: center; font-size: 30px; font-weight: 600; color: rgba(159, 200, 255, 0.55); border: 1px dashed rgba(159, 200, 255, 0.3); border-radius: 50%; box-sizing: border-box; }
 /* Competitions: the medal with how many times it was won (Ames 2026-10-21) */
 .nge-profile-badge--medal .nge-profile-badge-img, .nge-trophy-medal-img { position: relative; display: inline-flex; }
 .nge-medal-count {

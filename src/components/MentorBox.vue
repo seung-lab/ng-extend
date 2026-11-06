@@ -17,7 +17,7 @@ import { MENTOR_TIERS } from '../util/mentor_tiers';
 const MENTOR_ICON = MENTOR_TIERS[0].image;
 import { joinPractice, takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
 import { inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
-  completeForApprentice, startMentor, loadMentor, shortCell, type MentorNote } from '../mentor';
+  completeForApprentice, startMentor, loadMentor, shortCell, replyTo, takeBackReply, type MentorNote, type MentorMessage } from '../mentor';
 
 // An apprentice who completes a cell any other way gets this in the middle
 // of the screen, not as small error text (Ames 2026-11-05).
@@ -89,9 +89,20 @@ watch(cur, c => {
   error.value = ''; said.value = ''; newNote.value = ''; nextCell.value = null; allDone.value = false; confirmComplete.value = false;
   cellNote.value = c?.review.cellNote ?? '';
   notes.value = c?.review.notes ?? [];
+  layerNote.value = '';
   if (c) timer = window.setInterval(() => {
     // Before the saved view has loaded, the layer is not there yet: keep the saved list.
-    if (hasNotesLayer()) notes.value = readNotesLayer();
+    if (!hasNotesLayer()) return;
+    if (canAct.value) { notes.value = readNotesLayer(); return; }
+    // Not theirs to change (Marissa answered a pin by editing it, 2026-11-06,
+    // and it never reached her mentor): put the mentor's notes back, and say where replies go.
+    const saved = inView.value?.review.notes ?? [];
+    const key = (l: MentorNote[]) => JSON.stringify(l.map(n => [n.id, n.text]));
+    if (key(readNotesLayer()) !== key(saved)) {
+      writeNotesLayer(saved, true);
+      layerNote.value = mentor.value || adminView.value ? 'These notes cannot be changed here.' : 'These are your mentor\'s notes, so they cannot be changed. To answer one, press Reply under it in this box.';
+    }
+    notes.value = saved;
   }, 1000);
 }, { immediate: true });
 onBeforeUnmount(() => window.clearInterval(timer));
@@ -103,6 +114,41 @@ function addHere() {
   const list = [...readNotesLayer(), { id: `n${Date.now().toString(36)}`, position: at, text: text.slice(0, 300) }];
   if (writeNotesLayer(list)) { notes.value = list; newNote.value = ''; }
 }
+// The conversation (Ames 2026-11-06: replies under pins, one thread per cell).
+const layerNote = ref('');
+const thread = computed<MentorMessage[]>(() => r.value?.thread ?? []);
+const noteIds = computed(() => new Set(notes.value.map(n => n.id)));
+const repliesTo = (id: string) => thread.value.filter(m => m.noteId === id);
+/** Messages on the whole cell, and replies to a pin since removed. */
+const cellMessages = computed(() => thread.value.filter(m => !m.noteId || !noteIds.value.has(m.noteId)));
+/** Which side this player writes on now, if any. */
+const side = computed<'mentor' | 'apprentice' | null>(() => {
+  if (canAct.value) return 'mentor';
+  if (cur.value?.role === 'apprentice' && r.value?.state === 'suggestions' && r.value.apprenticeId === backend.userId) return 'apprentice';
+  return null;
+});
+const otherName = computed(() => side.value === 'mentor' ? r.value?.apprenticeName : (r.value?.mentorName || 'your mentor'));
+const replyOpen = ref<string | null>(null);
+const replyText = ref('');
+const wholeText = ref('');
+function openReply(id: string) { replyOpen.value = replyOpen.value === id ? null : id; replyText.value = ''; }
+async function sendReply(noteId: string | null) {
+  const text = (noteId ? replyText.value : wholeText.value).trim();
+  if (!text) return;
+  busy.value = true; error.value = '';
+  try {
+    await replyTo(text, noteId);
+    if (noteId) { replyText.value = ''; replyOpen.value = null; } else wholeText.value = '';
+  } catch (e: any) { error.value = e?.message || 'That reply did not go through.'; }
+  finally { busy.value = false; }
+}
+async function takeBack(id: string) {
+  busy.value = true; error.value = '';
+  try { await takeBackReply(id); } catch (e: any) { error.value = e?.message || 'Could not take that back.'; }
+  finally { busy.value = false; }
+}
+const whoLabel = (m: MentorMessage) => `${m.name}${(r.value?.rounds ?? 1) > 1 ? `, try ${m.round}` : ''}`;
+
 function remove(id: string) {
   const list = readNotesLayer().filter(n => n.id !== id);
   writeNotesLayer(list);
@@ -209,22 +255,52 @@ const STATE: Record<string, string> = {
 
     <template v-if="mentor">
       <p class="nge-mbx-how">Look over the cell. Leave notes where something needs work, then send suggestions, or complete it if it is done.</p>
-      <p v-if="r.done.notes" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
+      <p v-if="r.done.notes && !thread.length" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
       <p v-if="r.done.status" class="nge-mbx-meta">Ending: {{ r.done.status }}</p>
     </template>
     <template v-else-if="adminView">
       <p class="nge-mbx-how">Read only. {{ { waiting: 'Waiting for a mentor.', looking: 'With the mentor.', suggestions: 'Back with the apprentice, with suggestions.', complete: 'Complete.' }[r.state] }}</p>
-      <p v-if="r.done.notes" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
+      <p v-if="r.done.notes && !thread.length" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
     </template>
     <p v-else class="nge-mbx-how">{{ r.state === 'complete' && r.done?.practice ? 'Complete. This was practice, so nothing was recorded.' : STATE[r.state] }}</p>
 
     <div class="nge-mbx-notes">
-      <div v-for="(n, i) in notes" :key="n.id" class="nge-mbx-note">
-        <button class="nge-mbx-fly" title="Fly to this note" @click="flyTo(n.position)"><span class="nge-mbx-dot"></span>{{ i + 1 }}. {{ n.text }}</button>
-        <button v-if="canAct" class="nge-mbx-rm" title="Remove this note" @click="remove(n.id)">×</button>
+      <div v-for="(n, i) in notes" :key="n.id" class="nge-mbx-pin">
+        <div class="nge-mbx-note">
+          <button class="nge-mbx-fly" title="Fly to this note" @click="flyTo(n.position)"><span class="nge-mbx-dot"></span>{{ i + 1 }}. {{ n.text }}</button>
+          <button v-if="side" class="nge-mbx-replylink" :aria-expanded="replyOpen === n.id" @click="openReply(n.id)">Reply</button>
+          <button v-if="canAct" class="nge-mbx-rm" title="Remove this note" @click="remove(n.id)">×</button>
+        </div>
+        <div v-for="m in repliesTo(n.id)" :key="m.id" class="nge-mbx-msg nge-mbx-msg--reply" :class="`nge-mbx-msg--${m.by}`">
+          <span class="nge-mbx-who">{{ whoLabel(m) }}</span>
+          <span class="nge-mbx-said-text">{{ m.text }}</span>
+          <span v-if="!m.sent" class="nge-mbx-unsent">Not sent yet</span>
+          <button v-if="!m.sent && side === m.by" class="nge-mbx-rm" title="Take this reply back" @click="takeBack(m.id)">×</button>
+        </div>
+        <div v-if="replyOpen === n.id && side" class="nge-mbx-add nge-mbx-add--reply">
+          <input v-model="replyText" maxlength="1000" :placeholder="`Reply to note ${i + 1}`" @keydown.enter.prevent="sendReply(n.id)" />
+          <button class="nge-mbx-btn" :disabled="busy || !replyText.trim()" @click="sendReply(n.id)">Add reply</button>
+        </div>
       </div>
       <p v-if="!notes.length" class="nge-mbx-meta">{{ mentor ? 'No notes in the view yet.' : 'No notes in the view.' }}</p>
     </div>
+    <p v-if="layerNote" class="nge-mbx-said" role="status">{{ layerNote }}</p>
+
+    <div v-if="cellMessages.length" class="nge-mbx-thread" aria-label="Messages on this cell">
+      <div v-for="m in cellMessages" :key="m.id" class="nge-mbx-msg" :class="`nge-mbx-msg--${m.by}`">
+        <span class="nge-mbx-who">{{ whoLabel(m) }}{{ m.noteId ? ', on a note since removed' : '' }}</span>
+        <span class="nge-mbx-said-text">{{ m.text }}</span>
+        <span v-if="!m.sent" class="nge-mbx-unsent">Not sent yet</span>
+        <button v-if="!m.sent && side === m.by" class="nge-mbx-rm" title="Take this back" @click="takeBack(m.id)">×</button>
+      </div>
+    </div>
+    <template v-if="side === 'apprentice'">
+      <div class="nge-mbx-add">
+        <input v-model="wholeText" maxlength="1000" :placeholder="`A message for ${otherName}`" @keydown.enter.prevent="sendReply(null)" />
+        <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
+      </div>
+      <p class="nge-mbx-meta">Answer a note with Reply under it. Your replies go to {{ otherName }} when you press Send to Mentor on this cell in the Cell Library.</p>
+    </template>
 
     <div v-if="preview" class="nge-mbx-preview">
       <template v-if="becoming">
@@ -249,6 +325,7 @@ const STATE: Record<string, string> = {
       </div>
       <p class="nge-mbx-meta">Or place points in the Mentor notes layer with the annotation tools. A point's description is its note.</p>
       <textarea v-model="cellNote" class="nge-mbx-text" rows="3" maxlength="2000" placeholder="A note on the whole cell"></textarea>
+      <p class="nge-mbx-meta">Your notes and replies go to {{ r.apprenticeName }} when you send suggestions or complete.</p>
       <div class="nge-mbx-actions">
         <button class="nge-mbx-btn" :disabled="busy" @click="run('save')">Save notes</button>
         <button class="nge-mbx-btn nge-mbx-btn--suggest" :disabled="busy" @click="run('suggest')">Send suggestions</button>
@@ -256,7 +333,7 @@ const STATE: Record<string, string> = {
       </div>
     </template>
     <template v-else>
-      <p v-if="r.cellNote" class="nge-mbx-quote">{{ r.mentorName || 'Mentor' }}: {{ r.cellNote }}</p>
+      <p v-if="r.cellNote && !thread.length" class="nge-mbx-quote">{{ r.mentorName || 'Mentor' }}: {{ r.cellNote }}</p>
       <p v-if="mentor && !preview" class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : 'This cell is back with the apprentice.' }}</p>
     </template>
 
@@ -323,6 +400,19 @@ const STATE: Record<string, string> = {
 .nge-mbx-quote { margin: 6px 0; padding: 4px 8px; border-left: 2px solid rgba(255, 255, 255, 0.3); white-space: pre-wrap; overflow-wrap: anywhere; }
 .nge-mbx-notes { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-height: 30vh; overflow-y: auto; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
 .nge-mbx-note { display: flex; align-items: flex-start; gap: 6px; }
+.nge-mbx-pin { display: flex; flex-direction: column; gap: 3px; }
+.nge-mbx-replylink { flex: 0 0 auto; font: inherit; font-size: 13px; color: #9fc8ff; background: none; border: none; cursor: pointer; padding: 3px 2px; }
+.nge-mbx-replylink:hover { text-decoration: underline; text-underline-offset: 3px; }
+.nge-mbx-thread { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.nge-mbx-msg { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 4px 8px; border-left: 2px solid rgba(159, 200, 255, 0.7); background: rgba(120, 180, 255, 0.06); border-radius: 0 6px 6px 0; overflow-wrap: anywhere; }
+.nge-mbx-msg--mentor { border-left-color: #ffd166; background: rgba(255, 209, 102, 0.06); }
+.nge-mbx-msg--reply { margin-left: 15px; font-size: 14px; }
+.nge-mbx-who { font-size: 12px; font-weight: 600; color: #9fc8ff; }
+.nge-mbx-msg--mentor .nge-mbx-who { color: #ffd166; }
+.nge-mbx-said-text { flex: 1 1 100%; white-space: pre-wrap; color: #dce6f5; }
+.nge-mbx-unsent { font-size: 12px; color: rgba(220, 230, 245, 0.6); }
+.nge-mbx-msg .nge-mbx-rm { margin-left: auto; }
+.nge-mbx-add--reply { margin-left: 15px; }
 .nge-mbx-fly { flex: 1; display: inline-flex; align-items: baseline; gap: 6px; font: inherit; color: #dce6f5; background: none; border: none; cursor: pointer; text-align: left; padding: 2px 0; overflow-wrap: anywhere; }
 .nge-mbx-fly:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nge-mbx-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #ffd166; transform: translateY(-1px); }

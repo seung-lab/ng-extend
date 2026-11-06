@@ -105,7 +105,7 @@ test('suggestions: nothing counts, the apprentice keeps the cell, sends it back 
   assert.deepEqual(db._state.notes.map(n => [n.to, n.title]), [[U(4), 'Your mentor has suggestions']]);
   // The apprentice reads the notes, and the mentor cannot complete it while it is theirs.
   const mine = (await call(4, 'mentor.status')).mine;
-  assert.equal(mine[0].cellNote, 'You missed an extension near the soma.');
+  assert.deepEqual(mine[0].thread.map(m => [m.by, m.text]), [['mentor', 'You missed an extension near the soma.']], 'the note on the whole cell is in the thread');
   await assert.rejects(call(2, 'mentor.complete', {reviewId: r.id}), /not waiting for you/);
   db._state.notes.length = 0;
   const again = (await send(call, 4, 1, {rootId: '777'})).review;
@@ -402,7 +402,7 @@ test('the Mentor row: a tier at 1, 5, 10, 25 and 50 graduates, each celebrated o
   assert.deepEqual(bells(), ['New Achievement: First Wrap', 'grad1 finished the mentor program', 'grad2 finished the mentor program',
     'grad3 finished the mentor program', 'New Achievement: Myelin Maker']);
   const five = db._state.notes.find(n => n.title === 'New Achievement: Myelin Maker');
-  assert.match(five.body, /^You earned the "Myelin Maker" Achievement! grad4 finished the mentor program with you\. Apprentices graduated with you: 5\.$/);
+  assert.match(five.body, /^You earned the "Myelin Maker" Achievement! grad4 finished the mentor program with you\.\nApprentices that graduated with you: 5$/);
   assert.match(five.image, /mentor-5\.png$/);
   // Reaching a tier late gives every tier below it too, and only the top one is celebrated.
   const db2 = memDb(users), as2 = (me, action, args = {}, admin = false) => mentorAction(action, args, {db: db2, me, isAdmin: admin, credit: async () => {}});
@@ -472,7 +472,43 @@ test('a mentor counts the cells they reviewed; admins read every cell of an appr
   await assert.rejects(call(2, 'mentor.cellsOf', {apprenticeId: U(4)}), /Admins only/);
   const cells = await admin('mentor.cellsOf', {apprenticeId: U(4)});
   assert.equal(cells.length, 3);
-  assert.equal(cells.find(c => c.state === 'suggestions').cellNote, 'Look again.');
+  assert.equal(cells.find(c => c.state === 'suggestions').thread[0].text, 'Look again.');
+});
+
+test('replies: under a pin and on the whole cell, unseen by the other side until the cell is handed over', async () => {
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r = (await send(call, 4, 1, {done: {coords: '1, 2, 3', notes: 'Is the soma right?'}})).review;
+  assert.deepEqual(r.thread.map(m => [m.by, m.text, m.round, m.sent]), [['apprentice', 'Is the soma right?', 1, true]], 'the Complete form note starts the thread');
+  await call(2, 'mentor.claim', {reviewId: r.id});
+  await assert.rejects(call(4, 'mentor.reply', {reviewId: r.id, text: 'hi'}), /other side/, 'not the apprentice turn');
+  await call(2, 'mentor.saveNotes', {reviewId: r.id, notes: [{id: 'p1', position: [10, 20, 30], text: 'Did you add anything here?'}]});
+  await assert.rejects(call(2, 'mentor.reply', {reviewId: r.id, text: 'x', noteId: 'nope'}), /note is gone/);
+  const d = await call(2, 'mentor.reply', {reviewId: r.id, text: 'Soma looks right.'});
+  assert.equal(d.thread.at(-1).sent, false);
+  assert.equal((await call(4, 'mentor.status')).mine[0].thread.length, 1, 'the apprentice does not see a reply not sent yet');
+  await call(2, 'mentor.suggest', {reviewId: r.id});
+  let mine = (await call(4, 'mentor.status')).mine[0];
+  assert.deepEqual(mine.thread.map(m => [m.by, m.text, m.sent]), [['apprentice', 'Is the soma right?', true], ['mentor', 'Soma looks right.', true]]);
+  // The apprentice answers the pin, takes one reply back, and sends the cell again.
+  const a1 = await call(4, 'mentor.reply', {reviewId: r.id, noteId: 'p1', text: 'No, was I supposed to?'});
+  const gone = await call(4, 'mentor.reply', {reviewId: r.id, text: 'oops'});
+  await assert.rejects(call(2, 'mentor.unreply', {reviewId: r.id, id: gone.thread.at(-1).id}), /not sent yet/, 'only its writer takes it back');
+  await call(4, 'mentor.unreply', {reviewId: r.id, id: gone.thread.at(-1).id});
+  assert.equal((await call(2, 'mentor.review', {reviewId: r.id})).thread.length, 2, 'the mentor does not see it yet');
+  const again = (await send(call, 4, 1)).review;
+  const pin = again.thread.find(m => m.noteId === 'p1');
+  assert.deepEqual([pin.text, pin.sent, pin.round], ['No, was I supposed to?', true, 2]);
+  assert.ok(a1);
+  assert.equal(again.thread.length, 3, 'an empty form note adds nothing');
+  // The mentor's note on the whole cell joins the thread on Complete.
+  await call(2, 'mentor.complete', {reviewId: r.id, cellNote: 'Good work.'});
+  mine = (await call(4, 'mentor.status')).mine[0];
+  assert.equal(mine.thread.at(-1).text, 'Good work.');
+  assert.equal(mine.cellNote, '');
+  await assert.rejects(call(4, 'mentor.reply', {reviewId: r.id, text: 'thanks'}), /complete already/);
+  assert.equal((await db.getReview(r.id)).thread.length, 4);
 });
 
 test('copy has no dashes and says Achievement, never badge', () => {

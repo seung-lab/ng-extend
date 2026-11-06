@@ -28,12 +28,16 @@ import { setCellComplete, activeCaveServer, getLastCompletionProblem, labelAxonC
 import { syncCellToSheet, marksProofread, AXON_COMPLETE } from './sheet_sync';
 
 export interface MentorNote { id: string; position: number[]; text: string }
+/** One message in a cell's conversation (functions/mentors.js handOver):
+ *  a reply under a pin (noteId) or on the whole cell. Not sent until its
+ *  writer hands the cell over; only its writer sees it before that. */
+export interface MentorMessage { id: string; by: 'apprentice' | 'mentor'; name: string; text: string; at: string; round: number; noteId: string | null; sent: boolean }
 export interface MentorReview {
   id: number; state: 'waiting' | 'looking' | 'suggestions' | 'complete'; rounds: number;
   apprenticeId: string; apprenticeName: string; mentorId: string | null; mentorName: string | null;
   dataset: string; logDataset: string; taskId: number; segmentId: string; rootId: string;
   position: number[] | null; link: string; done: { status?: string; notes?: string; cellType?: string; coords?: string; sheet?: boolean; practice?: boolean };
-  notes: MentorNote[]; cellNote: string;
+  notes: MentorNote[]; cellNote: string; thread?: MentorMessage[];
   sentAt: string; claimedAt: string | null; decidedAt: string | null; touchedAt: string; sheetDone: boolean;
 }
 export interface Apprentice {
@@ -296,15 +300,16 @@ export function readNotesLayer(): MentorNote[] {
       .map((a: any, i: number) => ({ id: String(a.id ?? `n${i + 1}`), position: Array.from(a.point as number[]).map(n => Math.round(Number(n) * 10) / 10), text: String(a.description || '').trim() || 'Look here' }));
   } catch { return []; }
 }
-/** Puts the notes in the view as their own annotation layer. */
-export function writeNotesLayer(notes: MentorNote[]): boolean {
+/** Puts the notes in the view as their own annotation layer. Read only
+ *  (the apprentice, an admin): no point tool, so nothing is placed by accident. */
+export function writeNotesLayer(notes: MentorNote[], readOnly = false): boolean {
   const v = (window as any).viewer;
   if (!v?.layerSpecification) return false;
   const old = notesLayer();
   if (old) v.layerManager.removeManagedLayer(old);
   // tool: the point tool is active, so annotating in this layer places a note
   // (Ames 2026-11-05: "selected layer mentor notes does not have an active annotation").
-  const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: NOTES_COLOR, pointSize: 2, tab: 'annotations', tool: 'annotatePoint',
+  const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: NOTES_COLOR, pointSize: 2, tab: 'annotations', ...(readOnly ? {} : { tool: 'annotatePoint' }),
     annotations: notes.map(n => ({ type: 'point', id: n.id, point: n.position, description: n.text })) };
   v.layerSpecification.add(makeLayer(v.layerSpecification, NOTES_LAYER, spec));
   return true;
@@ -313,12 +318,12 @@ let keepTimer: number | undefined;
 /** A saved view loads seconds after it is asked for and replaces every
  *  layer, the notes too (as access review points do): put them back while
  *  the view settles. */
-function keepNotes(notes: MentorNote[]) {
+function keepNotes(notes: MentorNote[], readOnly = false) {
   window.clearInterval(keepTimer);
   let beats = 0;
   keepTimer = window.setInterval(() => {
     if (++beats > 25) { window.clearInterval(keepTimer); return; }
-    if (!notesLayer()) writeNotesLayer(notes);
+    if (!notesLayer()) writeNotesLayer(notes, readOnly);
   }, 600);
 }
 
@@ -330,12 +335,32 @@ export function openInView(review: MentorReview, role: 'mentor' | 'apprentice' |
   document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
   document.dispatchEvent(new CustomEvent('nge:mentor-view'));
   loadView(review);
-  keepNotes(review.notes || []);
+  keepNotes(review.notes || [], role !== 'mentor');
 }
 export function closeView() {
   window.clearInterval(keepTimer);
   inView.value = null;
   try { const v = (window as any).viewer; const l = notesLayer(); if (v && l) v.layerManager.removeManagedLayer(l); } catch { /* gone */ }
+}
+
+/** A reply under a pin (noteId) or on the whole cell (Ames 2026-11-06). It
+ *  goes to the other side with the next Send to Mentor, Send suggestions or Complete. */
+export async function replyTo(text: string, noteId: string | null = null): Promise<MentorReview> {
+  const cur = inView.value;
+  if (!cur) throw new Error('No cell open.');
+  return keepReview(cur, await call<MentorReview>('mentor.reply', { reviewId: cur.review.id, text, noteId }));
+}
+/** Takes back a reply not sent yet. */
+export async function takeBackReply(id: string): Promise<MentorReview> {
+  const cur = inView.value;
+  if (!cur) throw new Error('No cell open.');
+  return keepReview(cur, await call<MentorReview>('mentor.unreply', { reviewId: cur.review.id, id }));
+}
+function keepReview(cur: { review: MentorReview }, out: MentorReview): MentorReview {
+  cur.review = out;
+  const at = mentorState.mine.findIndex(x => x.id === out.id);
+  if (at >= 0) mentorState.mine[at] = out;
+  return out;
 }
 
 export async function saveNotes(cellNote: string): Promise<MentorReview> {

@@ -1171,6 +1171,7 @@ function playBatchChime() {
   animation: nge-hero-glitch-in 0.6s 0.5s ease-out both;
 }
 .nge-hero-subtitle {
+  white-space: pre-line;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 15px;
   color: rgba(180, 200, 220, 0.7);
@@ -1418,6 +1419,7 @@ function playBatchChime() {
 .nge-toast--quest .nge-toast-title  { color: #00c8ff; }
 
 .nge-toast-subtitle {
+  white-space: pre-line;
   font-size: 11px;
   color: #666;
   margin-top: 2px;

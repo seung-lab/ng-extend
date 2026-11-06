@@ -111,10 +111,10 @@ const TEXTS = {
     body: 'You finished the practice mentor program with {mentor}. In the real program this is when the Apprentice Achievement comes.'},
   mentorAchievement: {label: 'Mentor Achievement tier (keep "New Achievement:" so it celebrates)', to: 'mentor', vars: ['apprentice', 'achievement', 'graduates'],
     title: 'New Achievement: {achievement}',
-    body: 'You earned the "{achievement}" Achievement! {apprentice} finished the mentor program with you. Apprentices graduated with you: {graduates}.'},
+    body: 'You earned the "{achievement}" Achievement! {apprentice} finished the mentor program with you.\nApprentices that graduated with you: {graduates}'},
   mentorFinishedAgain: {label: 'Another apprentice finished', to: 'mentor', vars: ['apprentice', 'graduates'], image: MENTOR_ICON,
     title: '{apprentice} finished the mentor program',
-    body: '{apprentice} finished the mentor program with you. Apprentices graduated with you: {graduates}. Thank you for mentoring.'},
+    body: '{apprentice} finished the mentor program with you. Thank you for mentoring.\nApprentices that graduated with you: {graduates}'},
 };
 const TITLE_MAX = 120;
 const BODY_MAX = 1500;
@@ -131,14 +131,40 @@ const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u00
 // The whole cell ID in a bell (Ames 2026-11-05: "can you put the whole cell ID?").
 const cellName = r => String(r.root_id || r.segment_id || 'a cell');
 
-/** What a review looks like to a browser. */
-function reviewOut(r) {
+/** A cell's conversation (Ames 2026-11-06, after Marissa answered a pin in
+ *  her own annotation layer and it never reached the mentor): replies under
+ *  a mentor's pins (noteId) and messages on the whole cell. A reply is the
+ *  writer's own until they hand the cell over (Send to Mentor, Send
+ *  suggestions, Complete); then it is sent and the other side sees it. */
+const REPLY_MAX = 1000;
+const THREAD_MAX = 200;
+const threadOf = r => (Array.isArray(r.thread) ? r.thread : []);
+/** Which side a player writes on now: the apprentice while the cell is back
+ *  with them, the mentor while they are looking at it. */
+function sideOf(r, meId) {
+  if (r.state === 'suggestions' && r.apprentice_id === meId) return 'apprentice';
+  if (r.state === 'looking' && r.mentor_id === meId) return 'mentor';
+  return null;
+}
+/** One side hands the cell over: its replies are sent, and a note for the
+ *  whole cell (the Complete form's, or the mentor's) joins the thread. */
+function handOver(r, by, name, round, text, stamp) {
+  const t = threadOf(r).map(m => (m.by === by && !m.sent ? {...m, sent: true, round} : m));
+  if (text) t.push({id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, by, name, text, at: stamp, round, noteId: null, sent: true});
+  return t.slice(-THREAD_MAX);
+}
+
+/** What a review looks like to a browser. The viewer sees what was sent,
+ *  and their own replies not sent yet. */
+function reviewOut(r, viewerId) {
+  const own = m => (m.by === 'apprentice' ? r.apprentice_id : r.mentor_id) === viewerId;
   return {
     id: r.id, state: r.state, rounds: r.rounds || 1,
     apprenticeId: r.apprentice_id, apprenticeName: r.apprentice_name, mentorId: r.mentor_id || null, mentorName: r.mentor_name || null,
     dataset: r.dataset, logDataset: r.log_dataset || r.dataset, taskId: r.task_id, segmentId: r.segment_id || '', rootId: r.root_id || '',
     position: r.position || null, link: r.link || '', done: r.done || {},
     notes: Array.isArray(r.notes) ? r.notes : [], cellNote: r.cell_note || '',
+    thread: threadOf(r).filter(m => m.sent || own(m)),
     sentAt: r.sent_at, claimedAt: r.claimed_at || null, decidedAt: r.decided_at || null, touchedAt: r.touched_at || r.sent_at,
     sheetDone: !!r.sheet_done,
   };
@@ -206,7 +232,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const a = await db.getApprentice(meId);
       const out = {installed: true, admin: !!isAdmin, mentor: isMentor, apprentice: apprenticeOut(a), cellsNeeded: CELLS_NEEDED, maxApprentices: MAX_APPRENTICES};
       // The apprentice's own cells, every state, for the Mentoring tab and My Cells.
-      out.mine = a ? (await db.reviewsOfApprentice(meId)).map(reviewOut) : [];
+      out.mine = a ? (await db.reviewsOfApprentice(meId)).map(r => reviewOut(r, meId)) : [];
       if (mayReview) {
         const open = await returnIdle(await db.openReviews());
         out.waiting = (await waitingForMe(open)).length;
@@ -241,10 +267,13 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       let r;
       if (again) {
         // Sent again after suggestions: straight back to the same mentor.
-        r = await db.patchReview(again.id, {...fields, state: again.mentor_id ? 'looking' : 'waiting', rounds: (again.rounds || 1) + 1, sent_at: stamp, decided_at: null});
+        const round = (again.rounds || 1) + 1;
+        r = await db.patchReview(again.id, {...fields, state: again.mentor_id ? 'looking' : 'waiting', rounds: round, sent_at: stamp, decided_at: null,
+          thread: handOver(again, 'apprentice', nameOf(me), round, done.notes, stamp)});
       } else {
         r = await db.insertReview({...fields, apprentice_id: meId, apprentice_name: nameOf(me), task_id: taskId,
           mentor_id: a.mentor_id || null, mentor_name: a.mentor_name || null, state: a.mentor_id ? 'looking' : 'waiting', rounds: 1, notes: [], sent_at: stamp,
+          thread: handOver({}, 'apprentice', nameOf(me), 1, done.notes, stamp),
           claimed_at: a.mentor_id ? stamp : null});
       }
       const who = nameOf(me);
@@ -259,7 +288,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
           await bell(m.user_id, 'newApprentice', {apprentice: who});
         }
       }
-      return {review: reviewOut(r), apprentice: apprenticeOut(await db.getApprentice(meId))};
+      return {review: reviewOut(r, meId), apprentice: apprenticeOut(await db.getApprentice(meId))};
     }
     case 'mentor.sheetDone': {
       const r = await loadReview(args.reviewId);
@@ -274,8 +303,8 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const open = await returnIdle(await db.openReviews());
       const mineA = isMentor ? (await db.apprenticesOf(meId)).filter(a => a.status === 'active') : [];
       return {
-        waiting: (await waitingForMe(open)).map(reviewOut),
-        yours: open.filter(r => r.mentor_id === meId).map(reviewOut),
+        waiting: (await waitingForMe(open)).map(r => reviewOut(r, meId)),
+        yours: open.filter(r => r.mentor_id === meId).map(r => reviewOut(r, meId)),
         apprentices: mineA.map(apprenticeOut),
         slots: {used: mineA.length, max: MAX_APPRENTICES},
         mentor: isMentor, admin: !!isAdmin,
@@ -295,12 +324,12 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
     case 'mentor.cellsOf': {
       needAdmin();
       const target = uuid(args.apprenticeId, 'player');
-      return (await db.reviewsOfApprentice(target)).map(reviewOut);
+      return (await db.reviewsOfApprentice(target)).map(r => reviewOut(r, meId));
     }
     case 'mentor.review': {
       const r = await loadReview(args.reviewId);
       if (r.apprentice_id !== meId && r.mentor_id !== meId && !mayReview) fail(403, 'Not your cell.');
-      return reviewOut(r);
+      return reviewOut(r, meId);
     }
     case 'mentor.byCell': {
       // The cell a program bell is about, found by the last digits of its id
@@ -312,7 +341,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const mine = [...(await db.reviewsOfApprentice(meId)), ...(await db.reviewsOfMentor(meId))];
       const r = mine.find(hit) || (isAdmin ? (await db.openReviews()).find(hit) : null);
       if (!r) return null;
-      return {review: reviewOut(r), role: r.mentor_id === meId ? 'mentor' : r.apprentice_id === meId ? 'apprentice' : 'mentor'};
+      return {review: reviewOut(r, meId), role: r.mentor_id === meId ? 'mentor' : r.apprentice_id === meId ? 'apprentice' : 'mentor'};
     }
     case 'mentor.claim': {
       needReviewer();
@@ -338,7 +367,28 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         await bell(a.user_id, 'haveMentor', {mentor: nameOf(me), needed: a.cells_needed || CELLS_NEEDED});
       }
       const out = await db.patchReview(r.id, {mentor_id: meId, mentor_name: nameOf(me), state: 'looking', claimed_at: r.claimed_at || stamp, touched_at: stamp});
-      return reviewOut(out);
+      return reviewOut(out, meId);
+    }
+    case 'mentor.reply': {
+      const r = await loadReview(args.reviewId);
+      const by = sideOf(r, meId);
+      if (!by) fail(409, r.state === 'complete' ? 'That cell is complete already.' : 'It is the other side\'s turn on this cell.');
+      const text = clean(args.text, REPLY_MAX);
+      if (!text) fail(400, 'Write a reply first.');
+      const noteId = args.noteId ? clean(args.noteId, 40) : null;
+      if (noteId && !(Array.isArray(r.notes) ? r.notes : []).some(n => n.id === noteId)) fail(404, 'That note is gone.');
+      const t = threadOf(r);
+      if (t.length >= THREAD_MAX) fail(409, 'This cell has as many replies as it can hold.');
+      const m = {id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, by, name: nameOf(me), text, at: stamp, round: r.rounds || 1, noteId, sent: false};
+      return reviewOut(await db.patchReview(r.id, {thread: [...t, m], touched_at: stamp}), meId);
+    }
+    case 'mentor.unreply': {
+      const r = await loadReview(args.reviewId);
+      const by = sideOf(r, meId);
+      const id = clean(args.id, 40);
+      const t = threadOf(r);
+      if (!by || !t.some(m => m.id === id && m.by === by && !m.sent)) fail(409, 'Only a reply not sent yet can be taken back.');
+      return reviewOut(await db.patchReview(r.id, {thread: t.filter(m => m.id !== id)}), meId);
     }
     case 'mentor.saveNotes': {
       needReviewer();
@@ -346,7 +396,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (r.mentor_id !== meId) fail(403, 'Take a look at this cell first.');
       if (r.state !== 'looking') fail(409, r.state === 'complete' ? 'That cell is complete already.' : 'That cell is back with the apprentice.');
       const out = await db.patchReview(r.id, {...notesFrom(args), touched_at: stamp});
-      return reviewOut(out);
+      return reviewOut(out, meId);
     }
     case 'mentor.suggest': {
       needReviewer();
@@ -354,16 +404,19 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (r.mentor_id !== meId) fail(403, 'Take a look at this cell first.');
       if (r.state !== 'looking') fail(409, 'That cell is not waiting for you.');
       const n = notesFrom(args, r);
-      if (!n.notes.length && !n.cell_note) fail(400, 'Leave at least one suggestion, as a note in the view or for the whole cell.');
-      const out = await db.patchReview(r.id, {...n, state: 'suggestions', decided_at: stamp, touched_at: stamp});
+      const replies = threadOf(r).some(m => m.by === 'mentor' && !m.sent);
+      if (!n.notes.length && !n.cell_note && !replies) fail(400, 'Leave at least one suggestion, as a note in the view or for the whole cell.');
+      const thread = handOver(r, 'mentor', nameOf(me), r.rounds || 1, n.cell_note, stamp);
+      const out = await db.patchReview(r.id, {...n, cell_note: null, thread, state: 'suggestions', decided_at: stamp, touched_at: stamp});
       await bell(r.apprentice_id, 'suggestions', {mentor: nameOf(me), cell: cellName(r)});
-      return reviewOut(out);
+      return reviewOut(out, meId);
     }
     case 'mentor.complete': {
       needReviewer();
       const r = await loadReview(args.reviewId);
       if (r.mentor_id !== meId) fail(403, 'Take a look at this cell first.');
-      const n = args.notes !== undefined || args.cellNote !== undefined ? notesFrom(args, r) : {};
+      const n0 = args.notes !== undefined || args.cellNote !== undefined ? notesFrom(args, r) : {};
+      const n = {...n0, cell_note: null, thread: handOver(r, 'mentor', nameOf(me), r.rounds || 1, n0.cell_note !== undefined ? n0.cell_note : r.cell_note, stamp)};
       // Only the call that moves it from looking to complete goes on: a
       // second press changes nothing and credits nothing.
       const won = await db.decideReview(r.id, meId, {...n, state: 'complete', decided_at: stamp, touched_at: stamp});
@@ -381,7 +434,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
         await bell(r.apprentice_id, 'practiceComplete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed});
         if (finished) await bell(r.apprentice_id, 'practiceFinished', {mentor: nameOf(me)});
-        return {review: reviewOut(await db.getReview(r.id)), finished, practice: true};
+        return {review: reviewOut(await db.getReview(r.id), meId), finished, practice: true};
       }
       try {
         await db.completeTask(r.apprentice_id, r.task_id, finalSeg, (r.done && r.done.coords) || '');
@@ -418,7 +471,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
           else await bell(a.mentor_id, 'mentorFinishedAgain', {apprentice: a.user_name, graduates});
         }
       }
-      return {review: reviewOut(await db.getReview(r.id)), finished};
+      return {review: reviewOut(await db.getReview(r.id), meId), finished};
     }
     case 'mentor.handBack': {
       needReviewer();
@@ -484,7 +537,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       return {
         mentors: (await db.activeMentors()).map(m => ({id: m.user_id, name: m.user_name})),
         apprentices: (await db.allApprentices()).map(apprenticeOut),
-        overdue: open.filter(r => r.state !== 'suggestions' && idleFor(r, t) > OVERDUE_MS).map(reviewOut),
+        overdue: open.filter(r => r.state !== 'suggestions' && idleFor(r, t) > OVERDUE_MS).map(r => reviewOut(r, meId)),
         cellsNeeded: CELLS_NEEDED, maxApprentices: MAX_APPRENTICES,
       };
     }
@@ -649,7 +702,7 @@ function memDb(users = []) {
     reviewsOfMentor: async id => copy(s.reviews.filter(r => r.mentor_id === id).reverse()),
     countMentorCompletes: async id => s.reviews.filter(r => r.mentor_id === id && r.state === 'complete').length,
     openReviews: async () => copy(s.reviews.filter(r => OPEN.includes(r.state))),
-    insertReview: async row => { const r = {id: ++s.n, sheet_done: false, decided_at: null, cell_note: null, ...row}; s.reviews.push(r); return copy(r); },
+    insertReview: async row => { const r = {id: ++s.n, sheet_done: false, decided_at: null, cell_note: null, thread: [], ...row}; s.reviews.push(r); return copy(r); },
     patchReview: async (id, p) => { const r = rev(id); if (r) Object.assign(r, p); return copy(r || null); },
     decideReview: async (id, mentorId, p) => { const r = rev(id); if (!r || r.state !== 'looking' || r.mentor_id !== mentorId) return false; Object.assign(r, p); return true; },
     holdClaim: async (taskId, userId) => { s.held.push({taskId, userId}); },
