@@ -33,8 +33,15 @@ export function startSlowFrameLog() {
             const at = s.sourceCharPosition >= 0 ? `:${s.sourceCharPosition}` : '';
             return `${Math.round(s.duration)}ms ${s.invoker || s.invokerType || '?'} →${fn} ${where}${at}`;
           });
-        const style = Math.round(f.styleAndLayoutStart ? f.startTime + f.duration - f.styleAndLayoutStart : 0);
-        console.warn(`[slow] page froze ${Math.round(f.duration)}ms${style > 50 ? ` (layout ${style}ms)` : ''}: ${scripts.join(' | ') || 'no script named'}`);
+        // Where the time went when no one script is named (Celia 2026-11-06:
+        // freezes of 600 ms with "no script named"): many short scripts, the
+        // frame's rendering (style, layout, paint), or the wait before it.
+        const end = f.startTime + f.duration;
+        const scriptMs = Math.round([...(f.scripts ?? [])].reduce((t: number, s: any) => t + s.duration, 0));
+        const renderMs = f.renderStart ? Math.round(end - f.renderStart) : 0;
+        const layoutMs = f.styleAndLayoutStart ? Math.round(end - f.styleAndLayoutStart) : 0;
+        const parts = [`scripts ${scriptMs}ms (${(f.scripts ?? []).length})`, `render ${renderMs}ms`, `layout ${layoutMs}ms`, `blocking ${Math.round(f.blockingDuration ?? 0)}ms`];
+        console.warn(`[slow] page froze ${Math.round(f.duration)}ms, ${parts.join(', ')}: ${scripts.join(' | ') || 'no script over 5ms'}`);
       }
     }).observe({ type: 'long-animation-frame', buffered: false });
   } catch { /* not supported after all */ }
