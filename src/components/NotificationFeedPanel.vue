@@ -4,7 +4,9 @@ import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
-import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore } from '../store';
+import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore, useCellHistoryStore } from '../store';
+import { isQuestReview, reviewSegment, reviewLinkIn, getReview, replyToReview, type ReviewState } from '../quest_review';
+import { QUEST_DATASET } from '../annotation_quests';
 import { secureWrite } from '../secure_write';
 import { PROGRAM_TITLE, mentorTextFor, saveMentorText, reviewForBell, knownPlayers, linkPlayers, openInView as openMentorCell, cannotOpen as mentorCannotOpen, type MentorText, type MentorReview } from '../mentor';
 import { mintShortStateLink } from '../util/state_link';
@@ -725,6 +727,82 @@ async function sendReply() {
   } finally {
     replySending.value = false;
   }
+}
+
+// ── A review of a Cilia Quest cell (Celia and Ames 2026-11-05) ─────────────
+// The reviewer's notes are in the body; under them, the player sends back an
+// updated link and notes, in separate boxes, straight to the quest sheet
+// (src/quest_review.ts). Where the review stands is read from the sheet when
+// the notification opens, so a reply from another window shows here too.
+const QR_NOTES_MAX = 1000;
+const qrState = ref<ReviewState | null>(null);
+const qrLoading = ref(false);
+const qrLoadError = ref('');
+const qrLink = ref('');
+const qrNotes = ref('');
+const qrSending = ref(false);
+const qrError = ref('');
+const qrJustSent = ref(false);
+const qrSegment = computed(() => (openNotif.value && isQuestReview(openNotif.value) && openNotif.value.target_id === backend.userId) ? reviewSegment(openNotif.value.body) : '');
+const qrReviewLink = computed(() => qrSegment.value ? reviewLinkIn(openNotif.value?.body) : '');
+const qrLinkOk = computed(() => !qrLink.value.trim() || /^https:\/\/[^\s"'<>]+$/i.test(qrLink.value.trim()));
+const qrCanSend = computed(() => !qrSending.value && qrLinkOk.value && !!(qrLink.value.trim() || qrNotes.value.trim()));
+watch(qrSegment, async (seg) => {
+  qrState.value = null; qrLoadError.value = ''; qrLink.value = ''; qrNotes.value = ''; qrError.value = ''; qrJustSent.value = false;
+  if (!seg) return;
+  qrLoading.value = true;
+  try {
+    const st = await getReview(seg);
+    if (qrSegment.value === seg) qrState.value = st;
+  } catch (e: any) {
+    if (qrSegment.value === seg) qrLoadError.value = e?.message || 'Where this review stands could not be read.';
+  } finally {
+    if (qrSegment.value === seg) qrLoading.value = false;
+  }
+}, { immediate: true });
+/** The view on screen, as a share link, for the link box. */
+async function qrUseMyView() {
+  qrError.value = '';
+  const link = await Promise.race([mintShortStateLink().catch(() => null), new Promise<null>(r => setTimeout(() => r(null), 8000))]);
+  if (link) qrLink.value = link;
+  else qrError.value = 'A link to your view could not be made. Use Share in the top bar and paste the link here.';
+}
+async function qrSend() {
+  const seg = qrSegment.value;
+  if (!seg || !qrCanSend.value) return;
+  qrSending.value = true; qrError.value = '';
+  try {
+    const out = await replyToReview(seg, qrLink.value.trim(), qrNotes.value.trim());
+    qrState.value = { ...(qrState.value as ReviewState), status: out.status, playerLink: out.playerLink, playerNotes: out.playerNotes };
+    qrJustSent.value = true;
+  } catch (e: any) {
+    qrError.value = `Your update was not sent: ${e?.message ?? 'please try again'}`;
+    try { qrState.value = await getReview(seg); } catch { /* keep what is shown */ }
+  } finally {
+    qrSending.value = false;
+  }
+}
+/** Go to the cell. On another dataset, the Quests tab (it offers the switch). */
+function qrJump() {
+  const seg = qrSegment.value;
+  if (!seg) return;
+  let here = false;
+  try { here = canonicalDataset(currentDatasetTag()) === QUEST_DATASET; } catch { /* no viewer */ }
+  closeDetail();
+  emit('hide');
+  if (here) useCellHistoryStore().jumpToCell(seg);
+  else document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+}
+function qrOpenReviewLink() {
+  if (!qrReviewLink.value) return;
+  closeDetail();
+  emit('hide');
+  openStartLink(qrReviewLink.value);
+}
+function qrOpenQuests() {
+  closeDetail();
+  emit('hide');
+  document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
 }
 
 // Weekly Champions: a name opens that player's profile (Ames 2026-10-05).
@@ -1449,6 +1527,45 @@ function padRank(rank: number): string {
                   <button v-if="reminderView.url" class="nge-notif-open-help" @click="openReminderView">↗ {{ reminderView.label }}</button>
                   <button class="nge-notif-open-help" @click="openHelpTab">Open in Help tab →</button>
                 </div>
+                <!-- A review of a Cilia Quest cell: go to it, then send the update back. -->
+                <div v-if="qrSegment" class="nge-notif-reply nge-qr">
+                  <div class="nge-qr-actions">
+                    <button type="button" class="nge-notif-reply-part" title="Go to this cell" @click="qrJump">Jump to cell</button>
+                    <button v-if="qrReviewLink" type="button" class="nge-notif-reply-part" title="Load the reviewer's link here" @click="qrOpenReviewLink">Open the reviewer's link</button>
+                    <button type="button" class="nge-notif-reply-part" title="Open the Quests tab of the Cell Library" @click="qrOpenQuests">Open Quests</button>
+                  </div>
+                  <div v-if="qrLoading" class="nge-notif-reply-hint">Checking where this review stands…</div>
+                  <div v-else-if="qrLoadError" class="nge-notif-reply-error" role="alert">{{ qrLoadError }}</div>
+                  <template v-else-if="qrState && qrState.status === 'Review Sent'">
+                    <label class="nge-notif-reply-label" for="nge-qr-link">Your updated link</label>
+                    <div class="nge-qr-linkrow">
+                      <input id="nge-qr-link" v-model="qrLink" class="nge-qr-input" type="url" :disabled="qrSending" placeholder="https://…"
+                             @keydown.stop @keyup.stop @keypress.stop />
+                      <button type="button" class="nge-notif-reply-part" :disabled="qrSending" title="Make a share link of what you see now and put it in the box" @click="qrUseMyView">Use my current view</button>
+                    </div>
+                    <div v-if="!qrLinkOk" class="nge-notif-reply-error">The link must be a single https link.</div>
+                    <label class="nge-notif-reply-label" for="nge-qr-notes">Your notes</label>
+                    <textarea id="nge-qr-notes" v-model="qrNotes" class="nge-notif-reply-box" rows="3" :maxlength="QR_NOTES_MAX" :disabled="qrSending"
+                              placeholder="What you changed, or anything for the reviewer" @keydown.stop @keyup.stop @keypress.stop></textarea>
+                    <div class="nge-notif-reply-row">
+                      <span class="nge-notif-reply-hint">{{ QR_NOTES_MAX - qrNotes.length }} characters left.</span>
+                      <button class="nge-notif-reply-send" :disabled="!qrCanSend" @click="qrSend">{{ qrSending ? 'Sending…' : 'Send update' }}</button>
+                    </div>
+                    <div v-if="qrError" class="nge-notif-reply-error" role="alert">{{ qrError }}</div>
+                  </template>
+                  <template v-else-if="qrState">
+                    <div v-if="qrJustSent" class="nge-notif-reply-label" role="status">Sent! {{ qrState.reviewer || 'The reviewer' }} has your update.</div>
+                    <div v-else class="nge-notif-reply-label">{{
+                      qrState.status === 'Reviewed' ? 'Your update is with ' + (qrState.reviewer || 'the reviewer') + '.'
+                      : qrState.status === 'Complete' ? (qrState.accepted === 'Yes' ? 'Review complete. Your update was accepted.' : 'This review is complete.')
+                      : qrState.status === 'Send Review' ? 'A new review of this cell is on its way.'
+                      : 'This review is not waiting for an update.' }}</div>
+                    <template v-if="qrState.playerLink || qrState.playerNotes">
+                      <div v-if="qrState.playerLink" class="nge-notif-reply-hint">Your link: <a :href="qrState.playerLink" target="_blank" rel="noopener noreferrer" class="nge-notif-link">open it</a></div>
+                      <div v-if="qrState.playerNotes" class="nge-notif-reply-sent">{{ qrState.playerNotes }}</div>
+                    </template>
+                  </template>
+                </div>
                 <button
                   v-if="isHelpNotification(openNotif) && !reminderId"
                   class="nge-notif-open-help"
@@ -1937,6 +2054,15 @@ function padRank(rank: number): string {
 .nge-notif-reply-part:disabled { opacity: 0.5; cursor: default; }
 .nge-notif-reply-part--on { border-color: rgb(var(--nd-cyan) / 0.75); background: rgb(var(--nd-cyan) / 0.14); color: rgb(var(--nd-ink)); }
 span.nge-notif-reply-part { cursor: default; }
+/* A Cilia Quest review: the actions, then a link box and a notes box. */
+.nge-qr-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.nge-qr-linkrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nge-qr-input {
+  flex: 1 1 220px; min-width: 0; box-sizing: border-box; padding: 7px 10px;
+  border: 1px solid rgb(var(--nd-accent) / 0.35); border-radius: 8px; background: rgba(0, 0, 0, 0.35);
+  color: rgb(var(--nd-ink)); font: inherit; font-size: 0.9em;
+}
+.nge-qr-input:focus { outline: none; border-color: rgb(var(--nd-cyan) / 0.7); }
 .nge-notif-reply-part img { width: 28px; height: 20px; object-fit: cover; border-radius: 3px; }
 .nge-notif-reply-x { border: 0; background: none; color: inherit; font-size: 1.15em; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-notif-reply-shot img { display: block; max-width: 260px; max-height: 160px; border-radius: 8px; border: 1px solid rgb(var(--nd-accent) / 0.35); }

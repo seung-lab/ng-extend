@@ -2972,3 +2972,157 @@ exports.ewMentor = onRequest(
     }
   }
 );
+// ── Quest reviews (Celia and Ames 2026-11-05): a function of its own ──────
+// A reviewer's feedback on a Cilia Quest cell reaches the player's bell, and
+// the player's updated link and notes go back to the sheet. Every rule is in
+// quest-review.js; client in src/quest_review.ts. Runs as the sheet identity,
+// like ewSheetSync, so it needs no key of its own.
+//   health   anyone: the sheet's review columns are there and writable.
+//   check    admins: send waiting reviews now ({segmentId} for one row,
+//            {dryRun:true} to see what would be sent).
+//   get      the player: where their review of a cell stands.
+//   reply    the player: their updated link and notes, to the sheet.
+//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck --project eyewire-ii-e4d52
+const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
+const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
+exports.ewQuestReview = onRequest(
+  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 120 },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 16000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    const review = require("./quest-review");
+    try {
+      const api = ewSheetsApi();
+      if (action === "health") {
+        if (!(await rateLimit(req, false, "sheets:health")).ok) throw ewErr(429, "Please wait.");
+        const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
+        return res.json({ ok: true, waiting: out.checked });
+      }
+      if (!["check", "get", "reply"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      const who = await ewVerify(token);
+      if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
+      const sb = ewSb(ewServiceKey.value().trim());
+      const { me, isAdmin } = await pilotContext(sb, who);
+      if (!me) throw ewErr(403, "Create your Pyr profile first.");
+      if (!(await rateLimit({ ip: who.email }, true, action === "get" ? "read:quests" : "write:sheets")).ok) throw ewErr(429, "Please wait a moment, then try again.");
+      if (action === "check") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await review.check({ api, sb, only: args.segmentId ? String(args.segmentId) : "", dryRun: !!args.dryRun });
+        console.info("[ewQuestReview] check by", who.email, JSON.stringify(out.results.map(r => ({ row: r.row, sent: r.sent, why: r.why }))));
+        return res.json({ ok: true, ...out });
+      }
+      return res.json({ ok: true, data: await review[action](args, { api, me }) });
+    } catch (e) {
+      console.warn("[ewQuestReview]", action, e.status || 500, e.message);
+      return res.status(e.status || 503).json({ error: e.status ? e.message : "The review sheet could not be reached. Please try again shortly." });
+    }
+  }
+);
+// Celia asked for once or twice a day: 8 in the morning and 4 in the
+// afternoon Eastern, "0 8,16 * * *". Every 5 minutes while Celia tests it
+// (Ames 2026-11-05); put the twice a day schedule back after. Each run is one
+// read of the Review status column, plus the waiting rows' own cells.
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+exports.ewQuestReviewCheck = onSchedule(
+  { schedule: "*/5 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
+  async () => {
+    const out = await require("./quest-review").check({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
+    console.info("[ewQuestReviewCheck]", JSON.stringify({ checked: out.checked, results: out.results.map(r => ({ row: r.row, index: r.index, sent: r.sent, why: r.why })) }));
+  }
+);
+
+// ── Blog email (Ames 2026-11-05) ──────────────────────────────────────────
+// New blog posts, emailed to the connectome.quest subscribers through Resend
+// Broadcasts, each with its own one click unsubscribe. Rules in blog-mail.js.
+// The signup forms (connectome.quest home and blog) post {action:"subscribe"};
+// the blog build (seunglabdata blog-build.yml) posts {action:"check"} after
+// every run. Uses RESEND_API_KEY, which must be a FULL ACCESS key (Ames
+// 2026-11-05: it is): a sending only key cannot manage contacts or broadcasts.
+// {action:"health"} says whether it can.
+//   firebase deploy --only functions:ewBlogMail --project eyewire-ii-e4d52
+const blogMailCache = {};
+let blogRenderer = null;
+function blogMailIo() {
+  const key = resendKey.value().trim();
+  const resend = async (p, init = {}) => {
+    const r = await fetch("https://api.resend.com" + p, {
+      method: init.method || "GET", redirect: "error", signal: AbortSignal.timeout(15000),
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "User-Agent": "eyewire-ii-functions" },
+      ...(init.body ? { body: JSON.stringify(init.body) } : {}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(`resend ${r.status} ${String(j.message || j.name || "").slice(0, 200)}`); e.status = r.status; e.resend = true; throw e; }
+    return j;
+  };
+  const doc = (col, id) => db.collection(col).doc(crypto.createHash("sha256").update(String(id)).digest("hex"));
+  return {
+    resend, cache: blogMailCache,
+    subscribers: {
+      set: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
+      update: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
+    },
+    sentPosts: {
+      get: async (id) => { const d = await doc("blog_mail_posts", id).get(); return d.exists ? d.data() : null; },
+      set: (id, v) => doc("blog_mail_posts", id).set(v, { merge: true }),
+      // Only if nobody changed it since we looked (two checks at once).
+      claim: (id, v, seen) => db.runTransaction(async (tx) => {
+        const ref = doc("blog_mail_posts", id), d = await tx.get(ref);
+        if ((d.exists ? d.data().at : null) !== (seen ? seen.at : null)) return false;
+        tx.set(ref, v, { merge: true });
+        return true;
+      }),
+    },
+    posts: () => ewSb(ewServiceKey.value().trim())("blog_posts?select=id,slug,title,summary,body,cover_url,author_name,published_at&status=eq.published&order=published_at.desc&limit=200"),
+    // A fresh copy, past GitHub Pages' ten minute cache.
+    page: async (url) => {
+      const r = await fetch(`${url}?mail=${Date.now()}`, { redirect: "follow", signal: AbortSignal.timeout(10000) });
+      return r.ok ? r.text() : null;
+    },
+    // The blog's own renderer (assets/blog.js), as the blog build loads it, so
+    // the email shows a post as the blog does. Kept ten minutes.
+    renderer: async () => {
+      if (blogRenderer && Date.now() - blogRenderer.at < 600000) return blogRenderer.fn;
+      const r = await fetch(`https://connectome.quest/assets/blog.js?mail=${Date.now()}`, { redirect: "error", signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error(`blog.js ${r.status}`);
+      const sandbox = { document: { getElementById: () => null, querySelector: () => null, documentElement: { getAttribute: () => null } },
+        location: { search: "" }, URLSearchParams, fetch: () => Promise.reject(new Error("no fetch here")), console };
+      sandbox.globalThis = sandbox;
+      require("vm").runInNewContext(await r.text(), sandbox, { filename: "blog.js", timeout: 2000 });
+      if (!sandbox.BlogRender || !sandbox.BlogRender.renderBlogMarkdown) throw new Error("blog.js has no BlogRender");
+      blogRenderer = { at: Date.now(), fn: (md) => sandbox.BlogRender.renderBlogMarkdown(md) };
+      return blogRenderer.fn;
+    },
+  };
+}
+exports.ewBlogMail = onRequest(
+  { region: "us-central1", secrets: [resendKey, ewServiceKey], cors: [/^https:\/\/(www\.)?connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/], invoker: "public", maxInstances: 5 },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long." });
+    const { action, ...args } = req.body || {};
+    try {
+      if (action === "subscribe" && !(await rateLimit(req, false, "visitor:subscribe")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+      // A test goes only to Ames, but not over and over.
+      if (action === "test" && !(await rateLimit({ ip: "blogmail-test" }, false, "visitor:blogmailtest")).ok) return res.status(429).json({ error: "Enough tests for today." });
+      // The blog build asks every 15 minutes; one check a minute is plenty.
+      if (action === "check") {
+        try { await db.collection("blog_mail_checks").doc(String(Math.floor(Date.now() / 60000))).create({ at: new Date().toISOString() }); }
+        catch (e) { return res.json({ ok: true, skipped: true }); }
+      }
+      // Can the key manage the list? Lists segments only; changes nothing.
+      if (action === "health") {
+        try { await blogMailIo().resend("/segments"); return res.json({ ok: true, key: "full access", live: require("./blog-mail").LIVE }); }
+        catch (e) { return res.json({ ok: false, key: e.status === 401 ? "sending only" : `error ${e.status || ""}`.trim() }); }
+      }
+      const data = await require("./blog-mail").handle(action, args, blogMailIo());
+      res.json({ ok: true, ...data });
+    } catch (e) {
+      if (e.status && !e.resend) return res.status(e.status).json({ error: e.message });
+      console.error("[ewBlogMail]", action, e.message);
+      res.status(500).json({ error: action === "subscribe" ? "We couldn't sign you up just now. Please try again in a moment." : "That did not go through." });
+    }
+  }
+);
