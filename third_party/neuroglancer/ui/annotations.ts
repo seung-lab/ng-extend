@@ -2451,9 +2451,9 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
         if (event.key === 'Escape') { event.preventDefault(); close(false); }
         else if (event.key === 'Enter' && !event.shiftKey && event.target === box) { event.preventDefault(); close(true); }
       });
-      // Only Save (or Enter) saves and only Cancel (or Esc) cancels: a click
-      // outside the box does nothing, so a stray click neither saves nor
-      // loses what was written (Ames 2026-11-06).
+      // A click outside the box saves what was written, as the old inline box
+      // did when it lost focus; the Save button does the same (Ames 2026-11-06).
+      backdrop.addEventListener('click', event => { if (event.target === backdrop) close(true); });
       saveButton.addEventListener('click', () => close(true));
       cancelButton.addEventListener('click', () => close(false));
       document.body.appendChild(backdrop);
