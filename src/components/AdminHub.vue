@@ -172,7 +172,7 @@ async function setPilot(email:string,enabled:boolean) {
 //    list?"). Every Beta access report (functions/access-request.js, from the
 //    game or connectome.quest), newest first, with Let them in. The email to
 //    add is read from the server's own lines of the report, never the note.
-type BetaRequest = { id: string; name: string; email: string; note: string; site: boolean; at: string; ewName: string; ewRank: string; userId: string | null };
+type BetaRequest = { id: string; name: string; email: string; note: string; site: boolean; at: string; ewName: string; ewRank: string; foundUs: string; userId: string | null };
 const betaRequests = ref<BetaRequest[]>([]);
 const betaError = ref('');
 const betaBusy = ref('');
@@ -198,7 +198,7 @@ function parseBetaRequest(r: any): BetaRequest | null {
   const note = noteAt < 0 ? '' : lines.slice(noteAt).join('\n').replace(/^Their note: /, '');
   const line = (label: string) => (head.find(l => l.startsWith(label + ': ')) || '').slice(label.length + 2).trim();
   return { id: r.id, name: r.user_name || '', email, note, site: /connectome\.quest/.test(String(r.url || '') + String(r.title || '')), at: r.created_at,
-    ewName: line('EyeWire username'), ewRank: line('EyeWire rank'), userId: r.user_id || null };
+    ewName: line('EyeWire username'), ewRank: line('EyeWire rank'), foundUs: line('How they found us'), userId: r.user_id || null };
 }
 async function loadBetaRequests() {
   betaError.value = '';
@@ -2817,6 +2817,7 @@ function practiceWhen(iso: string | null) {
             <b class="nge-pilot-name">{{ r.name || 'No name' }}</b> · {{ r.email }}
             <i class="nge-beta-req-meta">{{ betaWhen(r.at) }}{{ r.site ? ', from connectome.quest' : ', in the game' }}</i>
             <span v-if="r.ewName || r.ewRank" class="nge-beta-req-ew">EyeWire: {{ [r.ewName, r.ewRank].filter(Boolean).join(', ') }}</span>
+            <span v-if="r.foundUs" class="nge-beta-req-ew">Found us: {{ r.foundUs }}</span>
             <span v-if="r.note" class="nge-beta-req-note">{{ r.note }}</span>
           </span>
           <span class="nge-beta-req-acts">
