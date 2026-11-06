@@ -1125,13 +1125,55 @@ watch(notesEditing, on => {
   void nextTick(() => {
     const el = richEl.value;
     if (!el) return;
-    el.innerHTML = editNotes.value ? renderSafeMarkdown(editNotes.value, true) : '';
+    el.innerHTML = editNotes.value ? notesEditHtml(editNotes.value) : '';
     el.focus();
     const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
     const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r);
   });
 });
-function syncRich() { if (richEl.value) editNotes.value = htmlToMarkdown(richEl.value.innerHTML).replace(/\n{3,}/g, '\n\n').trim(); }
+function syncRich() { if (richEl.value) editNotes.value = richMd(richEl.value); }
+// ── Pictures in the notes (Ames 2026-11-06: "images embedded in the body of
+// notes in addition to being able to attach them separately"). While the notes
+// are open, a picture pasted, dropped or picked goes in at the caret. It is
+// kept as its address on a line of its own, as in comments, and shown as the
+// picture. ──
+const BOARD_PIC = 'data-board-pic';
+function richMd(el: HTMLElement) {
+  const c = el.cloneNode(true) as HTMLElement;
+  for (const img of [...c.querySelectorAll(`img[${BOARD_PIC}]`)]) {
+    const src = img.getAttribute('src') || '';
+    img.replaceWith(document.createTextNode(isBoardImage(src) ? src : ''));
+  }
+  return htmlToMarkdown(c.innerHTML).replace(/\n{3,}/g, '\n\n').trim();
+}
+const picTag = (url: string) => `<img ${BOARD_PIC}="1" src="${url.replace(/[<>"&]/g, '')}" alt="A picture in these notes">`;
+/** The notes for the editor: formatted, with each board picture as itself. */
+function notesEditHtml(md: string) {
+  const t = document.createElement('template');
+  t.innerHTML = renderSafeMarkdown(md, true);
+  for (const a of [...t.content.querySelectorAll('a')]) {
+    const href = a.getAttribute('href') || '';
+    if (isBoardImage(href) && (a.textContent || '').trim() === href) a.outerHTML = picTag(href);
+  }
+  return t.innerHTML;
+}
+let richRange: Range | null = null;
+function rememberCaret() {
+  const sel = window.getSelection();
+  if (richEl.value && sel && sel.rangeCount && richEl.value.contains(sel.anchorNode)) richRange = sel.getRangeAt(0).cloneRange();
+}
+document.addEventListener('selectionchange', rememberCaret);
+onUnmounted(() => document.removeEventListener('selectionchange', rememberCaret));
+function insertNotePic(url: string) {
+  const el = richEl.value;
+  if (!el) return;
+  el.focus();
+  const sel = window.getSelection();
+  if (richRange && el.contains(richRange.startContainer)) { sel?.removeAllRanges(); sel?.addRange(richRange); }
+  else { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel?.removeAllRanges(); sel?.addRange(r); }
+  document.execCommand('insertHTML', false, `<p>${picTag(url)}</p><p><br></p>`);
+  syncRich();
+}
 function richCmd(cmd: string) { richEl.value?.focus(); document.execCommand(cmd); syncRich(); }
 /** "- " or "* " starts a bulleted list, "1. " a numbered one, as in a document. */
 function onRichInput() {
@@ -1251,6 +1293,7 @@ async function addImages(files: FileList | File[] | null | undefined, to: 'new' 
     const url = await uploadImage(f);
     if (!url) continue;
     if (to === 'new') draft.value.images.push(url);
+    else if (notesEditing.value && richEl.value && openCard.value?.id === to.id) insertNotePic(url);
     else await save(to, { images: [...(to.images || []), url] });
   }
 }
@@ -1609,7 +1652,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span v-for="b in buildBadges(c)" :key="b.url" class="nge-todo-badge" :class="'nge-todo-badge--' + b.state" :title="b.title">{{ b.word }}</span>
             </div>
             <div v-if="c.status" class="nge-todo-card-status">{{ c.status }}</div>
-            <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt nge-todo-md" v-html="notesHtml(c.notes)"></div>
+            <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt nge-todo-md" v-html="commentHtml(c.notes)"></div>
             <div v-if="(c.links || []).length" class="nge-todo-links" @click.stop>
               <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url" draggable="false">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
             </div>
@@ -1787,7 +1830,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <button type="button" title="Bulleted list (or type - and a space)" @mousedown.prevent @click="richCmd('insertUnorderedList')">• Bullets</button>
             <button type="button" title="Numbered list (or type 1. and a space)" @mousedown.prevent @click="richCmd('insertOrderedList')">1. Numbers</button>
             <button type="button" title="Select some lines, then click: they become checklist items" @mousedown.prevent @click="richToChecklist(openCard)">☑ Checklist</button>
-            <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages(openCard)">🖼 Image</button>
+            <button type="button" title="Put a picture here in the notes. You can also paste or drop one where you are typing." @mousedown.prevent @click="pickImages(openCard)">🖼 Image</button>
           </div>
           <div ref="richEl" class="nge-todo-input nge-todo-rich nge-todo-md" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Notes"
                data-placeholder="Write here. Type @ and a name to tag someone. Select lines and click Checklist to turn them into items."
@@ -1799,7 +1842,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </div>
         </template>
         <button v-else-if="!openCard.notes" class="nge-todo-btn nge-todo-add-btn" @click="notesEditing = true">＋ Add notes</button>
-        <div v-else class="nge-todo-notes nge-todo-md" v-html="notesHtml(openCard.notes)"></div>
+        <div v-else class="nge-todo-notes nge-todo-md" v-html="commentHtml(openCard.notes)"></div>
 
         <template v-if="(openCard.images || []).length || imageBusy">
           <div class="nge-todo-label">Images</div>
