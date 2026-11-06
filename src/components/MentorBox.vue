@@ -184,6 +184,26 @@ function openNext() {
   nextCell.value = null;
   try { openInView(n, 'mentor'); } catch (e: any) { error.value = e?.message || 'That cell could not be opened.'; }
 }
+/** The next cell to jump to while working (slim mode), from the queue
+ *  already loaded: the mentor's own first, then any nobody has taken. */
+const upNext = computed<MentorReview | null>(() => {
+  const q = mentorState.queue, here = r.value?.id;
+  if (!q || !mentor.value) return null;
+  const mine = q.yours.filter(x => x.id !== here && (x.state === 'waiting' || x.state === 'looking'));
+  const open = q.waiting.filter(x => x.id !== here);
+  return [...mine, ...open].find(x => !cannotOpen(x)) ?? null;
+});
+function goUpNext() {
+  const n = upNext.value;
+  if (!n) return;
+  try { openInView(n, 'mentor'); } catch (e: any) { error.value = e?.message || 'That cell could not be opened.'; }
+}
+const SLIM_KEY = 'pyr-mentor-box-slim';
+const slim = ref((() => { try { return localStorage.getItem(SLIM_KEY) === '1'; } catch { return false; } })());
+function toggleSlim() {
+  slim.value = !slim.value;
+  try { localStorage.setItem(SLIM_KEY, slim.value ? '1' : '0'); } catch { /* private window */ }
+}
 const THANKS = 'Thank you for helping a new citizen scientist!';
 async function run(what: 'save' | 'suggest' | 'complete') {
   if (!r.value) return;
@@ -246,6 +266,7 @@ const STATE: Record<string, string> = {
     <div class="nge-mbx-bar" title="Drag to move" @pointerdown="startDrag">
       <img :src="MENTOR_ICON" alt="" class="nge-mbx-bar-icon" />
       <span class="nge-mbx-bar-label">{{ mentor ? 'Mentor Mode' : adminView ? 'Mentor notes, admin view' : 'Mentor notes' }}</span>
+      <button class="nge-mbx-slim" :title="slim ? 'Show the whole box' : 'Slim: only pin, send and complete'" :aria-label="slim ? 'Show the whole box' : 'Slim the box'" :aria-pressed="slim" @pointerdown.stop @click="toggleSlim">{{ slim ? 'Full' : 'Slim' }}</button>
       <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
@@ -253,6 +274,33 @@ const STATE: Record<string, string> = {
       <span class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
+    <!-- Slim (Ames 2026-11-06): pin a note, send suggestions or complete,
+         and on to the next cell, in a box that leaves the view free. -->
+    <template v-if="slim">
+      <template v-if="canAct">
+        <div class="nge-mbx-add">
+          <input v-model="newNote" maxlength="300" placeholder="A note to pin at the crosshairs" @keydown.enter.prevent="addHere" />
+          <button class="nge-mbx-btn" :disabled="!newNote.trim()" title="Pins the note where the crosshairs are, the center of the view" @click="addHere">Pin</button>
+        </div>
+        <div class="nge-mbx-actions">
+          <button class="nge-mbx-btn nge-mbx-btn--suggest" :disabled="busy" @click="run('suggest')">Send suggestions</button>
+          <button v-if="!confirmComplete" class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="run('complete')">Complete</button>
+          <button v-if="upNext && !nextCell" class="nge-mbx-btn nge-mbx-btn--next" :disabled="busy" :title="`Next cell: ${upNext.apprenticeName}, ${cellLabel(upNext)}. This one stays yours.`" @click="goUpNext">Next cell ›</button>
+        </div>
+      </template>
+      <div v-else-if="preview" class="nge-mbx-actions">
+        <button class="nge-mbx-btn" :disabled="busy" title="Leave this cell for another mentor and look at the next one" @click="skip">Skip</button>
+        <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="takeIt">{{ busy ? 'Taking…' : takeLabel }}</button>
+      </div>
+      <template v-else-if="side === 'apprentice'">
+        <div class="nge-mbx-add">
+          <input v-model="wholeText" maxlength="1000" :placeholder="`A message for ${otherName}`" @keydown.enter.prevent="sendReply(null)" />
+          <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
+        </div>
+      </template>
+      <p v-else class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : mentor ? 'This cell is back with the apprentice.' : STATE[r.state] }}</p>
+    </template>
+    <template v-else>
     <template v-if="mentor">
       <!-- Before they take the apprentice on, what a mentor is for (Ames 2026-11-06). -->
       <p v-if="preview && becoming" class="nge-mbx-how">Mentors help new players with their first {{ apprenticeFlag.cellsNeeded }} production access cells by double checking that everything looks good.</p>
@@ -339,6 +387,7 @@ const STATE: Record<string, string> = {
       <p v-if="r.cellNote && !thread.length" class="nge-mbx-quote">{{ r.mentorName || 'Mentor' }}: {{ r.cellNote }}</p>
       <p v-if="mentor && !preview" class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : 'This cell is back with the apprentice.' }}</p>
     </template>
+    </template>
 
     <div v-if="confirmComplete && canAct" class="nge-mbx-confirm" role="group" aria-label="Confirm complete">
       <p class="nge-mbx-confirm-q">{{ r.done?.practice
@@ -396,6 +445,9 @@ const STATE: Record<string, string> = {
 .nge-mbx--dragging .nge-mbx-head { cursor: grabbing; }
 .nge-mbx-title { font-size: 17px; font-weight: 600; color: #9fc8ff; }
 .nge-mbx-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); font-variant-numeric: tabular-nums; user-select: text; cursor: text; }
+.nge-mbx-slim { font: inherit; font-size: 11px; line-height: 1; padding: 3px 7px; letter-spacing: 0.04em; margin-left: auto; background: none; border: 1px solid transparent; border-radius: 4px; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
+.nge-mbx-slim:hover { color: #fff; border-color: rgba(159, 200, 255, 0.4); }
+.nge-mbx-btn--next { margin-left: auto; }
 .nge-mbx-x { font: inherit; font-size: 20px; line-height: 1; padding: 0 4px; margin-left: 4px; background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
 .nge-mbx-x:hover { color: #fff; }
 .nge-mbx-how { margin: 6px 0; line-height: 1.45; color: rgba(220, 230, 245, 0.8); }

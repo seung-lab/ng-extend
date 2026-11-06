@@ -134,7 +134,7 @@ const NURRO = ['nurro-success', 'nurro-trophy', 'nurro-celebrate', 'nurro-dance'
   .map(n => `https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/${n}.png`);
 /** Mentor cells submitted so far: reviewed ones and the ones with a mentor
  *  (Ames 2026-11-06: "should say n/5 submitted and n/5 reviewed"). */
-function cellsSubmitted(): number {
+export function cellsSubmitted(): number {
   const a = mentorState.apprentice;
   const needed = a?.cellsNeeded ?? 5;
   return Math.min(needed, (a?.cellsDone ?? 0) + mentorState.mine.filter(r => r.state !== 'complete').length);

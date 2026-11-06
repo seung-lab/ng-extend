@@ -9,13 +9,14 @@
  * anyone: the first mentor to take an apprentice's cell stays with them.
  */
 import { computed, onMounted, ref } from 'vue';
-import { stillShown, mentorState, loadMentor, loadQueue, handBack, openInView, cannotOpen, shortCell, ago, practiceOffered, joinPractice, leavePractice, type MentorReview } from '../mentor';
+import { cellsSubmitted, stillShown, mentorState, loadMentor, loadQueue, handBack, openInView, cannotOpen, shortCell, ago, practiceOffered, joinPractice, leavePractice, type MentorReview } from '../mentor';
 
 const busy = ref<number | string | null>(null);
 const error = ref('');
 const q = computed(() => mentorState.queue);
 const reviewer = computed(() => mentorState.mentor || mentorState.admin);
 const a = computed(() => mentorState.apprentice);
+const submitted = computed(() => Math.max(cellsSubmitted(), a.value?.cellsDone ?? 0));
 
 const STATE: Record<MentorReview['state'], string> = {
   waiting: 'Waiting for a mentor', looking: 'With your mentor', suggestions: 'Your mentor has suggestions', complete: 'Complete, it counts for you',
@@ -91,9 +92,12 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
     <!-- The apprentice -->
     <section v-if="a && (a.status === 'active' || myCells.length)" class="nge-mt-sec">
       <h4>Your mentor cells <span v-if="a.practice" class="nge-mt-n">practice</span></h4>
-      <div class="nge-mt-progress" :aria-label="`${a.cellsDone} of ${a.cellsNeeded} mentor cells done`">
-        <span v-for="i in a.cellsNeeded" :key="i" class="nge-mt-dot" :class="{ 'nge-mt-dot--done': i <= a.cellsDone }"></span>
-        <span class="nge-mt-progress-text"><b>{{ a.cellsDone }}</b> of {{ a.cellsNeeded }} done</span>
+      <!-- Submitted and reviewed, as the Sent to your mentor screen counts them (Ames 2026-11-06):
+           reviewed cells filled, submitted ones waiting for review ringed in gold. -->
+      <div class="nge-mt-progress" :aria-label="`${submitted} of ${a.cellsNeeded} submitted, ${a.cellsDone} of ${a.cellsNeeded} reviewed`">
+        <span v-for="i in a.cellsNeeded" :key="i" class="nge-mt-dot" :class="{ 'nge-mt-dot--done': i <= a.cellsDone, 'nge-mt-dot--sent': i > a.cellsDone && i <= submitted }"></span>
+        <span class="nge-mt-progress-text"><b>{{ submitted }}</b>/{{ a.cellsNeeded }} submitted</span>
+        <span class="nge-mt-progress-text"><b>{{ a.cellsDone }}</b>/{{ a.cellsNeeded }} reviewed</span>
       </div>
       <p class="nge-mt-how" v-if="a.status === 'active'">
         {{ a.mentorName ? `${a.mentorName} is your mentor.` : 'A mentor takes your first cell when you send it.' }}
@@ -189,6 +193,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
 .nge-mt-hint { flex-basis: 100%; font-size: 12px; color: rgba(220, 230, 245, 0.6); }
 .nge-mt-progress { display: flex; align-items: center; gap: 7px; margin: 2px 0 8px; }
 .nge-mt-dot { width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(159, 200, 255, 0.5); }
+.nge-mt-dot--sent { border-color: #f5d142; }
 .nge-mt-dot--done { background: #7fb6ff; border-color: #7fb6ff; }
 .nge-mt-progress-text { margin-left: 6px; font-size: 13px; color: rgba(220, 230, 245, 0.85); }
 .nge-mt-progress-text b { color: #f5d142; }
