@@ -194,3 +194,20 @@ test('a card can have collaborators: they hear, and they follow it', async () =>
   await assert.rejects(todoAction('todo.helpers', { id: card.id, ids: ['99999999-9999-9999-9999-999999999999'] }, base), /must be an admin/);
   assert.deepEqual((await todoAction('todo.list', {}, base)).helpers[card.id], [CELIA.id]);
 });
+
+test('a reply joins its thread, one level deep, and its writer hears', async () => {
+  const db = memDb(), tags = [];
+  const ctxOf = (who, name) => ({ db, byName: name, me: { id: who.id }, tag: async (w, card, what) => tags.push({ who: w.map(p => p.name), what }) });
+  const { card } = await todoAction('todo.save', { fields: { title: 'Thread' } }, ctxOf(AMES, 'Amy R. Sterling'));
+  const c1 = await todoAction('todo.comment', { id: card.id, text: 'first' }, ctxOf(AMES, 'Amy R. Sterling'));
+  const rootAt = c1.card.comments[0].at;
+  await new Promise(r => setTimeout(r, 5));
+  const c2 = await todoAction('todo.comment', { id: card.id, text: 'an answer', replyTo: rootAt }, ctxOf(CELIA, 'Celia D.'));
+  assert.equal(c2.card.comments[1].reply_to, rootAt);
+  assert.deepEqual(tags.at(-1), { who: ['Amy R. Sterling'], what: 'replied to you on' });
+  await new Promise(r => setTimeout(r, 5));
+  const c3 = await todoAction('todo.comment', { id: card.id, text: 'and back', replyTo: c2.card.comments[1].at }, ctxOf(AMES, 'Amy R. Sterling'));
+  assert.equal(c3.card.comments[2].reply_to, rootAt, 'a reply to a reply stays in the same thread');
+  assert.deepEqual(tags.at(-1), { who: ['Celia D.'], what: 'replied to you on' });
+  await assert.rejects(todoAction('todo.comment', { id: card.id, text: 'x', replyTo: '1999-01-01T00:00:00Z' }, ctxOf(AMES, 'Amy R. Sterling')), /gone/);
+});
