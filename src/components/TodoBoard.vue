@@ -52,6 +52,8 @@ const cards = ref<Card[]>([]);
 const people = ref<Person[]>([]);
 /** Who follows each card (functions/todos.js todo.follow). */
 const followers = ref<Record<string, string[]>>({});
+/** When I last opened each card, so a tag I have seen leaves My Tasks. */
+const seenAt = ref<Record<string, string>>({});
 /** A card's collaborators, beside its owner (functions/todos.js todo.helpers). */
 const helpers = ref<Record<string, string[]>>({});
 const helpersOf = (c: Card) => (helpers.value[c.id] || []).filter(id => id !== c.owner_id);
@@ -90,6 +92,7 @@ async function load(quiet = false) {
     cards.value = data.cards || [];
     people.value = data.people || [];
     followers.value = data.followers || {};
+    seenAt.value = data.seen || {};
     helpers.value = data.helpers || {};
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
@@ -652,6 +655,12 @@ const editTitle = ref('');
 const editNotes = ref('');
 const newItem = ref('');
 const comment = ref('');
+/** Opening a card counts as seeing its tags of me, here and on my other devices. */
+function markSeen(c: Card) {
+  const at = new Date().toISOString();
+  seenAt.value = { ...seenAt.value, [c.id]: at };
+  secureWrite<any>('todo.seen', { id: c.id }).then(r => { if (r?.at) seenAt.value = { ...seenAt.value, [c.id]: r.at }; }).catch(() => { /* seen here, at least */ });
+}
 /** Open a card and go straight to a part of it. */
 const commentsHead = ref<HTMLElement | null>(null);
 function toComments() {
@@ -668,6 +677,7 @@ function openAt(c: Card, part: 'comments') {
 const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼').replace(/\s+/g, ' ').trim().slice(0, 140);
 function openUp(c: Card) {
   connectOpen.value = false;
+  markSeen(c);
   openId.value = c.id;
   editTitle.value = c.title;
   editNotes.value = c.notes;
@@ -751,7 +761,7 @@ const myTasks = computed(() => {
     let tagAt = '', tagBy = '';
     for (const cm of c.comments) if (cm.by !== myName && tagsIn(cm.text).includes(me) && cm.at > tagAt) { tagAt = cm.at; tagBy = cm.by; }
     if (!tagAt) continue;
-    const answered = c.comments.some(cm => cm.by === myName && cm.at > tagAt);
+    const answered = c.comments.some(cm => cm.by === myName && cm.at > tagAt) || (seenAt.value[c.id] || '') >= tagAt;
     if (!answered) tagged.push({ key: 'tag:' + c.id, card: c, text: `${tagBy} tagged you`, due: null, item: -1, at: tagAt });
   }
   if (tagged.length) groups.unshift({ head: 'Tagged, waiting on you', rows: tagged.sort((a, b) => (b.at || '').localeCompare(a.at || '')), late: true });

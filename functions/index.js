@@ -2147,7 +2147,7 @@ exports.ewSecureWrite = onRequest(
             const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
             try {
               out = await todoAction(action, args, { db: restDb(sb), me, byName, tag,
-                follows: todoFollowStore, helpers: todoHelperStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
+                follows: todoFollowStore, helpers: todoHelperStore, seen: todoSeenStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
             } catch (e) {
               // Until the SQL is run the table is missing: say so plainly.
               if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
@@ -2368,6 +2368,12 @@ const todoHelperStore = {
   },
   get: async (cardId) => { const d = await db.collection("todo_helpers").doc(String(cardId)).get(); return d.exists && Array.isArray(d.data().ids) ? d.data().ids : []; },
   set: async (cardId, ids) => { await db.collection("todo_helpers").doc(String(cardId)).set({ ids, at: new Date().toISOString() }); },
+};
+// When each admin last opened each To do card (todos.js todo.seen), one
+// document per person, so a tag clears from My Tasks once its card is opened.
+const todoSeenStore = {
+  get: async (meId) => { const d = await db.collection("todo_seen").doc(String(meId)).get(); return d.exists && d.data().cards ? d.data().cards : {}; },
+  mark: async (meId, cardId, at) => { await db.collection("todo_seen").doc(String(meId)).set({ cards: { [String(cardId)]: at } }, { merge: true }); },
 };
 // Who has had the "You're in" email (access-request.js welcomeEmail), so a
 // second Let in never sends it twice. One document per address.
