@@ -410,10 +410,11 @@ const gap = ref<{ y: number; index: number } | null>(null);   // y from the top 
 const gapMenu = ref(false);
 let insertAt: number | null = null;                             // where the next block goes, or null: at the caret
 const GAP_REACH = 16;                                            // px from a boundary that shows the "+"
-function onDocMove(e: MouseEvent) {
-  if (gapMenu.value || showPreview.value) return;
+/** The gaps between blocks (where "+" and a dragged block go), measured
+ *  from the top of the post area, and the blocks themselves. */
+function measureBlocks() {
   const wrap = docWrap.value, doc = docEl.value;
-  if (!wrap || !doc || (e.target as HTMLElement).closest('.nge-blog-gap')) return;
+  if (!wrap || !doc) return null;
   const top = wrap.getBoundingClientRect().top;
   const blocks = Array.from(doc.children) as HTMLElement[];
   const places: { y: number; index: number }[] = [];
@@ -425,12 +426,88 @@ function onDocMove(e: MouseEvent) {
     const y = next ? (r.bottom - top + next.getBoundingClientRect().top - top) / 2 : r.bottom - top + 8;
     places.push({ y, index: i + 1 });
   });
-  const py = e.clientY - top;
+  return { top, blocks, places };
+}
+function nearestPlace(places: { y: number; index: number }[], py: number) {
   let best: { y: number; index: number } | null = null, far = Infinity;
   for (const g of places) { const d = Math.abs(g.y - py); if (d < far) { far = d; best = g; } }
-  gap.value = best && far <= GAP_REACH ? best : null;
+  return { best, far };
 }
-function onDocLeave() { if (!gapMenu.value) gap.value = null; }
+function onDocMove(e: MouseEvent) {
+  if (gapMenu.value || showPreview.value || dragFrom.value !== null) return;
+  if ((e.target as HTMLElement).closest('.nge-blog-gap, .nge-blog-drag')) return;
+  const m = measureBlocks();
+  if (!m) return;
+  const py = e.clientY - m.top;
+  const { best, far } = nearestPlace(m.places, py);
+  gap.value = best && far <= GAP_REACH ? best : null;
+  // the block under the mouse gets a handle to drag it by, unless "+" shows
+  const i = gap.value ? -1 : m.blocks.findIndex(b => { const r = b.getBoundingClientRect(); return py >= r.top - m.top && py <= r.bottom - m.top; });
+  if (i < 0) { handle.value = null; return; }
+  const r = m.blocks[i].getBoundingClientRect();
+  handle.value = { index: i, y: r.top - m.top + Math.min(r.height / 2, 16) };
+}
+function onDocLeave() { if (!gapMenu.value) gap.value = null; if (dragFrom.value === null) handle.value = null; }
+
+// Drag a block to move it (Ames 2026-11-06: "shouldn't I be able to drag and
+// drop to reorder sections?"). The handle at a block's left drags it; a line
+// shows where it will land. Alt+Up and Alt+Down move the block with the caret.
+const handle = ref<{ y: number; index: number } | null>(null);
+const dragFrom = ref<number | null>(null);
+const dropAt = ref<{ y: number; index: number } | null>(null);
+let dragged: HTMLElement | null = null;
+function onHandleDown(e: PointerEvent) {
+  if (!handle.value || !docEl.value || e.button !== 0) return;
+  e.preventDefault();
+  dragFrom.value = handle.value.index;
+  dragged = docEl.value.children[dragFrom.value] as HTMLElement ?? null;
+  if (!dragged) { dragFrom.value = null; return; }
+  dragged.classList.add('nge-blog-dragging');
+  gap.value = null;
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragUp);
+  window.addEventListener('keydown', onDragKey, true);
+}
+function onDragMove(e: PointerEvent) {
+  const m = measureBlocks();
+  if (!m || dragFrom.value === null) return;
+  const { best } = nearestPlace(m.places, e.clientY - m.top);
+  // just above or just below itself: it would not move
+  dropAt.value = best && best.index !== dragFrom.value && best.index !== dragFrom.value + 1 ? best : null;
+}
+function endDrag() {
+  window.removeEventListener('pointermove', onDragMove);
+  window.removeEventListener('pointerup', onDragUp);
+  window.removeEventListener('keydown', onDragKey, true);
+  dragged?.classList.remove('nge-blog-dragging');
+  if (dragged && !dragged.className) dragged.removeAttribute('class');
+  dragged = null; dragFrom.value = null; dropAt.value = null; handle.value = null;
+}
+function onDragUp() {
+  const doc = docEl.value, el = dragged, to = dropAt.value?.index ?? null;
+  endDrag();
+  if (!doc || !el || to === null || !inDoc(el)) return;
+  doc.insertBefore(el, doc.children[to] ?? null);
+  keepLocalSoon();
+  refreshState();
+}
+function onDragKey(e: KeyboardEvent) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endDrag(); } }
+onBeforeUnmount(endDrag);
+/** Alt+Up, Alt+Down: move the block holding the caret one place. */
+function moveCaretBlock(step: -1 | 1) {
+  keepSelection();
+  const b = currentBlock();
+  if (!b) return;
+  const other = step < 0 ? b.previousElementSibling : b.nextElementSibling;
+  if (!other) return;
+  // a Range resets when its block is moved, so remember the exact spot instead
+  const sel = window.getSelection();
+  const at = sel && sel.rangeCount ? { node: sel.anchorNode, offset: sel.anchorOffset } : null;
+  if (step < 0) other.before(b); else other.after(b);
+  if (sel && at?.node && inDoc(at.node)) { const r = document.createRange(); r.setStart(at.node, at.offset); r.collapse(true); sel.removeAllRanges(); sel.addRange(r); keepSelection(); }
+  b.scrollIntoView({ block: 'nearest' });
+  keepLocalSoon();
+}
 function closeGap() { gapMenu.value = false; gap.value = null; }
 function onGapAway(e: MouseEvent) {
   if (gapMenu.value && !(e.target as HTMLElement).closest('.nge-blog-gap')) closeGap();
@@ -794,6 +871,11 @@ function onDocClick(e: MouseEvent) {
   sel?.addRange(r);
 }
 function onDocKey(e: KeyboardEvent) {
+  if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    moveCaretBlock(e.key === 'ArrowUp' ? -1 : 1);
+    return;
+  }
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
   const k = e.key.toLowerCase();
   if (k === 'k') { e.preventDefault(); void openAsk('link'); }
@@ -934,10 +1016,15 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
             <span v-if="picLinkError" class="nge-blog-problem" role="alert">{{ picLinkError }}</span>
           </div>
 
-                    <div ref="docWrap" class="nge-blog-docwrap" @mousemove="onDocMove" @mouseleave="onDocLeave">
+                    <div ref="docWrap" class="nge-blog-docwrap" :class="{ 'is-dragging': dragFrom !== null }" @mousemove="onDocMove" @mouseleave="onDocLeave">
             <div v-show="!showPreview" ref="docEl" class="nge-blog-doc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Post"
                  spellcheck="true" @input="keepLocalSoon" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
             <div v-if="showPreview" class="nge-blog-doc nge-blog-doc--preview" v-html="previewHtml"></div>
+            <!-- a block's drag handle, and where a dragged block will land -->
+            <button v-if="handle && dragFrom === null && !gap && !gapMenu && !showPreview" type="button" class="nge-blog-drag"
+                    :style="{ top: handle.y + 'px' }" title="Drag to move this block (or Alt+Up, Alt+Down)" aria-label="Drag to move this block"
+                    @pointerdown="onHandleDown">⋮⋮</button>
+            <div v-if="dropAt" class="nge-blog-gap nge-blog-drop" :style="{ top: dropAt.y + 'px' }"><span class="nge-blog-gap-line"></span></div>
             <!-- "+" between blocks: add a picture, a video and so on exactly here -->
             <div v-if="gap && !showPreview" class="nge-blog-gap" :style="{ top: gap.y + 'px' }">
               <span class="nge-blog-gap-line" aria-hidden="true"></span>
@@ -958,7 +1045,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
             </div>
           </div>
         </div>
-        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. Click a picture to change its size or give it a link, or a link to change or remove it. Under a gallery picture, the second line is a longer description readers see when they click the picture.</p>
+        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. To move a block, drag the handle at its left (or press Alt+Up or Alt+Down). Click a picture to change its size or give it a link, or a link to change or remove it. Under a gallery picture, the second line is a longer description readers see when they click the picture.</p>
       </div>
 
       <p v-if="uploadNote" class="nge-blog-ok" role="status">{{ uploadNote }}</p>
@@ -1078,6 +1165,13 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog-doc :deep(::selection) { background: rgba(127, 212, 255, 0.35); }
 
 .nge-blog-docwrap { position: relative; }
+.nge-blog-docwrap.is-dragging { cursor: grabbing; user-select: none; }
+.nge-blog-drag { position: absolute; left: 9px; z-index: 3; width: 26px; height: 24px; margin-top: -12px; padding: 0; border: 0; border-radius: 6px;
+  cursor: grab; touch-action: none; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: -3px; line-height: 24px; text-align: center;
+  color: #7fd4ff; background: rgba(127, 212, 255, 0.14); }
+.nge-blog-drag:hover, .nge-blog-drag:focus-visible { background: rgba(127, 212, 255, 0.3); }
+.nge-blog-drop .nge-blog-gap-line { border-top: 3px solid #7fd4ff; }
+.nge-blog-doc :deep(.nge-blog-dragging) { opacity: 0.35; }
 .nge-blog-doc { padding-left: 42px !important; }
 .nge-blog-gap { position: absolute; left: 0; right: 0; height: 0; z-index: 3; pointer-events: none; }
 .nge-blog-gap-line { position: absolute; left: 40px; right: 14px; top: -1px; border-top: 2px dashed rgba(127, 212, 255, 0.65); }
@@ -1150,6 +1244,9 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog--site .nge-blog-doc :deep(figcaption) { color: #5a6578; }
 .nge-blog--site .nge-blog-doc :deep(::selection) { background: rgba(10, 114, 134, 0.22); }
 .nge-blog--site .nge-blog-gap-line { border-top-color: rgba(10, 114, 134, 0.55); }
+.nge-blog--site .nge-blog-drag { color: #0a7286; background: rgba(10, 114, 134, 0.1); }
+.nge-blog--site .nge-blog-drag:hover, .nge-blog--site .nge-blog-drag:focus-visible { background: rgba(10, 114, 134, 0.22); }
+.nge-blog--site .nge-blog-drop .nge-blog-gap-line { border-top-color: #0a7286; }
 .nge-blog--site .nge-blog-gap-plus { color: #ffffff; background: #0a7286; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.25); }
 .nge-blog--site .nge-blog-gap-menu { background: #ffffff; border-color: rgba(20, 30, 50, 0.16); box-shadow: 0 12px 32px rgba(20, 30, 50, 0.18); }
 .nge-blog--site .nge-blog-gap-menu button { color: #151b27; }
