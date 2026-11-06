@@ -39,7 +39,7 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import MentoringTab from './MentoringTab.vue';
-import { mentorState, mentoringShown, isApprentice, sendForSecondLook, openInView as openMentorView, type MentorReview } from '../mentor';
+import { mentorState, mentoringShown, isApprentice, goesToMentor, sendForSecondLook, openInView as openMentorView, type MentorReview } from '../mentor';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
@@ -1327,7 +1327,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // An apprentice's cell goes to a mentor instead (mentor program): nothing
   // is written to CAVE, the claim or the sheet, and nothing counts, until a
   // mentor completes it.
-  if (isApprentice()) { await sendForSecondLook(cell, { ...done, sheet: inSheet(cell) }); return; }
+  if (goesToMentor(cell.taskId)) { await sendForSecondLook(cell, { ...done, sheet: inSheet(cell) }); return; }
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
   // the claim: the server only syncs a completed claim.
@@ -2712,7 +2712,7 @@ const MENTOR_CHIP: Record<MentorReview['state'], string> = {
  *  suggestions), else the next one after those done and those with the mentor. */
 function mentorCellNumber(cell: CellRow): number {
   const a = mentorState.apprentice;
-  if (!isApprentice() || !a) return 0;
+  if (!goesToMentor(cell.taskId) || !a) return 0;
   const sent = [...mentorState.mine].sort((x, y) => Date.parse(x.sentAt) - Date.parse(y.sentAt));
   const at = sent.findIndex(r => r.taskId === cell.taskId);
   if (at >= 0) return Math.min(at + 1, a.cellsNeeded);
@@ -4254,7 +4254,7 @@ const panelStyle = computed(() => ({
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
-            <div class="nge-cl-complete-title">Complete this cell</div>
+            <div class="nge-cl-complete-title">{{ goesToMentor(cell.taskId) ? 'Complete and send to your mentor' : 'Complete this cell' }}</div>
             <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="marksStartLine(cell)" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
@@ -4328,13 +4328,14 @@ const panelStyle = computed(() => ({
               <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
+              <span v-if="isApprentice() && !goesToMentor(cell.taskId)" class="nge-cl-mentor-n" title="Your mentor answers your mentor cells when they can">Your {{ mentorState.apprentice?.cellsNeeded ?? 5 }} mentor cells are sent. This one counts right away.</span>
               <span v-if="mentorCellNumber(cell)" class="nge-cl-mentor-n" :title="`Your mentor looks at your first ${mentorState.apprentice?.cellsNeeded ?? 5} cells`">Mentor cell {{ mentorCellNumber(cell) }} of {{ mentorState.apprentice?.cellsNeeded ?? 5 }}</span>
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
                 :disabled="!!completeBlocked(cell)"
                 :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
-              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : (isApprentice() ? 'Send for a second look' : 'Mark complete') }}</button>
+              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : (goesToMentor(cell.taskId) ? 'Send to Mentor' : 'Mark complete') }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
             <!-- Why Mark complete can't be pressed yet, said plainly (a player

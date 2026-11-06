@@ -81,6 +81,22 @@ export async function joinPractice() { await call('mentor.join'); await loadMent
 export async function leavePractice() { await call('mentor.leave'); await loadMentor(); }
 /** An apprentice right now: Complete sends to a mentor. */
 export const isApprentice = () => mentorState.apprentice?.status === 'active';
+/** All of the apprentice's mentor cells are sent (done, or with a mentor).
+ *  Then they keep playing (Ames 2026-11-06: "let players continue doing cells
+ *  after 5, even without mentor feedback"): other cells count at once. */
+export function mentorCellsAllSent(): boolean {
+  const a = mentorState.apprentice;
+  if (!a || a.status !== 'active') return false;
+  const open = mentorState.mine.filter(r => r.state !== 'complete').length;
+  return a.cellsDone + open >= a.cellsNeeded;
+}
+/** Does completing this cell send it to a mentor? Yes while mentor cells are
+ *  left, and always for a cell already in the program (back with suggestions). */
+export function goesToMentor(taskId?: number | null): boolean {
+  if (!isApprentice()) return false;
+  if (taskId != null && mentorState.mine.some(r => r.taskId === taskId && r.state !== 'complete')) return true;
+  return !mentorCellsAllSent();
+}
 
 export async function loadMentor(): Promise<void> {
   try {
@@ -99,7 +115,7 @@ export async function loadMentor(): Promise<void> {
     mentorState.error = e?.message || '';
   } finally {
     mentorState.loaded = true;
-    apprenticeFlag.active = isApprentice();
+    apprenticeFlag.active = isApprentice() && !mentorCellsAllSent();
     if (mentorState.apprentice) apprenticeFlag.cellsNeeded = mentorState.apprentice.cellsNeeded;
   }
   if (isApprentice() || mentorState.apprentice) void finishApprovedCells();

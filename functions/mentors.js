@@ -235,7 +235,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (again && again.state !== 'suggestions') fail(409, 'This cell is already with a mentor.');
       const openCount = mine.filter(r => OPEN.includes(r.state) && r !== again).length;
       if (!again && (a.cells_done || 0) + openCount >= (a.cells_needed || CELLS_NEEDED))
-        fail(409, `All of your ${a.cells_needed || CELLS_NEEDED} mentor cells are sent. Wait for your mentor before sending another.`);
+        fail(409, `All of your ${a.cells_needed || CELLS_NEEDED} mentor cells are sent. Complete this one as usual: it counts right away.`);
       // Keep the claim while it waits: an ordinary claim lapses after 30 minutes.
       await db.holdClaim(taskId, meId);
       let r;
