@@ -172,3 +172,23 @@ test('the morning note: one to each reviewer, only when something waits',async()
  // One update alone reads in the singular.
  assert.equal(review.digestNotice([{index:'A1',annotator:'X'}],[],'https://x').title,'📝 Cilia Quest reviews waiting: 1 update');
 });
+test('the row reminder: Ames once, when worked rows near what Pyr reads',async()=>{
+ const blank=()=>{const r=row();r[14]='';return r;};
+ const few=fakeSheet([header,row(),blank()]);
+ const db1=fakeDb([]);
+ assert.deepEqual(await review.rowsReminder({api:few.api,sb:db1.sb}),{last:2,sent:false});
+ assert.equal(db1.notes.length,0);
+ const many=[header];for(let i=1;i<review.WARN_ROW+5;i++) many.push(i<review.WARN_ROW?row():blank());
+ const sheet=fakeSheet(many);
+ const {sb,notes}=fakeDb([]);
+ const out=await review.rowsReminder({api:sheet.api,sb});
+ assert.deepEqual(out,{last:review.WARN_ROW,sent:true});
+ assert.equal(notes.length,1);
+ assert.match(notes[0].body,/row \*\*1800\*\*/);
+ assert.ok(!/[–—]/.test(notes[0].title+notes[0].body),'no en or em dashes');
+ assert.equal((await review.rowsReminder({api:sheet.api,sb})).why,'already told');
+ assert.equal(notes.length,1,'never twice');
+});
+test('the reviewers are Celia D and M Sorek (Marissa)',()=>{
+ assert.deepEqual(review.REVIEWERS.map(r=>r.name),['Celia D','M Sorek']);
+});

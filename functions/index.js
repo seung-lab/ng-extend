@@ -3100,8 +3100,12 @@ exports.ewQuestReviewCheck = onSchedule(
 exports.ewQuestReviewDigest = onSchedule(
   { schedule: "0 8 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
   async () => {
-    const out = await require("./quest-review").digest({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
+    const qr = require("./quest-review"), io = { api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) };
+    const out = await qr.digest(io);
     console.info("[ewQuestReviewDigest]", JSON.stringify(out));
+    // And Ames, once, when the sheet's worked rows near what Pyr reads.
+    try { console.info("[ewQuestReviewDigest] rows", JSON.stringify(await qr.rowsReminder(io))); }
+    catch (e) { console.warn("[ewQuestReviewDigest] rows check failed", String(e && e.message || e).slice(0, 200)); }
   }
 );
 

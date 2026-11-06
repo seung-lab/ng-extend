@@ -263,7 +263,7 @@ async function reply(args, {api, me, questKey = 'retina_cilia'}) {
 // player answered ("Reviewed"), and every new player's quest ("New Player").
 const REVIEWERS = Object.freeze([
   {id: '942bda30-fcf0-424c-8785-91db4d62d2aa', name: 'Celia D'},
-  {id: '19812b86-6374-48f4-b116-4ec60843c78e', name: 'Marissa Pratt'},
+  {id: 'ebdb33d8-1cc5-4d2c-bd9e-f1216742fb51', name: 'M Sorek'}, // Marissa's Pyr account (Ames 2026-11-06)
 ]);
 const DIGEST_TITLE = '📝 Cilia Quest reviews waiting';
 const NEW_PLAYER = 'New Player';
@@ -310,5 +310,38 @@ async function digest({api, sb, questKey = 'retina_cilia', to = REVIEWERS, dryRu
   return {answered: answered.length, newcomers: newcomers.length, sent};
 }
 
-module.exports = {STATUS, REVIEW_COLUMNS, TITLE_START, reviewHeader, rowView, reviewNotice, segmentOfNotice, playerFor,
+// ── The sheet row reminder (Ames 2026-11-06: "remind me to update the sheet
+// when we get close") ─────────────────────────────────────────────────────
+// The game reads the quest tab's first READ_ROWS rows (sheet-sync.js
+// questList, A1:Z2000), so a quest worked past them never counts. Once the
+// last row with an Annotator Name passes WARN_ROW, Ames gets one bell note
+// (never twice: a note with the same title already sent stops it).
+const AMES = '146a3fec-ee5c-46f9-b1ac-b1ea57501f81';
+const READ_ROWS = 2000, WARN_ROW = 1800;
+const ROWS_TITLE = '📋 The Cilia Quest sheet is nearly past what Pyr reads';
+async function lastWorkedRow(api, quest, title) {
+  const head = await getRange(api, quest, q(title) + '!A1:AZ10');
+  const {headerRow, cols} = reviewHeader(head);
+  if (!(cols.name >= 0)) return 0;
+  const L = letters(cols.name), first = headerRow + 2;
+  const column = await getRange(api, quest, `${q(title)}!${L}${first}:${L}`);
+  let last = 0;
+  column.forEach((v, k) => { if (String((v || [])[0] ?? '').trim()) last = first + k; });
+  return last;
+}
+async function rowsReminder({api, sb, questKey = 'retina_cilia', now = () => new Date().toISOString()}) {
+  const quest = QUESTS[questKey];
+  const last = await lastWorkedRow(api, quest, await tabTitle(api, quest));
+  if (last < WARN_ROW) return {last, sent: false};
+  const before = await sb(`notifications?target_id=eq.${AMES}&title=eq.${encodeURIComponent(ROWS_TITLE)}&select=id&limit=1`);
+  if (Array.isArray(before) && before.length) return {last, sent: false, why: 'already told'};
+  await sb('notifications', {method: 'POST', body: JSON.stringify({
+    title: ROWS_TITLE, image_url: IMAGE, thumbnail_url: IMAGE,
+    body: `Players have worked down to row **${last}** of the Cilia Quest sheet, and Pyr reads only the first **${READ_ROWS}** rows. Quests below that won't count until the read is raised (functions/sheet-sync.js questList, and the ew_quest_mirror cap of 5,000 rows).\n\n[Open the quest sheet](https://docs.google.com/spreadsheets/d/${quest.id}/edit#gid=${quest.gid})`,
+    target_type: 'user', target_id: AMES, send_at: now(), created_by: null,
+  })});
+  return {last, sent: true};
+}
+
+module.exports = {rowsReminder, lastWorkedRow, WARN_ROW,STATUS, REVIEW_COLUMNS, TITLE_START, reviewHeader, rowView, reviewNotice, segmentOfNotice, playerFor,
   replyValues, check, get, reply, findRows, REVIEWERS, DIGEST_TITLE, digestNotice, digest};
