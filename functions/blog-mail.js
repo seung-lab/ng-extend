@@ -5,7 +5,7 @@
 // into Segments. A contact must be in a Segment to get a Broadcast, and Resend
 // gives every Broadcast its own one click unsubscribe ({{{RESEND_UNSUBSCRIBE_URL}}})
 // and keeps the unsubscribed list itself. Needs a FULL ACCESS key
-// (RESEND_FULL_KEY): the sending only key cannot touch contacts or broadcasts.
+// (RESEND_API_KEY is one, Ames 2026-11-05): a sending only key cannot.
 //
 // Actions (index.js ewBlogMail, all public, all from connectome.quest):
 //   subscribe  {name, email, username?, source?, _honey?}  the signup forms.

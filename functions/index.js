@@ -2978,14 +2978,14 @@ exports.ewMentor = onRequest(
 // Broadcasts, each with its own one click unsubscribe. Rules in blog-mail.js.
 // The signup forms (connectome.quest home and blog) post {action:"subscribe"};
 // the blog build (seunglabdata blog-build.yml) posts {action:"check"} after
-// every run. Needs RESEND_FULL_KEY, a FULL ACCESS Resend key: the sending
-// only RESEND_API_KEY cannot manage contacts or broadcasts.
+// every run. Uses RESEND_API_KEY, which must be a FULL ACCESS key (Ames
+// 2026-11-05: it is): a sending only key cannot manage contacts or broadcasts.
+// {action:"health"} says whether it can.
 //   firebase deploy --only functions:ewBlogMail --project eyewire-ii-e4d52
-const resendFullKey = defineSecret("RESEND_FULL_KEY");
 const blogMailCache = {};
 let blogRenderer = null;
 function blogMailIo() {
-  const key = resendFullKey.value().trim();
+  const key = resendKey.value().trim();
   const resend = async (p, init = {}) => {
     const r = await fetch("https://api.resend.com" + p, {
       method: init.method || "GET", redirect: "error", signal: AbortSignal.timeout(15000),
@@ -3037,7 +3037,7 @@ function blogMailIo() {
   };
 }
 exports.ewBlogMail = onRequest(
-  { region: "us-central1", secrets: [resendFullKey, ewServiceKey], cors: [/^https:\/\/(www\.)?connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/], invoker: "public", maxInstances: 5 },
+  { region: "us-central1", secrets: [resendKey, ewServiceKey], cors: [/^https:\/\/(www\.)?connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/], invoker: "public", maxInstances: 5 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -3051,6 +3051,11 @@ exports.ewBlogMail = onRequest(
       if (action === "check") {
         try { await db.collection("blog_mail_checks").doc(String(Math.floor(Date.now() / 60000))).create({ at: new Date().toISOString() }); }
         catch (e) { return res.json({ ok: true, skipped: true }); }
+      }
+      // Can the key manage the list? Lists segments only; changes nothing.
+      if (action === "health") {
+        try { await blogMailIo().resend("/segments"); return res.json({ ok: true, key: "full access", live: require("./blog-mail").LIVE }); }
+        catch (e) { return res.json({ ok: false, key: e.status === 401 ? "sending only" : `error ${e.status || ""}`.trim() }); }
       }
       const data = await require("./blog-mail").handle(action, args, blogMailIo());
       res.json({ ok: true, ...data });
