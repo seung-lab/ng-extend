@@ -2,7 +2,7 @@ const crypto=require('node:crypto');
 const error=(status,message)=>{throw Object.assign(new Error(message),{status});};
 function prepareUpload(input, who, isAdmin, isBlogAuthor) {
  if(!who)error(401,'Sign in first.');
- if(!['help','notifications','badges','blog','reply','todo'].includes(input.kind))error(400,'Invalid upload kind.');
+ if(!['help','notifications','badges','blog','reply','todo','instructions'].includes(input.kind))error(400,'Invalid upload kind.');
  if(input.kind==='blog'){if(!isBlogAuthor)error(403,'Only blog authors can add images to posts.');}
  else if(input.kind!=='help'&&!isAdmin)error(403,'Admins only.');
  if(typeof input.data!=='string'||input.data.length>12*1024*1024||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))error(400,'Invalid image data.');
@@ -21,6 +21,7 @@ function prepareUpload(input, who, isAdmin, isBlogAuthor) {
  // Images in replies to submitters (Ames 2026-10-20): admins only, in their
  // own folder, deleted after 7 days by scripts/cleanup-screenshots.mjs.
  // To do board images (Ames 2026-10-21): admins only, kept.
+ // Pictures in in-game instructions (Ames 2026-11-06, Add image): admins only, kept.
  const prefix=input.kind==='help'?'help-screenshots':input.kind==='reply'?'reply-images':input.kind==='todo'?'todo-images':input.kind;
  return {bytes,contentType:detected[0],path:`${prefix}/${owner}/${crypto.randomUUID()}.${detected[1]}`};
 }

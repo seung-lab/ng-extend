@@ -27,7 +27,7 @@ const ISSUES = [
   { id: 'i3', category: 'Beta access', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-26T14:00:00Z',
     message: 'Vic Visitor asks to join the Pyr beta, from connectome.quest.\nEmail they gave: vic@example.org. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.\nThey agreed to the community principles.' },
   { id: 'i2', category: 'Beta access', user_name: 'Gus Game', title: 'Beta access request from Gus Game', url: null, created_at: '2026-10-25T10:00:00Z',
-    message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.\nEyeWire username: gus_ew\nEyeWire rank: Scythe' },
+    message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.\nEyeWire username: gus_ew\nEyeWire rank: Scythe\nHow they found us: A friend in the lab' },
   { id: 'i1', category: 'Beta access', user_name: 'Tess Tester', title: 'Beta access request from Tess Tester', url: null, created_at: '2026-10-24T10:00:00Z',
     message: 'Tess Tester asks to join the Pyr beta.\nEmail: tess@example.org. To let them in, add this one under Admin Hub, Pilot testers.' },
   { id: 'i0', category: 'Beta access', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-20T10:00:00Z',
@@ -122,6 +122,7 @@ const ISSUES = [
     const rowsNow = () => page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
     const view = async (label) => { await page.click(`.nge-beta-views button:has-text("${label}")`); await page.waitForTimeout(300); };
     check('EyeWire username and rank show', /EyeWire: gus_ew, Scythe/.test(after.find(r => /Gus/.test(r)) || ''), after);
+    check('how they found us shows', /Found us: A friend in the lab/.test(after.find(r => /Gus/.test(r)) || ''), after);
     // Add to list: off the waiting page, onto On the list, kept by the server.
     await page.click('.nge-beta-req li:has-text("Gus") >> text=Add to list');
     await page.waitForTimeout(600);

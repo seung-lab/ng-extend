@@ -2248,6 +2248,10 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 </style>
 
 <style>
+/* Pictures inside a comment, reply or notes come from v-html, which scoped
+   rules never reach (Ames 2026-11-06: "resize image to fit"). */
+.nge-todo a.nge-todo-comment-pic { display: block; margin: 6px 0; max-width: 100%; }
+.nge-todo a.nge-todo-comment-pic img, .nge-todo .nge-todo-md img { display: block; max-width: min(100%, 520px); max-height: 360px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); }
 /* Teleported to the body, so not scoped. */
 .nge-todo-party { position: fixed; z-index: 10070; width: 0; height: 0; pointer-events: none; }
 .nge-todo-party-bit { position: absolute; left: -4px; top: -7px; width: 8px; height: 14px; border-radius: 2px;

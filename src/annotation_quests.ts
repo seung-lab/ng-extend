@@ -15,6 +15,7 @@ import { functionUrl } from './functions_base';
 import { supabase } from './supabase';
 import { makeLayer } from 'neuroglancer/layer';
 import { parseRGBColorSpecification } from 'neuroglancer/util/color';
+import imgCiliaAnnotated from './images/cilia-annotated.jpg';
 
 export const QUEST_KEY = 'retina_cilia';
 export const QUEST_DATASET = 'stroeh_mouse_retina';
@@ -25,6 +26,12 @@ export const QUEST_LEAD = 'We\'re on the hunt for primary cilia, important cellu
 export const QUEST_GUIDE_URL = 'https://unitc-my.sharepoint.com/:p:/g/personal/ojxjl01_cloud_uni-tuebingen_de/IQDBsH6sbIjZRY5Gc3Flt5iaAUvXSDf4QLsyamGQ72f8rOo';
 /** The training video, on YouTube, starting where the cilia part begins
  *  (Ames 2026-10-13). Left empty, the instructions do not mention a video. */
+/** The picture on the left of the Instructions box (Ames 2026-11-06: "an
+ *  image on left that we can make/provide"): an annotated cilium on a real
+ *  cell, its centerline and the two centrioles placed, Ames's screenshot of
+ *  2026-11-06. Set to '' and the box shows the words across its width. */
+export const QUEST_INSTRUCTIONS_IMAGE: string = imgCiliaAnnotated;
+export const QUEST_INSTRUCTIONS_IMAGE_ALT = 'An annotated cilium: its basal body, daughter centriole and centerline marked in the quest\'s three layers';
 export const QUEST_VIDEO_URL = 'https://www.youtube.com/watch?v=-l2-R-9vX6o&t=1525s';
 /** The sheet says "ON SAC" and "OFF SAC"; players read "Starburst" (Ames 2026-10-13). */
 export const cellTypeForPlayers = (t: string) => String(t || '').replace(/\bSACs?\b/g, 'Starburst');
