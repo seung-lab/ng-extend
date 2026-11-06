@@ -141,3 +141,54 @@ test('a second round shows the player their last update',()=>{
   assert.match(body,/\*\*Your last update\*\*/);
   assert.match(body,/> Fixed it/);
 });
+
+test('get gives the Start Link and soma for Jump to cell',async()=>{
+ const r=row({name:'Nseraf',status:'Review Sent'});r[1]='24231, 54615, 1538';r[9]='https://spelunker.example/#!start';
+ const sheet=fakeSheet([header,r]);
+ const got=await review.get({segmentId:'720575940572159335'},{api:sheet.api,me:{display_name:'Nseraf'}});
+ assert.equal(got.startLink,'https://spelunker.example/#!start');
+ assert.equal(got.soma,'24231, 54615, 1538');
+});
+test('the morning note: one to each reviewer, only when something waits',async()=>{
+ const rows=[header,row({status:'Reviewed',index:'A1',seg:'1',name:'Nseraf'}),row({status:'New Player',index:'A2',seg:'2',name:'Newbie'}),
+  row({status:'Reviewed',index:'A3',seg:'3',name:'Annkri'}),row({status:'Complete',index:'A4',seg:'4'}),row({status:'Review Sent',index:'A5',seg:'5'})];
+ const sheet=fakeSheet(rows);
+ const {sb,notes}=fakeDb([]);
+ const out=await review.digest({api:sheet.api,sb});
+ assert.deepEqual([out.answered,out.newcomers,out.sent],[2,1,2]);
+ assert.deepEqual(notes.map(n=>n.target_id),review.REVIEWERS.map(r=>r.id));
+ assert.equal(notes[0].title,'📝 Cilia Quest reviews waiting: 2 updates, 1 new player quest');
+ assert.match(notes[0].body,/\*\*2 players have sent an update\*\*/);
+ assert.match(notes[0].body,/• \*\*A3\*\* from Annkri/);
+ assert.match(notes[0].body,/\*\*1 quest from new players\*\*/);
+ assert.match(notes[0].body,/\[Open the quest sheet\]\(https:\/\/docs\.google\.com\/spreadsheets\/d\/1CXRPE4rmH1SRQ3nqdyp9ULsMdQygJ-Ldjn3jN_jcqRU\/edit#gid=0\)/);
+ assert.ok(!/[–—]/.test(notes[0].title+notes[0].body),'no en or em dashes');
+ assert.equal(sheet.writes.length,0,'the note changes nothing in the sheet');
+ // A quiet morning sends nothing.
+ const quiet=fakeSheet([header,row({status:'Complete'})]);
+ const db2=fakeDb([]);
+ assert.equal((await review.digest({api:quiet.api,sb:db2.sb})).sent,0);
+ assert.equal(db2.notes.length,0);
+ // One update alone reads in the singular.
+ assert.equal(review.digestNotice([{index:'A1',annotator:'X'}],[],'https://x').title,'📝 Cilia Quest reviews waiting: 1 update');
+});
+test('the row reminder: Ames once, when worked rows near what Pyr reads',async()=>{
+ const blank=()=>{const r=row();r[14]='';return r;};
+ const few=fakeSheet([header,row(),blank()]);
+ const db1=fakeDb([]);
+ assert.deepEqual(await review.rowsReminder({api:few.api,sb:db1.sb}),{last:2,sent:false});
+ assert.equal(db1.notes.length,0);
+ const many=[header];for(let i=1;i<review.WARN_ROW+5;i++) many.push(i<review.WARN_ROW?row():blank());
+ const sheet=fakeSheet(many);
+ const {sb,notes}=fakeDb([]);
+ const out=await review.rowsReminder({api:sheet.api,sb});
+ assert.deepEqual(out,{last:review.WARN_ROW,sent:true});
+ assert.equal(notes.length,1);
+ assert.match(notes[0].body,/row \*\*1800\*\*/);
+ assert.ok(!/[–—]/.test(notes[0].title+notes[0].body),'no en or em dashes');
+ assert.equal((await review.rowsReminder({api:sheet.api,sb})).why,'already told');
+ assert.equal(notes.length,1,'never twice');
+});
+test('the reviewers are Celia D and M Sorek (Marissa)',()=>{
+ assert.deepEqual(review.REVIEWERS.map(r=>r.name),['Celia D','M Sorek']);
+});

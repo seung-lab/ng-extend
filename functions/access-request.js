@@ -614,10 +614,16 @@ function eyewireOf(a) {
   const username = cleanEwName(a.eyewireUsername);
   const rank = cleanText(a.eyewireRank, EW_RANK_MAX, 'Your EyeWire rank');
   if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
-  return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null};
+  // How did you find us? (Ames 2026-11-06), optional plain text, one line.
+  const found = cleanText(a.foundUs, FOUND_US_MAX, 'How you found us');
+  return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null,
+    found: found ? found.replace(/\s+/g, ' ') : null};
 }
-const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : ''];
-const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '');
+const FOUND_US_MAX = 200;
+const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
+  ew.found ? `How they found us: ${ew.found}` : ''];
+const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
+  + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '');
 /** A new request goes on the triage board now, not at the next (often late)
  *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
 async function wakeBoard(io) {

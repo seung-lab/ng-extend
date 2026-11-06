@@ -47,7 +47,18 @@ const QUEST_COLUMNS = Object.freeze({
   index:['index'], soma:['somacoords'], cellClass:['cellclass'], cellType:['celltype'], startLink:['startlink'],
   status:['ciliumstatus'], splitMerged:['ciliumsplitormerged'], link:['annotationsharelink'],
   name:['annotatorname'], date:['datemmddyyyy','date'], notes:['annotatornotes'],
+  // The reviewers' Review status (functions/quest-review.js). Read for the
+  // hold below and written once, "New Player", on a new player's submit.
+  reviewStatus:['reviewstatus'],
 });
+/** Review statuses that hold a quest out of the player's counts (Celia
+ *  2026-11-06: "hold quest count for any uncompleted cell review until the
+ *  player completes it"): the reviewer sent it back and the player has not
+ *  sent their update yet. Once they do ("Reviewed") it counts again. */
+const REVIEW_HOLDS = ['Send Review','Review Sent'];
+/** A player's first quests are marked for review (Celia 2026-11-06). */
+const NEW_PLAYER_STATUS = 'New Player';
+const NEW_PLAYER_QUESTS = 10;
 const QUEST_ACTIONS = ['quest_list','quest_claim','quest_release','quest_submit'];
 /** Header patterns for the column a row is matched on. */
 /** Status values that mean "still being worked on": completing the cell
@@ -293,9 +304,20 @@ function questRows(grid) {
       startLink:/^https:\/\/[^\s"'<>]+$/i.test(at(row,'startLink')) ? at(row,'startLink') : '',
       status:at(row,'status'), splitMerged:at(row,'splitMerged'), link:at(row,'link'),
       annotator:at(row,'name'), date:at(row,'date'), notes:at(row,'notes').slice(0,1000),
+      // Only whether a review is waiting on the player; the reviewers' own
+      // columns (their notes, names, links) never leave the sheet.
+      held:REVIEW_HOLDS.includes(at(row,'reviewStatus')),
     });
   }
   return rows;
+}
+/** Whether this submit is one of the player's first NEW_PLAYER_QUESTS:
+ *  fewer than that many other rows already carry their name and a status. */
+function isNewPlayerSubmit(rows, me, segmentId) {
+  const mine=[...new Set([me.sheet_name,me.display_name,me.username].map(nameKey).filter(Boolean))];
+  if(!mine.length) return false;
+  const before=rows.filter(r=>r.segmentId!==String(segmentId) && r.status && mine.includes(nameKey(r.annotator))).length;
+  return before<NEW_PLAYER_QUESTS;
 }
 /** A claim is refused once the player holds the quest's limit of cells that
  *  are claimed and not completed. `rows` is the whole tab (questRows). */
@@ -317,7 +339,7 @@ function questClaimRoom(rows, me, quest) {
  *            theirs) the status, split or merged, share link, date and notes
  *            are written, and written again on a resubmit.
  */
-function planQuestUpdate(grid, title, quest, input, me, today) {
+function planQuestUpdate(grid, title, quest, input, me, today, opts = {}) {
   const {headerRow,cols}=questHeader(grid);
   const segmentId=String(input.segmentId);
   const matches=[];
@@ -357,8 +379,13 @@ function planQuestUpdate(grid, title, quest, input, me, today) {
     put('link',link);
     if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(today))) put('date',today,true); else put('date',String(today));
     if(notes || existing('notes')) put('notes',notes);
+    // One of the player's first quests (opts.newPlayer, counted by the
+    // caller from the whole tab): flagged for the reviewers, only into an
+    // empty Review status, so a review already under way is never touched.
+    if(opts.newPlayer && cols.reviewStatus>=0 && !existing('reviewStatus')) put('reviewStatus',NEW_PLAYER_STATUS);
   }
   return {valueInputOption:'RAW',data,userEnteredData};
 }
 module.exports={SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS,sourceFor,sheetValues,sheetSpelling,nameKey,planSheetUpdate,pointKey,
-  QUESTS,QUEST_COLUMNS,questFor,questHeader,questRows,planQuestUpdate,questClaimRoom};
+  QUESTS,QUEST_COLUMNS,questFor,questHeader,questRows,planQuestUpdate,questClaimRoom,
+  REVIEW_HOLDS,NEW_PLAYER_STATUS,NEW_PLAYER_QUESTS,isNewPlayerSubmit};

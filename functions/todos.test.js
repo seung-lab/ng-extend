@@ -157,6 +157,18 @@ test('the maker follows; a follower hears of changes, never of their own', async
   assert.deepEqual(list.followers[card.id], [AMES.id]);
 });
 
+test('opening a card marks it seen, for me only, and the list says when', async () => {
+  const db = memDb(), m = {};
+  const seen = { get: async (me) => ({ ...(m[me] || {}) }), mark: async (me, id, at) => { m[me] = { ...(m[me] || {}), [id]: at }; } };
+  const base = { db, byName: 'Ames', tag: async () => {}, seen };
+  const { card } = await todoAction('todo.save', { fields: { title: 'Look' } }, { ...base, me: { id: AMES.id } });
+  const r = await todoAction('todo.seen', { id: card.id }, { ...base, me: { id: AMES.id } });
+  assert.equal(m[AMES.id][card.id], r.at);
+  assert.equal((await todoAction('todo.list', {}, { ...base, me: { id: AMES.id } })).seen[card.id], r.at);
+  assert.deepEqual((await todoAction('todo.list', {}, { ...base, me: { id: CELIA.id } })).seen, {});
+  await assert.rejects(todoAction('todo.seen', { id: 'nope' }, { ...base, me: { id: AMES.id } }));
+});
+
 test('a nickname tags too: @Marissa reaches M Sorek', () => {
   const { tagIdsIn } = require('./todo-connector');
   const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };

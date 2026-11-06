@@ -2147,7 +2147,7 @@ exports.ewSecureWrite = onRequest(
             const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
             try {
               out = await todoAction(action, args, { db: restDb(sb), me, byName, tag,
-                follows: todoFollowStore, helpers: todoHelperStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
+                follows: todoFollowStore, helpers: todoHelperStore, seen: todoSeenStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
             } catch (e) {
               // Until the SQL is run the table is missing: say so plainly.
               if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
@@ -2294,7 +2294,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-30-grant-lines-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-06-found-us-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2368,6 +2368,12 @@ const todoHelperStore = {
   },
   get: async (cardId) => { const d = await db.collection("todo_helpers").doc(String(cardId)).get(); return d.exists && Array.isArray(d.data().ids) ? d.data().ids : []; },
   set: async (cardId, ids) => { await db.collection("todo_helpers").doc(String(cardId)).set({ ids, at: new Date().toISOString() }); },
+};
+// When each admin last opened each To do card (todos.js todo.seen), one
+// document per person, so a tag clears from My Tasks once its card is opened.
+const todoSeenStore = {
+  get: async (meId) => { const d = await db.collection("todo_seen").doc(String(meId)).get(); return d.exists && d.data().cards ? d.data().cards : {}; },
+  mark: async (meId, cardId, at) => { await db.collection("todo_seen").doc(String(meId)).set({ cards: { [String(cardId)]: at } }, { merge: true }); },
 };
 // Who has had the "You're in" email (access-request.js welcomeEmail), so a
 // second Let in never sends it twice. One document per address.
@@ -2713,6 +2719,18 @@ exports.ewCommunityData = onRequest(
         if (to < from || to-from > 499 || to > 100000) throw ewErr(400,"Invalid range");
         headers.Range = input.range;
       }
+      // Admin edits of in-game windows: the text before, for Ames's note (functions/edit-notify.js).
+      let editsBefore = null;
+      if (plan.table === "site_texts" && ["POST","PATCH","DELETE"].includes(plan.method)) {
+        try {
+          const keys = require("./edit-notify").editedKeys(plan.method, plan.query, plan.body).slice(0, 5);
+          editsBefore = {};
+          for (const k of keys) {
+            const rows = await sb("site_texts?key=eq."+encodeURIComponent(k)+"&select=body&limit=1");
+            editsBefore[k] = rows.length ? String(rows[0].body ?? "") : null;
+          }
+        } catch (e) { editsBefore = null; console.warn("[edit-notify] before", e.message); }
+      }
       const upstream = await fetch(EW_SB+plan.table+"?"+plan.query.toString(), {method:plan.method,headers,
         body:plan.body === undefined ? undefined : JSON.stringify(plan.body), redirect:"error", signal:AbortSignal.timeout(15000)});
       let body = await upstream.text();
@@ -2721,6 +2739,25 @@ exports.ewCommunityData = onRequest(
       if (!upstream.ok) {
         let code; try { code = JSON.parse(body).code; } catch {}
         body = JSON.stringify({code, message:upstream.status===406 ? "Requested row was not found or was not unique." : "The requested operation could not be completed."});
+      }
+      // The edit went through: tell Ames, before and after (Ames 2026-11-06).
+      if (upstream.ok && editsBefore) {
+        try {
+          const {planEditNote, OWNER_EMAILS} = require("./edit-notify");
+          const rowsAfter = plan.method === "DELETE" ? [] : (Array.isArray(plan.body) ? plan.body : [plan.body]);
+          const notes = Object.keys(editsBefore).map((k) => {
+            const row = rowsAfter.find((r) => r && r.key === k);
+            const after = plan.method === "DELETE" ? null : row ? String(row.body ?? "") : (plan.body && typeof plan.body.body === "string" ? plan.body.body : null);
+            return planEditNote({ key: k, before: editsBefore[k], after, editor: { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" } });
+          }).filter(Boolean);
+          if (notes.length) {
+            const owners = await sb("users?select=id&middleauth_email=in.("+encodeURIComponent(OWNER_EMAILS.map((e) => `"${e}"`).join(","))+")");
+            const out = [];
+            for (const n of notes) for (const o of owners) out.push({ title: n.title, body: n.body, target_type: "user", target_id: o.id,
+              ...(n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+            if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
+          }
+        } catch (e) { console.warn("[edit-notify] note", e.message); }
       }
       // A new report exists now: have Claude write its suggestion straight away.
       // A new report no longer starts a suggestion by itself (2026-10-10):
@@ -2809,7 +2846,9 @@ async function mirrorQuestRows(sb,quest,rows) {
   questMirrorAt[quest]=Date.now();
   try {
     await sb("rpc/ew_quest_mirror",{method:"POST",body:JSON.stringify({p_quest:quest,
-      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.status,date:r.date}))})});
+      // A quest held for review (sheet-policy REVIEW_HOLDS) is copied with no
+      // status, so the weekly count leaves it out until the player sends their update.
+      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.held?"":r.status,date:r.date}))})});
   } catch(e) { console.warn("[ewSheetSync] quest copy not saved",String(e&&e.message||e).slice(0,200)); }
 }
 exports.ewSheetSync = onRequest(
@@ -2997,7 +3036,9 @@ exports.ewMentor = onRequest(
 //            {dryRun:true} to see what would be sent).
 //   get      the player: where their review of a cell stands.
 //   reply    the player: their updated link and notes, to the sheet.
-//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck --project eyewire-ii-e4d52
+//   digest   admins: the reviewers' morning note ({dryRun:true} to see it
+//            unsent, {toMe:true} to send it only to yourself).
+//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck,functions:ewQuestReviewDigest --project eyewire-ii-e4d52
 const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
 const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
 exports.ewQuestReview = onRequest(
@@ -3015,7 +3056,7 @@ exports.ewQuestReview = onRequest(
         const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
         return res.json({ ok: true, waiting: out.checked });
       }
-      if (!["check", "get", "reply"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      if (!["check", "get", "reply", "digest"].includes(action)) throw ewErr(400, `unknown action ${action}`);
       const who = await ewVerify(token);
       if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
       const sb = ewSb(ewServiceKey.value().trim());
@@ -3026,6 +3067,11 @@ exports.ewQuestReview = onRequest(
         if (!isAdmin) throw ewErr(403, "Admins only");
         const out = await review.check({ api, sb, only: args.segmentId ? String(args.segmentId) : "", dryRun: !!args.dryRun });
         console.info("[ewQuestReview] check by", who.email, JSON.stringify(out.results.map(r => ({ row: r.row, sent: r.sent, why: r.why }))));
+        return res.json({ ok: true, ...out });
+      }
+      if (action === "digest") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await review.digest({ api, sb, dryRun: !!args.dryRun, ...(args.toMe ? { to: [{ id: me.id, name: me.display_name || "you" }] } : {}) });
         return res.json({ ok: true, ...out });
       }
       return res.json({ ok: true, data: await review[action](args, { api, me }) });
@@ -3045,6 +3091,21 @@ exports.ewQuestReviewCheck = onSchedule(
   async () => {
     const out = await require("./quest-review").check({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
     console.info("[ewQuestReviewCheck]", JSON.stringify({ checked: out.checked, results: out.results.map(r => ({ row: r.row, index: r.index, sent: r.sent, why: r.why })) }));
+  }
+);
+// The reviewers' morning note (Celia 2026-11-06): once a day at 8 Eastern,
+// how many players have sent their update, and how many new players' quests
+// wait, to Celia and Marissa (quest-review.js REVIEWERS). Nothing on a
+// morning with nothing waiting.
+exports.ewQuestReviewDigest = onSchedule(
+  { schedule: "0 8 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
+  async () => {
+    const qr = require("./quest-review"), io = { api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) };
+    const out = await qr.digest(io);
+    console.info("[ewQuestReviewDigest]", JSON.stringify(out));
+    // And Ames, once, when the sheet's worked rows near what Pyr reads.
+    try { console.info("[ewQuestReviewDigest] rows", JSON.stringify(await qr.rowsReminder(io))); }
+    catch (e) { console.warn("[ewQuestReviewDigest] rows check failed", String(e && e.message || e).slice(0, 200)); }
   }
 );
 

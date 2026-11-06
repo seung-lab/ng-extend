@@ -19,6 +19,7 @@ import { mintShortStateLink } from '../util/state_link';
 import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
 import EditableText from './EditableText.vue';
+import QuestInstructions from './QuestInstructions.vue';
 import { sendWaitingReviews } from '../quest_review';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -77,7 +78,10 @@ const statusHint = computed(() => QUEST_STATUS_GUIDE[form.value.status] || '');
 const atLimit = computed(() => mine.value.length >= QUEST_CLAIM_LIMIT);
 /** Cells this player has completed (Ames 2026-10-13: "a count of how many I
  *  have completed"), from the sheet rows that carry their name and a status. */
-const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r)).length);
+// A cell a reviewer sent back counts again once the player sends their
+// update (Celia 2026-11-06), as on the leaderboard and profile.
+const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && !r.held).length);
+const mineHeld = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && r.held).length);
 const available = computed(() => rows.value.filter(r => !r.annotator && !r.status));
 const taken = computed(() => rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)));
 const done = computed(() => rows.value.filter(isDone).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
@@ -115,7 +119,8 @@ const QUEST_STEPS: string[] = [
   'You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.',
 ];
 function onQuestTextAction(name: string) { if (name === 'examples') void openQuestExamples(); }
-/** The Instructions box with the lab's steps (Ames 2026-10-13). */
+/** The Instructions box with the lab's steps (Ames 2026-10-13), in a box of
+ *  its own with room for a picture since 2026-11-06 (QuestInstructions). */
 const showHelp = ref(false);
 /** The first time a player opens the tab, the Instructions button is lit
  *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
@@ -365,16 +370,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         </button>
       </div>
       <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
-      <div v-if="showHelp" class="nge-aq-help">
-        <div class="nge-aq-help-head">
-          <span>How to do a Cilia Quest</span>
-          <button class="nge-aq-help-close" @click="showHelp = false" title="Close">×</button>
-        </div>
-        <EditableText text-key="quest.retina_cilia.steps" :original="QUEST_STEPS" list-class="nge-aq-help-steps" @action="onQuestTextAction" />
-      </div>
+      <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
+        <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Open the review in your notifications and send your update, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
         <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
         <button v-if="backend.showAdminUi" class="nge-aq-btn" :disabled="sendingReviews" @click="sendReviews"
                 title="Admins: send every review marked Send Review in the sheet now. Pyr also does this at 8 am and 4 pm Eastern.">{{ sendingReviews ? 'Sending…' : 'Send waiting reviews now' }}</button>
@@ -494,6 +494,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <div class="nge-aq-row-info">
                   <div class="nge-aq-row-name">{{ label(r) }}</div>
                   <div class="nge-aq-row-meta">{{ r.status }}{{ r.annotator ? ', ' + (isMine(r) ? 'you' : r.annotator) : '' }}{{ r.date ? ', ' + r.date : '' }}</div>
+                  <div v-if="r.held && isMine(r)" class="nge-aq-row-held">A review is waiting for your update. Open it from your notifications.</div>
                 </div>
               </div>
               <div class="nge-aq-row-actions">
@@ -578,29 +579,6 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   100% { box-shadow: 0 0 10px rgba(126, 202, 255, 0.4); transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) { .nge-aq-info--nudge { animation: none; box-shadow: 0 0 0 2px rgba(126, 202, 255, 0.5); } }
-.nge-aq-help {
-  margin: 4px 0 2px;
-  padding: 10px 12px 8px;
-  border-radius: 10px;
-  background: rgba(66, 213, 236, 0.06);
-  border: 1px solid rgba(66, 213, 236, 0.28);
-  animation: nge-aq-help-in 0.2s ease-out both;
-}
-@keyframes nge-aq-help-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .nge-aq-help { animation: none; } }
-.nge-aq-help-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-  color: #7ee8ff; margin-bottom: 6px;
-}
-.nge-aq-help-close { background: none; border: none; color: #8aa; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
-.nge-aq-help-close:hover { color: #fff; }
-:deep(.nge-aq-help-steps) { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.5; color: #cfdcef; }
-:deep(.nge-aq-help-steps li) { margin: 4px 0; padding-left: 2px; }
-:deep(.nge-aq-help-steps li::marker) { color: #42d5ec; font-weight: 700; }
-:deep(.nge-aq-help-steps b) { color: #fff; font-weight: 600; }
-:deep(.nge-aq-help-steps a) { color: #7ecaff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-:deep(.nge-aq-help-steps a:hover) { color: #fff; }
 .nge-aq-section {
   padding: 10px 12px 4px;
   font-family: 'Orbitron', 'Inter', sans-serif;
@@ -641,6 +619,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-pip--done { background: #4af; }
 .nge-aq-row-info { min-width: 0; flex: 1; }
 .nge-aq-row-name { font-size: 15px; font-weight: 600; color: #e4e8f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nge-aq-row-held { font-size: 12px; color: #ffd27a; margin-top: 2px; }
+.nge-aq-tally--held b { color: #ffd27a; }
 .nge-aq-row-meta { font-size: 13px; color: #93a0b6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; align-items: center; }
 .nge-aq-saved--slim { align-items: center; margin-right: 6px; font-size: 12px; max-width: 160px; white-space: nowrap; }

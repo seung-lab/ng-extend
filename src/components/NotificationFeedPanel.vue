@@ -728,22 +728,32 @@ async function qrSend() {
     qrSending.value = false;
   }
 }
-/** Go to the cell. On another dataset, the Quests tab (it offers the switch). */
+/** Go to the cell, the way the Quests tab does: its Start Link, else its
+ *  soma. On another dataset, the Quests tab (it offers the switch).
+ *  Everything is read BEFORE the notification closes: closing it empties
+ *  qrSegment, qrState and qrReviewLink (Celia 2026-11-06: the buttons did
+ *  nothing; the reviewer's link was read after it was gone, and a jump to a
+ *  bare segment ID never moved the view). */
 function qrJump() {
   const seg = qrSegment.value;
   if (!seg) return;
+  const start = qrState.value?.startLink || '';
+  const soma = (qrState.value?.soma || '').match(/-?\d+(?:\.\d+)?/g)?.map(Number);
   let here = false;
   try { here = canonicalDataset(currentDatasetTag()) === QUEST_DATASET; } catch { /* no viewer */ }
   closeDetail();
   emit('hide');
-  if (here) useCellHistoryStore().jumpToCell(seg);
-  else document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+  if (!here) { document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } })); return; }
+  if (start && openStartLink(start)) return;
+  useCellHistoryStore().jumpToCell(seg, soma?.length === 3 ? soma as [number, number, number] : undefined);
 }
 function qrOpenReviewLink() {
-  if (!qrReviewLink.value) return;
+  const link = qrReviewLink.value;
+  if (!link) return;
   closeDetail();
   emit('hide');
-  openStartLink(qrReviewLink.value);
+  // A link this game cannot load in place opens in a new tab instead.
+  if (!openStartLink(link)) window.open(link, '_blank', 'noopener');
 }
 function qrOpenQuests() {
   closeDetail();

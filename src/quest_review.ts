@@ -16,7 +16,9 @@ export const isQuestReview = (n: any) => !!n && typeof n.title === 'string' && n
 /** The reviewer's link in the notification ("**Celia's link:** [open it](...)"). */
 export const reviewLinkIn = (body: string | null | undefined) => (String(body || '').match(/link:\*\* \[open it\]\((https:\/\/[^\s)]+)\)/) || [])[1] || '';
 
-export interface ReviewState { status: string; accepted: string; playerLink: string; playerNotes: string; reviewer: string; index: string }
+export interface ReviewState { status: string; accepted: string; playerLink: string; playerNotes: string; reviewer: string; index: string;
+  /** The cell's Start Link and soma, for Jump to cell. */
+  startLink?: string; soma?: string }
 
 const call = async <T>(action: string, body: Record<string, unknown>): Promise<T> => (await post({ ...body, action })).data as T;
 async function post(body: Record<string, unknown>): Promise<any> {

@@ -52,6 +52,8 @@ const cards = ref<Card[]>([]);
 const people = ref<Person[]>([]);
 /** Who follows each card (functions/todos.js todo.follow). */
 const followers = ref<Record<string, string[]>>({});
+/** When I last opened each card, so a tag I have seen leaves My Tasks. */
+const seenAt = ref<Record<string, string>>({});
 /** A card's collaborators, beside its owner (functions/todos.js todo.helpers). */
 const helpers = ref<Record<string, string[]>>({});
 const helpersOf = (c: Card) => (helpers.value[c.id] || []).filter(id => id !== c.owner_id);
@@ -90,6 +92,7 @@ async function load(quiet = false) {
     cards.value = data.cards || [];
     people.value = data.people || [];
     followers.value = data.followers || {};
+    seenAt.value = data.seen || {};
     helpers.value = data.helpers || {};
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
@@ -652,6 +655,12 @@ const editTitle = ref('');
 const editNotes = ref('');
 const newItem = ref('');
 const comment = ref('');
+/** Opening a card counts as seeing its tags of me, here and on my other devices. */
+function markSeen(c: Card) {
+  const at = new Date().toISOString();
+  seenAt.value = { ...seenAt.value, [c.id]: at };
+  secureWrite<any>('todo.seen', { id: c.id }).then(r => { if (r?.at) seenAt.value = { ...seenAt.value, [c.id]: r.at }; }).catch(() => { /* seen here, at least */ });
+}
 /** Open a card and go straight to a part of it. */
 const commentsHead = ref<HTMLElement | null>(null);
 function toComments() {
@@ -668,6 +677,7 @@ function openAt(c: Card, part: 'comments') {
 const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼').replace(/\s+/g, ' ').trim().slice(0, 140);
 function openUp(c: Card) {
   connectOpen.value = false;
+  markSeen(c);
   openId.value = c.id;
   editTitle.value = c.title;
   editNotes.value = c.notes;
@@ -751,7 +761,7 @@ const myTasks = computed(() => {
     let tagAt = '', tagBy = '';
     for (const cm of c.comments) if (cm.by !== myName && tagsIn(cm.text).includes(me) && cm.at > tagAt) { tagAt = cm.at; tagBy = cm.by; }
     if (!tagAt) continue;
-    const answered = c.comments.some(cm => cm.by === myName && cm.at > tagAt);
+    const answered = c.comments.some(cm => cm.by === myName && cm.at > tagAt) || (seenAt.value[c.id] || '') >= tagAt;
     if (!answered) tagged.push({ key: 'tag:' + c.id, card: c, text: `${tagBy} tagged you`, due: null, item: -1, at: tagAt });
   }
   if (tagged.length) groups.unshift({ head: 'Tagged, waiting on you', rows: tagged.sort((a, b) => (b.at || '').localeCompare(a.at || '')), late: true });
@@ -2238,6 +2248,10 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 </style>
 
 <style>
+/* Pictures inside a comment, reply or notes come from v-html, which scoped
+   rules never reach (Ames 2026-11-06: "resize image to fit"). */
+.nge-todo a.nge-todo-comment-pic { display: block; margin: 6px 0; max-width: 100%; }
+.nge-todo a.nge-todo-comment-pic img, .nge-todo .nge-todo-md img { display: block; max-width: min(100%, 520px); max-height: 360px; width: auto; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); }
 /* Teleported to the body, so not scoped. */
 .nge-todo-party { position: fixed; z-index: 10070; width: 0; height: 0; pointer-events: none; }
 .nge-todo-party-bit { position: absolute; left: -4px; top: -7px; width: 8px; height: 14px; border-radius: 2px;
