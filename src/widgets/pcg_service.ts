@@ -347,6 +347,13 @@ export function getSelectedSupervoxelId(): string | null {
 
 // ─── Root lineage endpoints ─────────────────────────────────────────────────
 
+/** The edit history lookup answering 500 is left alone for a while (Nseraf,
+ *  report 404: it failed every few seconds, two at a time, for minutes).
+ *  Callers already treat a failed lookup as "can't say". */
+const LINEAGE_BACKOFF_MS = 60_000;
+let lineageDownUntil = 0;
+const lineageFailed = (status: number) => { if (status >= 500) lineageDownUntil = Date.now() + LINEAGE_BACKOFF_MS; };
+
 /**
  * Every ID in `root`'s edit history: itself and each past root that led to
  * it. Null when the lookup failed. Same endpoint and same care with 18 digit
@@ -355,12 +362,12 @@ export function getSelectedSupervoxelId(): string | null {
  */
 export async function lineageIds(root: string): Promise<string[] | null> {
   const pcg = getPcgInfo();
-  if (!pcg || !/^\d+$/.test(root)) return null;
+  if (!pcg || !/^\d+$/.test(root) || Date.now() < lineageDownUntil) return null;
   try {
     const res = await fetch(
       `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
       { headers: authHeaders(pcg.server) });
-    if (!res.ok) { console.warn(`[pcg] lineage_graph ${res.status}`); return null; }
+    if (!res.ok) { lineageFailed(res.status); console.warn(`[pcg] lineage_graph ${res.status}`); return null; }
     const seen = new Set<string>([root]);
     for (const m of (await res.text()).matchAll(/"(?:source|target|id)"\s*:\s*"?(\d+)/g)) seen.add(m[1]);
     return [...seen];
@@ -388,12 +395,12 @@ export async function ancestorAmong(root: string, candidates: string[]): Promise
   if (!wanted.length) return null;
   if (wanted.includes(root)) return root;
   const pcg = getPcgInfo();
-  if (!pcg) return undefined;
+  if (!pcg || Date.now() < lineageDownUntil) return undefined;
   try {
     const res = await fetch(
       `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
       { headers: authHeaders(pcg.server) });
-    if (!res.ok) { console.warn(`[pcg] lineage_graph ${res.status}`); return undefined; }
+    if (!res.ok) { lineageFailed(res.status); console.warn(`[pcg] lineage_graph ${res.status}`); return undefined; }
     const body = await res.text();
     const seen = new Set<string>();
     for (const m of body.matchAll(/"(?:source|target|id)"\s*:\s*"?(\d+)/g)) seen.add(m[1]);
@@ -420,12 +427,12 @@ export async function ancestorAmong(root: string, candidates: string[]): Promise
 export async function latestDescendants(root: string): Promise<string[] | null> {
   if (!/^\d+$/.test(root)) return null;
   const pcg = getPcgInfo();
-  if (!pcg) return null;
+  if (!pcg || Date.now() < lineageDownUntil) return null;
   try {
     const res = await fetch(
       `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
       { headers: authHeaders(pcg.server) });
-    if (!res.ok) { console.warn(`[pcg] lineage_graph ${res.status}`); return null; }
+    if (!res.ok) { lineageFailed(res.status); console.warn(`[pcg] lineage_graph ${res.status}`); return null; }
     const body = await res.text();
     const next = new Map<string, string[]>();
     for (const m of body.matchAll(/"source"\s*:\s*"?(\d+)"?\s*,\s*"target"\s*:\s*"?(\d+)/g)) {

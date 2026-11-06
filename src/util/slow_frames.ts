@@ -3,8 +3,9 @@
  * freeze/lag" opening the Δ menu or the cell type list, since a day or two).
  * The console goes with every report, so a line here says how long the page
  * stood still and what was running: the click or timer that started it and
- * the script it spent the time in. Chrome and Edge only (the Long Animation
- * Frames API); elsewhere nothing happens.
+ * the script it spent the time in, in Chrome and Edge (the Long Animation
+ * Frames API). Elsewhere a timer notices the freeze and names the click or
+ * key before it (startHeartbeat).
  */
 
 /** Shorter than this is not a freeze anyone feels. */
@@ -17,7 +18,7 @@ export function startSlowFrameLog() {
   if (started) return;
   started = true;
   const PO = (window as any).PerformanceObserver;
-  if (!PO?.supportedEntryTypes?.includes('long-animation-frame')) return;
+  if (!PO?.supportedEntryTypes?.includes('long-animation-frame')) { startHeartbeat(); return; }
   let minute = 0, count = 0;
   try {
     new PO((list: any) => {
@@ -45,4 +46,38 @@ export function startSlowFrameLog() {
       }
     }).observe({ type: 'long-animation-frame', buffered: false });
   } catch { /* not supported after all */ }
+}
+
+/** What the player last clicked or pressed, in a few words, so a freeze line
+ *  says what came before it. */
+function describe(el: EventTarget | null): string {
+  const e = el as HTMLElement | null;
+  if (!e || !e.tagName) return '?';
+  const text = (e.getAttribute?.('title') || e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30);
+  const cls = typeof e.className === 'string' ? e.className.split(' ').filter(Boolean)[0] : '';
+  return `${e.tagName.toLowerCase()}${cls ? '.' + cls : ''}${text ? ` "${text}"` : ''}`;
+}
+
+/** Firefox and Safari have no Long Animation Frames (Nseraf plays in
+ *  Firefox, report 404: his freezes left no line). A timer that should tick
+ *  every 50 ms notices when the page stood still, without saying which
+ *  script; the line names the click or key just before it. */
+function startHeartbeat() {
+  let last = performance.now();
+  let lastInput = '', lastInputAt = 0;
+  const note = (what: string) => (e: Event) => { lastInput = `${what} ${e instanceof KeyboardEvent ? e.key : describe(e.target)}`; lastInputAt = performance.now(); };
+  window.addEventListener('pointerdown', note('click'), true);
+  window.addEventListener('keydown', note('key'), true);
+  let minute = 0, count = 0;
+  setInterval(() => {
+    const now = performance.now();
+    const gap = now - last - 50;
+    last = now;
+    if (gap < SLOW_MS || document.hidden) return;
+    const m = Math.floor(Date.now() / 60_000);
+    if (m !== minute) { minute = m; count = 0; }
+    if (++count > PER_MINUTE) return;
+    const after = lastInputAt && now - lastInputAt < gap + 2000 ? `, after ${lastInput}` : '';
+    console.warn(`[slow] page froze about ${Math.round(gap)}ms${after} (no script names in this browser)`);
+  }, 50);
 }
