@@ -730,11 +730,13 @@ function playBatchChime() {
           <!-- Mentor program: sent for a second look, or completed with the mentor. -->
           <div v-if="cellCelebration.mentor" class="nge-cell-text">
             <div class="nge-cell-mentor-kicker">Mentor program{{ cellCelebration.mentor.practice ? ', practice' : '' }}</div>
-            <div class="nge-cell-congrats nge-cell-congrats--mentor">{{ cellCelebration.mentor.kind === 'sent' ? 'Sent to your mentor!' : 'Cell complete!' }}</div>
+            <div class="nge-cell-congrats nge-cell-congrats--mentor">{{ cellCelebration.mentor.kind === 'sent' ? 'Sent to your mentor!' : !cellCelebration.mentor.practice && cellCelebration.mentor.done >= cellCelebration.mentor.needed ? 'Mentor program complete!' : 'Cell complete!' }}</div>
             <div class="nge-cell-thanks">{{ cellCelebration.mentor.kind === 'sent'
               ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a notification when it is done.` : 'A mentor takes a second look. You get a notification when it is done.')
               : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
-              : `${cellCelebration.mentor.mentorName || 'Your mentor'} congratulates you on completing your ${ordinalOf(cellCelebration.mentor.done)} apprentice cell! It counts for you. For science!` }}</div>
+              : cellCelebration.mentor.done >= cellCelebration.mentor.needed
+                ? `${cellCelebration.mentor.mentorName || 'Your mentor'} congratulates you on completing all ${cellCelebration.mentor.needed} apprentice cells! You finished the mentor program, and from now on every cell counts the moment you complete it. For science!`
+                : `${cellCelebration.mentor.mentorName || 'Your mentor'} congratulates you on completing your ${ordinalOf(cellCelebration.mentor.done)} apprentice cell! It counts for you. For science!` }}</div>
             <!-- One colour per count (Ames 2026-11-06: "fix the color"): completed
                  cells gold, submitted ones still with the mentor blue, the rest empty.
                  The numbers below wear the same colours. -->
