@@ -2,11 +2,18 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-06T16:43:00Z",
+      "at": "2026-11-06T16:49:00Z",
       "title": "Calmer when the lab's server struggles",
       "digest": "minor",
       "items": [
         "When the lab's server is having trouble, Pyr asks it far less often for cell types, proofread status and cell history, so the game stays smoother until it recovers."
+      ]
+    },
+    {
+      "at": "2026-11-06T16:40:00Z",
+      "title": "Quests leaderboard loads faster",
+      "items": [
+        "The Quests tab on the leaderboard and the quest count on profiles now open right away, instead of waiting on the quest sheet."
       ]
     },
     {

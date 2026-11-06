@@ -2894,6 +2894,12 @@ exports.ewSheetSync = onRequest(
     }
     const done=await syncQuest(input,me,admin.applicationDefault());
     questMirrorAt[input.quest]=0;  // the next list copies this write
+    // A submit is what moves the Quests leaderboard, which reads only the
+    // copy (Ames 2026-11-06), so the copy takes it now, not at the next list.
+    if(input.action==='quest_submit') {
+      try { await mirrorQuestRows(sb,input.quest,await questList(input.quest,admin.applicationDefault())); }
+      catch(e) { console.warn("[ewSheetSync] quest copy after submit",String(e&&e.message||e).slice(0,200)); }
+    }
     return res.json(done);
    }
    require('./sheet-policy').sourceFor(input);
