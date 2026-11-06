@@ -4327,8 +4327,8 @@ const panelStyle = computed(() => ({
               <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}</template>
               <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
+            <p v-if="isApprentice() && !goesToMentor(cell.taskId)" class="nge-cl-mentor-note">Your {{ mentorState.apprentice?.cellsNeeded ?? 5 }} mentor cells are sent, so you can keep going. This one counts right away, so map carefully and ask in chat if you have any questions!</p>
             <div class="nge-cl-complete-actions">
-              <span v-if="isApprentice() && !goesToMentor(cell.taskId)" class="nge-cl-mentor-n" title="Your mentor answers your mentor cells when they can">Your {{ mentorState.apprentice?.cellsNeeded ?? 5 }} mentor cells are sent. This one counts right away.</span>
               <span v-if="mentorCellNumber(cell)" class="nge-cl-mentor-n" :title="`Your mentor looks at your first ${mentorState.apprentice?.cellsNeeded ?? 5} cells`">Mentor cell {{ mentorCellNumber(cell) }} of {{ mentorState.apprentice?.cellsNeeded ?? 5 }}</span>
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
@@ -5037,6 +5037,7 @@ const panelStyle = computed(() => ({
   color: #a86;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-mentor-note { margin: 4px 0 8px; font-size: 13px; line-height: 1.4; color: #9fc8ff; }
 .nge-cl-mentor-n { margin-right: auto; align-self: center; font-size: 13px; color: #9fc8ff; white-space: nowrap; }
 .nge-cl-btn--mentor { border-color: rgba(120, 180, 255, 0.35); color: #9fc8ff; white-space: nowrap; }
 .nge-cl-btn--mentor:hover { background: rgba(120, 180, 255, 0.1); }
