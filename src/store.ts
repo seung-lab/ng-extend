@@ -13,7 +13,7 @@ import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears }
 import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
-import { achievementTestTrack } from './widgets/badge_definitions';
+import { achievementTestTrack, LOYALTY_BADGES } from './widgets/badge_definitions';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -4462,13 +4462,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** A streak milestone, as a notification to yourself. The server allows
    *  only these titles, only when the saved streak has reached the number,
    *  and never the same one twice within six days. */
-  async function sendStreakMilestone(days: number) {
+  async function sendStreakMilestone(days: number, quiet = false) {
     // The chip agrees with the note (lalonso: "shows 1 when my notification
     // says 2"): a slower answer read before the streak grew can't undo it.
     streakFloor = Math.max(streakFloor, days);
     const stats = useUserStatsStore();
     if (stats.stats.currentStreak < days) stats.setStats({ currentStreak: days });
-    if (!isStreakMilestone(days) || !userId.value) return;
+    if (quiet || !isStreakMilestone(days) || !userId.value) return;
     const next = nextStreakMilestone(days);
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
     await secureWrite('notification.self', {
@@ -4731,7 +4731,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       useUserStatsStore().setStats(visitStreak);
       try { localStorage.setItem(VISIT_KEY, key); } catch { /* */ }
       // A recount of old days is a correction, not a day earned just now.
-      if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak).catch(() => {});
+      // When the same visit earns a Days Achievement, its card says it: the
+      // streak's own note stays quiet, so opening Pyr brings one thing, not
+      // two (Ames 2026-11-05: "make sure they're not bombarded with multiple
+      // achievements at opening"). Day 2 is both a 2 day streak and Day 2.
+      const daysCard = !r.days_recounted && typeof r.days_before === 'number' && typeof r.total_days === 'number'
+        && LOYALTY_BADGES.some(b => r.days_before < b.threshold && r.total_days >= b.threshold);
+      if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak, daysCard).catch(() => {});
       celebrateDays(r.days_before, r.total_days, !!r.days_recounted);
     } catch (e: any) {
       console.warn('[backend] visit not counted:', e?.message);
@@ -4921,59 +4927,57 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // ── Quests board: Cilia Quests on the Retina (Ames 2026-11-05) ────────
   /** One row per annotator on the quest sheet: quests submitted today (US
    *  Eastern day, the sheet's Date column), in the last 7 days and all time.
-   *  Counted the way the profile counts them (questCounts: cilium annotated
-   *  or no cilium), by the annotator's name. The
-   *  sheet list is the one the Cell Library reads (cached 5 minutes on the
-   *  server); the only database read is the players matching those names. */
+   *  Counted the way the profile counts them (cilium annotated or no cilium),
+   *  by the annotator's name, from the table (ew_quest_board), not the sheet. */
   const questBoard: Ref<any[]> = ref([]);
   const questBoardState: Ref<'loading' | 'ok' | 'unavailable'> = ref('loading');
   const questBoardAt: Ref<number> = ref(0);
-  /** M/D/YYYY to a day number, or null. */
-  const sheetDay = (v: string) => {
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim());
-    return m ? Date.UTC(+m[3], +m[1] - 1, +m[2]) / 86400000 : null;
-  };
+  /** Counts per annotator key to board rows, with the players behind the
+   *  names, matched like the profile does. */
+  async function questBoardRows(byKey: Map<string, { name: string; today: number; week: number; all: number }>, nameKey: (v: string) => string) {
+    const names = [...new Set([...byKey.values()].map(c => c.name))].slice(0, 300);
+    const players = new Map<string, any>();
+    if (names.length) {
+      const COLS = 'id, display_name, username, flag, current_streak';
+      const [byName, byUser] = await Promise.all([
+        supabase.from('users').select(COLS).in('display_name', names),
+        supabase.from('users').select(COLS).in('username', names),
+      ]);
+      for (const u of [...(byName.data ?? []), ...(byUser.data ?? [])] as any[]) {
+        for (const k of [nameKey(u.display_name), nameKey(u.username)]) if (k && byKey.has(k) && !players.has(k)) players.set(k, u);
+      }
+    }
+    return [...byKey.entries()].map(([key, c]) => {
+      const u = players.get(key);
+      return {
+        id: u?.id ?? `sheet:${key}`,
+        display_name: u?.display_name || c.name,
+        flag: u?.flag ?? '',
+        current_streak: u?.current_streak ?? 0,
+        quests_today: c.today,
+        quests_week: c.week,
+        quests_alltime: c.all,
+      };
+    });
+  }
+  /** Read from a table, never the sheet, like the rest of the leaderboard
+   *  (Ames 2026-11-06: "takes a long time to load"). ew_quest_board counts
+   *  the server's copy of the sheet (ew_quest_sheet_rows), which the server
+   *  updates on every quest submit and whenever the quest list is read. */
   async function loadQuestBoard() {
     try {
-      const { listQuests, nameKey, questCounts } = await import('./annotation_quests');
-      const { rows } = await listQuests();
-      const today = sheetDay(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date()))!;
+      const { nameKey } = await import('./annotation_quests');
+      const { data, error } = await supabase.rpc('ew_quest_board', { p_quest: 'retina_cilia' });
+      if (error) throw error;
       const byKey = new Map<string, { name: string; today: number; week: number; all: number }>();
-      for (const r of rows) {
-        const key = nameKey(r.annotator);
-        if (!questCounts(r.status) || !key) continue;
-        const c = byKey.get(key) ?? { name: r.annotator.trim(), today: 0, week: 0, all: 0 };
-        const d = sheetDay(r.date);
-        c.all++;
-        if (d !== null && d > today - 7 && d <= today) c.week++;
-        if (d === today) c.today++;
+      for (const r of (data ?? []) as any[]) {
+        const key = nameKey(r.name);
+        if (!key) continue;
+        const c = byKey.get(key) ?? { name: String(r.name).trim(), today: 0, week: 0, all: 0 };
+        c.today += r.today | 0; c.week += r.week | 0; c.all += r.alltime | 0;
         byKey.set(key, c);
       }
-      // The players behind the sheet's names, matched like the profile does.
-      const names = [...new Set([...byKey.values()].map(c => c.name))].slice(0, 300);
-      const players = new Map<string, any>();
-      if (names.length) {
-        const COLS = 'id, display_name, username, flag, current_streak';
-        const [byName, byUser] = await Promise.all([
-          supabase.from('users').select(COLS).in('display_name', names),
-          supabase.from('users').select(COLS).in('username', names),
-        ]);
-        for (const u of [...(byName.data ?? []), ...(byUser.data ?? [])] as any[]) {
-          for (const k of [nameKey(u.display_name), nameKey(u.username)]) if (k && byKey.has(k) && !players.has(k)) players.set(k, u);
-        }
-      }
-      questBoard.value = [...byKey.entries()].map(([key, c]) => {
-        const u = players.get(key);
-        return {
-          id: u?.id ?? `sheet:${key}`,
-          display_name: u?.display_name || c.name,
-          flag: u?.flag ?? '',
-          current_streak: u?.current_streak ?? 0,
-          quests_today: c.today,
-          quests_week: c.week,
-          quests_alltime: c.all,
-        };
-      });
+      questBoard.value = await questBoardRows(byKey, nameKey);
       questBoardState.value = 'ok';
       questBoardAt.value = Date.now();
       return;

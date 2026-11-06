@@ -40,14 +40,17 @@ LANGUAGE plpgsql IMMUTABLE AS $fn$
 DECLARE
   post TEXT := COALESCE(p_body, '');
 BEGIN
-  -- The three things only the blog page understands, put into words a
-  -- notification can show: a video becomes a link, a callout becomes a
-  -- quote, and pictures in the text and their captions are left out (the
-  -- notification shows the feature image).
+  -- What only the blog page understands, put into words a notification can
+  -- show: a video becomes a link, a callout a quote; pictures, captions,
+  -- galleries, picture links and longer descriptions are left out (the
+  -- notification shows the feature image). Updated 2026-11-05 (galleries).
   post := regexp_replace(post, '^@\[youtube\]\(([A-Za-z0-9_-]+)\)\s*$', '[Watch the video](https://www.youtube.com/watch?v=\1)', 'gn');
   post := regexp_replace(post, '^!> ?', '> ', 'gn');
-  post := regexp_replace(post, '^\^ ?.*$', '', 'gn');
-  post := regexp_replace(post, '^!\[[^\]]*\]\([^)]*\)\s*$', '', 'gn');
+  post := regexp_replace(post, '^\^.*$', '', 'gn');
+  post := regexp_replace(post, '^!\[[^\]]*\]\([^)]*\)(\{[a-z]+\})?\s*$', '', 'gn');
+  post := regexp_replace(post, '^@\[gallery\]\s*$', '', 'gn');
+  post := regexp_replace(post, '^@\[(link|phone)\]\([^)]*\)\s*$', '', 'gn');
+  post := regexp_replace(post, '\n{3,}', E'\n\n', 'g');
   RETURN COALESCE(NULLIF(btrim(p_summary), '') || E'\n\n', '')
       || '[Read it on the blog](' || public.ew_blog_link(p_slug) || ')'
       || CASE WHEN btrim(post) <> '' THEN E'\n\n---\n\n' || btrim(post) ELSE '' END;

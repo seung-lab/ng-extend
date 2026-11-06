@@ -132,7 +132,37 @@ function buildFrozenQueryBody(table: string, rootId: string): string {
 const BACKOFF_MS = 2 * 60 * 1000;
 const liveDownUntil = new Map<string, number>();
 const tableDownUntil = new Map<string, number>();
-async function queryAnnotationsForRootId(
+/** The same question already on its way is shared, not asked again (Nseraf,
+ *  report 404: some 30 identical queries went out at once while the table was
+ *  failing, before the first answer could set the back off). At most a few
+ *  per table at a time; the rest wait, and find out from the first whether
+ *  the table is down. */
+const inFlight = new Map<string, Promise<any[] | null>>();
+const MAX_PER_TABLE = 3;
+const running = new Map<string, number>();
+const waiting = new Map<string, (() => void)[]>();
+async function slot(key: string): Promise<() => void> {
+  if ((running.get(key) ?? 0) >= MAX_PER_TABLE) await new Promise<void>(r => (waiting.get(key) ?? waiting.set(key, []).get(key)!).push(r));
+  running.set(key, (running.get(key) ?? 0) + 1);
+  return () => {
+    running.set(key, (running.get(key) ?? 1) - 1);
+    waiting.get(key)?.shift()?.();
+  };
+}
+function queryAnnotationsForRootId(
+    caveServer: string, datastack: string,
+    table: string, rootId: string): Promise<any[] | null> {
+  const ask = `${caveServer}|${datastack}|${table}|${rootId}`;
+  const had = inFlight.get(ask);
+  if (had) return had;
+  const p = (async () => {
+    const release = await slot(`${caveServer}|${datastack}|${table}`);
+    try { return await queryOnce(caveServer, datastack, table, rootId); } finally { release(); }
+  })().finally(() => inFlight.delete(ask));
+  inFlight.set(ask, p);
+  return p;
+}
+async function queryOnce(
     caveServer: string, datastack: string,
     table: string, rootId: string): Promise<any[] | null> {
   const key = `${caveServer}|${datastack}|${table}`;
@@ -155,6 +185,9 @@ async function queryAnnotationsForRootId(
     if (res.status >= 500) liveDownUntil.set(key, Date.now() + BACKOFF_MS);
     console.warn(`[lightbulb] live query ${table} ${res.status} — falling back to materialized`);
   } catch (e) {
+    // Firefox reports a server error without its CORS headers as a network
+    // error (Nseraf, report 404): it is left alone for a while all the same.
+    liveDownUntil.set(key, Date.now() + BACKOFF_MS);
     console.warn(`[lightbulb] live query ${table} error — falling back to materialized:`, e);
   }
   // Fallback: materialized snapshot at the latest version.
@@ -178,7 +211,8 @@ async function queryAnnotationsForRootId(
       console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}; not asking this table again for 2 minutes`);
     } else console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}`);
   } catch (e) {
-    console.warn(`[lightbulb] materialized ${table} error:`, e);
+    tableDownUntil.set(key, Date.now() + BACKOFF_MS);
+    console.warn(`[lightbulb] materialized ${table} error; not asking this table again for 2 minutes:`, e);
   }
   return null;
 }

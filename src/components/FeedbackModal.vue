@@ -630,8 +630,11 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  color: #ccd;
-  font-size: 0.86em;
+  color: #e3e8f5;
+  /* Big enough to read while typing (Nseraf, #401): a fixed 16px, not a
+     fraction of the modal's small text. */
+  font-size: 16px;
+  line-height: 1.45;
   font-family: inherit;
   padding: 8px 10px;
   resize: vertical;

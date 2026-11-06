@@ -726,4 +726,19 @@ textarea.neuroglancer-annotation-details-description:focus {
 .nge-ann-row-note:hover { opacity: 1; color: #fff3b8; background: rgba(245, 209, 66, 0.18); }
 .nge-ann-row-note--has { visibility: visible; }
 .neuroglancer-annotation-list-entry > .neuroglancer-annotation-description { white-space: pre-wrap; overflow-wrap: anywhere; text-overflow: clip; }
-.nge-ann-note-editor { grid-column: dim / -1; box-sizing: border-box; width: 100%; margin: 3px 0 4px; padding: 4px 6px; resize: vertical; font: 12px/1.35 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.9); border: 1px solid rgba(245, 209, 66, 0.55); border-radius: 5px; outline: none; }
+/* The note box (Nseraf, #401: "a nice large font to write in"): a small
+   window over the view, in Pyr's dark glass with the note's gold edge, with
+   16px type. */
+.nge-ann-note-pop { position: fixed; inset: 0; z-index: 150; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(0, 8, 20, 0.55); pointer-events: auto; }
+.nge-ann-note-pop-box { box-sizing: border-box; width: min(460px, 100%); padding: 16px 18px 14px; font-family: sans-serif; color: #e3e8f5; background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%); border: 1px solid rgba(245, 209, 66, 0.45); border-radius: 14px; box-shadow: 0 0 40px rgba(245, 209, 66, 0.08), 0 16px 48px rgba(0, 0, 0, 0.5); }
+.nge-ann-note-pop-title { font-size: 16px; font-weight: 700; color: #fff3b8; margin-bottom: 10px; }
+.nge-ann-note-pop-text { box-sizing: border-box; display: block; width: 100%; min-height: 120px; padding: 10px 12px; resize: vertical; font: 16px/1.45 system-ui, sans-serif; color: #f2f5fb; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(245, 209, 66, 0.4); border-radius: 8px; outline: none; }
+.nge-ann-note-pop-text:focus { border-color: rgba(245, 209, 66, 0.8); }
+.nge-ann-note-pop-text::placeholder { color: #7a8296; }
+.nge-ann-note-pop-hint { margin-top: 6px; font-size: 12px; color: #9aa6bf; }
+.nge-ann-note-pop-actions { display: flex; gap: 8px; margin-top: 12px; }
+.nge-ann-note-pop-actions button { font: 600 14px sans-serif; padding: 7px 18px; border-radius: 8px; cursor: pointer; }
+.nge-ann-note-pop-save { color: #1d1500; background: #f5d142; border: 1px solid #f5d142; }
+.nge-ann-note-pop-save:hover { background: #ffe27a; }
+.nge-ann-note-pop-cancel { color: #b8c2d8; background: none; border: 1px solid rgba(255, 255, 255, 0.18); }
+.nge-ann-note-pop-cancel:hover { color: #fff; border-color: rgba(255, 255, 255, 0.35); }

@@ -5,6 +5,8 @@
  * toolbar needs. Loading goes the other way through renderBlogMarkdown(text, true).
  */
 
+import { blogImageOk } from './blog_markdown';
+
 const LINK_OK = /^(https:\/\/|\/(?!\/))/;
 const clean = (s: string) => s.replace(/ /g, ' ').replace(/\s+/g, ' ');
 
@@ -25,7 +27,9 @@ function inlineOf(node: Node): string {
     if (tag === 'IMG' || tag === 'FIGURE' || tag === 'UL' || tag === 'OL') return;   // handled as blocks
     const inner = inlineOf(el);
     const weight = el.style?.fontWeight || '';
-    if (tag === 'STRONG' || tag === 'B' || weight === 'bold' || Number(weight) >= 600) out += wrap('**', inner);
+    // Google Docs wraps a whole copied passage in <b style="font-weight:normal">.
+    const notBold = weight === 'normal' || (Number(weight) > 0 && Number(weight) < 600);
+    if (((tag === 'STRONG' || tag === 'B') && !notBold) || weight === 'bold' || Number(weight) >= 600) out += wrap('**', inner);
     else if (tag === 'EM' || tag === 'I' || el.style?.fontStyle === 'italic') out += wrap('*', inner);
     else if (tag === 'CODE') out += inner.trim() ? '`' + inner.trim() + '`' : '';
     else if (tag === 'A') {
@@ -50,13 +54,19 @@ function figureLines(fig: HTMLElement, inPair = false): string[] {
   const size = inPair || fig.tagName !== 'FIGURE' ? '' : figureSize(fig);
   const lines = [`![${alt}](${img.getAttribute('src') || ''})${size ? `{${size}}` : ''}`];
   if (caption) lines.push('^ ' + caption);
+  const more = clean(inlineOf(fig.querySelector('.blog-post__more') || document.createElement('i'))).trim();
+  if (more) lines.push('^^ ' + more);
   // a phone version (<picture><source>) is kept as its own line under the image
   const phone = img.parentElement?.tagName === 'PICTURE' ? img.parentElement.querySelector('source')?.getAttribute('srcset') : null;
   if (phone) lines.push(`@[phone](${phone})`);
+  // where clicking the picture goes (kept on the figure in the editor)
+  const link = fig.tagName === 'FIGURE' ? (fig.dataset.link || fig.querySelector(':scope > a.blog-post__piclink')?.getAttribute('href') || '') : '';
+  if (link && LINK_OK.test(link) && !/\s/.test(link)) lines.push(`@[link](${link})`);
   return lines;
 }
 
 const BLOCK = /^(P|DIV|H1|H2|H3|H4|H5|H6|UL|OL|BLOCKQUOTE|PRE|HR|FIGURE|ASIDE|TABLE|SECTION|ARTICLE)$/;
+const BLOCK_SELECTOR = 'p, div, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, hr, figure, aside, table, section, article';
 
 function blocksOf(root: Node, out: string[]) {
   let loose = '';
@@ -66,6 +76,11 @@ function blocksOf(root: Node, out: string[]) {
     if (child.nodeType !== Node.ELEMENT_NODE) return;
     const el = child as HTMLElement;
     const tag = el.tagName;
+    if (!BLOCK.test(tag) && tag !== 'IMG' && el.querySelector(BLOCK_SELECTOR)) {
+      flush();                                          // an inline tag wrapped around whole blocks (pasted pages do this)
+      blocksOf(el, out);
+      return;
+    }
     if (!BLOCK.test(tag) && tag !== 'IMG') {            // loose inline content at the top level
       const holder = document.createElement('span');
       holder.appendChild(el.cloneNode(true));
@@ -96,6 +111,10 @@ function blocksOf(root: Node, out: string[]) {
       blocksOf(el, inner);
       const paras = inner.join('\n').split('\n').map(x => x.trim()).filter(Boolean);
       if (paras.length) out.push(paras.map(x => '!> ' + x).join('\n'));
+    } else if (el.classList.contains('blog-post__gallery')) {
+      const lines: string[] = [];
+      el.querySelectorAll('figure').forEach(f => lines.push(...figureLines(f as HTMLElement, true)));
+      if (lines.length) out.push(['@[gallery]', ...lines].join('\n'));
     } else if (el.classList.contains('blog-post__pair')) {
       const lines: string[] = [];
       el.querySelectorAll('figure').forEach(f => lines.push(...figureLines(f as HTMLElement, true)));
@@ -170,6 +189,29 @@ export function documentToMarkdown(root: HTMLElement): string {
   const out: string[] = [];
   blocksOf(root, out);
   return out.join('\n\n');
+}
+
+/**
+ * Something copied from another page or document (a web page, Google Docs,
+ * Word), as the blog's stored text: headings, paragraphs, lists, quotes, bold,
+ * italic and links come along; styling, code and other sites' pictures do not
+ * (Ames 2026-11-05: "allow direct copy paste including links"). The page is
+ * parsed by DOMParser, which runs no scripts and loads no pictures.
+ */
+export function htmlToBlogMarkdown(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, meta, link, title, noscript, template, iframe, object, embed, svg, canvas, video, audio, button, input, select, textarea').forEach(el => el.remove());
+  // pictures from other sites cannot be shown; a copied picture arrives as a file and is uploaded
+  doc.querySelectorAll('img').forEach(img => { if (!blogImageOk(img.getAttribute('src') || '')) img.remove(); });
+  doc.querySelectorAll('a').forEach(a => {
+    const href = (a.getAttribute('href') || '').trim();
+    if (/^http:\/\//i.test(href)) a.setAttribute('href', 'https://' + href.slice(7));
+    // a link inside the other page ("/about", "#top") means nothing here
+    else if (!/^https:\/\//i.test(href)) a.replaceWith(...Array.from(a.childNodes));
+  });
+  const out: string[] = [];
+  blocksOf(doc.body, out);
+  return out.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** The id in a YouTube link of any usual shape, or ''. */

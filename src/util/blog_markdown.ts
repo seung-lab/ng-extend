@@ -14,6 +14,12 @@
  *                              (no size: as wide as the text, as before);
  *                              two or more image lines together sit side by side
  *   @[phone](image)            under an image: a tall version phones get instead
+ *   ^^ longer text             under an image: a longer description, with links,
+ *                              shown when the picture is enlarged
+ *   @[link](https://...)       under an image: clicking the picture opens this link
+ *                              (without one, clicking a picture shows it larger)
+ *   @[gallery]                 a line above image lines: they show as a gallery,
+ *                              a grid of pictures, each with its caption
  *   !> text                    a callout box (one paragraph per line)
  *   @[youtube](VIDEO_ID)       a YouTube video
  *   ---                        a divider
@@ -25,6 +31,11 @@ const LINK_OK = /^(https:\/\/|\/(?!\/))/;
 const IMG_LINE = /^!\[([^\]]*)\]\(([^)\s]+)\)(?:\{(small|medium|large)\})?$/;
 const VIDEO_LINE = /^@\[youtube\]\(([A-Za-z0-9_-]{11})\)$/;
 const PHONE_LINE = /^@\[phone\]\(([^)\s]+)\)$/;
+const LINK_LINE = /^@\[link\]\(([^)\s]+)\)$/;
+const GALLERY_LINE = '@[gallery]';
+
+/** Is this a picture address the blog shows (ours only)? */
+export function blogImageOk(url: string): boolean { return IMG_OK.test(url); }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unamp = (s: string) => s.replace(/&amp;/g, '&');
@@ -38,31 +49,41 @@ function inline(s: string): string {
     .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>');
 }
 
-/** Image lines, each optionally followed by a "^ caption" line and an
+/** Image lines, each optionally followed by a "^ caption" line, an
  *  "@[phone](url)" line: a tall version of the same picture that phones get
- *  instead (Ames 2026-11-04: wide diagrams were too small to read on a phone). */
-function figures(para: string[]): string | null {
+ *  instead (Ames 2026-11-04: wide diagrams were too small to read on a phone),
+ *  and an "@[link](url)" line: where clicking the picture goes (Ames
+ *  2026-11-05). gallery: the pictures of an @[gallery], shown as a grid.
+ *  editor: a picture's link is kept on the figure, not as a link, so a click
+ *  in the editor picks the picture. */
+function figures(para: string[], gallery = false, editor = false): string | null {
   const figs: string[] = [];
   for (let k = 0; k < para.length; k++) {
     const m = IMG_LINE.exec(para[k]);
     if (!m || !IMG_OK.test(unamp(m[2]))) return null;
-    let caption = '', phone = '';
+    let caption = '', phone = '', link = '', more = '';
     for (;;) {
       const next = para[k + 1];
       if (next === undefined) break;
       const p = PHONE_LINE.exec(next);
+      const l = LINK_LINE.exec(next);
       if (p && IMG_OK.test(unamp(p[1]))) { phone = p[1]; k++; }
+      else if (l && LINK_OK.test(unamp(l[1])) && !link) { link = l[1]; k++; }
+      else if (/^\^\^/.test(next)) { if (!more) more = next.replace(/^\^\^\s?/, ''); k++; }
       else if (/^\^\s?/.test(next) && !caption) { caption = next.replace(/^\^\s?/, ''); k++; }
       else break;
     }
     const img = `<img src="${m[2]}" alt="${m[1]}" loading="lazy" />`;
-    const pic = phone ? `<picture><source media="(max-width: 700px)" srcset="${phone}" />${img}</picture>` : img;
+    let pic = phone ? `<picture><source media="(max-width: 700px)" srcset="${phone}" />${img}</picture>` : img;
+    if (link && !editor) pic = `<a class="blog-post__piclink" href="${link}"${/^https:/.test(link) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${pic}</a>`;
     // A picture's size (Celia, triage #395: "loads huge and I can't adjust
-    // its size"). Sizes apply to a picture on its own, not to a pair.
-    const size = m[3] ? ` blog-post__figure--${m[3]}` : '';
-    figs.push(`<figure class="blog-post__figure${size}"${m[3] ? ` data-size="${m[3]}"` : ''}>${pic}${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`);
+    // its size"). Sizes apply to a picture on its own, not to a pair or a gallery.
+    const sized = m[3] && !gallery ? m[3] : '';
+    const size = sized ? ` blog-post__figure--${sized}` : '';
+    figs.push(`<figure class="blog-post__figure${size}"${sized ? ` data-size="${sized}"` : ''}${link && editor ? ` data-link="${link}"` : ''}>${pic}${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}${more ? `<div class="blog-post__more">${inline(more)}</div>` : ''}</figure>`);
   }
   if (!figs.length) return null;
+  if (gallery) return `<div class="blog-post__gallery">${figs.join('')}</div>`;
   return figs.length === 1 ? figs[0] : `<div class="blog-post__pair">${figs.map(f => f.replace(/ blog-post__figure--\w+"/, '"').replace(/ data-size="\w+"/, '')).join('')}</div>`;
 }
 
@@ -100,7 +121,7 @@ export function renderBlogMarkdown(text: string, editor = false): string {
       // A line that looks like a block but is not a valid one (a video with a
       // bad id, say) is plain text. Always move on, or this loop never ends.
       if (!para.length) para.push(lines[i++].trim());
-      const figs = figures(para);
+      const figs = para[0] === GALLERY_LINE ? figures(para.slice(1), true, editor) : figures(para, false, editor);
       if (figs) { out.push(figs); continue; }
       const joined = para.join(' ');
       const html = inline(joined);
