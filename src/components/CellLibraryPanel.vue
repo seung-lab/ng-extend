@@ -997,6 +997,9 @@ function heldHere(held: ProofreadingTask[]): ProofreadingTask[] {
 }
 /** An interneuron quest added by root ID is in no sheet: nothing is written there for it. */
 const inSheet = (cell: { quest?: boolean; index?: string }) => !cell.quest || !!cell.index;
+/** A row's note, without the sheet's row number (Ames 2026-11-06: "doesn't
+ *  need sheet #"); still in the notes, so search finds it. */
+const rowNote = (cell: { notes?: string }) => /^Hunt (cell|candidate)/.test(cell.notes || '') ? '' : (cell.notes || '').replace(/Sheet #[\w-]+/g, '').replace(/^[\s·,;|-]+|[\s·,;|-]+$/g, '').trim();
 
 // ── Batch claim (Amy 2026-09-30): fill your claims in one click ─────────
 // Claims the next available cells from the list, top down, up to your limit
@@ -4204,7 +4207,7 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.quest && cell.questCategory" class="nge-cl-notes nge-cl-giant-cat" :title="cell.questCategory">{{ cell.questCategory }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
                   <!-- The Hunt candidate tag says it (its tooltip has the note) -->
-                  <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
+                  <span v-if="rowNote(cell)" class="nge-cl-notes">{{ rowNote(cell) }}</span>
                 </div>
                 <div v-if="questEndsSoon(cell)" class="nge-cl-time nge-cl-quest-ends">{{ questEndsSoon(cell) }}</div>
                 <div v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
