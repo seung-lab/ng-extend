@@ -528,7 +528,7 @@ export async function sendSuggestions(cellNote: string): Promise<MentorReview> {
   const cur = inView.value;
   if (!cur) throw new Error('No cell open.');
   const out = await call<MentorReview>('mentor.suggest', { reviewId: cur.review.id, notes: readNotesLayer(), cellNote });
-  markBellsRead(cur.review, /sent (you|a cell back to you)/);
+  markBellsRead(cur.review, /sent (you|a cell back to you|mentor cell #\d+ back to you)/);
   cur.review = out;
   void loadQueue().catch(() => {});
   return out;
@@ -550,7 +550,7 @@ export async function completeForApprentice(cellNote: string): Promise<{ finishe
   }
   const out = await call<{ review: MentorReview; finished: boolean }>('mentor.complete', { reviewId: r.id, root: r.rootId, notes: readNotesLayer(), cellNote });
   removeApprenticeLayers();
-  markBellsRead(r, /sent (you|a cell back to you)/);
+  markBellsRead(r, /sent (you|a cell back to you|mentor cell #\d+ back to you)/);
   cur.review = out.review;
   void loadQueue().catch(() => {});
   return { finished: out.finished };
@@ -604,7 +604,7 @@ export async function saveMentorText(key: string, title: string, body: string): 
 /** The cell a program bell is about, found by the "...1234" in its text: the
  *  player's own cell (apprentice), or one in the mentor's queue. */
 /** A mentor program bell, by its title, with or without the old compass. */
-export const PROGRAM_TITLE = /^(🧭 |🎉 |🏆 )?(Welcome to the mentor program|A new apprentice is waiting for a mentor|.+ sent you a cell|.+ sent a cell back to you|You have a mentor|Your mentor has suggestions|Your cell is complete|.+ congratulates you|.+ finished the mentor program|Practice finished)/u;
+export const PROGRAM_TITLE = /^(🧭 |🎉 |🏆 )?(Welcome to the mentor program|A new apprentice is waiting for a mentor|.+ sent you a cell|.+ sent you mentor cell|.+ sent a cell back to you|.+ sent mentor cell #\d+ back to you|You have a mentor|Your mentor has suggestions|Your cell is complete|.+ congratulates you|.+ finished the mentor program|Practice finished)/u;
 export async function reviewForBell(title: string, body: string): Promise<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null> {
   if (!PROGRAM_TITLE.test(title)) return null;
   // The whole ID (bells from 2026-11-05 on) or the old "...1234": matched by its last four digits.
@@ -614,7 +614,7 @@ export async function reviewForBell(title: string, body: string): Promise<{ revi
   const hit = (r: MentorReview) => [r.rootId, r.segmentId].some(id => !!id && id.endsWith(m[1]));
   if (!mentorState.loaded) await loadMentor();
   // "Your mentor ..." bells are the apprentice's; "... sent you a cell" the mentor's.
-  const forMentor = /sent (you|a cell back to you)|waiting for a mentor/.test(title);
+  const forMentor = /sent (you|a cell back to you|mentor cell #\d+ back to you)|waiting for a mentor/.test(title);
   const mine = mentorState.mine.find(hit);
   if (mine && !forMentor) return { review: mine, role: 'apprentice' };
   if (mentorState.mentor || mentorState.admin) {

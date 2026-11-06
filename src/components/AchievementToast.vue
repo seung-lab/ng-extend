@@ -486,6 +486,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
  *  has not caught up with the cell just completed. */
 let lastCelebratedCount: number | null = null;
 /** Submitted mentor cells: at least the reviewed ones (an older celebration has no count). */
+/** 1st, 2nd, 3rd, 4th. */
+const ordinalOf = (n: number) => { const t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] || 'th'); };
 const mentorSent = (m: { done: number; sent?: number }) => Math.max(m.sent ?? 0, m.done);
 const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; mentor?: { kind: 'sent' | 'complete'; mentorName?: string | null; done: number; sent?: number; needed: number; practice?: boolean } } | null>(null);
 
@@ -732,7 +734,7 @@ function playBatchChime() {
             <div class="nge-cell-thanks">{{ cellCelebration.mentor.kind === 'sent'
               ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a notification when it is done.` : 'A mentor takes a second look. You get a notification when it is done.')
               : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
-              : `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. It counts for you. For science!` }}</div>
+              : `${cellCelebration.mentor.mentorName || 'Your mentor'} congratulates you on completing your ${ordinalOf(cellCelebration.mentor.done)} apprentice cell! It counts for you. For science!` }}</div>
             <!-- One colour per count (Ames 2026-11-06: "fix the color"): completed
                  cells gold, submitted ones still with the mentor blue, the rest empty.
                  The numbers below wear the same colours. -->

@@ -2971,7 +2971,7 @@ exports.ewSheetSync = onRequest(
 // Nseraf's idea (triage report 317), asked for by Ames 2026-11-04. A function of
 // its own, like ewAccessRequest and ewHunt: deploying it never replaces the
 // shared ewSecureWrite. Every rule is in mentors.js (tests: mentors.test.js).
-const EW_MENTOR_CODE_VERSION = "2026-11-06-congrats";
+const EW_MENTOR_CODE_VERSION = "2026-11-06-numbered";
 // The bells' texts as admins changed them (mentors.js TEXTS; Ames 2026-11-05:
 // "add an edit button so Celia can change it"). One Firestore doc per message.
 const mentorTextStore = {

@@ -102,7 +102,7 @@ test('suggestions: nothing counts, the apprentice keeps the cell, sends it back 
   assert.equal(s.state, 'suggestions');
   assert.equal(s.notes[0].text, 'Cut here', 'notes saved earlier are kept');
   assert.equal(credited.length, 0);
-  assert.deepEqual(db._state.notes.map(n => [n.to, n.title]), [[U(4), 'Your mentor has suggestions']]);
+  assert.deepEqual(db._state.notes.map(n => [n.to, n.title]), [[U(4), 'Your mentor has suggestions on mentor cell #1']]);
   // The apprentice reads the notes, and the mentor cannot complete it while it is theirs.
   const mine = (await call(4, 'mentor.status')).mine;
   assert.deepEqual(mine[0].thread.map(m => [m.by, m.text]), [['mentor', 'You missed an extension near the soma.']], 'the note on the whole cell is in the thread');
@@ -450,7 +450,7 @@ test('a bell finds its cell, completed too, only for the players in it; the ment
   assert.equal(await call(5, 'mentor.byCell', {tail: '8001'}), null, 'not someone else\'s');
   await assert.rejects(call(2, 'mentor.byCell', {tail: '80'}), /Which cell/);
   const r2 = (await send(call, 4, 2)).review;
-  const sentBell = db._state.notes.find(n => n.title === 'newbie sent you a cell');
+  const sentBell = db._state.notes.find(n => n.title === 'newbie sent you mentor cell #2');
   assert.match(sentBell.image, /tiers\/mentor-1\.png$/);
   assert.match(sentBell.body, /sent cell \d+ for a second look\. Mentored cells are available in Cell Library → Mentoring\.$/, 'the whole cell ID, and where to find it');
   assert.ok(db._state.notes.every(n => !n.title.startsWith('🧭')), 'no compass');
@@ -540,7 +540,7 @@ test('practice: a player joins by themself, the loop rings as usual, and a Compl
   assert.equal(credited.length, 0, 'nothing counts');
   assert.equal(db._state.tasks.size, 0, 'the claim is not completed');
   assert.deepEqual(db._state.released, [{taskId: 7, userId: U(4)}], 'the claim is let go');
-  assert.match(db._state.notes[0].title, /practice/);
+  assert.match(db._state.notes[0].title, /Practice cell #1/);
   assert.equal((await call(4, 'mentor.status')).apprentice.cellsDone, 1);
   await call(4, 'mentor.leave');
   assert.equal((await call(4, 'mentor.status')).apprentice.status, 'left');

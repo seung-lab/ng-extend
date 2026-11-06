@@ -83,24 +83,25 @@ const TEXTS = {
   newApprentice: {label: 'A new apprentice is waiting', to: 'mentors', vars: ['apprentice'], image: MENTOR_ICON,
     title: 'A new apprentice is waiting for a mentor',
     body: '{apprentice} sent their first cell for a second look. Mentored cells are available in Cell Library → Mentoring.'},
-  sent: {label: 'A cell sent to the mentor', to: 'mentor', vars: ['apprentice', 'cell'], image: MENTOR_ICON,
-    title: '{apprentice} sent you a cell',
+  // Numbered, so the notifications can be told apart (Ames 2026-11-06: "mentor cell #1 #2").
+  sent: {label: 'A cell sent to the mentor', to: 'mentor', vars: ['apprentice', 'cell', 'n'], image: MENTOR_ICON,
+    title: '{apprentice} sent you mentor cell #{n}',
     body: '{apprentice} sent cell {cell} for a second look. Mentored cells are available in Cell Library → Mentoring.'},
-  sentAgain: {label: 'A cell sent back after suggestions', to: 'mentor', vars: ['apprentice', 'cell'], image: MENTOR_ICON,
-    title: '{apprentice} sent a cell back to you',
+  sentAgain: {label: 'A cell sent back after suggestions', to: 'mentor', vars: ['apprentice', 'cell', 'n'], image: MENTOR_ICON,
+    title: '{apprentice} sent mentor cell #{n} back to you',
     body: '{apprentice} sent cell {cell} for a second look. Mentored cells are available in Cell Library → Mentoring.'},
   haveMentor: {label: 'You have a mentor', to: 'apprentice', vars: ['mentor', 'needed'], image: MENTOR_PICTURE,
     title: 'You have a mentor',
     body: '{mentor} is your mentor. They will look at your first {needed} cells and give you feedback before each one counts.'},
-  suggestions: {label: 'Suggestions', to: 'apprentice', vars: ['mentor', 'cell'], image: MENTOR_ICON,
-    title: 'Your mentor has suggestions',
+  suggestions: {label: 'Suggestions', to: 'apprentice', vars: ['mentor', 'cell', 'n'], image: MENTOR_ICON,
+    title: 'Your mentor has suggestions on mentor cell #{n}',
     body: '{mentor} left suggestions on cell {cell}. See them in the view. When you are done, send it again. Mentored cells are available in Cell Library → Mentoring.'},
   // Ames 2026-11-06: "~ marissa congratulates you on completing your nth apprentice cell".
-  complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth'], image: MENTOR_ICON,
-    title: '🎉 {mentor} congratulates you',
+  complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth', 'n'], image: MENTOR_ICON,
+    title: '🎉 Mentor cell #{n}: {mentor} congratulates you',
     body: '{mentor} congratulates you on completing your {nth} apprentice cell! Your cell {cell} counts for you. {done} of {needed} mentor cells completed.'},
-  practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth'], image: MENTOR_ICON,
-    title: '🎉 {mentor} congratulates you (practice)',
+  practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth', 'n'], image: MENTOR_ICON,
+    title: '🎉 Practice cell #{n}: {mentor} congratulates you',
     body: '{mentor} congratulates you on completing your {nth} practice cell! This was practice, so nothing was recorded and the cell is free again. {done} of {needed} mentor cells completed.'},
   // The two Achievement bells keep the form the game celebrates (src/util/award_title.ts): a title
   // starting "New Achievement:" and a text starting 'You earned the "<name>" Achievement!'.
@@ -133,6 +134,13 @@ const point = v => (Array.isArray(v) && v.length === 3 && v.every(n => Number.is
 const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, max);
 // The whole cell ID in a bell (Ames 2026-11-05: "can you put the whole cell ID?").
 const cellName = r => String(r.root_id || r.segment_id || 'a cell');
+/** Which of the apprentice's mentor cells this is, 1 to 5, by when each was
+ *  first sent (practice cells counted apart). */
+const cellNumberOf = async (db, r) => {
+  const practice = !!(r.done && r.done.practice);
+  const all = await db.reviewsOfApprentice(r.apprentice_id);
+  return all.filter(x => !!(x.done && x.done.practice) === practice && x.id <= r.id).length || 1;
+};
 
 /** A cell's conversation (Ames 2026-11-06, after Marissa answered a pin in
  *  her own annotation layer and it never reached the mentor): replies under
@@ -281,7 +289,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       }
       const who = nameOf(me);
       if (r.mentor_id) {
-        await bell(r.mentor_id, again ? 'sentAgain' : 'sent', {apprentice: who, cell: cellName(r)});
+        await bell(r.mentor_id, again ? 'sentAgain' : 'sent', {apprentice: who, cell: cellName(r), n: await cellNumberOf(db, r)});
       } else if (!mine.length && !isAdmin) {
         // A new apprentice's first cell: one bell to each mentor with room. Never one per cell.
         // An admin apprentice is a test (Ames 2026-11-04: no test players yet): nobody is rung.
@@ -411,7 +419,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (!n.notes.length && !n.cell_note && !replies) fail(400, 'Leave at least one suggestion, as a note in the view or for the whole cell.');
       const thread = handOver(r, 'mentor', nameOf(me), r.rounds || 1, n.cell_note, stamp);
       const out = await db.patchReview(r.id, {...n, cell_note: null, thread, state: 'suggestions', decided_at: stamp, touched_at: stamp});
-      await bell(r.apprentice_id, 'suggestions', {mentor: nameOf(me), cell: cellName(r)});
+      await bell(r.apprentice_id, 'suggestions', {mentor: nameOf(me), cell: cellName(r), n: await cellNumberOf(db, r)});
       return reviewOut(out, meId);
     }
     case 'mentor.complete': {
@@ -435,7 +443,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         const needed = (a && a.cells_needed) || CELLS_NEEDED;
         const finished = !!a && a.status === 'active' && doneCount >= needed;
         if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
-        await bell(r.apprentice_id, 'practiceComplete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed, nth: ordinal(doneCount)});
+        await bell(r.apprentice_id, 'practiceComplete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed, nth: ordinal(doneCount), n: await cellNumberOf(db, r)});
         if (finished) await bell(r.apprentice_id, 'practiceFinished', {mentor: nameOf(me)});
         return {review: reviewOut(await db.getReview(r.id), meId), finished, practice: true};
       }
@@ -453,7 +461,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const needed = (a && a.cells_needed) || CELLS_NEEDED;
       const finished = !!a && a.status === 'active' && doneCount >= needed;
       if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
-      await bell(r.apprentice_id, 'complete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed, nth: ordinal(doneCount)});
+      await bell(r.apprentice_id, 'complete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed, nth: ordinal(doneCount), n: await cellNumberOf(db, r)});
       if (finished) {
         // The picture is the Achievement's own (an admin may change it in Special Badges).
         const won = await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);

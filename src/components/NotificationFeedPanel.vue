@@ -1417,7 +1417,7 @@ function padRank(rank: number): string {
                     <button class="nge-notif-open-help nge-notif-mentorjump-btn" @click="openBellCell">{{ mentorJump.role === 'mentor' && mentorJump.review.state !== 'complete' ? 'Take a look' : 'See it in the view' }}</button>
                     <span v-if="mentorJumpNote" class="nge-notif-textedit-err" role="alert">{{ mentorJumpNote }}</span>
                   </div>
-                  <!-- No Edit this message on mentor bells (Ames 2026-11-06: "we can remove edit here"). -->
+                  <!-- No text editor on mentor notifications (Ames 2026-11-06: "we can remove edit here"). -->
                 </template>
                 <!-- A reply the team asked for: one per request, with what a report carries. -->
                 <div v-if="replyAsked" class="nge-notif-reply">

@@ -448,7 +448,8 @@ const STATE: Record<string, string> = {
 .nge-mblk-btn:hover { background: rgba(120, 180, 255, 0.12); }
 .nge-mblk-btn--go { border-color: rgba(120, 180, 255, 0.6); color: #9fc8ff; }
 .nge-mbx {
-  position: fixed; right: 16px; top: 64px; z-index: 9000;
+  /* In front of the Cell Library (10010) (Ames 2026-11-06: "mentor notes should be in front"). */
+  position: fixed; right: 16px; top: 64px; z-index: 10012;
   width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; box-sizing: border-box;
   padding: 12px 14px;
   background: rgba(6, 10, 20, 0.95);
