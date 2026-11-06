@@ -54,7 +54,9 @@ const APPRENTICE_BADGE = {slug: 'mentor-program-apprentice', name: 'Myelinated',
   image_url: APPRENTICE_ART, thumbnail_url: APPRENTICE_ART};
 /** The Mentor row (Ames 2026-11-05: a tier at 1, 5, 10, 25 and 50 apprentices
  *  graduated). Same list as src/util/mentor_tiers.ts. */
-const tierArt = n => RAW + `4e2fa0fc71d7997feea1ef2e44d8e5011a4ecb23/static/mentor/tiers/mentor-${n}.png`;
+// Each tier's art, pinned to the commit that last changed it (Ames redraws them one at a time).
+const TIER_ART_AT = {50: 'd1e4dc1f8f0d588a92e52c5e05ecc67e3f3fac2a'};
+const tierArt = n => RAW + `${TIER_ART_AT[n] || '4e2fa0fc71d7997feea1ef2e44d8e5011a4ecb23'}/static/mentor/tiers/mentor-${n}.png`;
 const MENTOR_TIERS = [
   {n: 1, name: 'Mentor', description: 'Saw your first apprentice through the mentor program.'},
   {n: 5, name: 'Myelin Maker', description: 'Five apprentices graduated with you.'},
