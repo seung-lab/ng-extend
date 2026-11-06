@@ -95,12 +95,13 @@ const TEXTS = {
   suggestions: {label: 'Suggestions', to: 'apprentice', vars: ['mentor', 'cell'], image: MENTOR_ICON,
     title: 'Your mentor has suggestions',
     body: '{mentor} left suggestions on cell {cell}. See them in the view. When you are done, send it again. Mentored cells are available in Cell Library → Mentoring.'},
-  complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed'], image: MENTOR_ICON,
-    title: '🎉 Your cell is complete',
-    body: '{mentor} completed cell {cell} with you. It counts for you. {done} of {needed} mentor cells done.'},
-  practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed'], image: MENTOR_ICON,
-    title: '🎉 Your cell is complete (practice)',
-    body: '{mentor} completed cell {cell} with you. This was practice, so nothing was recorded and the cell is free again. {done} of {needed} mentor cells done.'},
+  // Ames 2026-11-06: "~ marissa congratulates you on completing your nth apprentice cell".
+  complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth'], image: MENTOR_ICON,
+    title: '🎉 {mentor} congratulates you',
+    body: '{mentor} congratulates you on completing your {nth} apprentice cell! Your cell {cell} counts for you. {done} of {needed} mentor cells completed.'},
+  practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed', 'nth'], image: MENTOR_ICON,
+    title: '🎉 {mentor} congratulates you (practice)',
+    body: '{mentor} congratulates you on completing your {nth} practice cell! This was practice, so nothing was recorded and the cell is free again. {done} of {needed} mentor cells completed.'},
   // The two Achievement bells keep the form the game celebrates (src/util/award_title.ts): a title
   // starting "New Achievement:" and a text starting 'You earned the "<name>" Achievement!'.
   apprenticeAchievement: {label: 'Apprentice graduate Achievement (keep "New Achievement:" so it celebrates)', to: 'apprentice', vars: ['mentor', 'achievement'],
@@ -118,6 +119,8 @@ const TEXTS = {
 };
 const TITLE_MAX = 120;
 const BODY_MAX = 1500;
+/** 1st, 2nd, 3rd, 4th, 11th, 21st. */
+const ordinal = n => { const v = Number(n) || 0, t = v % 100; return v + (t >= 11 && t <= 13 ? 'th' : ({1: 'st', 2: 'nd', 3: 'rd'})[v % 10] || 'th'); };
 const fill = (text, vars) => String(text).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
@@ -432,7 +435,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         const needed = (a && a.cells_needed) || CELLS_NEEDED;
         const finished = !!a && a.status === 'active' && doneCount >= needed;
         if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
-        await bell(r.apprentice_id, 'practiceComplete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed});
+        await bell(r.apprentice_id, 'practiceComplete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed, nth: ordinal(doneCount)});
         if (finished) await bell(r.apprentice_id, 'practiceFinished', {mentor: nameOf(me)});
         return {review: reviewOut(await db.getReview(r.id), meId), finished, practice: true};
       }
@@ -450,7 +453,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const needed = (a && a.cells_needed) || CELLS_NEEDED;
       const finished = !!a && a.status === 'active' && doneCount >= needed;
       if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
-      await bell(r.apprentice_id, 'complete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed});
+      await bell(r.apprentice_id, 'complete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed, nth: ordinal(doneCount)});
       if (finished) {
         // The picture is the Achievement's own (an admin may change it in Special Badges).
         const won = await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);

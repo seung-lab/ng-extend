@@ -604,7 +604,7 @@ export async function saveMentorText(key: string, title: string, body: string): 
 /** The cell a program bell is about, found by the "...1234" in its text: the
  *  player's own cell (apprentice), or one in the mentor's queue. */
 /** A mentor program bell, by its title, with or without the old compass. */
-export const PROGRAM_TITLE = /^(🧭 |🎉 |🏆 )?(Welcome to the mentor program|A new apprentice is waiting for a mentor|.+ sent you a cell|.+ sent a cell back to you|You have a mentor|Your mentor has suggestions|Your cell is complete|.+ finished the mentor program|Practice finished)/u;
+export const PROGRAM_TITLE = /^(🧭 |🎉 |🏆 )?(Welcome to the mentor program|A new apprentice is waiting for a mentor|.+ sent you a cell|.+ sent a cell back to you|You have a mentor|Your mentor has suggestions|Your cell is complete|.+ congratulates you|.+ finished the mentor program|Practice finished)/u;
 export async function reviewForBell(title: string, body: string): Promise<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null> {
   if (!PROGRAM_TITLE.test(title)) return null;
   // The whole ID (bells from 2026-11-05 on) or the old "...1234": matched by its last four digits.
