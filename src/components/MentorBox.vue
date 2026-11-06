@@ -229,7 +229,7 @@ function close() {
   if (!mentor.value) void loadMentor();
 }
 const STATE: Record<string, string> = {
-  waiting: 'Waiting for a mentor.', looking: 'With your mentor.', suggestions: 'Your mentor has suggestions. Fix the cell, then press Complete on it in the Cell Library to send it again.',
+  waiting: 'Sent. Waiting for a mentor to take it. You get a bell when it is answered.', looking: 'Your mentor is looking at it. You get a bell when they answer.', suggestions: 'Your mentor has suggestions. Fix the cell, then press Complete on it in the Cell Library to send it again.',
   complete: 'Complete. It counts for you.',
 };
 </script>
@@ -270,7 +270,7 @@ const STATE: Record<string, string> = {
       <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
-      <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : adminView ? `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` : 'Your mentor\'s notes' }}</span>
+      <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : adminView ? `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` : r.state === 'waiting' || r.state === 'looking' ? 'Your cell' : 'Your mentor\'s notes' }}</span>
       <span class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
@@ -332,7 +332,7 @@ const STATE: Record<string, string> = {
           <button class="nge-mbx-btn" :disabled="busy || !replyText.trim()" @click="sendReply(n.id)">Add reply</button>
         </div>
       </div>
-      <p v-if="!notes.length && !mentor" class="nge-mbx-meta">No notes in the view.</p>
+      <p v-if="!notes.length && !mentor && r.state !== 'waiting' && r.state !== 'looking'" class="nge-mbx-meta">No notes in the view.</p>
     </div>
     <p v-if="layerNote" class="nge-mbx-said" role="status">{{ layerNote }}</p>
     <p v-if="cellColorNote" class="nge-mbx-meta" role="status">{{ cellColorNote }}</p>
