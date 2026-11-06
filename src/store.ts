@@ -12,7 +12,7 @@ import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears }
 import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
-import { achievementTestTrack } from './widgets/badge_definitions';
+import { achievementTestTrack, LOYALTY_BADGES } from './widgets/badge_definitions';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -4459,13 +4459,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** A streak milestone, as a notification to yourself. The server allows
    *  only these titles, only when the saved streak has reached the number,
    *  and never the same one twice within six days. */
-  async function sendStreakMilestone(days: number) {
+  async function sendStreakMilestone(days: number, quiet = false) {
     // The chip agrees with the note (lalonso: "shows 1 when my notification
     // says 2"): a slower answer read before the streak grew can't undo it.
     streakFloor = Math.max(streakFloor, days);
     const stats = useUserStatsStore();
     if (stats.stats.currentStreak < days) stats.setStats({ currentStreak: days });
-    if (!isStreakMilestone(days) || !userId.value) return;
+    if (quiet || !isStreakMilestone(days) || !userId.value) return;
     const next = nextStreakMilestone(days);
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
     await secureWrite('notification.self', {
@@ -4728,7 +4728,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       useUserStatsStore().setStats(visitStreak);
       try { localStorage.setItem(VISIT_KEY, key); } catch { /* */ }
       // A recount of old days is a correction, not a day earned just now.
-      if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak).catch(() => {});
+      // When the same visit earns a Days Achievement, its card says it: the
+      // streak's own note stays quiet, so opening Pyr brings one thing, not
+      // two (Ames 2026-11-05: "make sure they're not bombarded with multiple
+      // achievements at opening"). Day 2 is both a 2 day streak and Day 2.
+      const daysCard = !r.days_recounted && typeof r.days_before === 'number' && typeof r.total_days === 'number'
+        && LOYALTY_BADGES.some(b => r.days_before < b.threshold && r.total_days >= b.threshold);
+      if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak, daysCard).catch(() => {});
       celebrateDays(r.days_before, r.total_days, !!r.days_recounted);
     } catch (e: any) {
       console.warn('[backend] visit not counted:', e?.message);
