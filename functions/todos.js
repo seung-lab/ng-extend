@@ -136,9 +136,10 @@ function changeWords(fields, before) {
   return '';
 }
 const noFollows = { all: async () => ({}), get: async () => [], set: async () => {} };
+const noSeen = { get: async () => ({}), mark: async () => {} };
 const HELPERS_MAX = 6;
 
-async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
+async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, seen = noSeen, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
   const meId = me && me.id;
   /** Followers hear, but never the one who did it, nor anyone already told. */
@@ -156,8 +157,17 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (next.length !== had.length) await follows.set(cardId, next);
   };
   if (action === 'todo.list') {
-    const [cards, people, followers, helping] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({}))]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping };
+    const [cards, people, followers, helping, seenAt] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
+      meId ? seen.get(meId).catch(() => ({})) : {}]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt };
+  }
+  // I opened a card: its tags of me so far count as seen (Ames 2026-11-06:
+  // "if I click on this it shouldn't still show it as an unread task for me").
+  if (action === 'todo.seen') {
+    const id = uuid(args.id, 'card');
+    if (!meId) fail(403, 'No Pyr profile.');
+    await seen.mark(meId, id, now);
+    return { id, at: now };
   }
   if (action === 'todo.commentEdit') {
     const id = uuid(args.id, 'card');
