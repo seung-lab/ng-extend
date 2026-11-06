@@ -177,3 +177,28 @@ test('a profile write never carries days or streaks',()=>{
  const only={current_streak:30,longest_streak:30}; stripDayCounters(only);
  assert.equal(Object.keys(only).length,0);
 });
+
+test('a visit is the day for a player without production access, and only for them',async()=>{
+ const {recordVisit}=require('./activity');
+ const run=async prod=>{
+  const calls=[];let days=4,streak=1;
+  const touch=async()=>{calls.push('touch');return {current_streak:streak,total_days:days,streak_before:1,days_before:4,recounted:false,days_recounted:false};};
+  const countDay=async()=>{calls.push('count');days=5;streak=2;return null;};
+  const out=await recordVisit({touch,countDay,hasProduction:async()=>prod});
+  return {calls,out};
+ };
+ const before=await run(false);
+ assert.deepEqual(before.calls,['touch','count','touch']);
+ assert.equal(before.out.total_days,5);
+ assert.equal(before.out.current_streak,2);
+ // The game celebrates from the numbers before the visit counted.
+ assert.equal(before.out.days_before,4);
+ assert.equal(before.out.streak_before,1);
+ const editor=await run(true);
+ assert.deepEqual(editor.calls,['touch']);
+ assert.equal(editor.out.total_days,4);
+ // CAVE could not be asked: nothing extra.
+ assert.deepEqual((await run(null)).calls,['touch']);
+ const broken=await recordVisit({touch:async()=>({total_days:1}),countDay:async()=>{throw new Error('no');},hasProduction:async()=>{throw new Error('down');}});
+ assert.equal(broken.total_days,1);
+});

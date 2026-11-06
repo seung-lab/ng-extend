@@ -22,7 +22,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { supabase } from '../supabase';
 import { secureUpload } from '../secure_upload';
 import { blogSlug, renderBlogMarkdown } from '../util/blog_markdown';
-import { documentToMarkdown, figureSize, tidyDocument, tidyLink, youtubeId } from '../util/blog_document';
+import { documentToMarkdown, figureSize, htmlToBlogMarkdown, tidyDocument, tidyLink, youtubeId } from '../util/blog_document';
+import { shrinkPicture } from '../util/shrink_picture';
 
 interface Post {
   id: number; slug: string; title: string; summary: string | null; body: string; cover_url: string | null;
@@ -39,6 +40,7 @@ const loading = ref(true);
 const message = ref('');
 const problem = ref('');
 const busy = ref(false);
+const uploadNote = ref('');                  // "Uploading pictures, 3 of 12"
 
 // The post being edited. id null = a new post.
 const editing = ref(false);
@@ -108,6 +110,7 @@ async function open(p: Post | null) {
     docEl.value.innerHTML = renderBlogMarkdown(p?.body ?? '', true) || EMPTY;
     // Every picture gets a caption line to type in (empty ones are not saved).
     docEl.value.querySelectorAll('figure').forEach(f => { if (!f.querySelector('figcaption')) f.appendChild(document.createElement('figcaption')); });
+    docEl.value.querySelectorAll('.blog-post__gallery figure').forEach(f => { if (!f.querySelector('.blog-post__more')) f.appendChild(moreLine()); });
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); document.execCommand('styleWithCSS', false, 'false'); } catch { /* old browser */ }
   }
   savedSnapshot.value = snapshot();
@@ -434,7 +437,7 @@ function onGapAway(e: MouseEvent) {
 }
 onMounted(() => document.addEventListener('mousedown', onGapAway, true));
 onBeforeUnmount(() => document.removeEventListener('mousedown', onGapAway, true));
-type GapKind = 'text' | 'heading' | 'image' | 'pair' | 'video' | 'button' | 'divider' | 'callout' | 'quote';
+type GapKind = 'text' | 'heading' | 'image' | 'pair' | 'gallery' | 'video' | 'button' | 'divider' | 'callout' | 'quote';
 async function addAtGap(kind: GapKind) {
   const at = gap.value?.index ?? null;
   gapMenu.value = false;
@@ -461,7 +464,7 @@ async function addAtGap(kind: GapKind) {
   }
   if (kind === 'divider') { insertBlock(document.createElement('hr')); return; }
   if (kind === 'video' || kind === 'button') { void openAsk(kind); return; }     // applyAsk puts it at insertAt
-  if (kind === 'image') await addImage(); else await addImagePair();
+  if (kind === 'image') await addImage(); else if (kind === 'gallery') await addGallery(); else await addImagePair();
   insertAt = null;                                                                 // a cancelled picker
   gap.value = null;
 }
@@ -558,24 +561,35 @@ function removeLink() {
   closeAsk();
 }
 
-async function pickImages(many: boolean): Promise<string[]> {
+const GALLERY_MAX = 30;
+/** Pick up to max pictures and upload them; big ones are made smaller first. */
+async function pickImages(max: number): Promise<string[]> {
   keepSelection();
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/png,image/jpeg,image/gif,image/webp';
-  input.multiple = many;
+  input.multiple = max > 1;
   const files = await new Promise<File[]>(resolve => {
     input.onchange = () => resolve(Array.from(input.files ?? []));
     input.click();
   });
   if (!files.length) return [];
+  return uploadPictures(files.slice(0, max));
+}
+/** Uploads in order. A picture that fails is said, and the rest still go up. */
+async function uploadPictures(files: File[]): Promise<string[]> {
   problem.value = ''; busy.value = true;
+  const urls: string[] = [];
+  let failed = 0, why = '';
   try {
-    const urls: string[] = [];
-    for (const f of files.slice(0, many ? 2 : 1)) urls.push(await secureUpload(f, 'blog'));
-    return urls;
-  } catch (e: any) { problem.value = e?.message || 'Image upload failed.'; return []; }
-  finally { busy.value = false; }
+    for (let n = 0; n < files.length; n++) {
+      if (files.length > 1) uploadNote.value = `Uploading pictures, ${n + 1} of ${files.length}`;
+      try { urls.push(await secureUpload(await shrinkPicture(files[n]), 'blog')); }
+      catch (e: any) { failed++; why = e?.message || 'Image upload failed.'; }
+    }
+  } finally { busy.value = false; uploadNote.value = ''; }
+  if (failed) problem.value = files.length === 1 ? why : `${failed} of ${files.length} pictures could not be uploaded: ${why}`;
+  return urls;
 }
 // A picture's size, for a picture on its own (Celia, triage #395: "loads
 // huge and I can't adjust its size"). New pictures start medium.
@@ -595,9 +609,67 @@ function removePicked() {
   const f = pickedFig.value;
   pickedFig.value = null;
   if (!f || !inDoc(f)) return;
+  const holder = f.parentElement;
   f.remove();
+  // a gallery with no pictures left goes; a pair with one left becomes that picture
+  if (holder?.classList.contains('blog-post__gallery') && !holder.querySelector('figure')) holder.remove();
+  else if (holder?.classList.contains('blog-post__pair')) {
+    const rest = holder.querySelectorAll('figure');
+    if (rest.length === 1) holder.replaceWith(rest[0]);
+  }
   if (docEl.value && !docEl.value.firstElementChild) docEl.value.innerHTML = EMPTY;
   keepLocalSoon();
+}
+// Where the picked picture sits: on its own, in a pair, or in a gallery.
+const pickedIn = computed(() => {
+  const f = pickedFig.value;
+  if (!f) return '';
+  return f.closest('.blog-post__gallery') ? 'gallery' : f.closest('.blog-post__pair') ? 'pair' : 'single';
+});
+// A picture's link (Ames 2026-11-05): clicking it on the blog opens this
+// instead of showing the picture larger.
+const picLink = ref('');
+const picLinkError = ref('');
+function savePicLink() {
+  picLinkError.value = '';
+  const f = pickedFig.value;
+  if (!f || !inDoc(f)) return;
+  if (!picLink.value.trim()) { delete f.dataset.link; keepLocalSoon(); return; }
+  const url = tidyLink(picLink.value);
+  if (!url) { picLinkError.value = 'That does not look like a web address.'; return; }
+  picLink.value = url;
+  f.dataset.link = url;
+  keepLocalSoon();
+}
+function movePicked(step: -1 | 1) {
+  const f = pickedFig.value;
+  if (!f || !inDoc(f)) return;
+  const other = (step < 0 ? f.previousElementSibling : f.nextElementSibling) as HTMLElement | null;
+  if (!other || other.tagName !== 'FIGURE') return;
+  if (step < 0) other.before(f); else other.after(f);
+  keepLocalSoon();
+}
+async function addToGallery() {
+  const g = pickedFig.value?.closest('.blog-post__gallery') as HTMLElement | null;
+  if (!g) return;
+  const room = GALLERY_MAX - g.querySelectorAll('figure').length;
+  if (room <= 0) { problem.value = `A gallery holds up to ${GALLERY_MAX} pictures.`; return; }
+  const urls = await pickImages(room);
+  if (!urls.length || !inDoc(g)) return;
+  for (const u of urls) g.appendChild(galleryFigure(u));
+  keepLocalSoon();
+}
+function moreLine(): HTMLElement {
+  const more = document.createElement('div');
+  more.className = 'blog-post__more';
+  return more;
+}
+/** A gallery picture: a caption, and a longer description shown when enlarged. */
+function galleryFigure(url: string): HTMLElement {
+  const fig = figure(url);
+  setFigureSize(fig, '');
+  fig.appendChild(moreLine());
+  return fig;
 }
 function figure(url: string): HTMLElement {
   const fig = document.createElement('figure');
@@ -609,13 +681,13 @@ function figure(url: string): HTMLElement {
   return fig;
 }
 async function addImage() {
-  const [url] = await pickImages(false);
+  const [url] = await pickImages(1);
   if (!url) return;
   restoreSelection();
   insertBlock(figure(url));
 }
 async function addImagePair() {
-  const urls = await pickImages(true);
+  const urls = await pickImages(2);
   if (!urls.length) return;
   if (urls.length < 2) { problem.value = 'Pick two images to put them side by side. One was added on its own.'; restoreSelection(); insertBlock(figure(urls[0])); return; }
   const pair = document.createElement('div');
@@ -626,12 +698,24 @@ async function addImagePair() {
   restoreSelection();
   insertBlock(pair);
 }
+// A gallery (Ames 2026-11-05): a grid of pictures, each with a caption, and
+// a longer description with links shown when a picture is clicked larger.
+async function addGallery() {
+  const urls = await pickImages(GALLERY_MAX);
+  if (!urls.length) return;
+  const g = document.createElement('div');
+  g.className = 'blog-post__gallery';
+  for (const u of urls) g.appendChild(galleryFigure(u));
+  restoreSelection();
+  insertBlock(g);
+}
 async function addCover() {
-  const [url] = await pickImages(false);
+  const [url] = await pickImages(1);
   if (url) coverUrl.value = url;
 }
 
-// Pasting brings in words only, never another page's styling or code.
+// Pasting brings in words and their formatting (headings, lists, bold,
+// italic, links), never another page's styling or code.
 function onPaste(e: ClipboardEvent) {
   e.preventDefault();
   // A picture on the clipboard (a screenshot, an image copied from a page) is
@@ -654,6 +738,23 @@ function onPaste(e: ClipboardEvent) {
       return;
     }
   }
+  // Copied from a web page or a document: keep its links and formatting
+  // (Ames 2026-11-05: "right now it's only copying over plain text").
+  const pastedHtml = e.clipboardData?.getData('text/html') ?? '';
+  if (pastedHtml) {
+    const md = htmlToBlogMarkdown(pastedHtml);
+    const html = md ? renderBlogMarkdown(md, true) : '';
+    if (html) {
+      // one paragraph goes into the line being written, not as a new paragraph
+      const one = /^<p>([\s\S]*)<\/p>$/.exec(html);
+      document.execCommand('insertHTML', false, one && !one[1].includes('</p>') ? one[1] : html);
+      docEl.value?.querySelectorAll('figure').forEach(f => { if (!f.querySelector('figcaption')) f.appendChild(document.createElement('figcaption')); });
+      tidyKeepingCaret();
+      keepLocalSoon();
+      return;
+    }
+    if (pictures.length) return;                       // only a picture was copied
+  }
   const paras = text.replace(/\r\n?/g, '\n').split(/\n+/).map(x => x.trim()).filter(Boolean);
   if (!paras.length) return;
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -662,17 +763,12 @@ function onPaste(e: ClipboardEvent) {
 }
 async function pastePictures(files: File[]) {
   keepSelection();
-  problem.value = ''; busy.value = true;
-  try {
-    for (const f of files.slice(0, 4)) {
-      const url = await secureUpload(f, 'blog');
-      restoreSelection();
-      insertBlock(figure(url));
-      keepSelection();
-    }
-  } catch (err: any) {
-    problem.value = err?.message || 'The pasted picture could not be uploaded.';
-  } finally { busy.value = false; }
+  const urls = await uploadPictures(files.slice(0, 4));
+  for (const url of urls) {
+    restoreSelection();
+    insertBlock(figure(url));
+    keepSelection();
+  }
 }
 // Click a picture or a video to select it, so Delete removes it. A picture on
 // its own also gets the size bar. Click a link or button to change it.
@@ -686,9 +782,10 @@ function onDocClick(e: MouseEvent) {
     return;
   }
   const block = t.closest('.blog-post__video') || (t.tagName === 'IMG' ? t.closest('figure') : null);
-  const single = block && block.tagName === 'FIGURE' && !block.closest('.blog-post__pair') ? block as HTMLElement : null;
-  pickedFig.value = single && inDoc(single) ? single : null;
-  pickedSize.value = single ? (figureSize(single) || 'large') : '';
+  const fig = block && block.tagName === 'FIGURE' ? block as HTMLElement : null;
+  if (fig !== pickedFig.value) { picLink.value = fig?.dataset.link || ''; picLinkError.value = ''; }
+  pickedFig.value = fig && inDoc(fig) ? fig : null;
+  pickedSize.value = fig ? (figureSize(fig) || 'large') : '';
   if (!block || !inDoc(block)) return;
   const r = document.createRange();
   r.selectNode(block);
@@ -720,6 +817,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
           <button v-if="site" class="nge-blog-btn" @click="closeEditor">Close</button>
         </span>
       </div>
+      <p v-if="uploadNote" class="nge-blog-ok" role="status">{{ uploadNote }}</p>
       <p v-if="problem" class="nge-blog-problem" role="alert">{{ problem }}</p>
       <p v-if="loading" class="nge-blog-note">Loading posts...</p>
       <p v-else-if="!posts.length && !problem" class="nge-blog-note">No posts yet. Write the first one.</p>
@@ -797,6 +895,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
             <span class="nge-blog-sep"></span>
             <button class="nge-blog-tool" title="Add an image" :disabled="busy || showPreview" @click="addImage">Image</button>
             <button class="nge-blog-tool" title="Two images side by side" :disabled="busy || showPreview" @click="addImagePair">2 images</button>
+            <button class="nge-blog-tool" title="A grid of pictures with captions" :disabled="busy || showPreview" @click="addGallery">Gallery</button>
             <button class="nge-blog-tool" :class="{ on: ask === 'video' }" title="A YouTube video" :disabled="showPreview" @click="openAsk('video')">Video</button>
             <button class="nge-blog-tool" title="A line between sections" :disabled="showPreview" @click="addDivider">Divider</button>
             <span class="nge-blog-grow"></span>
@@ -816,13 +915,23 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
             <span v-if="askError" class="nge-blog-problem" role="alert">{{ askError }}</span>
           </form>
 
-          <div v-if="pickedFig && !showPreview" class="nge-blog-ask nge-blog-sizes" role="group" aria-label="Picture size">
-            <span>Picture size</span>
-            <button v-for="s in ['small', 'medium', 'large']" :key="s" type="button" class="nge-blog-tool" :class="{ on: pickedSize === s }"
-                    @mousedown.prevent @click="sizePicked(s)">{{ s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large' }}</button>
+          <div v-if="pickedFig && !showPreview" class="nge-blog-ask nge-blog-sizes" role="group" aria-label="Picture">
+            <template v-if="pickedIn === 'single'">
+              <span>Picture size</span>
+              <button v-for="s in ['small', 'medium', 'large']" :key="s" type="button" class="nge-blog-tool" :class="{ on: pickedSize === s }"
+                      @mousedown.prevent @click="sizePicked(s)">{{ s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large' }}</button>
+            </template>
+            <template v-if="pickedIn === 'gallery'">
+              <button type="button" class="nge-blog-tool" title="Move this picture earlier" aria-label="Move left" @mousedown.prevent @click="movePicked(-1)">◀</button>
+              <button type="button" class="nge-blog-tool" title="Move this picture later" aria-label="Move right" @mousedown.prevent @click="movePicked(1)">▶</button>
+              <button type="button" class="nge-blog-tool" :disabled="busy" @mousedown.prevent @click="addToGallery">Add pictures</button>
+            </template>
+            <input v-model="picLink" class="nge-blog-piclink" placeholder="Link (optional): clicking the picture opens it"
+                   aria-label="Picture link" @keydown.stop @keydown.enter.prevent="savePicLink" @change="savePicLink" />
             <span class="nge-blog-grow"></span>
             <button type="button" class="nge-blog-btn nge-blog-btn--danger" @mousedown.prevent @click="removePicked">Remove picture</button>
-            <button type="button" class="nge-blog-btn" @mousedown.prevent @click="pickedFig = null">Done</button>
+            <button type="button" class="nge-blog-btn" @mousedown.prevent @click="savePicLink(); pickedFig = null">Done</button>
+            <span v-if="picLinkError" class="nge-blog-problem" role="alert">{{ picLinkError }}</span>
           </div>
 
                     <div ref="docWrap" class="nge-blog-docwrap" @mousemove="onDocMove" @mouseleave="onDocLeave">
@@ -837,6 +946,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
               <div v-if="gapMenu" class="nge-blog-gap-menu" role="menu" @mousedown.prevent @keydown.esc="closeGap">
                 <button type="button" role="menuitem" @click="addAtGap('image')"><span aria-hidden="true">🖼</span>Image</button>
                 <button type="button" role="menuitem" @click="addAtGap('pair')"><span aria-hidden="true">◫</span>Two images</button>
+                <button type="button" role="menuitem" @click="addAtGap('gallery')"><span aria-hidden="true">▦</span>Gallery</button>
                 <button type="button" role="menuitem" @click="addAtGap('video')"><span aria-hidden="true">▶</span>Video</button>
                 <button type="button" role="menuitem" @click="addAtGap('text')"><span aria-hidden="true">¶</span>Text</button>
                 <button type="button" role="menuitem" @click="addAtGap('heading')"><span aria-hidden="true">H</span>Heading</button>
@@ -848,9 +958,10 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
             </div>
           </div>
         </div>
-        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. Click a picture to change its size, or a link to change or remove it.</p>
+        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. Click a picture to change its size or give it a link, or a link to change or remove it. Under a gallery picture, the second line is a longer description readers see when they click the picture.</p>
       </div>
 
+      <p v-if="uploadNote" class="nge-blog-ok" role="status">{{ uploadNote }}</p>
       <p v-if="problem" class="nge-blog-problem" role="alert">{{ problem }}</p>
       <p v-if="message" class="nge-blog-ok" role="status">
         {{ message }} <a v-if="status === 'published'" :href="postUrl" target="_blank" rel="noopener noreferrer">View it</a>
@@ -1051,4 +1162,16 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog-doc :deep(figure[data-size='large']) { max-width: 100%; }
 .nge-blog-doc :deep(figure img) { width: 100%; height: auto; }
 .nge-blog-sizes > span:first-child { font-size: 0.9em; opacity: 0.8; }
+/* Galleries (Ames 2026-11-05): a grid, each picture with a caption and a
+   longer description that readers see when they click the picture. */
+.nge-blog-doc :deep(.blog-post__gallery) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.nge-blog-doc :deep(.blog-post__gallery figure) { margin: 0; max-width: none; }
+.nge-blog-doc :deep(.blog-post__gallery img) { aspect-ratio: 4 / 3; object-fit: cover; }
+.nge-blog-doc :deep(.blog-post__more) { min-height: 1.4em; margin-top: 4px; font-size: 0.8em; opacity: 0.75; }
+.nge-blog-doc[contenteditable='true'] :deep(.blog-post__more:empty)::before { content: 'Longer description, shown when clicked (optional)'; opacity: 0.5; }
+.nge-blog-doc :deep(figure[data-link]) { position: relative; }
+.nge-blog-doc :deep(figure[data-link])::after { content: 'Link'; position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; color: #fff; background: rgba(10, 114, 134, 0.9); pointer-events: none; }
+.nge-blog-piclink { flex: 1 1 220px; width: auto; }
+@media (max-width: 620px) { .nge-blog-doc :deep(.blog-post__gallery) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

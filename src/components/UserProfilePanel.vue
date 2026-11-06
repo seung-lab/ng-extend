@@ -2190,7 +2190,7 @@ onUnmounted(() => clearTimeout(stageTimer));
               </div>
             </div>
             <div v-if="earnedLoyaltyBadges.earned.length === 0" class="nge-profile-badges-empty">
-              Make an edit on two different days to earn your first Loyalty achievement!
+              Play Pyr on two different days to earn your first Days Achievement!
             </div>
           </div>
 

@@ -24,6 +24,33 @@ async function serverCounts(rpc, now = Date.now()) {
   } catch { state.ready = false; }
   return state.ready;
 }
+/**
+ * Opening Pyr: the streak is brought up to date in the player's time zone
+ * (ew_touch_streak). For a player who cannot edit production yet, the visit
+ * itself is also the day's work (Ames 2026-11-05: "Until users have
+ * production access we should just count their logging in! Or coming at
+ * all"): before access there are only tutorials and the Sandbox, and a day
+ * spent on them did not count, so Day 2 could slip by. Production editors
+ * still need an edit, a cell, a claim, a type, an annotation or help.
+ *   touch(tz)        ew_touch_streak's answer
+ *   countDay()       ew_count_day: today counts, once
+ *   hasProduction()  true, false, or null when CAVE could not be asked
+ * Only a clear false counts the visit. The answer keeps the "before" numbers
+ * of the first touch, so the game celebrates the day just earned.
+ */
+async function recordVisit({touch, countDay, hasProduction}) {
+  const first = await touch();
+  if (!first || typeof first !== 'object') return first;
+  let prod = null;
+  try { prod = await hasProduction(); } catch { /* unknown: leave it */ }
+  if (prod !== false) return first;
+  await countDay();
+  const after = await touch();
+  if (!after || typeof after !== 'object') return first;
+  return {...after, streak_before: first.streak_before, days_before: first.days_before,
+    recounted: first.recounted, days_recounted: first.days_recounted, visit_counted: true};
+}
+
 /** For tests. */
 function resetServerCounts() { state.ready = null; state.checkedAt = 0; }
 
@@ -77,4 +104,4 @@ async function recordActivity({rpc, insertLegacy, who, me, token, value, fetchIm
   return {counted: true, verified: check.state === 'verified' ? true : check.state === 'unverified' ? false : null, ...r.body};
 }
 
-module.exports = {recordActivity, serverCounts, resetServerCounts, stripCounters, stripDayCounters};
+module.exports = {recordActivity, recordVisit, serverCounts, resetServerCounts, stripCounters, stripDayCounters};

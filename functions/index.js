@@ -16,7 +16,7 @@ const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
 const ewCaveToken = defineSecret("EW_CAVE_TOKEN");
 const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
-const {recordActivity, serverCounts, stripCounters, stripDayCounters} = require("./activity");
+const {recordActivity, recordVisit, serverCounts, stripCounters, stripDayCounters} = require("./activity");
 const {achievementRow, specialAwardRow} = require("./achievements");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
@@ -1838,13 +1838,19 @@ exports.ewSecureWrite = onRequest(
           out = await ewRecordActivity(ewServiceKey.value().trim(), sb, ctx, who, token, args.row);
           break;
         }
-        // Opening the game counts as a day of the player's streak, in their
-        // own time zone (supabase-streak-local-days.sql). Nothing is logged:
-        // a visit is not an edit and never reaches the leaderboard.
+        // Opening the game brings the streak up to date, in the player's
+        // own time zone (supabase-streak-local-days.sql), and before
+        // production access the visit is the day (activity.js recordVisit).
+        // Nothing is logged: a visit is not an edit and never reaches the
+        // leaderboard.
         case "activity.visit": {
           const tz = typeof args.tz === "string" && /^[A-Za-z0-9_+\-\/]{1,64}$/.test(args.tz) ? args.tz : null;
           try {
-            out = await sb("rpc/ew_touch_streak", { method: "POST", body: JSON.stringify({ p_user: me.id, p_tz: tz }) });
+            out = await recordVisit({
+              touch: () => sb("rpc/ew_touch_streak", { method: "POST", body: JSON.stringify({ p_user: me.id, p_tz: tz }) }),
+              countDay: () => sb("rpc/ew_count_day", { method: "POST", body: JSON.stringify({ p_user: me.id }) }),
+              hasProduction: () => ewHasProduction(token),
+            });
           } catch (e) {
             // Until the SQL is run the function is missing: say so plainly.
             if (/PGRST202|ew_touch_streak|404/.test(String(e && e.message))) { out = { counted: false }; break; }
@@ -2745,7 +2751,10 @@ exports.ewSecureUpload = onRequest(
    const isBlogAuthor=input.kind==="blog"&&!!uploader.me&&(await sb("blog_authors?user_id=eq."+uploader.me.id+"&select=user_id&limit=1")).length>0;
    if(!isBlogAuthor)requirePilot(uploader);
    const upload=require("./upload-policy").prepareUpload(input,who,isAdmin,isBlogAuthor);
-   if(!(await rateLimit({ip:who.email},false,"upload")).ok)throw ewErr(429,"Please wait before uploading another image.");
+   // A blog gallery uploads a dozen pictures at once (Ames 2026-11-05): blog
+   // authors and admins get the admin write allowance, others keep 8 a minute.
+   const roomy=isAdmin||isBlogAuthor;
+   if(!(await rateLimit({ip:who.email},false,roomy?"write:upload":"upload",roomy)).ok)throw ewErr(429,"Please wait before uploading another image.");
    const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/admin-uploads/"+upload.path;
    const r=await fetch(url,{method:"POST",headers:{apikey:key,...(key.startsWith("sb_")?{}:{Authorization:"Bearer "+key}),"Content-Type":upload.contentType,"x-upsert":"false"},body:upload.bytes,redirect:"error",signal:AbortSignal.timeout(30000)});
    if(!r.ok)throw ewErr(502,"Image storage is temporarily unavailable.");

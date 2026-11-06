@@ -250,7 +250,8 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   // store when the streak is saved); here, only the confetti, once, sized
   // by the largest milestone passed.
   const passed = streakMilestonesBetween(prevStreak, newStreak);
-  if (passed.length) badgeConfetti(passed[passed.length - 1] >= 30 ? 2 : 1);
+  // A Days Achievement card for the same visit brings its own confetti.
+  if (passed.length && Date.now() - daysCardAt > 15000) badgeConfetti(passed[passed.length - 1] >= 30 ? 2 : 1);
   prevStreak = newStreak;
 });
 
@@ -309,8 +310,13 @@ function settleLoyalty(days: number) {
     ...(img ? { image_url: img, thumbnail_url: img } : {}),
   }).then(() => backend.loadNotifications()).catch(() => { /* the achievement itself is saved */ });
 }
+/** When a Days Achievement card was last on its way: the streak's confetti
+ *  for the same visit stays back, so one moment has one celebration. */
+let daysCardAt = 0;
 function onLoyaltyDays(e: Event) {
   const now = Number(((e as CustomEvent).detail || {}).now);
+  const before = Number(((e as CustomEvent).detail || {}).before);
+  if (LOYALTY_BADGES.some(b => before < b.threshold && now >= b.threshold)) daysCardAt = Date.now();
   // a moment for the saved list to arrive on a first load
   if (backend.badgeAwardsLoaded) settleLoyalty(now); else setTimeout(() => settleLoyalty(now), 4000);
 }
