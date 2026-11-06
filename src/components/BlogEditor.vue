@@ -793,15 +793,53 @@ async function addCover() {
 
 // Pasting brings in words and their formatting (headings, lists, bold,
 // italic, links), never another page's styling or code.
+/** Is the caret in a picture's caption or longer description? Words only go there. */
+function caretInCaption() {
+  const n = window.getSelection()?.anchorNode;
+  const el = n ? (n.nodeType === Node.ELEMENT_NODE ? n as Element : n.parentElement) : null;
+  return !!el?.closest('figcaption, .blog-post__more');
+}
+/** Rendered blog HTML as words for one line: no button look, no blocks. */
+function asOneLine(html: string) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  t.content.querySelectorAll('img, figure, iframe, [data-yt], hr').forEach(el => el.remove());
+  t.content.querySelectorAll('.blog-post__button').forEach(a => a.removeAttribute('class'));
+  const parts: string[] = [];
+  t.content.querySelectorAll('p, li, h2, h3, blockquote').forEach(b => {
+    if (b.querySelector('p, li, h2, h3, blockquote')) return;
+    const x = b.innerHTML.trim();
+    if (x) parts.push(x);
+  });
+  return parts.length ? parts.join(' ') : t.innerHTML.trim();
+}
 function onPaste(e: ClipboardEvent) {
   e.preventDefault();
+  const inCaption = caretInCaption();
+  // A web address on its own becomes a link: on the words selected, or on
+  // itself (Ames 2026-11-06: "can't copy-paste a link into an image caption").
+  const plain = (e.clipboardData?.getData('text/plain') ?? '').trim();
+  const pastedUrl = /^https?:\/\/\S+$/i.test(plain) ? tidyLink(plain) : '';
+  if (pastedUrl) {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && !sel.isCollapsed && sel.toString().trim()) document.execCommand('createLink', false, pastedUrl);
+    else {
+      const a = document.createElement('a');
+      a.href = pastedUrl;
+      a.textContent = pastedUrl.replace(/^https:\/\//, '');
+      document.execCommand('insertHTML', false, a.outerHTML);
+    }
+    tidyKeepingCaret();                                  // drops the styling Chrome copies along
+    keepLocalSoon();
+    return;
+  }
   // A picture on the clipboard (a screenshot, an image copied from a page) is
   // uploaded and placed where the cursor is, like Add image (Ames 2026-10-14:
   // "the pasted image doesn't save here, while the rest of the text does";
   // a paste used to keep only the words).
   const pictures = [...(e.clipboardData?.items ?? [])].filter(i => i.kind === 'file' && i.type.startsWith('image/'))
     .map(i => i.getAsFile()).filter((f): f is File => !!f);
-  if (pictures.length) void pastePictures(pictures);
+  if (pictures.length && !inCaption) void pastePictures(pictures);
   const text = e.clipboardData?.getData('text/plain') ?? '';
   // Pasted text written in the blog's own format (## headings, - lists,
   // **bold**, [links](https://...)) arrives formatted, through the same
@@ -810,7 +848,7 @@ function onPaste(e: ClipboardEvent) {
   if (/^\s*(#{2,3}\s|[-*]\s|\d+\.\s|>\s|!>\s|---\s*$)/m.test(text) || /\*\*[^*\n]+\*\*/.test(text)) {
     const html = renderBlogMarkdown(text.replace(/\r\n?/g, '\n'), true);
     if (html) {
-      document.execCommand('insertHTML', false, html);
+      document.execCommand('insertHTML', false, inCaption ? asOneLine(html) : html);
       tidyKeepingCaret();
       return;
     }
@@ -823,8 +861,10 @@ function onPaste(e: ClipboardEvent) {
     const html = md ? renderBlogMarkdown(md, true) : '';
     if (html) {
       // one paragraph goes into the line being written, not as a new paragraph
-      const one = /^<p>([\s\S]*)<\/p>$/.exec(html);
-      document.execCommand('insertHTML', false, one && !one[1].includes('</p>') ? one[1] : html);
+      // (a lone link is a button on the page, but pasted into a line it is a link)
+      const one = /^<p( class="blog-post__cta")?>([\s\S]*)<\/p>$/.exec(html);
+      const into = inCaption || (one && !one[2].includes('</p>'));
+      document.execCommand('insertHTML', false, into ? asOneLine(html) : html);
       docEl.value?.querySelectorAll('figure').forEach(f => { if (!f.querySelector('figcaption')) f.appendChild(document.createElement('figcaption')); });
       tidyKeepingCaret();
       keepLocalSoon();
@@ -835,7 +875,7 @@ function onPaste(e: ClipboardEvent) {
   const paras = text.replace(/\r\n?/g, '\n').split(/\n+/).map(x => x.trim()).filter(Boolean);
   if (!paras.length) return;
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  if (paras.length === 1) document.execCommand('insertText', false, paras[0]);
+  if (paras.length === 1 || inCaption) document.execCommand('insertText', false, paras.join(' '));
   else document.execCommand('insertHTML', false, paras.map(x => `<p>${esc(x)}</p>`).join(''));
 }
 async function pastePictures(files: File[]) {
@@ -1147,6 +1187,8 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog-doc :deep(li) { display: list-item; margin: 4px 0; }
 .nge-blog-doc :deep(strong), .nge-blog-doc :deep(b) { color: #fff; }
 .nge-blog-doc :deep(a) { color: #42d5ec; }
+/* bold words inside a link stay the link's color (Ames 2026-11-06) */
+.nge-blog-doc :deep(a strong), .nge-blog-doc :deep(a b), .nge-blog-doc :deep(strong a), .nge-blog-doc :deep(b a) { color: #42d5ec; }
 .nge-blog-doc :deep(hr) { margin: 22px 0; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.2); }
 .nge-blog-doc :deep(blockquote) { margin: 0 0 12px; padding: 2px 0 2px 14px; border-left: 3px solid #42d5ec; }
 .nge-blog-doc :deep(aside) { margin: 0 0 14px; padding: 12px 14px 1px; border-radius: 10px; border: 1px solid rgba(230, 199, 96, 0.5); background: rgba(230, 199, 96, 0.08); }
@@ -1236,6 +1278,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog--site .nge-blog-doc :deep(h3) { font-size: 13.5px; }
 .nge-blog--site .nge-blog-doc :deep(strong), .nge-blog--site .nge-blog-doc :deep(b) { color: #0b101a; }
 .nge-blog--site .nge-blog-doc :deep(a) { color: #0a7286; }
+.nge-blog--site .nge-blog-doc :deep(a strong), .nge-blog--site .nge-blog-doc :deep(a b), .nge-blog--site .nge-blog-doc :deep(strong a), .nge-blog--site .nge-blog-doc :deep(b a) { color: #0a7286; }
 .nge-blog--site .nge-blog-doc :deep(li::marker) { color: #17a2bd; }
 .nge-blog--site .nge-blog-doc :deep(hr) { border-top-color: rgba(20, 30, 50, 0.18); }
 .nge-blog--site .nge-blog-doc :deep(blockquote) { border-left-color: #17a2bd; background: rgba(23, 162, 189, 0.07); padding: 8px 0 8px 16px; }
