@@ -596,6 +596,8 @@ class GrapheneState extends RefCounted implements Trackable {
   }
 
   restoreState(x: any) {
+    // A view with no cut points clears the ones before (Celia D, report 405).
+    if (x?.[MULTICUT_JSON_KEY] === undefined) this.multicutState.reset();
     verifyOptionalObjectProperty(x, MULTICUT_JSON_KEY, value => {
       this.multicutState.restoreState(value);
     });
@@ -922,6 +924,10 @@ class MulticutState extends RefCounted implements Trackable {
     const sinks = verifyObjectProperty(x, SINKS_JSON_KEY, segmentSelectionsValidator);
     const sources = verifyObjectProperty(x, SOURCES_JSON_KEY, segmentSelectionsValidator);
 
+    // A loaded view's cut points replace the ones before, not join them
+    // (Celia D, report 405: a reviewed example kept the last one's points).
+    this.sinks.clear();
+    this.sources.clear();
     for (const sink of sinks) {
       this.sinks.add(sink);
     }
@@ -1780,7 +1786,10 @@ class GrapheneGraphServerInterface {
     // nge: a refused cut's "Split failed" bar stayed up after the next cut
     // went through, so a cut that worked looked like it failed (Ames
     // 2026-11-04). Each new cut takes the last one's error down.
-    ngeLastSplitError?.dispose();
+    // Pyr takes the bar down itself once its red popup has the words (report
+    // 402), and Dismiss can too: a bar already gone is left alone, since a
+    // second dispose throws and stopped the next cut.
+    if (ngeLastSplitError?.element) ngeLastSplitError.dispose();
     ngeLastSplitError = undefined;
 
     const promise =

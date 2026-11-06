@@ -45,6 +45,14 @@ export const SCALE_PRIORITY_MULTIPLIER = 1e9;
 // (capExpensiveFallbacks); a pyramid of expensive chunks (the Sandbox) is left as it was. Retina at
 // tracing zoom: about 15 extra chunks of a few KB.
 const COARSE_NEIGHBOUR_SCALES = 2;
+// Pyr, 2026-11-06 (annkri, report 400): the Sandbox still went black at every 16-slice block. Its
+// pinky EM stores 512x512x16 raw chunks at all nine scales and never downsamples z, so no scale is
+// cheap and the rule above skipped it: each crossing waited for a 2.5 MB coarsest chunk sharing
+// the HTTP/1.1 host with the sharp ones. The coarsest scale on screen (KEEP_COARSEST_SCALE: one
+// clipped chunk covering the panel) now keeps its neighbour slabs even when expensive, if it
+// needs at most MAX_EXPENSIVE_NEIGHBOUR_CHUNKS chunks. Sandbox: two extra chunks a view, then one
+// per crossing.
+const MAX_EXPENSIVE_NEIGHBOUR_CHUNKS = 2;
 
 // Temporary values used by SliceView.updateVisibleChunk
 const tempChunkPosition = vec3.create();
@@ -150,7 +158,9 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
             });
         if (priorityTier === ChunkPriorityTier.VISIBLE && layer.capExpensiveFallbacks &&
             i > 0 && i >= numVisibleSources - COARSE_NEIGHBOUR_SCALES &&
-            uncompressedChunkBytes(tsource) <= EXPENSIVE_FALLBACK_CHUNK_BYTES) {
+            (uncompressedChunkBytes(tsource) <= EXPENSIVE_FALLBACK_CHUNK_BYTES ||
+             (i === numVisibleSources - 1 &&
+              curVisibleChunks.length <= MAX_EXPENSIVE_NEIGHBOUR_CHUNKS))) {
           requestNeighbourSlabs(chunkManager, projectionParameters, tsource, curVisibleChunks,
                                 sourceBasePriority - SCALE_PRIORITY_MULTIPLIER / 2);
         }

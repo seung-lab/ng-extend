@@ -1002,6 +1002,16 @@ function observeSplitMergeTools() {
         // Up until it is dismissed, or the next cut or merge replaces it.
         store.showResult('error', cleanText, 5 * 60 * 1000);
         store.submitting = false;
+        // The red popup now says it, so neuroglancer's own line at the bottom
+        // goes: the same words twice, and its small Dismiss button was the
+        // only way to clear it short of F5 (Nseraf, report 402). Only lines
+        // just shown as the popup, and only ones with a Dismiss button (an
+        // error bar), are taken down; every other status line stays.
+        try {
+          const dismiss = el.classList.contains('neuroglancer-tool-status') ? null
+            : Array.from(el.children).find(b => b.tagName === 'BUTTON' && /^dismiss$/i.test((b.textContent || '').trim()));
+          (dismiss as HTMLElement | undefined)?.click();
+        } catch { /* the line stays */ }
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
         // Neuroglancer shows "Splitting source from sink..." during processing —
         // the authoritative signal that a split was actually submitted.
