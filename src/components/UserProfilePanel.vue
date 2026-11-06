@@ -2,7 +2,7 @@
 import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
 import {supabase} from '../supabase';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
-import {listQuests, nameKey as questNameKey, questCounts} from '../annotation_quests';
+import {nameKey as questNameKey} from '../annotation_quests';
 import {nextDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
@@ -88,17 +88,25 @@ const dayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.valu
 const bestDayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.longest_streak || 0) : (stats.value.longestStreak || 0));
 const nextDay = computed(() => nextDayMilestone(totalDays.value));
 // Quests completed (Ames 2026-10-13: "I don't see Quests in Profile"): the
-// quest sheet's rows that carry this player's name and a status, read
-// through the quest sheet function. The sheet is the only record of a quest
-// so far, so this is a count from it, not a game table; null means it could
-// not be read, and the profile then says so rather than showing 0.
+// quest sheet's rows that carry this player's name and a counted status.
+// Read from a table, not the sheet (Ames 2026-11-06), the same counts the
+// leaderboard's Quests tab shows (ew_quest_board, from the server's copy of
+// the sheet). A sheet name matches the player's display name or username.
+// null means it could not be read, and the profile then says so, not 0.
 const questsCompleted = ref<number | null>(null);
-async function loadQuestsCompleted(who?: string | null) {
+async function loadQuestsCompleted(userId?: string | null) {
   questsCompleted.value = null;
   try {
-    const r = await listQuests();
-    const key = questNameKey(who ?? r.you);
-    questsCompleted.value = key ? r.rows.filter(x => questCounts(x.status) && questNameKey(x.annotator) === key).length : 0;
+    const id = userId || backendStore.userId;
+    const [board, me] = await Promise.all([
+      supabase.rpc('ew_quest_board', { p_quest: 'retina_cilia' }),
+      id ? supabase.from('users').select('display_name, username').eq('id', id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    ]);
+    if (board.error) throw board.error;
+    const keys = new Set([questNameKey(me.data?.display_name), questNameKey(me.data?.username)].filter(Boolean));
+    questsCompleted.value = ((board.data ?? []) as any[])
+      .filter(r => keys.has(questNameKey(r.name)))
+      .reduce((n, r) => n + (r.alltime | 0), 0);
   } catch { questsCompleted.value = null; }
 }
 // Annotations placed: their total, or mine plus what this browser has yet to send.
@@ -126,8 +134,7 @@ async function loadOtherUser() {
     void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
     otherDays.value = null;
     void backendStore.loadDayTotal(props.viewUserId).then(n => { otherDays.value = n; });
-    // '' (not null) for a player with no name: null would count the viewer's own.
-    void loadQuestsCompleted(otherUserProfile.value?.display_name || '');
+    void loadQuestsCompleted(props.viewUserId);
   } else {
     otherUserProfile.value = null;
     backendStore.loadUserStats();
