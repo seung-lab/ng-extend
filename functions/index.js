@@ -2972,6 +2972,66 @@ exports.ewMentor = onRequest(
     }
   }
 );
+// ── Quest reviews (Celia and Ames 2026-11-05): a function of its own ──────
+// A reviewer's feedback on a Cilia Quest cell reaches the player's bell, and
+// the player's updated link and notes go back to the sheet. Every rule is in
+// quest-review.js; client in src/quest_review.ts. Runs as the sheet identity,
+// like ewSheetSync, so it needs no key of its own.
+//   health   anyone: the sheet's review columns are there and writable.
+//   check    admins: send waiting reviews now ({segmentId} for one row,
+//            {dryRun:true} to see what would be sent).
+//   get      the player: where their review of a cell stands.
+//   reply    the player: their updated link and notes, to the sheet.
+//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck --project eyewire-ii-e4d52
+const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
+const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
+exports.ewQuestReview = onRequest(
+  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 120 },
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 16000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    const review = require("./quest-review");
+    try {
+      const api = ewSheetsApi();
+      if (action === "health") {
+        if (!(await rateLimit(req, false, "sheets:health")).ok) throw ewErr(429, "Please wait.");
+        const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
+        return res.json({ ok: true, waiting: out.checked });
+      }
+      if (!["check", "get", "reply"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      const who = await ewVerify(token);
+      if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
+      const sb = ewSb(ewServiceKey.value().trim());
+      const { me, isAdmin } = await pilotContext(sb, who);
+      if (!me) throw ewErr(403, "Create your Pyr profile first.");
+      if (!(await rateLimit({ ip: who.email }, true, action === "get" ? "read:quests" : "write:sheets")).ok) throw ewErr(429, "Please wait a moment, then try again.");
+      if (action === "check") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await review.check({ api, sb, only: args.segmentId ? String(args.segmentId) : "", dryRun: !!args.dryRun });
+        console.info("[ewQuestReview] check by", who.email, JSON.stringify(out.results.map(r => ({ row: r.row, sent: r.sent, why: r.why }))));
+        return res.json({ ok: true, ...out });
+      }
+      return res.json({ ok: true, data: await review[action](args, { api, me }) });
+    } catch (e) {
+      console.warn("[ewQuestReview]", action, e.status || 500, e.message);
+      return res.status(e.status || 503).json({ error: e.status ? e.message : "The review sheet could not be reached. Please try again shortly." });
+    }
+  }
+);
+// Celia asked for once or twice a day: 8 in the morning and 4 in the
+// afternoon Eastern, "0 8,16 * * *". Every 5 minutes while Celia tests it
+// (Ames 2026-11-05); put the twice a day schedule back after. Each run is one
+// read of the Review status column, plus the waiting rows' own cells.
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+exports.ewQuestReviewCheck = onSchedule(
+  { schedule: "*/5 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
+  async () => {
+    const out = await require("./quest-review").check({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
+    console.info("[ewQuestReviewCheck]", JSON.stringify({ checked: out.checked, results: out.results.map(r => ({ row: r.row, index: r.index, sent: r.sent, why: r.why })) }));
+  }
+);
 
 // ── Blog email (Ames 2026-11-05) ──────────────────────────────────────────
 // New blog posts, emailed to the connectome.quest subscribers through Resend

@@ -19,12 +19,30 @@ import { mintShortStateLink } from '../util/state_link';
 import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
 import EditableText from './EditableText.vue';
+import { sendWaitingReviews } from '../quest_review';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { cellAtCrosshair } from '../util/crosshair_cell';
 import { ancestorAmong } from '../widgets/pcg_service';
 
 const backend = useProofreadingBackendStore();
+
+/** Admins: the reviews marked "Send Review" go out now (src/quest_review.ts). */
+const sendingReviews = ref(false);
+async function sendReviews() {
+  sendingReviews.value = true; error.value = ''; message.value = '';
+  try {
+    const out = await sendWaitingReviews();
+    const sent = out.results.filter(r => r.sent);
+    const left = out.results.filter(r => !r.sent).map(r => `${r.index || 'row ' + r.row} (${r.why})`);
+    message.value = !out.checked ? 'No reviews are marked Send Review.'
+      : `Sent ${sent.length} of ${out.checked}${sent.length ? ': ' + sent.map(r => r.index || 'row ' + r.row).join(', ') : ''}.${left.length ? ' Not sent: ' + left.join('; ') + '.' : ''}`;
+  } catch (e: any) {
+    error.value = e?.message || 'The reviews could not be sent.';
+  } finally {
+    sendingReviews.value = false;
+  }
+}
 const rows = ref<QuestRow[]>([]);
 const loading = ref(false);
 const error = ref('');
@@ -358,6 +376,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
         <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
+        <button v-if="backend.showAdminUi" class="nge-aq-btn" :disabled="sendingReviews" @click="sendReviews"
+                title="Admins: send every review marked Send Review in the sheet now. Pyr also does this at 8 am and 4 pm Eastern.">{{ sendingReviews ? 'Sending…' : 'Send waiting reviews now' }}</button>
       </div>
     </div>
 
