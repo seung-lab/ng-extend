@@ -32,7 +32,7 @@ import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
-import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
+import { cellAtCrosshair, supervoxelAtPlace, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
@@ -1265,7 +1265,20 @@ async function runCrosshairCheck(cell: CellRow) {
       c.ok = true;
       c.message = `The crosshairs are inside ${shortId(at.root)}, the cell on screen. It is recorded as the Final SegID.`;
     } else {
-      c.message = `The crosshairs are inside ${shortId(at.root)}, which is not this cell and did not come from it. Move them into the cell and check again.`;
+      // A second reading, straight from the stored segmentation: what is on
+      // screen can be stale (Ames 2026-11-06: crosshairs inside the cell, the
+      // check said a cell nearby).
+      const sv2 = await supervoxelAtPlace(at.position).catch(() => null);
+      const root2 = sv2 && sv2 !== '0' ? await getRootFromSupervoxel(sv2).catch(() => null) : null;
+      const lineage2 = root2 && root2 !== at.root ? (known.includes(root2) ? root2 : await ancestorAmong(root2, known)) : null;
+      console.warn('[crosshair check]', { layer: currentSegLayer()?.name, position: at.position, onScreen: { sv: at.supervoxel, root: at.root }, stored: { sv: sv2, root: root2 }, cell: known });
+      if (lineage2) {
+        c.check = { ...at, supervoxel: sv2, root: root2 as string };
+        c.ok = true;
+        c.message = `The crosshairs are inside this cell (${shortId(root2 as string)}).`;
+      } else {
+        c.message = `The crosshairs are inside ${shortId(at.root)}, which is not this cell and did not come from it. Move them into the cell and check again.`;
+      }
     }
   }
   c.checking = false;
