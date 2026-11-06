@@ -279,7 +279,23 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         apprentices: mineA.map(apprenticeOut),
         slots: {used: mineA.length, max: MAX_APPRENTICES},
         mentor: isMentor, admin: !!isAdmin,
+        cellsReviewed: await db.countMentorCompletes(meId),
       };
+    }
+    // A mentor's numbers for their Trophy Case (Ames 2026-11-05: "cells reviewed
+    // count"): cells they completed for apprentices, and apprentices graduated.
+    // Anyone signed in may ask, as anyone may see a Trophy Case.
+    case 'mentor.stats': {
+      const target = uuid(args.userId, 'player');
+      const graduates = (await db.apprenticesOf(target)).filter(a => a.status === 'finished' && a.user_id !== target).length;
+      return {cellsReviewed: await db.countMentorCompletes(target), graduates};
+    }
+    // Every cell of one apprentice, for the admins' read only view (Ames
+    // 2026-11-05: admins may read mentor and apprentice notes).
+    case 'mentor.cellsOf': {
+      needAdmin();
+      const target = uuid(args.apprenticeId, 'player');
+      return (await db.reviewsOfApprentice(target)).map(reviewOut);
     }
     case 'mentor.review': {
       const r = await loadReview(args.reviewId);
@@ -562,6 +578,8 @@ function restDb(sb) {
     getReview: id => one(sb(`ew_mentor_reviews?id=eq.${id}&limit=1`)),
     reviewsOfApprentice: id => sb(`ew_mentor_reviews?apprentice_id=eq.${id}&order=sent_at.desc&limit=100`),
     reviewsOfMentor: id => sb(`ew_mentor_reviews?mentor_id=eq.${id}&order=sent_at.desc&limit=100`),
+    // Cells this mentor completed (each review row is one cell).
+    countMentorCompletes: async id => (await sb(`ew_mentor_reviews?mentor_id=eq.${id}&state=eq.complete&select=id&limit=100000`)).length,
     openReviews: () => sb('ew_mentor_reviews?state=in.(waiting,looking,suggestions)&order=sent_at.asc&limit=200'),
     insertReview: row => one(post('ew_mentor_reviews', row)),
     patchReview: (id, p) => one(patch(`ew_mentor_reviews?id=eq.${id}`, p)),
@@ -629,6 +647,7 @@ function memDb(users = []) {
     getReview: async id => copy(rev(id) || null),
     reviewsOfApprentice: async id => copy(s.reviews.filter(r => r.apprentice_id === id).reverse()),
     reviewsOfMentor: async id => copy(s.reviews.filter(r => r.mentor_id === id).reverse()),
+    countMentorCompletes: async id => s.reviews.filter(r => r.mentor_id === id && r.state === 'complete').length,
     openReviews: async () => copy(s.reviews.filter(r => OPEN.includes(r.state))),
     insertReview: async row => { const r = {id: ++s.n, sheet_done: false, decided_at: null, cell_note: null, ...row}; s.reviews.push(r); return copy(r); },
     patchReview: async (id, p) => { const r = rev(id); if (r) Object.assign(r, p); return copy(r || null); },

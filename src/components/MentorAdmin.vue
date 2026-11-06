@@ -7,7 +7,7 @@
  * can take any of them in the Cell Library's Mentoring tab.
  */
 import { onMounted, ref } from 'vue';
-import { adminList, addMentor, removeMentor, addApprentice, removeApprentice, mentorState, loadMentor, shortCell, ago, type Apprentice, type MentorReview } from '../mentor';
+import { adminCellsOf, openInView as openMentorCell, cannotOpen as mentorCannotOpen, adminList, addMentor, removeMentor, addApprentice, removeApprentice, mentorState, loadMentor, shortCell, ago, type Apprentice, type MentorReview } from '../mentor';
 
 const data = ref<{ mentors: { id: string; name: string }[]; apprentices: Apprentice[]; overdue: MentorReview[]; cellsNeeded: number; maxApprentices: number } | null>(null);
 const mentorName = ref('');
@@ -16,6 +16,22 @@ const busy = ref(false);
 const error = ref('');
 const said = ref('');
 const open = ref(false);
+// The admins' read only view of an apprentice's cells (Ames 2026-11-05).
+const cellsFor = ref<string | null>(null);
+const cells = ref<MentorReview[]>([]);
+const cellsNote = ref('');
+async function showCells(id: string) {
+  if (cellsFor.value === id) { cellsFor.value = null; return; }
+  cellsFor.value = id; cells.value = []; cellsNote.value = 'Loading…';
+  try { cells.value = await adminCellsOf(id); cellsNote.value = cells.value.length ? '' : 'No cells sent yet.'; }
+  catch (e: any) { cellsNote.value = e?.message || 'Could not load the cells.'; }
+}
+function readCell(r: MentorReview) {
+  const why = mentorCannotOpen(r);
+  if (why) { cellsNote.value = why; return; }
+  openMentorCell(r, 'admin');
+}
+const STATE_WORD: Record<string, string> = { waiting: 'Waiting', looking: 'With mentor', suggestions: 'Suggestions', complete: 'Complete' };
 
 async function load() {
   error.value = '';
@@ -67,7 +83,19 @@ const addA = () => { const n = apprenticeName.value.trim(); if (n) void act(() =
         <h4>Apprentices</h4>
         <div v-for="a in data.apprentices" :key="a.id" class="nge-madm-row">
           <span>{{ a.name }}: {{ a.cellsDone }} of {{ a.cellsNeeded }}, {{ a.status === 'active' ? (a.mentorName ? `mentor ${a.mentorName}` : 'no mentor yet') : a.status }}</span>
+          <button class="nge-madm-btn" :aria-expanded="cellsFor === a.id" title="Read this player's cells and their mentor's notes" @click="showCells(a.id)">{{ cellsFor === a.id ? 'Hide cells' : 'Cells' }}</button>
           <button v-if="a.status === 'active'" class="nge-madm-btn" :disabled="busy" @click="act(() => removeApprentice(a.id), `${a.name} left the program. Their cells count normally from now on.`)">Remove</button>
+        </div>
+        <div v-for="a in data.apprentices.filter(x => x.id === cellsFor)" :key="'c' + a.id" class="nge-madm-cells">
+          <p v-if="cellsNote" class="nge-madm-how">{{ cellsNote }}</p>
+          <div v-for="r in cells" :key="r.id" class="nge-madm-cell">
+            <span class="nge-madm-cell-state" :class="`nge-madm-cell-state--${r.state}`">{{ STATE_WORD[r.state] }}</span>
+            <span class="nge-madm-cell-main">{{ r.rootId || r.segmentId }}<template v-if="r.mentorName">, {{ r.mentorName }}</template><template v-if="r.notes.length">, {{ r.notes.length }} note{{ r.notes.length === 1 ? '' : 's' }}</template><template v-if="r.rounds > 1">, try {{ r.rounds }}</template>
+              <span v-if="r.cellNote" class="nge-madm-cell-quote">{{ r.mentorName || 'Mentor' }}: {{ r.cellNote }}</span>
+              <span v-if="r.done?.notes" class="nge-madm-cell-quote">{{ a.name }}: {{ r.done.notes }}</span>
+            </span>
+            <button class="nge-madm-btn" title="Open it in the view, read only" @click="readCell(r)">Open</button>
+          </div>
         </div>
         <div class="nge-madm-add">
           <input v-model="apprenticeName" placeholder="Username" @keydown.enter.prevent="addA" />
@@ -91,6 +119,14 @@ const addA = () => { const n = apprenticeName.value.trim(); if (n) void act(() =
 .nge-madm-add input { flex: 1; min-width: 0; font: inherit; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 4px 7px; }
 .nge-madm-btn { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.05); color: #dce6f5; cursor: pointer; white-space: nowrap; }
 .nge-madm-btn:disabled { opacity: 0.5; cursor: default; }
+.nge-madm-cells { margin: 4px 0 8px 12px; padding-left: 10px; border-left: 2px solid rgba(120, 180, 255, 0.3); }
+.nge-madm-cell { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px; }
+.nge-madm-cell-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.nge-madm-cell-quote { display: block; margin-top: 2px; padding-left: 8px; border-left: 2px solid rgba(255, 255, 255, 0.2); color: rgba(220, 230, 245, 0.8); }
+.nge-madm-cell-state { flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(220, 230, 245, 0.3); color: rgba(220, 230, 245, 0.8); }
+.nge-madm-cell-state--looking { color: #9fc8ff; border-color: rgba(120, 180, 255, 0.55); }
+.nge-madm-cell-state--suggestions { color: #f5d142; border-color: rgba(245, 209, 66, 0.6); }
+.nge-madm-cell-state--complete { color: #9fe8c0; border-color: rgba(124, 255, 178, 0.45); }
 .nge-madm-err { color: #f5d142; margin: 6px 0; }
 .nge-madm-said { color: rgba(124, 255, 178, 0.9); margin: 6px 0; }
 </style>

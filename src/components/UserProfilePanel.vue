@@ -48,6 +48,7 @@ import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
 import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 import { MENTOR_TIERS, isMentorTierSlug, type MentorTier } from '../util/mentor_tiers';
+import { mentorStats } from '../mentor';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -1029,6 +1030,13 @@ const plainSpecialBadges = computed(() => profileSpecialBadges.value.filter((a: 
 interface MentorTile { t: MentorTier; award: any | null }
 const mentorTiles = computed<MentorTile[]>(() => MENTOR_TIERS.map(t => ({ t, award: profileSpecialBadges.value.find((a: any) => a?.badge?.slug === t.slug) ?? null })));
 const mentorEarned = computed(() => mentorTiles.value.filter(x => x.award).length);
+// Cells this player reviewed as a mentor (Ames 2026-11-05: "cells reviewed count").
+const mentorReviewed = ref(0);
+watch(() => props.viewUserId || backendStore.userId, async id => {
+  mentorReviewed.value = 0;
+  const s = id ? await mentorStats(String(id)) : null;
+  if ((props.viewUserId || backendStore.userId) === id) mentorReviewed.value = s?.cellsReviewed ?? 0;
+}, { immediate: true });
 interface MedalTile { tier: HuntMedal; count: number; awards: any[]; latest: any }
 const competitionMedals = computed<MedalTile[]>(() => MEDAL_ORDER.map((tier) => {
   const awards = profileSpecialBadges.value.filter((a: any) => huntMedalOf(a) === tier)
@@ -2815,9 +2823,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           </div>
 
           <!-- Mentor (Ames 2026-11-05): a tier at 1, 5, 10, 25 and 50 apprentices graduated, the ones still ahead dimmed -->
-          <div v-if="mentorEarned > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'mentor', 'is-drop': dropSection === 'mentor' }" :style="sectionOrder('mentor')" @dragover="sectionDragOver('mentor', $event)" @drop.prevent="sectionDrop('mentor')">
+          <div v-if="mentorEarned > 0 || mentorReviewed > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'mentor', 'is-drop': dropSection === 'mentor' }" :style="sectionOrder('mentor')" @dragover="sectionDragOver('mentor', $event)" @drop.prevent="sectionDrop('mentor')">
             <div class="nge-trophy-track-label" style="color: #f2d27a;">Mentor Achievements
-              <span class="nge-trophy-track-count">{{ mentorEarned }} of {{ mentorTiles.length }} earned</span>
+              <span class="nge-trophy-track-count">{{ mentorReviewed }} cell{{ mentorReviewed === 1 ? '' : 's' }} reviewed, {{ mentorEarned }} of {{ mentorTiles.length }} earned</span>
               <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
                 <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
                         @dragstart="sectionDragStart('mentor', $event)" @dragend="sectionDragEnd">⠿</button>

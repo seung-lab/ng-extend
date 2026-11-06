@@ -55,7 +55,7 @@ export const mentorState = reactive({
   /** Mentors: cells nobody has taken, and cells waiting for this mentor. */
   waiting: 0,
   yours: 0,
-  queue: null as null | { waiting: MentorReview[]; yours: MentorReview[]; apprentices: Apprentice[]; slots: { used: number; max: number } },
+  queue: null as null | { waiting: MentorReview[]; yours: MentorReview[]; apprentices: Apprentice[]; slots: { used: number; max: number }; cellsReviewed?: number },
   error: '',
 });
 
@@ -222,7 +222,7 @@ export const handBack = (apprenticeId: string) => call('mentor.handBack', { appr
 
 // ── In the view ─────────────────────────────────────────────────────────
 /** The cell open in the view, and whether we are its mentor or its apprentice. */
-export const inView = ref<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null>(null);
+export const inView = ref<{ review: MentorReview; role: 'mentor' | 'apprentice' | 'admin' } | null>(null);
 export const NOTES_LAYER = 'Mentor notes';
 const NOTES_COLOR = '#ffd166';
 
@@ -306,7 +306,7 @@ function keepNotes(notes: MentorNote[]) {
   }, 600);
 }
 
-export function openInView(review: MentorReview, role: 'mentor' | 'apprentice') {
+export function openInView(review: MentorReview, role: 'mentor' | 'apprentice' | 'admin') {
   const why = cannotOpen(review);
   if (why) throw new Error(why);
   inView.value = { review, role };
@@ -478,3 +478,14 @@ export function markBellsRead(r: MentorReview, kind: RegExp) {
     }
   } catch (e) { console.warn('[mentor] bells not marked read', e); }
 }
+
+// ── Counts and the admins' view (Ames 2026-11-05) ──
+const statsCache = new Map<string, Promise<{ cellsReviewed: number; graduates: number } | null>>();
+/** A mentor's cells reviewed and apprentices graduated, for any player's Trophy Case. */
+export function mentorStats(userId: string): Promise<{ cellsReviewed: number; graduates: number } | null> {
+  if (!userId) return Promise.resolve(null);
+  if (!statsCache.has(userId)) statsCache.set(userId, call<{ cellsReviewed: number; graduates: number }>('mentor.stats', { userId }).catch(() => { statsCache.delete(userId); return null; }));
+  return statsCache.get(userId)!;
+}
+/** Every cell of one apprentice, for admins to read (Admin Hub, Mentor program). */
+export const adminCellsOf = (apprenticeId: string) => call<MentorReview[]>('mentor.cellsOf', { apprenticeId });

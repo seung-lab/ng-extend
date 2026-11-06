@@ -56,6 +56,8 @@ const { dragging, posStyle, startDrag } = useDragBox('nge_mentor_box_pos', boxEl
 const cur = computed(() => inView.value);
 const r = computed(() => cur.value?.review ?? null);
 const mentor = computed(() => cur.value?.role === 'mentor');
+// An admin reading a cell's notes (Admin Hub, Mentor program): read only.
+const adminView = computed(() => cur.value?.role === 'admin');
 const canAct = computed(() => mentor.value && r.value?.state === 'looking' && r.value?.mentorId === backend.userId);
 /** Only looking (Ames 2026-11-05): a mentor's cell they have not taken yet.
  *  The button takes it, and with a player's first cell, them as an apprentice. */
@@ -197,11 +199,11 @@ const STATE: Record<string, string> = {
   <div v-if="r" ref="boxEl" class="nge-mbx" :class="{ 'nge-mbx--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Mentor program cell">
     <div class="nge-mbx-bar" title="Drag to move" @pointerdown="startDrag">
       <img :src="MENTOR_ICON" alt="" class="nge-mbx-bar-icon" />
-      <span class="nge-mbx-bar-label">{{ mentor ? 'Mentor Mode' : 'Mentor notes' }}</span>
+      <span class="nge-mbx-bar-label">{{ mentor ? 'Mentor Mode' : adminView ? 'Mentor notes, admin view' : 'Mentor notes' }}</span>
       <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
-      <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : 'Your mentor\'s notes' }}</span>
+      <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : adminView ? `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` : 'Your mentor\'s notes' }}</span>
       <span class="nge-mbx-pos">{{ shortCell(r) }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
@@ -209,6 +211,10 @@ const STATE: Record<string, string> = {
       <p class="nge-mbx-how">Look over the cell. Leave notes where something needs work, then send suggestions, or complete it if it is done.</p>
       <p v-if="r.done.notes" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
       <p v-if="r.done.status" class="nge-mbx-meta">Ending: {{ r.done.status }}</p>
+    </template>
+    <template v-else-if="adminView">
+      <p class="nge-mbx-how">Read only. {{ { waiting: 'Waiting for a mentor.', looking: 'With the mentor.', suggestions: 'Back with the apprentice, with suggestions.', complete: 'Complete.' }[r.state] }}</p>
+      <p v-if="r.done.notes" class="nge-mbx-quote">{{ r.apprenticeName }}: {{ r.done.notes }}</p>
     </template>
     <p v-else class="nge-mbx-how">{{ r.state === 'complete' && r.done?.practice ? 'Complete. This was practice, so nothing was recorded.' : STATE[r.state] }}</p>
 

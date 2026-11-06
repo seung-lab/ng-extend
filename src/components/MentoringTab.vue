@@ -97,7 +97,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
       </div>
       <p class="nge-mt-how" v-if="a.status === 'active'">
         {{ a.mentorName ? `${a.mentorName} is your mentor.` : 'A mentor takes your first cell when you send it.' }}
-        When you complete a claimed cell, it goes to your mentor, who completes it with you or sends suggestions.
+        When you complete a claimed cell, it goes to your mentor, who completes it with you or sends suggestions. Admins can read mentor notes.
       </p>
       <p v-if="a.practice && a.status === 'active'" class="nge-mt-how">
         Practice: nothing you complete is recorded.
@@ -127,7 +127,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
         <h4>Waiting for a mentor <span class="nge-mt-n">{{ q.waiting.length }}</span></h4>
         <p class="nge-mt-how" v-if="mentorState.mentor">
           Take a look at a cell first. Nothing changes until you press Become their mentor in its box. Then you look at all of that player's mentor cells, and answer each within a day, or it goes back here for another mentor.
-          You are mentoring {{ q.slots.used }} of {{ q.slots.max }}.
+          You are mentoring {{ q.slots.used }} of {{ q.slots.max }}<template v-if="q.cellsReviewed">, and have reviewed {{ q.cellsReviewed }} cell{{ q.cellsReviewed === 1 ? '' : 's' }}</template>. Admins can read mentor notes.
         </p>
         <p v-if="!q.waiting.length" class="nge-mt-empty">Nothing is waiting.</p>
         <div v-for="r in q.waiting" :key="r.id" class="nge-mt-row">

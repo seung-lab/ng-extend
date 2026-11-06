@@ -457,6 +457,24 @@ test('a bell finds its cell, completed too, only for the players in it; the ment
   assert.ok(r2);
 });
 
+test('a mentor counts the cells they reviewed; admins read every cell of an apprentice, players cannot', async () => {
+  const {call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  for (let i = 1; i <= 3; i++) {
+    const r = (await send(call, 4, i)).review;
+    await call(2, 'mentor.claim', {reviewId: r.id});
+    if (i < 3) await call(2, 'mentor.complete', {reviewId: r.id});
+    else await call(2, 'mentor.suggest', {reviewId: r.id, cellNote: 'Look again.'});
+  }
+  assert.deepEqual(await call(5, 'mentor.stats', {userId: U(2)}), {cellsReviewed: 2, graduates: 0});
+  assert.equal((await call(2, 'mentor.queue')).cellsReviewed, 2);
+  await assert.rejects(call(2, 'mentor.cellsOf', {apprenticeId: U(4)}), /Admins only/);
+  const cells = await admin('mentor.cellsOf', {apprenticeId: U(4)});
+  assert.equal(cells.length, 3);
+  assert.equal(cells.find(c => c.state === 'suggestions').cellNote, 'Look again.');
+});
+
 test('copy has no dashes and says Achievement, never badge', () => {
   const src = require('fs').readFileSync(require.resolve('./mentors'), 'utf8');
   const strings = src.match(/(['`])(?:(?!\1)[^\\\n]|\\.)*\1/g).filter(s => / /.test(s) && /^['`][A-Z🧭🎉🏆]/u.test(s));
