@@ -254,6 +254,15 @@ export const handBack = (apprenticeId: string) => call('mentor.handBack', { appr
 /** The cell open in the view, and whether we are its mentor or its apprentice. */
 export const inView = ref<{ review: MentorReview; role: 'mentor' | 'apprentice' | 'admin' } | null>(null);
 export const NOTES_LAYER = 'Mentor notes';
+/** Send to mentor from the Mentor box (Ames 2026-11-06: "I need a way to
+ *  submit the cell from mentor notes"): the Cell Library opens on My Cells
+ *  with this claim's Complete form, which checks the crosshairs and saves
+ *  the view as any send does. */
+export const resubmitAsk = ref<number | null>(null);
+export function askResubmit(taskId: number) {
+  resubmitAsk.value = taskId;
+  document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } }));
+}
 const NOTES_COLOR = '#ffd166';
 
 export function viewerPosition(): number[] | null {
@@ -401,8 +410,11 @@ export function openInView(review: MentorReview, role: 'mentor' | 'apprentice' |
   const why = cannotOpen(review);
   if (why) throw new Error(why);
   inView.value = { review, role };
-  // Out of the way, so the cell can be seen: the library and the profile close.
-  document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
+  // Out of the way, so the cell can be seen: the library and the profile
+  // close. Not for the apprentice, who opens it from their own row and goes
+  // on to send it from there (Ames 2026-11-06: "it closes the cell library,
+  // can't tell what cell I'm on"); their row is marked instead.
+  if (role !== 'apprentice') document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
   document.dispatchEvent(new CustomEvent('nge:mentor-view'));
   coloredStates = new WeakSet();
   cellColorNote.value = '';

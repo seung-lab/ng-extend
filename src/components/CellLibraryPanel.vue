@@ -39,7 +39,7 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import MentoringTab from './MentoringTab.vue';
-import { mentorState, mentoringShown, isApprentice, goesToMentor, sendForSecondLook, openInView as openMentorView, type MentorReview } from '../mentor';
+import { inView as mentorInView, resubmitAsk, mentorState, mentoringShown, isApprentice, goesToMentor, sendForSecondLook, openInView as openMentorView, type MentorReview } from '../mentor';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
@@ -163,8 +163,14 @@ const loading = ref(false);
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast' | 'mentoring'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
-  (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
+  // Then the tab last open in this visit (Ames 2026-11-06: "I last clicked
+  // on mentor so it should reopen on that").
+  (props.initialTab as any) || lastTab() || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
 );
+function lastTab(): string | null {
+  try { const t = sessionStorage.getItem('nge_cl_last_tab'); return t && (t !== 'mentoring' || mentoringShown()) ? t : null; } catch { return null; }
+}
+watch(filter, t => { try { sessionStorage.setItem('nge_cl_last_tab', t); } catch { /* private window */ } });
 const search = ref('');
 const claimError = ref('');
 let claimErrorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2076,6 +2082,17 @@ function onOpenAsked(e: Event) {
   if (tab && (ALL_CL_TABS.some(t => t.key === tab) || (tab === 'mentoring' && mentoringShown()))) filter.value = tab;
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
+// Send to mentor again, asked from the Mentor box: My Cells, that claim's Complete form, in view.
+watch([resubmitAsk, () => cells.value.length], async ([taskId]) => {
+  if (taskId == null) return;
+  const cell = cells.value.find(c => c.taskId === taskId);
+  if (!cell) return;
+  resubmitAsk.value = null;
+  filter.value = 'mine';
+  openComplete(cell);
+  await nextTick();
+  document.querySelector('.nge-cl-complete-form, .nge-cl-row--jumped')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}, { immediate: true });
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
 function isOnDataset(raw: string | undefined | null): boolean {
   return !raw || canonicalDataset(raw) === canonicalDataset(getCurrentDatasetName() || activeDataset.value);
@@ -4166,7 +4183,7 @@ const panelStyle = computed(() => ({
             :class="{
               'nge-cl-row--done': cell.status === 'completed',
               'nge-cl-row--mine': isMyClaim(cell),
-              'nge-cl-row--jumped': cell.segId === jumpedSegId,
+              'nge-cl-row--jumped': cell.segId === jumpedSegId || (cell.taskId != null && mentorInView?.review.taskId === cell.taskId),
             }"
           >
             <!-- Left: status pip + name -->
@@ -4830,6 +4847,10 @@ const panelStyle = computed(() => ({
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* A row with many buttons puts them on a second line rather than cut the
+     cell's ID to "648518..." (Ames 2026-11-06: "can't tell what cell I'm on"). */
+  flex-wrap: wrap;
+  row-gap: 6px;
   padding: 8px 12px;
   border-bottom: 1px solid rgba(120, 140, 255, 0.04);
   transition: background 0.1s;
@@ -4858,7 +4879,7 @@ const panelStyle = computed(() => ({
   align-items: center;
   gap: 8px;
   flex: 1;
-  min-width: 0;
+  min-width: min(170px, 100%);
 }
 
 .nge-cl-pip {
@@ -4937,7 +4958,7 @@ const panelStyle = computed(() => ({
   display: flex;
   gap: 4px;
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-left: auto;
 }
 .nge-cl-btn {
   padding: 5px 11px;

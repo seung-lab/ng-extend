@@ -16,7 +16,7 @@ import { apprenticeFlag } from '../util/mentor_flag';
 import { MENTOR_TIERS } from '../util/mentor_tiers';
 const MENTOR_ICON = MENTOR_TIERS[0].image;
 import { joinPractice, takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
-import { cellColorNote, inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
+import { askResubmit, cellColorNote, inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
   completeForApprentice, startMentor, loadMentor, shortCell, replyTo, takeBackReply, type MentorNote, type MentorMessage } from '../mentor';
 
 // An apprentice who completes a cell any other way gets this in the middle
@@ -229,7 +229,7 @@ function close() {
   if (!mentor.value) void loadMentor();
 }
 const STATE: Record<string, string> = {
-  waiting: 'Sent. Waiting for a mentor to take it. You get a bell when it is answered.', looking: 'Your mentor is looking at it. You get a bell when they answer.', suggestions: 'Your mentor has suggestions. Fix the cell, then press Complete on it in the Cell Library to send it again.',
+  waiting: 'Sent. Waiting for a mentor to take it. You get a bell when it is answered.', looking: 'Your mentor is looking at it. You get a bell when they answer.', suggestions: 'Your mentor has suggestions. Fix the cell, then press Send to mentor again below.',
   complete: 'Complete. It counts for you.',
 };
 </script>
@@ -264,13 +264,16 @@ const STATE: Record<string, string> = {
   </div>
   <div v-if="r" ref="boxEl" class="nge-mbx" :class="{ 'nge-mbx--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Mentor program cell">
     <div class="nge-mbx-bar" title="Drag to move" @pointerdown="startDrag">
+      <!-- Slim on the left, as the Cell Library's (Ames 2026-11-06: "slim should be the ^ and down"). -->
+      <button class="nge-mbx-caret" :class="{ 'nge-mbx-caret--on': slim }" :title="slim ? 'Show the whole box' : 'Slim the box'" :aria-label="slim ? 'Show the whole box' : 'Slim the box'" :aria-pressed="slim" @pointerdown.stop @click="toggleSlim">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path :d="slim ? 'M2.5 4.5 6 8l3.5-3.5' : 'M2.5 7.5 6 4l3.5 3.5'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <img :src="MENTOR_ICON" alt="" class="nge-mbx-bar-icon" />
       <span class="nge-mbx-bar-label">{{ mentor ? 'Mentor Mode' : adminView ? 'Mentor notes, admin view' : 'Mentor notes' }}</span>
-      <button class="nge-mbx-slim" :title="slim ? 'Show the whole box' : 'Slim: only pin, send and complete'" :aria-label="slim ? 'Show the whole box' : 'Slim the box'" :aria-pressed="slim" @pointerdown.stop @click="toggleSlim">{{ slim ? 'Full' : 'Slim' }}</button>
       <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
-      <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : adminView ? `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` : r.state === 'waiting' || r.state === 'looking' ? 'Your cell' : 'Your mentor\'s notes' }}</span>
+      <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : adminView ? `${r.apprenticeName}${r.mentorName ? `, with ${r.mentorName}` : ''}` : slim || r.state === 'waiting' || r.state === 'looking' ? 'Your cell' : 'Your mentor\'s notes' }}</span>
       <span class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
@@ -297,6 +300,7 @@ const STATE: Record<string, string> = {
           <input v-model="wholeText" maxlength="1000" :placeholder="`A message for ${otherName}`" @keydown.enter.prevent="sendReply(null)" />
           <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
         </div>
+        <button v-if="r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--send" @click="askResubmit(r.taskId)">Send to mentor again</button>
       </template>
       <p v-else class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : mentor ? 'This cell is back with the apprentice.' : STATE[r.state] }}</p>
     </template>
@@ -350,7 +354,8 @@ const STATE: Record<string, string> = {
         <input v-model="wholeText" maxlength="1000" :placeholder="`A message for ${otherName}`" @keydown.enter.prevent="sendReply(null)" />
         <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
       </div>
-      <p class="nge-mbx-meta">Answer a note with Reply under it. Your replies go to {{ otherName }} when you press Send to Mentor on this cell in the Cell Library.</p>
+      <p class="nge-mbx-meta">Answer a note with Reply under it. Your replies go to {{ otherName }} when you send the cell again.</p>
+      <button v-if="r.state === 'suggestions' && r.taskId != null" class="nge-mbx-btn nge-mbx-btn--done nge-mbx-btn--send" title="Opens this cell's Complete form in the Cell Library, which checks the crosshairs and sends it" @click="askResubmit(r.taskId)">Send to mentor again</button>
     </template>
 
     <div v-if="preview" class="nge-mbx-preview">
@@ -445,8 +450,11 @@ const STATE: Record<string, string> = {
 .nge-mbx--dragging .nge-mbx-head { cursor: grabbing; }
 .nge-mbx-title { font-size: 17px; font-weight: 600; color: #9fc8ff; }
 .nge-mbx-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); font-variant-numeric: tabular-nums; user-select: text; cursor: text; }
-.nge-mbx-slim { font: inherit; font-size: 11px; line-height: 1; padding: 3px 7px; letter-spacing: 0.04em; margin-left: auto; background: none; border: 1px solid transparent; border-radius: 4px; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
-.nge-mbx-slim:hover { color: #fff; border-color: rgba(159, 200, 255, 0.4); }
+.nge-mbx-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; flex-shrink: 0; margin-right: 2px;
+  border-radius: 999px; cursor: pointer; color: #9fdcff; background: rgba(100, 200, 255, 0.12); border: 1px solid rgba(100, 200, 255, 0.4); }
+.nge-mbx-caret:hover { background: rgba(100, 200, 255, 0.22); border-color: rgba(100, 200, 255, 0.75); color: #d4f0ff; }
+.nge-mbx-caret--on { background: rgba(79, 207, 255, 0.26); border-color: #4fcfff; color: #e6f7ff; }
+.nge-mbx-btn--send { margin-top: 8px; }
 .nge-mbx-btn--next { margin-left: auto; }
 .nge-mbx-x { font: inherit; font-size: 20px; line-height: 1; padding: 0 4px; margin-left: 4px; background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
 .nge-mbx-x:hover { color: #fff; }
