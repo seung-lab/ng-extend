@@ -225,7 +225,7 @@ async function run(what: 'save' | 'suggest' | 'complete') {
   busy.value = true; error.value = ''; said.value = '';
   try {
     if (what === 'save') { await saveNotes(cellNote.value); said.value = 'Saved. Only you see them until you send them.'; }
-    else if (what === 'suggest') { await sendSuggestions(cellNote.value); said.value = `Sent. ${r.value.apprenticeName} gets a bell with your suggestions. ${THANKS}`; void findNext(); }
+    else if (what === 'suggest') { await sendSuggestions(cellNote.value); said.value = `Sent. ${r.value.apprenticeName} gets a notification with your suggestions. ${THANKS}`; void findNext(); }
     else {
       const out = await completeForApprentice(cellNote.value);
       said.value = r.value.done?.practice
@@ -242,7 +242,7 @@ function close() {
   if (!mentor.value) void loadMentor();
 }
 const STATE: Record<string, string> = {
-  waiting: 'Sent. Waiting for a mentor to take it. You get a bell when it is answered.', looking: 'Your mentor is looking at it. You get a bell when they answer.', suggestions: 'Your mentor has suggestions. Fix the cell, then send it again with the button below.',
+  waiting: 'Sent. Waiting for a mentor to take it. You get a notification when it is answered.', looking: 'Your mentor is looking at it. You get a notification when they answer.', suggestions: 'Your mentor has suggestions. Fix the cell, then send it again with the button below.',
   complete: 'Complete. It counts for you.',
 };
 </script>
@@ -321,7 +321,7 @@ const STATE: Record<string, string> = {
           <button class="nge-mbx-btn" :disabled="busy || !wholeText.trim()" @click="sendReply(null)">Add</button>
         </div>
       </template>
-      <p v-else class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : mentor ? 'This cell is back with the apprentice.' : STATE[r.state] }}</p>
+      <p v-else class="nge-mbx-meta">{{ shortCell(r) }}: {{ r.state === 'complete' ? 'This cell is complete.' : mentor ? 'This cell is back with the apprentice.' : STATE[r.state] }}</p>
     </template>
     <template v-else>
     <template v-if="mentor">
@@ -382,7 +382,7 @@ const STATE: Record<string, string> = {
         <ul class="nge-mbx-terms">
           <li>You look at each of their mentor cells, leave notes, and send suggestions or complete it.</li>
           <li>Answer each cell within a day, or it goes to another mentor.</li>
-          <li>They get a bell saying you are their mentor.</li>
+          <li>They get a notification saying you are their mentor.</li>
         </ul>
         <p class="nge-mbx-meta">You are only looking now. Nothing changes until you press the button.</p>
       </template>
@@ -469,7 +469,9 @@ const STATE: Record<string, string> = {
 .nge-mbx-head { display: flex; align-items: baseline; gap: 8px; cursor: grab; user-select: none; touch-action: none; padding: 0 0 4px; }
 .nge-mbx--dragging .nge-mbx-head { cursor: grabbing; }
 .nge-mbx-title { font-size: 17px; font-weight: 600; color: #9fc8ff; }
-.nge-mbx-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); font-variant-numeric: tabular-nums; user-select: text; cursor: text; }
+.nge-mbx-title ~ .nge-mbx-pos { margin-left: auto; }
+/* With no name before it (the apprentice's box), the ID is on the left (Ames 2026-11-06). */
+.nge-mbx-pos { margin-left: 0; color: rgba(220, 230, 245, 0.7); font-variant-numeric: tabular-nums; user-select: text; cursor: text; }
 .nge-mbx-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; flex-shrink: 0; margin-right: 2px;
   border-radius: 999px; cursor: pointer; color: #9fdcff; background: rgba(100, 200, 255, 0.12); border: 1px solid rgba(100, 200, 255, 0.4); }
 .nge-mbx-caret:hover { background: rgba(100, 200, 255, 0.22); border-color: rgba(100, 200, 255, 0.75); color: #d4f0ff; }

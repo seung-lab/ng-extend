@@ -48,7 +48,7 @@ async function act(fn: () => Promise<any>, done: string) {
 }
 function onToggle(e: Event) { open.value = (e.target as HTMLDetailsElement).open; if (open.value && !data.value) void load(); }
 const addM = () => { const n = mentorName.value.trim(); if (n) void act(() => addMentor(n), `${n} is a mentor.`).then(() => { mentorName.value = ''; }); };
-const addA = () => { const n = apprenticeName.value.trim(); if (n) void act(() => addApprentice(n), `${n} is an apprentice and got a welcome bell.`).then(() => { apprenticeName.value = ''; }); };
+const addA = () => { const n = apprenticeName.value.trim(); if (n) void act(() => addApprentice(n), `${n} is an apprentice and got a welcome notification.`).then(() => { apprenticeName.value = ''; }); };
 </script>
 
 <template>

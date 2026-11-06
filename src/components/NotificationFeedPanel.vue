@@ -234,12 +234,7 @@ async function openBellCell() {
     emit('hide');
   } catch (e: any) { mentorJumpNote.value = e?.message || 'That cell could not be opened.'; }
 }
-watch(openNotif, async n => {
-  mentorText.value = null; textEdit.value = null; textSaved.value = '';
-  if (!n || !backend.isAdmin || n.preview) return;
-  const title = String(n.title || '');
-  try { const t = await mentorTextFor(title); if (openNotif.value === n) mentorText.value = t; } catch { /* not installed, or not an admin */ }
-});
+
 function startTextEdit() {
   const t = mentorText.value;
   if (t) { textEdit.value = { title: t.title, body: t.body, busy: false, error: '' }; textSaved.value = ''; }
@@ -1422,28 +1417,7 @@ function padRank(rank: number): string {
                     <button class="nge-notif-open-help nge-notif-mentorjump-btn" @click="openBellCell">{{ mentorJump.role === 'mentor' && mentorJump.review.state !== 'complete' ? 'Take a look' : 'See it in the view' }}</button>
                     <span v-if="mentorJumpNote" class="nge-notif-textedit-err" role="alert">{{ mentorJumpNote }}</span>
                   </div>
-                  <!-- Admins: the text every bell of this kind is sent with. -->
-                  <div v-if="mentorText" class="nge-notif-textedit">
-                    <template v-if="textEdit">
-                      <div class="nge-notif-textedit-head">Every "{{ mentorText.label }}" bell uses this text</div>
-                      <label class="nge-notif-textedit-label" for="nge-notif-textedit-title">Title</label>
-                      <input id="nge-notif-textedit-title" v-model="textEdit.title" class="nge-notif-textedit-input" maxlength="120" />
-                      <label class="nge-notif-textedit-label" for="nge-notif-textedit-body">Message</label>
-                      <textarea id="nge-notif-textedit-body" v-model="textEdit.body" class="nge-notif-textedit-input" rows="5" maxlength="1500"></textarea>
-                      <p v-if="mentorText.vars.length" class="nge-notif-textedit-hint">Filled in when the bell is sent: <code v-for="v in mentorText.vars" :key="v">{{ '{' + v + '}' }}</code></p>
-                      <p v-if="textEdit.error" class="nge-notif-textedit-err" role="alert">{{ textEdit.error }}</p>
-                      <div class="nge-notif-textedit-actions">
-                        <button v-if="mentorText.edited" class="nge-notif-textedit-btn" :disabled="textEdit.busy" @click="saveTextEdit(true)">Use the original</button>
-                        <button class="nge-notif-textedit-btn" :disabled="textEdit.busy" @click="textEdit = null">Cancel</button>
-                        <button class="nge-notif-textedit-btn nge-notif-textedit-btn--save" :disabled="textEdit.busy || !textEdit.title.trim() || !textEdit.body.trim()" @click="saveTextEdit()">{{ textEdit.busy ? 'Saving…' : 'Save' }}</button>
-                      </div>
-                    </template>
-                    <template v-else>
-                      <button class="nge-notif-textedit-btn" @click="startTextEdit">✎ Edit this message</button>
-                      <span v-if="textSaved" class="nge-notif-textedit-saved" role="status">{{ textSaved }}</span>
-                      <span v-else-if="mentorText.edited && mentorText.editedBy" class="nge-notif-textedit-meta">Last changed by {{ mentorText.editedBy }}</span>
-                    </template>
-                  </div>
+                  <!-- No Edit this message on mentor bells (Ames 2026-11-06: "we can remove edit here"). -->
                 </template>
                 <!-- A reply the team asked for: one per request, with what a report carries. -->
                 <div v-if="replyAsked" class="nge-notif-reply">

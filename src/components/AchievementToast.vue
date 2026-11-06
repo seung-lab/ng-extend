@@ -730,7 +730,7 @@ function playBatchChime() {
             <div class="nge-cell-mentor-kicker">Mentor program{{ cellCelebration.mentor.practice ? ', practice' : '' }}</div>
             <div class="nge-cell-congrats nge-cell-congrats--mentor">{{ cellCelebration.mentor.kind === 'sent' ? 'Sent to your mentor!' : 'Cell complete!' }}</div>
             <div class="nge-cell-thanks">{{ cellCelebration.mentor.kind === 'sent'
-              ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a bell when it is done.` : 'A mentor takes a second look. You get a bell when it is done.')
+              ? (cellCelebration.mentor.mentorName ? `${cellCelebration.mentor.mentorName} takes a second look. You get a notification when it is done.` : 'A mentor takes a second look. You get a notification when it is done.')
               : cellCelebration.mentor.practice ? `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. Practice, so nothing was recorded.`
               : `Completed with ${cellCelebration.mentor.mentorName || 'your mentor'}. It counts for you. For science!` }}</div>
             <!-- One colour per count (Ames 2026-11-06: "fix the color"): completed
