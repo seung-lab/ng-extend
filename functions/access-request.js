@@ -642,12 +642,16 @@ const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // connectome.quest"). Letting someone in sends them this, from
 // welcome@connectome.quest, replies to support@eyewire.ai. Once per address:
 // a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
+// Support gets a blind copy of every welcome (Ames 2026-11-06: "copy
+// support@eyewire.org"), so the player never sees it.
 const WELCOME_FROM = 'Pyr <welcome@connectome.quest>';
 const WELCOME_REPLY_TO = 'support@eyewire.ai';
+const WELCOME_COPY_TO = 'support@eyewire.org';
 function welcomeMessage(name, email) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const text = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
-  return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, subject: "You're in: Pyr early access", text };
+  const bcc = email !== WELCOME_COPY_TO ? { bcc: [WELCOME_COPY_TO] } : {};
+  return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, ...bcc, subject: "You're in: Pyr early access", text };
 }
 async function welcomeEmail(a, io) {
   needAdmin(io.isAdmin);
