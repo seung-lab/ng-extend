@@ -674,7 +674,7 @@ function openAt(c: Card, part: 'comments') {
   if (part === 'comments') setTimeout(toComments, 60);
 }
 /** A comment as one plain line for the card's face. */
-const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼').replace(/\s+/g, ' ').trim().slice(0, 140);
+const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼').replace(/[\s​]+/g, ' ').trim().slice(0, 140);
 function openUp(c: Card) {
   connectOpen.value = false;
   markSeen(c);
@@ -1144,13 +1144,13 @@ function richMd(el: HTMLElement) {
     const src = img.getAttribute('src') || '';
     img.replaceWith(document.createTextNode(isBoardImage(src) ? src : ''));
   }
-  return htmlToMarkdown(c.innerHTML).replace(/\n{3,}/g, '\n\n').trim();
+  return edgeBlanks(htmlToMarkdown(keepBlankLines(c.innerHTML)).replace(/\n{3,}/g, '\n\n').trim());
 }
 const picTag = (url: string) => `<img ${BOARD_PIC}="1" src="${url.replace(/[<>"&]/g, '')}" alt="A picture in these notes">`;
 /** The notes for the editor: formatted, with each board picture as itself. */
 function notesEditHtml(md: string) {
   const t = document.createElement('template');
-  t.innerHTML = renderSafeMarkdown(md, true);
+  t.innerHTML = renderSafeMarkdown(withBlankLines(md), true);
   for (const a of [...t.content.querySelectorAll('a')]) {
     const href = a.getAttribute('href') || '';
     if (isBoardImage(href) && (a.textContent || '').trim() === href) a.outerHTML = picTag(href);
@@ -1247,8 +1247,27 @@ function commentHtml(text: string) {
   return t.innerHTML;
 }
 /** Notes with formatting and lit @tags; renderSafeMarkdown escapes the rest. */
+// ── Empty lines kept (Celia, via Ames 2026-11-06: "purposeful paragraph
+// breaks"). Markdown folds any run of empty lines into one break, so each
+// extra empty line is kept as a paragraph holding only a zero width space,
+// and a run of empty lines typed in a plain box shows as typed. ──
+const BLANK = '\u200B';
+/** Before turning the editor's HTML into Markdown: an empty paragraph keeps a mark. */
+function keepBlankLines(html: string) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  for (const el of [...t.content.querySelectorAll('p, div')]) {
+    if (el.querySelector('img, li, p, div')) continue;
+    if (!(el.textContent || '').replace(/[\s\u00a0\u200B]/g, '')) el.innerHTML = BLANK;
+  }
+  return t.innerHTML;
+}
+/** No empty lines kept at the very start or end. */
+const edgeBlanks = (md: string) => md.replace(/^(?:\u200B\s*)+/, '').replace(/(?:\s*\u200B)+$/, '').trim();
+/** Each empty line past the first, in a run, becomes a kept empty paragraph. */
+const withBlankLines = (md: string) => String(md || '').replace(/\n{3,}/g, m => '\n\n' + (BLANK + '\n\n').repeat(m.length - 2));
 function notesHtml(text: string) {
-  const html = renderSafeMarkdown(text, true);
+  const html = renderSafeMarkdown(withBlankLines(text), true);
   const tags = [...people.value].map(p => '@' + p.name).filter(t => t.length > 1).sort((a, b) => b.length - a.length);
   if (!tags.length || !tags.some(t => text.includes(t))) return html;
   // Mark the @names in the text only, never inside a link's address or title.
@@ -1364,7 +1383,7 @@ function onCommentPaste(e: ClipboardEvent) {
  *  (Ames 2026-11-05: "Let me paste formatted text here"). Plain text pastes as usual. */
 const rxEls: Record<string, HTMLElement | null> = {};
 const rxRef = (key: string) => (el: unknown) => { rxEls[key] = (el as HTMLElement | null) || null; };
-const rxMd = (el: HTMLElement) => htmlToMarkdown(el.innerHTML).replace(/^[ \t]*(?:[-*]|\d+\.)[ \t]*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+const rxMd = (el: HTMLElement) => edgeBlanks(htmlToMarkdown(keepBlankLines(el.innerHTML)).replace(/^[ \t]*(?:[-*]|\d+\.)[ \t]*$/gm, '').replace(/\n{3,}/g, '\n\n').trim());
 /** The box always types into a paragraph, so lists and the first line behave as in a document. */
 function rxFocus(e: FocusEvent) {
   const el = e.currentTarget as HTMLElement;
