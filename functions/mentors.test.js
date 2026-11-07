@@ -380,7 +380,7 @@ test('the welcome and You have a mentor bells carry the program picture and say 
 
 test('the Mentor row: a tier at 1, 5, 10, 25 and 50 graduates, each celebrated once, plain bells between', async () => {
   const {MENTOR_TIERS} = require('./mentors');
-  assert.deepEqual(MENTOR_TIERS.map(t => t.n), [1, 5, 10, 25, 50]);
+  assert.deepEqual(MENTOR_TIERS.map(t => t.n), [1, 5, 10, 25, 50, 75]);
   const extra = Array.from({length: 6}, (_, i) => ({id: U(200 + i), username: `grad${i}`}));
   const db = memDb([...users, ...extra]);
   const as = (me, action, args = {}, admin = false) => mentorAction(action, args, {db, me, isAdmin: admin, credit: async () => {}});
