@@ -23,8 +23,6 @@ import QuestInstructions from './QuestInstructions.vue';
 import { sendWaitingReviews } from '../quest_review';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
-import { cellAtCrosshair } from '../util/crosshair_cell';
-import { ancestorAmong } from '../widgets/pcg_service';
 
 const backend = useProofreadingBackendStore();
 
@@ -295,29 +293,16 @@ async function letGo(r: QuestRow) {
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
-/** The crosshairs must sit inside this cell, as Complete asks (Ames
- *  2026-10-13), so the share link opens on it. The sheet's ID may be older
- *  than the cell: an edited cell's current root is accepted when the sheet's
- *  ID is in its history. */
-const check = ref<{ busy: boolean; ok: boolean; message: string }>({ busy: false, ok: false, message: '' });
-async function runCheck(r: QuestRow) {
-  check.value = { busy: true, ok: false, message: 'Checking the crosshairs…' };
-  try {
-    const at = await cellAtCrosshair();
-    if (!at.root) { check.value = { busy: false, ok: false, message: at.problem || 'Could not check the crosshairs.' }; return; }
-    if (at.root === r.segmentId) { check.value = { busy: false, ok: true, message: 'The crosshairs are inside this cell.' }; return; }
-    const hit = await ancestorAmong(at.root, [r.segmentId]);
-    if (hit) { check.value = { busy: false, ok: true, message: `The crosshairs are inside this cell. It has been edited since the sheet was made, so its ID is now ${at.root}.` }; return; }
-    check.value = { busy: false, ok: false, message: `The crosshairs are inside ${at.root}, which is not this cell. Move them into the cell and check again.` };
-  } catch (e: any) { check.value = { busy: false, ok: false, message: `Could not check the crosshairs: ${e?.message || e}` }; }
-}
+/** Submit no longer asks where the crosshairs are (Jingkai_Li, report 415:
+ *  a daughter centriole in another segment could not be submitted). Every
+ *  cell has its soma in the sheet, so reviewers can always find it, and the
+ *  share link opens where the player left the view. */
 function startSubmit(r: QuestRow) {
   open.value = r.segmentId;
   form.value = { status: r.status || '', splitMerged: r.splitMerged || '', notes: r.notes || '' };
   points.value = annotationCountInView();
-  void runCheck(r);
 }
-function recount(r: QuestRow) { points.value = annotationCountInView(); void runCheck(r); }
+function recount() { points.value = annotationCountInView(); }
 async function send(r: QuestRow, e?: Event) {
   if (!form.value.status || busy.value) return;
   // Where the confetti starts: the Complete button itself (Ames 2026-10-13).
@@ -328,9 +313,6 @@ async function send(r: QuestRow, e?: Event) {
   // to appear); the card with the counts follows once the sheet has it.
   document.dispatchEvent(new CustomEvent('nge:quest-confetti', { detail: { origin } }));
   try {
-    // The crosshairs may have moved since the check: check once more.
-    await runCheck(r);
-    if (!check.value.ok) throw new Error(check.value.message);
     // The work is kept with the cell too, should it be needed again.
     if (questOnScreen(r.segmentId)) await saveQuestWork(r.segmentId);
     // The share link is the view as it is now, with the annotation layers.
@@ -430,16 +412,13 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
-              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !check.ok && !check.busy, 'nge-aq-form-msg--ok': check.ok }">
-                <span>{{ check.message }}</span>
-                <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
-              </div>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">
                 <span>{{ pointsLine }} The share link is made from the view as it is now.</span>
+                <button class="nge-aq-recheck" @click="recount()" title="Count the annotation points again">Count again</button>
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
               </div>
             </div>
           </template>
@@ -517,16 +496,13 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
-              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !check.ok && !check.busy, 'nge-aq-form-msg--ok': check.ok }">
-                <span>{{ check.message }}</span>
-                <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
-              </div>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">
                 <span>{{ pointsLine }} The share link is made from the view as it is now.</span>
+                <button class="nge-aq-recheck" @click="recount()" title="Count the annotation points again">Count again</button>
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
               </div>
             </div>
           </template>
