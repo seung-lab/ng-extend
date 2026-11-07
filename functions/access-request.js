@@ -274,8 +274,11 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
 // ── Reviewers ───────────────────────────────────────────────────────────
 function needAdmin(isAdmin) { if (!isAdmin) fail(403, 'Admins only'); }
 
-async function list(args, {sb, isAdmin}) {
+async function list(args, io) {
+  const {sb, isAdmin} = io;
   needAdmin(isAdmin);
+  // Request bells of players who have the retina now go read (Ames 2026-11-06).
+  try { await readRequestBells(io); } catch (e) { console.warn('[access] request bells not swept:', e && e.message); }
   const status = String(args.status || 'open');
   const filter = status === 'all' ? '' : status === 'open' ? '&status=in.(submitted,redo)' : status === 'invited' ? '&status=eq.invited' : '&status=eq.submitted';
   let requests;
@@ -386,7 +389,97 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
     try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
   }
+  // The reviewers' bells for this player's tries are answered now (Ames 2026-11-06).
+  if (outcome === 'invited') {
+    try { await readRequestBells({sb}, {players: [request.user_id], granted: [request.user_id]}); }
+    catch (e) { console.warn('[access] request bells not marked read:', e && e.message); }
+  }
   return {...done[0], redos, pilot_added: pilotAdded, cave_granted: caveGranted};
+}
+
+// ── Request bells read once the player has the retina (Ames 2026-11-06) ──
+// "If that player has ALREADY been granted Retina access, that notification
+// should be marked read for admins." Every reviewer's bell for every try
+// (try 1, try 2) is marked read on the server, in notification_reads, so
+// every admin and every device agrees. A player has the retina when their
+// request was granted here, or when CAVE says they edit it (a request
+// deleted with Start over, or access given in CAVE by hand). Run on Grant,
+// when the Access requests list opens, and from an admin's bell while it
+// holds an unread request bell (access.readGrantedBells).
+const REQUEST_BELL = '🔬 Retina access request from ';
+const RETINA_CAVE = 'stroeh-mouse-retina';
+const RETINA_CHECK_MS = 10 * 60 * 1000;
+const RETINA_CHECK_MAX = 20;
+const retinaSeen = new Map();
+const isUuid = v => /^[0-9a-f-]{36}$/i.test(String(v || ''));
+const bellsQuery = extra => 'notifications?target_type=eq.user&title=like.' + encodeURIComponent(REQUEST_BELL + '*')
+  + extra + '&select=id,target_id,created_by&order=id.desc&limit=1000';
+
+/** The players among these who can edit the retina. */
+async function retinaGranted(io, players) {
+  const yes = new Set();
+  if (!players.length) return yes;
+  const invited = await io.sb(`access_requests?user_id=in.(${players.join(',')})&status=eq.invited&select=user_id`);
+  for (const r of invited) yes.add(String(r.user_id));
+  const ask = players.filter(p => !yes.has(p));
+  if (!ask.length || !io.caveAccessOf) return yes;
+  const now = Date.now();
+  const unknown = [];
+  for (const p of ask) {
+    const hit = retinaSeen.get(p);
+    if (hit && now - hit.at < RETINA_CHECK_MS) { if (hit.edit) yes.add(p); }
+    else unknown.push(p);
+  }
+  if (!unknown.length) return yes;
+  const users = await io.sb(`users?id=in.(${unknown.slice(0, RETINA_CHECK_MAX).join(',')})&select=id,cave_user_id`);
+  for (const u of users) {
+    const caveId = Number(u.cave_user_id);
+    if (!Number.isSafeInteger(caveId) || caveId <= 0) continue;
+    const cave = await io.caveAccessOf(caveId);
+    if (!cave) continue; // CAVE could not say: ask again next time
+    const edit = (cave.edit || []).includes(RETINA_CAVE);
+    retinaSeen.set(String(u.id), {at: now, edit});
+    if (edit) yes.add(String(u.id));
+  }
+  return yes;
+}
+
+/** Mark read every unread request bell of a player who has the retina.
+ *  players: only these players' bells; granted: known to have it already. */
+async function readRequestBells(io, {players = null, granted = null} = {}) {
+  const ids = players ? players.filter(isUuid) : null;
+  if (ids && !ids.length) return {marked: 0, bells: []};
+  const bells = (await io.sb(bellsQuery(ids ? `&created_by=in.(${ids.join(',')})` : '')))
+    .filter(b => isUuid(b.target_id) && isUuid(b.created_by));
+  if (!bells.length) return {marked: 0, bells: []};
+  const read = new Set();
+  for (let i = 0; i < bells.length; i += 100) {
+    const chunk = bells.slice(i, i + 100).map(b => b.id).join(',');
+    for (const r of await io.sb(`notification_reads?notification_id=in.(${chunk})&select=notification_id,user_id`)) read.add(`${r.notification_id}:${r.user_id}`);
+  }
+  const unread = bells.filter(b => !read.has(`${b.id}:${b.target_id}`));
+  if (!unread.length) return {marked: 0, bells: []};
+  const who = [...new Set(unread.map(b => String(b.created_by)))];
+  const yes = granted ? new Set(granted.map(String)) : await retinaGranted(io, who);
+  const mark = unread.filter(b => yes.has(String(b.created_by)));
+  if (mark.length) {
+    await io.sb('notification_reads?on_conflict=notification_id,user_id', {method: 'POST',
+      headers: {Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify(mark.map(b => ({notification_id: b.id, user_id: b.target_id})))});
+  }
+  return {marked: mark.length, bells: mark.map(b => ({id: b.id, user_id: b.target_id}))};
+}
+
+/** access.readGrantedBells: an admin, or a reviewer who gets the bells. */
+async function readGrantedBells(args, io) {
+  needMe(io.me);
+  if (!io.isAdmin) {
+    const mineToo = await io.sb(bellsQuery(`&target_id=eq.${io.me.id}`).replace('limit=1000', 'limit=1'));
+    if (!mineToo.length) fail(403, 'Admins only');
+  }
+  const r = await readRequestBells(io);
+  // The caller's own, so their bell can drop them without a reload.
+  return {marked: r.marked, ids: r.bells.filter(b => b.user_id === io.me.id).map(b => b.id)};
 }
 
 // ── Beta access (Ames 2026-10-24) ────────────────────────────────────────
@@ -942,6 +1035,7 @@ async function handle(action, args, io) {
   if (action === 'access.list') return list(a, io);
   if (action === 'access.review') return review(a, io);
   if (action === 'access.decide') return decide(a, io);
+  if (action === 'access.readGrantedBells') return readGrantedBells(a, io);
   if (action === 'access.reset') return reset(a, io);
   fail(400, `unknown action ${action}`);
 }

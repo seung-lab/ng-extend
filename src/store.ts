@@ -5708,6 +5708,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadNotifications();
   }
   let grantLinesAsked = false;
+  // Retina request bells this tab has asked the server about (Ames 2026-11-06).
+  const requestBellsAsked = new Set<number>();
   /** What the leader tab read on its minute check, for the other tabs
    *  (util/tabs.ts). reads and dismissed come with a full check only. */
   interface SharedNotifs { user: string; at: string; rows: any[]; groupIds: string[]; reads?: number[]; dismissed?: number[] }
@@ -5851,6 +5853,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (notificationDismissals.value.size) {
       notifications.value = notifications.value.filter(
         n => !notificationDismissals.value.has(n.id));
+    }
+
+    // A Retina access request bell is answered once the player has the
+    // retina (Ames 2026-11-06): the server marks it read for every reviewer
+    // (access.readGrantedBells), so every admin and device agrees. Asked once
+    // per unread request bell, and only when one is here.
+    const askRequest = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔬 Retina access request from')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askRequest.length) {
+      for (const n of askRequest) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readGrantedBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
     }
   }
 
