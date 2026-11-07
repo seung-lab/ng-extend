@@ -100,6 +100,7 @@ const draftHideTopBar = ref(false);
 const draftImageLayerPanel = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
+const draftRetinaAnnot = ref(false);
 const draftQuickMerge = ref(false);
 const draftOfferRestore = ref(true);
 const draftAnnotationGems = ref(true);
@@ -178,6 +179,7 @@ onMounted(() => {
   draftImageLayerPanel.value = prefsStore.prefs.imageLayerPanel === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
+  draftRetinaAnnot.value = prefsStore.prefs.retinaAnnotationLayers === true;
   draftQuickMerge.value = prefsStore.prefs.quickMergeKey === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
@@ -248,7 +250,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, retinaAnnotationLayers: draftRetinaAnnot.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
@@ -710,6 +712,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
               <input type="checkbox" v-model="draftJumpAdds" />
               <span class="nge-settings-toggle-label">Jumping to a cell adds it to my view (off: it replaces my view)</span>
+            </label>
+            <label class="nge-settings-toggle" title="Off: a Retina cell you claim opens with one Checked Highlight layer, and the Annotation layers button in the Cell Library adds the rest. On: every Retina claim opens with all of them.">
+              <input type="checkbox" v-model="draftRetinaAnnot" />
+              <span class="nge-settings-toggle-label">Claiming a Retina cell adds the annotation layers (Soma, True End, Can't Fix, Hits Edge, Notes)</span>
             </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />

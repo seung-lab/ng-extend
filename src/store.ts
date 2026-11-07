@@ -1099,6 +1099,10 @@ export interface UserPreferences {
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
+  /** A Retina claim opens with the annotation layers (Soma, True End, Can't Fix,
+   *  Hits Edge, Notes). Off by default: it opens with one Checked Highlight
+   *  layer, and a button adds them (Ames 2026-11-07). */
+  retinaAnnotationLayers?: boolean;
   /** Highlight mode's colours: the three built in ones (recoloured or not)
    *  and any the player added. Unset = the defaults. */
   highlightStyles?: { key: string; label: string; color: string }[];
@@ -1165,6 +1169,9 @@ export interface UserPreferences {
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
 
 /** Settings: "Jumping to a cell adds it to my view" (off = replace). */
+export function retinaAnnotationLayersByDefault(): boolean {
+  try { return useUserPreferencesStore().prefs.retinaAnnotationLayers === true; } catch { return false; }
+}
 export function jumpAddsToView(): boolean {
   try { return useUserPreferencesStore().prefs.jumpAddsToView === true; } catch { return false; }
 }

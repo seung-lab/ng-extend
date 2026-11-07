@@ -45,6 +45,9 @@ import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
+import { startRetinaClaimLight, addRetinaAnnotationLayers, retinaAnnotationLayersShown } from '../util/retina_layers';
+import { onLayersChanged } from '../util/highlight';
+import { retinaAnnotationLayersByDefault } from '../store';
 import MecMarkStatus from './MecMarkStatus.vue';
 import { mecKindOfLayer } from '../util/mec_marks';
 import { buildState } from '../hunt_build';
@@ -189,6 +192,26 @@ const copiedId = ref<string | null>(null);
 /** Last cell the user jumped to — highlighted in the list so it's easy to find
  *  again when the Available list is long. */
 const jumpedSegId = ref<string | null>(null);
+/** A Retina claim opens with one Checked Highlight layer; the annotation
+ *  layers come from a button, or every time with the profile setting
+ *  (Ames 2026-11-07: the bipolar cell guide allows Highlight OR annotations). */
+const isRetinaCell = (cell: { dataset?: string }) => /retina/i.test(cell.dataset || '');
+const retinaAnnotShown = ref(false);
+let offRetinaLayers: (() => void) | null = null;
+onMounted(() => {
+  const look = () => { try { retinaAnnotShown.value = retinaAnnotationLayersShown(); } catch { /* no viewer yet */ } };
+  look();
+  offRetinaLayers = onLayersChanged(look);
+});
+onBeforeUnmount(() => { try { offRetinaLayers?.(); } catch { /* gone */ } });
+function openLight(taskId: number | undefined, cell: { dataset?: string }) {
+  if (taskId && isRetinaCell(cell) && !retinaAnnotationLayersByDefault()) startRetinaClaimLight(taskId);
+}
+function addAnnotationLayers(cell: { taskId?: number | null; startLink?: string }) {
+  const n = addRetinaAnnotationLayers(cell.taskId ?? null, cell.startLink);
+  retinaAnnotShown.value = retinaAnnotationLayersShown();
+  if (!n) retinaAnnotShown.value = true;
+}
 function copyId(id: string) {
   navigator.clipboard.writeText(id).then(() => {
     copiedId.value = id;
@@ -841,7 +864,10 @@ async function switchToClaim(cell: CellRow) {
   const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  if (!openStartLink(t?.working_link || cell.startLink)) {
+  const fromStart = !t?.working_link;
+  const openedClaim = openStartLink(t?.working_link || cell.startLink);
+  if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
+  if (!openedClaim) {
     if (leftId && leftId !== cell.taskId) freshLayersForClaim();
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
   }
@@ -961,7 +987,9 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     // A cell with no start view (MEC) is opened too when you were on another
     // claim, so the new claim is on screen and not the last one (report 373).
     const leftOther = !!leftId && leftId !== claimed?.id;
-    if (!openStartLink(cell.startLink) && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
+    const opened = openStartLink(cell.startLink);
+    if (opened) { openLight(claimed?.id, cell); jumpedSegId.value = cell.segId; }
+    if (!opened && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
       if (leftOther) freshLayersForClaim();
       jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
     }
@@ -4174,6 +4202,13 @@ const panelStyle = computed(() => ({
               >{{ teamingUp === cellKey(cell) ? 'Starting…' : '👥 Team up' }}</button>
 
               <button
+                v-if="isMyClaim(cell) && isRetinaCell(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId && !retinaAnnotShown"
+                class="nge-cl-btn nge-cl-btn--annot"
+                @click="addAnnotationLayers(cell)"
+                title="Add the annotation layers to this cell: Soma, True End, Can't Fix, Hits Edge and Notes. To have them on every Retina claim, turn them on in Settings, Jumping and views."
+              >+ Annotation layers</button>
+
+              <button
                 v-if="isMyClaim(cell)"
                 class="nge-cl-btn nge-cl-btn--release"
                 :disabled="releasing.has(releaseKey(cell))"
@@ -5350,6 +5385,7 @@ const panelStyle = computed(() => ({
 /* Collapsed state: a quiet action button rather than a standing panel. */
 .nge-cl-team-btn { margin-bottom: 6px; }
 .nge-cl-btn--team { color: #9fe8c0; border-color: rgba(93, 255, 160, 0.35); }
+.nge-cl-btn--annot { color: #9fd6ff; border-color: rgba(126, 202, 255, 0.4); }
 .nge-cl-btn--join { color: #9fe8c0; border-color: rgba(93, 255, 160, 0.35); }
 .nge-cl-btn--join:disabled { opacity: 0.6; cursor: default; }
 .nge-cl-help-open-btn {
