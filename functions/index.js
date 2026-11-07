@@ -3082,12 +3082,12 @@ exports.ewQuestReview = onRequest(
   }
 );
 // Celia asked for once or twice a day: 8 in the morning and 4 in the
-// afternoon Eastern, "0 8,16 * * *". Every 5 minutes while Celia tests it
-// (Ames 2026-11-05); put the twice a day schedule back after. Each run is one
+// afternoon Eastern, "0 8,16 * * *". Ames 2026-11-06: hourly, on the hour,
+// 8 am to 9 pm Eastern, nothing overnight. Each run is one
 // read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 exports.ewQuestReviewCheck = onSchedule(
-  { schedule: "*/5 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
+  { schedule: "0 8-21 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
   async () => {
     const out = await require("./quest-review").check({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
     console.info("[ewQuestReviewCheck]", JSON.stringify({ checked: out.checked, results: out.results.map(r => ({ row: r.row, index: r.index, sent: r.sent, why: r.why })) }));
