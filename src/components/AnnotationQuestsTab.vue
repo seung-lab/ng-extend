@@ -299,7 +299,8 @@ async function letGo(r: QuestRow) {
  *  2026-10-13), so the share link opens on it. The sheet's ID may be older
  *  than the cell: an edited cell's current root is accepted when the sheet's
  *  ID is in its history. */
-const check = ref<{ busy: boolean; ok: boolean; message: string }>({ busy: false, ok: false, message: '' });
+const check = ref<{ busy: boolean; ok: boolean; message: string; toSoma?: boolean }>({ busy: false, ok: false, message: '' });
+const hasSoma = (r: QuestRow) => (r.soma?.match(/-?\d+(?:\.\d+)?/g) || []).length === 3;
 async function runCheck(r: QuestRow) {
   check.value = { busy: true, ok: false, message: 'Checking the crosshairs…' };
   try {
@@ -308,6 +309,10 @@ async function runCheck(r: QuestRow) {
     if (at.root === r.segmentId) { check.value = { busy: false, ok: true, message: 'The crosshairs are inside this cell.' }; return; }
     const hit = await ancestorAmong(at.root, [r.segmentId]);
     if (hit) { check.value = { busy: false, ok: true, message: `The crosshairs are inside this cell. It has been edited since the sheet was made, so its ID is now ${at.root}.` }; return; }
+    // Marks that sit outside the cell, like a daughter centriole in another
+    // segment (Jingkai_Li, report 415), are fine: Submit moves the crosshairs
+    // to the cell's soma for the share link.
+    if (hasSoma(r)) { check.value = { busy: false, ok: true, toSoma: true, message: "The crosshairs are on another segment. Submit will move them to this cell's soma for the share link." }; return; }
     check.value = { busy: false, ok: false, message: `The crosshairs are inside ${at.root}, which is not this cell. Move them into the cell and check again.` };
   } catch (e: any) { check.value = { busy: false, ok: false, message: `Could not check the crosshairs: ${e?.message || e}` }; }
 }
@@ -331,6 +336,7 @@ async function send(r: QuestRow, e?: Event) {
     // The crosshairs may have moved since the check: check once more.
     await runCheck(r);
     if (!check.value.ok) throw new Error(check.value.message);
+    if (check.value.toSoma) goToSoma(r);
     // The work is kept with the cell too, should it be needed again.
     if (questOnScreen(r.segmentId)) await saveQuestWork(r.segmentId);
     // The share link is the view as it is now, with the annotation layers.
