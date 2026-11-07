@@ -719,6 +719,7 @@ async function loadTriageNumbers() {
     triageNumbers.value = next;
     // Mine, for Arcane Fixes: closed with Done by me (below).
     arcaneReports.value = mineHandled;
+    arcaneReportsIn.value = true;
     void loadArcaneCards();
     // Keep the last good counts rather than show wrong ones.
     if (!catsFailed) triageTally.value = { bugs, features, other, today, days };
@@ -770,6 +771,9 @@ function isMe(by: string | null | undefined) {
 }
 const arcaneReports = ref(0);
 const arcaneCards = ref(0);
+/** Both halves of the count are in (reports, then the cards a moment later). */
+const arcaneReportsIn = ref(false);
+const arcaneCardsIn = ref(false);
 let arcaneCardsAt = 0;
 async function loadArcaneCards() {
   if (Date.now() - arcaneCardsAt < 60_000) return;
@@ -778,6 +782,7 @@ async function loadArcaneCards() {
     const d = await secureWrite<any>('todo.list');
     const me = (d?.people || []).find((p: any) => isMe(p.name));
     arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)))).length : 0;
+    arcaneCardsIn.value = true;
   } catch { /* the cards just do not count this time */ }
 }
 const arcane = computed(() => {
@@ -794,11 +799,23 @@ const arcane = computed(() => {
 const arcaneOpen = ref(false);
 // A tier crossed while you watch: its own moment.
 const arcaneUnlock = ref<{ at: number; name: string; art: string } | null>(null);
-let arcaneSeen = -1;
-watch(() => arcane.value.total, (total, before) => {
-  if (arcaneSeen < 0) { if (total > 0) arcaneSeen = total; return; }
-  const crossed = arcaneThresholds(total).filter(at => at > (before ?? arcaneSeen) && at <= total);
-  arcaneSeen = total;
+// Shown once per tier, ever (Ames 2026-11-06: "I get this every time I open the
+// triage page"): the reports came in first and set the start, then the cards
+// pushed the total past a tier on every visit. Now it waits for both, and
+// remembers on this computer the highest tier already shown.
+const ARCANE_SHOWN_KEY = 'nge-arcane-shown-tier';
+const readShown = () => { try { const v = localStorage.getItem(ARCANE_SHOWN_KEY); return v === null ? null : Number(v) || 0; } catch { return null; } };
+const writeShown = (at: number) => { try { localStorage.setItem(ARCANE_SHOWN_KEY, String(at)); } catch { /* not remembered */ } };
+let arcaneShown: number | null = null;
+watch(() => [arcane.value.total, arcaneReportsIn.value && arcaneCardsIn.value] as const, ([total, ready]) => {
+  if (!ready) return;
+  const earned = arcaneThresholds(total).filter(at => at <= total);
+  const top = earned.length ? earned[earned.length - 1] : 0;
+  if (arcaneShown === null) arcaneShown = readShown();
+  // The first time on this computer: what is already earned is old news.
+  if (arcaneShown === null) { arcaneShown = top; writeShown(top); return; }
+  const crossed = earned.filter(at => at > (arcaneShown as number));
+  if (top > arcaneShown) { arcaneShown = top; writeShown(top); }
   if (crossed.length) {
     arcaneUnlock.value = arcaneTier(crossed[crossed.length - 1]);
     setTimeout(() => { arcaneUnlock.value = null; }, 7000);
