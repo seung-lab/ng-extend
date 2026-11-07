@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-07T21:00:00Z",
+      "title": "Cut errors only in the red popup",
+      "digest": "minor",
+      "items": [
+        "A failed cut or merge shows its message only in the red popup. The old line at the bottom no longer flashes up or stays behind."
+      ]
+    },
+    {
       "at": "2026-11-07T02:40:50Z",
       "title": "Quest Submit with a mark in another segment",
       "digest": "minor",
