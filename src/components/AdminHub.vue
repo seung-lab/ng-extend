@@ -618,29 +618,44 @@ const triageWords = computed(() => triageSearch.value.toLowerCase().split(/\s+/)
 // Bug, Idea or Other (Ames 2026-10-20: "can we have a way to filter by bug /
 // idea / other?"). What the submitter picked; an old Data problem counts as a
 // Bug, and a report with no category goes by its suggestion (closedKind).
-type TriageKind = 'all' | 'bug' | 'feature' | 'other';
+type TriageKind = 'all' | 'bug' | 'feature' | 'other' | 'access';
 const TRIAGE_KIND_KEY = 'nge_triage_kind_v1';
 const triageKind = ref<TriageKind>((() => {
-  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other') return v; } catch { /* private window */ }
+  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other' || v === 'access') return v; } catch { /* private window */ }
   return 'all';
 })());
 watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch { /* not remembered */ } });
-const kindOf = (r: TriageRow) => closedKind(r, reporterOf(r)?.category);
+// Access requests are their own kind (Ames 2026-11-06: "access requests
+// should be in their own category in triage", "a button to turn them off").
+// The score panel still counts them as Other (closedKind); only the board's
+// filter tells them apart. Off, they leave every view but their own.
+const isAccessRequest = (r: TriageRow) => /^beta access$/i.test((reporterOf(r)?.category || '').trim());
+const kindOf = (r: TriageRow): Exclude<TriageKind, 'all'> => (isAccessRequest(r) ? 'access' : closedKind(r, reporterOf(r)?.category));
 const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
-  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' },
+  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' }, { key: 'access', label: '🔑 Access' },
 ];
+const TRIAGE_ACCESS_KEY = 'nge_triage_access_v1';
+const triageAccessOn = ref((() => { try { return localStorage.getItem(TRIAGE_ACCESS_KEY) !== '0'; } catch { return true; } })());
+function toggleTriageAccess() {
+  triageAccessOn.value = !triageAccessOn.value;
+  try { localStorage.setItem(TRIAGE_ACCESS_KEY, triageAccessOn.value ? '1' : '0'); } catch { /* not remembered */ }
+  if (!triageAccessOn.value && triageKind.value === 'access') triageKind.value = 'all';
+}
 /** Open reports only (Ames 2026-10-21: the filter is for active reports):
  *  Needs your decision, In progress, On the To do board, Ideas for later. */
 const triageKindCount = computed(() => {
-  const n = { all: 0, bug: 0, feature: 0, other: 0 } as Record<TriageKind, number>;
+  const n = { all: 0, bug: 0, feature: 0, other: 0, access: 0 } as Record<TriageKind, number>;
   for (const r of triageRows.value) {
     if (['done', 'dismissed'].includes(triageGroupOf(r))) continue;
-    n.all++; n[kindOf(r)]++;
+    const k = kindOf(r);
+    n[k]++;
+    if (k !== 'access' || triageAccessOn.value) n.all++;
   }
   return n;
 });
 function triageMatches(r: TriageRow): boolean {
   if (triageKind.value !== 'all' && kindOf(r) !== triageKind.value) return false;
+  if (triageKind.value === 'all' && !triageAccessOn.value && isAccessRequest(r)) return false;
   const words = triageWords.value;
   if (!words.length) return true;
   const n = triageNumbers.value[r.id];
@@ -3402,10 +3417,13 @@ function practiceWhen(iso: string | null) {
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
           <span class="nge-triage-kinds" role="radiogroup" aria-label="Show">
-            <button v-for="k in TRIAGE_KINDS" :key="k.key" type="button" role="radio" class="nge-triage-kind" title="Open reports of this kind. The board shows only these."
+            <button v-for="k in TRIAGE_KINDS.filter(k => k.key !== 'access' || triageAccessOn)" :key="k.key" type="button" role="radio" class="nge-triage-kind" title="Open reports of this kind. The board shows only these."
                     :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
                     @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
           </span>
+          <button type="button" class="nge-admin-action-btn nge-triage-access-toggle" :aria-pressed="triageAccessOn ? 'true' : 'false'"
+                  :title="triageAccessOn ? 'Hide access requests from the board. They wait under 🔑 Access when you turn them back on.' : 'Show access requests on the board again'"
+                  @click="toggleTriageAccess">{{ triageAccessOn ? '🔑 Access requests: on' : '🔑 Access requests: off' }}<template v-if="!triageAccessOn && triageKindCount.access"> ({{ triageKindCount.access }})</template></button>
           <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
                   :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
                   @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
