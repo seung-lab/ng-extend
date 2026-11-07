@@ -12,6 +12,9 @@ import {renderSafeMarkdown} from '../util/safe_markdown';
 import {withVideoEmbeds} from '../util/video_embeds';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
+import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
+import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
+import {responseJson} from 'neuroglancer/util/http_request';
 import RollUp from 'components/RollUp.vue';
 import CellTypeCheck from 'components/CellTypeCheck.vue';
 import AccessRequestsTab from 'components/AccessRequestsTab.vue';
@@ -1716,6 +1719,56 @@ function releaseBuildOf(row: TriageRow): string {
   const preview = [...(row.feedback_log || [])].reverse().find((e: any) => e.role === 'preview');
   const sha = String((preview as any)?.sha || '');
   return /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 12) : '';
+}
+// ── "MEC error" (Ames 2026-11-07: "we need an 'MEC error' button that adds
+//    MEC to the sheet, celia should be able to press as well"). The server
+//    (ewSheetSync mec_issue, functions/mec-issues.js) writes the row from the
+//    report itself; this only reads the player's view, which needs a signed
+//    in browser, for its segments and position.
+const MEC_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1_ukhH3ymSxBJvKjy5uAZBsdby4DJwz5DATcozn58JE0/edit';
+const mecBusy = ref('');
+const mecDone = ref<Record<string, { row: number | null; already: boolean }>>({});
+const mecError = ref<Record<string, string>>({});
+async function viewNumbers(url: string): Promise<{ segments: string[]; at: number[] | null }> {
+  const none = { segments: [] as string[], at: null };
+  const hash = url.includes('#!') ? url.slice(url.indexOf('#!') + 2) : '';
+  if (!hash) return none;
+  let state: any;
+  const raw = decodeURIComponent(hash);
+  if (raw.startsWith('{')) state = JSON.parse(raw);
+  else {
+    const { url: fetchUrl, credentialsProvider } = parseSpecialUrl(raw, defaultCredentialsManager);
+    state = await cancellableFetchSpecialOk(credentialsProvider, fetchUrl, {}, responseJson);
+  }
+  const pos = Array.isArray(state?.position) ? state.position : state?.navigation?.pose?.position?.voxelCoordinates;
+  const at = Array.isArray(pos) && pos.length >= 3 && pos.slice(0, 3).every((v: any) => Number.isFinite(Number(v))) ? pos.slice(0, 3).map((v: any) => Math.round(Number(v))) : null;
+  const layers: any[] = Array.isArray(state?.layers) ? state.layers : Object.entries(state?.layers || {}).map(([name, l]: [string, any]) => ({ name, ...l }));
+  const segLayers = layers.filter(l => /segmentation/.test(String(l?.type || '')) && Array.isArray(l.segments));
+  const srcOf = (l: any) => JSON.stringify(l.source ?? '') + ' ' + String(l.name || '');
+  const seg = segLayers.find(l => /mec/i.test(srcOf(l))) || segLayers[0];
+  const segments = ((seg?.segments || []) as any[]).map(String).filter(x => !x.startsWith('!') && /^\d+$/.test(x));
+  return { segments, at };
+}
+async function addToMecSheet(row: TriageRow) {
+  if (mecBusy.value) return;
+  const number = triageNumbers.value[row.id];
+  if (!number) { mecError.value = { ...mecError.value, [row.id]: 'The report numbers have not loaded yet. Try again in a moment.' }; return; }
+  mecBusy.value = row.id; mecError.value = { ...mecError.value, [row.id]: '' };
+  try {
+    let found: { segments: string[]; at: number[] | null } = { segments: [], at: null };
+    // A view server that wants a sign in can wait forever: 8 s, then without.
+    try { found = await Promise.race([viewNumbers(reporterOf(row)?.url || ''), new Promise<never>((_, no) => setTimeout(() => no(new Error('timed out')), 8000))]); }
+    catch (e) { console.warn('[MEC sheet] their view could not be read; the row goes without its numbers', e); }
+    const r = await fetch(functionUrl('ewSheetSync'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
+      body: JSON.stringify({ action: 'mec_issue', token: caveToken(), triageId: row.id, number, segments: found.segments, at: found.at }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || `The MEC sheet could not be reached (${r.status}).`);
+    mecDone.value = { ...mecDone.value, [row.id]: { row: data.row ?? null, already: !!data.already } };
+  } catch (e: any) {
+    mecError.value = { ...mecError.value, [row.id]: e?.message || 'The MEC sheet could not be reached.' };
+  } finally { mecBusy.value = ''; }
 }
 const copied = ref('');
 async function copyText(text: string) {
@@ -3773,6 +3826,14 @@ function practiceWhen(iso: string | null) {
             </template>
             <button v-else class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
+            <template v-if="row.source === 'site_issue'">
+              <a v-if="mecDone[row.id]" class="nge-admin-action-btn nge-triage-mec-btn nge-triage-mec-btn--done" :href="MEC_SHEET_URL" target="_blank" rel="noopener"
+                 title="Open the MEC segment issues sheet">✓ {{ mecDone[row.id].already ? 'Already on' : 'Added to' }} the MEC sheet<template v-if="mecDone[row.id].row"> (row {{ mecDone[row.id].row }})</template> ↗</a>
+              <button v-else class="nge-admin-action-btn nge-triage-mec-btn" :disabled="mecBusy === row.id"
+                      title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors."
+                      @click="addToMecSheet(row)">{{ mecBusy === row.id ? 'Adding…' : '🧩 MEC error' }}</button>
+              <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
+            </template>
           </div>
         </div>
         <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
@@ -4897,6 +4958,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-reporter-by { color: rgba(255,255,255,0.45); }
 /* A reply the submitter was asked for (Ames 2026-10-13). */
 .nge-triage-thread-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* MEC error: sits beside Update submitter. */
+.nge-triage-mec-btn { margin-left: 8px; text-decoration: none; display: inline-block; }
+.nge-triage-mec-btn--done { color: #15803d; border-color: #86efac; }
+.nge-triage-mec-err { color: #b91c1c; font-size: 12px; margin-top: 6px; }
 /* Update submitter: format buttons, preview, and a sent update drawn as the
    player sees it (Ames 2026-10-16). */
 .nge-triage-fmtbar { margin: 6px 0 4px; }
