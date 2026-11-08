@@ -1,13 +1,14 @@
 /**
- * A one-off visitor (Ames 2026-11-08): the Starship zooms across the screen
- * once, trailing engine light, then is gone. Once per browser, only for a
- * few days, never for someone who asked for less motion. A drawing on top
- * of the page; it never touches the cells or blocks a click.
+ * A one-off visitor (Ames 2026-11-08): the Starship (a picture of Ames's 3D
+ * model, nose to the right) zooms across the screen once, trailing engine
+ * light, then is gone. Once per browser, today only, never for someone who
+ * asked for less motion. A drawing on top of the page; it never touches the
+ * cells or blocks a click.
  */
-import shipUrl from '../../static/badges/pyr/center-art/exploration/starship.png';
+import shipUrl from '../images/starship-flyby.png';
 
-const SEEN_KEY = 'pyr-starship-flyby-2026-11';
-const UNTIL = Date.parse('2026-11-11T05:00:00Z');
+const SEEN_KEY = 'pyr-starship-flyby-2026-11-08b';
+const UNTIL = Date.parse('2026-11-09T05:00:00Z');   // the end of today, Eastern
 const FLY_MS = 4200;
 
 function seen(): boolean {
@@ -48,9 +49,9 @@ function run(img: HTMLImageElement) {
     const [x, y] = at(q);
     const ang = Math.atan2(y - prev[1], x - prev[0]);
     // engine light from both nozzles, laid along the path since last frame
-    const back = size * 0.42;
+    const back = size * 0.45;
     for (let k = 0; k < 6 && q < 1; k++) {
-      const s = Math.random(), side = (k % 2 ? 1 : -1) * size * 0.16;
+      const s = Math.random(), side = (k % 2 ? 1 : -1) * size * 0.14;
       const bx = prev[0] + (x - prev[0]) * s, by = prev[1] + (y - prev[1]) * s;
       parts.push({
         x: bx - Math.cos(ang) * back - Math.sin(ang) * side, y: by - Math.sin(ang) * back + Math.cos(ang) * side,
@@ -78,8 +79,8 @@ function run(img: HTMLImageElement) {
       const roll = Math.exp(-Math.pow((q - 0.3) / 0.03, 2));
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(ang - Math.PI / 2);   // the art points down; turn it to the way it flies
-      ctx.scale(Math.cos(roll * Math.PI * 2), 1);
+      ctx.rotate(ang);   // the picture's nose points right, the way it flies
+      ctx.scale(1, Math.cos(roll * Math.PI * 2));   // a roll about its own length
       ctx.drawImage(img, -size / 2, -size / 2, size, size);
       ctx.restore();
     }
