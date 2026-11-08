@@ -264,7 +264,7 @@ if (fs.existsSync(INTRO_DIR)) {
   const dest = path.join(DIST_MIN, 'intro');
   fs.mkdirSync(dest, { recursive: true });
   for (const file of fs.readdirSync(INTRO_DIR)) {
-    if (/\.(glb|json)$/.test(file)) fs.copyFileSync(path.join(INTRO_DIR, file), path.join(dest, file));
+    if (/\.(glb|json|png)$/.test(file)) fs.copyFileSync(path.join(INTRO_DIR, file), path.join(dest, file));
   }
   console.log(`Copied the Starship to ${dest}`);
 }

@@ -302,7 +302,7 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
     portalGlow.sizesNm[n] = size; n++;
   };
   const at2 = (r: number, th: number): V3 => add(c, add(mul(right, Math.cos(th) * r), mul(up, Math.sin(th) * r)));
-  const draw = smooth(tp / 0.7);                 // the iris drawing itself round
+  // (the ring itself is Ames's art, drawn over the view below)
   const open = smooth((tp - 0.3) / 1.0);         // the disk opening
   const zip = Math.max(0, (tp - ZIP_AT) / 0.7);  // closing
   const shut = smooth(Math.min(1, zip));
@@ -319,21 +319,10 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
       const col = a % 2 ? cyan : vio, tw = 0.65 + 0.35 * Math.sin(tp * 11 + k * 1.7 + a);
       put(at2(RR * open * u * 0.94, th), [col[0], col[1], col[2], 0.8 * open * life * tw * (0.35 + 0.65 * u)], R * (0.05 + 0.12 * u));
     }
-    // the two rims, turning against each other; the iris draws them round
-    const RIM = 120;
-    for (let j = 0; j < RIM; j++) {
-      const u = j / RIM;
-      if (u > draw) continue;
-      const head = Math.abs(u - draw) < 0.03 && draw < 1;
-      const wob = 1 + 0.04 * Math.sin(tp * 7 + j * 0.7);
-      const thA = 2 * Math.PI * u + tp * 1.3 + shut * 6, thB = -2 * Math.PI * u - tp * 1.7 - shut * 6;
-      put(at2(RR * wob, thA), head ? [1, 1, 1, 1] : [cyan[0], cyan[1], cyan[2], 0.95 * life], R * (head ? 0.45 : 0.15));
-      put(at2(RR * 1.08 * wob, thB), [mag[0], mag[1], mag[2], 0.75 * life * draw], R * 0.11);
-    }
     // sparks flung off the rim, curving away and fading
     for (const sp of SPARKS) {
       const q = ((tp * sp.sp + sp.off) % 1);
-      const r = RR * (1 + 0.9 * q), th = sp.th + tp * 1.3 + q * 1.2;
+      const r = RR * (0.25 + 0.7 * q), th = sp.th + tp * 1.3 + q * 1.2;
       const col = sp.off > 0.5 ? cyan : mag;
       put(at2(r, th), [col[0], col[1], col[2], open * life * (1 - q) * 0.9], R * 0.07 * (1 - 0.5 * q));
     }
@@ -361,6 +350,46 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
   portalGlow.count = n;
   portalGlow.nmRight = [right[0] / nm[0], right[1] / nm[1], right[2] / nm[2]];
   setNgeGlow(n ? portalGlow : null, 'starship-portal');
+  placePortalArt(nm, right, c, R, open, shut, zip, thrust);
+}
+/** The ring itself (Ames's art, static/intro/portal.png), laid over the view
+ *  where the portal is: it opens with a little overshoot, wobbles as the ship
+ *  bursts through, and shrinks away as the portal zips shut. Its opening is
+ *  about half its width, so it is drawn twice the vortex's size. */
+let portalArt: HTMLImageElement | null = null;
+function placePortalArt(nm: V3, right: V3, c: V3, R: number, open: number, shut: number, zip: number, thrust: number) {
+  const a = toScreenNm(nm, c), b = toScreenNm(nm, add(c, mul(right, R)));
+  if (!a || !b || zip >= 1.1) { removePortalArt(); return; }
+  if (!portalArt) {
+    portalArt = document.createElement('img');
+    portalArt.src = 'intro/portal.png';
+    portalArt.alt = '';
+    portalArt.style.cssText = 'position:fixed;left:0;top:0;pointer-events:none;z-index:50;transform-origin:50% 50%;filter:drop-shadow(0 0 18px rgba(80,220,255,0.55));';
+    document.body.appendChild(portalArt);
+  }
+  const rPx = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const pop = open < 1 ? 1 + 0.12 * Math.sin(Math.PI * open) : 1;
+  const kick = thrust > 0 && thrust < 0.6 ? 1 + 0.06 * Math.sin(thrust / 0.6 * Math.PI) : 1;
+  const k = Math.max(0, open * pop * kick * (1 - shut));
+  const w = rPx * 2 / 0.5;
+  portalArt.style.width = `${w.toFixed(1)}px`;
+  portalArt.style.opacity = String(Math.min(1, open * 1.5) * (1 - shut));
+  portalArt.style.transform = `translate(${(a[0] - w / 2).toFixed(1)}px, ${(a[1] - w * 0.4570 ).toFixed(1)}px) scale(${k.toFixed(3)}) rotate(${(shut * 140).toFixed(1)}deg)`;
+}
+function removePortalArt() { portalArt?.remove(); portalArt = null; }
+/** A point (nm) on screen, in CSS pixels, through the 3D view's projection. */
+function toScreenNm(nm: V3, p: V3): [number, number] | null {
+  for (const pn of viewerNow()?.display?.panels ?? []) {
+    if (!pn?.element?.classList?.contains('nge-3d-panel')) continue;
+    const m = pn.projectionParameters?.value?.viewProjectionMat;
+    if (!m) return null;
+    const x = p[0] / nm[0], y = p[1] / nm[1], z = p[2] / nm[2];
+    const cx = m[0] * x + m[4] * y + m[8] * z + m[12], cy = m[1] * x + m[5] * y + m[9] * z + m[13], cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+    if (cw <= 0) return null;
+    const r = pn.element.getBoundingClientRect();
+    return [r.left + (cx / cw + 1) / 2 * r.width, r.top + (1 - cy / cw) / 2 * r.height];
+  }
+  return null;
 }
 
 /** The slow turn on its own, before any flight (Ames: "it should just
@@ -615,13 +644,15 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
         // off once it stops (Ames 2026-11-08: engines off when stopped); the
         // trail left behind fades on its own
         const IDLE = 0;
-        const down = h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
+        const dockQ = dock ? (now - dock.start) / dockMs : 1;
+        const down = dock ? (dockQ < 1 ? Math.min(1, Math.sin(Math.PI * dockQ) * 1.6) : IDLE)
+          : h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
           : t < 0 ? 0 : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         // through the portal: the ship shows as it comes out of the light
         prop.alpha = t < 0 ? 0 : Math.min(1, t / 0.25);
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
-        else if (portalShown) { portalShown = false; setNgeGlow(null, 'starship-portal'); }
-        const power = t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
+        else if (portalShown) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
+        const power = !dock && t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
         const sg = scale * grow;
         const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * sg), mul(up, q[1] * sg)), mul(fwd, q[2] * sg)));
         const cores = nozzles.map(q => ({p: toWorld(q), power}));
@@ -675,6 +706,7 @@ export function setHoverHighlight(on: boolean) {
 }
 
 export function clearStarship() {
+  removePortalArt();
   setHoverHighlight(true);
   stopRequested = true;
   setNgeProps([], GROUP);

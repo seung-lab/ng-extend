@@ -61,7 +61,7 @@ const BEATS: Beat[] = [
   {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: "Let's go",
     body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life. They're helping to advance neuroscience, and they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
-    callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Cell type', 'Pyramidal'], ['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
+    callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
       ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Input', '3,386 synapses'], ['Output', '59 synapses']]},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
   {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Size', 'about 20 µm across'], ['For scale', 'a fifth the width of a human hair']]}, part: 1, view: {at: 'soma', nm: 45_000},
@@ -719,7 +719,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-box { isolation: isolate; }
 .nge-callout-box .nge-callout-kicker { color: rgba(140, 215, 255, 0.75); }
 .nge-callout-box .nge-callout-title { color: #aeeaff; text-shadow: 0 0 12px rgba(80, 190, 255, 0.7); font-size: 15px; gap: 8px; }
-.nge-callout-box { min-width: 150px !important; max-width: min(290px, 40vw) !important; padding: 10px 14px 12px !important; }
+.nge-callout-box { min-width: 170px !important; max-width: min(320px, 42vw) !important; padding: 11px 16px 13px !important; }
 .nge-callout-box .nge-callout-kicker { font-size: 8.5px; display: flex; align-items: center; gap: 7px; color: #9fdcff; }
 .nge-callout-box .nge-callout-stats { gap: 6px 14px; margin-top: 7px; padding-top: 7px; }
 .nge-callout-box .nge-callout-stats dt { font-size: 7.5px; }
@@ -727,6 +727,10 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-box .nge-callout-stats .num { font-size: 17px; }
 .nge-callout-box .nge-callout-stats .unit { font-size: 10.5px; }
 .nge-callout-box .nge-callout-ic { width: 8px; height: 8px; }
+.nge-callout-stats .wide { grid-column: 1 / -1; }
+.nge-callout-box .nge-callout-stats { grid-template-columns: auto auto; justify-content: start; column-gap: 26px; row-gap: 9px; }
+.nge-callout-box .nge-callout-stats dd { line-height: 1.25; }
+.nge-callout-box .nge-callout-kicker { display: block; }
 .nge-callout-stats .grp { grid-column: 1 / -1; margin-top: 4px; font: 600 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: #c4efff; }
 .nge-callout-stats .grp + div dt, .nge-callout-stats .grp + div + div dt { opacity: 0.85; }
 .nge-callout-box .nge-callout-stats { border-top-color: rgba(126, 224, 255, 0.3); }
@@ -859,7 +863,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.06"/></linearGradient></defs>
     <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker"><span class="nge-callout-ic"></span>Pyr scan · ${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
+    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
@@ -944,7 +948,7 @@ function statsHtml(stats: [string, string][]): string {
       grouped = true;
       return `${head}<div><dt>${STAT_ICON[k] ?? ''}${k.replace(/s$/, '')}</dt><dd><span class="num">${m[1]}</span></dd></div>`;
     }
-    return `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
+    return `<div${k === 'Location' || k === 'For scale' || k === 'Contains' ? ' class="wide"' : ''}><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
   }).join('');
 }
 /** A number set large with its unit beneath ("3,386 synapses"). */
@@ -1271,7 +1275,7 @@ async function exploreBiggerNeuron() {
   // MICrONS is a much bigger piece of brain and this cell is enormous, so it
   // takes a while to arrive: say so while it does (Ames)
   const card = transmissionCard();
-  card.set('Warping to MICrONS', 'Loading a much bigger piece of brain: a cubic millimeter of mouse visual cortex, and one of the most complete neurons in it. Big cells take a moment to arrive.');
+  card.set('Warping to MICrONS', 'MICrONS may ask you to sign in again, it keeps its own sign in. Loading a much bigger piece of brain: a cubic millimeter of mouse visual cortex, and one of the most complete neurons in it. Big cells take a moment to arrive.');
   if (!(await switchToDataset(ds, {forJump: true}))) { card.close(); return; }
   try { v.selectedLayer.visible = false; } catch { /* no panel */ }
   let ml: any = null;
