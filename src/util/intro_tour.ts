@@ -42,6 +42,7 @@ interface Tour {
   synapsePartner: string; presynPartner: string; presynSynapses: number;
   incomingSynapses: number; outgoingSynapses: number;
   axonFlight: number[][]; axonPath: number[][]; dendFlight: number[][];
+  apIn: number[][]; apDend: number[][]; apOut: number[][];
   synIn: number[]; synOut: number[]; synUnit: number;
 }
 
@@ -73,16 +74,16 @@ const BEATS: Beat[] = [
   {key: 'allsyn', callout: {anchor: 'soma', title: 'All its synapses', stats: [['Input', '3,386 synapses'], ['Output', '59 synapses']]}, view: {at: 'cell', nm: 230_000},
     body: 'Each dot is a synapse. This cell receives {in:3,386 connections} from upstream cells, and the axon contained in this volume has {out:59 outgoing connections}.'},
   {key: 'synapse2', header: 'Signals come in', part: 2, view: {at: 'synapse2', nm: 30_000},
-    body: 'Out here near the tip of a {dendrite:dendrite}, {lime:another neuron\u2019s axon} passes its signal in at a {in:synapse}, the glow. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
-  {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['For scale', 'a blink takes 300 times longer'], ['Speed', 'up to 100 m/s'], ['For scale', 'about 220 mph']]}, part: 3, view: {at: 'cell', nm: 220_000},
-    body: 'Neurons talk in quick electric pulses called action potentials. Each one starts near the soma and races down the axon to its synapses. Together, your neurons send hundreds of billions of them every minute.'},
+    body: 'Out here near the tip of a {dendrite:dendrite}, {nbr:another neuron\u2019s axon} passes its signal in at a {in:synapse}, the glow. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
+  {key: 'spike', header: 'Action potential', part: 3, view: {at: 'cell', nm: 220_000},
+    body: 'A signal comes in along {nbr:the neighbor\u2019s axon}, crosses the {in:synapse} and runs down the {dendrite:dendrite} to the {soma:soma}. When enough arrive, the cell fires an action potential, a quick electric pulse that races out along its {axon:axon} to the next cell. It lasts about 1 ms (a blink takes 300 times longer) and travels up to 100 m/s, about 220 mph.'},
   {key: 'connectome', header: 'Connectome', view: {at: 'cell', nm: 260_000},
     body: 'A wiring diagram of the brain that includes all the cells and all the synapses is called a **connectome**. With it, scientists can follow how signals flow, to learn how we see, remember and think, and what goes wrong in brain disorders. This map doesn’t exist for a mammalian brain yet, but we’re getting closer thanks to people like you playing Pyr.'},
 ];
 
 /* ── colours (cell blue, parts as in the labelled picture) ── */
-const PART_RGB: Record<number, V3> = {1: [255, 205, 80], 2: [168, 140, 255], 3: [255, 130, 195]};   // axon a softer pink, not magenta
-const SYN2_COLOR = 0xb4ff5a;    // the neighbor whose axon feeds the far dendrite, lime
+const PART_RGB: Record<number, V3> = {1: [255, 205, 80], 2: [168, 140, 255], 3: [94, 200, 255]};   // axons blue (Ames): ours sky blue
+const SYN2_COLOR = 0x2f6bff;    // the neighbor whose axon feeds the far dendrite, a deeper blue (axons are blue)
 const PARTNER_COLOR = 0xffa64d;   // the synapse's partner, orange
 const packed = (hex: number) => ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 0xff) << 16);
 
@@ -253,7 +254,7 @@ function runAllSynapses(t: Tour) {
     for (let j = 0; j < n; j++) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
       if (j < nIn) glow.colors.set([1, 0.86, 0.45, on], j * 4);
-      else glow.colors.set([1, 0.4, 0.85, on], j * 4);
+      else glow.colors.set([0.37, 0.78, 1, on], j * 4);
       glow.sizesNm[j] = (j < nIn ? 1700 : 2600) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
     }
     const cam = cameraAxes(nm);
@@ -270,32 +271,57 @@ function stopAllSynapses() { cancelAnimationFrame(synRaf); setNgeGlow(null, 'int
 let sparkRaf = 0;
 function runSpark(t: Tour) {
   const nm = nmPerUnit();
-  if (!nm) return;
-  const path = t.axonPath as V3[];
-  const cum = [0];
-  for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2]));
-  const L = cum[cum.length - 1], TRAIL = 14;
-  const glow: NgeGlow = {positions: new Float32Array(TRAIL * 3), colors: new Float32Array(TRAIL * 4), sizesNm: new Float32Array(TRAIL), count: TRAIL, nmRight: [1 / nm[0], 0, 0]};
-  const at = (s: number): V3 => {
-    s = Math.max(0, Math.min(L, s));
-    let i = 1; while (i < cum.length - 1 && cum[i] < s) i++;
-    const q = (s - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
-    return [0, 1, 2].map(k => path[i - 1][k] + (path[i][k] - path[i - 1][k]) * q) as V3;
+  if (!nm || !t.apDend) return;
+  type Leg = {path: V3[]; cum: number[]; ms: number; rgb: [number, number, number]; size: number};
+  const leg = (path: number[][], ms: number, rgb: [number, number, number], size: number): Leg => {
+    const P = path as V3[], cum = [0];
+    for (let k = 1; k < P.length; k++) cum.push(cum[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1], P[k][2] - P[k - 1][2]));
+    return {path: P, cum, ms, rgb, size};
   };
-  const t0 = performance.now(), RUN = 1700, GAP = 700;
+  const legs = [leg(t.apIn, 1100, [0.55, 0.7, 1], 2600), leg(t.apDend, 3200, [0.85, 0.78, 1], 3600), leg(t.apOut, 2400, [0.55, 0.88, 1], 3600)];
+  const along = (L: Leg, s: number): V3 => {
+    const tot = L.cum[L.cum.length - 1]; s = Math.max(0, Math.min(tot, s));
+    let k = 1; while (k < L.cum.length - 1 && L.cum[k] < s) k++;
+    const q = (s - L.cum[k - 1]) / ((L.cum[k] - L.cum[k - 1]) || 1);
+    return [0, 1, 2].map(j => L.path[k - 1][j] + (L.path[k][j] - L.path[k - 1][j]) * q) as V3;
+  };
+  const TRAIL = 16, N = TRAIL + 2;
+  const glow: NgeGlow = {positions: new Float32Array(N * 3), colors: new Float32Array(N * 4), sizesNm: new Float32Array(N), count: 0, nmRight: [1 / nm[0], 0, 0]};
+  // the beats of one pass (ms): in, the synapse flash, the dendrite, the
+  // soma's bloom, the axon, the flash at the next cell, a rest
+  const T_IN = legs[0].ms, T_D0 = T_IN + 250, T_D1 = T_D0 + legs[1].ms, T_O0 = T_D1 + 900, T_O1 = T_O0 + legs[2].ms, PERIOD = T_O1 + 2600;
+  const soma = t.anchors.soma, syn2 = t.anchors.synapse2, syn1 = t.anchors.synapse;
+  const t0 = performance.now();
   const step = (now: number) => {
-    const phase = ((now - t0) % (RUN + GAP)) / RUN;
-    for (let j = 0; j < TRAIL; j++) {
-      const s = (phase - j * 0.012) * L, on = phase <= 1 && s >= 0 ? 1 : 0;
-      const p = at(s);
-      glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], j * 3);
-      const fade = on * Math.pow(1 - j / TRAIL, 1.5);
-      glow.colors.set([1, 0.95, 0.75, fade], j * 4);
-      glow.sizesNm[j] = j === 0 ? 7000 : 4500 * (1 - j / TRAIL) + 1200;
-    }
+    const ms = (now - t0) % PERIOD;
+    let n = 0;
+    const put = (p: V3, rgb: number[], a: number, size: number) => {
+      if (a <= 0.01) return;
+      glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], n * 3);
+      glow.colors.set([rgb[0], rgb[1], rgb[2], Math.min(1, a)], n * 4);
+      glow.sizesNm[n] = size; n++;
+    };
+    const run = (L: Leg, q: number) => {
+      const tot = L.cum[L.cum.length - 1];
+      for (let j = 0; j < TRAIL; j++) {
+        const s = q * tot - j * tot * 0.012;
+        if (s < 0 || q > 1.05) continue;
+        const fade = Math.pow(1 - j / TRAIL, 1.5);
+        put(along(L, s), j === 0 ? [1, 1, 1] : L.rgb, fade, j === 0 ? L.size * 1.5 : L.size * (1 - j / TRAIL) + 900);
+      }
+    };
+    const flash = (p: V3, rgb: number[], k: number, size: number) => put(p, rgb, Math.sin(Math.PI * Math.max(0, Math.min(1, k))), size);
+    if (ms < T_IN) run(legs[0], ms / T_IN);
+    flash(syn2, [1, 0.86, 0.45], (ms - T_IN + 200) / 600, 6000);
+    if (ms >= T_D0 && ms < T_D1 + 200) run(legs[1], (ms - T_D0) / legs[1].ms);
+    // the soma gathers it in and fires: a bloom
+    flash(soma, [1, 0.88, 0.5], (ms - T_D1 + 150) / 1100, 26000);
+    if (ms >= T_O0 && ms < T_O1 + 200) run(legs[2], (ms - T_O0) / legs[2].ms);
+    flash(syn1, [0.6, 0.9, 1], (ms - T_O1 + 100) / 700, 7000);
+    glow.count = n;
     const cam = cameraAxes(nm);
     if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
-    setNgeGlow(glow, 'intro-spark');
+    setNgeGlow(n ? glow : null, 'intro-spark');
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
     sparkRaf = requestAnimationFrame(step);
   };
@@ -305,7 +331,7 @@ function stopSpark() { cancelAnimationFrame(sparkRaf); setNgeGlow(null, 'intro-s
 
 /* ── the synapse marker: a soft pulse ── */
 let pulseRaf = 0;
-function runPulse(at: V3, rgb: [number, number, number] = [1, 0.45, 0.85]) {
+function runPulse(at: V3, rgb: [number, number, number] = [0.6, 0.88, 1]) {
   const nm = nmPerUnit();
   if (!nm) return;
   const glow: NgeGlow = {positions: Float32Array.from([at[0] / nm[0], at[1] / nm[1], at[2] / nm[2]]), colors: new Float32Array(4), sizesNm: new Float32Array(1), count: 1, nmRight: [1 / nm[0], 0, 0]};
@@ -538,6 +564,17 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-go--alt .nge-go-label { background: none; color: #bfe6ff; }
 .nge-go[hidden] { display: none; }
 .nge-intro--choice > .nge-intro-row { flex-wrap: wrap; row-gap: 8px; }
+.nge-intro-key { order: -2; flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px;
+  font: 500 12.5px 'Inter', sans-serif; color: #cfe6ff; }
+.nge-intro-key[hidden] { display: none; }
+.nge-intro-key i { width: 18px; height: 5px; border-radius: 3px; background: var(--c); box-shadow: 0 0 6px var(--c); margin-left: 8px; }
+.nge-intro-key i:first-child { margin-left: 0; }
+.nge-intro-key i.dot { width: 8px; height: 8px; border-radius: 50%; }
+.nge-intro--choice > .nge-intro-row { flex-wrap: wrap; }
+.nge-intro--choice .nge-intro-back { order: 0; }
+.nge-intro--choice .nge-intro-alt { order: 1; margin-left: auto; }
+.nge-intro--choice .nge-intro-go { order: 2; margin-left: 10px; }
+.nge-intro--choice .nge-go-label { padding: 0 16px; font-size: 11.5px; letter-spacing: 0.14em; }
 .nge-intro-choose { order: -1; flex-basis: 100%; margin-top: 4px; font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.28em;
   text-transform: uppercase; color: rgba(126, 224, 255, 0.85); }
 .nge-intro-choose[hidden] { display: none; }
@@ -593,12 +630,12 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout--zip svg > * { transition: opacity 0.3s 0.12s; opacity: 0; }
 .nge-callout-stats .num { font: 600 24px/1.05 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.02em; color: #fff; font-variant-numeric: tabular-nums; }
 .nge-callout-stats .unit { display: block; margin-top: 3px; font: 500 12px/1.2 'Inter', sans-serif; letter-spacing: 0.04em; color: rgba(200, 230, 255, 0.75); }
-.nge-w-axon { color: #ff82c3; font-weight: 600; }
+.nge-w-axon { color: #5ec8ff; font-weight: 600; }
 .nge-w-dendrite { color: #b9a4ff; font-weight: 600; }
 .nge-w-soma { color: #ffd24d; font-weight: 600; }
 .nge-w-in { color: #ffd24d; font-weight: 600; }
-.nge-w-lime { color: #b4ff5a; font-weight: 600; }
-.nge-w-out { color: #ff82c3; font-weight: 600; }
+.nge-w-nbr { color: #7aa2ff; font-weight: 600; }
+.nge-w-out { color: #5ec8ff; font-weight: 600; }
 @keyframes nge-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
 @keyframes nge-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 0.95; } 99% { opacity: 0.7; } }
 .nge-stat-ic { width: 16px; height: 12px; vertical-align: -2px; margin-right: 6px; }
@@ -705,7 +742,7 @@ function frameSvg(w: number, h: number, cut = 14): string {
 const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /** The colour of each anchor's part, for its icon, beam and dot. */
-const ANCHOR_HEX: Record<string, string> = {soma: '#ffd24d', dendrite: '#a88cff', axon: '#ff82c3', synapse: '#c9f6ff', presyn: '#ff8f8f'};
+const ANCHOR_HEX: Record<string, string> = {soma: '#ffd24d', dendrite: '#a88cff', axon: '#5ec8ff', synapse: '#c9f6ff', presyn: '#ff8f8f'};
 
 /** The 3D panel and a point in nanometres, to a point on screen. */
 function toScreen(p: V3): [number, number] | null {
@@ -725,7 +762,7 @@ function toScreen(p: V3): [number, number] | null {
  *  going out of it. */
 const STAT_ICON: Record<string, string> = {
   Input: '<svg class="nge-stat-ic" viewBox="0 0 16 12" aria-hidden="true"><path d="M1 6h8M6 2.5L9.5 6 6 9.5" fill="none" stroke="#ffd24d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.5" cy="6" r="2.6" fill="#ffd24d"/></svg>',
-  Output: '<svg class="nge-stat-ic" viewBox="0 0 16 12" aria-hidden="true"><circle cx="3.5" cy="6" r="2.6" fill="#ff5fd2"/><path d="M7 6h8M11.5 2.5L15 6l-3.5 3.5" fill="none" stroke="#ff5fd2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  Output: '<svg class="nge-stat-ic" viewBox="0 0 16 12" aria-hidden="true"><circle cx="3.5" cy="6" r="2.6" fill="#5ec8ff"/><path d="M7 6h8M11.5 2.5L15 6l-3.5 3.5" fill="none" stroke="#5ec8ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true, showDot = true) {
@@ -872,6 +909,7 @@ export async function startIntroTour() {
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
     <div class="nge-intro-row"><button class="nge-back nge-intro-back" type="button" aria-label="Back">${CHEV_L}</button>
+      <span class="nge-intro-key" hidden><i style="--c:#ffd24d"></i>Soma<i style="--c:#a88cff"></i>Dendrites<i style="--c:#5ec8ff"></i>Axons<i style="--c:#ffd24d" class="dot"></i>Input synapses<i style="--c:#5ec8ff" class="dot"></i>Output synapses</span>
       <span class="nge-intro-choose" hidden>Choose your next adventure</span>
       <button class="nge-go nge-go--alt nge-intro-alt" type="button" hidden><span class="nge-go-label">Explore a bigger neuron</span></button>
       <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
@@ -916,6 +954,7 @@ export async function startIntroTour() {
     labelEl.textContent = last ? 'Start playing Pyr' : (b.next ?? 'Next');
     altEl.hidden = !last;
     (panel?.querySelector('.nge-intro-choose') as HTMLElement).hidden = !last;
+    (panel?.querySelector('.nge-intro-key') as HTMLElement).hidden = !last;
     panel?.classList.toggle('nge-intro--choice', last);
     backEl.hidden = i === 0;
     // Size the panel for the whole text first, so it holds still while the
@@ -952,8 +991,9 @@ export async function startIntroTour() {
       if (b.key === 'welcome' && ship) center = [0, 1, 2].map(k => (center[k] + ship[k]) / 2) as V3;
       // the action potential: from up close where we are, a slow pull back
       // to the whole cell (no dash across to the axon first)
-      const ms = b.key === 'spike' ? 9000 : b.key === 'welcome' ? 2200 : 1800;
-      moveCamera(framed(center, b.view.nm), b.view.nm, ms);
+      const ms = b.key === 'spike' ? 5200 : b.key === 'welcome' ? 2200 : 1800;
+      if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, b.view.nm), b.view.nm, ms); }, 1300);
+      else moveCamera(framed(center, b.view.nm), b.view.nm, ms);
       setTimeout(() => { if (active && i === n) revealTint(shown, b.part); }, b.key === 'spike' ? 600 : ms * 0.55);
     };
     setTimeout(camera, camDelay);
