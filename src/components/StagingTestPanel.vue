@@ -14,7 +14,7 @@ import { useUserPreferencesStore } from '../store';
 import { useTutorialStore } from '../store-pyr';
 import { IS_LIVE_SITE } from '../util/toolbar_staging';
 import { FLIGHT_SVG } from '../data/toolbar-icons';
-import { playIntro } from '../util/intro_tour';
+import { playIntro, jumpToIntroChoice } from '../util/intro_tour';
 
 /** The new player intro's Starship, launched by hand (Ames 2026-11-07: "give
  *  me a rocket ship icon"), for testing on a phone where there is no palette. */
@@ -170,6 +170,7 @@ function resetTutorials() {
     </header>
     <p class="nge-stt-note">{{ IS_LIVE_SITE ? 'Admins only.' : 'Test site only.' }} The new player intro, as it is built. Pretend to be a brand new player and it plays when the page opens; the rocket flies it again any time. Nothing here is saved to your account, except Reset my tutorials.</p>
     <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchShip"><span class="nge-stt-rocket-ic" v-html="FLIGHT_SVG"></span> Play the intro</button>
+    <button class="nge-hud-btn nge-stt-launch" @click="jumpToIntroChoice">Jump to Choose your next adventure</button>
     <label class="nge-stt-switch">
       <input id="nge-stt-sim" type="checkbox" :checked="simulating" @change="toggleSim" />
       <span>Pretend I am a new player</span>

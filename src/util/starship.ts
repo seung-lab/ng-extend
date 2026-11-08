@@ -386,7 +386,7 @@ export function startIdleTurn() {
 
 /** Fly the Starship into the Sandbox cell and land it on the soma.
  *  onLanded runs once, as it touches down. */
-export async function flyStarship(onLanded?: () => void): Promise<void> {
+export async function flyStarship(onLanded?: () => void, skip = false): Promise<void> {
   if (running) return;
   running = true;
   stopRequested = false;
@@ -475,7 +475,8 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
       const x = Math.max(0, tt) / ROOM_DT, k = Math.min(room.length - 2, Math.floor(x)), q = Math.min(1, x - k);
       return room[k] + (room[k + 1] - room[k]) * q;
     };
-    const start = performance.now();
+    // skip: already landed (for testing the tour's later steps)
+    const start = performance.now() - (skip ? (PORTAL_S + total + 0.5) * 1000 : 0);
     let last = start, emitDebt = 0;
     let prevCores: V3[] | null = null;
     let prevUp: V3 | null = null;
@@ -561,12 +562,15 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         }
         // ending a hop the ship levels out, nose sideways across the screen,
         // not parked standing on end (Ames)
-        if (h) {
-          const lv = smooth((hq - 0.7) / 0.3);
-          const flat = sub(sub(fwd, mul(cam.up, dot(fwd, cam.up))), mul(cam.toEye, dot(fwd, cam.toEye) * 0.6));
-          if (lv > 0 && Math.hypot(...flat) > 1e-3) fwd = norm(mix(fwd, norm(flat), lv));
+        // (only once it has stopped: in flight the nose always points the
+        // way it goes, Ames)
+        if (h && hq >= 1) {
+          const lv = smooth((now - h.start - h.ms) / 900);
+          let flat = sub(sub(fwd, mul(cam.up, dot(fwd, cam.up))), mul(cam.toEye, dot(fwd, cam.toEye) * 0.6));
+          if (Math.hypot(...flat) < 0.25) flat = mul(cam.right, dot(fwd, cam.right) < 0 ? -1 : 1);
+          if (lv > 0) fwd = norm(mix(fwd, norm(flat), lv));
         }
-        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 2.5 : 9))));
+        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 2.5 : h && hq < 1 ? 16 : 6))));
         prevFwd = fwd;
         // banking: roll into the turn
         const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));

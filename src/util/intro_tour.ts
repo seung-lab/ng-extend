@@ -618,7 +618,9 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro--choice .nge-intro-back { order: 0; }
 .nge-intro--choice .nge-intro-alt { order: 1; margin-left: auto; }
 .nge-intro--choice .nge-intro-go { order: 2; margin-left: 10px; }
-.nge-intro--choice .nge-go-label { padding: 0 16px; font-size: 11.5px; letter-spacing: 0.14em; }
+.nge-intro.nge-intro--choice .nge-go-label { padding: 0 14px; font-size: 11px; letter-spacing: 0.12em; }
+.nge-intro.nge-intro--choice .nge-intro-alt .nge-go-label { background: linear-gradient(180deg, rgba(126, 224, 255, 0.10), rgba(40, 110, 200, 0.08)); }
+.nge-intro.nge-intro--choice .nge-go { height: 36px !important; flex: none; }
 .nge-intro-choose { order: -1; flex-basis: 100%; margin-top: 4px; font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.28em;
   text-transform: uppercase; color: rgba(126, 224, 255, 0.85); }
 .nge-intro-choose[hidden] { display: none; }
@@ -716,6 +718,8 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-box .nge-callout-stats .num { font-size: 17px; }
 .nge-callout-box .nge-callout-stats .unit { font-size: 10.5px; }
 .nge-callout-box .nge-callout-ic { width: 8px; height: 8px; }
+.nge-callout-stats .grp { grid-column: 1 / -1; margin-top: 4px; font: 600 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: #c4efff; }
+.nge-callout-stats .grp + div dt, .nge-callout-stats .grp + div + div dt { opacity: 0.85; }
 .nge-callout-box .nge-callout-stats { border-top-color: rgba(126, 224, 255, 0.3); }
 .nge-callout-box .nge-callout-stats dt { color: rgba(120, 200, 255, 0.8); }
 .nge-callout-box .nge-callout-stats dd { color: #9fdcff; }
@@ -836,6 +840,7 @@ const STAT_ICON: Record<string, string> = {
 
 function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true, showDot = true) {
   hideCallout();
+  pointAt = false;   // no line from the ship to the part: it crossed the ship (Ames)
   callout = document.createElement('div');
   callout.className = 'nge-callout';
   const rows = stats.length;
@@ -845,7 +850,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.06"/></linearGradient></defs>
     <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker"><span class="nge-callout-ic"></span>Pyr scan · ${title}</div>${rows ? `<dl class="nge-callout-stats">${stats.map(([k, v]) => `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`).join('')}</dl>` : ''}</div>`;
+    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker"><span class="nge-callout-ic"></span>Pyr scan · ${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
@@ -918,6 +923,20 @@ function hideCallout(zip = false) {
   if (!c) return;
   if (zip && c.classList.contains('nge-callout--in')) { c.classList.add('nge-callout--zip'); setTimeout(() => c.remove(), 460); }
   else c.remove();
+}
+/** The stats in a scan box. Synapse counts go under one Synapses label as
+ *  bare numbers (Ames: "SYNAPSES / INPUT / OUTPUT", no "synapses" below). */
+function statsHtml(stats: [string, string][]): string {
+  let grouped = false;
+  return stats.map(([k, v]) => {
+    const m = /^([\d][\d,.]*)\s+synapses$/.exec(v);
+    if (m) {
+      const head = grouped ? '' : '<div class="grp">Synapses</div>';
+      grouped = true;
+      return `${head}<div><dt>${STAT_ICON[k] ?? ''}${k.replace(/s$/, '')}</dt><dd><span class="num">${m[1]}</span></dd></div>`;
+    }
+    return `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
+  }).join('');
 }
 /** A number set large with its unit beneath ("3,386 synapses"). */
 function statValue(v: string): string {
@@ -1013,7 +1032,7 @@ export async function startIntroTour() {
     const from = i;
     i = n;
     const b = BEATS[i];
-    const want = i === NEURON ? 'dock' : i === SOMA ? 'soma' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : i < SYN2 ? 'syn' : 'syn2';
+    const want = i === NEURON || i === SOMA ? 'dock' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : i < SYN2 ? 'syn' : 'syn2';
     const shipMoves = want !== shipAt;
     const zipping = !!callout;
     const shipDelay = zipping ? 440 : 0;
@@ -1123,6 +1142,9 @@ export async function startIntroTour() {
         const nb = BEATS[NEURON];
         const est = glideMs(framed(cellCenter(t), nb.view.nm), nb.view.nm, 1800);
         dockStarship(Math.max(0.15, Math.min(0.75, sx + 0.2)), -0.2, camLag + est);
+      } else if (shipAt === 'dock' && want === 'dend') {
+        undockStarship();
+        starshipHop(onward(t.dendFlight), 5);
       } else if (shipAt === 'dock') {
         undockStarship();
         starshipHop([t.dendFlight[0]], 3);
@@ -1152,7 +1174,17 @@ export async function startIntroTour() {
     else if (e.key === 'ArrowLeft') { e.stopPropagation(); e.preventDefault(); go(i - 1); }
   };
   window.addEventListener('keydown', onKey, true);
-  go(0);
+  const startKey = pendingStart; pendingStart = null;
+  go(startKey ? Math.max(0, indexOf(startKey)) : 0);
+}
+let pendingStart: string | null = null;
+/** For testing (the Intro test panel): straight to "Choose your next
+ *  adventure", with the ship already down. */
+export function jumpToIntroChoice() {
+  endTour();
+  clearStarship();
+  pendingStart = 'connectome';
+  setTimeout(() => { void flyStarship(() => { void startIntroTour(); }, true); }, 150);
 }
 
 /** Start playing Pyr: the Get Started tutorial. */
