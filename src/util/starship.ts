@@ -22,8 +22,6 @@ import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
-import {watch} from 'vue';
-import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 
 type V3 = [number, number, number];
 interface Flight { path: number[][]; landingStart: number; landNormal: V3; soma: V3; shipLength: number; segment: string; }
@@ -52,7 +50,7 @@ const viewerNow = (): any => (window as any).viewer;
 
 let model: NgePropMesh | null = null;
 let flight: Flight | null = null;
-async function loadAssets() {
+export async function loadAssets() {
   if (!model) model = await loadGlbModel('intro/starship.glb');
   if (!flight) {
     const res = await fetch('intro/sandbox-flight.json');
@@ -70,7 +68,7 @@ function nmPerUnit(): V3 | null {
 
 /** The camera's right, up and toward-the-eye directions, in nanometres
  *  (unit length), read from the 3D panel's own projection. */
-function cameraAxes(nm: V3): {right: V3; up: V3; toEye: V3} | null {
+export function cameraAxes(nm: V3): {right: V3; up: V3; toEye: V3} | null {
   const panels = viewerNow()?.display?.panels ?? [];
   let panel: any = null;
   for (const p of panels) if (p?.element?.classList?.contains('nge-3d-panel') && p.projectionParameters?.value) { panel = p; break; }
@@ -141,6 +139,33 @@ function writeGlow(nm: V3, right: V3, cores: {p: V3; power: number}[], shipNm: n
   setNgeGlow(n ? glow : null, GROUP);
 }
 
+/* ── after landing: the tour takes the camera and sends the ship places ── */
+/** The tour (src/util/intro_tour.ts) holds the camera: the flight stops
+ *  zooming and panning it (the slow turn goes on). */
+let cameraHeld = false;
+export function setStarshipCameraHeld(held: boolean) { cameraHeld = held; }
+interface Hop { path: V3[]; cum: number[]; start: number; ms: number; }
+let hop: Hop | null = null;
+/** Once landed: lift off and fly this route (nanometres), easing in and out,
+ *  then hover at its end with the jets idling. */
+export function starshipHop(route: number[][], seconds: number) {
+  if (!shipNow) return;
+  const path: V3[] = [shipNow, add(shipNow, mul(liftNormal, 7000)), ...route.map(q => q as V3)];
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(...sub(path[i], path[i - 1])));
+  hop = {path, cum, start: performance.now(), ms: seconds * 1000};
+}
+/** Where the ship is now (nm), and which way is up from where it landed. */
+let shipNow: V3 | null = null;
+let liftNormal: V3 = [0, -1, 0];
+function along(path: V3[], cum: number[], s: number): V3 {
+  s = Math.max(0, Math.min(cum[cum.length - 1], s));
+  let lo = 0, hi = cum.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; }
+  return mix(path[lo], path[hi], (s - cum[lo]) / ((cum[hi] - cum[lo]) || 1));
+}
+const easeInOut = (q: number) => q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2;
+
 /* ── a flight ── */
 let running = false;
 let stopRequested = false;
@@ -181,11 +206,16 @@ async function showSandboxCell(f: Flight): Promise<boolean> {
   return false;
 }
 
-/** Fly the Starship into the Sandbox cell and land it on the soma. */
-export async function flyStarship(): Promise<void> {
+/** Fly the Starship into the Sandbox cell and land it on the soma.
+ *  onLanded runs once, as it touches down. */
+export async function flyStarship(onLanded?: () => void): Promise<void> {
   if (running) return;
   running = true;
   stopRequested = false;
+  cameraHeld = false;
+  hop = null;
+  shipNow = null;
+  let landedCalled = false;
   userTouched = false;
   touchedAt = 0;
   try {
@@ -214,6 +244,7 @@ export async function flyStarship(): Promise<void> {
     const WIDE = WIDE_NM / unit, CLOSE = CLOSE_NM / unit;
     v.projectionScale.value = WIDE;
     const somaAt: V3 = [...f.soma] as V3;
+    liftNormal = norm(f.landNormal);
     const padAt = at(f, Infinity);
 
     const prop: NgeProp = {mesh, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.3, glow: [0.02, 0.04, 0.08], rim: [0.45, 0.85, 1.0], shade: 1.15};
@@ -227,6 +258,7 @@ export async function flyStarship(): Promise<void> {
     let last = start, emitDebt = 0;
     let prevCores: V3[] | null = null;
     let prevUp: V3 | null = null;
+    let prevFwd: V3 | null = null;
     await new Promise<void>(done => {
       const step = (now: number) => {
         const dt = Math.min(0.05, (now - last) / 1000);
@@ -242,22 +274,28 @@ export async function flyStarship(): Promise<void> {
         }
         // in on the soma as the ship comes home
         const zoom = smooth((t - (CRUISE_S - 4)) / (4 + LANDING_S));
-        if (handsOff()) {
+        if (handsOff() && !cameraHeld) {
           v.projectionScale.value = WIDE * Math.pow(CLOSE / WIDE, zoom);
           // and over toward the landing pad, so the ship lands mid screen
           const c = mix(somaAt, padAt, zoom * 0.85);
           v.navigationState.position.value = Float32Array.from(c.map((x, i) => x / nm[i]));
         }
 
-        const s = distanceAt(f, Math.min(t, total));
-        const pos = at(f, s);
-        const ahead = at(f, s + 1500), behind = at(f, s - 1500);
-        let fwd = norm(sub(ahead, behind));
+        if (t >= total && !landedCalled) { landedCalled = true; try { onLanded?.(); } catch (e) { console.warn('[starship] after landing:', e); } }
+        // On the first route, or a hop the tour asked for since.
+        const h = hop;
+        const hq = h ? Math.min(1, (now - h.start) / h.ms) : 0;
+        const pathAt = h ? (d: number) => along(h.path, h.cum, d) : (d: number) => at(f, d);
+        const s = h ? h.cum[h.cum.length - 1] * easeInOut(hq) : distanceAt(f, Math.min(t, total));
+        const pos = pathAt(s);
+        const ahead = pathAt(s + 1500), behind = pathAt(s - 1500);
+        let fwd = Math.hypot(...sub(ahead, behind)) > 50 ? norm(sub(ahead, behind)) : (prevFwd ?? norm(sub(ahead, behind)));
+        prevFwd = fwd;
         // banking: roll into the turn
-        const bend = sub(sub(at(f, s + 4000), pos), sub(pos, at(f, s - 4000)));
+        const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
         // the landing: level onto the pad, nose kept flat to it
-        const land = smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
+        const land = h ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
         if (land > 0) {
           up = norm(mix(up, f.landNormal, land));
           const flat = sub(fwd, mul(up, dot(fwd, up)));
@@ -267,10 +305,12 @@ export async function flyStarship(): Promise<void> {
         prevUp = up;
         fwd = norm(sub(fwd, mul(up, dot(fwd, up))));
         const right = norm(cross(up, fwd));
-        // a gentle bob once down
+        // a gentle bob once down; hovering at a hop's end, a slow float
         const settled = Math.max(0, t - total);
-        const bob = settled > 0 ? mul(f.landNormal, 120 * Math.sin(settled * 3) * Math.exp(-settled * 1.6)) : [0, 0, 0] as V3;
+        const bob: V3 = h ? (hq >= 1 ? mul(up, 250 * Math.sin((now - h.start - h.ms) / 1000 * 1.6)) : [0, 0, 0])
+          : settled > 0 ? mul(f.landNormal, 120 * Math.sin(settled * 3) * Math.exp(-settled * 1.6)) : [0, 0, 0];
         const at3 = add(pos, bob);
+        shipNow = pos;
 
         const m = prop.modelMat;
         const axes = [right, up, fwd];
@@ -282,7 +322,8 @@ export async function flyStarship(): Promise<void> {
         // idle that never goes out (Ames: "keep the space ship jets on even
         // when it stops"), with a little flicker
         const IDLE = 0.4;
-        const down = t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
+        const down = h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
+          : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         const power = t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
         const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * scale), mul(up, q[1] * scale)), mul(fwd, q[2] * scale)));
         const cores = nozzles.map(q => ({p: toWorld(q), power}));
@@ -332,7 +373,7 @@ export function clearStarship() {
 
 /** Is enough of the Sandbox cell drawn to fly into? The same test the
  *  pumpkins use: most of the cell's mesh pieces are on the graphics card. */
-function cellDrawn(): boolean {
+export function cellDrawn(): boolean {
   const v = viewerNow();
   for (const ml of v?.layerManager?.managedLayers ?? []) {
     if (!String(ml?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/pinky_nf')) continue;
@@ -352,28 +393,6 @@ function cellDrawn(): boolean {
     }
   }
   return false;
-}
-
-/**
- * Test sites only for now (never the live site): the Starship comes in by
- * itself for a pretend new player (the Staging test panel's "Pretend I am a
- * new player"), on load and the moment the box is ticked, or with
- * ?starship in the address. It waits for the cell to be drawn first, for
- * up to twenty seconds.
- */
-let playedThisLoad = false;
-export function startStarshipIntro() {
-  if (IS_LIVE_SITE) return;
-  const wanted = () => simulating.value || /[?&]starship/.test(location.search);
-  const go = async () => {
-    if (!wanted() || running || playedThisLoad) return;
-    playedThisLoad = true;
-    await loadAssets().catch(() => {});
-    for (let i = 0; i < 80 && !cellDrawn(); i++) await new Promise(r => setTimeout(r, 250));
-    if (wanted()) void flyStarship();
-  };
-  setTimeout(go, 1500);
-  watch(simulating, on => { if (on) { playedThisLoad = false; void go(); } });
 }
 
 (window as any).pyrStarship = {fly: flyStarship, clear: clearStarship};

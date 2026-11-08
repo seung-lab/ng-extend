@@ -19,7 +19,8 @@ import {
 } from '../store';
 import { pumpkinSeason, togglePumpkin, smashPumpkins } from '../util/pumpkin';
 import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
-import { flyStarship, clearStarship } from '../util/starship';
+import { clearStarship } from '../util/starship';
+import { playIntro } from '../util/intro_tour';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -252,12 +253,12 @@ function buildActions(): PaletteItem[] {
   if (adminUi) {
     items.push({
       id: 'starship-flight',
-      label: 'Starship flight (admin test)',
+      label: 'New player intro (admin test)',
       description: 'The new player intro ship flies through the Sandbox cell and lands on its soma',
       category: 'tool',
       icon: '🚀',
       aliases: ['starship', 'ship', 'spaceship', 'intro', 'fly', 'rocket'],
-      action: () => { void flyStarship(); },
+      action: () => playIntro(),
     });
     items.push({
       id: 'starship-clear',

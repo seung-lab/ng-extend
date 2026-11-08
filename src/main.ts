@@ -12,7 +12,7 @@ import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
 import {startColorFamilies} from './util/color_families';
 import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
-import {startStarshipIntro} from './util/starship';
+import {startStarshipIntro} from './util/intro_tour';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';

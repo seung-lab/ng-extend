@@ -14,13 +14,12 @@ import { useUserPreferencesStore } from '../store';
 import { useTutorialStore } from '../store-pyr';
 import { IS_LIVE_SITE } from '../util/toolbar_staging';
 import { FLIGHT_SVG } from '../data/toolbar-icons';
-import { flyStarship, clearStarship } from '../util/starship';
+import { playIntro } from '../util/intro_tour';
 
 /** The new player intro's Starship, launched by hand (Ames 2026-11-07: "give
  *  me a rocket ship icon"), for testing on a phone where there is no palette. */
 function launchShip() {
-  clearStarship();
-  setTimeout(() => { void flyStarship(); }, 120);
+  playIntro();
 }
 import { steps as advancedSteps } from '../tutorial-2';
 import { steps as mergeSteps } from '../tutorial-3';
@@ -162,7 +161,7 @@ function resetTutorials() {
     <button class="nge-stt-tab" @click="setOpen(true)" title="Intro test: see the new player intro">
       Intro test<span v-if="simulating" class="nge-stt-dot" aria-label="pretend new player is on"></span>
     </button>
-    <button class="nge-stt-tab nge-stt-rocket" @click="launchShip" title="Fly the Starship into the Sandbox cell" aria-label="Fly the Starship" v-html="FLIGHT_SVG"></button>
+    <button class="nge-stt-tab nge-stt-rocket" @click="launchShip" title="Play the new player intro" aria-label="Fly the Starship" v-html="FLIGHT_SVG"></button>
   </div>
   <aside v-else class="ng-extend nge-stt" aria-label="Intro test">
     <header class="nge-stt-head">
@@ -170,7 +169,7 @@ function resetTutorials() {
       <button class="nge-stt-x" @click="setOpen(false)" title="Fold away" aria-label="Fold away">×</button>
     </header>
     <p class="nge-stt-note">{{ IS_LIVE_SITE ? 'Admins only.' : 'Test site only.' }} The new player intro, as it is built. Pretend to be a brand new player and it plays when the page opens; the rocket flies it again any time. Nothing here is saved to your account, except Reset my tutorials.</p>
-    <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchShip"><span class="nge-stt-rocket-ic" v-html="FLIGHT_SVG"></span> Fly the Starship</button>
+    <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchShip"><span class="nge-stt-rocket-ic" v-html="FLIGHT_SVG"></span> Play the intro</button>
     <label class="nge-stt-switch">
       <input id="nge-stt-sim" type="checkbox" :checked="simulating" @change="toggleSim" />
       <span>Pretend I am a new player</span>
