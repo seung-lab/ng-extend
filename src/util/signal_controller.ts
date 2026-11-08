@@ -817,18 +817,40 @@ function frameLevel() {
   try { v.showAxisLines.value = false; } catch { /* keep them */ }
   // In close on the cell bodies: the rest of each cell is there, greyed, as
   // context (the haze), so the frame need not hold it all.
-  const viewNm = Math.max(200_000, span * 2.0 + 70_000);
-  // The HUD takes the bottom third of the screen, so the camera looks a
-  // little below the circuit (data +y is down the screen in the default
-  // view) and the cells sit in the open space above it.
-  const look = add(center, [0, viewNm * 0.1, 0]);
-  v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
+  viewNm = Math.max(200_000, span * 2.0 + 70_000);
+  v.navigationState.position.value = Float32Array.from(center.map((c, i) => c / nm[i]));
   const unit = Math.min(nm[0], nm[1], nm[2]);
   v.projectionScale.value = viewNm / unit;
-  // The ship parks above the circuit (toward the pia, data -y), inside the
-  // frame, facing the cells.
-  shipAt = add(center, [0, -Math.min(span + 50_000, viewNm * 0.3), 0]);
+  // Looking down into the cortex from the pia, the way a two photon
+  // microscope does (Ames 2026-11-08: "sort of like I am being a 2p
+  // microscope"): the eye toward data -y, screen up along +z.
+  v.projectionOrientation.restoreState([-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
+  needsFrame = true;
+  shipAt = add(center, [0, -viewNm * 0.4, 0]);
   shipFwd = norm(sub(center, shipAt));
+}
+/** The level's frame: how much of the cortex shows top to bottom, in nm. */
+let viewNm = 260_000;
+/** Set by frameLevel: the next frame with a camera puts the circuit in the
+ *  open space above the HUD. */
+let needsFrame = false;
+function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) return;
+  needsFrame = false;
+  // The HUD takes the bottom third, so the camera looks a little below the
+  // circuit and the cells sit above.
+  const look = sub(center, mul(cam.up, viewNm * 0.08));
+  v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
+}
+/** The ship rides with the camera, low in the foreground like a cockpit:
+ *  it stays in view however the player turns the cells, and its beams
+ *  leave from the player's own side. */
+function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): V3 | null {
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) return null;
+  const look = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  return add(add(look, mul(cam.toEye, viewNm * 0.42)), mul(cam.up, -viewNm * 0.17));
 }
 
 /** The model's own length along its nose (+z), so it can be sized in nm. */
@@ -842,6 +864,8 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
     shipModelLength = (zHi - zLo) || 1;
   }
   const scale = SHIP_LENGTH_NM / shipModelLength;
+  const spot = cockpitSpot(cam);
+  if (spot) shipAt = mix(shipAt, spot, Math.min(1, dt * 5));
   const want = shipAim && performance.now() < aimUntil ? norm(sub(shipAim, shipAt)) : norm(sub(center, shipAt));
   shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * 7)));
   let up = norm(sub(cam.up, mul(shipFwd, dot(cam.up, shipFwd))));
@@ -849,7 +873,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   prevUp = up;
   const fwd = norm(sub(shipFwd, mul(up, dot(shipFwd, up))));
   const right = norm(cross(up, fwd));
-  const bob = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 900 * Math.sin(performance.now() / 1000 * 1.3);
+  const bob = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : viewNm * 0.004 * Math.sin(performance.now() / 1000 * 1.3);
   const at = add(shipAt, mul(up, bob));
   const m = shipProp.modelMat, axes = [right, up, fwd];
   for (let col = 0; col < 3; col++) for (let k = 0; k < 3; k++) m[col * 4 + k] = axes[col][k] * scale / nm[k];
@@ -1096,6 +1120,7 @@ function frame(ts: number) {
   const nm = nmPerUnit();
   const cam = nm && cameraAxes(nm);
   if (cam) {
+    if (needsFrame) settleFrame(cam);
     if (phase === 'playing') stepModel(dt);
     placeShip(cam, dt);
     writeGlow(cam);
