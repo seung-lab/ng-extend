@@ -324,6 +324,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     window.addEventListener('pointermove', onUserDrag, true);
 
     const total = CRUISE_S + LANDING_S;
+    let keepScale = 0;
     const start = performance.now();
     let last = start, emitDebt = 0;
     let prevCores: V3[] | null = null;
@@ -349,7 +350,16 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         // the zoom stays wide while the ship weaves and closes in late)
         const zoom = Math.pow(Math.min(1, t / total), 2.4);
         if (handsOff() && !cameraHeld) {
-          v.projectionScale.value = WIDE * Math.pow(CLOSE / WIDE, zoom);
+          let sc = WIDE * Math.pow(CLOSE / WIDE, zoom);
+          // never so close that the ship leaves the frame (Ames)
+          if (shipNow) {
+            const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+            const off = sub(shipNow, ctr), aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
+            const need = (2.5 * Math.max(Math.abs(dot(off, cam.up)), Math.abs(dot(off, cam.right)) / aspect) + 9000) / unit;
+            sc = Math.max(sc, need);
+          }
+          keepScale = keepScale ? keepScale + (sc - keepScale) * Math.min(1, dt * 2.5) : sc;
+          v.projectionScale.value = keepScale;
           // and over toward the landing pad, so the ship lands mid screen
           const c = mix(somaAt, padAt, zoom * 0.85);
           v.navigationState.position.value = Float32Array.from(c.map((x, i) => x / nm[i]));
@@ -378,6 +388,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         // banking: roll into the turn
         const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
+        if (dock) up = norm(mix(up, cam.toEye, smooth((now - dock.start) / 1600)));
         // the landing: level onto the pad, nose kept flat to it
         const land = h || dock ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
         if (land > 0) {

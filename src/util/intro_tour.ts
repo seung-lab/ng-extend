@@ -78,7 +78,7 @@ const BEATS: Beat[] = [
 ];
 
 /* ── colours (cell blue, parts as in the labelled picture) ── */
-const PART_RGB: Record<number, V3> = {1: [255, 205, 80], 2: [168, 140, 255], 3: [255, 95, 210]};
+const PART_RGB: Record<number, V3> = {1: [255, 205, 80], 2: [168, 140, 255], 3: [255, 130, 195]};   // axon a softer pink, not magenta
 const SYN2_COLOR = 0xb4ff5a;    // the neighbor whose axon feeds the far dendrite, lime
 const PARTNER_COLOR = 0xffa64d;   // the synapse's partner, orange
 const packed = (hex: number) => ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 0xff) << 16);
@@ -366,7 +366,7 @@ function ensureStyle() {
 @keyframes nge-flicker { 0% { opacity: 0.2; transform: translateX(-3px); } 30% { opacity: 1; transform: none; } 45% { opacity: 0.5; } 60%, 100% { opacity: 1; } }
 body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-area-inset-bottom)); }
 .nge-intro-head { display: flex; align-items: center; gap: 8px; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; color: #7ecaff; text-transform: uppercase; }
-.nge-intro-dot { width: 8px; height: 8px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-intro-blink 1.1s infinite; }
+.nge-intro-dot { width: 8px; height: 8px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; }
 @keyframes nge-intro-blink { 50% { opacity: 0.25; } }
 .nge-intro-bars { display: none; gap: 2px; align-items: flex-end; margin-left: auto; }
 .nge-intro-bars i { width: 3px; background: #7ecaff; border-radius: 1px; animation: nge-intro-bar 1.2s infinite ease-in-out; }
@@ -642,7 +642,7 @@ function frameSvg(w: number, h: number, cut = 14): string {
 const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /** The colour of each anchor's part, for its icon, beam and dot. */
-const ANCHOR_HEX: Record<string, string> = {soma: '#ffd24d', dendrite: '#a88cff', axon: '#ff5fd2', synapse: '#c9f6ff', presyn: '#ff8f8f'};
+const ANCHOR_HEX: Record<string, string> = {soma: '#ffd24d', dendrite: '#a88cff', axon: '#ff82c3', synapse: '#c9f6ff', presyn: '#ff8f8f'};
 
 /** The 3D panel and a point in nanometres, to a point on screen. */
 function toScreen(p: V3): [number, number] | null {
