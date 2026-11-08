@@ -91,6 +91,19 @@ function figures(para: string[], gallery = false, editor = false): string | null
 export function renderBlogMarkdown(text: string, editor = false): string {
   const lines = esc(String(text || '').replace(/\r\n?/g, '\n')).split('\n');
   const out: string[] = [];
+  // Each heading gets an address of its own, from its words, so a link can
+  // point at it: /blog/<post>/#how-to-proofread-a-bc (Ames 2026-11-08).
+  // On the page a small # beside it is that link. Not in the editor, where
+  // the # would be saved as part of the heading.
+  const ids = new Set<string>();
+  const heading = (tag: string, html: string) => {
+    const words = html.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    let id = blogSlug(words) || 'section';
+    for (let n = 2; ids.has(id); n++) id = `${blogSlug(words) || 'section'}-${n}`;
+    ids.add(id);
+    return editor ? `<${tag}>${html}</${tag}>`
+      : `<${tag} id="${id}">${html}<a class="blog-anchor" href="#${id}" aria-label="Link to this section" title="Link to this section">#</a></${tag}>`;
+  };
   let i = 0;
   const run = (re: RegExp) => { const got: string[] = []; while (i < lines.length && re.test(lines[i])) got.push(lines[i++].replace(re, '')); return got; };
   while (i < lines.length) {
@@ -109,8 +122,8 @@ export function renderBlogMarkdown(text: string, editor = false): string {
         ? `<div class="blog-post__video" data-yt="${video[1]}" contenteditable="false"><img src="https://i.ytimg.com/vi/${video[1]}/hqdefault.jpg" alt="YouTube video" /></div>`
         : `<div class="blog-post__video"><iframe src="https://www.youtube-nocookie.com/embed/${video[1]}" title="YouTube video" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`);
     } else if (/^-{3,}\s*$/.test(line)) { out.push('<hr />'); i++; }
-    else if (/^###\s+/.test(line)) { out.push(`<h3>${inline(line.replace(/^###\s+/, ''))}</h3>`); i++; }
-    else if (/^##?\s+/.test(line)) { out.push(`<h2>${inline(line.replace(/^##?\s+/, ''))}</h2>`); i++; }
+    else if (/^###\s+/.test(line)) { out.push(heading('h3', inline(line.replace(/^###\s+/, '')))); i++; }
+    else if (/^##?\s+/.test(line)) { out.push(heading('h2', inline(line.replace(/^##?\s+/, '')))); i++; }
     else if (/^!&gt;\s?/.test(line)) out.push(`<aside class="blog-post__callout">${run(/^!&gt;\s?/).map(x => `<p>${inline(x)}</p>`).join('')}</aside>`);
     else if (/^[-*]\s+/.test(line)) out.push(`<ul>${run(/^[-*]\s+/).map(x => `<li>${inline(x)}</li>`).join('')}</ul>`);
     else if (/^\d+\.\s+/.test(line)) out.push(`<ol>${run(/^\d+\.\s+/).map(x => `<li>${inline(x)}</li>`).join('')}</ol>`);
