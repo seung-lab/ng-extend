@@ -10,7 +10,7 @@
         "Prefer annotations? Press + Annotation layers on your cell in the Cell Library, or turn them on for every Retina claim in Settings, under Jumping and views.",
         "Your Checked marks stay in one Checked layer, with no more Checked 1 and Checked 2.",
         "Click your current cell's row in the Cell Library to open Complete. Your cell stays at the top while the form is open, so nothing is cut off.",
-        "Layer tabs have one close button, the bin, and Ctrl+Z brings a closed layer back. To keep the button that tucks a layer into the side panel, turn it on in Settings.",
+        "A layer tab has one close button, an x, and Ctrl+Z brings a closed layer back. For neuroglancer's two buttons (hide to the side panel, and delete), turn on Classic layer tab buttons in Settings, under Neuroglancer.",
         "The outline around the volume is a softer blue."
       ]
     },

@@ -738,6 +738,25 @@ function observeSegmentSelect(targetNode: Element) {
   watch(() => useUserPreferencesStore().prefs.layerHideButton === true, on => {
     document.body.classList.toggle('nge-layer-hide-btn', on);
   }, { immediate: true });
+  // Without the classic buttons, the tab's x closes the layer for good (the
+  // bin's delete, which Ctrl+Z undoes) instead of hiding it to the side panel.
+  const tabCloseX = (t: EventTarget | null): HTMLElement | null => {
+    if (document.body.classList.contains('nge-layer-hide-btn')) return null;
+    const icon = (t as HTMLElement)?.closest?.('.neuroglancer-layer-item-button-container .neuroglancer-icon') as HTMLElement | null;
+    return icon && icon === icon.parentElement?.firstElementChild && icon !== icon.parentElement?.lastElementChild ? icon : null;
+  };
+  document.addEventListener('click', (e) => {
+    const x = tabCloseX(e.target);
+    if (!x) return;
+    e.preventDefault(); e.stopPropagation();
+    (x.parentElement!.lastElementChild as HTMLElement).click();
+  }, true);
+  document.addEventListener('pointerover', (e) => {
+    const x = tabCloseX(e.target);
+    if (x) { x.title = 'Close this layer (Ctrl+Z brings it back)'; return; }
+    const icon = (e.target as HTMLElement)?.closest?.('.neuroglancer-layer-item-button-container .neuroglancer-icon') as HTMLElement | null;
+    if (icon?.title.startsWith('Close this layer')) icon.title = 'Remove layer from this layer group';
+  }, true);
 
   watch(() => useUserPreferencesStore().prefs.segShowId === true, on => {
     document.body.classList.toggle('nge-seg-show-id', on);

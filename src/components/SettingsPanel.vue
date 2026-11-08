@@ -719,10 +719,6 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftRetinaAnnot" />
               <span class="nge-settings-toggle-label">Claiming a Retina cell adds the annotation layers (Soma, True End, Can't Fix, Hits Edge, Notes)</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: a layer tab has one close button, the bin, and Ctrl+Z brings a closed layer back. On: the tab also has an x that hides the layer to the side panel's layer list instead of deleting it.">
-              <input type="checkbox" v-model="draftLayerHide" />
-              <span class="nge-settings-toggle-label">Layer tabs show a Hide button (moves a layer to the side panel instead of deleting it)</span>
-            </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
@@ -785,6 +781,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer, and Shift + the number makes it the active layer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
+            </label>
+            <label class="nge-settings-toggle" title="Off: a layer tab has one x, which closes the layer (Ctrl+Z brings it back). On: neuroglancer's two buttons, an x that hides the layer in the side panel's layer list, and a bin that deletes it.">
+              <input type="checkbox" v-model="draftLayerHide" />
+              <span class="nge-settings-toggle-label">Classic layer tab buttons (x hides to the side panel, bin deletes)</span>
             </label>
             <label class="nge-settings-toggle" title="Off: clicking the 2D EM layer's tab shows or hides the 2D view. On: it opens the layer's side panel (Source, Rendering, Annotations), as in neuroglancer.">
               <input type="checkbox" v-model="draftImageLayerPanel" />

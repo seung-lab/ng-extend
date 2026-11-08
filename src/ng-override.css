@@ -209,9 +209,11 @@ body.nge-tool-bar-open .neuroglancer-side-panel { padding-bottom: calc(var(--nge
    (Ames 2026-10-06: the bin was a solid red block). No filled box: the
    glyph itself lights, cyan for close, red for the bin, on a faint tint. */
 .neuroglancer-layer-item .neuroglancer-layer-item-button-container { gap: 2px; }
-/* One button closes a layer: the bin (Ctrl+Z brings it back). The x that
-   hides it to the side panel instead is a Settings option (Ames 2026-11-07). */
-body:not(.nge-layer-hide-btn) .neuroglancer-layer-item .neuroglancer-layer-item-button-container .neuroglancer-icon:first-child:not(:last-child) { display: none !important; }
+/* One button closes a layer: the x, the standard close, and closing deletes
+   it (Ctrl+Z brings it back). The bin is hidden; main.ts sends the x's
+   click to it. Settings, Neuroglancer, "Classic layer tab buttons" brings
+   back both, as neuroglancer has them (Ames 2026-11-07). */
+body:not(.nge-layer-hide-btn) .neuroglancer-layer-item .neuroglancer-layer-item-button-container .neuroglancer-icon:last-child:not(:first-child) { display: none !important; }
 .neuroglancer-layer-item .neuroglancer-layer-item-button-container .neuroglancer-icon {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 0 !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important;
