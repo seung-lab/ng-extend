@@ -636,7 +636,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout { position: fixed; left: 0; top: 0; z-index: 9400; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
 .nge-callout--in { opacity: 1; }
 .nge-callout > svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
-.nge-callout-box { position: fixed; min-width: 200px; max-width: min(380px, 44vw); padding: 15px 20px 17px 20px; isolation: isolate; transform-origin: 50% 100%;
+.nge-callout-box { position: fixed; min-width: 200px; max-width: min(380px, 44vw); padding: 15px 20px 17px 20px; isolation: isolate; transform-origin: 50% 100%; backdrop-filter: blur(3px);
   filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25));
   animation: nge-proj-in 520ms cubic-bezier(.2,1,.3,1) both; }
 .nge-co-frame { position: absolute; left: 0; top: 0; z-index: -1; overflow: visible; pointer-events: none; }
@@ -673,6 +673,21 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-title { display: flex; align-items: center; gap: 10px; margin-top: 3px; font: 700 21px/1.15 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
 .nge-callout-ic { width: 11px; height: 11px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 10px var(--part, #7ecaff); flex: none; }
 .nge-callout-box { isolation: isolate; }
+.nge-callout-box .nge-callout-kicker { color: rgba(140, 215, 255, 0.75); }
+.nge-callout-box .nge-callout-title { color: #aeeaff; text-shadow: 0 0 12px rgba(80, 190, 255, 0.7); font-size: 15px; gap: 8px; }
+.nge-callout-box { min-width: 150px !important; max-width: min(290px, 40vw) !important; padding: 10px 14px 12px !important; }
+.nge-callout-box .nge-callout-kicker { font-size: 8px; }
+.nge-callout-box .nge-callout-stats { gap: 6px 14px; margin-top: 7px; padding-top: 7px; }
+.nge-callout-box .nge-callout-stats dt { font-size: 7.5px; }
+.nge-callout-box .nge-callout-stats dd { font-size: 12.5px; }
+.nge-callout-box .nge-callout-stats .num { font-size: 17px; }
+.nge-callout-box .nge-callout-stats .unit { font-size: 10.5px; }
+.nge-callout-box .nge-callout-ic { width: 8px; height: 8px; }
+.nge-callout-box .nge-callout-stats { border-top-color: rgba(126, 224, 255, 0.3); }
+.nge-callout-box .nge-callout-stats dt { color: rgba(120, 200, 255, 0.8); }
+.nge-callout-box .nge-callout-stats dd { color: #9fdcff; }
+.nge-callout-box .nge-callout-stats .num { color: #c4efff; text-shadow: 0 0 10px rgba(80, 190, 255, 0.55); }
+.nge-callout-box .nge-callout-stats .unit { color: rgba(140, 205, 255, 0.75); }
 `;
   document.head.appendChild(st);
 }
@@ -809,7 +824,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   const redraw = () => { const w = box.offsetWidth, h = box.offsetHeight; if (w && h && (w !== fw || h !== fh)) { fw = w; fh = h; host.innerHTML = calloutFrame(w, h); } };
   redraw();
   try { new ResizeObserver(redraw).observe(box); } catch { /* drawn once */ }
-  let cx = -1, cy = -1;
+  let cx = -1, cy = -1, stillSince = 0;
   const step = () => {
     const s = toScreen(anchor);
     const shipNm = starshipAt();
@@ -825,7 +840,8 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
         // above the ship, leaning away from the part so the part stays clear
         const lean = ship![0] < s[0] ? -1 : 1;
         if (!showDot) { bx = ship![0] + 50; by = ship![1] - bh / 2; }
-        else { bx = ship![0] - bw / 2 + lean * 60; by = ship![1] - 90 - bh; }
+        else if (ship![1] - 90 - bh >= 70) { bx = ship![0] - bw / 2 + lean * 60; by = ship![1] - 90 - bh; }
+        else { const r = ship![0] + 60 + bw < W - 10; bx = r ? ship![0] + 60 : ship![0] - 60 - bw; by = ship![1] - bh / 2; }
       } else {
         const right = s[0] < W * 0.55;
         bx = right ? s[0] + 70 : s[0] - 70 - bw;
@@ -834,7 +850,8 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       bx = Math.max(10, Math.min(W - bw - 10, bx));
       by = Math.max(70, Math.min(panelTop - bh - 16, by));
       // the box glides after its spot rather than jumping with every bob
-      if (cx < 0) { cx = bx; cy = by; } else { cx += (bx - cx) * 0.06; cy += (by - cy) * 0.06; }
+      if (cx < 0 || starshipMoving()) { cx = bx; cy = by; stillSince = performance.now(); }
+      else if (performance.now() - stillSince < 400) { cx += (bx - cx) * 0.2; cy += (by - cy) * 0.2; }
       bx = cx; by = cy;
       box.style.left = `${bx.toFixed(1)}px`; box.style.top = `${by.toFixed(1)}px`;
       if (onScreen) {
@@ -883,10 +900,10 @@ function calloutFrame(w: number, h: number): string {
   const a = Math.min(64, w * 0.2), b = Math.min(48, w * 0.15);
   return `<svg class="nge-co-frame" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
     <defs><linearGradient id="nge-co-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="rgb(16,38,74)" stop-opacity="0.96"/><stop offset="0.6" stop-color="rgb(6,12,28)" stop-opacity="0.97"/><stop offset="1" stop-color="rgb(24,16,52)" stop-opacity="0.96"/></linearGradient>
-      <pattern id="nge-co-scan" width="4" height="3" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="rgba(126,224,255,0.05)"/></pattern></defs>
+      <stop offset="0" stop-color="rgb(30,110,200)" stop-opacity="0.34"/><stop offset="0.6" stop-color="rgb(10,50,120)" stop-opacity="0.42"/><stop offset="1" stop-color="rgb(20,70,160)" stop-opacity="0.36"/></linearGradient>
+      <pattern id="nge-co-scan" width="4" height="3" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="rgba(126,224,255,0.09)"/></pattern></defs>
     <path d="${rim}" fill="url(#nge-co-bg)"/><path d="${rim}" fill="url(#nge-co-scan)"/>
-    <path d="${rim}" fill="none" stroke="rgba(126,224,255,0.6)" stroke-width="1"/>
+    <path d="${rim}" fill="none" stroke="rgba(140,225,255,0.75)" stroke-width="1"/>
     <path class="tr" d="M${f(w - 16)} 0.5 l-6 6 h-${f(a)}"/><circle class="pad" cx="${f(w - 22 - a)}" cy="6.5" r="2"/>
     <path class="tr" d="M16 ${f(h - 0.5)} l6 -6 h${f(b)}"/><circle class="pad" cx="${f(22 + b)}" cy="${f(h - 6.5)}" r="2"/></svg>`;
 }
@@ -1015,7 +1032,7 @@ export async function startIntroTour() {
       // to the whole cell (no dash across to the axon first)
       const ms = b.key === 'spike' ? 5200 : b.key === 'welcome' ? 2200 : 1800;
       if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, b.view.nm), b.view.nm, ms); }, 1300);
-      else moveCamera(framed(center, b.view.nm), b.view.nm, ms);
+      else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, b.view.nm), b.view.nm, ms);
       setTimeout(() => { if (active && i === n) revealTint(shown, b.part); }, b.key === 'spike' ? 600 : ms * 0.55);
     };
     setTimeout(camera, camDelay);

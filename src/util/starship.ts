@@ -156,6 +156,7 @@ let hop: Hop | null = null;
  *  its centre, x to the right, y up), whatever the camera does, and faces
  *  the cell. It eases there from wherever it was. */
 let dock: {fx: number; fy: number; start: number; from: V3 | null} | null = null;
+const DOCK_MS = 4200;
 export function dockStarship(fx: number, fy: number) { dock = {fx, fy, start: performance.now(), from: shipNow}; hop = null; }
 export function undockStarship() { dock = null; }
 /** Is the ship on the move: still flying in, on a hop, or easing to its dock? */
@@ -452,6 +453,9 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         if (handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
           let da = t > 0 ? 2 * Math.PI / FLIGHT_TURN * dt : 0;
           if (t >= total) { const w = 2 * Math.PI / ROCK_P; da = ROCK_A * (Math.sin(w * (rockT + dt)) - Math.sin(w * rockT)); rockT += dt; }
+          // while the tour talks the cell holds still, so the ship and its
+          // hologram do not drift (Ames)
+          if (cameraHeld && t >= total) da = 0;
           if (tAll < BLEND_S) {
             // easing in from the old view: set the turn outright
             flightAngle += da;
@@ -502,24 +506,24 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
           fwd = norm(mix(cam.toEye, fwd, e));
           grow = 0.25 + 0.75 * smooth(Math.max(0, t) / 0.8);
         }
-        moving = h ? hq < 1 : dock ? now - dock.start < 1600 : t < total;
+        moving = h ? hq < 1 : dock ? now - dock.start < DOCK_MS : t < total;
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
           const H = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]), Wd = H * viewAspect();
           const target = add(ctr, add(mul(cam.right, dock.fx * Wd / 2), mul(cam.up, dock.fy * H / 2)));
-          const dq = smooth((now - dock.start) / 1600);
+          const dq = smooth((now - dock.start) / DOCK_MS);
           pos = dock.from ? mix(dock.from, target, dq) : target;
           // nose on the way it is going, turning to face the cell only as it
           // arrives (Ames: it flew backwards)
           const goDir = dock.from && dq < 1 && Math.hypot(...sub(target, pos)) > 200 ? norm(sub(target, pos)) : fwd;
           fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.7) / 0.3)));
         }
-        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * 9)));
+        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 2.5 : 9))));
         prevFwd = fwd;
         // banking: roll into the turn
         const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
-        if (dock) up = norm(mix(up, cam.toEye, smooth((now - dock.start) / 1600)));
+        if (dock) up = norm(mix(up, cam.toEye, smooth(((now - dock.start) / DOCK_MS - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
         const land = h || dock ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
         if (land > 0) {
