@@ -1419,7 +1419,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   const overview = () => {
     show(data.partners.map(p => p.id));
     // thousands of dots overlap here: small and faint, or they bloom (Ames)
-    runAllSynapses(data, 0.6, 0.35);
+    runAllSynapses(data, 2.2, 0.55);
     moveCamera([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
     card.set('Its connections',
       'Every dot is a synapse: {in:gold} ones bring signals in, {out:pink} ones carry its signal out. It talks to thousands of cells. These are the ones it shares the most synapses with, colored by cell type. Tap one to visit it.',

@@ -473,7 +473,11 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     if (!cameo) try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), Math.PI - 2 * Math.PI / FLIGHT_TURN * (CRUISE_S + LANDING_S)); } catch { /* no view */ }
     const qStart = quat.clone(v.projectionOrientation.orientation);
     v.projectionOrientation.restoreState(Array.from(q0));
-    if (cameo) { cameraHeld = true; onPad = false; dockMs = 900; dock = {fx: 0.62, fy: -0.3, start: performance.now(), from: null}; }
+    // cameo: it arrives through its portal, high on the right, and curves
+    // in to park (Ames: "it needed its portal")
+    const cameoT0 = performance.now();
+    let cameoPortal: V3 | null = null;
+    if (cameo) { cameraHeld = true; onPad = false; dockMs = 3800; dock = {fx: 0.62, fy: -0.3, start: cameoT0 + PORTAL_S * 1000, from: null}; }
     let flightAngle = 0;
     // after landing the cell rocks gently either side of square on rather
     // than turning all the way round, so it stays broadside, the wide view
@@ -589,6 +593,14 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // it comes, then turning onto its way through the cell (Ames)
         let grow = 1;
         if (!h && !dock && t < EMERGE_S) grow = 0.25 + 0.75 * smooth(Math.max(0, t) / 0.8);
+        const tc = cameo ? (now - cameoT0) / 1000 : 0;
+        if (cameo && dock && !cameoPortal) {
+          const ctr0 = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+          const H0 = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]), W0 = H0 * viewAspect();
+          cameoPortal = add(ctr0, add(mul(cam.right, W0 * 0.36), mul(cam.up, H0 * 0.3)));
+          dock.from = cameoPortal;
+        }
+        if (cameo) grow = 0.25 + 0.75 * smooth(Math.max(0, tc - PORTAL_S) / 0.8);
         moving = h ? hq < 1 : dock ? now - dock.start < dockMs : t < total;
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
@@ -672,13 +684,18 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           : h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
           : t < 0 ? 0 : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         // through the portal: the ship shows as it comes out of the light
-        prop.alpha = t < 0 ? 0 : Math.min(1, t / 0.25);
+        prop.alpha = cameo ? (tc < PORTAL_S ? 0 : Math.min(1, (tc - PORTAL_S) / 0.25)) : t < 0 ? 0 : Math.min(1, t / 0.25);
+        if (cameo && cameoPortal && tc < ZIP_AT + 1.5) {
+          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.6 * grow)));
+          shipScreen = sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
+          drawPortal(nm, cam.right, cam.up, cameoPortal, f.shipLength * cameo * 0.75, tc);
+        } else if (cameo && cameoPortal && tc < ZIP_AT + 2) { setNgeGlow(null, 'starship-portal'); removePortalArt(); }
         if (tAll < ZIP_AT + 1.5) {
           const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.6 * grow)));
           shipScreen = sp && se && t > 0 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
         }
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
-        else if (portalShown) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
+        else if (portalShown && !cameo) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
         const power = !dock && t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
         const sg = scale * grow;
         const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * sg), mul(up, q[1] * sg)), mul(fwd, q[2] * sg)));
