@@ -2,6 +2,42 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-08T22:07:00Z",
+      "title": "Get Started page 2, shorter",
+      "items": [
+        "Page 2 of Get Started no longer sends you to Connectome 101, since the Starship tour now explains what a connectome is."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:06:00Z",
+      "title": "Open Today in Pyr from chat",
+      "items": [
+        "Nurro's Today in Pyr line in chat has an Open button that brings up the full report."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:06:00Z",
+      "title": "Start playing in the Sandbox",
+      "digest": "minor",
+      "items": [
+        "Once you have finished Merge and Cut, the Sandbox card says Start playing. It takes you to a Sandbox cell of your own to proofread, with a short note on what to do."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:05:00Z",
+      "title": "From a block of brain to a neuron",
+      "items": [
+        "Page 2 of Get Started now shows how a connectome is made with real data: a tiny block of brain is sliced, each slice is imaged, and a whole neuron is reconstructed in 3D."
+      ]
+    },
+    {
+      "at": "2026-11-08T16:55:00Z",
+      "title": "A visitor from the Starship",
+      "items": [
+        "Keep an eye on your screen: the Starship from the Exploration achievements is passing through Pyr this week, just once for each player."
+      ]
+    },
+    {
       "at": "2026-11-08T02:18:32Z",
       "title": "Retina 2D images are back",
       "items": [

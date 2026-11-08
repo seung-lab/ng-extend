@@ -257,6 +257,15 @@ if (fs.existsSync(THANKSGIVING_DIR)) {
   for (const file of fs.readdirSync(THANKSGIVING_DIR)) fs.copyFileSync(path.join(THANKSGIVING_DIR, file), path.join(dest, file));
   console.log(`Copied the Thanksgiving turkey to ${dest}`);
 }
+// ── Copy the mini volume (Get Started page 2 shows it in a frame: a block of
+// EM, its slices, then the neuron). A page with its own data files.
+const MINI_VOLUME_DIR = path.join(STATIC_DIR, 'mini-volume');
+if (fs.existsSync(MINI_VOLUME_DIR)) {
+  const dest = path.join(DIST_MIN, 'mini-volume');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(MINI_VOLUME_DIR)) fs.copyFileSync(path.join(MINI_VOLUME_DIR, file), path.join(dest, file));
+  console.log(`Copied the mini volume to ${dest}`);
+}
 const SFX_DIR = path.join(STATIC_DIR, 'sfx');
 if (fs.existsSync(SFX_DIR)) {
   const dest = path.join(DIST_MIN, 'sfx');

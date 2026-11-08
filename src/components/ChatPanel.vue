@@ -627,7 +627,7 @@ function hideAnnouncement(id: number | string | null | undefined) {
 const huntNoteOf = (m: ChatMessage) => (m.type === 'message' && m.notificationId ? huntNoteNow(rawAnnounceText(m)) : null);
 const listedMessages = computed<ChatMessage[]>(() => {
   const all = (chatQuery.value ? searchHits.value : chatMessages.value)
-    .filter(m => !(m.type === 'message' && m.notificationId && hiddenAnnouncements.value.has(Number(m.notificationId))));
+    .filter(m => { const id = m.type === 'message' ? (m.notificationId ?? nurroNoteId(m)) : null; return !(id && hiddenAnnouncements.value.has(Number(id))); });
   const newest = new Map<string, number>();
   for (const m of all) { const n = huntNoteOf(m); if (n) newest.set(n.title, Math.max(newest.get(n.title) ?? -1, n.stage)); }
   if (!newest.size) return all;
@@ -1239,6 +1239,27 @@ function openAnnouncement(id: number) {
   document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: { id } }));
 }
 
+/** Nurro's line about a notification, Today in Pyr most of all (Ames
+ *  2026-11-08): it stays Nurro's message in chat, with an Open button that
+ *  opens the report. The id of that notification, or null for any other
+ *  message. Today in Pyr shows as Nurro's whoever's game posted it. Older
+ *  lines from the server carry no id, only "<title>. Check your
+ *  notifications for details!": they find theirs by its title. */
+const NOTE_TAIL = /\.\s*Check your notifications for details!\s*$/i;
+function nurroNoteId(msg: ChatMessage): number | null {
+  if (msg.type !== 'message') return null;
+  const fromNurro = msg.rank === 'bot' && msg.name === 'Nurro';
+  const text = rawAnnounceText(msg).trim();
+  if (msg.notificationId) return fromNurro || /^Today in Pyr\b/.test(text) ? Number(msg.notificationId) : null;
+  if (!fromNurro || !NOTE_TAIL.test(text)) return null;
+  const title = text.replace(NOTE_TAIL, '');
+  return backendStore.notifications.find(n => n.title === title)?.id ?? null;
+}
+/** The words of Nurro's line: the notification's title. */
+function nurroNoteText(msg: ChatMessage): string {
+  return rawAnnounceText(msg).trim().replace(NOTE_TAIL, '');
+}
+
 /** Active segmentation layer name, for comparing against a message's dataset. */
 function activeDatasetName(): string | null {
   try {
@@ -1604,7 +1625,7 @@ function toggleCollapse() {
                 <!-- Announcement: carries a notification id, so the whole
                      message opens that notification instead of telling the
                      reader to go and look for it. -->
-                <div v-else-if="msg.type === 'message' && msg.notificationId"
+                <div v-else-if="msg.type === 'message' && msg.notificationId && !nurroNoteId(msg)"
                      class="nge-chat-msg nge-chat-announce"
                      :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg) }"
                      role="button"
@@ -1682,7 +1703,7 @@ function toggleCollapse() {
                   <span v-else-if="msg.replyTo" class="nge-chat-quote nge-chat-quote--gone"><span class="nge-chat-quote-arrow" aria-hidden="true">↩</span><span class="nge-chat-quote-text">an earlier message</span></span>
                   <span class="nge-chat-msg-time">{{ chatQuery ? msgDateTime(msg.dateTime) : msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="medalFor(msg)" :title="medalFor(msg)?.why">{{ medalFor(msg)?.medal }}</span>
-                  <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
+                  <button v-if="(msg.rank === 'bot' && msg.name === 'Nurro') || nurroNoteId(msg)" class="nge-chat-msg-name nge-chat-nurro-name"
                           @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
                   <span v-else-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
                         :title="'nkem_test: the original EyeWire chat bot, by @nkem (2013). Say \'for science\' and it answers.'">nkem_test<span class="nge-chat-bot-tag">bot</span></span>
@@ -1691,7 +1712,14 @@ function toggleCollapse() {
                     <span class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: nameColor(msg) }"
                           @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
                   </template>
-                  <template v-for="(part, pi) in msg.parts" :key="pi">
+                  <template v-if="nurroNoteId(msg)">
+                    <span class="nge-chat-msg-text">{{ nurroNoteText(msg) }}</span>
+                    <button type="button" class="nge-chat-view-chip nge-chat-note-open" title="Open this in your notifications"
+                            @click.stop="openAnnouncement(Number(nurroNoteId(msg)))">Open →</button>
+                    <button type="button" class="nge-chat-announce-hide nge-chat-note-hide" title="Hide this from your chat (it stays in your notifications)" aria-label="Hide this from chat"
+                            @click.stop="hideAnnouncement(nurroNoteId(msg))">×</button>
+                  </template>
+                  <template v-else><template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip" :href="part.text" target="_blank" rel="noopener"
                             title="Open this view in a new tab">📍 Open view</a>
@@ -1724,7 +1752,7 @@ function toggleCollapse() {
                     <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' && msg.name !== 'Nurro' }"><template
                       v-for="(piece, ri) in richPieces(partText(msg, part))" :key="ri"><b v-if="piece.bold" class="nge-chat-b" :class="{ 'nge-chat-u': piece.underline }">{{ piece.text }}</b><u
                       v-else-if="piece.underline" class="nge-chat-u">{{ piece.text }}</u><template v-else>{{ piece.text }}</template></template></span>
-                  </template>
+                  </template></template>
                   <button v-if="isHelpAsk(msg)" type="button" class="nge-chat-view-chip nge-chat-join-chip" :disabled="joinOffered.has(joinKey(msg))"
                           :title="joinOffered.has(joinKey(msg)) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${msg.name}'s view and help, live. They choose whether to accept.`"
                           @click="joinHelp(msg)">{{ joinOffered.has(joinKey(msg)) ? '🤝 Offered' : '🤝 Join' }}</button>
@@ -2392,6 +2420,9 @@ function toggleCollapse() {
   color: rgba(214, 230, 255, 0.45); font-size: 16px; line-height: 1; cursor: pointer;
 }
 .nge-chat-announce-hide:hover { color: #fff; }
+/* Nurro's line about a notification: Open beside the words, × at the end. */
+.nge-chat-note-open { margin-left: 6px; cursor: pointer; }
+.nge-chat-note-hide { margin-left: 4px; }
 .nge-chat-announce-thumb {
   /* a little more room before the words (Ames 2026-10-24) */
   margin-right: 6px;
