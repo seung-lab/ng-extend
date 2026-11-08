@@ -1028,6 +1028,11 @@ const visibleToolbar = computed(() => {
 });
 // The command bar runs a top bar icon's own action (Find Path, Chat, ...), so
 // an icon a new player has not received yet is still within reach.
+// A Retina claim opens with the Checked layer and the Highlight box ready
+// (Ames 2026-11-07). Opens only; never closes it.
+document.addEventListener('nge:open-highlight', () => {
+  if (!highlightOff.value && !showHighlight.value) { showHighlight.value = true; sprayHighlightIcon(); }
+});
 document.addEventListener('nge:toolbar-action', ((e: CustomEvent) => {
   toolbarActions[e.detail?.id]?.action();
 }) as EventListener);

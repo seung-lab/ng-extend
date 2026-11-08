@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-08T01:57:06Z",
+      "title": "Retina cells open with Highlight",
+      "digest": "headline",
+      "items": [
+        "A Retina cell you claim now opens with one Checked Highlight layer and the Highlight box ready, instead of five annotation layers.",
+        "Prefer annotations? Press + Annotation layers on your cell in the Cell Library, or turn them on for every Retina claim in Settings, under Jumping and views.",
+        "Your Checked marks stay in one Checked layer, with no more Checked 1 and Checked 2.",
+        "Click your current cell's row in the Cell Library to open Complete. Your cell stays at the top while the form is open, so nothing is cut off.",
+        "Layer tabs have one close button, the bin, and Ctrl+Z brings a closed layer back. To keep the button that tucks a layer into the side panel, turn it on in Settings.",
+        "The outline around the volume is a softer blue."
+      ]
+    },
+    {
       "at": "2026-11-07T02:40:50Z",
       "title": "Quest Submit with a mark in another segment",
       "digest": "minor",

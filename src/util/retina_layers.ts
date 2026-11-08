@@ -50,6 +50,9 @@ function putAside(taskId: number): void {
 /** A fresh Retina claim: once its start link has loaded, the annotation layers
  *  go aside and the Checked Highlight layer is there to mark with. */
 export function startRetinaClaimLight(taskId: number): void {
+  // The Highlight box opens once, with the first look, so marking Checked is
+  // one click away in the slim view and the full one alike (Ames 2026-11-07).
+  setTimeout(() => { try { if (currentDatasetTag() === RETINA_DATASET) document.dispatchEvent(new CustomEvent('nge:open-highlight')); } catch { /* */ } }, 1200);
   for (const ms of [1200, 4000, 9000]) {
     setTimeout(() => {
       try {

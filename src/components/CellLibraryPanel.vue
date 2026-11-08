@@ -1219,7 +1219,32 @@ async function prefillCellType(root: string) {
   }
 }
 
+/** The claim on screen now: its row opens the Complete form when clicked
+ *  (Ames 2026-11-07). */
+function isCurrentClaim(cell: CellRow): boolean {
+  return isMyClaim(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId.value;
+}
+function onRowClick(cell: CellRow, e: MouseEvent) {
+  if (!isCurrentClaim(cell) || slim.value) return;
+  if ((e.target as HTMLElement).closest('button, input, textarea, a, select, .nge-cl-row-name')) return;
+  if (completing.value?.key === cellKey(cell)) completing.value = null; else openComplete(cell);
+}
+/** With the Complete form open, its cell's row goes to the top of the list
+ *  and stays there as a header (sticky), so the form below has the whole
+ *  list to show in and is never cut off at the bottom (Ames 2026-11-07). */
+const cellListEl = ref<HTMLElement | null>(null);
+function scrollCompleteRowToTop(key: string) {
+  void nextTick(() => {
+    const list = cellListEl.value;
+    if (!list || slim.value) return;
+    const row = Array.from(list.querySelectorAll<HTMLElement>('.nge-cl-row')).find(r => r.dataset.cellKey === key);
+    if (!row) return;
+    const top = list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    list.scrollTo({ top, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  });
+}
 function openComplete(cell: CellRow) {
+  scrollCompleteRowToTop(cellKey(cell));
   chooseClaim.value = false;
   // No ending picked to start with: the last one carried over, and a player
   // who forgot to change it sent the wrong one (toknow, report 237).
@@ -4065,7 +4090,7 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- Cell list -->
-        <div v-else class="nge-cl-list">
+        <div v-else ref="cellListEl" class="nge-cl-list">
           <!-- Claim error banner -->
           <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
           <div v-if="chooseClaim" class="nge-cl-limit">
@@ -4129,11 +4154,16 @@ const panelStyle = computed(() => ({
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
             class="nge-cl-row"
+            :data-cell-key="cellKey(cell)"
             :class="{
               'nge-cl-row--done': cell.status === 'completed',
               'nge-cl-row--mine': isMyClaim(cell),
               'nge-cl-row--jumped': cell.segId === jumpedSegId,
+              'nge-cl-row--current': isCurrentClaim(cell),
+              'nge-cl-row--completing': completing?.key === cellKey(cell),
             }"
+            :title="isCurrentClaim(cell) && completing?.key !== cellKey(cell) ? 'Click to complete this cell' : undefined"
+            @click="onRowClick(cell, $event)"
           >
             <!-- Left: status pip + name -->
             <div class="nge-cl-row-left">
@@ -4822,6 +4852,23 @@ const panelStyle = computed(() => ({
   gap: 8px;
   flex: 1;
   min-width: 0;
+}
+/* A row with many buttons (your current claim: Save view, jump, Annotation
+   layers, Release, Complete) squeezed the name to nothing and its chips ran
+   under the buttons (Ames 2026-11-07). The name keeps 170px; the buttons move
+   to their own line, on the right, when they do not fit beside it. */
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row { flex-wrap: wrap; row-gap: 6px; }
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-left { flex: 1 1 170px; }
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-actions { margin-left: auto; }
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--current { cursor: pointer; }
+/* The cell being completed is the list's header while the form is open. */
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--completing {
+  position: sticky; top: -4px; z-index: 3;
+  background: linear-gradient(rgba(0, 220, 160, 0.10), rgba(0, 220, 160, 0.10)), #0d121a;
+  border-bottom: 1px solid rgba(68, 170, 255, 0.3);
+}
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--completing:hover {
+  background: linear-gradient(rgba(0, 220, 160, 0.14), rgba(0, 220, 160, 0.14)), #0d121a;
 }
 
 .nge-cl-pip {

@@ -1103,6 +1103,10 @@ export interface UserPreferences {
    *  Hits Edge, Notes). Off by default: it opens with one Checked Highlight
    *  layer, and a button adds them (Ames 2026-11-07). */
   retinaAnnotationLayers?: boolean;
+  /** Layer tabs show the x that hides a layer to the side panel, beside the
+   *  bin that deletes it. Off by default: one button closes a layer, and
+   *  Ctrl+Z brings it back (Ames 2026-11-07). */
+  layerHideButton?: boolean;
   /** Highlight mode's colours: the three built in ones (recoloured or not)
    *  and any the player added. Unset = the defaults. */
   highlightStyles?: { key: string; label: string; color: string }[];
