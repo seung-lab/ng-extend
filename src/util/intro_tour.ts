@@ -295,7 +295,7 @@ function ensureStyle() {
   clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
   -webkit-mask-image: linear-gradient(100deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.25) 45%, #000 80%);
           mask-image: linear-gradient(100deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.25) 45%, #000 80%); }
-.nge-intro-circuit path { fill: none; stroke: rgba(126, 224, 255, 0.32); stroke-width: 1; vector-effect: non-scaling-stroke;
+.nge-intro-circuit path { fill: none; stroke: rgba(126, 224, 255, 0.34); stroke-width: 1.2; stroke-linecap: round; vector-effect: non-scaling-stroke;
   stroke-dasharray: 1; stroke-dashoffset: 1; }
 .nge-intro-circuit circle { fill: rgba(126, 224, 255, 0.55); opacity: 0; }
 .nge-intro--in .nge-intro-circuit path { animation: nge-trace 1200ms ease-out both; animation-delay: calc(500ms + var(--i) * 70ms); }
@@ -407,13 +407,6 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 }
 
 let panel: HTMLElement | null = null;
-/** Where a right-angle trace (M x y, then H and V steps) ends. */
-function traceEnd(d: string): [number, number] {
-  const m = d.match(/^M\s*(\d+)\s+(\d+)/);
-  let x = Number(m?.[1] ?? 0), y = Number(m?.[2] ?? 0);
-  for (const g of d.match(/[HV]\s*\d+/g) ?? []) { const v = Number(g.slice(1)); if (g[0] === 'H') x = v; else y = v; }
-  return [x, y];
-}
 let callout: HTMLElement | null = null;
 let calloutRaf = 0;
 let typeTimer: ReturnType<typeof setInterval> | null = null;
@@ -545,13 +538,24 @@ export async function startIntroTour() {
   const X_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   const CHEV = '<span class="nge-intro-chev"><svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1.5 1.5L6 6l-4.5 4.5M7.5 1.5L12 6l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
   const BACK = '<svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><path d="M6.5 1.5L2 6l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  // the circuit board: right-angle traces, denser on the right, away from the words
-  const TRACES = ['M430 8 H520 V40 H600', 'M470 70 H540 V110 H612', 'M560 10 V60', 'M380 130 H450 V170 H560 V196',
-    'M500 150 H612', 'M20 190 H120 V160 H200', 'M300 8 H360 V30', 'M590 130 V190', 'M60 6 V30 H140'];
+  // the circuit board, grown like branches (Ames: "more curved, almost like
+  // bioinspired branches"): trunks come in from the edges and fork, with a
+  // bead at each tip, thicker on the right, away from the words
+  const TRACES: [string, number, number][] = [
+    ['M622 26 C572 30 552 58 512 56 S452 38 418 50', 418, 50],
+    ['M548 52 C540 74 528 94 498 102', 498, 102],
+    ['M512 56 C500 40 478 26 456 22', 456, 22],
+    ['M622 122 C584 120 568 142 532 148 S474 172 442 168', 442, 168],
+    ['M568 142 C562 162 570 182 560 202', 560, 202],
+    ['M532 148 C520 130 502 124 484 128', 484, 128],
+    ['M-2 182 C40 176 62 192 102 186 S152 170 184 176', 184, 176],
+    ['M330 -2 C336 14 352 22 364 36', 364, 36],
+    ['M590 -2 C592 12 600 20 612 30', 612, 30],
+  ];
   const circuit = `<svg class="nge-intro-circuit" viewBox="0 0 620 200" preserveAspectRatio="none" aria-hidden="true">${
-    TRACES.map((d, k) => `<path pathLength="1" style="--i:${k}" d="${d}"/>`).join('')}${
-    [0, 1, 3].map((k, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${TRACES[k]}"/>`).join('')}${
-    TRACES.map((d, k) => { const [x, y] = traceEnd(d); return `<circle style="--i:${k}" cx="${x}" cy="${y}" r="2.2"/>`; }).join('')}</svg>`;
+    TRACES.map(([d], k) => `<path pathLength="1" style="--i:${k}" d="${d}"/>`).join('')}${
+    [0, 3, 6].map((k, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${TRACES[k][0]}"/>`).join('')}${
+    TRACES.map(([, x, y], k) => `<circle style="--i:${k}" cx="${x}" cy="${y}" r="2.4"/>`).join('')}</svg>`;
   const TICKS = '<i class="nge-intro-tick a"></i><i class="nge-intro-tick b"></i>';
   panel.innerHTML = `<span class="nge-intro-plate-bg"></span>${circuit}<span class="nge-intro-ring"></span><span class="nge-intro-scan"></span>
     <i class="nge-intro-corner tl"></i><i class="nge-intro-corner tr"></i><i class="nge-intro-corner bl"></i><i class="nge-intro-corner br"></i>
