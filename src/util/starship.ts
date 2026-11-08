@@ -333,7 +333,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
 
         // the slow turn, until someone takes hold of the cell
         if (handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-          try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / TURN_SECONDS * dt); } catch { /* no view */ }
+          try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / (cameraHeld ? TURN_SECONDS * 2 : TURN_SECONDS) * dt); } catch { /* no view */ }
         }
         // in on the soma, slowly, all the way in (Ames: the camera zooms in
         // as the ship flies in), a touch faster at the end
@@ -365,7 +365,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
           pos = dock.from ? mix(dock.from, target, dq) : target;
           fwd = norm(mix(dock.from && dq < 1 ? norm(sub(target, dock.from)) : fwd, mul(cam.right, -1), dq));
         }
-        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * 3.5)));
+        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * 9)));
         prevFwd = fwd;
         // banking: roll into the turn
         const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
