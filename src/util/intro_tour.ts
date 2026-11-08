@@ -24,7 +24,7 @@ import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mes
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
-import {cameraAxes, cellDrawn, clearStarship, dockStarship, flyStarship, loadAssets, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, dockStarship, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
@@ -736,6 +736,7 @@ function endTour() {
   if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
   if (onKey) { window.removeEventListener('keydown', onKey, true); onKey = null; }
   setNgeMeshTint(savedTint);
+  setHoverHighlight(true);
   // the partner cells the tour brought in go again
   for (const id of [...added]) hideCell(id);
   setStarshipCameraHeld(false);

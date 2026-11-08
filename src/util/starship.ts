@@ -301,6 +301,13 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     try { v.showAxisLines.value = false; } catch { /* keep them */ }
     v.navigationState.position.value = Float32Array.from(f.soma.map((c, i) => c / nm[i]));
     v.projectionOrientation.restoreState([0, 0, 0, 1]);
+    // The cell turns slowly in flight, a quarter of its usual speed, and
+    // starts turned back by just that much: at touchdown it is square on, so
+    // the pad (on the viewer's side of the soma) faces the camera (Ames).
+    const FLIGHT_TURN = TURN_SECONDS * 4;
+    try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), -2 * Math.PI / FLIGHT_TURN * (CRUISE_S + LANDING_S)); } catch { /* no view */ }
+    // no colour flashing as the turning cell slides under the mouse
+    setHoverHighlight(false);
     // projectionScale is in the coordinate space's smallest unit
     const unit = Math.min(nm[0], nm[1], nm[2]);
     const WIDE = WIDE_NM / unit, CLOSE = CLOSE_NM / unit;
@@ -333,7 +340,8 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
 
         // the slow turn, until someone takes hold of the cell
         if (handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-          try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / (cameraHeld ? TURN_SECONDS * 2 : TURN_SECONDS) * dt); } catch { /* no view */ }
+          const per = t < total ? FLIGHT_TURN : cameraHeld ? TURN_SECONDS * 2 : TURN_SECONDS;
+          try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / per * dt); } catch { /* no view */ }
         }
         // in on the soma, slowly, all the way in (Ames: the camera zooms in
         // as the ship flies in), a touch faster at the end
@@ -385,7 +393,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         if (!h && !dock && f.rollAt !== undefined) {
           const rq = (s - f.rollAt) / (f.rollLen ?? 20000);
           if (rq > 0 && rq < 1) {
-            const a = 2 * Math.PI * smooth(rq), side = cross(fwd, up);
+            const a = 4 * Math.PI * smooth(rq), side = cross(fwd, up);   // two rolls (Ames: a little longer)
             up = norm(add(mul(up, Math.cos(a)), mul(side, Math.sin(a))));
           }
         }
@@ -450,7 +458,19 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
 }
 
 /** Take the Starship away (it stays on the soma after landing until then). */
+/** The Sandbox layer's hover highlight, off for the intro and back after. */
+let savedHover: boolean | null = null;
+export function setHoverHighlight(on: boolean) {
+  for (const ml of viewerNow()?.layerManager?.managedLayers ?? []) {
+    const hh = ml?.layer?.displayState?.hoverHighlight;
+    if (!hh || !String(ml?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/pinky_nf')) continue;
+    if (!on) { if (savedHover === null) savedHover = !!hh.value; hh.value = false; }
+    else if (savedHover !== null) { hh.value = savedHover; savedHover = null; }
+  }
+}
+
 export function clearStarship() {
+  setHoverHighlight(true);
   stopRequested = true;
   setNgeProps([], GROUP);
   setNgeGlow(null, GROUP);
