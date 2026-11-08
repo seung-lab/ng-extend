@@ -526,6 +526,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     let prevUp: V3 | null = null;
     let prevFwd: V3 | null = null;
     let prevPos: V3 | null = null;
+    let dockBend: V3 = [0, 0, 0];
     await new Promise<void>(done => {
       const step = (now: number) => {
         const dt = Math.min(0.05, (now - last) / 1000);
@@ -594,12 +595,21 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           const H = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]), Wd = H * viewAspect();
           const target = add(ctr, add(mul(cam.right, dock.fx * Wd / 2), mul(cam.up, dock.fy * H / 2)));
           const dq = smooth((now - dock.start) / dockMs);
-          pos = dock.from ? mix(dock.from, target, dq) : target;
+          // a banked curve: out past the spot and swinging back round to it,
+          // so it arrives nose first, facing the cell (Ames: it flew backwards)
+          const ctrl = add(target, add(mul(cam.right, Wd * 0.32), mul(cam.up, H * 0.2)));
+          const B = (u: number): V3 => {
+            if (!dock!.from) return target;
+            const a1 = mix(dock!.from, ctrl, u), b1 = mix(ctrl, target, u);
+            return mix(a1, b1, u);
+          };
+          pos = B(dq);
+          dockBend = sub(sub(B(Math.min(1, dq + 0.04)), pos), sub(pos, B(Math.max(0, dq - 0.04))));
           // nose on the way it is going, turning to face the cell only as it
           // arrives (Ames: it flew backwards)
           const vel = prevPos ? sub(pos, prevPos) : [0, 0, 0] as V3;
           const goDir = dq < 1 && Math.hypot(...vel) > f.shipLength * 0.004 ? norm(vel) : (prevFwd ?? fwd);
-          fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.75) / 0.25)));
+          fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.9) / 0.1)));
         }
         // ending a hop the ship levels out, nose sideways across the screen,
         // not parked standing on end (Ames)
@@ -615,7 +625,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         prevPos = pos;
         prevFwd = fwd;
         // banking: roll into the turn
-        let bend: V3 = dock ? [0, 0, 0] : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
+        let bend: V3 = dock ? mul(dockBend, 6) : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
         const bl = Math.hypot(...bend) / 2500;
         if (bl > 0.9) bend = mul(bend, 0.9 / bl);
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));

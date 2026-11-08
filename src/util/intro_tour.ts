@@ -974,6 +974,25 @@ function calloutFrame(w: number, h: number): string {
     <path class="tr" d="M16 ${f(h - 0.5)} l6 -6 h${f(b)}"/><circle class="pad" cx="${f(22 + b)}" cy="${f(h - 6.5)}" r="2"/></svg>`;
 }
 
+/** Some browsers show less than the page's full height (a short window, a
+ *  toolbar over the bottom, zoom): lift the panel so it is always seen
+ *  (Ames 2026-11-08: a tester's panel ran off the bottom). */
+function keepOnScreen(el: HTMLElement) {
+  const fit = () => {
+    if (!el.isConnected) { window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); clearInterval(timer); return; }
+    const vv = window.visualViewport;
+    const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const hidden = Math.max(0, window.innerHeight - visibleBottom);
+    el.style.bottom = `${28 + hidden}px`;
+    const r = el.getBoundingClientRect();
+    if (r.bottom > visibleBottom - 6) el.style.bottom = `${28 + hidden + (r.bottom - visibleBottom + 6)}px`;
+  };
+  window.addEventListener('resize', fit);
+  window.visualViewport?.addEventListener('resize', fit);
+  const timer = setInterval(fit, 1000);
+  requestAnimationFrame(fit);
+}
+
 /* ── running the tour ── */
 let active = false;
 let savedTint: NgeMeshTint | null = null;
@@ -1021,6 +1040,7 @@ export async function startIntroTour() {
       <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-go nge-intro-stay" type="button"><span class="nge-go-label">Keep going</span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div></div>`;
   document.body.appendChild(panel);
   document.body.classList.add('nge-intro-on');
+  keepOnScreen(panel);
   requestAnimationFrame(() => panel?.classList.add('nge-intro--in'));
   const titleEl = panel.querySelector('.nge-intro-title') as HTMLElement;
   const bodyEl = panel.querySelector('.nge-intro-body') as HTMLElement;
@@ -1250,6 +1270,7 @@ function transmissionCard() {
       <button class="nge-go nge-go--alt nge-card-alt" type="button" hidden><span class="nge-go-label"></span></button>
       <button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
   document.body.appendChild(card);
+  keepOnScreen(card);
   requestAnimationFrame(() => card.classList.add('nge-intro--in'));
   const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
   // no X here: its button is the way back from MICrONS (Ames)
