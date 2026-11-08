@@ -30,6 +30,7 @@
  * bolt, ?signal in the address, or window.pyrSignal.play().
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
+import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
@@ -71,11 +72,11 @@ interface Level {
 }
 const LEVELS: Level[] = [
   {title: 'First Light', objective: 'Fire the target', detail: 'two partners together', timeS: 45, par: 2,
-    brief: 'This is real mouse cortex: a layer 4 pyramidal cell (gold) and four of the cells that drive it. Your Spark beam fires a cell. The target is shielded, so fire it through its partners: it needs 8 synapses’ worth of excitation at once, and no single partner has that. Its two strongest drivers together will do it, or any three. Click a cell, or its chip.',
-    cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: false,
+    brief: 'These are real neurons from the brain: an excitatory pyramidal cell (gold) and four of the cells that drive it.\nYour Spark beam fires a cell. The target is shielded, so fire it through its partners: it needs 8 synapses’ worth of excitation at once, and no single partner has that. Its two strongest drivers together will do it, or any three. Click a cell, or its chip.',
+    cells: ['T', 'E1', 'E2', 'E3', 'E4'], targets: ['T'], hush: false,
     goal: {kind: 'fire', target: 'T', count: 1}},
   {title: 'The Gatekeeper', objective: 'Fire the target 3 times', detail: 'between the Gatekeeper’s pulses', timeS: 60, par: 6,
-    brief: 'The violet cell is a Martinotti cell, and it is awake. It makes 17 synapses onto the target and fires on its own every 1.6 s, holding the target down. Each pulse fades: watch the target’s meter and spark the drivers so their spikes arrive in the gap. Two of the drivers also wake the Gatekeeper early.',
+    brief: 'A new cell, in violet: a Martinotti cell, and it is awake. It makes 17 synapses onto the target and fires on its own every 1.6 s, holding the target down.\nEach pulse fades: watch the target’s meter and spark the drivers so their spikes arrive in the gap. Two of the drivers also wake the Gatekeeper early.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: false, gate: {cell: 'I1', periodS: 1.6},
     goal: {kind: 'fire', target: 'T', count: 3}},
   {title: 'Hush', objective: 'Fire the target 3 times', detail: 'quiet the Gatekeeper first', timeS: 60, par: 12,
@@ -363,6 +364,16 @@ function ensureStyle() {
 .nge-sig-quiet { background: none; border: 1px solid rgba(126, 210, 255, 0.35); color: #9fc6ea; border-radius: 6px; padding: 8px 14px; cursor: pointer; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
 .nge-sig-quiet:hover { color: #fff; border-color: rgba(126, 210, 255, 0.8); }
 body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: crosshair !important; }
+/* tags on the cell bodies, in the 3D view */
+.ng-extend.nge-sig-tag { --c: #5fb8ff; position: fixed; z-index: 9400; transform: translate(-50%, calc(-100% - 16px)); margin: 0; padding: 3px 8px 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--c) 70%, transparent); border-radius: 4px; background: rgba(6, 12, 28, 0.74); color: var(--c); cursor: pointer;
+  font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; line-height: 1.3; white-space: nowrap; text-shadow: 0 0 6px color-mix(in srgb, var(--c) 60%, transparent); }
+.ng-extend.nge-sig-tag::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 14px; background: var(--c); opacity: 0.85; }
+.ng-extend.nge-sig-tag small { font: 600 9px 'Inter', sans-serif; letter-spacing: 0.02em; color: #c9dcf0; margin-left: 6px; }
+.ng-extend.nge-sig-tag:hover { background: rgba(10, 24, 50, 0.9); box-shadow: 0 0 12px color-mix(in srgb, var(--c) 50%, transparent); }
+.ng-extend.nge-sig-tag--target { --c: #ffc24a; box-shadow: 0 0 12px rgba(255, 194, 74, 0.45); cursor: not-allowed; }
+.ng-extend.nge-sig-tag--hushed { opacity: 0.5; }
+@media (max-width: 700px) { .ng-extend.nge-sig-tag small { display: none; } }
 body.nge-mobile .nge-sig { bottom: calc(70px + env(safe-area-inset-bottom)); }
 @media (max-width: 700px) { .nge-sig { padding: 10px 12px; font-size: 12.5px; } .nge-sig-obj strong { font-size: 14px; } .nge-sig-stats b { font-size: 15px; }
   .nge-sig .nge-sig-chip .syn { display: none; } .nge-sig .nge-sig-chip { min-width: 0; } .nge-sig .nge-sig-chip .meter { min-height: 22px; } .nge-sig-note { display: none; } }
@@ -447,7 +458,7 @@ function showChips() {
 function showBrief() {
   phase = 'brief';
   els.row.style.display = 'none';
-  els.body.innerHTML = `<div class="nge-sig-card"><p>${level.brief}</p>
+  els.body.innerHTML = `<div class="nge-sig-card">${level.brief.split('\n').map(p => `<p>${p}</p>`).join('')}
     <button class="nge-sig-go" type="button"><span class="nge-sig-plate">Begin ›</span></button></div>`;
   (els.body.querySelector('.nge-sig-go') as HTMLButtonElement).onclick = () => beginPlay();
   updateHud();
@@ -498,6 +509,120 @@ function updateHud() {
     const asleep = c.key === 'I1' && !level.gate;
     el.classList.toggle('nge-sig-chip--asleep', asleep && !hushed);
   }
+}
+
+/* ── the haze: everything grey but the cell bodies and the wires that matter ── */
+/** The mesh tint (Highlight mode's, mesh/nge_tint.ts) marks the whole frame
+ *  in its "dim" colour, so every branch is drawn as a dark grey of its cell,
+ *  then clears a sphere around each cell body and a tube along each real
+ *  path between the level's cells. What is left in colour is the circuit:
+ *  the somas and the wires between them (Ames 2026-11-08: "the cells look
+ *  all jumbled together"). */
+let savedTint: NgeMeshTint | null = null;
+let hazeOn = false;
+const DIM: V3 = [0.5, 0.5, 0.5];
+function buildHaze(): NgeMeshTint | null {
+  const nm = nmPerUnit();
+  if (!nm) return null;
+  const shown = level.cells.map(k => cells.get(k)!);
+  const pts: V3[] = shown.map(c => c.spec.soma);
+  const used = conns.filter(k => cells.get(k.pre)?.shown && cells.get(k.post)?.shown);
+  for (const k of used) { pts.push(...(k.axon as V3[]), ...(k.dendrite as V3[])); }
+  const lo: V3 = [Infinity, Infinity, Infinity], hi: V3 = [-Infinity, -Infinity, -Infinity];
+  for (const p of pts) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
+  // The frame around the cell bodies, with room, and everything the paths reach.
+  const PAD = 320_000;
+  for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], center[i] - PAD); hi[i] = Math.max(hi[i], center[i] + PAD); lo[i] -= 20_000; hi[i] += 20_000; }
+  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  const cell = clamp(extent / 150, 3000, 6000);
+  const dims = [0, 1, 2].map(i => Math.min(200, Math.ceil((hi[i] - lo[i]) / cell))) as V3;
+  const n = dims[0] * dims[1] * dims[2];
+  const data = new Uint8Array(n * 4);
+  // premultiplied dim grey, alpha 0.85
+  const A = 0.85, g = Math.round(DIM[0] * A * 255), a = Math.round(A * 255);
+  for (let i = 0; i < n; i++) { data[i * 4] = g; data[i * 4 + 1] = g; data[i * 4 + 2] = g; data[i * 4 + 3] = a; }
+  const carve = (p: V3, radius: number) => {
+    const r = Math.ceil(radius / cell);
+    const c = [0, 1, 2].map(i => Math.floor((p[i] - lo[i]) / cell));
+    for (let z = Math.max(0, c[2] - r); z <= Math.min(dims[2] - 1, c[2] + r); z++)
+      for (let y = Math.max(0, c[1] - r); y <= Math.min(dims[1] - 1, c[1] + r); y++)
+        for (let x = Math.max(0, c[0] - r); x <= Math.min(dims[0] - 1, c[0] + r); x++) {
+          const dx = (x + 0.5) * cell + lo[0] - p[0], dy = (y + 0.5) * cell + lo[1] - p[1], dz = (z + 0.5) * cell + lo[2] - p[2];
+          if (dx * dx + dy * dy + dz * dz <= radius * radius) data[((z * dims[1] + y) * dims[0] + x) * 4 + 3] = 0;
+        }
+  };
+  for (const c of shown) carve(c.spec.soma, 24_000);
+  for (const k of used) {
+    const r = routes.get(k)!;
+    for (let s = 0; s <= r.length; s += cell * 0.5) carve(along(r, s), 7000);
+  }
+  const m = mat4.create();
+  for (let i = 0; i < 3; i++) { m[i * 5] = nm[i] / (dims[i] * cell); m[12 + i] = -lo[i] / (dims[i] * cell); }
+  return {data, dims, gridFromGlobal: m, dim: DIM};
+}
+function applyHaze() {
+  if (!hazeOn) { savedTint = getNgeMeshTint(); hazeOn = true; }
+  try { setNgeMeshTint(buildHaze()); } catch (e) { console.warn('[signal] no haze:', e); }
+}
+function clearHaze() {
+  if (!hazeOn) return;
+  setNgeMeshTint(savedTint);
+  savedTint = null; hazeOn = false;
+}
+
+/* ── tags on the cell bodies ── */
+let tagEls = new Map<string, HTMLElement>();
+function threeDPanel(): any {
+  for (const pn of viewerNow()?.display?.panels ?? []) if (pn?.element?.classList?.contains('nge-3d-panel')) return pn;
+  return null;
+}
+/** A point in nanometres to the screen, through the 3D panel's projection. */
+function toScreen(p: V3): [number, number] | null {
+  const nm = nmPerUnit(), pn = threeDPanel();
+  const vp = pn?.projectionParameters?.value?.viewProjectionMat;
+  if (!vp || !nm) return null;
+  const g = [p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]];
+  const w = vp[3] * g[0] + vp[7] * g[1] + vp[11] * g[2] + vp[15];
+  if (w <= 0) return null;
+  const x = (vp[0] * g[0] + vp[4] * g[1] + vp[8] * g[2] + vp[12]) / w, y = (vp[1] * g[0] + vp[5] * g[1] + vp[9] * g[2] + vp[13]) / w;
+  const r = pn.element.getBoundingClientRect();
+  return [r.left + (x + 1) / 2 * r.width, r.top + (1 - y) / 2 * r.height];
+}
+function makeTags() {
+  for (const el of tagEls.values()) el.remove();
+  tagEls.clear();
+  for (const key of level.cells) {
+    const c = cells.get(key)!;
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'ng-extend nge-sig-tag' + (c.target ? ' nge-sig-tag--target' : '');
+    el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
+    el.innerHTML = `${key}<small>${c.spec.label}</small>`;
+    el.title = c.target ? `${key}: the target` : `Fire the beam at ${key}`;
+    el.onclick = () => shoot(key);
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    tagEls.set(key, el);
+  }
+}
+function placeTags() {
+  if (!tagEls.size) return;
+  const pn = threeDPanel();
+  const r = pn?.element?.getBoundingClientRect();
+  const hudTop = panel ? panel.getBoundingClientRect().top - 6 : window.innerHeight;
+  for (const [key, el] of tagEls) {
+    const c = cells.get(key)!;
+    const s = c.shown ? toScreen(c.spec.soma) : null;
+    if (!s || !r || s[0] < r.left + 20 || s[0] > r.right - 20 || s[1] < r.top + 40 || s[1] > Math.min(r.bottom, hudTop)) { el.style.display = 'none'; continue; }
+    el.style.display = '';
+    el.style.left = `${s[0]}px`;
+    el.style.top = `${s[1]}px`;
+    el.classList.toggle('nge-sig-tag--hushed', now < c.hushedUntil);
+  }
+}
+function clearTags() {
+  for (const el of tagEls.values()) el.remove();
+  tagEls.clear();
 }
 
 /* ── the scene: cells, camera, ship ── */
@@ -562,7 +687,9 @@ function frameLevel() {
   for (const p of shown) span = Math.max(span, len(sub(p, center)));
   try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
   try { v.showAxisLines.value = false; } catch { /* keep them */ }
-  const viewNm = Math.max(260_000, span * 2.6 + 120_000);
+  // In close on the cell bodies: the rest of each cell is there, greyed, as
+  // context (the haze), so the frame need not hold it all.
+  const viewNm = Math.max(200_000, span * 2.0 + 70_000);
   // The HUD takes the bottom third of the screen, so the camera looks a
   // little below the circuit (data +y is down the screen in the default
   // view) and the cells sit in the open space above it.
@@ -821,6 +948,8 @@ function frame(ts: number) {
     writeGlow(cam);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   }
+  placeTags();
+  closeSidePanel();
   updateHud();
   raf = requestAnimationFrame(frame);
 }
@@ -863,6 +992,7 @@ async function startLevel(index: number) {
   now = 0; charges = MAX_CHARGES; chargesUsed = 0; progress = 0; hushMode = false;
   if (levelIndex === 0) score = 0;
   resetCells();
+  clearTags();
   els.spark.setAttribute('aria-pressed', 'true'); els.hush.setAttribute('aria-pressed', 'false');
   els.row.style.display = 'none';
   els.body.innerHTML = '<div class="nge-sig-card"><p data-el="loading">Loading the cells…</p></div>';
@@ -883,6 +1013,8 @@ async function startLevel(index: number) {
   frameLevel();
   if (!active) return;
   setNgeProps([shipProp], GROUP);
+  applyHaze();
+  makeTags();
   // wait for most of the cells to draw, up to half a minute
   const loading = els.body.querySelector('[data-el="loading"]') as HTMLElement | null;
   for (let k = 0; k < 120 && active && phase === 'loading'; k++) {
@@ -949,6 +1081,8 @@ export function stopSignalController() {
   window.removeEventListener('click', swallow, true);
   window.removeEventListener('keydown', onKey, true);
   for (const c of cells.values()) if (c.dimmed) paint(c, false);
+  clearHaze();
+  clearTags();
   if (savedRenderScale !== null) { try { circuitLayer().layer.displayState.renderScaleTarget.value = savedRenderScale; } catch { /* as it is */ } savedRenderScale = null; }
   setNgeGlow(null, GROUP);
   setNgeProps([], GROUP);
