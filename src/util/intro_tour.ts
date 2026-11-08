@@ -237,7 +237,7 @@ function hideCell(id: string) {
 
 /* ── every synapse on the cell, twinkling in ── */
 let synRaf = 0;
-function runAllSynapses(t: Tour) {
+function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number}, scale = 1) {
   const nm = nmPerUnit();
   if (!nm || !t.synIn) return;
   const nIn = t.synIn.length / 3, nOut = t.synOut.length / 3, n = nIn + nOut;
@@ -255,7 +255,7 @@ function runAllSynapses(t: Tour) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
       if (j < nIn) glow.colors.set([1, 0.86, 0.45, on], j * 4);
       else glow.colors.set([0.37, 0.78, 1, on], j * 4);
-      glow.sizesNm[j] = (j < nIn ? 1700 : 2600) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
+      glow.sizesNm[j] = scale * (j < nIn ? 1700 : 2600) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
     }
     const cam = cameraAxes(nm);
     if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
@@ -567,6 +567,13 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro-key { order: -2; flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px;
   font: 500 12.5px 'Inter', sans-serif; color: #cfe6ff; }
 .nge-intro-key[hidden] { display: none; }
+.nge-card-key { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; margin: 10px 0 2px; padding-top: 10px;
+  border-top: 1px solid rgba(126, 224, 255, 0.25); font: 500 13.5px/1.3 'Inter', sans-serif; color: #e6f3ff; }
+.nge-card-key[hidden] { display: none; }
+.nge-card-key i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.nge-card-key small { color: rgba(200, 230, 255, 0.7); font-size: 12px; text-align: right; white-space: nowrap; }
+.nge-card-key b { font-weight: 600; }
+.nge-card-key .hd { grid-column: 1 / -1; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(126, 202, 255, 0.85); margin-top: 4px; }
 .nge-intro-key i { width: 18px; height: 5px; border-radius: 3px; background: var(--c); box-shadow: 0 0 6px var(--c); margin-left: 8px; }
 .nge-intro-key i:first-child { margin-left: 0; }
 .nge-intro-key i.dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -1083,6 +1090,7 @@ export async function startIntroTour() {
 /** Start playing Pyr: the Get Started tutorial. */
 function startGetStarted() {
   clearStarship();
+  stopAllSynapses();
   const t = useTutorialStore();
   t.activeTutorial = 1;
   t.setTutorialStep(0);
@@ -1103,22 +1111,24 @@ function transmissionCard() {
   card.setAttribute('role', 'dialog');
   card.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-scan"></span>
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr</div>
-    <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p><dl class="nge-callout-stats" hidden></dl>
+    <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p><dl class="nge-callout-stats" hidden></dl><div class="nge-card-key" hidden></div>
     <div class="nge-intro-row"><span></span><button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
   document.body.appendChild(card);
   requestAnimationFrame(() => card.classList.add('nge-intro--in'));
   const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
   // no X here: its button is the way back from MICrONS (Ames)
-  const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void}) => {
+  const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void; keep?: boolean}, keyHtml = '') => {
+    const key = card.querySelector('.nge-card-key') as HTMLElement;
+    key.hidden = !keyHtml; key.innerHTML = keyHtml;
     (card.querySelector('.nge-intro-title') as HTMLElement).textContent = title;
     const bodyEl = card.querySelector('.nge-intro-body') as HTMLElement;
-    bodyEl.style.minHeight = ''; bodyEl.textContent = body.replace(/\*\*/g, '');
+    bodyEl.style.minHeight = ''; bodyEl.textContent = plain(body);
     const dl = card.querySelector('.nge-callout-stats') as HTMLElement;
     dl.hidden = !stats.length;
-    dl.innerHTML = stats.map(([k, v]) => `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${v}</dd></div>`).join('');
+    dl.innerHTML = stats.map(([k, v]) => `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`).join('');
     const btn = card.querySelector('.nge-intro-go') as HTMLButtonElement;
     btn.hidden = !button;
-    if (button) { (btn.querySelector('.nge-go-label') as HTMLElement).textContent = button.label; btn.onclick = () => { close(); button.go(); }; }
+    if (button) { (btn.querySelector('.nge-go-label') as HTMLElement).textContent = button.label; btn.onclick = () => { if (!button.keep) close(); button.go(); }; }
     (card.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(card.offsetWidth, card.offsetHeight, 18);
     type(bodyEl, body);
   };
@@ -1172,7 +1182,44 @@ async function exploreBiggerNeuron() {
     'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
     [['Cell type', 'Martinotti cell'], ['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['Axon length', 'about 32 mm'],
      ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
-    {label: 'Start playing Pyr', go: () => startGetStarted()});
+    {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)});
+}
+
+/** Cell types (aibs_metamodel_celltypes_v661) in words and colors:
+ *  excitatory warm, inhibitory cool (Ames: partners colored by type). */
+const MC_TYPES: Record<string, [string, string]> = {
+  '23P': ['Layer 2/3 pyramidal', '#ff9f43'], '4P': ['Layer 4 pyramidal', '#ffd166'], '5P-IT': ['Layer 5 pyramidal', '#ff6b6b'],
+  '5P-ET': ['Layer 5 pyramidal, long range', '#ff4d8d'], '5P-NP': ['Layer 5 near-projecting', '#f78fb3'], '6P-IT': ['Layer 6 pyramidal', '#ffa07a'],
+  '6P-CT': ['Layer 6 corticothalamic', '#e17055'], 'BC': ['Basket cell', '#4dd0e1'], 'MC': ['Martinotti cell', '#9b8cff'],
+  'BPC': ['Bipolar cell', '#7bed9f'], 'NGC': ['Neurogliaform cell', '#a3e4ff'],
+};
+interface McData { synIn: number[]; synOut: number[]; synUnit: number; partners: {id: string; dir: 'in' | 'out'; synapses: number; type: string}[]; }
+/** All its synapses as dots, gold in and blue out, and its strongest
+ *  partners drawn in their type's color, with a key. */
+async function showConnections(card: ReturnType<typeof transmissionCard>, ml: any) {
+  let mc: McData | null = null;
+  try { const r = await fetch('intro/microns-mc.json'); if (r.ok) mc = await r.json(); } catch { /* no data */ }
+  if (!mc) { card.close(); startGetStarted(); return; }
+  runAllSynapses(mc, 3.5);
+  const g = ml.layer.displayState.segmentationGroupState.value;
+  const colors = ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors;
+  const hexNum = (h: string) => parseInt(h.slice(1), 16);
+  mc.partners.forEach((p, k) => setTimeout(() => {
+    try {
+      const seg = Uint64.parseString(p.id);
+      g.visibleSegments.add(seg);
+      setStatedColor(colors, seg, packed(hexNum((MC_TYPES[p.type] ?? [p.type, '#cccccc'])[1])));
+    } catch { /* skip this one */ }
+  }, 600 + k * 500));
+  const row = (p: McData['partners'][number]) => {
+    const [name, color] = MC_TYPES[p.type] ?? [p.type, '#cccccc'];
+    return `<i style="--c:${color}"></i><span><b>${name}</b></span><small>${p.synapses} synapses</small>`;
+  };
+  const outs = mc.partners.filter(p => p.dir === 'out'), ins = mc.partners.filter(p => p.dir === 'in');
+  const key = `<span class="hd">It sends to</span>${outs.map(row).join('')}<span class="hd">It hears from</span>${ins.map(row).join('')}`;
+  card.set('Its connections',
+    'Every dot is a synapse: {in:gold} ones bring signals in, {axon:blue} ones carry its signal out. It talks to thousands of cells. Here are the ones it shares the most synapses with, colored by cell type.',
+    [], {label: 'Start playing Pyr', go: () => startGetStarted()}, key);
 }
 
 /** The whole intro: the Starship flies in and lands, then the tour. */
