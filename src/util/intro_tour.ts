@@ -32,6 +32,7 @@ import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
 import {useTutorialStore} from '../store-pyr';
+import {useProofreadingBackendStore} from '../store';
 
 type V3 = [number, number, number];
 interface Tour {
@@ -1412,13 +1413,29 @@ export function startStarshipIntro() {
   if (IS_LIVE_SITE) return;
   // the cell turns slowly from the moment it shows, before anything flies
   setTimeout(startIdleTurn, 1200);
-  const wanted = () => simulating.value || /[?&]starship\b/.test(location.search);
+  // On the intro's own preview it plays by itself, once per browser, for the
+  // testers Ames invites (2026-11-08: "opened the link but still no rocket")
+  const PREVIEW_SEEN = 'pyr-intro-preview-seen';
+  let firstVisit = false;
+  if (location.hostname.startsWith('claude-starship-intro-dot-')) {
+    try { firstVisit = !localStorage.getItem(PREVIEW_SEEN); } catch { /* no storage */ }
+  }
+  const wanted = () => simulating.value || firstVisit || /[?&]starship\b/.test(location.search);
+  const signedIn = () => { try { return !!useProofreadingBackendStore().userId; } catch { return false; } };
   const go = async () => {
     if (!wanted() || playedThisLoad) return;
     playedThisLoad = true;
     await Promise.all([loadAssets(), loadTour()]).catch(() => {});
+    // a new tester is still signing in: wait for that however long it takes
+    // (up to fifteen minutes), then for the cell a little
+    for (let k = 0; k < 3600 && !signedIn() && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
+    if (!signedIn() && !cellDrawn()) { playedThisLoad = false; return; }
     for (let k = 0; k < 80 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
-    if (wanted()) playIntro();
+    if (wanted()) {
+      try { localStorage.setItem(PREVIEW_SEEN, '1'); } catch { /* no storage */ }
+      firstVisit = false;
+      playIntro();
+    }
   };
   setTimeout(go, 1500);
   watch(simulating, on => { if (on) { playedThisLoad = false; void go(); } });
