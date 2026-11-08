@@ -53,6 +53,8 @@ const BEATS: Beat[] = [
   {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: "Let's go",
     body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life, and they have one thing in common: they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
+    callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Cell type', 'Pyramidal'], ['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
+      ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Synapses', '3,386 in, 59 out']]},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
   {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Size', 'about 20 µm across']]}, part: 1, view: {at: 'soma', nm: 45_000},
     body: 'The cell body. It holds the nucleus and keeps the whole cell alive.'},
@@ -639,7 +641,7 @@ function toScreen(p: V3): [number, number] | null {
   return [r.left + (x + 1) / 2 * r.width, r.top + (1 - y) / 2 * r.height];
 }
 
-function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true) {
+function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true, showDot = true) {
   hideCallout();
   callout = document.createElement('div');
   callout.className = 'nge-callout';
@@ -696,6 +698,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
         line.style.display = '';
       } else line.style.display = 'none';
       dot.setAttribute('cx', String(s[0])); dot.setAttribute('cy', String(s[1]));
+      (dot as SVGElement).style.display = showDot ? '' : 'none';
     }
     calloutRaf = requestAnimationFrame(step);
   };
@@ -764,7 +767,7 @@ export async function startIntroTour() {
   stayEl.onclick = () => ask(false);
 
   const indexOf = (key: string) => BEATS.findIndex(b => b.key === key);
-  const DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
+  const NEURON = indexOf('neuron'), DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
   let i = -1;
   let shipAt: 'pad' | 'dend' | 'axon' | 'syn' = 'pad';
   const go = (n: number) => {
@@ -795,7 +798,9 @@ export async function startIntroTour() {
     // the partner cells are there from their beat on, and gone if we step back
     if (i < SYN) hideCell(t.synapsePartner);
     // what happens in this beat
-    const want = i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : 'syn';
+    // out to the edge of the cell for its stats card, home for the soma,
+    // out by the dendrite tips, down the axon, over the synapse
+    const want = i === NEURON ? 'dend' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : 'syn';
     if (want !== shipAt) {
       const aEnd = t.axonFlight[t.axonFlight.length - 1];
       if (shipAt === 'pad' && want === 'dend') starshipHop(t.dendFlight, 5);
@@ -809,7 +814,7 @@ export async function startIntroTour() {
     if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
     if (b.key === 'allsyn') runAllSynapses(t);
     if (b.key === 'spike') runSpark(t);
-    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse'); }, 900);
+    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
   nextEl.onclick = () => go(i + 1);
