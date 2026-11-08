@@ -14,7 +14,8 @@
  * the soma. The model (static/intro/starship.glb) is Ames's, its nose along
  * +z and its top along +y; any model made that way drops in.
  *
- * Nothing runs until a flight starts, and nothing is redrawn once it ends.
+ * Nothing runs until a flight starts. Landed, the ship idles its engines
+ * (and the view keeps drawing) until it is taken away.
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
@@ -277,8 +278,12 @@ export async function flyStarship(): Promise<void> {
         for (let k = 0; k < 3; k++) m[12 + k] = at3[k] / nm[k];
         prop.eye = [dot(right, cam.toEye), dot(up, cam.toEye), dot(fwd, cam.toEye)];
 
-        // engine: full while cruising, powering down through the landing
-        const power = t < CRUISE_S ? 1 : Math.max(0, 1 - (t - CRUISE_S) / (LANDING_S * 0.9));
+        // engine: full while cruising, easing down through the landing to an
+        // idle that never goes out (Ames: "keep the space ship jets on even
+        // when it stops"), with a little flicker
+        const IDLE = 0.4;
+        const down = t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
+        const power = t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
         const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * scale), mul(up, q[1] * scale)), mul(fwd, q[2] * scale)));
         const cores = nozzles.map(q => ({p: toWorld(q), power}));
         // Released all along the way the engines moved since the last frame,
@@ -297,8 +302,7 @@ export async function flyStarship(): Promise<void> {
         writeGlow(nm, cam.right, cores, f.shipLength);
 
         try { v.display.scheduleRedraw(); } catch { /* nothing to redraw */ }
-        // done once landed, settled, and the last of the trail has faded
-        if (t > total + 2.2 && particles.length === 0) { done(); return; }
+        // Landed, it keeps idling (and drawing) until it is taken away.
         raf = requestAnimationFrame(step);
       };
       raf = requestAnimationFrame(step);
