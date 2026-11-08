@@ -64,14 +64,17 @@ async function fetchDue() {
  * sessions see it immediately. Getting it into a live channel would need a
  * realtime publisher, which is more machinery than this warrants today.
  */
-async function postToChat(title) {
+async function postToChat(title, notificationId) {
   const row = {
     // From Nurro (Ames 2026-11-07): "EyeWire II" read as "EyeWire I." once
     // chat shortened it like a person's name.
     name: 'Nurro',
     rank: 'bot',
-    // No megaphone and no dash (Ames 2026-10-24): the title, then where to look.
-    text: `${title}. Check your notifications for details!`,
+    // The title, and the notification it is about: chat shows Nurro's line
+    // with an Open button that opens it (Ames 2026-11-08: "this is supposed
+    // to be a link to open the Today in Pyr report").
+    text: title,
+    notification_id: notificationId,
   };
   const res = await fetch(`${SUPABASE_URL}/rest/v1/chat_messages`, {
     method: 'POST',
@@ -161,7 +164,7 @@ async function postMonthlyChampions(n) {
         posted++;
         continue;
       }
-      if (!champions) await postToChat(n.title);
+      if (!champions) await postToChat(n.title, n.id);
       // Mark AFTER a successful post, so a failure retries next run rather
       // than silently swallowing the announcement.
       await markPosted(n.id);
