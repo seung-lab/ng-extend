@@ -1302,6 +1302,8 @@ async function exploreBiggerNeuron() {
   }
   startIdleTurn();
   for (let k = 0; k < 120 && !bigNeuronDrawn(ml); k++) await new Promise(r => setTimeout(r, 250));
+  // the Starship came along: it parks beside the big cell
+  void flyStarship(undefined, true, 9);
   showMartinotti(card, ml);
 }
 function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
@@ -1314,7 +1316,7 @@ function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
   if (nm) moveCamera([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
   card.set('A Martinotti cell',
     'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
-    [['Cell type', 'Martinotti cell'], ['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['Axon length', 'about 32 mm'],
+    [['Cell type', 'Martinotti cell'], ['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['All its branches', 'about 36 mm'], ['Axon alone', 'about 32 mm'],
      ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
     {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)});
 }

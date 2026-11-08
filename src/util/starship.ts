@@ -417,7 +417,7 @@ export function startIdleTurn() {
 
 /** Fly the Starship into the Sandbox cell and land it on the soma.
  *  onLanded runs once, as it touches down. */
-export async function flyStarship(onLanded?: () => void, skip = false): Promise<void> {
+export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0): Promise<void> {
   if (running) return;
   running = true;
   stopRequested = false;
@@ -430,7 +430,10 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
   try {
     await loadAssets();
     const f = flight!, mesh = model!;
-    if (!(await showSandboxCell(f))) throw new Error('the Sandbox did not open');
+    // cameo: no flight, no Sandbox; the ship just comes along and parks on
+    // screen, this many times its usual size (MICrONS, Ames: "why no ship?")
+    if (cameo) skip = true;
+    if (!cameo && !(await showSandboxCell(f))) throw new Error('the Sandbox did not open');
     prepare(f);
     const v = viewerNow();
     const nm = nmPerUnit();
@@ -438,11 +441,11 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
     // The model's own length along its nose, so it is shipLength nm long.
     let zLo = Infinity, zHi = -Infinity, xHi = 0;
     for (let i = 0; i < mesh.positions.length; i += 3) { zLo = Math.min(zLo, mesh.positions[i + 2]); zHi = Math.max(zHi, mesh.positions[i + 2]); xHi = Math.max(xHi, Math.abs(mesh.positions[i])); }
-    const scale = f.shipLength / ((zHi - zLo) || 1);
+    const scale = f.shipLength * (cameo || 1) / ((zHi - zLo) || 1);
     // The two engines sit at the back, a third of the way out to each side.
     const nozzles: V3[] = [[xHi * 0.3, 0, zLo], [-xHi * 0.3, 0, zLo]];
 
-    try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
+    if (!cameo) try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
     // the layer side panel closes for the flight (Ames)
     try { v.selectedLayer.visible = false; } catch { /* no panel */ }
     // A clean picture, like the dataset tours: no axis lines (Ames 2026-11-07,
@@ -452,15 +455,16 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
     const q0 = quat.clone(v.projectionOrientation.orientation);
     const p0 = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
     const s0 = v.projectionScale.value;
-    v.projectionOrientation.restoreState([0, 0, 0, 1]);
+    if (!cameo) v.projectionOrientation.restoreState([0, 0, 0, 1]);
     // The cell turns slowly in flight, a quarter of its usual speed, and
     // starts turned back by just that much: at touchdown it is square on, so
     // the pad (on the viewer's side of the soma) faces the camera (Ames).
     const FLIGHT_TURN = TURN_SECONDS * 4;
     // (plus a half turn: square on, the camera looks from the far side, Ames saw the ship land behind)
-    try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), Math.PI - 2 * Math.PI / FLIGHT_TURN * (CRUISE_S + LANDING_S)); } catch { /* no view */ }
+    if (!cameo) try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), Math.PI - 2 * Math.PI / FLIGHT_TURN * (CRUISE_S + LANDING_S)); } catch { /* no view */ }
     const qStart = quat.clone(v.projectionOrientation.orientation);
     v.projectionOrientation.restoreState(Array.from(q0));
+    if (cameo) { cameraHeld = true; onPad = false; dockMs = 900; dock = {fx: 0.62, fy: -0.3, start: performance.now(), from: null}; }
     let flightAngle = 0;
     // after landing the cell rocks gently either side of square on rather
     // than turning all the way round, so it stays broadside, the wide view
