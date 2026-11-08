@@ -24,6 +24,9 @@ import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mes
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
+import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
+/** The Sandbox pyramidal cell: the colors land on it alone. */
+const CELL_KEY = getObjectKey(Uint64.parseString('648518346355727683'));
 import {cameraAxes, cellDrawn, clearStarship, dockStarship, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
@@ -70,7 +73,7 @@ const BEATS: Beat[] = [
   {key: 'allsyn', callout: {anchor: 'soma', title: 'All its synapses', stats: [['Input', '3,386 synapses'], ['Output', '59 synapses']]}, view: {at: 'cell', nm: 230_000},
     body: 'Each dot is a synapse. This cell receives {in:3,386 connections} from upstream cells, and the axon contained in this volume has {out:59 outgoing connections}.'},
   {key: 'synapse2', header: 'Signals come in', part: 2, view: {at: 'synapse2', nm: 30_000},
-    body: 'Out here near the tip of a dendrite, another neuron\u2019s axon passes its signal in. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
+    body: 'Out here near the tip of a {dendrite:dendrite}, {lime:another neuron\u2019s axon} passes its signal in at a {in:synapse}, the glow. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
   {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['For scale', 'a blink takes 300 times longer'], ['Speed', 'up to 100 m/s'], ['For scale', 'about 220 mph']]}, part: 3, view: {at: 'cell', nm: 220_000},
     body: 'Neurons talk in quick electric pulses called action potentials. Each one starts near the soma and races down the axon to its synapses. Together, your neurons send hundreds of billions of them every minute.'},
   {key: 'connectome', header: 'Connectome', view: {at: 'cell', nm: 260_000},
@@ -153,7 +156,7 @@ function partsTint(shown: Set<number>, glowing?: number, reach = Infinity): NgeM
   }
   const m = mat4.create();
   for (let i = 0; i < 3; i++) { m[i * 5] = nm[i] / (g.dims[i] * g.cell); m[12 + i] = -g.origin[i] / (g.dims[i] * g.cell); }
-  return {data, dims: g.dims, gridFromGlobal: m, glow: glowing ? PART_RGB[glowing].map(c => c / 255) as V3 : undefined};
+  return {data, dims: g.dims, gridFromGlobal: m, only: CELL_KEY, glow: glowing ? PART_RGB[glowing].map(c => c / 255) as V3 : undefined};
 }
 
 /* ── camera ── */
@@ -594,6 +597,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-w-dendrite { color: #b9a4ff; font-weight: 600; }
 .nge-w-soma { color: #ffd24d; font-weight: 600; }
 .nge-w-in { color: #ffd24d; font-weight: 600; }
+.nge-w-lime { color: #b4ff5a; font-weight: 600; }
 .nge-w-out { color: #ff82c3; font-weight: 600; }
 @keyframes nge-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
 @keyframes nge-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 0.95; } 99% { opacity: 0.7; } }

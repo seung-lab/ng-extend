@@ -165,6 +165,8 @@ highp vec3 getVertexPosition() {
 // EyeWire II Highlight mode: meshes near a marked path take its colour
 // (mesh/nge_tint.ts).
 const ngeTintSamplerSymbol = Symbol('ngeMeshTint');
+/** The one object the tint is limited to, while a model draws (see NgeMeshTint.only). */
+let ngeTintOnly: string | null = null;
 const ngeTintMat = mat4.create();
 const ngeFineSamplerSymbol = Symbol('ngeMeshTintFine');
 const ngeFineMat = mat4.create();
@@ -441,6 +443,7 @@ export class MeshShaderManager {
 
   beginModel(
       gl: GL, shader: ShaderProgram, renderContext: PerspectiveViewRenderContext, modelMat: mat4) {
+    ngeTintOnly = null;
     const {projectionParameters} = renderContext;
     gl.uniformMatrix4fv(
         shader.uniform('uModelViewProjection'), false,
@@ -460,12 +463,14 @@ export class MeshShaderManager {
           shader.uniform('uNgeTintMatrix'), false,
           mat4.multiply(ngeTintMat, tint.gridFromGlobal, modelMat));
       gl.uniform1f(shader.uniform('uNgeTintOn'), 1);
+      ngeTintOnly = tint.only ?? null;
       const glow = tint.glow;
       gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
       const dim = tint.dim;
       gl.uniform4f(shader.uniform('uNgeTintDim'), dim?.[0] ?? 0, dim?.[1] ?? 0, dim?.[2] ?? 0, dim ? 1 : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
+      ngeTintOnly = null;
     }
     // The fine map of the cut preview, over the map above.
     const fineTint = renderContext.emitColor ? getNgeMeshTintFine() : null;
@@ -961,6 +966,7 @@ export class MeshLayer extends
           }
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
+            if (ngeTintOnly !== null) gl.uniform1f(shader.uniform('uNgeTintOn'), key === ngeTintOnly ? 1 : 0);
             const pulsing = ngePulseFor(gl, shader, key, hovered);
             meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
             // Back to no pulse for the next cell.
@@ -1220,6 +1226,7 @@ export class MultiscaleMeshLayer extends
           if (shells !== null && ngeCrumbleDrawPoints) return;
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
+            if (ngeTintOnly !== null) gl.uniform1f(shader.uniform('uNgeTintOn'), key === ngeTintOnly ? 1 : 0);
             const pulsing = ngePulseFor(gl, shader, key, hovered);
             meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
             // Back to no pulse for the next cell.

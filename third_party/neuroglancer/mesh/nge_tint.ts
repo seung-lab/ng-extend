@@ -25,6 +25,10 @@ export interface NgeMeshTint {
    *  in this colour (RGB 0..1, the player's Checked colour) are drawn as a
    *  dim grey instead, so what is left to check stands out. */
   dim?: [number, number, number];
+  /** Only this object (its getObjectKey) takes the tint; other cells in the
+   *  same layer pass through it untouched (the intro: a partner's axon
+   *  crossing a coloured dendrite stays its own colour, Ames 2026-11-08). */
+  only?: string;
 }
 
 let current: NgeMeshTint|null = null;
