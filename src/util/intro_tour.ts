@@ -24,6 +24,7 @@ import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mes
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
+import {makeLayer} from 'neuroglancer/layer';
 import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
 /** The Sandbox pyramidal cell: the colors land on it alone. */
 const CELL_KEY = getObjectKey(Uint64.parseString('648518346355727683'));
@@ -612,7 +613,8 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
 .nge-card-key small { color: rgba(200, 230, 255, 0.7); font-size: 12px; text-align: right; white-space: nowrap; }
 .nge-card-key b { font-weight: 600; }
-.nge-card-key .nge-pt { display: contents; cursor: pointer; font: inherit; color: inherit; }
+.nge-card-key .nge-pt { display: contents; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+.nge-card-key .nge-pt > span { text-align: left; }
 .nge-pt > * { cursor: pointer; }
 .nge-pt:hover b, .nge-pt:focus-visible b { color: #7ee0ff; text-decoration: underline; text-underline-offset: 3px; }
 .nge-pt--on b { color: #7ee0ff; }
@@ -1210,6 +1212,24 @@ function startGetStarted() {
   t.setTutorialStep(0);
 }
 
+/** The public MICrONS release (materialization 1300, flat segmentation with
+ *  meshes, no sign in), added once as its own layer. */
+const PUBLIC_MICRONS = 'precomputed://gs://iarpa_microns/minnie/minnie65/seg_m1300';
+async function publicMicronsLayer(): Promise<any> {
+  const v = viewerNow();
+  const find = () => (v.layerManager?.managedLayers ?? []).find((m: any) => !m?.archived && String(m?.layer?.dataSources?.[0]?.spec?.url ?? m?.initialSpecification?.source ?? '').includes('seg_m1300'));
+  let ml = find();
+  if (!ml) {
+    try { v.layerSpecification.add(makeLayer(v.layerSpecification, 'MICrONS public', {type: 'segmentation', source: PUBLIC_MICRONS, segments: [BIG_NEURON]})); } catch (e) { console.warn('[intro] public MICrONS layer', e); return null; }
+  }
+  for (let k = 0; k < 80; k++) {
+    ml = find();
+    if (ml?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments) { ml.setVisible?.(true); return ml; }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return null;
+}
+
 /** Explore a bigger neuron: over to MICrONS, a cubic millimetre of mouse
  *  visual cortex, to a neuron whose whole axon has been traced
  *  (864691135212863360: proofread, axon fully extended, the same since the
@@ -1275,7 +1295,7 @@ async function exploreBiggerNeuron() {
   // MICrONS is a much bigger piece of brain and this cell is enormous, so it
   // takes a while to arrive: say so while it does (Ames)
   const card = transmissionCard();
-  card.set('Warping to MICrONS', 'MICrONS may ask you to sign in again, it keeps its own sign in. Loading a much bigger piece of brain: a cubic millimeter of mouse visual cortex, and one of the most complete neurons in it. Big cells take a moment to arrive.');
+  card.set('Warping to MICrONS', 'Loading a much bigger piece of brain: a cubic millimeter of mouse visual cortex, and one of the most complete neurons in it. Big cells take a moment to arrive.');
   if (!(await switchToDataset(ds, {forJump: true}))) { card.close(); return; }
   try { v.selectedLayer.visible = false; } catch { /* no panel */ }
   let ml: any = null;
@@ -1285,10 +1305,16 @@ async function exploreBiggerNeuron() {
     if (!ml) await new Promise(r => setTimeout(r, 250));
   }
   if (!ml) { card.close(); return; }
-  ml.setVisible?.(true);
+  // the dataset's own cells step aside (they need a sign in); the tour draws
+  // from the public release instead
+  try { ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear(); ml.setVisible?.(false); } catch { /* leave it */ }
+  ml = await publicMicronsLayer();
+  if (!ml) { card.close(); return; }
   const g = ml.layer.displayState.segmentationGroupState.value;
   g.visibleSegments.clear();
   g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
+  // a pale blue-white, so the gold and pink synapses show on it (Ames)
+  try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, Uint64.parseString(BIG_NEURON), packed(0xcfdcff)); } catch { /* its own color */ }
   oneBoundingBox();
   setTimeout(oneBoundingBox, 3000);
   const nm = nmPerUnit();

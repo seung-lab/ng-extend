@@ -352,6 +352,9 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
   setNgeGlow(n ? portalGlow : null, 'starship-portal');
   placePortalArt(nm, right, c, R, open, shut, zip, thrust);
 }
+/** The ship's place on screen and size there, so the ring can let it show in
+ *  front as it comes through (the ring is drawn over the view). */
+let shipScreen: {x: number; y: number; r: number} | null = null;
 /** The ring itself (Ames's art, static/intro/portal.png), laid over the view
  *  where the portal is: it opens with a little overshoot, wobbles as the ship
  *  bursts through, and shrinks away as the portal zips shut. Its opening is
@@ -374,6 +377,12 @@ function placePortalArt(nm: V3, right: V3, c: V3, R: number, open: number, shut:
   const w = rPx * 2 / 0.5;
   portalArt.style.width = `${w.toFixed(1)}px`;
   portalArt.style.opacity = String(Math.min(1, open * 1.5) * (1 - shut));
+  // a window in the ring where the ship is, so it passes in front of it
+  if (shipScreen && open > 0.2) {
+    const mx = shipScreen.x - (a[0] - w / 2), my = shipScreen.y - (a[1] - w * 0.4570);
+    const m = `radial-gradient(circle at ${(mx / Math.max(k, 0.01)).toFixed(1)}px ${(my / Math.max(k, 0.01)).toFixed(1)}px, transparent ${(shipScreen.r / Math.max(k, 0.01)).toFixed(1)}px, #000 ${((shipScreen.r + 3) / Math.max(k, 0.01)).toFixed(1)}px)`;
+    portalArt.style.setProperty('mask-image', m); portalArt.style.setProperty('-webkit-mask-image', m);
+  } else { portalArt.style.removeProperty('mask-image'); portalArt.style.removeProperty('-webkit-mask-image'); }
   portalArt.style.transform = `translate(${(a[0] - w / 2).toFixed(1)}px, ${(a[1] - w * 0.4570 ).toFixed(1)}px) scale(${k.toFixed(3)}) rotate(${(shut * 140).toFixed(1)}deg)`;
 }
 function removePortalArt() { portalArt?.remove(); portalArt = null; }
@@ -494,7 +503,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     // the portal sits a little ahead of where the route begins, facing along it
     // the portal sits where the route begins
     const portalAt = at(f, 0);
-    const portalR = f.shipLength * 1.8;
+    const portalR = f.shipLength * 0.75;
     const EMERGE_S = 1.7;
     let portalShown = true;
     const zoomAt = (tt: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.pow(Math.max(0, Math.min(1, tt / total)), 1.5));
@@ -654,6 +663,10 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           : t < 0 ? 0 : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         // through the portal: the ship shows as it comes out of the light
         prop.alpha = t < 0 ? 0 : Math.min(1, t / 0.25);
+        if (tAll < ZIP_AT + 1.5) {
+          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.6 * grow)));
+          shipScreen = sp && se && t > 0 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
+        }
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
         else if (portalShown) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
         const power = !dock && t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
