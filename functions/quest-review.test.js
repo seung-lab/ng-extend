@@ -178,6 +178,10 @@ test('the row reminder: Ames once, when worked rows near what Pyr reads',async()
  const db1=fakeDb([]);
  assert.deepEqual(await review.rowsReminder({api:few.api,sb:db1.sb}),{last:2,sent:false});
  assert.equal(db1.notes.length,0);
+ // A test row far down the tab does not count (Ames 2026-11-08).
+ const far=[header,row()];for(let i=0;i<review.WARN_ROW+50;i++) far.push(blank());
+ const t=row();t[0]='TEST1 (delete me)';far.push(t);
+ assert.deepEqual(await review.rowsReminder({api:fakeSheet(far).api,sb:db1.sb}),{last:2,sent:false});
  const many=[header];for(let i=1;i<review.WARN_ROW+5;i++) many.push(i<review.WARN_ROW?row():blank());
  const sheet=fakeSheet(many);
  const {sb,notes}=fakeDb([]);
