@@ -291,6 +291,35 @@ export const DATASETS: DatasetEntry[] = [
     ],
   },
   {
+    // The Signal Controller mini game (src/util/signal_controller.ts): a
+    // small real circuit from the MICrONS public release, on the flat
+    // segmentation of materialization v1300 (gs://iarpa_microns/.../seg_m1300:
+    // published files with meshes, no sign in needed). Hidden: the game opens
+    // it, it is not a place to proofread. Id = layer name.
+    id: 'microns_signal',
+    origin: 'MICrONS Consortium',
+    hidden: true,
+    exploreOnly: true,
+    thumbnail: thumbMicrons,
+    label: 'MICrONS Signal Controller',
+    shortLabel: 'MICrONS',
+    abbrev: 'MICrONS',
+    species: 'mouse',
+    description: 'A small real circuit from the MICrONS public release (v1300), for the Signal Controller mini game',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/em',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: 'precomputed://gs://iarpa_microns/minnie/minnie65/seg_m1300',
+        name: 'microns_signal',
+      },
+    ],
+  },
+  {
     id: 'banc',
     origin: 'Princeton and Harvard',
     // Codex, BANC v888 (Ames 2026-10-06).

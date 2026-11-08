@@ -15,12 +15,18 @@ import { useTutorialStore } from '../store-pyr';
 import { IS_LIVE_SITE } from '../util/toolbar_staging';
 import { FLIGHT_SVG } from '../data/toolbar-icons';
 import { playIntro } from '../util/intro_tour';
+import { playSignalController } from '../util/signal_controller';
 
 /** The new player intro's Starship, launched by hand (Ames 2026-11-07: "give
  *  me a rocket ship icon"), for testing on a phone where there is no palette. */
 function launchShip() {
   playIntro();
 }
+/** The Signal Controller mini game (2026-11-08), same reason. */
+function launchSignal() {
+  playSignalController();
+}
+const SIGNAL_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
 import { steps as advancedSteps } from '../tutorial-2';
 import { steps as mergeSteps } from '../tutorial-3';
 import { steps as cutSteps } from '../tutorial-cut';
@@ -162,6 +168,7 @@ function resetTutorials() {
       Intro test<span v-if="simulating" class="nge-stt-dot" aria-label="pretend new player is on"></span>
     </button>
     <button class="nge-stt-tab nge-stt-rocket" @click="launchShip" title="Play the new player intro" aria-label="Fly the Starship" v-html="FLIGHT_SVG"></button>
+    <button class="nge-stt-tab nge-stt-rocket" @click="launchSignal" title="Play Signal Controller" aria-label="Play Signal Controller" v-html="SIGNAL_SVG"></button>
   </div>
   <aside v-else class="ng-extend nge-stt" aria-label="Intro test">
     <header class="nge-stt-head">
@@ -170,6 +177,7 @@ function resetTutorials() {
     </header>
     <p class="nge-stt-note">{{ IS_LIVE_SITE ? 'Admins only.' : 'Test site only.' }} The new player intro, as it is built. Pretend to be a brand new player and it plays when the page opens; the rocket flies it again any time. Nothing here is saved to your account, except Reset my tutorials.</p>
     <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchShip"><span class="nge-stt-rocket-ic" v-html="FLIGHT_SVG"></span> Play the intro</button>
+    <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchSignal"><span class="nge-stt-rocket-ic" v-html="SIGNAL_SVG"></span> Play Signal Controller</button>
     <label class="nge-stt-switch">
       <input id="nge-stt-sim" type="checkbox" :checked="simulating" @change="toggleSim" />
       <span>Pretend I am a new player</span>

@@ -160,5 +160,12 @@
     "crossSectionScale": 2.0,
     "projectionOrientation": [0.8547285795211792, 0.020196104422211647, -0.06204566732048988, -0.5149577260017395],
     "projectionScale": 30000
+  },
+  "microns_signal": {
+    "dimensions": [8e-9, 8e-9, 4e-8],
+    "position": [89375, 82125, 21875],
+    "crossSectionScale": 5.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 42000
   }
 }

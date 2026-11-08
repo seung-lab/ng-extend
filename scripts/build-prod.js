@@ -268,6 +268,18 @@ if (fs.existsSync(INTRO_DIR)) {
   }
   console.log(`Copied the Starship to ${dest}`);
 }
+// ── Copy the Signal Controller's circuit (src/util/signal_controller.ts): the
+// real MICrONS cells, synapses and axon paths it plays on, fetched when it
+// starts. Built by scripts/signal-circuit.py.
+const SIGNAL_DIR = path.join(STATIC_DIR, 'signal');
+if (fs.existsSync(SIGNAL_DIR)) {
+  const dest = path.join(DIST_MIN, 'signal');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(SIGNAL_DIR)) {
+    if (file.endsWith('.json')) fs.copyFileSync(path.join(SIGNAL_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the Signal Controller circuit to ${dest}`);
+}
 const SFX_DIR = path.join(STATIC_DIR, 'sfx');
 if (fs.existsSync(SFX_DIR)) {
   const dest = path.join(DIST_MIN, 'sfx');

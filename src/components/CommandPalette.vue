@@ -21,6 +21,7 @@ import { pumpkinSeason, togglePumpkin, smashPumpkins } from '../util/pumpkin';
 import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
 import { clearStarship } from '../util/starship';
 import { playIntro } from '../util/intro_tour';
+import { playSignalController } from '../util/signal_controller';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -268,6 +269,16 @@ function buildActions(): PaletteItem[] {
       icon: '🚀',
       aliases: ['starship', 'ship', 'clear ship', 'remove ship'],
       action: () => clearStarship(),
+    });
+    // The Signal Controller mini game (admins, test sites), 2026-11-08.
+    items.push({
+      id: 'signal-controller',
+      label: 'Signal Controller (admin test)',
+      description: 'Fly the Starship into a real MICrONS circuit and make its cells fire in time',
+      category: 'tool',
+      icon: '⚡',
+      aliases: ['signal', 'controller', 'circuit', 'spike', 'fire', 'game', 'microns game'],
+      action: () => playSignalController(),
     });
   }
   if (ARCADE_ENABLED) items.push({

@@ -441,6 +441,11 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
   // compass neuron and a DA1 olfactory projection neuron.
   hemibrain_v1_2:   { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
     defaultSegments: ['425790257', '1002507159', '1734350788'] },
+  // The Signal Controller mini game's circuit (src/util/signal_controller.ts):
+  // the MICrONS public release's flat segmentation at materialization v1300
+  // (published files with meshes, no sign in), so look only: no CAVE behind
+  // it. The game puts its own cells on; there are no starter cells.
+  microns_signal:   { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
   // The same configs under each dataset's switcher id: some callers look a
   // dataset up by id rather than by layer name (switchToDataset does), and
   // these ids are too short for the substring match (MIN_SUBSTRING_MATCH).
