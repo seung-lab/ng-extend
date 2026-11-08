@@ -980,15 +980,21 @@ function calloutFrame(w: number, h: number): string {
 function keepOnScreen(el: HTMLElement) {
   const fit = () => {
     if (!el.isConnected) { window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); clearInterval(timer); return; }
-    const vv = window.visualViewport;
-    const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const docH = document.documentElement.clientHeight || window.innerHeight;
+    const visibleBottom = Math.min(window.innerHeight, docH);
     // placed from the top by its own measured height, so it sits inside
     // the visible window whatever the browser makes of bottom (Firefox)
     const h = el.offsetHeight;
     if (!h) return;
     el.style.bottom = 'auto';
     el.style.top = `${Math.max(8, visibleBottom - 28 - h).toFixed(0)}px`;
+    if (!logged) {
+      logged = true;
+      const r = el.getBoundingClientRect();
+      console.warn(`[intro] panel at ${Math.round(r.top)}-${Math.round(r.bottom)} of ${window.innerHeight} (doc ${docH}, vv ${Math.round(window.visualViewport?.height ?? -1)}), ${navigator.userAgent.slice(-40)}`);
+    }
   };
+  let logged = false;
   window.addEventListener('resize', fit);
   window.visualViewport?.addEventListener('resize', fit);
   const timer = setInterval(fit, 1000);
@@ -1018,6 +1024,7 @@ function endTour() {
 }
 
 export async function startIntroTour() {
+  console.warn('[intro] tour starting', active ? '(already running)' : '');
   if (active) return;
   try { await loadTour(); } catch (e) { console.warn('[intro] no tour:', e); return; }
   const t = tour!;

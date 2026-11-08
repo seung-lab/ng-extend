@@ -20,6 +20,8 @@
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
 import {mat4, quat} from 'neuroglancer/util/geom';
+import {setNgeReveal} from 'neuroglancer/mesh/nge_tint';
+import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
 import {setStatedColor} from '../widgets/widget_utils';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
@@ -410,6 +412,31 @@ function toScreenNm(nm: V3, p: V3): [number, number] | null {
   return null;
 }
 
+/** Hide the cell until its mesh has arrived, then draw it out from the soma
+ *  with a bright growing edge. */
+async function growCell(f: Flight, nm: V3) {
+  const key = getObjectKey(Uint64.parseString(f.segment));
+  const center: [number, number, number] = [f.soma[0] / nm[0], f.soma[1] / nm[1], f.soma[2] / nm[2]];
+  const redraw = () => { try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ } };
+  setNgeReveal({only: key, center, radiusNm: 0, edgeNm: 6000});
+  redraw();
+  // wait for the mesh: until some of it is drawn, then a moment more for the rest
+  for (let k = 0; k < 120 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
+  await new Promise(r => setTimeout(r, 1500));
+  const FAR = 320_000, MS = 2600, t0 = performance.now();
+  await new Promise<void>(done => {
+    const step = (now: number) => {
+      const q = Math.min(1, (now - t0) / MS), e = 1 - Math.pow(1 - q, 2.2);
+      setNgeReveal({only: key, center, radiusNm: 3000 + FAR * e, edgeNm: 6000 + 10_000 * e});
+      redraw();
+      if (q < 1 && !stopRequested) requestAnimationFrame(step); else done();
+    };
+    requestAnimationFrame(step);
+  });
+  setNgeReveal(null);
+  redraw();
+}
+
 /** The slow turn on its own, before any flight (Ames: "it should just
  *  rotate"): one turn every two minutes, with the same rule for hands, a
  *  drag on a laptop stops it for good, a touch on a phone pauses it. */
@@ -456,6 +483,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     const v = viewerNow();
     const nm = nmPerUnit();
     if (!nm) throw new Error('no coordinates yet');
+    // the cell first, grown out from its soma, then the portal (Ames: "load
+    // cell first! and it is supposed to load from soma outward")
+    if (!cameo && !skip) await growCell(f, nm);
     // The model's own length along its nose, so it is shipLength nm long.
     let zLo = Infinity, zHi = -Infinity, xHi = 0;
     for (let i = 0; i < mesh.positions.length; i += 3) { zLo = Math.min(zLo, mesh.positions[i + 2]); zHi = Math.max(zHi, mesh.positions[i + 2]); xHi = Math.max(xHi, Math.abs(mesh.positions[i])); }
@@ -759,6 +789,7 @@ export function setHoverHighlight(on: boolean) {
 }
 
 export function clearStarship() {
+  setNgeReveal(null);
   removePortalArt();
   setHoverHighlight(true);
   stopRequested = true;
