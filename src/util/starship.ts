@@ -14,8 +14,9 @@
  * the soma. The model (static/intro/starship.glb) is Ames's, its nose along
  * +z and its top along +y; any model made that way drops in.
  *
- * Nothing runs until a flight starts. Landed, the ship idles its engines
- * (and the view keeps drawing) until it is taken away.
+ * Nothing runs until a flight starts. Landed, the engines go quiet (the
+ * ship keeps a gentle float and the view keeps drawing) until it is taken
+ * away.
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
@@ -318,10 +319,10 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         for (let k = 0; k < 3; k++) m[12 + k] = at3[k] / nm[k];
         prop.eye = [dot(right, cam.toEye), dot(up, cam.toEye), dot(fwd, cam.toEye)];
 
-        // engine: full while cruising, easing down through the landing to an
-        // idle that never goes out (Ames: "keep the space ship jets on even
-        // when it stops"), with a little flicker
-        const IDLE = 0.4;
+        // engine: full while cruising, easing down through the landing and
+        // off once it stops (Ames 2026-11-08: engines off when stopped); the
+        // trail left behind fades on its own
+        const IDLE = 0;
         const down = h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
           : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         const power = t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
@@ -343,7 +344,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         writeGlow(nm, cam.right, cores, f.shipLength);
 
         try { v.display.scheduleRedraw(); } catch { /* nothing to redraw */ }
-        // Landed, it keeps idling (and drawing) until it is taken away.
+        // Landed, it keeps floating (and drawing) until it is taken away.
         raf = requestAnimationFrame(step);
       };
       raf = requestAnimationFrame(step);

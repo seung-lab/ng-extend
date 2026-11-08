@@ -131,6 +131,25 @@ function moveCamera(center: V3, viewNm: number, ms = 1600) {
   };
   camRaf = requestAnimationFrame(step);
 }
+/** The 3D view's panel. */
+function threeDPanel(): any {
+  for (const pn of viewerNow()?.display?.panels ?? []) if (pn?.element?.classList?.contains('nge-3d-panel')) return pn;
+  return null;
+}
+/** Where to put the camera so the subject sits in the middle of the open
+ *  space above the transmission panel, not behind it (Ames: on a phone the
+ *  neuron should be centred in the top two thirds). */
+function framed(at: V3, viewNm: number): V3 {
+  const nm = nmPerUnit(), pe = threeDPanel()?.element as HTMLElement | undefined;
+  const cam = nm && cameraAxes(nm);
+  if (!cam || !pe || !panel) return at;
+  const r = pe.getBoundingClientRect();
+  if (r.height < 50) return at;
+  const bottom = Math.min(r.bottom, panel.offsetTop - 10);
+  const px = (r.top + bottom) / 2 - (r.top + r.bottom) / 2;   // negative: above the middle
+  const k = px * viewNm / r.height;
+  return [0, 1, 2].map(i => at[i] + cam.up[i] * k) as V3;
+}
 function cellCenter(t: Tour): V3 {
   const g = t.grid;
   return [0, 1, 2].map(i => g.origin[i] + g.dims[i] * g.cell * 0.45) as V3;
@@ -151,6 +170,13 @@ function showCell(id: string, color: number) {
     if (!vis.has(seg)) { vis.add(seg); added.push(id); }
     setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, seg, packed(color));
   } catch (e) { console.warn('[intro] could not show', id, e); }
+}
+
+function hideCell(id: string) {
+  const k = added.indexOf(id), ml = sandboxLayer();
+  if (k < 0 || !ml) return;
+  try { ml.layer.displayState.segmentationGroupState.value.visibleSegments.delete(Uint64.parseString(id)); added.splice(k, 1); }
+  catch (e) { console.warn('[intro] could not hide', id, e); }
 }
 
 /* ── the action potential spark ── */
@@ -236,11 +262,49 @@ body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-are
 .nge-intro-title { margin: 8px 0 4px; font: 700 22px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
 .nge-intro-body { margin: 0; min-height: 3em; color: #d6e8fb; }
 .nge-intro-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
-.nge-intro-skip { background: none; border: 0; color: #8fa9c8; font: 13px 'Inter', sans-serif; cursor: pointer; padding: 6px 2px; }
-.nge-intro-next { border: 1px solid rgba(126, 210, 255, 0.8); background: rgba(70, 160, 255, 0.18); color: #fff; border-radius: 999px;
-  padding: 9px 20px; font: 600 14px 'Inter', sans-serif; cursor: pointer; box-shadow: 0 0 16px rgba(80, 180, 255, 0.35); }
-.nge-intro-next:hover { background: rgba(70, 160, 255, 0.32); }
-.nge-intro-next:focus-visible, .nge-intro-skip:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; }
+.nge-intro-x { flex: none; width: 26px; height: 26px; margin: -4px -6px -4px 6px; display: grid; place-items: center; padding: 0;
+  border: 1px solid rgba(126, 210, 255, 0.35); border-radius: 50%; background: rgba(126, 210, 255, 0.06); color: #9fc6ea; cursor: pointer; }
+.nge-intro-x:hover { color: #fff; border-color: rgba(126, 210, 255, 0.8); background: rgba(126, 210, 255, 0.16); }
+.nge-intro-back { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 8px 4px; cursor: pointer;
+  color: #8fb6dc; font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
+.nge-intro-back:hover { color: #e6f3ff; }
+.nge-intro-back[hidden] { display: inline-flex; visibility: hidden; }
+/* Next: a glowing arrow plate, notched at the back and pointed at the
+   front, with a light that sweeps across it now and then. */
+.nge-intro-next { position: relative; border: 0; padding: 0; background: none; cursor: pointer; margin-left: auto;
+  filter: drop-shadow(0 0 10px rgba(95, 212, 255, 0.55)); transition: filter 0.2s, transform 0.15s; }
+.nge-intro-next:hover { filter: drop-shadow(0 0 16px rgba(120, 225, 255, 0.85)); }
+.nge-intro-next:active { transform: scale(0.97); }
+.nge-intro-plate { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 10px; padding: 11px 30px 11px 24px;
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 10px 50%);
+  background: linear-gradient(100deg, #3fb8f5 0%, #7fe3ff 55%, #c9f6ff 100%);
+  color: #04172b; font: 700 13px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
+.nge-intro-plate::after { content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.75), transparent); transform: skewX(-20deg);
+  animation: nge-intro-shine 3.2s ease-in-out infinite; }
+@keyframes nge-intro-shine { 0%, 55% { left: -60%; } 100% { left: 130%; } }
+.nge-intro-chev { display: inline-flex; }
+.nge-intro-chev svg { animation: nge-intro-nudge 1.4s ease-in-out infinite; }
+@keyframes nge-intro-nudge { 50% { transform: translateX(3px); } }
+.nge-intro-next:focus-visible, .nge-intro-back:focus-visible, .nge-intro-x:focus-visible, .nge-intro-confirm button:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; }
+/* Leaving asks first. */
+.nge-intro-confirm { display: none; }
+.nge-intro--asking .nge-intro-title, .nge-intro--asking .nge-intro-body, .nge-intro--asking > .nge-intro-row { display: none; }
+.nge-intro--asking .nge-intro-confirm { display: block; }
+.nge-intro-confirm p { margin: 10px 0 2px; font: 700 18px 'Orbitron', 'Inter', sans-serif; color: #fff; }
+.nge-intro-confirm small { display: block; color: #a9c3de; font-size: 13px; }
+.nge-intro-leave { background: none; border: 1px solid rgba(255, 140, 170, 0.6); color: #ffc2d2; border-radius: 6px; padding: 8px 16px; cursor: pointer;
+  font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+.nge-intro-leave:hover { background: rgba(255, 120, 160, 0.14); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .nge-intro-plate::after, .nge-intro-chev svg { animation: none; } }
+/* Phones: a smaller panel, so the cell gets the room (Ames 2026-11-08). */
+.nge-intro--phone { padding: 10px 14px 12px; font-size: 13.5px; line-height: 1.42; }
+.nge-intro--phone .nge-intro-head { font-size: 9.5px; letter-spacing: 0.18em; }
+.nge-intro--phone .nge-intro-title { margin: 5px 0 2px; font-size: 17px; }
+.nge-intro--phone .nge-intro-row { margin-top: 8px; }
+.nge-intro--phone .nge-intro-plate { padding: 9px 26px 9px 20px; font-size: 12px; }
+/* and the layer tabs row steps aside while it runs, so the top bar is one line */
+body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !important; }
 .nge-callout { position: fixed; left: 0; top: 0; z-index: 9400; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
 .nge-callout--in { opacity: 1; }
 .nge-callout svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
@@ -276,9 +340,8 @@ function type(el: HTMLElement, text: string) {
 
 /** The 3D panel and a point in nanometres, to a point on screen. */
 function toScreen(p: V3): [number, number] | null {
-  const v = viewerNow(), nm = nmPerUnit();
-  let panelEl: any = null;
-  for (const pn of v?.display?.panels ?? []) if (pn?.element?.classList?.contains('nge-3d-panel')) { panelEl = pn; break; }
+  const nm = nmPerUnit();
+  const panelEl = threeDPanel();
   const vp = panelEl?.projectionParameters?.value?.viewProjectionMat;
   if (!vp || !nm) return null;
   const g = [p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]];
@@ -337,6 +400,7 @@ function endTour() {
   if (onKey) { window.removeEventListener('keydown', onKey, true); onKey = null; }
   setNgeMeshTint(savedTint);
   setStarshipCameraHeld(false);
+  document.body.classList.remove('nge-intro-on');
   if (panel) { const p = panel; p.classList.remove('nge-intro--in'); setTimeout(() => p.remove(), 600); panel = null; }
   try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
@@ -353,37 +417,70 @@ export async function startIntroTour() {
   panel.className = 'ng-extend nge-intro' + (window.innerWidth < 700 ? ' nge-intro--phone' : '');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Welcome to Pyr');
-  panel.innerHTML = `<div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<span class="nge-intro-bars"><i></i><i></i><i></i><i></i></span></div>
+  const X_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  const CHEV = '<span class="nge-intro-chev"><svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1.5 1.5L6 6l-4.5 4.5M7.5 1.5L12 6l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+  const BACK = '<svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><path d="M6.5 1.5L2 6l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  panel.innerHTML = `<div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<span class="nge-intro-bars"><i></i><i></i><i></i><i></i></span><button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
-    <div class="nge-intro-row"><button class="nge-intro-skip" type="button">I've played before</button><button class="nge-intro-next" type="button"></button></div>`;
+    <div class="nge-intro-row"><button class="nge-intro-back" type="button">${BACK}Back</button><button class="nge-intro-next nge-intro-go" type="button"><span class="nge-intro-plate"><span class="nge-intro-label"></span>${CHEV}</span></button></div>
+    <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
+      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-intro-next nge-intro-stay" type="button"><span class="nge-intro-plate">Keep going${CHEV}</span></button></div></div>`;
   document.body.appendChild(panel);
+  document.body.classList.add('nge-intro-on');
   requestAnimationFrame(() => panel?.classList.add('nge-intro--in'));
   const titleEl = panel.querySelector('.nge-intro-title') as HTMLElement;
   const bodyEl = panel.querySelector('.nge-intro-body') as HTMLElement;
-  const nextEl = panel.querySelector('.nge-intro-next') as HTMLButtonElement;
-  (panel.querySelector('.nge-intro-skip') as HTMLButtonElement).onclick = endTour;
-  onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') endTour(); };
+  const nextEl = panel.querySelector('.nge-intro-go') as HTMLButtonElement;
+  const labelEl = panel.querySelector('.nge-intro-label') as HTMLElement;
+  const backEl = panel.querySelector('.nge-intro-back') as HTMLButtonElement;
+  const stayEl = panel.querySelector('.nge-intro-stay') as HTMLButtonElement;
+  const ask = (on: boolean) => {
+    panel?.classList.toggle('nge-intro--asking', on);
+    (on ? stayEl : nextEl).focus({preventScroll: true});
+  };
+  (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => ask(true);
+  (panel.querySelector('.nge-intro-leave') as HTMLButtonElement).onclick = endTour;
+  stayEl.onclick = () => ask(false);
+  onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    ask(!panel?.classList.contains('nge-intro--asking'));
+  };
   window.addEventListener('keydown', onKey, true);
 
-  const shown = new Set<number>();
+  const indexOf = (key: string) => BEATS.findIndex(b => b.key === key);
+  const AXON = indexOf('axon'), SYN = indexOf('synapse'), PRE = indexOf('presyn');
   let i = -1;
+  let shipOut = false;   // the ship is out along the axon
   const go = (n: number) => {
-    if (!active) return;
+    if (!active || n < 0) return;
     if (n >= BEATS.length) { endTour(); return; }
+    const from = i;
     i = n;
     const b = BEATS[i];
     titleEl.textContent = b.header ?? b.callout?.title ?? '';
+    labelEl.textContent = b.next ?? 'Next';
+    backEl.hidden = i === 0;
+    // Size the panel for the whole text first, so it holds still while the
+    // words type in and the camera can frame the cell above it.
+    bodyEl.style.minHeight = '';
+    bodyEl.textContent = b.body;
+    bodyEl.style.minHeight = `${bodyEl.offsetHeight}px`;
     type(bodyEl, b.body);
-    nextEl.textContent = b.next ?? 'Next';
     hideCallout(); stopSpark(); stopPulse();
-    // the parts: met ones stay softly coloured, this one glows
+    // the parts: ones met before this beat stay softly coloured, this one glows
+    const shown = new Set<number>();
+    for (let k = 0; k < i; k++) { const p = BEATS[k].part; if (p) shown.add(p); }
     setNgeMeshTint(partsTint(shown, b.part));
-    if (b.part) shown.add(b.part);
-    // the camera
+    // the camera, framing the subject in the open space above the panel
     const center = b.view.at === 'cell' ? cellCenter(t) : t.anchors[b.view.at];
-    moveCamera(center, b.view.nm, b.key === 'welcome' ? 10 : 1700);
+    moveCamera(framed(center, b.view.nm), b.view.nm, b.key === 'welcome' ? 10 : 1700);
+    // the partner cells are there from their beat on, and gone if we step back
+    if (i < SYN) hideCell(t.synapsePartner);
+    if (i < PRE) hideCell(t.presynPartner);
     // what happens in this beat
-    if (b.key === 'axon') starshipHop(t.axonFlight, 6);
+    if (b.key === 'axon' && from < AXON) { starshipHop(t.axonFlight, 6); shipOut = true; }
+    if (i < AXON && shipOut) { starshipHop([...t.axonFlight].reverse(), 4); shipOut = false; }
     if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
     if (b.key === 'presyn') showCell(t.presynPartner, PRESYN_COLOR);
     if (b.key === 'spike') runSpark(t);
@@ -391,6 +488,7 @@ export async function startIntroTour() {
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
   nextEl.onclick = () => go(i + 1);
+  backEl.onclick = () => go(i - 1);
   go(0);
 }
 
