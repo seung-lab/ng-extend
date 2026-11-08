@@ -611,6 +611,11 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
 .nge-card-key small { color: rgba(200, 230, 255, 0.7); font-size: 12px; text-align: right; white-space: nowrap; }
 .nge-card-key b { font-weight: 600; }
+.nge-card-key .nge-pt { display: contents; cursor: pointer; font: inherit; color: inherit; }
+.nge-pt > * { cursor: pointer; }
+.nge-pt:hover b, .nge-pt:focus-visible b { color: #7ee0ff; text-decoration: underline; text-underline-offset: 3px; }
+.nge-pt--on b { color: #7ee0ff; }
+.nge-pt--on i { outline: 2px solid #fff; outline-offset: 2px; }
 .nge-card-key .hd { grid-column: 1 / -1; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(126, 202, 255, 0.85); margin-top: 4px; }
 .nge-intro-key i { width: 18px; height: 5px; border-radius: 3px; background: var(--c); box-shadow: 0 0 6px var(--c); margin-left: 8px; }
 .nge-intro-key i:first-child { margin-left: 0; }
@@ -1216,12 +1221,20 @@ function transmissionCard() {
   card.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-scan"></span>
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr</div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p><dl class="nge-callout-stats" hidden></dl><div class="nge-card-key" hidden></div>
-    <div class="nge-intro-row"><span></span><button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
+    <div class="nge-intro-row"><button class="nge-back nge-card-back" type="button" aria-label="Back" hidden>${CHEV_L}</button><span style="flex:1"></span>
+      <button class="nge-go nge-go--alt nge-card-alt" type="button" hidden><span class="nge-go-label"></span></button>
+      <button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
   document.body.appendChild(card);
   requestAnimationFrame(() => card.classList.add('nge-intro--in'));
   const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
   // no X here: its button is the way back from MICrONS (Ames)
-  const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void; keep?: boolean}, keyHtml = '') => {
+  const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void; keep?: boolean}, keyHtml = '',
+    extra: {alt?: {label: string; go: () => void}; back?: () => void} = {}) => {
+    const backEl = card.querySelector('.nge-card-back') as HTMLButtonElement;
+    backEl.hidden = !extra.back; backEl.style.visibility = extra.back ? 'visible' : 'hidden'; backEl.onclick = () => extra.back?.();
+    const altEl = card.querySelector('.nge-card-alt') as HTMLButtonElement;
+    altEl.hidden = !extra.alt;
+    if (extra.alt) { (altEl.querySelector('.nge-go-label') as HTMLElement).textContent = extra.alt.label; altEl.onclick = () => extra.alt!.go(); }
     const key = card.querySelector('.nge-card-key') as HTMLElement;
     key.hidden = !keyHtml; key.innerHTML = keyHtml;
     (card.querySelector('.nge-intro-title') as HTMLElement).textContent = title;
@@ -1236,7 +1249,7 @@ function transmissionCard() {
     (card.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(card.offsetWidth, card.offsetHeight, 18);
     type(bodyEl, body);
   };
-  return {set, close};
+  return {set, close, el: card};
 }
 
 /** Is any of the big neuron's mesh on the graphics card yet? */
@@ -1284,6 +1297,16 @@ async function exploreBiggerNeuron() {
   }
   startIdleTurn();
   for (let k = 0; k < 120 && !bigNeuronDrawn(ml); k++) await new Promise(r => setTimeout(r, 250));
+  showMartinotti(card, ml);
+}
+function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
+  stopAllSynapses();
+  try {
+    const g = ml.layer.displayState.segmentationGroupState.value;
+    g.visibleSegments.clear(); g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
+  } catch { /* leave it */ }
+  const nm = nmPerUnit();
+  if (nm) moveCamera([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
   card.set('A Martinotti cell',
     'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
     [['Cell type', 'Martinotti cell'], ['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['Axon length', 'about 32 mm'],
@@ -1299,33 +1322,75 @@ const MC_TYPES: Record<string, [string, string]> = {
   '6P-CT': ['Layer 6 corticothalamic', '#e17055'], 'BC': ['Basket cell', '#4dd0e1'], 'MC': ['Martinotti cell', '#9b8cff'],
   'BPC': ['Bipolar cell', '#7bed9f'], 'NGC': ['Neurogliaform cell', '#a3e4ff'],
 };
-interface McData { synIn: number[]; synOut: number[]; synUnit: number; partners: {id: string; dir: 'in' | 'out'; synapses: number; type: string}[]; }
-/** All its synapses as dots, gold in and blue out, and its strongest
- *  partners drawn in their type's color, with a key. */
+interface McData { synIn: number[]; synOut: number[]; synUnit: number; partners: {id: string; dir: 'in' | 'out'; synapses: number; type: string; soma: number[]}[]; }
+/** All its synapses as small dots, gold in and pink out, and its strongest
+ *  partners in their type's color. Each partner can be visited from the
+ *  card (Ames: explore a few upstream and downstream partners before going
+ *  back to play), without the segment panel. */
 async function showConnections(card: ReturnType<typeof transmissionCard>, ml: any) {
   let mc: McData | null = null;
   try { const r = await fetch('intro/microns-mc.json'); if (r.ok) mc = await r.json(); } catch { /* no data */ }
   if (!mc) { card.close(); startGetStarted(); return; }
-  runAllSynapses(mc, 3.5);
+  const data = mc;
+  const v = viewerNow();
   const g = ml.layer.displayState.segmentationGroupState.value;
   const colors = ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors;
   const hexNum = (h: string) => parseInt(h.slice(1), 16);
-  mc.partners.forEach((p, k) => setTimeout(() => {
+  const typeOf = (p: McData['partners'][number]) => MC_TYPES[p.type] ?? [p.type, '#cccccc'];
+  const hidePanel = () => { try { v.selectedLayer.visible = false; } catch { /* no panel */ } };
+  const show = (ids: string[]) => {
     try {
-      const seg = Uint64.parseString(p.id);
-      g.visibleSegments.add(seg);
-      setStatedColor(colors, seg, packed(hexNum((MC_TYPES[p.type] ?? [p.type, '#cccccc'])[1])));
-    } catch { /* skip this one */ }
-  }, 600 + k * 500));
-  const row = (p: McData['partners'][number]) => {
-    const [name, color] = MC_TYPES[p.type] ?? [p.type, '#cccccc'];
-    return `<i style="--c:${color}"></i><span><b>${name}</b></span><small>${p.synapses} synapses</small>`;
+      g.visibleSegments.clear();
+      g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
+      for (const id of ids) {
+        const p = data.partners.find(q => q.id === id)!;
+        const seg = Uint64.parseString(id);
+        g.visibleSegments.add(seg);
+        setStatedColor(colors, seg, packed(hexNum(typeOf(p)[1])));
+      }
+    } catch { /* leave it */ }
+    hidePanel(); setTimeout(hidePanel, 400);
   };
-  const outs = mc.partners.filter(p => p.dir === 'out'), ins = mc.partners.filter(p => p.dir === 'in');
-  const key = `<span class="hd">It sends to</span>${outs.map(row).join('')}<span class="hd">It hears from</span>${ins.map(row).join('')}`;
-  card.set('Its connections',
-    'Every dot is a synapse: {in:gold} ones bring signals in, {out:pink} ones carry its signal out. It talks to thousands of cells. Here are the ones it shares the most synapses with, colored by cell type.',
-    [], {label: 'Start playing Pyr', go: () => startGetStarted()}, key);
+  const row = (p: McData['partners'][number], k: number, on = -1) => {
+    const [name, color] = typeOf(p);
+    return `<button class="nge-pt${k === on ? ' nge-pt--on' : ''}" type="button" data-k="${k}"><i style="--c:${color}"></i><span><b>${name}</b></span><small>${p.synapses} synapses</small></button>`;
+  };
+  const listHtml = (on = -1) => {
+    const idx = data.partners.map((p, k) => [p, k] as const);
+    return `<span class="hd">It sends to</span>${idx.filter(([p]) => p.dir === 'out').map(([p, k]) => row(p, k, on)).join('')}` +
+      `<span class="hd">It hears from</span>${idx.filter(([p]) => p.dir === 'in').map(([p, k]) => row(p, k, on)).join('')}`;
+  };
+  const wire = () => card.el.querySelectorAll<HTMLButtonElement>('.nge-pt').forEach(b => { b.onclick = () => visit(Number(b.dataset.k)); });
+  const play = {label: 'Start playing Pyr', go: () => startGetStarted()};
+  const overview = () => {
+    show(data.partners.map(p => p.id));
+    runAllSynapses(data, 1.3);
+    moveCamera([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
+    card.set('Its connections',
+      'Every dot is a synapse: {in:gold} ones bring signals in, {out:pink} ones carry its signal out. It talks to thousands of cells. These are the ones it shares the most synapses with, colored by cell type. Tap one to visit it.',
+      [], play, listHtml(), {back: () => showMartinotti(card, ml)});
+    wire();
+  };
+  const visit = (k: number) => {
+    const p = data.partners[k];
+    const [name] = typeOf(p);
+    show([p.id]);
+    stopAllSynapses();
+    // the camera takes in both cell bodies
+    const a = BIG_NEURON_NM, b = p.soma as unknown as V3;
+    const mid: V3 = [0, 1, 2].map(i => (a[i] + b[i]) / 2) as V3;
+    const span = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    moveCamera(mid, Math.max(500_000, span * 1.8 + 350_000), 2800);
+    const out = p.dir === 'out';
+    const body = out
+      ? `This ${name.toLowerCase()} cell is downstream: the Martinotti cell's axon makes ${p.synapses} synapses onto it, telling it to quiet down.`
+      : `This ${name.toLowerCase()} cell is upstream: its axon makes ${p.synapses} synapses onto the Martinotti cell${['BC', 'MC', 'BPC', 'NGC'].includes(p.type) ? ', quieting it in turn' : ', exciting it'}.`;
+    const next = (k + 1) % data.partners.length;
+    card.set(name, body, [], play, listHtml(k),
+      {back: overview, alt: {label: 'Next cell', go: () => visit(next)}});
+    wire();
+  };
+  overview();
 }
 
 /** The whole intro: the Starship flies in and lands, then the tour. */
