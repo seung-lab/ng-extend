@@ -257,6 +257,8 @@ let els: Record<string, HTMLElement> = {};
 let chipEls = new Map<string, HTMLElement>();
 let message = '';
 let messageUntil = 0;
+/** The layer's mesh resolution before the game coarsened it. */
+let savedRenderScale: number | null = null;
 
 function ensureStyle() {
   if (document.getElementById('nge-signal-style')) return;
@@ -307,26 +309,28 @@ function ensureStyle() {
 .nge-sig-kicker { margin: 10px 0 4px; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; color: #7ecaff; text-transform: uppercase; display: flex; gap: 8px; align-items: center; }
 .nge-sig-kicker i { width: 14px; height: 1px; background: #7ecaff; box-shadow: 0 0 6px #7ecaff; }
 .nge-sig-cells { display: flex; flex-wrap: wrap; gap: 6px; }
-.nge-sig-chip { --c: #5fb8ff; position: relative; display: grid; grid-template-columns: 6px auto; grid-template-rows: auto auto; column-gap: 8px; align-items: center;
-  padding: 5px 9px 5px 7px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--c) 10%, rgba(8, 14, 30, 0.6));
-  color: #e6f3ff; cursor: pointer; text-align: left; font: inherit; transition: transform 0.12s, box-shadow 0.2s; }
-.nge-sig-chip:hover { transform: translateY(-1px); box-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent); }
-.nge-sig-chip:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; }
-.nge-sig-chip .key { font: 700 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; color: var(--c); }
-.nge-sig-chip .key small { font: 600 9px 'Inter', sans-serif; letter-spacing: 0.04em; color: #c9dcf0; margin-left: 6px; }
-.nge-sig-chip .syn { font-size: 10.5px; color: #a9c3de; white-space: nowrap; }
-.nge-sig-chip .meter { grid-row: 1 / span 2; position: relative; width: 6px; height: 30px; border-radius: 3px; background: rgba(126, 224, 255, 0.12); overflow: hidden; }
-.nge-sig-chip .meter b { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--c); border-radius: 3px; transition: height 0.08s linear; }
-.nge-sig-chip .meter b.neg { bottom: auto; top: 0; background: #b68cff; }
-.nge-sig-chip .meter i { position: absolute; left: 0; right: 0; bottom: 100%; height: 1px; background: #fff; opacity: 0.8; }
-.nge-sig-chip--target { --c: #ffc24a; box-shadow: 0 0 16px rgba(255, 194, 74, 0.28); cursor: not-allowed; }
-.nge-sig-chip--target .key::after { content: 'TARGET'; margin-left: 8px; font: 700 8px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; color: #ffc24a; vertical-align: 1px; }
-.nge-sig-chip--hushed { opacity: 0.55; }
-.nge-sig-chip--asleep { opacity: 0.45; }
-.nge-sig-chip--asleep .key::after { content: 'ASLEEP'; margin-left: 8px; font: 700 8px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; color: #b68cff; }
-.nge-sig-chip--spike { animation: nge-sig-spike 0.45s ease-out; }
+/* Selectors carry .nge-sig so the app's own button styles do not win. */
+.nge-sig .nge-sig-chip { --c: #5fb8ff; position: relative; display: inline-flex; align-items: stretch; gap: 8px; min-width: 150px;
+  margin: 0; padding: 5px 10px 5px 7px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--c) 10%, rgba(8, 14, 30, 0.6));
+  color: #e6f3ff; cursor: pointer; text-align: left; font: 13px/1.3 'Inter', 'Roboto', sans-serif; line-height: 1.3; transition: transform 0.12s, box-shadow 0.2s; }
+.nge-sig .nge-sig-chip:hover { transform: translateY(-1px); box-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent); }
+.nge-sig .nge-sig-chip:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; }
+.nge-sig .nge-sig-chip .text { display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.nge-sig .nge-sig-chip .key { display: block; font: 700 12.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; color: var(--c); white-space: nowrap; }
+.nge-sig .nge-sig-chip .key small { font: 600 9.5px 'Inter', sans-serif; letter-spacing: 0.03em; color: #c9dcf0; margin-left: 7px; }
+.nge-sig .nge-sig-chip .syn { display: block; font-size: 10.5px; color: #a9c3de; white-space: nowrap; }
+.nge-sig .nge-sig-chip .meter { position: relative; flex: none; width: 6px; min-height: 30px; border-radius: 3px; background: rgba(126, 224, 255, 0.12); overflow: hidden; }
+.nge-sig .nge-sig-chip .meter b { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--c); border-radius: 3px; transition: height 0.08s linear; }
+.nge-sig .nge-sig-chip .meter b.neg { bottom: auto; top: 0; background: #b68cff; }
+.nge-sig .nge-sig-chip .meter i { position: absolute; left: 0; right: 0; top: 0; height: 1px; background: #fff; opacity: 0.6; }
+.nge-sig .nge-sig-chip--target { --c: #ffc24a; box-shadow: 0 0 16px rgba(255, 194, 74, 0.28); cursor: not-allowed; }
+.nge-sig .nge-sig-chip--target .key::after { content: 'TARGET'; margin-left: 8px; font: 700 8px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; color: #ffc24a; vertical-align: 1px; }
+.nge-sig .nge-sig-chip--hushed { opacity: 0.55; }
+.nge-sig .nge-sig-chip--asleep { opacity: 0.45; }
+.nge-sig .nge-sig-chip--asleep .key::after { content: 'ASLEEP'; margin-left: 8px; font: 700 8px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; color: #b68cff; }
+.nge-sig .nge-sig-chip--spike { animation: nge-sig-spike 0.45s ease-out; }
 @keyframes nge-sig-spike { 0% { background: #fff; box-shadow: 0 0 22px #fff; } 100% { } }
-.nge-sig-chip--shake { animation: nge-sig-shake 0.3s; }
+.nge-sig .nge-sig-chip--shake { animation: nge-sig-shake 0.3s; }
 @keyframes nge-sig-shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 /* controls */
 .nge-sig-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
@@ -361,7 +365,7 @@ function ensureStyle() {
 body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: crosshair !important; }
 body.nge-mobile .nge-sig { bottom: calc(70px + env(safe-area-inset-bottom)); }
 @media (max-width: 700px) { .nge-sig { padding: 10px 12px; font-size: 12.5px; } .nge-sig-obj strong { font-size: 14px; } .nge-sig-stats b { font-size: 15px; }
-  .nge-sig-chip .syn { display: none; } .nge-sig-chip { grid-template-rows: auto; } .nge-sig-chip .meter { height: 22px; } .nge-sig-note { display: none; } }
+  .nge-sig .nge-sig-chip .syn { display: none; } .nge-sig .nge-sig-chip { min-width: 0; } .nge-sig .nge-sig-chip .meter { min-height: 22px; } .nge-sig-note { display: none; } }
 @media (prefers-reduced-motion: reduce) { .nge-sig, .nge-sig-dot, .nge-sig-chip--spike { animation: none; } }
 `;
   document.head.appendChild(st);
@@ -432,7 +436,7 @@ function showChips() {
     el.className = 'nge-sig-chip' + (c.target ? ' nge-sig-chip--target' : '');
     el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
     el.title = `${c.spec.label} (${c.spec.fine}${c.spec.mtype ? ', ' + c.spec.mtype : ''}), ${c.spec.cableUm.toLocaleString()} µm of cable`;
-    el.innerHTML = `<span class="meter"><b></b><i></i></span><span class="key">${key}<small>${c.spec.label}${c.spec.mtype ? ' · ' + c.spec.mtype : ''}</small></span><span class="syn">${chipLine(c.spec)}</span>`;
+    el.innerHTML = `<span class="meter"><b></b><i></i></span><span class="text"><span class="key">${key}<small>${c.spec.label}${c.spec.mtype ? ' · ' + c.spec.mtype : ''}</small></span><span class="syn">${chipLine(c.spec)}</span></span>`;
     el.onclick = () => shoot(key);
     wrap.appendChild(el);
     chipEls.set(key, el);
@@ -504,25 +508,43 @@ async function openCircuit(): Promise<any> {
   }
   for (let tries = 0; tries < 60; tries++) {
     const ml = circuitLayer();
-    if (ml) return ml;
+    if (ml) {
+      // The dataset switch opens the Segments side panel; the game wants
+      // the whole screen for the cells.
+      try { const v = viewerNow(); if (v?.selectedLayer) v.selectedLayer.visible = false; } catch { /* panel stays */ }
+      return ml;
+    }
     await new Promise(r => setTimeout(r, 250));
   }
   throw new Error('no circuit layer');
 }
 
-/** Has enough of this cell's mesh arrived to be seen? (As the Starship and
- *  the pumpkins read it, from the mesh layer's own chunks.) */
+/** Has this cell's mesh started to draw? Read from the mesh layer's own
+ *  chunks. The release's meshes are multiscale: a manifest per cell in
+ *  source.chunks (keyed by the cell id), then fragments in
+ *  fragmentSource.chunks keyed "<cell>/<lod>:<index>"; it counts once the
+ *  manifest is here and a fragment is on the graphics card. The Sandbox's
+ *  single scale meshes (a manifest with fragmentIds) are read as the
+ *  Starship reads them. */
 function meshDrawn(ml: any, root: string): boolean {
   const seg = Uint64.parseString(root);
+  const key = `${seg.low},${seg.high}`;
+  const GPU_MEMORY = 0;  // neuroglancer's ChunkState.GPU_MEMORY
   for (const rl of ml.layer.renderLayers ?? []) {
     const src = rl?.source;
-    if (!src?.chunks?.get || !src.fragmentSource?.chunks?.get || typeof src.getFragmentKey !== 'function') continue;
-    const key = `${seg.low},${seg.high}`;
-    const ids: string[] = src.chunks.get(key)?.fragmentIds ?? [];
-    if (!ids.length) continue;
-    let drawn = 0;
-    for (const id of ids) if (src.fragmentSource.chunks.get(src.getFragmentKey(key, id).key)?.state === 0) drawn++;
-    if (drawn / ids.length >= 0.5) return true;
+    if (!src?.chunks?.get || !src.fragmentSource?.chunks) continue;
+    const manifest = src.chunks.get(key);
+    if (!manifest) continue;
+    const ids: string[] | undefined = manifest.fragmentIds;
+    if (ids && typeof src.getFragmentKey === 'function') {
+      if (!ids.length) continue;
+      let drawn = 0;
+      for (const id of ids) if (src.fragmentSource.chunks.get(src.getFragmentKey(key, id).key)?.state === GPU_MEMORY) drawn++;
+      if (drawn / ids.length >= 0.5) return true;
+      continue;
+    }
+    const prefix = `${key}/`;
+    for (const [k, c] of src.fragmentSource.chunks as Map<string, any>) if (k.startsWith(prefix) && c?.state === GPU_MEMORY) return true;
   }
   return false;
 }
@@ -536,12 +558,17 @@ function frameLevel() {
   for (const p of shown) span = Math.max(span, len(sub(p, center)));
   try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
   try { v.showAxisLines.value = false; } catch { /* keep them */ }
-  v.navigationState.position.value = Float32Array.from(center.map((c, i) => c / nm[i]));
+  const viewNm = Math.max(260_000, span * 2.6 + 120_000);
+  // The HUD takes the bottom third of the screen, so the camera looks a
+  // little below the circuit (data +y is down the screen in the default
+  // view) and the cells sit in the open space above it.
+  const look = add(center, [0, viewNm * 0.1, 0]);
+  v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
   const unit = Math.min(nm[0], nm[1], nm[2]);
-  v.projectionScale.value = Math.max(260_000, span * 2.6 + 120_000) / unit;
-  // The ship parks above the circuit (toward the pia, data -y), a little
-  // toward the camera, facing the cells.
-  shipAt = add(center, [0, -(span + 70_000), 0]);
+  v.projectionScale.value = viewNm / unit;
+  // The ship parks above the circuit (toward the pia, data -y), inside the
+  // frame, facing the cells.
+  shipAt = add(center, [0, -Math.min(span + 50_000, viewNm * 0.3), 0]);
   shipFwd = norm(sub(center, shipAt));
 }
 
@@ -776,7 +803,9 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
 /* ── the loop ── */
 function frame(ts: number) {
   if (!active) return;
-  const dt = Math.min(0.05, lastFrame ? (ts - lastFrame) / 1000 : 0);
+  // Game time follows the clock even on a slow machine (a frame may take a
+  // quarter second with these cells on screen); only a long stall is cut.
+  const dt = Math.min(0.25, lastFrame ? (ts - lastFrame) / 1000 : 0);
   lastFrame = ts;
   const nm = nmPerUnit();
   const cam = nm && cameraAxes(nm);
@@ -833,6 +862,9 @@ async function startLevel(index: number) {
   els.body.innerHTML = '<div class="nge-sig-card"><p data-el="loading">Loading the cells…</p></div>';
   updateHud();
   const ml = await openCircuit();
+  // These are whole cells with millimetres of axon each; a slightly coarser
+  // mesh level keeps the frame rate up for the beams and sparks.
+  try { const rs = ml.layer.displayState.renderScaleTarget; if (rs && savedRenderScale === null) { savedRenderScale = rs.value; rs.value = Math.max(rs.value, 2); } } catch { /* as it is */ }
   const g = ml.layer.displayState.segmentationGroupState.value;
   const want = new Set(level.cells.map(k => cells.get(k)!.spec.root));
   for (const s of [...g.visibleSegments]) if (!want.has(s.toString())) g.visibleSegments.delete(s);
@@ -910,6 +942,7 @@ export function stopSignalController() {
   window.removeEventListener('click', swallow, true);
   window.removeEventListener('keydown', onKey, true);
   for (const c of cells.values()) if (c.dimmed) paint(c, false);
+  if (savedRenderScale !== null) { try { circuitLayer().layer.displayState.renderScaleTarget.value = savedRenderScale; } catch { /* as it is */ } savedRenderScale = null; }
   setNgeGlow(null, GROUP);
   setNgeProps([], GROUP);
   document.body.classList.remove('nge-signal-on');
