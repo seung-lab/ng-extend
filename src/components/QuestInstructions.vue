@@ -179,13 +179,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
 .nge-qi-key-dot { width: 10px; height: 10px; border-radius: 50%; }
 .nge-qi-text { flex: 1; min-width: 0; }
 .nge-qi-title {
-  margin: 0 0 10px;
-  font-family: 'Orbitron', 'Inter', sans-serif; font-size: 18px; font-weight: 600; letter-spacing: 0.03em; line-height: 1.3;
+  margin: 0 0 14px;
+  font-family: 'Orbitron', 'Inter', sans-serif; font-size: 22px; font-weight: 600; letter-spacing: 0.03em; line-height: 1.3;
   color: #fff;
 }
-:deep(.nge-qi-lead) { margin: 0 0 14px; font-size: 14.5px; line-height: 1.6; color: rgb(var(--nd-ink) / 0.86); }
-:deep(.nge-qi-steps) { margin: 0; padding-left: 22px; font-size: 14.5px; line-height: 1.6; color: #d6e2f3; }
-:deep(.nge-qi-steps li) { margin: 8px 0; padding-left: 4px; }
+:deep(.nge-qi-lead) { margin: 0 0 16px; font-size: 17px; line-height: 1.6; color: rgb(var(--nd-ink) / 0.86); }
+:deep(.nge-qi-steps) { margin: 0; padding-left: 26px; font-size: 17px; line-height: 1.6; color: #d6e2f3; }
+:deep(.nge-qi-steps li) { margin: 11px 0; padding-left: 4px; }
 :deep(.nge-qi-steps li::marker) { color: #42d5ec; font-weight: 700; }
 :deep(.nge-qi-steps b) { color: #fff; font-weight: 600; }
 :deep(.nge-qi-steps a), :deep(.nge-qi-lead a) { color: #7ecaff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
