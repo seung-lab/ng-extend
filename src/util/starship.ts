@@ -267,48 +267,47 @@ function oneBoundingBox() {
   }
 }
 
-/** The portal: a ring of light that opens where the route begins, lets the
- *  ship through, then zips itself shut (Ames 2026-11-08). */
-const RING_N = 84;
-const portalGlow: NgeGlow = {positions: new Float32Array((RING_N + 1) * 3), colors: new Float32Array((RING_N + 1) * 4), sizesNm: new Float32Array(RING_N + 1), count: 0, nmRight: [1, 0, 0]};
-function drawPortal(nm: V3, right: V3, c: V3, ax: V3, R: number, tp: number) {
-  // tp: seconds since the portal began. Opens over 1.1 s, holds while the
-  // ship passes (the route starts at PORTAL_S), zips shut from 2.9 s.
-  const a1 = norm(Math.abs(ax[1]) < 0.9 ? cross(ax, [0, 1, 0]) : cross(ax, [1, 0, 0])), a2 = cross(ax, a1);
+/** The portal (Ames 2026-11-08): a whirlpool of light that always faces
+ *  the viewer. A bright rim and three arms spiralling in to a glowing
+ *  core, spinning; the ship comes out of the core toward the viewer, then
+ *  the rim zips itself shut round the circle and a last spark fades. */
+const RING_N = 64, ARMS = 3, ARM_N = 26;
+const PORTAL_MAX = RING_N + ARMS * ARM_N + 2;
+const portalGlow: NgeGlow = {positions: new Float32Array(PORTAL_MAX * 3), colors: new Float32Array(PORTAL_MAX * 4), sizesNm: new Float32Array(PORTAL_MAX), count: 0, nmRight: [1, 0, 0]};
+const ZIP_AT = 3.9;
+function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
   const open = smooth(tp / 1.1);
-  const zip = Math.max(0, (tp - 2.9) / 0.55);
+  const zip = Math.max(0, (tp - ZIP_AT) / 0.6);
+  const spin = tp * 2.4;
   let n = 0;
-  if (zip < 1.25) {
+  const put = (p: V3, rgba: number[], size: number) => {
+    portalGlow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], n * 3);
+    portalGlow.colors.set(rgba, n * 4);
+    portalGlow.sizesNm[n] = size; n++;
+  };
+  const onDisc = (r: number, th: number): V3 => add(c, add(mul(right, Math.cos(th) * r), mul(up, Math.sin(th) * r)));
+  if (zip < 1.2) {
+    const fade = 1 - Math.min(1, zip);
+    // the arms, curling in to the core
+    for (let a = 0; a < ARMS; a++) for (let k = 0; k < ARM_N; k++) {
+      const u = (k + 1) / ARM_N;
+      const th = a * 2 * Math.PI / ARMS + (1 - u) * 2.6 * Math.PI - spin;
+      put(onDisc(R * open * u * 0.92, th), [0.75 - 0.3 * u, 0.9 - 0.15 * u, 1, 0.75 * open * fade * (0.4 + 0.6 * u)], R * (0.08 + 0.16 * u));
+    }
+    // the rim; the zip runs round it, each light pulling in as it passes
     for (let j = 0; j < RING_N; j++) {
       const u = j / RING_N;
-      // the zip runs round the ring: each light pulls in to the centre as it passes
       const gone = zip > 0 ? smooth((zip * 1.15 - u) * 5) : 0;
       if (gone >= 1) continue;
-      const th = 2 * Math.PI * u + tp * 1.4;
-      const r = R * open * (1 - gone) * (1 + 0.03 * Math.sin(tp * 9 + j));
-      const p = add(c, add(mul(a1, Math.cos(th) * r), mul(a2, Math.sin(th) * r)));
-      const head = zip > 0 && Math.abs(zip * 1.15 - u) < 0.06 ? 1 : 0;   // the bright slider of the zip
-      const col = head ? [1, 1, 1, 1] : [0.55 + 0.3 * u, 0.85 - 0.25 * u, 1, 0.85 * open];
-      portalGlow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], n * 3);
-      portalGlow.colors.set(col, n * 4);
-      portalGlow.sizesNm[n] = R * (head ? 0.5 : 0.24);
-      n++;
+      const head = zip > 0 && Math.abs(zip * 1.15 - u) < 0.05;
+      const r = R * open * (1 - gone) * (1 + 0.035 * Math.sin(tp * 8 + j * 0.9));
+      put(onDisc(r, 2 * Math.PI * u + spin * 0.5), head ? [1, 1, 1, 1] : [0.55 + 0.35 * u, 0.85 - 0.25 * u, 1, 0.9 * open], R * (head ? 0.5 : 0.2));
     }
-    // the glow across the middle while it is open
-    const mid = open * (1 - Math.min(1, zip));
-    if (mid > 0.02) {
-      portalGlow.positions.set([c[0] / nm[0], c[1] / nm[1], c[2] / nm[2]], n * 3);
-      portalGlow.colors.set([0.5, 0.75, 1, 0.35 * mid], n * 4);
-      portalGlow.sizesNm[n] = R * 2.1 * mid;
-      n++;
-    }
+    // the core
+    if (fade > 0.02) put(c, [0.8, 0.92, 1, (0.55 + 0.15 * Math.sin(tp * 6)) * open * fade], R * 1.1 * open * fade);
   } else if (zip < 1.9) {
-    // and a last spark where it closed
-    const q = (zip - 1.25) / 0.65;
-    portalGlow.positions.set([c[0] / nm[0], c[1] / nm[1], c[2] / nm[2]], 0);
-    portalGlow.colors.set([0.9, 0.97, 1, 1 - q], 0);
-    portalGlow.sizesNm[0] = R * (0.7 + 0.8 * q);
-    n = 1;
+    const q = (zip - 1.2) / 0.7;
+    put(c, [0.9, 0.97, 1, 1 - q], R * (0.6 + 0.9 * q));
   }
   portalGlow.count = n;
   portalGlow.nmRight = [right[0] / nm[0], right[1] / nm[1], right[2] / nm[2]];
@@ -411,10 +410,24 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     const total = CRUISE_S + LANDING_S;
     let keepScale = 0;
     // the portal sits a little ahead of where the route begins, facing along it
-    const portalAx = norm(sub(at(f, 3000), at(f, 0)));
-    const portalAt = add(at(f, 0), mul(portalAx, f.shipLength * 0.6));
-    const portalR = f.shipLength * 1.1;
+    // the portal sits where the route begins
+    const portalAt = at(f, 0);
+    const portalR = f.shipLength * 1.25;
+    const EMERGE_S = 1.7;
     let portalShown = true;
+    const zoomAt = (tt: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.pow(Math.max(0, Math.min(1, tt / total)), 1.5));
+    const aspect0 = Math.max(0.5, Math.min(1, window.innerWidth / Math.max(1, window.innerHeight)));
+    const ROOM_DT = 0.1, room: number[] = [];
+    for (let tt = 0; tt <= total + ROOM_DT; tt += ROOM_DT) {
+      const ctr = mix(somaAt, padAt, zoomAt(tt) * 0.5);
+      const off = Math.hypot(...sub(at(f, distanceAt(f, Math.min(tt, total))), ctr));
+      room.push((2.1 * off / aspect0 + 9000) / unit);
+    }
+    for (let k = room.length - 2; k >= 0; k--) room[k] = Math.max(room[k], room[k + 1]);   // the widest still to come
+    const roomAt = (tt: number) => {
+      const x = Math.max(0, tt) / ROOM_DT, k = Math.min(room.length - 2, Math.floor(x)), q = Math.min(1, x - k);
+      return room[k] + (room[k + 1] - room[k]) * q;
+    };
     const start = performance.now();
     let last = start, emitDebt = 0;
     let prevCores: V3[] | null = null;
@@ -450,16 +463,12 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         // the zoom stays wide while the ship weaves and closes in late)
         // late, and easing to a stop as it lands, so the welcome view picks up
         // from rest
-        const zoom = 0.5 - 0.5 * Math.cos(Math.PI * Math.pow(Math.max(0, Math.min(1, t / total)), 1.5));
+        const zoom = zoomAt(t);
         if (handsOff() && !cameraHeld) {
-          let sc = WIDE * Math.pow(CLOSE / WIDE, zoom);
-          // never so close that the ship leaves the frame (Ames)
-          if (shipNow) {
-            const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
-            const off = sub(shipNow, ctr), aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
-            const need = (2.5 * Math.max(Math.abs(dot(off, cam.up)), Math.abs(dot(off, cam.right)) / aspect) + 9000) / unit;
-            sc = Math.max(sc, need);
-          }
+          // never so close that the ship leaves the frame (Ames), and never
+          // backing out again: in flight it only closes in
+          let sc = Math.max(WIDE * Math.pow(CLOSE / WIDE, zoom), t < total ? roomAt(t) : 0);
+          if (keepScale && t > 0 && t < total) sc = Math.min(sc, keepScale);
           // eased, and never faster than about 35% a second, so no jumps
           if (!keepScale || tAll < BLEND_S) keepScale = sc;
           else { const step = Math.max(-0.35 * dt, Math.min(0.35 * dt, Math.log(sc / keepScale) * Math.min(1, dt * 2))); keepScale *= Math.exp(step); }
@@ -479,6 +488,15 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         let pos = pathAt(s);
         const ahead = pathAt(s + 1500), behind = pathAt(s - 1500);
         let fwd = Math.hypot(...sub(ahead, behind)) > 50 ? norm(sub(ahead, behind)) : (prevFwd ?? norm(sub(ahead, behind)));
+        // out of the portal: through its core toward the viewer, growing as
+        // it comes, then turning onto its way through the cell (Ames)
+        let grow = 1;
+        if (!h && !dock && t < EMERGE_S) {
+          const q = Math.max(0, t) / EMERGE_S, e = smooth(q);
+          pos = add(pos, mul(cam.toEye, f.shipLength * 1.6 * Math.sin(Math.PI * q)));
+          fwd = norm(mix(cam.toEye, fwd, e));
+          grow = 0.25 + 0.75 * smooth(Math.max(0, t) / 0.8);
+        }
         moving = h ? hq < 1 : dock ? now - dock.start < 1600 : t < total;
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
@@ -486,7 +504,10 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
           const target = add(ctr, add(mul(cam.right, dock.fx * Wd / 2), mul(cam.up, dock.fy * H / 2)));
           const dq = smooth((now - dock.start) / 1600);
           pos = dock.from ? mix(dock.from, target, dq) : target;
-          fwd = norm(mix(dock.from && dq < 1 ? norm(sub(target, dock.from)) : fwd, mul(cam.right, -1), dq));
+          // nose on the way it is going, turning to face the cell only as it
+          // arrives (Ames: it flew backwards)
+          const goDir = dock.from && dq < 1 && Math.hypot(...sub(target, pos)) > 200 ? norm(sub(target, pos)) : fwd;
+          fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.7) / 0.3)));
         }
         if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * 9)));
         prevFwd = fwd;
@@ -523,7 +544,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
 
         const m = prop.modelMat;
         const axes = [right, up, fwd];
-        for (let col = 0; col < 3; col++) for (let k = 0; k < 3; k++) m[col * 4 + k] = axes[col][k] * scale / nm[k];
+        for (let col = 0; col < 3; col++) for (let k = 0; k < 3; k++) m[col * 4 + k] = axes[col][k] * scale * grow / nm[k];
         for (let k = 0; k < 3; k++) m[12 + k] = at3[k] / nm[k];
         prop.eye = [dot(right, cam.toEye), dot(up, cam.toEye), dot(fwd, cam.toEye)];
 
@@ -534,11 +555,12 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         const down = h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
           : t < 0 ? 0 : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         // through the portal: the ship shows as it comes out of the light
-        prop.alpha = t < 0 ? 0 : Math.min(1, t / 0.5);
-        if (tAll < PORTAL_S + 4.6) drawPortal(nm, cam.right, portalAt, portalAx, portalR, tAll);
+        prop.alpha = t < 0 ? 0 : Math.min(1, t / 0.25);
+        if (tAll < ZIP_AT + 1.4) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
         else if (portalShown) { portalShown = false; setNgeGlow(null, 'starship-portal'); }
         const power = t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
-        const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * scale), mul(up, q[1] * scale)), mul(fwd, q[2] * scale)));
+        const sg = scale * grow;
+        const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * sg), mul(up, q[1] * sg)), mul(fwd, q[2] * sg)));
         const cores = nozzles.map(q => ({p: toWorld(q), power}));
         // Released all along the way the engines moved since the last frame,
         // not in a clump at each frame, so the trail is one smooth streak.

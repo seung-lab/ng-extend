@@ -58,7 +58,7 @@ interface Beat {
 }
 const BEATS: Beat[] = [
   {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: "Let's go",
-    body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life, and they have one thing in common: they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
+    body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life. They're helping to advance neuroscience, and they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
     callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Cell type', 'Pyramidal'], ['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
       ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Input', '3,386 synapses'], ['Output', '59 synapses']]},
@@ -586,9 +586,19 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
   text-transform: uppercase; color: rgba(126, 224, 255, 0.85); }
 .nge-intro-choose[hidden] { display: none; }
 .nge-intro--choice .nge-go { height: 44px; }
-.nge-intro .nge-go { height: 44px !important; min-height: 44px; }
-.nge-intro .nge-go-label { min-height: 100%; box-sizing: border-box; padding: 0 26px; font-size: 13px; }
-.nge-intro--phone .nge-go { height: 40px !important; min-height: 40px; }
+.nge-intro .nge-go { height: 36px !important; min-height: 36px; overflow: visible; }
+.nge-intro .nge-go-label { min-height: 100%; box-sizing: border-box; padding: 0 24px; font-size: 12.5px; }
+.nge-intro--phone .nge-go { height: 34px !important; min-height: 34px; }
+/* a little circuit off the key: a trace out to the left with its pad, and
+   one dropping from the right with its own (Ames: "the lil circuit dots") */
+.nge-intro .nge-go::before { content: ''; position: absolute; right: calc(100% + 3px); top: 50%; width: 26px; height: 7px; margin-top: -3.5px; pointer-events: none;
+  background: radial-gradient(circle at 3.5px 50%, rgba(8, 24, 52, 0.9) 0 1.6px, #9fe9ff 1.7px 2.6px, transparent 3px),
+    linear-gradient(rgba(126, 224, 255, 0.55), rgba(126, 224, 255, 0.55)) 6px 50% / 20px 1px no-repeat; }
+.nge-intro .nge-go::after { content: ''; position: absolute; right: 18px; top: calc(100% + 2px); width: 7px; height: 13px; pointer-events: none;
+  background: linear-gradient(rgba(126, 224, 255, 0.55), rgba(126, 224, 255, 0.55)) 50% 0 / 1px 8px no-repeat,
+    radial-gradient(circle at 50% 9.5px, rgba(8, 24, 52, 0.9) 0 1.6px, #9fe9ff 1.7px 2.6px, transparent 3px); }
+.nge-intro .nge-go--alt::before, .nge-intro .nge-go--alt::after { display: none; }
+.nge-intro .nge-go:hover::before, .nge-intro .nge-go:hover::after { filter: drop-shadow(0 0 4px #7ee0ff); }
 .nge-intro-body b { color: #fff; font-weight: 700; }
 /* back: just a chevron */
 .nge-back { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important;
@@ -621,7 +631,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !important; }
 .nge-callout { position: fixed; left: 0; top: 0; z-index: 9400; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
 .nge-callout--in { opacity: 1; }
-.nge-callout svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
+.nge-callout > svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
 .nge-callout-box { position: fixed; min-width: 200px; max-width: min(380px, 44vw); padding: 15px 20px 17px 20px; isolation: isolate; transform-origin: 50% 100%;
   filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25));
   animation: nge-proj-in 520ms cubic-bezier(.2,1,.3,1) both; }
@@ -636,7 +646,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
   100% { transform: scale(0, 0.025); filter: brightness(3) drop-shadow(0 0 18px #9fe9ff); opacity: 0.4; } }
 .nge-callout--zip svg > * { transition: opacity 0.3s 0.12s; opacity: 0; }
 .nge-callout-stats .num { font: 600 24px/1.05 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.02em; color: #fff; font-variant-numeric: tabular-nums; }
-.nge-callout-stats .unit { display: block; margin-top: 3px; font: 500 12px/1.2 'Inter', sans-serif; letter-spacing: 0.04em; color: rgba(200, 230, 255, 0.75); }
+.nge-callout-stats .unit { display: inline; margin-left: 6px; font: 500 12px/1.2 'Inter', sans-serif; letter-spacing: 0.04em; color: rgba(200, 230, 255, 0.75); }
 .nge-w-axon { color: #5ec8ff; font-weight: 600; }
 .nge-w-dendrite { color: #b9a4ff; font-weight: 600; }
 .nge-w-soma { color: #ffd24d; font-weight: 600; }
@@ -746,7 +756,7 @@ function frameSvg(w: number, h: number, cut = 14): string {
   return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${traces.join('')}${sp}${pads.join('')}</svg>`;
 }
 
-const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /** The colour of each anchor's part, for its icon, beam and dot. */
 const ANCHOR_HEX: Record<string, string> = {soma: '#ffd24d', dendrite: '#a88cff', axon: '#5ec8ff', synapse: '#c9f6ff', presyn: '#ff8f8f'};

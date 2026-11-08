@@ -250,10 +250,11 @@ function buildActions(): PaletteItem[] {
   // The new player intro's Starship, admins only while it is built (Ames 2026-11-07).
   let adminUi = false;
   try { adminUi = useProofreadingBackendStore().showAdminUi; } catch { /* no store yet */ }
-  if (adminUi) {
+  // everyone on a test site (Ames 2026-11-08: invited players are looking)
+  if (adminUi || !location.hostname.startsWith('eyewire-ii-community-dot-')) {
     items.push({
       id: 'starship-flight',
-      label: 'New player intro (admin test)',
+      label: 'New player intro (test)',
       description: 'The new player intro ship flies through the Sandbox cell and lands on its soma',
       category: 'tool',
       icon: '🚀',
