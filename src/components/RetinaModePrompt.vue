@@ -70,11 +70,16 @@ function askAgain() {
   info.value = false;
   show.value = true;
 }
-onMounted(() => document.addEventListener('nge:retina-ask', askAgain));
+onMounted(() => {
+  document.addEventListener('nge:retina-ask', askAgain);
+  // ?retinaQuestion in the address opens it, answered or not (for checking it).
+  if (/[?&#]retinaQuestion/.test(location.search + location.hash)) setTimeout(askAgain, 4000);
+});
 onUnmounted(() => document.removeEventListener('nge:retina-ask', askAgain));
 </script>
 
 <template>
+  <Teleport to="body">
   <transition name="nge-rmp">
     <div v-if="show" class="ng-extend nge-rmp" role="dialog" aria-labelledby="nge-rmp-title">
       <div class="nge-rmp-head">
@@ -111,11 +116,12 @@ onUnmounted(() => document.removeEventListener('nge:retina-ask', askAgain));
       </div>
     </div>
   </transition>
+  </Teleport>
 </template>
 
 <style scoped>
 .nge-rmp {
-  position: fixed; top: 58px; right: 16px; z-index: 9400;
+  position: fixed; top: 58px; right: 16px; z-index: 10025;
   width: 380px; max-width: calc(100vw - 32px);
   display: flex; flex-direction: column; gap: 10px;
   padding: 16px 18px; border-radius: 10px;
