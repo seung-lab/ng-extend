@@ -950,7 +950,7 @@ function statsHtml(stats: [string, string][]): string {
       grouped = true;
       return `${head}<div><dt>${STAT_ICON[k] ?? ''}${k.replace(/s$/, '')}</dt><dd><span class="num">${m[1]}</span></dd></div>`;
     }
-    return `<div${k === 'Location' || k === 'For scale' || k === 'Contains' ? ' class="wide"' : ''}><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
+    return `<div${k === 'Location' || k === 'For scale' || k === 'Contains' || k === 'Note' || k === 'With the Martinotti cell' ? ' class="wide"' : ''}><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
   }).join('');
 }
 /** A number set large with its unit beneath ("3,386 synapses"). */
@@ -1230,6 +1230,8 @@ export function jumpToIntroChoice() {
 function startGetStarted() {
   clearStarship();
   stopAllSynapses();
+  stopZap();
+  hideCallout();
   const t = useTutorialStore();
   t.activeTutorial = 1;
   t.setTutorialStep(0);
@@ -1379,7 +1381,60 @@ const MC_TYPES: Record<string, [string, string]> = {
   '6P-CT': ['Layer 6 corticothalamic', '#e17055'], 'BC': ['Basket cell', '#4dd0e1'], 'MC': ['Martinotti cell', '#9b8cff'],
   'BPC': ['Bipolar cell', '#7bed9f'], 'NGC': ['Neurogliaform cell', '#a3e4ff'],
 };
-interface McData { synIn: number[]; synOut: number[]; synUnit: number; partners: {id: string; dir: 'in' | 'out'; synapses: number; type: string; soma: number[]}[]; }
+interface McData { synIn: number[]; synOut: number[]; synUnit: number;
+  partners: {id: string; dir: 'in' | 'out'; synapses: number; type: string; cls?: string; soma: number[];
+    shared?: number[][]; inputs?: number | null; outputs?: number | null; cable_mm?: number | null}[]; }
+
+/* ── the sweep: the ship flies over the synapses two cells share and lights
+   each with a quick laser zap as it passes (Ames) ── */
+let zapRaf = 0;
+function runZap(points: V3[], rgb: [number, number, number]) {
+  stopZap();
+  const nm = nmPerUnit();
+  if (!nm || !points.length) return;
+  const n = points.length, LASER = 10, MAX = n * 2 + LASER;
+  const glow: NgeGlow = {positions: new Float32Array(MAX * 3), colors: new Float32Array(MAX * 4), sizesNm: new Float32Array(MAX), count: 0, nmRight: [1 / nm[0], 0, 0]};
+  const lit = new Float64Array(n);   // when each was zapped (0: not yet)
+  const step = (now: number) => {
+    const ship = starshipAt();
+    let c = 0;
+    const put = (p: number[], rgba: number[], size: number) => {
+      if (c >= MAX) return;
+      glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], c * 3);
+      glow.colors.set(rgba, c * 4); glow.sizesNm[c] = size; c++;
+    };
+    let fresh = -1, freshAge = Infinity;
+    for (let j = 0; j < n; j++) {
+      const p = points[j];
+      if (!lit[j] && ship && Math.hypot(ship[0] - p[0], ship[1] - p[1], ship[2] - p[2]) < 60_000) lit[j] = now;
+      if (lit[j]) {
+        const age = (now - lit[j]) / 1000;
+        if (age < freshAge) { freshAge = age; fresh = j; }
+        const flash = Math.max(0, 1 - age / 0.6);
+        put(p, [rgb[0], rgb[1], rgb[2], 1], 7000 + 14000 * flash);
+        if (flash > 0) put(p, [1, 1, 1, flash], 5000 + 8000 * flash);
+      } else {
+        put(p, [rgb[0], rgb[1], rgb[2], 0.28], 5000);
+      }
+    }
+    // the laser: a bright line from the ship down to the one it just zapped
+    if (ship && fresh >= 0 && freshAge < 0.35) {
+      const p = points[fresh], f = 1 - freshAge / 0.35;
+      for (let k = 0; k <= LASER; k++) {
+        const u = k / LASER;
+        put([0, 1, 2].map(i => ship[i] + (p[i] - ship[i]) * u), [0.7, 0.95, 1, f], 2600);
+      }
+    }
+    glow.count = c;
+    const cam = cameraAxes(nm);
+    if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
+    setNgeGlow(glow, 'intro-zap');
+    try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    zapRaf = requestAnimationFrame(step);
+  };
+  zapRaf = requestAnimationFrame(step);
+}
+function stopZap() { cancelAnimationFrame(zapRaf); setNgeGlow(null, 'intro-zap'); }
 /** All its synapses as small dots, gold in and pink out, and its strongest
  *  partners in their type's color. Each partner can be visited from the
  *  card (Ames: explore a few upstream and downstream partners before going
@@ -1420,6 +1475,9 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   const wire = () => card.el.querySelectorAll<HTMLButtonElement>('.nge-pt').forEach(b => { b.onclick = () => visit(Number(b.dataset.k)); });
   const play = {label: 'Start playing Pyr', go: () => startGetStarted()};
   const overview = () => {
+    stopZap(); hideCallout();
+    // the ship goes back to its spot
+    dockStarship(0.62, -0.3, 3000);
     show(data.partners.map(p => p.id));
     // thousands of dots overlap here: small and faint, or they bloom (Ames)
     runAllSynapses(data, 2.2, 0.55);
@@ -1439,6 +1497,41 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     const mid: V3 = [0, 1, 2].map(i => (a[i] + b[i]) / 2) as V3;
     const span = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
     moveCamera(mid, Math.max(500_000, span * 1.8 + 350_000), 2800);
+    // the ship sweeps the synapses they share, nearest first, zapping each,
+    // and ends over the partner's cell body, where it shows its stats
+    const toEye = (() => { const n2 = nmPerUnit(); const c2 = n2 && cameraAxes(n2); return c2 ? c2.toEye : [0, 0, 1]; })();
+    const lift = (q: number[]) => q.map((x, i) => x + toEye[i] * 25_000);
+    const pts = (p.shared ?? []).map(q => q as V3);
+    const order: V3[] = [];
+    {
+      const left = [...pts];
+      let at = starshipAt() ?? (BIG_NEURON_NM as V3);
+      while (left.length) {
+        let bi = 0, bd = Infinity;
+        left.forEach((q, j) => { const d = Math.hypot(q[0] - at[0], q[1] - at[1], q[2] - at[2]); if (d < bd) { bd = d; bi = j; } });
+        at = left.splice(bi, 1)[0]; order.push(at);
+      }
+    }
+    const route = [...order.map(lift), lift(p.soma.map((x, i) => x + toEye[i] * 20_000))];
+    const sweepS = Math.min(16, Math.max(5, 2 + order.length * 0.3));
+    starshipHop(route, sweepS);
+    runZap(pts, p.dir === 'out' ? [1, 0.36, 0.86] : [1, 0.86, 0.45]);
+    hideCallout();
+    const shownAt = performance.now();
+    const statsWhenStill = () => {
+      if (data.partners[k] !== p || !card.el.isConnected) return;
+      if (starshipMoving() || performance.now() - shownAt < 600) { requestAnimationFrame(statsWhenStill); return; }
+      const inhib = ['BC', 'MC', 'BPC', 'NGC'].includes(p.type);
+      const stats: [string, string][] = [['Class', inhib ? 'Inhibitory' : 'Excitatory']];
+      if (p.cable_mm) stats.push(['Branch length', `about ${p.cable_mm < 10 ? p.cable_mm.toFixed(1) : Math.round(p.cable_mm)} mm`]);
+      if (p.inputs != null) stats.push(['Input', `${p.inputs.toLocaleString('en-US')} synapses`]);
+      if (p.outputs != null) stats.push(['Output', `${p.outputs.toLocaleString('en-US')} synapses`]);
+      stats.push(['With the Martinotti cell', `${p.synapses}`]);
+      // pyramidal axons here are mostly not traced to the end yet
+      if (!inhib) stats.push(['Note', 'its axon is still being traced']);
+      showCallout(p.soma as unknown as V3, name, stats, typeOf(p)[1], false, false);
+    };
+    requestAnimationFrame(statsWhenStill);
     const out = p.dir === 'out';
     const body = out
       ? `This ${name.toLowerCase()} cell is downstream: the Martinotti cell's axon makes ${p.synapses} synapses onto it, telling it to quiet down.`
