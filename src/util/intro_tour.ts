@@ -849,7 +849,7 @@ export async function startIntroTour() {
     if (b.key === 'spike') {
       moveCamera(framed(t.anchors.axon, 26_000), 26_000, 1400);
       setTimeout(() => { if (active && i === n) moveCamera(framed(center, b.view.nm), b.view.nm, 9000); }, 1600);
-    } else moveCamera(framed(center, b.view.nm), b.view.nm, b.key === 'welcome' ? 10 : 1700);
+    } else moveCamera(framed(center, b.view.nm), b.view.nm, b.key === 'welcome' ? 2200 : 1700);   // a glide, never a snap
     // the partner cells are there from their beat on, and gone if we step back
     if (i < SYN) hideCell(t.synapsePartner);
     if (i < SYN2) hideCell(t.syn2Partner);

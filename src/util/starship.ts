@@ -305,7 +305,8 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     // starts turned back by just that much: at touchdown it is square on, so
     // the pad (on the viewer's side of the soma) faces the camera (Ames).
     const FLIGHT_TURN = TURN_SECONDS * 4;
-    try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), -2 * Math.PI / FLIGHT_TURN * (CRUISE_S + LANDING_S)); } catch { /* no view */ }
+    // (plus a half turn: square on, the camera looks from the far side, Ames saw the ship land behind)
+    try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), Math.PI - 2 * Math.PI / FLIGHT_TURN * (CRUISE_S + LANDING_S)); } catch { /* no view */ }
     // no colour flashing as the turning cell slides under the mouse
     setHoverHighlight(false);
     // projectionScale is in the coordinate space's smallest unit
@@ -358,7 +359,9 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
             const need = (2.5 * Math.max(Math.abs(dot(off, cam.up)), Math.abs(dot(off, cam.right)) / aspect) + 9000) / unit;
             sc = Math.max(sc, need);
           }
-          keepScale = keepScale ? keepScale + (sc - keepScale) * Math.min(1, dt * 2.5) : sc;
+          // eased, and never faster than about 35% a second, so no jumps
+          if (!keepScale) keepScale = sc;
+          else { const step = Math.max(-0.35 * dt, Math.min(0.35 * dt, Math.log(sc / keepScale) * Math.min(1, dt * 2))); keepScale *= Math.exp(step); }
           v.projectionScale.value = keepScale;
           // and over toward the landing pad, so the ship lands mid screen
           const c = mix(somaAt, padAt, zoom * 0.85);
