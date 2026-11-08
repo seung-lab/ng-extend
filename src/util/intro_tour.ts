@@ -169,9 +169,13 @@ function moveCamera(center: V3, viewNm: number, ms = 1600) {
   const unit = Math.min(nm[0], nm[1], nm[2]);
   const p0 = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
   const s0 = v.projectionScale.value, s1 = viewNm / unit;
+  // never quick (Ames): the farther it travels, in distance or in zoom, the
+  // longer it takes
+  const span = Math.hypot(center[0] - p0[0], center[1] - p0[1], center[2] - p0[2]) / Math.max(viewNm, s0 * unit);
+  ms = Math.min(6500, Math.max(ms, 2600 + 900 * Math.abs(Math.log(s1 / s0)) + 1400 * Math.min(2, span)));
   const t0 = performance.now();
   const step = (now: number) => {
-    const q = Math.min(1, (now - t0) / ms), e = q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2;
+    const q = Math.min(1, (now - t0) / ms), e = 0.5 - 0.5 * Math.cos(Math.PI * q);
     v.navigationState.position.value = Float32Array.from([0, 1, 2].map(i => (p0[i] + (center[i] - p0[i]) * e) / nm[i]));
     v.projectionScale.value = s0 * Math.pow(s1 / s0, e);
     if (q < 1) camRaf = requestAnimationFrame(step);
@@ -964,7 +968,8 @@ export async function startIntroTour() {
     const shipMoves = want !== shipAt;
     const zipping = !!callout;
     const shipDelay = zipping ? 440 : 0;
-    const camDelay = shipDelay + (shipMoves ? 650 : 0);
+    void from;
+    const camDelay = shipDelay + (shipMoves ? 1300 : 0);
     titleEl.textContent = b.header ?? b.callout?.title ?? '';
     if (from >= 0 && panel) { panel.classList.remove('nge-intro--beat'); void panel.offsetWidth; panel.classList.add('nge-intro--beat'); }
     const last = b.key === 'connectome';
@@ -1004,8 +1009,8 @@ export async function startIntroTour() {
       if (!active || i !== n) return;
       let center: V3 = b.view.at === 'cell' ? cellCenter(t) : b.view.at === 'dendView' ? [307744, 175892, 86080] : t.anchors[b.view.at];
       // welcome: the soma and the ship on it, both well inside the frame
-      const ship = starshipAt();
-      if (b.key === 'welcome' && ship) center = [0, 1, 2].map(k => (center[k] + ship[k]) / 2) as V3;
+      const pad = t.dendFlight[0];
+      if (b.key === 'welcome') center = [0, 1, 2].map(k => (center[k] + pad[k]) / 2) as V3;
       // the action potential: from up close where we are, a slow pull back
       // to the whole cell (no dash across to the axon first)
       const ms = b.key === 'spike' ? 5200 : b.key === 'welcome' ? 2200 : 1800;

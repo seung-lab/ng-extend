@@ -259,7 +259,12 @@ function oneBoundingBox() {
   for (const ml of viewerNow()?.layerManager?.managedLayers ?? []) {
     for (const ds of ml?.layer?.dataSources ?? []) {
       const ls = ds?.loadState;
-      if (!ls?.subsources || String(ds?.spec?.url ?? '').includes('/segmentation/')) continue;
+      if (String(ds?.spec?.url ?? '').includes('/segmentation/')) {
+        // and the one left is drawn a deep, dark blue (Ames)
+        try { ml.layer.annotationDisplayState.color.value = Float32Array.from([0.05, 0.1, 0.34]); } catch { /* keep its color */ }
+        continue;
+      }
+      if (!ls?.subsources) continue;
       let changed = false;
       for (const sub of ls.subsources) if (sub?.subsourceEntry?.id === 'bounds' && sub.enabled) { sub.enabled = false; changed = true; }
       if (changed) try { ls.enabledSubsourcesChanged.dispatch(); } catch { /* leave it */ }
