@@ -24,7 +24,7 @@ import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mes
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
-import {cameraAxes, cellDrawn, clearStarship, dockStarship, flyStarship, loadAssets, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, undockStarship} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, dockStarship, flyStarship, loadAssets, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 
@@ -54,19 +54,19 @@ const BEATS: Beat[] = [
     body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life, and they have one thing in common: they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
     callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Cell type', 'Pyramidal'], ['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
-      ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Synapses', '3,386 in, 59 out']]},
+      ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Synapses', '3,386 input, 59 output']]},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
   {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Size', 'about 20 µm across']]}, part: 1, view: {at: 'soma', nm: 45_000},
     body: 'The cell body. It holds the nucleus and keeps the whole cell alive.'},
-  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Inputs', 'thousands of synapses']]}, part: 2, view: {at: 'cell', nm: 200_000},
+  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Inputs', '3,297 synapses']]}, part: 2, view: {at: 'cell', nm: 200_000},
     body: 'The branches that listen. They gather signals from other neurons.'},
   {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
     body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
   {key: 'synapse', callout: {anchor: 'synapse', title: 'Synapse', stats: [['Gap', 'about 20 nm'], ['On this cell', '3,386 synapses']]}, part: 3, view: {at: 'synapse', nm: 24_000},
     body: 'Where two neurons meet and pass a signal across. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our axon passes its signal to the next neuron.'},
-  {key: 'allsyn', callout: {anchor: 'soma', title: 'All its synapses', stats: [['Received', '3,386'], ['Sent', '59 in this piece']]}, view: {at: 'cell', nm: 230_000},
+  {key: 'allsyn', callout: {anchor: 'soma', title: 'All its synapses', stats: [['Input', '3,386 synapses'], ['Output', '59 synapses']]}, view: {at: 'cell', nm: 230_000},
     body: "Every glowing dot is a synapse. Gold ones bring signals in from other neurons, onto the dendrites and soma. Pink ones carry this cell's own signal out, from its axon."},
-  {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['Speed', 'up to 100 m/s']]}, part: 3, view: {at: 'cell', nm: 220_000},
+  {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['For scale', 'a blink takes 300 times longer'], ['Speed', 'up to 100 m/s'], ['For scale', 'about 220 mph']]}, part: 3, view: {at: 'cell', nm: 220_000},
     body: 'Neurons talk in quick electric pulses called action potentials. Each one starts near the soma and races down the axon to its synapses. Together, your neurons send hundreds of billions of them every minute.'},
   {key: 'connectome', header: "That's where you come in", view: {at: 'cell', nm: 260_000}, next: 'Start mapping',
     body: 'Mapping every neuron and every synapse gives scientists a wiring diagram of the brain, called a connectome. That takes a lot of eyes, and yours are welcome here!'},
@@ -105,8 +105,7 @@ function partsTint(shown: Set<number>, glowing?: number): NgeMeshTint | null {
   for (let i = 0; i < n; i++) {
     const p = labels[i];
     if (!p || (!shown.has(p) && p !== glowing)) continue;
-    const rgb = PART_RGB[p], soft = p !== glowing, a = soft ? 0.9 : 1;
-    const k = soft ? 0.82 : 1;
+    const rgb = PART_RGB[p], a = 1, k = 1;
     data[i * 4] = Math.round(rgb[0] * k * a); data[i * 4 + 1] = Math.round(rgb[1] * k * a); data[i * 4 + 2] = Math.round(rgb[2] * k * a);
     data[i * 4 + 3] = Math.round(a * 255);
   }
@@ -197,19 +196,18 @@ function runAllSynapses(t: Tour) {
   if (!nm || !t.synIn) return;
   const nIn = t.synIn.length / 3, nOut = t.synOut.length / 3, n = nIn + nOut;
   const glow: NgeGlow = {positions: new Float32Array(n * 3), colors: new Float32Array(n * 4), sizesNm: new Float32Array(n), count: n, nmRight: [1 / nm[0], 0, 0]};
-  const delay = new Float32Array(n), phase = new Float32Array(n);
+  const delay = new Float32Array(n);
   for (let j = 0; j < n; j++) {
     const src = j < nIn ? t.synIn : t.synOut, k = (j < nIn ? j : j - nIn) * 3;
     for (let a = 0; a < 3; a++) glow.positions[j * 3 + a] = src[k + a] * t.synUnit / nm[a];
-    delay[j] = Math.random() * 1.6; phase[j] = Math.random() * 6.28;
+    delay[j] = Math.random() * 1.6;
   }
   const t0 = performance.now();
   const step = (now: number) => {
     const sec = (now - t0) / 1000;
     for (let j = 0; j < n; j++) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
-      const tw = 0.75 + 0.25 * Math.sin(sec * 2.2 + phase[j]);
-      if (j < nIn) glow.colors.set([1, 0.86, 0.45, on * tw * 0.85], j * 4);
+      if (j < nIn) glow.colors.set([1, 0.86, 0.45, on], j * 4);
       else glow.colors.set([1, 0.4, 0.85, on], j * 4);
       glow.sizesNm[j] = (j < nIn ? 1700 : 2600) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
     }
@@ -582,35 +580,18 @@ function frameSvg(w: number, h: number, cut = 14): string {
     return d + (closed ? ' Z' : '');
   };
   const rim = soft([[c, 0], [w, 0], [w, h - c], [w - c, h], [0, h], [0, c]], true);
-  const traces: string[] = [], pads: string[] = [];
-  let k = 0;
-  // one trace: leaves the rim at `from`, steps in by `inset` on a 45 degree
-  // bend, runs `len` along the edge, and may step in again before its pad
-  const trace = (x: number, y: number, dx: number, dy: number, nx: number, ny: number, len: number, inset = 6, second = 0) => {
-    const at = (a: number, b: number) => [x + dx * a + nx * b, y + dy * a + ny * b];
-    const pts = [at(0, 0), at(inset, inset), at(inset + len, inset)];
-    if (second) pts.push(at(inset + len + second, inset + second));
-    traces.push(`<path pathLength="1" style="--i:${k}" d="${soft(pts)}"/>`);
-    const e = pts[pts.length - 1];
-    pads.push(`<circle class="pad" style="--i:${k}" cx="${e[0].toFixed(1)}" cy="${e[1].toFixed(1)}" r="2.1"/>`);
-    k++;
-    return soft(pts);
-  };
-  const sparks: string[] = [];
-  // top edge: two traces in from the right, one from the left
-  sparks.push(trace(w - 18, 0, -1, 0, 0, 1, Math.min(90, w * 0.22), 6, 6));
-  trace(w - 26, 0, -1, 0, 0, 1, Math.min(46, w * 0.12), 12);
-  trace(c + 14, 0, 1, 0, 0, 1, Math.min(54, w * 0.14), 6);
-  // right edge, downward
-  sparks.push(trace(w, 16, 0, 1, -1, 0, Math.min(h * 0.35, 46), 6, 5));
-  // bottom edge: from the left going right, and from the right going left
-  sparks.push(trace(14, h, 1, 0, 0, -1, Math.min(110, w * 0.26), 6, 6));
-  trace(22, h, 1, 0, 0, -1, Math.min(52, w * 0.13), 12);
-  trace(w - c - 16, h, -1, 0, 0, -1, Math.min(70, w * 0.18), 6);
-  // left edge, upward
-  trace(0, h - 14, 0, -1, 1, 0, Math.min(h * 0.32, 40), 6);
-  const sp = sparks.map((d, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${d}"/>`).join('');
-  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${traces.join('')}${sp}${pads.join('')}</svg>`;
+  // Clean (Ames: the dots read as "mold spores"): the rim, and a few
+  // straight accent lines that run beside it near the corners, no pads
+  const accents: string[] = [];
+  const line = (x1: number, y1: number, x2: number, y2: number, i: number) =>
+    accents.push(`<path pathLength="1" style="--i:${i}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)}"/>`);
+  const g = 5;
+  line(c + 8, g, c + 8 + Math.min(90, w * 0.2), g, 0);                 // top, from the cut corner
+  line(w - g, g + 10, w - g, g + 10 + Math.min(34, h * 0.25), 1);      // right, near the top
+  line(w - c - 8, h - g, w - c - 8 - Math.min(110, w * 0.24), h - g, 2); // bottom, from the cut corner
+  line(g, h - g - 10, g, h - g - 10 - Math.min(30, h * 0.22), 3);      // left, near the bottom
+  const sp = `<path class="spark" pathLength="1" style="--i:0" d="${rim}"/>`;
+  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${accents.join('')}${sp}</svg>`;
 }
 
 const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -649,11 +630,12 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
   let cx = -1, cy = -1;
-  requestAnimationFrame(() => callout?.classList.add('nge-callout--in'));
   const step = () => {
     const s = toScreen(anchor);
     const shipNm = starshipAt();
     const ship = shipNm ? toScreen(shipNm) : null;
+    // the ship projects its message only once it holds still (Ames)
+    callout?.classList.toggle('nge-callout--in', !starshipMoving());
     if (s && callout) {
       const W = window.innerWidth, panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight;
       const bw = box.offsetWidth, bh = box.offsetHeight;

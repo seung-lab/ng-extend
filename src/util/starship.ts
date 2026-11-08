@@ -153,6 +153,9 @@ let hop: Hop | null = null;
 let dock: {fx: number; fy: number; start: number; from: V3 | null} | null = null;
 export function dockStarship(fx: number, fy: number) { dock = {fx, fy, start: performance.now(), from: shipNow}; hop = null; }
 export function undockStarship() { dock = null; }
+/** Is the ship on the move: still flying in, on a hop, or easing to its dock? */
+let moving = true;
+export function starshipMoving(): boolean { return moving; }
 function viewAspect(): number {
   for (const p of viewerNow()?.display?.panels ?? []) if (p?.element?.classList?.contains('nge-3d-panel')) {
     const r = p.element.getBoundingClientRect(); if (r.height > 10) return r.width / r.height;
@@ -350,6 +353,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         let pos = pathAt(s);
         const ahead = pathAt(s + 1500), behind = pathAt(s - 1500);
         let fwd = Math.hypot(...sub(ahead, behind)) > 50 ? norm(sub(ahead, behind)) : (prevFwd ?? norm(sub(ahead, behind)));
+        moving = h ? hq < 1 : dock ? now - dock.start < 1600 : t < total;
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
           const H = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]), Wd = H * viewAspect();
@@ -358,6 +362,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
           pos = dock.from ? mix(dock.from, target, dq) : target;
           fwd = norm(mix(dock.from && dq < 1 ? norm(sub(target, dock.from)) : fwd, mul(cam.right, -1), dq));
         }
+        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * 3.5)));
         prevFwd = fwd;
         // banking: roll into the turn
         const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
