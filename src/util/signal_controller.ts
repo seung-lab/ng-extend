@@ -30,7 +30,7 @@
  * bolt, ?signal in the address, or window.pyrSignal.play().
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
-import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
+import {getNgeMeshTint, ngeMeshTintChanged, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
@@ -721,14 +721,30 @@ function buildHaze(): NgeMeshTint | null {
   const skip = new Set(level.targets.map(k => cells.get(k)!.spec.root));
   return {data, dims, gridFromGlobal: m, dim: DIM, skip};
 }
+let hazeTint: NgeMeshTint | null = null;
 function applyHaze() {
-  if (!hazeOn) { savedTint = getNgeMeshTint(); hazeOn = true; }
-  try { setNgeMeshTint(buildHaze()); } catch (e) { console.warn('[signal] no haze:', e); }
+  if (!hazeOn) { savedTint = getNgeMeshTint(); hazeOn = true; ngeMeshTintChanged.add(keepHaze); }
+  try { hazeTint = buildHaze(); setNgeMeshTint(hazeTint); } catch (e) { console.warn('[signal] no haze:', e); }
+}
+/** Highlight mode rebuilds its own map 120 ms after any change to the layers
+ *  or the coordinate space (src/util/highlight.ts, scheduleTint), and the
+ *  dataset switch brings several: it replaced the haze with an empty map, so
+ *  every branch came back in full colour (seen on the test site, 2026-11-08).
+ *  While the game runs, the haze goes straight back on; what Highlight wanted
+ *  is kept for when the game ends. */
+function keepHaze() {
+  if (!hazeOn || !hazeTint) return;
+  const now = getNgeMeshTint();
+  if (now === hazeTint) return;
+  savedTint = now;
+  setNgeMeshTint(hazeTint);
 }
 function clearHaze() {
   if (!hazeOn) return;
+  ngeMeshTintChanged.remove(keepHaze);
+  hazeOn = false; hazeTint = null;
   setNgeMeshTint(savedTint);
-  savedTint = null; hazeOn = false;
+  savedTint = null;
 }
 
 /* ── tags on the cell bodies ── */
@@ -904,7 +920,7 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): V3 | null {
   const r = threeDPanel()?.element?.getBoundingClientRect?.();
   const aspect = r && r.height > 0 ? r.width / r.height : window.innerWidth / Math.max(1, window.innerHeight);
   const halfH = d * tanHalf, halfW = halfH * aspect;
-  shipLenNm = halfH * 0.6;
+  shipLenNm = halfH * 0.5;
   const sx = -0.6, sy = sideHud() ? -0.5 : -0.25;
   return add(add(add(look, mul(cam.toEye, eyeDist - d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH));
 }
