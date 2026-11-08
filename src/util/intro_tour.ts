@@ -50,7 +50,7 @@ interface Beat {
   view: {at: keyof Tour['anchors'] | 'cell'; nm: number};
 }
 const BEATS: Beat[] = [
-  {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: 'Take a look around',
+  {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: "Let's go",
     body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life, and they have one thing in common: they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
@@ -305,7 +305,7 @@ function ensureStyle() {
   clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
   background: linear-gradient(160deg, rgba(14, 34, 66, 0.93), rgba(6, 12, 28, 0.95) 60%, rgba(22, 14, 48, 0.94));
   box-shadow: inset 0 0 40px rgba(80, 180, 255, 0.10); }
-.nge-intro-plate-bg::before { content: ''; position: absolute; inset: 0; padding: 1px;
+.nge-intro-plate-bg::before { display: none; content: ''; position: absolute; inset: 0; padding: 1px;
   clip-path: inherit; background: linear-gradient(135deg, rgba(126, 224, 255, 0.75), rgba(74, 150, 224, 0.25) 40%, rgba(138, 96, 230, 0.6));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
@@ -453,6 +453,44 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-callout-box .nge-frame circle { animation: nge-node 300ms ease-out both; animation-delay: calc(600ms + var(--i, 0) * 40ms); }
 .nge-callout-box .nge-frame .spark { animation: nge-spark 4.2s linear infinite; animation-delay: calc(1200ms + var(--i, 0) * 1100ms); }
 .nge-intro .nge-intro-nav { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+/* The launch button (Ames: "Let's go", and badass): a neon edged plate,
+   notched at the back and pointed at the front, with three chevrons. Still
+   until touched: on hover the edge brightens, a charge sweeps across once
+   and the chevrons fire in turn. */
+.nge-go { position: relative; isolation: isolate; display: inline-flex; flex-direction: row; align-items: center; gap: 12px; height: 42px;
+  padding: 0 26px 0 24px; margin-left: auto; border: 0 !important; background: none !important; box-shadow: none !important; cursor: pointer; white-space: nowrap;
+  color: #f2fbff; font: 800 13px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.24em; text-transform: uppercase; text-shadow: 0 0 10px rgba(120, 220, 255, 0.85);
+  filter: drop-shadow(0 0 10px rgba(60, 170, 255, 0.45)); transition: filter 0.25s, transform 0.15s; }
+.nge-go::before, .nge-go::after { content: ''; position: absolute; inset: 0; z-index: -1;
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 10px 50%); }
+.nge-go::before { background: linear-gradient(100deg, #2a7bff 0%, #2fd4ff 45%, #b06bff 100%); }
+.nge-go::after { inset: 1.5px; clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 50%, calc(100% - 15px) 100%, 0 100%, 9px 50%);
+  background: linear-gradient(100deg, rgba(8, 26, 60, 0.96), rgba(14, 46, 96, 0.94) 60%, rgba(40, 22, 84, 0.95));
+  background-size: 100% 100%; transition: background 0.25s; }
+.nge-go-label { position: relative; }
+.nge-go-label::after { content: ''; position: absolute; left: -24px; right: -60px; top: -14px; bottom: -14px; pointer-events: none; opacity: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(201, 246, 255, 0.55) 50%, transparent 70%); transform: translateX(-60%); }
+.nge-go:hover .nge-go-label::after, .nge-go:focus-visible .nge-go-label::after { animation: nge-go-charge 520ms ease-out 1; }
+@keyframes nge-go-charge { 0% { opacity: 1; transform: translateX(-60%); } 100% { opacity: 0; transform: translateX(60%); } }
+.nge-go-chevs { display: inline-flex; gap: 1px; }
+.nge-go-chevs i { width: 7px; height: 12px; background: #9fe9ff; opacity: 0.45;
+  clip-path: polygon(0 0, 45% 0, 100% 50%, 45% 100%, 0 100%, 55% 50%); }
+.nge-go-chevs i:last-child { opacity: 1; background: #e6fbff; }
+.nge-go:hover { filter: drop-shadow(0 0 18px rgba(90, 200, 255, 0.85)); }
+.nge-go:hover::after { background: linear-gradient(100deg, rgba(20, 70, 150, 0.95), rgba(30, 110, 200, 0.92) 60%, rgba(80, 40, 160, 0.95)); }
+.nge-go:hover .nge-go-chevs i { animation: nge-go-fire 420ms ease-out 1 both; }
+.nge-go:hover .nge-go-chevs i:nth-child(2) { animation-delay: 80ms; } .nge-go:hover .nge-go-chevs i:nth-child(3) { animation-delay: 160ms; }
+@keyframes nge-go-fire { 0% { opacity: 0.3; transform: translateX(-3px); } 60% { opacity: 1; background: #fff; transform: translateX(2px); } 100% { opacity: 1; transform: none; } }
+.nge-go:active { transform: scale(0.97); }
+.nge-go:focus-visible { outline: 2px solid #7ecaff; outline-offset: 4px; }
+/* back: just a chevron */
+.nge-back { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important;
+  color: #8fbfe6; cursor: pointer; transition: color 0.2s, transform 0.15s; }
+.nge-back .chev { color: inherit; width: 16px; height: 16px; }
+.nge-back:hover { color: #fff; transform: translateX(-2px); filter: drop-shadow(0 0 6px #7ee0ff); }
+.nge-back[hidden] { display: inline-grid; visibility: hidden; }
+.nge-back:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { .nge-go:hover .nge-go-chevs i, .nge-go:hover .nge-go-label::after { animation: none; } }
 /* Leaving asks first. */
 .nge-intro-confirm { display: none; }
 .nge-intro--asking .nge-intro-title, .nge-intro--asking .nge-intro-body, .nge-intro--asking > .nge-intro-row { display: none; }
@@ -524,7 +562,37 @@ function type(el: HTMLElement, text: string) {
 function frameSvg(w: number, h: number, cut = 14): string {
   const c = cut, paths: string[] = [], beads: string[] = [];
   let k = 0;
-  const rim = `M${c} 0 H${w} V${h - c} L${w - c} ${h} H0 V${c} Z`;
+  // the rim: points round the cut-corner outline, each nudged a little in
+  // or out, joined by a smooth curve, so the edge itself reads as a branch
+  const corners: [number, number][] = [[c, 0], [w, 0], [w, h - c], [w - c, h], [0, h], [0, c]];
+  const ring: [number, number][] = [];
+  let seed = 7;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  for (let e = 0; e < corners.length; e++) {
+    const [ax, ay] = corners[e], [bx, by] = corners[(e + 1) % corners.length];
+    const L = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(L / 34));
+    const nx = -(by - ay) / (L || 1), ny = (bx - ax) / (L || 1);
+    for (let q = 0; q < n; q++) {
+      const f = q / n, wob = q === 0 ? 0 : (rnd() - 0.5) * 3.2;
+      ring.push([ax + (bx - ax) * f + nx * wob, ay + (by - ay) * f + ny * wob]);
+    }
+  }
+  const N = ring.length, P = (i: number) => ring[(i + N) % N];
+  let rim = `M${P(0)[0].toFixed(1)} ${P(0)[1].toFixed(1)}`;
+  for (let i = 0; i < N; i++) {
+    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    rim += ` C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  // little twigs that sprout outward from the rim, with a bead
+  const twigs: string[] = [];
+  for (let i = 2; i < N; i += 3) {
+    const a = P(i), b = P(i + 1), tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1;
+    const ox = ty / tl, oy = -tx / tl, len = 5 + rnd() * 6, lean = (rnd() - 0.5) * 6;
+    const ex = a[0] + ox * len + tx / tl * lean, ey = a[1] + oy * len + ty / tl * lean;
+    twigs.push(`<path pathLength="1" style="--i:${i % 9}" d="M${a[0].toFixed(1)} ${a[1].toFixed(1)} Q${(a[0] + ox * len * 0.5).toFixed(1)} ${(a[1] + oy * len * 0.5).toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}"/>`);
+    beads.push(`<circle style="--i:${i % 9}" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="1.5"/>`);
+  }
   // a branch that leaves the rim at (x, y), runs inward by `in` px along the
   // edge in direction (dx, dy), wiggling, and forks once
   const branch = (x: number, y: number, dx: number, dy: number, nx: number, ny: number, len: number) => {
@@ -549,11 +617,9 @@ function frameSvg(w: number, h: number, cut = 14): string {
   // left edge, upward from the bottom
   branch(0, h - 10, 0, -1, 1, 0, Math.min(h * 0.4, 70));
   const sp = sparks.map((d, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${d}"/>`).join('');
-  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${paths.join('')}${sp}${beads.join('')}</svg>`;
+  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${twigs.join('')}${paths.join('')}${sp}${beads.join('')}</svg>`;
 }
 
-const ORB_RINGS = '<svg class="rings" viewBox="0 0 44 44" aria-hidden="true"><circle class="r1" cx="22" cy="22" r="20"/><circle class="r2" cx="22" cy="22" r="16.5"/><circle class="r3" cx="22" cy="22" r="20"/></svg>';
-const CHEV_R = '<svg class="chev" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4.5 2L9.5 7l-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /** The colour of each anchor's part, for its icon, beam and dot. */
@@ -673,14 +739,13 @@ export async function startIntroTour() {
   panel.setAttribute('aria-label', 'Welcome to Pyr');
   const X_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   panel.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-ring"></span><span class="nge-intro-scan"></span>
-    <i class="nge-intro-corner tl"></i><i class="nge-intro-corner tr"></i><i class="nge-intro-corner bl"></i><i class="nge-intro-corner br"></i>
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
-    <div class="nge-intro-row"><button class="nge-orb nge-orb--back nge-intro-back" type="button" aria-label="Back"><span class="nge-orb-core">${ORB_RINGS}${CHEV_L}</span></button>
+    <div class="nge-intro-row"><button class="nge-back nge-intro-back" type="button" aria-label="Back">${CHEV_L}</button>
       <span class="nge-intro-hint"><kbd>Enter</kbd></span>
-      <button class="nge-orb nge-intro-go" type="button"><span class="nge-orb-label nge-intro-label"></span><span class="nge-orb-core">${ORB_RINGS}${CHEV_R}</span></button></div>
+      <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
-      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-orb nge-intro-stay" type="button"><span class="nge-orb-label">Keep going</span><span class="nge-orb-core">${ORB_RINGS}${CHEV_R}</span></button></div></div>`;
+      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-go nge-intro-stay" type="button"><span class="nge-go-label">Keep going</span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div></div>`;
   document.body.appendChild(panel);
   document.body.classList.add('nge-intro-on');
   requestAnimationFrame(() => panel?.classList.add('nge-intro--in'));
