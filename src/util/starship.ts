@@ -25,18 +25,18 @@ import {loadGlbModel} from './glb';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
 
 type V3 = [number, number, number];
-interface Flight { path: number[][]; landingStart: number; landNormal: V3; soma: V3; shipLength: number; segment: string; }
+interface Flight { path: number[][]; landingStart: number; landNormal: V3; soma: V3; shipLength: number; segment: string; rollAt?: number; rollLen?: number; }
 
 const SANDBOX_LAYER = 'pinky_nf_v2';
 const GROUP = 'starship';
 /** One full turn of the view every two minutes (Ames). */
 const TURN_SECONDS = 120;
 /** Seconds of flight before the landing starts, and for the landing. */
-const CRUISE_S = 14;
+const CRUISE_S = 17;
 const LANDING_S = 3.2;
 /** How much shows from top to bottom of the view: the whole cell, then in
  *  close on the soma for the landing, in nanometres. */
-const WIDE_NM = 260_000, CLOSE_NM = 30_000;
+const WIDE_NM = 210_000, CLOSE_NM = 30_000;
 
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -147,6 +147,18 @@ let cameraHeld = false;
 export function setStarshipCameraHeld(held: boolean) { cameraHeld = held; }
 interface Hop { path: V3[]; cum: number[]; start: number; ms: number; }
 let hop: Hop | null = null;
+/** Docked: the ship holds a spot on screen (fractions of the 3D view from
+ *  its centre, x to the right, y up), whatever the camera does, and faces
+ *  the cell. It eases there from wherever it was. */
+let dock: {fx: number; fy: number; start: number; from: V3 | null} | null = null;
+export function dockStarship(fx: number, fy: number) { dock = {fx, fy, start: performance.now(), from: shipNow}; hop = null; }
+export function undockStarship() { dock = null; }
+function viewAspect(): number {
+  for (const p of viewerNow()?.display?.panels ?? []) if (p?.element?.classList?.contains('nge-3d-panel')) {
+    const r = p.element.getBoundingClientRect(); if (r.height > 10) return r.width / r.height;
+  }
+  return window.innerWidth / Math.max(1, window.innerHeight);
+}
 /** Once landed: lift off and fly this route (nanometres), easing in and out,
  *  then hover at its end with the jets idling. */
 export function starshipHop(route: number[][], seconds: number) {
@@ -158,6 +170,7 @@ export function starshipHop(route: number[][], seconds: number) {
   const path: V3[] = [shipNow, ...(fromPad ? [] : lift), ...route.map(q => q as V3)];
   const cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(...sub(path[i], path[i - 1])));
+  dock = null;
   hop = {path, cum, start: performance.now(), ms: seconds * 1000};
 }
 /** Where the ship is now (nm), and which way is up from where it landed. */
@@ -222,6 +235,29 @@ async function showSandboxCell(f: Flight): Promise<boolean> {
     await new Promise(r => setTimeout(r, 250));
   }
   return false;
+}
+
+/** The slow turn on its own, before any flight (Ames: "it should just
+ *  rotate"): one turn every two minutes, with the same rule for hands, a
+ *  drag on a laptop stops it for good, a touch on a phone pauses it. */
+let idleRaf = 0;
+export function startIdleTurn() {
+  if (idleRaf) return;
+  userTouched = false; touchedAt = 0;
+  window.addEventListener('pointerdown', onUserTurn, true);
+  window.addEventListener('wheel', onUserTurn, true);
+  window.addEventListener('pointermove', onUserDrag, true);
+  let last = performance.now();
+  const step = (now: number) => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (running) { idleRaf = 0; return; }      // the flight turns it from here
+    const v = viewerNow();
+    if (v && handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / TURN_SECONDS * dt); } catch { /* no view yet */ }
+    }
+    idleRaf = requestAnimationFrame(step);
+  };
+  idleRaf = requestAnimationFrame(step);
 }
 
 /** Fly the Starship into the Sandbox cell and land it on the soma.
@@ -291,12 +327,17 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         if (handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
           try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / TURN_SECONDS * dt); } catch { /* no view */ }
         }
-        // in on the soma as the ship comes home
-        const zoom = smooth((t - (CRUISE_S - 4)) / (4 + LANDING_S));
+        // in on the soma, slowly, all the way in (Ames: the camera zooms in
+        // as the ship flies in), a touch faster at the end
+        const zoom = Math.pow(Math.min(1, t / total), 1.35);
         if (handsOff() && !cameraHeld) {
           v.projectionScale.value = WIDE * Math.pow(CLOSE / WIDE, zoom);
           // and over toward the landing pad, so the ship lands mid screen
-          const c = mix(somaAt, padAt, zoom * 0.85);
+          let c = mix(somaAt, padAt, zoom * 0.85);
+          // drifting after the ship while it weaves, so it stays in view as
+          // the view closes in, settling on the pad for the landing
+          const follow = 0.45 * (1 - smooth((t - (CRUISE_S - 3)) / 3));
+          if (shipNow && follow > 0) c = mix(c, shipNow, follow);
           v.navigationState.position.value = Float32Array.from(c.map((x, i) => x / nm[i]));
         }
 
@@ -306,23 +347,40 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         const hq = h ? Math.min(1, (now - h.start) / h.ms) : 0;
         const pathAt = h ? (d: number) => along(h.path, h.cum, d) : (d: number) => at(f, d);
         const s = h ? h.cum[h.cum.length - 1] * easeInOut(hq) : distanceAt(f, Math.min(t, total));
-        const pos = pathAt(s);
+        let pos = pathAt(s);
         const ahead = pathAt(s + 1500), behind = pathAt(s - 1500);
         let fwd = Math.hypot(...sub(ahead, behind)) > 50 ? norm(sub(ahead, behind)) : (prevFwd ?? norm(sub(ahead, behind)));
+        if (dock) {
+          const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+          const H = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]), Wd = H * viewAspect();
+          const target = add(ctr, add(mul(cam.right, dock.fx * Wd / 2), mul(cam.up, dock.fy * H / 2)));
+          const dq = smooth((now - dock.start) / 1600);
+          pos = dock.from ? mix(dock.from, target, dq) : target;
+          fwd = norm(mix(dock.from && dq < 1 ? norm(sub(target, dock.from)) : fwd, mul(cam.right, -1), dq));
+        }
         prevFwd = fwd;
         // banking: roll into the turn
         const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
         // the landing: level onto the pad, nose kept flat to it
-        const land = h ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
+        const land = h || dock ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
         if (land > 0) {
           up = norm(mix(up, f.landNormal, land));
           const flat = sub(fwd, mul(up, dot(fwd, up)));
           if (Math.hypot(...flat) > 1e-3) fwd = norm(mix(fwd, norm(flat), land));
         }
         if (prevUp) up = norm(mix(prevUp, up, Math.min(1, dt * 6)));
-        prevUp = up;
+        prevUp = up;   // (the roll below is added after this, so it is not smoothed away)
         fwd = norm(sub(fwd, mul(up, dot(fwd, up))));
+        // a quick barrel roll partway along the weave (Ames: "a little tiny
+        // quick flip"), about the ship's own length
+        if (!h && !dock && f.rollAt !== undefined) {
+          const rq = (s - f.rollAt) / (f.rollLen ?? 20000);
+          if (rq > 0 && rq < 1) {
+            const a = 2 * Math.PI * smooth(rq), side = cross(fwd, up);
+            up = norm(add(mul(up, Math.cos(a)), mul(side, Math.sin(a))));
+          }
+        }
         const right = norm(cross(up, fwd));
         // a gentle bob once down; hovering at a hop's end, a slow float
         const settled = Math.max(0, t - total);

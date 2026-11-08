@@ -24,7 +24,7 @@ import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mes
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
-import {cameraAxes, cellDrawn, clearStarship, flyStarship, loadAssets, setStarshipCameraHeld, starshipAt, starshipHop} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, dockStarship, flyStarship, loadAssets, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 
@@ -450,40 +450,39 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-orb[hidden] { display: inline-flex; visibility: hidden; }
 .nge-orb:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; border-radius: 22px; }
 .nge-callout-box .nge-frame path { stroke: rgba(126, 224, 255, 0.5); }
+.nge-frame .pad { fill: rgba(8, 24, 52, 0.9); stroke: #9fe9ff; stroke-width: 1; }
 .nge-callout-box .nge-frame { animation: none; }
 .nge-callout-box .nge-frame path { animation: nge-trace 800ms ease-out both; animation-delay: calc(150ms + var(--i, 0) * 40ms); }
 .nge-callout-box .nge-frame circle { animation: nge-node 300ms ease-out both; animation-delay: calc(600ms + var(--i, 0) * 40ms); }
 .nge-callout-box .nge-frame .spark { animation: nge-spark 4.2s linear infinite; animation-delay: calc(1200ms + var(--i, 0) * 1100ms); }
 .nge-intro .nge-intro-nav { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-/* The launch button (Ames: "Let's go", and badass): a neon edged plate,
-   notched at the back and pointed at the front, with three chevrons. Still
-   until touched: on hover the edge brightens, a charge sweeps across once
-   and the chevrons fire in turn. */
-.nge-go { position: relative; isolation: isolate; display: inline-flex; flex-direction: row; align-items: center; gap: 12px; height: 42px;
-  padding: 0 26px 0 24px; margin-left: auto; border: 0 !important; background: none !important; box-shadow: none !important; cursor: pointer; white-space: nowrap;
-  color: #f2fbff; font: 800 13px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.24em; text-transform: uppercase; text-shadow: 0 0 10px rgba(120, 220, 255, 0.85);
-  filter: drop-shadow(0 0 10px rgba(60, 170, 255, 0.45)); transition: filter 0.25s, transform 0.15s; }
-.nge-go::before, .nge-go::after { content: ''; position: absolute; inset: 0; z-index: -1;
-  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 10px 50%); }
-.nge-go::before { background: linear-gradient(100deg, #2a7bff 0%, #2fd4ff 45%, #b06bff 100%); }
-.nge-go::after { inset: 1.5px; clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 50%, calc(100% - 15px) 100%, 0 100%, 9px 50%);
-  background: linear-gradient(100deg, rgba(8, 26, 60, 0.96), rgba(14, 46, 96, 0.94) 60%, rgba(40, 22, 84, 0.95));
-  background-size: 100% 100%; transition: background 0.25s; }
-.nge-go-label { position: relative; }
-.nge-go-label::after { content: ''; position: absolute; left: -24px; right: -60px; top: -14px; bottom: -14px; pointer-events: none; opacity: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(201, 246, 255, 0.55) 50%, transparent 70%); transform: translateX(-60%); }
-.nge-go:hover .nge-go-label::after, .nge-go:focus-visible .nge-go-label::after { animation: nge-go-charge 520ms ease-out 1; }
-@keyframes nge-go-charge { 0% { opacity: 1; transform: translateX(-60%); } 100% { opacity: 0; transform: translateX(60%); } }
-.nge-go-chevs { display: inline-flex; gap: 1px; }
-.nge-go-chevs i { width: 7px; height: 12px; background: #9fe9ff; opacity: 0.45;
-  clip-path: polygon(0 0, 45% 0, 100% 50%, 45% 100%, 0 100%, 55% 50%); }
-.nge-go-chevs i:last-child { opacity: 1; background: #e6fbff; }
-.nge-go:hover { filter: drop-shadow(0 0 18px rgba(90, 200, 255, 0.85)); }
-.nge-go:hover::after { background: linear-gradient(100deg, rgba(20, 70, 150, 0.95), rgba(30, 110, 200, 0.92) 60%, rgba(80, 40, 160, 0.95)); }
-.nge-go:hover .nge-go-chevs i { animation: nge-go-fire 420ms ease-out 1 both; }
-.nge-go:hover .nge-go-chevs i:nth-child(2) { animation-delay: 80ms; } .nge-go:hover .nge-go-chevs i:nth-child(3) { animation-delay: 160ms; }
-@keyframes nge-go-fire { 0% { opacity: 0.3; transform: translateX(-3px); } 60% { opacity: 1; background: #fff; transform: translateX(2px); } 100% { opacity: 1; transform: none; } }
-.nge-go:active { transform: scale(0.97); }
+/* Let's go (Ames: reimagined): a command key in two cells. A glass label
+   cell with a fine cyan edge, and a bright action cell holding the arrow,
+   joined on a slant. Nothing moves until it is touched: then the glass
+   fills with light from the arrow's side and the arrow slides on. */
+.nge-go { position: relative; isolation: isolate; display: inline-flex; flex-direction: row; align-items: stretch; height: 40px; padding: 0; margin-left: auto;
+  border: 0 !important; background: none !important; box-shadow: none !important; cursor: pointer; white-space: nowrap; color: #eaf8ff;
+  filter: drop-shadow(0 0 8px rgba(70, 190, 255, 0.35)); transition: filter 0.25s, transform 0.12s; }
+.nge-go-label { position: relative; display: flex; align-items: center; padding: 0 18px 0 18px; overflow: hidden;
+  font: 700 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.3em; text-transform: uppercase;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 10px) 100%, 0 100%, 0 8px);
+  background: linear-gradient(180deg, rgba(126, 224, 255, 0.16), rgba(40, 110, 200, 0.12)); }
+.nge-go-label::before { content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit;
+  background: linear-gradient(90deg, rgba(126, 224, 255, 0.35), rgba(126, 224, 255, 0.9));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+.nge-go-label::after { content: ''; position: absolute; inset: 0; z-index: -1; transform: scaleX(0); transform-origin: 100% 50%;
+  background: linear-gradient(270deg, rgba(126, 224, 255, 0.45), rgba(126, 224, 255, 0.08)); transition: transform 0.3s cubic-bezier(.2,.8,.2,1); }
+.nge-go-chevs { position: relative; display: grid; place-items: center; width: 44px; margin-left: -6px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  background: linear-gradient(135deg, #c9f6ff 0%, #5fd4ff 45%, #3a8cff 100%); color: #04172b; }
+.nge-go-chevs i { display: none; }
+.nge-go-chevs::before { content: ''; width: 16px; height: 12px; background: currentColor; transition: transform 0.25s cubic-bezier(.2,.8,.2,1);
+  clip-path: polygon(0 40%, 60% 40%, 60% 0, 100% 50%, 60% 100%, 60% 60%, 0 60%); }
+.nge-go:hover { filter: drop-shadow(0 0 16px rgba(110, 215, 255, 0.8)); }
+.nge-go:hover .nge-go-label::after, .nge-go:focus-visible .nge-go-label::after { transform: scaleX(1); }
+.nge-go:hover .nge-go-chevs::before { transform: translateX(3px); }
+.nge-go:active { transform: translateY(1px) scale(0.98); }
 .nge-go:focus-visible { outline: 2px solid #7ecaff; outline-offset: 4px; }
 /* back: just a chevron */
 .nge-back { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important;
@@ -492,7 +491,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-back:hover { color: #fff; transform: translateX(-2px); filter: drop-shadow(0 0 6px #7ee0ff); }
 .nge-back[hidden] { display: inline-grid; visibility: hidden; }
 .nge-back:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; border-radius: 4px; }
-@media (prefers-reduced-motion: reduce) { .nge-go:hover .nge-go-chevs i, .nge-go:hover .nge-go-label::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-go-label::after, .nge-go-chevs::before { transition: none; } }
 /* Leaving asks first. */
 .nge-intro-confirm { display: none; }
 .nge-intro--asking .nge-intro-title, .nge-intro--asking .nge-intro-body, .nge-intro--asking > .nge-intro-row { display: none; }
@@ -515,7 +514,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout { position: fixed; left: 0; top: 0; z-index: 9400; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
 .nge-callout--in { opacity: 1; }
 .nge-callout svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
-.nge-callout-box { position: fixed; min-width: 170px; max-width: 250px; padding: 9px 13px 10px 13px; transform-origin: 50% 100%;
+.nge-callout-box { position: fixed; min-width: 200px; max-width: min(360px, 42vw); padding: 12px 16px 14px 16px; transform-origin: 50% 100%;
   border: 1px solid rgba(126, 224, 255, 0.7); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   background: linear-gradient(180deg, rgba(40, 140, 220, 0.30), rgba(10, 40, 90, 0.42)),
     repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.07) 0 1px, transparent 1px 3px);
@@ -523,14 +522,15 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
   animation: nge-proj-in 520ms cubic-bezier(.2,1,.3,1) both, nge-proj-flicker 5s 1s infinite; }
 @keyframes nge-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
 @keyframes nge-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 0.95; } 99% { opacity: 0.7; } }
-.nge-callout-stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin-top: 6px; padding-top: 6px;
-  border-top: 1px solid rgba(126, 224, 255, 0.3); font: 12px/1.35 'Inter', sans-serif; }
-.nge-callout-stats dt { color: #7ecaff; font: 600 9.5px/1.9 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
-.nge-callout-stats dd { margin: 0; color: #eaf7ff; }
+.nge-callout-kicker { font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(126, 224, 255, 0.7); }
+.nge-callout-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid rgba(126, 224, 255, 0.25); }
+.nge-callout-stats > div { min-width: 0; }
+.nge-callout-stats dt { color: rgba(126, 202, 255, 0.85); font: 600 9px/1.4 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; }
+.nge-callout-stats dd { margin: 2px 0 0; color: #f2fbff; font: 500 15px/1.3 'Inter', sans-serif; letter-spacing: 0.005em; }
 .nge-callout-beam { animation: nge-beam 2.4s ease-in-out infinite; }
 @keyframes nge-beam { 50% { opacity: 0.65; } }
 @media (prefers-reduced-motion: reduce) { .nge-callout-box, .nge-callout-beam { animation: none; } }
-.nge-callout-title { display: flex; align-items: center; gap: 8px; font: 600 15px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #fff; }
+.nge-callout-title { margin-top: 3px; font: 700 21px/1.15 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
 .nge-callout-ic { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--part, #7ecaff); box-shadow: 0 0 10px var(--part, #7ecaff), inset 0 0 6px var(--part, #7ecaff); flex: none; }
 .nge-callout-box { isolation: isolate; }
 `;
@@ -558,68 +558,59 @@ function type(el: HTMLElement, text: string) {
   el.onclick = () => { if (typeTimer) { clearInterval(typeTimer); typeTimer = null; } el.textContent = text; };
 }
 
-/** The frame: a rim with cut corners, and branches that grow along each
- *  edge from a few roots, forking, with a bead at each tip. Drawn to the
- *  card's own size, so the curves never stretch. */
+/** The frame (Ames: "like circuits but SLIGHTLY curved"): a rim with cut
+ *  corners whose joints are softly rounded, and circuit traces that run
+ *  along the inside of each edge, step in on 45 degree bends with rounded
+ *  elbows, and end in small ring pads. Drawn to the box's own size. */
 function frameSvg(w: number, h: number, cut = 14): string {
-  const c = cut, paths: string[] = [], beads: string[] = [];
-  let k = 0;
-  // the rim: points round the cut-corner outline, each nudged a little in
-  // or out, joined by a smooth curve, so the edge itself reads as a branch
-  const corners: [number, number][] = [[c, 0], [w, 0], [w, h - c], [w - c, h], [0, h], [0, c]];
-  const ring: [number, number][] = [];
-  let seed = 7;
-  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-  for (let e = 0; e < corners.length; e++) {
-    const [ax, ay] = corners[e], [bx, by] = corners[(e + 1) % corners.length];
-    const L = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(L / 34));
-    const nx = -(by - ay) / (L || 1), ny = (bx - ax) / (L || 1);
-    for (let q = 0; q < n; q++) {
-      const f = q / n, wob = q === 0 ? 0 : (rnd() - 0.5) * 3.2;
-      ring.push([ax + (bx - ax) * f + nx * wob, ay + (by - ay) * f + ny * wob]);
+  const c = cut, r = 4;
+  // a polyline with each elbow rounded by r
+  const soft = (pts: number[][], closed = false): string => {
+    const n = pts.length, P = (i: number) => pts[(i + n) % n];
+    const lerp = (p: number[], q: number[], d: number) => { const L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, k = Math.min(0.5, d / L); return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k]; };
+    const f = (v: number[]) => `${v[0].toFixed(1)} ${v[1].toFixed(1)}`;
+    let d = '';
+    const first = closed ? lerp(P(0), P(1), r) : P(0);
+    d += `M${f(first)}`;
+    const last = closed ? n : n - 1;
+    for (let i = 1; i <= last; i++) {
+      const cur = P(i);
+      if (!closed && i === n - 1) { d += ` L${f(cur)}`; break; }
+      const inA = lerp(cur, P(i - 1), r), outB = lerp(cur, P(i + 1), r);
+      d += ` L${f(inA)} Q${f(cur)} ${f(outB)}`;
     }
-  }
-  const N = ring.length, P = (i: number) => ring[(i + N) % N];
-  let rim = `M${P(0)[0].toFixed(1)} ${P(0)[1].toFixed(1)}`;
-  for (let i = 0; i < N; i++) {
-    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    rim += ` C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
-  }
-  // little twigs that sprout outward from the rim, with a bead
-  const twigs: string[] = [];
-  for (let i = 2; i < N; i += 3) {
-    const a = P(i), b = P(i + 1), tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1;
-    const ox = ty / tl, oy = -tx / tl, len = 5 + rnd() * 6, lean = (rnd() - 0.5) * 6;
-    const ex = a[0] + ox * len + tx / tl * lean, ey = a[1] + oy * len + ty / tl * lean;
-    twigs.push(`<path pathLength="1" style="--i:${i % 9}" d="M${a[0].toFixed(1)} ${a[1].toFixed(1)} Q${(a[0] + ox * len * 0.5).toFixed(1)} ${(a[1] + oy * len * 0.5).toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}"/>`);
-    beads.push(`<circle style="--i:${i % 9}" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="1.5"/>`);
-  }
-  // a branch that leaves the rim at (x, y), runs inward by `in` px along the
-  // edge in direction (dx, dy), wiggling, and forks once
-  const branch = (x: number, y: number, dx: number, dy: number, nx: number, ny: number, len: number) => {
-    const p = (a: number, b: number) => `${(x + dx * a + nx * b).toFixed(1)} ${(y + dy * a + ny * b).toFixed(1)}`;
-    const d = `M${p(0, 0)} C${p(len * 0.12, 7)} ${p(len * 0.25, 8)} ${p(len * 0.4, 7)} S${p(len * 0.75, 4)} ${p(len, 7)}`;
-    const f = `M${p(len * 0.4, 7)} C${p(len * 0.5, 9)} ${p(len * 0.55, 14)} ${p(len * 0.62, 16)}`;
-    paths.push(`<path pathLength="1" style="--i:${k}" d="${d}"/>`, `<path pathLength="1" style="--i:${k + 1}" d="${f}"/>`);
-    const e1 = p(len, 7).split(' '), e2 = p(len * 0.62, 16).split(' ');
-    beads.push(`<circle style="--i:${k}" cx="${e1[0]}" cy="${e1[1]}" r="2"/>`, `<circle style="--i:${k + 1}" cx="${e2[0]}" cy="${e2[1]}" r="1.6"/>`);
-    k += 2;
-    return d;
+    return d + (closed ? ' Z' : '');
+  };
+  const rim = soft([[c, 0], [w, 0], [w, h - c], [w - c, h], [0, h], [0, c]], true);
+  const traces: string[] = [], pads: string[] = [];
+  let k = 0;
+  // one trace: leaves the rim at `from`, steps in by `inset` on a 45 degree
+  // bend, runs `len` along the edge, and may step in again before its pad
+  const trace = (x: number, y: number, dx: number, dy: number, nx: number, ny: number, len: number, inset = 6, second = 0) => {
+    const at = (a: number, b: number) => [x + dx * a + nx * b, y + dy * a + ny * b];
+    const pts = [at(0, 0), at(inset, inset), at(inset + len, inset)];
+    if (second) pts.push(at(inset + len + second, inset + second));
+    traces.push(`<path pathLength="1" style="--i:${k}" d="${soft(pts)}"/>`);
+    const e = pts[pts.length - 1];
+    pads.push(`<circle class="pad" style="--i:${k}" cx="${e[0].toFixed(1)}" cy="${e[1].toFixed(1)}" r="2.1"/>`);
+    k++;
+    return soft(pts);
   };
   const sparks: string[] = [];
-  // top edge, from the right going left, and from the cut corner going right
-  sparks.push(branch(w - 6, 0, -1, 0, 0, 1, Math.min(120, w * 0.34)));
-  branch(c + 4, 0, 1, 0, 0, 1, Math.min(70, w * 0.2));
+  // top edge: two traces in from the right, one from the left
+  sparks.push(trace(w - 18, 0, -1, 0, 0, 1, Math.min(90, w * 0.22), 6, 6));
+  trace(w - 26, 0, -1, 0, 0, 1, Math.min(46, w * 0.12), 12);
+  trace(c + 14, 0, 1, 0, 0, 1, Math.min(54, w * 0.14), 6);
   // right edge, downward
-  sparks.push(branch(w, 18, 0, 1, -1, 0, Math.min(h * 0.45, 90)));
-  // bottom edge, from the right corner leftward, and from the left going right
-  branch(w - c - 6, h, -1, 0, 0, -1, Math.min(90, w * 0.26));
-  sparks.push(branch(6, h, 1, 0, 0, -1, Math.min(110, w * 0.3)));
-  // left edge, upward from the bottom
-  branch(0, h - 10, 0, -1, 1, 0, Math.min(h * 0.4, 70));
+  sparks.push(trace(w, 16, 0, 1, -1, 0, Math.min(h * 0.35, 46), 6, 5));
+  // bottom edge: from the left going right, and from the right going left
+  sparks.push(trace(14, h, 1, 0, 0, -1, Math.min(110, w * 0.26), 6, 6));
+  trace(22, h, 1, 0, 0, -1, Math.min(52, w * 0.13), 12);
+  trace(w - c - 16, h, -1, 0, 0, -1, Math.min(70, w * 0.18), 6);
+  // left edge, upward
+  trace(0, h - 14, 0, -1, 1, 0, Math.min(h * 0.32, 40), 6);
   const sp = sparks.map((d, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${d}"/>`).join('');
-  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${twigs.join('')}${paths.join('')}${sp}${beads.join('')}</svg>`;
+  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${traces.join('')}${sp}${pads.join('')}</svg>`;
 }
 
 const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -645,19 +636,19 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   hideCallout();
   callout = document.createElement('div');
   callout.className = 'nge-callout';
-  const rows = stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  const rows = stats.length;
   // The box is a hologram the Starship projects: a cone of light from the
   // ship up to it (Ames), and a fine line from it down to the part.
   callout.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-beam-g" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.06"/></linearGradient></defs>
     <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${rows}</dl>` : ''}</div>`;
+    <div class="nge-callout-box" style="--part:${color}"><div class="nge-callout-kicker">Ship's scan</div><div class="nge-callout-title">${title}</div>${rows ? `<dl class="nge-callout-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
-  (box.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(box.offsetWidth, box.offsetHeight, 10);
+  let cx = -1, cy = -1;
   requestAnimationFrame(() => callout?.classList.add('nge-callout--in'));
   const step = () => {
     const s = toScreen(anchor);
@@ -671,8 +662,8 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       if (onScreen) {
         // above the ship, leaning away from the part so the part stays clear
         const lean = ship![0] < s[0] ? -1 : 1;
-        bx = ship![0] - bw / 2 + lean * 60;
-        by = ship![1] - 90 - bh;
+        if (!showDot) { bx = ship![0] + 50; by = ship![1] - bh / 2; }
+        else { bx = ship![0] - bw / 2 + lean * 60; by = ship![1] - 90 - bh; }
       } else {
         const right = s[0] < W * 0.55;
         bx = right ? s[0] + 70 : s[0] - 70 - bw;
@@ -680,12 +671,16 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       }
       bx = Math.max(10, Math.min(W - bw - 10, bx));
       by = Math.max(70, Math.min(panelTop - bh - 16, by));
-      box.style.left = `${bx}px`; box.style.top = `${by}px`;
+      // the box glides after its spot rather than jumping with every bob
+      if (cx < 0) { cx = bx; cy = by; } else { cx += (bx - cx) * 0.06; cy += (by - cy) * 0.06; }
+      bx = cx; by = cy;
+      box.style.left = `${bx.toFixed(1)}px`; box.style.top = `${by.toFixed(1)}px`;
       if (onScreen) {
         const [sx, sy] = ship!;
-        beam.setAttribute('points', `${sx},${sy} ${bx + 6},${by + bh} ${bx + bw - 6},${by + bh}`);
+        const side = sx < bx;   // projecting sideways, to the box's near edge
+        beam.setAttribute('points', side ? `${sx},${sy} ${bx},${by + 8} ${bx},${by + bh - 8}` : `${sx},${sy} ${bx + 6},${by + bh} ${bx + bw - 6},${by + bh}`);
         grad.setAttribute('x1', String(sx)); grad.setAttribute('y1', String(sy));
-        grad.setAttribute('x2', String(bx + bw / 2)); grad.setAttribute('y2', String(by + bh));
+        grad.setAttribute('x2', String(side ? bx : bx + bw / 2)); grad.setAttribute('y2', String(side ? by + bh / 2 : by + bh));
         lens.setAttribute('cx', String(sx)); lens.setAttribute('cy', String(sy));
         beam.style.display = lens.style.display = '';
       } else {
@@ -745,7 +740,6 @@ export async function startIntroTour() {
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
     <div class="nge-intro-row"><button class="nge-back nge-intro-back" type="button" aria-label="Back">${CHEV_L}</button>
-      <span class="nge-intro-hint"><kbd>Enter</kbd></span>
       <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
       <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-go nge-intro-stay" type="button"><span class="nge-go-label">Keep going</span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div></div>`;
@@ -769,7 +763,7 @@ export async function startIntroTour() {
   const indexOf = (key: string) => BEATS.findIndex(b => b.key === key);
   const NEURON = indexOf('neuron'), DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
   let i = -1;
-  let shipAt: 'pad' | 'dend' | 'axon' | 'syn' = 'pad';
+  let shipAt: 'pad' | 'dend' | 'axon' | 'syn' | 'dock' = 'pad';
   const go = (n: number) => {
     if (!active || n < 0) return;
     if (n >= BEATS.length) { endTour(); return; }
@@ -800,9 +794,19 @@ export async function startIntroTour() {
     // what happens in this beat
     // out to the edge of the cell for its stats card, home for the soma,
     // out by the dendrite tips, down the axon, over the synapse
-    const want = i === NEURON ? 'dend' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : 'syn';
+    const want = i === NEURON ? 'dock' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : 'syn';
     if (want !== shipAt) {
       const aEnd = t.axonFlight[t.axonFlight.length - 1];
+      if (want === 'dock') {
+        // to the right side of the view, just left of where its card sits
+        const pr = threeDPanel()?.element?.getBoundingClientRect?.();
+        const cardW = Math.min(360, window.innerWidth * 0.42);
+        const sx = pr ? (pr.right - cardW - 70 - (pr.left + pr.width / 2)) / (pr.width / 2) : 0.4;
+        dockStarship(Math.max(0.15, Math.min(0.75, sx)), 0.12);
+      } else if (shipAt === 'dock') {
+        undockStarship();
+        starshipHop([t.dendFlight[0]], 3);
+      } else
       if (shipAt === 'pad' && want === 'dend') starshipHop(t.dendFlight, 5);
       else if (shipAt === 'dend' && want === 'pad') starshipHop([...t.dendFlight].reverse(), 4);
       else if (shipAt === 'dend' && want === 'axon') starshipHop(t.axonFlight, 9);
@@ -852,6 +856,8 @@ export function playIntro() {
 let playedThisLoad = false;
 export function startStarshipIntro() {
   if (IS_LIVE_SITE) return;
+  // the cell turns slowly from the moment it shows, before anything flies
+  setTimeout(startIdleTurn, 1200);
   const wanted = () => simulating.value || /[?&]starship\b/.test(location.search);
   const go = async () => {
     if (!wanted() || playedThisLoad) return;
