@@ -1102,13 +1102,13 @@ function transmissionCard() {
   card.className = 'ng-extend nge-intro' + (window.innerWidth < 700 ? ' nge-intro--phone' : '');
   card.setAttribute('role', 'dialog');
   card.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-scan"></span>
-    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Close">${'<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'}</button></div>
+    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr</div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p><dl class="nge-callout-stats" hidden></dl>
     <div class="nge-intro-row"><span></span><button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
   document.body.appendChild(card);
   requestAnimationFrame(() => card.classList.add('nge-intro--in'));
   const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
-  (card.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = close;
+  // no X here: its button is the way back from MICrONS (Ames)
   const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void}) => {
     (card.querySelector('.nge-intro-title') as HTMLElement).textContent = title;
     const bodyEl = card.querySelector('.nge-intro-body') as HTMLElement;
