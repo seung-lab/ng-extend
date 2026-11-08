@@ -56,16 +56,16 @@
 <body>
 <div class="page">
   <h1>From a block of brain to a neuron</h1>
-  <p class="lede">A tiny piece of real brain tissue, sliced into sections, then the whole cell it came from. Drag to turn it.</p>
+  <p class="lede">Slice a tiny block of brain, image every slice, then reconstruct a neuron. Drag to turn it.</p>
 
-  <div id="mv" aria-label="Animation: a tiny block of brain imaged by electron microscope, sliced into sections, then the whole neuron inside the dataset">
+  <div id="mv" aria-label="Animation: a tiny block of brain is cut into slices, each slice is imaged by electron microscope and stacked into a volume, then a whole neuron is reconstructed">
     <img class="fallback" src="s2.jpg" alt="An electron microscope image of brain tissue, with a cell nucleus in the middle">
     <p class="tag tr" id="tag"></p>
     <p class="cap" id="cap"></p>
     <div class="steps" role="group" aria-label="Steps">
-      <button type="button" data-step="0">Tissue</button>
-      <button type="button" data-step="1">Slices</button>
-      <button type="button" data-step="2">Neuron</button>
+      <button type="button" data-step="0">Slice</button>
+      <button type="button" data-step="1">Image</button>
+      <button type="button" data-step="2">Reconstruct</button>
     </div>
     <div id="load">loading the tissue</div>
   </div>
@@ -137,10 +137,17 @@ in vec3 aPos; in vec2 aUv; uniform mat4 uMvp; out vec2 vUv;
 void main(){ vUv = aUv; gl_Position = uMvp * vec4(aPos, 1.0); }`,
 `#version 300 es
 precision mediump float; in vec2 vUv; uniform sampler2D uTex; uniform float uAlpha; uniform float uRim;
+uniform float uImg;
 out vec4 o;
 void main(){
   float g = texture(uTex, vUv).r;
-  vec3 c = clamp(g * vec3(0.94, 1.02, 1.10) * 1.08, 0.0, 1.0);
+  vec3 em = clamp(g * vec3(0.94, 1.02, 1.10) * 1.08, 0.0, 1.0);
+  // before imaging: a plain section of tissue in resin
+  vec3 plain = vec3(0.50, 0.62, 0.72) + 0.06 * (g - 0.5);
+  float done = step(vUv.y, uImg);
+  vec3 c = mix(plain, em, done);
+  float beam = (1.0 - smoothstep(0.0, 0.03, abs(vUv.y - uImg))) * step(0.001, uImg) * step(uImg, 0.999);
+  c = mix(c, vec3(0.75, 0.97, 1.0), beam * 0.85);
   vec2 e = min(vUv, 1.0 - vUv); float d = min(e.x, e.y);
   float rim = (1.0 - smoothstep(0.0, 0.025, d)) * uRim;
   c = mix(c, vec3(0.49, 0.88, 1.0), rim);
@@ -313,16 +320,16 @@ async function build() {
 
 // ---------------------------------------------------------------- the timeline
 // t in seconds. 0 to 4: the block. 4 to 9: its slices. 9 on: pull back to the neuron.
-const STEP_AT = [0, 4.6, 12.2];
-const LOOP = 19;
+const STEP_AT = [0, 4.4, 12.8];
+const LOOP = 20.5;
 const CAPS = [
-  'A tiny block of brain, imaged with an electron microscope',
-  'It is cut into thousands of slices, each just 40 nanometers thin',
-  'Stack the slices and trace them, and a whole neuron appears in 3D',
+  'A tiny block of brain is cut into slices, each just 40 nanometers thin',
+  'Each slice is imaged, and the pictures stack into a 3D volume',
+  'AI and people trace a cell through the volume to reconstruct it in 3D',
 ];
 const TAGS = [
-  '12 &times; 12 &times; 8 <span class="unit">&micro;m</span> of real tissue',
-  '5 of its 200 slices',
+  '12 &times; 12 &times; 8 <span class="unit">&micro;m</span> block &middot; 5 of its 200 slices',
+  'electron microscope images &middot; real data',
   'one pyramidal cell &middot; MICrONS',
 ];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -330,7 +337,7 @@ let t = 0, playing = !reduce, last = performance.now(), yawDrag = 0, pitchDrag =
 let shownStep = -1;
 const capEl = document.getElementById('cap'), tagEl = document.getElementById('tag');
 const btns = [...root.querySelectorAll('.steps button')];
-function stepOf(tt) { return tt < 4.3 ? 0 : tt < 9.6 ? 1 : 2; }
+function stepOf(tt) { return tt < 4.3 ? 0 : tt < 10.2 ? 1 : 2; }
 function showStep(s) {
   if (s === shownStep) return;
   shownStep = s;
@@ -362,11 +369,12 @@ root.addEventListener('pointercancel', endDrag);
 
 function camera(tt) {
   // close on the block, swinging slowly round it
-  const pull = smooth(9.4, 12.4, tt);
+  const pull = smooth(10.2, 13.2, tt);
   const az0 = -2.35 + 0.05 * tt;                 // three quarter view
-  const el0 = 0.42 + 0.12 * smooth(4.2, 6.0, tt) - 0.12 * smooth(8.2, 9.4, tt);
+  const fan = smooth(1.4, 3.2, tt) * (1 - smooth(7.6, 8.8, tt));
+  const el0 = 0.42 + 0.12 * fan;
   // edge on to the slab, looking along x so the cell's long y spread runs across
-  const az1 = Math.PI + 0.16 * Math.sin((tt - 12.4) * 0.5) * smooth(12.4, 13.4, tt);
+  const az1 = Math.PI + 0.16 * Math.sin((tt - 13.2) * 0.5) * smooth(13.2, 14.2, tt);
   const el1 = 0.07;
   let az = az0 + (az1 - az0) * pull + yawDrag;
   let el = clamp(el0 + (el1 - el0) * pull + pitchDrag, -1.2, 1.45);
@@ -376,9 +384,9 @@ function camera(tt) {
   const aspect = canvas.width / canvas.height;
   const halfW = S.cellHalfY * 1.22, halfH = S.volSpan[2] * 0.5 * 1.45;
   const d1 = Math.max(halfW / (aspect * Math.tan(0.08)), halfH / Math.tan(0.08));
-  const d0 = 30 + 6 * smooth(4.2, 6.0, tt) * (1 - smooth(8.0, 9.4, tt));
+  const d0 = 30 + 11 * fan;
   const dist = Math.exp(Math.log(d0) + (Math.log(d1) - Math.log(d0)) * pull);
-  const target = V.lerp(S.cubeC, S.cellC, smooth(9.6, 12.4, tt));
+  const target = V.lerp(S.cubeC, S.cellC, smooth(10.4, 13.2, tt));
   const dir = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
   return { eye: V.add(target, V.mul(dir, dist)), target, dist, fov };
 }
@@ -402,12 +410,17 @@ function draw() {
   const fadeLoop = 1 - smooth(LOOP - 0.9, LOOP, tt);
 
   // how much of each thing is on screen
-  const aCube   = (1 - smooth(4.0, 5.0, tt)) * smooth(0, 0.6, tt);
-  const spread  = smooth(4.4, 6.2, tt) * (1 - smooth(8.0, 9.4, tt));
-  const aSlices = smooth(4.0, 4.8, tt) * (1 - smooth(9.0, 10.0, tt));
-  const aCell   = smooth(9.8, 11.8, tt) * fadeLoop;
-  const aSlab   = smooth(10.6, 12.4, tt) * fadeLoop;
-  const aMarker = smooth(8.8, 9.8, tt) * fadeLoop;
+  // Slice: a plain block splits into sections. Image: a beam scans each one,
+  // then they close up into the imaged volume. Reconstruct: pull back to the cell.
+  const plainCube = smooth(0, 0.6, tt) * (1 - smooth(1.3, 1.8, tt));
+  const emCube  = smooth(8.4, 9.0, tt) * (1 - smooth(10.2, 11.0, tt));
+  const aCube   = Math.max(plainCube, emCube);
+  const cubeImg = emCube > plainCube ? 1 : 0;
+  const spread  = smooth(1.4, 3.2, tt) * (1 - smooth(7.6, 8.8, tt));
+  const aSlices = smooth(1.2, 1.7, tt) * (1 - smooth(8.6, 9.1, tt));
+  const aCell   = smooth(10.6, 12.6, tt) * fadeLoop;
+  const aSlab   = smooth(11.4, 13.2, tt) * fadeLoop;
+  const aMarker = smooth(10.2, 11.0, tt) * fadeLoop;
 
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
@@ -418,6 +431,7 @@ function draw() {
     gl.useProgram(texProg.p);
     gl.uniformMatrix4fv(texProg.u.uMvp, false, mvp);
     gl.uniform1f(texProg.u.uAlpha, aCube); gl.uniform1f(texProg.u.uRim, 0.9);
+    gl.uniform1f(texProg.u.uImg, cubeImg);
     gl.depthMask(aCube > 0.98);
     for (const f of S.faces) {
       gl.bindTexture(gl.TEXTURE_2D, f.t); gl.bindVertexArray(f.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -440,6 +454,9 @@ function draw() {
       const m = mat4mul(mvp, [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,z,1]);
       gl.uniformMatrix4fv(texProg.u.uMvp, false, m);
       gl.uniform1f(texProg.u.uAlpha, aSlices * 0.96);
+      // imaged one after another, top section first
+      const k = S.slices.length - 1 - i;
+      gl.uniform1f(texProg.u.uImg, smooth(4.6 + k * 0.5, 5.4 + k * 0.5, tt));
       gl.bindTexture(gl.TEXTURE_2D, s.t); gl.bindVertexArray(s.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
     gl.depthMask(true);
