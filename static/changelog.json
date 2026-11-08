@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-08T22:54:00Z",
+      "title": "Watch a neuron get traced",
+      "items": [
+        "On page 2 of Get Started, the tiny block of brain now sits on one of the neuron's branches. You see the AI color in every cell, then the traced branch lights up and grows into the whole neuron."
+      ]
+    },
+    {
       "at": "2026-11-08T22:07:00Z",
       "title": "Get Started page 2, shorter",
       "items": [
