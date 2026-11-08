@@ -243,13 +243,78 @@ function ensureStyle() {
   const st = document.createElement('style');
   st.id = 'nge-intro-style';
   st.textContent = `
-.nge-intro { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 140%); z-index: 9500;
-  width: min(620px, calc(100vw - 24px)); box-sizing: border-box; padding: 14px 18px 16px;
-  border: 1px solid rgba(126, 210, 255, 0.55); border-radius: 12px;
-  background: linear-gradient(180deg, rgba(10, 22, 44, 0.92), rgba(6, 12, 26, 0.94));
-  box-shadow: 0 0 28px rgba(80, 180, 255, 0.22), inset 0 0 22px rgba(80, 180, 255, 0.08);
-  color: #e6f3ff; font: 15px/1.5 'Inter', 'Roboto', sans-serif; transition: transform 0.55s cubic-bezier(.2,.9,.3,1.15); }
-.nge-intro--in { transform: translate(-50%, 0); }
+/* The box, after Ames's scifi-ui hologram panels: a glassy plate with cut
+   corners, HUD brackets, a faint circuit board that draws itself in, and a
+   build in (a light runs the border, the plate resolves out of a blur, a
+   scan line passes down it). */
+@property --nge-ring { syntax: '<angle>'; inherits: false; initial-value: 45deg; }
+.nge-intro { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 0); z-index: 9500; isolation: isolate;
+  width: min(620px, calc(100vw - 24px)); box-sizing: border-box; padding: 16px 20px 16px;
+  color: #e6f3ff; font: 15px/1.5 'Inter', 'Roboto', sans-serif; opacity: 0; pointer-events: none; }
+.nge-intro--in { pointer-events: auto; animation: nge-holo-in 900ms cubic-bezier(.16,1,.3,1) both; }
+@keyframes nge-holo-in {
+  0% { opacity: 0; transform: translate(-50%, 18px) scaleY(0.04); filter: blur(8px) brightness(2.2) drop-shadow(0 0 0 rgba(80, 180, 255, 0)); }
+  35% { opacity: 1; transform: translate(-50%, 6px) scaleY(1.02); filter: blur(3px) brightness(1.6) drop-shadow(0 0 30px rgba(80, 180, 255, 0.6)); }
+  100% { opacity: 1; transform: translate(-50%, 0) scaleY(1); filter: blur(0) brightness(1) drop-shadow(0 0 18px rgba(80, 180, 255, 0.28)); } }
+.nge-intro--out { animation: nge-holo-out 420ms ease-in both; }
+@keyframes nge-holo-out { to { opacity: 0; transform: translate(-50%, 10px) scaleY(0.04); filter: blur(6px) brightness(2); } }
+/* the plate */
+.nge-intro-plate-bg { position: absolute; inset: 0; z-index: -2; pointer-events: none;
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  background: linear-gradient(160deg, rgba(14, 34, 66, 0.93), rgba(6, 12, 28, 0.95) 60%, rgba(22, 14, 48, 0.94));
+  box-shadow: inset 0 0 40px rgba(80, 180, 255, 0.10); }
+.nge-intro-plate-bg::before { content: ''; position: absolute; inset: 0; padding: 1px;
+  clip-path: inherit; background: linear-gradient(135deg, rgba(126, 224, 255, 0.75), rgba(74, 150, 224, 0.25) 40%, rgba(138, 96, 230, 0.6));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+/* fine scan lines across the glass */
+.nge-intro-plate-bg::after { content: ''; position: absolute; inset: 0; opacity: 0.35;
+  background: repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.05) 0 1px, transparent 1px 3px); }
+/* the light that runs the border once as it arrives */
+.nge-intro-ring { position: absolute; inset: 0; z-index: -1; pointer-events: none; padding: 1.5px; opacity: 0;
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  background: conic-gradient(from var(--nge-ring), #c9f6ff 0deg, rgba(126, 224, 255, 0.5) 16deg, transparent 34deg, transparent 180deg,
+    #c9f6ff 180deg, rgba(126, 224, 255, 0.5) 196deg, transparent 214deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+.nge-intro--in .nge-intro-ring { animation: nge-ring 1500ms linear 250ms forwards; }
+@keyframes nge-ring { 0% { --nge-ring: 45deg; opacity: 1; } 60% { opacity: 1; } 100% { --nge-ring: 405deg; opacity: 0; } }
+/* HUD brackets that snap in from outside */
+.nge-intro-corner { position: absolute; width: 14px; height: 14px; border: 2px solid #7ee0ff; pointer-events: none;
+  filter: drop-shadow(0 0 4px #7ee0ff); opacity: 0; }
+.nge-intro-corner.tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
+.nge-intro-corner.bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
+.nge-intro-corner.tl { top: 6px; left: 6px; width: 8px; height: 8px; border-width: 1px; border-right: 0; border-bottom: 0; }
+.nge-intro-corner.br { bottom: 6px; right: 6px; width: 8px; height: 8px; border-width: 1px; border-left: 0; border-top: 0; }
+.nge-intro--in .nge-intro-corner { animation: nge-corner 600ms cubic-bezier(.2,1.4,.4,1) 450ms both; }
+.nge-intro--in .nge-intro-corner.tr { --dx: 14px; --dy: -14px; } .nge-intro--in .nge-intro-corner.bl { --dx: -14px; --dy: 14px; }
+.nge-intro--in .nge-intro-corner.tl { --dx: -10px; --dy: -10px; } .nge-intro--in .nge-intro-corner.br { --dx: 10px; --dy: 10px; }
+@keyframes nge-corner { from { opacity: 0; transform: translate(var(--dx, 0), var(--dy, 0)); } to { opacity: 1; transform: none; } }
+/* the circuit board: traces draw in, then sparks run along a few of them */
+.nge-intro-circuit { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; overflow: visible;
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  -webkit-mask-image: linear-gradient(100deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.25) 45%, #000 80%);
+          mask-image: linear-gradient(100deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.25) 45%, #000 80%); }
+.nge-intro-circuit path { fill: none; stroke: rgba(126, 224, 255, 0.32); stroke-width: 1; vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1; stroke-dashoffset: 1; }
+.nge-intro-circuit circle { fill: rgba(126, 224, 255, 0.55); opacity: 0; }
+.nge-intro--in .nge-intro-circuit path { animation: nge-trace 1200ms ease-out both; animation-delay: calc(500ms + var(--i) * 70ms); }
+.nge-intro--in .nge-intro-circuit circle { animation: nge-node 300ms ease-out both; animation-delay: calc(1100ms + var(--i) * 70ms); }
+@keyframes nge-trace { to { stroke-dashoffset: 0; } }
+@keyframes nge-node { to { opacity: 1; } }
+.nge-intro-circuit .spark { stroke: #c9f6ff; stroke-width: 2; stroke-dasharray: 0.06 0.94; stroke-dashoffset: 1; opacity: 0;
+  filter: drop-shadow(0 0 3px #7ee0ff); }
+.nge-intro--in .nge-intro-circuit .spark { animation: nge-spark 3.6s linear infinite; animation-delay: calc(1800ms + var(--i) * 900ms); }
+@keyframes nge-spark { 0% { stroke-dashoffset: 1; opacity: 1; } 45% { stroke-dashoffset: 0; opacity: 1; } 46%, 100% { opacity: 0; stroke-dashoffset: 0; } }
+/* a scan line passes down the box as it arrives, and again with each new message */
+.nge-intro-scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, transparent, #c9f6ff 20%, #c9f6ff 80%, transparent); box-shadow: 0 0 12px #7ee0ff; }
+.nge-intro--in .nge-intro-scan { animation: nge-scan 800ms ease-in-out 350ms both; }
+.nge-intro--beat .nge-intro-scan { animation: nge-scan2 650ms ease-in-out both; }
+@keyframes nge-scan { 0% { top: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+@keyframes nge-scan2 { 0% { top: 0; opacity: 0; } 15% { opacity: 0.8; } 85% { opacity: 0.8; } 100% { top: 100%; opacity: 0; } }
+.nge-intro--beat .nge-intro-title { animation: nge-flicker 420ms steps(2, end) both; }
+@keyframes nge-flicker { 0% { opacity: 0.2; transform: translateX(-3px); } 30% { opacity: 1; transform: none; } 45% { opacity: 0.5; } 60%, 100% { opacity: 1; } }
 body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-area-inset-bottom)); }
 .nge-intro-head { display: flex; align-items: center; gap: 8px; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; color: #7ecaff; text-transform: uppercase; }
 .nge-intro-dot { width: 8px; height: 8px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-intro-blink 1.1s infinite; }
@@ -269,21 +334,32 @@ body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-are
   color: #8fb6dc; font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
 .nge-intro-back:hover { color: #e6f3ff; }
 .nge-intro-back[hidden] { display: inline-flex; visibility: hidden; }
-/* Next: a glowing arrow plate, notched at the back and pointed at the
-   front, with a light that sweeps across it now and then. */
-.nge-intro-next { position: relative; border: 0; padding: 0; background: none; cursor: pointer; margin-left: auto;
-  filter: drop-shadow(0 0 10px rgba(95, 212, 255, 0.55)); transition: filter 0.2s, transform 0.15s; }
-.nge-intro-next:hover { filter: drop-shadow(0 0 16px rgba(120, 225, 255, 0.85)); }
-.nge-intro-next:active { transform: scale(0.97); }
-.nge-intro-plate { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 10px; padding: 11px 30px 11px 24px;
-  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 10px 50%);
-  background: linear-gradient(100deg, #3fb8f5 0%, #7fe3ff 55%, #c9f6ff 100%);
-  color: #04172b; font: 700 13px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
-.nge-intro-plate::after { content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 45%;
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.75), transparent); transform: skewX(-20deg);
-  animation: nge-intro-shine 3.2s ease-in-out infinite; }
-@keyframes nge-intro-shine { 0%, 55% { left: -60%; } 100% { left: 130%; } }
-.nge-intro-chev { display: inline-flex; }
+/* Next: a hologram plate from Ames's scifi-ui (blue into violet on the
+   diagonal, cut corners, corner ticks), a light band sweeping across it,
+   and a glow that wakes on hover. */
+.nge-intro-next { position: relative; border: 0; padding: 0; background: none; cursor: pointer; margin-left: auto; color: inherit;
+  filter: drop-shadow(0 0 10px rgba(74, 150, 224, 0.45)); transition: filter 0.25s, transform 0.2s; }
+.nge-intro-next:hover { filter: drop-shadow(0 0 18px rgba(126, 224, 255, 0.75)); transform: translateY(-1px); }
+.nge-intro-next:active { transform: translateY(0) scale(0.98); }
+.nge-intro-plate { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 12px; padding: 12px 22px 12px 24px;
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  background: linear-gradient(135deg, rgba(74, 150, 224, 0.55) 0%, rgba(74, 150, 224, 0.62) 45%, rgba(138, 96, 230, 0.55) 100%);
+  color: #eaf7ff; font: 700 13px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap;
+  text-shadow: 0 0 8px rgba(126, 224, 255, 0.8); transition: background 0.3s; }
+.nge-intro-next:hover .nge-intro-plate { background: linear-gradient(135deg, rgba(90, 170, 240, 0.72) 0%, rgba(90, 170, 240, 0.78) 45%, rgba(150, 110, 240, 0.7) 100%); }
+/* the hairline frame and corner ticks */
+.nge-intro-plate::before { content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit;
+  background: linear-gradient(135deg, #bff3ff, rgba(126, 224, 255, 0.35) 40%, rgba(180, 150, 255, 0.8));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+.nge-intro-plate::after { content: ''; position: absolute; top: 0; bottom: 0; left: -70%; width: 50%; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(201, 246, 255, 0.55), transparent); transform: skewX(-20deg);
+  animation: nge-intro-shine 3.4s ease-in-out infinite; }
+@keyframes nge-intro-shine { 0%, 50% { left: -70%; } 100% { left: 140%; } }
+.nge-intro-tick { position: absolute; width: 6px; height: 6px; border: 1px solid #c9f6ff; pointer-events: none; }
+.nge-intro-tick.a { top: 3px; right: 3px; border-left: 0; border-bottom: 0; }
+.nge-intro-tick.b { bottom: 3px; left: 3px; border-right: 0; border-top: 0; }
+.nge-intro-chev { display: inline-flex; color: #c9f6ff; filter: drop-shadow(0 0 4px #7ee0ff); }
 .nge-intro-chev svg { animation: nge-intro-nudge 1.4s ease-in-out infinite; }
 @keyframes nge-intro-nudge { 50% { transform: translateX(3px); } }
 .nge-intro-next:focus-visible, .nge-intro-back:focus-visible, .nge-intro-x:focus-visible, .nge-intro-confirm button:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; }
@@ -296,7 +372,8 @@ body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-are
 .nge-intro-leave { background: none; border: 1px solid rgba(255, 140, 170, 0.6); color: #ffc2d2; border-radius: 6px; padding: 8px 16px; cursor: pointer;
   font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
 .nge-intro-leave:hover { background: rgba(255, 120, 160, 0.14); color: #fff; }
-@media (prefers-reduced-motion: reduce) { .nge-intro-plate::after, .nge-intro-chev svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-intro-plate::after, .nge-intro-chev svg, .nge-intro-circuit .spark { animation: none; }
+  .nge-intro--in { animation-duration: 1ms; } }
 /* Phones: a smaller panel, so the cell gets the room (Ames 2026-11-08). */
 .nge-intro--phone { padding: 10px 14px 12px; font-size: 13.5px; line-height: 1.42; }
 .nge-intro--phone .nge-intro-head { font-size: 9.5px; letter-spacing: 0.18em; }
@@ -318,6 +395,13 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 }
 
 let panel: HTMLElement | null = null;
+/** Where a right-angle trace (M x y, then H and V steps) ends. */
+function traceEnd(d: string): [number, number] {
+  const m = d.match(/^M\s*(\d+)\s+(\d+)/);
+  let x = Number(m?.[1] ?? 0), y = Number(m?.[2] ?? 0);
+  for (const g of d.match(/[HV]\s*\d+/g) ?? []) { const v = Number(g.slice(1)); if (g[0] === 'H') x = v; else y = v; }
+  return [x, y];
+}
 let callout: HTMLElement | null = null;
 let calloutRaf = 0;
 let typeTimer: ReturnType<typeof setInterval> | null = null;
@@ -401,7 +485,7 @@ function endTour() {
   setNgeMeshTint(savedTint);
   setStarshipCameraHeld(false);
   document.body.classList.remove('nge-intro-on');
-  if (panel) { const p = panel; p.classList.remove('nge-intro--in'); setTimeout(() => p.remove(), 600); panel = null; }
+  if (panel) { const p = panel; p.classList.add('nge-intro--out'); setTimeout(() => p.remove(), 450); panel = null; }
   try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
 
@@ -420,11 +504,21 @@ export async function startIntroTour() {
   const X_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   const CHEV = '<span class="nge-intro-chev"><svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1.5 1.5L6 6l-4.5 4.5M7.5 1.5L12 6l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
   const BACK = '<svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><path d="M6.5 1.5L2 6l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  panel.innerHTML = `<div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<span class="nge-intro-bars"><i></i><i></i><i></i><i></i></span><button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
+  // the circuit board: right-angle traces, denser on the right, away from the words
+  const TRACES = ['M430 8 H520 V40 H600', 'M470 70 H540 V110 H612', 'M560 10 V60', 'M380 130 H450 V170 H560 V196',
+    'M500 150 H612', 'M20 190 H120 V160 H200', 'M300 8 H360 V30', 'M590 130 V190', 'M60 6 V30 H140'];
+  const circuit = `<svg class="nge-intro-circuit" viewBox="0 0 620 200" preserveAspectRatio="none" aria-hidden="true">${
+    TRACES.map((d, k) => `<path pathLength="1" style="--i:${k}" d="${d}"/>`).join('')}${
+    [0, 1, 3].map((k, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${TRACES[k]}"/>`).join('')}${
+    TRACES.map((d, k) => { const [x, y] = traceEnd(d); return `<circle style="--i:${k}" cx="${x}" cy="${y}" r="2.2"/>`; }).join('')}</svg>`;
+  const TICKS = '<i class="nge-intro-tick a"></i><i class="nge-intro-tick b"></i>';
+  panel.innerHTML = `<span class="nge-intro-plate-bg"></span>${circuit}<span class="nge-intro-ring"></span><span class="nge-intro-scan"></span>
+    <i class="nge-intro-corner tl"></i><i class="nge-intro-corner tr"></i><i class="nge-intro-corner bl"></i><i class="nge-intro-corner br"></i>
+    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<span class="nge-intro-bars"><i></i><i></i><i></i><i></i></span><button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
-    <div class="nge-intro-row"><button class="nge-intro-back" type="button">${BACK}Back</button><button class="nge-intro-next nge-intro-go" type="button"><span class="nge-intro-plate"><span class="nge-intro-label"></span>${CHEV}</span></button></div>
+    <div class="nge-intro-row"><button class="nge-intro-back" type="button">${BACK}Back</button><button class="nge-intro-next nge-intro-go" type="button"><span class="nge-intro-plate">${TICKS}<span class="nge-intro-label"></span>${CHEV}</span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
-      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-intro-next nge-intro-stay" type="button"><span class="nge-intro-plate">Keep going${CHEV}</span></button></div></div>`;
+      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-intro-next nge-intro-stay" type="button"><span class="nge-intro-plate">${TICKS}Keep going${CHEV}</span></button></div></div>`;
   document.body.appendChild(panel);
   document.body.classList.add('nge-intro-on');
   requestAnimationFrame(() => panel?.classList.add('nge-intro--in'));
@@ -459,6 +553,7 @@ export async function startIntroTour() {
     i = n;
     const b = BEATS[i];
     titleEl.textContent = b.header ?? b.callout?.title ?? '';
+    if (from >= 0 && panel) { panel.classList.remove('nge-intro--beat'); void panel.offsetWidth; panel.classList.add('nge-intro--beat'); }
     labelEl.textContent = b.next ?? 'Next';
     backEl.hidden = i === 0;
     // Size the panel for the whole text first, so it holds still while the

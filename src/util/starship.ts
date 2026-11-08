@@ -177,12 +177,23 @@ const TOUCH_PAUSE_MS = 4000;
 let touchedAt = 0;
 let raf = 0;
 
+const inView = (e: Event) => !!(e.target as HTMLElement | null)?.closest?.('.neuroglancer-panel, .nge-3d-panel, canvas');
+let downAt: [number, number] | null = null;
 function onUserTurn(e: Event) {
-  if (!(e.target as HTMLElement | null)?.closest?.('.neuroglancer-panel, .nge-3d-panel, canvas')) return;
+  if (!inView(e)) return;
+  const pe = e as PointerEvent;
+  if (pe.pointerType === 'touch') { touchedAt = performance.now(); return; }
   // On a laptop, once the player moves the cell by hand, the view never
-  // starts turning on its own again (Ames).
-  if ((e as PointerEvent).pointerType === 'touch') touchedAt = performance.now();
-  else userTouched = true;
+  // starts turning on its own again (Ames). A wheel turn counts at once; a
+  // mouse press counts only once it drags, so a plain click (on the cell,
+  // or to bring the window forward) leaves the turn going.
+  if (e.type === 'wheel') { userTouched = true; return; }
+  downAt = [pe.clientX, pe.clientY];
+}
+function onUserDrag(e: PointerEvent) {
+  if (e.pointerType === 'touch') { if (e.buttons && inView(e)) touchedAt = performance.now(); return; }
+  if (!downAt || !e.buttons) { downAt = null; return; }
+  if (Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) { userTouched = true; downAt = null; }
 }
 const handsOff = () => !userTouched && performance.now() - touchedAt > TOUCH_PAUSE_MS;
 
@@ -253,6 +264,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     particles = [];
     window.addEventListener('pointerdown', onUserTurn, true);
     window.addEventListener('wheel', onUserTurn, true);
+    window.addEventListener('pointermove', onUserDrag, true);
 
     const total = CRUISE_S + LANDING_S;
     const start = performance.now();
@@ -360,6 +372,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     cancelAnimationFrame(raf);
     window.removeEventListener('pointerdown', onUserTurn, true);
     window.removeEventListener('wheel', onUserTurn, true);
+    window.removeEventListener('pointermove', onUserDrag, true);
     running = false;
   }
 }
