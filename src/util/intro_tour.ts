@@ -982,14 +982,17 @@ function keepOnScreen(el: HTMLElement) {
     if (!el.isConnected) { window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); clearInterval(timer); return; }
     const vv = window.visualViewport;
     const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-    const hidden = Math.max(0, window.innerHeight - visibleBottom);
-    el.style.bottom = `${28 + hidden}px`;
-    const r = el.getBoundingClientRect();
-    if (r.bottom > visibleBottom - 6) el.style.bottom = `${28 + hidden + (r.bottom - visibleBottom + 6)}px`;
+    // placed from the top by its own measured height, so it sits inside
+    // the visible window whatever the browser makes of bottom (Firefox)
+    const h = el.offsetHeight;
+    if (!h) return;
+    el.style.bottom = 'auto';
+    el.style.top = `${Math.max(8, visibleBottom - 28 - h).toFixed(0)}px`;
   };
   window.addEventListener('resize', fit);
   window.visualViewport?.addEventListener('resize', fit);
   const timer = setInterval(fit, 1000);
+  try { new ResizeObserver(fit).observe(el); } catch { /* the timer covers it */ }
   requestAnimationFrame(fit);
 }
 
