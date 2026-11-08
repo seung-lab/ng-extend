@@ -332,15 +332,13 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         }
         // in on the soma, slowly, all the way in (Ames: the camera zooms in
         // as the ship flies in), a touch faster at the end
-        const zoom = Math.pow(Math.min(1, t / total), 1.35);
+        // (the camera holds still otherwise, it does not chase the ship, so
+        // the zoom stays wide while the ship weaves and closes in late)
+        const zoom = Math.pow(Math.min(1, t / total), 2.4);
         if (handsOff() && !cameraHeld) {
           v.projectionScale.value = WIDE * Math.pow(CLOSE / WIDE, zoom);
           // and over toward the landing pad, so the ship lands mid screen
-          let c = mix(somaAt, padAt, zoom * 0.85);
-          // drifting after the ship while it weaves, so it stays in view as
-          // the view closes in, settling on the pad for the landing
-          const follow = 0.45 * (1 - smooth((t - (CRUISE_S - 3)) / 3));
-          if (shipNow && follow > 0) c = mix(c, shipNow, follow);
+          const c = mix(somaAt, padAt, zoom * 0.85);
           v.navigationState.position.value = Float32Array.from(c.map((x, i) => x / nm[i]));
         }
 

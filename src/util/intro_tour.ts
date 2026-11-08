@@ -27,6 +27,8 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {cameraAxes, cellDrawn, clearStarship, dockStarship, flyStarship, loadAssets, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
+import {findDatasetBySegName, switchToDataset} from '../datasets';
+import {useTutorialStore} from '../store-pyr';
 
 type V3 = [number, number, number];
 interface Tour {
@@ -68,8 +70,8 @@ const BEATS: Beat[] = [
     body: "Every glowing dot is a synapse. Gold ones bring signals in from other neurons, onto the dendrites and soma. Pink ones carry this cell's own signal out, from its axon."},
   {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['For scale', 'a blink takes 300 times longer'], ['Speed', 'up to 100 m/s'], ['For scale', 'about 220 mph']]}, part: 3, view: {at: 'cell', nm: 220_000},
     body: 'Neurons talk in quick electric pulses called action potentials. Each one starts near the soma and races down the axon to its synapses. Together, your neurons send hundreds of billions of them every minute.'},
-  {key: 'connectome', header: "That's where you come in", view: {at: 'cell', nm: 260_000}, next: 'Start mapping',
-    body: 'Mapping every neuron and every synapse gives scientists a wiring diagram of the brain, called a connectome. That takes a lot of eyes, and yours are welcome here!'},
+  {key: 'connectome', header: 'Connectome', view: {at: 'cell', nm: 260_000},
+    body: 'A wiring diagram of the brain that includes all the cells and all the synapses is called a connectome. With it, scientists can follow how signals flow, to learn how we see, remember and think, and what goes wrong in brain disorders. This map doesn’t exist for a mammalian brain yet, but we’re getting closer thanks to people like you playing Pyr.'},
 ];
 
 /* ── colours (cell blue, parts as in the labelled picture) ── */
@@ -461,7 +463,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-go { position: relative; isolation: isolate; display: inline-flex; flex-direction: row; align-items: stretch; height: 40px; padding: 0; margin-left: auto;
   border: 0 !important; background: none !important; box-shadow: none !important; cursor: pointer; white-space: nowrap; color: #eaf8ff;
   filter: drop-shadow(0 0 8px rgba(70, 190, 255, 0.35)); transition: filter 0.25s, transform 0.12s; }
-.nge-go-label { position: relative; display: flex; align-items: center; padding: 0 18px 0 18px; overflow: hidden;
+.nge-go-label { position: relative; display: flex; align-items: center; padding: 0 22px 0 22px; overflow: hidden;
   font: 700 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.3em; text-transform: uppercase;
   clip-path: polygon(8px 0, 100% 0, calc(100% - 10px) 100%, 0 100%, 0 8px);
   background: linear-gradient(180deg, rgba(126, 224, 255, 0.16), rgba(40, 110, 200, 0.12)); }
@@ -471,7 +473,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
 .nge-go-label::after { content: ''; position: absolute; inset: 0; z-index: -1; transform: scaleX(0); transform-origin: 100% 50%;
   background: linear-gradient(270deg, rgba(126, 224, 255, 0.45), rgba(126, 224, 255, 0.08)); transition: transform 0.3s cubic-bezier(.2,.8,.2,1); }
-.nge-go-chevs { position: relative; display: grid; place-items: center; width: 44px; margin-left: -6px;
+.nge-go-chevs { display: none !important; position: relative; place-items: center; width: 44px; margin-left: -6px;
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
   background: linear-gradient(135deg, #c9f6ff 0%, #5fd4ff 45%, #3a8cff 100%); color: #04172b; }
 .nge-go-chevs i { display: none; }
@@ -482,6 +484,10 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-go:hover .nge-go-chevs::before { transform: translateX(3px); }
 .nge-go:active { transform: translateY(1px) scale(0.98); }
 .nge-go:focus-visible { outline: 2px solid #7ecaff; outline-offset: 4px; }
+.nge-go--alt { margin-left: auto; filter: none; }
+.nge-go--alt + .nge-go { margin-left: 10px; }
+.nge-go--alt .nge-go-label { background: none; color: #bfe6ff; }
+.nge-go[hidden] { display: none; }
 /* back: just a chevron */
 .nge-back { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important;
   color: #8fbfe6; cursor: pointer; transition: color 0.2s, transform 0.15s; }
@@ -580,18 +586,35 @@ function frameSvg(w: number, h: number, cut = 14): string {
     return d + (closed ? ' Z' : '');
   };
   const rim = soft([[c, 0], [w, 0], [w, h - c], [w - c, h], [0, h], [0, c]], true);
-  // Clean (Ames: the dots read as "mold spores"): the rim, and a few
-  // straight accent lines that run beside it near the corners, no pads
-  const accents: string[] = [];
-  const line = (x1: number, y1: number, x2: number, y2: number, i: number) =>
-    accents.push(`<path pathLength="1" style="--i:${i}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)}"/>`);
-  const g = 5;
-  line(c + 8, g, c + 8 + Math.min(90, w * 0.2), g, 0);                 // top, from the cut corner
-  line(w - g, g + 10, w - g, g + 10 + Math.min(34, h * 0.25), 1);      // right, near the top
-  line(w - c - 8, h - g, w - c - 8 - Math.min(110, w * 0.24), h - g, 2); // bottom, from the cut corner
-  line(g, h - g - 10, g, h - g - 10 - Math.min(30, h * 0.22), 3);      // left, near the bottom
-  const sp = `<path class="spark" pathLength="1" style="--i:0" d="${rim}"/>`;
-  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${accents.join('')}${sp}</svg>`;
+  const traces: string[] = [], pads: string[] = [];
+  let k = 0;
+  // one trace: leaves the rim at `from`, steps in by `inset` on a 45 degree
+  // bend, runs `len` along the edge, and may step in again before its pad
+  const trace = (x: number, y: number, dx: number, dy: number, nx: number, ny: number, len: number, inset = 6, second = 0) => {
+    const at = (a: number, b: number) => [x + dx * a + nx * b, y + dy * a + ny * b];
+    const pts = [at(0, 0), at(inset, inset), at(inset + len, inset)];
+    if (second) pts.push(at(inset + len + second, inset + second));
+    traces.push(`<path pathLength="1" style="--i:${k}" d="${soft(pts)}"/>`);
+    const e = pts[pts.length - 1];
+    pads.push(`<circle class="pad" style="--i:${k}" cx="${e[0].toFixed(1)}" cy="${e[1].toFixed(1)}" r="2.1"/>`);
+    k++;
+    return soft(pts);
+  };
+  const sparks: string[] = [];
+  // top edge: two traces in from the right, one from the left
+  sparks.push(trace(w - 18, 0, -1, 0, 0, 1, Math.min(90, w * 0.22), 6, 6));
+  trace(w - 26, 0, -1, 0, 0, 1, Math.min(46, w * 0.12), 12);
+  trace(c + 14, 0, 1, 0, 0, 1, Math.min(54, w * 0.14), 6);
+  // right edge, downward
+  sparks.push(trace(w, 16, 0, 1, -1, 0, Math.min(h * 0.35, 46), 6, 5));
+  // bottom edge: from the left going right, and from the right going left
+  sparks.push(trace(14, h, 1, 0, 0, -1, Math.min(110, w * 0.26), 6, 6));
+  trace(22, h, 1, 0, 0, -1, Math.min(52, w * 0.13), 12);
+  trace(w - c - 16, h, -1, 0, 0, -1, Math.min(70, w * 0.18), 6);
+  // left edge, upward
+  trace(0, h - 14, 0, -1, 1, 0, Math.min(h * 0.32, 40), 6);
+  const sp = sparks.map((d, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${d}"/>`).join('');
+  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${traces.join('')}${sp}${pads.join('')}</svg>`;
 }
 
 const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -722,6 +745,7 @@ export async function startIntroTour() {
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
     <div class="nge-intro-row"><button class="nge-back nge-intro-back" type="button" aria-label="Back">${CHEV_L}</button>
+      <button class="nge-go nge-go--alt nge-intro-alt" type="button" hidden><span class="nge-go-label">Explore a bigger neuron</span></button>
       <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
       <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-go nge-intro-stay" type="button"><span class="nge-go-label">Keep going</span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div></div>`;
@@ -733,6 +757,7 @@ export async function startIntroTour() {
   const nextEl = panel.querySelector('.nge-intro-go') as HTMLButtonElement;
   const labelEl = panel.querySelector('.nge-intro-label') as HTMLElement;
   const backEl = panel.querySelector('.nge-intro-back') as HTMLButtonElement;
+  const altEl = panel.querySelector('.nge-intro-alt') as HTMLButtonElement;
   const stayEl = panel.querySelector('.nge-intro-stay') as HTMLButtonElement;
   const ask = (on: boolean) => {
     panel?.classList.toggle('nge-intro--asking', on);
@@ -754,7 +779,9 @@ export async function startIntroTour() {
     const b = BEATS[i];
     titleEl.textContent = b.header ?? b.callout?.title ?? '';
     if (from >= 0 && panel) { panel.classList.remove('nge-intro--beat'); void panel.offsetWidth; panel.classList.add('nge-intro--beat'); }
-    labelEl.textContent = b.next ?? 'Next';
+    const last = b.key === 'connectome';
+    labelEl.textContent = last ? 'Start playing Pyr' : (b.next ?? 'Next');
+    altEl.hidden = !last;
     backEl.hidden = i === 0;
     // Size the panel for the whole text first, so it holds still while the
     // words type in and the camera can frame the cell above it.
@@ -803,7 +830,9 @@ export async function startIntroTour() {
     if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
-  nextEl.onclick = () => go(i + 1);
+  // the end: choose your own adventure (Ames)
+  nextEl.onclick = () => { if (BEATS[i]?.key === 'connectome') { endTour(); startGetStarted(); } else go(i + 1); };
+  altEl.onclick = () => { endTour(); void exploreBiggerNeuron(); };
   backEl.onclick = () => go(i - 1);
   // Enter or the right arrow goes on, the left arrow goes back, Escape asks
   // to leave; held here so the viewer does not also move.
@@ -819,6 +848,46 @@ export async function startIntroTour() {
   };
   window.addEventListener('keydown', onKey, true);
   go(0);
+}
+
+/** Start playing Pyr: the Get Started tutorial. */
+function startGetStarted() {
+  clearStarship();
+  const t = useTutorialStore();
+  t.activeTutorial = 1;
+  t.setTutorialStep(0);
+}
+
+/** Explore a bigger neuron: over to MICrONS, a cubic millimetre of mouse
+ *  visual cortex, to a neuron whose whole axon has been traced
+ *  (864691135212863360: proofread, axon fully extended, the same since the
+ *  v117 release Pyr shows). */
+const BIG_NEURON = '864691135212863360';
+const BIG_NEURON_NM: V3 = [1070976, 819008, 1007600];
+async function exploreBiggerNeuron() {
+  clearStarship();
+  const v = viewerNow();
+  const ds = findDatasetBySegName('minnie65_public');
+  if (!v || !ds || !(await switchToDataset(ds, {forJump: true}))) return;
+  for (let k = 0; k < 40; k++) {
+    const ml = (v.layerManager?.managedLayers ?? []).find((m: any) => !m?.archived &&
+      String(m?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/minnie65_public') && m.layer?.displayState?.segmentationGroupState?.value?.visibleSegments);
+    if (ml) {
+      ml.setVisible?.(true);
+      const g = ml.layer.displayState.segmentationGroupState.value;
+      g.visibleSegments.clear();
+      g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
+      const nm = nmPerUnit();
+      try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
+      if (nm) {
+        v.navigationState.position.value = Float32Array.from(BIG_NEURON_NM.map((c, i) => c / nm[i]));
+        v.projectionScale.value = 900_000 / Math.min(nm[0], nm[1], nm[2]);
+      }
+      startIdleTurn();
+      return;
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
 }
 
 /** The whole intro: the Starship flies in and lands, then the tour. */
