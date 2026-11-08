@@ -431,6 +431,20 @@ body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: c
 .ng-extend.nge-sig-tag--hushed { opacity: 0.5; }
 @media (max-width: 700px) { .ng-extend.nge-sig-tag small { display: none; } }
 body.nge-mobile .nge-sig { bottom: calc(70px + env(safe-area-inset-bottom)); }
+/* Wide screens: the HUD stands at the right, the cells get the whole height. */
+@media (min-width: 1000px) {
+  .nge-sig { left: auto; right: 16px; bottom: auto; top: 64px; transform: none; width: 372px; max-height: calc(100vh - 150px); overflow-y: auto; padding: 12px 16px 12px;
+    animation-name: nge-sig-in-side; }
+  @keyframes nge-sig-in-side { 0% { opacity: 0; transform: translateX(18px) scaleX(0.04); filter: blur(6px) brightness(2); } 100% { opacity: 1; transform: none; filter: none; } }
+  .nge-sig--out { animation-name: nge-sig-out-side; }
+  @keyframes nge-sig-out-side { to { opacity: 0; transform: translateX(14px) scaleX(0.04); filter: blur(6px); } }
+  .nge-sig-top { grid-template-columns: 1fr; gap: 8px; }
+  .nge-sig-stats { text-align: left; }
+  .nge-sig-cells { flex-direction: column; }
+  .nge-sig .nge-sig-chip { width: 100%; box-sizing: border-box; }
+  .nge-sig-row { gap: 8px; }
+  .nge-sig-msg { margin-left: 0; width: 100%; text-align: left; }
+}
 @media (max-width: 700px) { .nge-sig { padding: 10px 12px; font-size: 12.5px; } .nge-sig-obj strong { font-size: 14px; } .nge-sig-stats b { font-size: 15px; }
   .nge-sig .nge-sig-chip .syn { display: none; } .nge-sig .nge-sig-chip { min-width: 0; } .nge-sig .nge-sig-chip .bar { width: 70px; } .nge-sig-note { display: none; } .nge-sig-coach { font-size: 13px; } }
 @media (prefers-reduced-motion: reduce) { .nge-sig, .nge-sig-dot, .nge-sig-chip--spike { animation: none; } }
@@ -736,11 +750,12 @@ function placeTags() {
   if (!tagEls.size) return;
   const pn = threeDPanel();
   const r = pn?.element?.getBoundingClientRect();
-  const hudTop = panel ? panel.getBoundingClientRect().top - 6 : window.innerHeight;
+  const hud = panel?.getBoundingClientRect();
+  const behindHud = (x: number, y: number) => !!hud && x > hud.left - 8 && x < hud.right + 8 && y > hud.top - 40 && y < hud.bottom + 8;
   for (const [key, el] of tagEls) {
     const c = cells.get(key)!;
     const s = c.shown ? toScreen(c.spec.soma) : null;
-    if (!s || !r || s[0] < r.left + 20 || s[0] > r.right - 20 || s[1] < r.top + 40 || s[1] > Math.min(r.bottom, hudTop)) { el.style.display = 'none'; continue; }
+    if (!s || !r || s[0] < r.left + 20 || s[0] > r.right - 20 || s[1] < r.top + 40 || s[1] > r.bottom - 10 || behindHud(s[0], s[1])) { el.style.display = 'none'; continue; }
     el.style.display = '';
     el.style.left = `${s[0]}px`;
     el.style.top = `${s[1]}px`;
@@ -840,9 +855,12 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
   needsFrame = false;
   // The HUD takes the bottom third, so the camera looks a little below the
   // circuit and the cells sit above.
-  const look = sub(center, mul(cam.up, viewNm * 0.08));
+  const look = sub(center, mul(cam.up, viewNm * (sideHud() ? 0.03 : 0.1)));
   v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
 }
+/** On a wide screen the HUD stands at the right, leaving the whole height
+ *  for the cells; on a phone it lies along the bottom. */
+const sideHud = () => window.innerWidth >= 1000;
 /** The ship rides with the camera, low in the foreground like a cockpit:
  *  it stays in view however the player turns the cells, and its beams
  *  leave from the player's own side. */
@@ -850,7 +868,8 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): V3 | null {
   const v = viewerNow(), nm = nmPerUnit();
   if (!v || !nm) return null;
   const look = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
-  return add(add(look, mul(cam.toEye, viewNm * 0.42)), mul(cam.up, -viewNm * 0.17));
+  // low and to the left, clear of a bottom HUD
+  return add(add(add(look, mul(cam.toEye, viewNm * 0.42)), mul(cam.up, -viewNm * 0.09)), mul(cam.right, -viewNm * 0.26));
 }
 
 /** The model's own length along its nose (+z), so it can be sized in nm. */
