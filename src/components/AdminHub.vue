@@ -3664,22 +3664,22 @@ function practiceWhen(iso: string | null) {
             <button v-if="row.impl_state === 'failed' && !releaseBuildOf(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Retry build</button>
           </div>
           <div class="nge-triage-claude">
-            <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
             <!-- Done, on every card that is not already done (Ames 2026-10-01:
                  "a lot of the time I fix in Claude"), whatever state it is in:
                  waiting for a decision, in progress, or dismissed. -->
-            <button v-if="row.status === 'proposed' || isLater(row) || isTodo(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+            <button v-if="row.status === 'proposed' || isLater(row) || isTodo(row)" class="nge-admin-action-btn nge-triage-prog-btn" :disabled="triageActing === row.id"
                     title="You are fixing this yourself, for example in a Claude chat. Moves the card to In progress. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row)">▶ In progress</button>
-            <button v-if="row.status === 'proposed' || isByHand(row) || isLater(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+            <button v-if="row.status === 'proposed' || isByHand(row) || isLater(row)" class="nge-admin-action-btn nge-triage-todo-btn" :disabled="triageActing === row.id"
                     title="A bigger job to plan. Puts a card for it on the To do board and moves this report under On the To do board. The robot does not build it and nothing is sent to the reporter."
                     @click="sendToTodoBoard(row)"><span v-html="TODO_ICON"></span>To do</button>
-            <button v-if="row.status === 'proposed' || isByHand(row) || isTodo(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+            <button v-if="row.status === 'proposed' || isByHand(row) || isTodo(row)" class="nge-admin-action-btn nge-triage-later-btn" :disabled="triageActing === row.id"
                     title="A good idea, but not now. Moves the card to Ideas for later. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row, true)">💡 Later</button>
             <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
+            <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
             <!-- Dismiss at any stage after approval too (a failed or unwanted
                  build), and Discard for junk (Ames 2026-10-05). -->
             <button v-if="row.status === 'approved'" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
@@ -3813,18 +3813,19 @@ function practiceWhen(iso: string | null) {
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
                         title="Sends this to the submitter, then moves the card to Done with the same text as its note."
                         @click="sendReporterUpdate(row, true)">✓ Send and mark done</button>
-                <button v-if="triageGroupOf(row) === 'decide'" class="nge-admin-action-btn"
+                <button v-if="triageGroupOf(row) === 'decide'" class="nge-admin-action-btn nge-triage-prog-btn"
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
                         title="Sends this to the submitter, then moves the card to In progress, marked by hand so the robot does not build it."
                         @click="sendReporterUpdate(row, false, true)">▶ Send: mark in progress</button>
-                <button v-if="triageGroupOf(row) === 'decide' || isByHand(row)" class="nge-admin-action-btn"
+                <button v-if="triageGroupOf(row) === 'decide' || isByHand(row)" class="nge-admin-action-btn nge-triage-later-btn"
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
                         title="Sends this to the submitter, then moves the card to Ideas for later."
                         @click="sendReporterUpdate(row, false, false, true)">💡 Send: mark later</button>
                 <button class="nge-admin-action-btn" :disabled="reporterSending === row.id" @click="closeReporterDraft(row)">Not now</button>
               </div>
             </template>
-            <button v-else class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
+            <div class="nge-triage-tools">
+            <button v-if="reporterDrafts[row.id] === undefined" class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
             <template v-if="row.source === 'site_issue'">
               <a v-if="mecDone[row.id]" class="nge-admin-action-btn nge-triage-mec-btn nge-triage-mec-btn--done" :href="MEC_SHEET_URL" target="_blank" rel="noopener"
@@ -3832,8 +3833,9 @@ function practiceWhen(iso: string | null) {
               <button v-else class="nge-admin-action-btn nge-triage-mec-btn" :disabled="mecBusy === row.id"
                       title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors. The player gets a bell saying their report was added."
                       @click="addToMecSheet(row)">{{ mecBusy === row.id ? 'Adding…' : '🧩 MEC error' }}</button>
-              <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
             </template>
+            </div>
+            <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
           </div>
         </div>
         <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
@@ -4958,10 +4960,30 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-reporter-by { color: rgba(255,255,255,0.45); }
 /* A reply the submitter was asked for (Ames 2026-10-13). */
 .nge-triage-thread-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* MEC error: sits beside Update submitter. */
-.nge-triage-mec-btn { margin-left: 8px; text-decoration: none; display: inline-block; }
-.nge-triage-mec-btn--done { color: #15803d; border-color: #86efac; }
+/* Update submitter and MEC error, side by side at their own size (Ames 2026-11-07). */
+.nge-triage-reporter .nge-triage-actions { flex-wrap: wrap; }
+.nge-triage-reporter .nge-triage-actions > button { white-space: nowrap; }
+.nge-triage-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.nge-triage-tools > .nge-admin-action-btn { flex: 0 0 auto; width: auto; align-self: center; }
+.nge-triage-mec-btn { text-decoration: none; display: inline-flex; align-items: center; }
+.nge-triage-mec-btn--done { color: #8fe6a2; border-color: rgba(143, 230, 162, 0.4); }
+.nge-triage-light .nge-triage-mec-btn--done { color: #1d7038; border-color: #8fcba3; }
 .nge-triage-mec-err { color: #b91c1c; font-size: 12px; margin-top: 6px; }
+/* One color per place a card goes, the same on every button that sends it
+   there (Ames 2026-11-07: "purple for send and mark in progress"). Done is
+   green and Discard red, as before. */
+.nge-triage-prog-btn { color: #c9b8ff; border-color: rgba(167, 139, 250, 0.45); }
+.nge-triage-prog-btn:hover:not(:disabled) { background: rgba(167, 139, 250, 0.14); border-color: rgba(167, 139, 250, 0.8); }
+.nge-triage-todo-btn { color: #9dc1ff; border-color: rgba(120, 165, 255, 0.45); }
+.nge-triage-todo-btn:hover:not(:disabled) { background: rgba(120, 165, 255, 0.14); border-color: rgba(120, 165, 255, 0.8); }
+.nge-triage-later-btn { color: #f0d27a; border-color: rgba(240, 210, 122, 0.4); }
+.nge-triage-later-btn:hover:not(:disabled) { background: rgba(240, 210, 122, 0.12); border-color: rgba(240, 210, 122, 0.75); }
+.nge-triage-light .nge-triage-prog-btn { color: #5b21b6; border-color: #c4b5fd; }
+.nge-triage-light .nge-triage-prog-btn:hover:not(:disabled) { background: #f3efff; border-color: #8b5cf6; }
+.nge-triage-light .nge-triage-todo-btn { color: #1d4ed8; border-color: #9dbcf0; }
+.nge-triage-light .nge-triage-todo-btn:hover:not(:disabled) { background: #eef4ff; border-color: #3b74e0; }
+.nge-triage-light .nge-triage-later-btn { color: #7a5c00; border-color: #e2c873; }
+.nge-triage-light .nge-triage-later-btn:hover:not(:disabled) { background: #fdf8e6; border-color: #c9a227; }
 /* Update submitter: format buttons, preview, and a sent update drawn as the
    player sees it (Ames 2026-10-16). */
 .nge-triage-fmtbar { margin: 6px 0 4px; }
