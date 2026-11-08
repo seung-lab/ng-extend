@@ -745,7 +745,7 @@ const props = defineProps<{ embedded?: boolean }>();
             </label>
             <label class="nge-settings-toggle" title="Off: a Retina cell you claim opens with one Checked Highlight layer, and the Annotation layers button in the Cell Library adds the rest. On: every Retina claim opens with all of them.">
               <input type="checkbox" v-model="draftRetinaAnnot" />
-              <span class="nge-settings-toggle-label">Claiming a Retina cell adds the annotation layers (Soma, True End, Can't Fix, Hits Edge, Notes)</span>
+              <span class="nge-settings-toggle-label">Claiming a Retina cell adds the annotation layers (Soma, True End, Can't Fix, Hits Edge, Notes). Cilia Quests always have their annotations.</span>
             </label>
             <button type="button" class="nge-set-retina-ask" @click="askRetinaAgain">Show the Retina question again</button>
             <label class="nge-settings-toggle">

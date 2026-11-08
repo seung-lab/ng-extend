@@ -85,7 +85,7 @@ onUnmounted(() => document.removeEventListener('nge:retina-ask', askAgain));
         Pyr now opens Retina cells with Highlight for new players.
         <a :href="GUIDE" target="_blank" rel="noopener">Guide to mapping bipolar cells</a>
       </p>
-      <p class="nge-rmp-text">Pyr can now open your bipolar cells and other Retina cells with Highlight or with the annotation layers. Please choose below.</p>
+      <p class="nge-rmp-text">Pyr can now open your bipolar cells and other Retina cells (excluding Cilia Quests, which require annotations) with Highlight or with the annotation layers. Please choose below.</p>
       <div class="nge-rmp-choice" role="radiogroup" aria-label="Retina cells open with">
         <button type="button" role="radio" :aria-checked="!annotations" class="nge-rmp-opt" :class="{ 'nge-rmp-opt--on': !annotations }" @click="annotations = false">
           <span class="nge-rmp-opt-name">Highlight</span>
