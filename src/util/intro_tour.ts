@@ -251,7 +251,7 @@ function hideCell(id: string) {
 
 /* ── every synapse on the cell, twinkling in ── */
 let synRaf = 0;
-function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number}, scale = 1) {
+function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number}, scale = 1, alpha = 1) {
   const nm = nmPerUnit();
   if (!nm || !t.synIn) return;
   const nIn = t.synIn.length / 3, nOut = t.synOut.length / 3, n = nIn + nOut;
@@ -267,8 +267,8 @@ function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number},
     const sec = (now - t0) / 1000;
     for (let j = 0; j < n; j++) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
-      if (j < nIn) glow.colors.set([1, 0.86, 0.45, on], j * 4);
-      else glow.colors.set([1, 0.36, 0.86, on], j * 4);
+      if (j < nIn) glow.colors.set([1, 0.86, 0.45, on * alpha], j * 4);
+      else glow.colors.set([1, 0.36, 0.86, on * alpha], j * 4);
       glow.sizesNm[j] = scale * (j < nIn ? 1700 : 3200) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
     }
     const cam = cameraAxes(nm);
@@ -1365,7 +1365,8 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   const play = {label: 'Start playing Pyr', go: () => startGetStarted()};
   const overview = () => {
     show(data.partners.map(p => p.id));
-    runAllSynapses(data, 1.3);
+    // thousands of dots overlap here: small and faint, or they bloom (Ames)
+    runAllSynapses(data, 0.6, 0.35);
     moveCamera([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
     card.set('Its connections',
       'Every dot is a synapse: {in:gold} ones bring signals in, {out:pink} ones carry its signal out. It talks to thousands of cells. These are the ones it shares the most synapses with, colored by cell type. Tap one to visit it.',
