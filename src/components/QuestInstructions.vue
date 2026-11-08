@@ -20,21 +20,31 @@ import { QUEST_TITLE, QUEST_INSTRUCTIONS_IMAGE, QUEST_INSTRUCTIONS_IMAGE_ALT } f
 import { pictureFor } from '../site_texts';
 import { useProofreadingBackendStore } from '../store';
 
-const props = defineProps<{ lead: string; steps: string[] }>();
+/** Defaults are the Cilia Quest's. The Cell Library's "How to map a cell"
+ *  uses the same box with its own words and picture (Ames 2026-11-08). */
+const props = withDefaults(defineProps<{
+  lead?: string; steps: string[];
+  kicker?: string; title?: string;
+  leadKey?: string; stepsKey?: string;
+  imageKey?: string; image?: string; imageAlt?: string;
+  legend?: { name: string; color: string }[];
+}>(), {
+  lead: '', kicker: QUEST_TITLE, title: 'How to do a Cilia Quest',
+  leadKey: 'quest.retina_cilia.lead', stepsKey: 'quest.retina_cilia.steps',
+  imageKey: 'quest.retina_cilia.image', image: QUEST_INSTRUCTIONS_IMAGE, imageAlt: QUEST_INSTRUCTIONS_IMAGE_ALT,
+  legend: () => [
+    { name: 'Basal body', color: '#f5d142' },
+    { name: 'Daughter centriole', color: '#e06060' },
+    { name: 'Cilium centerline', color: '#7CFFB2' },
+  ],
+});
 const emit = defineEmits<{ (e: 'close'): void; (e: 'action', name: string): void }>();
 
-const IMAGE_KEY = 'quest.retina_cilia.image';
 const backend = useProofreadingBackendStore();
-const picture = computed(() => pictureFor(IMAGE_KEY, QUEST_INSTRUCTIONS_IMAGE));
+const picture = computed(() => pictureFor(props.imageKey, props.image));
 /** The left column: the picture, or for an admin the slot to add one. */
 const showFigure = computed(() => !!picture.value || !!backend.showAdminUi);
 const zoomed = ref('');
-// The layers' own colors in the quest (annotation_quests.ts QUEST_LAYER_COLORS).
-const KEY = [
-  { name: 'Basal body', color: '#f5d142' },
-  { name: 'Daughter centriole', color: '#e06060' },
-  { name: 'Cilium centerline', color: '#7CFFB2' },
-];
 
 function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return;
@@ -54,7 +64,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
         <div class="nge-qi-topbar">
           <span class="nge-qi-kicker">
             <span class="nge-qi-kicker-dot" aria-hidden="true"></span>
-            <span class="nge-qi-kicker-label">{{ QUEST_TITLE }}</span>
+            <span class="nge-qi-kicker-label">{{ props.kicker }}</span>
             <span class="nge-qi-kicker-sep" aria-hidden="true">/</span>
             <span class="nge-qi-kicker-sub">Instructions</span>
           </span>
@@ -63,24 +73,24 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
         <div class="nge-qi-scroll">
           <div class="nge-qi-layout">
             <figure v-if="showFigure" class="nge-qi-figure">
-              <EditableImage :text-key="IMAGE_KEY" :original="QUEST_INSTRUCTIONS_IMAGE" :alt="QUEST_INSTRUCTIONS_IMAGE_ALT"
+              <EditableImage :text-key="props.imageKey" :original="props.image" :alt="props.imageAlt"
                              img-class="nge-qi-img" @zoom="u => zoomed = u" />
-              <figcaption v-if="picture" class="nge-qi-key">
-                <span v-for="k in KEY" :key="k.name" class="nge-qi-key-item">
+              <figcaption v-if="picture && props.legend.length" class="nge-qi-key">
+                <span v-for="k in props.legend" :key="k.name" class="nge-qi-key-item">
                   <span class="nge-qi-key-dot" :style="{ background: k.color, boxShadow: `0 0 8px ${k.color}` }" aria-hidden="true"></span>{{ k.name }}
                 </span>
               </figcaption>
             </figure>
             <div class="nge-qi-text">
-              <h2 id="nge-qi-title" class="nge-qi-title">How to do a Cilia Quest</h2>
-              <EditableText text-key="quest.retina_cilia.lead" :original="props.lead" text-class="nge-qi-lead" @action="n => emit('action', n)" />
-              <EditableText text-key="quest.retina_cilia.steps" :original="props.steps" list-class="nge-qi-steps" @action="n => emit('action', n)" />
+              <h2 id="nge-qi-title" class="nge-qi-title">{{ props.title }}</h2>
+              <EditableText v-if="props.lead" :text-key="props.leadKey" :original="props.lead" text-class="nge-qi-lead" @action="n => emit('action', n)" />
+              <EditableText :text-key="props.stepsKey" :original="props.steps" list-class="nge-qi-steps" @action="n => emit('action', n)" />
             </div>
           </div>
         </div>
       </div>
       <div v-if="zoomed" class="nge-qi-lightbox" title="Click to close" @click="zoomed = ''">
-        <img :src="zoomed" :alt="QUEST_INSTRUCTIONS_IMAGE_ALT" class="nge-qi-lightbox-img" />
+        <img :src="zoomed" :alt="props.imageAlt" class="nge-qi-lightbox-img" />
       </div>
     </div>
   </Teleport>

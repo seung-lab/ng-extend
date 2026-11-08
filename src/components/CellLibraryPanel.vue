@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import QuestInstructions from './QuestInstructions.vue';
+import imgRetinaBipolar from '../images/retina-bipolar-cell.jpg';
 import { datasetAccess } from '../util/dataset_access';
 import { reportWriteFailure } from '../util/error_reporting';
 import EditableText from './EditableText.vue';
@@ -232,6 +234,10 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** The picture beside the steps: a Retina bipolar cell (Ames 2026-11-08).
+ *  Other datasets start without one; admins can add one in the box. */
+const howToImage = computed(() => /retina/i.test(activeDataset.value || '') ? imgRetinaBipolar : '');
+const howToImageAlt = 'A bipolar cell from the Retina dataset: the cell body at the top, one long stalk, and its branches spread at the bottom';
 /** Where an admin's edit of the steps is kept (config howToKey, else by dataset). */
 const datasetHowToKey = computed(() => getDatasetCaveConfig(activeDataset.value).howToKey || ('howto.' + (activeDataset.value || 'dataset').toLowerCase().replace(/[^a-z0-9_.-]/g, '_')).slice(0, 64));
 /** A view with one example of each cell type (MEC), loaded in place. */
@@ -3217,14 +3223,13 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- How to proofread this dataset's cells (Retina). -->
-        <div v-if="datasetHowTo && showHowTo" class="nge-cl-howto-panel">
-          <div class="nge-cl-howto-panel-head">
-            <span>How to map a cell</span>
-            <button class="nge-cl-howto-close" @click="showHowTo = false" title="Close">×</button>
-          </div>
-          <!-- Admins can change these in the game (Celia 2026-10-20). -->
-          <EditableText :text-key="datasetHowToKey" :original="datasetHowTo" list-class="nge-cl-howto-steps" />
-        </div>
+        <!-- In a box of its own with a picture, as the Cilia Quest's
+             instructions are (Ames 2026-11-08). Admins still edit the steps
+             (Celia 2026-10-20) and the picture in the game. -->
+        <QuestInstructions v-if="datasetHowTo && showHowTo" :steps="datasetHowTo"
+          :kicker="'Cell Library'" title="How to map a cell" :steps-key="datasetHowToKey"
+          :image-key="datasetHowToKey + '.image'" :image="howToImage" :image-alt="howToImageAlt" :legend="[]"
+          @close="showHowTo = false" />
 
         <!-- Filter tabs -->
         <!-- Tabs in three coloured groups: cells (cyan), community (gold),
