@@ -68,7 +68,7 @@ export const steps: Step[] = makeCellTour({
     projectionOrientation: VIEW_TOP,
     layout: '3d',
     layers: [
-      { type: 'image', source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2', name: 'em' },
+      { type: 'image', source: 'precomputed://gs://stroeh_sem_mouse_retina2/image/v2', name: 'em' },
       {
         type: 'segmentation',
         source: {

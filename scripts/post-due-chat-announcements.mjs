@@ -66,8 +66,10 @@ async function fetchDue() {
  */
 async function postToChat(title) {
   const row = {
-    name: 'EyeWire II',
-    rank: 'admin',
+    // From Nurro (Ames 2026-11-07): "EyeWire II" read as "EyeWire I." once
+    // chat shortened it like a person's name.
+    name: 'Nurro',
+    rank: 'bot',
     // No megaphone and no dash (Ames 2026-10-24): the title, then where to look.
     text: `${title}. Check your notifications for details!`,
   };

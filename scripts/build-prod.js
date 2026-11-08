@@ -128,7 +128,7 @@ const DATASETS_CONFIG = {
     layers: [
       {
         type: 'image',
-        source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2',
+        source: 'precomputed://gs://stroeh_sem_mouse_retina2/image/v2',
         name: 'em',
       },
       {

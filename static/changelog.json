@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "PENDING",
+      "title": "Retina 2D images are back",
+      "items": [
+        "Retina 2D images load again. The lab moved them to a new address this morning and Pyr was still asking the old one, so the 2D panel stayed empty.",
+        "Skip over damaged slices in MEC now changes only the slice, so you stay on the same spot instead of sliding sideways.",
+        "Daily updates in chat now come from Nurro."
+      ]
+    },
+    {
       "at": "2026-11-07T20:59:45Z",
       "title": "Cut errors only in the red popup",
       "digest": "minor",
