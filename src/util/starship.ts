@@ -151,7 +151,11 @@ let hop: Hop | null = null;
  *  then hover at its end with the jets idling. */
 export function starshipHop(route: number[][], seconds: number) {
   if (!shipNow) return;
-  const path: V3[] = [shipNow, add(shipNow, mul(liftNormal, 7000)), ...route.map(q => q as V3)];
+  // Off the pad, a lift first; routes that start at the pad have their own.
+  const lift = hop ? [] : [add(shipNow, mul(liftNormal, 4000))];
+  const start = route[0] as V3;
+  const fromPad = !hop && Math.hypot(...sub(start, shipNow)) < 3000;
+  const path: V3[] = [shipNow, ...(fromPad ? [] : lift), ...route.map(q => q as V3)];
   const cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(...sub(path[i], path[i - 1])));
   hop = {path, cum, start: performance.now(), ms: seconds * 1000};
@@ -322,7 +326,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         const right = norm(cross(up, fwd));
         // a gentle bob once down; hovering at a hop's end, a slow float
         const settled = Math.max(0, t - total);
-        const bob: V3 = h ? (hq >= 1 ? mul(up, 250 * Math.sin((now - h.start - h.ms) / 1000 * 1.6)) : [0, 0, 0])
+        const bob: V3 = h ? (hq >= 1 ? mul(up, 90 * Math.sin((now - h.start - h.ms) / 1000 * 1.1)) : [0, 0, 0])
           : settled > 0 ? mul(f.landNormal, 120 * Math.sin(settled * 3) * Math.exp(-settled * 1.6)) : [0, 0, 0];
         const at3 = add(pos, bob);
         shipNow = pos;

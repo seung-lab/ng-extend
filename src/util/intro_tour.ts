@@ -35,7 +35,8 @@ interface Tour {
   anchors: Record<'soma' | 'dendrite' | 'axon' | 'synapse' | 'presyn', V3>;
   synapsePartner: string; presynPartner: string; presynSynapses: number;
   incomingSynapses: number; outgoingSynapses: number;
-  axonFlight: number[][]; axonPath: number[][];
+  axonFlight: number[][]; axonPath: number[][]; dendFlight: number[][];
+  synIn: number[]; synOut: number[]; synUnit: number;
 }
 
 /* ── the words ── */
@@ -53,16 +54,16 @@ const BEATS: Beat[] = [
     body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life, and they have one thing in common: they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
-  {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Job', 'keeps the cell alive']]}, part: 1, view: {at: 'soma', nm: 45_000},
+  {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Size', 'about 20 µm across']]}, part: 1, view: {at: 'soma', nm: 45_000},
     body: 'The cell body. It holds the nucleus and keeps the whole cell alive.'},
-  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Job', 'listen for signals'], ['Cell inputs', '3,386 synapses']]}, part: 2, view: {at: 'cell', nm: 200_000},
+  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Inputs', 'thousands of synapses']]}, part: 2, view: {at: 'cell', nm: 200_000},
     body: 'The branches that listen. They gather signals from other neurons.'},
-  {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Job', 'send the signal out'], ['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
+  {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
     body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
-  {key: 'synapse', callout: {anchor: 'synapse', title: 'Synapse', stats: [['Gap', 'about 20 nm'], ['Carries', 'chemical messengers']]}, part: 3, view: {at: 'synapse', nm: 24_000},
-    body: 'Where two neurons meet and pass a signal across. Here our axon touches the next neuron. This cell receives more than 3,000 synapses of its own.'},
-  {key: 'presyn', callout: {anchor: 'presyn', title: "A neighbor's axon", stats: [['Synapses onto ours', '11']]}, part: 2, view: {at: 'presyn', nm: 60_000},
-    body: 'This axon belongs to another neuron. It reaches over and makes 11 synapses onto our cell, passing its signals in.'},
+  {key: 'synapse', callout: {anchor: 'synapse', title: 'Synapse', stats: [['Gap', 'about 20 nm'], ['On this cell', '3,386 synapses']]}, part: 3, view: {at: 'synapse', nm: 24_000},
+    body: 'Where two neurons meet and pass a signal across. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our axon passes its signal to the next neuron.'},
+  {key: 'allsyn', callout: {anchor: 'soma', title: 'All its synapses', stats: [['Received', '3,386'], ['Sent', '59 in this piece']]}, view: {at: 'cell', nm: 230_000},
+    body: "Every glowing dot is a synapse. Gold ones bring signals in from other neurons, onto the dendrites and soma. Pink ones carry this cell's own signal out, from its axon."},
   {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['Speed', 'up to 100 m/s']]}, part: 3, view: {at: 'cell', nm: 220_000},
     body: 'Neurons talk in quick electric pulses called action potentials. Each one starts near the soma and races down the axon to its synapses. Together, your neurons send hundreds of billions of them every minute.'},
   {key: 'connectome', header: "That's where you come in", view: {at: 'cell', nm: 260_000}, next: 'Start mapping',
@@ -70,9 +71,8 @@ const BEATS: Beat[] = [
 ];
 
 /* ── colours (cell blue, parts as in the labelled picture) ── */
-const PART_RGB: Record<number, V3> = {1: [255, 210, 77], 2: [61, 255, 154], 3: [255, 95, 210]};
+const PART_RGB: Record<number, V3> = {1: [255, 205, 80], 2: [168, 140, 255], 3: [255, 95, 210]};
 const PARTNER_COLOR = 0xffa64d;   // the synapse's partner, orange
-const PRESYN_COLOR = 0xb68cff;    // the neighbor's axon, violet
 const packed = (hex: number) => ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 0xff) << 16);
 
 const viewerNow = (): any => (window as any).viewer;
@@ -103,8 +103,8 @@ function partsTint(shown: Set<number>, glowing?: number): NgeMeshTint | null {
   for (let i = 0; i < n; i++) {
     const p = labels[i];
     if (!p || (!shown.has(p) && p !== glowing)) continue;
-    const rgb = PART_RGB[p], soft = p !== glowing, a = soft ? 0.7 : 1;
-    const k = soft ? 0.72 : 1;
+    const rgb = PART_RGB[p], soft = p !== glowing, a = soft ? 0.9 : 1;
+    const k = soft ? 0.82 : 1;
     data[i * 4] = Math.round(rgb[0] * k * a); data[i * 4 + 1] = Math.round(rgb[1] * k * a); data[i * 4 + 2] = Math.round(rgb[2] * k * a);
     data[i * 4 + 3] = Math.round(a * 255);
   }
@@ -155,6 +155,15 @@ function cellCenter(t: Tour): V3 {
   return [0, 1, 2].map(i => g.origin[i] + g.dims[i] * g.cell * 0.45) as V3;
 }
 
+/** A spot just above the synapse as the camera will see it there, so the
+ *  ship hovers over it rather than in front of it (Ames). */
+function aboveSynapse(t: Tour, viewNm: number): number[] {
+  const nm = nmPerUnit(), cam = nm && cameraAxes(nm);
+  const up = cam ? cam.up : [0, -1, 0];
+  const k = Math.max(5000, viewNm * 0.22);
+  return t.anchors.synapse.map((v, i) => v + up[i] * k + (cam ? cam.toEye[i] * 1500 : 0));
+}
+
 /* ── partner cells ── */
 function sandboxLayer(): any {
   return (viewerNow()?.layerManager?.managedLayers ?? []).find((m: any) => !m?.archived &&
@@ -178,6 +187,39 @@ function hideCell(id: string) {
   try { ml.layer.displayState.segmentationGroupState.value.visibleSegments.delete(Uint64.parseString(id)); added.splice(k, 1); }
   catch (e) { console.warn('[intro] could not hide', id, e); }
 }
+
+/* ── every synapse on the cell, twinkling in ── */
+let synRaf = 0;
+function runAllSynapses(t: Tour) {
+  const nm = nmPerUnit();
+  if (!nm || !t.synIn) return;
+  const nIn = t.synIn.length / 3, nOut = t.synOut.length / 3, n = nIn + nOut;
+  const glow: NgeGlow = {positions: new Float32Array(n * 3), colors: new Float32Array(n * 4), sizesNm: new Float32Array(n), count: n, nmRight: [1 / nm[0], 0, 0]};
+  const delay = new Float32Array(n), phase = new Float32Array(n);
+  for (let j = 0; j < n; j++) {
+    const src = j < nIn ? t.synIn : t.synOut, k = (j < nIn ? j : j - nIn) * 3;
+    for (let a = 0; a < 3; a++) glow.positions[j * 3 + a] = src[k + a] * t.synUnit / nm[a];
+    delay[j] = Math.random() * 1.6; phase[j] = Math.random() * 6.28;
+  }
+  const t0 = performance.now();
+  const step = (now: number) => {
+    const sec = (now - t0) / 1000;
+    for (let j = 0; j < n; j++) {
+      const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
+      const tw = 0.75 + 0.25 * Math.sin(sec * 2.2 + phase[j]);
+      if (j < nIn) glow.colors.set([1, 0.86, 0.45, on * tw * 0.85], j * 4);
+      else glow.colors.set([1, 0.4, 0.85, on], j * 4);
+      glow.sizesNm[j] = (j < nIn ? 1700 : 2600) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
+    }
+    const cam = cameraAxes(nm);
+    if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
+    setNgeGlow(glow, 'intro-syn');
+    try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    synRaf = requestAnimationFrame(step);
+  };
+  synRaf = requestAnimationFrame(step);
+}
+function stopAllSynapses() { cancelAnimationFrame(synRaf); setNgeGlow(null, 'intro-syn'); }
 
 /* ── the action potential spark ── */
 let sparkRaf = 0;
@@ -319,15 +361,16 @@ body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-are
 .nge-intro-head { display: flex; align-items: center; gap: 8px; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; color: #7ecaff; text-transform: uppercase; }
 .nge-intro-dot { width: 8px; height: 8px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-intro-blink 1.1s infinite; }
 @keyframes nge-intro-blink { 50% { opacity: 0.25; } }
-.nge-intro-bars { display: inline-flex; gap: 2px; align-items: flex-end; margin-left: auto; }
+.nge-intro-bars { display: none; gap: 2px; align-items: flex-end; margin-left: auto; }
 .nge-intro-bars i { width: 3px; background: #7ecaff; border-radius: 1px; animation: nge-intro-bar 1.2s infinite ease-in-out; }
 .nge-intro-bars i:nth-child(1) { height: 5px; } .nge-intro-bars i:nth-child(2) { height: 8px; animation-delay: .15s; }
 .nge-intro-bars i:nth-child(3) { height: 11px; animation-delay: .3s; } .nge-intro-bars i:nth-child(4) { height: 14px; animation-delay: .45s; }
 @keyframes nge-intro-bar { 50% { opacity: 0.35; } }
 .nge-intro-title { margin: 8px 0 4px; font: 700 22px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
 .nge-intro-body { margin: 0; min-height: 3em; color: #d6e8fb; }
-.nge-intro-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
-.nge-intro-x { flex: none; width: 26px; height: 26px; margin: -4px -6px -4px 6px; display: grid; place-items: center; padding: 0;
+.nge-intro-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.nge-intro-row .nge-intro-hint { margin-left: auto; }
+.nge-intro-x { margin-left: auto !important; flex: none; width: 26px; height: 26px; margin: -4px -6px -4px 6px; display: grid; place-items: center; padding: 0;
   border: 1px solid rgba(126, 210, 255, 0.35); border-radius: 50%; background: rgba(126, 210, 255, 0.06); color: #9fc6ea; cursor: pointer; }
 .nge-intro-x:hover { color: #fff; border-color: rgba(126, 210, 255, 0.8); background: rgba(126, 210, 255, 0.16); }
 .nge-intro-back { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 8px 4px; cursor: pointer;
@@ -363,6 +406,53 @@ body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-are
 .nge-intro-chev svg { animation: nge-intro-nudge 1.4s ease-in-out infinite; }
 @keyframes nge-intro-nudge { 50% { transform: translateX(3px); } }
 .nge-intro-next:focus-visible, .nge-intro-back:focus-visible, .nge-intro-x:focus-visible, .nge-intro-confirm button:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; }
+/* The frame: branching traces that grow around the edge (Ames). */
+.nge-frame-host { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.nge-frame { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; overflow: visible; pointer-events: none; }
+.nge-frame path { fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 1.1; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.nge-frame .rim { stroke: rgba(150, 230, 255, 0.85); stroke-width: 1.2; }
+.nge-frame circle { fill: #9fe9ff; opacity: 0; }
+.nge-intro--in .nge-frame path { animation: nge-trace 900ms ease-out both; animation-delay: calc(250ms + var(--i, 0) * 45ms); }
+.nge-intro--in .nge-frame .rim { animation-duration: 1100ms; animation-delay: 150ms; }
+.nge-intro--in .nge-frame circle { animation: nge-node 300ms ease-out both; animation-delay: calc(800ms + var(--i, 0) * 45ms); }
+@keyframes nge-trace { to { stroke-dashoffset: 0; } }
+@keyframes nge-node { to { opacity: 1; } }
+.nge-frame .spark { stroke: #e6fbff; stroke-width: 2.2; stroke-dasharray: 0.05 0.95; opacity: 0; filter: drop-shadow(0 0 3px #7ee0ff); }
+.nge-intro--in .nge-frame .spark { animation: nge-spark 4.2s linear infinite; animation-delay: calc(1500ms + var(--i, 0) * 1100ms); }
+@keyframes nge-spark { 0% { stroke-dashoffset: 1; opacity: 1; } 40% { stroke-dashoffset: 0; opacity: 1; } 41%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+.nge-intro-hint { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: rgba(159, 210, 240, 0.55);
+  font: 600 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; }
+.nge-intro-hint kbd { font: 600 10px 'Inter', sans-serif; padding: 1px 5px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 3px; color: #bfe6ff; }
+body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility: hidden; }
+.nge-orb { position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; cursor: pointer; color: #eaf7ff; }
+.nge-orb-label { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; text-shadow: 0 0 8px rgba(126, 224, 255, 0.9); }
+.nge-orb-core { position: relative; width: 44px; height: 44px; flex: none; display: grid; place-items: center; }
+.nge-orb-core svg.rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.nge-orb-core .r1 { fill: none; stroke: #7ee0ff; stroke-width: 1.6; stroke-dasharray: 18 7 3 7; transform-origin: 22px 22px; animation: nge-spin 6s linear infinite; filter: drop-shadow(0 0 3px #7ee0ff); }
+.nge-orb-core .r2 { fill: none; stroke: #b49cff; stroke-width: 1; stroke-dasharray: 2 4; transform-origin: 22px 22px; animation: nge-spin 9s linear infinite reverse; }
+.nge-orb-core .r3 { fill: none; stroke: rgba(201, 246, 255, 0.9); stroke-width: 2.2; stroke-dasharray: 10 120; transform-origin: 22px 22px; animation: nge-spin 2.4s linear infinite; }
+@keyframes nge-spin { to { transform: rotate(360deg); } }
+.nge-orb-core::before { content: ''; position: absolute; inset: 9px; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #e9fbff 0%, #6fd2ff 30%, #3a6fe0 65%, rgba(110, 80, 220, 0.9) 100%);
+  box-shadow: 0 0 14px rgba(110, 200, 255, 0.9), 0 0 30px rgba(110, 120, 255, 0.45); animation: nge-pulse 1.8s ease-in-out infinite; }
+@keyframes nge-pulse { 50% { box-shadow: 0 0 22px rgba(140, 220, 255, 1), 0 0 42px rgba(130, 120, 255, 0.6); } }
+.nge-orb-core .chev { position: relative; color: #04172b; }
+.nge-orb:hover .r1 { animation-duration: 1.6s; } .nge-orb:hover .r3 { animation-duration: 0.9s; }
+.nge-orb:hover .nge-orb-core::before { filter: brightness(1.2); }
+.nge-orb:active .nge-orb-core { transform: scale(0.94); }
+.nge-orb--back .nge-orb-core { width: 32px; height: 32px; }
+.nge-orb--back .nge-orb-core::before { inset: 7px; background: radial-gradient(circle at 40% 35%, rgba(200, 240, 255, 0.35), rgba(40, 90, 170, 0.35)); box-shadow: 0 0 8px rgba(110, 200, 255, 0.4); animation: none; }
+.nge-orb--back .nge-orb-core svg.rings { transform: scale(0.727); transform-origin: 0 0; width: 44px; height: 44px; }
+.nge-orb--back .r3 { display: none; }
+.nge-orb--back .nge-orb-core .chev { color: #c9f6ff; }
+.nge-orb[hidden] { display: inline-flex; visibility: hidden; }
+.nge-orb:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; border-radius: 22px; }
+.nge-callout-box .nge-frame path { stroke: rgba(126, 224, 255, 0.5); }
+.nge-callout-box .nge-frame { animation: none; }
+.nge-callout-box .nge-frame path { animation: nge-trace 800ms ease-out both; animation-delay: calc(150ms + var(--i, 0) * 40ms); }
+.nge-callout-box .nge-frame circle { animation: nge-node 300ms ease-out both; animation-delay: calc(600ms + var(--i, 0) * 40ms); }
+.nge-callout-box .nge-frame .spark { animation: nge-spark 4.2s linear infinite; animation-delay: calc(1200ms + var(--i, 0) * 1100ms); }
+.nge-intro .nge-intro-nav { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 /* Leaving asks first. */
 .nge-intro-confirm { display: none; }
 .nge-intro--asking .nge-intro-title, .nge-intro--asking .nge-intro-body, .nge-intro--asking > .nge-intro-row { display: none; }
@@ -401,7 +491,8 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 @keyframes nge-beam { 50% { opacity: 0.65; } }
 @media (prefers-reduced-motion: reduce) { .nge-callout-box, .nge-callout-beam { animation: none; } }
 .nge-callout-title { display: flex; align-items: center; gap: 8px; font: 600 15px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #fff; }
-.nge-callout-ic { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #7ecaff; box-shadow: 0 0 8px #7ecaff; flex: none; }
+.nge-callout-ic { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--part, #7ecaff); box-shadow: 0 0 10px var(--part, #7ecaff), inset 0 0 6px var(--part, #7ecaff); flex: none; }
+.nge-callout-box { isolation: isolate; }
 `;
   document.head.appendChild(st);
 }
@@ -427,6 +518,47 @@ function type(el: HTMLElement, text: string) {
   el.onclick = () => { if (typeTimer) { clearInterval(typeTimer); typeTimer = null; } el.textContent = text; };
 }
 
+/** The frame: a rim with cut corners, and branches that grow along each
+ *  edge from a few roots, forking, with a bead at each tip. Drawn to the
+ *  card's own size, so the curves never stretch. */
+function frameSvg(w: number, h: number, cut = 14): string {
+  const c = cut, paths: string[] = [], beads: string[] = [];
+  let k = 0;
+  const rim = `M${c} 0 H${w} V${h - c} L${w - c} ${h} H0 V${c} Z`;
+  // a branch that leaves the rim at (x, y), runs inward by `in` px along the
+  // edge in direction (dx, dy), wiggling, and forks once
+  const branch = (x: number, y: number, dx: number, dy: number, nx: number, ny: number, len: number) => {
+    const p = (a: number, b: number) => `${(x + dx * a + nx * b).toFixed(1)} ${(y + dy * a + ny * b).toFixed(1)}`;
+    const d = `M${p(0, 0)} C${p(len * 0.12, 7)} ${p(len * 0.25, 8)} ${p(len * 0.4, 7)} S${p(len * 0.75, 4)} ${p(len, 7)}`;
+    const f = `M${p(len * 0.4, 7)} C${p(len * 0.5, 9)} ${p(len * 0.55, 14)} ${p(len * 0.62, 16)}`;
+    paths.push(`<path pathLength="1" style="--i:${k}" d="${d}"/>`, `<path pathLength="1" style="--i:${k + 1}" d="${f}"/>`);
+    const e1 = p(len, 7).split(' '), e2 = p(len * 0.62, 16).split(' ');
+    beads.push(`<circle style="--i:${k}" cx="${e1[0]}" cy="${e1[1]}" r="2"/>`, `<circle style="--i:${k + 1}" cx="${e2[0]}" cy="${e2[1]}" r="1.6"/>`);
+    k += 2;
+    return d;
+  };
+  const sparks: string[] = [];
+  // top edge, from the right going left, and from the cut corner going right
+  sparks.push(branch(w - 6, 0, -1, 0, 0, 1, Math.min(120, w * 0.34)));
+  branch(c + 4, 0, 1, 0, 0, 1, Math.min(70, w * 0.2));
+  // right edge, downward
+  sparks.push(branch(w, 18, 0, 1, -1, 0, Math.min(h * 0.45, 90)));
+  // bottom edge, from the right corner leftward, and from the left going right
+  branch(w - c - 6, h, -1, 0, 0, -1, Math.min(90, w * 0.26));
+  sparks.push(branch(6, h, 1, 0, 0, -1, Math.min(110, w * 0.3)));
+  // left edge, upward from the bottom
+  branch(0, h - 10, 0, -1, 1, 0, Math.min(h * 0.4, 70));
+  const sp = sparks.map((d, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${d}"/>`).join('');
+  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${paths.join('')}${sp}${beads.join('')}</svg>`;
+}
+
+const ORB_RINGS = '<svg class="rings" viewBox="0 0 44 44" aria-hidden="true"><circle class="r1" cx="22" cy="22" r="20"/><circle class="r2" cx="22" cy="22" r="16.5"/><circle class="r3" cx="22" cy="22" r="20"/></svg>';
+const CHEV_R = '<svg class="chev" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4.5 2L9.5 7l-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/** The colour of each anchor's part, for its icon, beam and dot. */
+const ANCHOR_HEX: Record<string, string> = {soma: '#ffd24d', dendrite: '#a88cff', axon: '#ff5fd2', synapse: '#c9f6ff', presyn: '#ff8f8f'};
+
 /** The 3D panel and a point in nanometres, to a point on screen. */
 function toScreen(p: V3): [number, number] | null {
   const nm = nmPerUnit();
@@ -441,7 +573,7 @@ function toScreen(p: V3): [number, number] | null {
   return [r.left + (x + 1) / 2 * r.width, r.top + (1 - y) / 2 * r.height];
 }
 
-function showCallout(anchor: V3, title: string, stats: [string, string][] = []) {
+function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true) {
   hideCallout();
   callout = document.createElement('div');
   callout.className = 'nge-callout';
@@ -450,13 +582,14 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = []) 
   // ship up to it (Ames), and a fine line from it down to the part.
   callout.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-beam-g" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.06"/></linearGradient></defs>
-    <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="rgba(160,225,255,0.8)" stroke-width="1" stroke-dasharray="3 3"/>
-    <circle class="nge-callout-dot" r="4" fill="#bff0ff"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-callout-box"><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${rows}</dl>` : ''}</div>`;
+    <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
+    <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
+    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${rows}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
+  (box.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(box.offsetWidth, box.offsetHeight, 10);
   requestAnimationFrame(() => callout?.classList.add('nge-callout--in'));
   const step = () => {
     const s = toScreen(anchor);
@@ -490,9 +623,12 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = []) 
       } else {
         beam.style.display = lens.style.display = 'none';
       }
-      const lx = Math.max(bx, Math.min(bx + bw, s[0])), ly = s[1] > by + bh ? by + bh : by;
-      line.setAttribute('x1', String(s[0])); line.setAttribute('y1', String(s[1]));
-      line.setAttribute('x2', String(lx)); line.setAttribute('y2', String(ly));
+      // the ship points its beam at the part; the long parts get just the dot
+      if (pointAt && onScreen) {
+        line.setAttribute('x1', String(ship![0])); line.setAttribute('y1', String(ship![1]));
+        line.setAttribute('x2', String(s[0])); line.setAttribute('y2', String(s[1]));
+        line.style.display = '';
+      } else line.style.display = 'none';
       dot.setAttribute('cx', String(s[0])); dot.setAttribute('cy', String(s[1]));
     }
     calloutRaf = requestAnimationFrame(step);
@@ -512,7 +648,7 @@ let savedTint: NgeMeshTint | null = null;
 function endTour() {
   if (!active) return;
   active = false;
-  hideCallout(); stopSpark(); stopPulse();
+  hideCallout(); stopSpark(); stopPulse(); stopAllSynapses();
   cancelAnimationFrame(camRaf);
   if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
   if (onKey) { window.removeEventListener('keydown', onKey, true); onKey = null; }
@@ -536,34 +672,15 @@ export async function startIntroTour() {
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Welcome to Pyr');
   const X_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-  const CHEV = '<span class="nge-intro-chev"><svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1.5 1.5L6 6l-4.5 4.5M7.5 1.5L12 6l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
-  const BACK = '<svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><path d="M6.5 1.5L2 6l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  // the circuit board, grown like branches (Ames: "more curved, almost like
-  // bioinspired branches"): trunks come in from the edges and fork, with a
-  // bead at each tip, thicker on the right, away from the words
-  const TRACES: [string, number, number][] = [
-    ['M622 26 C572 30 552 58 512 56 S452 38 418 50', 418, 50],
-    ['M548 52 C540 74 528 94 498 102', 498, 102],
-    ['M512 56 C500 40 478 26 456 22', 456, 22],
-    ['M622 122 C584 120 568 142 532 148 S474 172 442 168', 442, 168],
-    ['M568 142 C562 162 570 182 560 202', 560, 202],
-    ['M532 148 C520 130 502 124 484 128', 484, 128],
-    ['M-2 182 C40 176 62 192 102 186 S152 170 184 176', 184, 176],
-    ['M330 -2 C336 14 352 22 364 36', 364, 36],
-    ['M590 -2 C592 12 600 20 612 30', 612, 30],
-  ];
-  const circuit = `<svg class="nge-intro-circuit" viewBox="0 0 620 200" preserveAspectRatio="none" aria-hidden="true">${
-    TRACES.map(([d], k) => `<path pathLength="1" style="--i:${k}" d="${d}"/>`).join('')}${
-    [0, 3, 6].map((k, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${TRACES[k][0]}"/>`).join('')}${
-    TRACES.map(([, x, y], k) => `<circle style="--i:${k}" cx="${x}" cy="${y}" r="2.4"/>`).join('')}</svg>`;
-  const TICKS = '<i class="nge-intro-tick a"></i><i class="nge-intro-tick b"></i>';
-  panel.innerHTML = `<span class="nge-intro-plate-bg"></span>${circuit}<span class="nge-intro-ring"></span><span class="nge-intro-scan"></span>
+  panel.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-ring"></span><span class="nge-intro-scan"></span>
     <i class="nge-intro-corner tl"></i><i class="nge-intro-corner tr"></i><i class="nge-intro-corner bl"></i><i class="nge-intro-corner br"></i>
-    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<span class="nge-intro-bars"><i></i><i></i><i></i><i></i></span><button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
+    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
-    <div class="nge-intro-row"><button class="nge-intro-back" type="button">${BACK}Back</button><button class="nge-intro-next nge-intro-go" type="button"><span class="nge-intro-plate">${TICKS}<span class="nge-intro-label"></span>${CHEV}</span></button></div>
+    <div class="nge-intro-row"><button class="nge-orb nge-orb--back nge-intro-back" type="button" aria-label="Back"><span class="nge-orb-core">${ORB_RINGS}${CHEV_L}</span></button>
+      <span class="nge-intro-hint"><kbd>Enter</kbd></span>
+      <button class="nge-orb nge-intro-go" type="button"><span class="nge-orb-label nge-intro-label"></span><span class="nge-orb-core">${ORB_RINGS}${CHEV_R}</span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
-      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-intro-next nge-intro-stay" type="button"><span class="nge-intro-plate">${TICKS}Keep going${CHEV}</span></button></div></div>`;
+      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-orb nge-intro-stay" type="button"><span class="nge-orb-label">Keep going</span><span class="nge-orb-core">${ORB_RINGS}${CHEV_R}</span></button></div></div>`;
   document.body.appendChild(panel);
   document.body.classList.add('nge-intro-on');
   requestAnimationFrame(() => panel?.classList.add('nge-intro--in'));
@@ -580,17 +697,11 @@ export async function startIntroTour() {
   (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => ask(true);
   (panel.querySelector('.nge-intro-leave') as HTMLButtonElement).onclick = endTour;
   stayEl.onclick = () => ask(false);
-  onKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return;
-    e.stopPropagation();
-    ask(!panel?.classList.contains('nge-intro--asking'));
-  };
-  window.addEventListener('keydown', onKey, true);
 
   const indexOf = (key: string) => BEATS.findIndex(b => b.key === key);
-  const AXON = indexOf('axon'), SYN = indexOf('synapse'), PRE = indexOf('presyn');
+  const DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
   let i = -1;
-  let shipOut = false;   // the ship is out along the axon
+  let shipAt: 'pad' | 'dend' | 'axon' | 'syn' = 'pad';
   const go = (n: number) => {
     if (!active || n < 0) return;
     if (n >= BEATS.length) { endTour(); return; }
@@ -606,8 +717,9 @@ export async function startIntroTour() {
     bodyEl.style.minHeight = '';
     bodyEl.textContent = b.body;
     bodyEl.style.minHeight = `${bodyEl.offsetHeight}px`;
+    if (panel) (panel.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(panel.offsetWidth, panel.offsetHeight, 18);
     type(bodyEl, b.body);
-    hideCallout(); stopSpark(); stopPulse();
+    hideCallout(); stopSpark(); stopPulse(); stopAllSynapses();
     // the parts: ones met before this beat stay softly coloured, this one glows
     const shown = new Set<number>();
     for (let k = 0; k < i; k++) { const p = BEATS[k].part; if (p) shown.add(p); }
@@ -617,18 +729,39 @@ export async function startIntroTour() {
     moveCamera(framed(center, b.view.nm), b.view.nm, b.key === 'welcome' ? 10 : 1700);
     // the partner cells are there from their beat on, and gone if we step back
     if (i < SYN) hideCell(t.synapsePartner);
-    if (i < PRE) hideCell(t.presynPartner);
     // what happens in this beat
-    if (b.key === 'axon' && from < AXON) { starshipHop(t.axonFlight, 6); shipOut = true; }
-    if (i < AXON && shipOut) { starshipHop([...t.axonFlight].reverse(), 4); shipOut = false; }
+    const want = i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : 'syn';
+    if (want !== shipAt) {
+      const aEnd = t.axonFlight[t.axonFlight.length - 1];
+      if (shipAt === 'pad' && want === 'dend') starshipHop(t.dendFlight, 5);
+      else if (shipAt === 'dend' && want === 'pad') starshipHop([...t.dendFlight].reverse(), 4);
+      else if (shipAt === 'dend' && want === 'axon') starshipHop(t.axonFlight, 9);
+      else if (shipAt === 'axon' && want === 'dend') starshipHop([...t.axonFlight].reverse(), 6);
+      else if (want === 'syn') starshipHop([aEnd, aboveSynapse(t, b.view.nm)], 2.2);
+      else if (shipAt === 'syn' && want === 'axon') starshipHop([aEnd], 2);
+      shipAt = want;
+    }
     if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
-    if (b.key === 'presyn') showCell(t.presynPartner, PRESYN_COLOR);
+    if (b.key === 'allsyn') runAllSynapses(t);
     if (b.key === 'spike') runSpark(t);
-    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats); }, 900);
+    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse'); }, 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
   nextEl.onclick = () => go(i + 1);
   backEl.onclick = () => go(i - 1);
+  // Enter or the right arrow goes on, the left arrow goes back, Escape asks
+  // to leave; held here so the viewer does not also move.
+  onKey = (e: KeyboardEvent) => {
+    const tgt = e.target as HTMLElement | null;
+    if (tgt?.closest?.('input, textarea, [contenteditable="true"]')) return;
+    const asking = !!panel?.classList.contains('nge-intro--asking');
+    if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); ask(!asking); return; }
+    if (asking) return;
+    if (tgt?.closest?.('.nge-intro button') && (e.key === 'Enter' || e.key === ' ')) return;   // the button clicks itself
+    if (e.key === 'Enter' || e.key === 'ArrowRight') { e.stopPropagation(); e.preventDefault(); go(i + 1); }
+    else if (e.key === 'ArrowLeft') { e.stopPropagation(); e.preventDefault(); go(i - 1); }
+  };
+  window.addEventListener('keydown', onKey, true);
   go(0);
 }
 
