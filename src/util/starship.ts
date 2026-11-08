@@ -21,6 +21,8 @@ import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
+import {watch} from 'vue';
+import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 
 type V3 = [number, number, number];
 interface Flight { path: number[][]; landingStart: number; landNormal: V3; soma: V3; shipLength: number; segment: string; }
@@ -142,13 +144,20 @@ function writeGlow(nm: V3, right: V3, cores: {p: V3; power: number}[], shipNm: n
 let running = false;
 let stopRequested = false;
 let userTouched = false;
+/** On a phone a touch only pauses the turn: it picks up again this long
+ *  after the last one (a thumb scrolling past bumps the cell). */
+const TOUCH_PAUSE_MS = 4000;
+let touchedAt = 0;
 let raf = 0;
 
 function onUserTurn(e: Event) {
+  if (!(e.target as HTMLElement | null)?.closest?.('.neuroglancer-panel, .nge-3d-panel, canvas')) return;
   // On a laptop, once the player moves the cell by hand, the view never
   // starts turning on its own again (Ames).
-  if ((e.target as HTMLElement | null)?.closest?.('.neuroglancer-panel, .nge-3d-panel, canvas')) userTouched = true;
+  if ((e as PointerEvent).pointerType === 'touch') touchedAt = performance.now();
+  else userTouched = true;
 }
+const handsOff = () => !userTouched && performance.now() - touchedAt > TOUCH_PAUSE_MS;
 
 async function showSandboxCell(f: Flight): Promise<boolean> {
   const v = viewerNow();
@@ -177,6 +186,7 @@ export async function flyStarship(): Promise<void> {
   running = true;
   stopRequested = false;
   userTouched = false;
+  touchedAt = 0;
   try {
     await loadAssets();
     const f = flight!, mesh = model!;
@@ -223,12 +233,12 @@ export async function flyStarship(): Promise<void> {
         if (!cam) { raf = requestAnimationFrame(step); return; }
 
         // the slow turn, until someone takes hold of the cell
-        if (!userTouched && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        if (handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
           try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / TURN_SECONDS * dt); } catch { /* no view */ }
         }
         // in on the soma as the ship comes home
         const zoom = smooth((t - (CRUISE_S - 4)) / (4 + LANDING_S));
-        if (!userTouched) {
+        if (handsOff()) {
           v.projectionScale.value = WIDE * Math.pow(CLOSE / WIDE, zoom);
           // and over toward the landing pad, so the ship lands mid screen
           const c = mix(somaAt, padAt, zoom * 0.85);
@@ -311,6 +321,52 @@ export function clearStarship() {
   setNgeProps([], GROUP);
   setNgeGlow(null, GROUP);
   try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+}
+
+/** Is enough of the Sandbox cell drawn to fly into? The same test the
+ *  pumpkins use: most of the cell's mesh pieces are on the graphics card. */
+function cellDrawn(): boolean {
+  const v = viewerNow();
+  for (const ml of v?.layerManager?.managedLayers ?? []) {
+    if (!String(ml?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/pinky_nf')) continue;
+    const segs = ml.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!segs?.size) continue;
+    for (const rl of ml.layer.renderLayers ?? []) {
+      const src = rl?.source;
+      if (!src?.chunks?.get || !src.fragmentSource?.chunks?.get || typeof src.getFragmentKey !== 'function') continue;
+      for (const seg of segs) {
+        const key = `${seg.low},${seg.high}`;
+        const ids: string[] = src.chunks.get(key)?.fragmentIds ?? [];
+        if (!ids.length) continue;
+        let drawn = 0;
+        for (const id of ids) if (src.fragmentSource.chunks.get(src.getFragmentKey(key, id).key)?.state === 0) drawn++;
+        if (drawn / ids.length >= 0.6) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Test sites only for now (never the live site): the Starship comes in by
+ * itself for a pretend new player (the Staging test panel's "Pretend I am a
+ * new player"), on load and the moment the box is ticked, or with
+ * ?starship in the address. It waits for the cell to be drawn first, for
+ * up to twenty seconds.
+ */
+let playedThisLoad = false;
+export function startStarshipIntro() {
+  if (IS_LIVE_SITE) return;
+  const wanted = () => simulating.value || /[?&]starship/.test(location.search);
+  const go = async () => {
+    if (!wanted() || running || playedThisLoad) return;
+    playedThisLoad = true;
+    await loadAssets().catch(() => {});
+    for (let i = 0; i < 80 && !cellDrawn(); i++) await new Promise(r => setTimeout(r, 250));
+    if (wanted()) void flyStarship();
+  };
+  setTimeout(go, 1500);
+  watch(simulating, on => { if (on) { playedThisLoad = false; void go(); } });
 }
 
 (window as any).pyrStarship = {fly: flyStarship, clear: clearStarship};
