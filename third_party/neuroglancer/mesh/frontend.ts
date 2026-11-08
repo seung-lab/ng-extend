@@ -418,6 +418,14 @@ export class MeshShaderManager {
     }
   }
 
+  /** Highlight tint, per cell: a cell in the map's `skip` set is drawn in its
+   *  own colour everywhere (mesh/nge_tint.ts). Nothing to set when the map
+   *  skips no one; beginModel has already cleared the flag. */
+  setTintSkip(gl: GL, shader: ShaderProgram, objectId: {toString(): string}) {
+    const skip = getNgeMeshTint()?.skip;
+    if (skip !== undefined) gl.uniform1f(shader.uniform('uNgeTintSkip'), skip.has(objectId.toString()) ? 1 : 0);
+  }
+
   setColor(gl: GL, shader: ShaderProgram, color: vec4) {
     gl.uniform4fv(shader.uniform('uColor'), color);
   }
@@ -467,6 +475,8 @@ export class MeshShaderManager {
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
     }
+    // No cell is skipped until its own draw says so (setTintSkip).
+    gl.uniform1f(shader.uniform('uNgeTintSkip'), 0);
     // The fine map of the cut preview, over the map above.
     const fineTint = renderContext.emitColor ? getNgeMeshTintFine() : null;
     const fineUnit = shader.textureUnit(ngeFineSamplerSymbol);
@@ -577,6 +587,7 @@ export class MeshShaderManager {
         builder.addUniform('highp uint', 'uPickID');
         builder.addUniform('highp mat4', 'uNgeTintMatrix');
         builder.addUniform('highp float', 'uNgeTintOn');
+        builder.addUniform('highp float', 'uNgeTintSkip');
         builder.addUniform('highp float', 'uNgeGlow');
         builder.addUniform('highp vec4', 'uNgeShell');
         builder.addUniform('highp vec4', 'uNgeShellColor');
@@ -716,7 +727,7 @@ if (uNgeGlow > 4.5) {
   highp vec3 pulseColor = uNgePulseColor.w > 0.5 ? uNgePulseColor.rgb * uColor.a : mix(uColor.rgb, vec3(uColor.a), 0.65);
   vColor.rgb = mix(vColor.rgb, pulseColor, 0.9 * pulseBand * clamp(uNgePulse.w - 1.0, 0.0, 1.0));
 }
-if (uNgeTintOn > 0.5) {
+if (uNgeTintOn > 0.5 && uNgeTintSkip < 0.5) {
   highp vec3 tintCoord = (uNgeTintMatrix * vec4(vertexPosition, 1.0)).xyz;
   if (all(greaterThanEqual(tintCoord, vec3(0.0))) && all(lessThanEqual(tintCoord, vec3(1.0)))) {
     highp vec4 tint = texture(uNgeTint, tintCoord);
@@ -961,6 +972,7 @@ export class MeshLayer extends
           }
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
+            meshShaderManager.setTintSkip(gl, shader, objectId);
             const pulsing = ngePulseFor(gl, shader, key, hovered);
             meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
             // Back to no pulse for the next cell.
@@ -1220,6 +1232,7 @@ export class MultiscaleMeshLayer extends
           if (shells !== null && ngeCrumbleDrawPoints) return;
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
+            meshShaderManager.setTintSkip(gl, shader, objectId);
             const pulsing = ngePulseFor(gl, shader, key, hovered);
             meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
             // Back to no pulse for the next cell.

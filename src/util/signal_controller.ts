@@ -396,6 +396,13 @@ function ensureStyle() {
 .nge-sig-beam[aria-pressed="true"] { background: rgba(255, 194, 74, 0.22); color: #ffd98a; text-shadow: 0 0 8px rgba(255, 194, 74, 0.6); }
 .nge-sig-beam.hush[aria-pressed="true"] { background: rgba(182, 140, 255, 0.25); color: #d9c4ff; text-shadow: 0 0 8px rgba(182, 140, 255, 0.7); }
 .nge-sig-beam:disabled { opacity: 0.35; cursor: not-allowed; }
+/* what a beam costs, in the charge meter's own pips */
+.nge-sig-beam .cost { display: inline-flex; gap: 2px; margin-left: 7px; vertical-align: 1px; }
+.nge-sig-beam .cost b { width: 7px; height: 6px; transform: skewX(-18deg); background: currentColor; opacity: 0.65; }
+/* the key that switches the beam (Ames 2026-11-08: "I need a shortcut between spark and hush") */
+.nge-sig-key { display: inline-block; margin-left: -4px; padding: 1px 6px 0; border: 1px solid rgba(126, 224, 255, 0.45); border-bottom-width: 2px; border-radius: 4px;
+  font: 600 9.5px 'Inter', sans-serif; letter-spacing: 0.06em; color: #9fc6ea; background: rgba(126, 224, 255, 0.06); }
+@media (hover: none) and (pointer: coarse) { .nge-sig-key { display: none; } }
 .nge-sig-charges { display: inline-flex; gap: 4px; align-items: center; }
 .nge-sig-charges i { width: 14px; height: 8px; border: 1px solid rgba(126, 224, 255, 0.5); transform: skewX(-18deg); background: rgba(126, 224, 255, 0.08); }
 .nge-sig-charges i.on { background: #7ee0ff; box-shadow: 0 0 6px #7ee0ff; }
@@ -433,8 +440,12 @@ body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: c
 body.nge-mobile .nge-sig { bottom: calc(70px + env(safe-area-inset-bottom)); }
 /* Wide screens: the HUD stands at the right, the cells get the whole height. */
 @media (min-width: 1000px) {
-  .nge-sig { left: auto; right: 16px; bottom: auto; top: 64px; transform: none; width: 372px; max-height: calc(100vh - 150px); overflow-y: auto; padding: 12px 16px 12px;
+  .nge-sig { left: auto; right: 16px; bottom: auto; top: 64px; transform: none; width: 372px; max-height: calc(100vh - 150px); display: flex; flex-direction: column; padding: 12px 16px 12px;
     animation-name: nge-sig-in-side; }
+  /* Only the content scrolls, and only when it must: the corner brackets
+     poke out of the plate, and on the plate itself they made both scrollbars
+     appear with everything in view (Ames 2026-11-08). */
+  .nge-sig-scroll { min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: rgba(126, 224, 255, 0.35) transparent; margin-right: -8px; padding-right: 8px; }
   @keyframes nge-sig-in-side { 0% { opacity: 0; transform: translateX(18px) scaleX(0.04); filter: blur(6px) brightness(2); } 100% { opacity: 1; transform: none; filter: none; } }
   .nge-sig--out { animation-name: nge-sig-out-side; }
   @keyframes nge-sig-out-side { to { opacity: 0; transform: translateX(14px) scaleX(0.04); filter: blur(6px); } }
@@ -461,7 +472,7 @@ function buildPanel() {
   panel.className = 'ng-extend nge-sig';
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Signal Controller');
-  panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i>
+  panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i><div class="nge-sig-scroll">
     <div class="nge-sig-head"><span class="nge-sig-dot"></span>Signal Control · MICrONS cortex<span class="lvl" data-el="lvl"></span>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
       <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
@@ -469,18 +480,20 @@ function buildPanel() {
       <div class="nge-sig-stats"><div>Progress<b data-el="progress">0</b></div><div>Time<b data-el="time">0</b></div><div>Score<b data-el="score">0</b></div></div></div>
     <div class="nge-sig-coach" data-el="coach" aria-live="polite"><i></i><span data-el="coachText"></span></div>
     <div data-el="body"></div>
-    <div class="nge-sig-row" data-el="row"><div class="nge-sig-beams"><button class="nge-sig-beam spark" type="button" data-el="spark" aria-pressed="true">Spark · 1</button><button class="nge-sig-beam hush" type="button" data-el="hush" aria-pressed="false">Hush · 2</button></div>
+    <div class="nge-sig-row" data-el="row"><div class="nge-sig-beams"><button class="nge-sig-beam spark" type="button" data-el="spark" aria-pressed="true" title="Spark: the cell fires. Costs 1 charge.">Spark<i class="cost" aria-label="1 charge"><b></b></i></button><button class="nge-sig-beam hush" type="button" data-el="hush" aria-pressed="false" title="Hush: the cell is silent for 2.5 s. Costs 2 charges.">Hush<i class="cost" aria-label="2 charges"><b></b><b></b></i></button></div><kbd class="nge-sig-key" title="Tab (or Space) switches between Spark and Hush">Tab</kbd>
       <div class="nge-sig-charges" data-el="charges"><span>Charge</span></div>
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
-    <div class="nge-sig-note">Real wiring, real synapse counts (MICrONS public release). The firing is a simple model, played about a thousand times slower than life.</div>`;
+    <div class="nge-sig-note">Real wiring, real synapse counts (MICrONS public release). The firing is a simple model, played about a thousand times slower than life.</div></div>`;
   document.body.appendChild(panel);
   els = {};
   panel.querySelectorAll<HTMLElement>('[data-el]').forEach(el => { els[el.dataset.el!] = el; });
   els.x.onclick = () => stopSignalController();
   els.mute.onclick = () => { muted = !muted; els.mute.textContent = muted ? '♪̸' : '♪'; els.mute.style.opacity = muted ? '0.5' : '1'; };
-  els.spark.onclick = () => setHushMode(false);
-  els.hush.onclick = () => setHushMode(true);
+  // Buttons let go of the focus after a click, so Space keeps switching the
+  // beam instead of pressing the last button again.
+  els.spark.onclick = () => { setHushMode(false); els.spark.blur(); };
+  els.hush.onclick = () => { setHushMode(true); els.hush.blur(); };
   els.recenter.onclick = () => { frameLevel(); say('Back at the circuit.', 1.5); };
   for (let k = 0; k < MAX_CHARGES; k++) els.charges.appendChild(document.createElement('i'));
 }
@@ -582,9 +595,9 @@ function showChips() {
     // the moment they are sparked, so they show none (Ames 2026-11-08:
     // "what do all the bars mean?").
     const bar = c.target ? '<span class="barrow"><span class="barlabel">charge</span><span class="bar"><b></b></span></span>'
-      : c.gateNext !== null ? '<span class="barrow"><span class="barlabel">next pulse</span><span class="bar"><b class="neg"></b></span></span>' : '';
+      : c.gateNext !== null ? '<span class="barrow"><span class="barlabel">pulses in</span><span class="bar"><b class="neg"></b></span></span>' : '';
     el.innerHTML = `<span class="text"><span class="key">${key}<small>${c.spec.label}</small></span><span class="syn">${chipLine(c)}</span>${bar}</span>`;
-    el.onclick = () => shoot(key);
+    el.onclick = () => { shoot(key); el.blur(); };
     wrap.appendChild(el);
     chipEls.set(key, el);
   }
@@ -641,8 +654,11 @@ function updateHud() {
     const label = el.querySelector('.barlabel') as HTMLElement | null;
     if (!bar || !label) continue;
     if (c.gateNext !== null) {
-      bar.style.width = hushed ? '0%' : `${Math.round(clamp(1 - (c.gateNext - now) / c.gatePeriod, 0, 1) * 100)}%`;
-      label.textContent = hushed ? 'hushed' : 'next pulse';
+      // The Gatekeeper's bar is a fuse: the seconds to its next pulse, running
+      // down (Ames 2026-11-08: "next pulse, what does it mean?").
+      const left = Math.max(0, c.gateNext - now);
+      bar.style.width = hushed ? `${Math.round(clamp((c.hushedUntil - now) / HUSH_S, 0, 1) * 100)}%` : `${Math.round(clamp(left / c.gatePeriod, 0, 1) * 100)}%`;
+      label.textContent = hushed ? `hushed ${Math.max(0, c.hushedUntil - now).toFixed(1)} s` : `pulses in ${left.toFixed(1)} s`;
       continue;
     }
     const v = clamp(potential(c) / c.theta, -1, 1);
@@ -699,7 +715,11 @@ function buildHaze(): NgeMeshTint | null {
   }
   const m = mat4.create();
   for (let i = 0; i < 3; i++) { m[i * 5] = nm[i] / (dims[i] * cell); m[12 + i] = -lo[i] / (dims[i] * cell); }
-  return {data, dims, gridFromGlobal: m, dim: DIM};
+  // The target is lit whole, in its own colour; the haze is for the others
+  // (Ames 2026-11-08: "the target cell all the way lit up and just the
+  // others with this lantern mode").
+  const skip = new Set(level.targets.map(k => cells.get(k)!.spec.root));
+  return {data, dims, gridFromGlobal: m, dim: DIM, skip};
 }
 function applyHaze() {
   if (!hazeOn) { savedTint = getNgeMeshTint(); hazeOn = true; }
@@ -740,7 +760,7 @@ function makeTags() {
     el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
     el.innerHTML = `${key}<small>${roleOf(c)}</small>`;
     el.title = c.target ? `${key}: the target` : `Fire the beam at ${key}`;
-    el.onclick = () => shoot(key);
+    el.onclick = () => { shoot(key); el.blur(); };
     el.style.display = 'none';
     document.body.appendChild(el);
     tagEls.set(key, el);
@@ -864,12 +884,29 @@ const sideHud = () => window.innerWidth >= 1000;
 /** The ship rides with the camera, low in the foreground like a cockpit:
  *  it stays in view however the player turns the cells, and its beams
  *  leave from the player's own side. */
+/** The ship's length in nm, set with its spot: a fixed share of the screen,
+ *  whatever the level's spread or the zoom. */
+let shipLenNm = SHIP_LENGTH_NM;
 function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): V3 | null {
   const v = viewerNow(), nm = nmPerUnit();
   if (!v || !nm) return null;
   const look = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
-  // low and to the left, clear of a bottom HUD
-  return add(add(add(look, mul(cam.toEye, viewNm * 0.42)), mul(cam.up, -viewNm * 0.09)), mul(cam.right, -viewNm * 0.26));
+  // Neuroglancer's perspective camera is 45° tall, its eye 1.21 frame
+  // heights from the look point, its near plane a tenth of the way back
+  // (perspective_view/panel.ts). The ship sits four tenths of the way out
+  // from the eye, in front of the tissue in most frames, placed in screen
+  // terms: low and to the left, clear of the HUD. It had been 26 µm long
+  // and 300 µm deep, lost among the branches once a level spread out (Ames
+  // 2026-11-08: "I don't see the spaceship").
+  const tanHalf = Math.tan(Math.PI / 8);
+  const eyeDist = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]) / (2 * tanHalf);
+  const d = eyeDist * 0.4;
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  const aspect = r && r.height > 0 ? r.width / r.height : window.innerWidth / Math.max(1, window.innerHeight);
+  const halfH = d * tanHalf, halfW = halfH * aspect;
+  shipLenNm = halfH * 0.6;
+  const sx = -0.6, sy = sideHud() ? -0.5 : -0.25;
+  return add(add(add(look, mul(cam.toEye, eyeDist - d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH));
 }
 
 /** The model's own length along its nose (+z), so it can be sized in nm. */
@@ -882,8 +919,8 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
     for (let i = 2; i < shipMesh.positions.length; i += 3) { zLo = Math.min(zLo, shipMesh.positions[i]); zHi = Math.max(zHi, shipMesh.positions[i]); }
     shipModelLength = (zHi - zLo) || 1;
   }
-  const scale = SHIP_LENGTH_NM / shipModelLength;
   const spot = cockpitSpot(cam);
+  const scale = shipLenNm / shipModelLength;
   if (spot) shipAt = mix(shipAt, spot, Math.min(1, dt * 5));
   const want = shipAim && performance.now() < aimUntil ? norm(sub(shipAim, shipAt)) : norm(sub(center, shipAt));
   shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * 7)));
@@ -899,7 +936,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   for (let k = 0; k < 3; k++) m[12 + k] = at[k] / nm[k];
   shipProp.eye = [dot(right, cam.toEye), dot(up, cam.toEye), dot(fwd, cam.toEye)];
 }
-const shipNose = (): V3 => add(shipAt, mul(shipFwd, SHIP_LENGTH_NM * 0.5));
+const shipNose = (): V3 => add(shipAt, mul(shipFwd, shipLenNm * 0.5));
 
 /* ── the model ── */
 function resetCells() {
@@ -1198,7 +1235,7 @@ function onKey(e: KeyboardEvent) {
   if (phase !== 'playing') return;
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-  if (e.key === 'Tab') { e.preventDefault(); setHushMode(!hushMode); return; }
+  if (e.key === 'Tab' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setHushMode(!hushMode); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= 9) {
     const key = [...chipEls.keys()][n - 1];

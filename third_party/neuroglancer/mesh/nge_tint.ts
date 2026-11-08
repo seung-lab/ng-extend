@@ -25,6 +25,10 @@ export interface NgeMeshTint {
    *  in this colour (RGB 0..1, the player's Checked colour) are drawn as a
    *  dim grey instead, so what is left to check stands out. */
   dim?: [number, number, number];
+  /** Segments (ids as decimal strings) the map leaves alone: drawn in their
+   *  own colour everywhere, however the map is painted there (Signal
+   *  Controller's target cell, lit whole while the rest is hazed). */
+  skip?: Set<string>;
 }
 
 let current: NgeMeshTint|null = null;
