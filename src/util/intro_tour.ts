@@ -34,7 +34,8 @@ type V3 = [number, number, number];
 interface Tour {
   segment: string;
   grid: {origin: V3; cell: number; dims: V3; rle: number[]};
-  anchors: Record<'soma' | 'dendrite' | 'axon' | 'synapse' | 'presyn', V3>;
+  anchors: Record<'soma' | 'dendrite' | 'axon' | 'synapse' | 'presyn' | 'synapse2', V3>;
+  syn2Partner: string; syn2Flight: number[][];
   synapsePartner: string; presynPartner: string; presynSynapses: number;
   incomingSynapses: number; outgoingSynapses: number;
   axonFlight: number[][]; axonPath: number[][]; dendFlight: number[][];
@@ -68,14 +69,17 @@ const BEATS: Beat[] = [
     body: 'Where two neurons meet and pass a signal across. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our axon passes its signal to the next neuron.'},
   {key: 'allsyn', callout: {anchor: 'soma', title: 'All its synapses', stats: [['Input', '3,386 synapses'], ['Output', '59 synapses']]}, view: {at: 'cell', nm: 230_000},
     body: "Every glowing dot is a synapse. Gold ones bring signals in from other neurons, onto the dendrites and soma. Pink ones carry this cell's own signal out, from its axon."},
+  {key: 'synapse2', header: 'Signals come in', part: 2, view: {at: 'synapse2', nm: 30_000},
+    body: 'Out here near the tip of a dendrite, another neuron\u2019s axon passes its signal in. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
   {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['For scale', 'a blink takes 300 times longer'], ['Speed', 'up to 100 m/s'], ['For scale', 'about 220 mph']]}, part: 3, view: {at: 'cell', nm: 220_000},
     body: 'Neurons talk in quick electric pulses called action potentials. Each one starts near the soma and races down the axon to its synapses. Together, your neurons send hundreds of billions of them every minute.'},
   {key: 'connectome', header: 'Connectome', view: {at: 'cell', nm: 260_000},
-    body: 'A wiring diagram of the brain that includes all the cells and all the synapses is called a connectome. With it, scientists can follow how signals flow, to learn how we see, remember and think, and what goes wrong in brain disorders. This map doesn’t exist for a mammalian brain yet, but we’re getting closer thanks to people like you playing Pyr.'},
+    body: 'A wiring diagram of the brain that includes all the cells and all the synapses is called a **connectome**. With it, scientists can follow how signals flow, to learn how we see, remember and think, and what goes wrong in brain disorders. This map doesn’t exist for a mammalian brain yet, but we’re getting closer thanks to people like you playing Pyr.'},
 ];
 
 /* ── colours (cell blue, parts as in the labelled picture) ── */
 const PART_RGB: Record<number, V3> = {1: [255, 205, 80], 2: [168, 140, 255], 3: [255, 95, 210]};
+const SYN2_COLOR = 0xb4ff5a;    // the neighbor whose axon feeds the far dendrite, lime
 const PARTNER_COLOR = 0xffa64d;   // the synapse's partner, orange
 const packed = (hex: number) => ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 0xff) << 16);
 
@@ -262,7 +266,7 @@ function stopSpark() { cancelAnimationFrame(sparkRaf); setNgeGlow(null, 'intro-s
 
 /* ── the synapse marker: a soft pulse ── */
 let pulseRaf = 0;
-function runPulse(at: V3) {
+function runPulse(at: V3, rgb: [number, number, number] = [1, 0.45, 0.85]) {
   const nm = nmPerUnit();
   if (!nm) return;
   const glow: NgeGlow = {positions: Float32Array.from([at[0] / nm[0], at[1] / nm[1], at[2] / nm[2]]), colors: new Float32Array(4), sizesNm: new Float32Array(1), count: 1, nmRight: [1 / nm[0], 0, 0]};
@@ -270,7 +274,7 @@ function runPulse(at: V3) {
   const step = (now: number) => {
     const k = 0.5 + 0.5 * Math.sin((now - t0) / 1000 * 4);
     void k;
-    glow.colors.set([1, 0.45, 0.85, 1]);
+    glow.colors.set([rgb[0], rgb[1], rgb[2], 1]);
     glow.sizesNm[0] = 3400;
     const cam = cameraAxes(nm);
     if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
@@ -489,6 +493,12 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-go--alt + .nge-go { margin-left: 10px; }
 .nge-go--alt .nge-go-label { background: none; color: #bfe6ff; }
 .nge-go[hidden] { display: none; }
+.nge-intro--choice > .nge-intro-row { flex-wrap: wrap; row-gap: 8px; }
+.nge-intro-choose { order: -1; flex-basis: 100%; margin-top: 4px; font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.28em;
+  text-transform: uppercase; color: rgba(126, 224, 255, 0.85); }
+.nge-intro-choose[hidden] { display: none; }
+.nge-intro--choice .nge-go { height: 44px; }
+.nge-intro-body b { color: #fff; font-weight: 700; }
 /* back: just a chevron */
 .nge-back { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important;
   color: #8fbfe6; cursor: pointer; transition: color 0.2s, transform 0.15s; }
@@ -553,19 +563,25 @@ let calloutRaf = 0;
 let typeTimer: ReturnType<typeof setInterval> | null = null;
 let onKey: ((e: KeyboardEvent) => void) | null = null;
 
-function type(el: HTMLElement, text: string) {
+function type(el: HTMLElement, marked: string) {
+  // **word** is bold (Ames: bold "connectome"); typed as plain text, then
+  // the emphasis lands when the line is complete
+  const text = marked.replace(/\*\*/g, '');
+  const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const html = esc(marked).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const finish = () => { el.innerHTML = html; };
   if (typeTimer) clearInterval(typeTimer);
   el.textContent = '';
   let i = 0;
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if (reduced) { el.textContent = text; return; }
+  if (reduced) { finish(); return; }
   typeTimer = setInterval(() => {
     i = Math.min(text.length, i + 2);
     el.textContent = text.slice(0, i);
-    if (i >= text.length && typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+    if (i >= text.length && typeTimer) { clearInterval(typeTimer); typeTimer = null; finish(); }
   }, 22);
   // a tap on the text finishes it at once
-  el.onclick = () => { if (typeTimer) { clearInterval(typeTimer); typeTimer = null; } el.textContent = text; };
+  el.onclick = () => { if (typeTimer) { clearInterval(typeTimer); typeTimer = null; } finish(); };
 }
 
 /** The frame (Ames: "like circuits but SLIGHTLY curved"): a rim with cut
@@ -763,6 +779,7 @@ export async function startIntroTour() {
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
     <div class="nge-intro-row"><button class="nge-back nge-intro-back" type="button" aria-label="Back">${CHEV_L}</button>
+      <span class="nge-intro-choose" hidden>Choose your next adventure</span>
       <button class="nge-go nge-go--alt nge-intro-alt" type="button" hidden><span class="nge-go-label">Explore a bigger neuron</span></button>
       <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
@@ -786,9 +803,9 @@ export async function startIntroTour() {
   stayEl.onclick = () => ask(false);
 
   const indexOf = (key: string) => BEATS.findIndex(b => b.key === key);
-  const NEURON = indexOf('neuron'), DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
+  const NEURON = indexOf('neuron'), SYN2 = indexOf('synapse2'), DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
   let i = -1;
-  let shipAt: 'pad' | 'dend' | 'axon' | 'syn' | 'dock' = 'pad';
+  let shipAt: 'pad' | 'dend' | 'axon' | 'syn' | 'syn2' | 'dock' = 'pad';
   const go = (n: number) => {
     if (!active || n < 0) return;
     if (n >= BEATS.length) { endTour(); return; }
@@ -800,11 +817,13 @@ export async function startIntroTour() {
     const last = b.key === 'connectome';
     labelEl.textContent = last ? 'Start playing Pyr' : (b.next ?? 'Next');
     altEl.hidden = !last;
+    (panel?.querySelector('.nge-intro-choose') as HTMLElement).hidden = !last;
+    panel?.classList.toggle('nge-intro--choice', last);
     backEl.hidden = i === 0;
     // Size the panel for the whole text first, so it holds still while the
     // words type in and the camera can frame the cell above it.
     bodyEl.style.minHeight = '';
-    bodyEl.textContent = b.body;
+    bodyEl.textContent = b.body.replace(/\*\*/g, '');
     bodyEl.style.minHeight = `${bodyEl.offsetHeight}px`;
     if (panel) (panel.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(panel.offsetWidth, panel.offsetHeight, 18);
     // the words wait for the ship: the box steps aside while it flies and
@@ -827,13 +846,17 @@ export async function startIntroTour() {
     setNgeMeshTint(partsTint(shown, b.part));
     // the camera, framing the subject in the open space above the panel
     const center: V3 = b.view.at === 'cell' ? cellCenter(t) : b.view.at === 'dendView' ? [307744, 175892, 86080] : t.anchors[b.view.at];
-    moveCamera(framed(center, b.view.nm), b.view.nm, b.key === 'welcome' ? 10 : 1700);
+    if (b.key === 'spike') {
+      moveCamera(framed(t.anchors.axon, 26_000), 26_000, 1400);
+      setTimeout(() => { if (active && i === n) moveCamera(framed(center, b.view.nm), b.view.nm, 9000); }, 1600);
+    } else moveCamera(framed(center, b.view.nm), b.view.nm, b.key === 'welcome' ? 10 : 1700);
     // the partner cells are there from their beat on, and gone if we step back
     if (i < SYN) hideCell(t.synapsePartner);
+    if (i < SYN2) hideCell(t.syn2Partner);
     // what happens in this beat
     // out to the edge of the cell for its stats card, home for the soma,
     // out by the dendrite tips, down the axon, over the synapse
-    const want = i === NEURON ? 'dock' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : 'syn';
+    const want = i === NEURON ? 'dock' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : i < SYN2 ? 'syn' : 'syn2';
     if (want !== shipAt) {
       const aEnd = t.axonFlight[t.axonFlight.length - 1];
       if (want === 'dock') {
@@ -850,11 +873,14 @@ export async function startIntroTour() {
       else if (shipAt === 'dend' && want === 'pad') starshipHop([...t.dendFlight].reverse(), 4);
       else if (shipAt === 'dend' && want === 'axon') starshipHop(t.axonFlight, 9);
       else if (shipAt === 'axon' && want === 'dend') starshipHop([...t.axonFlight].reverse(), 6);
+      else if (shipAt === 'syn' && want === 'syn2') starshipHop(t.syn2Flight, 6);
+      else if (shipAt === 'syn2' && want === 'syn') starshipHop([...t.syn2Flight].reverse(), 5);
       else if (want === 'syn') starshipHop([aEnd, aboveSynapse(t, b.view.nm)], 2.2);
       else if (shipAt === 'syn' && want === 'axon') starshipHop([aEnd], 2);
       shipAt = want;
     }
     if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
+    if (b.key === 'synapse2') { showCell(t.syn2Partner, SYN2_COLOR); runPulse(t.anchors.synapse2, [1, 0.86, 0.45]); }
     if (b.key === 'allsyn') runAllSynapses(t);
     if (b.key === 'spike') runSpark(t);
     if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, 900);
@@ -894,30 +920,85 @@ function startGetStarted() {
  *  v117 release Pyr shows). */
 const BIG_NEURON = '864691135212863360';
 const BIG_NEURON_NM: V3 = [1070976, 819008, 1007600];
+/** A transmission card on its own (for MICrONS): the panel's look, a title,
+ *  words, stats and buttons. Returns a way to change it and to close it. */
+function transmissionCard() {
+  ensureStyle();
+  const card = document.createElement('section');
+  card.className = 'ng-extend nge-intro' + (window.innerWidth < 700 ? ' nge-intro--phone' : '');
+  card.setAttribute('role', 'dialog');
+  card.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-scan"></span>
+    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Close">${'<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'}</button></div>
+    <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p><dl class="nge-callout-stats" hidden></dl>
+    <div class="nge-intro-row"><span></span><button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
+  document.body.appendChild(card);
+  requestAnimationFrame(() => card.classList.add('nge-intro--in'));
+  const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
+  (card.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = close;
+  const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void}) => {
+    (card.querySelector('.nge-intro-title') as HTMLElement).textContent = title;
+    const bodyEl = card.querySelector('.nge-intro-body') as HTMLElement;
+    bodyEl.style.minHeight = ''; bodyEl.textContent = body.replace(/\*\*/g, '');
+    const dl = card.querySelector('.nge-callout-stats') as HTMLElement;
+    dl.hidden = !stats.length;
+    dl.innerHTML = stats.map(([k, v]) => `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${v}</dd></div>`).join('');
+    const btn = card.querySelector('.nge-intro-go') as HTMLButtonElement;
+    btn.hidden = !button;
+    if (button) { (btn.querySelector('.nge-go-label') as HTMLElement).textContent = button.label; btn.onclick = () => { close(); button.go(); }; }
+    (card.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(card.offsetWidth, card.offsetHeight, 18);
+    type(bodyEl, body);
+  };
+  return {set, close};
+}
+
+/** Is any of the big neuron's mesh on the graphics card yet? */
+function bigNeuronDrawn(ml: any): boolean {
+  for (const rl of ml?.layer?.renderLayers ?? []) {
+    const src = rl?.source;
+    if (!src?.chunks?.get || !src.fragmentSource?.chunks) continue;
+    for (const ch of src.fragmentSource.chunks.values?.() ?? []) if (ch?.state === 0) return true;
+  }
+  return false;
+}
+
 async function exploreBiggerNeuron() {
   clearStarship();
   const v = viewerNow();
   const ds = findDatasetBySegName('minnie65_public');
-  if (!v || !ds || !(await switchToDataset(ds, {forJump: true}))) return;
-  for (let k = 0; k < 40; k++) {
-    const ml = (v.layerManager?.managedLayers ?? []).find((m: any) => !m?.archived &&
+  if (!v || !ds) return;
+  // MICrONS is a much bigger piece of brain and this cell is enormous, so it
+  // takes a while to arrive: say so while it does (Ames)
+  const card = transmissionCard();
+  card.set('Warping to MICrONS', 'Loading a much bigger piece of brain: a cubic millimeter of mouse visual cortex, and one of the most complete neurons in it. Big cells take a moment to arrive.');
+  if (!(await switchToDataset(ds, {forJump: true}))) { card.close(); return; }
+  try { v.selectedLayer.visible = false; } catch { /* no panel */ }
+  let ml: any = null;
+  for (let k = 0; k < 60 && !ml; k++) {
+    ml = (v.layerManager?.managedLayers ?? []).find((m: any) => !m?.archived &&
       String(m?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/minnie65_public') && m.layer?.displayState?.segmentationGroupState?.value?.visibleSegments);
-    if (ml) {
-      ml.setVisible?.(true);
-      const g = ml.layer.displayState.segmentationGroupState.value;
-      g.visibleSegments.clear();
-      g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
-      const nm = nmPerUnit();
-      try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
-      if (nm) {
-        v.navigationState.position.value = Float32Array.from(BIG_NEURON_NM.map((c, i) => c / nm[i]));
-        v.projectionScale.value = 900_000 / Math.min(nm[0], nm[1], nm[2]);
-      }
-      startIdleTurn();
-      return;
-    }
-    await new Promise(r => setTimeout(r, 250));
+    if (!ml) await new Promise(r => setTimeout(r, 250));
   }
+  if (!ml) { card.close(); return; }
+  ml.setVisible?.(true);
+  const g = ml.layer.displayState.segmentationGroupState.value;
+  g.visibleSegments.clear();
+  g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
+  const nm = nmPerUnit();
+  try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
+  try { v.showAxisLines.value = false; } catch { /* keep them */ }
+  if (nm) {
+    // centred a little above the cell body: its axon climbs toward the surface
+    const c: V3 = [BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]];
+    v.navigationState.position.value = Float32Array.from(c.map((x, i) => x / nm[i]));
+    v.projectionScale.value = 1_000_000 / Math.min(nm[0], nm[1], nm[2]);
+  }
+  startIdleTurn();
+  for (let k = 0; k < 120 && !bigNeuronDrawn(ml); k++) await new Promise(r => setTimeout(r, 250));
+  card.set('A Martinotti cell',
+    'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
+    [['Cell type', 'Martinotti cell'], ['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['Axon length', 'about 32 mm'],
+     ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
+    {label: 'Start playing Pyr', go: () => startGetStarted()});
 }
 
 /** The whole intro: the Starship flies in and lands, then the tour. */
