@@ -95,6 +95,7 @@ const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftParticles = ref(true);
 const draftCursorXL = ref(false);
+const draftAutoTurn = ref(true);
 const draftLargeText = ref(false);
 const draftHideTopBar = ref(false);
 const draftImageLayerPanel = ref(false);
@@ -173,6 +174,7 @@ onMounted(() => {
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftParticles.value = prefsStore.prefs.pointParticles !== false;
   draftCursorXL.value = prefsStore.prefs.cursorXL === true;
+  draftAutoTurn.value = prefsStore.prefs.autoTurn !== false;
   draftLargeText.value = prefsStore.prefs.largeText === true;
   draftHideTopBar.value = prefsStore.prefs.hideTopBar === true;
   draftImageLayerPanel.value = prefsStore.prefs.imageLayerPanel === true;
@@ -248,7 +250,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
@@ -600,6 +602,10 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="metallic">Metallic</option>
                 <option value="none">None</option>
               </select>
+            </label>
+            <label class="nge-settings-toggle" title="The 3D view turns slowly by itself, so you can see a cell from every side. It stops as soon as you turn the view yourself.">
+              <input type="checkbox" v-model="draftAutoTurn" />
+              <span class="nge-settings-toggle-label">Turn cells slowly</span>
             </label>
             <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="The color of the light that runs along the cell, with the Pulse look and with the P key.">
               <span class="nge-settings-toggle-label">Pulse color</span>

@@ -24,6 +24,7 @@ import {setStatedColor} from '../widgets/widget_utils';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
+import {useUserPreferencesStore} from '../store';
 
 type V3 = [number, number, number];
 interface Flight { path: number[][]; landingStart: number; landNormal: V3; soma: V3; shipLength: number; segment: string; rollAt?: number; rollLen?: number; }
@@ -233,6 +234,10 @@ function onUserDrag(e: PointerEvent) {
   if (!downAt || !e.buttons) { downAt = null; return; }
   if (Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) { userTouched = true; downAt = null; }
 }
+/** Turning is switched off in Settings > 3D looks ("Turn cells slowly"). */
+function turnAllowed(): boolean {
+  try { return useUserPreferencesStore().prefs.autoTurn !== false; } catch { return true; }
+}
 const handsOff = () => !userTouched && performance.now() - touchedAt > TOUCH_PAUSE_MS;
 
 async function showSandboxCell(f: Flight): Promise<boolean> {
@@ -416,7 +421,7 @@ export function startIdleTurn() {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (running) { idleRaf = 0; return; }      // the flight turns it from here
     const v = viewerNow();
-    if (v && handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (v && handsOff() && turnAllowed() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / TURN_SECONDS * dt); } catch { /* no view yet */ }
     }
     idleRaf = requestAnimationFrame(step);
@@ -542,7 +547,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         if (!cam) { raf = requestAnimationFrame(step); return; }
 
         // the slow turn, until someone takes hold of the cell
-        if (handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        if (handsOff() && turnAllowed() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
           let da = t > 0 ? 2 * Math.PI / FLIGHT_TURN * dt : 0;
           if (t >= total) { const w = 2 * Math.PI / ROCK_P; da = ROCK_A * (Math.sin(w * (rockT + dt)) - Math.sin(w * rockT)); rockT += dt; }
           // while the tour talks the cell holds still, so the ship and its
