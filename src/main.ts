@@ -95,6 +95,7 @@ import pyrIconUrl from './images/pyr-icon.png';
 // The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
 import pyrTriageIconUrl from './images/pyr-icon-triage.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
+import {startStarshipFlyby} from './util/starship_flyby';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 // Injected by scripts/build-prod.js as the short git sha. Guarded with typeof
@@ -454,6 +455,7 @@ function setupViewer() {
   startPumpkin(viewer);
   startScytheControls();
   startStarshipIntro();
+  startStarshipFlyby();
   startPointParticles();
   startTurkey();
   startLeaves();

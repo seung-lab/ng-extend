@@ -1388,6 +1388,7 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
+import { takeStartPlaying } from '../util/start_playing';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 async function triggerCellCelebration(segId?: string) {
@@ -2055,6 +2056,7 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
 function onOpenAsked(e: Event) {
   const tab = (e as CustomEvent).detail?.tab;
   if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+  startPlayingIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
@@ -2953,6 +2955,26 @@ async function claimNewCell() {
     }
   } finally { claimingNew.value = false; }
 }
+/** "Start playing" (util/start_playing.ts): once the cells are in, go to the
+ *  player's open cell here, or claim the next one, and say what to do. */
+const startNote = ref('');
+function startPlayingIfAsked() {
+  if (!takeStartPlaying()) return;
+  const go = async () => {
+    const mine = myOpenClaims.value[0];
+    if (mine) await stepToClaim(mine);
+    else await claimNewCell();
+    if (!myOpenClaims.value.length) return;  // nothing claimed: the reason shows already
+    startNote.value = 'This cell is yours to proofread. Fix what the AI got wrong with Merge and Cut, then press Complete. Stuck? Ask in Chat.';
+    setTimeout(() => { startNote.value = ''; }, 30000);
+    await nextTick();
+    clampPanelPos();
+  };
+  if (!backend.loading) { void nextTick(go); return; }
+  const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); void go(); } });
+}
+onMounted(startPlayingIfAsked);
+
 /** Your open claims in this dataset, in list order: what "next" steps through. */
 const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
 const slimClaimIndex = computed(() => myOpenClaims.value.findIndex(c => c.segId === slimSeg.value));
@@ -4090,6 +4112,7 @@ const panelStyle = computed(() => ({
                   aria-label="Next claimed cell" @click="nextClaim">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <div v-if="startNote" class="nge-cl-start-note" @click="startNote = ''" title="Click to hide">{{ startNote }}</div>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
             <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
@@ -5101,6 +5124,19 @@ const panelStyle = computed(() => ({
 }
 
 /* Claim error banner */
+/* "Start playing": what to do with the cell just claimed. */
+.nge-cl-start-note {
+  flex-basis: 100%;
+  margin: 6px 4px 2px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(95, 216, 255, 0.45);
+  background: rgba(95, 216, 255, 0.1);
+  color: #dff6ff;
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+}
 .nge-cl-error-banner {
   display: flex;
   align-items: center;

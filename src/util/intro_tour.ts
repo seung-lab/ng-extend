@@ -409,7 +409,7 @@ function ensureStyle() {
 @property --nge-ring { syntax: '<angle>'; inherits: false; initial-value: 45deg; }
 .nge-intro { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 0); z-index: 9500; isolation: isolate;
   width: min(620px, calc(100vw - 24px)); box-sizing: border-box; padding: 16px 20px 16px;
-  color: #e6f3ff; font: 15px/1.5 'Inter', 'Roboto', sans-serif; opacity: 0; pointer-events: none; }
+  color: #e6f3ff; font: 16.5px/1.5 'Inter', 'Roboto', sans-serif; opacity: 0; pointer-events: none; }
 .nge-intro--in { pointer-events: auto; animation: nge-holo-in 900ms cubic-bezier(.16,1,.3,1) both; }
 @keyframes nge-holo-in {
   0% { opacity: 0; transform: translate(-50%, 18px) scaleY(0.04); filter: blur(8px) brightness(2.2) drop-shadow(0 0 0 rgba(80, 180, 255, 0)); }
@@ -483,7 +483,7 @@ body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-are
 .nge-intro-bars i:nth-child(1) { height: 5px; } .nge-intro-bars i:nth-child(2) { height: 8px; animation-delay: .15s; }
 .nge-intro-bars i:nth-child(3) { height: 11px; animation-delay: .3s; } .nge-intro-bars i:nth-child(4) { height: 14px; animation-delay: .45s; }
 @keyframes nge-intro-bar { 50% { opacity: 0.35; } }
-.nge-intro-title { margin: 8px 0 4px; font: 700 22px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
+.nge-intro-title { margin: 8px 0 4px; font: 700 24px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
 .nge-intro-body { margin: 0; min-height: 3em; color: #d6e8fb; }
 .nge-intro-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .nge-intro-row .nge-intro-hint { margin-left: auto; }
@@ -720,15 +720,34 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-ic { width: 11px; height: 11px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 10px var(--part, #7ecaff); flex: none; }
 .nge-callout-box { isolation: isolate; }
 .nge-callout-box .nge-callout-kicker { color: rgba(140, 215, 255, 0.75); }
-.nge-callout-box .nge-callout-title { color: #aeeaff; text-shadow: 0 0 12px rgba(80, 190, 255, 0.7); font-size: 15px; gap: 8px; }
-.nge-callout-box { min-width: 170px !important; max-width: min(320px, 42vw) !important; padding: 11px 16px 13px !important; }
-.nge-callout-box .nge-callout-kicker { font-size: 8.5px; display: flex; align-items: center; gap: 7px; color: #9fdcff; }
+.nge-callout-box .nge-callout-title { color: #aeeaff; text-shadow: 0 0 12px rgba(80, 190, 255, 0.7); font-size: 18px; gap: 9px; }
+.nge-callout-box { min-width: 200px !important; max-width: min(380px, 44vw) !important; padding: 13px 18px 15px !important; }
+.nge-callout-box .nge-callout-kicker { font-size: 10px; display: flex; align-items: center; gap: 7px; color: #9fdcff; }
 .nge-callout-box .nge-callout-stats { gap: 6px 14px; margin-top: 7px; padding-top: 7px; }
-.nge-callout-box .nge-callout-stats dt { font-size: 7.5px; }
-.nge-callout-box .nge-callout-stats dd { font-size: 12.5px; }
-.nge-callout-box .nge-callout-stats .num { font-size: 17px; }
-.nge-callout-box .nge-callout-stats .unit { font-size: 10.5px; }
-.nge-callout-box .nge-callout-ic { width: 8px; height: 8px; }
+.nge-callout-box .nge-callout-stats dt { font-size: 9.5px; }
+.nge-callout-box .nge-callout-stats dd { font-size: 15px; }
+.nge-callout-box .nge-callout-stats .num { font-size: 22px; }
+.nge-callout-box .nge-callout-stats .unit { font-size: 12px; }
+.nge-callout-box .nge-callout-ic { width: 10px; height: 10px; }
+/* large monitors: the hologram and the panel grow with the screen (Ames) */
+@media (min-width: 1700px) {
+  .nge-callout-box { max-width: min(460px, 30vw) !important; padding: 16px 22px 18px !important; }
+  .nge-callout-box .nge-callout-title { font-size: 22px; }
+  .nge-callout-box .nge-callout-kicker { font-size: 11.5px; }
+  .nge-callout-box .nge-callout-stats dt { font-size: 11px; }
+  .nge-callout-box .nge-callout-stats dd { font-size: 18px; }
+  .nge-callout-box .nge-callout-stats .num { font-size: 28px; }
+  .nge-callout-box .nge-callout-stats .unit { font-size: 14px; }
+  .nge-callout-stats .grp { font-size: 11px; }
+  .nge-intro { width: min(720px, calc(100vw - 24px)); font-size: 18px; }
+  .nge-intro .nge-intro-title { font-size: 26px; }
+}
+@media (min-width: 2400px) {
+  .nge-callout-box .nge-callout-title { font-size: 26px; }
+  .nge-callout-box .nge-callout-stats dd { font-size: 21px; }
+  .nge-callout-box .nge-callout-stats .num { font-size: 34px; }
+  .nge-intro { width: min(860px, calc(100vw - 24px)); font-size: 20px; }
+}
 .nge-callout-stats .wide { grid-column: 1 / -1; }
 .nge-callout-box .nge-callout-stats { grid-template-columns: auto auto; justify-content: start; column-gap: 26px; row-gap: 9px; }
 .nge-callout-box .nge-callout-stats dd { line-height: 1.25; }
@@ -1239,9 +1258,12 @@ function startGetStarted() {
   stopAllSynapses();
   stopZap();
   hideCallout();
+  // from the start, even for a player who finished it before (Ames: the
+  // rocket's tour leads into it for everyone)
   const t = useTutorialStore();
   t.activeTutorial = 1;
-  t.setTutorialStep(0);
+  t.tutorialStep1 = -1;
+  setTimeout(() => { t.setTutorialStep(0); }, 60);
 }
 
 /** The public MICrONS release (materialization 1300, flat segmentation with
@@ -1549,6 +1571,17 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     wire();
   };
   overview();
+}
+
+/** The rocket by the chat box (Ames 2026-11-08): the prototype tour, offered
+ *  to every player to try and give feedback on. */
+export function showTourInvite() {
+  if (document.querySelector('.nge-tour-invite')) return;
+  const card = transmissionCard();
+  card.el.classList.add('nge-tour-invite');
+  card.set('Try the new tour of Pyr',
+    "This is the prototype new tour that people will see when opening Pyr for the first time. Want to try it and give us feedback? It's supposed to be fun, beautiful, cool, and informative. Thanks for testing it! There are still some bugs but feel free to submit issues/ideas via bug report! -Amy",
+    [], {label: 'Start the tour', go: () => playIntro()}, '', {alt: {label: 'Not now', go: () => card.close()}});
 }
 
 /** The whole intro: the Starship flies in and lands, then the tour. */
