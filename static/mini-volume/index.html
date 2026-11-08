@@ -59,7 +59,7 @@
   <p class="lede">Slice a tiny block of brain, image every slice, then reconstruct a neuron. Drag to turn it.</p>
 
   <div id="mv" aria-label="Animation: a tiny block of brain is cut into slices, each slice is imaged by electron microscope and stacked into a volume, then a whole neuron is reconstructed">
-    <img class="fallback" src="s2.jpg" alt="An electron microscope image of brain tissue, with a cell nucleus in the middle">
+    <img class="fallback" src="s2.jpg" alt="An electron microscope image of brain tissue">
     <p class="tag tr" id="tag"></p>
     <p class="cap" id="cap"></p>
     <div class="steps" role="group" aria-label="Steps">
@@ -70,9 +70,9 @@
     <div id="load">loading the tissue</div>
   </div>
 
-  <p class="note">Real data from the MICrONS pinky dataset. The block is 12 &times; 12 &times; 8
-  <span class="unit">&micro;m</span> of electron microscope imagery around this cell's nucleus, each section
-  40 <span class="unit">nm</span> thick. The neuron is pyramidal cell 648518346355727683, reconstructed in 3D
+  <p class="note">Real data from the MICrONS pinky dataset. The block is 10 &times; 10 &times; 8
+  <span class="unit">&micro;m</span> of electron microscope imagery around one of this cell's dendrites, each
+  section 40 <span class="unit">nm</span> thick, with the segmentation colored in. The neuron is pyramidal cell 648518346355727683, reconstructed in 3D
   and drawn at true scale inside the outline of the whole imaged volume.</p>
 </div>
 
@@ -137,7 +137,7 @@ in vec3 aPos; in vec2 aUv; uniform mat4 uMvp; out vec2 vUv;
 void main(){ vUv = aUv; gl_Position = uMvp * vec4(aPos, 1.0); }`,
 `#version 300 es
 precision mediump float; in vec2 vUv; uniform sampler2D uTex; uniform float uAlpha; uniform float uRim;
-uniform float uImg;
+uniform float uImg; uniform sampler2D uSeg; uniform float uSegA; uniform float uFocus;
 out vec4 o;
 void main(){
   float g = texture(uTex, vUv).r;
@@ -145,7 +145,13 @@ void main(){
   // before imaging: a plain section of tissue in resin
   vec3 plain = vec3(0.50, 0.62, 0.72) + 0.06 * (g - 0.5);
   float done = step(vUv.y, uImg);
-  vec3 c = mix(plain, em, done);
+  // the colored segmentation over the imagery: every color is a different cell.
+  // Focus dims the others so the traced cell (its own blue) stands out.
+  vec3 seg = texture(uSeg, vUv).rgb;
+  float isCell = 1.0 - smoothstep(0.10, 0.22, distance(seg, vec3(0.157, 0.549, 1.0)));
+  float segMix = uSegA * mix(0.5 * (1.0 - 0.55 * uFocus), 0.95, isCell);
+  vec3 emc = mix(em * (1.0 - 0.3 * uFocus * (1.0 - isCell)), mix(seg, vec3(0.35, 0.75, 1.0), isCell * uFocus), segMix);
+  vec3 c = mix(plain, emc, done);
   float beam = (1.0 - smoothstep(0.0, 0.03, abs(vUv.y - uImg))) * step(0.001, uImg) * step(uImg, 0.999);
   c = mix(c, vec3(0.75, 0.97, 1.0), beam * 0.85);
   vec2 e = min(vUv, 1.0 - vUv); float d = min(e.x, e.y);
@@ -247,27 +253,31 @@ let S = null;   // everything built once the data is in
 async function build() {
   const meta = await (await fetch('meta.json')).json();
   const names = ['z0','z1','y0','y1','x0','x1','s0','s1','s2','s3','s4'];
-  const [texs, bin] = await Promise.all([
+  const [texs, segs, bin] = await Promise.all([
     Promise.all(names.map((n) => loadTex(n + '.jpg'))),
+    Promise.all(names.map((n) => loadTex(n + '_seg.png'))),
     fetch('cell.bin').then((r) => r.arrayBuffer()),
   ]);
   const T = Object.fromEntries(names.map((n, i) => [n, texs[i]]));
+  const G = Object.fromEntries(names.map((n, i) => [n, segs[i]]));
+  gl.useProgram(texProg.p);
+  gl.uniform1i(texProg.u.uTex, 0); gl.uniform1i(texProg.u.uSeg, 1);
 
   const cmin = meta.cube.min, cmax = meta.cube.max;
   const [x0, y0, z0] = cmin, [x1, y1, z1] = cmax;
   const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
   // cube faces. xy images have rows = +y, cols = +x. Side images have rows going down in z.
   const faces = [
-    { t: T.z1, vao: quadVao([x0, y0, z1], [dx, 0, 0], [0, dy, 0]) },
-    { t: T.z0, vao: quadVao([x0, y0, z0], [dx, 0, 0], [0, dy, 0]) },
-    { t: T.y0, vao: quadVao([x0, y0, z1], [dx, 0, 0], [0, 0, -dz]) },
-    { t: T.y1, vao: quadVao([x0, y1, z1], [dx, 0, 0], [0, 0, -dz]) },
-    { t: T.x0, vao: quadVao([x0, y0, z1], [0, dy, 0], [0, 0, -dz]) },
-    { t: T.x1, vao: quadVao([x1, y0, z1], [0, dy, 0], [0, 0, -dz]) },
+    { t: T.z1, g: G.z1, vao: quadVao([x0, y0, z1], [dx, 0, 0], [0, dy, 0]) },
+    { t: T.z0, g: G.z0, vao: quadVao([x0, y0, z0], [dx, 0, 0], [0, dy, 0]) },
+    { t: T.y0, g: G.y0, vao: quadVao([x0, y0, z1], [dx, 0, 0], [0, 0, -dz]) },
+    { t: T.y1, g: G.y1, vao: quadVao([x0, y1, z1], [dx, 0, 0], [0, 0, -dz]) },
+    { t: T.x0, g: G.x0, vao: quadVao([x0, y0, z1], [0, dy, 0], [0, 0, -dz]) },
+    { t: T.x1, g: G.x1, vao: quadVao([x1, y0, z1], [0, dy, 0], [0, 0, -dz]) },
   ];
   // each section as a unit quad at z = 0, lifted by a per frame offset
   const slices = meta.cube.sections.map((z, i) => ({
-    z, t: T['s' + i], vao: quadVao([x0, y0, 0], [dx, 0, 0], [0, dy, 0]),
+    z, t: T['s' + i], g: G['s' + i], vao: quadVao([x0, y0, 0], [dx, 0, 0], [0, dy, 0]),
   }));
 
   // the neuron: uint16 positions over its bounds, uint16 triangle indices
@@ -320,30 +330,32 @@ async function build() {
 
 // ---------------------------------------------------------------- the timeline
 // t in seconds. 0 to 4: the block. 4 to 9: its slices. 9 on: pull back to the neuron.
-const STEP_AT = [0, 4.4, 12.8];
-const LOOP = 20.5;
+const STEP_AT = [0, 4.4, 9.7];
+const LOOP = 23.5;
 const CAPS = [
   'A tiny block of brain is cut into slices, each just 40 nanometers thin',
   'Each slice is imaged, and the pictures stack into a 3D volume',
   'AI and people trace a cell through the volume to reconstruct it in 3D',
 ];
 const TAGS = [
-  '12 &times; 12 &times; 8 <span class="unit">&micro;m</span> block &middot; 5 of its 200 slices',
+  '10 &times; 10 &times; 8 <span class="unit">&micro;m</span> block &middot; 5 of its 200 slices',
   'electron microscope images &middot; real data',
   'one pyramidal cell &middot; MICrONS',
+  'every color is a different cell',
 ];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let t = 0, playing = !reduce, last = performance.now(), yawDrag = 0, pitchDrag = 0;
 let shownStep = -1;
 const capEl = document.getElementById('cap'), tagEl = document.getElementById('tag');
 const btns = [...root.querySelectorAll('.steps button')];
-function stepOf(tt) { return tt < 4.3 ? 0 : tt < 10.2 ? 1 : 2; }
-function showStep(s) {
+function stepOf(tt) { return tt < 4.3 ? 0 : tt < 9.6 ? 1 : 2; }
+let shownTag = -1;
+function showStep(s, tag = s) {
+  if (tag !== shownTag) { shownTag = tag; tagEl.innerHTML = TAGS[tag]; }
   if (s === shownStep) return;
   shownStep = s;
   btns.forEach((b, i) => { b.classList.toggle('on', i === s); b.setAttribute('aria-pressed', String(i === s)); });
   capEl.textContent = CAPS[s];
-  tagEl.innerHTML = TAGS[s];
 }
 btns.forEach((b, i) => b.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -369,12 +381,13 @@ root.addEventListener('pointercancel', endDrag);
 
 function camera(tt) {
   // close on the block, swinging slowly round it
-  const pull = smooth(10.2, 13.2, tt);
+  const pull = smooth(13.2, 16.2, tt);
   const az0 = -2.35 + 0.05 * tt;                 // three quarter view
   const fan = smooth(1.4, 3.2, tt) * (1 - smooth(7.6, 8.8, tt));
-  const el0 = 0.42 + 0.12 * fan;
+  // during Reconstruct look down on the top, where the traced branch comes through
+  const el0 = 0.42 + 0.12 * fan + 0.38 * smooth(10.4, 11.8, tt);
   // edge on to the slab, looking along x so the cell's long y spread runs across
-  const az1 = Math.PI + 0.16 * Math.sin((tt - 13.2) * 0.5) * smooth(13.2, 14.2, tt);
+  const az1 = Math.PI + 0.16 * Math.sin((tt - 16.2) * 0.5) * smooth(16.2, 17.2, tt);
   const el1 = 0.07;
   let az = az0 + (az1 - az0) * pull + yawDrag;
   let el = clamp(el0 + (el1 - el0) * pull + pitchDrag, -1.2, 1.45);
@@ -386,7 +399,7 @@ function camera(tt) {
   const d1 = Math.max(halfW / (aspect * Math.tan(0.08)), halfH / Math.tan(0.08));
   const d0 = 30 + 11 * fan;
   const dist = Math.exp(Math.log(d0) + (Math.log(d1) - Math.log(d0)) * pull);
-  const target = V.lerp(S.cubeC, S.cellC, smooth(10.4, 13.2, tt));
+  const target = V.lerp(S.cubeC, S.cellC, smooth(13.4, 16.2, tt));
   const dir = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
   return { eye: V.add(target, V.mul(dir, dist)), target, dist, fov };
 }
@@ -413,18 +426,35 @@ function draw() {
   // Slice: a plain block splits into sections. Image: a beam scans each one,
   // then they close up into the imaged volume. Reconstruct: pull back to the cell.
   const plainCube = smooth(0, 0.6, tt) * (1 - smooth(1.3, 1.8, tt));
-  const emCube  = smooth(8.4, 9.0, tt) * (1 - smooth(10.2, 11.0, tt));
+  const emCube  = smooth(8.4, 9.0, tt) * (1 - 0.55 * smooth(12.0, 12.8, tt) - 0.45 * smooth(13.2, 14.0, tt));
+  // Reconstruct: AI colors in every cell, then ours lights up and the rest dims
+  const segA    = smooth(9.9, 10.8, tt);
+  const focus   = smooth(11.3, 12.2, tt);
   const aCube   = Math.max(plainCube, emCube);
   const cubeImg = emCube > plainCube ? 1 : 0;
   const spread  = smooth(1.4, 3.2, tt) * (1 - smooth(7.6, 8.8, tt));
   const aSlices = smooth(1.2, 1.7, tt) * (1 - smooth(8.6, 9.1, tt));
-  const aCell   = smooth(10.6, 12.6, tt) * fadeLoop;
-  const aSlab   = smooth(11.4, 13.2, tt) * fadeLoop;
-  const aMarker = smooth(10.2, 11.0, tt) * fadeLoop;
+  const aCell   = smooth(11.9, 13.0, tt) * fadeLoop;
+  const aSlab   = smooth(14.4, 16.2, tt) * fadeLoop;
+  const aMarker = smooth(13.2, 14.0, tt) * fadeLoop;
 
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  // the neuron, first, so the block's faded faces show the branch inside them
+  if (aCell > 0.002) {
+    gl.useProgram(meshProg.p);
+    gl.uniformMatrix4fv(meshProg.u.uMvp, false, mvp);
+    gl.uniform3fv(meshProg.u.uLo, S.lo); gl.uniform3fv(meshProg.u.uSpan, S.span);
+    gl.uniform3fv(meshProg.u.uEye, cam.eye);
+    gl.uniform1f(meshProg.u.uAlpha, aCell);
+    gl.bindVertexArray(S.cellVao);
+    // a ghost of a cell must not hide what is behind it
+    gl.depthMask(aCell > 0.95);
+    gl.drawElements(gl.TRIANGLES, S.nIdx, gl.UNSIGNED_SHORT, 0);
+    gl.depthMask(true);
+  }
 
   // the block's EM faces
   if (aCube > 0.002) {
@@ -432,10 +462,9 @@ function draw() {
     gl.uniformMatrix4fv(texProg.u.uMvp, false, mvp);
     gl.uniform1f(texProg.u.uAlpha, aCube); gl.uniform1f(texProg.u.uRim, 0.9);
     gl.uniform1f(texProg.u.uImg, cubeImg);
+    gl.uniform1f(texProg.u.uSegA, cubeImg * segA); gl.uniform1f(texProg.u.uFocus, focus);
     gl.depthMask(aCube > 0.98);
-    for (const f of S.faces) {
-      gl.bindTexture(gl.TEXTURE_2D, f.t); gl.bindVertexArray(f.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
-    }
+    for (const f of S.faces) bindPair(f), gl.bindVertexArray(f.vao), gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.depthMask(true);
   }
 
@@ -443,6 +472,7 @@ function draw() {
   if (aSlices > 0.002) {
     gl.useProgram(texProg.p);
     gl.uniform1f(texProg.u.uRim, 1.0);
+    gl.uniform1f(texProg.u.uSegA, 0); gl.uniform1f(texProg.u.uFocus, 0);
     const cz = S.cubeC[2];
     const order = S.slices.map((s, i) => i);
     if (cam.eye[2] > cz) order.sort((a, b) => S.slices[a].z - S.slices[b].z);
@@ -457,20 +487,9 @@ function draw() {
       // imaged one after another, top section first
       const k = S.slices.length - 1 - i;
       gl.uniform1f(texProg.u.uImg, smooth(4.6 + k * 0.5, 5.4 + k * 0.5, tt));
-      gl.bindTexture(gl.TEXTURE_2D, s.t); gl.bindVertexArray(s.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
+      bindPair(s); gl.bindVertexArray(s.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
     gl.depthMask(true);
-  }
-
-  // the neuron
-  if (aCell > 0.002) {
-    gl.useProgram(meshProg.p);
-    gl.uniformMatrix4fv(meshProg.u.uMvp, false, mvp);
-    gl.uniform3fv(meshProg.u.uLo, S.lo); gl.uniform3fv(meshProg.u.uSpan, S.span);
-    gl.uniform3fv(meshProg.u.uEye, cam.eye);
-    gl.uniform1f(meshProg.u.uAlpha, aCell);
-    gl.bindVertexArray(S.cellVao);
-    gl.drawElements(gl.TRIANGLES, S.nIdx, gl.UNSIGNED_SHORT, 0);
   }
 
   // glowing lines on top, additive
@@ -489,6 +508,15 @@ function draw() {
   }
   if (aMarker > 0.002) {
     gl.disable(gl.DEPTH_TEST);
+    // one faint section left in the box, for reference
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    const ref = S.slices[2];
+    gl.useProgram(texProg.p);
+    gl.uniformMatrix4fv(texProg.u.uMvp, false, mat4mul(mvp, [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,ref.z,1]));
+    gl.uniform1f(texProg.u.uAlpha, 0.42 * aMarker); gl.uniform1f(texProg.u.uRim, 0.6);
+    gl.uniform1f(texProg.u.uImg, 1); gl.uniform1f(texProg.u.uSegA, 1); gl.uniform1f(texProg.u.uFocus, 1);
+    bindPair(ref); gl.bindVertexArray(ref.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     gl.useProgram(lineProg.p);
     gl.uniformMatrix4fv(lineProg.u.uMvp, false, mvp);
     gl.uniform3f(lineProg.u.uColor, 1.0, 0.86, 0.45);
@@ -500,7 +528,12 @@ function draw() {
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   capEl.style.opacity = tagEl.style.opacity = String(Math.min(fadeLoop, smooth(0, 0.5, tt) || (tt > 0 ? 1 : 0)));
-  showStep(stepOf(tt));
+  const st = stepOf(tt);
+  showStep(st, st === 2 && tt < 13.2 ? 3 : st);
+}
+function bindPair(o) {
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, o.g);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, o.t);
 }
 
 // stop drawing when nobody can see it
