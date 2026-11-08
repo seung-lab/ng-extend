@@ -7,7 +7,7 @@
  * retinaAnnotationLayers setting (Profile, Settings, Jumping and views);
  * retinaModeAsked keeps it from asking again, on any computer.
  */
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { supabase } from '../supabase';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { RETINA_DATASET } from '../util/retina_layers';
@@ -53,12 +53,25 @@ watch(() => [backend.userId, prefs.accountLoaded] as const, async ([uid, loaded]
 
 function save() {
   prefs.save({ retinaAnnotationLayers: annotations.value, retinaModeAsked: true });
+  document.dispatchEvent(new CustomEvent('nge:retina-mode'));
   show.value = false;
 }
+/** Opens Settings at card 10 and leaves this question open (Ames 2026-11-08). */
 function openSettings() {
-  save();
+  (window as any).__ngeSettingsFocus = 'jump';
   document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'settings' } }));
+  document.dispatchEvent(new CustomEvent('nge:settings-focus', { detail: { key: 'jump' } }));
 }
+// Changed in Settings while this is open: follow it.
+watch(() => prefs.prefs.retinaAnnotationLayers, v => { if (show.value) annotations.value = v === true; });
+/** Settings, card 10: "Ask me the Retina question again". */
+function askAgain() {
+  annotations.value = prefs.prefs.retinaAnnotationLayers === true;
+  info.value = false;
+  show.value = true;
+}
+onMounted(() => document.addEventListener('nge:retina-ask', askAgain));
+onUnmounted(() => document.removeEventListener('nge:retina-ask', askAgain));
 </script>
 
 <template>
@@ -85,7 +98,7 @@ function openSettings() {
       </div>
       <div class="nge-rmp-where">
         <span class="nge-rmp-where-lead">Change it any time in</span>
-        <button type="button" class="nge-rmp-path" title="Save and open this setting" @click="openSettings">
+        <button type="button" class="nge-rmp-path" title="Open this setting" @click="openSettings">
           <span class="nge-rmp-crumb">Profile</span>
           <span class="nge-rmp-arrow" aria-hidden="true">&rarr;</span>
           <span class="nge-rmp-crumb">Settings</span>
@@ -149,16 +162,16 @@ function openSettings() {
 .nge-rmp-arrow { color: #4a9eff; font-size: 13px; }
 .nge-rmp-path:hover .nge-rmp-crumb { border-color: rgba(126, 202, 255, 0.55); }
 .nge-rmp-path:focus-visible { outline: 2px solid #4aa8ff; outline-offset: 3px; border-radius: 5px; }
-.nge-rmp-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nge-rmp-choice { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .nge-rmp-opt {
   display: flex; flex-direction: column; gap: 3px; text-align: left; cursor: pointer;
-  padding: 9px 10px; border-radius: 8px; font: inherit; color: inherit;
+  min-width: 0; padding: 9px 10px; border-radius: 8px; font: inherit; color: inherit; white-space: normal; text-transform: none; letter-spacing: normal;
   border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.03);
 }
 .nge-rmp-opt:hover { border-color: rgba(126, 202, 255, 0.5); }
 .nge-rmp-opt--on { border-color: #4aa8ff; background: rgba(74, 168, 255, 0.14); box-shadow: 0 0 0 1px #4aa8ff inset; }
 .nge-rmp-opt-name { font-weight: 600; color: #e8f3ff; }
-.nge-rmp-opt-sub { font-size: 12px; color: rgba(226, 238, 251, 0.65); }
+.nge-rmp-opt-sub { overflow-wrap: anywhere; font-size: 12px; color: rgba(226, 238, 251, 0.65); }
 .nge-rmp-actions { display: flex; justify-content: flex-end; }
 .nge-rmp-enter-active { transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
 .nge-rmp-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }

@@ -352,6 +352,34 @@ function closeNgInfo(e: Event) {
   ngInfoOpen.value = false;
 }
 onMounted(() => { document.addEventListener('click', closeNgInfo, true); document.addEventListener('keydown', closeNgInfo, true); });
+
+// Another window can point at one card: it opens unfolded, scrolled to, and
+// glows a moment (the Retina question's "10 Jumping and views", Ames 2026-11-08).
+function focusCard(key: string) {
+  if (isFolded(key)) toggleFold(key);
+  setTimeout(() => {
+    const el = document.querySelector(`.nge-set-card--${key}`) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+    el.classList.remove('nge-set-card--flash'); void el.offsetWidth; el.classList.add('nge-set-card--flash');
+    setTimeout(() => el.classList.remove('nge-set-card--flash'), 2600);
+  }, 250);
+}
+function askRetinaAgain() { document.dispatchEvent(new CustomEvent('nge:retina-ask')); }
+const onFocusCard = (e: Event) => { const k = (e as CustomEvent).detail?.key; if (k) focusCard(k); };
+// The Retina question saved while Settings is open: show it here too, so
+// saving Settings does not put the old answer back.
+const onRetinaMode = () => { draftRetinaAnnot.value = prefsStore.prefs.retinaAnnotationLayers === true; };
+onMounted(() => {
+  document.addEventListener('nge:settings-focus', onFocusCard);
+  document.addEventListener('nge:retina-mode', onRetinaMode);
+  const pending = (window as any).__ngeSettingsFocus;
+  if (pending) { (window as any).__ngeSettingsFocus = null; focusCard(pending); }
+});
+onUnmounted(() => {
+  document.removeEventListener('nge:settings-focus', onFocusCard);
+  document.removeEventListener('nge:retina-mode', onRetinaMode);
+});
 onUnmounted(() => { document.removeEventListener('click', closeNgInfo, true); document.removeEventListener('keydown', closeNgInfo, true); });
 
 // These four open something in the viewer itself, which sits BEHIND this
@@ -719,6 +747,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftRetinaAnnot" />
               <span class="nge-settings-toggle-label">Claiming a Retina cell adds the annotation layers (Soma, True End, Can't Fix, Hits Edge, Notes)</span>
             </label>
+            <button type="button" class="nge-set-retina-ask" @click="askRetinaAgain">Show the Retina question again</button>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
@@ -888,6 +917,17 @@ const props = defineProps<{ embedded?: boolean }>();
 
 /* Scanline removed — holographic border glow handled by ModalOverlay */
 
+.nge-set-retina-ask {
+  align-self: flex-start; margin: -2px 0 6px 26px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12px; color: #8fd0ff; text-decoration: underline; text-underline-offset: 2px;
+}
+.nge-set-retina-ask:hover { color: #c4e6ff; }
+.nge-set-card--flash { animation: ngeSetFlash 2.4s ease-out; }
+@keyframes ngeSetFlash {
+  0%, 30% { box-shadow: 0 0 0 2px #4aa8ff, 0 0 26px rgba(74, 168, 255, 0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 168, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-set-card--flash { animation: none; box-shadow: 0 0 0 2px #4aa8ff; } }
 @keyframes ngeSettingsMaterialize {
   0% {
     opacity: 0; transform: translate(-50%, -50%) translateY(14px) scale(0.96);
