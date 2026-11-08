@@ -19,49 +19,74 @@ export const RETINA_ANNOTATION_LAYERS = ['Soma', 'True End', "Can't Fix", 'Hits 
 const layerKey = (n: string) => String(n).replace(/\d+\s*$/, '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
 const KEYS = new Set(RETINA_ANNOTATION_LAYERS.map(layerKey));
 const isRetinaAnnotationLayer = (name: string) => KEYS.has(layerKey(name));
-const stashKey = (taskId: number) => `nge_retina_annot_${taskId}`;
+/** Keyed by the cell's segment ID: a claim's task ID was not always known
+ *  yet when its start link opened. */
+const stashKey = (cellKey: string) => `nge_retina_annot_${cellKey}`;
 
 const viewerOf = (): any => (window as any).viewer;
 
-function readStash(taskId: number): any[] {
+function readStash(taskId: string): any[] {
   try { const v = JSON.parse(localStorage.getItem(stashKey(taskId)) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
 }
-function writeStash(taskId: number, specs: any[]) {
+function writeStash(taskId: string, specs: any[]) {
   try { specs.length ? localStorage.setItem(stashKey(taskId), JSON.stringify(specs)) : localStorage.removeItem(stashKey(taskId)); } catch { /* full: the start link still has them */ }
 }
 
 /** Take the start link's annotation layers off the screen, keeping them for the button. */
-function putAside(taskId: number): void {
+function putAside(taskId: string): boolean {
   const viewer = viewerOf();
-  if (!viewer?.layerSpecification || currentDatasetTag() !== RETINA_DATASET) return;
+  if (!viewer?.layerSpecification || currentDatasetTag() !== RETINA_DATASET) return false;
   const managed: any[] = (viewer.layerManager?.managedLayers ?? []).filter((l: any) => !l.archived && isRetinaAnnotationLayer(l.name));
-  if (!managed.length) return;
+  if (!managed.length) return false;
   // Wait until each layer has loaded, so its points are kept with it.
-  if (managed.some(l => !l.layer)) return;
+  if (managed.some(l => !l.layer)) return false;
   let specs: any[] = [];
-  try { specs = (viewer.layerSpecification.toJSON() as any[]).filter(s => s && isRetinaAnnotationLayer(s.name)); } catch { return; }
+  try { specs = (viewer.layerSpecification.toJSON() as any[]).filter(s => s && isRetinaAnnotationLayer(s.name)); } catch { return false; }
   const stash = readStash(taskId);
   const have = new Set(stash.map(s => layerKey(s.name)));
   for (const s of specs) if (!have.has(layerKey(s.name))) stash.push(s);
   writeStash(taskId, stash);
   for (const ml of managed) { try { viewer.layerManager.removeManagedLayer(ml); } catch { /* already gone */ } }
+  return true;
 }
 
-/** A fresh Retina claim: once its start link has loaded, the annotation layers
- *  go aside and the Checked Highlight layer is there to mark with. */
-export function startRetinaClaimLight(taskId: number): void {
-  // The Highlight box opens once, with the first look, so marking Checked is
-  // one click away in the slim view and the full one alike (Ames 2026-11-07).
-  setTimeout(() => { try { if (currentDatasetTag() === RETINA_DATASET) document.dispatchEvent(new CustomEvent('nge:open-highlight')); } catch { /* */ } }, 1200);
-  for (const ms of [1200, 4000, 9000]) {
-    setTimeout(() => {
-      try {
-        if (currentDatasetTag() !== RETINA_DATASET) return;
-        putAside(taskId);
-        void ensureHighlightLayer('checked');
-      } catch (e) { console.warn('[retina layers]', e); }
-    }, ms);
-  }
+/** The claim being opened light, until its start link has finished loading. */
+let watching: { stop: () => void } | null = null;
+const WATCH_MS = 60000;
+
+/** A fresh Retina claim: whenever its start link's annotation layers arrive
+ *  (a link held on the state server can take many seconds; fixed timers
+ *  missed it, Ames 2026-11-07), they go aside and the Checked Highlight layer
+ *  is there to mark with. Watches for a minute, or until the Annotation
+ *  layers button is pressed. */
+export function startRetinaClaimLight(cellKey: string): void {
+  watching?.stop();
+  const viewer = viewerOf();
+  let opened = false;
+  const look = () => {
+    try {
+      if (currentDatasetTag() !== RETINA_DATASET) return;
+      const moved = putAside(cellKey);
+      if (!viewerOf()?.layerManager?.managedLayers?.length) return;
+      // The Checked layer once, then again whenever the start link's layers
+      // land (they can bring a Checked of their own, to fold into one).
+      const hasChecked = (viewerOf()?.layerManager?.managedLayers ?? []).some((l: any) => !l.archived && /^checked/i.test(String(l.name)));
+      if (moved || !opened || !hasChecked) void ensureHighlightLayer('checked');
+      if (!opened) { opened = true; document.dispatchEvent(new CustomEvent('nge:open-highlight')); }
+    } catch (e) { console.warn('[retina layers]', e); }
+  };
+  const tick = setInterval(look, 1000);
+  const off = viewer?.layerManager?.layersChanged?.add?.(() => setTimeout(look, 0));
+  const end = setTimeout(() => me.stop(), WATCH_MS);
+  const me = {
+    stop: () => {
+      clearInterval(tick); clearTimeout(end);
+      try { typeof off === 'function' ? off() : viewer?.layerManager?.layersChanged?.remove?.(look); } catch { /* */ }
+      if (watching === me) watching = null;
+    },
+  };
+  watching = me;
+  setTimeout(look, 300);
 }
 
 /** Whether any of the five is on screen now. */
@@ -84,7 +109,8 @@ function specsFromStartLink(link?: string): any[] {
 
 /** The "Annotation layers" button: put back the five, with their points.
  *  Returns how many were added. */
-export function addRetinaAnnotationLayers(taskId: number | null, startLink?: string): number {
+export function addRetinaAnnotationLayers(taskId: string | null, startLink?: string): number {
+  watching?.stop();
   const viewer = viewerOf();
   if (!viewer?.layerSpecification) return 0;
   const specs = (taskId ? readStash(taskId) : []);

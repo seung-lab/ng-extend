@@ -204,11 +204,13 @@ onMounted(() => {
   offRetinaLayers = onLayersChanged(look);
 });
 onBeforeUnmount(() => { try { offRetinaLayers?.(); } catch { /* gone */ } });
-function openLight(taskId: number | undefined, cell: { dataset?: string }) {
-  if (taskId && isRetinaCell(cell) && !retinaAnnotationLayersByDefault()) startRetinaClaimLight(taskId);
+/** Bipolar cell claims only: Super Quests, and Cilia Quests (their own tab
+ *  and layers), keep their annotation layers (Ames 2026-11-07). */
+function openLight(_taskId: number | undefined, cell: { dataset?: string; segId: string; quest?: unknown }) {
+  if (isRetinaCell(cell) && !cell.quest && !retinaAnnotationLayersByDefault()) startRetinaClaimLight(cell.segId);
 }
-function addAnnotationLayers(cell: { taskId?: number | null; startLink?: string }) {
-  const n = addRetinaAnnotationLayers(cell.taskId ?? null, cell.startLink);
+function addAnnotationLayers(cell: { segId: string; startLink?: string }) {
+  const n = addRetinaAnnotationLayers(cell.segId, cell.startLink);
   retinaAnnotShown.value = retinaAnnotationLayersShown();
   if (!n) retinaAnnotShown.value = true;
 }
