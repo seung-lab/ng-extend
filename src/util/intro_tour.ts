@@ -425,7 +425,7 @@ body.nge-mobile .nge-intro, .nge-intro--phone { bottom: calc(86px + env(safe-are
 @keyframes nge-trace { to { stroke-dashoffset: 0; } }
 @keyframes nge-node { to { opacity: 1; } }
 .nge-frame .spark { stroke: #e6fbff; stroke-width: 2.2; stroke-dasharray: 0.05 0.95; opacity: 0; filter: drop-shadow(0 0 3px #7ee0ff); }
-.nge-intro--in .nge-frame .spark { animation: nge-spark 11s linear infinite; animation-delay: calc(2500ms + var(--i, 0) * 3600ms); }
+.nge-intro--in .nge-frame .spark { animation: nge-spark 6.5s linear infinite; animation-delay: calc(1800ms + var(--i, 0) * 2100ms); }
 @keyframes nge-spark { 0% { stroke-dashoffset: 1; opacity: 1; } 40% { stroke-dashoffset: 0; opacity: 1; } 41%, 100% { stroke-dashoffset: 0; opacity: 0; } }
 .nge-intro-hint { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: rgba(159, 210, 240, 0.55);
   font: 600 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; }
@@ -501,7 +501,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro-body b { color: #fff; font-weight: 700; }
 /* back: just a chevron */
 .nge-back { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important;
-  color: #8fbfe6; cursor: pointer; transition: color 0.2s, transform 0.15s; }
+  color: rgba(126, 224, 255, 0.55); cursor: pointer; transition: color 0.2s, transform 0.15s; }
 .nge-back .chev { color: inherit; width: 16px; height: 16px; }
 .nge-back:hover { color: #fff; transform: translateX(-2px); filter: drop-shadow(0 0 6px #7ee0ff); }
 .nge-back[hidden] { display: inline-grid; visibility: hidden; }
@@ -682,7 +682,6 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
   let cx = -1, cy = -1;
-  requestAnimationFrame(() => { if (callout) (box.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(box.offsetWidth, box.offsetHeight, 10); });
   const step = () => {
     const s = toScreen(anchor);
     const shipNm = starshipAt();
