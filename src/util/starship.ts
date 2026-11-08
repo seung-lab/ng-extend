@@ -32,9 +32,9 @@ const TURN_SECONDS = 120;
 /** Seconds of flight before the landing starts, and for the landing. */
 const CRUISE_S = 14;
 const LANDING_S = 3.2;
-/** The whole cell in view, then in close on the soma for the landing
- *  (projectionScale, about 95 per micrometre across). */
-const WIDE = 24000, CLOSE = 3400;
+/** How much shows from top to bottom of the view: the whole cell, then in
+ *  close on the soma for the landing, in nanometres. */
+const WIDE_NM = 260_000, CLOSE_NM = 30_000;
 
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -110,7 +110,7 @@ function distanceAt(f: Flight, t: number): number {
 }
 
 /* ── the engine trail ── */
-const MAX_PARTICLES = 900;
+const MAX_PARTICLES = 1400;
 const LIFE_S = 1.25;
 interface Particle { p: V3; v: V3; age: number; size: number; }
 let particles: Particle[] = [];
@@ -130,7 +130,7 @@ function writeGlow(nm: V3, right: V3, cores: {p: V3; power: number}[], shipNm: n
     const k = q.age / LIFE_S;
     // white hot, then cyan, then a fading blue
     const r = 0.55 - 0.45 * k, g = 0.95 - 0.45 * k, b = 1.0;
-    put(q.p, [r, g, b, 0.85 * Math.pow(1 - k, 1.6)], q.size * (1 + 1.6 * k));
+    put(q.p, [r, g, b, 0.55 * Math.pow(1 - k, 1.6)], q.size * (1 + 1.6 * k));
   }
   for (const c of cores) if (c.power > 0.01) put(c.p, [0.9, 1.0, 1.0, 0.95 * c.power], shipNm * 0.28 * (0.7 + 0.3 * c.power));
   glow.count = n;
@@ -195,7 +195,12 @@ export async function flyStarship(): Promise<void> {
     try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
     v.navigationState.position.value = Float32Array.from(f.soma.map((c, i) => c / nm[i]));
     v.projectionOrientation.restoreState([0, 0, 0, 1]);
+    // projectionScale is in the coordinate space's smallest unit
+    const unit = Math.min(nm[0], nm[1], nm[2]);
+    const WIDE = WIDE_NM / unit, CLOSE = CLOSE_NM / unit;
     v.projectionScale.value = WIDE;
+    const somaAt: V3 = [...f.soma] as V3;
+    const padAt = at(f, Infinity);
 
     const prop: NgeProp = {mesh, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.3, glow: [0.02, 0.04, 0.08], rim: [0.45, 0.85, 1.0], shade: 1.15};
     setNgeProps([prop], GROUP);
@@ -206,6 +211,7 @@ export async function flyStarship(): Promise<void> {
     const total = CRUISE_S + LANDING_S;
     const start = performance.now();
     let last = start, emitDebt = 0;
+    let prevCores: V3[] | null = null;
     let prevUp: V3 | null = null;
     await new Promise<void>(done => {
       const step = (now: number) => {
@@ -222,7 +228,12 @@ export async function flyStarship(): Promise<void> {
         }
         // in on the soma as the ship comes home
         const zoom = smooth((t - (CRUISE_S - 4)) / (4 + LANDING_S));
-        if (!userTouched) v.projectionScale.value = WIDE * Math.pow(CLOSE / WIDE, zoom);
+        if (!userTouched) {
+          v.projectionScale.value = WIDE * Math.pow(CLOSE / WIDE, zoom);
+          // and over toward the landing pad, so the ship lands mid screen
+          const c = mix(somaAt, padAt, zoom * 0.85);
+          v.navigationState.position.value = Float32Array.from(c.map((x, i) => x / nm[i]));
+        }
 
         const s = distanceAt(f, Math.min(t, total));
         const pos = at(f, s);
@@ -257,13 +268,17 @@ export async function flyStarship(): Promise<void> {
         const power = t < CRUISE_S ? 1 : Math.max(0, 1 - (t - CRUISE_S) / (LANDING_S * 0.9));
         const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * scale), mul(up, q[1] * scale)), mul(fwd, q[2] * scale)));
         const cores = nozzles.map(q => ({p: toWorld(q), power}));
-        emitDebt += dt * 220 * power;
+        // Released all along the way the engines moved since the last frame,
+        // not in a clump at each frame, so the trail is one smooth streak.
+        emitDebt += dt * 520 * power;
         while (emitDebt >= 1 && particles.length < MAX_PARTICLES) {
           emitDebt -= 1;
-          const c = cores[Math.random() < 0.5 ? 0 : 1].p;
+          const k = Math.random() < 0.5 ? 0 : 1, along = Math.random();
+          const c = prevCores ? mix(prevCores[k], cores[k].p, along) : cores[k].p;
           const jitter: V3 = [(Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)];
-          particles.push({p: add(c, mul(jitter, f.shipLength * 0.04)), v: add(mul(fwd, -f.shipLength * (0.5 + Math.random() * 0.4)), mul(jitter, f.shipLength * 0.25)), age: Math.random() * dt, size: f.shipLength * (0.1 + Math.random() * 0.08)});
+          particles.push({p: add(c, mul(jitter, f.shipLength * 0.03)), v: add(mul(fwd, -f.shipLength * (0.4 + Math.random() * 0.3)), mul(jitter, f.shipLength * 0.12)), age: (1 - along) * dt, size: f.shipLength * (0.14 + Math.random() * 0.1)});
         }
+        prevCores = cores.map(c => c.p);
         for (const q of particles) { q.age += dt; q.p = add(q.p, mul(q.v, dt)); q.v = mul(q.v, Math.max(0, 1 - dt * 2.2)); }
         particles = particles.filter(q => q.age < LIFE_S);
         writeGlow(nm, cam.right, cores, f.shipLength);
