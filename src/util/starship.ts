@@ -156,8 +156,16 @@ let hop: Hop | null = null;
  *  its centre, x to the right, y up), whatever the camera does, and faces
  *  the cell. It eases there from wherever it was. */
 let dock: {fx: number; fy: number; start: number; from: V3 | null} | null = null;
-const DOCK_MS = 4200;
-export function dockStarship(fx: number, fy: number) { dock = {fx, fy, start: performance.now(), from: shipNow}; hop = null; }
+let dockMs = 4200;
+/** Dock, taking `ms` to get there (the tour makes it end as the camera does). */
+export function dockStarship(fx: number, fy: number, ms = 4200) { dockMs = ms; dock = {fx, fy, start: performance.now(), from: shipNow}; hop = null; }
+/** How long until the ship is where it is going (ms). */
+export function starshipEta(): number {
+  const now = performance.now();
+  if (hop) return Math.max(0, hop.start + hop.ms - now);
+  if (dock) return Math.max(0, dock.start + dockMs - now);
+  return 0;
+}
 export function undockStarship() { dock = null; }
 /** Is the ship on the move: still flying in, on a hop, or easing to its dock? */
 let moving = true;
@@ -273,47 +281,80 @@ function oneBoundingBox() {
   }
 }
 
-/** The portal (Ames 2026-11-08): a whirlpool of light that always faces
- *  the viewer. A bright rim and three arms spiralling in to a glowing
- *  core, spinning; the ship comes out of the core toward the viewer, then
- *  the rim zips itself shut round the circle and a last spark fades. */
-const RING_N = 64, ARMS = 3, ARM_N = 26;
-const PORTAL_MAX = RING_N + ARMS * ARM_N + 2;
+/** The portal (Ames 2026-11-08: "exactly 1,000,000x cooler"). Always
+ *  facing the viewer: an iris of light draws itself round, two rims spin
+ *  against each other (cyan and magenta), six arms of an accretion disk
+ *  swirl in to a white hot core, sparks are flung off the rim. As the ship
+ *  bursts through, a flash and a shockwave ring; then the rims spiral in,
+ *  the whole thing zips shut and a last spark pops. */
+const PORTAL_MAX = 900;
 const portalGlow: NgeGlow = {positions: new Float32Array(PORTAL_MAX * 3), colors: new Float32Array(PORTAL_MAX * 4), sizesNm: new Float32Array(PORTAL_MAX), count: 0, nmRight: [1, 0, 0]};
-const ZIP_AT = 3.9;
+const ZIP_AT = 4.1;
+const SPARKS = Array.from({length: 48}, (_, k) => ({th: k * 2.399, sp: 0.7 + ((k * 37) % 11) / 11, off: ((k * 53) % 17) / 17}));
 function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
-  const open = smooth(tp / 1.1);
-  const zip = Math.max(0, (tp - ZIP_AT) / 0.6);
-  const spin = tp * 2.4;
   let n = 0;
   const put = (p: V3, rgba: number[], size: number) => {
+    if (n >= PORTAL_MAX || rgba[3] <= 0.01) return;
     portalGlow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], n * 3);
     portalGlow.colors.set(rgba, n * 4);
     portalGlow.sizesNm[n] = size; n++;
   };
-  const onDisc = (r: number, th: number): V3 => add(c, add(mul(right, Math.cos(th) * r), mul(up, Math.sin(th) * r)));
-  if (zip < 1.2) {
-    const fade = 1 - Math.min(1, zip);
-    // the arms, curling in to the core
-    for (let a = 0; a < ARMS; a++) for (let k = 0; k < ARM_N; k++) {
-      const u = (k + 1) / ARM_N;
-      const th = a * 2 * Math.PI / ARMS + (1 - u) * 2.6 * Math.PI - spin;
-      put(onDisc(R * open * u * 0.92, th), [0.75 - 0.3 * u, 0.9 - 0.15 * u, 1, 0.75 * open * fade * (0.4 + 0.6 * u)], R * (0.08 + 0.16 * u));
+  const at2 = (r: number, th: number): V3 => add(c, add(mul(right, Math.cos(th) * r), mul(up, Math.sin(th) * r)));
+  const draw = smooth(tp / 0.7);                 // the iris drawing itself round
+  const open = smooth((tp - 0.3) / 1.0);         // the disk opening
+  const zip = Math.max(0, (tp - ZIP_AT) / 0.7);  // closing
+  const shut = smooth(Math.min(1, zip));
+  const life = 1 - shut;
+  const thrust = Math.max(0, tp - PORTAL_S);     // since the ship came through
+  const cyan = [0.45, 0.9, 1], mag = [1, 0.4, 0.95], vio = [0.62, 0.45, 1], white = [1, 1, 1];
+  const RR = R * (1 - 0.85 * shut);
+  if (zip < 1.3) {
+    // the disk: six arms curling in, spinning fast, twinkling
+    const ARMS = 6, PER = 34;
+    for (let a = 0; a < ARMS; a++) for (let k = 0; k < PER; k++) {
+      const u = (k + 1) / PER;
+      const th = a * 2 * Math.PI / ARMS + (1 - u) * 3.2 * Math.PI - tp * (3.2 - 1.6 * u) - shut * 9 * (1 - u);
+      const col = a % 2 ? cyan : vio, tw = 0.65 + 0.35 * Math.sin(tp * 11 + k * 1.7 + a);
+      put(at2(RR * open * u * 0.94, th), [col[0], col[1], col[2], 0.8 * open * life * tw * (0.35 + 0.65 * u)], R * (0.05 + 0.12 * u));
     }
-    // the rim; the zip runs round it, each light pulling in as it passes
-    for (let j = 0; j < RING_N; j++) {
-      const u = j / RING_N;
-      const gone = zip > 0 ? smooth((zip * 1.15 - u) * 5) : 0;
-      if (gone >= 1) continue;
-      const head = zip > 0 && Math.abs(zip * 1.15 - u) < 0.05;
-      const r = R * open * (1 - gone) * (1 + 0.035 * Math.sin(tp * 8 + j * 0.9));
-      put(onDisc(r, 2 * Math.PI * u + spin * 0.5), head ? [1, 1, 1, 1] : [0.55 + 0.35 * u, 0.85 - 0.25 * u, 1, 0.9 * open], R * (head ? 0.5 : 0.2));
+    // the two rims, turning against each other; the iris draws them round
+    const RIM = 120;
+    for (let j = 0; j < RIM; j++) {
+      const u = j / RIM;
+      if (u > draw) continue;
+      const head = Math.abs(u - draw) < 0.03 && draw < 1;
+      const wob = 1 + 0.04 * Math.sin(tp * 7 + j * 0.7);
+      const thA = 2 * Math.PI * u + tp * 1.3 + shut * 6, thB = -2 * Math.PI * u - tp * 1.7 - shut * 6;
+      put(at2(RR * wob, thA), head ? [1, 1, 1, 1] : [cyan[0], cyan[1], cyan[2], 0.95 * life], R * (head ? 0.45 : 0.15));
+      put(at2(RR * 1.08 * wob, thB), [mag[0], mag[1], mag[2], 0.75 * life * draw], R * 0.11);
     }
-    // the core
-    if (fade > 0.02) put(c, [0.8, 0.92, 1, (0.55 + 0.15 * Math.sin(tp * 6)) * open * fade], R * 1.1 * open * fade);
-  } else if (zip < 1.9) {
-    const q = (zip - 1.2) / 0.7;
-    put(c, [0.9, 0.97, 1, 1 - q], R * (0.6 + 0.9 * q));
+    // sparks flung off the rim, curving away and fading
+    for (const sp of SPARKS) {
+      const q = ((tp * sp.sp + sp.off) % 1);
+      const r = RR * (1 + 0.9 * q), th = sp.th + tp * 1.3 + q * 1.2;
+      const col = sp.off > 0.5 ? cyan : mag;
+      put(at2(r, th), [col[0], col[1], col[2], open * life * (1 - q) * 0.9], R * 0.07 * (1 - 0.5 * q));
+    }
+    // the core: white hot, breathing, with a violet halo
+    const breathe = 1 + 0.12 * Math.sin(tp * 5);
+    put(c, [vio[0], vio[1], vio[2], 0.45 * open * life], R * 2.6 * open * breathe);
+    put(c, [cyan[0], cyan[1], cyan[2], 0.6 * open * life], R * 1.4 * open * breathe);
+    put(c, [1, 1, 1, 0.95 * open * life], R * 0.55 * open * breathe);
+  }
+  // the ship bursts through: a flash and a shockwave ring
+  if (thrust > 0 && thrust < 1.3) {
+    const q = thrust / 1.3;
+    put(c, [1, 1, 1, (1 - q) * 0.9], R * (1.5 + 2.5 * q));
+    for (let j = 0; j < 72; j++) {
+      const th = j / 72 * 2 * Math.PI;
+      put(at2(R * (1 + 2.6 * q), th), [white[0], 0.95, 1, (1 - q) * 0.8], R * 0.12 * (1 - 0.5 * q));
+    }
+  }
+  // shut: one last pop and a ring that falls in
+  if (zip >= 1 && zip < 2) {
+    const q = zip - 1;
+    put(c, [1, 0.95, 1, 1 - q], R * (0.4 + 1.6 * q));
+    for (let j = 0; j < 48; j++) put(at2(R * 1.6 * (1 - q), j / 48 * 2 * Math.PI + q * 3), [mag[0], mag[1], mag[2], (1 - q) * 0.8], R * 0.1);
   }
   portalGlow.count = n;
   portalGlow.nmRight = [right[0] / nm[0], right[1] / nm[1], right[2] / nm[2]];
@@ -418,7 +459,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     // the portal sits a little ahead of where the route begins, facing along it
     // the portal sits where the route begins
     const portalAt = at(f, 0);
-    const portalR = f.shipLength * 1.25;
+    const portalR = f.shipLength * 1.8;
     const EMERGE_S = 1.7;
     let portalShown = true;
     const zoomAt = (tt: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.pow(Math.max(0, Math.min(1, tt / total)), 1.5));
@@ -506,24 +547,31 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
           fwd = norm(mix(cam.toEye, fwd, e));
           grow = 0.25 + 0.75 * smooth(Math.max(0, t) / 0.8);
         }
-        moving = h ? hq < 1 : dock ? now - dock.start < DOCK_MS : t < total;
+        moving = h ? hq < 1 : dock ? now - dock.start < dockMs : t < total;
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
           const H = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]), Wd = H * viewAspect();
           const target = add(ctr, add(mul(cam.right, dock.fx * Wd / 2), mul(cam.up, dock.fy * H / 2)));
-          const dq = smooth((now - dock.start) / DOCK_MS);
+          const dq = smooth((now - dock.start) / dockMs);
           pos = dock.from ? mix(dock.from, target, dq) : target;
           // nose on the way it is going, turning to face the cell only as it
           // arrives (Ames: it flew backwards)
           const goDir = dock.from && dq < 1 && Math.hypot(...sub(target, pos)) > 200 ? norm(sub(target, pos)) : fwd;
           fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.7) / 0.3)));
         }
+        // ending a hop the ship levels out, nose sideways across the screen,
+        // not parked standing on end (Ames)
+        if (h) {
+          const lv = smooth((hq - 0.7) / 0.3);
+          const flat = sub(sub(fwd, mul(cam.up, dot(fwd, cam.up))), mul(cam.toEye, dot(fwd, cam.toEye) * 0.6));
+          if (lv > 0 && Math.hypot(...flat) > 1e-3) fwd = norm(mix(fwd, norm(flat), lv));
+        }
         if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 2.5 : 9))));
         prevFwd = fwd;
         // banking: roll into the turn
         const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
-        if (dock) up = norm(mix(up, cam.toEye, smooth(((now - dock.start) / DOCK_MS - 0.6) / 0.4)));
+        if (dock) up = norm(mix(up, cam.toEye, smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
         const land = h || dock ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
         if (land > 0) {
@@ -565,7 +613,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
           : t < 0 ? 0 : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         // through the portal: the ship shows as it comes out of the light
         prop.alpha = t < 0 ? 0 : Math.min(1, t / 0.25);
-        if (tAll < ZIP_AT + 1.4) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
+        if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
         else if (portalShown) { portalShown = false; setNgeGlow(null, 'starship-portal'); }
         const power = t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
         const sg = scale * grow;
