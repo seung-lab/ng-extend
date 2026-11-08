@@ -41,7 +41,28 @@ export async function gatherAccess(get, sinceIso) {
   const nameOf = id => { const p = people.find(x => x.id === id); return p?.display_name || p?.username || 'Someone'; };
   const approvals = notes.map(n => ({ name: nameOf(n.target_id),
     what: n.title === RETINA_GRANT ? 'Retina' : n.title.slice(DATASET_GRANT.length) }));
+  approvals.push(...await betaApprovals(get, since));
   return { requests, approvals };
+}
+
+// Beta approvals (Ames 2026-11-08: "we need a way to see beta access approved
+// requests as well"). Letting someone in adds their email to pilot_members,
+// and no bell goes to the player, so they are read from there. Emails added
+// together as a list (one paste in Admin Hub) are counted, not named.
+export const BETA_LIST_SIZE = 5;
+async function betaApprovals(get, since) {
+  const added = await get('pilot_members', `select=email,created_at&enabled=is.true&created_at=gte.${since}`);
+  if (!added.length) return [];
+  const byTime = new Map();
+  for (const a of added) byTime.set(a.created_at, [...(byTime.get(a.created_at) || []), a.email]);
+  const single = [...byTime.values()].filter(g => g.length < BETA_LIST_SIZE).flat();
+  const emails = single.filter(Boolean).map(e => `"${e}"`).join(',');
+  const people = emails ? await get('users', `select=display_name,username,middleauth_email&middleauth_email=in.(${emails})`) : [];
+  const nameOf = e => { const p = people.find(x => String(x.middleauth_email || '').toLowerCase() === String(e).toLowerCase());
+    return p?.display_name || p?.username || e; };
+  const out = single.map(e => ({ name: nameOf(e), what: 'Beta' }));
+  for (const g of byTime.values()) if (g.length >= BETA_LIST_SIZE) out.push({ name: `${g.length} emails`, what: 'Beta, added as a list' });
+  return out;
 }
 
 const shortDay = d => d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
