@@ -27,7 +27,7 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
 /** The Sandbox pyramidal cell: the colors land on it alone. */
 const CELL_KEY = getObjectKey(Uint64.parseString('648518346355727683'));
-import {cameraAxes, cellDrawn, clearStarship, dockStarship, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
@@ -109,6 +109,7 @@ async function loadTour() {
 /** The tint for one beat: the part being shown glows, parts already met are
  *  a softer shade of their colour. */
 let somaDist: Float32Array | null = null;
+let somaListens = false;
 /** Each grid cell's distance from the soma (nm), for the reveal. */
 function distances(): Float32Array | null {
   if (somaDist) return somaDist;
@@ -151,13 +152,13 @@ function partsTint(shown: Set<number>, glowing?: number, reach = Infinity): NgeM
     const p = labels[i];
     if (!p || (!shown.has(p) && p !== glowing)) continue;
     if (p === glowing && !shown.has(p) && somaDist && somaDist[i] > reach) continue;
-    const rgb = PART_RGB[p], a = 1, k = 1;
+    const rgb = PART_RGB[p === 1 && somaListens ? 2 : p], a = 1, k = 1;
     data[i * 4] = Math.round(rgb[0] * k * a); data[i * 4 + 1] = Math.round(rgb[1] * k * a); data[i * 4 + 2] = Math.round(rgb[2] * k * a);
     data[i * 4 + 3] = Math.round(a * 255);
   }
   const m = mat4.create();
   for (let i = 0; i < 3; i++) { m[i * 5] = nm[i] / (g.dims[i] * g.cell); m[12 + i] = -g.origin[i] / (g.dims[i] * g.cell); }
-  return {data, dims: g.dims, gridFromGlobal: m, only: CELL_KEY, glow: glowing ? PART_RGB[glowing].map(c => c / 255) as V3 : undefined};
+  return {data, dims: g.dims, gridFromGlobal: m, only: CELL_KEY};
 }
 
 /* ── camera ── */
@@ -618,9 +619,11 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro--choice .nge-intro-back { order: 0; }
 .nge-intro--choice .nge-intro-alt { order: 1; margin-left: auto; }
 .nge-intro--choice .nge-intro-go { order: 2; margin-left: 10px; }
-.nge-intro.nge-intro--choice .nge-go-label { padding: 0 14px; font-size: 11px; letter-spacing: 0.12em; }
+.nge-intro.nge-intro--choice .nge-go-label { padding: 0 24px; font-size: 11px; letter-spacing: 0.12em; }
+.nge-intro.nge-intro--choice .nge-intro-go { margin-left: 16px; }
+.nge-intro.nge-intro--choice .nge-go::before { display: none; }
 .nge-intro.nge-intro--choice .nge-intro-alt .nge-go-label { background: linear-gradient(180deg, rgba(126, 224, 255, 0.10), rgba(40, 110, 200, 0.08)); }
-.nge-intro.nge-intro--choice .nge-go { height: 36px !important; flex: none; }
+.nge-intro.nge-intro--choice .nge-go { height: 40px !important; flex: none; }
 .nge-intro-choose { order: -1; flex-basis: 100%; margin-top: 4px; font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.28em;
   text-transform: uppercase; color: rgba(126, 224, 255, 0.85); }
 .nge-intro-choose[hidden] { display: none; }
@@ -998,7 +1001,7 @@ export async function startIntroTour() {
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
     <div class="nge-intro-row"><button class="nge-back nge-intro-back" type="button" aria-label="Back">${CHEV_L}</button>
-      <span class="nge-intro-key" hidden><i style="--c:#ffd24d"></i>Soma<i style="--c:#9b72ff"></i>Dendrites<i style="--c:#5ec8ff"></i>Axons<i style="--c:#ffd24d" class="dot"></i>Input synapses<i style="--c:#ff5fd2" class="dot"></i>Output synapses</span>
+      <span class="nge-intro-key" hidden><i style="--c:#9b72ff"></i>Soma and dendrites<i style="--c:#5ec8ff"></i>Axons<i style="--c:#ffa64d"></i>Other cells<i style="--c:#ffd24d" class="dot"></i>Input synapses<i style="--c:#ff5fd2" class="dot"></i>Output synapses</span>
       <span class="nge-intro-choose" hidden>Choose your next adventure</span>
       <button class="nge-go nge-go--alt nge-intro-alt" type="button" hidden><span class="nge-go-label">Explore a bigger neuron</span></button>
       <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
@@ -1071,6 +1074,7 @@ export async function startIntroTour() {
     const shown = new Set<number>();
     for (let k = 0; k < i; k++) { const p = BEATS[k].part; if (p) shown.add(p); }
     cancelAnimationFrame(tintRaf);
+    somaListens = i >= indexOf('allsyn');
     setNgeMeshTint(partsTint(shown));
     // the camera, framing the subject in the open space above the panel
     const camera = () => {
@@ -1102,7 +1106,7 @@ export async function startIntroTour() {
     }
     if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
     if (b.key === 'synapse2') { showCell(t.syn2Partner, SYN2_COLOR); runPulse(t.anchors.synapse2, [1, 0.86, 0.45]); }
-    if (b.key === 'allsyn') runAllSynapses(t);
+    if (b.key === 'allsyn' || b.key === 'connectome') runAllSynapses(t);
     if (b.key === 'spike') runSpark(t);
     if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, b.key === 'neuron' ? '#4f8cff' : ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, shipDelay + 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
@@ -1267,6 +1271,8 @@ async function exploreBiggerNeuron() {
   const g = ml.layer.displayState.segmentationGroupState.value;
   g.visibleSegments.clear();
   g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
+  oneBoundingBox();
+  setTimeout(oneBoundingBox, 3000);
   const nm = nmPerUnit();
   try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
   try { v.showAxisLines.value = false; } catch { /* keep them */ }

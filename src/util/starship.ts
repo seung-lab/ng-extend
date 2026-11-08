@@ -158,7 +158,8 @@ let hop: Hop | null = null;
 let dock: {fx: number; fy: number; start: number; from: V3 | null} | null = null;
 let dockMs = 4200;
 /** Dock, taking `ms` to get there (the tour makes it end as the camera does). */
-export function dockStarship(fx: number, fy: number, ms = 4200) { dockMs = ms; dock = {fx, fy, start: performance.now(), from: shipNow}; hop = null; }
+let onPad = true;
+export function dockStarship(fx: number, fy: number, ms = 4200) { dockMs = ms; onPad = false; dock = {fx, fy, start: performance.now(), from: shipNow}; hop = null; }
 /** How long until the ship is where it is going (ms). */
 export function starshipEta(): number {
   const now = performance.now();
@@ -181,13 +182,14 @@ function viewAspect(): number {
 export function starshipHop(route: number[][], seconds: number) {
   if (!shipNow) return;
   // Off the pad, a lift first; routes that start at the pad have their own.
-  const lift = hop ? [] : [add(shipNow, mul(liftNormal, 4000))];
+  const lift = hop || !onPad ? [] : [add(shipNow, mul(liftNormal, 4000))];
   const start = route[0] as V3;
-  const fromPad = !hop && Math.hypot(...sub(start, shipNow)) < 3000;
+  const fromPad = onPad && !hop && Math.hypot(...sub(start, shipNow)) < 3000;
   const path: V3[] = [shipNow, ...(fromPad ? [] : lift), ...route.map(q => q as V3)];
   const cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(...sub(path[i], path[i - 1])));
   dock = null;
+  onPad = false;
   hop = {path, cum, start: performance.now(), ms: seconds * 1000};
 }
 /** Where the ship is now (nm), and which way is up from where it landed. */
@@ -264,7 +266,7 @@ async function showSandboxCell(f: Flight): Promise<boolean> {
 
 /** Two boxes were drawn round the volume (the image's and the
  *  segmentation's); the intro keeps just the segmentation's (Ames). */
-function oneBoundingBox() {
+export function oneBoundingBox() {
   for (const ml of viewerNow()?.layerManager?.managedLayers ?? []) {
     for (const ds of ml?.layer?.dataSources ?? []) {
       const ls = ds?.loadState;
@@ -481,6 +483,7 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
     let prevCores: V3[] | null = null;
     let prevUp: V3 | null = null;
     let prevFwd: V3 | null = null;
+    let prevPos: V3 | null = null;
     await new Promise<void>(done => {
       const step = (now: number) => {
         const dt = Math.min(0.05, (now - last) / 1000);
@@ -542,12 +545,7 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
         // out of the portal: through its core toward the viewer, growing as
         // it comes, then turning onto its way through the cell (Ames)
         let grow = 1;
-        if (!h && !dock && t < EMERGE_S) {
-          const q = Math.max(0, t) / EMERGE_S, e = smooth(q);
-          pos = add(pos, mul(cam.toEye, f.shipLength * 1.6 * Math.sin(Math.PI * q)));
-          fwd = norm(mix(cam.toEye, fwd, e));
-          grow = 0.25 + 0.75 * smooth(Math.max(0, t) / 0.8);
-        }
+        if (!h && !dock && t < EMERGE_S) grow = 0.25 + 0.75 * smooth(Math.max(0, t) / 0.8);
         moving = h ? hq < 1 : dock ? now - dock.start < dockMs : t < total;
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
@@ -557,8 +555,9 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
           pos = dock.from ? mix(dock.from, target, dq) : target;
           // nose on the way it is going, turning to face the cell only as it
           // arrives (Ames: it flew backwards)
-          const goDir = dock.from && dq < 1 && Math.hypot(...sub(target, pos)) > 200 ? norm(sub(target, pos)) : fwd;
-          fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.7) / 0.3)));
+          const vel = prevPos ? sub(pos, prevPos) : [0, 0, 0] as V3;
+          const goDir = dq < 1 && Math.hypot(...vel) > f.shipLength * 0.004 ? norm(vel) : (prevFwd ?? fwd);
+          fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.75) / 0.25)));
         }
         // ending a hop the ship levels out, nose sideways across the screen,
         // not parked standing on end (Ames)
@@ -570,10 +569,13 @@ export async function flyStarship(onLanded?: () => void, skip = false): Promise<
           if (Math.hypot(...flat) < 0.25) flat = mul(cam.right, dot(fwd, cam.right) < 0 ? -1 : 1);
           if (lv > 0) fwd = norm(mix(fwd, norm(flat), lv));
         }
-        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 2.5 : h && hq < 1 ? 16 : 6))));
+        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 5 : h && hq < 1 ? 16 : 6))));
+        prevPos = pos;
         prevFwd = fwd;
         // banking: roll into the turn
-        const bend = sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
+        let bend: V3 = dock ? [0, 0, 0] : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
+        const bl = Math.hypot(...bend) / 2500;
+        if (bl > 0.9) bend = mul(bend, 0.9 / bl);
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
         if (dock) up = norm(mix(up, cam.toEye, smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
