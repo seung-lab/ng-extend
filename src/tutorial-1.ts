@@ -418,7 +418,7 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
     text: `
 A connectomics dataset starts with a brain! It is imaged at nanoscale and reconstructed in 3D using a mix of AI and human insight.
 
-The map of every neuron and its connections is called a connectome. Learn more with <a href="https://connectome.quest/atlas/" target="_blank" rel="noopener">Connectome 101</a>.`,
+The map of every neuron and its connections is called a connectome.`,
     position: MIDDLE,
     // a block of real EM, its slices, then the whole neuron (static/mini-volume)
     embed: 'mini-volume/index.html?embed',
