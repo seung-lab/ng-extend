@@ -232,7 +232,10 @@ async function showSandboxCell(f: Flight): Promise<boolean> {
     if (ml) {
       ml.setVisible?.(true);
       const g = ml.layer.displayState.segmentationGroupState.value;
-      if (g.visibleSegments.size === 0) g.visibleSegments.add(Uint64.parseString(f.segment));
+      // just the one cell: anything left from before (a partner shown by an
+      // earlier tour, a cell the player had up) steps aside for the flight
+      g.visibleSegments.clear();
+      g.visibleSegments.add(Uint64.parseString(f.segment));
       return true;
     }
     await new Promise(r => setTimeout(r, 250));
@@ -291,6 +294,8 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     const nozzles: V3[] = [[xHi * 0.3, 0, zLo], [-xHi * 0.3, 0, zLo]];
 
     try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
+    // the layer side panel closes for the flight (Ames)
+    try { v.selectedLayer.visible = false; } catch { /* no panel */ }
     // A clean picture, like the dataset tours: no axis lines (Ames 2026-11-07,
     // screen recording on a phone, where there is no key to hide them).
     try { v.showAxisLines.value = false; } catch { /* keep them */ }

@@ -722,6 +722,8 @@ function endTour() {
   if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
   if (onKey) { window.removeEventListener('keydown', onKey, true); onKey = null; }
   setNgeMeshTint(savedTint);
+  // the partner cells the tour brought in go again
+  for (const id of [...added]) hideCell(id);
   setStarshipCameraHeld(false);
   document.body.classList.remove('nge-intro-on');
   if (panel) { const p = panel; p.classList.add('nge-intro--out'); setTimeout(() => p.remove(), 450); panel = null; }
@@ -735,6 +737,7 @@ export async function startIntroTour() {
   active = true;
   savedTint = getNgeMeshTint();
   setStarshipCameraHeld(true);
+  try { viewerNow().selectedLayer.visible = false; } catch { /* no panel */ }
   ensureStyle();
   panel = document.createElement('section');
   panel.className = 'ng-extend nge-intro' + (window.innerWidth < 700 ? ' nge-intro--phone' : '');
