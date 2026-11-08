@@ -384,8 +384,12 @@ function placePortalArt(nm: V3, right: V3, c: V3, R: number, open: number, shut:
   portalArt.style.opacity = String(Math.min(1, open * 1.5) * (1 - shut));
   // a window in the ring where the ship is, so it passes in front of it
   if (shipScreen && open > 0.2) {
-    const mx = shipScreen.x - (a[0] - w / 2), my = shipScreen.y - (a[1] - w * 0.4570);
-    const m = `radial-gradient(circle at ${(mx / Math.max(k, 0.01)).toFixed(1)}px ${(my / Math.max(k, 0.01)).toFixed(1)}px, transparent ${(shipScreen.r / Math.max(k, 0.01)).toFixed(1)}px, #000 ${((shipScreen.r + 3) / Math.max(k, 0.01)).toFixed(1)}px)`;
+    // (the ring is scaled about its centre, so a point on screen sits at
+    // (screen - centre) / scale + half its size in the ring's own box)
+    const kk = Math.max(k, 0.01);
+    const mx = (shipScreen.x - a[0]) / kk + w / 2, my = (shipScreen.y - a[1]) / kk + w * 0.4570;
+    const rr = shipScreen.r * 1.25 / kk;
+    const m = `radial-gradient(circle at ${mx.toFixed(1)}px ${my.toFixed(1)}px, transparent ${rr.toFixed(1)}px, #000 ${(rr + 4 / kk).toFixed(1)}px)`;
     portalArt.style.setProperty('mask-image', m); portalArt.style.setProperty('-webkit-mask-image', m);
   } else { portalArt.style.removeProperty('mask-image'); portalArt.style.removeProperty('-webkit-mask-image'); }
   portalArt.style.transform = `translate(${(a[0] - w / 2).toFixed(1)}px, ${(a[1] - w * 0.4570 ).toFixed(1)}px) scale(${k.toFixed(3)}) rotate(${(shut * 140).toFixed(1)}deg)`;
@@ -697,7 +701,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         } else if (cameo && cameoPortal && tc < ZIP_AT + 2) { setNgeGlow(null, 'starship-portal'); removePortalArt(); }
         if (tAll < ZIP_AT + 1.5) {
           const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.6 * grow)));
-          shipScreen = sp && se && t > 0 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
+          shipScreen = sp && se && t > -0.05 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
         }
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
         else if (portalShown && !cameo) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
