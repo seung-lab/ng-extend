@@ -73,6 +73,14 @@ function issueRow({ number, segments, at }, issue, edits) {
     pictures.join(' ').slice(0, 1000), consoleSummary(issue.console_log), 'Open'];
 }
 
+/** The bell to the player who sent it, in Ames's words. */
+function reporterBell(number, issue) {
+  const title = clip(issue.title || String(issue.message || '').replace(/https?:\/\/\S+/g, ''), 80) || 'your report';
+  return { title: '🧩 Added to the MEC known segment error report',
+    body: `Your triage #${number} about "${title}" has been added to the MEC known segment error report. Thank you for reporting it.`,
+    target_type: 'user', target_id: issue.user_id, send_at: new Date().toISOString() };
+}
+
 /**
  * io: sb (Supabase REST), api (Sheets REST, path relative to /spreadsheets/).
  * Returns { row, already } where row is the sheet row number.
@@ -108,7 +116,14 @@ async function addIssue(input, io) {
   const out = await io.api(MEC_ISSUES_SHEET + '/values/' + encodeURIComponent(q + '!A1:N1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
     { method: 'POST', body: JSON.stringify({ values }) });
   const m = /![A-Z]+(\d+)/.exec((out.updates && out.updates.updatedRange) || '');
-  return { row: m ? Number(m[1]) : null, already: false };
+  // The player hears it went on the list (Ames 2026-11-07), once, only them.
+  // A report sent without signing in has nobody to tell.
+  let notified = false;
+  if (issue.user_id && io.bell) {
+    try { await io.bell(reporterBell(want.number, issue)); notified = true; }
+    catch (e) { console.warn('[mec-issues] bell not sent', String(e && e.message || e).slice(0, 200)); }
+  }
+  return { row: m ? Number(m[1]) : null, already: false, notified };
 }
 
-module.exports = { addIssue, issueRow, consoleSummary, readInput, madeBy, MEC_ISSUES_SHEET, HEADERS };
+module.exports = { addIssue, issueRow, reporterBell, consoleSummary, readInput, madeBy, MEC_ISSUES_SHEET, HEADERS };

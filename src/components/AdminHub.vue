@@ -1727,7 +1727,7 @@ function releaseBuildOf(row: TriageRow): string {
 //    in browser, for its segments and position.
 const MEC_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1_ukhH3ymSxBJvKjy5uAZBsdby4DJwz5DATcozn58JE0/edit';
 const mecBusy = ref('');
-const mecDone = ref<Record<string, { row: number | null; already: boolean }>>({});
+const mecDone = ref<Record<string, { row: number | null; already: boolean; notified?: boolean }>>({});
 const mecError = ref<Record<string, string>>({});
 async function viewNumbers(url: string): Promise<{ segments: string[]; at: number[] | null }> {
   const none = { segments: [] as string[], at: null };
@@ -1765,7 +1765,7 @@ async function addToMecSheet(row: TriageRow) {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data?.error || `The MEC sheet could not be reached (${r.status}).`);
-    mecDone.value = { ...mecDone.value, [row.id]: { row: data.row ?? null, already: !!data.already } };
+    mecDone.value = { ...mecDone.value, [row.id]: { row: data.row ?? null, already: !!data.already, notified: !!data.notified } };
   } catch (e: any) {
     mecError.value = { ...mecError.value, [row.id]: e?.message || 'The MEC sheet could not be reached.' };
   } finally { mecBusy.value = ''; }
@@ -3828,9 +3828,9 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
             <template v-if="row.source === 'site_issue'">
               <a v-if="mecDone[row.id]" class="nge-admin-action-btn nge-triage-mec-btn nge-triage-mec-btn--done" :href="MEC_SHEET_URL" target="_blank" rel="noopener"
-                 title="Open the MEC segment issues sheet">✓ {{ mecDone[row.id].already ? 'Already on' : 'Added to' }} the MEC sheet<template v-if="mecDone[row.id].row"> (row {{ mecDone[row.id].row }})</template> ↗</a>
+                 title="Open the MEC segment issues sheet">✓ {{ mecDone[row.id].already ? 'Already on' : 'Added to' }} the MEC sheet<template v-if="mecDone[row.id].row"> (row {{ mecDone[row.id].row }})</template><template v-if="mecDone[row.id].notified">, {{ reporterOf(row)?.name || 'the player' }} told</template> ↗</a>
               <button v-else class="nge-admin-action-btn nge-triage-mec-btn" :disabled="mecBusy === row.id"
-                      title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors."
+                      title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors. The player gets a bell saying their report was added."
                       @click="addToMecSheet(row)">{{ mecBusy === row.id ? 'Adding…' : '🧩 MEC error' }}</button>
               <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
             </template>

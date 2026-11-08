@@ -2917,9 +2917,11 @@ exports.ewSheetSync = onRequest(
    if(input.action==='mec_issue') {
     if(!(await rateLimit({ip:who.email},true,'write:sheets')).ok) throw ewErr(429,'Please wait a moment.');
     const sb=ewSb(ewServiceKey.value().trim());
-    if(!(await pilotContext(sb,who)).isAdmin) throw ewErr(403,'Admins only');
+    const {me,isAdmin}=await pilotContext(sb,who);
+    if(!isAdmin) throw ewErr(403,'Admins only');
     const {sheetsApi}=require('./sheet-sync'),cred=admin.applicationDefault();
-    const out=await require('./mec-issues').addIssue(input,{sb,api:(path,init)=>sheetsApi(cred,path,init)})
+    const bell=row=>sb('notifications',{method:'POST',body:JSON.stringify({...row,created_by:(me&&me.id)||null})});
+    const out=await require('./mec-issues').addIssue(input,{sb,bell,api:(path,init)=>sheetsApi(cred,path,init)})
       .catch(e=>{ if(e.status) throw e; console.warn('[ewSheetSync] mec_issue',e.message); throw ewErr(503,'The MEC sheet could not be reached. Nothing was added; try again shortly.'); });
     console.info('[ewSheetSync] mec_issue by',who.email,input.number,JSON.stringify(out));
     return res.json({ok:true,...out});

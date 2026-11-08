@@ -17,9 +17,10 @@ const ISSUE = {
 };
 
 function fake({ sheet = [HEADERS], edits = [] } = {}) {
-  const calls = [];
+  const calls = [], bells = [];
   return {
-    calls,
+    calls, bells,
+    bell: async (row) => { bells.push(row); },
     sb: async (path) => {
       calls.push(['sb', path]);
       if (path.startsWith('feedback_triage')) return [{ id: TRIAGE, source: 'site_issue', source_id: 'abc' }];
@@ -40,7 +41,12 @@ function fake({ sheet = [HEADERS], edits = [] } = {}) {
 test('adds the report as one row in the sheet\'s columns', async () => {
   const io = fake({ edits: [{ operation: 'split', metadata: { operation_id: 145300 }, created_at: '2026-11-07T02:20:05.000Z' }] });
   const out = await addIssue({ triageId: TRIAGE, number: 419, segments: ['720575947460909334', '!720575947460909078', 'junk'], at: [155113.4, 134396, 7743] }, io);
-  assert.deepEqual(out, { row: 2, already: false });
+  assert.deepEqual(out, { row: 2, already: false, notified: true });
+  const [bell] = io.bells;
+  assert.equal(io.bells.length, 1);
+  assert.equal(bell.target_type, 'user');
+  assert.equal(bell.target_id, ISSUE.user_id);
+  assert.equal(bell.body, 'Your triage #419 about "cut bug in MEC" has been added to the MEC known segment error report. Thank you for reporting it.');
   const append = io.calls.find(c => c[0] === 'api' && c[1].includes(':append'));
   const [row] = JSON.parse(append[2].body).values;
   assert.equal(row.length, HEADERS.length);
@@ -65,6 +71,7 @@ test('adds the report as one row in the sheet\'s columns', async () => {
 test('a report already on the sheet is not added twice', async () => {
   const io = fake({ sheet: [HEADERS, ['302'], ['419']] });
   assert.deepEqual(await addIssue({ triageId: TRIAGE, number: 419 }, io), { row: 3, already: true });
+  assert.equal(io.bells.length, 0);  // and the player is not told twice
   assert.ok(!io.calls.some(c => c[0] === 'api' && c[1].includes(':append')));
 });
 
