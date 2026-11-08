@@ -24,7 +24,7 @@ import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mes
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
-import {cameraAxes, cellDrawn, clearStarship, flyStarship, loadAssets, setStarshipCameraHeld, starshipHop} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, flyStarship, loadAssets, setStarshipCameraHeld, starshipAt, starshipHop} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 
@@ -42,7 +42,7 @@ interface Tour {
 interface Beat {
   key: string;
   header?: string;           // the panel's own title
-  callout?: {anchor: keyof Tour['anchors']; title: string};
+  callout?: {anchor: keyof Tour['anchors']; title: string; stats?: [string, string][]};
   body: string;
   next?: string;
   part?: 1 | 2 | 3;          // soma, dendrite, axon glows
@@ -53,17 +53,17 @@ const BEATS: Beat[] = [
     body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life, and they have one thing in common: they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
-  {key: 'soma', callout: {anchor: 'soma', title: 'Soma'}, part: 1, view: {at: 'soma', nm: 45_000},
+  {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Job', 'keeps the cell alive']]}, part: 1, view: {at: 'soma', nm: 45_000},
     body: 'The cell body. It holds the nucleus and keeps the whole cell alive.'},
-  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites'}, part: 2, view: {at: 'cell', nm: 200_000},
+  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Job', 'listen for signals'], ['Cell inputs', '3,386 synapses']]}, part: 2, view: {at: 'cell', nm: 200_000},
     body: 'The branches that listen. They gather signals from other neurons.'},
-  {key: 'axon', callout: {anchor: 'axon', title: 'Axon'}, part: 3, view: {at: 'axon', nm: 160_000},
+  {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Job', 'send the signal out'], ['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
     body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
-  {key: 'synapse', callout: {anchor: 'synapse', title: 'Synapse'}, part: 3, view: {at: 'synapse', nm: 24_000},
+  {key: 'synapse', callout: {anchor: 'synapse', title: 'Synapse', stats: [['Gap', 'about 20 nm'], ['Carries', 'chemical messengers']]}, part: 3, view: {at: 'synapse', nm: 24_000},
     body: 'Where two neurons meet and pass a signal across. Here our axon touches the next neuron. This cell receives more than 3,000 synapses of its own.'},
-  {key: 'presyn', callout: {anchor: 'presyn', title: "A neighbor's axon"}, part: 2, view: {at: 'presyn', nm: 60_000},
+  {key: 'presyn', callout: {anchor: 'presyn', title: "A neighbor's axon", stats: [['Synapses onto ours', '11']]}, part: 2, view: {at: 'presyn', nm: 60_000},
     body: 'This axon belongs to another neuron. It reaches over and makes 11 synapses onto our cell, passing its signals in.'},
-  {key: 'spike', callout: {anchor: 'axon', title: 'Action potential'}, part: 3, view: {at: 'cell', nm: 220_000},
+  {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['Speed', 'up to 100 m/s']]}, part: 3, view: {at: 'cell', nm: 220_000},
     body: 'Neurons talk in quick electric pulses called action potentials. Each one starts near the soma and races down the axon to its synapses. Together, your neurons send hundreds of billions of them every minute.'},
   {key: 'connectome', header: "That's where you come in", view: {at: 'cell', nm: 260_000}, next: 'Start mapping',
     body: 'Mapping every neuron and every synapse gives scientists a wiring diagram of the brain, called a connectome. That takes a lot of eyes, and yours are welcome here!'},
@@ -385,9 +385,21 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout { position: fixed; left: 0; top: 0; z-index: 9400; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
 .nge-callout--in { opacity: 1; }
 .nge-callout svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
-.nge-callout-box { position: fixed; min-width: 150px; max-width: 240px; padding: 8px 12px 10px 12px;
-  border: 1px solid rgba(126, 210, 255, 0.75); border-radius: 4px 12px 4px 4px;
-  background: rgba(8, 24, 52, 0.62); backdrop-filter: blur(3px); box-shadow: 0 0 18px rgba(80, 180, 255, 0.3); }
+.nge-callout-box { position: fixed; min-width: 170px; max-width: 250px; padding: 9px 13px 10px 13px; transform-origin: 50% 100%;
+  border: 1px solid rgba(126, 224, 255, 0.7); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: linear-gradient(180deg, rgba(40, 140, 220, 0.30), rgba(10, 40, 90, 0.42)),
+    repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.07) 0 1px, transparent 1px 3px);
+  backdrop-filter: blur(2px); box-shadow: inset 0 0 24px rgba(126, 224, 255, 0.18);
+  animation: nge-proj-in 520ms cubic-bezier(.2,1,.3,1) both, nge-proj-flicker 5s 1s infinite; }
+@keyframes nge-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
+@keyframes nge-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 0.95; } 99% { opacity: 0.7; } }
+.nge-callout-stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid rgba(126, 224, 255, 0.3); font: 12px/1.35 'Inter', sans-serif; }
+.nge-callout-stats dt { color: #7ecaff; font: 600 9.5px/1.9 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+.nge-callout-stats dd { margin: 0; color: #eaf7ff; }
+.nge-callout-beam { animation: nge-beam 2.4s ease-in-out infinite; }
+@keyframes nge-beam { 50% { opacity: 0.65; } }
+@media (prefers-reduced-motion: reduce) { .nge-callout-box, .nge-callout-beam { animation: none; } }
 .nge-callout-title { display: flex; align-items: center; gap: 8px; font: 600 15px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #fff; }
 .nge-callout-ic { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #7ecaff; box-shadow: 0 0 8px #7ecaff; flex: none; }
 `;
@@ -436,27 +448,56 @@ function toScreen(p: V3): [number, number] | null {
   return [r.left + (x + 1) / 2 * r.width, r.top + (1 - y) / 2 * r.height];
 }
 
-function showCallout(anchor: V3, title: string) {
+function showCallout(anchor: V3, title: string, stats: [string, string][] = []) {
   hideCallout();
   callout = document.createElement('div');
   callout.className = 'nge-callout';
-  callout.innerHTML = `<svg aria-hidden="true"><line stroke="rgba(160,225,255,0.9)" stroke-width="1.2"/><circle r="4" fill="#bff0ff" /></svg>
-    <div class="nge-callout-box"><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div></div>`;
+  const rows = stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  // The box is a hologram the Starship projects: a cone of light from the
+  // ship up to it (Ames), and a fine line from it down to the part.
+  callout.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-beam-g" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.06"/></linearGradient></defs>
+    <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="rgba(160,225,255,0.8)" stroke-width="1" stroke-dasharray="3 3"/>
+    <circle class="nge-callout-dot" r="4" fill="#bff0ff"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
+    <div class="nge-callout-box"><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${rows}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
-  const line = callout.querySelector('line')!, dot = callout.querySelector('circle')!, box = callout.querySelector('.nge-callout-box') as HTMLElement;
+  const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
+  const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
+  const box = callout.querySelector('.nge-callout-box') as HTMLElement;
   requestAnimationFrame(() => callout?.classList.add('nge-callout--in'));
   const step = () => {
     const s = toScreen(anchor);
+    const shipNm = starshipAt();
+    const ship = shipNm ? toScreen(shipNm) : null;
     if (s && callout) {
       const W = window.innerWidth, panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight;
       const bw = box.offsetWidth, bh = box.offsetHeight;
-      const right = s[0] < W * 0.55;
-      let bx = right ? s[0] + 70 : s[0] - 70 - bw;
-      let by = s[1] - 110 - bh / 2;
+      const onScreen = ship && ship[0] > 0 && ship[0] < W && ship[1] > 60 && ship[1] < panelTop;
+      let bx: number, by: number;
+      if (onScreen) {
+        // above the ship, leaning away from the part so the part stays clear
+        const lean = ship![0] < s[0] ? -1 : 1;
+        bx = ship![0] - bw / 2 + lean * 60;
+        by = ship![1] - 90 - bh;
+      } else {
+        const right = s[0] < W * 0.55;
+        bx = right ? s[0] + 70 : s[0] - 70 - bw;
+        by = s[1] - 110 - bh / 2;
+      }
       bx = Math.max(10, Math.min(W - bw - 10, bx));
       by = Math.max(70, Math.min(panelTop - bh - 16, by));
       box.style.left = `${bx}px`; box.style.top = `${by}px`;
-      const lx = right ? bx : bx + bw, ly = by + bh;
+      if (onScreen) {
+        const [sx, sy] = ship!;
+        beam.setAttribute('points', `${sx},${sy} ${bx + 6},${by + bh} ${bx + bw - 6},${by + bh}`);
+        grad.setAttribute('x1', String(sx)); grad.setAttribute('y1', String(sy));
+        grad.setAttribute('x2', String(bx + bw / 2)); grad.setAttribute('y2', String(by + bh));
+        lens.setAttribute('cx', String(sx)); lens.setAttribute('cy', String(sy));
+        beam.style.display = lens.style.display = '';
+      } else {
+        beam.style.display = lens.style.display = 'none';
+      }
+      const lx = Math.max(bx, Math.min(bx + bw, s[0])), ly = s[1] > by + bh ? by + bh : by;
       line.setAttribute('x1', String(s[0])); line.setAttribute('y1', String(s[1]));
       line.setAttribute('x2', String(lx)); line.setAttribute('y2', String(ly));
       dot.setAttribute('cx', String(s[0])); dot.setAttribute('cy', String(s[1]));
@@ -579,7 +620,7 @@ export async function startIntroTour() {
     if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
     if (b.key === 'presyn') showCell(t.presynPartner, PRESYN_COLOR);
     if (b.key === 'spike') runSpark(t);
-    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title); }, 900);
+    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats); }, 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
   nextEl.onclick = () => go(i + 1);

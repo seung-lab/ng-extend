@@ -158,6 +158,8 @@ export function starshipHop(route: number[][], seconds: number) {
 }
 /** Where the ship is now (nm), and which way is up from where it landed. */
 let shipNow: V3 | null = null;
+/** Where the ship is now (nm), while it is out. */
+export function starshipAt(): V3 | null { return running ? shipNow : null; }
 let liftNormal: V3 = [0, -1, 0];
 function along(path: V3[], cum: number[], s: number): V3 {
   s = Math.max(0, Math.min(cum[cum.length - 1], s));
