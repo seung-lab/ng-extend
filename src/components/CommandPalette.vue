@@ -13,11 +13,13 @@ import {
   useUserStatsStore,
   useHelpRequestStore,
   useProofreadingQueueStore,
+  useProofreadingBackendStore,
   useUserPreferencesStore,
   CellHistoryEntry,
 } from '../store';
 import { pumpkinSeason, togglePumpkin, smashPumpkins } from '../util/pumpkin';
 import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
+import { flyStarship, clearStarship } from '../util/starship';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -244,6 +246,29 @@ function buildActions(): PaletteItem[] {
     aliases: ['turkey', 'thanksgiving', 'gobble'],
     action: () => toggleTurkey(),
   });
+  // The new player intro's Starship, admins only while it is built (Ames 2026-11-07).
+  let adminUi = false;
+  try { adminUi = useProofreadingBackendStore().showAdminUi; } catch { /* no store yet */ }
+  if (adminUi) {
+    items.push({
+      id: 'starship-flight',
+      label: 'Starship flight (admin test)',
+      description: 'The new player intro ship flies through the Sandbox cell and lands on its soma',
+      category: 'tool',
+      icon: '🚀',
+      aliases: ['starship', 'ship', 'spaceship', 'intro', 'fly', 'rocket'],
+      action: () => { void flyStarship(); },
+    });
+    items.push({
+      id: 'starship-clear',
+      label: 'Starship: take it away',
+      description: 'Remove the landed Starship from the Sandbox cell',
+      category: 'tool',
+      icon: '🚀',
+      aliases: ['starship', 'ship', 'clear ship', 'remove ship'],
+      action: () => clearStarship(),
+    });
+  }
   if (ARCADE_ENABLED) items.push({
     id: 'pyr-arcade',
     label: 'Pyr Arcade',

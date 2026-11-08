@@ -257,6 +257,17 @@ if (fs.existsSync(THANKSGIVING_DIR)) {
   for (const file of fs.readdirSync(THANKSGIVING_DIR)) fs.copyFileSync(path.join(THANKSGIVING_DIR, file), path.join(dest, file));
   console.log(`Copied the Thanksgiving turkey to ${dest}`);
 }
+// ── Copy the new player intro's Starship (src/util/starship.ts): the model
+// and its route through the Sandbox cell, fetched only when it flies.
+const INTRO_DIR = path.join(STATIC_DIR, 'intro');
+if (fs.existsSync(INTRO_DIR)) {
+  const dest = path.join(DIST_MIN, 'intro');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(INTRO_DIR)) {
+    if (/\.(glb|json)$/.test(file)) fs.copyFileSync(path.join(INTRO_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the Starship to ${dest}`);
+}
 const SFX_DIR = path.join(STATIC_DIR, 'sfx');
 if (fs.existsSync(SFX_DIR)) {
   const dest = path.join(DIST_MIN, 'sfx');
