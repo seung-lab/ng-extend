@@ -19,7 +19,8 @@
  * away.
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
-import {mat4} from 'neuroglancer/util/geom';
+import {mat4, quat} from 'neuroglancer/util/geom';
+import {setStatedColor} from '../widgets/widget_utils';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
@@ -36,7 +37,11 @@ const CRUISE_S = 15;
 const LANDING_S = 3.2;
 /** How much shows from top to bottom of the view: the whole cell, then in
  *  close on the soma for the landing, in nanometres. */
-const WIDE_NM = 210_000, CLOSE_NM = 30_000;
+const WIDE_NM = 210_000, CLOSE_NM = 36_000;
+/** The portal opens this long before the ship comes through it. */
+const PORTAL_S = 1.8;
+/** The cell, a clear blue beside the gold soma (Ames 2026-11-08). */
+const CELL_BLUE = 0x4f8cff;
 
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -236,11 +241,78 @@ async function showSandboxCell(f: Flight): Promise<boolean> {
       // earlier tour, a cell the player had up) steps aside for the flight
       g.visibleSegments.clear();
       g.visibleSegments.add(Uint64.parseString(f.segment));
+      try {
+        const hex = CELL_BLUE, packed = ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 0xff) << 16);
+        setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, Uint64.parseString(f.segment), packed);
+      } catch { /* keep its colour */ }
+      oneBoundingBox();
       return true;
     }
     await new Promise(r => setTimeout(r, 250));
   }
   return false;
+}
+
+/** Two boxes were drawn round the volume (the image's and the
+ *  segmentation's); the intro keeps just the segmentation's (Ames). */
+function oneBoundingBox() {
+  for (const ml of viewerNow()?.layerManager?.managedLayers ?? []) {
+    for (const ds of ml?.layer?.dataSources ?? []) {
+      const ls = ds?.loadState;
+      if (!ls?.subsources || String(ds?.spec?.url ?? '').includes('/segmentation/')) continue;
+      let changed = false;
+      for (const sub of ls.subsources) if (sub?.subsourceEntry?.id === 'bounds' && sub.enabled) { sub.enabled = false; changed = true; }
+      if (changed) try { ls.enabledSubsourcesChanged.dispatch(); } catch { /* leave it */ }
+    }
+  }
+}
+
+/** The portal: a ring of light that opens where the route begins, lets the
+ *  ship through, then zips itself shut (Ames 2026-11-08). */
+const RING_N = 84;
+const portalGlow: NgeGlow = {positions: new Float32Array((RING_N + 1) * 3), colors: new Float32Array((RING_N + 1) * 4), sizesNm: new Float32Array(RING_N + 1), count: 0, nmRight: [1, 0, 0]};
+function drawPortal(nm: V3, right: V3, c: V3, ax: V3, R: number, tp: number) {
+  // tp: seconds since the portal began. Opens over 1.1 s, holds while the
+  // ship passes (the route starts at PORTAL_S), zips shut from 2.9 s.
+  const a1 = norm(Math.abs(ax[1]) < 0.9 ? cross(ax, [0, 1, 0]) : cross(ax, [1, 0, 0])), a2 = cross(ax, a1);
+  const open = smooth(tp / 1.1);
+  const zip = Math.max(0, (tp - 2.9) / 0.55);
+  let n = 0;
+  if (zip < 1.25) {
+    for (let j = 0; j < RING_N; j++) {
+      const u = j / RING_N;
+      // the zip runs round the ring: each light pulls in to the centre as it passes
+      const gone = zip > 0 ? smooth((zip * 1.15 - u) * 5) : 0;
+      if (gone >= 1) continue;
+      const th = 2 * Math.PI * u + tp * 1.4;
+      const r = R * open * (1 - gone) * (1 + 0.03 * Math.sin(tp * 9 + j));
+      const p = add(c, add(mul(a1, Math.cos(th) * r), mul(a2, Math.sin(th) * r)));
+      const head = zip > 0 && Math.abs(zip * 1.15 - u) < 0.06 ? 1 : 0;   // the bright slider of the zip
+      const col = head ? [1, 1, 1, 1] : [0.55 + 0.3 * u, 0.85 - 0.25 * u, 1, 0.85 * open];
+      portalGlow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], n * 3);
+      portalGlow.colors.set(col, n * 4);
+      portalGlow.sizesNm[n] = R * (head ? 0.5 : 0.24);
+      n++;
+    }
+    // the glow across the middle while it is open
+    const mid = open * (1 - Math.min(1, zip));
+    if (mid > 0.02) {
+      portalGlow.positions.set([c[0] / nm[0], c[1] / nm[1], c[2] / nm[2]], n * 3);
+      portalGlow.colors.set([0.5, 0.75, 1, 0.35 * mid], n * 4);
+      portalGlow.sizesNm[n] = R * 2.1 * mid;
+      n++;
+    }
+  } else if (zip < 1.9) {
+    // and a last spark where it closed
+    const q = (zip - 1.25) / 0.65;
+    portalGlow.positions.set([c[0] / nm[0], c[1] / nm[1], c[2] / nm[2]], 0);
+    portalGlow.colors.set([0.9, 0.97, 1, 1 - q], 0);
+    portalGlow.sizesNm[0] = R * (0.7 + 0.8 * q);
+    n = 1;
+  }
+  portalGlow.count = n;
+  portalGlow.nmRight = [right[0] / nm[0], right[1] / nm[1], right[2] / nm[2]];
+  setNgeGlow(n ? portalGlow : null, 'starship-portal');
 }
 
 /** The slow turn on its own, before any flight (Ames: "it should just
@@ -299,7 +371,10 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     // A clean picture, like the dataset tours: no axis lines (Ames 2026-11-07,
     // screen recording on a phone, where there is no key to hide them).
     try { v.showAxisLines.value = false; } catch { /* keep them */ }
-    v.navigationState.position.value = Float32Array.from(f.soma.map((c, i) => c / nm[i]));
+    // where the view was, to ease from (Ames: no sudden changes)
+    const q0 = quat.clone(v.projectionOrientation.orientation);
+    const p0 = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+    const s0 = v.projectionScale.value;
     v.projectionOrientation.restoreState([0, 0, 0, 1]);
     // The cell turns slowly in flight, a quarter of its usual speed, and
     // starts turned back by just that much: at touchdown it is square on, so
@@ -307,12 +382,21 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
     const FLIGHT_TURN = TURN_SECONDS * 4;
     // (plus a half turn: square on, the camera looks from the far side, Ames saw the ship land behind)
     try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), Math.PI - 2 * Math.PI / FLIGHT_TURN * (CRUISE_S + LANDING_S)); } catch { /* no view */ }
+    const qStart = quat.clone(v.projectionOrientation.orientation);
+    v.projectionOrientation.restoreState(Array.from(q0));
+    let flightAngle = 0;
+    // after landing the cell rocks gently either side of square on rather
+    // than turning all the way round, so it stays broadside, the wide view
+    // (Ames), and the pad stays on the viewer's side; it leaves the flight's
+    // turn at the same speed, so there is no lurch
+    const ROCK_P = 150, ROCK_A = (2 * Math.PI / FLIGHT_TURN) * ROCK_P / (2 * Math.PI);
+    let rockT = 0;
+    const BLEND_S = 1.6;
     // no colour flashing as the turning cell slides under the mouse
     setHoverHighlight(false);
     // projectionScale is in the coordinate space's smallest unit
     const unit = Math.min(nm[0], nm[1], nm[2]);
     const WIDE = WIDE_NM / unit, CLOSE = CLOSE_NM / unit;
-    v.projectionScale.value = WIDE;
     const somaAt: V3 = [...f.soma] as V3;
     liftNormal = norm(f.landNormal);
     const padAt = at(f, Infinity);
@@ -326,6 +410,11 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
 
     const total = CRUISE_S + LANDING_S;
     let keepScale = 0;
+    // the portal sits a little ahead of where the route begins, facing along it
+    const portalAx = norm(sub(at(f, 3000), at(f, 0)));
+    const portalAt = add(at(f, 0), mul(portalAx, f.shipLength * 0.6));
+    const portalR = f.shipLength * 1.1;
+    let portalShown = true;
     const start = performance.now();
     let last = start, emitDebt = 0;
     let prevCores: V3[] | null = null;
@@ -335,21 +424,33 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
       const step = (now: number) => {
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
-        const t = (now - start) / 1000;
+        const tAll = (now - start) / 1000, t = tAll - PORTAL_S;
         if (stopRequested) { done(); return; }
+        const blend = smooth(tAll / BLEND_S);
         const cam = cameraAxes(nm);
         if (!cam) { raf = requestAnimationFrame(step); return; }
 
         // the slow turn, until someone takes hold of the cell
         if (handsOff() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-          const per = t < total ? FLIGHT_TURN : cameraHeld ? TURN_SECONDS * 2 : TURN_SECONDS;
-          try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / per * dt); } catch { /* no view */ }
+          let da = t > 0 ? 2 * Math.PI / FLIGHT_TURN * dt : 0;
+          if (t >= total) { const w = 2 * Math.PI / ROCK_P; da = ROCK_A * (Math.sin(w * (rockT + dt)) - Math.sin(w * rockT)); rockT += dt; }
+          if (tAll < BLEND_S) {
+            // easing in from the old view: set the turn outright
+            flightAngle += da;
+            const r = quat.setAxisAngle(quat.create(), [0, 1, 0], flightAngle), qf = quat.multiply(quat.create(), qStart, r);
+            const q = quat.slerp(quat.create(), q0, qf, blend);
+            try { v.projectionOrientation.restoreState(Array.from(q)); } catch { /* no view */ }
+          } else if (da) {
+            try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), da); } catch { /* no view */ }
+          }
         }
         // in on the soma, slowly, all the way in (Ames: the camera zooms in
         // as the ship flies in), a touch faster at the end
         // (the camera holds still otherwise, it does not chase the ship, so
         // the zoom stays wide while the ship weaves and closes in late)
-        const zoom = Math.pow(Math.min(1, t / total), 2.4);
+        // late, and easing to a stop as it lands, so the welcome view picks up
+        // from rest
+        const zoom = 0.5 - 0.5 * Math.cos(Math.PI * Math.pow(Math.max(0, Math.min(1, t / total)), 1.5));
         if (handsOff() && !cameraHeld) {
           let sc = WIDE * Math.pow(CLOSE / WIDE, zoom);
           // never so close that the ship leaves the frame (Ames)
@@ -360,11 +461,12 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
             sc = Math.max(sc, need);
           }
           // eased, and never faster than about 35% a second, so no jumps
-          if (!keepScale) keepScale = sc;
+          if (!keepScale || tAll < BLEND_S) keepScale = sc;
           else { const step = Math.max(-0.35 * dt, Math.min(0.35 * dt, Math.log(sc / keepScale) * Math.min(1, dt * 2))); keepScale *= Math.exp(step); }
-          v.projectionScale.value = keepScale;
-          // and over toward the landing pad, so the ship lands mid screen
-          const c = mix(somaAt, padAt, zoom * 0.85);
+          // and over toward the landing pad, so ship and soma share the frame
+          let c = mix(somaAt, padAt, zoom * 0.5), scNow = keepScale;
+          if (tAll < BLEND_S) { c = mix(p0, c, blend); scNow = s0 * Math.pow(keepScale / s0, blend); }
+          v.projectionScale.value = scNow;
           v.navigationState.position.value = Float32Array.from(c.map((x, i) => x / nm[i]));
         }
 
@@ -373,7 +475,7 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         const h = hop;
         const hq = h ? Math.min(1, (now - h.start) / h.ms) : 0;
         const pathAt = h ? (d: number) => along(h.path, h.cum, d) : (d: number) => at(f, d);
-        const s = h ? h.cum[h.cum.length - 1] * easeInOut(hq) : distanceAt(f, Math.min(t, total));
+        const s = h ? h.cum[h.cum.length - 1] * easeInOut(hq) : distanceAt(f, Math.max(0, Math.min(t, total)));
         let pos = pathAt(s);
         const ahead = pathAt(s + 1500), behind = pathAt(s - 1500);
         let fwd = Math.hypot(...sub(ahead, behind)) > 50 ? norm(sub(ahead, behind)) : (prevFwd ?? norm(sub(ahead, behind)));
@@ -430,8 +532,12 @@ export async function flyStarship(onLanded?: () => void): Promise<void> {
         // trail left behind fades on its own
         const IDLE = 0;
         const down = h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
-          : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
-        const power = t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
+          : t < 0 ? 0 : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
+        // through the portal: the ship shows as it comes out of the light
+        prop.alpha = t < 0 ? 0 : Math.min(1, t / 0.5);
+        if (tAll < PORTAL_S + 4.6) drawPortal(nm, cam.right, portalAt, portalAx, portalR, tAll);
+        else if (portalShown) { portalShown = false; setNgeGlow(null, 'starship-portal'); }
+        const power = t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
         const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * scale), mul(up, q[1] * scale)), mul(fwd, q[2] * scale)));
         const cores = nozzles.map(q => ({p: toWorld(q), power}));
         // Released all along the way the engines moved since the last frame,

@@ -59,16 +59,16 @@ const BEATS: Beat[] = [
     callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Cell type', 'Pyramidal'], ['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
       ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Input', '3,386 synapses'], ['Output', '59 synapses']]},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
-  {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Size', 'about 20 µm across']]}, part: 1, view: {at: 'soma', nm: 45_000},
+  {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Size', 'about 20 µm across'], ['For scale', 'a fifth the width of a human hair']]}, part: 1, view: {at: 'soma', nm: 45_000},
     body: 'The cell body. It holds the nucleus and keeps the whole cell alive.'},
   {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Input', '3,297 synapses']]}, part: 2, view: {at: 'dendView', nm: 230_000},
     body: 'The branches that listen. They gather signals from other neurons.'},
   {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
     body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
   {key: 'synapse', part: 3, header: 'Synapse', view: {at: 'synapse', nm: 24_000},
-    body: 'Where two neurons meet and pass a signal across. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our axon passes its signal to the next neuron.'},
+    body: 'The connection where two neurons meet and communicate. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our {axon:axon} passes its signal to the next neuron.'},
   {key: 'allsyn', callout: {anchor: 'soma', title: 'All its synapses', stats: [['Input', '3,386 synapses'], ['Output', '59 synapses']]}, view: {at: 'cell', nm: 230_000},
-    body: "Every glowing dot is a synapse. Gold ones bring signals in from other neurons, onto the dendrites and soma. Pink ones carry this cell's own signal out, from its axon."},
+    body: 'Each dot is a synapse. This cell receives {in:3,386 connections} from upstream cells, and the axon contained in this volume has {out:59 outgoing connections}.'},
   {key: 'synapse2', header: 'Signals come in', part: 2, view: {at: 'synapse2', nm: 30_000},
     body: 'Out here near the tip of a dendrite, another neuron\u2019s axon passes its signal in. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
   {key: 'spike', callout: {anchor: 'axon', title: 'Action potential', stats: [['Lasts', 'about 1 ms'], ['For scale', 'a blink takes 300 times longer'], ['Speed', 'up to 100 m/s'], ['For scale', 'about 220 mph']]}, part: 3, view: {at: 'cell', nm: 220_000},
@@ -104,13 +104,49 @@ async function loadTour() {
 
 /** The tint for one beat: the part being shown glows, parts already met are
  *  a softer shade of their colour. */
-function partsTint(shown: Set<number>, glowing?: number): NgeMeshTint | null {
+let somaDist: Float32Array | null = null;
+/** Each grid cell's distance from the soma (nm), for the reveal. */
+function distances(): Float32Array | null {
+  if (somaDist) return somaDist;
+  if (!tour || !labels) return null;
+  const g = tour.grid, [dx, dy] = g.dims, c = tour.anchors.soma, d = new Float32Array(labels.length);
+  for (let i = 0; i < labels.length; i++) {
+    if (!labels[i]) continue;
+    const x = i % dx, y = Math.floor(i / dx) % dy, z = Math.floor(i / (dx * dy));
+    d[i] = Math.hypot(g.origin[0] + (x + 0.5) * g.cell - c[0], g.origin[1] + (y + 0.5) * g.cell - c[1], g.origin[2] + (z + 0.5) * g.cell - c[2]);
+  }
+  return somaDist = d;
+}
+let tintRaf = 0;
+/** The part colours in from the soma outward (Ames), the parts met before
+ *  staying as they are. */
+function revealTint(shown: Set<number>, glowing?: number, ms = 1600) {
+  cancelAnimationFrame(tintRaf);
+  const d = distances();
+  if (!glowing || shown.has(glowing) || !d || !labels) { setNgeMeshTint(partsTint(shown, glowing)); return; }
+  let far = 0;
+  for (let i = 0; i < labels.length; i++) if (labels[i] === glowing && d[i] > far) far = d[i];
+  const t0 = performance.now();
+  let lastPut = 0;
+  const step = (now: number) => {
+    const q = Math.min(1, (now - t0) / ms);
+    if (q >= 1 || now - lastPut > 60) {
+      lastPut = now;
+      setNgeMeshTint(partsTint(shown, glowing, far * (1 - Math.pow(1 - q, 2)) + 1));
+      try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    }
+    if (q < 1) tintRaf = requestAnimationFrame(step);
+  };
+  tintRaf = requestAnimationFrame(step);
+}
+function partsTint(shown: Set<number>, glowing?: number, reach = Infinity): NgeMeshTint | null {
   const nm = nmPerUnit();
   if (!tour || !labels || !nm || (!shown.size && !glowing)) return null;
   const g = tour.grid, n = labels.length, data = new Uint8Array(n * 4);
   for (let i = 0; i < n; i++) {
     const p = labels[i];
     if (!p || (!shown.has(p) && p !== glowing)) continue;
+    if (p === glowing && !shown.has(p) && somaDist && somaDist[i] > reach) continue;
     const rgb = PART_RGB[p], a = 1, k = 1;
     data[i * 4] = Math.round(rgb[0] * k * a); data[i * 4 + 1] = Math.round(rgb[1] * k * a); data[i * 4 + 2] = Math.round(rgb[2] * k * a);
     data[i * 4 + 3] = Math.round(a * 255);
@@ -277,7 +313,12 @@ function runPulse(at: V3, rgb: [number, number, number] = [1, 0.45, 0.85]) {
     glow.colors.set([rgb[0], rgb[1], rgb[2], 1]);
     glow.sizesNm[0] = 3400;
     const cam = cameraAxes(nm);
-    if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
+    if (cam) {
+      glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
+      // drawn a little toward the viewer, so the membrane it sits on does
+      // not slice the light in half (Ames: clipping)
+      for (let a = 0; a < 3; a++) glow.positions[a] = (at[a] + cam.toEye[a] * 2400) / nm[a];
+    }
     setNgeGlow(glow, 'intro-pulse');
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
     pulseRaf = requestAnimationFrame(step);
@@ -498,6 +539,9 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
   text-transform: uppercase; color: rgba(126, 224, 255, 0.85); }
 .nge-intro-choose[hidden] { display: none; }
 .nge-intro--choice .nge-go { height: 44px; }
+.nge-intro .nge-go { height: 44px !important; min-height: 44px; }
+.nge-intro .nge-go-label { min-height: 100%; box-sizing: border-box; padding: 0 26px; font-size: 13px; }
+.nge-intro--phone .nge-go { height: 40px !important; min-height: 40px; }
 .nge-intro-body b { color: #fff; font-weight: 700; }
 /* back: just a chevron */
 .nge-back { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important;
@@ -531,12 +575,26 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout { position: fixed; left: 0; top: 0; z-index: 9400; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
 .nge-callout--in { opacity: 1; }
 .nge-callout svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
-.nge-callout-box { position: fixed; min-width: 200px; max-width: min(360px, 42vw); padding: 14px 18px 16px 18px; isolation: isolate; transform-origin: 50% 100%;
-  border: 1px solid rgba(126, 224, 255, 0.7); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  background: linear-gradient(180deg, rgba(40, 140, 220, 0.30), rgba(10, 40, 90, 0.42)),
-    repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.07) 0 1px, transparent 1px 3px);
-  backdrop-filter: blur(2px); box-shadow: inset 0 0 24px rgba(126, 224, 255, 0.18);
+.nge-callout-box { position: fixed; min-width: 200px; max-width: min(380px, 44vw); padding: 15px 20px 17px 20px; isolation: isolate; transform-origin: 50% 100%;
+  filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25));
   animation: nge-proj-in 520ms cubic-bezier(.2,1,.3,1) both; }
+.nge-co-frame { position: absolute; left: 0; top: 0; z-index: -1; overflow: visible; pointer-events: none; }
+.nge-co-frame .tr { fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 1.1; stroke-linecap: round; }
+.nge-co-frame .pad { fill: rgba(8, 24, 52, 0.9); stroke: #9fe9ff; stroke-width: 1; }
+/* Next: the hologram zips shut toward the ship before it flies (Ames) */
+.nge-callout--zip { opacity: 1 !important; transition: none; }
+.nge-callout--zip .nge-callout-box { animation: nge-zip 440ms cubic-bezier(.55,0,.8,.2) forwards; }
+@keyframes nge-zip { 0% { transform: none; filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25)); }
+  45% { transform: scale(1, 0.025); filter: brightness(2.6) drop-shadow(0 0 18px #9fe9ff); opacity: 1; }
+  100% { transform: scale(0, 0.025); filter: brightness(3) drop-shadow(0 0 18px #9fe9ff); opacity: 0.4; } }
+.nge-callout--zip svg > * { transition: opacity 0.3s 0.12s; opacity: 0; }
+.nge-callout-stats .num { font: 600 24px/1.05 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.02em; color: #fff; font-variant-numeric: tabular-nums; }
+.nge-callout-stats .unit { display: block; margin-top: 3px; font: 500 12px/1.2 'Inter', sans-serif; letter-spacing: 0.04em; color: rgba(200, 230, 255, 0.75); }
+.nge-w-axon { color: #ff82c3; font-weight: 600; }
+.nge-w-dendrite { color: #b9a4ff; font-weight: 600; }
+.nge-w-soma { color: #ffd24d; font-weight: 600; }
+.nge-w-in { color: #ffd24d; font-weight: 600; }
+.nge-w-out { color: #ff82c3; font-weight: 600; }
 @keyframes nge-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
 @keyframes nge-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 0.95; } 99% { opacity: 0.7; } }
 .nge-stat-ic { width: 16px; height: 12px; vertical-align: -2px; margin-right: 6px; }
@@ -550,8 +608,8 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-beam { animation: nge-beam 2.4s ease-in-out infinite; }
 @keyframes nge-beam { 50% { opacity: 0.65; } }
 @media (prefers-reduced-motion: reduce) { .nge-callout-box, .nge-callout-beam { animation: none; } }
-.nge-callout-title { margin-top: 3px; font: 700 21px/1.15 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
-.nge-callout-ic { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--part, #7ecaff); box-shadow: 0 0 10px var(--part, #7ecaff), inset 0 0 6px var(--part, #7ecaff); flex: none; }
+.nge-callout-title { display: flex; align-items: center; gap: 10px; margin-top: 3px; font: 700 21px/1.15 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
+.nge-callout-ic { width: 11px; height: 11px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 10px var(--part, #7ecaff); flex: none; }
 .nge-callout-box { isolation: isolate; }
 `;
   document.head.appendChild(st);
@@ -563,12 +621,13 @@ let calloutRaf = 0;
 let typeTimer: ReturnType<typeof setInterval> | null = null;
 let onKey: ((e: KeyboardEvent) => void) | null = null;
 
+const plain = (marked: string) => marked.replace(/\*\*/g, '').replace(/\{\w+:([^}]+)\}/g, '$1');
 function type(el: HTMLElement, marked: string) {
   // **word** is bold (Ames: bold "connectome"); typed as plain text, then
   // the emphasis lands when the line is complete
-  const text = marked.replace(/\*\*/g, '');
+  const text = plain(marked);
   const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  const html = esc(marked).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const html = esc(marked).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\{(\w+):([^}]+)\}/g, '<span class="nge-w-$1">$2</span>');
   const finish = () => { el.innerHTML = html; };
   if (typeTimer) clearInterval(typeTimer);
   el.textContent = '';
@@ -676,11 +735,18 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.06"/></linearGradient></defs>
     <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title">${title}</div>${rows ? `<dl class="nge-callout-stats">${stats.map(([k, v]) => `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}</div>`;
+    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${stats.map(([k, v]) => `<div><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`).join('')}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
+  const host = box.querySelector('.nge-frame-host') as HTMLElement;
+  // drawn at the box's real size, and again whenever that changes, so the
+  // rim never stretches
+  let fw = 0, fh = 0;
+  const redraw = () => { const w = box.offsetWidth, h = box.offsetHeight; if (w && h && (w !== fw || h !== fh)) { fw = w; fh = h; host.innerHTML = calloutFrame(w, h); } };
+  redraw();
+  try { new ResizeObserver(redraw).observe(box); } catch { /* drawn once */ }
   let cx = -1, cy = -1;
   const step = () => {
     const s = toScreen(anchor);
@@ -712,6 +778,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       if (onScreen) {
         const [sx, sy] = ship!;
         const side = sx < bx;   // projecting sideways, to the box's near edge
+        box.style.transformOrigin = side ? '0% 50%' : '50% 100%';
         beam.setAttribute('points', side ? `${sx},${sy} ${bx},${by + 8} ${bx},${by + bh - 8}` : `${sx},${sy} ${bx + 6},${by + bh} ${bx + bw - 6},${by + bh}`);
         grad.setAttribute('x1', String(sx)); grad.setAttribute('y1', String(sy));
         grad.setAttribute('x2', String(side ? bx : bx + bw / 2)); grad.setAttribute('y2', String(side ? by + bh / 2 : by + bh));
@@ -733,10 +800,33 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   };
   calloutRaf = requestAnimationFrame(step);
 }
-function hideCallout() {
+function hideCallout(zip = false) {
   cancelAnimationFrame(calloutRaf);
-  callout?.remove();
+  const c = callout;
   callout = null;
+  if (!c) return;
+  if (zip && c.classList.contains('nge-callout--in')) { c.classList.add('nge-callout--zip'); setTimeout(() => c.remove(), 460); }
+  else c.remove();
+}
+/** A number set large with its unit beneath ("3,386 synapses"). */
+function statValue(v: string): string {
+  const m = /^([\d][\d,.]*)\s+(.+)$/.exec(v);
+  return m ? `<span class="num">${m[1]}</span><span class="unit">${m[2]}</span>` : v;
+}
+/** The scan box's glass and rim, the panel's look made simpler: the cut
+ *  corners, a fine cyan edge, one short trace at two corners. */
+function calloutFrame(w: number, h: number): string {
+  const c = 12, f = (n: number) => n.toFixed(1);
+  const rim = `M${c} 0.5 H${f(w - 0.5)} V${f(h - c)} L${f(w - c)} ${f(h - 0.5)} H0.5 V${c} Z`;
+  const a = Math.min(64, w * 0.2), b = Math.min(48, w * 0.15);
+  return `<svg class="nge-co-frame" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <defs><linearGradient id="nge-co-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="rgb(16,38,74)" stop-opacity="0.96"/><stop offset="0.6" stop-color="rgb(6,12,28)" stop-opacity="0.97"/><stop offset="1" stop-color="rgb(24,16,52)" stop-opacity="0.96"/></linearGradient>
+      <pattern id="nge-co-scan" width="4" height="3" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="rgba(126,224,255,0.05)"/></pattern></defs>
+    <path d="${rim}" fill="url(#nge-co-bg)"/><path d="${rim}" fill="url(#nge-co-scan)"/>
+    <path d="${rim}" fill="none" stroke="rgba(126,224,255,0.6)" stroke-width="1"/>
+    <path class="tr" d="M${f(w - 16)} 0.5 l-6 6 h-${f(a)}"/><circle class="pad" cx="${f(w - 22 - a)}" cy="6.5" r="2"/>
+    <path class="tr" d="M16 ${f(h - 0.5)} l6 -6 h${f(b)}"/><circle class="pad" cx="${f(22 + b)}" cy="${f(h - 6.5)}" r="2"/></svg>`;
 }
 
 /* ── running the tour ── */
@@ -747,7 +837,7 @@ function endTour() {
   if (!active) return;
   active = false;
   hideCallout(); stopSpark(); stopPulse(); stopAllSynapses();
-  cancelAnimationFrame(camRaf);
+  cancelAnimationFrame(camRaf); cancelAnimationFrame(tintRaf);
   if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
   if (onKey) { window.removeEventListener('keydown', onKey, true); onKey = null; }
   setNgeMeshTint(savedTint);
@@ -802,15 +892,20 @@ export async function startIntroTour() {
   stayEl.onclick = () => ask(false);
 
   const indexOf = (key: string) => BEATS.findIndex(b => b.key === key);
-  const NEURON = indexOf('neuron'), SYN2 = indexOf('synapse2'), DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
+  const NEURON = indexOf('neuron'), SOMA = indexOf('soma'), SYN2 = indexOf('synapse2'), DEND = indexOf('dendrites'), AXON = indexOf('axon'), SYN = indexOf('synapse');
   let i = -1;
-  let shipAt: 'pad' | 'dend' | 'axon' | 'syn' | 'syn2' | 'dock' = 'pad';
+  let shipAt: 'pad' | 'soma' | 'dend' | 'axon' | 'syn' | 'syn2' | 'dock' = 'pad';
   const go = (n: number) => {
     if (!active || n < 0) return;
     if (n >= BEATS.length) { endTour(); return; }
     const from = i;
     i = n;
     const b = BEATS[i];
+    const want = i === NEURON ? 'dock' : i === SOMA ? 'soma' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : i < SYN2 ? 'syn' : 'syn2';
+    const shipMoves = want !== shipAt;
+    const zipping = !!callout;
+    const shipDelay = zipping ? 440 : 0;
+    const camDelay = shipDelay + (shipMoves ? 650 : 0);
     titleEl.textContent = b.header ?? b.callout?.title ?? '';
     if (from >= 0 && panel) { panel.classList.remove('nge-intro--beat'); void panel.offsetWidth; panel.classList.add('nge-intro--beat'); }
     const last = b.key === 'connectome';
@@ -822,7 +917,7 @@ export async function startIntroTour() {
     // Size the panel for the whole text first, so it holds still while the
     // words type in and the camera can frame the cell above it.
     bodyEl.style.minHeight = '';
-    bodyEl.textContent = b.body.replace(/\*\*/g, '');
+    bodyEl.textContent = plain(b.body);
     bodyEl.style.minHeight = `${bodyEl.offsetHeight}px`;
     if (panel) (panel.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(panel.offsetWidth, panel.offsetHeight, 18);
     // the words wait for the ship: the box steps aside while it flies and
@@ -833,32 +928,77 @@ export async function startIntroTour() {
     const reveal = () => {
       if (!active || i !== n) return;
       const flying = starshipMoving() && performance.now() - shown0 < 12000;
-      if (flying || performance.now() - shown0 < 250) { requestAnimationFrame(reveal); return; }
+      if (flying || performance.now() - shown0 < (shipMoves ? shipDelay + 400 : 250)) { requestAnimationFrame(reveal); return; }
       panel?.classList.remove('nge-intro--waiting');
       type(bodyEl, b.body);
     };
     requestAnimationFrame(reveal);
-    hideCallout(); stopSpark(); stopPulse(); stopAllSynapses();
+    hideCallout(true); stopSpark(); stopPulse(); stopAllSynapses();
     // the parts: ones met before this beat stay softly coloured, this one glows
     const shown = new Set<number>();
     for (let k = 0; k < i; k++) { const p = BEATS[k].part; if (p) shown.add(p); }
-    setNgeMeshTint(partsTint(shown, b.part));
+    cancelAnimationFrame(tintRaf);
+    setNgeMeshTint(partsTint(shown));
     // the camera, framing the subject in the open space above the panel
-    const center: V3 = b.view.at === 'cell' ? cellCenter(t) : b.view.at === 'dendView' ? [307744, 175892, 86080] : t.anchors[b.view.at];
-    if (b.key === 'spike') {
-      moveCamera(framed(t.anchors.axon, 26_000), 26_000, 1400);
-      setTimeout(() => { if (active && i === n) moveCamera(framed(center, b.view.nm), b.view.nm, 9000); }, 1600);
-    } else moveCamera(framed(center, b.view.nm), b.view.nm, b.key === 'welcome' ? 2200 : 1700);   // a glide, never a snap
+    const camera = () => {
+      if (!active || i !== n) return;
+      let center: V3 = b.view.at === 'cell' ? cellCenter(t) : b.view.at === 'dendView' ? [307744, 175892, 86080] : t.anchors[b.view.at];
+      // welcome: the soma and the ship on it, both well inside the frame
+      const ship = starshipAt();
+      if (b.key === 'welcome' && ship) center = [0, 1, 2].map(k => (center[k] + ship[k]) / 2) as V3;
+      // the action potential: from up close where we are, a slow pull back
+      // to the whole cell (no dash across to the axon first)
+      const ms = b.key === 'spike' ? 9000 : b.key === 'welcome' ? 2200 : 1800;
+      moveCamera(framed(center, b.view.nm), b.view.nm, ms);
+      setTimeout(() => { if (active && i === n) revealTint(shown, b.part); }, b.key === 'spike' ? 600 : ms * 0.55);
+    };
+    setTimeout(camera, camDelay);
     // the partner cells are there from their beat on, and gone if we step back
     if (i < SYN) hideCell(t.synapsePartner);
     if (i < SYN2) hideCell(t.syn2Partner);
     // what happens in this beat
     // out to the edge of the cell for its stats card, home for the soma,
     // out by the dendrite tips, down the axon, over the synapse
-    const want = i === NEURON ? 'dock' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : i < SYN2 ? 'syn' : 'syn2';
-    if (want !== shipAt) {
+    if (shipMoves) {
+      const prev = shipAt;
+      shipAt = want;
+      setTimeout(() => { if (active) moveShip(prev, want); }, shipDelay);
+    }
+    if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
+    if (b.key === 'synapse2') { showCell(t.syn2Partner, SYN2_COLOR); runPulse(t.anchors.synapse2, [1, 0.86, 0.45]); }
+    if (b.key === 'allsyn') runAllSynapses(t);
+    if (b.key === 'spike') runSpark(t);
+    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, b.key === 'neuron' ? '#4f8cff' : ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, shipDelay + 900);
+    try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+  };
+  /** Off the pad, the ship hovers just above it: over the soma, on the
+   *  viewer's side (Ames: the ship was behind the soma). */
+  const somaHover = (): number[] => {
+    const pad = t.dendFlight[0];
+    return t.dendFlight.find(q => Math.hypot(q[0] - pad[0], q[1] - pad[1], q[2] - pad[2]) > 4500) ?? pad;
+  };
+  const nearest = (route: number[][], q: number[] | null) => {
+    if (!q) return 0;
+    let k = 0, best = Infinity;
+    route.forEach((r, j) => { const d = Math.hypot(r[0] - q[0], r[1] - q[1], r[2] - q[2]); if (d < best) { best = d; k = j; } });
+    return k;
+  };
+  /** The part of a route from where the ship is now on to `to` (or its end). */
+  const onward = (route: number[][], to?: number[]) => {
+    const a = nearest(route, starshipAt()), b2 = to ? nearest(route, to) : route.length - 1;
+    return route.slice(a, Math.max(a + 1, b2 + 1));
+  };
+  const moveShip = (from: typeof shipAt, want: typeof shipAt) => {
+    {
+      const shipAt = from;
       const aEnd = t.axonFlight[t.axonFlight.length - 1];
-      if (want === 'dock') {
+      if (want === 'soma') {
+        if (shipAt === 'dock') undockStarship();
+        if (shipAt === 'dend') starshipHop(onward([...t.dendFlight].reverse(), somaHover()), 4);
+        else starshipHop([somaHover()], 2.6);
+      } else if (shipAt === 'soma' && want === 'pad') starshipHop([t.dendFlight[0]], 2);
+      else if (shipAt === 'soma' && want === 'dend') starshipHop(onward(t.dendFlight), 5);
+      else if (want === 'dock') {
         // to the right side of the view, just left of where its card sits
         const pr = threeDPanel()?.element?.getBoundingClientRect?.();
         const cardW = Math.min(360, window.innerWidth * 0.42);
@@ -868,22 +1008,13 @@ export async function startIntroTour() {
         undockStarship();
         starshipHop([t.dendFlight[0]], 3);
       } else
-      if (shipAt === 'pad' && want === 'dend') starshipHop(t.dendFlight, 5);
-      else if (shipAt === 'dend' && want === 'pad') starshipHop([...t.dendFlight].reverse(), 4);
-      else if (shipAt === 'dend' && want === 'axon') starshipHop(t.axonFlight, 9);
+      if (shipAt === 'dend' && want === 'axon') starshipHop(t.axonFlight, 9);
       else if (shipAt === 'axon' && want === 'dend') starshipHop([...t.axonFlight].reverse(), 6);
       else if (shipAt === 'syn' && want === 'syn2') starshipHop(t.syn2Flight, 6);
       else if (shipAt === 'syn2' && want === 'syn') starshipHop([...t.syn2Flight].reverse(), 5);
-      else if (want === 'syn') starshipHop([aEnd, aboveSynapse(t, b.view.nm)], 2.2);
+      else if (want === 'syn') starshipHop([aEnd, aboveSynapse(t, BEATS[SYN].view.nm)], 2.2);
       else if (shipAt === 'syn' && want === 'axon') starshipHop([aEnd], 2);
-      shipAt = want;
     }
-    if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
-    if (b.key === 'synapse2') { showCell(t.syn2Partner, SYN2_COLOR); runPulse(t.anchors.synapse2, [1, 0.86, 0.45]); }
-    if (b.key === 'allsyn') runAllSynapses(t);
-    if (b.key === 'spike') runSpark(t);
-    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, 900);
-    try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
   // the end: choose your own adventure (Ames)
   nextEl.onclick = () => { if (BEATS[i]?.key === 'connectome') { endTour(); startGetStarted(); } else go(i + 1); };
