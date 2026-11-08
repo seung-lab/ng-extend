@@ -19,7 +19,7 @@
  * neurons involved as chips, one warm accent for the target).
  *
  * The model is a cartoon on real wiring: each cell sums its excitation (one
- * unit per synapse, leaking away over 0.8 s) against its inhibition (0.6 per
+ * unit per synapse, leaking away over 1.2 s) against its inhibition (0.6 per
  * synapse, leaking over 0.35 s), fires at a threshold, and rests 0.4 s. A
  * spike runs the real path at 500 um/s, about a thousand times slower than
  * life, so a round trip can be watched. The Gatekeeper, when awake, is a
@@ -44,7 +44,7 @@ interface CircuitConn { pre: string; post: string; count: number; axonUm: number
 interface Circuit { version: number; cells: CircuitCell[]; connections: CircuitConn[]; }
 
 /* ── the rules ── */
-const TAU_E = 1.0, TAU_I = 0.35;       // seconds of leak
+const TAU_E = 1.2, TAU_I = 0.35;       // seconds of leak
 const E_UNIT = 1.0, I_UNIT = 0.6;      // units per synapse
 const REFRACTORY_S = 0.4;
 const SPEED_UM_S = 500;                // a spike along the real path
@@ -701,7 +701,10 @@ function shake(key: string) {
 function stepModel(dt: number) {
   now += dt;
   charges = Math.min(MAX_CHARGES, charges + dt / REGEN_S);
+  // The leak for this frame first, so what arrives in this frame counts in
+  // full toward the threshold below (on a slow frame the leak is large).
   const kE = Math.exp(-dt / TAU_E), kI = Math.exp(-dt / TAU_I);
+  for (const c of cells.values()) if (c.shown) { c.e *= kE; c.i *= kI; }
   // beams land
   for (const b of beams) {
     if (b.applied || now < b.at + BEAM_S) continue;
@@ -722,10 +725,9 @@ function stepModel(dt: number) {
   for (const a of due) arrive(a);
   sparks = sparks.filter(s => now < s.end + 0.3);
   flashes = flashes.filter(f => now < f.at + f.life);
-  // leak, thresholds, the clock
+  // thresholds, and the Gatekeeper's clock
   for (const c of cells.values()) {
     if (!c.shown) continue;
-    c.e *= kE; c.i *= kI;
     if (c.dimmed && now >= c.hushedUntil) paint(c, false);
     if (now < c.hushedUntil) continue;
     if (c.gateNext !== null) { if (now >= c.gateNext) spike(c.key); continue; }
