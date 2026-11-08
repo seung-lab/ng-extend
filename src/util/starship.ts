@@ -203,6 +203,9 @@ export async function flyStarship(): Promise<void> {
     const nozzles: V3[] = [[xHi * 0.3, 0, zLo], [-xHi * 0.3, 0, zLo]];
 
     try { v.layout.restoreState('3d'); } catch { /* keep the layout */ }
+    // A clean picture, like the dataset tours: no axis lines (Ames 2026-11-07,
+    // screen recording on a phone, where there is no key to hide them).
+    try { v.showAxisLines.value = false; } catch { /* keep them */ }
     v.navigationState.position.value = Float32Array.from(f.soma.map((c, i) => c / nm[i]));
     v.projectionOrientation.restoreState([0, 0, 0, 1]);
     // projectionScale is in the coordinate space's smallest unit
