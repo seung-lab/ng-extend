@@ -11,7 +11,8 @@
         "Your Checked marks stay in one Checked layer, with no more Checked 1 and Checked 2.",
         "Click your current cell's row in the Cell Library to open Complete. Your cell stays at the top while the form is open, so nothing is cut off.",
         "A layer tab has one close button, an x, and Ctrl+Z brings a closed layer back. For neuroglancer's two buttons (hide to the side panel, and delete), turn on Classic layer tab buttons in Settings, under Neuroglancer.",
-        "The outline around the volume is a softer blue."
+        "The outline around the volume is a softer blue.",
+        "If you have worked on Retina cells, Pyr asks you once whether they open with Highlight or with the annotation layers."
       ]
     },
     {
