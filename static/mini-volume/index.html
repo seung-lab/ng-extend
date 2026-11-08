@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini volume</title>
+<meta name="description" content="A tiny block of real brain tissue, sliced into sections, then the whole neuron inside it. MICrONS pinky100, cell 648518346355727683.">
+<style>
+  :root { --ink:#EFF2F7; --dim:#9AA2B1; --ground:#05070C; --cyan:#7EE0FF; --line:#1D222B; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--ground); color:var(--ink);
+    font:400 15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .page { max-width:860px; margin:0 auto; padding:28px 16px 48px; }
+  .page h1 { margin:0 0 4px; font-size:26px; font-weight:500; }
+  .page .lede { margin:0 0 16px; color:var(--dim); }
+  .page .note { margin:16px 0 0; color:var(--dim); font-size:13.5px; }
+
+  #mv { position:relative; width:100%; aspect-ratio:16/10; background:#04060B; overflow:hidden;
+        border:1px solid var(--line); border-radius:4px; touch-action:none; cursor:grab;
+        user-select:none; -webkit-user-select:none; }
+  #mv:active { cursor:grabbing; }
+  #mv canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #mv .fallback { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; }
+  #mv.nogl .fallback { display:block; }
+
+  .tag { position:absolute; z-index:2; margin:0; pointer-events:none;
+         font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:rgba(150,205,240,.9);
+         transition:opacity .45s ease; }
+  .tag.tr { top:10px; right:12px; text-align:right; }
+  .unit { text-transform:none; }
+  .cap { position:absolute; z-index:2; left:12px; right:12px; bottom:44px; margin:0; pointer-events:none;
+         text-align:center; font-size:clamp(13px,2.6vw,16px); line-height:1.35; color:#EAF6FF;
+         text-shadow:0 1px 8px rgba(0,0,0,.95), 0 0 2px rgba(0,0,0,.9);
+         transition:opacity .45s ease; }
+  .steps { position:absolute; z-index:3; left:50%; bottom:10px; transform:translateX(-50%);
+           display:flex; gap:6px; }
+  .steps button { font:inherit; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:rgba(200,232,255,.75); background:rgba(10,22,38,.78); cursor:pointer;
+    border:1px solid rgba(112,190,255,.25); border-radius:999px; padding:4px 11px;
+    transition:border-color .25s ease, color .25s ease, background .25s ease; }
+  .steps button:hover, .steps button:focus-visible { border-color:rgba(150,212,255,.7); color:#fff; outline:none; }
+  .steps button.on { color:#04121c; background:var(--cyan); border-color:var(--cyan); }
+  #load { position:absolute; inset:0; z-index:4; display:grid; place-items:center; color:var(--dim);
+          font-size:13px; letter-spacing:.08em; background:#04060B; transition:opacity .4s ease; }
+  #load.gone { opacity:0; pointer-events:none; }
+
+  /* embedded in the tutorial card: the widget is the whole page */
+  html.embed body { background:transparent; }
+  html.embed .page { max-width:none; padding:0; }
+  html.embed .page > :not(#mv) { display:none; }
+  html.embed #mv { border:0; border-radius:0; aspect-ratio:auto; height:100vh; }
+  @media (prefers-reduced-motion: reduce) { .tag, .cap, #load { transition:none; } }
+</style>
+<script>if (/[?&]embed\b/.test(location.search)) document.documentElement.classList.add('embed');</script>
+</head>
+<body>
+<div class="page">
+  <h1>From a block of brain to a neuron</h1>
+  <p class="lede">A tiny piece of real brain tissue, sliced into sections, then the whole cell it came from. Drag to turn it.</p>
+
+  <div id="mv" aria-label="Animation: a tiny block of brain imaged by electron microscope, sliced into sections, then the whole neuron inside the dataset">
+    <img class="fallback" src="s2.jpg" alt="An electron microscope image of brain tissue, with a cell nucleus in the middle">
+    <p class="tag tr" id="tag"></p>
+    <p class="cap" id="cap"></p>
+    <div class="steps" role="group" aria-label="Steps">
+      <button type="button" data-step="0">Tissue</button>
+      <button type="button" data-step="1">Slices</button>
+      <button type="button" data-step="2">Neuron</button>
+    </div>
+    <div id="load">loading the tissue</div>
+  </div>
+
+  <p class="note">Real data from the MICrONS pinky dataset. The block is 12 &times; 12 &times; 8
+  <span class="unit">&micro;m</span> of electron microscope imagery around this cell's nucleus, each section
+  40 <span class="unit">nm</span> thick. The neuron is pyramidal cell 648518346355727683, reconstructed in 3D
+  and drawn at true scale inside the outline of the whole imaged volume.</p>
+</div>
+
+<script>
+(() => {
+'use strict';
+const root = document.getElementById('mv');
+const canvas = document.createElement('canvas');
+root.prepend(canvas);
+const gl = canvas.getContext('webgl2', { antialias: true, premultipliedAlpha: false, alpha: false });
+const loadEl = document.getElementById('load');
+if (!gl) { root.classList.add('nogl'); loadEl.classList.add('gone'); return; }
+
+// ---------------------------------------------------------------- tiny math
+const V = {
+  sub: (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]],
+  add: (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]],
+  mul: (a, s) => [a[0]*s, a[1]*s, a[2]*s],
+  lerp: (a, b, t) => [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t],
+  cross: (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]],
+  dot: (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
+  norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; },
+};
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0];
+}
+function lookAt(eye, at, up) {
+  const z = V.norm(V.sub(eye, at)), x = V.norm(V.cross(up, z)), y = V.cross(z, x);
+  return [x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
+          -V.dot(x,eye),-V.dot(y,eye),-V.dot(z,eye),1];
+}
+function mat4mul(a, b) {
+  const o = new Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++)
+    o[c*4+r] = a[r]*b[c*4] + a[4+r]*b[c*4+1] + a[8+r]*b[c*4+2] + a[12+r]*b[c*4+3];
+  return o;
+}
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const smooth = (a, b, t) => { const x = clamp((t - a) / (b - a)); return x * x * (3 - 2 * x); };
+
+// ---------------------------------------------------------------- shaders
+function program(vs, fs) {
+  const mk = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  const p = gl.createProgram();
+  gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
+  return { p, u };
+}
+
+// EM faces and slices: the gray imagery, a cool tint, and a thin glowing rim
+const texProg = program(`#version 300 es
+in vec3 aPos; in vec2 aUv; uniform mat4 uMvp; out vec2 vUv;
+void main(){ vUv = aUv; gl_Position = uMvp * vec4(aPos, 1.0); }`,
+`#version 300 es
+precision mediump float; in vec2 vUv; uniform sampler2D uTex; uniform float uAlpha; uniform float uRim;
+out vec4 o;
+void main(){
+  float g = texture(uTex, vUv).r;
+  vec3 c = clamp(g * vec3(0.94, 1.02, 1.10) * 1.08, 0.0, 1.0);
+  vec2 e = min(vUv, 1.0 - vUv); float d = min(e.x, e.y);
+  float rim = (1.0 - smoothstep(0.0, 0.025, d)) * uRim;
+  c = mix(c, vec3(0.49, 0.88, 1.0), rim);
+  o = vec4(c, uAlpha);
+}`);
+
+// the neuron: soft blue, lit from above, with a cyan fresnel rim so it glows
+const meshProg = program(`#version 300 es
+in vec3 aPos; in vec3 aNrm; uniform mat4 uMvp; uniform vec3 uLo; uniform vec3 uSpan;
+out vec3 vN; out vec3 vP;
+void main(){ vec3 p = uLo + aPos * uSpan; vN = aNrm; vP = p; gl_Position = uMvp * vec4(p, 1.0); }`,
+`#version 300 es
+precision mediump float; in vec3 vN; in vec3 vP; uniform vec3 uEye; uniform float uAlpha; out vec4 o;
+void main(){
+  vec3 n = normalize(vN); vec3 v = normalize(uEye - vP);
+  if (dot(n, v) < 0.0) n = -n;
+  vec3 L = normalize(vec3(0.35, -0.45, 0.82));
+  float lam = max(dot(n, L), 0.0);
+  float hemi = 0.5 + 0.5 * n.z;
+  vec3 base = vec3(0.17, 0.52, 0.90);
+  vec3 c = base * (0.38 + 0.55 * lam + 0.25 * hemi) + vec3(0.03, 0.12, 0.26);
+  float fr = pow(1.0 - max(dot(n, v), 0.0), 2.2);
+  c += vec3(0.45, 0.86, 1.0) * fr * 0.85;
+  o = vec4(c, uAlpha);
+}`);
+
+// glowing cyan lines: the volume outline, section planes, the block marker
+const lineProg = program(`#version 300 es
+in vec3 aPos; in float aA; uniform mat4 uMvp; out float vA;
+void main(){ vA = aA; gl_Position = uMvp * vec4(aPos, 1.0); }`,
+`#version 300 es
+precision mediump float; in float vA; uniform vec3 uColor; uniform float uAlpha; out vec4 o;
+void main(){ o = vec4(uColor, vA * uAlpha); }`);
+
+// flat translucent fill (the mid section plane, seen edge on)
+const fillProg = program(`#version 300 es
+in vec3 aPos; uniform mat4 uMvp; void main(){ gl_Position = uMvp * vec4(aPos, 1.0); }`,
+`#version 300 es
+precision mediump float; uniform vec4 uColor; out vec4 o; void main(){ o = uColor; }`);
+
+// ---------------------------------------------------------------- geometry helpers
+function quadVao(c, ux, uy) {   // corner c, edge vectors ux (u axis), uy (v axis, image down)
+  const p = [c, V.add(c, ux), V.add(V.add(c, ux), uy), V.add(c, uy)];
+  const data = new Float32Array([
+    ...p[0], 0, 0, ...p[1], 1, 0, ...p[2], 1, 1,
+    ...p[0], 0, 0, ...p[2], 1, 1, ...p[3], 0, 1]);
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  const ap = gl.getAttribLocation(texProg.p, 'aPos'), au = gl.getAttribLocation(texProg.p, 'aUv');
+  gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 3, gl.FLOAT, false, 20, 0);
+  gl.enableVertexAttribArray(au); gl.vertexAttribPointer(au, 2, gl.FLOAT, false, 20, 12);
+  gl.bindVertexArray(null);
+  return vao;
+}
+function lineVao(segs) {        // [[p0, p1, alpha], ...]
+  const data = new Float32Array(segs.length * 8);
+  segs.forEach(([a, b, al], i) => data.set([...a, al, ...b, al], i * 8));
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  const ap = gl.getAttribLocation(lineProg.p, 'aPos'), aa = gl.getAttribLocation(lineProg.p, 'aA');
+  gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 3, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(aa); gl.vertexAttribPointer(aa, 1, gl.FLOAT, false, 16, 12);
+  gl.bindVertexArray(null);
+  return { vao, n: segs.length * 2 };
+}
+function boxEdges(lo, hi, al) {
+  const c = (i) => [i & 1 ? hi[0] : lo[0], i & 2 ? hi[1] : lo[1], i & 4 ? hi[2] : lo[2]];
+  const e = [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+  return e.map(([a, b]) => [c(a), c(b), al]);
+}
+function rectEdges(lo, hi, z, al) {
+  const p = [[lo[0],lo[1],z],[hi[0],lo[1],z],[hi[0],hi[1],z],[lo[0],hi[1],z]];
+  return [[p[0],p[1],al],[p[1],p[2],al],[p[2],p[3],al],[p[3],p[0],al]];
+}
+function loadTex(url) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const ext = gl.getExtension('EXT_texture_filter_anisotropic');
+      if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, 8);
+      res(t);
+    };
+    im.onerror = () => rej(new Error('could not load ' + url));
+    im.src = url;
+  });
+}
+
+// ---------------------------------------------------------------- scene
+let S = null;   // everything built once the data is in
+
+async function build() {
+  const meta = await (await fetch('meta.json')).json();
+  const names = ['z0','z1','y0','y1','x0','x1','s0','s1','s2','s3','s4'];
+  const [texs, bin] = await Promise.all([
+    Promise.all(names.map((n) => loadTex(n + '.jpg'))),
+    fetch('cell.bin').then((r) => r.arrayBuffer()),
+  ]);
+  const T = Object.fromEntries(names.map((n, i) => [n, texs[i]]));
+
+  const cmin = meta.cube.min, cmax = meta.cube.max;
+  const [x0, y0, z0] = cmin, [x1, y1, z1] = cmax;
+  const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+  // cube faces. xy images have rows = +y, cols = +x. Side images have rows going down in z.
+  const faces = [
+    { t: T.z1, vao: quadVao([x0, y0, z1], [dx, 0, 0], [0, dy, 0]) },
+    { t: T.z0, vao: quadVao([x0, y0, z0], [dx, 0, 0], [0, dy, 0]) },
+    { t: T.y0, vao: quadVao([x0, y0, z1], [dx, 0, 0], [0, 0, -dz]) },
+    { t: T.y1, vao: quadVao([x0, y1, z1], [dx, 0, 0], [0, 0, -dz]) },
+    { t: T.x0, vao: quadVao([x0, y0, z1], [0, dy, 0], [0, 0, -dz]) },
+    { t: T.x1, vao: quadVao([x1, y0, z1], [0, dy, 0], [0, 0, -dz]) },
+  ];
+  // each section as a unit quad at z = 0, lifted by a per frame offset
+  const slices = meta.cube.sections.map((z, i) => ({
+    z, t: T['s' + i], vao: quadVao([x0, y0, 0], [dx, 0, 0], [0, dy, 0]),
+  }));
+
+  // the neuron: uint16 positions over its bounds, uint16 triangle indices
+  const nv = meta.cell.verts, nf = meta.cell.faces;
+  const q = new Uint16Array(bin, 0, nv * 3);
+  const idx = new Uint16Array(bin, nv * 6, nf * 3);
+  const lo = meta.cell.lo, span = V.sub(meta.cell.hi, lo);
+  const pos = new Float32Array(nv * 3);
+  for (let i = 0; i < nv * 3; i++) pos[i] = q[i] / 65535;
+  const nrm = new Float32Array(nv * 3);
+  for (let f = 0; f < nf; f++) {
+    const a = idx[f*3]*3, b = idx[f*3+1]*3, c = idx[f*3+2]*3;
+    const P = (k) => [lo[0]+pos[k]*span[0], lo[1]+pos[k+1]*span[1], lo[2]+pos[k+2]*span[2]];
+    const pa = P(a), n = V.cross(V.sub(P(b), pa), V.sub(P(c), pa));
+    for (const k of [a, b, c]) { nrm[k] += n[0]; nrm[k+1] += n[1]; nrm[k+2] += n[2]; }
+  }
+  const cellVao = gl.createVertexArray(); gl.bindVertexArray(cellVao);
+  const attr = (name, data) => {
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const l = gl.getAttribLocation(meshProg.p, name); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 0, 0);
+  };
+  attr('aPos', pos); attr('aNrm', nrm);
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+
+  // the whole imaged volume, edges plus a few section planes seen edge on
+  const vlo = meta.volume.min, vhi = meta.volume.max;
+  const slab = [...boxEdges(vlo, vhi, 0.95)];
+  const levels = 7;
+  for (let i = 1; i < levels; i++) slab.push(...rectEdges(vlo, vhi, vlo[2] + (vhi[2] - vlo[2]) * i / levels, 0.32));
+  const midZ = meta.soma[2];
+  const fillVao = gl.createVertexArray(); gl.bindVertexArray(fillVao);
+  const fb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, fb);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    vlo[0],vlo[1],midZ, vhi[0],vlo[1],midZ, vhi[0],vhi[1],midZ,
+    vlo[0],vlo[1],midZ, vhi[0],vhi[1],midZ, vlo[0],vhi[1],midZ]), gl.STATIC_DRAW);
+  const fl = gl.getAttribLocation(fillProg.p, 'aPos'); gl.enableVertexAttribArray(fl); gl.vertexAttribPointer(fl, 3, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+
+  S = {
+    meta, faces, slices, cellVao, nIdx: nf * 3, lo, span,
+    slab: lineVao(slab), cubeLines: lineVao(boxEdges(cmin, cmax, 1)), fillVao,
+    cubeC: V.mul(V.add(cmin, cmax), 0.5),
+    // looking along x: center on the cell in depth, on the volume across and up
+    cellC: [(meta.cell.lo[0] + meta.cell.hi[0]) / 2, (meta.cell.lo[1] + meta.cell.hi[1]) / 2, (vlo[2] + vhi[2]) / 2],
+    cellHalfY: (meta.cell.hi[1] - meta.cell.lo[1]) / 2,
+    volSpan: V.sub(vhi, vlo),
+  };
+}
+
+// ---------------------------------------------------------------- the timeline
+// t in seconds. 0 to 4: the block. 4 to 9: its slices. 9 on: pull back to the neuron.
+const STEP_AT = [0, 4.6, 12.2];
+const LOOP = 19;
+const CAPS = [
+  'A tiny block of brain, imaged with an electron microscope',
+  'It is cut into thousands of slices, each just 40 nanometers thin',
+  'Stack the slices and trace them, and a whole neuron appears in 3D',
+];
+const TAGS = [
+  '12 &times; 12 &times; 8 <span class="unit">&micro;m</span> of real tissue',
+  '5 of its 200 slices',
+  'one pyramidal cell &middot; MICrONS',
+];
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let t = 0, playing = !reduce, last = performance.now(), yawDrag = 0, pitchDrag = 0;
+let shownStep = -1;
+const capEl = document.getElementById('cap'), tagEl = document.getElementById('tag');
+const btns = [...root.querySelectorAll('.steps button')];
+function stepOf(tt) { return tt < 4.3 ? 0 : tt < 9.6 ? 1 : 2; }
+function showStep(s) {
+  if (s === shownStep) return;
+  shownStep = s;
+  btns.forEach((b, i) => { b.classList.toggle('on', i === s); b.setAttribute('aria-pressed', String(i === s)); });
+  capEl.textContent = CAPS[s];
+  tagEl.innerHTML = TAGS[s];
+}
+btns.forEach((b, i) => b.addEventListener('click', (e) => {
+  e.stopPropagation();
+  t = STEP_AT[i]; yawDrag = 0; pitchDrag = 0;
+  if (reduce) playing = false;
+}));
+
+// drag to turn
+let drag = null;
+root.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('button')) return;
+  drag = { x: e.clientX, y: e.clientY, yaw: yawDrag, pitch: pitchDrag };
+  root.setPointerCapture(e.pointerId);
+});
+root.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  yawDrag = drag.yaw - (e.clientX - drag.x) * 0.008;
+  pitchDrag = clamp(drag.pitch + (e.clientY - drag.y) * 0.006, -0.5, 1.1);
+});
+const endDrag = () => { drag = null; };
+root.addEventListener('pointerup', endDrag);
+root.addEventListener('pointercancel', endDrag);
+
+function camera(tt) {
+  // close on the block, swinging slowly round it
+  const pull = smooth(9.4, 12.4, tt);
+  const az0 = -2.35 + 0.05 * tt;                 // three quarter view
+  const el0 = 0.42 + 0.12 * smooth(4.2, 6.0, tt) - 0.12 * smooth(8.2, 9.4, tt);
+  // edge on to the slab, looking along x so the cell's long y spread runs across
+  const az1 = Math.PI + 0.16 * Math.sin((tt - 12.4) * 0.5) * smooth(12.4, 13.4, tt);
+  const el1 = 0.07;
+  let az = az0 + (az1 - az0) * pull + yawDrag;
+  let el = clamp(el0 + (el1 - el0) * pull + pitchDrag, -1.2, 1.45);
+  // a long lens for the edge on view, so the near and far edges of the slab
+  // nearly line up and it reads as a stack of planes rather than a floor
+  const fov = 0.62 + (0.16 - 0.62) * pull;
+  const aspect = canvas.width / canvas.height;
+  const halfW = S.cellHalfY * 1.22, halfH = S.volSpan[2] * 0.5 * 1.45;
+  const d1 = Math.max(halfW / (aspect * Math.tan(0.08)), halfH / Math.tan(0.08));
+  const d0 = 30 + 6 * smooth(4.2, 6.0, tt) * (1 - smooth(8.0, 9.4, tt));
+  const dist = Math.exp(Math.log(d0) + (Math.log(d1) - Math.log(d0)) * pull);
+  const target = V.lerp(S.cubeC, S.cellC, smooth(9.6, 12.4, tt));
+  const dir = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
+  return { eye: V.add(target, V.mul(dir, dist)), target, dist, fov };
+}
+
+function resize() {
+  const r = root.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+
+function draw() {
+  resize();
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.016, 0.024, 0.043, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if (!S) return;
+  const tt = t;
+  const cam = camera(tt);
+  const proj = perspective(cam.fov, canvas.width / canvas.height, cam.dist * 0.02, cam.dist * 8);
+  const mvp = mat4mul(proj, lookAt(cam.eye, cam.target, [0, 0, 1]));
+  const fadeLoop = 1 - smooth(LOOP - 0.9, LOOP, tt);
+
+  // how much of each thing is on screen
+  const aCube   = (1 - smooth(4.0, 5.0, tt)) * smooth(0, 0.6, tt);
+  const spread  = smooth(4.4, 6.2, tt) * (1 - smooth(8.0, 9.4, tt));
+  const aSlices = smooth(4.0, 4.8, tt) * (1 - smooth(9.0, 10.0, tt));
+  const aCell   = smooth(9.8, 11.8, tt) * fadeLoop;
+  const aSlab   = smooth(10.6, 12.4, tt) * fadeLoop;
+  const aMarker = smooth(8.8, 9.8, tt) * fadeLoop;
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  // the block's EM faces
+  if (aCube > 0.002) {
+    gl.useProgram(texProg.p);
+    gl.uniformMatrix4fv(texProg.u.uMvp, false, mvp);
+    gl.uniform1f(texProg.u.uAlpha, aCube); gl.uniform1f(texProg.u.uRim, 0.9);
+    gl.depthMask(aCube > 0.98);
+    for (const f of S.faces) {
+      gl.bindTexture(gl.TEXTURE_2D, f.t); gl.bindVertexArray(f.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+    gl.depthMask(true);
+  }
+
+  // the slices, fanned apart along the cutting axis. Drawn back to front.
+  if (aSlices > 0.002) {
+    gl.useProgram(texProg.p);
+    gl.uniform1f(texProg.u.uRim, 1.0);
+    const cz = S.cubeC[2];
+    const order = S.slices.map((s, i) => i);
+    if (cam.eye[2] > cz) order.sort((a, b) => S.slices[a].z - S.slices[b].z);
+    else order.sort((a, b) => S.slices[b].z - S.slices[a].z);
+    gl.depthMask(false);
+    for (const i of order) {
+      const s = S.slices[i];
+      const z = cz + (s.z - cz) * (1 + 2.3 * spread);
+      const m = mat4mul(mvp, [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,z,1]);
+      gl.uniformMatrix4fv(texProg.u.uMvp, false, m);
+      gl.uniform1f(texProg.u.uAlpha, aSlices * 0.96);
+      gl.bindTexture(gl.TEXTURE_2D, s.t); gl.bindVertexArray(s.vao); gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+    gl.depthMask(true);
+  }
+
+  // the neuron
+  if (aCell > 0.002) {
+    gl.useProgram(meshProg.p);
+    gl.uniformMatrix4fv(meshProg.u.uMvp, false, mvp);
+    gl.uniform3fv(meshProg.u.uLo, S.lo); gl.uniform3fv(meshProg.u.uSpan, S.span);
+    gl.uniform3fv(meshProg.u.uEye, cam.eye);
+    gl.uniform1f(meshProg.u.uAlpha, aCell);
+    gl.bindVertexArray(S.cellVao);
+    gl.drawElements(gl.TRIANGLES, S.nIdx, gl.UNSIGNED_SHORT, 0);
+  }
+
+  // glowing lines on top, additive
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.depthMask(false);
+  if (aSlab > 0.002) {
+    gl.useProgram(fillProg.p);
+    gl.uniformMatrix4fv(fillProg.u.uMvp, false, mvp);
+    gl.uniform4f(fillProg.u.uColor, 0.45, 0.62, 0.78, 0.10 * aSlab);
+    gl.bindVertexArray(S.fillVao); gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.useProgram(lineProg.p);
+    gl.uniformMatrix4fv(lineProg.u.uMvp, false, mvp);
+    gl.uniform3f(lineProg.u.uColor, 0.37, 0.82, 1.0);
+    gl.uniform1f(lineProg.u.uAlpha, aSlab);
+    gl.bindVertexArray(S.slab.vao); gl.drawArrays(gl.LINES, 0, S.slab.n);
+  }
+  if (aMarker > 0.002) {
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(lineProg.p);
+    gl.uniformMatrix4fv(lineProg.u.uMvp, false, mvp);
+    gl.uniform3f(lineProg.u.uColor, 1.0, 0.86, 0.45);
+    gl.uniform1f(lineProg.u.uAlpha, aMarker);
+    gl.bindVertexArray(S.cubeLines.vao); gl.drawArrays(gl.LINES, 0, S.cubeLines.n);
+    gl.enable(gl.DEPTH_TEST);
+  }
+  gl.depthMask(true);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  capEl.style.opacity = tagEl.style.opacity = String(Math.min(fadeLoop, smooth(0, 0.5, tt) || (tt > 0 ? 1 : 0)));
+  showStep(stepOf(tt));
+}
+
+// stop drawing when nobody can see it
+let visible = true;
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver((es) => { visible = es[0].isIntersecting; }).observe(root);
+}
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (visible && !document.hidden) {
+    if (playing && S && !drag) { t += dt; if (t >= LOOP) t = 0; }
+    draw();
+  }
+  requestAnimationFrame(frame);
+}
+
+build().then(() => {
+  loadEl.classList.add('gone');
+  if (reduce) t = STEP_AT[2];
+  requestAnimationFrame(frame);
+}).catch((err) => {
+  console.error(err);
+  root.classList.add('nogl');
+  loadEl.classList.add('gone');
+});
+
+// a handle for checking frames by hand, since a hidden tab never animates
+window.__mv = { seek: (s) => { t = s; draw(); }, play: (p) => { playing = p; }, get t() { return t; } };
+})();
+</script>
+</body>
+</html>

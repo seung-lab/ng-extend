@@ -154,6 +154,9 @@ export interface Step {
   state?: string | Record<string, any>;
   video?: string;
   image?: string;
+  /** A small page shown in place of the picture, in a frame (the mini volume
+   *  on Get Started page 2: a block of EM, its slices, then the neuron). */
+  embed?: string;
   preloading?: boolean;
   videoCache?: HTMLVideoElement;
   width?: string;

@@ -239,6 +239,14 @@ if (fs.existsSync(THANKSGIVING)) {
   console.log(`Copied the Thanksgiving turkey → ${dest}`);
 }
 
+// ── The mini volume (Get Started page 2 frames /mini-volume/index.html) ─────
+const MINI_VOLUME = path.join(__dirname, '..', 'static', 'mini-volume');
+if (fs.existsSync(MINI_VOLUME)) {
+  const dest = path.join(__dirname, '..', 'dist', 'dev', 'mini-volume');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(MINI_VOLUME)) fs.copyFileSync(path.join(MINI_VOLUME, file), path.join(dest, file));
+}
+
 // ── Sound effects (src/util/scythe.ts plays /sfx/<name>.mp3) ─────────────────
 const SFX = path.join(__dirname, '..', 'static', 'sfx');
 if (fs.existsSync(SFX)) {

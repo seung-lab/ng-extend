@@ -8,7 +8,6 @@ import { cancellableFetchSpecialOk, parseSpecialUrl } from "neuroglancer/util/sp
 // 2026) and edited since. Swapping in its current id showed that merge
 // (Ames, 2026-09-30), so the ids stay as they are.
 import imgMainBanner from './images/main-banner-vF.jpg';
-import imgSegmentation from './images/segmentation-tutorial.jpg';
 import imgSynapseWide from './images/synapse-wide.png';
 import imgSandboxExplosion from './images/sandbox-explosion.jpg';
 import imgInspectorNurro from './images/inspector-nurro-2.png';
@@ -421,8 +420,8 @@ A connectomics dataset starts with a brain! It is imaged at nanoscale and recons
 
 The map of every neuron and its connections is called a connectome. Learn more with <a href="https://connectome.quest/atlas/" target="_blank" rel="noopener">Connectome 101</a>.`,
     position: MIDDLE,
-    image:
-      imgSegmentation,
+    // a block of real EM, its slices, then the whole neuron (static/mini-volume)
+    embed: 'mini-volume/index.html?embed',
     width: "500px"
   },
   //4
