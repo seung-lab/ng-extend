@@ -32,7 +32,7 @@ const GROUP = 'starship';
 /** One full turn of the view every two minutes (Ames). */
 const TURN_SECONDS = 120;
 /** Seconds of flight before the landing starts, and for the landing. */
-const CRUISE_S = 17;
+const CRUISE_S = 15;
 const LANDING_S = 3.2;
 /** How much shows from top to bottom of the view: the whole cell, then in
  *  close on the soma for the landing, in nanometres. */
