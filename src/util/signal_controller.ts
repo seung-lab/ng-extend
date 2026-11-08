@@ -501,6 +501,10 @@ function updateHud() {
 }
 
 /* ── the scene: cells, camera, ship ── */
+function closeSidePanel() {
+  if (!active) return;
+  try { const v = viewerNow(); if (v?.selectedLayer?.visible) v.selectedLayer.visible = false; } catch { /* panel stays */ }
+}
 async function openCircuit(): Promise<any> {
   if (!circuitLayer()) {
     const ds = findDatasetBySegName('microns_signal');
@@ -509,9 +513,9 @@ async function openCircuit(): Promise<any> {
   for (let tries = 0; tries < 60; tries++) {
     const ml = circuitLayer();
     if (ml) {
-      // The dataset switch opens the Segments side panel; the game wants
-      // the whole screen for the cells.
-      try { const v = viewerNow(); if (v?.selectedLayer) v.selectedLayer.visible = false; } catch { /* panel stays */ }
+      // The dataset switch opens the Segments side panel (and again a
+      // moment later, as it settles); the game wants the whole screen.
+      for (const ms of [0, 400, 1200, 2600, 4500]) setTimeout(closeSidePanel, ms);
       return ml;
     }
     await new Promise(r => setTimeout(r, 250));
@@ -892,6 +896,7 @@ async function startLevel(index: number) {
 function beginPlay() {
   phase = 'playing';
   now = 0; lastFrame = 0;
+  closeSidePanel();
   showChips();
   updateHud();
   say(level.hush ? 'Tab switches the beam. 1 to 9 fire at a chip.' : 'Click a cell, or its chip. 1 to 9 fire at a chip.', 4);
