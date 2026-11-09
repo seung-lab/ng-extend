@@ -292,11 +292,17 @@ function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number},
       // only once the bar is past them (Ames: none before the bar)
       for (let j = 0; j < n; j++) if (delay[j] === Infinity && -(glow.positions[j * 3 + 1] * nm[1]) <= h - 6000) delay[j] = sec;
     }
+    // dots a steady size on screen: zoomed in they stay dots, not blooms (Ames)
+    let zk = 1;
+    try {
+      const Hn = viewerNow().projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
+      zk = Math.max(0.08, Math.min(1.5, Hn / (scale > 1.5 ? 1_000_000 : 230_000)));
+    } catch { /* full size */ }
     for (let j = 0; j < n; j++) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
       if (j < nIn) glow.colors.set([1, 0.86, 0.45, on * alpha], j * 4);
       else glow.colors.set([1, 0.36, 0.86, on * alpha], j * 4);
-      glow.sizesNm[j] = scale * (j < nIn ? 1700 : 3200) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
+      glow.sizesNm[j] = zk * scale * (j < nIn ? 1700 : 3200) * (1 + 0.6 * Math.max(0, 1 - Math.abs(sec - delay[j] - 0.2) * 4));
     }
     const cam = cameraAxes(nm);
     if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
