@@ -356,6 +356,8 @@ function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number},
     try {
       const Hn = viewerNow().projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
       zk = Math.max(0.08, Math.min(1.5, Hn / (scale > 1.5 ? 1_000_000 : 230_000)));
+      // bigger on a phone's small screen (Ames: "hard to see on phone")
+      if (isPhone()) zk *= 2;
     } catch { /* full size */ }
     for (let j = 0; j < n; j++) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
