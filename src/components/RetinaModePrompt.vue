@@ -1,3 +1,10 @@
+<script lang="ts">
+/** ?retinaQuestion in the address opens the question, answered or not (for
+ *  checking it). Read as the code loads, because start up rewrites the
+ *  address before this component mounts. */
+const ASK_FROM_ADDRESS = typeof location !== 'undefined' && location.href.includes('retinaQuestion');
+</script>
+
 <script setup lang="ts">
 /**
  * Asks once, of every player who has claimed or completed a Retina cell
@@ -72,8 +79,7 @@ function askAgain() {
 }
 onMounted(() => {
   document.addEventListener('nge:retina-ask', askAgain);
-  // ?retinaQuestion in the address opens it, answered or not (for checking it).
-  if (/[?&#]retinaQuestion/.test(location.search + location.hash)) setTimeout(askAgain, 4000);
+  if (ASK_FROM_ADDRESS) setTimeout(askAgain, 4000);
 });
 onUnmounted(() => document.removeEventListener('nge:retina-ask', askAgain));
 </script>
