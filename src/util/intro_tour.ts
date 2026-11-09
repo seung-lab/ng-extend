@@ -757,10 +757,11 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-beamg { opacity: 0; }
 .nge-callout--in .nge-callout-beamg { animation: nge-beam-in 600ms ease-out both; }
 @keyframes nge-beam-in { 0% { opacity: 0; } 25% { opacity: 1; } 35% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 1; } }
-.nge-beam-edge { stroke: rgba(170, 240, 255, 0.7); stroke-width: 1; filter: drop-shadow(0 0 3px #7ee0ff); }
-.nge-beam-ray { stroke: rgba(150, 230, 255, 0.22); stroke-width: 0.8; animation: nge-ray 1.8s ease-in-out infinite; }
-.nge-beam-ray:nth-of-type(2n) { animation-delay: -0.9s; }
-@keyframes nge-ray { 50% { stroke-opacity: 0.25; } }
+.nge-beam-edge { stroke: rgba(170, 240, 255, 0.55); stroke-width: 0.9; filter: drop-shadow(0 0 3px #7ee0ff); }
+.nge-beam-seam { stroke: #dffaff; stroke-width: 2; filter: drop-shadow(0 0 6px #7ee0ff) drop-shadow(0 0 12px #4fb8ff); }
+.nge-beam-scan { mix-blend-mode: screen; animation: nge-beam-breathe 2.4s ease-in-out infinite; }
+@keyframes nge-beam-breathe { 50% { opacity: 0.6; } }
+.nge-beam-motes circle { filter: drop-shadow(0 0 3px #7ee0ff); }
 .nge-co-frame { position: absolute; left: 0; top: 0; z-index: -1; overflow: visible; pointer-events: none; }
 .nge-co-frame .tr { fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 1.1; stroke-linecap: round; }
 .nge-co-frame .pad { fill: rgba(8, 24, 52, 0.9); stroke: #9fe9ff; stroke-width: 1; }
@@ -789,7 +790,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-stats > div { min-width: 0; }
 .nge-callout-stats dt { color: rgba(126, 202, 255, 0.85); font: 600 9px/1.4 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; }
 .nge-callout-stats dd { margin: 2px 0 0; color: #f2fbff; font: 500 15px/1.3 'Inter', sans-serif; letter-spacing: 0.005em; }
-.nge-callout-beam { animation: nge-beam 2.4s ease-in-out infinite; }
+.nge-callout-beam { }
 @keyframes nge-beam { 50% { opacity: 0.65; } }
 @media (prefers-reduced-motion: reduce) { .nge-callout-box, .nge-callout-beam, .nge-callout--in .nge-callout-box, .nge-callout--in .nge-callout-box > *, .nge-callout--in .nge-callout-beamg { animation: none !important; opacity: 1; } }
 .nge-callout-title { display: flex; align-items: center; gap: 10px; margin-top: 3px; font: 700 21px/1.15 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
@@ -958,13 +959,25 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   // ship up to it (Ames), and a fine line from it down to the part.
   callout.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-beam-g" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#9fefff" stop-opacity="0.42"/><stop offset="0.55" stop-color="#4fb8ff" stop-opacity="0.1"/><stop offset="1" stop-color="#4fb8ff" stop-opacity="0.2"/></linearGradient></defs>
-    <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="rgba(126, 224, 255, 0.07)"/><line class="nge-beam-edge e1"/><line class="nge-beam-edge e2"/><line class="nge-beam-ray"/><line class="nge-beam-ray"/><line class="nge-beam-ray"/><line class="nge-beam-ray"/></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
+    <defs><pattern id="nge-beam-lines" patternUnits="userSpaceOnUse" width="12" height="7"><rect y="0" width="12" height="1.1" fill="#bff4ff" fill-opacity="0.32"/>
+      <animateTransform attributeName="patternTransform" type="translate" from="0 0" to="0 -7" dur="0.5s" repeatCount="indefinite"/></pattern>
+      <filter id="nge-beam-soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.4"/></filter></defs>
+    <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="rgba(110, 215, 255, 0.05)"/><polygon class="nge-callout-beam nge-beam-scan" fill="url(#nge-beam-lines)" filter="url(#nge-beam-soft)"/>
+      <line class="nge-beam-edge e1"/><line class="nge-beam-edge e2"/><line class="nge-beam-seam"/><g class="nge-beam-motes"></g></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
     <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const edges = [...callout.querySelectorAll('.nge-beam-edge')] as SVGLineElement[];
-  const rays = [...callout.querySelectorAll('.nge-beam-ray')] as SVGLineElement[];
+  const beams = [...callout.querySelectorAll('polygon.nge-callout-beam')] as SVGPolygonElement[];
+  const seam = callout.querySelector('.nge-beam-seam') as SVGLineElement;
+  const moteG = callout.querySelector('.nge-beam-motes') as SVGGElement;
+  const motes = Array.from({length: 18}, (_, k) => {
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('r', String(0.8 + Math.random() * 1.4)); c.setAttribute('fill', '#e6fbff'); moteG.appendChild(c);
+    return {c, u: k / 18, x: Math.random(), v: 0.25 + Math.random() * 0.35};
+  });
+  let moteLast = performance.now();
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
   const host = box.querySelector('.nge-frame-host') as HTMLElement;
@@ -1009,21 +1022,25 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
         const side = sx < bx;   // projecting sideways, to the box's near edge
         box.style.transformOrigin = side ? '0% 50%' : '50% 100%';
         const ends = side ? [[bx, by + 8], [bx, by + bh - 8]] : [[bx + 6, by + bh], [bx + bw - 6, by + bh]];
-        beam.setAttribute('points', `${sx},${sy} ${ends[0][0]},${ends[0][1]} ${ends[1][0]},${ends[1][1]}`);
+        beams.forEach(b2 => b2.setAttribute('points', `${sx},${sy} ${ends[0][0]},${ends[0][1]} ${ends[1][0]},${ends[1][1]}`));
+        seam.setAttribute('x1', String(ends[0][0])); seam.setAttribute('y1', String(ends[0][1])); seam.setAttribute('x2', String(ends[1][0])); seam.setAttribute('y2', String(ends[1][1]));
+        const tNow = performance.now(), mdt = Math.min(0.05, (tNow - moteLast) / 1000); moteLast = tNow;
+        for (const m of motes) {
+          m.u += m.v * mdt; if (m.u > 1) { m.u -= 1; m.x = Math.random(); }
+          const ex = ends[0][0] + (ends[1][0] - ends[0][0]) * m.x, ey = ends[0][1] + (ends[1][1] - ends[0][1]) * m.x;
+          m.c.setAttribute('cx', (sx + (ex - sx) * m.u).toFixed(1)); m.c.setAttribute('cy', (sy + (ey - sy) * m.u).toFixed(1));
+          m.c.setAttribute('opacity', (Math.sin(Math.PI * m.u) * 0.85).toFixed(2));
+        }
         edges.forEach((e, k) => { e.setAttribute('x1', String(sx)); e.setAttribute('y1', String(sy)); e.setAttribute('x2', String(ends[k][0])); e.setAttribute('y2', String(ends[k][1])); });
-        rays.forEach((r, k) => {
-          const u = (k + 1) / (rays.length + 1);
-          r.setAttribute('x1', String(sx)); r.setAttribute('y1', String(sy));
-          r.setAttribute('x2', String(ends[0][0] + (ends[1][0] - ends[0][0]) * u)); r.setAttribute('y2', String(ends[0][1] + (ends[1][1] - ends[0][1]) * u));
-        });
+
         grad.setAttribute('x1', String(sx)); grad.setAttribute('y1', String(sy));
         grad.setAttribute('x2', String(side ? bx : bx + bw / 2)); grad.setAttribute('y2', String(side ? by + bh / 2 : by + bh));
         lens.setAttribute('cx', String(sx)); lens.setAttribute('cy', String(sy));
         beam.style.display = lens.style.display = '';
-        edges.forEach(e => { e.style.display = ''; }); rays.forEach(e => { e.style.display = ''; });
+        edges.forEach(e => { e.style.display = ''; }); beams.forEach(e => { e.style.display = ''; }); seam.style.display = moteG.style.display = '';
       } else {
         beam.style.display = lens.style.display = 'none';
-        edges.forEach(e => { e.style.display = 'none'; }); rays.forEach(e => { e.style.display = 'none'; });
+        edges.forEach(e => { e.style.display = 'none'; }); beams.forEach(e => { e.style.display = 'none'; }); seam.style.display = moteG.style.display = 'none';
       }
       // the ship points its beam at the part; the long parts get just the dot
       if (pointAt && onScreen) {
@@ -1555,7 +1572,7 @@ function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
     [], {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)});
   // its stats are a hologram from the Axon Runner (Ames)
   showCallout(BIG_NEURON_NM as unknown as V3, 'Martinotti cell',
-    [['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['All its branches', 'about 36 mm'], ['Axon alone', 'about 32 mm'], ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
+    [['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['All its branches', 'about 36 mm'], ['For scale', 'as long as a paper clip, packed into a speck the size of a grain of sand'], ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
     '#cfdcff', false, false);
   if (nm) frameAboveCard([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
 }

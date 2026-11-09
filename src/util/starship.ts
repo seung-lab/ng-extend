@@ -158,7 +158,7 @@ let hop: Hop | null = null;
 /** Docked: the ship holds a spot on screen (fractions of the 3D view from
  *  its centre, x to the right, y up), whatever the camera does, and faces
  *  the cell. It eases there from wherever it was. */
-let dock: {fx: number; fy: number; start: number; from: V3 | null} | null = null;
+let dock: {fx: number; fy: number; start: number; from: V3 | null; hold?: {pos: V3; fwd: V3; up: V3; k: number}} | null = null;
 let dockMs = 4200;
 /** Dock, taking `ms` to get there (the tour makes it end as the camera does). */
 let onPad = true;
@@ -718,7 +718,8 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           let target = 1;
           const Hn = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
           const onScreen = Math.max(cameo ? 0.3 : 0.5, Math.min(8, (cameo ? 0.05 : 0.035) * Hn / (f.shipLength * (cameo || 1))));
-          if (dock) target = 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
+          if (dock?.hold) target = dock.hold.k;
+          else if (dock) target = 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
           // (flying its routes it is its true size: they hug the cell, and a
           // bigger ship dwarfed the axon it spirals round: Ames, "way too big!")
           sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 3));
@@ -743,7 +744,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
             const w2 = (u - SPLIT) / (1 - SPLIT);
             return mix(mix(q, wall, w2), mix(wall, target, w2), w2);
           };
-          pos = B(dq);
+          pos = dock.hold ? dock.hold.pos : B(dq);
           dockBend = sub(sub(B(Math.min(1, dq + 0.04)), pos), sub(pos, B(Math.max(0, dq - 0.04))));
           // nose on the way it is going, turning to face the cell only as it
           // arrives (Ames: it flew backwards)
@@ -801,6 +802,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
             up = norm(add(mul(up, Math.cos(a)), mul(side, Math.sin(a))));
           }
         }
+        if (dock && !dock.hold && now - dock.start >= dockMs && (userTouched || touchedAt > dock.start))
+          dock.hold = {pos, fwd, up, k: sizeK};
+        if (dock?.hold) { fwd = dock.hold.fwd; up = dock.hold.up; }
         // barrel rolls on a hop that asks for them (Ames: on the dive to the axon)
         if (h && h.roll && hq < 1) {
           const rq = (s / (h.cum[h.cum.length - 1] || 1) - h.roll.from) / (h.roll.to - h.roll.from);
