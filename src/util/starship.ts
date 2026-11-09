@@ -676,7 +676,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // filling the close ones)
           let target = 1;
           const Hn = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
-          const onScreen = Math.max(cameo ? 0.3 : 0.5, Math.min(8, 0.05 * Hn / (f.shipLength * (cameo || 1))));
+          const onScreen = Math.max(cameo ? 0.3 : 0.5, Math.min(8, (cameo ? 0.05 : 0.035) * Hn / (f.shipLength * (cameo || 1))));
           if (dock) target = 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
           else if (h) target = onScreen;
           sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 3));
