@@ -41,7 +41,7 @@ const IMAGES_MAX = 10;
 /** Images added on the board: our own storage, the todo-images folder. */
 const TODO_IMAGES = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/todo-images/';
 /** Test site, live, pull request or branch, doc, anything else. */
-const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'other'];
+const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'file', 'other'];
 const COMMENT_MAX = 2000;
 const COMMENTS_MAX = 200;
 
@@ -98,7 +98,7 @@ function cleanFields(f, isNew) {
       const url = String((l && l.url) || '').trim();
       if (!/^https:\/\/[^\s"'<>]+$/.test(url) || url.length > 500) fail(400, 'A link must be one https address.');
       const kind = LINK_KINDS.includes(l.kind) ? l.kind : 'other';
-      return { kind, url, label: text((l && l.label) || '', 40, 'A link name').trim() };
+      return { kind, url, label: text((l && l.label) || '', 80, 'A link name').trim() };
     });
   }
   if ('images' in f) {

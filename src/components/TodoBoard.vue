@@ -985,11 +985,11 @@ async function copyConnectUrl() {
 // ── Links, a status line, a due day, images and formatting (Ames 2026-10-21:
 // "we need some more options here, like test server link", "all optional",
 // "need optional images and text formatting") ──
-type LinkKind = 'test' | 'live' | 'pr' | 'doc' | 'other';
+type LinkKind = 'test' | 'live' | 'pr' | 'doc' | 'file' | 'other';
 interface Link { kind: LinkKind; url: string; label: string }
 const LINK_KINDS: { key: LinkKind; icon: string; word: string }[] = [
   { key: 'test', icon: '🧪', word: 'Test site' }, { key: 'live', icon: '🌐', word: 'Live' },
-  { key: 'pr', icon: '🔀', word: 'Pull request' }, { key: 'doc', icon: '📄', word: 'Doc' }, { key: 'other', icon: '🔗', word: 'Link' },
+  { key: 'pr', icon: '🔀', word: 'Pull request' }, { key: 'doc', icon: '📄', word: 'Doc' }, { key: 'file', icon: '📎', word: 'File' }, { key: 'other', icon: '🔗', word: 'Link' },
 ];
 const linkIcon = (l: Link) => LINK_KINDS.find(k => k.key === l.kind)?.icon || '🔗';
 const linkWord = (l: Link) => l.label || LINK_KINDS.find(k => k.key === l.kind)?.word || 'Link';
@@ -1024,6 +1024,37 @@ async function addCardLink(c: Card) {
   await save(c, { links: [...(c.links || []), l] });
 }
 const removeCardLink = (c: Card, i: number) => save(c, { links: (c.links || []).filter((_, k) => k !== i) });
+// Files on a card (Ames 2026-11-09: "can you let me attach a file?"). Any file
+// up to 7 MB; it shows with the links, under its own name. PDFs and pictures
+// open in the browser, everything else downloads.
+const filePicker = ref<HTMLInputElement | null>(null);
+const fileBusy = ref(0);
+let fileFor: Card | null = null;
+function pickFile(c: Card) { fileFor = c; filePicker.value?.click(); }
+function onFilePicked(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const c = fileFor;
+  if (c) void attachFiles(c, input.files);
+  input.value = '';
+}
+async function attachFiles(c: Card, files: FileList | File[] | null | undefined) {
+  for (const f of [...(files || [])]) {
+    if (f.size > 7 * 1024 * 1024) { error.value = `${f.name} is over 7 MB. Put it in Drive and add the link instead.`; continue; }
+    fileBusy.value++;
+    try {
+      const url = await secureUpload(f, 'todo-file', f.name);
+      const opens = /^(application\/pdf|image\/(png|jpeg|gif|webp)|text\/plain)$/.test(f.type);
+      const label = f.name.length > 80 ? f.name.slice(0, 50) + '…' + f.name.slice(-29) : f.name;
+      const fresh = cards.value.find(x => x.id === c.id) || c;
+      await save(fresh, { links: [...(fresh.links || []), { kind: 'file', url: opens ? url : `${url}?download=${encodeURIComponent(f.name)}`, label }] });
+    } catch (e: any) { error.value = e?.message || 'The file did not upload.'; }
+    finally { fileBusy.value--; }
+  }
+}
+function onLinksDrop(e: DragEvent, c: Card) {
+  const files = [...(e.dataTransfer?.files || [])];
+  if (files.length) { e.preventDefault(); void attachFiles(c, files); }
+}
 
 /** Today, on this computer's calendar, as 2026-10-21. */
 function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
@@ -1895,7 +1926,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button type="button" class="nge-todo-btn" @click="addCardLink(openCard)">Add link</button>
           <button type="button" class="nge-todo-mini" @click="linkDraft = null">Cancel</button>
         </div>
-        <button v-else type="button" class="nge-todo-btn nge-todo-add-btn" @click="linkDraft = { for: openCard.id, kind: '', url: '', label: '' }">＋ Link, like the test site</button>
+        <div v-else class="nge-todo-row nge-todo-linkadd" @dragover.prevent @drop="onLinksDrop($event, openCard)">
+          <button type="button" class="nge-todo-btn nge-todo-add-btn" @click="linkDraft = { for: openCard.id, kind: '', url: '', label: '' }">＋ Link, like the test site</button>
+          <button type="button" class="nge-todo-btn nge-todo-add-btn" :disabled="!!fileBusy" title="Attach a file to this card, up to 7 MB. You can also drop files here." @click="pickFile(openCard)">{{ fileBusy ? 'Uploading…' : '📎 Attach a file' }}</button>
+        </div>
+        <input ref="filePicker" type="file" multiple hidden @change="onFilePicked" />
 
         <div class="nge-todo-label nge-todo-label-row">Notes
           <button v-if="!notesEditing && openCard.notes" type="button" class="nge-todo-mini" @click="notesEditing = true">✎ Edit</button></div>

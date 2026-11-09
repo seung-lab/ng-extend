@@ -2792,7 +2792,7 @@ exports.ewSecureUpload = onRequest(
    // authors and admins get the admin write allowance, others keep 8 a minute.
    const roomy=isAdmin||isBlogAuthor;
    if(!(await rateLimit({ip:who.email},false,roomy?"write:upload":"upload",roomy)).ok)throw ewErr(429,"Please wait before uploading another image.");
-   const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/admin-uploads/"+upload.path;
+   const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/"+(upload.bucket||"admin-uploads")+"/"+upload.path;
    const r=await fetch(url,{method:"POST",headers:{apikey:key,...(key.startsWith("sb_")?{}:{Authorization:"Bearer "+key}),"Content-Type":upload.contentType,"x-upsert":"false"},body:upload.bytes,redirect:"error",signal:AbortSignal.timeout(30000)});
    if(!r.ok)throw ewErr(502,"Image storage is temporarily unavailable.");
    return res.json({url:url.replace("/object/","/object/public/")});
