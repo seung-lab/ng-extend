@@ -689,12 +689,17 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // a banked curve: out past the spot and swinging back round to it,
           // so it arrives nose first, facing the cell (Ames: it flew backwards)
           // (the swing stays on screen: Ames saw it leave the edge and come back)
-          const room = Math.max(0, 0.92 - dock.fx) * Wd / 2;
-          const ctrl = add(target, add(mul(cam.right, Math.min(Wd * 0.32, room)), mul(cam.up, H * 0.2)));
+          // straight out toward the right wall, and about three quarters of
+          // the way there a long banked curve round, ending at its spot facing
+          // back into the view (Ames: "it turned around way too soon")
+          const wall = add(ctr, add(mul(cam.right, 0.95 * Wd / 2), mul(cam.up, dock.fy * H / 2 + H * 0.22)));
           const B = (u: number): V3 => {
             if (!dock!.from) return target;
-            const a1 = mix(dock!.from, ctrl, u), b1 = mix(ctrl, target, u);
-            return mix(a1, b1, u);
+            const q = mix(dock!.from, wall, 0.75);
+            const SPLIT = 0.5;
+            if (u < SPLIT) return mix(dock!.from, q, u / SPLIT);
+            const w2 = (u - SPLIT) / (1 - SPLIT);
+            return mix(mix(q, wall, w2), mix(wall, target, w2), w2);
           };
           pos = B(dq);
           dockBend = sub(sub(B(Math.min(1, dq + 0.04)), pos), sub(pos, B(Math.max(0, dq - 0.04))));

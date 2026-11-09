@@ -1299,7 +1299,7 @@ export async function startIntroTour() {
         const sx = pr ? (pr.right - cardW - 70 - (pr.left + pr.width / 2)) / (pr.width / 2) : 0.4;
         const nb = BEATS[NEURON];
         const est = glideMs(framed(cellCenter(t), nb.view.nm), nb.view.nm, 1800);
-        dockStarship(Math.max(0.15, Math.min(0.75, sx + 0.2)), -0.2, camLag + est);
+        dockStarship(Math.max(0.15, Math.min(0.75, sx + 0.2)), -0.2, Math.max(5200, camLag + est));
       } else if (shipAt === 'dock' && want === 'dend') {
         undockStarship();
         starshipHop(onward(t.dendFlight), 6.5);
