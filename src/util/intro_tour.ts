@@ -764,7 +764,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
   .nge-intro.nge-intro--choice > .nge-intro-row .nge-go { flex: 1 1 40%; min-width: 0; }
   .nge-intro.nge-intro--choice .nge-go .nge-go-label { font-size: 10px !important; letter-spacing: 0.1em !important; padding: 9px 8px !important; white-space: nowrap; }
   .nge-callout-box .nge-callout-title { display: none !important; }
-  .nge-callout-box .nge-callout-kdot { display: inline-block; }
+  .nge-callout-box .nge-callout-kdot { display: inline-block; margin-right: 9px; }
   .nge-callout-box .nge-callout-stats .grp { display: none !important; }
   .nge-callout-box .nge-callout-stats { border-top: 0 !important; padding-top: 2px !important; margin-top: 4px !important; }
 }
@@ -1248,7 +1248,7 @@ function statsHtml(stats: [string, string][]): string {
       grouped = true;
       return `${head}<div><dt>${STAT_ICON[k] ?? ''}${k.replace(/s$/, '')}</dt><dd><span class="num">${m[1]}</span></dd></div>`;
     }
-    return `<div${k === 'Location' || k === 'Hears most from' || k === 'Sends most to' || k === 'For scale' || k === 'Contains' || k === 'Note' || k === 'With the Martinotti cell' ? ' class="wide"' : ''}><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
+    return `<div${k === 'Location' || k === 'Hears most from' || k === 'Sends most to' || k === 'For scale' || k === 'Contains' || k === 'Note' || k === 'With the Martinotti cell' ? ' class="wide"' : ''}><dt>${STAT_ICON[k] ?? ''}${isPhone() && (k === 'Input' || k === 'Output') ? `${k} synapses` : k}</dt><dd>${statValue(v)}</dd></div>`;
   }).join('');
 }
 /** A number set large with its unit beneath ("3,386 synapses"). */
