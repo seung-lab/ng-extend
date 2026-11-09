@@ -270,6 +270,9 @@ const easeInOut = (q: number) => q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q +
 
 /* ── a flight ── */
 let running = false;
+/** Which flight is the current one: an older one still winding down (or
+ *  stuck waiting) leaves everything to it. */
+let flightGen = 0;
 let stopRequested = false;
 let userTouched = false;
 /** On a phone a touch only pauses the turn: it picks up again this long
@@ -487,7 +490,7 @@ async function growCell(f: Flight, nm: V3) {
   setNgeReveal({only: key, center, radiusNm: 0, edgeNm: 6000});
   redraw();
   // wait for the mesh: until some of it is drawn, then a moment more for the rest
-  for (let k = 0; k < 120 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
+  for (let k = 0; k < 120 && !cellDrawn() && !stopRequested; k++) await new Promise(r => setTimeout(r, 250));
   await new Promise(r => setTimeout(r, 1500));
   // the tour's loading screen can go now (Ames: it "just stays black")
   window.dispatchEvent(new Event('nge-intro-ready'));
@@ -531,7 +534,16 @@ export function startIdleTurn() {
 /** Fly the Starship into the Sandbox cell and land it on the soma.
  *  onLanded runs once, as it touches down. */
 export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0): Promise<void> {
-  if (running) return;
+  // a flight still going (or stuck waiting on something) is stopped first,
+  // never left to swallow this one: the rocket did nothing on a phone until
+  // a hard refresh (Ames)
+  if (running) {
+    stopRequested = true;
+    for (let k = 0; k < 25 && running; k++) await new Promise(r => setTimeout(r, 100));
+    if (running) { cancelAnimationFrame(raf); running = false; }
+  }
+  const gen = ++flightGen;
+  const stale = () => gen !== flightGen;
   running = true;
   stopRequested = false;
   cameraHeld = false;
@@ -542,11 +554,13 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
   touchedAt = 0;
   try {
     await loadAssets();
+    if (stale()) return;
     const f = flight!, mesh = model!;
     // cameo: no flight, no Sandbox; the ship just comes along and parks on
     // screen, this many times its usual size (MICrONS, Ames: "why no ship?")
     if (cameo) skip = true;
     if (!cameo && !(await showSandboxCell(f))) throw new Error('the Sandbox did not open');
+    if (stale()) return;
     prepare(f);
     const v = viewerNow();
     const nm = nmPerUnit();
@@ -555,6 +569,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     // cell first! and it is supposed to load from soma outward")
     hideBoundingBoxes(true);
     if (!cameo && !skip) await growCell(f, nm);
+    if (stale()) return;
     // The model's own length along its nose, so it is shipLength nm long.
     let zLo = Infinity, zHi = -Infinity, xHi = 0;
     for (let i = 0; i < mesh.positions.length; i += 3) { zLo = Math.min(zLo, mesh.positions[i + 2]); zHi = Math.max(zHi, mesh.positions[i + 2]); xHi = Math.max(xHi, Math.abs(mesh.positions[i])); }
@@ -644,7 +659,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
         const tAll = (now - start) / 1000, t = tAll - PORTAL_S;
-        if (stopRequested) { done(); return; }
+        if (stopRequested || stale()) { done(); return; }
         const blend = smooth(tAll / BLEND_S);
         const cam = cameraAxes(nm);
         if (!cam) { raf = requestAnimationFrame(step); return; }
@@ -937,20 +952,24 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
       };
       raf = requestAnimationFrame(step);
     });
+    if (stale()) return;
     setNgeGlow(null, GROUP);
     if (stopRequested) setNgeProps([], GROUP);
     try { v.display.scheduleRedraw(); } catch { /* nothing to redraw */ }
   } catch (e: any) {
     console.warn('[starship] no flight:', e?.message ?? e);
-    setNgeProps([], GROUP);
-    setNgeGlow(null, GROUP);
+    if (!stale()) { setNgeProps([], GROUP); setNgeGlow(null, GROUP); }
   } finally {
+    // (an old flight ending leaves the new one's loading screen, frame loop
+    // and listeners alone)
+    if (!stale()) {
     window.dispatchEvent(new Event('nge-intro-ready'));
     cancelAnimationFrame(raf);
     window.removeEventListener('pointerdown', onUserTurn, true);
     window.removeEventListener('wheel', onUserTurn, true);
     window.removeEventListener('pointermove', onUserDrag, true);
     running = false;
+    }
   }
 }
 
