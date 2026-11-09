@@ -853,7 +853,7 @@ function frameSvg(w: number, h: number, cut = 14): string {
   // left edge, upward
   trace(0, h - 14, 0, -1, 1, 0, Math.min(h * 0.32, 40), 6);
   const sp = sparks.map((d, n) => `<path class="spark" pathLength="1" style="--i:${n}" d="${d}"/>`).join('');
-  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${traces.join('')}${sp}${pads.join('')}</svg>`;
+  return `<svg class="nge-frame" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path class="rim" pathLength="1" d="${rim}"/>${traces.join('')}${sp}${pads.join('')}</svg>`;
 }
 
 const CHEV_L = '<svg class="chev" width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2L4.5 7l5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -1100,7 +1100,8 @@ export async function startIntroTour() {
     panel?.classList.toggle('nge-intro--asking', on);
     (on ? stayEl : nextEl).focus({preventScroll: true});
   };
-  (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => ask(true);
+  // the X asks first; pressed again while it asks, it leaves (Ames: "wouldn't let me click the X")
+  (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => { if (panel?.classList.contains('nge-intro--asking')) endTour(); else ask(true); };
   (panel.querySelector('.nge-intro-leave') as HTMLButtonElement).onclick = endTour;
   stayEl.onclick = () => ask(false);
 

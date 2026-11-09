@@ -7,7 +7,8 @@
       "items": [
         "The tour's message boxes draw their glowing frame at the right size, including the Leave the introduction question.",
         "Start the tour shows a loading screen while your first neuron arrives, instead of a black screen.",
-        "A stray line under the tour invitation is gone."
+        "A stray line under the tour invitation is gone.",
+        "The X on the Leave the introduction question now closes the tour."
       ]
     },
     {
