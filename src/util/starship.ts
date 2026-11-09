@@ -755,12 +755,14 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           const k = Math.random() < 0.5 ? 0 : 1, along = Math.random();
           const c = prevCores ? mix(prevCores[k], cores[k].p, along) : cores[k].p;
           const jitter: V3 = [(Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)];
-          particles.push({p: add(c, mul(jitter, f.shipLength * 0.03)), v: add(mul(fwd, -f.shipLength * (0.4 + Math.random() * 0.3)), mul(jitter, f.shipLength * 0.12)), age: (1 - along) * dt, size: f.shipLength * (0.14 + Math.random() * 0.1)});
+          const L = f.shipLength * (cameo || 1);
+          particles.push({p: add(c, mul(jitter, L * 0.03)), v: add(mul(fwd, -L * (0.4 + Math.random() * 0.3)), mul(jitter, L * 0.12)), age: (1 - along) * dt, size: L * (0.14 + Math.random() * 0.1)});
         }
         prevCores = cores.map(c => c.p);
         for (const q of particles) { q.age += dt; q.p = add(q.p, mul(q.v, dt)); q.v = mul(q.v, Math.max(0, 1 - dt * 2.2)); }
         particles = particles.filter(q => q.age < LIFE_S);
-        writeGlow(nm, cam.right, cores, f.shipLength);
+        // flames sized to the ship as drawn (nine times bigger in MICrONS: Ames, "no thrusters")
+        writeGlow(nm, cam.right, cores, f.shipLength * (cameo || 1));
 
         try { v.display.scheduleRedraw(); } catch { /* nothing to redraw */ }
         // Landed, it keeps floating (and drawing) until it is taken away.

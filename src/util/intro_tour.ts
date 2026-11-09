@@ -206,13 +206,27 @@ function threeDPanel(): any {
 function framed(at: V3, viewNm: number): V3 {
   const nm = nmPerUnit(), pe = threeDPanel()?.element as HTMLElement | undefined;
   const cam = nm && cameraAxes(nm);
-  if (!cam || !pe || !panel) return at;
+  // the tour's panel, or in MICrONS its card (Ames: "the cell is behind the box")
+  const box = panel ?? [...document.querySelectorAll<HTMLElement>('section.nge-intro')].find(e => !e.classList.contains('nge-intro--out'));
+  if (!cam || !pe || !box) return at;
   const r = pe.getBoundingClientRect();
   if (r.height < 50) return at;
-  const bottom = Math.min(r.bottom, panel.offsetTop - 10);
+  const bottom = Math.min(r.bottom, box.offsetTop - 10);
   const px = (r.top + bottom) / 2 - (r.top + r.bottom) / 2;   // negative: above the middle
   const k = px * viewNm / r.height;
   return [0, 1, 2].map(i => at[i] + cam.up[i] * k) as V3;
+}
+/** The camera onto a MICrONS view, in the space above the card, once the
+ *  card has its new size; zoomed out to suit that smaller space. */
+function frameAboveCard(at: V3, viewNm: number, ms: number) {
+  setTimeout(() => {
+    const pe = threeDPanel()?.element as HTMLElement | undefined;
+    const box = [...document.querySelectorAll<HTMLElement>('section.nge-intro')].find(e => !e.classList.contains('nge-intro--out'));
+    const r = pe?.getBoundingClientRect();
+    const room = r && box ? Math.max(0.35, Math.min(1, (box.offsetTop - 10 - r.top) / r.height)) : 1;
+    const nmWide = viewNm / Math.pow(room, 0.6);
+    moveCamera(framed(at, nmWide), nmWide, ms);
+  }, 80);
 }
 function cellCenter(t: Tour): V3 {
   const g = t.grid;
@@ -1422,12 +1436,12 @@ function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
     g.visibleSegments.clear(); g.visibleSegments.add(Uint64.parseString(BIG_NEURON));
   } catch { /* leave it */ }
   const nm = nmPerUnit();
-  if (nm) moveCamera([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
   card.set('A Martinotti cell',
     'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
     [['Cell type', 'Martinotti cell'], ['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['All its branches', 'about 36 mm'], ['Axon alone', 'about 32 mm'],
      ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
     {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)});
+  if (nm) frameAboveCard([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
 }
 
 /** Cell types (aibs_metamodel_celltypes_v661) in words and colors:
@@ -1538,10 +1552,10 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     show(data.partners.map(p => p.id));
     // thousands of dots overlap here: small and faint, or they bloom (Ames)
     runAllSynapses(data, 2.2, 0.55);
-    moveCamera([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
     card.set('Its connections',
       'Every dot is a synapse: {in:gold} ones bring signals in, {out:pink} ones carry its signal out. It talks to thousands of cells. These are the ones it shares the most synapses with, colored by cell type. Tap one to visit it.',
       [], play, listHtml(), {back: () => showMartinotti(card, ml)});
+    frameAboveCard([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
     wire();
   };
   const visit = (k: number) => {
@@ -1553,7 +1567,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     const a = BIG_NEURON_NM, b = p.soma as unknown as V3;
     const mid: V3 = [0, 1, 2].map(i => (a[i] + b[i]) / 2) as V3;
     const span = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-    moveCamera(mid, Math.max(500_000, span * 1.8 + 350_000), 2800);
+    frameAboveCard(mid, Math.max(500_000, span * 1.8 + 350_000), 2800);
     // the ship sweeps the synapses they share, nearest first, zapping each,
     // and ends over the partner's cell body, where it shows its stats
     const toEye = (() => { const n2 = nmPerUnit(); const c2 = n2 && cameraAxes(n2); return c2 ? c2.toEye : [0, 0, 1]; })();
