@@ -735,10 +735,12 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // straight out toward the right wall, and about three quarters of
           // the way there a long banked curve round, ending at its spot facing
           // back into the view (Ames: "it turned around way too soon")
-          const wall = add(ctr, add(mul(cam.right, 0.95 * Wd / 2), mul(cam.up, dock.fy * H / 2 + H * 0.22)));
+          // and through depth: it swoops out toward the viewer as it banks
+          // round, then settles back into its spot (Ames: "a CURVE THROUGH 3D SPACE")
+          const wall = add(add(ctr, add(mul(cam.right, 0.95 * Wd / 2), mul(cam.up, dock.fy * H / 2 + H * 0.22))), mul(cam.toEye, H * 0.55));
           const B = (u: number): V3 => {
             if (!dock!.from) return target;
-            const q = mix(dock!.from, wall, 0.6);
+            const q = add(mix(dock!.from, wall, 0.6), mul(cam.toEye, -H * 0.12));
             const SPLIT = 0.5;
             if (u < SPLIT) return mix(dock!.from, q, u / SPLIT);
             const w2 = (u - SPLIT) / (1 - SPLIT);

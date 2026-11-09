@@ -1230,7 +1230,9 @@ export async function startIntroTour() {
     const zipping = !!callout;
     const shipDelay = zipping ? 440 : 0;
     void from;
-    const camDelay = shipDelay + (shipMoves ? 1300 : 0);
+    // (pulling back for the dendrites the camera goes with the ship from the
+    // start, or it climbed out of the frame: Ames)
+    const camDelay = shipDelay + (shipMoves ? (want === 'dend' && shipAt === 'soma' ? 350 : 1300) : 0);
     titleEl.textContent = b.header ?? b.callout?.title ?? '';
     if (from >= 0 && panel) { panel.classList.remove('nge-intro--beat'); void panel.offsetWidth; panel.classList.add('nge-intro--beat'); }
     const last = b.key === 'connectome';
