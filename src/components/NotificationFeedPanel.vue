@@ -489,9 +489,10 @@ async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
   // A tutorial edit to approve: its before and after show here, and this
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
-  if (a?.getAttribute('href') === ACCESS_LIST_LINK) {
+  if (a?.getAttribute('href') === ACCESS_LIST_LINK || a?.getAttribute('href') === BETA_LIST_LINK) {
     e.preventDefault();
-    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
+    const tab = a.getAttribute('href') === BETA_LIST_LINK ? 'pilot' : 'access';
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab } }));
     closeDetail();
     emit('hide');
     return;
@@ -868,13 +869,17 @@ function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
 }
 const ACCESS_LIST_LINK = '#nge-access-requests';
+// And to the Beta requests (Celia 2026-11-09: she wants both).
+const BETA_LIST_LINK = '#nge-beta-requests';
 const detailBody = computed(() => {
   let body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
   // The daily and weekly Access notes end with the way to the full list.
   if (String(openNotif.value?.title ?? '').startsWith('🔑 Access') && !body.includes(ACCESS_LIST_LINK)) {
     body += `
 
-[Open all access requests](${ACCESS_LIST_LINK})`;
+[Open dataset access requests](${ACCESS_LIST_LINK})
+
+[Open Beta requests](${BETA_LIST_LINK})`;
   }
   return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
 });

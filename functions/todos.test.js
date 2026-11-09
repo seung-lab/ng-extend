@@ -192,6 +192,21 @@ test('a comment can be changed by its writer, and its first wording is kept', as
   await assert.rejects(todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'mine now' }, { ...base, me: { id: CELIA.id }, byName: 'Celia' }), /Only the person/);
 });
 
+test('a reaction on a comment: one of the six, the same again takes it away', async () => {
+  const db = memDb();
+  const as = (who, name) => ({ db, byName: name, me: { id: who.id }, tag: async () => {} });
+  const { card } = await todoAction('todo.save', { fields: { title: 'Thumbs' } }, as(CELIA, 'Celia D.'));
+  const c1 = await todoAction('todo.comment', { id: card.id, text: 'the email draft' }, as(CELIA, 'Celia D.'));
+  const at = c1.card.comments[0].at;
+  const r = await todoAction('todo.react', { id: card.id, index: 0, at, emoji: '👍' }, as(AMES, 'Amy R. Sterling'));
+  assert.deepEqual(r.card.comments[0].reactions.map(x => [x.emoji, x.by]), [['👍', 'Amy R. Sterling']]);
+  assert.equal(r.card.comments[0].text, 'the email draft');
+  const off = await todoAction('todo.react', { id: card.id, index: 0, at, emoji: '👍' }, as(AMES, 'Amy R. Sterling'));
+  assert.deepEqual(off.card.comments[0].reactions, []);
+  await assert.rejects(todoAction('todo.react', { id: card.id, index: 0, at, emoji: '💩' }, as(AMES, 'Amy R. Sterling')), /Pick one/);
+  await assert.rejects(todoAction('todo.react', { id: card.id, index: 0, at: 'x', emoji: '👍' }, as(AMES, 'Amy R. Sterling')), /moved/);
+});
+
 test('a card can have collaborators: they hear, and they follow it', async () => {
   const db = memDb(), follows = memFollows(), helpers = memFollows(), tags = [];
   const base = { db, byName: 'Ames', tag: async (who, card, what) => tags.push({ who: who.map(p => p.name), what }), follows, helpers, me: { id: AMES.id } };
