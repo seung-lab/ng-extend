@@ -805,6 +805,10 @@ body.nge-intro-on #extensionBar { background: transparent !important; border: 0 
   .nge-tour-loading-sub { padding: 0 16px; text-align: center; }
   .nge-intro .nge-intro-row { flex-wrap: wrap; row-gap: 10px; }
   .nge-intro .nge-intro-row .nge-go { flex: 1 1 auto; justify-content: center; letter-spacing: 0.16em; }
+  /* the wide Next key's circuit trace ran through the back arrow (Ames) */
+  .nge-intro .nge-intro-row .nge-go::before { display: none; }
+  .nge-intro .nge-intro-row .nge-back { width: 40px; height: 40px; margin-right: 4px; color: rgba(126, 224, 255, 0.85); }
+  .nge-intro .nge-intro-row .nge-back .chev { width: 20px; height: 20px; }
 }
 .nge-card-hint { margin-top: 10px; font: 500 12.5px 'Inter', sans-serif; letter-spacing: 0.03em; color: rgba(190, 228, 255, 0.8); }
 .nge-card-hint[hidden] { display: none; }
@@ -1425,8 +1429,9 @@ export async function startIntroTour() {
     // Size the panel for the whole text first, so it holds still while the
     // words type in and the camera can frame the cell above it.
     bodyEl.style.minHeight = '';
-    const bodyText = isPhone() && b.key === 'neuron'
-      ? b.body + ' This one has about 4.5 mm of branches, with {in:3,386 synapses} coming in and {out:59} going out.' : b.body;
+    // (on phones the neuron step once added its numbers here; Ames took
+    // them out again, the panel is long enough)
+    const bodyText = b.body;
     const holo = !!b.callout && !(isPhone() && (b.key === 'neuron' || b.key === 'axon'));
     bodyEl.textContent = plain(bodyText);
     bodyEl.style.minHeight = `${Math.min(bodyEl.offsetHeight, window.innerHeight * 0.36)}px`;

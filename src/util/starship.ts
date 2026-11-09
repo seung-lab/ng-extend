@@ -743,19 +743,35 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // nose first in its parked pose (Ames: "it shouldn't go backwards
           // -- it should turn ~135 degrees")
           const poseDir = norm(add(add(mul(cam.right, -0.72), mul(cam.up, -0.22)), mul(cam.toEye, 0.62)));
-          const B = (u: number): V3 => {
-            if (!dock!.from) return target;
-            const p0 = dock!.from, p3 = target;
-            // (the swing out stays on screen, wherever it starts)
-            const fromX = dot(sub(p0, ctr), cam.right);
-            const out = Math.max(Wd * 0.08, Math.min(Wd * 0.42, Wd * 0.46 - fromX));
-            // out and AWAY from the viewer first, then the turn brings it back
-            // toward them (Ames)
-            const p1 = add(p0, add(add(mul(cam.right, out * 0.75), mul(cam.up, H * 0.12)), mul(cam.toEye, -H * 1.1)));
-            const p2 = sub(p3, mul(poseDir, Wd * 0.75));
+          // out to the side and off the cell first, then AWAY from the viewer
+          // once clear of it, and the turn brings it back toward them (Ames)
+          // (it used to dive into the screen from the start, and close in, as
+          // on a phone, that went straight through the soma: Ames)
+          const bez = (p0: V3, p1: V3, p2: V3, p3: V3, u: number): V3 => {
             const a = 1 - u;
             return add(add(mul(p0, a * a * a), mul(p1, 3 * a * a * u)), add(mul(p2, 3 * a * u * u), mul(p3, u * u * u)));
           };
+          let P: V3[] | null = null;
+          if (dock.from) {
+            const p0 = dock.from, p3 = target;
+            // (the swing out stays on screen, wherever it starts)
+            const fromX = dot(sub(p0, ctr), cam.right);
+            let out = Math.max(Wd * 0.08, Math.min(Wd * 0.42, Wd * 0.46 - fromX));
+            let lift = H * 0.08;
+            // never closer to the soma than where it set off from
+            const d0 = Math.hypot(...sub(p0, somaAt)), clear = Math.min(d0, 14_000);
+            for (let tries = 0; tries < 8; tries++) {
+              const p1 = add(p0, add(add(mul(cam.right, out * 0.9), mul(cam.up, H * 0.04)), mul(cam.toEye, lift)));
+              const p2 = sub(sub(p3, mul(poseDir, Wd * 0.75)), mul(cam.toEye, H * 0.6));
+              P = [p0, p1, p2, p3];
+              if (cameo) break;
+              let worst = Infinity;
+              for (let k = 1; k <= 24; k++) worst = Math.min(worst, Math.hypot(...sub(bez(p0, p1, p2, p3, k / 24), somaAt)));
+              if (worst >= clear * 0.97) break;
+              out += Math.max(6_000, Wd * 0.06); lift += Math.max(4_000, H * 0.05);
+            }
+          }
+          const B = (u: number): V3 => P ? bez(P[0], P[1], P[2], P[3], u) : target;
           pos = dock.hold ? dock.hold.pos : B(dq);
           dockBend = sub(sub(B(Math.min(1, dq + 0.04)), pos), sub(pos, B(Math.max(0, dq - 0.04))));
           dockScale = Wd;
