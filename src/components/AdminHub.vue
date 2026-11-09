@@ -799,7 +799,10 @@ async function loadArcaneCards() {
   try {
     const d = await secureWrite<any>('todo.list');
     const me = (d?.people || []).find((p: any) => isMe(p.name));
-    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)))).length : 0;
+    // Cards I own, made without an owner, or worked on as a collaborator (which
+    // includes finishing someone else's card): Ames 2026-11-09, "all collaborators".
+    const helping = (d?.helpers || {}) as Record<string, string[]>;
+    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)) || (helping[c.id] || []).includes(me.id))).length : 0;
     arcaneCardsIn.value = true;
   } catch { /* the cards just do not count this time */ }
 }
