@@ -1251,6 +1251,10 @@ export async function startIntroTour() {
   /** Off the pad, the ship hovers just above it: over the soma, on the
    *  viewer's side (Ames: the ship was behind the soma). */
   const somaHover = (): number[] => {
+    // beside the soma and in front of it, not up at the trunk (Ames: it sat at
+    // the top edge of the screen)
+    const n2 = nmPerUnit(), c2 = n2 && cameraAxes(n2), so = t.anchors.soma;
+    if (c2) return so.map((x, k) => x + c2.right[k] * 17_000 + c2.up[k] * 3_000 + c2.toEye[k] * 11_000);
     const pad = t.dendFlight[0];
     return t.dendFlight.find(q => Math.hypot(q[0] - pad[0], q[1] - pad[1], q[2] - pad[2]) > 4500) ?? pad;
   };
@@ -1284,7 +1288,7 @@ export async function startIntroTour() {
       const aEnd = t.axonFlight[t.axonFlight.length - 1];
       if (want === 'soma') {
         if (shipAt === 'dock') undockStarship();
-        if (shipAt === 'dend') starshipHop(onward([...t.dendFlight].reverse(), somaHover()), 5);
+        if (shipAt === 'dend') starshipHop([...onward([...t.dendFlight].reverse(), t.dendFlight[0]), somaHover()], 5);
         else starshipHop([somaHover()], shipAt === 'dock' ? 3.6 : 2.6);
       } else if (shipAt === 'soma' && want === 'pad') starshipHop([t.dendFlight[0]], 2);
       else if (shipAt === 'soma' && want === 'dend') starshipHop(onward(t.dendFlight), 6.5);

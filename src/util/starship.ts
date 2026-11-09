@@ -217,7 +217,7 @@ let shipNow: V3 | null = null;
  *  (parked, it keeps its size on screen as the camera zooms: Ames, "it gets huger"). */
 let noseNow: V3 | null = null;
 let upNow: V3 = [0, -1, 0];
-let sizeK = 1, dockArrivePs = 0;
+let sizeK = 1;
 /** Where the ship is now (nm), while it is out. */
 export function starshipAt(): V3 | null { return running ? shipNow : null; }
 let liftNormal: V3 = [0, -1, 0];
@@ -669,13 +669,17 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // riding along with a camera move counts as moving: its hologram waits
         moving = h ? hq < 1 : dock ? now - dock.start < dockMs || now - cruise.start < cruise.ms : t < total;
         {
-          const ps = v.projectionScale.value;
+          // parked, it is drawn a steady size on screen, about a twentieth of
+          // the view's height, whatever the zoom (Ames: too small to see in the
+          // wide view, "huger" as the camera closed in)
+          // (on the tour's hops too: never a speck in the wide views, never
+          // filling the close ones)
           let target = 1;
-          if (dock && now - dock.start >= dockMs) {
-            if (!dockArrivePs) dockArrivePs = ps;
-            target = Math.max(0.2, Math.min(4, ps / dockArrivePs));
-          } else dockArrivePs = 0;
-          sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 1.5));
+          const Hn = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
+          const onScreen = Math.max(cameo ? 0.3 : 0.5, Math.min(8, 0.05 * Hn / (f.shipLength * (cameo || 1))));
+          if (dock) target = 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
+          else if (h) target = onScreen;
+          sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 3));
         }
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
@@ -684,7 +688,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           const dq = smooth((now - dock.start) / dockMs);
           // a banked curve: out past the spot and swinging back round to it,
           // so it arrives nose first, facing the cell (Ames: it flew backwards)
-          const ctrl = add(target, add(mul(cam.right, Wd * 0.32), mul(cam.up, H * 0.2)));
+          // (the swing stays on screen: Ames saw it leave the edge and come back)
+          const room = Math.max(0, 0.92 - dock.fx) * Wd / 2;
+          const ctrl = add(target, add(mul(cam.right, Math.min(Wd * 0.32, room)), mul(cam.up, H * 0.2)));
           const B = (u: number): V3 => {
             if (!dock!.from) return target;
             const a1 = mix(dock!.from, ctrl, u), b1 = mix(ctrl, target, u);
