@@ -470,10 +470,13 @@ function runPulse(at: V3, rgb: [number, number, number] = [0.6, 0.88, 1]) {
   const glow: NgeGlow = {positions: Float32Array.from([at[0] / nm[0], at[1] / nm[1], at[2] / nm[2]]), colors: new Float32Array(4), sizesNm: new Float32Array(1), count: 1, nmRight: [1 / nm[0], 0, 0]};
   const t0 = performance.now();
   const step = (now: number) => {
-    const k = 0.5 + 0.5 * Math.sin((now - t0) / 1000 * 4);
-    void k;
-    glow.colors.set([rgb[0], rgb[1], rgb[2], 1]);
-    glow.sizesNm[0] = 3400;
+    // a small glow, a steady size on screen, gently breathing (Ames: too
+    // much glow, it hid the synapse)
+    const k = 0.5 + 0.5 * Math.sin((now - t0) / 1000 * 3);
+    let Hn = 40_000;
+    try { Hn = viewerNow().projectionScale.value * Math.min(nm[0], nm[1], nm[2]); } catch { /* a guess */ }
+    glow.colors.set([rgb[0], rgb[1], rgb[2], 0.75 + 0.25 * k]);
+    glow.sizesNm[0] = Math.min(3400, Hn * 0.028) * (0.85 + 0.15 * k);
     const cam = cameraAxes(nm);
     if (cam) {
       glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
