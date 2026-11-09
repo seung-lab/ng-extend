@@ -763,6 +763,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro-zap--fire { animation: nge-zap-fire 0.6s ease-out; }
 @keyframes nge-zap-fire { 0% { transform: scale(0.85); box-shadow: 0 0 0 rgba(255, 230, 140, 0); } 30% { transform: scale(1.15); box-shadow: 0 0 34px rgba(255, 230, 140, 0.95); } 100% { transform: none; } }
 .nge-intro-zap + .nge-intro-go { margin-left: 0; }
+.nge-callout-kname { display: none; }
 .nge-callout-kdot { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 8px var(--part, #7ecaff); flex: none; }
 @media (max-width: 820px) {
   /* the last page compact on a phone, so the cells above stay in view */
@@ -777,6 +778,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
   .nge-intro.nge-intro--choice .nge-go-chevs { display: none !important; }
   .nge-callout-box .nge-callout-title { display: none !important; }
   .nge-callout-box .nge-callout-kdot { display: inline-block; margin-right: 9px; }
+  .nge-callout-box .nge-callout-kname { display: inline; }
   .nge-callout-box .nge-callout-stats .grp { display: none !important; }
   .nge-callout-box .nge-callout-stats { border-top: 0 !important; padding-top: 2px !important; margin-top: 4px !important; }
 }
@@ -1156,7 +1158,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
     <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="rgba(126, 224, 255, 0.13)"/>
       <line class="nge-beam-edge e1" style="display:none"/><line class="nge-beam-edge e2" style="display:none"/><line class="nge-beam-seam" style="display:none"/><g class="nge-beam-motes"></g></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker"><span class="nge-callout-kdot"></span>Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
+    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker"><span class="nge-callout-kdot"></span>Pyr scan<span class="nge-callout-kname">: ${title}</span></div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const edges = [...callout.querySelectorAll('.nge-beam-edge')] as SVGLineElement[];
@@ -1526,7 +1528,9 @@ export async function startIntroTour() {
     // beside the soma and in front of it, not up at the trunk (Ames: it sat at
     // the top edge of the screen)
     const n2 = nmPerUnit(), c2 = n2 && cameraAxes(n2), so = t.anchors.soma;
-    if (c2) return so.map((x, k) => x + c2.right[k] * 12_000 + c2.up[k] * 5_000 + c2.toEye[k] * 10_000);
+    // (well out in front, so no branch passes over it: Ames, "branch
+    // obstructing ship")
+    if (c2) return so.map((x, k) => x + c2.right[k] * (isPhone() ? 9_000 : 12_000) + c2.up[k] * 5_000 + c2.toEye[k] * 24_000);
     const pad = t.dendFlight[0];
     return t.dendFlight.find(q => Math.hypot(q[0] - pad[0], q[1] - pad[1], q[2] - pad[2]) > 4500) ?? pad;
   };
