@@ -25,6 +25,7 @@ import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
+import PlayButton from "components/PlayButton.vue";
 import AssistantDock from "components/AssistantDock.vue";
 import { runSpotlight } from "../assistant/spotlight";
 import { showDefaultCell } from "../widgets/widget_utils";
@@ -1324,6 +1325,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <hunt-opening />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
+  <play-button />
   <!-- The Ask dock is now the single command surface: it searches the same
        catalog CommandPalette builds (passed in headless) so navigation runs
        instantly, and only falls through to the model for real questions. -->

@@ -9,7 +9,8 @@
  * cilia with annotation points, and submits: the sheet's own status choices,
  * split or merged, a note, and a share link of the view as it is.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { play, startPlay } from '../util/play';
 import { useProofreadingBackendStore } from '../store';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
@@ -61,7 +62,7 @@ const you = ref('');
 const current = ref('');
 /** The Cell Library's slim bar (toknow, report 288): only the quest cell you
  *  are on (the active one, else the one you last opened, else your first). */
-const props = defineProps<{ slim?: boolean }>();
+const props = defineProps<{ slim?: boolean; playEnter?: number }>();
 
 const myKeys = computed(() => new Set([you.value, backend.userName, backend.username].map(nameKey).filter(Boolean)));
 const isMine = (r: QuestRow) => !!r.annotator && myKeys.value.has(nameKey(r.annotator));
@@ -98,8 +99,40 @@ async function load() {
   }
   catch (e: any) { error.value = e?.message || String(e); }
   finally { loading.value = false; }
+  void playNow();
 }
 onMounted(() => { if (backend.userId) void load(); });
+
+// ── Play (util/play.ts) ─────────────────────────────────────────────────────
+// Asked to play: once the sheet is read, open the quest cell you hold, or
+// claim the next open one. Skipped cells go back to the list for others, and
+// are not handed straight back to you.
+let playWanted = false;
+const skippedHere = new Set<string>();
+watch(() => props.playEnter, n => { if (n) { playWanted = true; void playNow(); } }, { immediate: true });
+const nextOpen = () => available.value.find(r => !skippedHere.has(r.segmentId));
+async function playNow() {
+  if (!playWanted || loading.value || !rows.value.length || busy.value) return;
+  playWanted = false;
+  const held = mine.value.find(isActive) ?? mine.value[0];
+  if (held) { await openCell(held); message.value = `${held.index || 'Your cell'} is open. Mark the cilium, then press Submit. The next cell will be waiting.`; return; }
+  const r = nextOpen();
+  if (r) await take(r);
+  else message.value = 'No quest cells are open right now. Try mapping instead.';
+}
+async function playSkip() {
+  if (busy.value) return;
+  const r = mine.value.find(isActive) ?? mine.value[0];
+  if (r) { skippedHere.add(r.segmentId); await letGo(r); }
+  const rest = mine.value[0];
+  if (rest) { await openCell(rest); return; }
+  const next = nextOpen();
+  if (next) await take(next);
+  else message.value = 'No more quest cells are open right now.';
+}
+const onPlaySkip = () => { void playSkip(); };
+onMounted(() => document.addEventListener('nge:play-skip-quest', onPlaySkip));
+onUnmounted(() => document.removeEventListener('nge:play-skip-quest', onPlaySkip));
 
 /** "A5, OFF Starburst": the sheet's index and the cell's type, in the players' words. */
 function label(r: QuestRow) {
@@ -357,6 +390,11 @@ async function send(r: QuestRow, e?: Event) {
     if (next) {
       message.value = `${r.index || 'The cell'} is submitted. Thank you. Opening ${label(next)}.`;
       try { await openCell(next); } catch (e) { console.warn('[quests] the next cell did not open:', e); }
+    } else if (play.on === 'quests') {
+      // Playing: the next open cell is claimed and opened (Ames 2026-11-09).
+      const fresh = nextOpen();
+      busy.value = '';
+      if (fresh) { await take(fresh); message.value = `${r.index || 'The cell'} is submitted. Thank you. ${fresh.index || 'The next cell'} is yours now.`; }
     }
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
@@ -377,6 +415,10 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
       <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
       <div v-if="backend.userId" class="nge-aq-headrow">
+        <button v-if="!play.on && available.length" class="nge-aq-play" @click="startPlay('quests')"
+                title="Play: claims a quest cell for you and opens it. After Submit, the next one.">
+          <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
+        </button>
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
         <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Open the review in your notifications and send your update, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
@@ -444,7 +486,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !canSubmit || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !canSubmit || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : play.on === 'quests' ? 'Submit and next' : 'Submit' }}</button>
               </div>
             </div>
           </template>
@@ -716,4 +758,15 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-empty--tight { padding: 8px 16px 10px; }
 .nge-aq-error { margin: 8px 12px 0; padding: 8px 10px; border-radius: 6px; font-size: 14px; line-height: 1.4; color: #ffb0b0; background: rgba(255, 80, 80, 0.08); border: 1px solid rgba(255, 90, 90, 0.25); }
 .nge-aq-msg { margin: 8px 12px; padding: 8px 10px; border-radius: 6px; font-size: 14px; line-height: 1.4; color: #a6ffd6; background: rgba(0, 220, 120, 0.08); border: 1px solid rgba(0, 220, 120, 0.25); }
+
+/* Play here (util/play.ts) */
+.nge-aq-play {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #ffd36e;
+  background: linear-gradient(135deg, rgba(140, 100, 20, 0.8), rgba(74, 58, 168, 0.8));
+  color: #fff; font: 700 11.5px/1 Inter, system-ui, sans-serif; letter-spacing: 0.05em; text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(255, 211, 110, 0.3);
+}
+.nge-aq-play:hover { box-shadow: 0 0 18px rgba(255, 211, 110, 0.5); }
 </style>

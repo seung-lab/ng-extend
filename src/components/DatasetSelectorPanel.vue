@@ -14,7 +14,8 @@ import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
 import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests';
 import { useProofreadingBackendStore } from '../store';
 import { skipNextViewRestoreOffer } from '../util/view_autosave';
-import { basicsDone, askStartPlaying } from '../util/start_playing';
+import { basicsDone } from '../util/start_playing';
+import { startPlay } from '../util/play';
 import RequestAccessButton from './RequestAccessButton.vue';
 import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
@@ -57,8 +58,9 @@ onMounted(() => { loadDatasetPermissions(); });
 const playing = computed(() => basicsDone());
 function startHere(ds: DatasetEntry) {
   if (playing.value) {
-    askStartPlaying();
-    void openTask(ds, 'available');
+    // Play on this card's dataset (util/play.ts): a cell, then the next.
+    emit('hide');
+    void startPlay('cells', ds);
     return;
   }
   emit('hide');

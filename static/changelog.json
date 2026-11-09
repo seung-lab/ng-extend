@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T17:49:00Z",
+      "title": "Play",
+      "items": [
+        "A new Play button at the top left finds you a task, claims it and takes you there. Choose mapping or Cilia Quests, and after each one the next is waiting.",
+        "Skip hands a task back for someone else and gives you the next. Stop keeps the one you are on.",
+        "After you complete a cell, Pyr now claims your next cell and takes you to it."
+      ]
+    },
+    {
       "at": "2026-11-10T16:54:42Z",
       "title": "Alt+click finds the cell",
       "digest": "minor",

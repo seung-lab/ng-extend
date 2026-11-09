@@ -1391,9 +1391,15 @@ async function submitComplete(cell: CellRow) {
       cellType: type || undefined,
     });
     completing.value = null;
-    // Straight on to your next claim; with none left, the slim bar offers a
-    // new one (Ames 2026-10-21; it used to open the full library).
-    if (!(await nextClaimAfter(cell, claimsBefore)) && slim.value) { slimSeg.value = null; slimEmpty.value = true; }
+    // Straight on to your next claim. With none left, the next cell is
+    // claimed and you are taken there: the cell you land on is yours (Ames
+    // 2026-11-09: "it should just take you there").
+    if (await nextClaimAfter(cell, claimsBefore)) showStartNote('On to your next cell.', 6000);
+    else {
+      await claimNewCell();
+      if (myOpenClaims.value.length) showStartNote('Next cell! This one is yours.', 8000);
+      else if (slim.value) { slimSeg.value = null; slimEmpty.value = true; }
+    }
   } catch (e: any) {
     c.message = e?.message || 'Could not complete this cell.';
     c.ok = false;
@@ -1470,7 +1476,7 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
-import { takeStartPlaying } from '../util/start_playing';
+import { play, takePlayEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 async function triggerCellCelebration(segId?: string) {
@@ -2138,7 +2144,7 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
 function onOpenAsked(e: Event) {
   const tab = (e as CustomEvent).detail?.tab;
   if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
-  startPlayingIfAsked();
+  playIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
@@ -3005,7 +3011,10 @@ onMounted(() => {
   const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); go(); } });
 });
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
-const nextAvailableCell = computed(() => libraryCells.value.find(c => c.status === 'pending') ?? null);
+const nextAvailableCell = computed(() => libraryCells.value.find(c => c.status === 'pending' && !playSkipped.value.has(c.segId)) ?? null);
+/** Cells skipped in Play this visit: back on the Available list for everyone,
+ *  but not handed straight back to the player who skipped them. */
+const playSkipped = ref<Set<string>>(new Set());
 /** A paged list may hold no available cell yet while the server has more. */
 const canClaimNew = computed(() => !!nextAvailableCell.value || (backend.tasksPaged && !backend.taskPages.available.done));
 /** The top available cell, reading more of the paged list when the loaded
@@ -3037,25 +3046,78 @@ async function claimNewCell() {
     }
   } finally { claimingNew.value = false; }
 }
-/** "Start playing" (util/start_playing.ts): once the cells are in, go to the
- *  player's open cell here, or claim the next one, and say what to do. */
+/** A short line on the slim bar: what to do with the cell in hand. */
 const startNote = ref('');
-function startPlayingIfAsked() {
-  if (!takeStartPlaying()) return;
+let startNoteTimer: ReturnType<typeof setTimeout> | null = null;
+function showStartNote(text: string, ms: number) {
+  startNote.value = text;
+  if (startNoteTimer) clearTimeout(startNoteTimer);
+  startNoteTimer = setTimeout(() => { startNote.value = ''; startNoteTimer = null; }, ms);
+}
+/** Play (util/play.ts): asked to play, so once the cells are in, show only
+ *  the task in hand (the slim bar). Mapping goes to the player's open cell
+ *  here, or claims the next one. Quests go to the Quests tab, which does the
+ *  same with its own cells (questPlay). */
+const questPlay = ref(0);
+function playIfAsked() {
+  const k = takePlayEnter();
+  if (!k) return;
   const go = async () => {
-    const mine = myOpenClaims.value[0];
-    if (mine) await stepToClaim(mine);
-    else await claimNewCell();
-    if (!myOpenClaims.value.length) return;  // nothing claimed: the reason shows already
-    startNote.value = 'This cell is yours to proofread. Fix what the AI got wrong with Merge and Cut, then press Complete. Stuck? Ask in Chat.';
-    setTimeout(() => { startNote.value = ''; }, 30000);
+    setSlimMode(true);
+    showTabSettings.value = false;
+    showHowTo.value = false;
+    if (k === 'quests') {
+      filter.value = 'quests';
+      slimQuest.value = true;
+      questPlay.value++;
+      await nextTick();
+      clampPanelPos();
+      return;
+    }
+    if (!CELL_TABS.includes(filter.value)) filter.value = 'available';
+    const mine = currentCell() && isMyClaim(currentCell()!) && currentCell()!.status !== 'completed' ? currentCell() : myOpenClaims.value[0];
+    if (mine) {
+      await stepToClaim(mine);
+      await collapseTo(mine);
+    } else await claimNewCell();
+    if (!myOpenClaims.value.length) { await collapseTo(null); return; }  // nothing claimed: the reason shows already
+    showStartNote(mine
+      ? 'Back to your cell. Fix what the AI got wrong with Merge and Cut, then press Complete. The next cell will be waiting.'
+      : 'This cell is yours to proofread. Fix what the AI got wrong with Merge and Cut, then press Complete. Stuck? Ask in Chat.', 30000);
     await nextTick();
     clampPanelPos();
   };
   if (!backend.loading) { void nextTick(go); return; }
   const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); void go(); } });
 }
-onMounted(startPlayingIfAsked);
+onMounted(playIfAsked);
+/** "Play here" on the Available and Quests tabs: Play on the dataset on screen. */
+function playHere(k: PlayKind) { void startPlay(k, k === 'cells' ? datasetHere() : undefined); }
+/** Skip: the cell goes back on the Available list and the next one is claimed. */
+const skipping = ref(false);
+async function playSkip() {
+  if (skipping.value) return;
+  if (play.on === 'quests') { document.dispatchEvent(new CustomEvent('nge:play-skip-quest')); return; }
+  const cell = currentCell();
+  if (!cell || !isMyClaim(cell) || cell.status === 'completed') { await claimNewCell(); return; }
+  skipping.value = true;
+  try {
+    const skipped = new Set(playSkipped.value); skipped.add(cell.segId); playSkipped.value = skipped;
+    await releaseCell(cell);
+    if (myOpenClaims.value.some(c => c.segId === cell.segId)) return;  // not released: the reason shows
+    const rest = myOpenClaims.value[0];
+    if (rest) { await stepToClaim(rest); await collapseTo(rest); }
+    else await claimNewCell();
+    if (myOpenClaims.value.length) showStartNote('Skipped. This one is yours now.', 6000);
+    else await collapseTo(null);
+  } finally { skipping.value = false; }
+}
+/** Stop: keep the task in hand and open the full library again. */
+function playStop() {
+  stopPlay();
+  startNote.value = '';
+  expandAndStay();
+}
 
 /** Your open claims in this dataset, in list order: what "next" steps through. */
 const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
@@ -3773,7 +3835,7 @@ const panelStyle = computed(() => ({
 
         <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
         <div v-else-if="filter === 'quests'" class="nge-cl-list">
-          <annotation-quests-tab v-if="questsHere" :slim="slimQuest" />
+          <annotation-quests-tab v-if="questsHere" :slim="slimQuest" :play-enter="questPlay" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
             <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
             <div v-if="questsLocked" class="nge-cl-quests-elsewhere-text">Unlock Level 1 ({{ questDatasetName }}) to take them.</div>
@@ -4143,6 +4205,13 @@ const panelStyle = computed(() => ({
         <div v-else ref="cellListEl" class="nge-cl-list">
           <!-- Claim error banner -->
           <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
+          <div v-if="filter === 'available' && !slim && isLoggedIn && !viewOnlyDataset && availableCount > 0" class="nge-cl-play-here-row">
+            <button class="nge-cl-play-here" @click="playHere('cells')"
+                    title="Play: claims the next cell for you and takes you there. After Complete, the next one.">
+              <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
+            </button>
+            <span class="nge-cl-play-here-hint">Claim a cell and go, then the next one after each Complete.</span>
+          </div>
           <div v-if="chooseClaim" class="nge-cl-limit">
             <div class="nge-cl-limit-head">
               Which of your claims did you finish? Click Complete on it below.
@@ -4194,6 +4263,15 @@ const panelStyle = computed(() => ({
                   aria-label="Next claimed cell" @click="nextClaim">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <!-- Play (util/play.ts): what is being played, Change, Skip and Stop. -->
+          <div v-if="slim && play.on" class="nge-cl-play-bar" :class="'nge-cl-play-bar--' + play.on">
+            <span class="nge-cl-play-label"><svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Playing {{ play.on === 'quests' ? 'Cilia Quests' : 'mapping' }}</span>
+            <button class="nge-cl-play-link" @click="choosePlay" title="Choose another kind of task">Change</button>
+            <span class="nge-cl-play-gap"></span>
+            <button class="nge-cl-btn nge-cl-play-skip" :disabled="skipping" @click="playSkip"
+                    :title="play.on === 'quests' ? 'Release this quest cell for someone else and claim the next' : 'Release this cell for someone else and claim the next'">{{ skipping ? 'Skipping…' : 'Skip ›' }}</button>
+            <button class="nge-cl-btn nge-cl-play-stop" @click="playStop" title="Stop playing. You keep the cell you are on.">Stop</button>
+          </div>
           <div v-if="startNote" class="nge-cl-start-note" @click="startNote = ''" title="Click to hide">{{ startNote }}</div>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
@@ -4393,7 +4471,7 @@ const panelStyle = computed(() => ({
                 :disabled="!!completeBlocked(cell)"
                 :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
-              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : 'Mark complete' }}</button>
+              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : play.on ? 'Complete and next' : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
             <!-- Why Mark complete can't be pressed yet, said plainly (a player
@@ -5235,6 +5313,37 @@ const panelStyle = computed(() => ({
 }
 
 /* Claim error banner */
+/* Play (util/play.ts): the bar on the slim view, and Play here on Available. */
+.nge-cl-play-bar {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 4px 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(95, 216, 255, 0.35);
+  background: rgba(95, 216, 255, 0.07);
+  font-size: 12px;
+}
+.nge-cl-play-bar--quests { border-color: rgba(255, 211, 110, 0.4); background: rgba(255, 211, 110, 0.07); }
+.nge-cl-play-label { display: inline-flex; align-items: center; gap: 6px; color: #dff6ff; font-weight: 600; letter-spacing: 0.04em; }
+.nge-cl-play-label svg { color: #7dffb0; animation: nge-cl-play-pulse 1.6s ease-in-out infinite; }
+@keyframes nge-cl-play-pulse { 50% { opacity: 0.45; } }
+.nge-cl-play-link { background: none; border: none; padding: 0; color: #8fd4ff; font-size: 12px; cursor: pointer; text-decoration: underline; }
+.nge-cl-play-gap { flex: 1; }
+.nge-cl-play-skip, .nge-cl-play-stop { padding: 3px 10px; font-size: 12px; }
+.nge-cl-play-here-row { display: flex; align-items: center; gap: 10px; margin: 6px 4px 8px; flex-wrap: wrap; }
+.nge-cl-play-here {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #5fd8ff;
+  background: linear-gradient(135deg, rgba(27, 111, 154, 0.85), rgba(74, 58, 168, 0.85));
+  color: #fff; font: 700 12px/1 Inter, system-ui, sans-serif; letter-spacing: 0.05em; text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(95, 216, 255, 0.3);
+}
+.nge-cl-play-here:hover { box-shadow: 0 0 18px rgba(95, 216, 255, 0.5); }
+.nge-cl-play-here-hint { font-size: 12px; color: #9fb4cc; }
 /* "Start playing": what to do with the cell just claimed. */
 .nge-cl-start-note {
   flex-basis: 100%;
