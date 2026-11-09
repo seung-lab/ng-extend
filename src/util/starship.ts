@@ -591,7 +591,6 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     let prevCores: V3[] | null = null;
     let prevUp: V3 | null = null;
     let prevFwd: V3 | null = null;
-    let prevPos: V3 | null = null;
     let dockBend: V3 = [0, 0, 0];
     await new Promise<void>(done => {
       const step = (now: number) => {
@@ -709,7 +708,6 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           if (lv > 0) fwd = norm(mix(fwd, norm(flat), lv));
         }
         if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 20 : h && hq < 1 ? 16 : 6))));
-        prevPos = pos;
         prevFwd = fwd;
         // banking: roll into the turn
         let bend: V3 = dock ? mul(dockBend, 6) : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
