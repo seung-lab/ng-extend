@@ -1101,8 +1101,10 @@ export async function startIntroTour() {
     (on ? stayEl : nextEl).focus({preventScroll: true});
   };
   // the X asks first; pressed again while it asks, it leaves (Ames: "wouldn't let me click the X")
-  (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => { if (panel?.classList.contains('nge-intro--asking')) endTour(); else ask(true); };
-  (panel.querySelector('.nge-intro-leave') as HTMLButtonElement).onclick = endTour;
+  // leaving takes the Starship (and its portal and holograms) away too (Ames)
+  const leave = () => { endTour(); stopZap(); clearStarship(); };
+  (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => { if (panel?.classList.contains('nge-intro--asking')) leave(); else ask(true); };
+  (panel.querySelector('.nge-intro-leave') as HTMLButtonElement).onclick = leave;
   stayEl.onclick = () => ask(false);
 
   const indexOf = (key: string) => BEATS.findIndex(b => b.key === key);
