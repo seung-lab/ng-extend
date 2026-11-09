@@ -1622,7 +1622,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <!-- Log out, last in the menu (Ames 2026-11-09). -->
         <li v-if="login.sessions.length > 0" class="nge-menu-logout">
           <div class="logoutButton button nge-menu-item" @click="logOutAll()">
-            <span class="nge-menu-num nge-menu-num--icon">🚪</span><span>Log out</span>
+            <span>Log out</span>
           </div>
         </li>
       </template>

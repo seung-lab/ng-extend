@@ -199,6 +199,10 @@ function stepFrom(i: number, dir: 1 | -1): number {
 // window.__ngeStepPending): the first Next pressed without it says "try it
 // first", the second skips (Ames 2026-10-19: "can it detect if I didn't do it?").
 let nudged = -1;
+// "Not now" on a last box: finish the tutorial as usual, but don't start the
+// next one (toknow #442).
+let skipFollowOn = false;
+const notNow = () => { skipFollowOn = true; try { next(true); } finally { skipFollowOn = false; } };
 const next = (_auto?: unknown) => {
     const w = window as any;
     if (_auto !== true && w.__ngeStepPending && nudged !== store.getTutorialStep()) {
@@ -258,7 +262,8 @@ const next = (_auto?: unknown) => {
             document.dispatchEvent(new CustomEvent('nge:prompt-username'));
             // Then its top bar icons arrive and Merge starts by itself.
             const doneStep = store.getTutorialStep();
-            getStartedFinished(() => store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
+            const startMerge = !skipFollowOn;
+            getStartedFinished(() => startMerge && store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
         }
     }
 };
@@ -416,6 +421,7 @@ const exitIntro = () => {
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
         :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
         v-on:next="next"
+        v-on:not-now="notNow"
         :class="{ 'nge-tut-under-card': testCardUp }"
         v-on:back="back" v-on:exitIntro="exitIntro" />
     </template>

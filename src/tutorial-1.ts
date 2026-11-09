@@ -704,6 +704,8 @@ Thanks for being a part of the neuroscience community. For Science!`,
     // starts by itself (toolbar_staging getStartedFinished). Ames 2026-10-21:
     // "there should be a button to start Merge".
     nextLabel: 'Start Merge',
+    // Finishes Get Started without starting Merge (toknow #442).
+    notNowLabel: 'Not now',
     position: MIDDLE,
     image:
       imgTutorialFinal,
