@@ -546,6 +546,10 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
   }
   const gen = ++flightGen;
   const stale = () => gen !== flightGen;
+  // every flight starts the ship at its true size: left at its last parked
+  // size, a replay came out of the portal several times too big, mostly
+  // behind the ring's window (Ames: "the rocket went behind the portal again")
+  sizeK = 1;
   running = true;
   stopRequested = false;
   cameraHeld = false;
@@ -928,7 +932,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // through the portal: the ship shows as it comes out of the light
         prop.alpha = cameo ? (tc < PORTAL_S ? 0 : Math.min(1, (tc - PORTAL_S) / 0.25)) : t < 0 ? 0 : Math.min(1, t / 0.25);
         if (cameo && cameoPortal && tc < ZIP_AT + 1.5) {
-          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.6 * grow)));
+          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.85 * grow * sizeK)));
           shipScreen = sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
           // sized to the view, like the parked ship: the Sandbox ship's length
           // times five is huge in MICrONS's close views, and while the ring art
@@ -941,7 +945,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           cameoPortalGone = true; setNgeGlow(null, 'starship-portal'); removePortalArt();
         }
         if (tAll < ZIP_AT + 1.5) {
-          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.6 * grow)));
+          // (the window in the ring is the ship's real size on screen, so all
+          // of it shows in front as it comes through)
+          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.85 * grow * sizeK)));
           shipScreen = sp && se && t > -0.05 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
         }
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
