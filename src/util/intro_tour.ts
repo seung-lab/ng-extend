@@ -28,7 +28,7 @@ import {makeLayer} from 'neuroglancer/layer';
 import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
 /** The Sandbox pyramidal cell: the colors land on it alone. */
 const CELL_KEY = getObjectKey(Uint64.parseString('648518346355727683'));
-import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, undockStarship} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, starshipCruise, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
@@ -180,6 +180,8 @@ function moveCamera(center: V3, viewNm: number, ms = 1600) {
   const v = viewerNow(), nm = nmPerUnit();
   if (!v || !nm) return;
   cancelAnimationFrame(camRaf);
+  // a parked ship rides along with the camera: its engines show it (Ames)
+  starshipCruise(ms);
   const unit = Math.min(nm[0], nm[1], nm[2]);
   const p0 = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
   const s0 = v.projectionScale.value, s1 = viewNm / unit;
@@ -676,9 +678,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro--asking .nge-intro-confirm { display: block; }
 .nge-intro-confirm p { margin: 10px 0 2px; font: 700 18px 'Orbitron', 'Inter', sans-serif; color: #fff; }
 .nge-intro-confirm small { display: block; color: #a9c3de; font-size: 13px; }
-.nge-intro-leave { background: none; border: 1px solid rgba(255, 140, 170, 0.6); color: #ffc2d2; border-radius: 6px; padding: 8px 16px; cursor: pointer;
-  font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
-.nge-intro-leave:hover { background: rgba(255, 120, 160, 0.14); color: #fff; }
+.nge-intro-confirm .nge-intro-row { justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) { .nge-intro-plate::after, .nge-intro-chev svg, .nge-intro-circuit .spark { animation: none; }
   .nge-intro--in { animation-duration: 1ms; } }
 /* Phones: a smaller panel, so the cell gets the room (Ames 2026-11-08). */
@@ -1076,7 +1076,7 @@ export async function startIntroTour() {
       <button class="nge-go nge-go--alt nge-intro-alt" type="button" hidden><span class="nge-go-label">Explore a bigger neuron</span></button>
       <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
-      <div class="nge-intro-row"><button class="nge-intro-leave" type="button">Leave</button><button class="nge-go nge-intro-stay" type="button"><span class="nge-go-label">Keep going</span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div></div>`;
+      <div class="nge-intro-row"><span style="flex:1"></span><button class="nge-go nge-go--alt nge-intro-leave" type="button"><span class="nge-go-label">Leave</span></button><button class="nge-go nge-intro-stay" type="button"><span class="nge-go-label">Keep going</span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div></div>`;
   document.body.appendChild(panel);
   document.body.classList.add('nge-intro-on');
   keepOnScreen(panel);

@@ -171,6 +171,10 @@ export function starshipEta(): number {
   return 0;
 }
 export function undockStarship() { dock = null; }
+/** The camera is gliding for ms: a parked ship fires its engines meanwhile,
+ *  since on screen it is the one travelling (Ames: "not showing thrusters"). */
+let cruise = {start: 0, ms: 0};
+export function starshipCruise(ms: number) { cruise = {start: performance.now(), ms}; }
 /** Is the ship on the move: still flying in, on a hop, or easing to its dock? */
 let moving = true;
 export function starshipMoving(): boolean { return moving; }
@@ -721,7 +725,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // trail left behind fades on its own
         const IDLE = 0;
         const dockQ = dock ? (now - dock.start) / dockMs : 1;
-        const down = dock ? (dockQ < 1 ? Math.min(1, Math.sin(Math.PI * dockQ) * 1.6) : IDLE)
+        const cq = (now - cruise.start) / Math.max(1, cruise.ms);
+        const ride = dock && cq < 1 ? Math.min(1, Math.sin(Math.PI * Math.max(0, cq)) * 1.6) : 0;
+        const down = dock ? Math.max(ride, dockQ < 1 ? Math.min(1, Math.sin(Math.PI * dockQ) * 1.6) : IDLE)
           : h ? (hq < 1 ? Math.max(IDLE, Math.min(1, Math.sin(Math.PI * hq) * 1.6)) : IDLE)
           : t < 0 ? 0 : t < CRUISE_S ? 1 : Math.max(IDLE, 1 - (t - CRUISE_S) / (LANDING_S * 0.9) * (1 - IDLE));
         // through the portal: the ship shows as it comes out of the light
