@@ -689,8 +689,8 @@ async function crosshairProblem(rootId: string, alsoAccept: string[] = []): Prom
   const lineage = await ancestorAmong(at.root, [rootId, ...alsoAccept]);
   if (lineage) return '';
   if (lineage === undefined) return 'Could not check the crosshairs against this cell. Try again in a moment.';
-  const short = (id: string) => '…' + id.slice(-6);
-  return `The crosshairs are inside ${short(at.root)}, not this cell (${short(rootId)}). Move them into the cell, then mark it again.`;
+  // Celia's wording (2026-11-09), with the whole IDs.
+  return `The crosshairs are in the wrong cell (${at.root}). Move them into this cell (${rootId}), then mark it again.`;
 }
 
 export async function setCellComplete(
@@ -875,7 +875,7 @@ export async function setCellComplete(
         return true;
       }
       if (!res) {
-        lastCompletionProblem = 'CAVE could not be reached, and the completion could not be kept to send later. Try again in a moment.';
+        lastCompletionProblem = 'The server could not be reached, and the completion could not be added to the queue. Try again in a moment.';
         return false;
       }
       const errText = await res.text().catch(() => '');
@@ -885,12 +885,12 @@ export async function setCellComplete(
       // through to "saved in this browser only": the menu said Proofread,
       // the completion was counted and the sheet was written, while CAVE and
       // every other browser still said In Progress (Krzysztof 2026-10-09).
-      lastCompletionProblem = `CAVE did not save this (error ${res.status}), so the cell is not marked. Try again in a moment.`;
+      lastCompletionProblem = `The server did not save (error ${res.status}), so the cell is not marked. Try again in a moment.`;
       return false;
     }
   } catch (e) {
     console.error('[lightbulb] setCellComplete — CAVE network error:', e);
-    lastCompletionProblem = 'CAVE could not be reached, so nothing was changed. Try again in a moment.';
+    lastCompletionProblem = 'The server could not be reached, so nothing was changed. Try again in a moment.';
     return false;
   }
 
@@ -1166,7 +1166,7 @@ export async function saveCellType(
     // through to "saved in this browser only": the menu said Saved, the type
     // was logged and counted, and CAVE and every other browser had nothing
     // (the same fault completions had until 2026-10-09; Ames 2026-10-12).
-    lastCellTypeProblem = `CAVE did not save this (error ${res.status}), so the cell type is not saved. Try again in a moment.`;
+    lastCellTypeProblem = `The server did not save (error ${res.status}), so the cell type is not saved. Try again in a moment.`;
     return false;
   } catch (e) {
     console.error('[lightbulb] saveCellType — CAVE network error:', e);
