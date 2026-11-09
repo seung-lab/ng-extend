@@ -781,7 +781,12 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // (not on its routes: round the axon's spiral the nose has to follow the
         // turn into and out of the screen exactly, Ames: "check the orientation")
         if (dock && (now - dock.start) / dockMs < 0.85) fwd = norm(sub(fwd, mul(cam.toEye, dot(fwd, cam.toEye) * 0.5)));
-        let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
+        // its top: the screen's up, but toward the viewer the more the ship
+        // flies up or down the screen, where the screen's up says nothing
+        // and it rolled onto its side (Ames: "it is flying sideways")
+        const vert = Math.min(1, Math.abs(dot(fwd, cam.up)) * 1.25);
+        const ref = norm(add(mul(cam.up, 1 - vert), mul(cam.toEye, vert + 0.15)));
+        let up = norm(add(sub(ref, mul(fwd, dot(ref, fwd))), mul(bend, 1 / 2500)));
         if (dock) up = norm(mix(up, norm(add(mul(cam.toEye, 0.75), mul(cam.up, 0.66))), smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
         const land = h || dock ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));

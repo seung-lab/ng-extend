@@ -983,7 +983,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   const beams = [...callout.querySelectorAll('polygon.nge-callout-beam')] as SVGPolygonElement[];
   const seam = callout.querySelector('.nge-beam-seam') as SVGLineElement;
   const moteG = callout.querySelector('.nge-beam-motes') as SVGGElement;
-  const motes = Array.from({length: 18}, (_, k) => {
+  const motes = Array.from({length: 0}, (_, k) => {
     const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     c.setAttribute('r', String(0.8 + Math.random() * 1.4)); c.setAttribute('fill', '#e6fbff'); moteG.appendChild(c);
     return {c, u: k / 18, x: Math.random(), v: 0.25 + Math.random() * 0.35};
@@ -1085,7 +1085,7 @@ function statsHtml(stats: [string, string][]): string {
       grouped = true;
       return `${head}<div><dt>${STAT_ICON[k] ?? ''}${k.replace(/s$/, '')}</dt><dd><span class="num">${m[1]}</span></dd></div>`;
     }
-    return `<div${k === 'Location' || k === 'For scale' || k === 'Contains' || k === 'Note' || k === 'With the Martinotti cell' ? ' class="wide"' : ''}><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
+    return `<div${k === 'Location' || k === 'Hears most from' || k === 'Sends most to' || k === 'For scale' || k === 'Contains' || k === 'Note' || k === 'With the Martinotti cell' ? ' class="wide"' : ''}><dt>${STAT_ICON[k] ?? ''}${k}</dt><dd>${statValue(v)}</dd></div>`;
   }).join('');
 }
 /** A number set large with its unit beneath ("3,386 synapses"). */
@@ -1603,9 +1603,19 @@ const MC_TYPES: Record<string, [string, string]> = {
   '6P-CT': ['Layer 6 corticothalamic', '#e17055'], 'BC': ['Basket cell', '#4dd0e1'], 'MC': ['Martinotti cell', '#9b8cff'],
   'BPC': ['Bipolar cell', '#7bed9f'], 'NGC': ['Neurogliaform cell', '#a3e4ff'],
 };
-interface McData { synIn: number[]; synOut: number[]; synUnit: number;
+type TopTypes = {in: [string, number][]; out: [string, number][]; in_typed: number; out_typed: number};
+/** Its top partner types, in words, from enough typed synapses to say (Ames). */
+function topTypeStats(tt: TopTypes | undefined): [string, string][] {
+  if (!tt) return [];
+  const say = (t: [string, number]) => `${(MC_TYPES[t[0]]?.[0] ?? t[0])} (${t[1]}%)`;
+  const rows: [string, string][] = [];
+  if (tt.in_typed >= 50 && tt.in.length) rows.push(['Hears most from', say(tt.in[0])]);
+  if (tt.out_typed >= 50 && tt.out.length) rows.push(['Sends most to', say(tt.out[0])]);
+  return rows;
+}
+interface McData { topTypes?: TopTypes; synIn: number[]; synUnit: number; synOut: number[];
   partners: {id: string; dir: 'in' | 'out'; synapses: number; type: string; cls?: string; soma: number[];
-    shared?: number[][]; inputs?: number | null; outputs?: number | null; cable_mm?: number | null}[]; }
+    shared?: number[][]; inputs?: number | null; outputs?: number | null; cable_mm?: number | null; topTypes?: TopTypes}[]; }
 
 /* ── the sweep: the ship flies over the synapses two cells share and lights
    each with a quick laser zap as it passes (Ames) ── */
@@ -1794,7 +1804,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
         const whenParked = () => {
           if (token !== my) return;
           if (starshipMoving()) { requestAnimationFrame(whenParked); return; }
-          showCallout(top, 'Martinotti cell', scanStats, '#cfdcff', false, false);
+          showCallout(top, 'Martinotti cell', [...scanStats, ...topTypeStats(data.topTypes)], '#cfdcff', false, false);
           setTimeout(() => { if (token === my) { backToList(); cardAway(false); } }, 1600);
         };
         setTimeout(whenParked, 300);
@@ -1867,7 +1877,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
       if (p.cable_mm) stats.push(['Branch length', `about ${p.cable_mm < 10 ? p.cable_mm.toFixed(1) : Math.round(p.cable_mm)} mm`]);
       if (p.inputs != null) stats.push(['Input', `${p.inputs.toLocaleString('en-US')} synapses`]);
       if (p.outputs != null) stats.push(['Output', `${p.outputs.toLocaleString('en-US')} synapses`]);
-      stats.push(['With the Martinotti cell', `${p.synapses}`]);
+      stats.push(['With the Martinotti cell', `${p.synapses}`], ...topTypeStats(p.topTypes));
       // pyramidal axons here are mostly not traced to the end yet
       if (!inhib) stats.push(['Note', 'its axon is still being traced']);
       showCallout(p.soma as unknown as V3, name, stats, typeOf(p)[1], false, false);
