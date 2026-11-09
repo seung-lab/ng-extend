@@ -336,10 +336,12 @@ const STATE_DEFECT_VIEW = {
       "m"
     ]
   },
+  // z 425 is the slice with the black spill; 426 (where this sat) is clean
+  // EM, so the 2D showed no defect (toknow #440).
   "position": [
     77603.1875,
     59828.70703125,
-    426.684326171875
+    425.5
   ],
   "crossSectionScale": 13.46721884640639,
   "projectionOrientation": [
