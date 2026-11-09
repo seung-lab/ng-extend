@@ -1117,7 +1117,7 @@ function portraitK(): number {
   const pe = threeDPanel()?.element as HTMLElement | undefined;
   const r = pe?.getBoundingClientRect();
   const asp = r && r.height > 50 ? r.width / r.height : window.innerWidth / Math.max(1, window.innerHeight);
-  return Math.max(1, Math.min(2.6, 1.5 / asp));
+  return Math.max(1, Math.min(2.2, 1.5 / asp));
 }
 function isPhone(): boolean { return window.matchMedia?.('(max-width: 820px)').matches ?? false; }
 function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true, showDot = true) {
@@ -1462,7 +1462,7 @@ export async function startIntroTour() {
       // a portrait screen is narrow: pulled back to show the same width as a
       // wide one, so the ship never leaves it (Ames, on a phone)
       // (the axon is narrow: it needs much less, Ames: "zoomed in more")
-      const vnm = b.view.nm * (b.key === 'axon' ? Math.min(1.15, portraitK()) : portraitK());
+      const vnm = b.view.nm * (b.key === 'axon' ? Math.min(1.8, portraitK()) : portraitK());
       const msNow = b.key === 'spike' ? ms : Math.max(ms, glideMs(framed(center, vnm), vnm, ms), shipLeft + 500);
       if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, vnm), vnm, ms); }, 1300);
       else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, vnm), vnm, msNow);
