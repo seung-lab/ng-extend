@@ -1903,7 +1903,9 @@ function showTourLoading() {
     setTimeout(() => { cancelAnimationFrame(raf); el.remove(); }, 1300);
   };
   const timer = setTimeout(done, 45_000);
-  window.addEventListener('nge-intro-ready', done);
+  // (listening only once the new flight is under way: the one it replaces
+  // says "ready" as it stops, which ended this screen at once)
+  setTimeout(() => window.addEventListener('nge-intro-ready', done), 600);
 }
 
 export function playIntro() {
