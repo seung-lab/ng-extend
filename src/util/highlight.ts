@@ -225,8 +225,52 @@ export function pickUnderMouse(): Pick | { error: string } {
   return { selection, root: selection.rootId.toString(), global };
 }
 
+/** "Checked ✓" and "Checked ✓2" are one layer: neuroglancer numbers a layer
+ *  added under a name already taken, and a claim showed Checked ✓1 and
+ *  Checked ✓2 side by side (Ames 2026-11-07). */
+const baseName = (n: string) => String(n).replace(/\s*\d+\s*$/, '');
+
 function managedLayer(name: string): any {
-  return viewerOf()?.layerManager?.managedLayers?.find((l: any) => l.name === name && !l.archived);
+  const all = viewerOf()?.layerManager?.managedLayers ?? [];
+  return all.find((l: any) => l.name === name && !l.archived)
+    ?? all.find((l: any) => !l.archived && baseName(l.name) === baseName(name));
+}
+
+/** Fold numbered copies of a Highlight layer into one: their strokes move to
+ *  the copy with the most, the others go, and the one kept takes the plain
+ *  name. A copy whose strokes have not loaded yet waits for the next look. */
+function mergeHighlightCopies(name: string): void {
+  const viewer = viewerOf();
+  const copies = (viewer?.layerManager?.managedLayers ?? []).filter((l: any) => !l.archived && baseName(l.name) === baseName(name));
+  if (copies.length < 2 || copies.some((l: any) => !l.layer?.localAnnotations)) return;
+  const size = (l: any) => { let n = 0; for (const _ of l.layer.localAnnotations) n++; return n; };
+  copies.sort((a: any, b: any) => size(b) - size(a));
+  const [keep, ...rest] = copies;
+  const dst = keep.layer.localAnnotations;
+  const ids = new Set<string>();
+  for (const a of dst) ids.add(String(a.id));
+  for (const dup of rest) {
+    for (const a of dup.layer.localAnnotations) {
+      if (ids.has(String(a.id))) continue;
+      ids.add(String(a.id));
+      dst.add({ ...a }, true).dispose();
+    }
+    viewer.layerManager.removeManagedLayer(dup);
+  }
+  if (keep.name !== name && !viewer.layerManager.getLayerByName(name)) {
+    keep.name = name;
+    viewer.layerManager.layersChanged.dispatch();
+  }
+}
+
+/** The layer of one Highlight mark (by its key, e.g. 'checked'), made if it
+ *  is missing, with any numbered copies folded into it. A Retina claim opens
+ *  with the Checked one ready (Ames 2026-11-07). */
+export async function ensureHighlightLayer(key: string): Promise<void> {
+  const style = highlightStyles().find(s => s.key === key);
+  if (!style || !viewerOf()?.layerSpecification) return;
+  mergeHighlightCopies(style.layer);
+  await strokeSource(style);
 }
 
 async function strokeSource(style: HighlightStyle): Promise<any> {

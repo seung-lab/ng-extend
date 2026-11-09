@@ -245,6 +245,15 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
       }
       card = await db.patch(id, { ...fields, updated_at: now });
       if (fields.list === 'done' && args.closeReport && before.triage_id) await db.closeReport(before.triage_id, byName);
+      // Everyone on a finished card gets the credit (Ames 2026-11-09: "both get
+      // it", "all collaborators"): whoever presses Done, if not the owner, joins
+      // its collaborators, so the board and Arcane Fixes count them too.
+      if (fields.list === 'done' && before.list !== 'done' && meId && meId !== card.owner_id) {
+        try {
+          const had = await helpers.get(id);
+          if (!had.includes(meId) && had.length < HELPERS_MAX) await helpers.set(id, [...had, meId]);
+        } catch (e) { console.warn('[todo] finisher not added:', e.message); }
+      }
       // Given the card: they hear about it, unless they gave it to themselves.
       if (fields.owner_id && fields.owner_id !== before.owner_id && fields.owner_id !== (me && me.id)) {
         const people = await db.people();

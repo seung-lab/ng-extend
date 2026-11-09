@@ -34,6 +34,7 @@ import HighlightModePanel from "components/HighlightModePanel.vue";
 import TeamPanel from "components/TeamPanel.vue";
 import VersionNotice from "components/VersionNotice.vue";
 import SegmentMarksPrompt from './SegmentMarksPrompt.vue';
+import RetinaModePrompt from './RetinaModePrompt.vue';
 import TwoDTools from './TwoDTools.vue';
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
@@ -1035,6 +1036,11 @@ const visibleToolbar = computed(() => {
 });
 // The command bar runs a top bar icon's own action (Find Path, Chat, ...), so
 // an icon a new player has not received yet is still within reach.
+// A Retina claim opens with the Checked layer and the Highlight box ready
+// (Ames 2026-11-07). Opens only; never closes it.
+document.addEventListener('nge:open-highlight', () => {
+  if (!highlightOff.value && !showHighlight.value) { showHighlight.value = true; sprayHighlightIcon(); }
+});
 document.addEventListener('nge:toolbar-action', ((e: CustomEvent) => {
   toolbarActions[e.detail?.id]?.action();
 }) as EventListener);
@@ -1679,6 +1685,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- "Now entering <dataset>" after a dataset switch (survives the reload). -->
   <DatasetTransition />
   <SegmentMarksPrompt />
+  <RetinaModePrompt />
   <TwoDTools />
 </template>
 

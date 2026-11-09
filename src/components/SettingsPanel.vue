@@ -101,6 +101,8 @@ const draftHideTopBar = ref(false);
 const draftImageLayerPanel = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
+const draftRetinaAnnot = ref(false);
+const draftLayerHide = ref(false);
 const draftQuickMerge = ref(false);
 const draftOfferRestore = ref(true);
 const draftAnnotationGems = ref(true);
@@ -180,6 +182,8 @@ onMounted(() => {
   draftImageLayerPanel.value = prefsStore.prefs.imageLayerPanel === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
+  draftRetinaAnnot.value = prefsStore.prefs.retinaAnnotationLayers === true;
+  draftLayerHide.value = prefsStore.prefs.layerHideButton === true;
   draftQuickMerge.value = prefsStore.prefs.quickMergeKey === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
@@ -250,7 +254,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
@@ -350,6 +354,34 @@ function closeNgInfo(e: Event) {
   ngInfoOpen.value = false;
 }
 onMounted(() => { document.addEventListener('click', closeNgInfo, true); document.addEventListener('keydown', closeNgInfo, true); });
+
+// Another window can point at one card: it opens unfolded, scrolled to, and
+// glows a moment (the Retina question's "10 Jumping and views", Ames 2026-11-08).
+function focusCard(key: string) {
+  if (isFolded(key)) toggleFold(key);
+  setTimeout(() => {
+    const el = document.querySelector(`.nge-set-card--${key}`) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+    el.classList.remove('nge-set-card--flash'); void el.offsetWidth; el.classList.add('nge-set-card--flash');
+    setTimeout(() => el.classList.remove('nge-set-card--flash'), 2600);
+  }, 250);
+}
+function askRetinaAgain() { document.dispatchEvent(new CustomEvent('nge:retina-ask')); }
+const onFocusCard = (e: Event) => { const k = (e as CustomEvent).detail?.key; if (k) focusCard(k); };
+// The Retina question saved while Settings is open: show it here too, so
+// saving Settings does not put the old answer back.
+const onRetinaMode = () => { draftRetinaAnnot.value = prefsStore.prefs.retinaAnnotationLayers === true; };
+onMounted(() => {
+  document.addEventListener('nge:settings-focus', onFocusCard);
+  document.addEventListener('nge:retina-mode', onRetinaMode);
+  const pending = (window as any).__ngeSettingsFocus;
+  if (pending) { (window as any).__ngeSettingsFocus = null; focusCard(pending); }
+});
+onUnmounted(() => {
+  document.removeEventListener('nge:settings-focus', onFocusCard);
+  document.removeEventListener('nge:retina-mode', onRetinaMode);
+});
 onUnmounted(() => { document.removeEventListener('click', closeNgInfo, true); document.removeEventListener('keydown', closeNgInfo, true); });
 
 // These four open something in the viewer itself, which sits BEHIND this
@@ -717,6 +749,11 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftJumpAdds" />
               <span class="nge-settings-toggle-label">Jumping to a cell adds it to my view (off: it replaces my view)</span>
             </label>
+            <label class="nge-settings-toggle" title="Off: a Retina cell you claim opens with one Checked Highlight layer, and the Annotation layers button in the Cell Library adds the rest. On: every Retina claim opens with all of them.">
+              <input type="checkbox" v-model="draftRetinaAnnot" />
+              <span class="nge-settings-toggle-label">Claiming a Retina cell adds the annotation layers (Soma, True End, Can't Fix, Hits Edge, Notes). Cilia Quests always have their annotations.</span>
+            </label>
+            <button type="button" class="nge-set-retina-ask" @click="askRetinaAgain">Show the Retina question again</button>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
@@ -779,6 +816,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer, and Shift + the number makes it the active layer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
+            </label>
+            <label class="nge-settings-toggle" title="Off: a layer tab has one x, which closes the layer (Ctrl+Z brings it back). On: neuroglancer's two buttons, an x that hides the layer in the side panel's layer list, and a bin that deletes it.">
+              <input type="checkbox" v-model="draftLayerHide" />
+              <span class="nge-settings-toggle-label">Classic layer tab buttons (x hides to the side panel, bin deletes)</span>
             </label>
             <label class="nge-settings-toggle" title="Off: clicking the 2D EM layer's tab shows or hides the 2D view. On: it opens the layer's side panel (Source, Rendering, Annotations), as in neuroglancer.">
               <input type="checkbox" v-model="draftImageLayerPanel" />
@@ -882,6 +923,17 @@ const props = defineProps<{ embedded?: boolean }>();
 
 /* Scanline removed — holographic border glow handled by ModalOverlay */
 
+.nge-set-retina-ask {
+  align-self: flex-start; margin: -2px 0 6px 26px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12px; color: #8fd0ff; text-decoration: underline; text-underline-offset: 2px;
+}
+.nge-set-retina-ask:hover { color: #c4e6ff; }
+.nge-set-card--flash { animation: ngeSetFlash 2.4s ease-out; }
+@keyframes ngeSetFlash {
+  0%, 30% { box-shadow: 0 0 0 2px #4aa8ff, 0 0 26px rgba(74, 168, 255, 0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 168, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-set-card--flash { animation: none; box-shadow: 0 0 0 2px #4aa8ff; } }
 @keyframes ngeSettingsMaterialize {
   0% {
     opacity: 0; transform: translate(-50%, -50%) translateY(14px) scale(0.96);

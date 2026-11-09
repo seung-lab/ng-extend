@@ -799,7 +799,10 @@ async function loadArcaneCards() {
   try {
     const d = await secureWrite<any>('todo.list');
     const me = (d?.people || []).find((p: any) => isMe(p.name));
-    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)))).length : 0;
+    // Cards I own, made without an owner, or worked on as a collaborator (which
+    // includes finishing someone else's card): Ames 2026-11-09, "all collaborators".
+    const helping = (d?.helpers || {}) as Record<string, string[]>;
+    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)) || (helping[c.id] || []).includes(me.id))).length : 0;
     arcaneCardsIn.value = true;
   } catch { /* the cards just do not count this time */ }
 }
@@ -1898,6 +1901,9 @@ const userLabel = (u: PickedUser) => [u.display_name || 'Unnamed player', u.user
 function onUserQuery() {
   if (userSearchTimer) clearTimeout(userSearchTimer);
   // PostgREST filter syntax characters would break the query; names never need them.
+  userUnfound.value = [];
+  // A list of names is looked up on Enter (or as it is pasted).
+  if (/[,\n;]/.test(userQuery.value)) { userMatches.value = []; return; }
   const q = userQuery.value.trim().replace(/[,()*%\\]/g, ' ').trim();
   if (q.length < 2) { userMatches.value = []; return; }
   userSearchTimer = setTimeout(async () => {
@@ -1910,22 +1916,79 @@ function onUserQuery() {
     } catch { userMatches.value = []; } finally { userSearching.value = false; }
   }, 220);
 }
+// Several players at once (Ames 2026-11-09): picked players are chips, and a
+// list of names separated by commas is looked up name by name. A new
+// notification goes to each of them as its own; notifTargetId holds the first.
+const userPicks = ref<PickedUser[]>([]);
+/** Names from a comma list that matched no one, or more than one player. */
+const userUnfound = ref<string[]>([]);
+const userListResolving = ref(false);
+watch(userPicks, list => {
+  userPicked.value = list[0] ?? null;
+  notifTargetId.value = list[0]?.id ?? '';
+}, { deep: true });
+function addPick(u: PickedUser) {
+  if (!userPicks.value.some(p => p.id === u.id)) userPicks.value.push(u);
+}
 function pickUser(u: PickedUser) {
-  userPicked.value = u;
-  notifTargetId.value = u.id;
+  addPick(u);
   userQuery.value = '';
   userMatches.value = [];
 }
-function clearPickedUser() { userPicked.value = null; notifTargetId.value = ''; }
+function removePick(id: string) { userPicks.value = userPicks.value.filter(p => p.id !== id); }
+function clearPickedUser() { userPicks.value = []; userUnfound.value = []; }
+/** One name from a list: an exact display name or username first, then the
+ *  only player whose name contains it. */
+async function findOne(name: string): Promise<PickedUser | null> {
+  const { supabase } = await import('../supabase');
+  const q = name.replace(/["\\]/g, '').trim();
+  if (q.length < 2) return null;
+  const exact = await supabase.from('users').select('id,display_name,username')
+    .or(`display_name.ilike."${q}",username.ilike."${q.replace(/^@/, '')}"`).limit(2);
+  if ((exact.data ?? []).length === 1) return exact.data![0] as PickedUser;
+  const some = await supabase.from('users').select('id,display_name,username')
+    .or(`display_name.ilike."*${q}*",username.ilike."*${q}*"`).limit(2);
+  return (some.data ?? []).length === 1 ? some.data![0] as PickedUser : null;
+}
+/** Looks up every name in the box, separated by commas (or new lines). */
+async function resolveUserList() {
+  const names = userQuery.value.split(/[,\n;]+/).map(s => s.trim()).filter(Boolean);
+  if (!names.length) return;
+  userListResolving.value = true;
+  userMatches.value = [];
+  const missed: string[] = [];
+  try {
+    for (const n of names) {
+      const u = await findOne(n).catch(() => null);
+      if (u) addPick(u); else missed.push(n);
+    }
+  } finally { userListResolving.value = false; }
+  userUnfound.value = missed;
+  userQuery.value = missed.join(', ');
+}
+const userQueryIsList = computed(() => /[,\n;]/.test(userQuery.value));
+function onUserEnter() {
+  if (userQueryIsList.value) void resolveUserList();
+  else if (userMatches.value.length === 1) pickUser(userMatches.value[0]);
+}
+function onUserPaste(e: ClipboardEvent) {
+  const text = e.clipboardData?.getData('text') ?? '';
+  if (!/[,\n;]/.test(text)) return;
+  e.preventDefault();
+  userQuery.value = (userQuery.value ? userQuery.value + ', ' : '') + text;
+  void resolveUserList();
+}
 // A draft or an edited notification restores only the id: look its name up.
 watch(notifTargetId, async id => {
-  if (!id) { userPicked.value = null; return; }
-  if (userPicked.value?.id === id || notifTargetType.value !== 'user') return;
+  if (!id) { if (userPicks.value.length) userPicks.value = []; return; }
+  if (userPicks.value.some(p => p.id === id) || notifTargetType.value !== 'user') return;
+  let u: PickedUser = { id, display_name: null, username: null };
   try {
     const { supabase } = await import('../supabase');
     const { data } = await supabase.from('users').select('id,display_name,username').eq('id', id).limit(1);
-    userPicked.value = ((data ?? [])[0] as PickedUser) || { id, display_name: null, username: null };
-  } catch { userPicked.value = { id, display_name: null, username: null }; }
+    u = ((data ?? [])[0] as PickedUser) || u;
+  } catch { /* keep the bare id */ }
+  userPicks.value = [u];
 });
 const notifPostToChat = ref(false);
 
@@ -2130,6 +2193,7 @@ function saveDraft() {
       body: notifBody.value,
       targetType: notifTargetType.value,
       targetId: notifTargetId.value,
+      picks: userPicks.value.length > 1 ? userPicks.value : undefined,
       postToChat: notifPostToChat.value,
       sendAt: notifSendAt.value,
       expiresAt: notifExpiresAt.value,
@@ -2147,6 +2211,7 @@ function restoreDraft() {
     notifBody.value = d.body || '';
     notifTargetType.value = d.targetType || 'all';
     notifTargetId.value = d.targetId || '';
+    if (Array.isArray(d.picks) && d.picks.length > 1) userPicks.value = d.picks;
     notifPostToChat.value = !!d.postToChat;
     notifSendAt.value = d.sendAt || '';
     notifExpiresAt.value = d.expiresAt || '';
@@ -2160,7 +2225,7 @@ function clearDraft() {
 const hasDraft = computed(() =>
   !!(notifTitle.value.trim() || notifBody.value.trim() || notifSendAt.value));
 
-watch([notifTitle, notifBody, notifTargetType, notifTargetId,
+watch([notifTitle, notifBody, notifTargetType, notifTargetId, () => userPicks.value.length,
        notifPostToChat, notifSendAt, notifExpiresAt], saveDraft);
 
 /** A title is always needed; words only when there is no picture. A title
@@ -2225,11 +2290,14 @@ async function sendNotification() {
       return;
     }
 
-    await backend.createNotification({
+    // Specific User with several players: one notification each.
+    const recipients = notifTargetType.value === 'user' && userPicks.value.length > 1
+      ? userPicks.value.map(u => u.id) : [notifTargetId.value];
+    for (const rid of recipients) await backend.createNotification({
       title: notifTitle.value.trim(),
       body: notifBody.value.trim(),
       target_type: notifTargetType.value,
-      target_id: notifTargetType.value !== 'all' ? notifTargetId.value : undefined,
+      target_id: notifTargetType.value !== 'all' ? rid : undefined,
       post_to_chat: notifPostToChat.value,
       // Interpret the picker's naive value as EASTERN time, not the admin's
       // local zone — `new Date("2026-07-20T08:00")` would parse in whatever
@@ -2245,7 +2313,7 @@ async function sendNotification() {
     // scheduled time back and the admin knows exactly what was queued.
     const audience = notifTargetType.value === 'all' ? 'all users'
       : notifTargetType.value === 'group' ? 'the selected group'
-      : 'that user';
+      : recipients.length > 1 ? `${recipients.length} players` : 'that user';
     notifConfirm.value = isScheduledForLater.value
       ? `Scheduled for ${formatEt(etNaiveToUtcIso(notifSendAt.value))} to ${audience}.`
         + (notifPostToChat.value ? ' It will post to chat when it sends.' : '')
@@ -2997,14 +3065,23 @@ function practiceWhen(iso: string | null) {
             <option v-for="g in backend.groups" :key="g.id" :value="String(g.id)">{{ g.name }}</option>
           </select>
           <div v-if="notifTargetType === 'user'" class="nge-user-pick">
-            <div v-if="userPicked" class="nge-user-picked">
-              <span class="nge-user-picked-name">{{ userLabel(userPicked) }}</span>
-              <button type="button" class="nge-user-picked-x" title="Choose someone else" @click="clearPickedUser">×</button>
+            <div v-if="userPicks.length" class="nge-user-chips">
+              <span v-for="u in userPicks" :key="u.id" class="nge-user-picked nge-user-chip">
+                <span class="nge-user-picked-name">{{ u.display_name || u.username || 'Unnamed player' }}</span>
+                <button v-if="editingId == null || userPicks.length > 1" type="button" class="nge-user-picked-x" title="Remove" @click="removePick(u.id)">×</button>
+              </span>
+              <button v-if="userPicks.length > 1" type="button" class="nge-user-clear" @click="clearPickedUser">Clear all {{ userPicks.length }}</button>
             </div>
-            <template v-else>
-              <input v-model="userQuery" class="nge-admin-input" placeholder="Name or username" autocomplete="off"
-                     @input="onUserQuery" @keydown.stop @keyup.stop />
-              <div v-if="userQuery.trim().length >= 2" class="nge-user-matches">
+            <template v-if="editingId == null || !userPicks.length">
+              <input v-model="userQuery" class="nge-admin-input" autocomplete="off"
+                     :placeholder="userPicks.length ? 'Add another, or paste names separated by commas' : 'Name or username, or names separated by commas'"
+                     @input="onUserQuery" @paste="onUserPaste" @keydown.enter.prevent="onUserEnter" @keydown.stop @keyup.stop />
+              <div v-if="userListResolving" class="nge-user-nomatch">Looking up the names…</div>
+              <div v-else-if="userUnfound.length" class="nge-user-unfound">
+                Not found, or more than one match: {{ userUnfound.join(', ') }}. Fix the spelling and press Enter, or pick each one from the list.
+              </div>
+              <div v-else-if="userQueryIsList" class="nge-user-nomatch">Press Enter to add these players.</div>
+              <div v-if="!userQueryIsList && !userListResolving && userQuery.trim().length >= 2" class="nge-user-matches">
                 <button v-for="u in userMatches" :key="u.id" type="button" class="nge-user-match" @click="pickUser(u)">
                   <span class="nge-user-match-name">{{ u.display_name || 'Unnamed player' }}</span>
                   <span v-if="u.username" class="nge-user-match-handle">@{{ u.username }}</span>
@@ -3969,6 +4046,11 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-user-picked-name { flex: 1; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .nge-user-picked-x { background: none; border: none; color: #a9c4e4; font-size: 1.2em; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-user-picked-x:hover { color: #fff; }
+.nge-user-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; max-height: 140px; overflow-y: auto; }
+.nge-user-chip { padding: 4px 6px 4px 10px; max-width: 220px; }
+.nge-user-clear { background: none; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px; color: #a9c4e4; font: inherit; font-size: 0.85em; padding: 4px 9px; cursor: pointer; }
+.nge-user-clear:hover { color: #fff; border-color: rgba(74, 158, 255, 0.5); }
+.nge-user-unfound { margin-top: 6px; padding: 7px 9px; border-radius: 6px; background: rgba(255, 196, 0, 0.08); border: 1px solid rgba(255, 196, 0, 0.3); color: #f2dc9a; font-size: 0.88em; }
 
 .nge-admin-textarea {
   background: rgba(255, 255, 255, 0.06);

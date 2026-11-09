@@ -408,7 +408,8 @@ async function finish(c: Card, e?: MouseEvent) {
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
-  const byPerson = people.value.map(p => ({ id: p.id, name: firstName(p.name), n: doneWeek.filter(c => c.owner_id === p.id).length }))
+  // A finished card counts for its owner and every collaborator (Ames 2026-11-09).
+  const byPerson = people.value.map(p => ({ id: p.id, name: firstName(p.name), n: doneWeek.filter(c => c.owner_id === p.id || (helpers.value[c.id] || []).includes(p.id)).length }))
     .filter(x => x.n).sort((a, b) => b.n - a.n);
   const month = Date.now() - 30 * 864e5;
   const spans = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= month && c.created_at)
@@ -646,7 +647,12 @@ async function moveTo(c: Card, list: ListKey, rank?: number) {
   if (list === 'done' && c.list !== 'done' && c.triage_id) {
     closeReport = window.confirm(`Also close ${reportLabel(c.triage_id).toLowerCase()}? It moves to Done on the triage board and its Slack thread is told.`);
   }
+  const finishing = list === 'done' && c.list !== 'done';
   await save(c, fields, closeReport ? { closeReport: true } : {});
+  // Whoever finishes a card they do not own joins its collaborators, so they
+  // get the credit too (functions/todos.js; Ames 2026-11-09).
+  const me = myId.value;
+  if (finishing && me && me !== c.owner_id && !(helpers.value[c.id] || []).includes(me)) helpers.value = { ...helpers.value, [c.id]: [...(helpers.value[c.id] || []), me] };
   if (list === 'done' && fields.list === 'done') cheer(c);
 }
 
