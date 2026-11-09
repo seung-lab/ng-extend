@@ -356,9 +356,12 @@ function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number},
     let zk = 1;
     try {
       const Hn = viewerNow().projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
-      zk = Math.max(0.08, Math.min(1.5, Hn / (scale > 1.5 ? 1_000_000 : 230_000)));
-      // bigger on a phone's small screen (Ames: "hard to see on phone")
-      if (isPhone()) zk *= 2;
+      // between a steady size in the scene and a steady size on screen: far
+      // out they no longer blanket the cell, up close they stay bright dots
+      // on the spines (Ames)
+      zk = Math.max(0.25, Math.min(1.4, Math.sqrt(Hn / (scale > 1.5 ? 1_000_000 : 230_000))));
+      // a little bigger on a phone's small screen (Ames: "hard to see on phone")
+      if (isPhone()) zk *= 1.4;
     } catch { /* full size */ }
     for (let j = 0; j < n; j++) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
