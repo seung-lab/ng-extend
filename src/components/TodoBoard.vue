@@ -138,10 +138,27 @@ onUnmounted(() => window.clearInterval(autoRefresh));
 const nameOf = (id: string | null) => people.value.find(p => p.id === id)?.name || '';
 const initialOf = (id: string | null) => (nameOf(id) || '?').slice(0, 1).toUpperCase();
 const doneOld = (c: Card) => c.list === 'done' && !!c.done_at && Date.now() - Date.parse(c.done_at) > DONE_DAYS * 864e5;
+// Search (Ames 2026-11-09: "I need search here please"). Every word must be
+// somewhere on the card: title, notes, status line, checklist, comments, links,
+// or the names of its owner, collaborators and maker. Old Done cards count too.
+const search = ref('');
+const searchWords = computed(() => search.value.toLowerCase().split(/\s+/).filter(Boolean));
+function cardText(c: Card): string {
+  return [c.title, c.notes, c.status || '', c.created_by || '', nameOf(c.owner_id),
+    ...(helpers.value[c.id] || []).map(nameOf),
+    ...c.checklist.map(i => i.text),
+    ...(c.comments || []).flatMap(m => [m.by, m.text]),
+    ...(c.links || []).flatMap(k => [k.label || '', k.url || '']),
+  ].join('\n').toLowerCase();
+}
+const matches = (c: Card) => { const w = searchWords.value; if (!w.length) return true; const t = cardText(c); return w.every(x => t.includes(x)); };
+function onSearchKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') { search.value = ''; (e.target as HTMLInputElement).blur(); }
+}
 const columns = computed(() => LISTS.map(l => {
   const byDue = (a: Card, b: Card) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.rank - b.rank;
-  const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c))).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
-  const rows = l.key === 'done' && !showAllDone.value ? all.filter(c => !doneOld(c)) : all;
+  const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c)) && matches(c)).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
+  const rows = l.key === 'done' && !showAllDone.value && !searchWords.value.length ? all.filter(c => !doneOld(c)) : all;
   return { ...l, rows, hidden: all.length - rows.length };
 }));
 const sizeSummary = computed(() => {
@@ -1560,6 +1577,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">←<span class="nge-todo-word"> Triage</span></button>
       <span class="nge-todo-heading nge-todo-heading--home" title="Back to the board" @click="openId = null"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
+      <input v-model="search" type="search" class="nge-todo-search" :class="{ 'nge-todo-search--on': searchWords.length }" placeholder="🔍 Search cards" aria-label="Search cards"
+             title="Finds cards by title, notes, checklist, comments, links or people, old finished ones too. Esc clears."
+             @focus="openId = null; myTasksOpen = false" @keydown.stop="onSearchKey" @keyup.stop @keypress.stop />
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★' : '☆' }}<span class="nge-todo-word"> Mine</span></button>
       <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; openId = null"
@@ -1736,7 +1756,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                   @pointerdown="startResize($event, c)" @click.stop @dblclick.stop="resetSize(c)" @dragstart.prevent></span>
           </article>
           <div v-if="dropAt?.list === col.key && !dropAt.id" class="nge-todo-drop-end"></div>
-          <div v-if="!col.rows.length && !loading" class="nge-todo-list-empty"><img :src="imgNurroWhere" alt="" class="nge-todo-nurro-empty" />{{ mineOnly ? 'Nothing of yours here.' : col.empty }}</div>
+          <div v-if="!col.rows.length && !loading" class="nge-todo-list-empty"><img :src="imgNurroWhere" alt="" class="nge-todo-nurro-empty" />{{ searchWords.length ? 'No cards match.' : mineOnly ? 'Nothing of yours here.' : col.empty }}</div>
           <button v-if="col.key === 'done' && (col.hidden || showAllDone)" class="nge-todo-btn nge-todo-more" @click="showAllDone = !showAllDone">
             {{ showAllDone ? `Hide finished more than ${DONE_DAYS} days ago` : `Show ${col.hidden} finished more than ${DONE_DAYS} days ago` }}
           </button>
@@ -2411,6 +2431,14 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-badge--building { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
 .nge-todo-live-btn { color: #5ee8a8; }
 .nge-todo-mine--on { border-color: var(--gold) !important; color: var(--gold); }
+.nge-todo-search { font: inherit; font-size: 13px; width: 190px; padding: 5px 10px; border-radius: 8px;
+  border: 1px solid rgba(120, 165, 255, 0.35); background: rgba(255, 255, 255, 0.06); color: inherit; outline: none; }
+.nge-todo-search:focus { border-color: rgba(120, 165, 255, 0.85); width: 240px; }
+.nge-todo-search--on { border-color: var(--gold); }
+.nge-todo--light .nge-todo-search { background: #fff; border-color: #c7d4ee; color: #1b2a44; }
+.nge-todo--light .nge-todo-search:focus { border-color: #3b74e0; }
+.nge-todo--light .nge-todo-search--on { border-color: #c9a227; }
+@media (max-width: 700px) { .nge-todo-search, .nge-todo-search:focus { width: 100%; order: 10; } }
 .nge-todo-quick { margin: 0 0 8px; }
 .nge-todo-quick .nge-todo-input { width: 100%; box-sizing: border-box; border-color: rgba(79, 140, 255, 0.45); }
 .nge-todo-stats { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px;
