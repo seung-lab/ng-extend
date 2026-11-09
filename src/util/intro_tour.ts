@@ -704,6 +704,12 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
 .nge-step { color: #ffd166; letter-spacing: 0.1em; }
+.nge-callout-kdot { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 8px var(--part, #7ecaff); flex: none; }
+@media (max-width: 820px) {
+  .nge-callout-box .nge-callout-title { display: none !important; }
+  .nge-callout-box .nge-callout-kdot { display: inline-block; }
+  .nge-callout-box .nge-callout-stats { border-top: 0 !important; padding-top: 2px !important; margin-top: 4px !important; }
+}
 /* the whole tour, every screen: no top bars but the Pyr icon, no bottom bar
    (Ames 2026-11-09) */
 body.nge-intro-on #extensionBar > :not(.ng-extend-logo), body.nge-intro-on .neuroglancer-layer-panel,
@@ -715,7 +721,7 @@ body.nge-intro-on #extensionBar { background: transparent !important; border: 0 
   .nge-callout--in .nge-callout-box { animation-name: nge-co-build-m !important; }
   .nge-callout-box > :not(.nge-frame-host) { filter: none !important; }
   .nge-callout-box .nge-callout-title { font-size: 15px; }
-  .nge-callout-box .nge-callout-kicker { font-size: 8.5px; }
+  .nge-callout-box .nge-callout-kicker { font-size: 10px; }
   .nge-callout-box .nge-callout-stats dt { font-size: 8px; }
   .nge-callout-box .nge-callout-stats dd { font-size: 12.5px; }
   .nge-callout-box .nge-callout-stats .num { font-size: 17px; }
@@ -1043,11 +1049,17 @@ const STAT_ICON: Record<string, string> = {
   Output: '<svg class="nge-stat-ic" viewBox="0 0 16 12" aria-hidden="true"><circle cx="3.5" cy="6" r="2.6" fill="#ff5fd2"/><path d="M7 6h8M11.5 2.5L15 6l-3.5 3.5" fill="none" stroke="#ff5fd2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
+const PHONE_DROP = ['Contains', 'Location', 'Note', 'Neurotransmitter', 'Class', 'Cell type', 'Branch length', 'All its branches',
+  'With the Martinotti cell', 'Hears most from', 'Sends most to'];
+function isPhone(): boolean { return window.matchMedia?.('(max-width: 820px)').matches ?? false; }
 function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true, showDot = true) {
   hideCallout();
   pointAt = false;   // no line from the ship to the part: it crossed the ship (Ames)
   callout = document.createElement('div');
   callout.className = 'nge-callout';
+  // on phones the hologram is minimal: "Pyr scan", the part's color and
+  // its numbers; no title (the panel says it) and no wordy rows (Ames)
+  if (isPhone()) stats = stats.filter(([k]) => !PHONE_DROP.includes(k));
   const rows = stats.length;
   // The box is a hologram the Starship projects: a cone of light from the
   // ship up to it (Ames), and a fine line from it down to the part.
@@ -1059,7 +1071,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
     <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="rgba(126, 224, 255, 0.13)"/>
       <line class="nge-beam-edge e1" style="display:none"/><line class="nge-beam-edge e2" style="display:none"/><line class="nge-beam-seam" style="display:none"/><g class="nge-beam-motes"></g></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
+    <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker"><span class="nge-callout-kdot"></span>Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const edges = [...callout.querySelectorAll('.nge-beam-edge')] as SVGLineElement[];
@@ -1330,7 +1342,10 @@ export async function startIntroTour() {
     // Size the panel for the whole text first, so it holds still while the
     // words type in and the camera can frame the cell above it.
     bodyEl.style.minHeight = '';
-    bodyEl.textContent = plain(b.body);
+    const bodyText = isPhone() && b.key === 'neuron'
+      ? b.body + ' This one has about 4.5 mm of branches, with {in:3,386 synapses} coming in and {out:59} going out.' : b.body;
+    const holo = !!b.callout && !(isPhone() && b.key === 'neuron');
+    bodyEl.textContent = plain(bodyText);
     bodyEl.style.minHeight = `${bodyEl.offsetHeight}px`;
     if (panel) (panel.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(panel.offsetWidth, panel.offsetHeight, 18);
     // the words wait for the ship: the box steps aside while it flies and
@@ -1347,13 +1362,13 @@ export async function startIntroTour() {
       if (!active || i !== n) return;
       const now0 = performance.now(), late = now0 - shown0 > 14000;
       const flying = starshipMoving() && now0 - shown0 < 12000;
-      if (b.callout && !late) {
+      if (holo && !late) {
         if (!holoAt && document.querySelector('.nge-callout--in')) holoAt = now0;
         if (!holoAt || now0 - holoAt < 700) { requestAnimationFrame(reveal); return; }
       }
       if (flying || now0 - shown0 < (shipMoves ? shipDelay + 400 : 250)) { requestAnimationFrame(reveal); return; }
       panel?.classList.remove('nge-intro--waiting');
-      type(bodyEl, b.body);
+      type(bodyEl, bodyText);
     };
     requestAnimationFrame(reveal);
     hideCallout(true); stopSpark(); stopPulse(); stopAllSynapses();
@@ -1401,7 +1416,7 @@ export async function startIntroTour() {
     if (b.key === 'allsyn' || b.key === 'connectome') runAllSynapses(t);
     if (b.key === 'connectome') fillVolume(); else emptyVolume();
     if (b.key === 'spike') runSpark(t);
-    if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, b.key === 'neuron' ? '#4f8cff' : ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, shipDelay + 900);
+    if (holo) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, b.key === 'neuron' ? '#4f8cff' : ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, shipDelay + 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
   /** Off the pad, the ship hovers just above it: over the soma, on the
