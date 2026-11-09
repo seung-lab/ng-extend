@@ -45,7 +45,8 @@ function prepareUpload(input, who, isAdmin, isBlogAuthor) {
  const owner=crypto.createHash('sha256').update(who.email).digest('hex').slice(0,24);
  // Images in replies to submitters (Ames 2026-10-20): admins only, in their
  // own folder, deleted after 7 days by scripts/cleanup-screenshots.mjs.
- // To do board images (Ames 2026-10-21): admins only, kept.
+ // To do board images (Ames 2026-10-21): admins only, deleted 7 days after
+ // their card is Done (Ames 2026-11-09), by cleanTodoImages.
  // Pictures in in-game instructions (Ames 2026-11-06, Add image): admins only, kept.
  const prefix=input.kind==='help'?'help-screenshots':input.kind==='reply'?'reply-images':input.kind==='todo'?'todo-images':input.kind;
  return {bytes,contentType:detected[0],path:`${prefix}/${owner}/${crypto.randomUUID()}.${detected[1]}`};
