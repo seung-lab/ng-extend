@@ -744,6 +744,15 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
 .nge-step { color: #ffd166; letter-spacing: 0.1em; }
+.nge-intro-zap { margin-left: auto; margin-right: 12px; width: 46px; height: 46px; flex: none; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border-radius: 50%; border: 1px solid rgba(255, 214, 102, 0.6); background: radial-gradient(circle, rgba(255, 214, 102, 0.22), rgba(255, 170, 60, 0.05) 70%);
+  color: #ffd666; box-shadow: 0 0 14px rgba(255, 200, 80, 0.35); transition: transform 0.15s, box-shadow 0.2s; }
+.nge-intro-zap[hidden] { display: none; }
+.nge-intro-zap svg { width: 24px; height: 24px; filter: drop-shadow(0 0 6px rgba(255, 220, 120, 0.9)); }
+.nge-intro-zap:hover { transform: scale(1.08); box-shadow: 0 0 22px rgba(255, 210, 90, 0.6); }
+.nge-intro-zap--fire { animation: nge-zap-fire 0.6s ease-out; }
+@keyframes nge-zap-fire { 0% { transform: scale(0.85); box-shadow: 0 0 0 rgba(255, 230, 140, 0); } 30% { transform: scale(1.15); box-shadow: 0 0 34px rgba(255, 230, 140, 0.95); } 100% { transform: none; } }
+.nge-intro-zap + .nge-intro-go { margin-left: 0; }
 .nge-callout-kdot { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 8px var(--part, #7ecaff); flex: none; }
 @media (max-width: 820px) {
   .nge-callout-box .nge-callout-title { display: none !important; }
@@ -1324,6 +1333,7 @@ export async function startIntroTour() {
       <span class="nge-intro-key" hidden><i style="--c:#9b72ff"></i>Soma and dendrites<i style="--c:#5ec8ff"></i>Axons<i style="--c:#ffa64d"></i>Other cells<i style="--c:#ffd24d" class="dot"></i>Input synapses<i style="--c:#ff5fd2" class="dot"></i>Output synapses</span>
       <span class="nge-intro-choose" hidden>Choose your next adventure</span>
       <button class="nge-go nge-go--alt nge-intro-alt" type="button" hidden><span class="nge-go-label">Explore a bigger neuron</span></button>
+      <button class="nge-intro-zap" type="button" hidden aria-label="Send an action potential" title="Send an action potential"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4.5 13.5h6.2L9.5 22l9-11.5h-6.2z" fill="currentColor"/></svg></button>
       <button class="nge-go nge-intro-go" type="button"><span class="nge-go-label nge-intro-label"></span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div>
     <div class="nge-intro-confirm" role="alertdialog" aria-label="Leave the introduction?"><p>Leave the introduction?</p><small>You can start mapping right away.</small>
       <div class="nge-intro-row"><span style="flex:1"></span><button class="nge-go nge-go--alt nge-intro-leave" type="button"><span class="nge-go-label">Leave</span></button><button class="nge-go nge-intro-stay" type="button"><span class="nge-go-label">Keep going</span><span class="nge-go-chevs" aria-hidden="true"><i></i><i></i><i></i></span></button></div></div>`;
@@ -1345,6 +1355,7 @@ export async function startIntroTour() {
   const labelEl = panel.querySelector('.nge-intro-label') as HTMLElement;
   const backEl = panel.querySelector('.nge-intro-back') as HTMLButtonElement;
   const altEl = panel.querySelector('.nge-intro-alt') as HTMLButtonElement;
+  const zapEl = panel.querySelector('.nge-intro-zap') as HTMLButtonElement;
   const stayEl = panel.querySelector('.nge-intro-stay') as HTMLButtonElement;
   const ask = (on: boolean) => {
     panel?.classList.toggle('nge-intro--asking', on);
@@ -1467,6 +1478,13 @@ export async function startIntroTour() {
     if (b.key === 'allsyn' || b.key === 'connectome') runAllSynapses(t);
     if (b.key === 'connectome') fillVolume(); else emptyVolume();
     if (b.key === 'spike') runSpark(t);
+    // a lightning button to send another one (Ames)
+    zapEl.hidden = b.key !== 'spike';
+    zapEl.onclick = () => {
+      if (!active || i !== n) return;
+      stopSpark(); runSpark(t);
+      zapEl.classList.remove('nge-intro-zap--fire'); void zapEl.offsetWidth; zapEl.classList.add('nge-intro-zap--fire');
+    };
     if (holo) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, b.key === 'neuron' ? '#4f8cff' : ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, shipDelay + 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   };
