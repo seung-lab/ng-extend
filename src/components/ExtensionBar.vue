@@ -326,6 +326,7 @@ onMounted(() => {
 
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
+    profileBack.value = (e.detail?.userId && e.detail?.back) || null;
     // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
     if (e.detail?.tab) profileInitialTab.value = e.detail.tab;
     showProfile.value = true;
@@ -387,6 +388,21 @@ const profileUserId = ref<string | null>(null);
 // "Your Week in Science" now lives as a tab inside the profile rather than its
 // own modal. This tells the profile which tab to open on mount.
 const profileInitialTab = ref<string | undefined>(undefined);
+// A profile opened from an Admin Hub list returns to that list when it closes
+// (Celia 2026-11-09): the hub tab it came from, and a new key so the panel
+// opens on it again.
+const profileBack = ref<string | null>(null);
+const profileKey = ref(0);
+function onProfileHide() {
+  if (profileBack.value && profileUserId.value) {
+    profileUserId.value = null;
+    profileInitialTab.value = profileBack.value;
+    profileBack.value = null;
+    profileKey.value++;
+    return;
+  }
+  showProfile.value = false; profileUserId.value = null; profileInitialTab.value = undefined; profileBack.value = null;
+}
 function openWeekRecap() {
   profileUserId.value = null;
   profileInitialTab.value = 'weekInScience';
@@ -1292,7 +1308,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
   <beta-gate />
   <principles-gate />
-  <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
+  <user-profile-panel v-if="showProfile" :key="profileKey" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="onProfileHide" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
   <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable, a click elsewhere puts it away. Phones keep the sheet. -->

@@ -111,7 +111,8 @@ const pilotJoined = (m: { email: string }) => !!pilotIds.value[m.email.toLowerCa
 const pilotJoinedCount = computed(() => pilotRows.value.filter(pilotJoined).length);
 function openPilotProfile(m: { email: string }) {
   const id = pilotIds.value[m.email.toLowerCase()];
-  if (id) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: id } }));
+  // Closing their profile comes back here (Celia 2026-11-09).
+  if (id) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: id, back: 'pilot' } }));
 }
 const pilotShown = computed(() => {
   const words = pilotSearch.value.toLowerCase().split(/\s+/).filter(Boolean);
