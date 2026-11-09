@@ -639,6 +639,10 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
 .nge-step { color: #ffd166; letter-spacing: 0.1em; }
+.nge-card-hint { margin-top: 10px; font: 500 12.5px 'Inter', sans-serif; letter-spacing: 0.03em; color: rgba(190, 228, 255, 0.8); }
+.nge-card-hint[hidden] { display: none; }
+.nge-card-hint b { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #9fe9ff; }
+.nge-card-hint i { display: inline-block; width: 4px; height: 4px; margin: 0 8px 2px; border-radius: 50%; background: rgba(126, 224, 255, 0.6); }
 .nge-tour-loading { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
   background: #020612; opacity: 0; transition: opacity 0.6s ease; pointer-events: none; overflow: hidden; }
 .nge-tour-loading--in { opacity: 1; }
@@ -1466,7 +1470,7 @@ function transmissionCard() {
   card.setAttribute('role', 'dialog');
   card.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-scan"></span>
     <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr</div>
-    <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p><dl class="nge-callout-stats" hidden></dl><div class="nge-card-key" hidden></div>
+    <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p><dl class="nge-callout-stats" hidden></dl><div class="nge-card-key" hidden></div><div class="nge-card-hint" hidden></div>
     <div class="nge-intro-row"><button class="nge-back nge-card-back" type="button" aria-label="Back" hidden>${CHEV_L}</button><span style="flex:1"></span>
       <button class="nge-go nge-go--alt nge-card-alt" type="button" hidden><span class="nge-go-label"></span></button>
       <button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
@@ -1482,7 +1486,14 @@ function transmissionCard() {
   const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
   // no X here: its button is the way back from MICrONS (Ames)
   const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void; keep?: boolean}, keyHtml = '',
-    extra: {alt?: {label: string; go: () => void}; back?: () => void} = {}) => {
+    extra: {alt?: {label: string; go: () => void}; back?: () => void; hint?: boolean} = {}) => {
+    // how to look around, where the cell is the player's to explore (Ames)
+    const hintEl = card.querySelector('.nge-card-hint') as HTMLElement;
+    hintEl.hidden = !extra.hint;
+    if (extra.hint) {
+      const touch = window.matchMedia?.('(pointer: coarse)').matches;
+      hintEl.innerHTML = touch ? '<b>Pinch</b> to zoom <i></i> <b>Drag</b> to turn' : '<b>Scroll</b> to zoom <i></i> <b>Drag</b> to turn <i></i> <b>Right drag</b> to move';
+    }
     const backEl = card.querySelector('.nge-card-back') as HTMLButtonElement;
     backEl.hidden = !extra.back; backEl.style.visibility = extra.back ? 'visible' : 'hidden'; backEl.onclick = () => extra.back?.();
     const altEl = card.querySelector('.nge-card-alt') as HTMLButtonElement;
@@ -1570,7 +1581,7 @@ function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
   const nm = nmPerUnit();
   card.set('A Martinotti cell',
     'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
-    [], {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)});
+    [], {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)}, '', {hint: true});
   // its stats are a hologram from the Axon Runner (Ames)
   showCallout(BIG_NEURON_NM as unknown as V3, 'Martinotti cell',
     [['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['All its branches', 'about 36 mm'], ['For scale', 'as long as a paper clip, packed into a speck the size of a grain of sand'], ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
