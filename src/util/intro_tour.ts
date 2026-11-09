@@ -30,6 +30,7 @@ import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
 const CELL_KEY = getObjectKey(Uint64.parseString('648518346355727683'));
 import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, starshipCruise, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
+import starshipIcon from '../images/starship-icon.png';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
 import {useTutorialStore} from '../store-pyr';
@@ -637,15 +638,33 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
 .nge-step { color: #ffd166; letter-spacing: 0.1em; }
-.nge-tour-loading { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-  background: radial-gradient(ellipse at center, rgba(14, 30, 70, 0.92), rgba(2, 6, 18, 0.97)); opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+.nge-tour-loading { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  background: #020612; opacity: 0; transition: opacity 0.6s ease; pointer-events: none; overflow: hidden; }
 .nge-tour-loading--in { opacity: 1; }
-.nge-tour-loading-ring { width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(126, 224, 255, 0.18); border-top-color: #7ee0ff;
-  box-shadow: 0 0 18px rgba(126, 224, 255, 0.35); animation: nge-tour-spin 1.1s linear infinite; }
-@keyframes nge-tour-spin { to { transform: rotate(360deg); } }
-.nge-tour-loading-text { font: 600 18px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #e6f6ff; text-shadow: 0 0 12px rgba(126, 224, 255, 0.6); }
-.nge-tour-loading-sub { font: 500 14px 'Inter', sans-serif; color: rgba(200, 230, 255, 0.75); }
-@media (prefers-reduced-motion: reduce) { .nge-tour-loading-ring { animation: none; } }
+.nge-tl-stars { position: absolute; inset: 0; width: 100%; height: 100%; }
+.nge-tl-core { position: relative; width: 190px; height: 190px; display: grid; place-items: center; margin-bottom: 6px; }
+.nge-tl-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px dashed rgba(126, 224, 255, 0.55); box-shadow: 0 0 22px rgba(80, 190, 255, 0.25), inset 0 0 22px rgba(80, 190, 255, 0.18);
+  animation: nge-tl-spin 9s linear infinite; }
+.nge-tl-ring.b { inset: 22px; border: 2px solid transparent; border-top-color: #7ee0ff; border-bottom-color: rgba(255, 209, 102, 0.8); animation: nge-tl-spin 2.6s linear infinite reverse; box-shadow: none; }
+.nge-tl-glow { position: absolute; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(110, 210, 255, 0.45), rgba(40, 120, 255, 0) 70%); animation: nge-tl-pulse 1.6s ease-in-out infinite; }
+.nge-tl-ship { position: relative; width: 92px; height: 92px; object-fit: contain; filter: drop-shadow(0 0 14px rgba(110, 210, 255, 0.8)); animation: nge-tl-bob 2.2s ease-in-out infinite; }
+@keyframes nge-tl-spin { to { transform: rotate(360deg); } }
+@keyframes nge-tl-pulse { 50% { transform: scale(1.18); opacity: 0.7; } }
+@keyframes nge-tl-bob { 50% { transform: translateY(-7px) rotate(-3deg); } }
+.nge-tour-loading-text { position: relative; font: 700 20px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #e6f6ff;
+  text-shadow: 0 0 14px rgba(126, 224, 255, 0.8), 0 0 40px rgba(80, 160, 255, 0.5); }
+.nge-tl-bar { position: relative; width: min(340px, 70vw); height: 3px; border-radius: 2px; background: rgba(126, 224, 255, 0.15); overflow: hidden; }
+.nge-tl-bar i { position: absolute; top: 0; bottom: 0; width: 34%; background: linear-gradient(90deg, transparent, #9fefff, transparent); box-shadow: 0 0 10px #7ee0ff; animation: nge-tl-scan 1.4s ease-in-out infinite; }
+@keyframes nge-tl-scan { 0% { left: -34%; } 100% { left: 100%; } }
+.nge-tour-loading-sub { position: relative; font: 500 14px 'Inter', sans-serif; letter-spacing: 0.06em; color: rgba(200, 235, 255, 0.85); }
+.nge-tl-swap { animation: nge-tl-type 0.45s ease-out both; }
+@keyframes nge-tl-type { from { opacity: 0; filter: blur(3px); transform: translateY(4px); } to { opacity: 1; filter: none; transform: none; } }
+.nge-tl-flash { position: absolute; inset: 0; background: radial-gradient(circle at 50% 44%, #fff, rgba(160, 230, 255, 0.6) 30%, rgba(0, 0, 0, 0) 70%); opacity: 0; pointer-events: none; }
+.nge-tl-warp .nge-tl-flash { animation: nge-tl-flash 0.9s ease-in both; }
+.nge-tl-warp .nge-tl-ship { animation: nge-tl-go 0.7s cubic-bezier(.6,0,.9,.4) both; }
+@keyframes nge-tl-flash { 0%, 55% { opacity: 0; } 75% { opacity: 1; } 100% { opacity: 0.9; } }
+@keyframes nge-tl-go { to { transform: scale(0.15) translateY(-40px); opacity: 0; filter: drop-shadow(0 0 30px #fff) brightness(3); } }
+@media (prefers-reduced-motion: reduce) { .nge-tl-ring, .nge-tl-glow, .nge-tl-ship, .nge-tl-bar i { animation: none !important; } }
 .nge-card-key i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
 .nge-card-key small { color: rgba(200, 230, 255, 0.7); font-size: 12px; text-align: right; white-space: nowrap; }
 .nge-card-key b { font-weight: 600; }
@@ -721,27 +740,27 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
   opacity: 0; }
 .nge-callout--in .nge-callout-box { opacity: 1; animation: nge-co-build 900ms cubic-bezier(.2,.9,.25,1) both; }
 @keyframes nge-co-build {
-  0% { transform: scale(0.03, 0.012); opacity: 0; filter: brightness(3) drop-shadow(0 0 18px #9fe9ff); }
-  12% { transform: scale(0.03, 0.012); opacity: 1; }
-  38% { transform: scale(1, 0.012); filter: brightness(2.6) drop-shadow(0 0 18px #9fe9ff); }
-  70% { transform: scale(1, 1.03); filter: brightness(1.4) drop-shadow(0 0 16px rgba(80, 180, 255, 0.4)); }
-  78% { opacity: 0.6; } 82% { opacity: 1; } 86% { opacity: 0.75; }
-  100% { transform: none; opacity: 1; filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25)); } }
+  0% { clip-path: inset(100% 0 0 0); opacity: 1; filter: brightness(2.4) drop-shadow(0 0 18px #9fe9ff); }
+  70% { clip-path: inset(0 0 0 0); filter: brightness(1.4) drop-shadow(0 0 16px rgba(80, 180, 255, 0.4)); }
+  76% { opacity: 0.65; } 80% { opacity: 1; } 84% { opacity: 0.8; }
+  100% { clip-path: inset(0 0 0 0); opacity: 1; filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25)); } }
 .nge-callout-box > :not(.nge-frame-host) { opacity: 0; }
 .nge-callout--in .nge-callout-box > :not(.nge-frame-host) { animation: nge-holo-row 380ms ease-out both; }
-.nge-callout--in .nge-callout-box > .nge-callout-kicker { animation-delay: 560ms; }
-.nge-callout--in .nge-callout-box > .nge-callout-title { animation-delay: 660ms; }
-.nge-callout--in .nge-callout-box > .nge-callout-stats { animation-delay: 780ms; }
+.nge-callout--in .nge-callout-box > .nge-callout-stats { animation-delay: 300ms; }
+.nge-callout--in .nge-callout-box > .nge-callout-title { animation-delay: 480ms; }
+.nge-callout--in .nge-callout-box > .nge-callout-kicker { animation-delay: 580ms; }
 @keyframes nge-holo-row { 0% { opacity: 0; transform: translateY(5px); filter: blur(2px) brightness(2); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; filter: none; } }
 .nge-callout-box::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 2; pointer-events: none; opacity: 0;
   background: linear-gradient(90deg, transparent, #cff6ff, transparent); box-shadow: 0 0 12px #7ee0ff; }
-.nge-callout--in .nge-callout-box::after { animation: nge-holo-scan 700ms 520ms ease-in-out both; }
-@keyframes nge-holo-scan { 0% { top: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: calc(100% - 2px); opacity: 0; } }
+.nge-callout--in .nge-callout-box::after { animation: nge-holo-scan 640ms 0ms cubic-bezier(.2,.9,.25,1) both; }
+@keyframes nge-holo-scan { 0% { top: calc(100% - 2px); opacity: 1; } 85% { opacity: 1; } 100% { top: 0; opacity: 0; } }
 .nge-callout-beamg { opacity: 0; }
 .nge-callout--in .nge-callout-beamg { animation: nge-beam-in 600ms ease-out both; }
 @keyframes nge-beam-in { 0% { opacity: 0; } 25% { opacity: 1; } 35% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 1; } }
-.nge-beam-edge { stroke: rgba(158, 236, 255, 0.45); stroke-width: 1; }
-.nge-callout-beam { mix-blend-mode: screen; }
+.nge-beam-edge { stroke: rgba(170, 240, 255, 0.7); stroke-width: 1; filter: drop-shadow(0 0 3px #7ee0ff); }
+.nge-beam-ray { stroke: rgba(150, 230, 255, 0.22); stroke-width: 0.8; animation: nge-ray 1.8s ease-in-out infinite; }
+.nge-beam-ray:nth-of-type(2n) { animation-delay: -0.9s; }
+@keyframes nge-ray { 50% { stroke-opacity: 0.25; } }
 .nge-co-frame { position: absolute; left: 0; top: 0; z-index: -1; overflow: visible; pointer-events: none; }
 .nge-co-frame .tr { fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 1.1; stroke-linecap: round; }
 .nge-co-frame .pad { fill: rgba(8, 24, 52, 0.9); stroke: #9fe9ff; stroke-width: 1; }
@@ -939,12 +958,13 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   // ship up to it (Ames), and a fine line from it down to the part.
   callout.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-beam-g" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#9fefff" stop-opacity="0.42"/><stop offset="0.55" stop-color="#4fb8ff" stop-opacity="0.1"/><stop offset="1" stop-color="#4fb8ff" stop-opacity="0.2"/></linearGradient></defs>
-    <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-beam-edge e1"/><line class="nge-beam-edge e2"/></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
+    <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="rgba(126, 224, 255, 0.07)"/><line class="nge-beam-edge e1"/><line class="nge-beam-edge e2"/><line class="nge-beam-ray"/><line class="nge-beam-ray"/><line class="nge-beam-ray"/><line class="nge-beam-ray"/></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
     <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
   const edges = [...callout.querySelectorAll('.nge-beam-edge')] as SVGLineElement[];
+  const rays = [...callout.querySelectorAll('.nge-beam-ray')] as SVGLineElement[];
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
   const host = box.querySelector('.nge-frame-host') as HTMLElement;
@@ -991,14 +1011,19 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
         const ends = side ? [[bx, by + 8], [bx, by + bh - 8]] : [[bx + 6, by + bh], [bx + bw - 6, by + bh]];
         beam.setAttribute('points', `${sx},${sy} ${ends[0][0]},${ends[0][1]} ${ends[1][0]},${ends[1][1]}`);
         edges.forEach((e, k) => { e.setAttribute('x1', String(sx)); e.setAttribute('y1', String(sy)); e.setAttribute('x2', String(ends[k][0])); e.setAttribute('y2', String(ends[k][1])); });
+        rays.forEach((r, k) => {
+          const u = (k + 1) / (rays.length + 1);
+          r.setAttribute('x1', String(sx)); r.setAttribute('y1', String(sy));
+          r.setAttribute('x2', String(ends[0][0] + (ends[1][0] - ends[0][0]) * u)); r.setAttribute('y2', String(ends[0][1] + (ends[1][1] - ends[0][1]) * u));
+        });
         grad.setAttribute('x1', String(sx)); grad.setAttribute('y1', String(sy));
         grad.setAttribute('x2', String(side ? bx : bx + bw / 2)); grad.setAttribute('y2', String(side ? by + bh / 2 : by + bh));
         lens.setAttribute('cx', String(sx)); lens.setAttribute('cy', String(sy));
         beam.style.display = lens.style.display = '';
-        edges.forEach(e => { e.style.display = ''; });
+        edges.forEach(e => { e.style.display = ''; }); rays.forEach(e => { e.style.display = ''; });
       } else {
         beam.style.display = lens.style.display = 'none';
-        edges.forEach(e => { e.style.display = 'none'; });
+        edges.forEach(e => { e.style.display = 'none'; }); rays.forEach(e => { e.style.display = 'none'; });
       }
       // the ship points its beam at the part; the long parts get just the dot
       if (pointAt && onScreen) {
@@ -1384,7 +1409,7 @@ function synapseMarks(pointsNm: number[][] | null, color = '#ff5fd2') {
     v.layerSpecification.add(makeLayer(v.layerSpecification, MARKS, {
       type: 'annotation', source: {url: 'local://annotations'},
       annotations: pointsNm.map((q, j) => ({type: 'point', id: `s${j}`, point: [q[0] / nm[0], q[1] / nm[1], q[2] / nm[2]]})),
-      annotationColor: color, pointSize: 9, onTop: true,
+      annotationColor: color, pointSize: 2.5, onTop: true,
     }));
     setTimeout(() => { try { v.selectedLayer.visible = false; } catch { /* no panel */ } }, 50);
   } catch (e) { console.warn('[intro] synapse marks', e); }
@@ -1527,9 +1552,11 @@ function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
   const nm = nmPerUnit();
   card.set('A Martinotti cell',
     'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
-    [['Cell type', 'Martinotti cell'], ['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['All its branches', 'about 36 mm'], ['Axon alone', 'about 32 mm'],
-     ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
-    {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)});
+    [], {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)});
+  // its stats are a hologram from the Axon Runner (Ames)
+  showCallout(BIG_NEURON_NM as unknown as V3, 'Martinotti cell',
+    [['Class', 'Inhibitory'], ['Neurotransmitter', 'GABA'], ['All its branches', 'about 36 mm'], ['Axon alone', 'about 32 mm'], ['Input', '6,363 synapses'], ['Output', '8,110 synapses']],
+    '#cfdcff', false, false);
   if (nm) frameAboveCard([BIG_NEURON_NM[0], BIG_NEURON_NM[1] - 180_000, BIG_NEURON_NM[2]], 1_000_000, 2600);
 }
 
@@ -1548,61 +1575,57 @@ interface McData { synIn: number[]; synOut: number[]; synUnit: number;
 /* ── the sweep: the ship flies over the synapses two cells share and lights
    each with a quick laser zap as it passes (Ames) ── */
 let zapRaf = 0;
-function runZap(points: V3[], rgb: [number, number, number], sweepMs = 0, onDone?: () => void) {
+function runBarScan(points: V3[], rgb: [number, number, number], ms: number, onDone?: () => void) {
   stopZap();
   const nm = nmPerUnit();
   if (!nm || !points.length) { onDone?.(); return; }
-  if (sweepMs) {
-    // in a sweep across the screen, left to right
-    const c0 = cameraAxes(nm);
-    if (c0) points = [...points].sort((a, b) => dot3(a, c0.right) - dot3(b, c0.right));
-  }
-  const t0 = performance.now();
-  let doneCalled = false;
-  const n = points.length, LASER = 10, MAX = n * 2 + LASER;
+  const lo = [0, 1, 2].map(i => Math.min(...points.map(q => q[i])));
+  const hi = [0, 1, 2].map(i => Math.max(...points.map(q => q[i])));
+  const c = [0, 1, 2].map(i => (lo[i] + hi[i]) / 2);
+  const yFrom = hi[1] + 25_000, yTo = lo[1] - 25_000;
+  const half = Math.max(60_000, (hi[0] - lo[0]) / 2 + 40_000);
+  const n = points.length, N = 220, F = 50, MAX = n * 2 + N * 2 + F * 2;
   const glow: NgeGlow = {positions: new Float32Array(MAX * 3), colors: new Float32Array(MAX * 4), sizesNm: new Float32Array(MAX), count: 0, nmRight: [1 / nm[0], 0, 0]};
-  const lit = new Float64Array(n);   // when each was zapped (0: not yet)
+  const lit = new Float64Array(n);
+  const t0 = performance.now();
+  let done = false;
   const step = (now: number) => {
-    const ship = starshipAt();
-    let c = 0;
-    const put = (p: number[], rgba: number[], size: number) => {
-      if (c >= MAX) return;
-      glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], c * 3);
-      glow.colors.set(rgba, c * 4); glow.sizesNm[c] = size; c++;
-    };
-    let fresh = -1, freshAge = Infinity;
+    const q = Math.min(1, (now - t0) / ms), y = yFrom + (yTo - yFrom) * (q < 0.5 ? 2 * q * q : 1 - Math.pow(-2 * q + 2, 2) / 2);
+    const cam = cameraAxes(nm);
+    let k = 0;
+    const put = (p: number[], rgba: number[], size: number) => { if (k >= MAX) return; glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], k * 3); glow.colors.set(rgba, k * 4); glow.sizesNm[k] = size; k++; };
     for (let j = 0; j < n; j++) {
       const p = points[j];
-      if (!lit[j] && (sweepMs ? now - t0 >= sweepMs * j / n : ship && Math.hypot(ship[0] - p[0], ship[1] - p[1], ship[2] - p[2]) < 60_000)) lit[j] = now;
+      if (!lit[j] && p[1] >= y) lit[j] = now;
       if (lit[j]) {
-        const age = (now - lit[j]) / 1000;
-        if (age < freshAge) { freshAge = age; fresh = j; }
-        const flash = Math.max(0, 1 - age / 0.6);
-        put(p, [rgb[0], rgb[1], rgb[2], 1], 7000 + 14000 * flash);
-        if (flash > 0) put(p, [1, 1, 1, flash], 5000 + 8000 * flash);
-      } else {
-        put(p, [rgb[0], rgb[1], rgb[2], 0.28], 5000);
+        const f = Math.max(0, 1 - (now - lit[j]) / 600);
+        put(p, [rgb[0], rgb[1], rgb[2], 1], 6000 + 12000 * f);
+        if (f > 0) put(p, [1, 1, 1, f], 4000 + 8000 * f);
       }
     }
-    // the laser: a bright line from the ship down to the one it just zapped
-    if (ship && fresh >= 0 && freshAge < 0.35) {
-      const p = points[fresh], f = 1 - freshAge / 0.35;
-      for (let k = 0; k <= LASER; k++) {
-        const u = k / LASER;
-        put([0, 1, 2].map(i => ship[i] + (p[i] - ship[i]) * u), [0.7, 0.95, 1, f], 2600);
+    if (q < 1 && cam) {
+      const right = cam.right, at = (u: number, dy: number) => [c[0] + right[0] * half * u, y + dy, c[2] + right[2] * half * u];
+      const flick = 0.85 + 0.15 * Math.sin(now / 45);
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1) * 2 - 1, edge = 1 - Math.pow(Math.abs(u), 3);
+        put(at(u, 0), [0.8, 0.98, 1, 0.9 * edge * flick], 3000);
+        put(at(u, 8000), [0.3, 0.75, 1, 0.2 * edge], 14000);
+      }
+      const ship = starshipAt();
+      if (ship) for (const end of [-1, 1]) for (let i = 0; i < F; i++) {
+        const w = (i + 1) / F, e = at(end, 0);
+        put([0, 1, 2].map(a => ship[a] + (e[a] - ship[a]) * w), [0.55, 0.9, 1, 0.15 * (1 - w * 0.5)], 3600);
       }
     }
-    glow.count = c;
-    const cam = cameraAxes(nm);
+    glow.count = k;
     if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
     setNgeGlow(glow, 'intro-zap');
-    if (sweepMs && !doneCalled && now - t0 > sweepMs + 500) { doneCalled = true; onDone?.(); }
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    if (q >= 1 && !done) { done = true; onDone?.(); }
     zapRaf = requestAnimationFrame(step);
   };
   zapRaf = requestAnimationFrame(step);
 }
-function dot3(a: number[], b: number[]) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 function stopZap() { cancelAnimationFrame(zapRaf); setNgeGlow(null, 'intro-zap'); }
 /** All its synapses as small dots, gold in and pink out, and its strongest
  *  partners in their type's color. Each partner can be visited from the
@@ -1695,15 +1718,26 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
       if (token !== my) { setNgeGlow(null, 'intro-zap'); return; }
       const n3 = nmPerUnit(), cam = n3 && cameraAxes(n3), s2 = starshipAt();
       if (n3 && cam && s2 && rising && starshipMoving()) {
-        const N = 48, half = (bounds.hi[0] - bounds.lo[0]) / 2 + 30_000;
-        const glow: NgeGlow = {positions: new Float32Array(N * 3), colors: new Float32Array(N * 4), sizesNm: new Float32Array(N), count: N, nmRight: [cam.right[0] / n3[0], cam.right[1] / n3[1], cam.right[2] / n3[2]]};
+        // a hologram scan: a fine bright line across the cell at the ship's
+        // height, a soft band of light under it, and a faint fan of light from
+        // the ship out to its ends (Ames: not a line of dots)
+        const N = 260, F = 60, half = (bounds.hi[0] - bounds.lo[0]) / 2 + 30_000;
+        const M = N * 2 + F * 2;
+        const glow: NgeGlow = {positions: new Float32Array(M * 3), colors: new Float32Array(M * 4), sizesNm: new Float32Array(M), count: M, nmRight: [cam.right[0] / n3[0], cam.right[1] / n3[1], cam.right[2] / n3[2]]};
+        let c = 0;
+        const put = (p: number[], rgba: number[], size: number) => { glow.positions.set([p[0] / n3[0], p[1] / n3[1], p[2] / n3[2]], c * 3); glow.colors.set(rgba, c * 4); glow.sizesNm[c] = size; c++; };
+        const flick = 0.85 + 0.15 * Math.sin(performance.now() / 45);
+        const at = (u: number, dy: number) => [bounds.c[0] + cam.right[0] * half * u, s2[1] + dy, bounds.c[2] + cam.right[2] * half * u];
         for (let k = 0; k < N; k++) {
-          const u = k / (N - 1) * 2 - 1;
-          const p = [bounds.c[0] + cam.right[0] * half * u, s2[1], bounds.c[2] + cam.right[2] * half * u];
-          glow.positions.set([p[0] / n3[0], p[1] / n3[1], p[2] / n3[2]], k * 3);
-          glow.colors.set([0.65, 0.95, 1, 0.75 * (1 - Math.abs(u) * 0.6)], k * 4);
-          glow.sizesNm[k] = 9000;
+          const u = k / (N - 1) * 2 - 1, edge = 1 - Math.pow(Math.abs(u), 3);
+          put(at(u, 0), [0.8, 0.98, 1, 0.9 * edge * flick], 3200);
+          put(at(u, 9000), [0.3, 0.75, 1, 0.22 * edge], 16000);
         }
+        for (const end of [-1, 1]) for (let k = 0; k < F; k++) {
+          const w = (k + 1) / F, e = at(end, 0);
+          put([0, 1, 2].map(i => s2[i] + (e[i] - s2[i]) * w), [0.55, 0.9, 1, 0.16 * (1 - w * 0.5)], 4000);
+        }
+        glow.count = c;
         setNgeGlow(glow, 'intro-zap');
       } else setNgeGlow(null, 'intro-zap');
       if (rising && !starshipMoving()) {
@@ -1732,8 +1766,6 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     frameAboveCard(mid, Math.max(500_000, span * 1.8 + 350_000), 2800);
     // the ship sweeps the synapses they share, nearest first, zapping each,
     // and ends over the partner's cell body, where it shows its stats
-    const toEye = (() => { const n2 = nmPerUnit(); const c2 = n2 && cameraAxes(n2); return c2 ? c2.toEye : [0, 0, 1]; })();
-    const lift = (q: number[]) => q.map((x, i) => x + toEye[i] * 25_000);
     const pts = (p.shared ?? []).map(q => q as V3);
     const order: V3[] = [];
     {
@@ -1745,25 +1777,25 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
         at = left.splice(bi, 1)[0]; order.push(at);
       }
     }
-    synapseMarks(pts, p.dir === 'out' ? '#ff5fd2' : '#ffd24d');
-    // one flight to a spot over the middle of them, a scan, then aside
-    const mid2 = pts.length ? [0, 1, 2].map(i => pts.reduce((s2, q) => s2 + q[i], 0) / pts.length) : p.soma;
-    undockStarship();
-    starshipHop([lift(mid2.map((x, i) => x + toEye[i] * 40_000))], 3.2);
+    synapseMarks(null);
+    // the ship stays at the side of the view and sweeps a hologram scan bar
+    // up through the synapses the two cells share, lighting each as it
+    // passes; then the marks stay (Ames: "ship should stay on the side and
+    // run the same horizontal scanner bar")
+    dockStarship(0.74, 0.05, 2400);
     stopZap();
     hideCallout();
     let scanned = false;
     const scanWhenThere = () => {
       if (token !== my) return;
       if (starshipMoving()) { requestAnimationFrame(scanWhenThere); return; }
-      runZap(pts, p.dir === 'out' ? [1, 0.36, 0.86] : [1, 0.86, 0.45], Math.min(5000, 1500 + pts.length * 70), () => {
+      runBarScan(pts, p.dir === 'out' ? [1, 0.36, 0.86] : [1, 0.86, 0.45], 4200, () => {
         if (token !== my) return;
-        // done scanning: it pulls to the side, the lit synapses stay
-        dockStarship(0.74, 0.05, 2600);
+        synapseMarks(pts, p.dir === 'out' ? '#ff5fd2' : '#ffd24d');
         scanned = true;
       });
     };
-    setTimeout(scanWhenThere, 600);
+    setTimeout(scanWhenThere, 2900);
     const shownAt = performance.now();
     const statsWhenStill = () => {
       if (token !== my || !card.el.isConnected) return;
@@ -1811,14 +1843,62 @@ function showTourLoading() {
   document.querySelector('.nge-tour-loading')?.remove();
   const el = document.createElement('div');
   el.className = 'ng-extend nge-tour-loading';
-  el.innerHTML = `<div class="nge-tour-loading-ring"></div><div class="nge-tour-loading-text">Warming up the Axon Runner</div><div class="nge-tour-loading-sub">Loading your first neuron</div>`;
+  // a launch: a warp starfield, the Axon Runner idling inside two hologram
+  // rings, status lines and a scan bar, then a jump to light speed into the
+  // neuron (Ames: the first one was "not cool enough")
+  el.innerHTML = `<canvas class="nge-tl-stars"></canvas>
+    <div class="nge-tl-core"><span class="nge-tl-ring a"></span><span class="nge-tl-ring b"></span><span class="nge-tl-glow"></span>
+      <img class="nge-tl-ship" src="${starshipIcon}" alt=""></div>
+    <div class="nge-tour-loading-text">Warming up the Axon Runner</div>
+    <div class="nge-tl-bar"><i></i></div>
+    <div class="nge-tour-loading-sub">Charging thrusters</div>
+    <span class="nge-tl-flash"></span>`;
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add('nge-tour-loading--in'));
+  const sub = el.querySelector('.nge-tour-loading-sub') as HTMLElement;
+  const lines = ['Charging thrusters', 'Plotting a course into the cortex', 'Loading your first neuron', 'Aligning the hologram projector', 'Almost there'];
+  let li = 0;
+  const lineTimer = setInterval(() => {
+    li = Math.min(lines.length - 1, li + 1);
+    sub.classList.remove('nge-tl-swap'); void sub.offsetWidth; sub.textContent = lines[li]; sub.classList.add('nge-tl-swap');
+  }, 1900);
+  // the starfield
+  const cv = el.querySelector('canvas') as HTMLCanvasElement, cx = cv.getContext('2d');
+  const stars = Array.from({length: 420}, () => ({a: Math.random() * Math.PI * 2, r: Math.random(), s: 0.2 + Math.random() * 0.8, h: Math.random() < 0.15}));
+  let speed = 0.12, raf = 0, last = performance.now();
+  const draw = (now: number) => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const W = cv.width = el.clientWidth, H = cv.height = el.clientHeight;
+    if (!cx) return;
+    const ox = W / 2, oy = H * 0.44, R = Math.hypot(W, H) * 0.6;
+    cx.fillStyle = '#020612'; cx.fillRect(0, 0, W, H);
+    for (const st of stars) {
+      st.r += dt * speed * st.s * (0.4 + st.r * 2.2);
+      if (st.r > 1) { st.r = 0.02 + Math.random() * 0.05; st.a = Math.random() * Math.PI * 2; }
+      const r1 = st.r * R, r0 = Math.max(0, r1 - (8 + speed * 260) * st.s * st.r);
+      const c = Math.cos(st.a), sn = Math.sin(st.a);
+      cx.strokeStyle = st.h ? `rgba(255, 210, 120, ${Math.min(1, st.r * 1.6)})` : `rgba(150, 225, 255, ${Math.min(1, st.r * 1.8)})`;
+      cx.lineWidth = 0.6 + st.r * 2.2 * st.s;
+      cx.beginPath(); cx.moveTo(ox + c * r0, oy + sn * r0); cx.lineTo(ox + c * r1, oy + sn * r1); cx.stroke();
+    }
+    raf = requestAnimationFrame(draw);
+  };
+  raf = requestAnimationFrame(draw);
   const done = () => {
     window.removeEventListener('nge-intro-ready', done);
-    clearTimeout(timer);
-    el.classList.remove('nge-tour-loading--in');
-    setTimeout(() => el.remove(), 600);
+    clearTimeout(timer); clearInterval(lineTimer);
+    // the jump: the stars stretch to light speed, a flash, and we are there
+    sub.textContent = 'Engage!';
+    el.classList.add('nge-tl-warp');
+    const t0 = performance.now();
+    const ramp = () => {
+      const q = Math.min(1, (performance.now() - t0) / 700);
+      speed = 0.12 + q * q * 3.2;
+      if (q < 1) requestAnimationFrame(ramp);
+    };
+    ramp();
+    setTimeout(() => el.classList.remove('nge-tour-loading--in'), 650);
+    setTimeout(() => { cancelAnimationFrame(raf); el.remove(); }, 1300);
   };
   const timer = setTimeout(done, 45_000);
   window.addEventListener('nge-intro-ready', done);

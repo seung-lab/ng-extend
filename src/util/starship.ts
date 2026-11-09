@@ -204,12 +204,51 @@ export function starshipHop(route: number[][], seconds: number) {
         add(shipNow, add(mul(noseNow, R * 0.2), mul(side, R * 1.35)))];
     }
   }
-  const path: V3[] = [shipNow, ...turn, ...(fromPad ? [] : lift), ...route.map(q => q as V3)];
+  const raw: V3[] = [shipNow, ...turn, ...(fromPad ? [] : lift), ...route.map(q => q as V3)];
+  // a smooth curve through the points, so no leg ends in a corner (Ames:
+  // "smooth out the ship's path"); long dense routes are smooth already
+  // On a long dense route, only where it joins it: the first stretch is
+  // rebuilt as a curve, so the ship eases onto it with a bank, no hard turn
+  // (Ames: "the dendrite has a hard turn - it needs some banking!")
+  let path: V3[];
+  if (raw.length > 2 && raw.length < 40) path = smoothThrough(raw, 14);
+  else if (raw.length >= 40) {
+    const lead = raw.length - route.length;   // the ship, its turn and lift
+    const head: V3[] = raw.slice(0, lead);
+    let acc = 0, k = lead, mark = 0;
+    for (; k < raw.length - 1 && acc < 30_000; k++) {
+      acc += Math.hypot(...sub(raw[k + 1], raw[k]));
+      if (acc >= mark) { head.push(raw[k]); mark += 10_000; }
+    }
+    head.push(raw[k]);
+    path = [...smoothThrough(head, 12), ...raw.slice(k + 1)];
+  } else path = raw;
   const cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(...sub(path[i], path[i - 1])));
   dock = null;
   onPad = false;
   hop = {path, cum, start: performance.now(), ms: seconds * 1000};
+}
+/** Centripetal Catmull-Rom through the points, n samples a leg. */
+function smoothThrough(P: V3[], n: number): V3[] {
+  const out: V3[] = [];
+  const Q = [P[0], ...P, P[P.length - 1]];
+  for (let i = 1; i < Q.length - 2; i++) {
+    const p0 = Q[i - 1], p1 = Q[i], p2 = Q[i + 1], p3 = Q[i + 2];
+    const d = (a: V3, b: V3) => Math.pow(Math.hypot(...sub(b, a)), 0.5) || 1e-6;
+    const t1 = d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
+    for (let k = 0; k < n; k++) {
+      const t = t1 + (t2 - t1) * k / n;
+      const A1 = add(mul(p0, (t1 - t) / t1), mul(p1, t / t1));
+      const A2 = add(mul(p1, (t2 - t) / (t2 - t1)), mul(p2, (t - t1) / (t2 - t1)));
+      const A3 = add(mul(p2, (t3 - t) / (t3 - t2)), mul(p3, (t - t2) / (t3 - t2)));
+      const B1 = add(mul(A1, (t2 - t) / t2), mul(A2, t / t2));
+      const B2 = add(mul(A2, (t3 - t) / (t3 - t1)), mul(A3, (t - t1) / (t3 - t1)));
+      out.push(add(mul(B1, (t2 - t) / (t2 - t1)), mul(B2, (t - t1) / (t2 - t1))));
+    }
+  }
+  out.push(P[P.length - 1]);
+  return out;
 }
 /** Where the ship is now (nm), and which way is up from where it landed. */
 let shipNow: V3 | null = null;
@@ -541,6 +580,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     // in to park (Ames: "it needed its portal")
     const cameoT0 = performance.now();
     let cameoPortal: V3 | null = null;
+    let cameoPortalGone = false;
     if (cameo) { cameraHeld = true; onPad = false; dockMs = 3800; dock = {fx: 0.62, fy: -0.3, start: cameoT0 + PORTAL_S * 1000, from: null}; }
     let flightAngle = 0;
     // after landing the cell rocks gently either side of square on rather
@@ -730,13 +770,15 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         prevFwd = fwd;
         // banking: roll into the turn
         let bend: V3 = dock ? mul(dockBend, 6) : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
-        // a gentle bank, about 15 degrees at most, not a steep lean the whole
+        // a bank into the turns, about 25 degrees at most, not a steep lean the whole
         // way (Ames: "the entire ship seems to fly at like a 30 degree incline")
         const bl = Math.hypot(...bend) / 2500;
-        if (bl > 0.28) bend = mul(bend, 0.28 / bl);
+        if (bl > 0.45) bend = mul(bend, 0.45 / bl);
         // and drawn mostly broadside: only half of any dive into or out of
         // the screen shows as a tilt
-        if (h || (dock && (now - dock.start) / dockMs < 0.85)) fwd = norm(sub(fwd, mul(cam.toEye, dot(fwd, cam.toEye) * 0.5)));
+        // (not on its routes: round the axon's spiral the nose has to follow the
+        // turn into and out of the screen exactly, Ames: "check the orientation")
+        if (dock && (now - dock.start) / dockMs < 0.85) fwd = norm(sub(fwd, mul(cam.toEye, dot(fwd, cam.toEye) * 0.5)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
         if (dock) up = norm(mix(up, norm(add(mul(cam.toEye, 0.75), mul(cam.up, 0.66))), smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
@@ -789,7 +831,11 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.6 * grow)));
           shipScreen = sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
           drawPortal(nm, cam.right, cam.up, cameoPortal, f.shipLength * cameo * 0.75, tc);
-        } else if (cameo && cameoPortal && tc < ZIP_AT + 2) { setNgeGlow(null, 'starship-portal'); removePortalArt(); }
+        } else if (cameo && cameoPortal && !cameoPortalGone) {
+          // once, however late the frame (a slow frame skipped it and the ring
+          // stayed on screen, huge: Ames, "bugged out portal")
+          cameoPortalGone = true; setNgeGlow(null, 'starship-portal'); removePortalArt();
+        }
         if (tAll < ZIP_AT + 1.5) {
           const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.6 * grow)));
           shipScreen = sp && se && t > -0.05 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
