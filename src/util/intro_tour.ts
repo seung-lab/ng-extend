@@ -757,7 +757,8 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-callout-kdot { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 8px var(--part, #7ecaff); flex: none; }
 @media (max-width: 820px) {
   /* the last page compact on a phone, so the cells above stay in view */
-  .nge-intro { font-size: 15px; }
+  .nge-intro { font-size: 17.5px; }
+  .nge-intro .nge-intro-title { font-size: 25px; }
   .nge-intro.nge-intro--choice .nge-intro-key { font-size: 11px; gap: 3px 8px; }
   .nge-intro.nge-intro--choice .nge-intro-choose { font-size: 9px; letter-spacing: 0.16em; }
   .nge-intro.nge-intro--choice > .nge-intro-row { flex-wrap: wrap; column-gap: 8px; row-gap: 6px; }
@@ -1462,7 +1463,7 @@ export async function startIntroTour() {
       // a portrait screen is narrow: pulled back to show the same width as a
       // wide one, so the ship never leaves it (Ames, on a phone)
       // (the axon is narrow: it needs much less, Ames: "zoomed in more")
-      const vnm = b.view.nm * (b.key === 'axon' ? Math.min(1.8, portraitK()) : portraitK());
+      const vnm = b.view.nm * (b.key === 'synapse' || b.key === 'synapse2' ? 1 : b.key === 'axon' ? Math.min(1.8, portraitK()) : portraitK());
       const msNow = b.key === 'spike' ? ms : Math.max(ms, glideMs(framed(center, vnm), vnm, ms), shipLeft + 500);
       if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, vnm), vnm, ms); }, 1300);
       else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, vnm), vnm, msNow);
