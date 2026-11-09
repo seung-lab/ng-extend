@@ -2241,7 +2241,12 @@ function showTourLoading() {
   setTimeout(() => window.addEventListener('nge-intro-ready', done), 600);
 }
 
+// A tutorial box (the Site Tour, Get Started...) showing ends this tour, so
+// the two never talk over each other (toknow #441).
+document.addEventListener('nge:tutorial-shown', () => endTour());
+
 export function playIntro() {
+  document.dispatchEvent(new CustomEvent('nge:tutorial-close'));
   endTour();
   clearStarship();
   document.body.classList.add('nge-intro-on');

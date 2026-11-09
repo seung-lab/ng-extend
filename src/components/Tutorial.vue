@@ -277,6 +277,10 @@ watch(() => store.activeTutorial, (now, before) => {
 // A practice step advances by itself when the edit lands (Amy: straight
 // to the success box).
 // Never on the last box: finishing a tutorial is the learner's own click.
+// One guide on screen at a time (toknow #441): the Starship tour closes an
+// open tutorial box as it starts, and a tutorial box showing ends that tour.
+document.addEventListener('nge:tutorial-close', () => { if (activeStep.value) exitIntro(); });
+watch(() => !!activeStep.value, on => { if (on) document.dispatchEvent(new CustomEvent('nge:tutorial-shown')); });
 document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(true); });
 const back = () => { (window as any).__ngeStepPending = false; store.setTutorialStep(Math.max(0, stepFrom(store.getTutorialStep() - 1, -1))); };
 // ── Resuming on page load (Nseraf 2026-09-29) ──
