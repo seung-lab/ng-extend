@@ -704,6 +704,24 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
 .nge-step { color: #ffd166; letter-spacing: 0.1em; }
+/* the whole tour, every screen: no top bars but the Pyr icon, no bottom bar
+   (Ames 2026-11-09) */
+body.nge-intro-on #extensionBar > :not(.ng-extend-logo), body.nge-intro-on .neuroglancer-layer-panel,
+body.nge-intro-on .nge-mobile-nav, body.nge-intro-on [title^="Switch to"] { display: none !important; }
+body.nge-intro-on #extensionBar { background: transparent !important; border: 0 !important; box-shadow: none !important; }
+@media (max-width: 820px) {
+  .nge-callout-box { max-width: 64vw !important; min-width: 0 !important; padding: 9px 12px 10px !important; backdrop-filter: none; }
+  .nge-callout-box .nge-callout-title { font-size: 15px; }
+  .nge-callout-box .nge-callout-kicker { font-size: 8.5px; }
+  .nge-callout-box .nge-callout-stats dt { font-size: 8px; }
+  .nge-callout-box .nge-callout-stats dd { font-size: 12.5px; }
+  .nge-callout-box .nge-callout-stats .num { font-size: 17px; }
+  .nge-callout-box .nge-callout-stats { column-gap: 14px; row-gap: 5px; }
+  .nge-tour-loading-text { font-size: clamp(13px, 4.6vw, 20px); letter-spacing: 0.14em; padding: 0 16px; text-align: center; }
+  .nge-tour-loading-sub { padding: 0 16px; text-align: center; }
+  .nge-intro .nge-intro-row { flex-wrap: wrap; row-gap: 10px; }
+  .nge-intro .nge-intro-row .nge-go { flex: 1 1 auto; justify-content: center; letter-spacing: 0.16em; }
+}
 .nge-card-hint { margin-top: 10px; font: 500 12.5px 'Inter', sans-serif; letter-spacing: 0.03em; color: rgba(190, 228, 255, 0.8); }
 .nge-card-hint[hidden] { display: none; }
 .nge-card-hint b { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #9fe9ff; }
@@ -1177,7 +1195,9 @@ function keepOnScreen(el: HTMLElement) {
   const fit = () => {
     if (!el.isConnected) { window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); clearInterval(timer); return; }
     const docH = document.documentElement.clientHeight || window.innerHeight;
-    const visibleBottom = Math.min(window.innerHeight, docH);
+    const nav = document.querySelector('.nge-mobile-nav') as HTMLElement | null;
+    const navH = nav && nav.offsetParent !== null ? nav.getBoundingClientRect().height : 0;
+    const visibleBottom = Math.min(window.innerHeight, docH) - navH;
     // placed from the top by its own measured height, so it sits inside
     // the visible window whatever the browser makes of bottom (Firefox)
     const h = el.offsetHeight;
@@ -2048,6 +2068,7 @@ function showTourLoading() {
 export function playIntro() {
   endTour();
   clearStarship();
+  document.body.classList.add('nge-intro-on');
   showTourLoading();
   setTimeout(() => { void flyStarship(() => { void startIntroTour(); }); }, 150);
 }

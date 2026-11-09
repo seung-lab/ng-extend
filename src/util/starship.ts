@@ -298,6 +298,8 @@ function onUserDrag(e: PointerEvent) {
 }
 /** Turning is switched off in Settings > 3D looks ("Turn cells slowly"). */
 function turnAllowed(): boolean {
+  // not on phones: the turning cell renders poorly there (Ames 2026-11-09)
+  if (window.matchMedia?.('(pointer: coarse)').matches && Math.min(window.innerWidth, window.innerHeight) < 820) return false;
   try { return useUserPreferencesStore().prefs.autoTurn !== false; } catch { return true; }
 }
 const handsOff = () => !userTouched && performance.now() - touchedAt > TOUCH_PAUSE_MS;
