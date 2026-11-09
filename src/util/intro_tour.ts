@@ -79,7 +79,7 @@ const BEATS: Beat[] = [
   {key: 'synapse2', header: 'Signals come in', part: 2, view: {at: 'synapse2', nm: 30_000},
     body: 'Out here near the tip of a {dendrite:dendrite}, {nbr:another neuron\u2019s axon} passes its signal in at a **synapse**, the glow. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
   {key: 'spike', header: 'Action potential', part: 3, view: {at: 'cell', nm: 220_000},
-    body: 'A signal comes in along {nbr:the neighbor\u2019s axon}, crosses the **synapse** and runs down the {dendrite:dendrite} to the {cellbody:soma}. When enough arrive, the cell fires an action potential, a quick electric pulse that races out along its {axon:axon} to {down:the next cell}. It lasts about 1 ms (a blink takes 300 times longer) and travels up to 100 m/s, about 220 mph. Here it is slowed down about 5,000 times.'},
+    body: 'Signals run in to the {cellbody:soma}. When enough arrive, the cell fires a quick electric pulse out its {axon:axon} to {down:the next cell}. It lasts about 1 ms (a blink takes 300 times longer) and can travel 220 mph. Here it is slowed down 5,000 times.'},
   {key: 'connectome', header: 'Connectome', view: {at: 'cell', nm: 340_000},
     body: 'A wiring diagram of the brain that includes all the cells and all the synapses is called a **connectome**. With it, scientists can follow how signals flow, to learn how we see, remember and think, and what goes wrong in brain disorders. This map doesn’t exist for a mammalian brain yet, but we’re getting closer thanks to people like you playing Pyr.'},
 ];
@@ -381,6 +381,8 @@ function stopAllSynapses() { cancelAnimationFrame(synRaf); setNgeGlow(null, 'int
 
 /* ── the action potential spark ── */
 let sparkRaf = 0;
+/** Send one more action potential, on top of any already running. */
+let sparkFire: (() => void) | null = null;
 function runSpark(t: Tour) {
   const nm = nmPerUnit();
   if (!nm || !t.apDend || !t.apAxon) return;
@@ -407,21 +409,23 @@ function runSpark(t: Tour) {
   let dSyn = 0, best = Infinity;
   for (const q of AX) { const d = Math.hypot(q[0] - s1[0], q[1] - s1[1], q[2] - s1[2]); if (d < best) { best = d; dSyn = q[3]; } }
   const AX_MS = 3400, speed = far / AX_MS, TRAIL_NM = 7000;
-  const MAX = 2400;
+  const MAX = 9000;
   const glow: NgeGlow = {positions: new Float32Array(MAX * 3), colors: new Float32Array(MAX * 4), sizesNm: new Float32Array(MAX), count: 0, nmRight: [1 / nm[0], 0, 0]};
   const T_IN = legIn.ms, T_D0 = T_IN + 250, T_D1 = T_D0 + legD.ms, T_O0 = T_D1 + 1300, T_O1 = T_O0 + AX_MS;
   const T_N0 = T_O0 + dSyn / speed + 250, T_N1 = T_N0 + legN.ms, PERIOD = Math.max(T_O1, T_N1) + 2400;
   const soma = t.anchors.soma, syn2 = t.anchors.synapse2;
   const t0 = performance.now();
-  const step = (now: number) => {
-    const ms = (now - t0) % PERIOD;
-    let n = 0;
-    const put = (p: number[], rgb: number[], a: number, size: number) => {
+  // (each tap of the lightning key adds one, Ames: "send multiple at a time")
+  const extra: number[] = [];
+  sparkFire = () => { if (extra.length < 8) extra.push(performance.now()); };
+  let n = 0;
+  const put = (p: number[], rgb: number[], a: number, size: number) => {
       if (a <= 0.01 || n >= MAX) return;
       glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], n * 3);
       glow.colors.set([rgb[0], rgb[1], rgb[2], Math.min(1, a)], n * 4);
       glow.sizesNm[n] = size; n++;
     };
+  const draw = (ms: number) => {
     const run = (L: Leg, q: number) => {
       const tot = L.cum[L.cum.length - 1], TRAIL = 16;
       for (let j = 0; j < TRAIL; j++) {
@@ -455,6 +459,14 @@ function runSpark(t: Tour) {
     const f1 = pulse((ms - T_N0 + 250) / 700);
     put(s1, [1, 0.5, 0.9], f1, 8000); put(s1, [1, 1, 1], f1, 2800);
     if (ms >= T_N0 && ms < T_N1 + 200) run(legN, (ms - T_N0) / legN.ms);
+  };
+  const step = (now: number) => {
+    n = 0;
+    draw((now - t0) % PERIOD);
+    for (let k = extra.length - 1; k >= 0; k--) {
+      const ms = now - extra[k];
+      if (ms > PERIOD) extra.splice(k, 1); else draw(ms);
+    }
     glow.count = n;
     const cam = cameraAxes(nm);
     if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
@@ -464,7 +476,7 @@ function runSpark(t: Tour) {
   };
   sparkRaf = requestAnimationFrame(step);
 }
-function stopSpark() { cancelAnimationFrame(sparkRaf); setNgeGlow(null, 'intro-spark'); }
+function stopSpark() { cancelAnimationFrame(sparkRaf); sparkFire = null; setNgeGlow(null, 'intro-spark'); }
 
 /* ── the synapse marker: a soft pulse ── */
 let pulseRaf = 0;
@@ -754,11 +766,12 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro-body::-webkit-scrollbar { width: 5px; }
 .nge-intro-body::-webkit-scrollbar-thumb { background: rgba(126, 224, 255, 0.6); border-radius: 3px; }
 .nge-intro-body::-webkit-scrollbar-track { background: rgba(126, 224, 255, 0.08); border-radius: 3px; }
-.nge-intro-zap { margin-left: auto; margin-right: 12px; width: 46px; height: 46px; flex: none; display: grid; place-items: center; padding: 0; cursor: pointer;
-  border-radius: 50%; border: 1px solid rgba(255, 214, 102, 0.6); background: radial-gradient(circle, rgba(255, 214, 102, 0.22), rgba(255, 170, 60, 0.05) 70%);
-  color: #ffd666; box-shadow: 0 0 14px rgba(255, 200, 80, 0.35); transition: transform 0.15s, box-shadow 0.2s; }
+.nge-intro-zap { position: relative; z-index: 2; margin-left: auto; margin-right: 14px; width: 46px; height: 46px; flex: none; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border-radius: 50%; border: 1px solid #fff3c4; background: radial-gradient(circle at 40% 35%, #fff1a8, #ffd23f 55%, #f5a623);
+  color: #2a1a00; box-shadow: 0 0 16px rgba(255, 210, 70, 0.7); transition: transform 0.15s, box-shadow 0.2s; }
+.nge-intro-zap + .nge-intro-go::before { display: none; }
 .nge-intro-zap[hidden] { display: none; }
-.nge-intro-zap svg { width: 24px; height: 24px; filter: drop-shadow(0 0 6px rgba(255, 220, 120, 0.9)); }
+.nge-intro-zap svg { width: 24px; height: 24px; filter: none; }
 .nge-intro-zap:hover { transform: scale(1.08); box-shadow: 0 0 22px rgba(255, 210, 90, 0.6); }
 .nge-intro-zap--fire { animation: nge-zap-fire 0.6s ease-out; }
 @keyframes nge-zap-fire { 0% { transform: scale(0.85); box-shadow: 0 0 0 rgba(255, 230, 140, 0); } 30% { transform: scale(1.15); box-shadow: 0 0 34px rgba(255, 230, 140, 0.95); } 100% { transform: none; } }
@@ -1516,7 +1529,7 @@ export async function startIntroTour() {
     zapEl.hidden = b.key !== 'spike';
     zapEl.onclick = () => {
       if (!active || i !== n) return;
-      stopSpark(); runSpark(t);
+      if (sparkFire) sparkFire(); else runSpark(t);
       zapEl.classList.remove('nge-intro-zap--fire'); void zapEl.offsetWidth; zapEl.classList.add('nge-intro-zap--fire');
     };
     if (holo) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, b.key === 'neuron' ? '#4f8cff' : ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, shipDelay + 900);
