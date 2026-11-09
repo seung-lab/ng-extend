@@ -443,7 +443,9 @@ function placePortalArt(nm: V3, right: V3, c: V3, R: number, open: number, shut:
   const pop = open < 1 ? 1 + 0.12 * Math.sin(Math.PI * open) : 1;
   const kick = thrust > 0 && thrust < 0.6 ? 1 + 0.06 * Math.sin(thrust / 0.6 * Math.PI) : 1;
   const k = Math.max(0, open * pop * kick * (1 - shut));
-  const w = rPx * 2 / 0.5;
+  // never more than a modest ring on screen, whatever the projection makes
+  // of it (Ames: "the portal is still giant" on the way into MICrONS)
+  const w = Math.min(rPx * 2 / 0.5, Math.min(window.innerWidth, window.innerHeight) * 0.32);
   portalArt.style.width = `${w.toFixed(1)}px`;
   portalArt.style.opacity = String(Math.min(1, open * 1.5) * (1 - shut));
   // a window in the ring where the ship is, so it passes in front of it

@@ -772,7 +772,9 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
   .nge-intro.nge-intro--choice .nge-intro-choose { font-size: 9px; letter-spacing: 0.16em; }
   .nge-intro.nge-intro--choice > .nge-intro-row { flex-wrap: wrap; column-gap: 8px; row-gap: 6px; }
   .nge-intro.nge-intro--choice > .nge-intro-row .nge-go { flex: 1 1 40%; min-width: 0; }
-  .nge-intro.nge-intro--choice .nge-go .nge-go-label { font-size: 10px !important; letter-spacing: 0.1em !important; padding: 9px 8px !important; white-space: nowrap; }
+  .nge-intro.nge-intro--choice .nge-go .nge-go-label { font-size: 10px !important; letter-spacing: 0.08em !important; padding: 8px 6px !important; white-space: normal; line-height: 1.35; text-align: center; }
+  .nge-intro.nge-intro--choice .nge-go { height: auto !important; min-height: 44px; }
+  .nge-intro.nge-intro--choice .nge-go-chevs { display: none !important; }
   .nge-callout-box .nge-callout-title { display: none !important; }
   .nge-callout-box .nge-callout-kdot { display: inline-block; margin-right: 9px; }
   .nge-callout-box .nge-callout-stats .grp { display: none !important; }
