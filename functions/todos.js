@@ -138,6 +138,7 @@ function changeWords(fields, before) {
 const noFollows = { all: async () => ({}), get: async () => [], set: async () => {} };
 const noSeen = { get: async () => ({}), mark: async () => {} };
 const HELPERS_MAX = 6;
+const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 
 async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, seen = noSeen, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
@@ -168,6 +169,25 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (!meId) fail(403, 'No Pyr profile.');
     await seen.mark(meId, id, now);
     return { id, at: now };
+  }
+  // Emoji reactions on a comment (Ames 2026-11-09: "can we have emoji reactions
+  // like thumbs up"). The same emoji again takes yours away. The comment's
+  // writer sees it under My Tasks (TodoBoard.vue), not as a bell.
+  if (action === 'todo.react') {
+    const id = uuid(args.id, 'card');
+    const emoji = String(args.emoji || '');
+    if (!REACTIONS.includes(emoji)) fail(400, 'Pick one of the reactions.');
+    const before = await db.card(id);
+    if (!before) fail(404, 'That card is gone. Refresh the board.');
+    const i = Number(args.index);
+    const list = [...(before.comments || [])];
+    const old = Number.isInteger(i) ? list[i] : null;
+    if (!old || (args.at && old.at !== args.at)) fail(404, 'That comment moved. Refresh the board.');
+    const had = Array.isArray(old.reactions) ? old.reactions : [];
+    const mine = had.some(r => r.by === byName && r.emoji === emoji);
+    const next = mine ? had.filter(r => !(r.by === byName && r.emoji === emoji)) : [...had, { emoji, by: byName, at: now }].slice(-60);
+    list[i] = { ...old, reactions: next };
+    return { card: await db.patch(id, { comments: list }) };
   }
   if (action === 'todo.commentEdit') {
     const id = uuid(args.id, 'card');

@@ -30,7 +30,7 @@ type Size = 'S' | 'M' | 'L';
 interface Card {
   id: string; title: string; notes: string; list: ListKey; rank: number; size: Size | null;
   owner_id: string | null; checklist: Item[];
-  comments: { by: string; text: string; at: string; edited_at?: string; original?: string; reply_to?: string }[];
+  comments: { by: string; text: string; at: string; edited_at?: string; original?: string; reply_to?: string; reactions?: { emoji: string; by: string; at: string }[] }[];
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
   // Optional (supabase-admin-todos-fields.sql).
   links?: Link[]; status?: string; due_on?: string | null; images?: string[];
@@ -788,10 +788,49 @@ const myTasks = computed(() => {
     if (!answered) tagged.push({ key: 'tag:' + c.id, card: c, text: `${tagBy} tagged you`, due: null, item: -1, at: tagAt });
   }
   if (tagged.length) groups.unshift({ head: 'Tagged, waiting on you', rows: tagged.sort((a, b) => (b.at || '').localeCompare(a.at || '')), late: true });
+  // Reactions to my comments (Ames 2026-11-09: "celia gets notif in My Tasks
+  // like Amy thumbsup and link"), until I open the card, for 14 days.
+  const reacted: Task[] = [];
+  const since = new Date(Date.now() - 14 * 864e5).toISOString();
+  for (const c of cards.value) {
+    const seen = seenAt.value[c.id] || '';
+    for (const cm of c.comments || []) {
+      if (cm.by !== myName) continue;
+      for (const r of cm.reactions || []) {
+        if (r.by === myName || r.at <= seen || r.at < since) continue;
+        const snippet = cm.text.replace(/https?:\/\/\S+/g, '').replace(/[*_#>`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        reacted.push({ key: `react:${c.id}:${cm.at}:${r.by}:${r.emoji}`, card: c, text: `${firstName(r.by)} ${r.emoji} your comment${snippet ? ` "${snippet}${cm.text.length > 60 ? '…' : ''}"` : ''}`, due: null, item: -2, at: r.at });
+      }
+    }
+  }
+  if (reacted.length) groups.splice(tagged.length ? 1 : 0, 0, { head: 'Reactions to you', rows: reacted.sort((a, b) => (b.at || '').localeCompare(a.at || '')) });
   return groups.filter(g => g.rows.length);
 });
 const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.length, 0));
-function openTask(t: Task) { myTasksOpen.value = false; if (t.item === -1) openAt(t.card, 'comments'); else openUp(t.card); }
+function openTask(t: Task) { myTasksOpen.value = false; if (t.item === -1 || t.item === -2) openAt(t.card, 'comments'); else openUp(t.card); }
+// ── Reactions on comments ──
+const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
+const reactPick = ref<string | null>(null);
+function reactionGroups(cm: Card['comments'][number]) {
+  const out: { emoji: string; names: string[]; mine: boolean }[] = [];
+  const me = people.value.find(p => p.id === myId.value)?.name || String(backend.userName || '');
+  for (const r of cm.reactions || []) {
+    let g = out.find(x => x.emoji === r.emoji);
+    if (!g) out.push(g = { emoji: r.emoji, names: [], mine: false });
+    g.names.push(firstName(r.by));
+    if (r.by === me) g.mine = true;
+  }
+  return out;
+}
+async function react(c: Card, i: number, emoji: string) {
+  reactPick.value = null;
+  const cm = c.comments[i];
+  if (!cm) return;
+  try {
+    const r = await secureWrite<any>('todo.react', { id: c.id, index: i, at: cm.at, emoji });
+    if (r?.card) cards.value = cards.value.map(x => (x.id === c.id ? { ...x, comments: r.card.comments } : x));
+  } catch (e: any) { error.value = e?.message ?? String(e); }
+}
 const toggleItem = (c: Card, i: number) => save(c, { checklist: c.checklist.map((x, k) => (k === i ? { ...x, done: !x.done } : x)) });
 const removeItem = (c: Card, i: number) => save(c, { checklist: c.checklist.filter((_, k) => k !== i) });
 /** A checklist item becomes a card of its own, under this one. */
@@ -1647,7 +1686,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
         <h4 :class="{ 'nge-todo-mytasks-late': g.late }">{{ g.head }} · {{ g.rows.length }}</h4>
         <button v-for="t in g.rows" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
-          <span class="nge-todo-mytask-kind">{{ t.item === null ? '▣' : t.item === -1 ? '💬' : '☐' }}</span>
+          <span class="nge-todo-mytask-kind">{{ t.item === null ? '▣' : t.item === -1 ? '💬' : t.item === -2 ? '✨' : '☐' }}</span>
           <span class="nge-todo-mytask-text">{{ t.text }}<small v-if="t.item !== null"> in {{ t.card.title }}</small></span>
           <span v-if="t.at" class="nge-todo-mytask-due">{{ ago(t.at) }}</span>
           <span v-if="t.due" class="nge-todo-mytask-due" :class="{ 'nge-todo-mytasks-late': g.late }">{{ dueWords(t.due) }}</span>
@@ -2035,6 +2074,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </template>
           <div v-else class="nge-todo-notes nge-todo-md" v-html="commentHtml(cm.text)"></div>
           <div v-if="cm.original && shownOriginal[openCard.id + ':' + i]" class="nge-todo-original"><span>Original</span> {{ cm.original }}</div>
+          <div class="nge-todo-reactions" :class="{ 'nge-todo-reactions--some': (cm.reactions || []).length }">
+            <button v-for="g in reactionGroups(cm)" :key="g.emoji" type="button" class="nge-todo-reaction" :class="{ 'nge-todo-reaction--mine': g.mine }"
+                    :title="g.names.join(', ') + (g.mine ? '. Click to take yours away.' : '')" @click="react(openCard, i, g.emoji)">{{ g.emoji }} <b>{{ g.names.length }}</b></button>
+            <span class="nge-todo-react-wrap">
+              <button type="button" class="nge-todo-reaction nge-todo-react-add" title="React" aria-label="Add a reaction" @click="reactPick = reactPick === openCard.id + ':' + i ? null : openCard.id + ':' + i">☺＋</button>
+              <span v-if="reactPick === openCard.id + ':' + i" class="nge-todo-react-pick" role="menu">
+                <button v-for="e in REACTIONS" :key="e" type="button" role="menuitem" @click="react(openCard, i, e)">{{ e }}</button>
+              </span>
+            </span>
+          </div>
           <div v-if="last && replyTo === rootAt" class="nge-todo-reply-box">
             <div :ref="rxRef('reply')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Reply"
                  :data-placeholder="'Reply to ' + threadStarter(openCard, rootAt) + '. Type @ to tag someone.'"
@@ -2182,6 +2231,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-comment-pic img { display: block; max-width: min(100%, 520px); max-height: 360px; border-radius: 8px; border: 1px solid var(--line); }
 .nge-todo-comment--reply { margin-left: 26px; border-left-color: rgba(79, 140, 255, 0.45) !important; }
 .nge-todo-comment-reply { opacity: 0; transition: opacity 0.15s; }
+.nge-todo-reactions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0 4px; }
+.nge-todo-reaction { font: inherit; font-size: 12.5px; line-height: 1; padding: 3px 7px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.nge-todo-reaction b { font-weight: 600; font-size: 11.5px; margin-left: 2px; }
+.nge-todo-reaction--mine { border-color: rgba(120, 165, 255, 0.8); background: rgba(120, 165, 255, 0.14); }
+.nge-todo--light .nge-todo-reaction--mine { border-color: #3b74e0; background: #eef4ff; }
+.nge-todo-react-add { opacity: 0; transition: opacity 0.15s; font-size: 12px; }
+.nge-todo-comment:hover .nge-todo-react-add, .nge-todo-react-add:focus-visible { opacity: 0.8; }
+@media (hover: none) { .nge-todo-react-add { opacity: 0.6; } }
+.nge-todo-react-wrap { position: relative; display: inline-flex; }
+.nge-todo-react-pick { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 5; display: flex; gap: 2px; padding: 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
+.nge-todo-react-pick button { font-size: 18px; line-height: 1; padding: 4px 5px; border: 0; background: transparent; cursor: pointer; border-radius: 8px; }
+.nge-todo-react-pick button:hover { background: rgba(120, 165, 255, 0.18); }
 .nge-todo-comment:hover .nge-todo-comment-reply { opacity: 1; }
 .nge-todo-reply-box { margin: 6px 0 4px; }
 .nge-todo-item-edit { flex: 1 1 auto; min-width: 0; padding: 2px 6px; font-size: inherit; }
