@@ -2,6 +2,18 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T13:59:00Z",
+      "title": "The tour on phones",
+      "items": [
+        "On a phone the tour now has the whole screen: the top and bottom bars step aside while it runs, also in MICrONS.",
+        "Holograms on phones are short and easy to read, and the cell no longer turns on its own.",
+        "The Axon Runner swings out beside the cell before it turns, never through it, and hovers clear of the branches at the soma.",
+        "A yellow lightning button on the action potential step sends another pulse with each tap.",
+        "In MICrONS on a phone, Upstream cell and Downstream cell buttons step through the Martinotti cell's partners one at a time.",
+        "The portal on the way into MICrONS stays a modest size, and the welcome and action potential words are shorter."
+      ]
+    },
+    {
       "at": "2026-11-09T02:37:00Z",
       "title": "The Axon Runner's banked swoop",
       "items": [
