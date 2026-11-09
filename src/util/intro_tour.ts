@@ -176,12 +176,15 @@ function glideMs(center: V3, viewNm: number, ms = 1600): number {
   const span = Math.hypot(center[0] - p0[0], center[1] - p0[1], center[2] - p0[2]) / Math.max(viewNm, s0 * unit);
   return Math.min(6500, Math.max(ms, 2600 + 900 * Math.abs(Math.log(s1 / s0)) + 1400 * Math.min(2, span)));
 }
+/** Until when the camera is (or is about to be) on the move: holograms wait. */
+let camBusyUntil = 0;
 function moveCamera(center: V3, viewNm: number, ms = 1600) {
   const v = viewerNow(), nm = nmPerUnit();
   if (!v || !nm) return;
   cancelAnimationFrame(camRaf);
   // a parked ship rides along with the camera: its engines show it (Ames)
   starshipCruise(ms);
+  camBusyUntil = performance.now() + ms;
   const unit = Math.min(nm[0], nm[1], nm[2]);
   const p0 = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
   const s0 = v.projectionScale.value, s1 = viewNm / unit;
@@ -583,8 +586,9 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-callout-box .nge-frame path { stroke: rgba(126, 224, 255, 0.5); }
 .nge-frame .pad { fill: rgba(8, 24, 52, 0.9); stroke: #9fe9ff; stroke-width: 1; }
 .nge-callout-box .nge-frame { animation: none; }
-.nge-callout-box .nge-frame path { animation: nge-trace 800ms ease-out both; animation-delay: calc(150ms + var(--i, 0) * 40ms); }
-.nge-callout-box .nge-frame circle { animation: nge-node 300ms ease-out both; animation-delay: calc(600ms + var(--i, 0) * 40ms); }
+.nge-callout-box .nge-frame path, .nge-callout-box .nge-frame circle { opacity: 0; }
+.nge-callout--in .nge-callout-box .nge-frame path { opacity: 1; animation: nge-trace 800ms ease-out both; animation-delay: calc(450ms + var(--i, 0) * 40ms); }
+.nge-callout--in .nge-callout-box .nge-frame circle { opacity: 1; animation: nge-node 300ms ease-out both; animation-delay: calc(900ms + var(--i, 0) * 40ms); }
 .nge-callout-box .nge-frame .spark { animation: nge-spark 4.2s linear infinite; animation-delay: calc(1200ms + var(--i, 0) * 1100ms); }
 .nge-intro .nge-intro-nav { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 /* Let's go (Ames: reimagined): a command key in two cells. A glass label
@@ -708,7 +712,30 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout > svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
 .nge-callout-box { position: fixed; min-width: 200px; max-width: min(380px, 44vw); padding: 15px 20px 17px 20px; isolation: isolate; transform-origin: 50% 100%; backdrop-filter: blur(3px);
   filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25));
-  animation: nge-proj-in 520ms cubic-bezier(.2,1,.3,1) both; }
+  opacity: 0; }
+.nge-callout--in .nge-callout-box { opacity: 1; animation: nge-holo-in 900ms cubic-bezier(.2,.9,.25,1) both; }
+@keyframes nge-holo-in {
+  0% { transform: scale(0.03, 0.012); opacity: 0; filter: brightness(3) drop-shadow(0 0 18px #9fe9ff); }
+  12% { transform: scale(0.03, 0.012); opacity: 1; }
+  38% { transform: scale(1, 0.012); filter: brightness(2.6) drop-shadow(0 0 18px #9fe9ff); }
+  70% { transform: scale(1, 1.03); filter: brightness(1.4) drop-shadow(0 0 16px rgba(80, 180, 255, 0.4)); }
+  78% { opacity: 0.6; } 82% { opacity: 1; } 86% { opacity: 0.75; }
+  100% { transform: none; opacity: 1; filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25)); } }
+.nge-callout-box > :not(.nge-frame-host) { opacity: 0; }
+.nge-callout--in .nge-callout-box > :not(.nge-frame-host) { animation: nge-holo-row 380ms ease-out both; }
+.nge-callout--in .nge-callout-box > .nge-callout-kicker { animation-delay: 560ms; }
+.nge-callout--in .nge-callout-box > .nge-callout-title { animation-delay: 660ms; }
+.nge-callout--in .nge-callout-box > .nge-callout-stats { animation-delay: 780ms; }
+@keyframes nge-holo-row { 0% { opacity: 0; transform: translateY(5px); filter: blur(2px) brightness(2); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; filter: none; } }
+.nge-callout-box::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 2; pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, transparent, #cff6ff, transparent); box-shadow: 0 0 12px #7ee0ff; }
+.nge-callout--in .nge-callout-box::after { animation: nge-holo-scan 700ms 520ms ease-in-out both; }
+@keyframes nge-holo-scan { 0% { top: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: calc(100% - 2px); opacity: 0; } }
+.nge-callout-beamg { opacity: 0; }
+.nge-callout--in .nge-callout-beamg { animation: nge-beam-in 600ms ease-out both; }
+@keyframes nge-beam-in { 0% { opacity: 0; } 25% { opacity: 1; } 35% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 1; } }
+.nge-beam-edge { stroke: rgba(158, 236, 255, 0.45); stroke-width: 1; }
+.nge-callout-beam { mix-blend-mode: screen; }
 .nge-co-frame { position: absolute; left: 0; top: 0; z-index: -1; overflow: visible; pointer-events: none; }
 .nge-co-frame .tr { fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 1.1; stroke-linecap: round; }
 .nge-co-frame .pad { fill: rgba(8, 24, 52, 0.9); stroke: #9fe9ff; stroke-width: 1; }
@@ -739,7 +766,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-stats dd { margin: 2px 0 0; color: #f2fbff; font: 500 15px/1.3 'Inter', sans-serif; letter-spacing: 0.005em; }
 .nge-callout-beam { animation: nge-beam 2.4s ease-in-out infinite; }
 @keyframes nge-beam { 50% { opacity: 0.65; } }
-@media (prefers-reduced-motion: reduce) { .nge-callout-box, .nge-callout-beam { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-callout-box, .nge-callout-beam, .nge-callout--in .nge-callout-box, .nge-callout--in .nge-callout-box > *, .nge-callout--in .nge-callout-beamg { animation: none !important; opacity: 1; } }
 .nge-callout-title { display: flex; align-items: center; gap: 10px; margin-top: 3px; font: 700 21px/1.15 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
 .nge-callout-ic { width: 11px; height: 11px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 10px var(--part, #7ecaff); flex: none; }
 .nge-callout-box { isolation: isolate; }
@@ -905,12 +932,13 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   // The box is a hologram the Starship projects: a cone of light from the
   // ship up to it (Ames), and a fine line from it down to the part.
   callout.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-beam-g" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.06"/></linearGradient></defs>
-    <polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
+      <stop offset="0" stop-color="#9fefff" stop-opacity="0.42"/><stop offset="0.55" stop-color="#4fb8ff" stop-opacity="0.1"/><stop offset="1" stop-color="#4fb8ff" stop-opacity="0.2"/></linearGradient></defs>
+    <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="url(#nge-beam-g)"/><line class="nge-beam-edge e1"/><line class="nge-beam-edge e2"/></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
     <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
   const beam = callout.querySelector('polygon')!, grad = callout.querySelector('linearGradient')!;
+  const edges = [...callout.querySelectorAll('.nge-beam-edge')] as SVGLineElement[];
   const line = callout.querySelector('line')!, dot = callout.querySelector('.nge-callout-dot')!, lens = callout.querySelector('.nge-callout-lens') as SVGElement;
   const box = callout.querySelector('.nge-callout-box') as HTMLElement;
   const host = box.querySelector('.nge-frame-host') as HTMLElement;
@@ -926,7 +954,8 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
     const shipNm = starshipAt();
     const ship = shipNm ? toScreen(shipNm) : null;
     // the ship projects its message only once it holds still (Ames)
-    callout?.classList.toggle('nge-callout--in', !starshipMoving());
+    // and once the camera has settled too (Ames: "soma box appears while the ship is flying")
+    callout?.classList.toggle('nge-callout--in', !starshipMoving() && performance.now() > camBusyUntil);
     if (s && callout) {
       const W = window.innerWidth, panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight;
       const bw = box.offsetWidth, bh = box.offsetHeight;
@@ -953,13 +982,17 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
         const [sx, sy] = ship!;
         const side = sx < bx;   // projecting sideways, to the box's near edge
         box.style.transformOrigin = side ? '0% 50%' : '50% 100%';
-        beam.setAttribute('points', side ? `${sx},${sy} ${bx},${by + 8} ${bx},${by + bh - 8}` : `${sx},${sy} ${bx + 6},${by + bh} ${bx + bw - 6},${by + bh}`);
+        const ends = side ? [[bx, by + 8], [bx, by + bh - 8]] : [[bx + 6, by + bh], [bx + bw - 6, by + bh]];
+        beam.setAttribute('points', `${sx},${sy} ${ends[0][0]},${ends[0][1]} ${ends[1][0]},${ends[1][1]}`);
+        edges.forEach((e, k) => { e.setAttribute('x1', String(sx)); e.setAttribute('y1', String(sy)); e.setAttribute('x2', String(ends[k][0])); e.setAttribute('y2', String(ends[k][1])); });
         grad.setAttribute('x1', String(sx)); grad.setAttribute('y1', String(sy));
         grad.setAttribute('x2', String(side ? bx : bx + bw / 2)); grad.setAttribute('y2', String(side ? by + bh / 2 : by + bh));
         lens.setAttribute('cx', String(sx)); lens.setAttribute('cy', String(sy));
         beam.style.display = lens.style.display = '';
+        edges.forEach(e => { e.style.display = ''; });
       } else {
         beam.style.display = lens.style.display = 'none';
+        edges.forEach(e => { e.style.display = 'none'; });
       }
       // the ship points its beam at the part; the long parts get just the dot
       if (pointAt && onScreen) {
@@ -1188,6 +1221,7 @@ export async function startIntroTour() {
       else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, b.view.nm), b.view.nm, msNow);
       setTimeout(() => { if (active && i === n) revealTint(shown, b.part); }, b.key === 'spike' ? 600 : ms * 0.55);
     };
+    camBusyUntil = Math.max(camBusyUntil, performance.now() + camDelay + 120);
     setTimeout(camera, camDelay);
     // the partner cells are there from their beat on, and gone if we step back
     if (i < SYN) hideCell(t.synapsePartner);
@@ -1221,7 +1255,20 @@ export async function startIntroTour() {
   };
   /** The part of a route from where the ship is now on to `to` (or its end). */
   const onward = (route: number[][], to?: number[]) => {
-    const a = nearest(route, starshipAt()), b2 = to ? nearest(route, to) : route.length - 1;
+    const b2 = to ? nearest(route, to) : route.length - 1;
+    const q = starshipAt();
+    let a = nearest(route, q);
+    if (q) {
+      // the nearest point ahead: reaching it, the ship keeps going the way the route goes
+      let best = Infinity;
+      for (let j = 0; j < Math.min(route.length - 1, b2); j++) {
+        const r = route[j], n2 = route[j + 1];
+        const to2 = [r[0] - q[0], r[1] - q[1], r[2] - q[2]], dir = [n2[0] - r[0], n2[1] - r[1], n2[2] - r[2]];
+        const d = Math.hypot(...to2), dl = Math.hypot(...dir) || 1;
+        const ahead = (to2[0] * dir[0] + to2[1] * dir[1] + to2[2] * dir[2]) / (d * dl || 1);
+        if (ahead > 0.35 && d < best) { best = d; a = j; }
+      }
+    }
     return route.slice(a, Math.max(a + 1, b2 + 1));
   };
   const moveShip = (from: typeof shipAt, want: typeof shipAt, camLag: number) => {

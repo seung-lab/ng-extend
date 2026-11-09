@@ -192,7 +192,19 @@ export function starshipHop(route: number[][], seconds: number) {
   const lift = hop || !onPad ? [] : [add(shipNow, mul(liftNormal, 4000))];
   const start = route[0] as V3;
   const fromPad = onPad && !hop && Math.hypot(...sub(start, shipNow)) < 3000;
-  const path: V3[] = [shipNow, ...(fromPad ? [] : lift), ...route.map(q => q as V3)];
+  let turn: V3[] = [];
+  if (!onPad && noseNow) {
+    const d = sub(start, shipNow), dl = Math.hypot(...d);
+    if (dl > 1 && dot(mul(d, 1 / dl), noseNow) < 0.3) {
+      let side = sub(d, mul(noseNow, dot(d, noseNow)));
+      side = Math.hypot(...side) > dl * 0.05 ? norm(side) : upNow;
+      const R = Math.max(2500, Math.min(dl * 0.35, 20000)) * sizeK;
+      turn = [add(shipNow, add(mul(noseNow, R * 0.8), mul(side, R * 0.25))),
+        add(shipNow, add(mul(noseNow, R * 0.75), mul(side, R * 0.9))),
+        add(shipNow, add(mul(noseNow, R * 0.2), mul(side, R * 1.35)))];
+    }
+  }
+  const path: V3[] = [shipNow, ...turn, ...(fromPad ? [] : lift), ...route.map(q => q as V3)];
   const cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(...sub(path[i], path[i - 1])));
   dock = null;
@@ -201,6 +213,11 @@ export function starshipHop(route: number[][], seconds: number) {
 }
 /** Where the ship is now (nm), and which way is up from where it landed. */
 let shipNow: V3 | null = null;
+/** Which way its nose and its top point now, and how big it is drawn
+ *  (parked, it keeps its size on screen as the camera zooms: Ames, "it gets huger"). */
+let noseNow: V3 | null = null;
+let upNow: V3 = [0, -1, 0];
+let sizeK = 1, dockArrivePs = 0;
 /** Where the ship is now (nm), while it is out. */
 export function starshipAt(): V3 | null { return running ? shipNow : null; }
 let liftNormal: V3 = [0, -1, 0];
@@ -646,7 +663,17 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           dock.from = cameoPortal;
         }
         if (cameo) grow = 0.25 + 0.75 * smooth(Math.max(0, tc - PORTAL_S) / 0.8);
-        moving = h ? hq < 1 : dock ? now - dock.start < dockMs : t < total;
+        // riding along with a camera move counts as moving: its hologram waits
+        moving = h ? hq < 1 : dock ? now - dock.start < dockMs || now - cruise.start < cruise.ms : t < total;
+        {
+          const ps = v.projectionScale.value;
+          let target = 1;
+          if (dock && now - dock.start >= dockMs) {
+            if (!dockArrivePs) dockArrivePs = ps;
+            target = Math.max(0.2, Math.min(4, ps / dockArrivePs));
+          } else dockArrivePs = 0;
+          sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 1.5));
+        }
         if (dock) {
           const ctr = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
           const H = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]), Wd = H * viewAspect();
@@ -716,7 +743,8 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
 
         const m = prop.modelMat;
         const axes = [right, up, fwd];
-        for (let col = 0; col < 3; col++) for (let k = 0; k < 3; k++) m[col * 4 + k] = axes[col][k] * scale * grow / nm[k];
+        noseNow = fwd; upNow = up;
+        for (let col = 0; col < 3; col++) for (let k = 0; k < 3; k++) m[col * 4 + k] = axes[col][k] * scale * grow * sizeK / nm[k];
         for (let k = 0; k < 3; k++) m[12 + k] = at3[k] / nm[k];
         prop.eye = [dot(right, cam.toEye), dot(up, cam.toEye), dot(fwd, cam.toEye)];
 
@@ -744,7 +772,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
         else if (portalShown && !cameo) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
         const power = !dock && t < 0 ? 0 : t > CRUISE_S ? down * (0.9 + 0.1 * Math.sin(t * 23) * Math.sin(t * 7.3)) : down;
-        const sg = scale * grow;
+        const sg = scale * grow * sizeK;
         const toWorld = (q: V3): V3 => add(at3, add(add(mul(right, q[0] * sg), mul(up, q[1] * sg)), mul(fwd, q[2] * sg)));
         const cores = nozzles.map(q => ({p: toWorld(q), power}));
         // Released all along the way the engines moved since the last frame,
@@ -755,14 +783,15 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           const k = Math.random() < 0.5 ? 0 : 1, along = Math.random();
           const c = prevCores ? mix(prevCores[k], cores[k].p, along) : cores[k].p;
           const jitter: V3 = [(Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)];
-          const L = f.shipLength * (cameo || 1);
+          const L = f.shipLength * (cameo || 1) * sizeK;
+          if (ride > 0 && dockQ >= 1) continue;
           particles.push({p: add(c, mul(jitter, L * 0.03)), v: add(mul(fwd, -L * (0.4 + Math.random() * 0.3)), mul(jitter, L * 0.12)), age: (1 - along) * dt, size: L * (0.14 + Math.random() * 0.1)});
         }
         prevCores = cores.map(c => c.p);
         for (const q of particles) { q.age += dt; q.p = add(q.p, mul(q.v, dt)); q.v = mul(q.v, Math.max(0, 1 - dt * 2.2)); }
         particles = particles.filter(q => q.age < LIFE_S);
         // flames sized to the ship as drawn (nine times bigger in MICrONS: Ames, "no thrusters")
-        writeGlow(nm, cam.right, cores, f.shipLength * (cameo || 1));
+        writeGlow(nm, cam.right, cores, f.shipLength * (cameo || 1) * sizeK);
 
         try { v.display.scheduleRedraw(); } catch { /* nothing to redraw */ }
         // Landed, it keeps floating (and drawing) until it is taken away.
