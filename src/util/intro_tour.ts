@@ -636,6 +636,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
   border-top: 1px solid rgba(126, 224, 255, 0.25); font: 500 13.5px/1.3 'Inter', sans-serif; color: #e6f3ff; }
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
+.nge-step { color: #ffd166; letter-spacing: 0.1em; }
 .nge-tour-loading { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
   background: radial-gradient(ellipse at center, rgba(14, 30, 70, 0.92), rgba(2, 6, 18, 0.97)); opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
 .nge-tour-loading--in { opacity: 1; }
@@ -1120,7 +1121,7 @@ export async function startIntroTour() {
   panel.setAttribute('aria-label', 'Welcome to Pyr');
   const X_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   panel.innerHTML = `<span class="nge-intro-plate-bg"></span><span class="nge-frame-host"></span><span class="nge-intro-ring"></span><span class="nge-intro-scan"></span>
-    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
+    <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Pyr<span class="nge-step"></span><button class="nge-intro-x" type="button" aria-label="Leave the introduction">${X_SVG}</button></div>
     <div class="nge-intro-title"></div><p class="nge-intro-body" aria-live="polite"></p>
     <div class="nge-intro-row"><button class="nge-back nge-intro-back" type="button" aria-label="Back">${CHEV_L}</button>
       <span class="nge-intro-key" hidden><i style="--c:#9b72ff"></i>Soma and dendrites<i style="--c:#5ec8ff"></i>Axons<i style="--c:#ffa64d"></i>Other cells<i style="--c:#ffd24d" class="dot"></i>Input synapses<i style="--c:#ff5fd2" class="dot"></i>Output synapses</span>
@@ -1197,10 +1198,20 @@ export async function startIntroTour() {
     if (bodyEl) bodyEl.textContent = '';
     panel?.classList.add('nge-intro--waiting');
     const shown0 = performance.now();
+    // staged: the ship stops, its hologram builds in, then the panel comes
+    // (Ames: "do we want to stage the load ins of these?")
+    let holoAt = 0;
+    // the step's number, on the test sites, so testers can name a box (Ames)
+    { const st = panel?.querySelector('.nge-step') as HTMLElement | null; if (st) st.textContent = IS_LIVE_SITE ? '' : ` · ${n + 1}`; }
     const reveal = () => {
       if (!active || i !== n) return;
-      const flying = starshipMoving() && performance.now() - shown0 < 12000;
-      if (flying || performance.now() - shown0 < (shipMoves ? shipDelay + 400 : 250)) { requestAnimationFrame(reveal); return; }
+      const now0 = performance.now(), late = now0 - shown0 > 14000;
+      const flying = starshipMoving() && now0 - shown0 < 12000;
+      if (b.callout && !late) {
+        if (!holoAt && document.querySelector('.nge-callout--in')) holoAt = now0;
+        if (!holoAt || now0 - holoAt < 700) { requestAnimationFrame(reveal); return; }
+      }
+      if (flying || now0 - shown0 < (shipMoves ? shipDelay + 400 : 250)) { requestAnimationFrame(reveal); return; }
       panel?.classList.remove('nge-intro--waiting');
       type(bodyEl, b.body);
     };
