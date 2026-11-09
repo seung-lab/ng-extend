@@ -311,7 +311,8 @@ const VOLUME_CELLS = [
   '648518346353614270', '648518346354828966', '648518346352663457', '648518346351955324',
   '648518346352170608',
 ];
-const VOLUME_TINTS = [0x5b6b8c, 0x6f6390, 0x4f7a86, 0x7a6a85, 0x5f7f9a, 0x6b7f6e, 0x8a7266, 0x56708f];
+// vibrant, every one its own (Ames: "just make them have vibrant colors!")
+const VOLUME_TINTS = [0xff4f8b, 0x3fd6ff, 0x7dff5a, 0xffc53d, 0xb86bff, 0xff7a3d, 0x3dffc4, 0xff5ff2, 0x5a8bff, 0xd4ff3d, 0xff3d5a, 0x3dff7d];
 let crowdTimer = 0;
 function fillVolume() {
   clearTimeout(crowdTimer);
@@ -755,6 +756,13 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-intro-zap + .nge-intro-go { margin-left: 0; }
 .nge-callout-kdot { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--part, #7ecaff); box-shadow: 0 0 8px var(--part, #7ecaff); flex: none; }
 @media (max-width: 820px) {
+  /* the last page compact on a phone, so the cells above stay in view */
+  .nge-intro { font-size: 15px; }
+  .nge-intro.nge-intro--choice .nge-intro-key { font-size: 11px; gap: 3px 8px; }
+  .nge-intro.nge-intro--choice .nge-intro-choose { font-size: 9px; letter-spacing: 0.16em; }
+  .nge-intro.nge-intro--choice > .nge-intro-row { flex-wrap: wrap; column-gap: 8px; row-gap: 6px; }
+  .nge-intro.nge-intro--choice > .nge-intro-row .nge-go { flex: 1 1 40%; min-width: 0; }
+  .nge-intro.nge-intro--choice .nge-go .nge-go-label { font-size: 10px !important; letter-spacing: 0.1em !important; padding: 9px 8px !important; white-space: nowrap; }
   .nge-callout-box .nge-callout-title { display: none !important; }
   .nge-callout-box .nge-callout-kdot { display: inline-block; }
   .nge-callout-box .nge-callout-stats .grp { display: none !important; }
@@ -1475,7 +1483,8 @@ export async function startIntroTour() {
       showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse);
     }
     if (b.key === 'synapse2') { showCell(t.syn2Partner, SYN2_COLOR); runPulse(t.anchors.synapse2, [1, 0.86, 0.45]); }
-    if (b.key === 'allsyn' || b.key === 'connectome') runAllSynapses(t);
+    // (not on the connectome step: the cells filling the volume say it, Ames)
+    if (b.key === 'allsyn') runAllSynapses(t);
     if (b.key === 'connectome') fillVolume(); else emptyVolume();
     if (b.key === 'spike') runSpark(t);
     // a lightning button to send another one (Ames)
