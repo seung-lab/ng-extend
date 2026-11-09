@@ -71,7 +71,7 @@ const BEATS: Beat[] = [
   {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Input', '3,297 synapses']]}, part: 2, view: {at: 'dendView', nm: 185_000},
     body: 'The branches that listen. They gather signals from other neurons.'},
   {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
-    body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
+    body: "The {axon:axon} is the neuron's long, thin cable. It carries the cell's own signal out to other cells."},
   {key: 'synapse', part: 3, header: 'Synapse', view: {at: 'synapse', nm: 40_000},
     body: 'The connection where two neurons meet and communicate. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our {axon:axon} passes its signal to {down:the dendrite of a downstream cell}.'},
   {key: 'allsyn', header: 'All its synapses', view: {at: 'cell', nm: 230_000},
@@ -486,6 +486,41 @@ function runPulse(at: V3, rgb: [number, number, number] = [0.6, 0.88, 1]) {
   pulseRaf = requestAnimationFrame(step);
 }
 function stopPulse() { cancelAnimationFrame(pulseRaf); setNgeGlow(null, 'intro-pulse'); }
+/** A signal racing down the axon, again and again: a bright head with a
+ *  fading tail (the axon step on phones, Ames: "send an action potential
+ *  down it"). */
+function runAxonPulse(path: number[][]) {
+  stopPulse();
+  const nm = nmPerUnit();
+  if (!nm || path.length < 2) return;
+  const cum = [0];
+  for (let k = 1; k < path.length; k++) cum.push(cum[k - 1] + Math.hypot(path[k][0] - path[k - 1][0], path[k][1] - path[k - 1][1], path[k][2] - path[k - 1][2]));
+  const L = cum[cum.length - 1], TAIL = 18, PERIOD = 2.4, RUN = 1.7;
+  const at = (s: number) => {
+    let k = 1; while (k < cum.length - 1 && cum[k] < s) k++;
+    const f = Math.max(0, Math.min(1, (s - cum[k - 1]) / ((cum[k] - cum[k - 1]) || 1)));
+    return [0, 1, 2].map(i => path[k - 1][i] + (path[k][i] - path[k - 1][i]) * f);
+  };
+  const glow: NgeGlow = {positions: new Float32Array(TAIL * 3), colors: new Float32Array(TAIL * 4), sizesNm: new Float32Array(TAIL), count: TAIL, nmRight: [1 / nm[0], 0, 0]};
+  const t0 = performance.now();
+  const step = (now: number) => {
+    const q = ((now - t0) / 1000) % PERIOD / RUN;
+    for (let j = 0; j < TAIL; j++) {
+      const s = (q - j * 0.012) * L, on = q <= 1 + TAIL * 0.012 && s >= 0 && s <= L;
+      const p = at(Math.max(0, Math.min(L, s)));
+      glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], j * 3);
+      const a = on ? Math.pow(1 - j / TAIL, 1.6) : 0;
+      glow.colors.set([j ? 0.45 : 0.9, j ? 0.85 : 0.98, 1, a], j * 4);
+      glow.sizesNm[j] = (j ? 3200 : 6000) * (1 - j / TAIL * 0.5);
+    }
+    const cam = cameraAxes(nm);
+    if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
+    setNgeGlow(glow, 'intro-pulse');
+    try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    pulseRaf = requestAnimationFrame(step);
+  };
+  pulseRaf = requestAnimationFrame(step);
+}
 
 /* ── the panel and the callout ── */
 function ensureStyle() {
@@ -1351,7 +1386,7 @@ export async function startIntroTour() {
     bodyEl.style.minHeight = '';
     const bodyText = isPhone() && b.key === 'neuron'
       ? b.body + ' This one has about 4.5 mm of branches, with {in:3,386 synapses} coming in and {out:59} going out.' : b.body;
-    const holo = !!b.callout && !(isPhone() && b.key === 'neuron');
+    const holo = !!b.callout && !(isPhone() && (b.key === 'neuron' || b.key === 'axon'));
     bodyEl.textContent = plain(bodyText);
     bodyEl.style.minHeight = `${bodyEl.offsetHeight}px`;
     if (panel) (panel.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(panel.offsetWidth, panel.offsetHeight, 18);
@@ -1417,6 +1452,7 @@ export async function startIntroTour() {
       shipAt = want;
       setTimeout(() => { if (active) moveShip(prev, want, camDelay - shipDelay); }, shipDelay);
     }
+    if (b.key === 'axon' && isPhone()) setTimeout(() => { if (active && i === n) runAxonPulse(t.axonPath); }, shipDelay + 1600);
     if (b.key === 'synapse') {
       // the downstream cell grows out from the synapse, not just appearing (Ames)
       if (from < n) growPartner(t.synapsePartner, t.anchors.synapse);
