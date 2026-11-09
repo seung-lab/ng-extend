@@ -38,6 +38,13 @@ touchQuery?.addEventListener?.('change', () => { isTouchRef.value = touchQuery.m
  */
 export const mobileWelcomeOpenRef = ref(false);
 
+/**
+ * Bumped by something that needs the whole phone screen (Signal Controller,
+ * src/util/signal_controller.ts): ExtensionBar watches it and puts the
+ * welcome sheet away, as if the visitor had closed it.
+ */
+export const hideMobileWelcomeRef = ref(0);
+
 export function isMobile(): boolean {
   return isMobileRef.value;
 }

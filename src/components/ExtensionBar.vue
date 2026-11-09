@@ -63,7 +63,7 @@ import RadioPlayer from "components/RadioPlayer.vue";
 import UsernamePrompt from "components/UsernamePrompt.vue";
 import MobileWelcome from "components/MobileWelcome.vue";
 import MobileTour from "components/MobileTour.vue";
-import {isMobileRef, mobileWelcomeOpenRef} from '../util/mobile';
+import {hideMobileWelcomeRef, isMobileRef, mobileWelcomeOpenRef} from '../util/mobile';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -612,6 +612,9 @@ function hideMobileWelcome() {
   showMobileWelcome.value = false;
   try { sessionStorage.setItem(MOBILE_WELCOME_SEEN_KEY, '1'); } catch {}
 }
+// A game that takes the whole screen (Signal Controller) asks for the sheet
+// to go, the same as the visitor closing it.
+watch(hideMobileWelcomeRef, () => { if (showMobileWelcome.value) hideMobileWelcome(); });
 /** Sheet dismissed in "just exploring" mode: also skip identity verification,
  *  same as tapping BYPASS on the login box. */
 function exploreWithoutLogin() {

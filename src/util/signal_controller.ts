@@ -38,6 +38,7 @@ import {cameraAxes} from './starship';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE} from './toolbar_staging';
+import {hideMobileWelcomeRef} from './mobile';
 
 type V3 = [number, number, number];
 interface CircuitCell { key: string; root: string; type: 'E' | 'I'; fine: string; mtype: string; label: string; soma: V3; cableUm: number; axonUm: number; }
@@ -465,7 +466,40 @@ body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: c
 .ng-extend.nge-sig-tag--target { --c: #ffc24a; box-shadow: 0 0 12px rgba(255, 194, 74, 0.45); cursor: not-allowed; }
 .ng-extend.nge-sig-tag--hushed { opacity: 0.5; }
 @media (max-width: 700px) { .ng-extend.nge-sig-tag small { display: none; } }
-body.nge-mobile .nge-sig { bottom: calc(70px + env(safe-area-inset-bottom)); }
+/* A touch screen: the tag's hit area is a thumb's width, down to the cell body. */
+@media (pointer: coarse) { .ng-extend.nge-sig-tag::before { content: ''; position: absolute; inset: -10px -10px -24px; } }
+/* Phones (Pyr's mobile mode, body.nge-mobile): the HUD is a short sheet above
+   the bottom nav, the chips one row of tappable keys with their bars, the
+   cells get the top of the screen (Ames 2026-11-08: "refactor for a phone"). */
+body.nge-mobile .nge-sig { bottom: calc(66px + env(safe-area-inset-bottom)); width: calc(100vw - 12px); max-height: 58vh; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; }
+body.nge-mobile .nge-sig-scroll { min-height: 0; overflow: hidden auto; scrollbar-width: none; }
+body.nge-mobile .nge-sig-head { font-size: 9px; letter-spacing: 0.14em; }
+body.nge-mobile .nge-sig-x { width: 30px; height: 30px; margin: -4px -6px -4px 4px; }
+body.nge-mobile .nge-sig-top { gap: 8px; margin-top: 6px; }
+body.nge-mobile .nge-sig-obj { padding: 2px 0 2px 10px; }
+body.nge-mobile .nge-sig-obj strong { font-size: 13.5px; }
+body.nge-mobile .nge-sig-obj em { font-size: 11.5px; }
+body.nge-mobile .nge-sig-stats { gap: 2px 10px; font-size: 8.5px; }
+body.nge-mobile .nge-sig-stats b { font-size: 14px; }
+body.nge-mobile .nge-sig-coach { margin: 8px 0 0; padding: 7px 10px; font-size: 13px; }
+body.nge-mobile .nge-sig-kicker { display: none; }
+body.nge-mobile .nge-sig-cells { flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin-top: 8px; padding-bottom: 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+body.nge-mobile .nge-sig-cells::-webkit-scrollbar { display: none; }
+body.nge-mobile .nge-sig .nge-sig-chip { flex: none; min-width: 44px; min-height: 42px; padding: 5px 9px; touch-action: manipulation; }
+body.nge-mobile .nge-sig .nge-sig-chip .key small, body.nge-mobile .nge-sig .nge-sig-chip .syn, body.nge-mobile .nge-sig .nge-sig-chip .barlabel { display: none; }
+body.nge-mobile .nge-sig .nge-sig-chip .barrow { margin-top: 4px; }
+body.nge-mobile .nge-sig .nge-sig-chip .bar { width: 64px; height: 6px; }
+body.nge-mobile .nge-sig .nge-sig-chip--target .key::after { margin-left: 6px; }
+body.nge-mobile .nge-sig-row { gap: 6px; margin-top: 8px; }
+body.nge-mobile .nge-sig-beam { padding: 9px 10px; touch-action: manipulation; }
+body.nge-mobile .nge-sig-charges span { display: none; }
+body.nge-mobile .nge-sig-recenter { padding: 7px 8px; font-size: 9px; }
+body.nge-mobile .nge-sig-msg { margin-left: 0; width: 100%; min-height: 0; text-align: left; font-size: 12px; }
+body.nge-mobile .nge-sig-note { display: none; }
+body.nge-mobile .nge-sig-card p { font-size: 13px; }
+body.nge-mobile .nge-sig-go, body.nge-mobile .nge-sig-quiet { touch-action: manipulation; }
+/* the Intro test panel is in the way on a phone while the game runs */
+body.nge-mobile.nge-signal-on .nge-stt, body.nge-mobile.nge-signal-on .nge-stt-dock { display: none !important; }
 /* Wide screens: the HUD stands at the right, the cells get the whole height. */
 @media (min-width: 1000px) {
   .nge-sig { left: auto; right: 16px; bottom: auto; top: 64px; transform: none; width: 372px; max-height: calc(100vh - 150px); display: flex; flex-direction: column; padding: 12px 16px 12px;
@@ -549,9 +583,15 @@ let hints = new Set<string>();
 type GoState = 'go' | 'wait' | 'soon';
 let lastGo: GoState | null = null;
 let coachHoldUntil = 0;   // game seconds: a hit or miss line stays this long before go/wait take over
+/** On a touch screen there are no keys to name, and a tap is a tap. */
+function adapt(text: string): string {
+  if (!touch()) return text;
+  return text.replace(' (the button, or Tab)', ' (the button)').replace(' (the number keys help)', '')
+    .replace(/\bClick\b/g, 'Tap').replace(/\bclicks\b/g, 'taps').replace(/\bclick\b/g, 'tap');
+}
 function setCoachText(text: string, event: CoachEvent) {
   if (!els.coachText) return;
-  els.coachText.textContent = text;
+  els.coachText.textContent = adapt(text);
   els.coach.classList.toggle('nge-sig-coach--go', event === 'go');
   els.coach.classList.toggle('nge-sig-coach--held', event === 'wait');
   // A new instruction flashes in; the go/wait light only changes colour.
@@ -651,7 +691,7 @@ function showChips() {
 function showBrief() {
   phase = 'brief';
   els.row.style.display = 'none';
-  els.body.innerHTML = `<div class="nge-sig-card">${level.brief.split('\n').map(p => `<p>${p}</p>`).join('')}
+  els.body.innerHTML = `<div class="nge-sig-card">${adapt(level.brief).split('\n').map(p => `<p>${p}</p>`).join('')}
     <button class="nge-sig-go" type="button"><span class="nge-sig-plate">Begin ›</span></button></div>`;
   (els.body.querySelector('.nge-sig-go') as HTMLButtonElement).onclick = () => beginPlay();
   updateHud();
@@ -677,7 +717,7 @@ function updateHud() {
   if (!panel) return;
   els.lvl.textContent = `Level ${levelIndex + 1} · ${level.title}`;
   els.obj.textContent = level.objective;
-  els.detail.textContent = level.detail;
+  els.detail.textContent = adapt(level.detail);
   const total = level.goal.count;
   els.progress.textContent = `${progress} / ${total}`;
   const left = phase === 'playing' ? Math.max(0, level.timeS - now) : level.timeS;
@@ -912,7 +952,7 @@ function frameLevel() {
   try { v.showAxisLines.value = false; } catch { /* keep them */ }
   // In close on the cell bodies: the rest of each cell is there, greyed, as
   // context (the haze), so the frame need not hold it all.
-  viewNm = Math.max(200_000, span * 2.0 + 70_000);
+  fitNm = viewNm = Math.max(200_000, span * 2.0 + 70_000);
   v.navigationState.position.value = Float32Array.from(center.map((c, i) => c / nm[i]));
   const unit = Math.min(nm[0], nm[1], nm[2]);
   v.projectionScale.value = viewNm / unit;
@@ -926,6 +966,8 @@ function frameLevel() {
 }
 /** The level's frame: how much of the cortex shows top to bottom, in nm. */
 let viewNm = 260_000;
+/** What the circuit itself needs, in nm, before the screen's shape is known. */
+let fitNm = 260_000;
 /** Set by frameLevel: the next frame with a camera puts the circuit in the
  *  open space above the HUD. */
 let needsFrame = false;
@@ -933,6 +975,19 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
   const v = viewerNow(), nm = nmPerUnit();
   if (!v || !nm) return;
   needsFrame = false;
+  if (phone()) {
+    // A phone stands upright and the HUD lies along the bottom: the circuit
+    // has to fit the width, and sit in the part of the height the HUD
+    // leaves free, so the frame is set from the screen's own shape.
+    const r = threeDPanel()?.element?.getBoundingClientRect?.();
+    const aspect = r && r.height > 0 ? r.width / r.height : 0.5;
+    const frac = hudFrac();
+    viewNm = Math.max(fitNm / Math.max(0.3, 1 - frac), fitNm / Math.max(0.3, aspect));
+    v.projectionScale.value = viewNm / Math.min(nm[0], nm[1], nm[2]);
+    const look = sub(center, mul(cam.up, viewNm * frac / 2));
+    v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
+    return;
+  }
   // The HUD takes the bottom third, so the camera looks a little below the
   // circuit and the cells sit above.
   const look = sub(center, mul(cam.up, viewNm * (sideHud() ? 0.03 : 0.1)));
@@ -941,6 +996,18 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
 /** On a wide screen the HUD stands at the right, leaving the whole height
  *  for the cells; on a phone it lies along the bottom. */
 const sideHud = () => window.innerWidth >= 1000;
+/** A phone: Pyr's own mobile mode (body.nge-mobile, src/util/mobile.ts). */
+const phone = () => document.body.classList.contains('nge-mobile');
+/** A touch screen is the main pointer: no keys to name, "tap" not "click". */
+const touch = () => !!window.matchMedia?.('(pointer: coarse)').matches;
+/** The share of the 3D view's height the HUD covers when it lies along the
+ *  bottom (none when it stands at the side). */
+function hudFrac(): number {
+  if (sideHud() || !panel) return 0;
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  if (!r || r.height <= 0) return 0;
+  return clamp((r.bottom - panel.getBoundingClientRect().top) / r.height, 0, 0.7);
+}
 /** The ship rides with the camera, low in the foreground like a cockpit:
  *  it stays in view however the player turns the cells, and its beams
  *  leave from the player's own side. */
@@ -964,8 +1031,11 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): V3 | null {
   const r = threeDPanel()?.element?.getBoundingClientRect?.();
   const aspect = r && r.height > 0 ? r.width / r.height : window.innerWidth / Math.max(1, window.innerHeight);
   const halfH = d * tanHalf, halfW = halfH * aspect;
-  shipLenNm = halfH * 0.5;
-  const sx = -0.6, sy = sideHud() ? -0.5 : -0.25;
+  // half the view's shorter half-extent: on an upright phone, a quarter of the width
+  shipLenNm = Math.min(halfH, halfW) * 0.5;
+  // On a phone the ship sits just above the HUD's edge, at the left.
+  const sx = phone() ? -0.55 : -0.6;
+  const sy = sideHud() ? -0.5 : phone() ? Math.min(-0.1, -1 + 2 * hudFrac() + 0.45) : -0.25;
   return add(add(add(look, mul(cam.toEye, eyeDist - d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH));
 }
 
@@ -1302,11 +1372,27 @@ function onDoubleClick(e: MouseEvent) {
 function onPointerDown(e: PointerEvent) {
   if (!active || phase !== 'playing' || e.button !== 0) return;
   if (!(e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) return;
-  const ml = circuitLayer();
-  const sel = ml?.layer?.displayState?.segmentSelectionState;
-  if (!sel?.hasSelectedSegment) return;
-  const root = sel.selectedSegment.toString();
-  const hit = [...cells.values()].find(c => c.shown && c.spec.root === root);
+  const finger = e.pointerType !== 'mouse';
+  if (finger) {
+    // A finger has no hover, so the cell under it is picked now, the way
+    // Neuroglancer's own click actions do: the position is set and the pick
+    // is forced (it blocks on the graphics card for a moment).
+    try { threeDPanel()?.handleMouseMove?.(e.clientX, e.clientY); viewerNow()?.mouseState?.updateUnconditionally?.(); } catch { /* no pick: the cell bodies below */ }
+  }
+  const sel = circuitLayer()?.layer?.displayState?.segmentSelectionState;
+  const root = sel?.hasSelectedSegment ? sel.selectedSegment.toString() : null;
+  let hit = root ? [...cells.values()].find(c => c.shown && c.spec.root === root) : undefined;
+  if (!hit && finger) {
+    // Fingers are wide: the nearest cell body within a thumb's width counts.
+    let best = 48 * 48;
+    for (const c of cells.values()) {
+      if (!c.shown) continue;
+      const s = toScreen(c.spec.soma);
+      if (!s) continue;
+      const d = (s[0] - e.clientX) ** 2 + (s[1] - e.clientY) ** 2;
+      if (d < best) { best = d; hit = c; }
+    }
+  }
   if (!hit) return;
   e.preventDefault(); e.stopPropagation();
   swallowUntil = performance.now() + 500;
@@ -1342,7 +1428,7 @@ async function startLevel(index: number) {
   const ml = await openCircuit();
   // These are whole cells with millimetres of axon each; a slightly coarser
   // mesh level keeps the frame rate up for the beams and sparks.
-  try { const rs = ml.layer.displayState.renderScaleTarget; if (rs && savedRenderScale === null) { savedRenderScale = rs.value; rs.value = Math.max(rs.value, 2); } } catch { /* as it is */ }
+  try { const rs = ml.layer.displayState.renderScaleTarget; if (rs && savedRenderScale === null) { savedRenderScale = rs.value; rs.value = Math.max(rs.value, phone() ? 3 : 2); } } catch { /* as it is */ }
   const g = ml.layer.displayState.segmentationGroupState.value;
   const want = new Set(level.cells.map(k => cells.get(k)!.spec.root));
   for (const s of [...g.visibleSegments]) if (!want.has(s.toString())) g.visibleSegments.delete(s);
@@ -1375,6 +1461,9 @@ function beginPlay() {
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
   closeSidePanel();
   showChips();
+  // On a phone the HUD's height changes with its content: the frame is set
+  // again for the sheet the level is played with.
+  if (phone()) needsFrame = true;
   coach('begin');
   updateHud();
 }
@@ -1388,6 +1477,8 @@ export async function playSignalController(levelAt = 0) {
     els.row.style.display = 'none';
     els.body.innerHTML = '<div class="nge-sig-card"><p>Receiving the circuit…</p></div>';
     document.body.classList.add('nge-signal-on');
+    // On a phone, Pyr's welcome sheet would cover the game.
+    if (phone()) hideMobileWelcomeRef.value++;
     await loadAssets();
     if (!active) return;
     shipProp.mesh = shipMesh!;
