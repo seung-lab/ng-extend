@@ -60,7 +60,7 @@ interface Beat {
 }
 const BEATS: Beat[] = [
   {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: "Let's go",
-    body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life. They're helping to advance neuroscience, and they're not neuroscientists! Together they map real neurons, like this one. Want to take a look around?"},
+    body: "Pyr is a game where citizen scientists map the brain. Players come from all walks of life. They're helping to advance neuroscience, and they're not neuroscientists! Together people like you map real neurons, like this one. Want to look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
     callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
       ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Input', '3,386 synapses'], ['Output', '59 synapses']]},
