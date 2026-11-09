@@ -81,6 +81,34 @@ const stepsDone = computed(() => Math.max(0, sendSteps.value.map(x => x.key).ind
 const neuronSeed = ref(1);
 const sentWith = ref<{ k: string; v: string }[]>([]);
 
+// ── An unsent report is kept (Celia #446: "very easy to click out of Bug
+// Report and it doesn't save your entry") ──
+// What you wrote is saved in this browser as you type and comes back the next
+// time the form opens, until it is sent or you press Clear. A click outside
+// the box no longer closes it once something is written: × or Cancel does.
+const DRAFT_KEY = 'nge-feedback-draft';
+try {
+  const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+  if (d && typeof d === 'object') {
+    if (typeof d.title === 'string') title.value = d.title.slice(0, TITLE_MAX);
+    if (typeof d.message === 'string') message.value = d.message.slice(0, DETAILS_LONG);
+    if ((CATEGORIES as readonly string[]).includes(d.category)) category.value = d.category;
+    if (d.message) { detailsOpen.value = true; detailsLong.value = d.message.length > DETAILS_SHORT; }
+  }
+} catch { /* no draft */ }
+const hasDraft = computed(() => !!(title.value.trim() || message.value.trim()));
+watch([title, message, category], () => {
+  try {
+    if (hasDraft.value) localStorage.setItem(DRAFT_KEY, JSON.stringify({ title: title.value, message: message.value, category: category.value }));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch { /* storage blocked */ }
+});
+function clearDraft() {
+  title.value = ''; message.value = ''; detailsOpen.value = false; detailsLong.value = false;
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
+}
+function outsideClick() { if (done.value || !hasDraft.value) emit('hide'); }
+
 // Screenshot attachment. Reuses the help request flow unchanged:
 // ScreenshotDialog in `attach` mode captures the viewer, lets the user
 // annotate it with the pen, uploads the PNG to Supabase Storage
@@ -228,6 +256,7 @@ async function submit() {
       // Saved nowhere: tell the player why instead of pretending.
       if (relayFailure) throw new Error(relayFailure);
     }
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
     sentWith.value = [
       { k: 'Type', v: category.value },
       { k: 'View', v: shortLink ? 'attached' : 'position only' },
@@ -407,7 +436,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" @hide="emit('hide')">
+  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" @hide="outsideClick">
     <div class="nge-fb-shell">
       <canvas ref="fxCanvas" class="nge-fb-fx" aria-hidden="true"></canvas>
       <button class="nge-fb-exit" @click="emit('hide')">×</button>
@@ -522,7 +551,8 @@ onBeforeUnmount(() => {
           <button class="nge-fb-submit" :disabled="sending" @click="submit">
             {{ sending ? 'Sending…' : 'Submit' }}
           </button>
-          <button class="nge-fb-cancel" @click="emit('hide')">Cancel</button>
+          <button class="nge-fb-cancel" @click="emit('hide')" :title="hasDraft ? 'Close. What you wrote is kept for next time.' : undefined">Cancel</button>
+          <button v-if="hasDraft && !sending" class="nge-fb-cancel nge-fb-clear" @click="clearDraft" title="Empty the form">Clear</button>
         </div>
       </div>
 
@@ -729,6 +759,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-cancel:hover { color: #ccd; border-color: rgba(255, 255, 255, 0.25); }
+.nge-fb-clear { margin-left: auto; border-color: transparent; }
 /* ── Sending: a neuron that grows as the report goes, and the real steps ── */
 .nge-fb-sending {
   display: flex; flex-direction: column; align-items: center;
