@@ -713,8 +713,8 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-callout-box { position: fixed; min-width: 200px; max-width: min(380px, 44vw); padding: 15px 20px 17px 20px; isolation: isolate; transform-origin: 50% 100%; backdrop-filter: blur(3px);
   filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25));
   opacity: 0; }
-.nge-callout--in .nge-callout-box { opacity: 1; animation: nge-holo-in 900ms cubic-bezier(.2,.9,.25,1) both; }
-@keyframes nge-holo-in {
+.nge-callout--in .nge-callout-box { opacity: 1; animation: nge-co-build 900ms cubic-bezier(.2,.9,.25,1) both; }
+@keyframes nge-co-build {
   0% { transform: scale(0.03, 0.012); opacity: 0; filter: brightness(3) drop-shadow(0 0 18px #9fe9ff); }
   12% { transform: scale(0.03, 0.012); opacity: 1; }
   38% { transform: scale(1, 0.012); filter: brightness(2.6) drop-shadow(0 0 18px #9fe9ff); }
