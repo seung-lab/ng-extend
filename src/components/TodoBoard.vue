@@ -806,7 +806,8 @@ const myTasks = computed(() => {
   if (reacted.length) groups.splice(tagged.length ? 1 : 0, 0, { head: 'Reactions to you', rows: reacted.sort((a, b) => (b.at || '').localeCompare(a.at || '')) });
   return groups.filter(g => g.rows.length);
 });
-const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.length, 0));
+// Reactions show in My Tasks but are not tasks, so they do not count (Ames 2026-11-09).
+const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.filter(t => t.item !== -2).length, 0));
 function openTask(t: Task) { myTasksOpen.value = false; if (t.item === -1 || t.item === -2) openAt(t.card, 'comments'); else openUp(t.card); }
 // ── Reactions on comments ──
 const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
@@ -1111,7 +1112,7 @@ function openLink(e: MouseEvent, l: Link) {
     f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
     f.srcdoc = html;
     w.document.body.appendChild(f);
-  }).catch(() => { const p = w.document.querySelector('p'); if (p) p.textContent = 'This file could not be opened. It may have been deleted (files go after 7 days).'; });
+  }).catch(() => { const p = w.document.querySelector('p'); if (p) p.textContent = 'This file could not be opened. It may have been deleted (files go 7 days after the card is Done).'; });
 }
 function onLinksDrop(e: DragEvent, c: Card) {
   const files = [...(e.dataTransfer?.files || [])];
@@ -1682,7 +1683,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     </div>
     <div v-if="myTasksOpen && !openCard" class="nge-todo-mytasks-panel">
       <div class="nge-todo-mytasks-head">📌 My Tasks <span>{{ myTaskCount }} open</span></div>
-      <div v-if="!myTaskCount" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
+      <div v-if="!myTasks.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
       <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
         <h4 :class="{ 'nge-todo-mytasks-late': g.late }">{{ g.head }} · {{ g.rows.length }}</h4>
         <button v-for="t in g.rows" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
@@ -1823,7 +1824,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <div v-if="c.status" class="nge-todo-card-status">{{ c.status }}</div>
             <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt nge-todo-md" v-html="commentHtml(c.notes)"></div>
             <div v-if="(c.links || []).length" class="nge-todo-links" @click.stop>
-              <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :class="{ 'nge-todo-linkchip--gone': fileGone(l) }" :href="l.url" target="_blank" rel="noopener noreferrer" :title="fileGone(l) ? 'Files are deleted 7 days after they are added' : l.url" draggable="false" @click="openLink($event, l)">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
+              <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :class="{ 'nge-todo-linkchip--gone': fileGone(l) }" :href="l.url" target="_blank" rel="noopener noreferrer" :title="fileGone(l) ? 'Files are deleted 7 days after the card is Done' : l.url" draggable="false" @click="openLink($event, l)">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
             </div>
             <div class="nge-todo-card-meta">
               
@@ -1976,7 +1977,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 
         <div class="nge-todo-label">Links</div>
         <div v-if="(openCard.links || []).length" class="nge-todo-links">
-          <span v-for="(l, i) in openCard.links" :key="i" class="nge-todo-linkchip" :class="{ 'nge-todo-linkchip--gone': fileGone(l) }"><a :href="l.url" target="_blank" rel="noopener noreferrer" :title="fileGone(l) ? 'Files are deleted 7 days after they are added' : l.kind === 'file' ? 'Deleted 7 days after it was added' : l.url" @click="openLink($event, l)">{{ linkIcon(l) }} {{ linkWord(l) }}</a><button type="button" class="nge-todo-mini" aria-label="Remove link" @click="removeCardLink(openCard, i)">×</button></span>
+          <span v-for="(l, i) in openCard.links" :key="i" class="nge-todo-linkchip" :class="{ 'nge-todo-linkchip--gone': fileGone(l) }"><a :href="l.url" target="_blank" rel="noopener noreferrer" :title="fileGone(l) ? 'Files are deleted 7 days after the card is Done' : l.kind === 'file' ? 'Deleted 7 days after the card is Done' : l.url" @click="openLink($event, l)">{{ linkIcon(l) }} {{ linkWord(l) }}</a><button type="button" class="nge-todo-mini" aria-label="Remove link" @click="removeCardLink(openCard, i)">×</button></span>
         </div>
         <div v-if="linkDraft?.for === openCard.id" class="nge-todo-row nge-todo-linkform">
           <select v-model="linkDraft.kind" class="nge-todo-select" aria-label="Kind of link">
@@ -1990,7 +1991,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </div>
         <div v-else class="nge-todo-row nge-todo-linkadd" @dragover.prevent @drop="onLinksDrop($event, openCard)">
           <button type="button" class="nge-todo-btn nge-todo-add-btn" @click="linkDraft = { for: openCard.id, kind: '', url: '', label: '' }">＋ Link, like the test site</button>
-          <button type="button" class="nge-todo-btn nge-todo-add-btn" :disabled="!!fileBusy" title="Attach a file to this card, up to 7 MB. You can also drop files here. Files are deleted after 7 days." @click="pickFile(openCard)">{{ fileBusy ? 'Uploading…' : '📎 Attach a file' }}</button>
+          <button type="button" class="nge-todo-btn nge-todo-add-btn" :disabled="!!fileBusy" title="Attach a file to this card, up to 7 MB. You can also drop files here. Files are deleted 7 days after the card is Done." @click="pickFile(openCard)">{{ fileBusy ? 'Uploading…' : '📎 Attach a file' }}</button>
         </div>
         <input ref="filePicker" type="file" multiple hidden @change="onFilePicked" />
 
