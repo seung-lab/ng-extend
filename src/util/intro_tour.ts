@@ -71,7 +71,7 @@ const BEATS: Beat[] = [
     body: 'The branches that listen. They gather signals from other neurons.'},
   {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
     body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
-  {key: 'synapse', part: 3, header: 'Synapse', view: {at: 'synapse', nm: 24_000},
+  {key: 'synapse', part: 3, header: 'Synapse', view: {at: 'synapse', nm: 40_000},
     body: 'The connection where two neurons meet and communicate. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our {axon:axon} passes its signal to the next neuron.'},
   {key: 'allsyn', header: 'All its synapses', view: {at: 'cell', nm: 230_000},
     body: 'Each dot is a synapse. This cell receives {in:3,386 connections} from upstream cells, and the axon contained in this volume has {out:59 outgoing connections}.'},
@@ -239,7 +239,7 @@ function aboveSynapse(t: Tour, viewNm: number): number[] {
   const nm = nmPerUnit(), cam = nm && cameraAxes(nm);
   const up = cam ? cam.up : [0, -1, 0];
   const k = Math.max(5000, viewNm * 0.22);
-  return t.anchors.synapse.map((v, i) => v + up[i] * k + (cam ? cam.toEye[i] * 1500 : 0));
+  return t.anchors.synapse.map((v, i) => v + up[i] * k + (cam ? cam.toEye[i] * 7000 : 0));
 }
 
 /* ── partner cells ── */
@@ -1230,10 +1230,10 @@ export async function startIntroTour() {
       const aEnd = t.axonFlight[t.axonFlight.length - 1];
       if (want === 'soma') {
         if (shipAt === 'dock') undockStarship();
-        if (shipAt === 'dend') starshipHop(onward([...t.dendFlight].reverse(), somaHover()), 4);
+        if (shipAt === 'dend') starshipHop(onward([...t.dendFlight].reverse(), somaHover()), 5);
         else starshipHop([somaHover()], 2.6);
       } else if (shipAt === 'soma' && want === 'pad') starshipHop([t.dendFlight[0]], 2);
-      else if (shipAt === 'soma' && want === 'dend') starshipHop(onward(t.dendFlight), 5);
+      else if (shipAt === 'soma' && want === 'dend') starshipHop(onward(t.dendFlight), 6.5);
       else if (want === 'dock') {
         // to the right side of the view, just left of where its card sits
         const pr = threeDPanel()?.element?.getBoundingClientRect?.();
@@ -1244,7 +1244,7 @@ export async function startIntroTour() {
         dockStarship(Math.max(0.15, Math.min(0.75, sx + 0.2)), -0.2, camLag + est);
       } else if (shipAt === 'dock' && want === 'dend') {
         undockStarship();
-        starshipHop(onward(t.dendFlight), 5);
+        starshipHop(onward(t.dendFlight), 6.5);
       } else if (shipAt === 'dock') {
         undockStarship();
         starshipHop([t.dendFlight[0]], 3);
