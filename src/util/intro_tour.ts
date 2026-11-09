@@ -973,8 +973,8 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
     <defs><pattern id="nge-beam-lines" patternUnits="userSpaceOnUse" width="12" height="7"><rect y="0" width="12" height="1.1" fill="#bff4ff" fill-opacity="0.32"/>
       <animateTransform attributeName="patternTransform" type="translate" from="0 0" to="0 -7" dur="0.5s" repeatCount="indefinite"/></pattern>
       <filter id="nge-beam-soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.4"/></filter></defs>
-    <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="rgba(110, 215, 255, 0.05)"/><polygon class="nge-callout-beam nge-beam-scan" fill="url(#nge-beam-lines)" filter="url(#nge-beam-soft)"/>
-      <line class="nge-beam-edge e1"/><line class="nge-beam-edge e2"/><line class="nge-beam-seam"/><g class="nge-beam-motes"></g></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
+    <g class="nge-callout-beamg"><polygon class="nge-callout-beam" fill="rgba(126, 224, 255, 0.13)"/>
+      <line class="nge-beam-edge e1" style="display:none"/><line class="nge-beam-edge e2" style="display:none"/><line class="nge-beam-seam" style="display:none"/><g class="nge-beam-motes"></g></g><line class="nge-callout-pointer" stroke="${color}" stroke-width="1.6" stroke-linecap="round" style="filter: drop-shadow(0 0 4px ${color})"/>
     <circle class="nge-callout-dot" r="4.5" fill="${color}" style="filter: drop-shadow(0 0 6px ${color})"/><circle class="nge-callout-lens" r="3.5" fill="#e6fbff"/></svg>
     <div class="nge-callout-box" style="--part:${color}"><span class="nge-frame-host"></span><div class="nge-callout-kicker">Pyr scan</div><div class="nge-callout-title"><span class="nge-callout-ic"></span>${title}</div>${rows ? `<dl class="nge-callout-stats">${statsHtml(stats)}</dl>` : ''}</div>`;
   document.body.appendChild(callout);
@@ -1048,7 +1048,7 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
         grad.setAttribute('x2', String(side ? bx : bx + bw / 2)); grad.setAttribute('y2', String(side ? by + bh / 2 : by + bh));
         lens.setAttribute('cx', String(sx)); lens.setAttribute('cy', String(sy));
         beam.style.display = lens.style.display = '';
-        edges.forEach(e => { e.style.display = ''; }); beams.forEach(e => { e.style.display = ''; }); seam.style.display = moteG.style.display = '';
+        beams.forEach(e => { e.style.display = ''; });
       } else {
         beam.style.display = lens.style.display = 'none';
         edges.forEach(e => { e.style.display = 'none'; }); beams.forEach(e => { e.style.display = 'none'; }); seam.style.display = moteG.style.display = 'none';
@@ -1318,7 +1318,7 @@ export async function startIntroTour() {
     // beside the soma and in front of it, not up at the trunk (Ames: it sat at
     // the top edge of the screen)
     const n2 = nmPerUnit(), c2 = n2 && cameraAxes(n2), so = t.anchors.soma;
-    if (c2) return so.map((x, k) => x + c2.right[k] * 17_000 + c2.up[k] * 3_000 + c2.toEye[k] * 11_000);
+    if (c2) return so.map((x, k) => x + c2.right[k] * 12_000 + c2.up[k] * 5_000 + c2.toEye[k] * 10_000);
     const pad = t.dendFlight[0];
     return t.dendFlight.find(q => Math.hypot(q[0] - pad[0], q[1] - pad[1], q[2] - pad[2]) > 4500) ?? pad;
   };

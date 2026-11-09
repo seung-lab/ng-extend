@@ -738,7 +738,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           const wall = add(ctr, add(mul(cam.right, 0.95 * Wd / 2), mul(cam.up, dock.fy * H / 2 + H * 0.22)));
           const B = (u: number): V3 => {
             if (!dock!.from) return target;
-            const q = mix(dock!.from, wall, 0.75);
+            const q = mix(dock!.from, wall, 0.6);
             const SPLIT = 0.5;
             if (u < SPLIT) return mix(dock!.from, q, u / SPLIT);
             const w2 = (u - SPLIT) / (1 - SPLIT);
@@ -785,7 +785,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // flies up or down the screen, where the screen's up says nothing
         // and it rolled onto its side (Ames: "it is flying sideways")
         const vert = Math.min(1, Math.abs(dot(fwd, cam.up)) * 1.25);
-        const ref = norm(add(mul(cam.up, 1 - vert), mul(cam.toEye, vert + 0.15)));
+        // (and always tipped toward the viewer, so its back shows, never just
+        // its thin edge: Ames, "still going sideways at step 2")
+        const ref = norm(add(mul(cam.up, (1 - vert) * 0.6), mul(cam.toEye, 0.8 + 0.2 * vert)));
         let up = norm(add(sub(ref, mul(fwd, dot(ref, fwd))), mul(bend, 1 / 2500)));
         if (dock) up = norm(mix(up, norm(add(mul(cam.toEye, 0.75), mul(cam.up, 0.66))), smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
