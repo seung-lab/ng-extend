@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T23:07:10Z",
+      "title": "BC Challenge on the Retina",
+      "digest": "minor",
+      "items": [
+        "On the Retina, the Available tab is now BC Challenge: every cell left to map there is a bipolar cell.",
+        "The Retina instructions are now How to map a bipolar cell."
+      ]
+    },
+    {
       "at": "2026-11-09T23:04:46Z",
       "title": "Number pad and layer 10 keys",
       "digest": "minor",
