@@ -153,7 +153,7 @@ function writeGlow(nm: V3, right: V3, cores: {p: V3; power: number}[], shipNm: n
  *  zooming and panning it (the slow turn goes on). */
 let cameraHeld = false;
 export function setStarshipCameraHeld(held: boolean) { cameraHeld = held; }
-interface Hop { path: V3[]; cum: number[]; start: number; ms: number; }
+interface Hop { path: V3[]; cum: number[]; start: number; ms: number; roll?: {from: number; to: number; turns: number}; }
 let hop: Hop | null = null;
 /** Docked: the ship holds a spot on screen (fractions of the 3D view from
  *  its centre, x to the right, y up), whatever the camera does, and faces
@@ -186,7 +186,7 @@ function viewAspect(): number {
 }
 /** Once landed: lift off and fly this route (nanometres), easing in and out,
  *  then hover at its end with the jets idling. */
-export function starshipHop(route: number[][], seconds: number) {
+export function starshipHop(route: number[][], seconds: number, roll?: {from: number; to: number; turns: number}) {
   if (!shipNow) return;
   // Off the pad, a lift first; routes that start at the pad have their own.
   const lift = hop || !onPad ? [] : [add(shipNow, mul(liftNormal, 4000))];
@@ -227,7 +227,7 @@ export function starshipHop(route: number[][], seconds: number) {
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(...sub(path[i], path[i - 1])));
   dock = null;
   onPad = false;
-  hop = {path, cum, start: performance.now(), ms: seconds * 1000};
+  hop = {path, cum, start: performance.now(), ms: seconds * 1000, roll};
 }
 /** Centripetal Catmull-Rom through the points, n samples a leg. */
 function smoothThrough(P: V3[], n: number): V3[] {
@@ -549,6 +549,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     if (!nm) throw new Error('no coordinates yet');
     // the cell first, grown out from its soma, then the portal (Ames: "load
     // cell first! and it is supposed to load from soma outward")
+    hideBoundingBoxes(true);
     if (!cameo && !skip) await growCell(f, nm);
     // The model's own length along its nose, so it is shipLength nm long.
     let zLo = Infinity, zHi = -Infinity, xHi = 0;
@@ -800,6 +801,14 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
             up = norm(add(mul(up, Math.cos(a)), mul(side, Math.sin(a))));
           }
         }
+        // barrel rolls on a hop that asks for them (Ames: on the dive to the axon)
+        if (h && h.roll && hq < 1) {
+          const rq = (s / (h.cum[h.cum.length - 1] || 1) - h.roll.from) / (h.roll.to - h.roll.from);
+          if (rq > 0 && rq < 1) {
+            const a = 2 * Math.PI * h.roll.turns * smooth(rq), side = cross(fwd, up);
+            up = norm(add(mul(up, Math.cos(a)), mul(side, Math.sin(a))));
+          }
+        }
         const right = norm(cross(up, fwd));
         // a gentle bob once down; hovering at a hop's end, a slow float
         const settled = Math.max(0, t - total);
@@ -899,7 +908,16 @@ export function setHoverHighlight(on: boolean) {
   }
 }
 
+let boxesWere: boolean | null = null;
+/** The data's bounding boxes off for the tour, or back as they were. */
+export function hideBoundingBoxes(hide: boolean) {
+  const v = viewerNow();
+  if (!v?.showDefaultAnnotations) return;
+  if (hide) { if (boxesWere === null) boxesWere = v.showDefaultAnnotations.value; v.showDefaultAnnotations.value = false; }
+  else if (boxesWere !== null) { v.showDefaultAnnotations.value = boxesWere; boxesWere = null; }
+}
 export function clearStarship() {
+  hideBoundingBoxes(false);
   setNgeReveal(null);
   removePortalArt();
   setHoverHighlight(true);

@@ -62,13 +62,13 @@ interface Beat {
 const BEATS: Beat[] = [
   {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: "Let's go",
     body: "Pyr (pronounced “peer”) is a game from Princeton University that invites citizen scientists to map the brain. Players come from all walks of life. They're helping to advance neuroscience, and they're not neuroscientists! Together people like you map real neurons, like this one. Want to look around?"},
-  {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
+  {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 200_000},
     callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
       ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Input', '3,386 synapses'], ['Output', '59 synapses']]},
     body: 'Neurons are the most famous cells of the brain. Yours has about 86 billion of them, in thousands of varieties, and they all share the same basic parts.'},
   {key: 'soma', callout: {anchor: 'soma', title: 'Soma', stats: [['Contains', 'nucleus, organelles'], ['Size', 'about 20 µm across'], ['For scale', 'a fifth the width of a human hair']]}, part: 1, view: {at: 'soma', nm: 45_000},
     body: 'The cell body. It holds the nucleus and keeps the whole cell alive.'},
-  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Input', '3,297 synapses']]}, part: 2, view: {at: 'dendView', nm: 230_000},
+  {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Input', '3,297 synapses']]}, part: 2, view: {at: 'dendView', nm: 185_000},
     body: 'The branches that listen. They gather signals from other neurons.'},
   {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
     body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
@@ -1251,7 +1251,7 @@ export async function startIntroTour() {
     // the camera, framing the subject in the open space above the panel
     const camera = () => {
       if (!active || i !== n) return;
-      let center: V3 = b.view.at === 'cell' ? cellCenter(t) : b.view.at === 'dendView' ? [307744, 175892, 86080] : t.anchors[b.view.at];
+      let center: V3 = b.view.at === 'cell' ? cellCenter(t) : b.view.at === 'dendView' ? [306000, 200000, 70000] : t.anchors[b.view.at];
       // welcome: the soma and the ship on it, both well inside the frame
       const pad = t.dendFlight[0];
       if (b.key === 'welcome') center = [0, 1, 2].map(k => (center[k] + pad[k]) / 2) as V3;
@@ -1343,7 +1343,7 @@ export async function startIntroTour() {
         undockStarship();
         starshipHop([t.dendFlight[0]], 3);
       } else
-      if (shipAt === 'dend' && want === 'axon') starshipHop(t.axonFlight, 9);
+      if (shipAt === 'dend' && want === 'axon') starshipHop(t.axonFlight, 10, {from: 0.08, to: 0.42, turns: 2});
       else if (shipAt === 'axon' && want === 'dend') starshipHop([...t.axonFlight].reverse(), 6);
       else if (shipAt === 'syn' && want === 'syn2') starshipHop(t.syn2Flight, 6);
       else if (shipAt === 'syn2' && want === 'syn') starshipHop([...t.syn2Flight].reverse(), 5);
