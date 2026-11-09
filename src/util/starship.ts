@@ -721,9 +721,11 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // filling the close ones)
           let target = 1;
           const Hn = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
-          const onScreen = Math.max(cameo ? 0.3 : 0.5, Math.min(8, (cameo ? 0.05 : 0.035) * Hn / (f.shipLength * (cameo || 1))));
+          const onScreen = Math.max(cameo ? 0.02 : 0.5, Math.min(8, (cameo ? 0.05 : 0.035) * Hn / (f.shipLength * (cameo || 1))));
           if (dock?.hold) target = dock.hold.k;
-          else if (dock) target = 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
+          // (the cameo comes out of its portal at its parked size, not huge
+          // and shrinking, so ship and ring match)
+          else if (dock) target = cameo ? onScreen : 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
           // (flying its routes it is its true size: they hug the cell, and a
           // bigger ship dwarfed the axon it spirals round: Ames, "way too big!")
           sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 3));
@@ -875,7 +877,11 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         if (cameo && cameoPortal && tc < ZIP_AT + 1.5) {
           const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.6 * grow)));
           shipScreen = sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
-          drawPortal(nm, cam.right, cam.up, cameoPortal, f.shipLength * cameo * 0.75, tc);
+          // sized to the view, like the parked ship: the Sandbox ship's length
+          // times five is huge in MICrONS's close views, and while the ring art
+          // was capped its glow was not (Ames: "the portal is still giant")
+          const Hp = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
+          drawPortal(nm, cam.right, cam.up, cameoPortal, Math.min(f.shipLength * cameo, 0.05 * Hp) * 0.75, tc);
         } else if (cameo && cameoPortal && !cameoPortalGone) {
           // once, however late the frame (a slow frame skipped it and the ring
           // stayed on screen, huge: Ames, "bugged out portal")
