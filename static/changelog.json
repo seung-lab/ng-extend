@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T00:32:00Z",
+      "title": "Tour touch ups",
+      "items": [
+        "The tour's message boxes draw their glowing frame at the right size, including the Leave the introduction question.",
+        "Start the tour shows a loading screen while your first neuron arrives, instead of a black screen.",
+        "A stray line under the tour invitation is gone."
+      ]
+    },
+    {
       "at": "2026-11-08T22:59:00Z",
       "title": "Try the new tour of Pyr",
       "items": [

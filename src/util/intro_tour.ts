@@ -1080,6 +1080,14 @@ export async function startIntroTour() {
   document.body.appendChild(panel);
   document.body.classList.add('nge-intro-on');
   keepOnScreen(panel);
+  {
+    // the frame follows the panel's real size: the "Leave the introduction?"
+    // question and the last page change its shape (Ames)
+    const tp = panel, host = tp.querySelector('.nge-frame-host') as HTMLElement;
+    let fw = 0, fh = 0;
+    const redrawFrame = () => { const w = tp.offsetWidth, h = tp.offsetHeight; if (w && h && (w !== fw || h !== fh)) { fw = w; fh = h; host.innerHTML = frameSvg(w, h, 18); } };
+    try { new ResizeObserver(redrawFrame).observe(tp); } catch { /* drawn on each page */ }
+  }
   requestAnimationFrame(() => panel?.classList.add('nge-intro--in'));
   const titleEl = panel.querySelector('.nge-intro-title') as HTMLElement;
   const bodyEl = panel.querySelector('.nge-intro-body') as HTMLElement;
