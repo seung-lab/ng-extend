@@ -771,11 +771,15 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 /* the whole tour, every screen: no top bars but the Pyr icon, no bottom bar
    (Ames 2026-11-09) */
 body.nge-intro-on #extensionBar > :not(.ng-extend-logo), body.nge-intro-on .neuroglancer-layer-panel,
-body.nge-intro-on .nge-mobile-nav, body.nge-intro-on [title^="Switch to"] { display: none !important; }
+body.nge-intro-on .nge-mobile-nav, body.nge-intro-on [title^="Switch to"], body.nge-intro-on #statusContainer,
+body.nge-intro-on .nge-stt-tab { display: none !important; }
 body.nge-intro-on #extensionBar { background: transparent !important; border: 0 !important; box-shadow: none !important; }
 @media (max-width: 820px) {
   /* sharp on phones: no blur or glow filters on the box (they left it soft) */
-  .nge-callout-box, .nge-callout--in .nge-callout-box { max-width: 58vw !important; min-width: 0 !important; padding: 8px 11px 9px !important; backdrop-filter: none !important; filter: none !important; }
+  /* frosted behind, sharp in front: a blur of what is behind it (not of the
+     box itself) and a darker plate, so it reads over the cell (Ames) */
+  .nge-callout-box, .nge-callout--in .nge-callout-box { max-width: 58vw !important; min-width: 0 !important; padding: 8px 11px 9px !important;
+    backdrop-filter: blur(10px) saturate(1.2) !important; -webkit-backdrop-filter: blur(10px) saturate(1.2) !important; background-color: rgba(6, 18, 40, 0.55) !important; filter: none !important; }
   .nge-callout--in .nge-callout-box { animation-name: nge-co-build-m !important; }
   .nge-callout-box > :not(.nge-frame-host) { filter: none !important; }
   .nge-callout-box .nge-callout-title { font-size: 15px; }
