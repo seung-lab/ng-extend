@@ -982,7 +982,16 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
     const r = threeDPanel()?.element?.getBoundingClientRect?.();
     const aspect = r && r.height > 0 ? r.width / r.height : 0.5;
     const frac = hudFrac();
-    viewNm = Math.max(fitNm / Math.max(0.3, 1 - frac), fitNm / Math.max(0.3, aspect));
+    // The cell bodies are what a thumb taps, so they take 80% of the free
+    // area, the branches around them as context (fitting the whole circuit
+    // to the width left the bodies a thumb-sized cluster); never closer than
+    // 120 µm. Half-extents of the bodies across and up the screen, in nm.
+    let w = 0, h = 0;
+    for (const k of level.cells) {
+      const d = sub(cells.get(k)!.spec.soma, center);
+      w = Math.max(w, Math.abs(dot(d, cam.right))); h = Math.max(h, Math.abs(dot(d, cam.up)));
+    }
+    viewNm = Math.max(120_000, (2 * w + 40_000) / (0.8 * Math.max(0.3, aspect)), (2 * h + 40_000) / (0.8 * Math.max(0.3, 1 - frac)));
     v.projectionScale.value = viewNm / Math.min(nm[0], nm[1], nm[2]);
     const look = sub(center, mul(cam.up, viewNm * frac / 2));
     v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));

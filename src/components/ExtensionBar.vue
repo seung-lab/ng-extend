@@ -613,8 +613,10 @@ function hideMobileWelcome() {
   try { sessionStorage.setItem(MOBILE_WELCOME_SEEN_KEY, '1'); } catch {}
 }
 // A game that takes the whole screen (Signal Controller) asks for the sheet
-// to go, the same as the visitor closing it.
-watch(hideMobileWelcomeRef, () => { if (showMobileWelcome.value) hideMobileWelcome(); });
+// to go, the same as the visitor closing it: whether or not it is up yet,
+// since the logged-out auto-reopen above would otherwise bring it over the
+// game once the login check completes.
+watch(hideMobileWelcomeRef, () => hideMobileWelcome());
 /** Sheet dismissed in "just exploring" mode: also skip identity verification,
  *  same as tapping BYPASS on the login box. */
 function exploreWithoutLogin() {
