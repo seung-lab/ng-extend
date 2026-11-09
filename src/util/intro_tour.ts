@@ -289,7 +289,8 @@ function runAllSynapses(t: {synIn: number[]; synOut: number[]; synUnit: number},
     if (scanH) {
       // shown as the scan passes them: height is -y, up toward the surface
       const h = scanH();
-      for (let j = 0; j < n; j++) if (delay[j] === Infinity && -(glow.positions[j * 3 + 1] * nm[1]) <= h) delay[j] = sec;
+      // only once the bar is past them (Ames: none before the bar)
+      for (let j = 0; j < n; j++) if (delay[j] === Infinity && -(glow.positions[j * 3 + 1] * nm[1]) <= h - 6000) delay[j] = sec;
     }
     for (let j = 0; j < n; j++) {
       const on = Math.min(1, Math.max(0, (sec - delay[j]) / 0.35));
@@ -1724,7 +1725,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     // over to below the cell, then straight up it, scanning
     undockStarship();
     starshipHop([front(bottom), front([bottom[0], (bottom[1] + top[1]) / 2, bottom[2]]), front(top)], 11);
-    let rising = false, scanAt = -Infinity;
+    let rising = false, scanAt = -Infinity, parking = false;
     const shipH = () => { const s2 = starshipAt(); return s2 ? -s2[1] : -Infinity; };
     runAllSynapses(data, 2.2, 0.75, () => {
       const h = shipH();
@@ -1759,11 +1760,19 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
         glow.count = c;
         setNgeGlow(glow, 'intro-zap');
       } else setNgeGlow(null, 'intro-zap');
-      if (rising && !starshipMoving()) {
-        // at the top: it hovers and shows the cell's stats, then the choices
+      if (rising && !starshipMoving() && !parking) {
+        // at the top: it pulls over to the empty top right corner, then
+        // shows the cell's stats there (Ames)
         setNgeGlow(null, 'intro-zap');
-        showCallout(top, 'Martinotti cell', scanStats, '#cfdcff', false, false);
-        setTimeout(() => { if (token === my) { backToList(); cardAway(false); } }, 1600);
+        parking = true;
+        dockStarship(0.8, 0.42, 2600);
+        const whenParked = () => {
+          if (token !== my) return;
+          if (starshipMoving()) { requestAnimationFrame(whenParked); return; }
+          showCallout(top, 'Martinotti cell', scanStats, '#cfdcff', false, false);
+          setTimeout(() => { if (token === my) { backToList(); cardAway(false); } }, 1600);
+        };
+        setTimeout(whenParked, 300);
         return;
       }
       requestAnimationFrame(scanRaf);
