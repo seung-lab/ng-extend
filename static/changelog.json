@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T00:38:00Z",
+      "title": "A cleaner neuron view",
+      "items": [
+        "The neuron animation on Get Started page 2 no longer draws lines across the volume behind the cell."
+      ]
+    },
+    {
       "at": "2026-11-09T00:32:00Z",
       "title": "Tour touch ups",
       "items": [

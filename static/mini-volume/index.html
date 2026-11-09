@@ -224,10 +224,6 @@ function boxEdges(lo, hi, al) {
   const e = [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
   return e.map(([a, b]) => [c(a), c(b), al]);
 }
-function rectEdges(lo, hi, z, al) {
-  const p = [[lo[0],lo[1],z],[hi[0],lo[1],z],[hi[0],hi[1],z],[lo[0],hi[1],z]];
-  return [[p[0],p[1],al],[p[1],p[2],al],[p[2],p[3],al],[p[3],p[0],al]];
-}
 function loadTex(url) {
   return new Promise((res, rej) => {
     const im = new Image();
@@ -303,11 +299,9 @@ async function build() {
   const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
   gl.bindVertexArray(null);
 
-  // the whole imaged volume, edges plus a few section planes seen edge on
+  // the whole imaged volume, just its outer edges
   const vlo = meta.volume.min, vhi = meta.volume.max;
   const slab = [...boxEdges(vlo, vhi, 0.95)];
-  const levels = 7;
-  for (let i = 1; i < levels; i++) slab.push(...rectEdges(vlo, vhi, vlo[2] + (vhi[2] - vlo[2]) * i / levels, 0.32));
   const midZ = meta.soma[2];
   const fillVao = gl.createVertexArray(); gl.bindVertexArray(fillVao);
   const fb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, fb);
