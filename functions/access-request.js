@@ -769,6 +769,43 @@ async function betaMark(a, io) {
   return io.marks.all();
 }
 
+// ── The team's notes on a person (Celia 2026-11-09: "a place to leave notes
+// on requests from people we don't know, or ones still being discussed").
+// Shown on the Access page (triage hub). Keyed by the person's email, or
+// "user:<id>" when there is none. Admins only; in io.notes (Firestore in
+// index.js), so this needs no new table.
+//   access.notes       admins: every note, {key: [{id, text, by, at}]}.
+//   access.note        admins: {key, text} adds one.
+//   access.noteDelete  admins: {key, id} takes one away.
+const ACCESS_NOTE_MAX = 1000;
+const NOTE_KEY = /^(?:[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+|user:[0-9a-f-]{36})$/i;
+function noteKey(k) {
+  const key = String(k || '').trim().toLowerCase();
+  if (!NOTE_KEY.test(key) || key.length > BETA_EMAIL_MAX) fail(400, 'Unknown person.');
+  return key;
+}
+async function accessNotes(a, io) {
+  needAdmin(io.isAdmin);
+  return io.notes.all();
+}
+async function accessNote(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const text = cleanText(a.text, ACCESS_NOTE_MAX, 'The note', true);
+  if (!text) fail(400, 'Write a note first.');
+  const by = (io.me && (io.me.display_name || io.me.username)) || (io.who && io.who.email) || 'An admin';
+  await io.notes.add(key, {text, by, byEmail: (io.who && io.who.email) || '', at: new Date().toISOString()});
+  return io.notes.all();
+}
+async function accessNoteDelete(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const id = String(a.id || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) fail(400, 'Unknown note.');
+  await io.notes.remove(key, id);
+  return io.notes.all();
+}
+
 // ── Access to one dataset (Ames 2026-10-28) ──────────────────────────────
 // "You don't have access to MEC yet. Can we make this have a button to
 // request access?" A player asks from the note on a view they can't load, or
@@ -1025,6 +1062,9 @@ async function handle(action, args, io) {
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
   if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
+  if (action === 'access.notes') return accessNotes(a, io);
+  if (action === 'access.note') return accessNote(a, io);
+  if (action === 'access.noteDelete') return accessNoteDelete(a, io);
   if (action === 'access.principlesStatus') return principlesStatus(a, io);
   if (action === 'access.principlesAgree') return principlesAgree(a, io);
   if (action === 'access.mine') return mine(a, io);

@@ -12,6 +12,7 @@ import {renderSafeMarkdown} from '../util/safe_markdown';
 import {withVideoEmbeds} from '../util/video_embeds';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
+import {addPilot, welcomeBell, welcomeEmail} from '../beta_let_in';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
@@ -109,6 +110,13 @@ const pilotFromWeb = (m: { email: string }) => !!pilotSheet.value && !pilotSheet
 const pilotWebCount = computed(() => pilotRows.value.filter(pilotFromWeb).length);
 const pilotJoined = (m: { email: string }) => !!pilotIds.value[m.email.toLowerCase()];
 const pilotJoinedCount = computed(() => pilotRows.value.filter(pilotJoined).length);
+/** The Access page in the triage hub (Ames 2026-11-09): every person, step by step. */
+const accessPageUrl = `${window.location.origin}${window.location.pathname}?triage=access`;
+/** The EyeWire username they gave when they asked, so it can be searched (Celia 2026-11-09). */
+function pilotEwName(m: { email: string }): string {
+  const e = m.email.toLowerCase();
+  return betaRequests.value.find(r => r.email === e)?.ewName || '';
+}
 function openPilotProfile(m: { email: string }) {
   const id = pilotIds.value[m.email.toLowerCase()];
   // Closing their profile comes back here (Celia 2026-11-09).
@@ -121,7 +129,7 @@ const pilotShown = computed(() => {
       : pilotRows.value.filter(m => pilotJoined(m) === (pilotWho.value === 'joined'));
   if (!words.length) return rows;
   return rows.filter(m => {
-    const hay = (m.email + ' ' + (pilotNames.value[m.email.toLowerCase()] || '')).toLowerCase();
+    const hay = (m.email + ' ' + (pilotNames.value[m.email.toLowerCase()] || '') + ' ' + (pilotEwName(m) || '')).toLowerCase();
     return words.every(w => hay.includes(w));
   });
 });
@@ -240,35 +248,14 @@ async function markBeta(r: BetaRequest, mark: 'listed' | 'removed' | 'waiting') 
 }
 async function letBetaIn(r: BetaRequest) {
   betaBusy.value = r.email; betaError.value = '';
-  const { error } = await supabase.from('pilot_members').upsert([{ email: r.email, enabled: true }], { onConflict: 'email' });
-  if (error) betaError.value = error.message; else { await loadPilot(); void welcomeBell(r.userId); void welcomeEmail(r.email, r.name); }
+  // The bell, the email and Pilot testers: src/beta_let_in.ts, shared with the Access page.
+  try { await addPilot(r.email); } catch (e: any) { betaError.value = e?.message || 'That did not save.'; betaBusy.value = ''; return; }
+  await loadPilot(); void welcomeBell(r.userId);
+  void welcomeEmail(r.email, r.name).then(s => { welcomeEmailed.value = { ...welcomeEmailed.value, [r.email]: s }; });
   betaBusy.value = '';
 }
-/** The "You're in" email, from welcome@connectome.quest (functions/access-request.js
- *  welcomeEmail); once per address, so a second Let in sends nothing. */
+/** What the "You're in" email did, by address (once per address). */
 const welcomeEmailed = ref<Record<string, string>>({});
-async function welcomeEmail(email: string, name: string) {
-  try {
-    const r = await secureWrite<{ sent: boolean; reason?: string }>('access.welcomeEmail', { email, name });
-    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: r?.sent ? 'Emailed them' : r?.reason === 'already sent' ? 'Emailed before' : '' };
-  } catch (e: any) {
-    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: e?.message || 'The email did not go.' };
-  }
-}
-/** Let in: whoever asked from inside Pyr hears it in their bell (Ames
- *  2026-11-05). Someone still on the waiting screen is let in there too
- *  (BetaGate.vue). Asked from connectome.quest, with no account yet: no bell,
- *  the email from the Let in list is the way. */
-async function welcomeBell(userId: string | null | undefined) {
-  if (!userId) return;
-  try {
-    await secureWrite('notification.insert', { row: {
-      title: "🎉 You're in the Pyr beta!",
-      body: "Welcome! You can now claim cells, take the tutorials and help map the brain. Thank you for joining us.\n\nThe Pyr (pronounced \"peer\") team at Princeton University",
-      target_type: 'user', target_id: userId, send_at: new Date().toISOString(),
-    } });
-  } catch { /* they are in either way */ }
-}
 /** An email to tell them, ready to send from the admin's own mail. */
 function betaMailto(r: BetaRequest) {
   const first = r.name.split(' ')[0] || 'there';
@@ -457,7 +444,7 @@ async function letInFromCard(r: TriageRow) {
     if (error) { cardLetInError.value = { ...cardLetInError.value, [r.id]: error.message }; return; }
     const { data: issue } = await supabase.from('site_issues').select('user_id').eq('id', r.source_id).single();
     void welcomeBell((issue as any)?.user_id);
-    void welcomeEmail(email, reporterOf(r)?.name || '');
+    void welcomeEmail(email, reporterOf(r)?.name || '').then(s => { welcomeEmailed.value = { ...welcomeEmailed.value, [email]: s }; });
   } finally { cardLetInBusy.value = ''; }
   await setTriageStatus(r, 'done', false, false, `Let in: ${email} added to Pilot testers.`);
   if (adminSubTab.value === 'pilot') void loadPilot();
@@ -2941,6 +2928,7 @@ function practiceWhen(iso: string | null) {
     <TutorialTimesTab v-if="adminSubTab === 'tutorialTimes'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
+    <a v-if="adminSubTab === 'access' || adminSubTab === 'pilot'" class="nge-access-page-link" :href="accessPageUrl" target="_blank" rel="noopener">Open the Access page: everyone, step by step</a>
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
     <HuntsAdminTab v-if="adminSubTab === 'hunts'" />
     <InterneuronQuestsAdminTab v-if="adminSubTab === 'interneurons'" />
@@ -3014,7 +3002,7 @@ function practiceWhen(iso: string | null) {
       <p v-if="pilotError" role="alert">{{ pilotError }}</p>
       <p v-if="!pilotRows.length">No additional testers invited yet.</p>
       <div v-else class="nge-pilot-find">
-        <input v-model="pilotSearch" type="search" autocomplete="off" placeholder="Search by name or email" aria-label="Search testers by name or email"
+        <input v-model="pilotSearch" type="search" autocomplete="off" placeholder="Search by name, email or EyeWire username" aria-label="Search testers by name, email or EyeWire username"
                @keydown.stop @keyup.stop @keypress.stop />
         <span>{{ pilotSearch.trim() || pilotWho !== 'all' ? `${pilotShown.length} of ${pilotRows.length}` : `${pilotRows.length} testers` }}</span>
       </div>
@@ -3033,6 +3021,7 @@ function practiceWhen(iso: string | null) {
           <button v-if="pilotJoined(member)" type="button" class="nge-pilot-name nge-pilot-name--link" title="Open their profile" @click="openPilotProfile(member)">{{ pilotNames[member.email.toLowerCase()] || 'Their profile' }}</button>
           <i v-else class="nge-pilot-noname" title="No Pyr account was found under this email. They may not have signed in yet, or they sign in with a different address.">no Pyr name yet</i>
           · {{ member.email }} ·
+          <template v-if="pilotEwName(member)"><span class="nge-pilot-ew" title="The EyeWire username they gave when they asked">EyeWire {{ pilotEwName(member) }}</span> · </template>
           <span v-if="!member.enabled">Access paused</span>
           <span v-else-if="pilotJoined(member)" class="nge-pilot-joined">Joined</span>
           <span v-else class="nge-pilot-invited" title="Invited, but nobody has signed in to Pyr with this email yet.">Invited, not joined yet</span>
@@ -5346,6 +5335,9 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-find { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:16px 0 4px; }
 .nge-pilot-find span { color:#b6c2d1; font-size:0.9rem; }
 .nge-pilot-name { font-weight:700; color:#fff; }
+.nge-pilot-ew { color:#b9d6ff; }
+.nge-access-page-link { display:inline-block; margin:2px 0 10px; padding:6px 12px; border-radius:7px; color:#e6f1ff; text-decoration:none; font-weight:600; background:rgba(55,138,221,0.22); border:1px solid rgba(120,170,255,0.55); }
+.nge-access-page-link:hover { background:rgba(55,138,221,0.36); }
 .nge-pilot-noname { font-style:normal; color:#93a1b3; }
 /* Celia D, report 284: joined or only invited, and the name opens the profile. */
 .nge-pilot-who { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 4px; }

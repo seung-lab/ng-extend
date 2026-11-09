@@ -1,0 +1,91 @@
+-- The Access page (triage hub, "?triage=access", Ames 2026-11-09): where each
+-- person is between asking for the beta and editing, with the time of each
+-- step, worked out here so the page reads one small row per person.
+-- Read only by admins, through ewCommunityData (functions/community-data.js);
+-- no public read.
+--
+-- One row per email: everyone on Pilot testers and everyone who asked for
+-- the beta. A Beta request is a site_issues row (category 'Beta access')
+-- whose message holds the fields as lines ("Email: ...", "EyeWire username:
+-- ...", functions/access-request.js); the newest request per email counts.
+CREATE OR REPLACE VIEW public.access_hub_people AS
+WITH req AS (
+  SELECT DISTINCT ON (email) * FROM (
+    SELECT
+      rtrim(lower(coalesce(
+        substring(message FROM 'Sign in email: ([^\s]+@[^\s]+)'),
+        substring(message FROM '(?:^|\n)Email: ([^\s]+@[^\s]+)'),
+        substring(message FROM 'Email they gave: ([^\s]+@[^\s]+)'))), '.') AS email,
+      rtrim(lower(substring(message FROM 'Email they gave: ([^\s]+@[^\s]+)')), '.') AS gave_email,
+      id AS request_id, user_id AS request_user_id, user_name AS request_name, created_at AS asked_at,
+      (coalesce(url, '') || coalesce(title, '')) ~ 'connectome\.quest' AS from_site,
+      nullif(trim(substring(message FROM 'EyeWire username: ([^\n]*)')), '') AS ew_name,
+      nullif(trim(substring(message FROM 'EyeWire rank: ([^\n]*)')), '') AS ew_rank,
+      nullif(trim(substring(message FROM 'How they found us: ([^\n]*)')), '') AS found_us,
+      nullif(trim(substring(message FROM 'Their note: (.*)$')), '') AS their_note
+    FROM public.site_issues i
+    WHERE category = 'Beta access'
+  ) r
+  WHERE email IS NOT NULL
+  ORDER BY email, asked_at DESC
+),
+pil AS (
+  SELECT lower(email) AS email, enabled, created_at AS let_in_at,
+    -- Added together with four or more others: one pasted list.
+    count(*) OVER (PARTITION BY created_at) >= 5 AS from_list
+  FROM public.pilot_members
+),
+who AS (
+  SELECT email FROM req UNION SELECT email FROM pil
+),
+usr AS (
+  SELECT DISTINCT ON (lower(middleauth_email)) lower(middleauth_email) AS email, id, display_name, username, created_at, tutorial_active, last_edit_at
+  FROM public.users WHERE middleauth_email IS NOT NULL
+  ORDER BY lower(middleauth_email), created_at
+),
+tut AS (
+  SELECT user_id, min(completed_at) AS tutorial_at, count(DISTINCT tutorial)::int AS tutorials FROM public.tutorial_completions GROUP BY user_id
+),
+ed AS (
+  SELECT user_id, min(timestamp) AS first_edit_at, max(timestamp) AS last_edit_at, count(*)::int AS edits,
+    (array_agg(dataset ORDER BY timestamp DESC))[1] AS last_dataset
+  FROM public.edit_log GROUP BY user_id
+)
+SELECT
+  w.email,
+  u.id AS user_id,
+  coalesce(r.request_name, u.display_name, u.username) AS name,
+  u.username,
+  r.request_id, r.asked_at, r.from_site, r.gave_email,
+  r.ew_name, r.ew_rank, r.found_us, r.their_note,
+  p.enabled AS pilot_enabled, p.let_in_at, coalesce(p.from_list, false) AS from_list,
+  u.created_at AS joined_at, u.tutorial_active,
+  t.tutorial_at, coalesce(t.tutorials, 0) AS tutorials,
+  e.first_edit_at, e.last_edit_at, coalesce(e.edits, 0) AS edits, e.last_dataset
+FROM who w
+LEFT JOIN req r ON r.email = w.email
+LEFT JOIN pil p ON p.email = w.email
+LEFT JOIN usr u ON u.email = w.email
+LEFT JOIN tut t ON t.user_id = u.id
+LEFT JOIN ed e ON e.user_id = u.id;
+REVOKE ALL ON public.access_hub_people FROM anon, authenticated;
+
+-- Where the community is: the last 30 days per dataset.
+CREATE OR REPLACE VIEW public.access_hub_activity AS
+WITH e AS (
+  SELECT dataset, count(*)::int AS edits, count(DISTINCT user_id)::int AS editors
+  FROM public.edit_log WHERE timestamp > now() - interval '30 days' AND dataset IS NOT NULL GROUP BY dataset
+), c AS (
+  SELECT dataset, count(*)::int AS cells, count(DISTINCT user_id)::int AS finishers
+  FROM public.ew_cell_completions WHERE done_at > now() - interval '30 days' AND dataset IS NOT NULL GROUP BY dataset
+), m AS (
+  -- Dataset rooms only: achievement, pin and access threads are not places.
+  SELECT dataset, count(*)::int AS chats, count(DISTINCT user_id)::int AS chatters
+  FROM public.chat_messages WHERE created_at > now() - interval '30 days' AND dataset IS NOT NULL AND dataset !~ ':' AND dataset <> 'test' GROUP BY dataset
+)
+SELECT coalesce(e.dataset, c.dataset, m.dataset) AS dataset,
+  coalesce(e.edits, 0) AS edits, coalesce(e.editors, 0) AS editors,
+  coalesce(c.cells, 0) AS cells, coalesce(c.finishers, 0) AS finishers,
+  coalesce(m.chats, 0) AS chats, coalesce(m.chatters, 0) AS chatters
+FROM e FULL JOIN c ON c.dataset = e.dataset FULL JOIN m ON m.dataset = coalesce(e.dataset, c.dataset);
+REVOKE ALL ON public.access_hub_activity FROM anon, authenticated;

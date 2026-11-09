@@ -2398,6 +2398,22 @@ const betaMarkStore = {
     if (!v) await ref.delete(); else await ref.set({ email, ...v });
   },
 };
+// The team's notes on a person, for the Access page (access-request.js,
+// access.notes, Celia 2026-11-09). One document per note.
+const accessNoteStore = {
+  all: async () => {
+    const snap = await db.collection("access_request_notes").orderBy("at").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.key) (out[v.key] = out[v.key] || []).push({ id: d.id, text: v.text, by: v.by || "", at: v.at }); });
+    return out;
+  },
+  add: async (key, v) => { await db.collection("access_request_notes").add({ key, ...v }); },
+  remove: async (key, id) => {
+    const ref = db.collection("access_request_notes").doc(id);
+    const d = await ref.get();
+    if (d.exists && d.data().key === key) await ref.delete();
+  },
+};
 // Dataset access requests, Granted or Not now (access-request.js,
 // access.datasetDecide, Ames 2026-10-28). A mark per request id, in Firestore.
 const datasetMarkStore = {
@@ -2465,7 +2481,7 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
-        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
+        wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
         sendEmail: async (msg) => {
           try {
