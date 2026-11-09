@@ -1005,6 +1005,21 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   }
   // Give the claim its soma anchor as soon as that part of the volume loads.
   if (claimed) void backend.anchorClaimAt(claimed.id).catch(() => null);
+  // Claimed: show it in My Cells, its row open and in view (Ames 2026-11-09).
+  // Quests stay in their own tab.
+  if (claimed && !cell.quest) void showInMyCells(cell);
+}
+async function showInMyCells(cell: CellRow) {
+  if (!jumpedSegId.value) jumpedSegId.value = cell.segId;
+  filter.value = 'mine';
+  const key = cellKey(cell);
+  for (let i = 0; i < 20; i++) {
+    await nextTick();
+    // after the tab's own scroll to the top
+    await new Promise(r => setTimeout(r, 150));
+    const el = document.querySelector(`.nge-cl-panel .nge-cl-row[data-cell-key="${CSS.escape(key)}"]`);
+    if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+  }
 }
 
 // ── Claim limit: name every claim you hold, in any dataset, with Release ──

@@ -184,7 +184,7 @@ onUnmounted(() => document.removeEventListener('nge:retina-ask', askAgain));
 .nge-rmp-opt--on { border-color: #4aa8ff; background: rgba(74, 168, 255, 0.14); box-shadow: 0 0 0 1px #4aa8ff inset; }
 .nge-rmp-opt-name { font-weight: 600; color: #e8f3ff; }
 .nge-rmp-opt-sub { overflow-wrap: anywhere; font-size: 12px; color: rgba(226, 238, 251, 0.65); }
-.nge-rmp-actions { display: flex; justify-content: flex-end; }
+.nge-rmp-actions { display: flex; justify-content: center; }
 .nge-rmp-enter-active { transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
 .nge-rmp-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
 .nge-rmp-enter-from, .nge-rmp-leave-to { opacity: 0; transform: translateY(-10px); }

@@ -9,6 +9,7 @@
         "A Retina cell you claim now opens with one Checked Highlight layer and the Highlight box ready, instead of five annotation layers.",
         "Prefer annotations? Press + Annotation layers on your cell in the Cell Library, or turn them on for every Retina claim in Settings, under Jumping and views.",
         "Your Checked marks stay in one Checked layer, with no more Checked 1 and Checked 2.",
+        "Claiming a cell takes you to My Cells, with your new cell in view.",
         "Click your current cell's row in the Cell Library to open Complete. Your cell stays at the top while the form is open, so nothing is cut off.",
         "A layer tab has one close button, an x, and Ctrl+Z brings a closed layer back. For neuroglancer's two buttons (hide to the side panel, and delete), turn on Classic layer tab buttons in Settings, under Neuroglancer.",
         "How to map a cell, in the Cell Library, opens in a box of its own with a picture of a bipolar cell.",
