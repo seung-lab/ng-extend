@@ -64,7 +64,7 @@ type Goal = {kind: 'fire'; target: string; count: number}
   | {kind: 'sync'; targets: [string, string]; withinS: number; count: number};
 /** The coach line says one thing at a time, as the level unfolds (Ames
  *  2026-11-08: "what am I supposed to do? it's too complicated"). */
-type CoachEvent = 'begin' | 'driver' | 'pulse' | 'hushed' | 'key' | 'hit' | 'miss' | 'go' | 'wait';
+type CoachEvent = 'begin' | 'driver' | 'pulse' | 'hushed' | 'key' | 'hit' | 'miss' | 'go' | 'wait' | 'soon';
 interface Level {
   title: string; objective: string; detail: string; brief: string;
   cells: string[]; targets: string[];
@@ -91,16 +91,23 @@ const LEVELS: Level[] = [
       driver: 'Again, right away: the second spike has to land while the first is still there.',
       miss: 'Too slow between clicks: the charge leaked away. Two clicks within half a second.'},
     hint: {begin: ['E1'], driver: ['E1'], miss: ['E1']}},
-  {title: 'The Gatekeeper', objective: 'Fire the gold cell 3 times', detail: 'when the coach says go', timeS: 60, par: 6,
-    brief: 'A new cell, in violet: a Martinotti cell. Every two seconds it pulses, and each pulse holds the gold cell down for a moment.\nFire the gold cell three times, in the gaps between pulses. The coach line says when.',
-    cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: false, gate: {cell: 'I1', periodS: 2.2},
+  // The Gatekeeper's rhythm is slow here on purpose (Ames 2026-11-08: "it's
+  // flashing through too much, it's not clear when/why other cells are
+  // making it so I have to have a gap"): at 2.2 s the go window was half a
+  // second and the light flipped four times a cycle. At 4.2 s one cycle
+  // reads as a story: the violet cell winds up and pulses, the pulse runs
+  // down its axon, the gold cell turns violet and comes back, go.
+  {title: 'The Gatekeeper', objective: 'Fire the gold cell 3 times', detail: 'in the gaps between pulses', timeS: 60, par: 6,
+    brief: 'A new cell, in violet: a Martinotti cell, the Gatekeeper. About every four seconds it pulses, and the pulse runs down its axon and holds the gold cell down for a moment: watch the gold cell turn violet, then come back.\nFire the gold cell three times, in the gaps between pulses. The coach line turns blue when a gap opens.',
+    cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: false, gate: {cell: 'I1', periodS: 4.2},
     goal: {kind: 'fire', target: 'T', count: 3},
-    coach: {begin: 'Watch the gold cell’s bar: it turns violet when a pulse lands, then fades.',
+    coach: {begin: 'Watch the violet cell pulse, and the gold cell turn violet as the pulse lands.',
       go: 'Go: click E1 twice, quickly.',
-      wait: 'Wait: a pulse is holding the gold cell down.',
+      wait: 'Wait: the Gatekeeper’s pulse is holding the gold cell down.',
+      soon: 'Not yet: the Gatekeeper is about to pulse.',
       hit: 'One down. Wait for the next gap.',
-      miss: 'The pulse caught it. Fire only when the coach says go.'},
-    hint: {go: ['E1'], hit: [], wait: []}},
+      miss: 'The pulse caught it: the charge was still building when the pulse landed. Click twice as soon as the line turns blue.'},
+    hint: {go: ['E1'], hit: [], wait: [], soon: []}},
   {title: 'Hush', objective: 'Fire the gold cell 3 times', detail: 'Hush the Gatekeeper first', timeS: 60, par: 12,
     brief: 'The Gatekeeper pulses every second now; the gaps are nearly gone.\nA new beam: Hush quiets a cell for 2.5 s (2 charges). Hush the Gatekeeper, then fire the drivers into the quiet.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: true, gate: {cell: 'I1', periodS: 1.0},
@@ -240,6 +247,17 @@ const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Fl
 
 const thetaOf = (key: string) => THRESHOLD[key] ?? DEFAULT_THRESHOLD;
 const potential = (c: CellState) => c.e - c.i;
+/** A connection whose arrival can change something: onto a target, the
+ *  Gatekeeper or another interneuron. Drivers fire only when they are
+ *  sparked, so what lands on them is left out, wire and spark alike (Ames
+ *  2026-11-08: "it's flashing through too much"; each pulse used to run
+ *  five violet trails, one to every driver, and only the one to the gold
+ *  cell meant anything). */
+function live(k: CircuitConn): boolean {
+  const pre = cells.get(k.pre), post = cells.get(k.post);
+  if (!pre?.shown || !post?.shown) return false;
+  return post.target || post.gateNext !== null || post.spec.type === 'I';
+}
 
 function cellColor(c: CircuitCell, k: number): string {
   if (c.type === 'I') return I_COLOR[c.key] ?? '#b68cff';
@@ -352,9 +370,12 @@ function ensureStyle() {
 .nge-sig-coach i { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: #ffc24a; box-shadow: 0 0 8px #ffc24a; }
 .nge-sig-coach--new { animation: nge-sig-coach-in 500ms ease-out; }
 @keyframes nge-sig-coach-in { 0% { background: rgba(255, 194, 74, 0.35); } 100% { } }
-/* go: the line turns to the beam's own light */
+/* go: the line turns to the beam's own light; held: the Gatekeeper's violet
+   (the light changes colour, it does not flash: Ames 2026-11-08) */
 .nge-sig-coach--go { border-left-color: #7ee0ff; background: linear-gradient(90deg, rgba(126, 224, 255, 0.18), rgba(126, 224, 255, 0)); font-weight: 600; }
-.nge-sig-coach--go i { background: #7ee0ff; box-shadow: 0 0 10px #7ee0ff; animation: nge-sig-blink 0.6s infinite; }
+.nge-sig-coach--go i { background: #7ee0ff; box-shadow: 0 0 10px #7ee0ff; animation: nge-sig-blink 1.6s infinite; }
+.nge-sig-coach--held { border-left-color: #b68cff; background: linear-gradient(90deg, rgba(182, 140, 255, 0.16), rgba(182, 140, 255, 0)); }
+.nge-sig-coach--held i { background: #b68cff; box-shadow: 0 0 8px #b68cff; }
 /* the cell to click now */
 .nge-sig .nge-sig-chip--hint { border-color: #c9f6ff; box-shadow: 0 0 16px rgba(126, 224, 255, 0.55), inset 0 0 12px rgba(126, 224, 255, 0.15); animation: nge-sig-hint 1s ease-in-out infinite; }
 @keyframes nge-sig-hint { 50% { box-shadow: 0 0 6px rgba(126, 224, 255, 0.25), inset 0 0 4px rgba(126, 224, 255, 0.08); } }
@@ -518,13 +539,17 @@ let lastMissCoach = -Infinity;
 const pendingExcitation = new Map<string, number>();
 /** The cells lit up as the thing to click right now. */
 let hints = new Set<string>();
-let lastGo: boolean | null = null;
+type GoState = 'go' | 'wait' | 'soon';
+let lastGo: GoState | null = null;
 let coachHoldUntil = 0;   // game seconds: a hit or miss line stays this long before go/wait take over
 function setCoachText(text: string, event: CoachEvent) {
   if (!els.coachText) return;
   els.coachText.textContent = text;
   els.coach.classList.toggle('nge-sig-coach--go', event === 'go');
-  els.coach.classList.remove('nge-sig-coach--new'); void els.coach.offsetWidth; els.coach.classList.add('nge-sig-coach--new');
+  els.coach.classList.toggle('nge-sig-coach--held', event === 'wait');
+  // A new instruction flashes in; the go/wait light only changes colour.
+  els.coach.classList.remove('nge-sig-coach--new');
+  if (event !== 'go' && event !== 'wait' && event !== 'soon') { void els.coach.offsetWidth; els.coach.classList.add('nge-sig-coach--new'); }
   const h = level.hint?.[event];
   if (h) hints = new Set(h);
 }
@@ -534,12 +559,23 @@ function coach(event: CoachEvent) {
   // The first-time events say their piece once; hits and misses can repeat.
   if (event !== 'hit' && event !== 'miss') { if (coached.has(event)) return; coached.add(event); }
   if (event === 'hit' || event === 'miss') { coachHoldUntil = now + 3; lastGo = null; }
+  // The opening line stays long enough to read, and to see the first pulse
+  // (at 1.2 s) land; the first go follows it.
+  if (event === 'begin') coachHoldUntil = now + 3;
   setCoachText(text, event);
 }
-/** In the levels with the Gatekeeper, the coach line is a go/wait light:
- *  go when the target's inhibition has faded and the next pulse lands late
- *  enough for sparks fired now to arrive first (the beam takes 0.3 s, a
- *  driver's spike 0.5 to 0.7 s). */
+/** Travel time of a spike along a connection, in seconds. */
+function travelS(pre: string, post: string, fallback: number): number {
+  const k = conns.find(c => c.pre === pre && c.post === post);
+  return k ? routes.get(k)!.length / 1000 / SPEED_UM_S : fallback;
+}
+/** In the levels with the Gatekeeper, the coach line is a three-colour
+ *  light. Violet, wait: a pulse is on its way to the target or holding it
+ *  down. Amber, not yet: the next pulse lands too soon for sparks fired now,
+ *  two clicks 0.35 s apart, each a 0.3 s beam and a spike's run down the
+ *  driver's axon, to get there first. Blue, go. (Ames 2026-11-08: the old
+ *  two-state light said go while the pulse was still in flight, a trap, and
+ *  flipped four times a cycle.) */
 function updateGoWait() {
   if (!level.gate || !level.coach.go || now < coachHoldUntil) return;
   const gate = cells.get(level.gate.cell);
@@ -547,16 +583,17 @@ function updateGoWait() {
   if (!gate || !target) return;
   // the chain to the Gatekeeper comes first in the Key and Switch levels
   if (level.hint?.wait?.some(k => k !== gate.key && (cells.get(k)?.lastSpike ?? -1) < 0) && !coached.has('key')) return;
+  const inFlight = arrivals.some(a => a.inhibitory && a.post === target.key);
+  const held = inFlight || target.i >= 1.5;
   let nextLanding = Infinity;
-  if (gate.gateNext !== null) {
-    const k = conns.find(c => c.pre === gate.key && c.post === target.key);
-    const travel = k ? routes.get(k)!.length / 1000 / SPEED_UM_S : 0.7;
-    nextLanding = Math.max(gate.gateNext, gate.hushedUntil) + travel;
-  }
-  const go = target.i < 1.5 && nextLanding - now > 1.05;
-  if (go === lastGo) return;
-  lastGo = go;
-  setCoachText(level.coach[go ? 'go' : 'wait']!, go ? 'go' : 'wait');
+  if (gate.gateNext !== null) nextLanding = Math.max(gate.gateNext, gate.hushedUntil) + travelS(gate.key, target.key, 0.7);
+  const driverTravel = Math.max(0.45, ...(level.hint?.go ?? []).map(k => travelS(k, target.key, 0.45)));
+  const lead = BEAM_S + 0.35 + driverTravel + 0.35;   // the second spike's landing, with a margin
+  const state: GoState = held ? 'wait' : nextLanding - now <= lead ? 'soon' : 'go';
+  if (state === lastGo) return;
+  lastGo = state;
+  const event: CoachEvent = state === 'soon' && !level.coach.soon ? 'wait' : state;
+  setCoachText(level.coach[event]!, event);
 }
 
 /** What a cell is for, for its chip: "Driver · 5 syn → T". */
@@ -683,7 +720,7 @@ function buildHaze(): NgeMeshTint | null {
   if (!nm) return null;
   const shown = level.cells.map(k => cells.get(k)!);
   const pts: V3[] = shown.map(c => c.spec.soma);
-  const used = conns.filter(k => cells.get(k.pre)?.shown && cells.get(k.post)?.shown);
+  const used = conns.filter(live);
   for (const k of used) { pts.push(...(k.axon as V3[]), ...(k.dendrite as V3[])); }
   const lo: V3 = [Infinity, Infinity, Infinity], hi: V3 = [-Infinity, -Infinity, -Infinity];
   for (const p of pts) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
@@ -967,7 +1004,7 @@ function resetCells() {
   }
   if (level.gate) {
     const g = cells.get(level.gate.cell);
-    if (g) { g.gatePeriod = level.gate.periodS; g.gateNext = 0.8; }
+    if (g) { g.gatePeriod = level.gate.periodS; g.gateNext = 1.2; }
   }
   arrivals = []; sparks = []; flashes = []; beams = [];
   lastTargetSpike = {}; sequenceArmedAt = -1;
@@ -991,7 +1028,7 @@ function spike(key: string, byBeam = false) {
   }
   // its spikes set out along the real paths to every partner on screen
   for (const k of conns) {
-    if (k.pre !== key || !cells.get(k.post)?.shown) continue;
+    if (k.pre !== key || !live(k)) continue;
     const r = routes.get(k)!;
     const travel = r.length / 1000 / SPEED_UM_S;
     sparks.push({r, start: now, end: now + travel, inhibitory, conn: k});
@@ -1114,19 +1151,33 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     glow.sizesNm[n] = size;
     n++;
   };
-  // target reticles: a slow ring of light around each target's soma
+  // target reticles: a slow ring of light around each target's soma; the
+  // ring and the soma turn violet while a pulse holds the cell down, so the
+  // Gatekeeper's hold is seen on the cell itself (Ames 2026-11-08: "it's not
+  // clear when/why other cells are making it so I have to have a gap")
   const spin = performance.now() / 1000;
+  const VIOLET: V3 = [0.7, 0.45, 1];
   for (const c of cells.values()) {
     if (!c.shown || !c.target) continue;
+    const held = clamp(c.i / 3, 0, 1);
+    const ring = mix([1, 0.76, 0.3], VIOLET, held);
     const R = 14_000;
     for (let k = 0; k < 14; k++) {
       const a = spin * 0.9 + k / 14 * Math.PI * 2;
       const p = add(c.spec.soma, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R)));
-      put(p, [1, 0.76, 0.3, 0.35 + 0.25 * Math.sin(a * 3 + spin * 4)], 2200);
+      put(p, [ring[0], ring[1], ring[2], 0.35 + 0.25 * Math.sin(a * 3 + spin * 4)], 2200);
     }
+    if (held > 0.05) put(c.spec.soma, [VIOLET[0], VIOLET[1], VIOLET[2], 0.5 * held], 18_000);
     // and a soft pulse when it is close to firing
     const q = clamp(potential(c) / c.theta, 0, 1);
     if (q > 0.3) put(c.spec.soma, [1, 0.8, 0.4, 0.25 * q], 12_000 + 8000 * q);
+  }
+  // the Gatekeeper winds up before each pulse: a violet glow that grows over
+  // the last 1.2 s, so the pulse is seen coming
+  for (const c of cells.values()) {
+    if (!c.shown || c.gateNext === null || now < c.hushedUntil) continue;
+    const q = clamp(1 - (c.gateNext - now) / 1.2, 0, 1);
+    if (q > 0) put(c.spec.soma, [VIOLET[0], VIOLET[1], VIOLET[2], 0.06 + 0.34 * q * q], 9000 + 9000 * q);
   }
   // the cells to click now: a quick ring of white light around each
   if (phase === 'playing') for (const key of hints) {
