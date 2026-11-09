@@ -58,10 +58,10 @@ async function allRows(table, query = 'select=*', { optional = false } = {}) {
 const PATH = new RegExp(`${FOLDER}/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+`, 'g');
 const pathsIn = value => (JSON.stringify(value ?? '').match(PATH) || []);
 
-async function listFolder(prefix) {
+async function listFolder(prefix, bucket = BUCKET) {
   const out = [];
   for (let offset = 0; ; offset += 1000) {
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${bucket}`, {
       method: 'POST', headers: HEADERS, body: JSON.stringify({ prefix, limit: 1000, offset, sortBy: { column: 'name', order: 'asc' } }),
     });
     if (!res.ok) throw new Error(`could not list ${prefix}: ${res.status} ${(await res.text()).slice(0, 200)}`);
@@ -195,5 +195,54 @@ async function cleanReplyImages() {
   console.log(`[cleanup] marked ${threads} triage threads`);
 }
 
-// Player screenshots first, then reply images; one failing stops the run.
-main().then(cleanReplyImages).catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });
+// ── Files on To do cards (Ames 2026-11-09: "delete files after 7 days") ──
+// admin-files/todo-files/<owner>/<id>/<name>. Every file older than
+// TODO_FILE_DAYS is deleted, and its link on the card stays, greyed, as
+// "name (deleted after 7 days)" (TodoBoard.vue shows such a link as gone).
+const FILE_BUCKET = 'admin-files';
+const FILE_FOLDER = 'todo-files';
+const TODO_FILE_DAYS = Number(process.env.TODO_FILE_DAYS || 7);
+const GONE = ' (deleted after 7 days)';
+
+async function cleanTodoFiles() {
+  const files = [];
+  let owners;
+  try { owners = await listFolder(FILE_FOLDER, FILE_BUCKET); }
+  catch (e) { console.log(`[cleanup] no To do files to look at (${e.message.slice(0, 80)})`); return; }
+  for (const owner of owners) {
+    if (owner.id) continue;
+    for (const dir of await listFolder(`${FILE_FOLDER}/${owner.name}`, FILE_BUCKET)) {
+      if (dir.id) continue;
+      for (const f of await listFolder(`${FILE_FOLDER}/${owner.name}/${dir.name}`, FILE_BUCKET)) {
+        if (f.id) files.push({ path: `${FILE_FOLDER}/${owner.name}/${dir.name}/${f.name}`, created: f.created_at, size: f.metadata?.size || 0 });
+      }
+    }
+  }
+  const doomed = files.filter(f => (now - new Date(f.created).getTime()) / DAY > TODO_FILE_DAYS);
+  console.log(`[cleanup] ${files.length} To do files stored; ${DELETE ? 'deleting' : 'would delete'} ${doomed.length} older than ${TODO_FILE_DAYS} days, ${mb(doomed.reduce((a, f) => a + f.size, 0))}`);
+  if (!DELETE || !doomed.length) return;
+  const gone = [];
+  for (let i = 0; i < doomed.length; i += 100) {
+    const batch = doomed.slice(i, i + 100).map(f => f.path);
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${FILE_BUCKET}`, { method: 'DELETE', headers: HEADERS, body: JSON.stringify({ prefixes: batch }) });
+    if (!res.ok) throw new Error(`To do file delete failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    gone.push(...batch);
+  }
+  console.log(`[cleanup] deleted ${gone.length} To do files`);
+  const base = `${SUPABASE_URL}/storage/v1/object/public/${FILE_BUCKET}/`;
+  const goneSet = new Set(gone);
+  const pathOf = url => { if (!url.startsWith(base)) return ''; try { return decodeURIComponent(url.slice(base.length).split('?')[0]); } catch { return ''; } };
+  let marked = 0;
+  for (const c of await allRows('admin_todos', 'select=id,links', { optional: true })) {
+    const links = Array.isArray(c.links) ? c.links : [];
+    if (!links.some(l => l && goneSet.has(pathOf(String(l.url || ''))))) continue;
+    const next = links.map(l => (l && goneSet.has(pathOf(String(l.url || ''))) && !String(l.label || '').endsWith(GONE)
+      ? { ...l, label: String(l.label || 'File').slice(0, 80 - GONE.length) + GONE } : l));
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/admin_todos?id=eq.${c.id}`, { method: 'PATCH', headers: HEADERS, body: JSON.stringify({ links: next }) });
+    if (res.ok) marked++; else console.warn(`[cleanup] could not mark To do card ${c.id}: ${res.status}`);
+  }
+  console.log(`[cleanup] marked ${marked} To do cards`);
+}
+
+// Player screenshots first, then reply images, then To do files; one failing stops the run.
+main().then(cleanReplyImages).then(cleanTodoFiles).catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });

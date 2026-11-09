@@ -1043,13 +1043,36 @@ async function attachFiles(c: Card, files: FileList | File[] | null | undefined)
     fileBusy.value++;
     try {
       const url = await secureUpload(f, 'todo-file', f.name);
-      const opens = /^(application\/pdf|image\/(png|jpeg|gif|webp)|text\/plain)$/.test(f.type);
+      const opens = /^(application\/pdf|image\/(png|jpeg|gif|webp)|text\/plain)$/.test(f.type) || isHtmlName(f.name);
       const label = f.name.length > 80 ? f.name.slice(0, 50) + '…' + f.name.slice(-29) : f.name;
       const fresh = cards.value.find(x => x.id === c.id) || c;
       await save(fresh, { links: [...(fresh.links || []), { kind: 'file', url: opens ? url : `${url}?download=${encodeURIComponent(f.name)}`, label }] });
     } catch (e: any) { error.value = e?.message || 'The file did not upload.'; }
     finally { fileBusy.value--; }
   }
+}
+const FILE_GONE = ' (deleted after 7 days)';
+const isHtmlName = (s: string) => /\.html?$/i.test(s);
+const fileGone = (l: Link) => l.kind === 'file' && l.label.endsWith(FILE_GONE);
+/** An attached email or page opens in a new tab, drawn in a sandbox: its
+ *  pictures and layout show, but nothing in it can run (Ames 2026-11-09:
+ *  "keep opening email in browser instead of download"). */
+function openLink(e: MouseEvent, l: Link) {
+  if (fileGone(l)) { e.preventDefault(); return; }
+  if (l.kind !== 'file' || !isHtmlName(l.url.split('?')[0])) return;
+  e.preventDefault();
+  const w = window.open('', '_blank');
+  if (!w) { window.location.assign(l.url); return; }
+  const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!));
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(l.label)}</title><style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100%;height:100%;display:block}p{font:14px system-ui;margin:20px}</style><p>Opening ${esc(l.label)}…</p>`);
+  w.document.close();
+  fetch(l.url).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.text(); }).then(html => {
+    const p = w.document.querySelector('p'); if (p) p.remove();
+    const f = w.document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
+    f.srcdoc = html;
+    w.document.body.appendChild(f);
+  }).catch(() => { const p = w.document.querySelector('p'); if (p) p.textContent = 'This file could not be opened. It may have been deleted (files go after 7 days).'; });
 }
 function onLinksDrop(e: DragEvent, c: Card) {
   const files = [...(e.dataTransfer?.files || [])];
@@ -1761,7 +1784,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <div v-if="c.status" class="nge-todo-card-status">{{ c.status }}</div>
             <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt nge-todo-md" v-html="commentHtml(c.notes)"></div>
             <div v-if="(c.links || []).length" class="nge-todo-links" @click.stop>
-              <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url" draggable="false">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
+              <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :class="{ 'nge-todo-linkchip--gone': fileGone(l) }" :href="l.url" target="_blank" rel="noopener noreferrer" :title="fileGone(l) ? 'Files are deleted 7 days after they are added' : l.url" draggable="false" @click="openLink($event, l)">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
             </div>
             <div class="nge-todo-card-meta">
               
@@ -1914,7 +1937,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 
         <div class="nge-todo-label">Links</div>
         <div v-if="(openCard.links || []).length" class="nge-todo-links">
-          <span v-for="(l, i) in openCard.links" :key="i" class="nge-todo-linkchip"><a :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url">{{ linkIcon(l) }} {{ linkWord(l) }}</a><button type="button" class="nge-todo-mini" aria-label="Remove link" @click="removeCardLink(openCard, i)">×</button></span>
+          <span v-for="(l, i) in openCard.links" :key="i" class="nge-todo-linkchip" :class="{ 'nge-todo-linkchip--gone': fileGone(l) }"><a :href="l.url" target="_blank" rel="noopener noreferrer" :title="fileGone(l) ? 'Files are deleted 7 days after they are added' : l.kind === 'file' ? 'Deleted 7 days after it was added' : l.url" @click="openLink($event, l)">{{ linkIcon(l) }} {{ linkWord(l) }}</a><button type="button" class="nge-todo-mini" aria-label="Remove link" @click="removeCardLink(openCard, i)">×</button></span>
         </div>
         <div v-if="linkDraft?.for === openCard.id" class="nge-todo-row nge-todo-linkform">
           <select v-model="linkDraft.kind" class="nge-todo-select" aria-label="Kind of link">
@@ -1928,7 +1951,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </div>
         <div v-else class="nge-todo-row nge-todo-linkadd" @dragover.prevent @drop="onLinksDrop($event, openCard)">
           <button type="button" class="nge-todo-btn nge-todo-add-btn" @click="linkDraft = { for: openCard.id, kind: '', url: '', label: '' }">＋ Link, like the test site</button>
-          <button type="button" class="nge-todo-btn nge-todo-add-btn" :disabled="!!fileBusy" title="Attach a file to this card, up to 7 MB. You can also drop files here." @click="pickFile(openCard)">{{ fileBusy ? 'Uploading…' : '📎 Attach a file' }}</button>
+          <button type="button" class="nge-todo-btn nge-todo-add-btn" :disabled="!!fileBusy" title="Attach a file to this card, up to 7 MB. You can also drop files here. Files are deleted after 7 days." @click="pickFile(openCard)">{{ fileBusy ? 'Uploading…' : '📎 Attach a file' }}</button>
         </div>
         <input ref="filePicker" type="file" multiple hidden @change="onFilePicked" />
 
@@ -2466,6 +2489,7 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-badge--building { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
 .nge-todo-live-btn { color: #5ee8a8; }
 .nge-todo-mine--on { border-color: var(--gold) !important; color: var(--gold); }
+.nge-todo-linkchip--gone, .nge-todo-linkchip--gone a { opacity: 0.55; text-decoration: line-through; cursor: default; }
 .nge-todo-search { font: inherit; font-size: 13px; width: 190px; padding: 5px 10px; border-radius: 8px;
   border: 1px solid rgba(120, 165, 255, 0.35); background: rgba(255, 255, 255, 0.06); color: inherit; outline: none; }
 .nge-todo-search:focus { border-color: rgba(120, 165, 255, 0.85); width: 240px; }
