@@ -634,7 +634,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     let prevCores: V3[] | null = null;
     let prevUp: V3 | null = null;
     let prevFwd: V3 | null = null;
-    let dockBend: V3 = [0, 0, 0];
+    let dockBend: V3 = [0, 0, 0], dockScale = 1;
     await new Promise<void>(done => {
       const step = (now: number) => {
         const dt = Math.min(0.05, (now - last) / 1000);
@@ -732,22 +732,27 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // a banked curve: out past the spot and swinging back round to it,
           // so it arrives nose first, facing the cell (Ames: it flew backwards)
           // (the swing stays on screen: Ames saw it leave the edge and come back)
-          // straight out toward the right wall, and about three quarters of
-          // the way there a long banked curve round, ending at its spot facing
-          // back into the view (Ames: "it turned around way too soon")
-          // and through depth: it swoops out toward the viewer as it banks
-          // round, then settles back into its spot (Ames: "a CURVE THROUGH 3D SPACE")
-          const wall = add(add(ctr, add(mul(cam.right, 0.95 * Wd / 2), mul(cam.up, dock.fy * H / 2 + H * 0.22))), mul(cam.toEye, H * 0.55));
+          // one smooth turn through 3D: it sets off to the right, then turns
+          // about 135 degrees, toward the viewer and to the left, arriving
+          // nose first in its parked pose (Ames: "it shouldn't go backwards
+          // -- it should turn ~135 degrees")
+          const poseDir = norm(add(add(mul(cam.right, -0.72), mul(cam.up, -0.22)), mul(cam.toEye, 0.62)));
           const B = (u: number): V3 => {
             if (!dock!.from) return target;
-            const q = add(mix(dock!.from, wall, 0.6), mul(cam.toEye, -H * 0.12));
-            const SPLIT = 0.5;
-            if (u < SPLIT) return mix(dock!.from, q, u / SPLIT);
-            const w2 = (u - SPLIT) / (1 - SPLIT);
-            return mix(mix(q, wall, w2), mix(wall, target, w2), w2);
+            const p0 = dock!.from, p3 = target;
+            // (the swing out stays on screen, wherever it starts)
+            const fromX = dot(sub(p0, ctr), cam.right);
+            const out = Math.max(Wd * 0.08, Math.min(Wd * 0.42, Wd * 0.46 - fromX));
+            // out and AWAY from the viewer first, then the turn brings it back
+            // toward them (Ames)
+            const p1 = add(p0, add(add(mul(cam.right, out * 0.75), mul(cam.up, H * 0.12)), mul(cam.toEye, -H * 1.1)));
+            const p2 = sub(p3, mul(poseDir, Wd * 0.75));
+            const a = 1 - u;
+            return add(add(mul(p0, a * a * a), mul(p1, 3 * a * a * u)), add(mul(p2, 3 * a * u * u), mul(p3, u * u * u)));
           };
           pos = dock.hold ? dock.hold.pos : B(dq);
           dockBend = sub(sub(B(Math.min(1, dq + 0.04)), pos), sub(pos, B(Math.max(0, dq - 0.04))));
+          dockScale = Wd;
           // nose on the way it is going, turning to face the cell only as it
           // arrives (Ames: it flew backwards)
           // the nose along the curve itself, from its very first moment (out
@@ -773,7 +778,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 20 : h && hq < 1 ? 16 : 6))));
         prevFwd = fwd;
         // banking: roll into the turn
-        let bend: V3 = dock ? mul(dockBend, 6) : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
+        let bend: V3 = dock ? [0, 0, 0] : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
         // a bank into the turns, about 25 degrees at most, not a steep lean the whole
         // way (Ames: "the entire ship seems to fly at like a 30 degree incline")
         const bl = Math.hypot(...bend) / 2500;
@@ -791,7 +796,21 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // its thin edge: Ames, "still going sideways at step 2")
         const ref = norm(add(mul(cam.up, (1 - vert) * 0.6), mul(cam.toEye, 0.8 + 0.2 * vert)));
         let up = norm(add(sub(ref, mul(fwd, dot(ref, fwd))), mul(bend, 1 / 2500)));
-        if (dock) up = norm(mix(up, norm(add(mul(cam.toEye, 0.75), mul(cam.up, 0.66))), smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
+        // on its way to a parked spot it banks hard into the turn, rolling its
+        // top toward the turn's centre like a plane, up to about 70 degrees,
+        // and levels out as it arrives (Ames: "it needs to BANK on its side")
+        if (dock && dock.from && !dock.hold) {
+          const dqq = smooth((now - dock.start) / dockMs);
+          const bp = sub(dockBend, mul(fwd, dot(dockBend, fwd)));
+          const bl2 = Math.hypot(...bp);
+          if (bl2 > 1e-6 && dqq < 1) {
+            // (none as it sets off: the curve's ends read as a bend there)
+            const ang = Math.min(1, bl2 / (0.003 * dockScale)) * 1.22 * (1 - smooth((dqq - 0.8) / 0.18)) * smooth(dqq / 0.1);
+            const lvl = norm(sub(up, mul(fwd, dot(up, fwd))));
+            up = norm(add(mul(lvl, Math.cos(ang)), mul(bp, Math.sin(ang) / bl2)));
+          }
+        }
+        if (dock) up = norm(mix(up, norm(add(mul(cam.toEye, 0.75), mul(cam.up, 0.66))), smooth(((now - dock.start) / dockMs - 0.8) / 0.2)));
         // the landing: level onto the pad, nose kept flat to it
         const land = h || dock ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
         if (land > 0) {

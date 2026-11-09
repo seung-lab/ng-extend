@@ -20,7 +20,7 @@
  * panel), or with ?starship in the address, or from the rocket.
  */
 import {watch} from 'vue';
-import {getNgeMeshTint, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
+import {getNgeMeshTint, setNgeMeshTint, setNgeReveal, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
@@ -73,14 +73,14 @@ const BEATS: Beat[] = [
   {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
     body: "The neuron's long, thin cable. It carries the cell's own signal out to other cells."},
   {key: 'synapse', part: 3, header: 'Synapse', view: {at: 'synapse', nm: 40_000},
-    body: 'The connection where two neurons meet and communicate. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our {axon:axon} passes its signal to the next neuron.'},
+    body: 'The connection where two neurons meet and communicate. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our {axon:axon} passes its signal to {down:the dendrite of a downstream cell}.'},
   {key: 'allsyn', header: 'All its synapses', view: {at: 'cell', nm: 230_000},
     body: 'Each dot is a synapse. This cell receives {in:3,386 connections} from upstream cells, and the axon contained in this volume has {out:59 outgoing connections}.'},
   {key: 'synapse2', header: 'Signals come in', part: 2, view: {at: 'synapse2', nm: 30_000},
     body: 'Out here near the tip of a {dendrite:dendrite}, {nbr:another neuron\u2019s axon} passes its signal in at a **synapse**, the glow. Thousands of inputs like this one add up, and when enough arrive together, the cell fires.'},
   {key: 'spike', header: 'Action potential', part: 3, view: {at: 'cell', nm: 220_000},
-    body: 'A signal comes in along {nbr:the neighbor\u2019s axon}, crosses the **synapse** and runs down the {dendrite:dendrite} to the {soma:soma}. When enough arrive, the cell fires an action potential, a quick electric pulse that races out along its {axon:axon} to the next cell. It lasts about 1 ms (a blink takes 300 times longer) and travels up to 100 m/s, about 220 mph. Here it is slowed down about 5,000 times.'},
-  {key: 'connectome', header: 'Connectome', view: {at: 'cell', nm: 260_000},
+    body: 'A signal comes in along {nbr:the neighbor\u2019s axon}, crosses the **synapse** and runs down the {dendrite:dendrite} to the {cellbody:soma}. When enough arrive, the cell fires an action potential, a quick electric pulse that races out along its {axon:axon} to {down:the next cell}. It lasts about 1 ms (a blink takes 300 times longer) and travels up to 100 m/s, about 220 mph. Here it is slowed down about 5,000 times.'},
+  {key: 'connectome', header: 'Connectome', view: {at: 'cell', nm: 340_000},
     body: 'A wiring diagram of the brain that includes all the cells and all the synapses is called a **connectome**. With it, scientists can follow how signals flow, to learn how we see, remember and think, and what goes wrong in brain disorders. This map doesn’t exist for a mammalian brain yet, but we’re getting closer thanks to people like you playing Pyr.'},
 ];
 
@@ -246,6 +246,25 @@ function aboveSynapse(t: Tour, viewNm: number): number[] {
   return t.anchors.synapse.map((v, i) => v + up[i] * k + (cam ? cam.toEye[i] * 7000 : 0));
 }
 
+/** A cell drawn out from a point (nm) with a bright growing edge. */
+let growRaf = 0;
+function growPartner(id: string, at: number[]) {
+  const nm = nmPerUnit();
+  if (!nm) return;
+  cancelAnimationFrame(growRaf);
+  const only = getObjectKey(Uint64.parseString(id));
+  const center: [number, number, number] = [at[0] / nm[0], at[1] / nm[1], at[2] / nm[2]];
+  const t0 = performance.now(), MS = 2600, FAR = 260_000;
+  setNgeReveal({only, center, radiusNm: 0, edgeNm: 5000});
+  const step = (now: number) => {
+    const q = Math.min(1, (now - t0 - 500) / MS), e = q <= 0 ? 0 : 1 - Math.pow(1 - q, 2.2);
+    setNgeReveal({only, center, radiusNm: 1500 + FAR * e, edgeNm: 5000 + 8000 * e});
+    try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    if (q < 1) growRaf = requestAnimationFrame(step); else setNgeReveal(null);
+  };
+  growRaf = requestAnimationFrame(step);
+}
+
 /* ── partner cells ── */
 function sandboxLayer(): any {
   return (viewerNow()?.layerManager?.managedLayers ?? []).find((m: any) => !m?.archived &&
@@ -268,6 +287,46 @@ function hideCell(id: string) {
   if (k < 0 || !ml) return;
   try { ml.layer.displayState.segmentationGroupState.value.visibleSegments.delete(Uint64.parseString(id)); added.splice(k, 1); }
   catch (e) { console.warn('[intro] could not hide', id, e); }
+}
+
+/** Cells with their somas in the Sandbox volume (the cell library's,
+ *  Ames 2026-11-09: "load more cells here so the volume looks more full").
+ *  For the connectome step they arrive one after another, in quiet colors so
+ *  our cell still stands out. */
+const VOLUME_CELLS = [
+  '648518346352507922', '648518346355322263', '648518346354165433', '648518346350877093',
+  '648518346350988923', '648518346350640640', '648518346351215569', '648518346352237675',
+  '648518346350824006', '648518346351633806', '648518346352427106', '648518346351101005',
+  '648518346351592104', '648518346351351729', '648518346351358001', '648518346350422378',
+  '648518346352305197', '648518346353288383', '648518346352102495', '648518346352001726',
+  '648518346353842757', '648518346350456854', '648518346354881654', '648518346352732923',
+  '648518346352663201', '648518346351571908', '648518346351443744', '648518346352663969',
+  '648518346353109430', '648518346353487295', '648518346353362973', '648518346352484298',
+  '648518346351955836', '648518346355028388', '648518346352907351', '648518346354796198',
+  '648518346351683171', '648518346351955068', '648518346351320490', '648518346353297649',
+  '648518346352484042', '648518346351104593', '648518346351129042', '648518346352616414',
+  '648518346352244989', '648518346351984062', '648518346353708822', '648518346353209786',
+  '648518346351964146', '648518346351983706', '648518346352737559', '648518346353863286',
+  '648518346354547062', '648518346356482371', '648518346354880630', '648518346353298623',
+  '648518346353614270', '648518346354828966', '648518346352663457', '648518346351955324',
+  '648518346352170608',
+];
+const VOLUME_TINTS = [0x5b6b8c, 0x6f6390, 0x4f7a86, 0x7a6a85, 0x5f7f9a, 0x6b7f6e, 0x8a7266, 0x56708f];
+let crowdTimer = 0;
+function fillVolume() {
+  clearTimeout(crowdTimer);
+  let k = 0;
+  const next = () => {
+    if (!active || k >= VOLUME_CELLS.length) return;
+    showCell(VOLUME_CELLS[k], VOLUME_TINTS[k % VOLUME_TINTS.length]);
+    k++;
+    crowdTimer = window.setTimeout(next, 260);
+  };
+  crowdTimer = window.setTimeout(next, 900);
+}
+function emptyVolume() {
+  clearTimeout(crowdTimer);
+  for (const id of VOLUME_CELLS) hideCell(id);
 }
 
 /* ── every synapse on the cell, twinkling in ── */
@@ -791,6 +850,8 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
 .nge-w-in { color: #ffd24d; font-weight: 600; }
 .nge-w-nbr { color: #7aa2ff; font-weight: 600; }
 .nge-w-out { color: #ff5fd2; font-weight: 600; }
+.nge-w-down { color: #ffa64d; font-weight: 600; }
+.nge-w-cellbody { color: #a98bff; font-weight: 600; }
 @keyframes nge-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
 @keyframes nge-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 0.95; } 99% { opacity: 0.7; } }
 .nge-stat-ic { width: 16px; height: 12px; vertical-align: -2px; margin-right: 6px; }
@@ -1307,9 +1368,14 @@ export async function startIntroTour() {
       shipAt = want;
       setTimeout(() => { if (active) moveShip(prev, want, camDelay - shipDelay); }, shipDelay);
     }
-    if (b.key === 'synapse') { showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse); }
+    if (b.key === 'synapse') {
+      // the downstream cell grows out from the synapse, not just appearing (Ames)
+      if (from < n) growPartner(t.synapsePartner, t.anchors.synapse);
+      showCell(t.synapsePartner, PARTNER_COLOR); runPulse(t.anchors.synapse);
+    }
     if (b.key === 'synapse2') { showCell(t.syn2Partner, SYN2_COLOR); runPulse(t.anchors.synapse2, [1, 0.86, 0.45]); }
     if (b.key === 'allsyn' || b.key === 'connectome') runAllSynapses(t);
+    if (b.key === 'connectome') fillVolume(); else emptyVolume();
     if (b.key === 'spike') runSpark(t);
     if (b.callout) setTimeout(() => { if (active && i === n) showCallout(t.anchors[b.callout!.anchor], b.callout!.title, b.callout!.stats, b.key === 'neuron' ? '#4f8cff' : ANCHOR_HEX[b.callout!.anchor], b.key === 'soma' || b.key === 'synapse', b.key !== 'neuron'); }, shipDelay + 900);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
