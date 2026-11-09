@@ -784,6 +784,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
    (Ames 2026-11-09) */
 body.nge-intro-on #extensionBar > :not(.ng-extend-logo), body.nge-intro-on .neuroglancer-layer-panel,
 body.nge-intro-on .nge-mobile-nav, body.nge-intro-on [title^="Switch to"], body.nge-intro-on #statusContainer,
+body.nge-intro-on .neuroglancer-data-panel-layout-controls,
 body.nge-intro-on .nge-stt-tab { display: none !important; }
 body.nge-intro-on #extensionBar { background: transparent !important; border: 0 !important; box-shadow: none !important; }
 @media (max-width: 820px) {
