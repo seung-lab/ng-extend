@@ -33,6 +33,8 @@ import { huntNoteNow } from '../hunt';
 import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
 import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
+import { showTourInvite } from '../util/intro_tour';
+import starshipIcon from '../images/starship-icon.png';
 import { leavesSeason, toggleLeaves, leavesHidden } from '../util/leaves';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
@@ -1898,9 +1900,11 @@ function toggleCollapse() {
                  the turkey on and off, grey while off, as the pumpkin's is. -->
             <button v-if="showTurkeyBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: turkeyHidden() }"
                     @mousedown.prevent @click.stop="toggleTurkey()" :title="turkeyTitle()" :aria-label="turkeyTitle()">🦃</button>
-            <!-- The leaf button (Ames 2026-11-04), in the fall: leaves off and on. -->
-            <button v-if="showLeavesBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: leavesHidden() }"
-                    @mousedown.prevent @click.stop="toggleLeaves()" :title="leavesTitle()" :aria-label="leavesTitle()">🍁</button>
+            <!-- The rocket (Ames 2026-11-08), where the leaf button was: the
+                 prototype new player tour, to try and give feedback on.
+                 (Falling leaves stay on and off in Settings.) -->
+            <button class="nge-chat-share-btn nge-chat-pumpkin-btn" @mousedown.prevent @click.stop="showTourInvite()"
+                    title="Try the new tour of Pyr" aria-label="Try the new tour of Pyr"><img :src="starshipIcon" alt="" class="nge-chat-ship-ic" /></button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
@@ -2847,6 +2851,7 @@ function toggleCollapse() {
 .nge-chat-share > .nge-chat-share-btn { display: flex; align-items: center; justify-content: center; padding: 0; }
 .nge-chat-share-btn:disabled { opacity: 0.4; cursor: default; }.nge-chat-emoji { position: relative; flex: 0 0 auto; margin-left: 4px; }
 .nge-chat-pumpkin-btn { flex: 0 0 auto; margin-left: 4px; display: flex; align-items: center; justify-content: center; padding: 0; }
+.nge-chat-ship-ic { width: 18px; height: 18px; object-fit: contain; filter: drop-shadow(0 0 4px rgba(110, 200, 255, 0.6)); }
 .nge-chat-pumpkin-btn.off { filter: grayscale(1); opacity: 0.55; }
 .nge-chat-emoji-grid {
   position: fixed;

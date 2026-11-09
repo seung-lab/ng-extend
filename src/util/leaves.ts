@@ -27,6 +27,7 @@ import { useUserPreferencesStore } from '../store';
 import { isCalm } from './calm';
 import { fallSeason } from './season';
 import { AUTUMN, leafShapes, leafVein, pick } from './leaf_shapes';
+import {IS_LIVE_SITE} from './toolbar_staging';
 
 // Every five to ten minutes (Ames 2026-11-04).
 const FIRST_MS = [25_000, 50_000], EVERY_MS = [5 * 60_000, 10 * 60_000];
@@ -274,7 +275,8 @@ function schedule(range: number[]) {
 
 let started = false;
 export function startLeaves() {
-  if (started || !leavesSeason()) return;
+  // Test sites go without them, so the intro tests stay clear (Ames 2026-11-08).
+  if (started || !leavesSeason() || !IS_LIVE_SITE) return;
   started = true;
   schedule(FIRST_MS);
 }

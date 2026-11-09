@@ -13,6 +13,14 @@ import { getToolbarIconDef, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder } from '.
 import { useUserPreferencesStore } from '../store';
 import { useTutorialStore } from '../store-pyr';
 import { IS_LIVE_SITE } from '../util/toolbar_staging';
+import { FLIGHT_SVG } from '../data/toolbar-icons';
+import { playIntro, jumpToIntroChoice, replayMicronsJump } from '../util/intro_tour';
+
+/** The new player intro's Starship, launched by hand (Ames 2026-11-07: "give
+ *  me a rocket ship icon"), for testing on a phone where there is no palette. */
+function launchShip() {
+  playIntro();
+}
 import { steps as advancedSteps } from '../tutorial-2';
 import { steps as mergeSteps } from '../tutorial-3';
 import { steps as cutSteps } from '../tutorial-cut';
@@ -21,6 +29,10 @@ import { extensionSteps } from '../extension-sandbox';
 import { steps as testSteps } from '../proofreading-test';
 
 const OPEN_KEY = 'nge-staging-panel-open';
+// EyeWire Radio from here, for a phone, where its own control is hidden
+const musicOn = ref(false);
+window.addEventListener('nge-radio-state', (e: Event) => { musicOn.value = !!(e as CustomEvent).detail; });
+function toggleMusic() { window.dispatchEvent(new Event('nge-radio-toggle')); }
 let wasOpen = true;
 try { wasOpen = localStorage.getItem(OPEN_KEY) !== '0'; } catch { /* no storage */ }
 const open = ref(wasOpen);
@@ -149,15 +161,22 @@ function resetTutorials() {
 </script>
 
 <template>
-  <button v-if="!open" class="ng-extend nge-stt-tab" @click="setOpen(true)" title="Staging test: step through a new player's first days">
-    Staging test<span v-if="simulating" class="nge-stt-dot" aria-label="pretend new player is on"></span>
-  </button>
-  <aside v-else class="ng-extend nge-stt" aria-label="Staging test">
+  <div v-if="!open" class="ng-extend nge-stt-dock">
+    <button class="nge-stt-tab" @click="setOpen(true)" title="Intro test: see the new player intro">
+      Intro test<span v-if="simulating" class="nge-stt-dot" aria-label="pretend new player is on"></span>
+    </button>
+    <button class="nge-stt-tab nge-stt-rocket" @click="launchShip" title="Play the new player intro" aria-label="Fly the Axon Runner" v-html="FLIGHT_SVG"></button>
+  </div>
+  <aside v-else class="ng-extend nge-stt" aria-label="Intro test">
     <header class="nge-stt-head">
-      <span class="nge-stt-title">Staging test</span>
+      <span class="nge-stt-title">Intro test</span>
       <button class="nge-stt-x" @click="setOpen(false)" title="Fold away" aria-label="Fold away">×</button>
     </header>
-    <p class="nge-stt-note">{{ IS_LIVE_SITE ? 'Admins only.' : 'Test site only.' }} Pretend to be a brand new player and step through their first days. Nothing here is saved to your account, except Reset my tutorials.</p>
+    <p class="nge-stt-note">{{ IS_LIVE_SITE ? 'Admins only.' : 'Test site only.' }} The new player intro, as it is built. Pretend to be a brand new player and it plays when the page opens; the rocket flies it again any time. Nothing here is saved to your account, except Reset my tutorials.</p>
+    <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchShip"><span class="nge-stt-rocket-ic" v-html="FLIGHT_SVG"></span> Play the intro</button>
+    <button class="nge-hud-btn nge-stt-launch" @click="jumpToIntroChoice">Jump to Choose your next adventure</button>
+    <button class="nge-hud-btn nge-stt-launch" @click="replayMicronsJump">Replay the warp to MICrONS</button>
+    <button class="nge-hud-btn nge-stt-launch" @click="toggleMusic">{{ musicOn ? 'Turn the music off' : 'Turn the music on' }}</button>
     <label class="nge-stt-switch">
       <input id="nge-stt-sim" type="checkbox" :checked="simulating" @change="toggleSim" />
       <span>Pretend I am a new player</span>
@@ -166,53 +185,15 @@ function resetTutorials() {
     <button id="nge-stt-reset-tut" class="nge-hud-btn nge-hud-btn--quiet nge-stt-reset" @click="resetTutorials">{{ resetAsk ? 'Click again to reset every tutorial' : 'Reset my tutorials' }}</button>
     <p v-if="resetDone" class="nge-stt-note nge-stt-reset-done">Tutorials reset. Get Started is open, and you are a brand new player again.</p>
 
-    <template v-if="simulating">
-      <div class="nge-stt-actions">
-        <button class="nge-hud-btn nge-hud-btn--go" :disabled="!nextMoment" @click="stepNext">
-          {{ nextMoment ? 'Next: ' + nextMoment.label : 'All moments done' }}
-        </button>
-        <button class="nge-hud-btn nge-hud-btn--quiet" :disabled="!lastStep" :title="lastStep ? 'Undo: ' + lastStep : 'Nothing to undo'" @click="back">‹ Back</button>
-        <button class="nge-hud-btn nge-hud-btn--quiet" @click="startOver">Start over</button>
-        <button id="nge-stt-check" class="nge-hud-btn nge-hud-btn--quiet" :disabled="checking" @click="runCheck">{{ checking ? 'Checking...' : 'Run the check' }}</button>
-      </div>
-      <div v-if="results.length" class="nge-stt-results" :class="problems ? 'nge-stt-results--bad' : 'nge-stt-results--ok'">
-        <div class="nge-stt-verdict">{{ problems ? `${problems} problem${problems === 1 ? '' : 's'} found` : `All ${results.length} checks passed` }}</div>
-        <ul>
-          <li v-for="(r, i) in results" :key="i" :class="{ 'nge-stt-fail': !r.ok }"><span class="nge-stt-mark">{{ r.ok ? '✓' : '✗' }}</span>{{ r.text }}</li>
-        </ul>
-        <button class="nge-stt-step" @click="results = []">Hide</button>
-      </div>
-
-      <p v-if="lastStep" class="nge-stt-note">Back undoes: {{ lastStep }}</p>
-      <ol class="nge-stt-list">
-        <li class="nge-stt-row nge-stt-row--done">
-          <span class="nge-stt-mark">✓</span>
-          <span class="nge-stt-label">First visit</span>
-          <span class="nge-stt-icons"><span class="nge-stt-ic" v-html="def('notif')?.svg"></span></span>
-        </li>
-        <li v-for="m in moments" :key="m.key" class="nge-stt-row" :class="{ 'nge-stt-row--done': isDone(m.key) }">
-          <span class="nge-stt-mark">{{ isDone(m.key) ? '✓' : '' }}</span>
-          <span class="nge-stt-label">{{ m.label }}<span v-if="FILLS_IN.includes(m.key)" class="nge-stt-fill">and anything skipped so far</span></span>
-          <span class="nge-stt-icons">
-            <span v-for="id in newIcons[m.key]" :key="id" class="nge-stt-ic" :title="def(id)?.label" v-html="def(id)?.svg"></span>
-          </span>
-          <button v-if="!isDone(m.key)" class="nge-stt-step" @click="step(m.key)">Step</button>
-        </li>
-      </ol>
-
-      <div class="nge-stt-sub">Still on the way ({{ waiting.length }})</div>
-      <div class="nge-stt-icons nge-stt-waiting">
-        <span v-for="id in waiting" :key="id" class="nge-stt-ic" :title="def(id)?.label" v-html="def(id)?.svg"></span>
-        <span v-if="!waiting.length" class="nge-stt-none">Nothing. The top bar is complete.</span>
-      </div>
-      <p class="nge-stt-note">Dataset Stats and Batch never arrive by themselves; Settings turns them on. Playing a real tutorial step also brings its icon in. Run the check walks every moment on its own and puts your place back after. Finishing Get Started for real starts the Merge tutorial; the Step button only brings the icons.</p>
-    </template>
+    <!-- The top bar staging steps that lived here are shipped (Ames
+         2026-11-07: "I've already deployed the buttons"); this panel now
+         tests the new player intro. -->
   </aside>
 </template>
 
 <style scoped>
+.nge-stt-dock { position: fixed; left: 12px; bottom: 56px; z-index: 140; display: flex; gap: 8px; }
 .nge-stt-tab {
-  position: fixed; left: 12px; bottom: 56px; z-index: 140;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 7px 12px; border-radius: 8px;
   border: 1px solid rgba(74, 150, 224, 0.45);
@@ -220,6 +201,9 @@ function resetTutorials() {
   font: 600 12px 'Roboto', 'Inter', sans-serif; letter-spacing: 0.04em; cursor: pointer;
 }
 .nge-stt-tab:focus-visible, .nge-stt-x:focus-visible, .nge-stt-step:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; }
+.nge-stt-rocket { padding: 7px 10px; font-size: 16px; }
+.nge-stt-rocket :deep(svg), .nge-stt-rocket-ic :deep(svg) { color: #7ecaff !important; }
+.nge-stt-launch { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
 .nge-stt-dot { width: 8px; height: 8px; border-radius: 50%; background: #7cffb2; }
 .nge-stt {
   position: fixed; left: 12px; top: 58px; z-index: 140;
