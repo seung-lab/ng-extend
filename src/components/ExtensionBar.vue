@@ -885,6 +885,13 @@ const { tutorialStep } = storeToRefs(useTutorialStore());
 function logout(session: loginSession) {
   login.logout(session);
 }
+// Hamburger "Log out": drops every saved sign-in, then reloads so nothing
+// from the old account stays on screen.
+async function logOutAll() {
+  closeHamburger();
+  for (const s of [...login.sessions]) await login.logout(s);
+  window.location.reload();
+}
 
 // ── Toolbar icon definitions ──────────────────────────────────
 interface ToolbarIcon {
@@ -1610,6 +1617,12 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <li>
           <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
+          </div>
+        </li>
+        <!-- Log out, last in the menu (Ames 2026-11-09). -->
+        <li v-if="login.sessions.length > 0" class="nge-menu-logout">
+          <div class="logoutButton button nge-menu-item" @click="logOutAll()">
+            <span class="nge-menu-num nge-menu-num--icon">🚪</span><span>Log out</span>
           </div>
         </li>
       </template>
@@ -2699,6 +2712,10 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 }
 #hamburger li.nge-menu-heading:hover { background: none; }
 #hamburger li.nge-menu-heading:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#hamburger li.nge-menu-logout {
   margin-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
