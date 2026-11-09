@@ -14,7 +14,7 @@ import { ngeGrapheneLayerToGlobal } from 'neuroglancer/datasource/graphene/front
 import { secureWrite } from './secure_write';
 import { mintShortStateLink } from './util/state_link';
 import { currentSegLayer, currentDatasetTag } from './datasets';
-import { setStateRewriter, useLayersStore } from './store';
+import { setStateRewriter, useLayersStore, useProofreadingBackendStore } from './store';
 
 export type AccessKind = 'cut' | 'merge';
 export const ACCESS_SLOTS: Record<AccessKind, number> = { cut: 7, merge: 3 };
@@ -217,7 +217,11 @@ export async function reviewAccessItem(itemId: number, patch: { verdict?: 'good'
 }
 
 export async function decideAccess(requestId: number, outcome: 'redo' | 'invited', note: string, byHand = false) {
-  return secureWrite<AccessRequest & { redos: number; pilot_added: boolean; cave_granted: boolean }>('access.decide', { requestId, outcome, note, ...(byHand ? { byHand: true } : {}) });
+  const out = await secureWrite<AccessRequest & { redos: number; pilot_added: boolean; cave_granted: boolean }>('access.decide', { requestId, outcome, note, ...(byHand ? { byHand: true } : {}) });
+  // Grant marked this player's request bells read on the server (Ames
+  // 2026-11-06): read the bell again so this admin's clears now too.
+  if (outcome === 'invited') { try { void useProofreadingBackendStore().loadNotifications(); } catch { /* next load */ } }
+  return out;
 }
 
 /** Admins: delete a request and its examples (no id: your own), so it can
