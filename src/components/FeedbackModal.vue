@@ -119,9 +119,25 @@ const showScreenshotDialog = ref(false);
 function onScreenshotAttached(payload: { url: string }) {
   screenshotUrl.value = payload.url;
   error.value = '';
+  if (settingUp.value) endSetup();
 }
 function clearScreenshot() {
   screenshotUrl.value = '';
+}
+// ── Set up the screen first (Celia #446, Ames 2026-11-09) ──
+// The form steps out of the way and a small bar waits at the top of the
+// screen. Open whatever the picture should show (Profile, Settings, the Admin
+// Hub...), then press Take screenshot: the picture is the whole screen, and
+// the form comes back with it attached. Back returns without one.
+const settingUp = ref(false);
+const shotWhole = ref(false);
+function startSetup() { settingUp.value = true; }
+function takeSetupShot() { shotWhole.value = true; showScreenshotDialog.value = true; }
+function endSetup() { settingUp.value = false; shotWhole.value = false; }
+// A cancelled picture leaves the bar up, to try again or go Back.
+function onShotClosed() {
+  showScreenshotDialog.value = false;
+  shotWhole.value = false;
 }
 
 function currentDataset(): string {
@@ -436,7 +452,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" @hide="outsideClick">
+  <Teleport to="body">
+    <div v-if="settingUp" class="nge-fb-setup-bar" role="toolbar" aria-label="Screenshot setup">
+      <span class="nge-fb-setup-text">Set up the screen, then</span>
+      <button class="nge-fb-setup-go" type="button" @click="takeSetupShot">📸 Take screenshot</button>
+      <button class="nge-fb-setup-back" type="button" @click="endSetup">Back to report</button>
+    </div>
+  </Teleport>
+  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" :class="{ 'nge-fb-hidden': settingUp }" @hide="outsideClick">
     <div class="nge-fb-shell">
       <canvas ref="fxCanvas" class="nge-fb-fx" aria-hidden="true"></canvas>
       <button class="nge-fb-exit" @click="emit('hide')">×</button>
@@ -449,7 +472,9 @@ onBeforeUnmount(() => {
         <ScreenshotDialog
           :show="showScreenshotDialog"
           mode="attach"
-          @close="showScreenshotDialog = false"
+          :whole-screen-now="shotWhole"
+          hide-opener=".nge-fb-setup-bar"
+          @close="onShotClosed"
           @attached="onScreenshotAttached"
         />
       </Teleport>
@@ -536,6 +561,9 @@ onBeforeUnmount(() => {
             </svg>
             <span>Screenshot</span>
           </button>
+          <button v-if="!screenshotUrl" class="nge-fb-setup-link" type="button" :disabled="sending"
+                  title="Close this for a moment, open what the picture should show (Profile, Settings...), then take it"
+                  @click="startSetup">or set up the screen first</button>
           <div v-else class="nge-fb-shot-preview">
             <a :href="screenshotUrl" target="_blank" rel="noopener" title="Open full size">
               <img :src="screenshotUrl" alt="Attached screenshot" />
@@ -698,6 +726,31 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 .nge-fb-shot-btn:disabled { opacity: 0.5; cursor: default; }
+.nge-fb-setup-link {
+  margin-left: 10px; padding: 0; border: none; background: none; cursor: pointer;
+  font-size: 0.8em; color: #8fa0c8; text-decoration: underline; text-underline-offset: 3px;
+}
+.nge-fb-setup-link:hover:not(:disabled) { color: #c8d4ff; }
+/* While the screen is set up, the form (and its dim backdrop) steps aside. */
+.nge-feedback-modal.nge-fb-hidden { display: none; }
+.nge-fb-setup-bar {
+  position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 2147483000;
+  display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px;
+  background: rgba(8, 14, 28, 0.94); border: 1px solid rgba(120, 150, 255, 0.45); border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(90, 130, 255, 0.25);
+  font: 13px 'Inter', sans-serif; color: #c8d4f0; animation: nge-fb-setup-in 0.25s ease-out;
+}
+@keyframes nge-fb-setup-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+.nge-fb-setup-go {
+  padding: 6px 14px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(90, 130, 255, 0.95); color: #fff; font-weight: 600; font-size: 13px;
+}
+.nge-fb-setup-go:hover { background: rgba(110, 150, 255, 1); }
+.nge-fb-setup-back {
+  padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 12px;
+  background: none; color: #99a6c4; border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.nge-fb-setup-back:hover { color: #dde4f5; border-color: rgba(255, 255, 255, 0.3); }
 .nge-fb-shot-preview {
   position: relative;
   display: inline-block;
