@@ -411,8 +411,10 @@ function placePortalArt(nm: V3, right: V3, c: V3, R: number, open: number, shut:
     // (screen - centre) / scale + half its size in the ring's own box)
     const kk = Math.max(k, 0.01);
     const mx = (shipScreen.x - a[0]) / kk + w / 2, my = (shipScreen.y - a[1]) / kk + w * 0.4570;
-    const rr = shipScreen.r * 1.25 / kk;
-    const m = `radial-gradient(circle at ${mx.toFixed(1)}px ${my.toFixed(1)}px, transparent ${rr.toFixed(1)}px, #000 ${(rr + 4 / kk).toFixed(1)}px)`;
+    // a soft window that hugs the ship, the swirl fading into its edges (a
+    // hard one showed as a black circle round the ship: Ames)
+    const rr = shipScreen.r / kk;
+    const m = `radial-gradient(circle at ${mx.toFixed(1)}px ${my.toFixed(1)}px, rgba(0,0,0,0) ${(rr * 0.45).toFixed(1)}px, rgba(0,0,0,0.45) ${(rr * 0.8).toFixed(1)}px, #000 ${(rr * 1.15).toFixed(1)}px)`;
     portalArt.style.setProperty('mask-image', m); portalArt.style.setProperty('-webkit-mask-image', m);
   } else { portalArt.style.removeProperty('mask-image'); portalArt.style.removeProperty('-webkit-mask-image'); }
   portalArt.style.transform = `translate(${(a[0] - w / 2).toFixed(1)}px, ${(a[1] - w * 0.4570 ).toFixed(1)}px) scale(${k.toFixed(3)}) rotate(${(shut * 140).toFixed(1)}deg)`;
