@@ -1975,7 +1975,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   // partners counted from the public synapse table (v1300): the distinct
   // cells on the other side of its synapses (some are pieces still being traced)
   const scanStats: [string, string][] = [['Input', '6,363 synapses'], ['Output', '8,110 synapses'], ['Cells it hears from', '5,195'], ['Cells it sends to', '3,660']];
-  const listText = 'Every dot is a synapse: {in:gold} ones bring signals in, {out:pink} ones carry its signal out. It connects with about 8,700 cells. Want to meet a few? These are some of the cells it shares the most synapses with. Tap one to visit it.';
+  const listText = 'Every dot is a synapse. It connects with about 8,700 cells. Want to meet a few? These are some of the cells it shares the most synapses with. Tap one to visit it.';
   const overview = (scan = true) => {
     const my = ++token;
     stopZap(); hideCallout(); synapseMarks(null);
