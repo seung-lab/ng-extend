@@ -318,7 +318,7 @@ function fillVolume() {
   clearTimeout(crowdTimer);
   let k = 0;
   const next = () => {
-    if (!active || k >= VOLUME_CELLS.length) return;
+    if (!active || k >= (isPhone() ? Math.min(14, VOLUME_CELLS.length) : VOLUME_CELLS.length)) return;
     showCell(VOLUME_CELLS[k], VOLUME_TINTS[k % VOLUME_TINTS.length]);
     k++;
     crowdTimer = window.setTimeout(next, 260);
@@ -820,6 +820,8 @@ body.nge-intro-on #extensionBar { background: transparent !important; border: 0 
   .nge-tour-loading-sub { padding: 0 16px; text-align: center; }
   .nge-intro .nge-intro-row { flex-wrap: wrap; row-gap: 10px; }
   .nge-intro .nge-intro-row .nge-go { flex: 1 1 auto; justify-content: center; letter-spacing: 0.16em; }
+  /* long labels kept tight, not spread across the whole key (Ames: "weird spacing") */
+  .nge-intro .nge-intro-row .nge-go .nge-go-label { letter-spacing: 0.14em; justify-content: center; }
   /* the wide Next key's circuit trace ran through the back arrow (Ames) */
   .nge-intro .nge-intro-row .nge-go::before { display: none; }
   .nge-intro .nge-intro-row .nge-back { width: 40px; height: 40px; margin-right: 4px; color: rgba(126, 224, 255, 0.85); }
@@ -1627,6 +1629,13 @@ export async function startIntroTour() {
 let pendingStart: string | null = null;
 /** For testing (the Intro test panel): straight to "Choose your next
  *  adventure", with the ship already down. */
+/** Testing: the warp to MICrONS again, from wherever you are. */
+export function replayMicronsJump() {
+  endTour(); stopZap(); clearStarship(); stopAllSynapses();
+  document.querySelectorAll('section.nge-intro').forEach(e => e.remove());
+  cardsOpen = 0;
+  void exploreBiggerNeuron();
+}
 export function jumpToIntroChoice() {
   endTour();
   clearStarship();
@@ -1694,8 +1703,11 @@ const BIG_NEURON = '864691135212863360';
 const BIG_NEURON_NM: V3 = [1070976, 819008, 1007600];
 /** A transmission card on its own (for MICrONS): the panel's look, a title,
  *  words, stats and buttons. Returns a way to change it and to close it. */
+let cardsOpen = 0;
 function transmissionCard() {
   ensureStyle();
+  cardsOpen++;
+  document.body.classList.add('nge-intro-on', 'nge-intro-mc');
   const card = document.createElement('section');
   card.className = 'ng-extend nge-intro' + (window.innerWidth < 700 ? ' nge-intro--phone' : '');
   card.setAttribute('role', 'dialog');
@@ -1714,7 +1726,11 @@ function transmissionCard() {
   const redrawFrame = () => { const w = card.offsetWidth, h = card.offsetHeight; if (w && h && (w !== fw || h !== fh)) { fw = w; fh = h; frameHost.innerHTML = frameSvg(w, h, 18); } };
   try { new ResizeObserver(redrawFrame).observe(card); } catch { /* drawn on each set */ }
   requestAnimationFrame(() => card.classList.add('nge-intro--in'));
-  const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
+  let closed = false;
+  const close = () => {
+    card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450);
+    if (!closed) { closed = true; cardsOpen = Math.max(0, cardsOpen - 1); if (!cardsOpen) { document.body.classList.remove('nge-intro-mc'); if (!active) document.body.classList.remove('nge-intro-on'); } }
+  };
   // no X here: its button is the way back from MICrONS (Ames)
   const set = (title: string, body: string, stats: [string, string][] = [], button?: {label: string; go: () => void; keep?: boolean}, keyHtml = '',
     extra: {alt?: {label: string; go: () => void}; back?: () => void; hint?: boolean} = {}) => {
@@ -1811,7 +1827,7 @@ function showMartinotti(card: ReturnType<typeof transmissionCard>, ml: any) {
   } catch { /* leave it */ }
   const nm = nmPerUnit();
   card.set('A Martinotti cell',
-    'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Proofreaders traced every branch of its axon, which climbs toward the surface of the brain and touches thousands of cells. Spin it around!',
+    'Unlike our pyramidal neuron, this one is inhibitory: its signals tell other cells to quiet down. Spin it around!',
     [], {label: 'Show its connections', keep: true, go: () => void showConnections(card, ml)}, '', {hint: true});
   // its stats are a hologram from the Axon Runner (Ames)
   showCallout(BIG_NEURON_NM as unknown as V3, 'Martinotti cell',
