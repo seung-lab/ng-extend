@@ -431,16 +431,16 @@ function ensureStyle() {
    build in (a light runs the border, the plate resolves out of a blur, a
    scan line passes down it). */
 @property --nge-ring { syntax: '<angle>'; inherits: false; initial-value: 45deg; }
-.nge-intro { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 0); z-index: 9500; isolation: isolate;
+.nge-intro { position: fixed; left: 0; right: 0; margin-inline: auto; bottom: 28px; transform: none; z-index: 9500; isolation: isolate;
   width: min(620px, calc(100vw - 24px)); box-sizing: border-box; padding: 16px 20px 16px;
   color: #e6f3ff; font: 16.5px/1.5 'Inter', 'Roboto', sans-serif; opacity: 0; pointer-events: none; }
 .nge-intro--in { pointer-events: auto; animation: nge-holo-in 900ms cubic-bezier(.16,1,.3,1) both; }
 @keyframes nge-holo-in {
-  0% { opacity: 0; transform: translate(-50%, 18px) scaleY(0.04); filter: blur(8px) brightness(2.2) drop-shadow(0 0 0 rgba(80, 180, 255, 0)); }
-  35% { opacity: 1; transform: translate(-50%, 6px) scaleY(1.02); filter: blur(3px) brightness(1.6) drop-shadow(0 0 30px rgba(80, 180, 255, 0.6)); }
-  100% { opacity: 1; transform: translate(-50%, 0) scaleY(1); filter: blur(0) brightness(1) drop-shadow(0 0 18px rgba(80, 180, 255, 0.28)); } }
+  0% { opacity: 0; transform: translate(0, 18px) scaleY(0.04); filter: blur(8px) brightness(2.2) drop-shadow(0 0 0 rgba(80, 180, 255, 0)); }
+  35% { opacity: 1; transform: translate(0, 6px) scaleY(1.02); filter: blur(3px) brightness(1.6) drop-shadow(0 0 30px rgba(80, 180, 255, 0.6)); }
+  100% { opacity: 1; transform: translate(0, 0) scaleY(1); filter: blur(0) brightness(1) drop-shadow(0 0 18px rgba(80, 180, 255, 0.28)); } }
 .nge-intro--out { animation: nge-holo-out 420ms ease-in both; }
-@keyframes nge-holo-out { to { opacity: 0; transform: translate(-50%, 10px) scaleY(0.04); filter: blur(6px) brightness(2); } }
+@keyframes nge-holo-out { to { opacity: 0; transform: translate(0, 10px) scaleY(0.04); filter: blur(6px) brightness(2); } }
 /* the plate */
 .nge-intro-plate-bg { position: absolute; inset: 0; z-index: -2; pointer-events: none;
   clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
@@ -694,7 +694,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-back:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; border-radius: 4px; }
 @media (prefers-reduced-motion: reduce) { .nge-go-label::after, .nge-go-chevs::before { transition: none; } }
 .nge-intro { transition: opacity 0.35s, transform 0.35s; }
-.nge-intro--waiting { opacity: 0 !important; transform: translate(-50%, 16px) !important; pointer-events: none; }
+.nge-intro--waiting { opacity: 0 !important; transform: translate(0, 16px) !important; pointer-events: none; }
 /* Leaving asks first. */
 .nge-intro-confirm { display: none; }
 .nge-intro--asking .nge-intro-title, .nge-intro--asking .nge-intro-body, .nge-intro--asking > .nge-intro-row { display: none; }
