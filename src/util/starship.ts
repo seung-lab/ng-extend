@@ -691,8 +691,11 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           dockBend = sub(sub(B(Math.min(1, dq + 0.04)), pos), sub(pos, B(Math.max(0, dq - 0.04))));
           // nose on the way it is going, turning to face the cell only as it
           // arrives (Ames: it flew backwards)
-          const vel = prevPos ? sub(pos, prevPos) : [0, 0, 0] as V3;
-          const goDir = dq < 1 && Math.hypot(...vel) > f.shipLength * 0.004 ? norm(vel) : (prevFwd ?? fwd);
+          // the nose along the curve itself, from its very first moment (out
+          // of the portal the ship barely moves, so its speed says nothing:
+          // Ames, "flies BACKWARDS OUT OF THE PORTAL")
+          const tan = sub(B(Math.min(1, dq + 0.02)), B(Math.max(0, dq - 0.02)));
+          const goDir = dq < 1 && dock.from && Math.hypot(...tan) > 1 ? norm(tan) : (prevFwd ?? fwd);
           fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.9) / 0.1)));
         }
         // ending a hop the ship levels out, nose sideways across the screen,
@@ -705,7 +708,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           if (Math.hypot(...flat) < 0.25) flat = mul(cam.right, dot(fwd, cam.right) < 0 ? -1 : 1);
           if (lv > 0) fwd = norm(mix(fwd, norm(flat), lv));
         }
-        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 5 : h && hq < 1 ? 16 : 6))));
+        if (prevFwd && (h || dock)) fwd = norm(mix(prevFwd, fwd, Math.min(1, dt * (dock ? 20 : h && hq < 1 ? 16 : 6))));
         prevPos = pos;
         prevFwd = fwd;
         // banking: roll into the turn
