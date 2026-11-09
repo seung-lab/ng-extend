@@ -223,6 +223,13 @@ let arrivals: Arrival[] = [];
 let sparks: Spark[] = [];
 let flashes: Flash[] = [];
 let beams: Beam[] = [];
+/** Sparks that landed on a cell still resting from its last spike: it fires
+ *  the moment it can. A quick double click is the natural way to fire a
+ *  driver twice, and a second click inside the 0.4 s rest used to fizzle
+ *  ("E1 is resting"), the charge gone and the rhythm broken for no reason
+ *  the player could see. */
+interface Queued { cell: string; at: number; }
+let queued: Queued[] = [];
 let now = 0;              // game seconds since the level began playing
 let charges = MAX_CHARGES;
 let chargesUsed = 0;
@@ -588,7 +595,7 @@ function updateGoWait() {
   let nextLanding = Infinity;
   if (gate.gateNext !== null) nextLanding = Math.max(gate.gateNext, gate.hushedUntil) + travelS(gate.key, target.key, 0.7);
   const driverTravel = Math.max(0.45, ...(level.hint?.go ?? []).map(k => travelS(k, target.key, 0.45)));
-  const lead = BEAM_S + 0.35 + driverTravel + 0.35;   // the second spike's landing, with a margin
+  const lead = BEAM_S + REFRACTORY_S + 0.1 + driverTravel + 0.35;   // the second spike's landing, with a margin
   const state: GoState = held ? 'wait' : nextLanding - now <= lead ? 'soon' : 'go';
   if (state === lastGo) return;
   lastGo = state;
@@ -1006,7 +1013,7 @@ function resetCells() {
     const g = cells.get(level.gate.cell);
     if (g) { g.gatePeriod = level.gate.periodS; g.gateNext = 1.2; }
   }
-  arrivals = []; sparks = []; flashes = []; beams = [];
+  arrivals = []; sparks = []; flashes = []; beams = []; queued = [];
   lastTargetSpike = {}; sequenceArmedAt = -1;
 }
 
@@ -1112,8 +1119,12 @@ function stepModel(dt: number) {
       paint(c, true);
       flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.7, 0.5, 1], size: 20_000});
       coach('hushed');
-    } else spike(b.cell, true);
+    } else if (now < c.refractoryUntil && now >= c.hushedUntil) queued.push({cell: b.cell, at: c.refractoryUntil});
+    else spike(b.cell, true);
   }
+  const ready = queued.filter(q => q.at <= now);
+  queued = queued.filter(q => q.at > now);
+  for (const q of ready) spike(q.cell, true);
   // A target that was fed but did not fire: say what went wrong, now and then.
   for (const [key, at] of pendingExcitation) {
     if (now - at < 2.5) continue;
@@ -1188,6 +1199,11 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
       const a = -spin * 1.8 + k / 10 * Math.PI * 2;
       put(add(c.spec.soma, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R))), [0.85, 1, 1, 0.45 + 0.4 * pulse], 2600);
     }
+  }
+  // a spark waiting on a resting cell: a gold ember on the soma until it fires
+  for (const q of queued) {
+    const c = cells.get(q.cell);
+    if (c?.shown) put(c.spec.soma, [1, 0.82, 0.35, 0.55], 9000);
   }
   // hushed cells: a violet shroud
   for (const c of cells.values()) {
