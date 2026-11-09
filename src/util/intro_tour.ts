@@ -745,6 +745,12 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
 .nge-step { color: #ffd166; letter-spacing: 0.1em; }
+/* large text settings: the words scroll inside the box rather than push it off
+   the screen (Ames) */
+.nge-intro-body { max-height: 36vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(126, 224, 255, 0.6) transparent; padding-right: 4px; }
+.nge-intro-body::-webkit-scrollbar { width: 5px; }
+.nge-intro-body::-webkit-scrollbar-thumb { background: rgba(126, 224, 255, 0.6); border-radius: 3px; }
+.nge-intro-body::-webkit-scrollbar-track { background: rgba(126, 224, 255, 0.08); border-radius: 3px; }
 .nge-intro-zap { margin-left: auto; margin-right: 12px; width: 46px; height: 46px; flex: none; display: grid; place-items: center; padding: 0; cursor: pointer;
   border-radius: 50%; border: 1px solid rgba(255, 214, 102, 0.6); background: radial-gradient(circle, rgba(255, 214, 102, 0.22), rgba(255, 170, 60, 0.05) 70%);
   color: #ffd666; box-shadow: 0 0 14px rgba(255, 200, 80, 0.35); transition: transform 0.15s, box-shadow 0.2s; }
@@ -1417,7 +1423,7 @@ export async function startIntroTour() {
       ? b.body + ' This one has about 4.5 mm of branches, with {in:3,386 synapses} coming in and {out:59} going out.' : b.body;
     const holo = !!b.callout && !(isPhone() && (b.key === 'neuron' || b.key === 'axon'));
     bodyEl.textContent = plain(bodyText);
-    bodyEl.style.minHeight = `${bodyEl.offsetHeight}px`;
+    bodyEl.style.minHeight = `${Math.min(bodyEl.offsetHeight, window.innerHeight * 0.36)}px`;
     if (panel) (panel.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(panel.offsetWidth, panel.offsetHeight, 18);
     // the words wait for the ship: the box steps aside while it flies and
     // comes back with the new message when it has stopped
