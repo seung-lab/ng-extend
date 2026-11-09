@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T19:24:16Z",
+      "title": "A better bug report",
+      "digest": "minor",
+      "items": [
+        "What you write in a bug report is kept until you send it or press Clear, and clicking outside the box no longer closes it.",
+        "Set up the screen first: the report steps aside so you can open what the picture should show, then press Take screenshot.",
+        "The details box has bold, italics, bullets and numbers."
+      ]
+    },
+    {
       "at": "2026-11-09T17:37:46Z",
       "title": "Log out, Not now, and tour fixes",
       "digest": "minor",
