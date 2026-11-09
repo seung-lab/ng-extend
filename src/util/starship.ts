@@ -626,7 +626,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // late, and easing to a stop as it lands, so the welcome view picks up
         // from rest
         const zoom = zoomAt(t);
-        if (handsOff() && !cameraHeld) {
+        // (it keeps settling for a few seconds after touchdown, even once the
+        // tour holds the camera, so it always ends on the landing view: Ames)
+        if (handsOff() && (!cameraHeld || (t >= total && t < total + 4))) {
           // never so close that the ship leaves the frame (Ames), and never
           // backing out again: in flight it only closes in
           let sc = Math.max(WIDE * Math.pow(CLOSE / WIDE, zoom), t < total ? roomAt(t) : 0);

@@ -60,7 +60,7 @@ interface Beat {
 }
 const BEATS: Beat[] = [
   {key: 'welcome', header: 'Welcome to Pyr!', view: {at: 'soma', nm: 30_000}, next: "Let's go",
-    body: "Pyr is a game from Princeton University that invites citizen scientists to map the brain. Players come from all walks of life. They're helping to advance neuroscience, and they're not neuroscientists! Together people like you map real neurons, like this one. Want to look around?"},
+    body: "Pyr (pronounced “peer”) is a game from Princeton University that invites citizen scientists to map the brain. Players come from all walks of life. They're helping to advance neuroscience, and they're not neuroscientists! Together people like you map real neurons, like this one. Want to look around?"},
   {key: 'neuron', header: 'This is a neuron', view: {at: 'cell', nm: 260_000},
     callout: {anchor: 'soma', title: 'Pyramidal neuron', stats: [['Class', 'Excitatory'], ['Neurotransmitter', 'Glutamate'],
       ['Location', 'Visual cortex, mouse brain'], ['Branch length', 'about 4.5 mm'], ['Input', '3,386 synapses'], ['Output', '59 synapses']]},
@@ -1169,7 +1169,9 @@ export async function startIntroTour() {
     const from = i;
     i = n;
     const b = BEATS[i];
-    const want = i === NEURON || i === SOMA ? 'dock' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : i < SYN2 ? 'syn' : 'syn2';
+    // parked at the side for the whole cell; for the soma it flies in close,
+    // engines on, ahead of the camera (Ames: no jets, wrong size when it rode along)
+    const want = i === NEURON ? 'dock' : i === SOMA ? 'soma' : i < DEND ? 'pad' : i < AXON ? 'dend' : i < SYN ? 'axon' : i < SYN2 ? 'syn' : 'syn2';
     const shipMoves = want !== shipAt;
     const zipping = !!callout;
     const shipDelay = zipping ? 440 : 0;
@@ -1283,7 +1285,7 @@ export async function startIntroTour() {
       if (want === 'soma') {
         if (shipAt === 'dock') undockStarship();
         if (shipAt === 'dend') starshipHop(onward([...t.dendFlight].reverse(), somaHover()), 5);
-        else starshipHop([somaHover()], 2.6);
+        else starshipHop([somaHover()], shipAt === 'dock' ? 3.6 : 2.6);
       } else if (shipAt === 'soma' && want === 'pad') starshipHop([t.dendFlight[0]], 2);
       else if (shipAt === 'soma' && want === 'dend') starshipHop(onward(t.dendFlight), 6.5);
       else if (want === 'dock') {
