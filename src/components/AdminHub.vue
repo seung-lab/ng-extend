@@ -466,6 +466,8 @@ async function letInFromCard(r: TriageRow) {
  *  so the user's full text appears"). The excerpt stands in until the report
  *  itself has loaded, or when there is no report behind the row. */
 const fullTextOf = (r: TriageRow) => reporterOf(r)?.message || r.source_excerpt || '';
+/** Bold, italics or a list, as the bug report's format buttons write them. */
+const looksFormatted = (t: string) => /\*\*[^*\n]+\*\*|(^|\s)\*[^*\s][^*\n]*\*|^\s*(- |\d{1,3}\. )/m.test(t);
 /** A steady color for a name, so each reporter is easy to spot on the board. */
 function avatarHue(name: string): number {
   let h = 0;
@@ -3647,7 +3649,10 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="reporterOf(row)?.title" class="nge-triage-title">{{ reporterOf(row)?.title }}</div>
           <!-- A one line report is all title: say it once. -->
-          <div v-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
+          <!-- A report written with formatting (bold, lists: Celia #446.4) shows formatted. -->
+          <div v-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title && looksFormatted(fullTextOf(row))"
+               class="nge-triage-excerpt nge-triage-excerpt--md" v-html="renderSafeMarkdown(fullTextOf(row))"></div>
+          <div v-else-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
             <a v-if="reporterOf(row)?.url" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.url" target="_blank" rel="noopener noreferrer" @click.stop
                title="The view they were in when they sent the report">↗ Open their view</a>
@@ -4589,6 +4594,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-card--selected { cursor: default; }
 /* The whole report, with the player's own line breaks, on an opened card. */
 .nge-triage-card--selected .nge-triage-excerpt, .nge-triage-cols:not([style]) .nge-triage-excerpt { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nge-triage-excerpt--md { white-space: normal !important; }
+.nge-triage-excerpt--md p { margin: 0 0 6px; }
+.nge-triage-excerpt--md ul, .nge-triage-excerpt--md ol { margin: 2px 0 6px; padding-left: 20px; }
+.nge-triage-excerpt--md a { color: #7db4ff; }
 .nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
 
 /* ── Chips ───────────────────────────────────────────────────────────────

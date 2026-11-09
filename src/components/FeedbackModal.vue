@@ -107,6 +107,43 @@ function clearDraft() {
   title.value = ''; message.value = ''; detailsOpen.value = false; detailsLong.value = false;
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
 }
+// ── Formatting in the details (Celia #446.4) ──
+// Bold, italics, bullets and numbers, written as the same marks the triage
+// reply uses ("**bold**", "- item", "1. item"), shown formatted in Triage.
+const noteEl = ref<HTMLTextAreaElement | null>(null);
+function putText(text: string, selFrom?: number, selTo?: number) {
+  const el = noteEl.value;
+  if (!el) return;
+  const a = el.selectionStart, b = el.selectionEnd;
+  el.focus();
+  el.setRangeText(text, a, b, 'end');
+  if (selFrom !== undefined && selTo !== undefined) el.setSelectionRange(a + selFrom, a + selTo);
+  message.value = el.value.slice(0, detailsMax.value);
+}
+function fmtWrap(mark: string, placeholder: string) {
+  const el = noteEl.value;
+  if (!el) return;
+  const inner = el.value.slice(el.selectionStart, el.selectionEnd) || placeholder;
+  putText(`${mark}${inner}${mark}`, mark.length, mark.length + inner.length);
+}
+function fmtLines(numbered: boolean) {
+  const el = noteEl.value;
+  if (!el) return;
+  const v = el.value;
+  const a = v.lastIndexOf('\n', el.selectionStart - 1) + 1;
+  let b = v.indexOf('\n', el.selectionEnd);
+  if (b < 0) b = v.length;
+  let n = 0;
+  const lines = (v.slice(a, b) || 'List item').split('\n')
+    .map(l => (l.trim() ? (numbered ? `${++n}. ` : '- ') + l.replace(/^\s*([-*•·]\s+|\d{1,3}[.)]\s+)/, '') : l));
+  el.setSelectionRange(a, b);
+  putText(lines.join('\n'));
+}
+function onNoteKey(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === 'b' || e.key === 'B') { e.preventDefault(); fmtWrap('**', 'bold'); }
+  else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); fmtWrap('*', 'italics'); }
+}
 function outsideClick() { if (done.value || !hasDraft.value) emit('hide'); }
 
 // Screenshot attachment. Reuses the help request flow unchanged:
@@ -518,15 +555,22 @@ onBeforeUnmount(() => {
           @input="error = ''"
         />
         <button v-if="!detailsOpen" type="button" class="nge-fb-more" @click="detailsOpen = true">+ Add details (optional)</button>
+        <div v-if="detailsOpen" class="nge-fb-fmt" role="toolbar" aria-label="Formatting">
+          <button type="button" title="Bold (Ctrl+B)" @mousedown.prevent @click="fmtWrap('**', 'bold')"><b>B</b></button>
+          <button type="button" title="Italics (Ctrl+I)" @mousedown.prevent @click="fmtWrap('*', 'italics')"><i>I</i></button>
+          <button type="button" title="Bulleted list: each selected line becomes a bullet" @mousedown.prevent @click="fmtLines(false)">• List</button>
+          <button type="button" title="Numbered list: each selected line gets a number" @mousedown.prevent @click="fmtLines(true)">1. List</button>
+        </div>
         <textarea
-          v-else
+          v-if="detailsOpen"
+          ref="noteEl"
           v-model="message"
           class="nge-fb-note"
           rows="3"
           placeholder="Anything else that helps, like what you expected."
           aria-label="Details"
           :maxlength="detailsMax"
-          @keydown.stop @keyup.stop @keypress.stop
+          @keydown.stop="onNoteKey" @keyup.stop @keypress.stop
           @input="error = ''"
         ></textarea>
         <div v-if="detailsOpen" class="nge-fb-count" :class="{ 'nge-fb-count--full': message.length >= detailsMax }">
@@ -726,6 +770,12 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 .nge-fb-shot-btn:disabled { opacity: 0.5; cursor: default; }
+.nge-fb-fmt { display: flex; gap: 4px; margin: 6px 0 4px; }
+.nge-fb-fmt button {
+  padding: 2px 9px; font-size: 12px; line-height: 1.6; cursor: pointer; border-radius: 6px;
+  color: #b9c6e6; background: rgba(120, 140, 255, 0.08); border: 1px solid rgba(120, 140, 255, 0.25);
+}
+.nge-fb-fmt button:hover { color: #e6ecff; background: rgba(120, 140, 255, 0.18); }
 .nge-fb-setup-link {
   margin-left: 10px; padding: 0; border: none; background: none; cursor: pointer;
   font-size: 0.8em; color: #8fa0c8; text-decoration: underline; text-underline-offset: 3px;
