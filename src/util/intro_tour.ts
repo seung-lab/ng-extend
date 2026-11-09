@@ -760,6 +760,12 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key[hidden] { display: none; }
 .nge-callout-stats[hidden] { display: none; }
 .nge-step { color: #ffd166; letter-spacing: 0.1em; }
+.nge-pt-cycle { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 4px; }
+.nge-pt-step { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 8px 10px; cursor: pointer;
+  border: 1px solid rgba(126, 224, 255, 0.45); border-radius: 6px; background: rgba(126, 224, 255, 0.08); color: #dff4ff;
+  font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
+.nge-pt-step i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); flex: none; }
+.nge-pt-step:active { background: rgba(126, 224, 255, 0.2); }
 /* large text settings: the words scroll inside the box rather than push it off
    the screen (Ames) */
 .nge-intro-body { max-height: 36vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(126, 224, 255, 0.6) transparent; padding-right: 4px; }
@@ -1954,14 +1960,27 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     const [name, color] = typeOf(p);
     return `<button class="nge-pt${k === on ? ' nge-pt--on' : ''}" type="button" data-k="${k}"><i style="--c:${color}"></i><span><b>${name}</b></span><small>${p.synapses} synapses</small></button>`;
   };
-  const listHtml = (on = -1) => {
-    const idx = data.partners.map((p, k) => [p, k] as const);
-    // (two of each on a phone, so the cell keeps the screen: Ames)
-    const most = isPhone() ? 2 : Infinity;
-    return `<span class="hd">It sends to</span>${idx.filter(([p]) => p.dir === 'out').slice(0, most).map(([p, k]) => row(p, k, on)).join('')}` +
-      `<span class="hd">It hears from</span>${idx.filter(([p]) => p.dir === 'in').slice(0, most).map(([p, k]) => row(p, k, on)).join('')}`;
+  // on a phone there is no list, only two keys: one steps through the cells
+  // it hears from, one through the cells it sends to (Ames: "we don't want to
+  // list all of them. That's too much for a mobile interface")
+  const phone = isPhone();
+  const cursor: Record<'in' | 'out', number> = {in: -1, out: -1};
+  const nextOf = (dir: 'in' | 'out') => {
+    const ks = data.partners.map((p, k) => [p, k] as const).filter(([p]) => p.dir === dir).map(([, k]) => k);
+    cursor[dir] = (cursor[dir] + 1) % ks.length;
+    return ks[cursor[dir]];
   };
-  const wire = () => card.el.querySelectorAll<HTMLButtonElement>('.nge-pt').forEach(b => { b.onclick = () => visit(Number(b.dataset.k)); });
+  const listHtml = (on = -1) => {
+    if (phone) return `<div class="nge-pt-cycle"><button class="nge-pt-step" type="button" data-dir="in"><i style="--c:#ffd166"></i>${on >= 0 ? 'Next upstream' : 'Upstream cell'}</button>` +
+      `<button class="nge-pt-step" type="button" data-dir="out"><i style="--c:#ff4fc1"></i>${on >= 0 ? 'Next downstream' : 'Downstream cell'}</button></div>`;
+    const idx = data.partners.map((p, k) => [p, k] as const);
+    return `<span class="hd">It sends to</span>${idx.filter(([p]) => p.dir === 'out').map(([p, k]) => row(p, k, on)).join('')}` +
+      `<span class="hd">It hears from</span>${idx.filter(([p]) => p.dir === 'in').map(([p, k]) => row(p, k, on)).join('')}`;
+  };
+  const wire = () => {
+    card.el.querySelectorAll<HTMLButtonElement>('.nge-pt').forEach(b => { b.onclick = () => visit(Number(b.dataset.k)); });
+    card.el.querySelectorAll<HTMLButtonElement>('.nge-pt-step').forEach(b => { b.onclick = () => visit(nextOf(b.dataset.dir as 'in' | 'out')); });
+  };
   const play = {label: 'Start playing Pyr', go: () => startGetStarted()};
   let token = 0;
   const cardAway = (away: boolean) => { card.el.style.transition = 'opacity 0.5s'; card.el.style.opacity = away ? '0' : ''; card.el.style.pointerEvents = away ? 'none' : ''; };
@@ -1978,7 +1997,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   // partners counted from the public synapse table (v1300): the distinct
   // cells on the other side of its synapses (some are pieces still being traced)
   const scanStats: [string, string][] = [['Input', '6,363 synapses'], ['Output', '8,110 synapses'], ['Cells it hears from', '5,195'], ['Cells it sends to', '3,660']];
-  const listText = isPhone() ? 'Every dot is a synapse. It connects with about 8,700 cells. Tap one to visit it.'
+  const listText = isPhone() ? 'Every dot is a synapse. It connects with about 8,700 cells.'
     : 'Every dot is a synapse. It connects with about 8,700 cells. Want to meet a few? These are some of the cells it shares the most synapses with. Tap one to visit it.';
   const overview = (scan = true) => {
     const my = ++token;
@@ -2134,7 +2153,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
       : `This ${name.toLowerCase()} cell is upstream: its axon makes ${p.synapses} synapses onto the Martinotti cell${['BC', 'MC', 'BPC', 'NGC'].includes(p.type) ? ', quieting it in turn' : ', exciting it'}.`;
     const next = (k + 1) % data.partners.length;
     card.set(name, body, [], play, listHtml(k),
-      {back: () => overview(false), alt: {label: 'Next cell', go: () => visit(next)}});
+      phone ? {back: () => overview(false)} : {back: () => overview(false), alt: {label: 'Next cell', go: () => visit(next)}});
     wire();
   };
   overview();
