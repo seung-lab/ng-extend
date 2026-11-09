@@ -126,7 +126,9 @@ async function submit() {
     // server down), send the bare page URL plus the position so the report
     // still locates the spot without a broken link.
     stage.value = attachView.value ? 'view' : 'send';
-    const shortLink = attachView.value ? await mintShortStateLink() : null;
+    // A view that can't be saved (a layer half loaded: "this.layer is null",
+    // toknow 2026-11-08) must not stop the report: send the position instead.
+    const shortLink = attachView.value ? await mintShortStateLink().catch((e: any) => { console.warn('[feedback] view not attached:', e); return null; }) : null;
     stage.value = 'send';
     let pageUrl = shortLink;
     if (!pageUrl) {
