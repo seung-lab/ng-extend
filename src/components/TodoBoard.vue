@@ -1158,9 +1158,12 @@ function notesEditHtml(md: string) {
   return t.innerHTML;
 }
 let richRange: Range | null = null;
+const rxRanges: Record<string, Range | null> = {};
 function rememberCaret() {
   const sel = window.getSelection();
-  if (richEl.value && sel && sel.rangeCount && richEl.value.contains(sel.anchorNode)) richRange = sel.getRangeAt(0).cloneRange();
+  if (!sel || !sel.rangeCount) return;
+  if (richEl.value && richEl.value.contains(sel.anchorNode)) richRange = sel.getRangeAt(0).cloneRange();
+  for (const [key, el] of Object.entries(rxEls)) if (el && el.contains(sel.anchorNode)) rxRanges[key] = sel.getRangeAt(0).cloneRange();
 }
 document.addEventListener('selectionchange', rememberCaret);
 onUnmounted(() => document.removeEventListener('selectionchange', rememberCaret));
@@ -1362,15 +1365,32 @@ onMounted(() => document.addEventListener('keydown', onKey));
 // goes into the comment as its link, which the thread shows as the picture. ──
 const commentImageBusy = ref(0);
 const isBoardImage = (href?: string) => !!href && /\/admin-uploads\/todo-images\/[^?#\s]+\.(png|jpe?g|gif|webp)$/i.test(href);
-async function addCommentImages(files: FileList | File[] | null | undefined) {
+// Ames 2026-11-07: "make it so I can add a screenshot to comment". The
+// picture now shows in the box as you write, at the caret, and replies and
+// edits take one too (paste, drop or the 🖼 Picture button).
+const rxSetters: Record<string, (v: string) => void> = {
+  comment: v => { comment.value = v; }, reply: v => { replyText.value = v; }, edit: v => { commentDraft.value = v; },
+};
+function insertRxPic(key: string, url: string) {
+  const el = rxEls[key];
+  if (!el) return false;
+  el.focus();
+  const sel = window.getSelection();
+  const r0 = rxRanges[key];
+  if (r0 && el.contains(r0.startContainer)) { sel?.removeAllRanges(); sel?.addRange(r0); }
+  else { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel?.removeAllRanges(); sel?.addRange(r); }
+  document.execCommand('insertHTML', false, `<p>${picTag(url)}</p><p><br></p>`);
+  rxMark(el);
+  rxSetters[key]?.(rxMd(el));
+  return true;
+}
+async function addCommentImages(files: FileList | File[] | null | undefined, key = 'comment') {
   for (const f of [...(files || [])]) {
     commentImageBusy.value++;
     try {
       const url = await uploadImage(f);
       if (!url) continue;
-      const el = rxEls.comment;
-      if (el) { el.insertAdjacentHTML('beforeend', `<p>${url.replace(/[<>"&]/g, '')}</p>`); comment.value = rxMd(el); }
-      else comment.value = (comment.value.replace(/\s+$/, '') + (comment.value.trim() ? '\n' : '') + url + '\n');
+      if (!insertRxPic(key, url) && key === 'comment') comment.value = (comment.value.replace(/\s+$/, '') + (comment.value.trim() ? '\n' : '') + url + '\n');
     } finally { commentImageBusy.value--; }
   }
 }
@@ -1383,7 +1403,16 @@ function onCommentPaste(e: ClipboardEvent) {
  *  (Ames 2026-11-05: "Let me paste formatted text here"). Plain text pastes as usual. */
 const rxEls: Record<string, HTMLElement | null> = {};
 const rxRef = (key: string) => (el: unknown) => { rxEls[key] = (el as HTMLElement | null) || null; };
-const rxMd = (el: HTMLElement) => edgeBlanks(htmlToMarkdown(keepBlankLines(el.innerHTML)).replace(/^[ \t]*(?:[-*]|\d+\.)[ \t]*$/gm, '').replace(/\n{3,}/g, '\n\n').trim());
+function rxHtml(el: HTMLElement) {
+  if (!el.querySelector(`img[${BOARD_PIC}]`)) return el.innerHTML;
+  const c = el.cloneNode(true) as HTMLElement;
+  for (const img of [...c.querySelectorAll(`img[${BOARD_PIC}]`)]) {
+    const src = img.getAttribute('src') || '';
+    img.replaceWith(document.createTextNode(isBoardImage(src) ? src : ''));
+  }
+  return c.innerHTML;
+}
+const rxMd = (el: HTMLElement) => edgeBlanks(htmlToMarkdown(keepBlankLines(rxHtml(el))).replace(/^[ \t]*(?:[-*]|\d+\.)[ \t]*$/gm, '').replace(/\n{3,}/g, '\n\n').trim());
 /** The box always types into a paragraph, so lists and the first line behave as in a document. */
 function rxFocus(e: FocusEvent) {
   const el = e.currentTarget as HTMLElement;
@@ -1401,7 +1430,7 @@ function rxLoad(key: string, md: string, focus = false) {
   void nextTick(() => {
     const el = rxEls[key];
     if (!el) return;
-    el.innerHTML = md ? renderSafeMarkdown(md, true) : '';
+    el.innerHTML = md ? notesEditHtml(md) : '';
     rxMark(el);
     if (focus) {
       el.focus();
@@ -1480,14 +1509,16 @@ function pasteFormatted(e: ClipboardEvent, set: (v: string) => void) {
   set(el.value.slice(0, a) + md + el.value.slice(b));
   void nextTick(() => { el.focus(); el.setSelectionRange(a + md.length, a + md.length); });
 }
-function onCommentDrop(e: DragEvent) {
+function onCommentDrop(e: DragEvent, key = 'comment') {
   const files = imageFiles(e);
-  if (files.length) { e.preventDefault(); void addCommentImages(files); }
+  if (files.length) { e.preventDefault(); void addCommentImages(files, key); }
 }
 const commentPicker = ref<HTMLInputElement | null>(null);
+let commentPickFor = 'comment';
+function pickCommentPic(key: string) { commentPickFor = key; commentPicker.value?.click(); }
 function onCommentPicked(e: Event) {
   const input = e.target as HTMLInputElement;
-  void addCommentImages(input.files);
+  void addCommentImages(input.files, commentPickFor);
   input.value = '';
 }
 async function onPagePaste(e: ClipboardEvent) {
@@ -1910,10 +1941,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text; rxLoad('edit', cm.text, true)">✎ Edit</button></div>
           <template v-if="commentEdit === i">
             <div :ref="rxRef('edit')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Edit comment"
-                 @input="rxInput($event, v => commentDraft = v)" @keydown="rxKey($event, () => saveCommentEdit(openCard, i))" @keyup.stop @keypress.stop
-                 @paste="rxPaste($event, v => commentDraft = v)"></div>
+                 data-nge-notes-paste @input="rxInput($event, v => commentDraft = v)" @keydown="rxKey($event, () => saveCommentEdit(openCard, i))" @keyup.stop @keypress.stop
+                 @paste="rxPaste($event, v => commentDraft = v, f => addCommentImages(f, 'edit'))" @dragover.prevent @drop="onCommentDrop($event, 'edit')"></div>
             <div class="nge-todo-row">
-              <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !commentDraft.trim()" @click="saveCommentEdit(openCard, i)">Save</button>
+              <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !!commentImageBusy || !commentDraft.trim()" @click="saveCommentEdit(openCard, i)">Save</button>
+              <button type="button" class="nge-todo-btn" title="Add a picture to this comment" @mousedown.prevent @click="pickCommentPic('edit')">🖼 Picture</button>
               <button class="nge-todo-btn" @click="commentEdit = null">Cancel</button>
             </div>
           </template>
@@ -1922,10 +1954,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <div v-if="last && replyTo === rootAt" class="nge-todo-reply-box">
             <div :ref="rxRef('reply')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Reply"
                  :data-placeholder="'Reply to ' + threadStarter(openCard, rootAt) + '. Type @ to tag someone.'"
-                 @input="rxInput($event, v => replyText = v)" @keydown="rxKey($event, () => sendReply(openCard))" @keyup.stop @keypress.stop
-                 @paste="rxPaste($event, v => replyText = v)"></div>
+                 data-nge-notes-paste @input="rxInput($event, v => replyText = v)" @keydown="rxKey($event, () => sendReply(openCard))" @keyup.stop @keypress.stop
+                 @paste="rxPaste($event, v => replyText = v, f => addCommentImages(f, 'reply'))" @dragover.prevent @drop="onCommentDrop($event, 'reply')"></div>
             <div class="nge-todo-row">
-              <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !replyText.trim()" @click="sendReply(openCard)">Reply</button>
+              <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !!commentImageBusy || !replyText.trim()" @click="sendReply(openCard)">Reply</button>
+              <button type="button" class="nge-todo-btn" title="Add a picture to this reply" @mousedown.prevent @click="pickCommentPic('reply')">🖼 Picture</button>
               <button class="nge-todo-btn" @click="replyTo = null">Cancel</button>
             </div>
           </div>
@@ -1939,11 +1972,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <div :ref="rxRef('comment')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Comment"
              data-placeholder="Write a comment. Type @ to tag someone. Paste or drop a picture to add it. Ctrl+Enter sends." data-nge-notes-paste
              @input="rxInput($event, v => comment = v)" @keydown="rxKey($event, () => sendComment(openCard))" @keyup.stop @keypress.stop
-             @paste="rxPaste($event, v => comment = v, addCommentImages)" @dragover.prevent @drop="onCommentDrop"></div>
+             @paste="rxPaste($event, v => comment = v, f => addCommentImages(f, 'comment'))" @dragover.prevent @drop="onCommentDrop($event, 'comment')"></div>
         <div v-if="taggedPeople(comment).length" class="nge-todo-tagging">Tagging <span v-for="p in taggedPeople(comment)" :key="p.id" class="nge-todo-tag-chip" :style="{ background: colorOf(p.id) }">@{{ p.name }}</span></div>
         <div class="nge-todo-row">
           <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !!commentImageBusy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
-          <button type="button" class="nge-todo-btn" title="Add a picture to this comment" @click="commentPicker?.click()">🖼 Picture</button>
+          <button type="button" class="nge-todo-btn" title="Add a picture to this comment. You can also paste a screenshot (Ctrl+V) or drop one in the box." @mousedown.prevent @click="pickCommentPic('comment')">🖼 Picture</button>
           <span v-if="commentImageBusy" class="nge-todo-warn">Uploading…</span>
           <input ref="commentPicker" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden @change="onCommentPicked" />
           <span v-if="sentTags" class="nge-todo-sent">✓ {{ sentTags }}</span>
