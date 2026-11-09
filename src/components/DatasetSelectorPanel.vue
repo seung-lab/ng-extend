@@ -13,6 +13,7 @@ import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
 import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests';
 import { useProofreadingBackendStore } from '../store';
 import { skipNextViewRestoreOffer } from '../util/view_autosave';
+import { basicsDone, askStartPlaying } from '../util/start_playing';
 import RequestAccessButton from './RequestAccessButton.vue';
 import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
@@ -49,7 +50,16 @@ onMounted(detectCurrentDataset);
 
 // ── Access (from CAVE): locked cards are greyed and do not switch ───────────
 onMounted(() => { loadDatasetPermissions(); });
-function startHere() {
+/** After Merge and Cut the Sandbox card's button is "Start playing": a
+ *  Sandbox cell of their own to edit (util/start_playing.ts). Before, it is
+ *  "Start here", the tutorial they are on. */
+const playing = computed(() => basicsDone());
+function startHere(ds: DatasetEntry) {
+  if (playing.value) {
+    askStartPlaying();
+    void openTask(ds, 'available');
+    return;
+  }
   emit('hide');
   document.dispatchEvent(new CustomEvent('nge:start-here'));
 }
@@ -312,9 +322,9 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                   <!-- The Sandbox: one way in, the tutorial you are on (Ames 2026-10-28). -->
                   <div v-if="ds.section === 'sandbox'" class="nge-ds-tasks">
-                    <button class="nge-ds-task" @click.stop="startHere"
-                            title="Open the tutorial you are on, or the next one">
-                      Start here<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    <button class="nge-ds-task" @click.stop="startHere(ds)"
+                            :title="playing ? 'Takes you to a Sandbox cell of your own to proofread' : 'Open the tutorial you are on, or the next one'">
+                      {{ playing ? 'Start playing' : 'Start here' }}<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
                     </button>
                   </div>
                   <div v-else-if="showTasks(ds)" class="nge-ds-tasks">

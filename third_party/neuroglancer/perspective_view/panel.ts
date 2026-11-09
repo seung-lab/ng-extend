@@ -43,7 +43,7 @@ import {ShaderBuilder} from 'neuroglancer/webgl/shader';
 import {MultipleScaleBarTextures, ScaleBarOptions} from 'neuroglancer/widget/scale_bar';
 import {RPC, SharedObject} from 'neuroglancer/worker_rpc';
 import {PerspectiveViewAnnotationLayer} from 'neuroglancer/annotation/renderlayer';
-import {drawNgeProps, ngeHasProps} from 'neuroglancer/perspective_view/nge_props';
+import {drawNgeGlow, drawNgeProps, ngeHasGlow, ngeHasProps} from 'neuroglancer/perspective_view/nge_props';
 import {ngeSliceAlpha} from 'neuroglancer/perspective_view/nge_slice_alpha';
 
 export interface PerspectiveViewerState extends RenderedDataViewerState {
@@ -650,9 +650,12 @@ export class PerspectivePanel extends RenderedDataPanel {
 
     // EyeWire II props (the Halloween ghost): small models drawn against the
     // same depth as the cells, so a branch in front hides them. No picking.
-    if (ngeHasProps()) {
+    // The Starship's engine trail (ngeHasGlow) is drawn right after, the
+    // same way: hidden by what is in front, writing no depth or picking.
+    if (ngeHasProps() || ngeHasGlow()) {
       disablePicking();
       drawNgeProps(gl, projectionParameters.viewProjectionMat);
+      drawNgeGlow(gl, projectionParameters.viewProjectionMat);
       renderContext.bindFramebuffer();
     }
 

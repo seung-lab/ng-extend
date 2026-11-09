@@ -128,7 +128,7 @@ const DATASETS_CONFIG = {
     layers: [
       {
         type: 'image',
-        source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2',
+        source: 'precomputed://gs://stroeh_sem_mouse_retina2/image/v2',
         name: 'em',
       },
       {
@@ -256,6 +256,26 @@ if (fs.existsSync(THANKSGIVING_DIR)) {
   fs.mkdirSync(dest, { recursive: true });
   for (const file of fs.readdirSync(THANKSGIVING_DIR)) fs.copyFileSync(path.join(THANKSGIVING_DIR, file), path.join(dest, file));
   console.log(`Copied the Thanksgiving turkey to ${dest}`);
+}
+// ── Copy the new player intro's Starship (src/util/starship.ts): the model
+// and its route through the Sandbox cell, fetched only when it flies.
+const INTRO_DIR = path.join(STATIC_DIR, 'intro');
+if (fs.existsSync(INTRO_DIR)) {
+  const dest = path.join(DIST_MIN, 'intro');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(INTRO_DIR)) {
+    if (/\.(glb|json|png)$/.test(file)) fs.copyFileSync(path.join(INTRO_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the Starship to ${dest}`);
+}
+// ── Copy the mini volume (Get Started page 2 shows it in a frame: a block of
+// EM, its slices, then the neuron). A page with its own data files.
+const MINI_VOLUME_DIR = path.join(STATIC_DIR, 'mini-volume');
+if (fs.existsSync(MINI_VOLUME_DIR)) {
+  const dest = path.join(DIST_MIN, 'mini-volume');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(MINI_VOLUME_DIR)) fs.copyFileSync(path.join(MINI_VOLUME_DIR, file), path.join(dest, file));
+  console.log(`Copied the mini volume to ${dest}`);
 }
 const SFX_DIR = path.join(STATIC_DIR, 'sfx');
 if (fs.existsSync(SFX_DIR)) {

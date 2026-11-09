@@ -317,7 +317,7 @@ async function digest({api, sb, questKey = 'retina_cilia', to = REVIEWERS, dryRu
 // last row with an Annotator Name passes WARN_ROW, Ames gets one bell note
 // (never twice: a note with the same title already sent stops it).
 const AMES = '146a3fec-ee5c-46f9-b1ac-b1ea57501f81';
-const READ_ROWS = 2000, WARN_ROW = 1800;
+const READ_ROWS = 2000, WARN_ROW = 1800, TEST_ROW = /test|delete me/i;
 const ROWS_TITLE = '📋 The Cilia Quest sheet is nearly past what Pyr reads';
 async function lastWorkedRow(api, quest, title) {
   const head = await getRange(api, quest, q(title) + '!A1:AZ10');
@@ -325,15 +325,23 @@ async function lastWorkedRow(api, quest, title) {
   if (!(cols.name >= 0)) return 0;
   const L = letters(cols.name), first = headerRow + 2;
   const column = await getRange(api, quest, `${q(title)}!${L}${first}:${L}`);
+  // Test rows (an Index like "TEST1 (delete me)") are left out: two at the
+  // foot of the tab set this off at row 5132 (Ames 2026-11-08).
+  const index = cols.index >= 0 ? await getRange(api, quest, `${q(title)}!${letters(cols.index)}${first}:${letters(cols.index)}`) : [];
   let last = 0;
-  column.forEach((v, k) => { if (String((v || [])[0] ?? '').trim()) last = first + k; });
+  column.forEach((v, k) => {
+    if (TEST_ROW.test(String((index[k] || [])[0] ?? ''))) return;
+    if (String((v || [])[0] ?? '').trim()) last = first + k;
+  });
   return last;
 }
 async function rowsReminder({api, sb, questKey = 'retina_cilia', now = () => new Date().toISOString()}) {
   const quest = QUESTS[questKey];
   const last = await lastWorkedRow(api, quest, await tabTitle(api, quest));
   if (last < WARN_ROW) return {last, sent: false};
-  const before = await sb(`notifications?target_id=eq.${AMES}&title=eq.${encodeURIComponent(ROWS_TITLE)}&select=id&limit=1`);
+  // Only a note after the false one of 2026-11-07 (test rows) counts, so the
+  // real one can still come at row 1800.
+  const before = await sb(`notifications?target_id=eq.${AMES}&title=eq.${encodeURIComponent(ROWS_TITLE)}&send_at=gt.2026-11-07T13:01:00Z&select=id&limit=1`);
   if (Array.isArray(before) && before.length) return {last, sent: false, why: 'already told'};
   await sb('notifications', {method: 'POST', body: JSON.stringify({
     title: ROWS_TITLE, image_url: IMAGE, thumbnail_url: IMAGE,

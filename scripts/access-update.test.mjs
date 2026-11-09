@@ -40,3 +40,14 @@ test('Sunday also sends the week', async () => {
   await sendAccessUpdate({ get, post: async (_, r) => sent.push(...r), now: new Date('2026-11-08T20:30:00Z'), day: 'Nov 8' });
   assert.deepEqual(sent.map(r => r.title), ['🔑 Access update: Nov 8', '🔑 Access this week: Nov 2 – Nov 8']);
 });
+test('beta approvals come from Pilot testers; a pasted list is counted', async () => {
+  const { gatherAccess } = await import('./access-update.mjs');
+  const list = Array.from({ length: 6 }, (_, i) => ({ email: `l${i}@x`, created_at: 'T1' }));
+  const get = async (t, q) => {
+    if (t === 'pilot_members') return [{ email: 'ken@x', created_at: 'T2' }, { email: 'new@x', created_at: 'T3' }, ...list];
+    if (t === 'users') { assert.ok(!q.includes('l0@x')); return [{ display_name: 'Ken Mierow', middleauth_email: 'Ken@x' }]; }
+    return [];
+  };
+  const { approvals } = await gatherAccess(get, '2026-11-01T00:00:00Z');
+  assert.deepEqual(approvals, [{ name: 'Ken Mierow', what: 'Beta' }, { name: 'new@x', what: 'Beta' }, { name: '6 emails', what: 'Beta, added as a list' }]);
+});

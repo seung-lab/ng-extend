@@ -2294,7 +2294,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-06-found-us-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-06-request-bells-read-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2911,6 +2911,20 @@ exports.ewSheetSync = onRequest(
     const sb=ewSb(ewServiceKey.value().trim());
     if(!(await pilotContext(sb,who)).isAdmin) throw ewErr(403,'Admins only');
     return res.json(await require('./sheet-sync').pilotSheetEmails(admin.applicationDefault()));
+   }
+   // "MEC error" on a triage card (Ames 2026-11-07): the report becomes a row
+   // of the MEC segment issues sheet. Admins only; rules in mec-issues.js.
+   if(input.action==='mec_issue') {
+    if(!(await rateLimit({ip:who.email},true,'write:sheets')).ok) throw ewErr(429,'Please wait a moment.');
+    const sb=ewSb(ewServiceKey.value().trim());
+    const {me,isAdmin}=await pilotContext(sb,who);
+    if(!isAdmin) throw ewErr(403,'Admins only');
+    const {sheetsApi}=require('./sheet-sync'),cred=admin.applicationDefault();
+    const bell=row=>sb('notifications',{method:'POST',body:JSON.stringify({...row,created_by:(me&&me.id)||null})});
+    const out=await require('./mec-issues').addIssue(input,{sb,bell,api:(path,init)=>sheetsApi(cred,path,init)})
+      .catch(e=>{ if(e.status) throw e; console.warn('[ewSheetSync] mec_issue',e.message); throw ewErr(503,'The MEC sheet could not be reached. Nothing was added; try again shortly.'); });
+    console.info('[ewSheetSync] mec_issue by',who.email,input.number,JSON.stringify(out));
+    return res.json({ok:true,...out});
    }
    // Annotation Quests (Ames 2026-10-12): the quest's own sheet tab is the
    // record. No proofreading task is involved: the row's Annotator Name says

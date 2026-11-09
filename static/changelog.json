@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-08T01:57:06Z",
+      "at": "2026-11-09T15:58:45Z",
       "title": "Retina cells open with Highlight",
       "digest": "headline",
       "items": [
@@ -15,6 +15,136 @@
         "How to map a cell, in the Cell Library, opens in a box of its own with a picture of a bipolar cell.",
         "The outline around the volume is a softer blue.",
         "If you have worked on Retina cells, Pyr asks you once whether they open with Highlight or with the annotation layers. Cilia Quests always open with their annotations."
+      ]
+    },
+    {
+      "at": "2026-11-09T15:52:00Z",
+      "title": "A smoother flight to the neuron",
+      "items": [
+        "In the tour, the Starship now flies a clean curve from the soma out to its spot beside the neuron, and stays easy to see while the view pulls back.",
+        "The rocket key always starts a fresh flight, even if the last one never finished."
+      ]
+    },
+    {
+      "at": "2026-11-09T13:59:00Z",
+      "title": "The tour on phones",
+      "items": [
+        "On a phone the tour now has the whole screen: the top and bottom bars step aside while it runs, also in MICrONS.",
+        "Holograms on phones are short and easy to read, and the cell no longer turns on its own.",
+        "The Axon Runner swings out beside the cell before it turns, never through it, and hovers clear of the branches at the soma.",
+        "A yellow lightning button on the action potential step sends another pulse with each tap.",
+        "In MICrONS on a phone, Upstream cell and Downstream cell buttons step through the Martinotti cell's partners one at a time.",
+        "The portal on the way into MICrONS stays a modest size, and the welcome and action potential words are shorter."
+      ]
+    },
+    {
+      "at": "2026-11-09T02:37:00Z",
+      "title": "The Axon Runner's banked swoop",
+      "items": [
+        "On its way to the side of the view the Axon Runner swoops out and away, rolls onto its side through a banked turn, and comes back toward you.",
+        "It always shows its back as it flies, stays in view as it climbs the dendrite, and parks closer to the soma.",
+        "The orange downstream cell grows out from the synapse and is named in the tour, and the connectome step fills the volume with dozens of other cells.",
+        "The Axon Runner's hologram beam is a soft triangle of light."
+      ]
+    },
+    {
+      "at": "2026-11-09T02:20:00Z",
+      "title": "A smoother tour of Pyr",
+      "items": [
+        "The tour's ship is now called the Axon Runner, and it flies smooth banked curves: up the apical dendrite, two barrel rolls on its dive to the axon, and nose first everywhere.",
+        "A new launch screen shows while your first neuron loads, with a warp jump into the cell.",
+        "The Axon Runner's holograms build up out of its beam once it has stopped, and the tour's panel follows.",
+        "In MICrONS the Axon Runner scans the Martinotti cell's synapses with a hologram bar, shows its stats as a hologram, and counts its partners: 5,195 cells it hears from and 3,660 it sends to, with the cell types it hears from and sends to most.",
+        "Visiting a partner cell, the Axon Runner swoops up through the synapses the two cells share, and each one lights with a burst of sparks.",
+        "The welcome now says Pyr is pronounced peer, and the X closes the tour from the Leave question.",
+        "Turning the cell no longer drags the parked Axon Runner around."
+      ]
+    },
+    {
+      "at": "2026-11-09T00:38:00Z",
+      "title": "A cleaner neuron view",
+      "items": [
+        "The neuron animation on Get Started page 2 no longer draws lines across the volume behind the cell."
+      ]
+    },
+    {
+      "at": "2026-11-09T00:32:00Z",
+      "title": "Tour touch ups",
+      "items": [
+        "The tour's message boxes draw their glowing frame at the right size, including the Leave the introduction question.",
+        "Start the tour shows a loading screen while your first neuron arrives, instead of a black screen.",
+        "A stray line under the tour invitation is gone.",
+        "The X on the Leave the introduction question now closes the tour."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:59:00Z",
+      "title": "Try the new tour of Pyr",
+      "items": [
+        "A rocket by the chat box opens a prototype of the new tour that new players will see: a Starship flies into a real neuron and shows you its parts, its synapses and an action potential.",
+        "From its last screen you can explore a much bigger neuron in MICrONS and visit the cells it connects to, or start Get Started from the beginning.",
+        "Settings has a new switch under 3D looks, Turn cells slowly, to stop the view turning by itself.",
+        "It is still a prototype, so please send ideas and problems with a bug report."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:54:00Z",
+      "title": "Watch a neuron get traced",
+      "items": [
+        "On page 2 of Get Started, the tiny block of brain now sits on one of the neuron's branches. You see the AI color in every cell, then the traced branch lights up and grows into the whole neuron."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:07:00Z",
+      "title": "Get Started page 2, shorter",
+      "items": [
+        "Page 2 of Get Started no longer sends you to Connectome 101, since the Starship tour now explains what a connectome is."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:06:00Z",
+      "title": "Open Today in Pyr from chat",
+      "items": [
+        "Nurro's Today in Pyr line in chat has an Open button that brings up the full report."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:06:00Z",
+      "title": "Start playing in the Sandbox",
+      "digest": "minor",
+      "items": [
+        "Once you have finished Merge and Cut, the Sandbox card says Start playing. It takes you to a Sandbox cell of your own to proofread, with a short note on what to do."
+      ]
+    },
+    {
+      "at": "2026-11-08T22:05:00Z",
+      "title": "From a block of brain to a neuron",
+      "items": [
+        "Page 2 of Get Started now shows how a connectome is made with real data: a tiny block of brain is sliced, each slice is imaged, and a whole neuron is reconstructed in 3D."
+      ]
+    },
+    {
+      "at": "2026-11-08T16:55:00Z",
+      "title": "A visitor from the Starship",
+      "items": [
+        "Keep an eye on your screen: the Starship from the Exploration achievements is passing through Pyr this week, just once for each player."
+      ]
+    },
+    {
+      "at": "2026-11-08T02:18:32Z",
+      "title": "Retina 2D images are back",
+      "items": [
+        "Retina 2D images load again. The lab moved them to a new address this morning and Pyr was still asking the old one, so the 2D panel stayed empty.",
+        "Skip over damaged slices in MEC now changes only the slice, so you stay on the same spot instead of sliding sideways.",
+        "Daily updates in chat now come from Nurro."
+      ]
+    },
+    {
+      "at": "2026-11-07T20:59:45Z",
+      "title": "Cut errors only in the red popup",
+      "digest": "minor",
+      "items": [
+        "A failed cut or merge shows its message only in the red popup. The old line at the bottom no longer flashes up or stays behind."
       ]
     },
     {

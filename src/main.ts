@@ -12,6 +12,7 @@ import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
 import {startColorFamilies} from './util/color_families';
 import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
+import {startStarshipIntro} from './util/intro_tour';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startBoundsColor } from './util/bounds_color';
 import { recoverCellHistory } from './util/cell_history';
@@ -95,6 +96,7 @@ import pyrIconUrl from './images/pyr-icon.png';
 // The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
 import pyrTriageIconUrl from './images/pyr-icon-triage.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
+import {startStarshipFlyby} from './util/starship_flyby';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 // Injected by scripts/build-prod.js as the short git sha. Guarded with typeof
@@ -453,6 +455,8 @@ function setupViewer() {
   startSpooky(viewer);
   startPumpkin(viewer);
   startScytheControls();
+  startStarshipIntro();
+  startStarshipFlyby();
   startPointParticles();
   startTurkey();
   startLeaves();
@@ -992,6 +996,45 @@ function observeSplitMergeTools() {
    *  again, and again, flashing on and off (Celia, report 369). */
   const shownErrorLines = new WeakSet<Element>();
 
+  /** A cut or merge error line: its words go to the red popup, and
+   *  neuroglancer's own line at the bottom goes, the same words twice with a
+   *  small Dismiss button (Nseraf, reports 402 and 424). Lines with a Dismiss
+   *  button are dismissed; a short-lived one is hidden until it goes. */
+  function takeErrorLine(el: HTMLElement, cleanText: string) {
+    shownErrorLines.add(el);
+    // Up until it is dismissed, or the next cut or merge replaces it.
+    store.showResult('error', cleanText, 5 * 60 * 1000);
+    store.submitting = false;
+    if (el.classList.contains('neuroglancer-tool-status')) return;
+    try {
+      const dismiss = Array.from(el.children).find(b => b.tagName === 'BUTTON' && /^dismiss$/i.test((b.textContent || '').trim()));
+      if (dismiss) (dismiss as HTMLElement).click();
+      else el.style.display = 'none';
+    } catch { /* the line stays */ }
+  }
+  /** Error lines are taken as they are written, before the page is drawn
+   *  again, so they never show at the bottom even for a moment (Nseraf,
+   *  report 424: "they appear for a blink of an eye before vanishing", and
+   *  some stayed: the scan below runs on a timer and passes over a line
+   *  that repeats the last one's words, or comes while a success shows). */
+  function watchStatusLines() {
+    const container = document.getElementById('statusContainer');
+    if (!container) { setTimeout(watchStatusLines, 1000); return; }
+    new MutationObserver(() => {
+      if (!store.toolActive && !store.pendingClose) return;
+      for (const child of Array.from(container.children)) {
+        const el = child as HTMLElement;
+        if (shownErrorLines.has(el) || el.style.display === 'none') continue;
+        const text = el.textContent?.trim() || '';
+        const lower = text.toLowerCase();
+        if (!/split|merge|multicut|supervoxel|segment/.test(lower)) continue;
+        if (!/failed|error/.test(lower)) continue;
+        takeErrorLine(el, text.replace(/\s*dismiss\s*$/i, '').trim());
+      }
+    }).observe(container, { childList: true, subtree: true, characterData: true });
+  }
+  watchStatusLines();
+
   /** Scan #statusContainer for split/merge related errors/info */
   function checkStatusMessages() {
     if (!store.toolActive && !store.pendingClose) return;
@@ -1025,20 +1068,7 @@ function observeSplitMergeTools() {
 
       if (lower.includes('failed') || lower.includes('error')) {
         if (shownErrorLines.has(el)) continue;
-        shownErrorLines.add(el);
-        // Up until it is dismissed, or the next cut or merge replaces it.
-        store.showResult('error', cleanText, 5 * 60 * 1000);
-        store.submitting = false;
-        // The red popup now says it, so neuroglancer's own line at the bottom
-        // goes: the same words twice, and its small Dismiss button was the
-        // only way to clear it short of F5 (Nseraf, report 402). Only lines
-        // just shown as the popup, and only ones with a Dismiss button (an
-        // error bar), are taken down; every other status line stays.
-        try {
-          const dismiss = el.classList.contains('neuroglancer-tool-status') ? null
-            : Array.from(el.children).find(b => b.tagName === 'BUTTON' && /^dismiss$/i.test((b.textContent || '').trim()));
-          (dismiss as HTMLElement | undefined)?.click();
-        } catch { /* the line stays */ }
+        takeErrorLine(el, cleanText);
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
         // Neuroglancer shows "Splitting source from sink..." during processing —
         // the authoritative signal that a split was actually submitted.

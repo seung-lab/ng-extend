@@ -53,6 +53,34 @@ export interface NgeProp {
    *  falling, further apart as it goes up (the Sandbox pumpkins smashed with
    *  the hammer, src/util/pumpkin.ts). Fade it out with alpha as it ends. */
   shatter?: number;
+  /** Toward the eye, in the model's own axes, unit length. Leave it out for a
+   *  prop that is turned to face the eye (model +z). A prop that turns its
+   *  own way, like the Starship flying its route, passes it so its head light
+   *  and rim follow the camera, not the model. */
+  eye?: [number, number, number];
+}
+
+/** Glowing points (the Starship's engine trail): soft round sprites added
+ *  onto the picture, hidden by anything in front of them, writing no depth
+ *  and no picking. */
+export interface NgeGlow {
+  /** xyz per point, in the viewer's global coordinates. */
+  positions: Float32Array;
+  /** rgba per point, 0..1. Added, so dark means faint. */
+  colors: Float32Array;
+  /** Diameter per point, in nanometres. */
+  sizesNm: Float32Array;
+  count: number;
+  /** One nanometre across the screen (toward the camera's right), in global
+   *  coordinates: how the sprites get their size on screen. */
+  nmRight: [number, number, number];
+}
+const glows = new Map<string, NgeGlow>();
+export function setNgeGlow(glow: NgeGlow|null, group = 'starship') {
+  if (glow && glow.count > 0) glows.set(group, glow); else glows.delete(group);
+}
+export function ngeHasGlow() {
+  return glows.size > 0;
 }
 
 /** Each part of the app keeps its own list, so one clearing its props (the
@@ -121,6 +149,8 @@ uniform vec4 uLook;      // alpha, dissolve, seed, depthOnly
 uniform vec3 uGlow;
 uniform vec3 uRim;
 uniform float uShade;
+uniform vec3 uEye;       // toward the eye, model axes
+uniform vec3 uLight;     // the head light, model axes
 layout(location = 0) out vec4 out_color;
 
 float hash(vec3 p) {
@@ -144,10 +174,11 @@ void main() {
   if (uLook.w > 0.5) { out_color = vec4(0.0); return; }
   vec3 normal = normalize(vNormal);
   if (!gl_FrontFacing) normal = -normal;
-  // A head light a little above and to the side of the eye (model +z faces the eye).
-  float lit = 0.42 + 0.58 * max(dot(normal, normalize(vec3(0.3, 0.45, 1.0))), 0.0);
+  // A head light a little above and to the side of the eye (by default model
+  // +z faces the eye; a prop that turns its own way passes its eye).
+  float lit = 0.42 + 0.58 * max(dot(normal, uLight), 0.0);
   vec3 color = texture(uTexture, vUv).rgb * lit * uShade + uGlow;
-  float rim = pow(1.0 - clamp(abs(normal.z), 0.0, 1.0), 2.2);
+  float rim = pow(1.0 - clamp(abs(dot(normal, uEye)), 0.0, 1.0), 2.2);
   color += uRim * rim * 0.9;
   // the edge of what is left burns in the rim colour
   float burn = dissolve > 0.0 ? 1.0 - smoothstep(0.0, 0.07, edge) : 0.0;
@@ -219,7 +250,7 @@ function build(gl: GL): GpuState {
     return state;
   }
   state.program = program;
-  for (const name of ['uModelViewProjection', 'uTexture', 'uLook', 'uGlow', 'uRim', 'uShade', 'uShatter']) {
+  for (const name of ['uModelViewProjection', 'uTexture', 'uLook', 'uGlow', 'uRim', 'uShade', 'uShatter', 'uEye', 'uLight']) {
     state.uniforms[name] = gl.getUniformLocation(program, name);
   }
   return state;
@@ -266,6 +297,131 @@ function upload(gl: GL, mesh: NgePropMesh & {centroids?: Float32Array}): GpuMesh
 
 const mvp = mat4.create();
 
+/** The eye and head light in the model's axes: the default (model +z faces
+ *  the eye, the light a little up and to the side), or the prop's own eye
+ *  with the light lifted toward the model's up. */
+function setEyeAndLight(gl: GL, u: Record<string, WebGLUniformLocation|null>, eye?: [number, number, number]) {
+  if (!eye) {
+    gl.uniform3f(u.uEye, 0, 0, 1);
+    const n = Math.hypot(0.3, 0.45, 1);
+    gl.uniform3f(u.uLight, 0.3 / n, 0.45 / n, 1 / n);
+    return;
+  }
+  gl.uniform3f(u.uEye, eye[0], eye[1], eye[2]);
+  // up (model +y) with the part along the eye taken out, then a little of it added
+  const along = eye[1];
+  let lx = eye[0] - eye[0] * along * 0.45, ly = eye[1] + (1 - eye[1] * along) * 0.45, lz = eye[2] - eye[2] * along * 0.45;
+  const n = Math.hypot(lx, ly, lz) || 1;
+  gl.uniform3f(u.uLight, lx / n, ly / n, lz / n);
+}
+
+const GLOW_VERTEX = `#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec4 aColor;
+layout(location = 2) in float aSizeNm;
+uniform mat4 uViewProjection;
+uniform vec3 uNmRight;
+uniform vec2 uViewport;
+out vec4 vColor;
+void main() {
+  vec4 a = uViewProjection * vec4(aPosition, 1.0);
+  vec4 b = uViewProjection * vec4(aPosition + uNmRight * aSizeNm, 1.0);
+  gl_Position = a;
+  float px = length((b.xy / b.w - a.xy / a.w) * uViewport * 0.5);
+  gl_PointSize = clamp(px, 1.5, 96.0);
+  vColor = aColor;
+}
+`;
+const GLOW_FRAGMENT = `#version 300 es
+precision highp float;
+in vec4 vColor;
+layout(location = 0) out vec4 out_color;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  if (d >= 1.0) discard;
+  // a hot core and a soft halo
+  float k = exp(-d * d * 5.0) * (1.0 - d * d);
+  float a = vColor.a * k;
+  out_color = vec4(vColor.rgb * a, a);
+}
+`;
+interface GlowGpu { program: WebGLProgram|null; failed: boolean; vao: WebGLVertexArrayObject|null; buffers: WebGLBuffer[]; u: Record<string, WebGLUniformLocation|null>; }
+const glowStates = new WeakMap<GL, GlowGpu>();
+function buildGlow(gl: GL): GlowGpu {
+  const T = WebGL2RenderingContext;
+  const state: GlowGpu = {program: null, failed: true, vao: null, buffers: [], u: {}};
+  const compile = (type: number, source: string) => {
+    const s = gl.createShader(type)!;
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, T.COMPILE_STATUS)) { console.warn('[glow] shader did not compile:', gl.getShaderInfoLog(s)); return null; }
+    return s;
+  };
+  const vs = compile(T.VERTEX_SHADER, GLOW_VERTEX), fs = compile(T.FRAGMENT_SHADER, GLOW_FRAGMENT);
+  if (!vs || !fs) return state;
+  const program = gl.createProgram()!;
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, T.LINK_STATUS)) { console.warn('[glow] program did not link:', gl.getProgramInfoLog(program)); return state; }
+  state.program = program;
+  for (const n of ['uViewProjection', 'uNmRight', 'uViewport']) state.u[n] = gl.getUniformLocation(program, n);
+  state.vao = gl.createVertexArray();
+  gl.bindVertexArray(state.vao);
+  [[0, 3], [1, 4], [2, 1]].forEach(([loc, size]) => {
+    const b = gl.createBuffer()!;
+    state.buffers.push(b);
+    gl.bindBuffer(T.ARRAY_BUFFER, b);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, T.FLOAT, false, 0, 0);
+  });
+  gl.bindVertexArray(null);
+  gl.bindBuffer(T.ARRAY_BUFFER, null);
+  state.failed = false;
+  return state;
+}
+
+/**
+ * Draw the glowing points into the colour buffer that is bound, after the
+ * props: depth tested, no depth written, added onto what is there. The
+ * caller has switched picking output off. Restores blending off and the
+ * depth mask on.
+ */
+export function drawNgeGlow(gl: GL, viewProjectionMat: mat4) {
+  if (glows.size === 0) return;
+  let st = glowStates.get(gl);
+  if (st === undefined) { st = buildGlow(gl); glowStates.set(gl, st); }
+  if (st.failed || !st.program) return;
+  const T = WebGL2RenderingContext;
+  const vp = gl.getParameter(T.VIEWPORT) as Int32Array;
+  gl.useProgram(st.program);
+  gl.uniformMatrix4fv(st.u.uViewProjection, false, viewProjectionMat);
+  gl.uniform2f(st.u.uViewport, vp[2], vp[3]);
+  gl.enable(T.DEPTH_TEST);
+  gl.depthFunc(T.LEQUAL);
+  gl.depthMask(false);
+  gl.enable(T.BLEND);
+  gl.blendFuncSeparate(T.ONE, T.ONE, T.ONE, T.ONE);
+  gl.bindVertexArray(st.vao);
+  for (const g of glows.values()) {
+    gl.uniform3f(st.u.uNmRight, g.nmRight[0], g.nmRight[1], g.nmRight[2]);
+    gl.bindBuffer(T.ARRAY_BUFFER, st.buffers[0]);
+    gl.bufferData(T.ARRAY_BUFFER, g.positions.subarray(0, g.count * 3), T.DYNAMIC_DRAW);
+    gl.bindBuffer(T.ARRAY_BUFFER, st.buffers[1]);
+    gl.bufferData(T.ARRAY_BUFFER, g.colors.subarray(0, g.count * 4), T.DYNAMIC_DRAW);
+    gl.bindBuffer(T.ARRAY_BUFFER, st.buffers[2]);
+    gl.bufferData(T.ARRAY_BUFFER, g.sizesNm.subarray(0, g.count), T.DYNAMIC_DRAW);
+    gl.drawArrays(T.POINTS, 0, g.count);
+  }
+  gl.bindVertexArray(null);
+  gl.bindBuffer(T.ARRAY_BUFFER, null);
+  gl.depthMask(true);
+  gl.disable(T.BLEND);
+  gl.blendFunc(T.SRC_ALPHA, T.ONE_MINUS_SRC_ALPHA);
+  gl.depthFunc(T.LESS);
+}
+
 /**
  * Draw the props into the colour buffer that is bound, against its depth.
  * The caller has switched picking output off, and puts the framebuffer's
@@ -304,6 +460,7 @@ export function drawNgeProps(gl: GL, viewProjectionMat: mat4) {
     gl.uniform3f(u.uGlow, prop.glow[0], prop.glow[1], prop.glow[2]);
     gl.uniform3f(u.uRim, prop.rim[0], prop.rim[1], prop.rim[2]);
     gl.uniform1f(u.uShade, prop.shade);
+    setEyeAndLight(gl, u, prop.eye);
     // 1. depth only: where the prop's nearest surface is
     gl.colorMask(false, false, false, false);
     gl.disable(T.BLEND);
