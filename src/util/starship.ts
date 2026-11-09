@@ -678,7 +678,8 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           const Hn = v.projectionScale.value * Math.min(nm[0], nm[1], nm[2]);
           const onScreen = Math.max(cameo ? 0.3 : 0.5, Math.min(8, (cameo ? 0.05 : 0.035) * Hn / (f.shipLength * (cameo || 1))));
           if (dock) target = 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
-          else if (h) target = onScreen;
+          // (flying its routes it is its true size: they hug the cell, and a
+          // bigger ship dwarfed the axon it spirals round: Ames, "way too big!")
           sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 3));
         }
         if (dock) {
