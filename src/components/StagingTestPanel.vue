@@ -161,7 +161,7 @@ function resetTutorials() {
     <button class="nge-stt-tab" @click="setOpen(true)" title="Intro test: see the new player intro">
       Intro test<span v-if="simulating" class="nge-stt-dot" aria-label="pretend new player is on"></span>
     </button>
-    <button class="nge-stt-tab nge-stt-rocket" @click="launchShip" title="Play the new player intro" aria-label="Fly the Starship" v-html="FLIGHT_SVG"></button>
+    <button class="nge-stt-tab nge-stt-rocket" @click="launchShip" title="Play the new player intro" aria-label="Fly the Axon Runner" v-html="FLIGHT_SVG"></button>
   </div>
   <aside v-else class="ng-extend nge-stt" aria-label="Intro test">
     <header class="nge-stt-head">

@@ -1699,7 +1699,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
       requestAnimationFrame(scanRaf);
     };
     requestAnimationFrame(scanRaf);
-    card.set('Scanning its synapses', 'The Starship is mapping every synapse on this cell.', [], undefined, '', {back: () => { token++; cardAway(false); stopZap(); showMartinotti(card, ml); }});
+    card.set('Scanning its synapses', 'The Axon Runner is mapping every synapse on this cell.', [], undefined, '', {back: () => { token++; cardAway(false); stopZap(); showMartinotti(card, ml); }});
   };
   const visit = (k: number) => {
     const my = ++token;
@@ -1794,7 +1794,7 @@ function showTourLoading() {
   document.querySelector('.nge-tour-loading')?.remove();
   const el = document.createElement('div');
   el.className = 'ng-extend nge-tour-loading';
-  el.innerHTML = `<div class="nge-tour-loading-ring"></div><div class="nge-tour-loading-text">Warming up the Starship</div><div class="nge-tour-loading-sub">Loading your first neuron</div>`;
+  el.innerHTML = `<div class="nge-tour-loading-ring"></div><div class="nge-tour-loading-text">Warming up the Axon Runner</div><div class="nge-tour-loading-sub">Loading your first neuron</div>`;
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add('nge-tour-loading--in'));
   const done = () => {

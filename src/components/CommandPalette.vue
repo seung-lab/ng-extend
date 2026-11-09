@@ -263,8 +263,8 @@ function buildActions(): PaletteItem[] {
     });
     items.push({
       id: 'starship-clear',
-      label: 'Starship: take it away',
-      description: 'Remove the landed Starship from the Sandbox cell',
+      label: 'Axon Runner: take it away',
+      description: 'Remove the landed Axon Runner from the Sandbox cell',
       category: 'tool',
       icon: '🚀',
       aliases: ['starship', 'ship', 'clear ship', 'remove ship'],
