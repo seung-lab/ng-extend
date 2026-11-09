@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T23:04:46Z",
+      "title": "Number pad and layer 10 keys",
+      "digest": "minor",
+      "items": [
+        "The number pad picks layers just like the number keys above the letters.",
+        "Ctrl + 0 opens layers 10 and up, the next one each time you press it.",
+        "In the blog editor, pasting into a picture caption keeps the words in the caption, and a link copied from a list stays a link."
+      ]
+    },
+    {
       "at": "2026-11-09T19:24:16Z",
       "title": "A better bug report",
       "digest": "minor",
