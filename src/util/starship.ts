@@ -423,6 +423,8 @@ async function growCell(f: Flight, nm: V3) {
   // wait for the mesh: until some of it is drawn, then a moment more for the rest
   for (let k = 0; k < 120 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
   await new Promise(r => setTimeout(r, 1500));
+  // the tour's loading screen can go now (Ames: it "just stays black")
+  window.dispatchEvent(new Event('nge-intro-ready'));
   const FAR = 320_000, MS = 2600, t0 = performance.now();
   await new Promise<void>(done => {
     const step = (now: number) => {
@@ -768,6 +770,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
     setNgeProps([], GROUP);
     setNgeGlow(null, GROUP);
   } finally {
+    window.dispatchEvent(new Event('nge-intro-ready'));
     cancelAnimationFrame(raf);
     window.removeEventListener('pointerdown', onUserTurn, true);
     window.removeEventListener('wheel', onUserTurn, true);

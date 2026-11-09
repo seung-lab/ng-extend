@@ -610,6 +610,16 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 .nge-card-key { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; margin: 10px 0 2px; padding-top: 10px;
   border-top: 1px solid rgba(126, 224, 255, 0.25); font: 500 13.5px/1.3 'Inter', sans-serif; color: #e6f3ff; }
 .nge-card-key[hidden] { display: none; }
+.nge-callout-stats[hidden] { display: none; }
+.nge-tour-loading { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: radial-gradient(ellipse at center, rgba(14, 30, 70, 0.92), rgba(2, 6, 18, 0.97)); opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+.nge-tour-loading--in { opacity: 1; }
+.nge-tour-loading-ring { width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(126, 224, 255, 0.18); border-top-color: #7ee0ff;
+  box-shadow: 0 0 18px rgba(126, 224, 255, 0.35); animation: nge-tour-spin 1.1s linear infinite; }
+@keyframes nge-tour-spin { to { transform: rotate(360deg); } }
+.nge-tour-loading-text { font: 600 18px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #e6f6ff; text-shadow: 0 0 12px rgba(126, 224, 255, 0.6); }
+.nge-tour-loading-sub { font: 500 14px 'Inter', sans-serif; color: rgba(200, 230, 255, 0.75); }
+@media (prefers-reduced-motion: reduce) { .nge-tour-loading-ring { animation: none; } }
 .nge-card-key i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
 .nge-card-key small { color: rgba(200, 230, 255, 0.7); font-size: 12px; text-align: right; white-space: nowrap; }
 .nge-card-key b { font-weight: 600; }
@@ -1305,6 +1315,12 @@ function transmissionCard() {
       <button class="nge-go nge-intro-go" type="button" hidden><span class="nge-go-label"></span></button></div>`;
   document.body.appendChild(card);
   keepOnScreen(card);
+  // the frame follows the card's real size (it was drawn once, before the
+  // text and buttons settled, so it came out too small: Ames)
+  const frameHost = card.querySelector('.nge-frame-host') as HTMLElement;
+  let fw = 0, fh = 0;
+  const redrawFrame = () => { const w = card.offsetWidth, h = card.offsetHeight; if (w && h && (w !== fw || h !== fh)) { fw = w; fh = h; frameHost.innerHTML = frameSvg(w, h, 18); } };
+  try { new ResizeObserver(redrawFrame).observe(card); } catch { /* drawn on each set */ }
   requestAnimationFrame(() => card.classList.add('nge-intro--in'));
   const close = () => { card.classList.add('nge-intro--out'); setTimeout(() => card.remove(), 450); };
   // no X here: its button is the way back from MICrONS (Ames)
@@ -1326,8 +1342,9 @@ function transmissionCard() {
     const btn = card.querySelector('.nge-intro-go') as HTMLButtonElement;
     btn.hidden = !button;
     if (button) { (btn.querySelector('.nge-go-label') as HTMLElement).textContent = button.label; btn.onclick = () => { if (!button.keep) close(); button.go(); }; }
-    (card.querySelector('.nge-frame-host') as HTMLElement).innerHTML = frameSvg(card.offsetWidth, card.offsetHeight, 18);
+    fw = fh = 0; redrawFrame();
     type(bodyEl, body);
+    requestAnimationFrame(redrawFrame);
   };
   return {set, close, el: card};
 }
@@ -1585,9 +1602,30 @@ export function showTourInvite() {
 }
 
 /** The whole intro: the Starship flies in and lands, then the tour. */
+/** A loading screen while the Sandbox and the cell arrive, until the cell
+ *  starts to grow (Ames: "start the tour ... just stays black for a while"). */
+function showTourLoading() {
+  ensureStyle();
+  document.querySelector('.nge-tour-loading')?.remove();
+  const el = document.createElement('div');
+  el.className = 'ng-extend nge-tour-loading';
+  el.innerHTML = `<div class="nge-tour-loading-ring"></div><div class="nge-tour-loading-text">Warming up the Starship</div><div class="nge-tour-loading-sub">Loading your first neuron</div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('nge-tour-loading--in'));
+  const done = () => {
+    window.removeEventListener('nge-intro-ready', done);
+    clearTimeout(timer);
+    el.classList.remove('nge-tour-loading--in');
+    setTimeout(() => el.remove(), 600);
+  };
+  const timer = setTimeout(done, 45_000);
+  window.addEventListener('nge-intro-ready', done);
+}
+
 export function playIntro() {
   endTour();
   clearStarship();
+  showTourLoading();
   setTimeout(() => { void flyStarship(() => { void startIntroTour(); }); }, 150);
 }
 
