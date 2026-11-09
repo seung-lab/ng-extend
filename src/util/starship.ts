@@ -697,7 +697,10 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // Ames, "flies BACKWARDS OUT OF THE PORTAL")
           const tan = sub(B(Math.min(1, dq + 0.02)), B(Math.max(0, dq - 0.02)));
           const goDir = dq < 1 && dock.from && Math.hypot(...tan) > 1 ? norm(tan) : (prevFwd ?? fwd);
-          fwd = norm(mix(goDir, mul(cam.right, -1), smooth((dq - 0.9) / 0.1)));
+          // parked, a three-quarter view (Ames's render): nose down-left and a
+          // little toward us, its top tipped toward the camera
+          const poseFwd = norm(add(add(mul(cam.right, -0.72), mul(cam.up, -0.22)), mul(cam.toEye, 0.62)));
+          fwd = norm(mix(goDir, poseFwd, smooth((dq - 0.85) / 0.15)));
         }
         // ending a hop the ship levels out, nose sideways across the screen,
         // not parked standing on end (Ames)
@@ -719,9 +722,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         if (bl > 0.28) bend = mul(bend, 0.28 / bl);
         // and drawn mostly broadside: only half of any dive into or out of
         // the screen shows as a tilt
-        if (h || dock) fwd = norm(sub(fwd, mul(cam.toEye, dot(fwd, cam.toEye) * 0.5)));
+        if (h || (dock && (now - dock.start) / dockMs < 0.85)) fwd = norm(sub(fwd, mul(cam.toEye, dot(fwd, cam.toEye) * 0.5)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
-        if (dock) up = norm(mix(up, cam.toEye, smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
+        if (dock) up = norm(mix(up, norm(add(mul(cam.toEye, 0.75), mul(cam.up, 0.66))), smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
         const land = h || dock ? 0 : smooth((t - CRUISE_S - LANDING_S * 0.2) / (LANDING_S * 0.7));
         if (land > 0) {
