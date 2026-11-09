@@ -363,10 +363,10 @@ export function oneBoundingBox() {
  *  swirl in to a white hot core, sparks are flung off the rim. As the ship
  *  bursts through, a flash and a shockwave ring; then the rims spiral in,
  *  the whole thing zips shut and a last spark pops. */
-const PORTAL_MAX = 900;
+const PORTAL_MAX = 1400;
 const portalGlow: NgeGlow = {positions: new Float32Array(PORTAL_MAX * 3), colors: new Float32Array(PORTAL_MAX * 4), sizesNm: new Float32Array(PORTAL_MAX), count: 0, nmRight: [1, 0, 0]};
 const ZIP_AT = 4.1;
-const SPARKS = Array.from({length: 48}, (_, k) => ({th: k * 2.399, sp: 0.7 + ((k * 37) % 11) / 11, off: ((k * 53) % 17) / 17}));
+const SPARKS = Array.from({length: 96}, (_, k) => ({th: k * 2.399, sp: 0.7 + ((k * 37) % 11) / 11, off: ((k * 53) % 17) / 17}));
 function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
   let n = 0;
   const put = (p: V3, rgba: number[], size: number) => {
@@ -386,12 +386,21 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
   const RR = R * (1 - 0.85 * shut);
   if (zip < 1.3) {
     // the disk: six arms curling in, spinning fast, twinkling
-    const ARMS = 6, PER = 34;
+    const ARMS = 8, PER = 56;
     for (let a = 0; a < ARMS; a++) for (let k = 0; k < PER; k++) {
       const u = (k + 1) / PER;
       const th = a * 2 * Math.PI / ARMS + (1 - u) * 3.2 * Math.PI - tp * (3.2 - 1.6 * u) - shut * 9 * (1 - u);
       const col = a % 2 ? cyan : vio, tw = 0.65 + 0.35 * Math.sin(tp * 11 + k * 1.7 + a);
       put(at2(RR * open * u * 0.94, th), [col[0], col[1], col[2], 0.8 * open * life * tw * (0.35 + 0.65 * u)], R * (0.05 + 0.12 * u));
+    }
+    // motes falling in: each spirals from the rim down into the core, over
+    // and over, so the whole disk swirls inward (Ames: "more particles
+    // spiral in the ring")
+    for (let k = 0; k < 160; k++) {
+      const q = (tp * (0.45 + ((k * 29) % 13) / 30) + ((k * 41) % 97) / 97) % 1;
+      const th = k * 2.399 + q * 4.5 * Math.PI + tp * 1.2;
+      const col = k % 3 === 0 ? mag : k % 3 === 1 ? cyan : vio;
+      put(at2(RR * open * (1 - q) * 0.97, th), [col[0], col[1], col[2], open * life * Math.min(1, q * 4) * (0.5 + 0.5 * q) * 0.9], R * (0.035 + 0.05 * (1 - q)));
     }
     // sparks flung off the rim, curving away and fading
     for (const sp of SPARKS) {
