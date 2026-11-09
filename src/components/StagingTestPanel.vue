@@ -29,6 +29,10 @@ import { extensionSteps } from '../extension-sandbox';
 import { steps as testSteps } from '../proofreading-test';
 
 const OPEN_KEY = 'nge-staging-panel-open';
+// EyeWire Radio from here, for a phone, where its own control is hidden
+const musicOn = ref(false);
+window.addEventListener('nge-radio-state', (e: Event) => { musicOn.value = !!(e as CustomEvent).detail; });
+function toggleMusic() { window.dispatchEvent(new Event('nge-radio-toggle')); }
 let wasOpen = true;
 try { wasOpen = localStorage.getItem(OPEN_KEY) !== '0'; } catch { /* no storage */ }
 const open = ref(wasOpen);
@@ -172,6 +176,7 @@ function resetTutorials() {
     <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchShip"><span class="nge-stt-rocket-ic" v-html="FLIGHT_SVG"></span> Play the intro</button>
     <button class="nge-hud-btn nge-stt-launch" @click="jumpToIntroChoice">Jump to Choose your next adventure</button>
     <button class="nge-hud-btn nge-stt-launch" @click="replayMicronsJump">Replay the warp to MICrONS</button>
+    <button class="nge-hud-btn nge-stt-launch" @click="toggleMusic">{{ musicOn ? 'Turn the music off' : 'Turn the music on' }}</button>
     <label class="nge-stt-switch">
       <input id="nge-stt-sim" type="checkbox" :checked="simulating" @change="toggleSim" />
       <span>Pretend I am a new player</span>
