@@ -1469,7 +1469,7 @@ export async function startIntroTour() {
       // a portrait screen is narrow: pulled back to show the same width as a
       // wide one, so the ship never leaves it (Ames, on a phone)
       // (the axon is narrow: it needs much less, Ames: "zoomed in more")
-      const vnm = b.view.nm * (b.key === 'synapse' || b.key === 'synapse2' ? 1 : b.key === 'axon' ? Math.min(1.8, portraitK()) : portraitK());
+      const vnm = b.view.nm * (b.key === 'synapse' || b.key === 'synapse2' ? 1 : b.key === 'dendrites' ? portraitK() : Math.min(b.key === 'axon' ? 1.8 : 1.25, portraitK()));
       const msNow = b.key === 'spike' ? ms : Math.max(ms, glideMs(framed(center, vnm), vnm, ms), shipLeft + 500);
       if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, vnm), vnm, ms); }, 1300);
       else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, vnm), vnm, msNow);
