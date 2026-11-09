@@ -708,6 +708,7 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 @media (max-width: 820px) {
   .nge-callout-box .nge-callout-title { display: none !important; }
   .nge-callout-box .nge-callout-kdot { display: inline-block; }
+  .nge-callout-box .nge-callout-stats .grp { display: none !important; }
   .nge-callout-box .nge-callout-stats { border-top: 0 !important; padding-top: 2px !important; margin-top: 4px !important; }
 }
 /* the whole tour, every screen: no top bars but the Pyr icon, no bottom bar
@@ -1051,6 +1052,12 @@ const STAT_ICON: Record<string, string> = {
 
 const PHONE_DROP = ['Contains', 'Location', 'Note', 'Neurotransmitter', 'Class', 'Cell type', 'Branch length', 'All its branches',
   'With the Martinotti cell', 'Hears most from', 'Sends most to'];
+function portraitK(): number {
+  const pe = threeDPanel()?.element as HTMLElement | undefined;
+  const r = pe?.getBoundingClientRect();
+  const asp = r && r.height > 50 ? r.width / r.height : window.innerWidth / Math.max(1, window.innerHeight);
+  return Math.max(1, Math.min(2.6, 1.5 / asp));
+}
 function isPhone(): boolean { return window.matchMedia?.('(max-width: 820px)').matches ?? false; }
 function showCallout(anchor: V3, title: string, stats: [string, string][] = [], color = '#7ee0ff', pointAt = true, showDot = true) {
   hideCallout();
@@ -1389,9 +1396,12 @@ export async function startIntroTour() {
       // to the whole cell (no dash across to the axon first)
       const ms = b.key === 'spike' ? 5200 : b.key === 'welcome' ? 2200 : 1800;
       const shipLeft = starshipEta();
-      const msNow = b.key === 'spike' ? ms : Math.max(ms, glideMs(framed(center, b.view.nm), b.view.nm, ms), shipLeft + 500);
-      if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, b.view.nm), b.view.nm, ms); }, 1300);
-      else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, b.view.nm), b.view.nm, msNow);
+      // a portrait screen is narrow: pulled back to show the same width as a
+      // wide one, so the ship never leaves it (Ames, on a phone)
+      const vnm = b.view.nm * portraitK();
+      const msNow = b.key === 'spike' ? ms : Math.max(ms, glideMs(framed(center, vnm), vnm, ms), shipLeft + 500);
+      if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, vnm), vnm, ms); }, 1300);
+      else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, vnm), vnm, msNow);
       setTimeout(() => { if (active && i === n) revealTint(shown, b.part); }, b.key === 'spike' ? 600 : ms * 0.55);
     };
     camBusyUntil = Math.max(camBusyUntil, performance.now() + camDelay + 120);
