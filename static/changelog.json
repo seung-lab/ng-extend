@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T02:37:00Z",
+      "title": "The Axon Runner's banked swoop",
+      "items": [
+        "On its way to the side of the view the Axon Runner swoops out and away, rolls onto its side through a banked turn, and comes back toward you.",
+        "It always shows its back as it flies, stays in view as it climbs the dendrite, and parks closer to the soma.",
+        "The orange downstream cell grows out from the synapse and is named in the tour, and the connectome step fills the volume with dozens of other cells.",
+        "The Axon Runner's hologram beam is a soft triangle of light."
+      ]
+    },
+    {
       "at": "2026-11-09T02:20:00Z",
       "title": "A smoother tour of Pyr",
       "items": [
