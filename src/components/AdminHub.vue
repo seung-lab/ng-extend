@@ -3757,6 +3757,13 @@ function practiceWhen(iso: string | null) {
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
             <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
+            <template v-if="row.source === 'site_issue'">
+              <a v-if="mecDone[row.id]" class="nge-admin-action-btn nge-triage-mec-btn nge-triage-mec-btn--done" :href="MEC_SHEET_URL" target="_blank" rel="noopener"
+                 title="Open the MEC segment issues sheet">✓ {{ mecDone[row.id].already ? 'Already on' : 'Added to' }} the MEC sheet<template v-if="mecDone[row.id].row"> (row {{ mecDone[row.id].row }})</template><template v-if="mecDone[row.id].notified">, {{ reporterOf(row)?.name || 'the player' }} told</template> ↗</a>
+              <button v-else class="nge-admin-action-btn nge-triage-mec-btn" :disabled="mecBusy === row.id"
+                      title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors. The player gets a bell saying their report was added."
+                      @click="addToMecSheet(row)">{{ mecBusy === row.id ? 'Adding…' : '🧩 MEC error' }}</button>
+            </template>
             <!-- Dismiss at any stage after approval too (a failed or unwanted
                  build), and Discard for junk (Ames 2026-10-05). -->
             <button v-if="row.status === 'approved'" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
@@ -3770,6 +3777,7 @@ function practiceWhen(iso: string | null) {
                     @click="undismiss(row)">↩ Back to the board</button>
             <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
           </div>
+          <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
           <!-- Going live is approved in Slack only: the deploy checks the
                tester's exact reply there before it touches the live site. -->
           <div v-if="row.status === 'approved' && releaseBuildOf(row)" class="nge-triage-release">
@@ -3904,15 +3912,7 @@ function practiceWhen(iso: string | null) {
             <div class="nge-triage-tools">
             <button v-if="reporterDrafts[row.id] === undefined" class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
-            <template v-if="row.source === 'site_issue'">
-              <a v-if="mecDone[row.id]" class="nge-admin-action-btn nge-triage-mec-btn nge-triage-mec-btn--done" :href="MEC_SHEET_URL" target="_blank" rel="noopener"
-                 title="Open the MEC segment issues sheet">✓ {{ mecDone[row.id].already ? 'Already on' : 'Added to' }} the MEC sheet<template v-if="mecDone[row.id].row"> (row {{ mecDone[row.id].row }})</template><template v-if="mecDone[row.id].notified">, {{ reporterOf(row)?.name || 'the player' }} told</template> ↗</a>
-              <button v-else class="nge-admin-action-btn nge-triage-mec-btn" :disabled="mecBusy === row.id"
-                      title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors. The player gets a bell saying their report was added."
-                      @click="addToMecSheet(row)">{{ mecBusy === row.id ? 'Adding…' : '🧩 MEC error' }}</button>
-            </template>
             </div>
-            <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
           </div>
         </div>
         <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
