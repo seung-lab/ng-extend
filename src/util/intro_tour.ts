@@ -710,7 +710,10 @@ body.nge-intro-on #extensionBar > :not(.ng-extend-logo), body.nge-intro-on .neur
 body.nge-intro-on .nge-mobile-nav, body.nge-intro-on [title^="Switch to"] { display: none !important; }
 body.nge-intro-on #extensionBar { background: transparent !important; border: 0 !important; box-shadow: none !important; }
 @media (max-width: 820px) {
-  .nge-callout-box { max-width: 64vw !important; min-width: 0 !important; padding: 9px 12px 10px !important; backdrop-filter: none; }
+  /* sharp on phones: no blur or glow filters on the box (they left it soft) */
+  .nge-callout-box, .nge-callout--in .nge-callout-box { max-width: 58vw !important; min-width: 0 !important; padding: 8px 11px 9px !important; backdrop-filter: none !important; filter: none !important; }
+  .nge-callout--in .nge-callout-box { animation-name: nge-co-build-m !important; }
+  .nge-callout-box > :not(.nge-frame-host) { filter: none !important; }
   .nge-callout-box .nge-callout-title { font-size: 15px; }
   .nge-callout-box .nge-callout-kicker { font-size: 8.5px; }
   .nge-callout-box .nge-callout-stats dt { font-size: 8px; }
@@ -827,6 +830,7 @@ body.nge-mobile.nge-intro-on .neuroglancer-layer-panel { display: none !importan
   filter: drop-shadow(0 0 16px rgba(80, 180, 255, 0.25));
   opacity: 0; }
 .nge-callout--in .nge-callout-box { opacity: 1; animation: nge-co-build 900ms cubic-bezier(.2,.9,.25,1) both; }
+@keyframes nge-co-build-m { 0% { clip-path: inset(100% 0 0 0); opacity: 1; } 75% { clip-path: inset(0 0 0 0); } 80% { opacity: 0.7; } 100% { clip-path: inset(0 0 0 0); opacity: 1; } }
 @keyframes nge-co-build {
   0% { clip-path: inset(100% 0 0 0); opacity: 1; filter: brightness(2.4) drop-shadow(0 0 18px #9fe9ff); }
   70% { clip-path: inset(0 0 0 0); filter: brightness(1.4) drop-shadow(0 0 16px rgba(80, 180, 255, 0.4)); }
