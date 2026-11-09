@@ -2,6 +2,18 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-09T17:37:46Z",
+      "title": "Log out, Not now, and tour fixes",
+      "digest": "minor",
+      "items": [
+        "Log out is now the last option in the menu at the top right.",
+        "The last Get Started box has a Not now button, so you can finish without starting the Merge tutorial.",
+        "The Starship tour and the tutorial boxes no longer show at the same time.",
+        "In Get Started, the box about the big black empty space now shows the black space in the 2D image.",
+        "A bug report still sends when your view cannot be saved, with your position instead."
+      ]
+    },
+    {
       "at": "2026-11-09T17:19:00Z",
       "title": "Clearer messages when a cell cannot be marked",
       "digest": "minor",
