@@ -711,8 +711,13 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         prevFwd = fwd;
         // banking: roll into the turn
         let bend: V3 = dock ? mul(dockBend, 6) : sub(sub(pathAt(s + 4000), pos), sub(pos, pathAt(s - 4000)));
+        // a gentle bank, about 15 degrees at most, not a steep lean the whole
+        // way (Ames: "the entire ship seems to fly at like a 30 degree incline")
         const bl = Math.hypot(...bend) / 2500;
-        if (bl > 0.9) bend = mul(bend, 0.9 / bl);
+        if (bl > 0.28) bend = mul(bend, 0.28 / bl);
+        // and drawn mostly broadside: only half of any dive into or out of
+        // the screen shows as a tilt
+        if (h || dock) fwd = norm(sub(fwd, mul(cam.toEye, dot(fwd, cam.toEye) * 0.5)));
         let up = norm(add(sub(cam.up, mul(fwd, dot(cam.up, fwd))), mul(bend, 1 / 2500)));
         if (dock) up = norm(mix(up, cam.toEye, smooth(((now - dock.start) / dockMs - 0.6) / 0.4)));
         // the landing: level onto the pad, nose kept flat to it
