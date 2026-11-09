@@ -158,7 +158,9 @@ let hop: Hop | null = null;
 /** Docked: the ship holds a spot on screen (fractions of the 3D view from
  *  its centre, x to the right, y up), whatever the camera does, and faces
  *  the cell. It eases there from wherever it was. */
-let dock: {fx: number; fy: number; start: number; from: V3 | null; hold?: {pos: V3; fwd: V3; up: V3; k: number}} | null = null;
+let dock: {fx: number; fy: number; start: number; from: V3 | null; hold?: {pos: V3; fwd: V3; up: V3; k: number};
+  /** its curve, in the view's own units (heights of the view, from its centre), fixed as it sets off */
+  view?: {p0: V3; p1: V3; frac0: number}} | null = null;
 let dockMs = 4200;
 /** Dock, taking `ms` to get there (the tour makes it end as the camera does). */
 let onPad = true;
@@ -740,7 +742,13 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           if (dock?.hold) target = dock.hold.k;
           // (the cameo comes out of its portal at its parked size, not huge
           // and shrinking, so ship and ring match)
-          else if (dock) target = cameo ? onScreen : 1 + (onScreen - 1) * smooth((now - dock.start) / dockMs);
+          // (its size on screen eases from what it was to its parked size, so
+          // while the camera pulls back it never shrinks to a speck: Ames,
+          // "look at this path")
+          else if (dock) {
+            const q = smooth((now - dock.start) / dockMs), f0 = dock.view?.frac0;
+            target = cameo ? onScreen : f0 ? Math.exp(Math.log(f0) * (1 - q) + Math.log(onScreen * f.shipLength / Hn) * q) * Hn / f.shipLength : 1 + (onScreen - 1) * q;
+          }
           // (flying its routes it is its true size: they hug the cell, and a
           // bigger ship dwarfed the axon it spirals round: Ames, "way too big!")
           sizeK += (target - sizeK) * Math.min(1, dt * (dock ? 30 : 3));
@@ -766,27 +774,41 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
             const a = 1 - u;
             return add(add(mul(p0, a * a * a), mul(p1, 3 * a * a * u)), add(mul(p2, 3 * a * u * u), mul(p3, u * u * u)));
           };
-          let P: V3[] | null = null;
+          // The curve lives in the view's own units, not the world's: the
+          // camera pulls back from the soma to the whole cell while the ship
+          // flies, and a curve in the world, redrawn every frame round the
+          // widening view, stretched out with it, so the ship streaked off to
+          // the right as a speck (Ames: "fix that path for real"). On screen
+          // it now keeps one shape however far the camera pulls back.
+          let B = (_u: number): V3 => target;
           if (dock.from) {
-            const p0 = dock.from, p3 = target;
-            // (the swing out stays on screen, wherever it starts)
-            const fromX = dot(sub(p0, ctr), cam.right);
-            let out = Math.max(Wd * 0.08, Math.min(Wd * 0.42, Wd * 0.46 - fromX));
-            let lift = H * 0.08;
-            // never closer to the soma than where it set off from
-            const d0 = Math.hypot(...sub(p0, somaAt)), clear = Math.min(d0, 14_000);
-            for (let tries = 0; tries < 8; tries++) {
-              const p1 = add(p0, add(add(mul(cam.right, out * 0.9), mul(cam.up, H * 0.04)), mul(cam.toEye, lift)));
-              const p2 = sub(sub(p3, mul(poseDir, Wd * 0.75)), mul(cam.toEye, H * 0.6));
-              P = [p0, p1, p2, p3];
-              if (cameo) break;
-              let worst = Infinity;
-              for (let k = 1; k <= 24; k++) worst = Math.min(worst, Math.hypot(...sub(bez(p0, p1, p2, p3, k / 24), somaAt)));
-              if (worst >= clear * 0.97) break;
-              out += Math.max(6_000, Wd * 0.06); lift += Math.max(4_000, H * 0.05);
+            const A = Wd / H;
+            const toWorld = (q: V3): V3 => add(ctr, add(add(mul(cam.right, q[0] * H), mul(cam.up, q[1] * H)), mul(cam.toEye, q[2] * H)));
+            const p3v: V3 = [dock.fx * A / 2, dock.fy / 2, 0];
+            const p2Of = (p3: V3): V3 => sub(sub(p3, mul(poseDir, A * 0.75)), [0, 0, 0.6]);
+            if (!dock.view) {
+              const rel = (p: V3): V3 => { const d = sub(p, ctr); return [dot(d, cam.right) / H, dot(d, cam.up) / H, dot(d, cam.toEye) / H]; };
+              const p0 = rel(dock.from), so = rel(somaAt);
+              // (the swing out stays on screen, wherever it starts)
+              let out = Math.max(A * 0.08, Math.min(A * 0.42, A * 0.46 - p0[0]));
+              let lift = 0.08;
+              // never closer to the soma than where it set off from
+              const clear = Math.min(Math.hypot(...sub(p0, so)), 14_000 / H) * 0.97;
+              let p1 = p0;
+              for (let tries = 0; tries < 8; tries++) {
+                p1 = add(p0, [out * 0.9, 0.04, lift]);
+                if (cameo) break;
+                const p2 = p2Of(p3v);
+                let worst = Infinity;
+                for (let k = 1; k <= 24; k++) worst = Math.min(worst, Math.hypot(...sub(bez(p0, p1, p2, p3v, k / 24), so)));
+                if (worst >= clear) break;
+                out += Math.max(6_000 / H, A * 0.06); lift += Math.max(4_000 / H, 0.05);
+              }
+              dock.view = {p0, p1, frac0: sizeK * f.shipLength / H};
             }
+            const vw = dock.view, p2v = p2Of(p3v);
+            B = (u: number): V3 => toWorld(bez(vw.p0, vw.p1, p2v, p3v, u));
           }
-          const B = (u: number): V3 => P ? bez(P[0], P[1], P[2], P[3], u) : target;
           pos = dock.hold ? dock.hold.pos : B(dq);
           dockBend = sub(sub(B(Math.min(1, dq + 0.04)), pos), sub(pos, B(Math.max(0, dq - 0.04))));
           dockScale = Wd;
