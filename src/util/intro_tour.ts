@@ -1161,7 +1161,8 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
   callout.className = 'nge-callout';
   // on phones the hologram is minimal: "Pyr scan", the part's color and
   // its numbers; no title (the panel says it) and no wordy rows (Ames)
-  if (isPhone()) stats = stats.filter(([k]) => !PHONE_DROP.includes(k));
+  // (in MICrONS just the synapse counts: Ames, the boxes hid the cell)
+  if (isPhone()) stats = stats.filter(([k]) => !PHONE_DROP.includes(k) && !(document.body.classList.contains('nge-intro-mc') && !['Input', 'Output'].includes(k)));
   const rows = stats.length;
   // The box is a hologram the Starship projects: a cone of light from the
   // ship up to it (Ames), and a fine line from it down to the part.
@@ -1955,8 +1956,10 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   };
   const listHtml = (on = -1) => {
     const idx = data.partners.map((p, k) => [p, k] as const);
-    return `<span class="hd">It sends to</span>${idx.filter(([p]) => p.dir === 'out').map(([p, k]) => row(p, k, on)).join('')}` +
-      `<span class="hd">It hears from</span>${idx.filter(([p]) => p.dir === 'in').map(([p, k]) => row(p, k, on)).join('')}`;
+    // (two of each on a phone, so the cell keeps the screen: Ames)
+    const most = isPhone() ? 2 : Infinity;
+    return `<span class="hd">It sends to</span>${idx.filter(([p]) => p.dir === 'out').slice(0, most).map(([p, k]) => row(p, k, on)).join('')}` +
+      `<span class="hd">It hears from</span>${idx.filter(([p]) => p.dir === 'in').slice(0, most).map(([p, k]) => row(p, k, on)).join('')}`;
   };
   const wire = () => card.el.querySelectorAll<HTMLButtonElement>('.nge-pt').forEach(b => { b.onclick = () => visit(Number(b.dataset.k)); });
   const play = {label: 'Start playing Pyr', go: () => startGetStarted()};
@@ -1975,7 +1978,8 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   // partners counted from the public synapse table (v1300): the distinct
   // cells on the other side of its synapses (some are pieces still being traced)
   const scanStats: [string, string][] = [['Input', '6,363 synapses'], ['Output', '8,110 synapses'], ['Cells it hears from', '5,195'], ['Cells it sends to', '3,660']];
-  const listText = 'Every dot is a synapse. It connects with about 8,700 cells. Want to meet a few? These are some of the cells it shares the most synapses with. Tap one to visit it.';
+  const listText = isPhone() ? 'Every dot is a synapse. It connects with about 8,700 cells. Tap one to visit it.'
+    : 'Every dot is a synapse. It connects with about 8,700 cells. Want to meet a few? These are some of the cells it shares the most synapses with. Tap one to visit it.';
   const overview = (scan = true) => {
     const my = ++token;
     stopZap(); hideCallout(); synapseMarks(null);
