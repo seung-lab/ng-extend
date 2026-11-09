@@ -71,7 +71,7 @@ const BEATS: Beat[] = [
   {key: 'dendrites', callout: {anchor: 'dendrite', title: 'Dendrites', stats: [['Input', '3,297 synapses']]}, part: 2, view: {at: 'dendView', nm: 185_000},
     body: 'The branches that listen. They gather signals from other neurons.'},
   {key: 'axon', callout: {anchor: 'axon', title: 'Axon', stats: [['Width', 'about 0.4 µm'], ['Outputs', '59 synapses']]}, part: 3, view: {at: 'axon', nm: 160_000},
-    body: "The {axon:axon} is the neuron's long, thin cable. It carries the cell's own signal out to other cells."},
+    body: "The {axon:axon}, shown in blue, is the neuron's long, thin cable. It carries the cell's own signal out to other cells."},
   {key: 'synapse', part: 3, header: 'Synapse', view: {at: 'synapse', nm: 40_000},
     body: 'The connection where two neurons meet and communicate. Signals always travel one way, from an axon to a dendrite: a cell listens with its dendrites and sends with its axon. Here our {axon:axon} passes its signal to {down:the dendrite of a downstream cell}.'},
   {key: 'allsyn', header: 'All its synapses', view: {at: 'cell', nm: 230_000},
@@ -1461,7 +1461,8 @@ export async function startIntroTour() {
       const shipLeft = starshipEta();
       // a portrait screen is narrow: pulled back to show the same width as a
       // wide one, so the ship never leaves it (Ames, on a phone)
-      const vnm = b.view.nm * portraitK();
+      // (the axon is narrow: it needs much less, Ames: "zoomed in more")
+      const vnm = b.view.nm * (b.key === 'axon' ? Math.min(1.15, portraitK()) : portraitK());
       const msNow = b.key === 'spike' ? ms : Math.max(ms, glideMs(framed(center, vnm), vnm, ms), shipLeft + 500);
       if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, vnm), vnm, ms); }, 1300);
       else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, vnm), vnm, msNow);
