@@ -1071,6 +1071,17 @@ function openTodoBoard() {
   if (props.standalone || triageBoard.value) todoView.value = true;
   else window.open(todoBoardUrl, '_blank', 'noopener');
 }
+// The address follows the view: back on Triage drops "&todo" (and any card
+// in it), so a refresh stays on Triage instead of reopening the last To do
+// (Celia #447). Opening the board puts a bare "&todo" back.
+watch(todoView, on => {
+  try {
+    const u = new URL(window.location.href);
+    if (on === u.searchParams.has('todo')) return;
+    if (on) u.searchParams.set('todo', ''); else u.searchParams.delete('todo');
+    window.history.replaceState(window.history.state, '', u.toString().replace(/([?&]todo)=(&|$)/, '$1$2'));
+  } catch { /* the address just stays */ }
+});
 
 // ── Notes, with no decision (Celia #178: "a way to leave notes on entries in
 // the triage panel without submitting any other actions") ──
@@ -3916,8 +3927,13 @@ function practiceWhen(iso: string | null) {
           </div>
         </div>
         <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
+          <!-- While searching, an empty column only means no
+               match there, not Triage zero (Celia #448). -->
+          <template v-if="triageWords.length"><div>No matches here.</div></template>
+          <template v-else>
           <img v-if="g.key === 'decide'" :src="imgNurroBravo" alt="" class="nge-triage-zero-nurro" />
           <div>{{ g.empty }}</div>
+          </template>
         </div>
         </template>
         </div>
