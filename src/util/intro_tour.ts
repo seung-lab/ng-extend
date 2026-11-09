@@ -1610,53 +1610,61 @@ interface McData { synIn: number[]; synOut: number[]; synUnit: number;
 /* ── the sweep: the ship flies over the synapses two cells share and lights
    each with a quick laser zap as it passes (Ames) ── */
 let zapRaf = 0;
-function runBarScan(points: V3[], rgb: [number, number, number], ms: number, onDone?: () => void) {
+/** The scan through a set of synapses: a hologram bar at the height getY()
+ *  gives (or none while it is null), lighting each synapse as it passes with
+ *  a burst of sparks; each stays as a small glowing dot, a steady size on
+ *  screen (Ames: "little particle sparks ... to draw attention to smaller
+ *  dots", not big annotation circles). */
+function runBarScan(points: V3[], rgb: [number, number, number], getY: () => number | null) {
   stopZap();
   const nm = nmPerUnit();
-  if (!nm || !points.length) { onDone?.(); return; }
+  if (!nm || !points.length) return;
   const lo = [0, 1, 2].map(i => Math.min(...points.map(q => q[i])));
   const hi = [0, 1, 2].map(i => Math.max(...points.map(q => q[i])));
   const c = [0, 1, 2].map(i => (lo[i] + hi[i]) / 2);
-  const yFrom = hi[1] + 25_000, yTo = lo[1] - 25_000;
   const half = Math.max(60_000, (hi[0] - lo[0]) / 2 + 40_000);
-  const n = points.length, N = 220, F = 50, MAX = n * 2 + N * 2 + F * 2;
+  const n = points.length, N = 200, SP = 10, MAX = n * (2 + SP) + N * 2;
   const glow: NgeGlow = {positions: new Float32Array(MAX * 3), colors: new Float32Array(MAX * 4), sizesNm: new Float32Array(MAX), count: 0, nmRight: [1 / nm[0], 0, 0]};
   const lit = new Float64Array(n);
-  const t0 = performance.now();
-  let done = false;
+  // each synapse's sparks fly out in their own directions
+  const dirs = points.map(() => Array.from({length: SP}, () => { const a = Math.random() * Math.PI * 2, b = Math.acos(2 * Math.random() - 1); return [Math.sin(b) * Math.cos(a), Math.sin(b) * Math.sin(a), Math.cos(b)]; }));
+  let barY = -Infinity;
   const step = (now: number) => {
-    const q = Math.min(1, (now - t0) / ms), y = yFrom + (yTo - yFrom) * (q < 0.5 ? 2 * q * q : 1 - Math.pow(-2 * q + 2, 2) / 2);
     const cam = cameraAxes(nm);
+    let Hn = 500_000;
+    try { Hn = viewerNow().projectionScale.value * Math.min(nm[0], nm[1], nm[2]); } catch { /* a guess */ }
+    const px = Hn / Math.max(400, window.innerHeight);   // nm a screen pixel
+    const y = getY();
+    if (y !== null) barY = y;
     let k = 0;
     const put = (p: number[], rgba: number[], size: number) => { if (k >= MAX) return; glow.positions.set([p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]], k * 3); glow.colors.set(rgba, k * 4); glow.sizesNm[k] = size; k++; };
     for (let j = 0; j < n; j++) {
       const p = points[j];
-      if (!lit[j] && p[1] >= y) lit[j] = now;
-      if (lit[j]) {
-        const f = Math.max(0, 1 - (now - lit[j]) / 600);
-        put(p, [rgb[0], rgb[1], rgb[2], 1], 6000 + 12000 * f);
-        if (f > 0) put(p, [1, 1, 1, f], 4000 + 8000 * f);
+      if (!lit[j] && y !== null && p[1] >= y + 3000) lit[j] = now;
+      if (!lit[j]) continue;
+      const age = (now - lit[j]) / 1000, f = Math.max(0, 1 - age / 0.5);
+      // the dot: small and bright, with a soft halo
+      put(p, [rgb[0], rgb[1], rgb[2], 0.35], px * 16);
+      put(p, [Math.min(1, rgb[0] + 0.3 * f), Math.min(1, rgb[1] + 0.3 * f), Math.min(1, rgb[2] + 0.3 * f), 1], px * (6 + 10 * f));
+      // the sparks
+      if (age < 0.9) for (const d of dirs[j]) {
+        const r = px * 70 * (1 - Math.pow(1 - Math.min(1, age / 0.9), 2.4));
+        put([p[0] + d[0] * r, p[1] + d[1] * r, p[2] + d[2] * r], [1, 0.95, 0.9, (1 - age / 0.9) * 0.95], px * 4.5);
       }
     }
-    if (q < 1 && cam) {
-      const right = cam.right, at = (u: number, dy: number) => [c[0] + right[0] * half * u, y + dy, c[2] + right[2] * half * u];
+    if (y !== null && cam) {
+      const right = cam.right, at = (u: number, dy: number) => [c[0] + right[0] * half * u, barY + dy, c[2] + right[2] * half * u];
       const flick = 0.85 + 0.15 * Math.sin(now / 45);
       for (let i = 0; i < N; i++) {
         const u = i / (N - 1) * 2 - 1, edge = 1 - Math.pow(Math.abs(u), 3);
-        put(at(u, 0), [0.8, 0.98, 1, 0.9 * edge * flick], 3000);
-        put(at(u, 8000), [0.3, 0.75, 1, 0.2 * edge], 14000);
-      }
-      const ship = starshipAt();
-      if (ship) for (const end of [-1, 1]) for (let i = 0; i < F; i++) {
-        const w = (i + 1) / F, e = at(end, 0);
-        put([0, 1, 2].map(a => ship[a] + (e[a] - ship[a]) * w), [0.55, 0.9, 1, 0.15 * (1 - w * 0.5)], 3600);
+        put(at(u, 0), [0.8, 0.98, 1, 0.9 * edge * flick], px * 3);
+        put(at(u, px * 10), [0.3, 0.75, 1, 0.2 * edge], px * 16);
       }
     }
     glow.count = k;
     if (cam) glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
     setNgeGlow(glow, 'intro-zap');
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
-    if (q >= 1 && !done) { done = true; onDone?.(); }
     zapRaf = requestAnimationFrame(step);
   };
   zapRaf = requestAnimationFrame(step);
@@ -1823,24 +1831,32 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
       }
     }
     synapseMarks(null);
-    // the ship stays at the side of the view and sweeps a hologram scan bar
-    // up through the synapses the two cells share, lighting each as it
-    // passes; then the marks stay (Ames: "ship should stay on the side and
-    // run the same horizontal scanner bar")
-    dockStarship(0.74, 0.05, 2400);
     stopZap();
     hideCallout();
-    let scanned = false;
-    const scanWhenThere = () => {
+    // the ship swoops up through the synapses the two cells share with its
+    // scan bar, lighting each as it passes with a burst of sparks, then goes
+    // back to the side to show the cell's stats (Ames)
+    let scanned = false, rising = false;
+    const pl = [0, 1, 2].map(i => Math.min(...pts.map(q => q[i]))), ph = [0, 1, 2].map(i => Math.max(...pts.map(q => q[i])));
+    const pc = [0, 1, 2].map(i => (pl[i] + ph[i]) / 2);
+    const n4 = nmPerUnit(), c4 = n4 && cameraAxes(n4), eye = c4 ? c4.toEye : [0, 0, 1];
+    const fr = (q: number[]): V3 => q.map((x, i) => x + eye[i] * 50_000) as V3;
+    const low: V3 = [pc[0], ph[1] + 30_000, pc[2]], high: V3 = [pc[0], pl[1] - 30_000, pc[2]];
+    undockStarship();
+    starshipHop([fr(low), fr([pc[0], pc[1], pc[2]]), fr(high)], Math.min(9, Math.max(5, 3 + (ph[1] - pl[1]) / 60_000)));
+    runBarScan(pts, p.dir === 'out' ? [1, 0.36, 0.86] : [1, 0.86, 0.45], () => {
+      const sp = starshipAt();
+      if (!sp) return null;
+      if (!rising && sp[1] >= low[1] - 25_000) rising = true;
+      return rising && starshipMoving() ? sp[1] : null;
+    });
+    const backToSide = () => {
       if (token !== my) return;
-      if (starshipMoving()) { requestAnimationFrame(scanWhenThere); return; }
-      runBarScan(pts, p.dir === 'out' ? [1, 0.36, 0.86] : [1, 0.86, 0.45], 4200, () => {
-        if (token !== my) return;
-        synapseMarks(pts, p.dir === 'out' ? '#ff5fd2' : '#ffd24d');
-        scanned = true;
-      });
+      if (!rising || starshipMoving()) { requestAnimationFrame(backToSide); return; }
+      dockStarship(0.78, 0.1, 2600);
+      scanned = true;
     };
-    setTimeout(scanWhenThere, 2900);
+    setTimeout(backToSide, 800);
     const shownAt = performance.now();
     const statsWhenStill = () => {
       if (token !== my || !card.el.isConnected) return;
