@@ -180,14 +180,53 @@ const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean }[] = 
   { stage: 'editing', title: 'Editing', sub: 'made an edit' },
 ];
 const inStage = (s: Stage) => cards.value.filter(c => c.stage === s);
+// Let in is mostly people who never answered (Ames 2026-11-10: "I don't
+// need to see all the cards of the ppl who haven't replied"): the newest
+// few, then a fold for the rest. A search still finds everyone.
+const LETIN_SHOWN = 5;
 const columnCards = (s: Stage) => {
-  const rows = inStage(s).filter(matches).filter(c => s !== 'letin' || !c.p?.from_list || showLists.value || words.value.length);
-  // Editing: latest edit first. Everything else: waiting longest first.
-  return s === 'editing'
-    ? rows.sort((a, b) => String(b.p?.last_edit_at).localeCompare(String(a.p?.last_edit_at)))
-    : rows.sort((a, b) => String(a.since).localeCompare(String(b.since)));
+  const rows = inStage(s).filter(matches);
+  if (s === 'editing') return rows.sort((a, b) => String(b.p?.last_edit_at).localeCompare(String(a.p?.last_edit_at)));
+  if (s === 'letin') {
+    rows.sort((a, b) => String(b.since).localeCompare(String(a.since)));
+    if (showLists.value || words.value.length) return rows;
+    return rows.filter(c => !c.p?.from_list).slice(0, LETIN_SHOWN);
+  }
+  // Everything else: waiting longest first.
+  return rows.sort((a, b) => String(a.since).localeCompare(String(b.since)));
 };
-const listCount = computed(() => inStage('letin').filter(c => c.p?.from_list).length);
+const letinHidden = computed(() => Math.max(0, inStage('letin').length - columnCards('letin').length));
+
+// The Editing column is off by default (Ames 2026-11-10: "we could remove
+// the Editing tab by default"); the leaderboard below ranks them instead.
+const EDITING_KEY = 'nge_access_editing_col_v1';
+const showEditingCol = ref((() => { try { return localStorage.getItem(EDITING_KEY) === '1'; } catch { return false; } })());
+function toggleEditingCol() {
+  showEditingCol.value = !showEditingCol.value;
+  try { localStorage.setItem(EDITING_KEY, showEditingCol.value ? '1' : '0'); } catch { /* not remembered */ }
+}
+const boardColumns = computed(() => COLUMNS.filter(c => c.stage !== 'editing' || showEditingCol.value));
+
+// The admins' leaderboard (Ames 2026-11-10: "rank them by top, sort of like
+// leaderboard ... like an admin version"): everyone who has edited, ranked
+// over the last 30 days or all time, by edits, cells done or help given.
+type LbSpan = '30d' | 'all';
+type LbBy = 'edits' | 'cells' | 'help';
+const lbSpan = ref<LbSpan>('30d');
+const lbBy = ref<LbBy>('edits');
+const lbAll = ref(false);
+const LB_SHOWN = 10;
+const lbVal = (p: Person, by: LbBy, span: LbSpan) => by === 'edits' ? (span === '30d' ? p.edits_30d : p.edits)
+  : by === 'cells' ? (span === '30d' ? p.cells_30d : p.cells) : (span === '30d' ? p.help_given_30d : p.help_given);
+const lbRows = computed(() => cards.value
+  .filter(c => c.p && c.stage !== 'admin' && (c.p.edits > 0 || c.p.cells > 0 || c.p.help_given > 0))
+  .filter(matches)
+  .map(c => ({ c, p: c.p as Person, v: lbVal(c.p as Person, lbBy.value, lbSpan.value) }))
+  .filter(r => r.v > 0)
+  .sort((a, b) => b.v - a.v || String(b.p.last_edit_at).localeCompare(String(a.p.last_edit_at))));
+const lbMax = computed(() => Math.max(1, ...lbRows.value.map(r => r.v)));
+const lbShown = computed(() => (lbAll.value || words.value.length ? lbRows.value : lbRows.value.slice(0, LB_SHOWN)));
+const LB_BY: { key: LbBy; label: string }[] = [{ key: 'edits', label: 'Edits' }, { key: 'cells', label: 'Cells done' }, { key: 'help', label: 'Help given' }];
 const adminCards = computed(() => inStage('admin').filter(matches).sort((a, b) => nameOf(a).localeCompare(nameOf(b))));
 const removedCards = computed(() => inStage('removed').filter(matches).sort((a, b) => String(b.since).localeCompare(String(a.since))));
 
@@ -338,7 +377,7 @@ const opName = (e: RecentEdit) => {
 
     <div class="ah-main" :class="{ 'ah-main--open': open }">
       <section class="ah-board" aria-label="People by step">
-        <div v-for="col in COLUMNS" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
+        <div v-for="col in boardColumns" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
           <div class="ah-col-head">
             <span class="ah-col-title">{{ col.title }}</span>
             <span class="ah-col-n">{{ inStage(col.stage).length }}</span>
@@ -361,12 +400,46 @@ const opName = (e: RecentEdit) => {
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
             </button>
-            <button v-if="col.stage === 'letin' && listCount && !words.length" type="button" class="ah-fold" @click="showLists = !showLists">
-              {{ showLists ? 'Hide' : 'Show' }} {{ listCount }} added from pasted lists
+            <button v-if="col.stage === 'letin' && !words.length && (letinHidden || showLists)" type="button" class="ah-fold" @click="showLists = !showLists">
+              {{ showLists ? 'Show only the newest' : `Show ${letinHidden} more, longest waiting` }}
             </button>
-            <p v-if="!columnCards(col.stage).length && !(col.stage === 'letin' && listCount)" class="ah-quiet">Nobody here{{ words.length ? ' matches' : '' }}.</p>
+            <p v-if="!columnCards(col.stage).length && !(col.stage === 'letin' && letinHidden)" class="ah-quiet">Nobody here{{ words.length ? ' matches' : '' }}.</p>
           </div>
         </div>
+      </section>
+
+      <section class="ah-lb" aria-label="Leaderboard">
+        <div class="ah-lb-head">
+          <h2>Leaderboard</h2>
+          <span class="ah-seg" role="radiogroup" aria-label="When">
+            <button type="button" role="radio" :aria-checked="lbSpan === '30d'" :class="{ on: lbSpan === '30d' }" @click="lbSpan = '30d'">Last 30 days</button>
+            <button type="button" role="radio" :aria-checked="lbSpan === 'all'" :class="{ on: lbSpan === 'all' }" @click="lbSpan = 'all'">All time</button>
+          </span>
+          <span class="ah-seg" role="radiogroup" aria-label="Ranked by">
+            <button v-for="m in LB_BY" :key="m.key" type="button" role="radio" :aria-checked="lbBy === m.key" :class="{ on: lbBy === m.key }" @click="lbBy = m.key">{{ m.label }}</button>
+          </span>
+          <button type="button" class="ah-link ah-lb-col" :aria-pressed="showEditingCol" @click="toggleEditingCol">{{ showEditingCol ? 'Hide' : 'Show' }} the Editing column</button>
+        </div>
+        <p v-if="!lbRows.length" class="ah-quiet">Nobody{{ words.length ? ' matches' : ' yet' }}.</p>
+        <ol v-else class="ah-lb-list">
+          <li v-for="(r, i) in lbShown" :key="'lb' + r.c.key">
+            <button type="button" class="ah-lb-row" :class="{ 'ah-lb-row--open': openKey === r.c.key }" @click="pick(r.c)">
+              <span class="ah-lb-rank" :class="'ah-lb-rank--' + (i + 1)">{{ i + 1 }}</span>
+              <span class="ah-lb-who"><b>{{ nameOf(r.c) }}</b><small v-if="r.p.username && r.p.username !== nameOf(r.c)">{{ r.p.username }}</small></span>
+              <span class="ah-lb-meter"><span :style="{ width: Math.max(2, (r.v / lbMax) * 100) + '%' }"></span></span>
+              <span class="ah-lb-v">{{ r.v.toLocaleString() }}</span>
+              <span class="ah-lb-x">
+                <template v-if="lbBy !== 'edits'">{{ lbVal(r.p, 'edits', lbSpan).toLocaleString() }} edits · </template>
+                <template v-if="lbBy !== 'cells'">{{ lbVal(r.p, 'cells', lbSpan).toLocaleString() }} cells · </template>
+                <template v-if="lbBy !== 'help'">helped {{ lbVal(r.p, 'help', lbSpan).toLocaleString() }} · </template>
+                <template v-if="r.p.last_edit_at">last edit {{ ago(r.p.last_edit_at) }} ago<template v-if="r.p.last_dataset">, {{ dsName(r.p.last_dataset) }}</template></template>
+              </span>
+            </button>
+          </li>
+        </ol>
+        <button v-if="lbRows.length > LB_SHOWN && !words.length" type="button" class="ah-fold ah-fold--wide" @click="lbAll = !lbAll">
+          {{ lbAll ? `Show the top ${LB_SHOWN}` : `Show all ${lbRows.length}` }}
+        </button>
       </section>
 
       <aside v-if="open" class="ah-panel" aria-label="Person">
@@ -506,7 +579,39 @@ const opName = (e: RecentEdit) => {
 .ah-quiet { color: #7f93b0; font-size: 12.5px; margin: 6px 2px; }
 .ah-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .ah-main--open { grid-template-columns: minmax(0, 1fr) 360px; }
-.ah-board { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 10px; overflow-x: auto; }
+.ah-main--open .ah-panel { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+.ah-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; }
+.ah-col { max-height: min(560px, calc(100vh - 150px)) !important; }
+/* The admins' leaderboard. */
+.ah-lb { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.ah-lb-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.ah-lb-head h2 { margin: 0 6px 0 0; font-size: 16px; color: #eef4ff; }
+.ah-seg { display: inline-flex; border: 1px solid rgba(120,160,230,.35); border-radius: 8px; overflow: hidden; }
+.ah-seg button { background: none; border: 0; color: #a9c4e6; font: inherit; font-size: 12.5px; padding: 5px 10px; cursor: pointer; }
+.ah-seg button + button { border-left: 1px solid rgba(120,160,230,.25); }
+.ah-seg button.on { background: #2f6fd6; color: #fff; }
+.ah-lb-col { margin-left: auto; background: none; border: 0; cursor: pointer; font: inherit; font-size: 12.5px; }
+.ah-lb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ah-lb-row { width: 100%; display: grid; grid-template-columns: 2.2em minmax(140px, 26%) minmax(0, 1fr) 5.5em; grid-template-rows: auto auto; column-gap: 12px; align-items: center;
+  background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ah-lb-row:hover { background: rgba(60,100,170,.14); }
+.ah-lb-row--open { border-color: rgba(120,170,255,.6); background: rgba(60,100,170,.18); }
+.ah-lb-rank { grid-row: 1 / span 2; width: 1.9em; height: 1.9em; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #9fb4d4; background: rgba(90,130,200,.15); }
+.ah-lb-rank--1 { background: #f2c94c; color: #2a2000; }
+.ah-lb-rank--2 { background: #cfd8e6; color: #1d2633; }
+.ah-lb-rank--3 { background: #d9a066; color: #2a1606; }
+.ah-lb-who { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #eef4ff; }
+.ah-lb-who small { color: #7f93b0; font-size: 12px; }
+.ah-lb-meter { height: 8px; border-radius: 4px; background: rgba(90,130,200,.15); overflow: hidden; }
+.ah-lb-meter span { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #3b74e0, #7fb2ff); }
+.ah-lb-v { text-align: right; font-weight: 700; color: #cfe3ff; font-variant-numeric: tabular-nums; }
+.ah-lb-x { grid-column: 2 / 5; font-size: 12px; color: #7f93b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) {
+  .ah-lb-row { grid-template-columns: 2.2em minmax(0, 1fr) 4.5em; }
+  .ah-lb-meter { grid-column: 2 / 4; grid-row: 2; }
+  .ah-lb-x { grid-column: 2 / 4; grid-row: 3; }
+  .ah-lb-col { margin-left: 0; }
+}
 .ah-col { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 10px 8px 8px; display: flex; flex-direction: column; min-width: 0; max-height: max(380px, calc(100vh - 150px)); }
 .ah-col--ours { border-color: rgba(120,170,255,.5); }
 .ah-col-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 4px; }
@@ -577,7 +682,8 @@ const opName = (e: RecentEdit) => {
 @media (max-width: 900px) {
   .ah { padding: 12px 16px 30px; }
   .ah-main--open { grid-template-columns: minmax(0, 1fr); }
-  .ah-board { grid-template-columns: repeat(6, minmax(170px, 1fr)); }
+  .ah-board { grid-auto-columns: minmax(170px, 1fr); }
+  .ah-main--open .ah-panel { grid-column: 1; grid-row: auto; }
   .ah-insights { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
