@@ -2229,6 +2229,9 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-scroll {
   position: relative;
   z-index: 1;
+  /* Shrinks inside the window so a long note scrolls (Ames 2026-11-10: "we need scroll if needed"). */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 26px 26px;
   scrollbar-width: thin;
@@ -2300,8 +2303,8 @@ span.nge-notif-reply-part { cursor: default; }
 }
 /* An edit note's changed words (functions/edit-notify.js, Ames 2026-11-10:
    "highlight the difference"): added words lit, removed words struck. */
-.nge-notif-detail-body :deep(blockquote strong) {
-  color: #fff; background: rgba(90, 170, 255, 0.28); border-radius: 3px; padding: 0 2px;
+.nge-notif-detail-body :deep(mark) {
+  color: #fff; background: rgba(90, 170, 255, 0.3); border-radius: 3px; padding: 0 2px;
 }
 .nge-notif-detail-body :deep(blockquote del) {
   color: rgba(214, 226, 240, 0.55); text-decoration-color: rgba(150, 190, 255, 0.9); text-decoration-thickness: 1.5px;

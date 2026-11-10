@@ -19,7 +19,8 @@
 const OWNER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
 /** The bell's Admin tab takes titles that start with 📋 (src/util/notif_kinds.ts). */
 const TITLE_MARK = '📋 ';
-const MAX_QUOTE = 1400;
+const MAX_QUOTE = 3000;
+const MAX_BODY = 6000; // the bell scrolls a long note (Ames 2026-11-10: "we need scroll if needed")
 
 const TUTORIALS = {
   1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut',
@@ -50,7 +51,7 @@ function windowName(key) {
 function readable(key, body) {
   if (body == null) return null;
   if (/^tutorial\./.test(key)) {
-    try { const j = JSON.parse(body); return plainBox([j.title, j.words].filter(Boolean).join('\n\n')); } catch (e) { /* plain */ }
+    try { const j = JSON.parse(body); return [j.title, j.words].filter(Boolean).join('\n\n'); } catch (e) { /* plain */ }
   }
   return String(body);
 }
@@ -58,61 +59,81 @@ function readable(key, body) {
 /** The code's wording a tutorial edit replaced, kept in its JSON as "from". */
 function codeWordingOf(key, after) {
   if (!/^tutorial\./.test(key) || after == null) return null;
-  try { const f = JSON.parse(after).from; return f ? plainBox([f.title, f.words].filter(Boolean).join('\n\n')) || null : null; } catch (e) { return null; }
-}
-
-/** A tutorial box as a player reads it: no HTML tags, no ** or __ markers. */
-const plainBox = (t) => t.replace(/<[^>]*>/g, '').replace(/\*\*|__/g, '').replace(/[ \t]+/g, ' ');
-
-/** Lines as a markdown quote, every character as written (escaped). */
-function quote(text) {
-  let t = String(text).trim();
-  if (t.length > MAX_QUOTE) t = t.slice(0, MAX_QUOTE) + ' …';
-  const lines = t.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!lines.length) return '> (empty)';
-  // Colons and @ too: markdown makes a bare web address or email a link.
-  return lines.map(l => '> ' + l.replace(/[\\`*_{}[\]()#+\-.!|<>~:@]/g, c => '\\' + c)).join('\n');
+  try { const f = JSON.parse(after).from; return f ? [f.title, f.words].filter(Boolean).join('\n\n') || null : null; } catch (e) { return null; }
 }
 
 const escapeMd = (w) => w.replace(/[\\`*_{}[\]()#+\-.!|<>~:@]/g, c => '\\' + c);
-/** Words and line breaks, for comparing two texts. */
-const tokens = (text) => {
-  let t = String(text).trim();
-  if (t.length > MAX_QUOTE) t = t.slice(0, MAX_QUOTE) + ' …';
-  return t.match(/[^\s]+|\n/g) || [];
-};
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
 
 /**
- * Before and after as quotes, the changed words marked: struck through in
- * Before (removed), bold in After (added). Word by word, longest common
- * run. `onlyChanged` keeps just the lines with a change, for a long text.
+ * The words of a text as a player reads them (Ames 2026-11-10: "show me the
+ * actual formatting in the notif not the html"): each word with its bold and
+ * slanted, from ** and * or <strong> and <em>; a picture is 🖼; every other
+ * tag is dropped. Line breaks are kept as '\n'. Only bold and slanted ever
+ * reach the note: nothing an editor typed becomes a link or a tag.
  */
-function diffQuotes(beforeText, afterText, onlyChanged = false) {
-  const x = tokens(beforeText), y = tokens(afterText);
-  const n = x.length, m = y.length;
-  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
-    L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+function styledWords(text) {
+  let t = String(text).trim();
+  if (t.length > MAX_QUOTE) t = t.slice(0, MAX_QUOTE) + ' …';
+  t = t.replace(/<a\b[^>]*>\s*open in new tab[^<]*<\/a>/gi, '')
+    .replace(/<img\b[^>]*>/gi, ' 🖼 ')
+    .replace(/<br\s*\/?>|<\/(?:p|div|figure|figcaption|li|h\d|ul|ol)>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '\n• ');
+  const out = [];
+  let b = false, i = false;
+  const re = /<(\/?)(strong|b|em|i)\b[^>]*>|<[^>]*>|\*\*|\*|\n|&(#?\w+);|[^\s<*&]+|&|[ \t\r]+/g;
+  // A piece is glued to the one before when no space came between them
+  // ("<b>M</b>." is a bold M and a plain full stop, one word).
+  let m, word = '', gap = true;
+  const push = () => { if (word) { out.push({ w: word, b, i, glue: !gap }); word = ''; gap = false; } };
+  while ((m = re.exec(t))) {
+    const s = m[0], next = t[re.lastIndex] || ' ', prev = t[m.index - 1] || ' ';
+    if (m[2]) { push(); const on = !m[1]; if (/^(strong|b)$/i.test(m[2])) b = on; else i = on; continue; }
+    if (s[0] === '<') { push(); continue; }
+    if (s === '\n') { push(); out.push('\n'); b = i = false; gap = true; continue; }
+    if (/^[ \t\r]+$/.test(s)) { push(); gap = true; continue; }
+    if (s === '**' || s === '*') {
+      const open = s === '**' ? !b : !i;
+      if ((open && /\S/.test(next)) || (!open && /\S/.test(prev))) { push(); if (s === '**') b = open; else i = open; continue; }
+    }
+    if (m[3]) { word += ENTITIES[m[3].toLowerCase()] ?? s; continue; }
+    word += s;
   }
-  const keptX = new Array(n).fill(false), keptY = new Array(m).fill(false);
-  for (let i = 0, j = 0; i < n && j < m;) {
-    if (x[i] === y[j]) { keptX[i++] = true; keptY[j++] = true; }
-    else if (L[i + 1][j] >= L[i][j + 1]) i++;
-    else j++;
+  push();
+  while (out[0] === '\n') out.shift();
+  return out;
+}
+const sameWord = (a, c) => a === c || (a !== '\n' && c !== '\n' && a.w === c.w && a.b === c.b && a.i === c.i);
+
+/** Parts joined, a space only where the text had one. */
+const joinParts = (parts) => parts.map((p, k) => (k && !p.glue ? ' ' : '') + p.text).join('');
+
+/** Words with their bold and slanted, as bell markup: { text, glue }. */
+function styled(words) {
+  const groups = [];
+  let k = 0;
+  while (k < words.length) {
+    const { b, i } = words[k];
+    const group = [];
+    while (k < words.length && words[k].b === b && words[k].i === i) { group.push({ text: escapeMd(words[k].w), glue: words[k].glue }); k++; }
+    let g = joinParts(group);
+    if (i) g = `<em>${g}</em>`;
+    if (b) g = `<strong>${g}</strong>`;
+    groups.push({ text: g, glue: group[0].glue });
   }
-  return { before: render(x, keptX, '~~', onlyChanged), after: render(y, keptY, '**', onlyChanged) };
+  return { text: joinParts(groups), glue: groups[0].glue };
 }
 
-/** Tokens as quote lines; a run of changed words on a line is wrapped in `mark`. */
-function render(toks, kept, mark, onlyChanged) {
+/** Tokens as quote lines; a run of changed words is wrapped in `tag` (mark: added, del: removed). */
+function render(toks, kept, tag, onlyChanged) {
   const lines = [];
-  let words = [], run = [], changed = false;
-  const flushRun = () => { if (run.length) { words.push(mark + run.join(' ') + mark); run = []; } };
-  const endLine = () => { flushRun(); if (words.length) lines.push({ text: words.join(' '), changed }); words = []; changed = false; };
-  toks.forEach((t, i) => {
+  let parts = [], run = [], same = [], changed = false;
+  const flushSame = () => { if (same.length) { parts.push(styled(same)); same = []; } };
+  const flushRun = () => { if (run.length) { const r = styled(run); parts.push({ text: `<${tag}>${r.text}</${tag}>`, glue: r.glue }); run = []; } };
+  const endLine = () => { flushSame(); flushRun(); if (parts.length) lines.push({ text: joinParts(parts), changed }); parts = []; changed = false; };
+  toks.forEach((t, k) => {
     if (t === '\n') { endLine(); return; }
-    if (kept[i]) { flushRun(); words.push(escapeMd(t)); }
-    else { run.push(escapeMd(t)); changed = true; }
+    if (kept[k]) { flushRun(); same.push(t); } else { flushSame(); run.push(t); changed = true; }
   });
   endLine();
   if (!lines.length) return '> (empty)';
@@ -125,6 +146,33 @@ function render(toks, kept, mark, onlyChanged) {
     }
   }
   return shown.map(l => '> ' + l.text).join('\n');
+}
+
+/** A text as a quote, formatted as players see it. */
+function quote(text) {
+  const x = styledWords(text);
+  return render(x, x.map(() => true), 'mark', false);
+}
+
+/**
+ * Before and after as quotes, the changed words marked: struck through in
+ * Before (removed), highlighted in After (added). Word by word, longest
+ * common run. `onlyChanged` keeps just the lines with a change, for a long text.
+ */
+function diffQuotes(beforeText, afterText, onlyChanged = false) {
+  const x = styledWords(beforeText), y = styledWords(afterText);
+  const n = x.length, m = y.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+    L[i][j] = sameWord(x[i], y[j]) ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  }
+  const keptX = new Array(n).fill(false), keptY = new Array(m).fill(false);
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (sameWord(x[i], y[j])) { keptX[i++] = true; keptY[j++] = true; }
+    else if (L[i + 1][j] >= L[i][j + 1]) i++;
+    else j++;
+  }
+  return { before: render(x, keptX, 'del', onlyChanged), after: render(y, keptY, 'mark', onlyChanged) };
 }
 
 /** Our own uploaded pictures only, as https links. */
@@ -155,7 +203,7 @@ function planEditNote({ key, before, after, editor }) {
   if (isPicture(key)) {
     const image = after && OWN_PICTURE.test(after.trim()) ? after.trim() : null;
     const body = `${who} changed the picture in **${where}**.\n\n**Before:** ${pictureWords(before)}\n\n**After:** ${pictureWords(after)}`;
-    return { title, body: body.slice(0, 1500), image };
+    return { title, body: body.slice(0, MAX_BODY), image };
   }
   // A tutorial box that showed the code's wording: the edit keeps that wording as "from".
   const b = readable(key, before) ?? codeWordingOf(key, after), a = readable(key, after);
@@ -165,10 +213,10 @@ function planEditNote({ key, before, after, editor }) {
   if (b != null && a != null) {
     const d = diffQuotes(b, a);
     beforeText = d.before; afterText = d.after;
-    if (`${beforeText}\n${afterText}`.length > 1300) { const s = diffQuotes(b, a, true); beforeText = s.before; afterText = s.after; }
+    if (`${beforeText}\n${afterText}`.length > MAX_BODY - 600) { const s = diffQuotes(b, a, true); beforeText = s.before; afterText = s.after; }
   }
   let body = `${who} edited **${where}**.\n\n**Before:**\n${beforeText}\n\n**After:**\n${afterText}`;
-  if (body.length > 1500) body = body.slice(0, 1497) + '…';
+  if (body.length > MAX_BODY) body = body.slice(0, MAX_BODY - 1) + '…';
   return { title, body, image: null };
 }
 

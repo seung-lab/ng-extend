@@ -614,7 +614,7 @@ const triageWords = computed(() => triageSearch.value.toLowerCase().split(/\s+/)
 type TriageKind = 'all' | 'bug' | 'feature' | 'other' | 'access';
 const TRIAGE_KIND_KEY = 'nge_triage_kind_v1';
 const triageKind = ref<TriageKind>((() => {
-  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other' || v === 'access') return v; } catch { /* private window */ }
+  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other') return v; } catch { /* private window */ }
   return 'all';
 })());
 watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch { /* not remembered */ } });
@@ -625,8 +625,42 @@ watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch
 const isAccessRequest = (r: TriageRow) => /^beta access$/i.test((reporterOf(r)?.category || '').trim());
 const kindOf = (r: TriageRow): Exclude<TriageKind, 'all'> => (isAccessRequest(r) ? 'access' : closedKind(r, reporterOf(r)?.category));
 const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
-  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' }, { key: 'access', label: '🔑 Access' },
+  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' },
 ];
+// Access requests are off the board (Ames 2026-11-10: "we don't need to see
+// access requests here just put the count in the Access button"); they are
+// handled on the Access page. A Slack link straight to one still opens it.
+const linkedReportId = (() => { try { return new URLSearchParams(window.location.search).get('report') || ''; } catch { return ''; } })();
+// Who is already let in, so their request card closes itself (Ames 2026-11-10:
+// "if someone has been invited we can close that triage item").
+const triagePilotEmails = ref<Set<string> | null>(null);
+async function loadTriagePilotEmails() {
+  const { data, error } = await supabase.from('pilot_members').select('email');
+  if (!error) triagePilotEmails.value = new Set(((data as any[]) || []).map(m => String(m.email || '').toLowerCase()));
+}
+const openAccessRows = computed(() => triageRows.value.filter(r => isAccessRequest(r) && !['done', 'dismissed'].includes(triageGroupOf(r))));
+/** People still waiting: open requests from an email not yet let in. */
+const accessWaitingCount = computed(() => openAccessRows.value.filter(r => {
+  const email = betaEmailOfCard(r).toLowerCase();
+  return !email || !triagePilotEmails.value?.has(email);
+}).length);
+const accessClosing = new Set<string>();
+watch([openAccessRows, triagePilotEmails], async () => {
+  const pilots = triagePilotEmails.value;
+  if (!pilots) return;
+  for (const r of openAccessRows.value) {
+    const email = betaEmailOfCard(r).toLowerCase();
+    if (!email || !pilots.has(email) || accessClosing.has(r.id)) continue;
+    accessClosing.add(r.id);
+    const fields = { status: 'done', result_note: `Let in: ${email} is a Pilot tester.`,
+      reviewed_by: backend.userName || backend.userEmail || 'admin', reviewed_at: new Date().toISOString() };
+    try {
+      await secureWrite('triage.update', { id: r.id, fields });
+      Object.assign(r, fields);
+      triageRows.value = [...triageRows.value];
+    } catch (e) { console.warn('[triage] could not close an access request', e); }
+  }
+});
 // The old "Access requests: on/off" button is now a link to the Access page
 // (Ames 2026-11-10: "change this button to be Access and have it take us to
 // the Access page", "it can be purple"). Access requests always show on the
@@ -638,12 +672,14 @@ const triageKindCount = computed(() => {
   for (const r of triageRows.value) {
     if (['done', 'dismissed'].includes(triageGroupOf(r))) continue;
     const k = kindOf(r);
+    if (k === 'access') continue;
     n[k]++;
     n.all++;
   }
   return n;
 });
 function triageMatches(r: TriageRow): boolean {
+  if (isAccessRequest(r) && r.id !== linkedReportId) return false;
   if (triageKind.value !== 'all' && kindOf(r) !== triageKind.value) return false;
   const words = triageWords.value;
   if (!words.length) return true;
@@ -1229,6 +1265,7 @@ async function loadTriage() {
     }
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
+    void loadTriagePilotEmails();
     sweepMovedReportNotes();
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
@@ -3550,7 +3587,7 @@ function practiceWhen(iso: string | null) {
                     :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
                     @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
           </span>
-          <a class="nge-admin-action-btn nge-triage-access-page" :href="accessPageUrl" title="The Access page: everyone who asked or was let in, step by step">🔑 Access</a>
+          <a class="nge-admin-action-btn nge-triage-access-page" :href="accessPageUrl" title="The Access page: everyone who asked or was let in, step by step. The number is people still waiting to be let in.">🔑 Access<span v-if="accessWaitingCount" class="nge-triage-access-n">{{ accessWaitingCount }}</span></a>
           <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
                   :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
                   @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
@@ -5073,6 +5110,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 /* The link to the Access page (Ames 2026-11-10: "it can be purple"). */
 .nge-triage-access-page { text-decoration: none; display: inline-flex; align-items: center; color: #d6c8ff; background: rgba(139, 92, 246, 0.22); border-color: rgba(167, 139, 250, 0.7); }
 .nge-triage-access-page:hover { background: rgba(139, 92, 246, 0.34); border-color: #a78bfa; }
+.nge-triage-access-n { margin-left: 6px; min-width: 18px; padding: 0 6px; border-radius: 9px; background: #fff; color: #5b21b6; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .nge-triage-light .nge-triage-access-page { color: #ffffff; background: #7c3aed; border-color: #6d28d9; }
 .nge-triage-light .nge-triage-access-page:hover { background: #6d28d9; border-color: #5b21b6; }
 .nge-triage-light .nge-triage-prog-btn:hover:not(:disabled) { background: #f3efff; border-color: #8b5cf6; }
