@@ -363,10 +363,10 @@ export function oneBoundingBox() {
  *  swirl in to a white hot core, sparks are flung off the rim. As the ship
  *  bursts through, a flash and a shockwave ring; then the rims spiral in,
  *  the whole thing zips shut and a last spark pops. */
-const PORTAL_MAX = 900;
+const PORTAL_MAX = 1400;
 const portalGlow: NgeGlow = {positions: new Float32Array(PORTAL_MAX * 3), colors: new Float32Array(PORTAL_MAX * 4), sizesNm: new Float32Array(PORTAL_MAX), count: 0, nmRight: [1, 0, 0]};
 const ZIP_AT = 4.1;
-const SPARKS = Array.from({length: 48}, (_, k) => ({th: k * 2.399, sp: 0.7 + ((k * 37) % 11) / 11, off: ((k * 53) % 17) / 17}));
+const SPARKS = Array.from({length: 96}, (_, k) => ({th: k * 2.399, sp: 0.7 + ((k * 37) % 11) / 11, off: ((k * 53) % 17) / 17}));
 function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
   let n = 0;
   const put = (p: V3, rgba: number[], size: number) => {
@@ -386,12 +386,21 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
   const RR = R * (1 - 0.85 * shut);
   if (zip < 1.3) {
     // the disk: six arms curling in, spinning fast, twinkling
-    const ARMS = 6, PER = 34;
+    const ARMS = 8, PER = 56;
     for (let a = 0; a < ARMS; a++) for (let k = 0; k < PER; k++) {
       const u = (k + 1) / PER;
       const th = a * 2 * Math.PI / ARMS + (1 - u) * 3.2 * Math.PI - tp * (3.2 - 1.6 * u) - shut * 9 * (1 - u);
       const col = a % 2 ? cyan : vio, tw = 0.65 + 0.35 * Math.sin(tp * 11 + k * 1.7 + a);
       put(at2(RR * open * u * 0.94, th), [col[0], col[1], col[2], 0.8 * open * life * tw * (0.35 + 0.65 * u)], R * (0.05 + 0.12 * u));
+    }
+    // motes falling in: each spirals from the rim down into the core, over
+    // and over, so the whole disk swirls inward (Ames: "more particles
+    // spiral in the ring")
+    for (let k = 0; k < 160; k++) {
+      const q = (tp * (0.45 + ((k * 29) % 13) / 30) + ((k * 41) % 97) / 97) % 1;
+      const th = k * 2.399 + q * 4.5 * Math.PI + tp * 1.2;
+      const col = k % 3 === 0 ? mag : k % 3 === 1 ? cyan : vio;
+      put(at2(RR * open * (1 - q) * 0.97, th), [col[0], col[1], col[2], open * life * Math.min(1, q * 4) * (0.5 + 0.5 * q) * 0.9], R * (0.035 + 0.05 * (1 - q)));
     }
     // sparks flung off the rim, curving away and fading
     for (const sp of SPARKS) {
@@ -429,6 +438,17 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
 /** The ship's place on screen and size there, so the ring can let it show in
  *  front as it comes through (the ring is drawn over the view). */
 let shipScreen: {x: number; y: number; r: number} | null = null;
+/** Where the ship has just been on screen (its contrails), newest last: the
+ *  ring's window follows them too, so the trails show in front of the ring
+ *  as well (Ames: "the contrails of the ship go behind the portal"). */
+let shipTrail: {x: number; y: number; r: number; at: number}[] = [];
+function noteShipScreen(p: {x: number; y: number; r: number} | null) {
+  shipScreen = p;
+  if (!p) { shipTrail = []; return; }
+  const now = performance.now(), last = shipTrail[shipTrail.length - 1];
+  if (!last || now - last.at > 50) shipTrail.push({...p, at: now});
+  while (shipTrail.length && now - shipTrail[0].at > 1400) shipTrail.shift();
+}
 /** The ring itself (Ames's art, static/intro/portal.png), laid over the view
  *  where the portal is: it opens with a little overshoot, wobbles as the ship
  *  bursts through, and shrinks away as the portal zips shut. Its opening is
@@ -462,8 +482,19 @@ function placePortalArt(nm: V3, right: V3, c: V3, R: number, open: number, shut:
     // a soft window that hugs the ship, the swirl fading into its edges (a
     // hard one showed as a black circle round the ship: Ames)
     const rr = shipScreen.r / kk;
-    const m = `radial-gradient(circle at ${mx.toFixed(1)}px ${my.toFixed(1)}px, rgba(0,0,0,0) ${(rr * 0.45).toFixed(1)}px, rgba(0,0,0,0.45) ${(rr * 0.8).toFixed(1)}px, #000 ${(rr * 1.15).toFixed(1)}px)`;
+    const hole = (x: number, y: number, r: number) =>
+      `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, rgba(0,0,0,0) ${(r * 0.45).toFixed(1)}px, rgba(0,0,0,0.45) ${(r * 0.8).toFixed(1)}px, #000 ${(r * 1.15).toFixed(1)}px)`;
+    const holes = [hole(mx, my, rr)];
+    // and along its contrails, back to where it came out (each hole hides
+    // the ring, so they are intersected: the ring shows only outside all of them)
+    for (const p of shipTrail) {
+      const px = (p.x - a[0]) / kk + w / 2, py = (p.y - a[1]) / kk + w * 0.4570;
+      holes.push(hole(px, py, Math.max(rr * 0.55, p.r / kk * 0.7)));
+    }
+    const m = holes.join(', ');
     portalArt.style.setProperty('mask-image', m); portalArt.style.setProperty('-webkit-mask-image', m);
+    // (the prefixed one first: in Chrome it is an alias, and the last set wins)
+    portalArt.style.setProperty('-webkit-mask-composite', 'source-in'); portalArt.style.setProperty('mask-composite', 'intersect');
   } else { portalArt.style.removeProperty('mask-image'); portalArt.style.removeProperty('-webkit-mask-image'); }
   portalArt.style.transform = `translate(${(a[0] - w / 2).toFixed(1)}px, ${(a[1] - w * 0.4570 ).toFixed(1)}px) scale(${k.toFixed(3)}) rotate(${(shut * 140).toFixed(1)}deg)`;
 }
@@ -546,6 +577,10 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
   }
   const gen = ++flightGen;
   const stale = () => gen !== flightGen;
+  // every flight starts the ship at its true size: left at its last parked
+  // size, a replay came out of the portal several times too big, mostly
+  // behind the ring's window (Ames: "the rocket went behind the portal again")
+  sizeK = 1;
   running = true;
   stopRequested = false;
   cameraHeld = false;
@@ -928,8 +963,8 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         // through the portal: the ship shows as it comes out of the light
         prop.alpha = cameo ? (tc < PORTAL_S ? 0 : Math.min(1, (tc - PORTAL_S) / 0.25)) : t < 0 ? 0 : Math.min(1, t / 0.25);
         if (cameo && cameoPortal && tc < ZIP_AT + 1.5) {
-          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.6 * grow)));
-          shipScreen = sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
+          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.85 * grow * sizeK)));
+          noteShipScreen(sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null);
           // sized to the view, like the parked ship: the Sandbox ship's length
           // times five is huge in MICrONS's close views, and while the ring art
           // was capped its glow was not (Ames: "the portal is still giant")
@@ -941,8 +976,10 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           cameoPortalGone = true; setNgeGlow(null, 'starship-portal'); removePortalArt();
         }
         if (tAll < ZIP_AT + 1.5) {
-          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.6 * grow)));
-          shipScreen = sp && se && t > -0.05 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
+          // (the window in the ring is the ship's real size on screen, so all
+          // of it shows in front as it comes through)
+          const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.85 * grow * sizeK)));
+          noteShipScreen(sp && se && t > -0.05 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null);
         }
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
         else if (portalShown && !cameo) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
