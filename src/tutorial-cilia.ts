@@ -343,6 +343,12 @@ const QUIZ_WHY: Record<string, string> = {
   clear: 'There is no cilium, and you can tell the two centrioles apart: the basal body is the one nearer the cell\'s surface.',
   unclear: 'There is no cilium, and the two centrioles sit deep inside the cell, so you cannot tell which one is the basal body.',
 };
+/** A close call (Ames, 2026-11-10: this cell looked to her like it has a
+ *  cilium). Said with either answer, and a pick of Cilium annotated is not
+ *  called wrong. */
+const CLOSE_CALL: Record<string, string> = {
+  clear: 'This one is a close call: something near the top can look like a cilium. The lab looked closely and called it no cilium. When you are not sure in a real quest, say so in the Notes.',
+};
 function quiz(id: 'clear' | 'unclear') {
   return `<div class="nge-cq-quiz" data-nge-cq-quiz="${id}">`
     + QUIZ_CHOICES.map(s => `<button type="button" class="nge-cq-choice" data-nge-cq-pick="${s}">${s}</button>`).join('')
@@ -383,9 +389,12 @@ document.addEventListener('click', (e) => {
   quizEl!.querySelectorAll('.nge-cq-choice').forEach(b => b.classList.remove('nge-cq-choice--right', 'nge-cq-choice--wrong'));
   pick.classList.add(right ? 'nge-cq-choice--right' : 'nge-cq-choice--wrong');
   const fb = quizEl!.parentElement?.querySelector<HTMLElement>('[data-nge-cq-feedback]');
+  const close = CLOSE_CALL[id] ? ` <span class="nge-cq-lab">${CLOSE_CALL[id]}</span>` : '';
   if (fb) fb.innerHTML = right
-    ? note('ok', `Right! ${QUIZ_WHY[id] || ''} <span class="nge-cq-lab">The lab's guide: "${QUEST_STATUS_GUIDE[answer] || ''}"</span>`)
-    : note('warn', `Not this one. <strong>${picked}</strong> is for: ${QUEST_STATUS_GUIDE[picked] || 'other cases'}. Look at the cell again and try another.`);
+    ? note('ok', `Right! ${QUIZ_WHY[id] || ''} <span class="nge-cq-lab">The lab's guide: "${QUEST_STATUS_GUIDE[answer] || ''}"</span>${close}`)
+    : close && picked === 'Cilium annotated'
+      ? note('warn', `Good eye, but not quite.${close} Which status fits a cell with no cilium?`)
+      : note('warn', `Not this one. <strong>${picked}</strong> is for: ${QUEST_STATUS_GUIDE[picked] || 'other cases'}. Look at the cell again and try another.`);
   if (right) {
     (window as any).__ngeStepPending = false;
     // A "give it a try first" from an earlier Next no longer applies.
