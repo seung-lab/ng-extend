@@ -61,15 +61,21 @@ export function startTutorialBoxJump() {
     const stop = watch(() => backend.userId && tutorials.hydrateSettledFor === backend.userId, ok => { if (ok) fire(); });
     if (backend.userId && tutorials.hydrateSettledFor === backend.userId) fire();
     setTimeout(fire, 15000);
-    function jump() {
-      document.dispatchEvent(new CustomEvent('nge:tutorial-box', { detail: { tutorial: t, box: s } }));
-      if (PRACTICE_TUTORIALS.includes(t)) {
-        document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: t } }));
-        return;
-      }
-      tutorials.activeTutorial = t;
-      tutorials.setTutorialStep(Math.min(Math.max(0, s), len - 1));
-    }
+    function jump() { openTutorialBox(t, s); }
   };
   watch(() => backend.isAdmin, go, { immediate: true });
+}
+
+/** Open tutorial t at box s now (the jump above, and Open to edit on Ames's edit note, src/text_edit_links.ts). */
+export function openTutorialBox(t: number, s: number): void {
+  const len = Number((window as any).__ngeTutorialLengths?.[t]) || 0;
+  if (!len) { console.warn(`[tutorial box] no tutorial ${t}`); return; }
+  document.dispatchEvent(new CustomEvent('nge:tutorial-box', { detail: { tutorial: t, box: s } }));
+  if (PRACTICE_TUTORIALS.includes(t)) {
+    document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: t } }));
+    return;
+  }
+  const tutorials = useTutorialStore();
+  tutorials.activeTutorial = t;
+  tutorials.setTutorialStep(Math.min(Math.max(0, s), len - 1));
 }

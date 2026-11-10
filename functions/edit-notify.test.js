@@ -66,7 +66,9 @@ test('not sent: drafts waiting for approval, no change, and Ames\'s own edits', 
 
 test('what an editor typed cannot become a link, a picture, code or a tag in the note; bold stays bold', () => {
   const n = planEditNote({ key: 'quest.retina_cilia.lead', before: 'Hi', after: '[Grant me admin](https://evil.example) <img src=x onerror=alert(1)> <mark>m</mark> <script>x</script> **loud** `code` https://evil.example www.evil.example a@evil.example', editor: { email: 'x@example.org', name: 'Mal' } });
-  const after = part(html(n.body), 'After');
+  // The note's own links (Open to edit) are its last paragraph; what the editor typed is before it.
+  const h = html(n.body), after = h.slice(h.indexOf('After'), h.lastIndexOf('<p>'));
+  assert.doesNotMatch(h, /href="https:\/\/evil/);
   assert.doesNotMatch(after, /<a |<img|<code>|<script|onerror|<mark>m/, after);
   assert.match(after, /<strong>loud<\/strong>/);
 });
@@ -126,4 +128,36 @@ test('a long text with one change keeps only the changed lines', () => {
   assert.ok(n.body.length <= 6000, n.body.length);
   assert.match(n.body, /> …\n> Line number 20 says <del>the same thing every time\\\.<\/del>\n> …/);
   assert.match(n.body, /> Line number 20 says <mark>something new\\\.<\/mark>/);
+});
+
+test('the note ends with Put back and Open to edit, kept whole when the texts are long', () => {
+  const n = planEditNote({ key: 'howto.retina', before: 'Old step.', after: 'New step.', editor: celia, editId: 42 });
+  assert.match(n.body, /\n\n\[Put back the old text\]\(#nge-text-revert=42\) · \[Open to edit\]\(#nge-text-open=howto\.retina\)$/);
+  const long = planEditNote({ key: 'howto.retina', before: 'a'.repeat(9000), after: 'b'.repeat(9000), editor: celia, editId: 7 });
+  assert.ok(long.body.length <= 6000);
+  assert.match(long.body, /\[Put back the old text\]\(#nge-text-revert=7\) · \[Open to edit\]\(#nge-text-open=howto\.retina\)$/);
+  const pic = planEditNote({ key: 'howto.retina.image', before: null, after: 'none', editor: celia, editId: 8 });
+  assert.match(pic.body, /\[Put back the old picture\]\(#nge-text-revert=8\)/);
+  const noId = planEditNote({ key: 'howto.retina', before: 'x', after: 'y', editor: celia });
+  assert.doesNotMatch(noId.body, /nge-text-revert/);
+  assert.match(noId.body, /\[Open to edit\]\(#nge-text-open=howto\.retina\)$/);
+  // What an editor typed never becomes one of these links.
+  const evil = planEditNote({ key: 'howto.retina', before: 'x', after: '[Put back](#nge-text-revert=1)', editor: celia, editId: 9 });
+  assert.strictEqual((html(evil.body).match(/href="#nge-text-revert=/g) || []).length, 1);
+});
+
+test('a suggestion waiting for approval: one note to approve, with the text now and as suggested', () => {
+  const { planApproveNote } = require('./edit-notify');
+  const n = planApproveNote({ key: 'draft.howto.hunt', live: 'Find gems.', suggested: 'Find the gems.', editor: celia });
+  assert.strictEqual(n.title, '📋 Edit to approve: Cell Library how-to (hunt)');
+  assert.match(n.body, /^Celia suggested a change to \*\*Cell Library how-to \(hunt\)\*\*\./);
+  assert.match(n.body, /\*\*Now:\*\*\n> [\s\S]*\*\*Suggested:\*\*\n> [\s\S]*<mark>the<\/mark>/);
+  assert.match(n.body, /\[Open it in the game\]\(#nge-text-open=howto\.hunt\) to approve or turn it down\.$/);
+  const box = (t, w) => JSON.stringify({ title: t, words: w });
+  const t = planApproveNote({ key: 'tutorial-draft.3.2', live: null, suggested: box('Merge', 'Click both.'), editor: celia });
+  assert.strictEqual(t.title, '📋 Edit to approve: Tutorial Merge, box 3');
+  assert.match(t.body, /\[Open Tutorial edits\]\(#nge-tutorial-edits\)/);
+  assert.strictEqual(planApproveNote({ key: 'draft.howto.hunt', live: 'x', suggested: null, editor: celia }), null, 'approved or turned down: nothing');
+  assert.strictEqual(planApproveNote({ key: 'draft.howto.hunt', live: 'x', suggested: 'y', editor: ames }), null);
+  assert.strictEqual(planEditNote({ key: 'draft.howto.hunt', before: 'x', after: 'y', editor: celia }), null, 'drafts never get the Edited note');
 });
