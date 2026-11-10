@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-10T13:11:08Z",
+      "title": "Faster big views",
+      "digest": "minor",
+      "items": [
+        "Views with hundreds of cells kept in folders, or many annotation points, draw and respond faster.",
+        "Cell status is looked up for many cells at once, so long segment lists fill in their marks sooner.",
+        "If the lab's server can't be reached, a cell just cut or merged shows \"couldn't check\" and is asked again, instead of looking unproofread."
+      ]
+    },
+    {
       "at": "2026-11-10T01:12:23Z",
       "title": "BC Challenge on the Retina",
       "digest": "minor",
