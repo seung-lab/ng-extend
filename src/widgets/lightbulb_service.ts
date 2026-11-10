@@ -151,7 +151,7 @@ async function slot(key: string): Promise<() => void> {
 /** Cells asked about within a moment of each other go to CAVE as one query
  *  per table, not one each (Nseraf, 2026-11: hundreds of cells kept in
  *  folders meant hundreds of queries every time the list was drawn). */
-const BATCH_MAX = 40;
+const BATCH_MAX = 50;
 const BATCH_WAIT_MS = 25;
 const batches = new Map<string, Map<string, (rows: any[] | null) => void>>();
 function queryAnnotationsForRootId(
