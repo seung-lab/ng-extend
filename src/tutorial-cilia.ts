@@ -306,6 +306,16 @@ const QUIZ_CHOICES = [
   'No cilium (BB & DC unclear; internal centriole pair)',
   'Skipped (low quality)',
 ];
+/** The statuses the lead-in box explains, in the lab's words. "No cilium"
+ *  alone is for reviewers, so it is left out. */
+const STATUS_LIST = [
+  'Cilium annotated',
+  'No cilium (BB & DC clear)',
+  'No cilium (BB & DC unclear; internal centriole pair)',
+  'Need help',
+  'Need help: One centriole missing',
+  'Skipped (low quality)',
+].filter(s => QUEST_STATUS_GUIDE[s]);
 const QUIZ_ANSWER: Record<string, string> = { clear: CLEAR.status, unclear: UNCLEAR.status };
 const QUIZ_WHY: Record<string, string> = {
   clear: 'There is no cilium, and you can tell the two centrioles apart: the basal body is the one nearer the cell\'s surface.',
@@ -354,7 +364,11 @@ document.addEventListener('click', (e) => {
   if (fb) fb.innerHTML = right
     ? note('ok', `Right! ${QUIZ_WHY[id] || ''} <span class="nge-cq-lab">The lab's guide: "${QUEST_STATUS_GUIDE[answer] || ''}"</span>`)
     : note('warn', `Not this one. <strong>${picked}</strong> is for: ${QUEST_STATUS_GUIDE[picked] || 'other cases'}. Look at the cell again and try another.`);
-  if (right) (window as any).__ngeStepPending = false;
+  if (right) {
+    (window as any).__ngeStepPending = false;
+    // A "give it a try first" from an earlier Next no longer applies.
+    document.querySelectorAll('.introductionStep .nge-tut-nudge').forEach(el => el.remove());
+  }
 }, true);
 
 /** The compare step: the lab's answer in white, and how each mark went. */
@@ -497,6 +511,15 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
 <div data-nge-cq-feedback></div>
 <p>Right click the <strong>Lab's answer</strong> tab to hide it and show it again.</p>`,
     onEnter: compareStep,
+  },
+  {
+    part: 'Choose a status',
+    title: 'Every quest gets a status',
+    position: OVER_3D,
+    width: '460px',
+    html: `When you submit a quest, you also pick a <strong>status</strong>: one line that tells the lab what you found. Not every cell has a cilium you can see, and the status says so.
+<ul class="nge-cq-statuses">${STATUS_LIST.map(s => `<li><strong>${s}</strong>: ${QUEST_STATUS_GUIDE[s]}</li>`).join('')}</ul>
+<p>Next, two cells from the lab with no cilium. Pick the status that fits each.</p>`,
   },
   {
     part: 'Choose a status',

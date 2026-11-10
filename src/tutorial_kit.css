@@ -572,3 +572,5 @@ body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold::before { content:
 .introductionStep [data-nge-cq-feedback] .nge-hud-note,
 .introductionStep [data-nge-cq-feedback] .nge-cq-shown,
 .introductionStep .nge-cq-lab { font-size: 15.5px; line-height: 1.45; }
+.introductionStep .nge-cq-statuses { margin: 8px 0; padding-left: 18px; font-size: 15.5px; line-height: 1.45; }
+.introductionStep .nge-cq-statuses li { margin: 4px 0; }
