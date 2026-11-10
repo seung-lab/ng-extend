@@ -91,7 +91,6 @@ import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
 import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
 import {getLayerScales} from "./widgets/widget_utils";
-import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 import pyrIconUrl from './images/pyr-icon.png';
 // The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
 import pyrTriageIconUrl from './images/pyr-icon-triage.png';
@@ -508,7 +507,10 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
 
-  registerFreeRotateCubeAnnotationTool();
+  // The lab's free rotate cube tool is not offered: players turned it on by
+
+
+  // accident and could not tell what it was (Nseraf #457).
 
   return viewer;
 }
