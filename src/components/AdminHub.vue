@@ -16,6 +16,7 @@ import {addPilot, welcomeBell, welcomeEmail} from '../beta_let_in';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
+import {datasetDisplayName} from '../datasets';
 import RollUp from 'components/RollUp.vue';
 import CellTypeCheck from 'components/CellTypeCheck.vue';
 import AccessRequestsTab from 'components/AccessRequestsTab.vue';
@@ -380,7 +381,7 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
 }
 
 // ── Who submitted each report (site_issues, admins only via the gateway) ──
-const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string }>>({});
+const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string; dataset?: string }>>({});
 /** Reports asked for by id at most this many at a time. The gateway refuses a
  *  filter over 4096 characters (functions/community-data.js), and 100 ids
  *  come to about 3700. 150 came to 5554: once more than about 110 reports
@@ -399,7 +400,9 @@ async function loadReporters(rows: TriageRow[]) {
     const data: any[] = [];
     for (let k = 0; k < ids.length; k += IDS_PER_ASK) {
       const part = ids.slice(k, k + IDS_PER_ASK);
-      let { data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url').in('id', part);
+      // The dataset the report was sent from (Celia #464).
+      let { data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url,dataset').in('id', part);
+      if (error) ({ data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url').in('id', part));
       if (error) ({ data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', part));
       if (error) ({ data: got } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url').in('id', part));
       data.push(...(got ?? []));
@@ -415,7 +418,7 @@ async function loadReporters(rows: TriageRow[]) {
       return /\s/.test(u) ? undefined : u;
     };
     for (const i of data) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
-      url: web(i.url), shot: web(i.screenshot_url) };
+      url: web(i.url), shot: web(i.screenshot_url), dataset: i.dataset ? datasetDisplayName(String(i.dataset)) : undefined };
     reporters.value = next;
     // Dataset access requests are answered in Access requests, not here
     // (Ames 2026-10-29: "take them out of triage").
@@ -3666,7 +3669,7 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="reporterOf(row)" class="nge-triage-from">
             <span class="nge-triage-avatar" aria-hidden="true" :style="{ '--hue': avatarHue(reporterOf(row)?.name || '') }">{{ (reporterOf(row)?.name || '?').slice(0, 1).toUpperCase() }}</span>
-            <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
+            <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.dataset"> · <span class="nge-triage-dataset" title="The dataset they sent this from">{{ reporterOf(row)?.dataset }}</span></template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
           <div v-if="reporterOf(row)?.title" class="nge-triage-title">{{ reporterOf(row)?.title }}</div>
           <!-- A one line report is all title: say it once. -->
@@ -4995,6 +4998,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-release-row { display: flex; align-items: center; gap: 8px; }
 .nge-triage-release-row code { flex: 1; font-family: ui-monospace, Consolas, monospace; color: #e6eefc; background: rgba(0, 0, 0, 0.3); padding: 4px 8px; border-radius: 4px; user-select: all; }
 .nge-triage-from strong { color: #e6eefc; font-weight: 600; }
+.nge-triage-dataset { color: #9fd3ff; font-weight: 500; }
 /* Section headers: open work first, finished and dismissed folded and grey. */
 .nge-triage-group {
   display: flex; align-items: baseline; gap: 8px; width: 100%;
