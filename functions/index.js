@@ -2539,6 +2539,15 @@ exports.ewAccessRequest = onRequest(
         // Beta access requests reach every admin (Ames 2026-10-24).
         notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
+        // Tags in an Access page note (access-request.js tagFromNote).
+        people: () => require("./todos").restDb(sb).people(),
+        notifyPeople: ({ ids, title, body }) => note(ids, title, body),
+        slackPing: async (people, text, by) => {
+          const { slackIdOf } = require("./todos");
+          const pings = people.map(p => { const s = slackIdOf(p); return s ? `<@${s}>` : `@${p.name}`; }).join(" ");
+          const r = await slackPost(slackBotToken.value().trim(), "chat.postMessage", { channel: REVIEW_CHANNEL_ID, text: `💬 ${pings} ${by} ${text}`, unfurl_links: false }).catch(e => ({ ok: false, error: e.message }));
+          if (!r.ok) console.warn("[access note] slack failed:", r.error);
+        },
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
         // A player's CAVE access, read with the admin token: the datasets they
         // can edit or view, and their groups (Ames 2026-10-29: "we need to see

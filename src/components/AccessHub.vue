@@ -252,6 +252,19 @@ const noteCount = (c: Card) => (notes.value[c.key] || []).length;
 
 // ── One person, in the side panel ────────────────────────────────────────
 const open = computed(() => cards.value.find(c => c.key === openKey.value) || null);
+// A tag's link opens that person (Ames 2026-11-10, tags in notes):
+// "?triage=access&person=<email or user:id>". Used once.
+const wantPerson = (() => { try { return (new URLSearchParams(location.search).get('person') || '').toLowerCase(); } catch { return ''; } })();
+if (wantPerson) {
+  let found = false;
+  const stop = watch(cards, list => {
+    const c = found ? null : list.find(x => x.key.toLowerCase() === wantPerson);
+    if (!c) return;
+    found = true; openKey.value = c.key;
+    try { const u = new URL(location.href); u.searchParams.delete('person'); history.replaceState(history.state, '', u.toString()); } catch { /* keep going */ }
+    queueMicrotask(() => stop());
+  }, { immediate: true });
+}
 function pick(c: Card) { openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; }
 const timeline = computed(() => {
   const p = open.value?.p; if (!p) return [];
@@ -280,7 +293,7 @@ const decide = (c: Card, mark: 'granted' | 'declined', byHand = false) => run(ma
 });
 const addNote = (c: Card) => run('note', async () => {
   const text = noteDraft.value.trim(); if (!text) throw new Error('Write a note first.');
-  notes.value = (await secureWrite<Record<string, Note[]>>('access.note', { key: c.key, text })) || {}; noteDraft.value = '';
+  notes.value = (await secureWrite<Record<string, Note[]>>('access.note', { key: c.key, text, name: nameOf(c) })) || {}; noteDraft.value = '';
 });
 const deleteNote = (c: Card, id: string) => run('note', async () => {
   notes.value = (await secureWrite<Record<string, Note[]>>('access.noteDelete', { key: c.key, id })) || {};
@@ -515,7 +528,7 @@ const opName = (e: RecentEdit) => {
             <button type="button" class="ah-note-x" aria-label="Delete this note" title="Delete this note" :disabled="!!busy" @click="deleteNote(open, n.id)">×</button></div>
           <div class="ah-note-text">{{ n.text }}</div>
         </div>
-        <textarea v-model="noteDraft" class="ah-input" rows="3" maxlength="1000" placeholder="Add a note for the team"></textarea>
+        <textarea v-model="noteDraft" class="ah-input" rows="3" maxlength="1000" placeholder="Add a note for the team. @Celia or @Marissa tags them"></textarea>
         <button class="ah-btn" type="button" :disabled="!!busy || !noteDraft.trim()" @click="addNote(open)">{{ busy === 'note' ? 'Saving…' : 'Add note' }}</button>
       </aside>
     </div>

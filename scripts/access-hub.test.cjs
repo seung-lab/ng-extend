@@ -228,6 +228,14 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     check('Update the sheet now asks the server and says how many', /Sheet updated: 14 people/.test(said) && calls.some(c => c.action === 'usersSheet'), said);
     check('the sheet is linked', await page.$eval('.ah-head a[href*="10VW3cSrtK8y0pLlivJnQIuMAp65_B-eDJAVb3DbpKBs"]', e => e.textContent.trim()).catch(() => '') === 'Pyr Users sheet');
 
+    // A tag's link opens that person, even one folded away (Ames 2026-11-10).
+    const p2 = await context.newPage(); const e2 = []; p2.on('pageerror', e => e2.push(String(e).slice(0, 300))); p2.on('console', m => { if (m.type() === 'error') e2.push('console: ' + m.text().slice(0, 200)); });
+    await p2.goto(`http://localhost:${PORT}/?triage=access&person=boss%40example.org`, { waitUntil: 'load' });
+    await p2.waitForSelector('.ah-panel h2', { timeout: 60000 }).catch(() => {});
+    check('a tag link opens that person, and leaves the address', (await p2.textContent('.ah-panel h2').catch(() => '')) === 'Ames Admin' && !/person=/.test(p2.url()), [p2.url(), e2.slice(0, 4), (await p2.evaluate(() => document.body.innerText).catch(() => '')).replace(/\s+/g, ' ').slice(0, 300)]);
+    check('the note box says how to tag', /@Celia or @Marissa/.test(await p2.getAttribute('.ah-panel textarea', 'placeholder').catch(() => '') || ''));
+    await p2.close();
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
     const wide = await page.evaluate(() => ({ sw: document.querySelector('.ah').scrollWidth, cw: document.querySelector('.ah').clientWidth }));
