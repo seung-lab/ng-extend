@@ -438,6 +438,17 @@ function drawPortal(nm: V3, right: V3, up: V3, c: V3, R: number, tp: number) {
 /** The ship's place on screen and size there, so the ring can let it show in
  *  front as it comes through (the ring is drawn over the view). */
 let shipScreen: {x: number; y: number; r: number} | null = null;
+/** Where the ship has just been on screen (its contrails), newest last: the
+ *  ring's window follows them too, so the trails show in front of the ring
+ *  as well (Ames: "the contrails of the ship go behind the portal"). */
+let shipTrail: {x: number; y: number; r: number; at: number}[] = [];
+function noteShipScreen(p: {x: number; y: number; r: number} | null) {
+  shipScreen = p;
+  if (!p) { shipTrail = []; return; }
+  const now = performance.now(), last = shipTrail[shipTrail.length - 1];
+  if (!last || now - last.at > 50) shipTrail.push({...p, at: now});
+  while (shipTrail.length && now - shipTrail[0].at > 1400) shipTrail.shift();
+}
 /** The ring itself (Ames's art, static/intro/portal.png), laid over the view
  *  where the portal is: it opens with a little overshoot, wobbles as the ship
  *  bursts through, and shrinks away as the portal zips shut. Its opening is
@@ -471,8 +482,19 @@ function placePortalArt(nm: V3, right: V3, c: V3, R: number, open: number, shut:
     // a soft window that hugs the ship, the swirl fading into its edges (a
     // hard one showed as a black circle round the ship: Ames)
     const rr = shipScreen.r / kk;
-    const m = `radial-gradient(circle at ${mx.toFixed(1)}px ${my.toFixed(1)}px, rgba(0,0,0,0) ${(rr * 0.45).toFixed(1)}px, rgba(0,0,0,0.45) ${(rr * 0.8).toFixed(1)}px, #000 ${(rr * 1.15).toFixed(1)}px)`;
+    const hole = (x: number, y: number, r: number) =>
+      `radial-gradient(circle at ${x.toFixed(1)}px ${y.toFixed(1)}px, rgba(0,0,0,0) ${(r * 0.45).toFixed(1)}px, rgba(0,0,0,0.45) ${(r * 0.8).toFixed(1)}px, #000 ${(r * 1.15).toFixed(1)}px)`;
+    const holes = [hole(mx, my, rr)];
+    // and along its contrails, back to where it came out (each hole hides
+    // the ring, so they are intersected: the ring shows only outside all of them)
+    for (const p of shipTrail) {
+      const px = (p.x - a[0]) / kk + w / 2, py = (p.y - a[1]) / kk + w * 0.4570;
+      holes.push(hole(px, py, Math.max(rr * 0.55, p.r / kk * 0.7)));
+    }
+    const m = holes.join(', ');
     portalArt.style.setProperty('mask-image', m); portalArt.style.setProperty('-webkit-mask-image', m);
+    // (the prefixed one first: in Chrome it is an alias, and the last set wins)
+    portalArt.style.setProperty('-webkit-mask-composite', 'source-in'); portalArt.style.setProperty('mask-composite', 'intersect');
   } else { portalArt.style.removeProperty('mask-image'); portalArt.style.removeProperty('-webkit-mask-image'); }
   portalArt.style.transform = `translate(${(a[0] - w / 2).toFixed(1)}px, ${(a[1] - w * 0.4570 ).toFixed(1)}px) scale(${k.toFixed(3)}) rotate(${(shut * 140).toFixed(1)}deg)`;
 }
@@ -942,7 +964,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
         prop.alpha = cameo ? (tc < PORTAL_S ? 0 : Math.min(1, (tc - PORTAL_S) / 0.25)) : t < 0 ? 0 : Math.min(1, t / 0.25);
         if (cameo && cameoPortal && tc < ZIP_AT + 1.5) {
           const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * cameo * 0.85 * grow * sizeK)));
-          shipScreen = sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
+          noteShipScreen(sp && se && tc > PORTAL_S ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null);
           // sized to the view, like the parked ship: the Sandbox ship's length
           // times five is huge in MICrONS's close views, and while the ring art
           // was capped its glow was not (Ames: "the portal is still giant")
@@ -957,7 +979,7 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           // (the window in the ring is the ship's real size on screen, so all
           // of it shows in front as it comes through)
           const sp = toScreenNm(nm, at3), se = toScreenNm(nm, add(at3, mul(cam.right, f.shipLength * 0.85 * grow * sizeK)));
-          shipScreen = sp && se && t > -0.05 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null;
+          noteShipScreen(sp && se && t > -0.05 ? {x: sp[0], y: sp[1], r: Math.hypot(se[0] - sp[0], se[1] - sp[1])} : null);
         }
         if (tAll < ZIP_AT + 1.5) drawPortal(nm, cam.right, cam.up, portalAt, portalR, tAll);
         else if (portalShown && !cameo) { portalShown = false; setNgeGlow(null, 'starship-portal'); removePortalArt(); }
