@@ -3459,6 +3459,18 @@ const panelStyle = computed(() => ({
           />
         </div>
 
+        <!-- Play (util/play.ts): what is being played, Change, Skip and Stop. Above the
+           list, so the slim bar's neuron and arrows never cover it (Ames 2026-11-10). -->
+        <div v-if="slim && play.on" class="nge-cl-play-bar" :class="'nge-cl-play-bar--' + play.on">
+          <span class="nge-cl-play-label"><svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Playing {{ play.on === 'quests' ? 'Cilia Quests' : 'mapping' }}</span>
+          <button class="nge-cl-play-link" @click="choosePlay" title="Choose another kind of task">Change</button>
+          <span class="nge-cl-play-gap"></span>
+          <button class="nge-cl-btn nge-cl-play-skip" :disabled="skipping" @click="playSkip"
+                  :title="play.on === 'quests' ? 'Release this quest cell for someone else and claim the next' : 'Release this cell for someone else and claim the next'">{{ skipping ? 'Skipping…' : 'Skip ›' }}</button>
+          <button class="nge-cl-btn nge-cl-play-stop" @click="playStop" title="Stop playing. You keep the cell you are on.">Stop</button>
+        </div>
+        <div v-if="startNote" class="nge-cl-start-note" @click="startNote = ''" title="Click to hide">{{ startNote }}</div>
+
         <!-- ═══ HELP TAB ═══ -->
         <div v-if="filter === 'help'" class="nge-cl-list">
 
@@ -4263,16 +4275,6 @@ const panelStyle = computed(() => ({
                   aria-label="Next claimed cell" @click="nextClaim">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <!-- Play (util/play.ts): what is being played, Change, Skip and Stop. -->
-          <div v-if="slim && play.on" class="nge-cl-play-bar" :class="'nge-cl-play-bar--' + play.on">
-            <span class="nge-cl-play-label"><svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Playing {{ play.on === 'quests' ? 'Cilia Quests' : 'mapping' }}</span>
-            <button class="nge-cl-play-link" @click="choosePlay" title="Choose another kind of task">Change</button>
-            <span class="nge-cl-play-gap"></span>
-            <button class="nge-cl-btn nge-cl-play-skip" :disabled="skipping" @click="playSkip"
-                    :title="play.on === 'quests' ? 'Release this quest cell for someone else and claim the next' : 'Release this cell for someone else and claim the next'">{{ skipping ? 'Skipping…' : 'Skip ›' }}</button>
-            <button class="nge-cl-btn nge-cl-play-stop" @click="playStop" title="Stop playing. You keep the cell you are on.">Stop</button>
-          </div>
-          <div v-if="startNote" class="nge-cl-start-note" @click="startNote = ''" title="Click to hide">{{ startNote }}</div>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
             <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
@@ -5319,16 +5321,16 @@ const panelStyle = computed(() => ({
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 4px 4px 0;
-  padding: 5px 8px;
+  margin: 8px 10px 0;
+  padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(95, 216, 255, 0.35);
-  background: rgba(95, 216, 255, 0.07);
-  font-size: 12px;
+  border: 1px solid rgba(62, 236, 190, 0.45);
+  background: rgba(62, 236, 190, 0.08);
+  font-size: 13px;
 }
 .nge-cl-play-bar--quests { border-color: rgba(255, 211, 110, 0.4); background: rgba(255, 211, 110, 0.07); }
 .nge-cl-play-label { display: inline-flex; align-items: center; gap: 6px; color: #dff6ff; font-weight: 600; letter-spacing: 0.04em; }
-.nge-cl-play-label svg { color: #7dffb0; animation: nge-cl-play-pulse 1.6s ease-in-out infinite; }
+.nge-cl-play-label svg { color: #3eecbe; animation: nge-cl-play-pulse 1.6s ease-in-out infinite; }
 @keyframes nge-cl-play-pulse { 50% { opacity: 0.45; } }
 .nge-cl-play-link { background: none; border: none; padding: 0; color: #8fd4ff; font-size: 12px; cursor: pointer; text-decoration: underline; }
 .nge-cl-play-gap { flex: 1; }
@@ -5337,17 +5339,19 @@ const panelStyle = computed(() => ({
 .nge-cl-play-here {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 13px; border-radius: 999px; cursor: pointer;
-  border: 1px solid #5fd8ff;
-  background: linear-gradient(135deg, rgba(27, 111, 154, 0.85), rgba(74, 58, 168, 0.85));
-  color: #fff; font: 700 12px/1 Inter, system-ui, sans-serif; letter-spacing: 0.05em; text-transform: uppercase;
-  box-shadow: 0 0 12px rgba(95, 216, 255, 0.3);
+  border: 1px solid rgba(62, 236, 190, 0.7);
+  background: linear-gradient(135deg, rgba(8, 72, 64, 0.94), rgba(10, 48, 66, 0.94));
+  color: #dcfff4; font: 700 12.5px/1 'Orbitron', Inter, system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(62, 236, 190, 0.6);
+  box-shadow: 0 0 12px rgba(62, 236, 190, 0.3);
 }
-.nge-cl-play-here:hover { box-shadow: 0 0 18px rgba(95, 216, 255, 0.5); }
+.nge-cl-play-here svg { color: #3eecbe; }
+.nge-cl-play-here:hover { box-shadow: 0 0 18px rgba(62, 236, 190, 0.55); }
 .nge-cl-play-here-hint { font-size: 12px; color: #9fb4cc; }
 /* "Start playing": what to do with the cell just claimed. */
 .nge-cl-start-note {
   flex-basis: 100%;
-  margin: 6px 4px 2px;
+  margin: 6px 10px 2px;
   padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid rgba(95, 216, 255, 0.45);
@@ -6593,7 +6597,7 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
 .nge-cl-caret { margin-right: 10px; }
 .nge-cl-panel--slim { max-height: calc(100 * var(--nge-vh, 1vh) - 64px); cursor: grab; }
-.nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
+.nge-cl-panel--slim > :not(.nge-cl-list):not(.nge-cl-play-bar):not(.nge-cl-start-note) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
   /* The expand arrow on the left, where the full panel keeps its shrink
