@@ -21,7 +21,7 @@ import { extensionSteps as steps13, extensionContinue, extensionRestart, extensi
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps14, CILIA_TUTORIAL } from '../tutorial-cilia';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
-import { endPractice } from '../practice';
+import { endPractice, pausePracticeTools } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
 import { startTutorialBoxJump } from '../tutorial_box_jump';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
@@ -278,7 +278,15 @@ const next = (_auto?: unknown) => {
 // Switching to another tutorial from the book menu also hands the cell back.
 const PRACTICE_TUTORIALS = [3, 5, 9, 13];
 watch(() => store.activeTutorial, (now, before) => {
-  if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) endPractice();
+  // The watch and the merge or cut tool go too: left running, they wrote
+  // "Waiting for your merge" and Help me into the next tutorial's box and
+  // kept merge mode on (Ames, 2026-11-10, Merge then Cilia Quest).
+  if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) {
+    stopWatching();
+    pausePracticeTools();
+    document.querySelectorAll('.introductionStepAnchor .nge-practice-status, .introductionStepAnchor .nge-practice-helprow').forEach(el => el.remove());
+    endPractice();
+  }
   // Leaving the test hands its cell back, unscored.
   if (before === TEST_TUTORIAL && now !== TEST_TUTORIAL) abandonTest();
 });

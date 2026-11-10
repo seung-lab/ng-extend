@@ -140,8 +140,18 @@ function leaveQuestScreen() {
   if (a && questOnScreen(a.segmentId)) void saveQuestWork(a.segmentId);  // reads the view at once
   markQuestOnScreen(null);
 }
+/** A merge or cut tool left on (merge mode from the Merge tutorial or from
+ *  play) would take the tutorial's Ctrl+clicks as merge points, so it goes
+ *  off as the tutorial starts (Ames, 2026-11-10). */
+function toolsOff() {
+  const v = viewer();
+  try { v?.globalToolBinder?.activeTool_?.cancel?.(); } catch { /* */ }
+  try { v?.toolBinder?.activeTool_?.cancel?.(); } catch { /* */ }
+}
 document.addEventListener('nge:tutorial-start', (e: Event) => {
-  if (Number((e as CustomEvent).detail?.id) === CILIA_TUTORIAL) leaveQuestScreen();
+  if (Number((e as CustomEvent).detail?.id) !== CILIA_TUTORIAL) return;
+  leaveQuestScreen();
+  toolsOff();
 });
 
 // ── Checking the player's marks ──────────────────────────────────────────
