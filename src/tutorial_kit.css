@@ -566,3 +566,9 @@ body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold::before { content:
 .nge-cq-pointer__arrow span { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; margin-right: 4px; vertical-align: middle; }
 @keyframes nge-cq-pulse { 0% { transform: scale(0.7); opacity: 1; } 100% { transform: scale(1.4); opacity: 0.2; } }
 @keyframes nge-cq-nudge { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(5px, 5px); } }
+
+/* Cilia Quest tutorial: bigger status choices and feedback (Ames, 2026-11-10: "this text is too small"). */
+.ng-extend .introductionStep .nge-cq-choice { font-size: 16px; padding: 9px 14px; }
+.introductionStep [data-nge-cq-feedback] .nge-hud-note,
+.introductionStep [data-nge-cq-feedback] .nge-cq-shown,
+.introductionStep .nge-cq-lab { font-size: 15.5px; line-height: 1.45; }
