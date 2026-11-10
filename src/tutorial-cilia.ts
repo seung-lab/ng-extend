@@ -72,7 +72,7 @@ function exampleState(e: QuestExample, filled: boolean, selected: string = LAYER
   const base = (dataset?.layers ?? []).map((l: any) =>
       typeof l?.type === 'string' && l.type.startsWith('segmentation')
         // See-through, so the marks inside the cell show in 3D (Ames, 2026-11-10).
-        ? { ...l, segments: [e.root], objectAlpha: 0.35, selectedAlpha: 0.12 } : { ...l });
+        ? { ...l, segments: [e.root], objectAlpha: 0.35, selectedAlpha: 0.29 } : { ...l });
   const m = filled ? marksOf(e, 'demo') : { centerline: [], daughter: [], basal: [] };
   return {
     dimensions: DIMENSIONS,
@@ -81,6 +81,8 @@ function exampleState(e: QuestExample, filled: boolean, selected: string = LAYER
     projectionScale: e.projectionScale,
     ...(e.projectionOrientation ? { projectionOrientation: e.projectionOrientation } : {}),
     layout: 'xy-3d',
+    // The 2D slice shown in the 3D view, so the two views line up (Ames).
+    showSlices: true,
     layers: [
       ...base,
       annotationLayer(LAYER.centerline, COLORS.centerline, 'annotatePolyline', m.centerline),
@@ -221,13 +223,13 @@ const CLOSE_NM = 900;  // nearby, about the distance between the two centrioles
 type Grade = 'ok' | 'swap' | 'close' | 'off';
 const results: Record<'basal' | 'daughter' | 'centerline', Grade | null> = { basal: null, daughter: null, centerline: null };
 
-const showMe = (what: string) => `<button type="button" class="nge-hud-btn nge-hud-btn--sm" data-nge-cq-show="${what}">Show me</button>`;
+const showMe = (what: string) => `<button type="button" class="nge-hud-btn nge-hud-btn--sm" data-nge-cq-show="${what}" title="Take me to it">Help me</button>`;
 const note = (kind: 'ok' | 'warn' | '', html: string) => `<div class="nge-hud-note${kind ? ' nge-hud-note--' + kind : ''}">${html}</div>`;
 
 function gradePoint(which: 'basal' | 'daughter'): { grade: Grade | null; html: string } {
   const pts = annotationsIn(which === 'basal' ? LAYER.basal : LAYER.daughter).filter(a => a?.type === 'point' && Array.isArray(a.point));
   const name = which === 'basal' ? 'basal body' : 'daughter centriole';
-  if (!pts.length) return { grade: null, html: note('', `Waiting for your ${name}. <strong>CTRL+CLICK</strong> on it in the 2D view.`) };
+  if (!pts.length) return { grade: null, html: note('', `Waiting for your ${name}. <strong>CTRL+CLICK</strong> on it in the 2D view. Stuck? ${showMe(which)}`) };
   const p = pts[pts.length - 1].point;
   const target = which === 'basal' ? DEMO.basalBody : DEMO.daughterCentriole;
   const other = which === 'basal' ? DEMO.daughterCentriole : DEMO.basalBody;
@@ -250,7 +252,7 @@ function gradePoint(which: 'basal' | 'daughter'): { grade: Grade | null; html: s
 
 function gradeLine(): { grade: Grade | null; html: string } {
   const lines = annotationsIn(LAYER.centerline).filter(a => a?.type === 'polyline' && Array.isArray(a.points) && a.points.length >= 2);
-  if (!lines.length) return { grade: null, html: note('', 'Waiting for your line. Hold <strong>CTRL</strong> and click along the cilium, then press <kbd>ENTER</kbd>.') };
+  if (!lines.length) return { grade: null, html: note('', 'Waiting for your line. Hold <strong>CTRL</strong> and click along the cilium, then press <kbd>ENTER</kbd>. Stuck? ' + showMe('centerline')) };
   const mine: number[][] = lines[lines.length - 1].points;
   const lab = DEMO.centerline!;
   const off = mine.map(p => toLine(p, lab));
@@ -269,6 +271,7 @@ function watchMark(which: 'basal' | 'daughter' | 'centerline') {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
   let last = '';
+  const mark = which;
   const layerName = which === 'basal' ? LAYER.basal : which === 'daughter' ? LAYER.daughter : LAYER.centerline;
   const started = Date.now();
   const tick = () => {
@@ -282,7 +285,8 @@ function watchMark(which: 'basal' | 'daughter' | 'centerline') {
     let html = graded.html;
     // Ctrl+click marks the selected layer: say so when it is another one.
     if (grade !== 'ok' && selected && selected !== layerName && Date.now() - started >= 4000) {
-      html = note('warn', `The <strong>${selected}</strong> layer is selected, so your clicks go there. Click the <strong>${layerName}</strong> tab at the top first.`);
+      const which = [LAYER.basal, LAYER.daughter, LAYER.centerline].includes(selected) ? `<strong>${selected}</strong> layer` : 'cell layer';
+      html = note('warn', `The ${which} is selected, so your clicks go there. Click the <strong>${layerName}</strong> tab at the top first. ${showMe(mark)}`);
     }
     if (grade) results[which] = grade;
     if (grade === 'ok') (window as any).__ngeStepPending = false;
@@ -372,7 +376,7 @@ function compareStep() {
 // ── The boxes ────────────────────────────────────────────────────────────
 const MIDDLE = { element: 'body', x: 0.5, y: 0.5 };
 /** Over the 3D panel, out of the way of the 2D view where the work is. */
-const OVER_3D = { element: '.neuroglancer-rendered-data-panel.nge-3d', x: 0.5, y: 0.05 };
+const OVER_3D = { element: '.neuroglancer-rendered-data-panel.nge-3d-panel', x: 0.5, y: 0.03 };
 /** Room for the status choices and the feedback line. */
 const BOX_W = '400px';
 const chip = (name: string, color: string) => `<span class="nge-hud-chip" style="border-color:${color};color:${color}">${name}</span>`;
