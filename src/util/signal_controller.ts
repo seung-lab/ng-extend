@@ -498,9 +498,12 @@ body.nge-mobile .ng-extend.nge-sig-tag--hint::after { height: 20px; }
 body.nge-mobile .ng-extend.nge-sig-tag--hint .tap { display: inline; margin-right: 6px; font: 700 10px 'Inter', sans-serif; letter-spacing: 0.14em; color: #fff; text-transform: uppercase; }
 body.nge-mobile .nge-sig .nge-sig-chip--target .key::after { margin-left: 6px; }
 body.nge-mobile .nge-sig-row { gap: 6px; margin-top: 8px; }
-body.nge-mobile .nge-sig-beam { padding: 9px 10px; touch-action: manipulation; }
+body.nge-mobile .nge-sig-beam { padding: 9px 9px; touch-action: manipulation; }
+body.nge-mobile .nge-sig-charges { gap: 3px; }
 body.nge-mobile .nge-sig-charges span { display: none; }
-body.nge-mobile .nge-sig-recenter { padding: 7px 8px; font-size: 9px; }
+body.nge-mobile .nge-sig-charges i { width: 11px; height: 7px; }
+body.nge-mobile .nge-sig-recenter { padding: 7px 6px; font-size: 8px; letter-spacing: 0.08em; }
+body.nge-mobile .nge-sig-coach { margin-top: 6px; }
 body.nge-mobile .nge-sig-msg { margin-left: 0; width: 100%; min-height: 0; text-align: left; font-size: 12px; }
 body.nge-mobile .nge-sig-note { display: none; }
 body.nge-mobile .nge-sig-card p { font-size: 13px; }
@@ -991,20 +994,31 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
     // has to fit the width, and sit in the part of the height the HUD
     // leaves free, so the frame is set from the screen's own shape.
     const r = threeDPanel()?.element?.getBoundingClientRect?.();
-    const aspect = r && r.height > 0 ? r.width / r.height : 0.5;
+    const P = r && r.height > 0 ? r.height : 700, Wpx = r && r.width > 0 ? r.width : 375;
     const frac = hudFrac();
-    // The cell bodies are what a thumb taps, so they take 80% of the free
-    // area, the branches around them as context (fitting the whole circuit
-    // to the width left the bodies a thumb-sized cluster); never closer than
-    // 120 µm. Half-extents of the bodies across and up the screen, in nm.
-    let w = 0, h = 0;
+    // The cell bodies are what a thumb taps, so their box fills the free
+    // area (the part of the height above the HUD), the branches around them
+    // as context, with room above the top body for its "Tap" callout and a
+    // margin each side; never closer than 120 µm. The box is centred, not
+    // the mean of the bodies: one body far from the rest (E1, the first to
+    // tap) was sitting at the top edge with its callout cut off.
+    const TOP = 64, BOT = 24, SIDE = 28;   // px
+    let loR = Infinity, hiR = -Infinity, loU = Infinity, hiU = -Infinity;
     for (const k of level.cells) {
       const d = sub(cells.get(k)!.spec.soma, center);
-      w = Math.max(w, Math.abs(dot(d, cam.right))); h = Math.max(h, Math.abs(dot(d, cam.up)));
+      const x = dot(d, cam.right), y = dot(d, cam.up);
+      loR = Math.min(loR, x); hiR = Math.max(hiR, x); loU = Math.min(loU, y); hiU = Math.max(hiU, y);
     }
-    viewNm = Math.max(120_000, (2 * w + 40_000) / (0.8 * Math.max(0.3, aspect)), (2 * h + 40_000) / (0.8 * Math.max(0.3, 1 - frac)));
+    const W = hiR - loR + 30_000, H = hiU - loU + 30_000;   // the bodies, 15 µm of radius each side
+    const freeH = Math.max(120, (1 - frac) * P - TOP - BOT), freeW = Math.max(120, Wpx - 2 * SIDE);
+    viewNm = Math.max(120_000, H * P / freeH, W * P / freeW);
     v.projectionScale.value = viewNm / Math.min(nm[0], nm[1], nm[2]);
-    const look = sub(center, mul(cam.up, viewNm * frac / 2));
+    // The box's middle goes to the middle of the free area: that many px
+    // above the panel's centre, so the look point sits that far below it.
+    const nmPerPx = viewNm / P;
+    const boxMid = add(center, add(mul(cam.right, (loR + hiR) / 2), mul(cam.up, (loU + hiU) / 2)));
+    const freeMidPx = (TOP + (1 - frac) * P - BOT) / 2 - P / 2;   // down the screen is positive
+    const look = add(boxMid, mul(cam.up, freeMidPx * nmPerPx));
     v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
     return;
   }
