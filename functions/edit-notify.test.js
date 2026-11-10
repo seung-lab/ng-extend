@@ -81,3 +81,10 @@ test('the keys a write touches: an upsert\'s rows, a delete\'s filter', () => {
   assert.deepStrictEqual(editedKeys('DELETE', q('key=eq.tutorial.5.3'), undefined), ['tutorial.5.3']);
   assert.deepStrictEqual(editedKeys('GET', q(''), undefined), []);
 });
+
+test('a tutorial box that showed the code wording quotes that wording as Before', () => {
+  const after = JSON.stringify({ title: 'Merge', words: 'New words', from: { title: 'Merge', words: 'Old code words' }, kind: 'text' });
+  const n = planEditNote({ key: 'tutorial.3.0', before: null, after, editor: { email: 'celia@eyewire.org', name: 'Celia D' } });
+  assert.match(n.body, /\*\*Before:\*\*\n> Merge\n> Old code words/);
+  assert.match(n.body, /\*\*After:\*\*\n> Merge\n> New words/);
+});

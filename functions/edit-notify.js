@@ -55,6 +55,12 @@ function readable(key, body) {
   return String(body);
 }
 
+/** The code's wording a tutorial edit replaced, kept in its JSON as "from". */
+function codeWordingOf(key, after) {
+  if (!/^tutorial\./.test(key) || after == null) return null;
+  try { const f = JSON.parse(after).from; return f ? [f.title, f.words].filter(Boolean).join('\n\n') || null : null; } catch (e) { return null; }
+}
+
 /** Lines as a markdown quote, every character as written (escaped). */
 function quote(text) {
   let t = String(text).trim();
@@ -95,7 +101,8 @@ function planEditNote({ key, before, after, editor }) {
     const body = `${who} changed the picture in **${where}**.\n\n**Before:** ${pictureWords(before)}\n\n**After:** ${pictureWords(after)}`;
     return { title, body: body.slice(0, 1500), image };
   }
-  const b = readable(key, before), a = readable(key, after);
+  // A tutorial box that showed the code's wording: the edit keeps that wording as "from".
+  const b = readable(key, before) ?? codeWordingOf(key, after), a = readable(key, after);
   const beforeText = b == null ? '> (the original wording from the code)' : quote(b);
   const afterText = a == null ? '> (put back to the original wording from the code)' : quote(a);
   let body = `${who} edited **${where}**.\n\n**Before:**\n${beforeText}\n\n**After:**\n${afterText}`;
