@@ -26,14 +26,28 @@ import { setStateRewriter, useLayersStore, useCellHistoryStore, useProofreadingB
 import { currentDatasetTag, currentSegLayer } from './datasets';
 import { highlightColorsInView } from './util/highlight';
 import { cellAtCrosshair, supervoxelAtPlace } from './util/crosshair_cell';
-import { ancestorAmong, getRootFromSupervoxel } from './widgets/pcg_service';
+import { ancestorAmong, getRootFromSupervoxel, getPcgInfo, authHeaders } from './widgets/pcg_service';
+import { parseBigJson, parseChangeLog } from './util/cell_history_steps';
 import { mintShortStateLink } from './util/state_link';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from './widgets/widget_utils';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem, labelAxonComplete } from './widgets/lightbulb_service';
 import { syncCellToSheet, marksProofread, AXON_COMPLETE } from './sheet_sync';
 
-export interface MentorNote { id: string; position: number[]; text: string }
+/** Kinds of note (Celia 2026-11-10), each its own color, far from the cell's
+ *  blue and the highlight colors. A private one is the mentor's alone. */
+export type NoteKind = 'note' | 'merge' | 'split' | 'private';
+export const NOTE_KINDS: { kind: NoteKind; label: string; color: string; title: string }[] = [
+  { kind: 'note', label: 'Note', color: '#ffffff', title: 'Anything else' },
+  { kind: 'merge', label: 'Merge', color: '#ff3df0', title: 'A merge to make or check' },
+  { kind: 'split', label: 'Split', color: '#00e5ff', title: 'A split to make or check' },
+  { kind: 'private', label: 'Private', color: '#8a93a6', title: 'Only you see it, never the apprentice' },
+];
+export const kindColor = (k?: string) => (NOTE_KINDS.find(x => x.kind === k) ?? NOTE_KINDS[0]).color;
+const kindIndex = (k?: string) => Math.max(0, NOTE_KINDS.findIndex(x => x.kind === k));
+/** The kind a new note takes, picked in the Mentor box. */
+export const noteKind = ref<NoteKind>('note');
+export interface MentorNote { id: string; position: number[]; text: string; kind?: NoteKind }
 /** One message in a cell's conversation (functions/mentors.js handOver):
  *  a reply under a pin (noteId) or on the whole cell. Not sent until its
  *  writer hands the cell over; only its writer sees it before that. */
@@ -45,6 +59,8 @@ export interface MentorReview {
   position: number[] | null; link: string; done: { status?: string; notes?: string; cellType?: string; coords?: string; sheet?: boolean; practice?: boolean };
   notes: MentorNote[]; cellNote: string; thread?: MentorMessage[];
   sentAt: string; claimedAt: string | null; decidedAt: string | null; touchedAt: string; sheetDone: boolean;
+  /** A taken cell is the mentor's until heldUntil; they are asked after askAfter (Celia 2026-11-10). */
+  heldUntil?: string | null; askAfter?: string | null;
 }
 export interface Apprentice {
   id: string; name: string; status: 'active' | 'finished' | 'left'; mentorId: string | null; mentorName: string | null;
@@ -273,6 +289,20 @@ async function finishApprovedCells() {
 }
 
 // ── Mentors ─────────────────────────────────────────────────────────────
+/** Still looking (Celia 2026-11-10): hold the cell 4 more hours. */
+export async function keepCell(): Promise<void> {
+  const cur = inView.value;
+  if (!cur) return;
+  cur.review = { ...cur.review, ...(await call<MentorReview>('mentor.keep', { reviewId: cur.review.id })) };
+}
+/** Let the cell go back for another mentor, and close it. */
+export async function letGoCell(): Promise<void> {
+  const cur = inView.value;
+  if (!cur) return;
+  await call('mentor.letGo', { reviewId: cur.review.id });
+  closeView();
+  void loadQueue().catch(() => {});
+}
 export async function takeCell(r: MentorReview): Promise<MentorReview> {
   const out = await call<MentorReview>('mentor.claim', { reviewId: r.id });
   await loadQueue().catch(() => {});
@@ -293,7 +323,18 @@ export function askResubmit(taskId: number) {
   resubmitAsk.value = taskId;
   document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } }));
 }
-const NOTES_COLOR = '#ffd166';
+/** Colors a point by its kind (a float property: 0 note, 1 merge, 2 split, 3 private). */
+const rgbVec = (hex: string) => { const n = parseInt(hex.slice(1), 16); return `vec3(${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map(c => (c / 255).toFixed(3)).join(', ')})`; };
+const KIND_SHADER = (size: number) => `void main() {
+  float k = prop_kind();
+  vec3 c = ${rgbVec(NOTE_KINDS[0].color)};
+  if (k > 0.5 && k < 1.5) c = ${rgbVec(NOTE_KINDS[1].color)};
+  else if (k > 1.5 && k < 2.5) c = ${rgbVec(NOTE_KINDS[2].color)};
+  else if (k > 2.5) c = ${rgbVec(NOTE_KINDS[3].color)};
+  setColor(c);
+  setPointMarkerSize(${size.toFixed(1)});
+  setPointMarkerBorderWidth(1.0);
+}`;
 
 export function viewerPosition(): number[] | null {
   try { const p = (window as any).viewer?.position?.value; return p && p.length === 3 ? Array.from(p as Float32Array).map(n => Math.round(n * 10) / 10) : null; } catch { return null; }
@@ -330,6 +371,92 @@ function removeApprenticeLayers() {
     } catch (e) { console.warn('[mentor] could not remove', ml.name, e); }
   }
   viewAnnotationLayers = [];
+}
+
+// ── The apprentice's merges and splits (Celia 2026-11-10) ──────────────
+// A read only layer with a point at each edit the apprentice made to the
+// cell, merges and splits in the note colors, so a mentor can step from one
+// to the next. Asked of the chunked graph from the mentor's own browser.
+export const editsNote = ref('');
+let editsLayerName = '';
+let editsPoints: any[] | null = null;
+function editsLayer(): any {
+  return editsLayerName ? ((window as any).viewer?.layerManager?.managedLayers ?? []).find((ml: any) => ml.name === editsLayerName) ?? null : null;
+}
+function addEditsLayer() {
+  const v = (window as any).viewer;
+  if (!v?.layerSpecification || !editsPoints?.length || editsLayer()) return;
+  v.layerSpecification.add(makeLayer(v.layerSpecification, editsLayerName, {
+    type: 'annotation', source: { url: 'local://annotations' }, tab: 'annotations',
+    annotationProperties: [{ id: 'kind', type: 'float32', default: 1 }], shader: KIND_SHADER(5), annotations: editsPoints,
+  }));
+}
+function removeEditsLayer() {
+  const v = (window as any).viewer; const l = editsLayer();
+  try {
+    if (v && l && v.selectedLayer?.layer === l) { v.selectedLayer.visible = false; v.selectedLayer.layer = undefined; }
+    if (v && l) v.layerManager.removeManagedLayer(l);
+  } catch { /* gone */ }
+  editsPoints = null; editsLayerName = '';
+}
+/** Graph voxels to the view's own coordinates. */
+const viewFromVoxels = (vox: number[], res: number[]): number[] | null => {
+  const cs = (window as any).viewer?.coordinateSpace?.value;
+  const names: string[] = cs?.names ?? [], scales = cs?.scales;
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (!scales || ix.some(i => i < 0)) return null;
+  return ix.map((i, k) => (Number(vox[k]) * res[k]) / (Number(scales[i]) * 1e9));
+};
+async function showApprenticeEdits(r: MentorReview) {
+  const name = `${r.apprenticeName}'s edits`;
+  const root = r.rootId || r.segmentId;
+  if (!/^\d+$/.test(root)) return;
+  try {
+    const { caveUserId } = await call<{ caveUserId: number | null }>('mentor.editor', { reviewId: r.id });
+    if (caveUserId == null) { editsNote.value = `${r.apprenticeName}'s edits cannot be marked: Pyr does not know their CAVE account yet.`; return; }
+    // The view's graph is there once the saved view has loaded.
+    let pcg = getPcgInfo();
+    for (let i = 0; i < 40 && !pcg; i++) { await new Promise(res => setTimeout(res, 500)); pcg = getPcgInfo(); }
+    if (!pcg) { editsNote.value = 'Their edits cannot be marked in this dataset.'; return; }
+    const get = async (url: string) => {
+      const res = await fetch(url, { headers: authHeaders(pcg!.server), signal: AbortSignal.timeout(20000) });
+      if (!res.ok) throw new Error(`${res.status}`);
+      return parseBigJson(await res.text());
+    };
+    const seg = `${pcg.server}/segmentation/api/v1/table/${pcg.table}`;
+    const edits = parseChangeLog(await get(`${seg}/root/${root}/tabular_change_log`), root).filter(e => String(e.userId) === String(caveUserId));
+    if (!edits.length) { editsNote.value = `${r.apprenticeName} made no merges or splits on this cell.`; return; }
+    const info = await get(`${pcg.server}/segmentation/table/${pcg.table}/info`);
+    const res: number[] = (info?.scales?.[0]?.resolution ?? []).map(Number);
+    if (res.length < 3) throw new Error('no voxel size');
+    const details: Record<string, any> = {};
+    for (let i = 0; i < edits.length; i += 100) {
+      const ids = edits.slice(i, i + 100).map(e => e.operationId);
+      Object.assign(details, await get(`${seg}/operation_details?int64_as_str=1&operation_ids=${encodeURIComponent(JSON.stringify(ids))}`));
+    }
+    if (inView.value?.review.id !== r.id) return;
+    let merges = 0, splits = 0;
+    const pts: any[] = [];
+    for (const e of edits) {
+      const d = details[String(e.operationId)];
+      const ends = [d?.source_coords?.[0], d?.sink_coords?.[0]].filter((p: any) => Array.isArray(p) && p.length >= 3).map((p: any[]) => p.map(Number));
+      if (!ends.length) continue;
+      const mid = [0, 1, 2].map(k => ends.reduce((sum: number, p: number[]) => sum + p[k], 0) / ends.length);
+      const at = viewFromVoxels(mid, res);
+      if (!at) continue;
+      const n = e.isMerge ? ++merges : ++splits;
+      const when = new Date(e.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      pts.push({ type: 'point', id: `e${e.operationId}`, point: at, description: `${e.isMerge ? 'Merge' : 'Split'} ${n}, ${when}`, props: [e.isMerge ? 1 : 2] });
+    }
+    if (!pts.length) { editsNote.value = 'The graph did not say where their edits were.'; return; }
+    editsLayerName = name; editsPoints = pts;
+    addEditsLayer();
+    const say = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+    editsNote.value = `${say(merges, 'merge')} and ${say(splits, 'split')} by ${r.apprenticeName} are marked in the layer ${name}. Its list goes from one to the next.`;
+  } catch (e: any) {
+    console.warn('[mentor] could not mark the edits', e);
+    editsNote.value = `${r.apprenticeName}'s edits could not be read from the graph (${e?.message || 'error'}).`;
+  }
 }
 
 /** The apprentice's saved view if there is one, else a jump to the cell. */
@@ -373,7 +500,8 @@ export function readNotesLayer(): MentorNote[] {
   try {
     const list = notesLayer()?.layer?.localAnnotations?.toJSON() ?? [];
     return list.filter((a: any) => a?.type === 'point' && Array.isArray(a.point))
-      .map((a: any, i: number) => ({ id: String(a.id ?? `n${i + 1}`), position: Array.from(a.point as number[]).map(n => Math.round(Number(n) * 10) / 10), text: String(a.description || '').trim() || 'Look here' }));
+      .map((a: any, i: number) => ({ id: String(a.id ?? `n${i + 1}`), position: Array.from(a.point as number[]).map(n => Math.round(Number(n) * 10) / 10), text: String(a.description || '').trim() || 'Look here',
+        kind: (NOTE_KINDS[Math.round(Number(a.props?.[0] ?? 0))] ?? NOTE_KINDS[0]).kind }));
   } catch { return []; }
 }
 /** Puts the notes in the view as their own annotation layer. Read only
@@ -385,8 +513,10 @@ export function writeNotesLayer(notes: MentorNote[], readOnly = false): boolean 
   if (old) v.layerManager.removeManagedLayer(old);
   // tool: the point tool is active, so annotating in this layer places a note
   // (Ames 2026-11-05: "selected layer mentor notes does not have an active annotation").
-  const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: NOTES_COLOR, pointSize: 2, tab: 'annotations', ...(readOnly ? {} : { tool: 'annotatePoint' }),
-    annotations: notes.map(n => ({ type: 'point', id: n.id, point: n.position, description: n.text })) };
+  // A point placed with the tool takes the kind picked in the box (the property's default).
+  const spec = { type: 'annotation', source: { url: 'local://annotations' }, tab: 'annotations', ...(readOnly ? {} : { tool: 'annotatePoint' }),
+    annotationProperties: [{ id: 'kind', type: 'float32', default: kindIndex(noteKind.value) }], shader: KIND_SHADER(7),
+    annotations: notes.map(n => ({ type: 'point', id: n.id, point: n.position, description: n.text, props: [kindIndex(n.kind)] })) };
   v.layerSpecification.add(makeLayer(v.layerSpecification, NOTES_LAYER, spec));
   return true;
 }
@@ -461,6 +591,7 @@ function keepNotes(notes: MentorNote[], readOnly = false, review?: MentorReview)
     const colored = !review || colorReviewCell(review);
     if (beats > 100 || (beats > 25 && colored)) { window.clearInterval(keepTimer); return; }
     if (beats <= 25 && !notesLayer()) writeNotesLayer(notes, readOnly);
+    if (beats <= 25) addEditsLayer();
   }, 600);
 }
 
@@ -483,13 +614,19 @@ export function openInView(review: MentorReview, role: 'mentor' | 'apprentice' |
     const go = openClaimHook && review.taskId != null ? openClaimHook(review.taskId) : Promise.resolve(false);
     void go.then(done => { if (!done) useCellHistoryStore().jumpToCell(review.rootId || review.segmentId, review.position?.length === 3 ? review.position as [number, number, number] : undefined, { keep: true }); })
       .catch(e => console.warn('[mentor] could not go to the claim', e));
-  } else loadView(review);
+  } else {
+    loadView(review);
+    removeEditsLayer(); editsNote.value = '';
+    if (review.state !== 'complete') void showApprenticeEdits(review);
+  }
   keepNotes(review.notes || [], role !== 'mentor', review);
 }
 export function closeView() {
   window.clearInterval(keepTimer);
   inView.value = null;
   cellColorNote.value = '';
+  removeEditsLayer();
+  editsNote.value = '';
   try {
     const v = (window as any).viewer; const l = notesLayer();
     // Its side panel closes with the box (Ames 2026-11-06).
@@ -551,6 +688,7 @@ export async function completeForApprentice(cellNote: string): Promise<{ finishe
   }
   const out = await call<{ review: MentorReview; finished: boolean }>('mentor.complete', { reviewId: r.id, root: r.rootId, notes: readNotesLayer(), cellNote });
   removeApprenticeLayers();
+  removeEditsLayer();
   markBellsRead(r, /sent (you|a cell back to you|mentor cell #\d+ back to you)/);
   cur.review = out.review;
   void loadQueue().catch(() => {});

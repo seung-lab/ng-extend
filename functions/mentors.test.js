@@ -563,3 +563,85 @@ test('practice: five practice cells finish the loop with no Achievement', async 
   assert.equal(db._state.awards.length, 0);
   assert.equal((await call(4, 'mentor.status')).apprentice.status, 'finished');
 });
+
+test('Celia: a taken cell is held 4 hours, asked at 2; Keep holds it again, Let go frees it and the apprentice', async () => {
+  const {call, admin, tick} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addMentor', {username: 'annkri'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r = (await send(call, 4, 1)).review;
+  const took = await call(2, 'mentor.claim', {reviewId: r.id});
+  assert.equal(Date.parse(took.heldUntil) - Date.parse(took.touchedAt), 4 * 3600 * 1000);
+  assert.equal(Date.parse(took.askAfter) - Date.parse(took.touchedAt), 2 * 3600 * 1000);
+  assert.equal((await call(3, 'mentor.queue')).waiting.length, 0, 'held: annkri cannot see it');
+  tick(3 * 3600 * 1000);
+  await call(2, 'mentor.keep', {reviewId: r.id});
+  tick(3 * 3600 * 1000);
+  assert.equal((await call(3, 'mentor.queue')).waiting.length, 0, 'Keep held it 4 more hours');
+  tick(1.5 * 3600 * 1000);
+  const q = await call(3, 'mentor.queue');
+  assert.ok(q.waiting.some(x => x.id === r.id), 'left 4 hours: open to any mentor');
+  assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, null, 'and so is the apprentice');
+  // Let go now.
+  await call(3, 'mentor.claim', {reviewId: r.id});
+  await call(3, 'mentor.letGo', {reviewId: r.id});
+  assert.ok((await call(2, 'mentor.queue')).waiting.some(x => x.id === r.id));
+  await assert.rejects(call(3, 'mentor.keep', {reviewId: r.id}), /not yours/);
+});
+
+test('Celia: a later cell left 4 hours waits for the same mentor, not everyone', async () => {
+  const {call, admin, tick} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addMentor', {username: 'annkri'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r1 = (await send(call, 4, 1)).review;
+  await call(2, 'mentor.claim', {reviewId: r1.id});
+  await call(2, 'mentor.complete', {reviewId: r1.id});
+  const r2 = (await send(call, 4, 2)).review;
+  tick(5 * 3600 * 1000);
+  const mine = await call(2, 'mentor.queue');
+  assert.equal((await call(3, 'mentor.queue')).waiting.length, 0, 'not open to annkri');
+  assert.ok([...mine.waiting, ...mine.yours].some(x => x.id === r2.id), 'still Nseraf\'s');
+  assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, 'Nseraf');
+});
+
+test('Celia: notes have kinds; a private note never reaches the apprentice and is not a suggestion', async () => {
+  const {call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r = (await send(call, 4, 1)).review;
+  await call(2, 'mentor.claim', {reviewId: r.id});
+  const priv = {id: 'p1', position: [1, 2, 3], text: 'check branch ends', kind: 'private'};
+  await assert.rejects(call(2, 'mentor.suggest', {reviewId: r.id, notes: [priv]}), /at least one suggestion/);
+  const out = await call(2, 'mentor.suggest', {reviewId: r.id, notes: [priv, {id: 'm1', position: [4, 5, 6], text: 'join here', kind: 'merge'}, {id: 'x', position: [7, 8, 9], text: 'odd', kind: 'bogus'}]});
+  assert.deepEqual(out.notes.map(n => n.kind), ['private', 'merge', 'note'], 'the mentor sees all three; an unknown kind is a note');
+  const seen = (await call(4, 'mentor.status')).mine.find(x => x.id === r.id);
+  assert.deepEqual(seen.notes.map(n => n.id), ['m1', 'x'], 'the apprentice never sees the private one');
+  assert.deepEqual((await admin('mentor.review', {reviewId: r.id})).notes.map(n => n.id), ['p1', 'm1', 'x'], 'an admin does');
+});
+
+test('Celia: the mentor can ask for the apprentice\'s CAVE number, for the edits layer; nobody else can', async () => {
+  const {db, call, admin} = setup();
+  db._state.users = undefined;
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r = (await send(call, 4, 1)).review;
+  await assert.rejects(call(2, 'mentor.editor', {reviewId: r.id}), /Take a look/);
+  await call(2, 'mentor.claim', {reviewId: r.id});
+  assert.deepEqual(await call(2, 'mentor.editor', {reviewId: r.id}), {caveUserId: null});
+});
+
+test('Celia: Let it go on a later cell hands the apprentice to another mentor', async () => {
+  const {call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addMentor', {username: 'annkri'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r1 = (await send(call, 4, 1)).review;
+  await call(2, 'mentor.claim', {reviewId: r1.id});
+  await call(2, 'mentor.complete', {reviewId: r1.id});
+  const r2 = (await send(call, 4, 2)).review;
+  await call(2, 'mentor.claim', {reviewId: r2.id});
+  await call(2, 'mentor.letGo', {reviewId: r2.id});
+  assert.ok((await call(3, 'mentor.queue')).waiting.some(x => x.id === r2.id), 'annkri can take it');
+  assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, null);
+});

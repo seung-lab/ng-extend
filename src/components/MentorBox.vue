@@ -17,7 +17,8 @@ import { MENTOR_TIERS } from '../util/mentor_tiers';
 const MENTOR_ICON = MENTOR_TIERS[0].image;
 import { joinPractice, takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
 import { resendFromBox, cellColorNote, inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
-  completeForApprentice, startMentor, loadMentor, shortCell, replyTo, takeBackReply, type MentorNote, type MentorMessage } from '../mentor';
+  completeForApprentice, startMentor, loadMentor, shortCell, replyTo, takeBackReply, type MentorNote, type MentorMessage,
+  NOTE_KINDS, noteKind, kindColor, editsNote, keepCell, letGoCell, type NoteKind } from '../mentor';
 
 // An apprentice who completes a cell any other way gets this in the middle
 // of the screen, not as small error text (Ames 2026-11-05).
@@ -111,7 +112,7 @@ function addHere() {
   const text = newNote.value.trim();
   const at = viewerPosition();
   if (!text || !at) return;
-  const list = [...readNotesLayer(), { id: `n${Date.now().toString(36)}`, position: at, text: text.slice(0, 300) }];
+  const list = [...readNotesLayer(), { id: `n${Date.now().toString(36)}`, position: at, text: text.slice(0, 300), kind: noteKind.value }];
   if (writeNotesLayer(list)) { notes.value = list; newNote.value = ''; }
 }
 // The conversation (Ames 2026-11-06: replies under pins, one thread per cell).
@@ -159,6 +160,44 @@ async function takeBack(id: string) {
   finally { busy.value = false; }
 }
 const whoLabel = (m: MentorMessage) => `${m.name}${(r.value?.rounds ?? 1) > 1 ? `, try ${m.round}` : ''}`;
+
+// Kinds of note (Celia 2026-11-10). The pick is what a new note becomes,
+// pinned here or placed with the point tool.
+function pickKind(k: NoteKind) {
+  noteKind.value = k;
+  if (hasNotesLayer()) writeNotesLayer(readNotesLayer());
+}
+const kindOf = (k?: string) => NOTE_KINDS.find(x => x.kind === k) ?? NOTE_KINDS[0];
+function cycleKind(id: string) {
+  const list = readNotesLayer().map(n => {
+    if (n.id !== id) return n;
+    const i = NOTE_KINDS.findIndex(x => x.kind === (n.kind ?? 'note'));
+    return { ...n, kind: NOTE_KINDS[(i + 1) % NOTE_KINDS.length].kind };
+  });
+  if (writeNotesLayer(list)) notes.value = list;
+}
+/** The kinds in this cell's notes, for the apprentice's key. */
+const kindsHere = computed(() => NOTE_KINDS.filter(k => notes.value.some(n => (n.kind ?? 'note') === k.kind)));
+
+// Held 4 hours, asked at 2 (Celia 2026-11-10).
+const now = ref(Date.now());
+const clock = window.setInterval(() => { now.value = Date.now(); }, 30000);
+onBeforeUnmount(() => window.clearInterval(clock));
+const heldUntil = computed(() => canAct.value && r.value?.heldUntil ? Date.parse(r.value.heldUntil) : null);
+const askNow = computed(() => canAct.value && !!r.value?.askAfter && now.value >= Date.parse(r.value.askAfter));
+const timeOf = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+async function keepIt() {
+  busy.value = true; error.value = '';
+  try { await keepCell(); now.value = Date.now(); said.value = 'Kept. It is yours for 4 more hours.'; }
+  catch (e: any) { error.value = e?.message || 'Could not keep it.'; }
+  finally { busy.value = false; }
+}
+async function letItGo() {
+  busy.value = true; error.value = '';
+  try { await letGoCell(); }
+  catch (e: any) { error.value = e?.message || 'Could not let it go.'; }
+  finally { busy.value = false; }
+}
 
 function remove(id: string) {
   const list = readNotesLayer().filter(n => n.id !== id);
@@ -302,14 +341,26 @@ const STATE: Record<string, string> = {
       <span v-if="!slim" class="nge-mbx-pos" title="The cell's segment ID" @pointerdown.stop>{{ r.rootId || r.segmentId }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
     </div>
 
+    <div v-if="askNow" class="nge-mbx-hold" role="group" aria-label="Still looking?">
+      <p class="nge-mbx-hold-q">Still looking at this cell? It goes back for another mentor at {{ timeOf(heldUntil ?? 0) }}.</p>
+      <div class="nge-mbx-actions">
+        <button class="nge-mbx-btn" :disabled="busy" :title="`It goes back to the queue now, and ${r.apprenticeName} goes to another mentor`" @click="letItGo">Let it go</button>
+        <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" title="Yours for 4 more hours" @click="keepIt">Keep it</button>
+      </div>
+    </div>
+
     <!-- Slim (Ames 2026-11-06): pin a note, send suggestions or complete,
          and on to the next cell, in a box that leaves the view free. -->
     <template v-if="slim">
       <!-- The notes stay in slim (Ames 2026-11-06): one line each, click to fly there. -->
       <div v-if="notes.length" class="nge-mbx-notes nge-mbx-notes--slim">
-        <button v-for="(n, i) in notes" :key="n.id" class="nge-mbx-fly" title="Fly to this note" @click="flyTo(n.position)"><span class="nge-mbx-dot"></span>{{ i + 1 }}. {{ n.text }}</button>
+        <button v-for="(n, i) in notes" :key="n.id" class="nge-mbx-fly" :title="`${kindOf(n.kind).label}. Fly to this note`" @click="flyTo(n.position)"><span class="nge-mbx-dot" :style="{ background: kindColor(n.kind) }"></span>{{ i + 1 }}. {{ n.text }}{{ n.kind === 'private' ? ' (only you)' : '' }}</button>
       </div>
       <template v-if="canAct">
+        <div class="nge-mbx-kinds" role="radiogroup" aria-label="Kind of note">
+          <span class="nge-mbx-kinds-label">New note:</span>
+          <button v-for="k in NOTE_KINDS" :key="k.kind" class="nge-mbx-kindchip" :class="{ 'nge-mbx-kindchip--on': noteKind === k.kind }" role="radio" :aria-checked="noteKind === k.kind" :title="k.title" @click="pickKind(k.kind)"><span class="nge-mbx-dot" :style="{ background: k.color }"></span>{{ k.label }}</button>
+        </div>
         <div class="nge-mbx-add">
           <input v-model="newNote" maxlength="300" placeholder="A note to pin at the crosshairs" @keydown.enter.prevent="addHere" />
           <button class="nge-mbx-btn" :disabled="!newNote.trim()" title="Pins the note where the crosshairs are, the center of the view" @click="addHere">Pin</button>
@@ -348,7 +399,8 @@ const STATE: Record<string, string> = {
     <div v-if="notes.length || !mentor" class="nge-mbx-notes">
       <div v-for="(n, i) in notes" :key="n.id" class="nge-mbx-pin">
         <div class="nge-mbx-note">
-          <button class="nge-mbx-fly" title="Fly to this note" @click="flyTo(n.position)"><span class="nge-mbx-dot"></span>{{ i + 1 }}. {{ n.text }}</button>
+          <button v-if="canAct" class="nge-mbx-kindbtn" :style="{ background: kindColor(n.kind) }" :title="`${kindOf(n.kind).label}. Press to change the kind`" :aria-label="`${kindOf(n.kind).label}, change the kind`" @click="cycleKind(n.id)"></button>
+          <button class="nge-mbx-fly" :title="`${kindOf(n.kind).label}. Fly to this note`" @click="flyTo(n.position)"><span v-if="!canAct" class="nge-mbx-dot" :style="{ background: kindColor(n.kind) }"></span>{{ i + 1 }}. {{ n.text }}<span v-if="n.kind === 'private'" class="nge-mbx-only"> only you</span></button>
           <button v-if="side && !myUnsent(n.id)" class="nge-mbx-replylink" :aria-expanded="replyOpen === n.id" @click="openReply(n.id)">Reply</button>
           <button v-if="canAct" class="nge-mbx-rm" title="Remove this note" @click="remove(n.id)">×</button>
         </div>
@@ -365,7 +417,10 @@ const STATE: Record<string, string> = {
         </div>
       </div>
       <p v-if="!notes.length && !mentor && r.state !== 'waiting' && r.state !== 'looking'" class="nge-mbx-meta">No notes in the view.</p>
+      <p v-if="!canAct && kindsHere.length > 1" class="nge-mbx-key"><span v-for="k in kindsHere" :key="k.kind"><span class="nge-mbx-dot" :style="{ background: k.color }"></span>{{ k.label }}</span></p>
     </div>
+    <p v-if="editsNote && (mentor || adminView)" class="nge-mbx-meta nge-mbx-edits">{{ editsNote }}</p>
+    <p v-if="heldUntil && !askNow" class="nge-mbx-meta">Yours until {{ timeOf(heldUntil) }}. Any note you save keeps it longer.</p>
     <p v-if="layerNote" class="nge-mbx-said" role="status">{{ layerNote }}</p>
 
     <div v-if="cellMessages.length" class="nge-mbx-thread" aria-label="Messages on this cell">
@@ -391,7 +446,7 @@ const STATE: Record<string, string> = {
         <p class="nge-mbx-ask">Become {{ r.apprenticeName }}'s mentor?</p>
         <ul class="nge-mbx-terms">
           <li>You look at each of their mentor cells, leave notes, and send suggestions or complete it.</li>
-          <li>Answer each cell within a day, or it goes to another mentor.</li>
+          <li>A cell you take is yours for 4 hours. At 2 hours you are asked whether you still want it.</li>
           <li>They get a notification saying you are their mentor.</li>
         </ul>
         <p class="nge-mbx-meta">You are only looking now. Nothing changes until you press the button.</p>
@@ -403,11 +458,15 @@ const STATE: Record<string, string> = {
       </div>
     </div>
     <template v-if="canAct">
+      <div class="nge-mbx-kinds" role="radiogroup" aria-label="Kind of note">
+        <span class="nge-mbx-kinds-label">New note:</span>
+        <button v-for="k in NOTE_KINDS" :key="k.kind" class="nge-mbx-kindchip" :class="{ 'nge-mbx-kindchip--on': noteKind === k.kind }" role="radio" :aria-checked="noteKind === k.kind" :title="k.title" @click="pickKind(k.kind)"><span class="nge-mbx-dot" :style="{ background: k.color }"></span>{{ k.label }}</button>
+      </div>
       <div class="nge-mbx-add">
         <input v-model="newNote" maxlength="300" placeholder="A note to pin at the crosshairs" @keydown.enter.prevent="addHere" />
         <button class="nge-mbx-btn" :disabled="!newNote.trim()" title="Pins the note where the crosshairs are, the center of the view" @click="addHere">Pin at crosshairs</button>
       </div>
-      <p class="nge-mbx-meta">Or place points in the Mentor notes layer with the annotation tools. A point's description is its note.</p>
+      <p class="nge-mbx-meta">Or place points in the Mentor notes layer with the annotation tools. A point's description is its note, and it takes the kind picked above. Press a note's color to change its kind. Private notes are only for you.</p>
       <textarea v-model="cellNote" class="nge-mbx-text" rows="3" maxlength="2000" placeholder="A note on the whole cell"></textarea>
       <p class="nge-mbx-meta">Your notes and replies go to {{ r.apprenticeName }} when you send suggestions or complete.</p>
       <div class="nge-mbx-actions">
@@ -519,7 +578,18 @@ const STATE: Record<string, string> = {
 .nge-mbx-fly { flex: 1; min-width: 0; display: block; font: inherit; color: #dce6f5; background: none; border: none; cursor: pointer; text-align: left; padding: 2px 0 2px 16px; text-indent: -16px; white-space: normal; overflow-wrap: anywhere; }
 .nge-mbx-fly .nge-mbx-dot { display: inline-block; margin-right: 6px; text-indent: 0; vertical-align: 1px; }
 .nge-mbx-fly:hover { text-decoration: underline; text-underline-offset: 3px; }
-.nge-mbx-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #ffd166; transform: translateY(-1px); }
+.nge-mbx-dot { flex: 0 0 auto; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ffffff; transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
+.nge-mbx-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 6px; }
+.nge-mbx-kinds-label { font-size: 11px; color: #9fb3d6; margin-right: 2px; }
+.nge-mbx-kindchip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(140, 170, 220, 0.35);
+  background: rgba(20, 32, 56, 0.6); color: #cfdcf5; font-size: 11px; cursor: pointer; }
+.nge-mbx-kindchip--on { border-color: #8fc0ff; background: rgba(60, 110, 200, 0.35); color: #fff; }
+.nge-mbx-kindbtn { flex: 0 0 auto; width: 12px; height: 12px; margin: 3px 4px 0 0; padding: 0; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.6); cursor: pointer; }
+.nge-mbx-only { font-size: 10px; color: #8a93a6; margin-left: 4px; }
+.nge-mbx-key { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 0; font-size: 11px; color: #9fb3d6; }
+.nge-mbx-key .nge-mbx-dot { margin-right: 4px; }
+.nge-mbx-hold { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255, 210, 77, 0.5); background: rgba(60, 50, 10, 0.35); }
+.nge-mbx-hold-q { margin: 0 0 6px; font-size: 12px; color: #ffe9a8; }
 .nge-mbx-rm { font: inherit; font-size: 16px; line-height: 1; background: none; border: none; color: rgba(220, 230, 245, 0.55); cursor: pointer; }
 .nge-mbx-rm:hover { color: #fff; }
 .nge-mbx-add { display: flex; gap: 6px; }

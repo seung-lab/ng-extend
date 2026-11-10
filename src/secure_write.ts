@@ -49,7 +49,7 @@ export type SecureAction =
   | 'hunt.current' | 'hunt.submit' | 'hunt.list' | 'hunt.read' | 'hunt.save' | 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.award' | 'hunt.rescore'
   | 'hunt.notes' | 'hunt.test' | 'hunt.test_drop' | 'hunt.drop' | 'hunt.start' | 'hunt.duplicate'
   | 'mentor.status' | 'mentor.send' | 'mentor.sheetDone' | 'mentor.queue' | 'mentor.review' | 'mentor.claim' | 'mentor.reply' | 'mentor.unreply' | 'mentor.saveNotes'
-  | 'mentor.suggest' | 'mentor.complete' | 'mentor.handBack' | 'mentor.admin' | 'mentor.addMentor' | 'mentor.removeMentor'
+  | 'mentor.suggest' | 'mentor.complete' | 'mentor.handBack' | 'mentor.keep' | 'mentor.letGo' | 'mentor.editor' | 'mentor.admin' | 'mentor.addMentor' | 'mentor.removeMentor'
   | 'mentor.addApprentice' | 'mentor.removeApprentice' | 'mentor.texts' | 'mentor.setText' | 'mentor.byCell' | 'mentor.stats' | 'mentor.cellsOf' | 'mentor.join' | 'mentor.leave';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */
