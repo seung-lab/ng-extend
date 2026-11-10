@@ -1434,6 +1434,8 @@ const reporterAsk = ref<Record<string, boolean>>({});
 /** "Copy Celia and Marissa" switched on, keyed by row id (Ames 2026-11-10: "a button to
  *  also send a reply to celia and marissa if there is a reply they should see"). */
 const reporterCopy = ref<Record<string, boolean>>({});
+const OWNER_ADMIN_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
+const isOwnerAdmin = computed(() => OWNER_ADMIN_EMAILS.includes((backend.userEmail || '').trim().toLowerCase()));
 // Their Pyr accounts (users.id): the admins table keeps no user ids.
 const COPY_ADMINS = [
   { email: 'celia@eyewire.org', id: '942bda30-fcf0-424c-8785-91db4d62d2aa' },  // Celia D
@@ -1750,10 +1752,10 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
     // Everyone who reported the same thing hears too (never asked to reply).
     const toldDups = await notifyDuplicates(row, text, art).catch(() => 0);
     if (toldDups) dupNotice.value = `Also sent to ${toldDups} other ${toldDups === 1 ? 'person' : 'people'} who reported the same thing.`;
-    const copy = !!reporterCopy.value[row.id];
+    const copy = !!reporterCopy.value[row.id] && isOwnerAdmin.value;
     if (copy) {
       const copied = await copyReplyToAdmins(row, text, imageUrl).catch((e: any) => { console.warn('[triage] copy to admins', e); return -1; });
-      const copyNote = copied < 0 ? 'Sent to the player, but the copy to Celia and Marissa did not go.' : copied ? 'Celia and Marissa got a copy.' : '';
+      const copyNote = copied < 0 ? 'Sent to the player, but the copy to Celia and Marissa did not go.' : copied ? 'Celia and Marissa got a copy, and are tagged in Slack.' : '';
       if (copyNote) dupNotice.value = [dupNotice.value, copyNote].filter(Boolean).join(' ');
     }
     // Re-read the log right before appending, so a bridge write in between
@@ -3962,18 +3964,12 @@ function practiceWhen(iso: string | null) {
                   ? 'They get a reply form under your message: text, a screenshot, their view and console messages. One reply. Ask again to hear more.'
                   : 'They get your message only.' }}</span>
               </div>
-              <div class="nge-triage-ask" title="Celia and Marissa each get your exact message in their bell, under Admin, with a link to this card. Never the player.">
-                <span :id="'nge-triage-copy-' + row.id" class="nge-triage-ask-label">Copy Celia and Marissa</span>
-                <div class="nge-triage-switch" role="radiogroup" :aria-labelledby="'nge-triage-copy-' + row.id" :data-on="reporterCopy[row.id] ? 'on' : 'off'">
-                  <button type="button" role="radio" class="nge-triage-switch-opt" :aria-checked="reporterCopy[row.id] ? 'false' : 'true'" :tabindex="reporterCopy[row.id] ? -1 : 0"
-                          :disabled="reporterSending === row.id" @click="reporterCopy[row.id] = false"
-                          @keydown.right.prevent.stop="reporterCopy[row.id] = true" @keydown.left.prevent.stop="reporterCopy[row.id] = false">Off</button>
-                  <button type="button" role="radio" class="nge-triage-switch-opt nge-triage-switch-opt--on" :aria-checked="reporterCopy[row.id] ? 'true' : 'false'" :tabindex="reporterCopy[row.id] ? 0 : -1"
-                          :disabled="reporterSending === row.id" @click="reporterCopy[row.id] = true"
-                          @keydown.right.prevent.stop="reporterCopy[row.id] = true" @keydown.left.prevent.stop="reporterCopy[row.id] = false">On</button>
-                </div>
-                <span class="nge-triage-ask-hint">{{ reporterCopy[row.id] ? 'They each get your message in their bell, with a link to this card.' : 'Only the player gets it.' }}</span>
-              </div>
+              <!-- Ames only (2026-11-10: "a box I can check to also send update to
+                   celia and marissa ... it should only appear for me"). -->
+              <label v-if="isOwnerAdmin" class="nge-triage-copy" title="Celia and Marissa each get your exact message in their bell, with a link to this card, and are tagged on it in the Slack thread. Never the player.">
+                <input type="checkbox" v-model="reporterCopy[row.id]" :disabled="reporterSending === row.id" />
+                <span>Also send to Celia and Marissa (bell and Slack tag)</span>
+              </label>
               <div class="nge-triage-actions">
                 <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
                   {{ reporterSending === row.id ? 'Sending…' : reporterAsk[row.id] ? 'Send and ask for a reply' : 'Send to submitter' }}
@@ -5213,6 +5209,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-card.nge-triage-card--waiting { outline: 1px dashed rgba(160, 140, 255, 0.6); outline-offset: -1px; }
 .nge-triage-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
 .nge-triage-ask-label { font-weight: 600; }
+.nge-triage-copy { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
+.nge-triage-copy input { width: 15px; height: 15px; margin: 0; cursor: pointer; }
 .nge-triage-ask-hint { color: rgba(255,255,255,0.5); flex: 1 1 240px; }
 /* Off / On: a two way switch. The lit side is the current state. */
 .nge-triage-switch { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 2px; border-radius: 7px;
