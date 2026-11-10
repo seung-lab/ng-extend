@@ -90,4 +90,5 @@ test('the hand columns survive a rewrite, follow the person, and are never lost'
   assert.deepEqual(calls, ['GET']);
   assert.equal(editList(null), null);
   assert.equal(editList({ permissions_v2: { BANC: ['view'] } }), '');
+  assert.equal(editList({ permissions_v2: { pinky100: ['edit'], FANC_sandbox: ['edit'], fafb_sandbox: ['edit'], fake_dataset_debug_chris: ['edit'], fafb: ['edit'] } }), 'FlyWire');
 });

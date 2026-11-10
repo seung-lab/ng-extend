@@ -65,7 +65,10 @@ function editList(perms) {
   for (const src of [perms.permissions_v2_ignore_tos, perms.permissions_v2]) {
     for (const [ds, list] of Object.entries(src || {})) merged[ds] = [...new Set([...(merged[ds] || []), ...(Array.isArray(list) ? list : [])])];
   }
-  return [...new Set(Object.keys(merged).filter(ds => merged[ds].includes('edit')).map(caveName))].sort().join(', ');
+  // Practice datasets everyone gets (sandboxes, pinky100, debug sets) would
+  // bury the real ones, so they are left out.
+  const practice = (ds) => /sandbox|^pinky|^fake_/i.test(ds);
+  return [...new Set(Object.keys(merged).filter(ds => !practice(ds) && merged[ds].includes('edit')).map(caveName))].sort().join(', ');
 }
 const day = (iso) => (iso ? String(iso).slice(0, 10) : '');
 const yes = (b) => (b ? 'Yes' : '');
