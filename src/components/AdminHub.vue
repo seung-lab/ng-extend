@@ -945,14 +945,20 @@ function toggleFold(key: TriageGroupKey) {
   triageFolded.value = { ...triageFolded.value, [key]: !triageFolded.value[key] };
   try { localStorage.setItem(TRIAGE_FOLD_KEY, JSON.stringify(triageFolded.value)); } catch { /* not remembered */ }
 }
-/** Folded right now. While searching nothing is folded, so a match in Done
- *  or Dismissed is not hidden. */
-const isFolded = (key: TriageGroupKey) => triageFolded.value[key] && !triageWords.value.length;
+/** Folded right now. While searching, a column folds when it has no match
+ *  and opens when it has one, so a match in Done or Dismissed is not hidden
+ *  and the matches get the room (Celia 2026-11-10: the cards were squished). */
+const isFolded = (key: TriageGroupKey) => (triageWords.value.length
+  ? !(triageGroups.value.find(g => g.key === key)?.rows.length)
+  : triageFolded.value[key]);
 // Triage zero: when the last report under Needs your decision is handled,
 // a party (Ames 2026-10-23: "some celebration when Triage reached zero").
 // Only when it goes from some to none while you watch, never on load.
 const zeroParty = ref(0);
-const decideCount = computed(() => triageGroups.value.find(g => g.key === 'decide')?.rows.length ?? -1);
+// Counted over every open report, not what a search or the Bug/Idea filter
+// shows: a search with no match there is not Triage zero (Celia 2026-11-10:
+// "Triage 0" with Nurro on every such search).
+const decideCount = computed(() => triageRows.value.filter(r => triageGroupOf(r) === 'decide' && !isAccessRequest(r)).length);
 let hadDecisions = false;
 watch(decideCount, (n, before) => {
   if (triageLoading.value) return;
