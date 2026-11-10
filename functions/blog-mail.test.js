@@ -97,6 +97,12 @@ test('check: a new post goes once, to the blog segment, only when its page is li
   assert.strictEqual(x.f.calls.filter((c) => /\/send$/.test(c.p)).length, 1);
 });
 
+test('check: the weekly release notes are never emailed', async () => {
+  const notes = { ...POST, id: 'w1', slug: 'whats-new-in-pyr-2026-11-09', title: 'Release notes, week of November 9' };
+  const x = io({ posts: [notes], pages: { 'https://connectome.quest/blog/whats-new-in-pyr-2026-11-09/': `<h1>${notes.title}</h1>` }, io: { live: { since: '2026-11-06T00:00:00Z' } } });
+  assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, []);
+});
+
 test('check: a post another run is sending is left alone', async () => {
   const x = io({ posts: [POST], pages: LIVE_PAGE, io: { live: { since: '2026-11-06T00:00:00Z' } } });
   x.marks.p1 = { state: 'sending', at: new Date().toISOString(), tries: 1 };

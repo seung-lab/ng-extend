@@ -30,6 +30,8 @@ const LIVE = false;
 // switching on does not send the old posts.
 const LIVE_SINCE = '2099-01-01T00:00:00Z';
 // Long posts: the opening, up to about this many words, then "Read the rest".
+// scripts/release-notes-blog.mjs SLUG_PREFIX.
+const RELEASE_NOTES = /^whats-new-in-pyr-/;
 const EXCERPT_WORDS = 320;
 const WHOLE_POST_WORDS = 600;
 
@@ -241,7 +243,9 @@ async function check(a, io) {
   const live = io.live || (LIVE ? { since: LIVE_SINCE } : null);
   if (!live) return { live: false, sent: [] };
   const since = Date.parse(live.since);
-  const posts = (await io.posts()).filter((p) => p.slug && p.title && Date.parse(p.published_at) > since);
+  // The weekly "What's new in Pyr" release notes are never emailed (Ames
+  // 2026-11-10): they change every day, and the bell already has the day.
+  const posts = (await io.posts()).filter((p) => p.slug && p.title && !RELEASE_NOTES.test(p.slug) && Date.parse(p.published_at) > since);
   const sent = [];
   // Oldest first, and at most two a run: a burst of posts goes out over runs.
   for (const post of posts.sort((x, y) => String(x.published_at).localeCompare(String(y.published_at)))) {
