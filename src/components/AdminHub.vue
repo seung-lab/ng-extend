@@ -627,13 +627,10 @@ const kindOf = (r: TriageRow): Exclude<TriageKind, 'all'> => (isAccessRequest(r)
 const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
   { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' }, { key: 'access', label: '🔑 Access' },
 ];
-const TRIAGE_ACCESS_KEY = 'nge_triage_access_v1';
-const triageAccessOn = ref((() => { try { return localStorage.getItem(TRIAGE_ACCESS_KEY) !== '0'; } catch { return true; } })());
-function toggleTriageAccess() {
-  triageAccessOn.value = !triageAccessOn.value;
-  try { localStorage.setItem(TRIAGE_ACCESS_KEY, triageAccessOn.value ? '1' : '0'); } catch { /* not remembered */ }
-  if (!triageAccessOn.value && triageKind.value === 'access') triageKind.value = 'all';
-}
+// The old "Access requests: on/off" button is now a link to the Access page
+// (Ames 2026-11-10: "change this button to be Access and have it take us to
+// the Access page", "it can be purple"). Access requests always show on the
+// board, under their own kind.
 /** Open reports only (Ames 2026-10-21: the filter is for active reports):
  *  Needs your decision, In progress, On the To do board, Ideas for later. */
 const triageKindCount = computed(() => {
@@ -642,13 +639,12 @@ const triageKindCount = computed(() => {
     if (['done', 'dismissed'].includes(triageGroupOf(r))) continue;
     const k = kindOf(r);
     n[k]++;
-    if (k !== 'access' || triageAccessOn.value) n.all++;
+    n.all++;
   }
   return n;
 });
 function triageMatches(r: TriageRow): boolean {
   if (triageKind.value !== 'all' && kindOf(r) !== triageKind.value) return false;
-  if (triageKind.value === 'all' && !triageAccessOn.value && isAccessRequest(r)) return false;
   const words = triageWords.value;
   if (!words.length) return true;
   const n = triageNumbers.value[r.id];
@@ -3550,13 +3546,11 @@ function practiceWhen(iso: string | null) {
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
           <span class="nge-triage-kinds" role="radiogroup" aria-label="Show">
-            <button v-for="k in TRIAGE_KINDS.filter(k => k.key !== 'access' || triageAccessOn)" :key="k.key" type="button" role="radio" class="nge-triage-kind" title="Open reports of this kind. The board shows only these."
+            <button v-for="k in TRIAGE_KINDS" :key="k.key" type="button" role="radio" class="nge-triage-kind" title="Open reports of this kind. The board shows only these."
                     :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
                     @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
           </span>
-          <button type="button" class="nge-admin-action-btn nge-triage-access-toggle" :aria-pressed="triageAccessOn ? 'true' : 'false'"
-                  :title="triageAccessOn ? 'Hide access requests from the board. They wait under 🔑 Access when you turn them back on.' : 'Show access requests on the board again'"
-                  @click="toggleTriageAccess">{{ triageAccessOn ? '🔑 Access requests: on' : '🔑 Access requests: off' }}<template v-if="!triageAccessOn && triageKindCount.access"> ({{ triageKindCount.access }})</template></button>
+          <a class="nge-admin-action-btn nge-triage-access-page" :href="accessPageUrl" title="The Access page: everyone who asked or was let in, step by step">🔑 Access</a>
           <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
                   :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
                   @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
@@ -5076,6 +5070,11 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-later-btn { color: #f0d27a; border-color: rgba(240, 210, 122, 0.4); }
 .nge-triage-later-btn:hover:not(:disabled) { background: rgba(240, 210, 122, 0.12); border-color: rgba(240, 210, 122, 0.75); }
 .nge-triage-light .nge-triage-prog-btn { color: #5b21b6; border-color: #c4b5fd; }
+/* The link to the Access page (Ames 2026-11-10: "it can be purple"). */
+.nge-triage-access-page { text-decoration: none; display: inline-flex; align-items: center; color: #d6c8ff; background: rgba(139, 92, 246, 0.22); border-color: rgba(167, 139, 250, 0.7); }
+.nge-triage-access-page:hover { background: rgba(139, 92, 246, 0.34); border-color: #a78bfa; }
+.nge-triage-light .nge-triage-access-page { color: #ffffff; background: #7c3aed; border-color: #6d28d9; }
+.nge-triage-light .nge-triage-access-page:hover { background: #6d28d9; border-color: #5b21b6; }
 .nge-triage-light .nge-triage-prog-btn:hover:not(:disabled) { background: #f3efff; border-color: #8b5cf6; }
 .nge-triage-light .nge-triage-todo-btn { color: #1d4ed8; border-color: #9dbcf0; }
 .nge-triage-light .nge-triage-todo-btn:hover:not(:disabled) { background: #eef4ff; border-color: #3b74e0; }
