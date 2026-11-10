@@ -36,6 +36,7 @@ import silverYearTrophy from '../../static/images/champions/silver-year-trophy.p
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
 import { isAwardTitle } from '../util/award_title';
+import { openTextForEdit, revertTextEdit } from '../text_edit_links';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
@@ -463,7 +464,9 @@ function openDetail(notif: any) {
   const accessTitle = String(notif.title || '');
   // A dataset access request opens the same tab, where Dataset requests has
   // Granted (Ames 2026-10-28).
-  if (accessTitle.startsWith('🔑 Access update') || accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
+  // The Access update itself opens to its own list of who asked and who was
+  // let in (Ames 2026-11-06), with a link to the full list at the end.
+  if (accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
     emit('hide');
     return;
@@ -536,6 +539,31 @@ async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
   // A tutorial edit to approve: its before and after show here, and this
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
+  if (a?.getAttribute('href') === ACCESS_LIST_LINK || a?.getAttribute('href') === BETA_LIST_LINK) {
+    e.preventDefault();
+    const tab = a.getAttribute('href') === BETA_LIST_LINK ? 'pilot' : 'access';
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
+  // An admin's edit of an in-game text (functions/edit-notify.js): put the old text back, or open it to edit.
+  const rv = a?.getAttribute('href')?.match(/^#nge-text-revert=(\d{1,12})$/);
+  if (rv) {
+    e.preventDefault();
+    helpSolvedNote.value = 'Checking that edit...';
+    const r = await revertTextEdit(Number(rv[1]));
+    helpSolvedNote.value = r.message;
+    return;
+  }
+  const op = a?.getAttribute('href')?.match(/^#nge-text-open=([a-z0-9_.-]{1,64})$/);
+  if (op) {
+    e.preventDefault();
+    closeDetail();
+    emit('hide');
+    openTextForEdit(op[1]);
+    return;
+  }
   if (a?.getAttribute('href') === '#nge-tutorial-edits') {
     e.preventDefault();
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
@@ -777,22 +805,32 @@ async function qrSend() {
     qrSending.value = false;
   }
 }
-/** Go to the cell. On another dataset, the Quests tab (it offers the switch). */
+/** Go to the cell, the way the Quests tab does: its Start Link, else its
+ *  soma. On another dataset, the Quests tab (it offers the switch).
+ *  Everything is read BEFORE the notification closes: closing it empties
+ *  qrSegment, qrState and qrReviewLink (Celia 2026-11-06: the buttons did
+ *  nothing; the reviewer's link was read after it was gone, and a jump to a
+ *  bare segment ID never moved the view). */
 function qrJump() {
   const seg = qrSegment.value;
   if (!seg) return;
+  const start = qrState.value?.startLink || '';
+  const soma = (qrState.value?.soma || '').match(/-?\d+(?:\.\d+)?/g)?.map(Number);
   let here = false;
   try { here = canonicalDataset(currentDatasetTag()) === QUEST_DATASET; } catch { /* no viewer */ }
   closeDetail();
   emit('hide');
-  if (here) useCellHistoryStore().jumpToCell(seg);
-  else document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+  if (!here) { document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } })); return; }
+  if (start && openStartLink(start)) return;
+  useCellHistoryStore().jumpToCell(seg, soma?.length === 3 ? soma as [number, number, number] : undefined);
 }
 function qrOpenReviewLink() {
-  if (!qrReviewLink.value) return;
+  const link = qrReviewLink.value;
+  if (!link) return;
   closeDetail();
   emit('hide');
-  openStartLink(qrReviewLink.value);
+  // A link this game cannot load in place opens in a new tab instead.
+  if (!openStartLink(link)) window.open(link, '_blank', 'noopener');
 }
 function qrOpenQuests() {
   closeDetail();
@@ -906,8 +944,19 @@ const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(
 function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
 }
+const ACCESS_LIST_LINK = '#nge-access-requests';
+// And to the Beta requests (Celia 2026-11-09: she wants both).
+const BETA_LIST_LINK = '#nge-beta-requests';
 const detailBody = computed(() => {
-  const body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
+  let body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
+  // The daily and weekly Access notes end with the way to the full list.
+  if (String(openNotif.value?.title ?? '').startsWith('🔑 Access') && !body.includes(ACCESS_LIST_LINK)) {
+    body += `
+
+[Open dataset access requests](${ACCESS_LIST_LINK})
+
+[Open Beta requests](${BETA_LIST_LINK})`;
+  }
   return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
 });
 function onPictureLoad(e: Event) {
@@ -1195,7 +1244,7 @@ function padRank(rank: number): string {
     <!-- Inside the Admin tab, when both kinds have notes: which ones to show. -->
     <div v-if="showFeedTabs && showAdminSwitch" class="nge-notif-subtabs" role="tablist">
       <button v-if="showAccessTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'access' }" role="tab" :aria-selected="feedTab === 'access'" @click="feedTab = 'access'"
-              title="Access requests: beta, Retina, other datasets, and the daily Access update">
+              title="Access requests: beta, Retina, other datasets, and the daily and weekly Access notes">
         Access<b v-if="unreadIn(accessNotes) > 0">{{ unreadIn(accessNotes) }}</b>
       </button>
       <button v-if="showAdminTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
@@ -2264,6 +2313,9 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-scroll {
   position: relative;
   z-index: 1;
+  /* Shrinks inside the window so a long note scrolls (Ames 2026-11-10: "we need scroll if needed"). */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 26px 26px;
   scrollbar-width: thin;
@@ -2351,6 +2403,14 @@ span.nge-notif-reply-part { cursor: default; }
   border-left: 2px solid rgb(var(--nd-cyan) / 0.6);
   background: rgb(var(--nd-accent) / 0.06);
   color: #d6e2f0;
+}
+/* An edit note's changed words (functions/edit-notify.js, Ames 2026-11-10:
+   "highlight the difference"): added words lit, removed words struck. */
+.nge-notif-detail-body :deep(mark) {
+  color: #fff; background: rgba(90, 170, 255, 0.3); border-radius: 3px; padding: 0 2px;
+}
+.nge-notif-detail-body :deep(blockquote del) {
+  color: rgba(214, 226, 240, 0.55); text-decoration-color: rgba(150, 190, 255, 0.9); text-decoration-thickness: 1.5px;
 }
 .nge-notif-detail-body :deep(code) {
   font-size: 0.9em;

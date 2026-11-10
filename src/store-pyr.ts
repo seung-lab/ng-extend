@@ -154,6 +154,9 @@ export interface Step {
   state?: string | Record<string, any>;
   video?: string;
   image?: string;
+  /** A small page shown in place of the picture, in a frame (the mini volume
+   *  on Get Started page 2: a block of EM, its slices, then the neuron). */
+  embed?: string;
   preloading?: boolean;
   videoCache?: HTMLVideoElement;
   width?: string;
@@ -177,6 +180,9 @@ export interface Step {
   highlight?: boolean;
   /** No confetti on the last box's button (a failed test is not a party). */
   noConfetti?: boolean;
+  /** Last box only: a quiet second button that closes the tutorial without
+   *  starting the next one (Get Started's "Not now", toknow #442). */
+  notNowLabel?: string;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {
@@ -240,6 +246,8 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
   const hydrating: Ref<boolean> = ref(false);
+  // Whose saved progress was asked for and answered, loaded or failed.
+  const hydrateSettledFor: Ref<string | null> = ref(null);
 
   function getTutorialStep() {
     if (activeTutorial.value === 1) return tutorialStep1.value;
@@ -308,6 +316,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
       console.warn('[tutorial] hydrate failed:', e);
     } finally {
       hydrating.value = false;
+      hydrateSettledFor.value = userId;
     }
   }
 
@@ -407,5 +416,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep10,
     tutorialStep11,
     hydrateFromSupabase,
+    // Whose saved progress has loaded or failed to (tutorial_box_jump.ts waits for it).
+    hydrateSettledFor,
   };
 });

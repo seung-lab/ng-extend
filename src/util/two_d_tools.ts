@@ -45,8 +45,8 @@ const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2
 // ── Saved in this browser, by dataset ────────────────────────────────────
 /** Known bad stretches, ready made (Ames 2026-11-02: "black spill issues in
  *  between 149881, 128038, 2649 and 149717, 128044, 2664" on MEC). Skip
- *  starts off: the pair's shift is measured at one place, so skipping
- *  everywhere would throw players elsewhere in the slice sideways. Removing
+ *  starts off, so scrolling through stays as players expect until they
+ *  turn it on. Skipping changes z only (report 429). Removing
  *  one keeps it removed. */
 const PRESETS: Record<string, JumpPair[]> = {
   pni_mec: [
@@ -257,7 +257,7 @@ function attach(panel: any) {
   const offerGo = document.createElement('button');
   offerGo.type = 'button';
   offerGo.textContent = 'Jump over';
-  offerGo.title = 'Go to the matching place on the far side (J)';
+  offerGo.title = 'Go to the same spot on the far side (J)';
   offerGo.addEventListener('mousedown', e => e.stopPropagation());
   offerGo.addEventListener('click', e => { e.stopPropagation(); if (offerFor) jumpAcross(offerFor); });
   // Its (i): what this is, in a line, on hover or tap.
@@ -265,7 +265,7 @@ function attach(panel: any) {
   offerInfo.type = 'button';
   offerInfo.className = 'nge-2d-offer-i';
   offerInfo.textContent = 'i';
-  const why = 'These slices are damaged (a black spill), so the cell seems to break here. Jump over takes you to the matching place on the far side, at the same zoom. The J key does the same. More in 2D Tools.';
+  const why = 'These slices are damaged (a black spill), so the cell seems to break here. Jump over takes you to the same spot on the far side, at the same zoom. The J key does the same. More in 2D Tools.';
   offerInfo.title = why;
   offerInfo.setAttribute('aria-label', why);
   offerInfo.addEventListener('mousedown', e => e.stopPropagation());
@@ -342,16 +342,16 @@ export function goTo(p: number[] | null) {
   for (let i = 0; i < 3; i++) next[i] = p[i];
   nav.value = next;
 }
-/** To whichever side you are not on. From where you are, so a place you
- *  moved to on one side lands on the matching place on the other (the pair's
- *  shift between A and B). */
+/** To whichever side you are not on, changing z only (annkri, report 429;
+ *  Ames 2026-11-07: "Skip only change z"). The pair's x/y shift was measured
+ *  at one place and threw players sideways everywhere else. */
 export function jumpAcross(pair: JumpPair) {
   if (!pair.a || !pair.b) return;
   const at = position();
   if (!at) return;
   const fromA = Math.abs(at[2] - pair.a[2]) <= Math.abs(at[2] - pair.b[2]);
   const [from, to] = fromA ? [pair.a, pair.b] : [pair.b, pair.a];
-  goTo([at[0] + to[0] - from[0], at[1] + to[1] - from[1], to[2]]);
+  goTo([at[0], at[1], to[2]]);
 }
 export function toggleSkip(pair: JumpPair) { pair.skip = !pair.skip; save(); }
 
@@ -369,7 +369,7 @@ function nearestPair(): JumpPair | null {
 }
 
 // Skipping the faulty slices: scrolling from A's side into the slices between
-// A and B lands on B's side, shifted as the pair is, and the same coming back.
+// A and B lands on B's slice, x and y unchanged (report 429), and the same coming back.
 // Only a step that crosses into the gap triggers it, so a jump into the middle
 // (a link, a search) stays put.
 let lastZ: number | null = null;
@@ -384,12 +384,12 @@ function onPositionChanged() {
     if (!p.skip || !p.a || !p.b || p.a[2] === p.b[2]) continue;
     const [lo, hi] = p.a[2] < p.b[2] ? [p.a, p.b] : [p.b, p.a];
     if (!(z > lo[2] && z < hi[2])) continue;
-    let to: number[] | null = null, from: number[] | null = null;
-    if (before <= lo[2]) { from = lo; to = hi; }
-    else if (before >= hi[2]) { from = hi; to = lo; }
-    if (!to || !from) continue;
+    let to: number[] | null = null;
+    if (before <= lo[2]) to = hi;
+    else if (before >= hi[2]) to = lo;
+    if (!to) continue;
     skipping = true;
-    try { goTo([at[0] + to[0] - from[0], at[1] + to[1] - from[1], to[2]]); } finally { skipping = false; }
+    try { goTo([at[0], at[1], to[2]]); } finally { skipping = false; }
     lastZ = to[2];
     return;
   }

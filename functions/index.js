@@ -1981,7 +1981,29 @@ exports.ewSecureWrite = onRequest(
           const fields = ewPick(args.fields, EW_TRIAGE_FIELDS);
           if ("todo_rank" in fields) ewTodoRank(fields.todo_rank);
           if ("todo_size" in fields) ewTodoSize(fields.todo_size);
+          // Another admin's reply to a player: a copy to Ames (functions/reply-watch.js).
+          const watch = require("./reply-watch");
+          let replyBefore = null;
+          if ("feedback_log" in fields && !watch.isOwnerEmail(who && who.email)) {
+            try { replyBefore = (await sb(`feedback_triage?id=eq.${args.id}&select=feedback_log,source_excerpt`))[0] || null; }
+            catch (e) { console.warn("[reply-watch] before", e.message); }
+          }
           out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(fields) }))[0];
+          if (replyBefore) {
+            try {
+              const fresh = watch.newReplies(replyBefore.feedback_log, fields.feedback_log);
+              if (fresh.length) {
+                const owners = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(watch.OWNER_EMAILS.map((e) => `"${e}"`).join(",")) + ")");
+                const link = `${EW_LIVE_SITE}/?triage=board&report=${args.id}`;
+                const rows = [];
+                for (const e of fresh) for (const o of owners) {
+                  rows.push({ ...watch.copyNote({ by: e.by || (me && (me.display_name || me.username)), text: e.text, about: replyBefore.source_excerpt, link, imageUrl: e.image_url }),
+                    target_type: "user", target_id: o.id, send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+                }
+                if (rows.length) await sb("notifications", { method: "POST", body: JSON.stringify(rows) });
+              }
+            } catch (e) { console.warn("[reply-watch] copy", e.message); }
+          }
           // Moving or sizing a To do card changes nothing the bridge mirrors.
           const onlyTodo = Object.keys(fields).every(k => k === "todo_rank" || k === "todo_size");
           // An Admin Hub decision: the bridge mirrors it to Slack and starts
@@ -2294,12 +2316,13 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-06-found-us-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-09-celia-tagged-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
-// Marissa stays tagged on access requests (Ames 2026-10-27); Amy and Celia no longer (Ames 2026-11-04).
-const ACCESS_SLACK_MENTIONS = ["U033TSX9A"]; // sorek.m
+// Marissa stays tagged on access requests (Ames 2026-10-27); Amy no longer (Ames
+// 2026-11-04). Celia again (Ames 2026-11-09: "Also @ her on access requests").
+const ACCESS_SLACK_MENTIONS = ["U033TSX9A", "U033NHWDE"]; // sorek.m, Celia
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 // Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
 const ACCESS_CAVE_GROUP = 203;
@@ -2398,6 +2421,22 @@ const betaMarkStore = {
     if (!v) await ref.delete(); else await ref.set({ email, ...v });
   },
 };
+// The team's notes on a person, for the Access page (access-request.js,
+// access.notes, Celia 2026-11-09). One document per note.
+const accessNoteStore = {
+  all: async () => {
+    const snap = await db.collection("access_request_notes").orderBy("at").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.key) (out[v.key] = out[v.key] || []).push({ id: d.id, text: v.text, by: v.by || "", at: v.at }); });
+    return out;
+  },
+  add: async (key, v) => { await db.collection("access_request_notes").add({ key, ...v }); },
+  remove: async (key, id) => {
+    const ref = db.collection("access_request_notes").doc(id);
+    const d = await ref.get();
+    if (d.exists && d.data().key === key) await ref.delete();
+  },
+};
 // Dataset access requests, Granted or Not now (access-request.js,
 // access.datasetDecide, Ames 2026-10-28). A mark per request id, in Firestore.
 const datasetMarkStore = {
@@ -2465,7 +2504,7 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
-        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
+        wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
         sendEmail: async (msg) => {
           try {
@@ -2500,6 +2539,15 @@ exports.ewAccessRequest = onRequest(
         // Beta access requests reach every admin (Ames 2026-10-24).
         notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
+        // Tags in an Access page note (access-request.js tagFromNote).
+        people: () => require("./todos").restDb(sb).people(),
+        notifyPeople: ({ ids, title, body }) => note(ids, title, body),
+        slackPing: async (people, text, by) => {
+          const { slackIdOf } = require("./todos");
+          const pings = people.map(p => { const s = slackIdOf(p); return s ? `<@${s}>` : `@${p.name}`; }).join(" ");
+          const r = await slackPost(slackBotToken.value().trim(), "chat.postMessage", { channel: REVIEW_CHANNEL_ID, text: `💬 ${pings} ${by} ${text}`, unfurl_links: false }).catch(e => ({ ok: false, error: e.message }));
+          if (!r.ok) console.warn("[access note] slack failed:", r.error);
+        },
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
         // A player's CAVE access, read with the admin token: the datasets they
         // can edit or view, and their groups (Ames 2026-10-29: "we need to see
@@ -2725,8 +2773,11 @@ exports.ewCommunityData = onRequest(
         try {
           const keys = require("./edit-notify").editedKeys(plan.method, plan.query, plan.body).slice(0, 5);
           editsBefore = {};
+          const {liveKeyOf, isDraft} = require("./edit-notify");
           for (const k of keys) {
-            const rows = await sb("site_texts?key=eq."+encodeURIComponent(k)+"&select=body&limit=1");
+            // A suggestion's note shows the text players see now, so read that key for a draft.
+            const read = isDraft(k) ? liveKeyOf(k) : k;
+            const rows = read ? await sb("site_texts?key=eq."+encodeURIComponent(read)+"&select=body&limit=1") : [];
             editsBefore[k] = rows.length ? String(rows[0].body ?? "") : null;
           }
         } catch (e) { editsBefore = null; console.warn("[edit-notify] before", e.message); }
@@ -2743,18 +2794,33 @@ exports.ewCommunityData = onRequest(
       // The edit went through: tell Ames, before and after (Ames 2026-11-06).
       if (upstream.ok && editsBefore) {
         try {
-          const {planEditNote, OWNER_EMAILS} = require("./edit-notify");
+          const {planEditNote, isDraft, OWNER_EMAILS} = require("./edit-notify");
           const rowsAfter = plan.method === "DELETE" ? [] : (Array.isArray(plan.body) ? plan.body : [plan.body]);
-          const notes = Object.keys(editsBefore).map((k) => {
+          const editor = { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" };
+          const notes = [];
+          for (const k of Object.keys(editsBefore)) {
             const row = rowsAfter.find((r) => r && r.key === k);
             const after = plan.method === "DELETE" ? null : row ? String(row.body ?? "") : (plan.body && typeof plan.body.body === "string" ? plan.body.body : null);
-            return planEditNote({ key: k, before: editsBefore[k], after, editor: { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" } });
-          }).filter(Boolean);
+            // A suggestion waiting for approval sends no note here (planApproveNote is ready, not switched on; Ames 2026-11-10).
+            if (isDraft(k)) continue;
+            if (!planEditNote({ key: k, before: editsBefore[k], after, editor })) continue;
+            // Kept so the note's "Put back the old text" can undo exactly this edit (supabase-site-text-edits.sql).
+            let editId = null;
+            try {
+              const saved = await sb("site_text_edits", { method: "POST", headers: { Prefer: "return=representation" },
+                body: JSON.stringify({ key: k, old_body: editsBefore[k], new_body: after, editor_name: editor.name, editor_email: editor.email || null }) });
+              editId = Number(saved && saved[0] && saved[0].id) || null;
+            } catch (e) { console.warn("[edit-notify] history", e.message); }
+            notes.push(planEditNote({ key: k, before: editsBefore[k], after, editor, editId }));
+          }
           if (notes.length) {
             const owners = await sb("users?select=id&middleauth_email=in.("+encodeURIComponent(OWNER_EMAILS.map((e) => `"${e}"`).join(","))+")");
             const out = [];
+            // Celia's or Marissa's edits carry Nurro doing geometry (Ames 2026-11-09).
+            const watched = require("./reply-watch");
+            const byThem = watched.isCeliaOrMarissa(me && (me.display_name || me.username));
             for (const n of notes) for (const o of owners) out.push({ title: n.title, body: n.body, target_type: "user", target_id: o.id,
-              ...(n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+              ...(byThem ? { image_url: watched.WATCH_PICTURE, thumbnail_url: watched.WATCH_PICTURE } : n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
             if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
           }
         } catch (e) { console.warn("[edit-notify] note", e.message); }
@@ -2792,7 +2858,7 @@ exports.ewSecureUpload = onRequest(
    // authors and admins get the admin write allowance, others keep 8 a minute.
    const roomy=isAdmin||isBlogAuthor;
    if(!(await rateLimit({ip:who.email},false,roomy?"write:upload":"upload",roomy)).ok)throw ewErr(429,"Please wait before uploading another image.");
-   const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/admin-uploads/"+upload.path;
+   const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/"+(upload.bucket||"admin-uploads")+"/"+upload.path;
    const r=await fetch(url,{method:"POST",headers:{apikey:key,...(key.startsWith("sb_")?{}:{Authorization:"Bearer "+key}),"Content-Type":upload.contentType,"x-upsert":"false"},body:upload.bytes,redirect:"error",signal:AbortSignal.timeout(30000)});
    if(!r.ok)throw ewErr(502,"Image storage is temporarily unavailable.");
    return res.json({url:url.replace("/object/","/object/public/")});
@@ -2846,7 +2912,9 @@ async function mirrorQuestRows(sb,quest,rows) {
   questMirrorAt[quest]=Date.now();
   try {
     await sb("rpc/ew_quest_mirror",{method:"POST",body:JSON.stringify({p_quest:quest,
-      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.status,date:r.date}))})});
+      // A quest held for review (sheet-policy REVIEW_HOLDS) is copied with no
+      // status, so the weekly count leaves it out until the player sends their update.
+      p_rows:rows.map(r=>({segment_id:r.segmentId,annotator:r.annotator,status:r.held?"":r.status,date:r.date}))})});
   } catch(e) { console.warn("[ewSheetSync] quest copy not saved",String(e&&e.message||e).slice(0,200)); }
 }
 exports.ewSheetSync = onRequest(
@@ -2909,6 +2977,20 @@ exports.ewSheetSync = onRequest(
     const sb=ewSb(ewServiceKey.value().trim());
     if(!(await pilotContext(sb,who)).isAdmin) throw ewErr(403,'Admins only');
     return res.json(await require('./sheet-sync').pilotSheetEmails(admin.applicationDefault()));
+   }
+   // "MEC error" on a triage card (Ames 2026-11-07): the report becomes a row
+   // of the MEC segment issues sheet. Admins only; rules in mec-issues.js.
+   if(input.action==='mec_issue') {
+    if(!(await rateLimit({ip:who.email},true,'write:sheets')).ok) throw ewErr(429,'Please wait a moment.');
+    const sb=ewSb(ewServiceKey.value().trim());
+    const {me,isAdmin}=await pilotContext(sb,who);
+    if(!isAdmin) throw ewErr(403,'Admins only');
+    const {sheetsApi}=require('./sheet-sync'),cred=admin.applicationDefault();
+    const bell=row=>sb('notifications',{method:'POST',body:JSON.stringify({...row,created_by:(me&&me.id)||null})});
+    const out=await require('./mec-issues').addIssue(input,{sb,bell,api:(path,init)=>sheetsApi(cred,path,init)})
+      .catch(e=>{ if(e.status) throw e; console.warn('[ewSheetSync] mec_issue',e.message); throw ewErr(503,'The MEC sheet could not be reached. Nothing was added; try again shortly.'); });
+    console.info('[ewSheetSync] mec_issue by',who.email,input.number,JSON.stringify(out));
+    return res.json({ok:true,...out});
    }
    // Annotation Quests (Ames 2026-10-12): the quest's own sheet tab is the
    // record. No proofreading task is involved: the row's Annotator Name says
@@ -3034,11 +3116,23 @@ exports.ewMentor = onRequest(
 //            {dryRun:true} to see what would be sent).
 //   get      the player: where their review of a cell stands.
 //   reply    the player: their updated link and notes, to the sheet.
-//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck --project eyewire-ii-e4d52
+//   digest   admins: the reviewers' morning note ({dryRun:true} to see it
+//            unsent, {toMe:true} to send it only to yourself).
+//   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck,functions:ewQuestReviewDigest --project eyewire-ii-e4d52
 const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
 const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
+// One player's CAVE permissions, read with Ames's admin token, for the Pyr
+// users sheet's Can edit column (Celia 2026-11-10). null when CAVE can't say.
+const ewCavePerms = async (caveId) => {
+  if (!/^\d{1,12}$/.test(String(caveId))) return null;
+  try {
+    const r = await fetch(`https://global.daf-apis.com/auth/api/v1/user/${caveId}/permissions`, {
+      headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+    return r.ok ? r.json() : null;
+  } catch (e) { return null; }
+};
 exports.ewQuestReview = onRequest(
-  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 120 },
+  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 300 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -3052,7 +3146,7 @@ exports.ewQuestReview = onRequest(
         const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
         return res.json({ ok: true, waiting: out.checked });
       }
-      if (!["check", "get", "reply"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      if (!["check", "get", "reply", "digest", "usersSheet"].includes(action)) throw ewErr(400, `unknown action ${action}`);
       const who = await ewVerify(token);
       if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
       const sb = ewSb(ewServiceKey.value().trim());
@@ -3065,6 +3159,18 @@ exports.ewQuestReview = onRequest(
         console.info("[ewQuestReview] check by", who.email, JSON.stringify(out.results.map(r => ({ row: r.row, sent: r.sent, why: r.why }))));
         return res.json({ ok: true, ...out });
       }
+      // Our own Pyr users sheet, now (the Access page's button; it also runs every hour).
+      if (action === "usersSheet") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore, cavePerms: ewCavePerms });
+        console.info("[ewQuestReview] users sheet by", who.email, out.people);
+        return res.json({ ok: true, data: out });
+      }
+      if (action === "digest") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await review.digest({ api, sb, dryRun: !!args.dryRun, ...(args.toMe ? { to: [{ id: me.id, name: me.display_name || "you" }] } : {}) });
+        return res.json({ ok: true, ...out });
+      }
       return res.json({ ok: true, data: await review[action](args, { api, me }) });
     } catch (e) {
       console.warn("[ewQuestReview]", action, e.status || 500, e.message);
@@ -3073,15 +3179,38 @@ exports.ewQuestReview = onRequest(
   }
 );
 // Celia asked for once or twice a day: 8 in the morning and 4 in the
-// afternoon Eastern, "0 8,16 * * *". Every 5 minutes while Celia tests it
-// (Ames 2026-11-05); put the twice a day schedule back after. Each run is one
+// afternoon Eastern, "0 8,16 * * *". Ames 2026-11-06: hourly, on the hour,
+// 8 am to 9 pm Eastern, nothing overnight. Each run is one
 // read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+// Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
+exports.ewUsersSheet = onSchedule(
+  { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 300, retryCount: 0 },
+  async () => {
+    const out = await require("./users-sheet").syncUsersSheet({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()), marks: betaMarkStore, cavePerms: ewCavePerms });
+    console.info("[ewUsersSheet]", out.people, "people");
+  }
+);
 exports.ewQuestReviewCheck = onSchedule(
-  { schedule: "*/5 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
+  { schedule: "0 8-21 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
   async () => {
     const out = await require("./quest-review").check({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
     console.info("[ewQuestReviewCheck]", JSON.stringify({ checked: out.checked, results: out.results.map(r => ({ row: r.row, index: r.index, sent: r.sent, why: r.why })) }));
+  }
+);
+// The reviewers' morning note (Celia 2026-11-06): once a day at 8 Eastern,
+// how many players have sent their update, and how many new players' quests
+// wait, to Celia and Marissa (quest-review.js REVIEWERS). Nothing on a
+// morning with nothing waiting.
+exports.ewQuestReviewDigest = onSchedule(
+  { schedule: "0 8 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
+  async () => {
+    const qr = require("./quest-review"), io = { api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) };
+    const out = await qr.digest(io);
+    console.info("[ewQuestReviewDigest]", JSON.stringify(out));
+    // And Ames, once, when the sheet's worked rows near what Pyr reads.
+    try { console.info("[ewQuestReviewDigest] rows", JSON.stringify(await qr.rowsReminder(io))); }
+    catch (e) { console.warn("[ewQuestReviewDigest] rows check failed", String(e && e.message || e).slice(0, 200)); }
   }
 );
 

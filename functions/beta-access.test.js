@@ -232,9 +232,15 @@ test('letting someone in emails them once, from connectome.quest', async () => {
   assert.equal(sent[0].from, 'Pyr <welcome@connectome.quest>');
   assert.deepEqual(sent[0].to, ['ryan@example.org']);
   assert.equal(sent[0].reply_to, 'support@eyewire.ai');
+  // Support gets a blind copy of every welcome (Ames 2026-11-06).
+  assert.deepEqual(sent[0].bcc, ['support@eyewire.org', 'amyleerobinson@gmail.com']);
   assert.match(sent[0].text, /^Hi Ryan,\n\nYou're in!/);
   assert.deepEqual(await handle('access.welcomeEmail', { email: 'ryan@example.org', name: 'Ryan' }, io), { sent: false, reason: 'already sent' });
   assert.equal(sent.length, 1);
   await assert.rejects(handle('access.welcomeEmail', { email: 'x@y.org' }, { ...io, isAdmin: false }));
   assert.deepEqual(await handle('access.welcomeEmail', { email: 'z@y.org' }, { isAdmin: true }), { sent: false, reason: 'not set up' });
+  // The copy goes no matter which admin lets them in, and never to the admin.
+  const other = [];
+  await handle('access.welcomeEmail', { email: 'q@y.org' }, { ...io, who: {}, sendEmail: async m => { other.push(m); return { ok: true }; }, welcomeSent: null });
+  assert.deepEqual(other[0].bcc, ['support@eyewire.org', 'amyleerobinson@gmail.com']);
 });

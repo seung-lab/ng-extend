@@ -26,11 +26,17 @@ import { useUserPreferencesStore } from '../store';
 export type ImageRegion = 'americas' | 'asia';
 export type ImageSourceChoice = 'auto' | ImageRegion;
 
-interface Mirror { americas: string; asia: string }
+/** `old`: addresses the copy used to have, still found in saved views and
+ *  shared links; they load the copy the player should be on. */
+interface Mirror { americas: string; asia: string; old?: string[] }
 export const IMAGE_MIRRORS: Mirror[] = [
   // EyeWire II Retina
-  { americas: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2',
-    asia: 'precomputed://gs://stroeh_sem_mouse_retina_asia/image/v2' },
+  // The lab moved it to stroeh_sem_mouse_retina2 on 2026-11-07 (01:42 UTC)
+  // and left a redirect at the old address, which this neuroglancer does not
+  // follow, so retina 2D went blank (AzureJay and Nseraf, reports 416, 418).
+  { americas: 'precomputed://gs://stroeh_sem_mouse_retina2/image/v2',
+    asia: 'precomputed://gs://stroeh_sem_mouse_retina_asia/image/v2',
+    old: ['precomputed://gs://stroeh_sem_mouse_retina/image/v2'] },
   // MEC
   { americas: 'precomputed://https://c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/img/v2',
     asia: 'precomputed://gs://princeton-eric-medial-entorhinal-cortex-asia' },
@@ -50,7 +56,7 @@ export function normalizeSourceUrl(url: string): string {
 
 export function mirrorFor(url: string): Mirror | undefined {
   const n = normalizeSourceUrl(url);
-  return IMAGE_MIRRORS.find(m => normalizeSourceUrl(m.americas) === n || normalizeSourceUrl(m.asia) === n);
+  return IMAGE_MIRRORS.find(m => [m.americas, m.asia, ...(m.old || [])].some(u => normalizeSourceUrl(u) === n));
 }
 
 function infoUrl(source: string): string {
@@ -156,6 +162,28 @@ function applyRegion(v: any) {
   }
 }
 
+/** A source whose info file says it moved ("redirect") fails here with
+ *  "Redirected to: <url>": this neuroglancer's registry never follows it.
+ *  Follow it ourselves, so the next time a lab moves its data the layer
+ *  loads from the new address instead of going blank. At most 5 hops per
+ *  source, in case two addresses point at each other. */
+const hops = new WeakMap<object, number>();
+function followRedirects(v: any) {
+  for (const ml of (v.layerManager?.managedLayers || []) as any[]) {
+    for (const ds of (ml.layer?.dataSources || []) as any[]) {
+      const msg: string = ds.loadState?.error?.message || '';
+      const m = /^Redirected to: (\S+)/.exec(msg);
+      if (!m) continue;
+      const n = (hops.get(ds) || 0) + 1;
+      if (n > 5) continue;
+      hops.set(ds, n);
+      const target = normalizeSourceUrl(m[1].includes('://') && !m[1].includes('|') && !/^precomputed:/.test(m[1]) ? 'precomputed://' + m[1] : m[1]);
+      console.info(`[2D] layer "${ml.name}" moved; loading from ${target}`);
+      ds.spec = { ...ds.spec, url: target };
+    }
+  }
+}
+
 // ── The slow 2D note ───────────────────────────────────────────────────────
 const NOTE_KEY = 'nge_image_note_v1';
 const SLOW_MS = 8000;
@@ -239,6 +267,7 @@ export function startImageSource(v: any) {
     for (const ml of (v.layerManager?.managedLayers || []) as any[]) {
       if (!hooked.has(ml) && ml.layerChanged) { hooked.add(ml); ml.layerChanged.add(onLayers); }
     }
+    followRedirects(v);
     applyRegion(v);
   };
   v.layerManager.layersChanged.add(onLayers);

@@ -1046,15 +1046,17 @@ export class AnnotationLayerView extends Tab {
   private updateAnnotationElement(annotation: Annotation, state: AnnotationLayerState) {
     annotation; state;
     // nge: the rows are worked out again (numbers and folders move with any
-    // change) and only those that changed are drawn again.
-    this.ngeRefresh();
+    // change) and only those that changed are drawn again. Once for many:
+    // recoloring a folder of 169 points sent 169 updates, and each rebuilt
+    // every row (Nseraf, Ames 2026-11-09).
+    this.ngeScheduleRefresh();
   }
 
   private deleteAnnotationElement(annotationId: string, state: AnnotationLayerState) {
     annotationId; state;
     // nge: the rows are worked out again (numbers and folders move with any
-    // change) and only those that changed are drawn again.
-    this.ngeRefresh();
+    // change) and only those that changed are drawn again, once for many.
+    this.ngeScheduleRefresh();
   }
 
   private resetOnUpdate() {

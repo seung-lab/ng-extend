@@ -12,7 +12,9 @@ import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
 import {startColorFamilies} from './util/color_families';
 import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
+import {startStarshipIntro} from './util/intro_tour';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
+import { startBoundsColor } from './util/bounds_color';
 import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
@@ -89,11 +91,11 @@ import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
 import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
 import {getLayerScales} from "./widgets/widget_utils";
-import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 import pyrIconUrl from './images/pyr-icon.png';
 // The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
 import pyrTriageIconUrl from './images/pyr-icon-triage.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
+import {startStarshipFlyby} from './util/starship_flyby';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 // Injected by scripts/build-prod.js as the short git sha. Guarded with typeof
@@ -452,10 +454,13 @@ function setupViewer() {
   startSpooky(viewer);
   startPumpkin(viewer);
   startScytheControls();
+  startStarshipIntro();
+  startStarshipFlyby();
   startPointParticles();
   startTurkey();
   startLeaves();
   startInvalidSegmentWatch(viewer);
+  startBoundsColor();
   recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
@@ -502,7 +507,10 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
 
-  registerFreeRotateCubeAnnotationTool();
+  // The lab's free rotate cube tool is not offered: players turned it on by
+
+
+  // accident and could not tell what it was (Nseraf #457).
 
   return viewer;
 }
@@ -731,6 +739,31 @@ function observeSegmentSelect(targetNode: Element) {
   // Settings, "Show the segment ID under a cell's label" (Celia 2026-10-14).
   // The ID line is drawn by CSS from a body class, so it changes at once;
   // the typed rows change height, so the list measures them again.
+  // Settings, "Layer tabs show a Hide button" (Ames 2026-11-07): off, a tab
+  // has only the bin; on, the x that hides a layer to the side panel too.
+  watch(() => useUserPreferencesStore().prefs.layerHideButton === true, on => {
+    document.body.classList.toggle('nge-layer-hide-btn', on);
+  }, { immediate: true });
+  // Without the classic buttons, the tab's x closes the layer for good (the
+  // bin's delete, which Ctrl+Z undoes) instead of hiding it to the side panel.
+  const tabCloseX = (t: EventTarget | null): HTMLElement | null => {
+    if (document.body.classList.contains('nge-layer-hide-btn')) return null;
+    const icon = (t as HTMLElement)?.closest?.('.neuroglancer-layer-item-button-container .neuroglancer-icon') as HTMLElement | null;
+    return icon && icon === icon.parentElement?.firstElementChild && icon !== icon.parentElement?.lastElementChild ? icon : null;
+  };
+  document.addEventListener('click', (e) => {
+    const x = tabCloseX(e.target);
+    if (!x) return;
+    e.preventDefault(); e.stopPropagation();
+    (x.parentElement!.lastElementChild as HTMLElement).click();
+  }, true);
+  document.addEventListener('pointerover', (e) => {
+    const x = tabCloseX(e.target);
+    if (x) { x.title = 'Close this layer (Ctrl+Z brings it back)'; return; }
+    const icon = (e.target as HTMLElement)?.closest?.('.neuroglancer-layer-item-button-container .neuroglancer-icon') as HTMLElement | null;
+    if (icon?.title.startsWith('Close this layer')) icon.title = 'Remove layer from this layer group';
+  }, true);
+
   watch(() => useUserPreferencesStore().prefs.segShowId === true, on => {
     document.body.classList.toggle('nge-seg-show-id', on);
     setTimeout(() => document.querySelectorAll<HTMLElement>('.neuroglancer-segment-list-entry.nge-seg-labelled').forEach(remeasureListRow), 0);
@@ -747,13 +780,13 @@ function observeSegmentSelect(targetNode: Element) {
         const segmentIDString =
             item.getAttribute('data-id');
         if (segmentIDString) {
-          // Track this as the active segment for the annotation panel
-          useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
-
           let injected = false;
           let button = item.querySelector('.nge-segment-button.menu');
           if (button == null) {
             injected = true;
+            // A newly listed cell is the side panel's cell; rows redrawn are not
+            // (each one used to set it, and ask CAVE again, on every redraw).
+            useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
             const viewer: ExtendViewer = (<any>window)['viewer'];
             const layerName = viewer.selectedLayer.layer?.name || 'default';
             const dataset = (typeof DATASETS !== 'undefined' && DATASETS) ? (DATASETS[layerName] ?? '') : '';
@@ -965,6 +998,45 @@ function observeSplitMergeTools() {
    *  again, and again, flashing on and off (Celia, report 369). */
   const shownErrorLines = new WeakSet<Element>();
 
+  /** A cut or merge error line: its words go to the red popup, and
+   *  neuroglancer's own line at the bottom goes, the same words twice with a
+   *  small Dismiss button (Nseraf, reports 402 and 424). Lines with a Dismiss
+   *  button are dismissed; a short-lived one is hidden until it goes. */
+  function takeErrorLine(el: HTMLElement, cleanText: string) {
+    shownErrorLines.add(el);
+    // Up until it is dismissed, or the next cut or merge replaces it.
+    store.showResult('error', cleanText, 5 * 60 * 1000);
+    store.submitting = false;
+    if (el.classList.contains('neuroglancer-tool-status')) return;
+    try {
+      const dismiss = Array.from(el.children).find(b => b.tagName === 'BUTTON' && /^dismiss$/i.test((b.textContent || '').trim()));
+      if (dismiss) (dismiss as HTMLElement).click();
+      else el.style.display = 'none';
+    } catch { /* the line stays */ }
+  }
+  /** Error lines are taken as they are written, before the page is drawn
+   *  again, so they never show at the bottom even for a moment (Nseraf,
+   *  report 424: "they appear for a blink of an eye before vanishing", and
+   *  some stayed: the scan below runs on a timer and passes over a line
+   *  that repeats the last one's words, or comes while a success shows). */
+  function watchStatusLines() {
+    const container = document.getElementById('statusContainer');
+    if (!container) { setTimeout(watchStatusLines, 1000); return; }
+    new MutationObserver(() => {
+      if (!store.toolActive && !store.pendingClose) return;
+      for (const child of Array.from(container.children)) {
+        const el = child as HTMLElement;
+        if (shownErrorLines.has(el) || el.style.display === 'none') continue;
+        const text = el.textContent?.trim() || '';
+        const lower = text.toLowerCase();
+        if (!/split|merge|multicut|supervoxel|segment/.test(lower)) continue;
+        if (!/failed|error/.test(lower)) continue;
+        takeErrorLine(el, text.replace(/\s*dismiss\s*$/i, '').trim());
+      }
+    }).observe(container, { childList: true, subtree: true, characterData: true });
+  }
+  watchStatusLines();
+
   /** Scan #statusContainer for split/merge related errors/info */
   function checkStatusMessages() {
     if (!store.toolActive && !store.pendingClose) return;
@@ -998,20 +1070,7 @@ function observeSplitMergeTools() {
 
       if (lower.includes('failed') || lower.includes('error')) {
         if (shownErrorLines.has(el)) continue;
-        shownErrorLines.add(el);
-        // Up until it is dismissed, or the next cut or merge replaces it.
-        store.showResult('error', cleanText, 5 * 60 * 1000);
-        store.submitting = false;
-        // The red popup now says it, so neuroglancer's own line at the bottom
-        // goes: the same words twice, and its small Dismiss button was the
-        // only way to clear it short of F5 (Nseraf, report 402). Only lines
-        // just shown as the popup, and only ones with a Dismiss button (an
-        // error bar), are taken down; every other status line stays.
-        try {
-          const dismiss = el.classList.contains('neuroglancer-tool-status') ? null
-            : Array.from(el.children).find(b => b.tagName === 'BUTTON' && /^dismiss$/i.test((b.textContent || '').trim()));
-          (dismiss as HTMLElement | undefined)?.click();
-        } catch { /* the line stays */ }
+        takeErrorLine(el, cleanText);
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
         // Neuroglancer shows "Splitting source from sink..." during processing —
         // the authoritative signal that a split was actually submitted.

@@ -382,6 +382,12 @@ onUnmounted(() => {
   audio?.pause(); audio = null;
 });
 watch(volume, v => { if (audio) audio.volume = v; });
+// The Intro test panel can switch it on and off, also on a phone where the
+// control is hidden (Ames 2026-11-09: music for a screen recording on a phone).
+function onRadioAsk() { toggle(); }
+window.addEventListener('nge-radio-toggle', onRadioAsk);
+onUnmounted(() => window.removeEventListener('nge-radio-toggle', onRadioAsk));
+watch(on, v => window.dispatchEvent(new CustomEvent('nge-radio-state', { detail: v })), { immediate: true });
 // The account's copy arrives a moment after sign in. Until the listener
 // touches the control, it decides: the saved volume, and the station back on
 // if that is how it was left.

@@ -63,6 +63,7 @@ const editing = ref(false);
 
 const emit = defineEmits<{
     next: [],
+    notNow: [],
     back: [],
     exitIntro: [],
 }>();
@@ -96,6 +97,7 @@ interface ComputedStep {
     html?: string,
     video?: string,
     image?: string,
+    embed?: string,
     left: string,
     top: string,
     cssClass?: string,
@@ -289,6 +291,7 @@ async function updateChipPosition() {
         titleIcon: step.titleIcon,
         video: step.video,
         image: step.image,
+        embed: step.embed,
         html,
         left,
         top,
@@ -532,12 +535,12 @@ function observeChip() {
 // it stands. The box used to keep what it said when it opened, so a score
 // that came back still read "one moment" (Ames 2026-10-29: "I submitted but
 // no score?").
-watch(() => [props.step.title, props.step.text, props.step.html, props.step.nextLabel, props.step.image] as const, async ([title, text, html0, nextLabel, image]) => {
+watch(() => [props.step.title, props.step.text, props.step.html, props.step.nextLabel, props.step.image, props.step.embed] as const, async ([title, text, html0, nextLabel, image, embed]) => {
     if (!computedStep.value.title && !computedStep.value.html) return; // not placed yet: updateChipPosition fills it
     let html = html0;
     if (text) html = await marked.parse(text);
     if (html) html = html.replace(/<a\s+(?![^>]*target=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
-    computedStep.value = { ...computedStep.value, title, html, nextLabel, image };
+    computedStep.value = { ...computedStep.value, title, html, nextLabel, image, embed };
 });
 watch(ready, (r) => { if (r) nextTick(observeChip); });
 watch(() => computedStep.value, () => nextTick(observeChip));
@@ -666,11 +669,13 @@ async function onHtmlClick(e: MouseEvent) {
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
+                <iframe class="embed" v-if="computedStep.embed" :src="computedStep.embed" title="Animation" loading="eager"></iframe>
                 <div class="html" v-if="shownHtml" v-html="shownHtml" @click="onHtmlClick" @mouseover="onHtmlOver"></div>
                 <div class="nge-chip-foot">
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
                         <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
+                        <button v-if="computedStep.last && step.notNowLabel" @click="$emit('notNow')" class="nge-not-now">{{ step.notNowLabel }}</button>
                         <button v-if="computedStep.last" @click="if (!step.noConfetti) launchConfetti(); $emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'done' }}</button>
                         <button v-else @click="$emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'next' }}</button>
                     </div>
@@ -1001,6 +1006,14 @@ async function onHtmlClick(e: MouseEvent) {
     vertical-align: middle;
 }
 
+.chip .embed {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    max-height: max(140px, calc(100vh - 450px));
+    border: 0;
+    background: #04060B;
+}
 .chip video,
 .chip .image {
     width: 100%;
@@ -1414,6 +1427,18 @@ async function onHtmlClick(e: MouseEvent) {
     opacity: 0.6;
     transition: opacity 0.2s;
 }
+.ng-extend .chip button.nge-not-now {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    padding: 7px 4px;
+    color: rgba(196, 228, 255, 0.85);
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+.ng-extend .chip button.nge-not-now:hover { background: none; opacity: 1; }
+.ng-extend .chip button.nge-not-now + button.next { margin-left: 16px; }
 .ng-extend .chip button.back::before { content: '\2039'; margin-right: 8px; font-size: 15px; line-height: 0.8; letter-spacing: 0; }
 .ng-extend .chip button.back:hover { background: none; opacity: 1; }
 .ng-extend .chip .nge-chip-rail {

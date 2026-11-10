@@ -13,7 +13,7 @@ export function renderSafeMarkdown(text: string, notification = false): string {
     html = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
   const clean = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'mark', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
     ALLOWED_ATTR: ['href', 'title'],
     ALLOW_DATA_ATTR: false,
     ALLOW_ARIA_ATTR: false,

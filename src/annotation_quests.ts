@@ -71,6 +71,10 @@ export interface QuestRow {
   annotator: string;
   date: string;
   notes: string;
+  /** A reviewer sent this cell back and the player has not sent their update
+   *  yet: it is left out of their quest counts until they do (Celia
+   *  2026-11-06). Set by the server from the sheet's Review status. */
+  held?: boolean;
 }
 
 /** Letters and digits only, lower case: the server matches names the same way. */

@@ -643,9 +643,11 @@ function isBadgeEarned(badge: BadgeDefinition): boolean {
   return backendStore.holdsSaved(props.viewUserId || backendStore.userId, badge.track, badge.id);
 }
 
-/** Legacy Achievements: saved on the old ladder, or reached by its old number. */
+/** Legacy Achievements: the old ladder as it stood at the switch (Nov 4,
+ *  16:05 UTC), from saved awards only. Read by count it kept unlocking old
+ *  ones after the switch (Nseraf 2026-11-06: Centrifuge at 3,000 cells next
+ *  to the new Seismograph). Everything reached by then was saved. */
 function isLegacyEarned(badge: BadgeDefinition): boolean {
-  if (statForTrack(badge.track) >= badge.threshold) return true;
   return backendStore.holdsLegacy(props.viewUserId || backendStore.userId, badge.track, badge.id);
 }
 const legacyCells = computed(() => LEGACY_BADGES.filter(b => b.track === 'exploration' && isLegacyEarned(b)).reverse());

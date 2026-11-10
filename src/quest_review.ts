@@ -16,7 +16,9 @@ export const isQuestReview = (n: any) => !!n && typeof n.title === 'string' && n
 /** The reviewer's link in the notification ("**Celia's link:** [open it](...)"). */
 export const reviewLinkIn = (body: string | null | undefined) => (String(body || '').match(/link:\*\* \[open it\]\((https:\/\/[^\s)]+)\)/) || [])[1] || '';
 
-export interface ReviewState { status: string; accepted: string; playerLink: string; playerNotes: string; reviewer: string; index: string }
+export interface ReviewState { status: string; accepted: string; playerLink: string; playerNotes: string; reviewer: string; index: string;
+  /** The cell's Start Link and soma, for Jump to cell. */
+  startLink?: string; soma?: string }
 
 const call = async <T>(action: string, body: Record<string, unknown>): Promise<T> => (await post({ ...body, action })).data as T;
 async function post(body: Record<string, unknown>): Promise<any> {
@@ -33,6 +35,9 @@ async function post(body: Record<string, unknown>): Promise<any> {
 export interface CheckResult { checked: number; results: { row: number; index: string; annotator: string; sent: boolean; why?: string }[] }
 /** Admins: send every review marked "Send Review" now, without waiting for the timer. */
 export const sendWaitingReviews = () => post({ action: 'check' }) as Promise<CheckResult>;
+/** Admins: rewrite our own Pyr Users sheet now (functions/users-sheet.js; it also runs every hour). */
+export const updateUsersSheet = () => call<{ people: number; url: string }>('usersSheet', {});
+export const USERS_SHEET_URL = 'https://docs.google.com/spreadsheets/d/10VW3cSrtK8y0pLlivJnQIuMAp65_B-eDJAVb3DbpKBs/edit';
 export const getReview =(segmentId: string) => call<ReviewState>('get', { segmentId });
 export const replyToReview = (segmentId: string, link: string, notes: string) =>
   call<{ status: string; playerLink: string; playerNotes: string }>('reply', { segmentId, link, notes });

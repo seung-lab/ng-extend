@@ -11,16 +11,17 @@
  * the edit was made. A box shows an edit only while the code still has that
  * wording, so a box rewritten or moved in code never shows a stale edit.
  *
- * The approvers' own edits go straight to players (Ames: "my own edits skip
- * review"); anyone else's wait in Admin Hub > Tutorial edits, and the
- * approvers get a notification. Only the title and words change: where a box
+ * Every admin's edit goes straight to players (Ames 2026-11-10: "I like their
+ * edits being live instantly but I still am always notified of changes"):
+ * the server sends Ames a before and after note of every other admin's edit
+ * (functions/edit-notify.js). Suggestions saved before that change still wait
+ * in Admin Hub > Tutorial edits. Only the title and words change: where a box
  * points, its view and when it shows stay in code.
  */
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import type { Step } from './store-pyr';
 import { siteTexts, loadSiteTexts, saveSiteText, resetSiteText } from './site_texts';
-import { supabase } from './supabase';
 
 /** Pyr accounts whose tutorial edits need no approval, and who approve. */
 export const TUTORIAL_APPROVER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
@@ -86,37 +87,17 @@ export function wordsToHtml(words: string, kind: 'text' | 'html'): string {
 
 export { loadSiteTexts };
 
-/** The notification's text: the box now and as suggested (Ames 2026-10-26:
- *  "add the before and after"), each quoted and kept short. */
-function beforeAfter(now: Wording, next: Wording, kind: 'text' | 'html'): string {
-  const plain = (w: string) => (kind === 'html' ? w.replace(/<[^>]+>/g, ' ') : w).replace(/[ \t]+/g, ' ').trim();
-  const clip = (w: string) => { const p = plain(w); return p.length > 600 ? p.slice(0, 600).trimEnd() + '…' : p; };
-  const quote = (w: string) => clip(w).split(/\r?\n/).map(l => '> ' + l).join('\n');
-  return `**Now:** ${now.title || '(no title)'}\n${quote(now.words)}\n\n**Suggested:** ${next.title || '(no title)'}\n${quote(next.words)}\n\n[Open Tutorial edits](#nge-tutorial-edits) to approve or turn it down.`;
-}
-
 /**
- * Save an edit of a box. An approver's goes to players at once; anyone else's
- * is a suggestion, and the approvers are told. Returns which it was.
+ * Save an edit of a box. It goes to players at once, whoever made it.
  */
-export async function saveTutorialEdit(tutorial: number, box: number, step: Step, next: Wording, myEmail: string | null | undefined,
-  notify: (approverUserIds: string[], title: string, body: string) => Promise<void>): Promise<'live' | 'draft'> {
+export async function saveTutorialEdit(tutorial: number, box: number, step: Step, next: Wording, myEmail: string | null | undefined): Promise<'live'> {
   const code = codeWording(step);
   const body = JSON.stringify({ title: next.title, words: next.words, from: { title: code.title, words: code.words }, kind: code.kind });
   if (body.length > 20000) throw new Error('That is too long for one box.');
-  if (isApprover(myEmail)) {
-    await saveSiteText(liveKey(tutorial, box), body);
-    if (siteTexts[draftKey(tutorial, box)]) await resetSiteText(draftKey(tutorial, box));
-    return 'live';
-  }
-  await saveSiteText(draftKey(tutorial, box), body);
-  try {
-    const { data } = await supabase.from('admins').select('user_id,email');
-    const ids = ((data as any[]) || []).filter(a => a.user_id && isApprover(a.email)).map(a => String(a.user_id));
-    const name = TUTORIAL_NAMES[tutorial] ?? `Tutorial ${tutorial}`;
-    if (ids.length) await notify(ids, `📋 Tutorial edit to approve: ${name}, box ${box + 1}`, beforeAfter(code, next, code.kind));
-  } catch (e) { console.warn('[tutorial edits] could not tell the approvers:', e); }
-  return 'draft';
+  // Live for every admin; Ames's note comes from the server (functions/edit-notify.js).
+  await saveSiteText(liveKey(tutorial, box), body);
+  if (isApprover(myEmail) && siteTexts[draftKey(tutorial, box)]) await resetSiteText(draftKey(tutorial, box));
+  return 'live';
 }
 
 /** Approve a suggestion: it becomes what players see. */

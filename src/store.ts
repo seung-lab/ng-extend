@@ -1100,6 +1100,16 @@ export interface UserPreferences {
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
+  /** A Retina claim opens with the annotation layers (Soma, True End, Can't Fix,
+   *  Hits Edge, Notes). Off by default: it opens with one Checked Highlight
+   *  layer, and a button adds them (Ames 2026-11-07). */
+  retinaAnnotationLayers?: boolean;
+  /** Classic layer tab buttons: neuroglancer's x that hides a layer to the
+   *  side panel, and its bin that deletes it. Off by default: one x, which
+   *  closes (deletes) the layer, and Ctrl+Z brings it back (Ames 2026-11-07). */
+  layerHideButton?: boolean;
+  /** The one time Retina question (RetinaModePrompt.vue) has been answered. */
+  retinaModeAsked?: boolean;
   /** Highlight mode's colours: the three built in ones (recoloured or not)
    *  and any the player added. Unset = the defaults. */
   highlightStyles?: { key: string; label: string; color: string }[];
@@ -1145,6 +1155,9 @@ export interface UserPreferences {
   /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
    *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
   cursorXL?: boolean;
+  /** The 3D view turns slowly on its own (the new player intro's turn, Ames
+   *  2026-11-08: "add a way to turn off cell rotation"). On unless false. */
+  autoTurn?: boolean;
   /** Large text: Pyr's windows and the layer side panel drawn a fifth bigger
    *  (body.nge-large-text, src/large_text.css; Ames 2026-10-25, for older
    *  players). Defaults to false. */
@@ -1166,6 +1179,9 @@ export interface UserPreferences {
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
 
 /** Settings: "Jumping to a cell adds it to my view" (off = replace). */
+export function retinaAnnotationLayersByDefault(): boolean {
+  try { return useUserPreferencesStore().prefs.retinaAnnotationLayers === true; } catch { return false; }
+}
 export function jumpAddsToView(): boolean {
   try { return useUserPreferencesStore().prefs.jumpAddsToView === true; } catch { return false; }
 }
@@ -1203,7 +1219,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -5709,6 +5725,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadNotifications();
   }
   let grantLinesAsked = false;
+  // Retina request bells this tab has asked the server about (Ames 2026-11-06).
+  const requestBellsAsked = new Set<number>();
   /** What the leader tab read on its minute check, for the other tabs
    *  (util/tabs.ts). reads and dismissed come with a full check only. */
   interface SharedNotifs { user: string; at: string; rows: any[]; groupIds: string[]; reads?: number[]; dismissed?: number[] }
@@ -5852,6 +5870,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (notificationDismissals.value.size) {
       notifications.value = notifications.value.filter(
         n => !notificationDismissals.value.has(n.id));
+    }
+
+    // A Retina access request bell is answered once the player has the
+    // retina (Ames 2026-11-06): the server marks it read for every reviewer
+    // (access.readGrantedBells), so every admin and device agrees. Asked once
+    // per unread request bell, and only when one is here.
+    const askRequest = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔬 Retina access request from')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askRequest.length) {
+      for (const n of askRequest) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readGrantedBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
     }
   }
 

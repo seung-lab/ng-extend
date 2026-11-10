@@ -54,7 +54,7 @@ const {QUESTS,questFor,questRows,planQuestUpdate}=require('./sheet-policy');
 const QH=['Index','Soma Coords','Latest SegID','Cell Class','Cell Class (machine)','Confidence Cell Class (machine)','Cell Type','Cell Type (machine)','Confidence Cell Type (machine)','Start Link','Cilium status','Cilium split or merged?','Annotation share link','Share link missing annotation?','Annotator Name','Date (MM/DD/YYYY)','Annotator Notes','Review Notes & Feedback','Annotations reviewed by','Updated link'];
 const qrow=(over={})=>{const r=['A5','37166, 16688, 1973','720575940561794892','AC','AC','0.99','OFF SAC','','','https://spelunker.cave-explorer.org/#!middleauth+https://global.daf-apis.com/nglstate/api/v1/5309136999809024','','','','','','','','','',''];for(const [k,v] of Object.entries(over)) r[QH.indexOf(k)]=v;return r;};
 const quest=QUESTS.retina_cilia, qme={id:'mine',display_name:'Amy Sterling',username:'amy'};
-const cols=plan=>Object.fromEntries([...plan.data,...plan.userEnteredData].map(x=>{const c=x.range.split('!')[1].replace(/\d+$/,'');return [QH[c.charCodeAt(0)-65],x.values[0][0]];}));
+const cols=plan=>Object.fromEntries([...plan.data,...plan.userEnteredData].map(x=>{const c=x.range.split('!')[1].replace(/\d+$/,'');return [[...QH,'Review status','Player Link','Player Notes','Review accepted'][c.charCodeAt(0)-65],x.values[0][0]];}));
 test('quests: only registered quests and actions, with a segment ID',()=>{
  assert.throws(()=>questFor({quest:'https://evil',action:'quest_list'}));
  assert.throws(()=>questFor({quest:'retina_cilia',action:'complete',segmentId:'1'}));
@@ -64,7 +64,7 @@ test('quests: only registered quests and actions, with a segment ID',()=>{
 test('quests: the list carries the shown columns only, by header, and skips rows without an ID',()=>{
  const rows=questRows([['Cilia Test Spreadsheet'],QH,qrow(),qrow({'Latest SegID':'','Index':'A6'}),qrow({'Index':'A7','Latest SegID':'5','Annotator Name':'Nseraf','Cilium status':'No cilium','Review Notes & Feedback':'secret'})]);
  assert.equal(rows.length,2);
- assert.deepEqual(Object.keys(rows[0]).sort(),['annotator','cellClass','cellType','date','index','link','notes','segmentId','soma','splitMerged','startLink','status']);
+ assert.deepEqual(Object.keys(rows[0]).sort(),['annotator','cellClass','cellType','date','held','index','link','notes','segmentId','soma','splitMerged','startLink','status']);
  assert.equal(rows[0].cellType,'OFF SAC');
  assert.equal(rows[0].startLink.startsWith('https://spelunker'),true);
  assert.equal(rows[1].annotator,'Nseraf');
@@ -302,4 +302,33 @@ test('a type the player gave goes to "CitSci Suggested Type", never "AI-predicte
  // A sheet without the column: the rest is still written.
  assert.doesNotThrow(()=>planSheetUpdate([header.slice(0,8),row.slice(0,8)],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina',cellType:'t3b'},me,t,'now')));
  assert.throws(()=>sheetValues({...input,dataset:'stroeh_mouse_retina',cellType:'x'.repeat(121)},me,t,'now'),/120/);
+});
+
+// ── Reviews hold the count; new players are flagged (Celia 2026-11-06) ────
+const RH=[...QH,'Review status','Player Link','Player Notes','Review accepted'];
+const rrow=(over={})=>{const r=[...qrow(),'','','',''];for(const [k,v] of Object.entries(over)) r[RH.indexOf(k)]=v;return r;};
+test('quests: a review waiting on the player holds the row, and only the hold leaves the sheet',()=>{
+ const st=['Send Review','Review Sent','Reviewed','Complete','New Player',''];
+ const rows=questRows([RH,...st.map((s,i)=>rrow({'Latest SegID':String(i+1),'Review status':s,'Cilium status':'Cilium annotated'}))]);
+ assert.deepEqual(rows.map(r=>r.held),[true,true,false,false,false,false]);
+ assert.equal(JSON.stringify(rows).includes('Review Sent'),false);
+});
+test('quests: a new player\'s first ten submits are marked New Player, only into an empty Review status',()=>{
+ const {isNewPlayerSubmit,NEW_PLAYER_QUESTS}=require('./sheet-policy');
+ assert.equal(NEW_PLAYER_QUESTS,10);
+ const done=n=>Array.from({length:n},(_,i)=>({segmentId:String(100+i),annotator:'Amy Sterling',status:'Cilium annotated'}));
+ assert.equal(isNewPlayerSubmit([],qme,'1'),true);
+ assert.equal(isNewPlayerSubmit(done(9),qme,'1'),true,'the tenth');
+ assert.equal(isNewPlayerSubmit(done(10),qme,'1'),false,'the eleventh');
+ assert.equal(isNewPlayerSubmit([...done(9),{segmentId:'1',annotator:'Amy Sterling',status:'Need help'}],qme,'1'),true,'a resubmit does not count itself');
+ assert.equal(isNewPlayerSubmit([...done(9),{segmentId:'9',annotator:'Amy Sterling',status:''}],qme,'1'),true,'a claim is not a quest yet');
+ assert.equal(isNewPlayerSubmit(Array.from({length:12},(_,i)=>({segmentId:String(i),annotator:'Nseraf',status:'No cilium'})),qme,'1'),true,'others do not count');
+ const link='https://pyr.example/#!x';
+ const input={action:'quest_submit',segmentId:'720575940561794892',status:'Cilium annotated',link};
+ const flagged=planQuestUpdate([RH,rrow()],'s',quest,input,qme,'11/6/2026',{newPlayer:true});
+ assert.equal(cols(flagged)['Review status'],'New Player');
+ assert.equal(cols(planQuestUpdate([RH,rrow()],'s',quest,input,qme,'11/6/2026'))['Review status'],undefined);
+ assert.equal(cols(planQuestUpdate([RH,rrow({'Annotator Name':'Amy Sterling','Review status':'Review Sent'})],'s',quest,input,qme,'11/6/2026',{newPlayer:true}))['Review status'],undefined,'a review under way is kept');
+ // A sheet without the column still takes the submit.
+ assert.doesNotThrow(()=>planQuestUpdate([QH,qrow()],'s',quest,input,qme,'11/6/2026',{newPlayer:true}));
 });

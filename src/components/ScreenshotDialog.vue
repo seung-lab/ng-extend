@@ -33,6 +33,9 @@ const props = withDefaults(defineProps<{
    *  opened from (the Cell Library's help form). A picture for a helper
    *  should show the view, not the form it was sent from (Celia 2026-10-07). */
   hideOpener?: string;
+  /** Take the whole screen this time, whatever was last chosen (the bug
+   *  report's "Set up the screen first", Celia #446). */
+  wholeScreenNow?: boolean;
 }>(), { mode: 'download' });
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -853,6 +856,7 @@ async function refreshSource() {
 
 watch(() => props.show, async (open) => {
   if (open) {
+    if (props.wholeScreenNow) wholeScreen.value = true;
     // Stay out of sight until the whole-screen picture is taken (no flash).
     if (wholeScreen.value) dialogHidden.value = true;
     await nextTick();

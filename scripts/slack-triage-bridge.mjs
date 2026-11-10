@@ -46,6 +46,7 @@
  */
 
 import { releaseCommand, reporterReplyNote, SHA } from './triage-policy.mjs';
+import { shippedTags } from './shipped-tags.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -309,7 +310,9 @@ async function reporterUpdates() {
     // Admin Hub sends that have not been mentioned in the thread yet.
     for (const e of log) {
       if (e.role === 'reporter_update' && e.via === 'admin' && !e.echoed) {
-        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:\n${slackQuote(e.text)}`).catch(() => {});
+        // Ames's "Also send to Celia and Marissa" box tags them here (2026-11-10).
+        const copyTags = e.copied_to_admins ? ' <@U033NHWDE> <@U033TSX9A>' : '';
+        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:${copyTags}\n${slackQuote(e.text)}`).catch(() => {});
         e.echoed = true;
         changed = true;
       }
@@ -346,6 +349,8 @@ async function reporterUpdates() {
       const userId = await reporterUserId(row);
       const ok = userId ? await notifyUser(userId, '💬 An update on your report', body) : false;
       log.push({ role: 'reporter_update', ts: m.ts, user: m.user, via: 'slack', text: body, sent: ok, at: new Date().toISOString() });
+      // Another admin's reply to a player: a copy to Ames's bell (Ames 2026-11-09, functions/reply-watch.js).
+      if (ok && m.user !== APPROVERS[0]) await copyReplyToAmes(row, m.user, body).catch(e => console.warn('[bridge] reply copy not sent:', e.message));
       await say(row, ok
         ? `✉️ Sent to the reporter, <@${m.user}>:\n> ${body}`
         : `I couldn't send it: this report has no signed-in reporter to notify, so nobody was messaged.`);
@@ -541,10 +546,39 @@ async function fileNewReports() {
     const made = await res.json().catch(() => []);
     if (!Array.isArray(made) || !made.length) continue;
     filed++;
+    if (threadTs) await labelSlackReport(made[0], threadTs).catch(e => console.warn(`[bridge] report ${issue.id}: Slack post not numbered: ${e.message}`));
     await notifyAdminsOfReport(made[0]).catch(e => console.warn(`[bridge] new report ${issue.id}: admins not notified: ${e.message}`));
   }
   if (filed) console.log(`[bridge] filed ${filed} new report(s) on the board, no suggestion asked`);
   return filed;
+}
+
+/** The board's number for a card: its place among all reports, oldest first
+ *  (the same count AdminHub.vue loadTriageNumbers makes). */
+async function triageNumberOf(row) {
+  const res = await sb(`feedback_triage?created_at=lte.${encodeURIComponent(row.created_at)}&select=id`, {
+    headers: { Prefer: 'count=exact', Range: '0-0' } });
+  const total = Number(String(res.headers.get('content-range') || '').split('/')[1]);
+  return Number.isFinite(total) && total > 0 ? total : null;
+}
+
+/** Puts the report's triage number and a link to its card on the Slack post
+ *  (Celia #464). The post goes out before the card exists, so it is edited
+ *  once the card is made; if Slack will not let it be edited, the same line
+ *  is said in its thread instead. */
+async function labelSlackReport(row, ts) {
+  const n = await triageNumberOf(row);
+  const link = `<${LIVE_URL}?triage=board&report=${row.id}|${n ? `#${n}` : 'This report'} on the triage board>`;
+  const hist = await slackGet('conversations.history', { channel: CHANNEL, latest: ts, oldest: ts, inclusive: 'true', limit: 1 });
+  const post = (hist.messages ?? []).find(m => m.ts === ts);
+  if (post && /New site issue submitted/i.test(post.text || '') && !/triage=board&report=/.test(post.text || '')) {
+    const lines = String(post.text).split('\n');
+    if (n) lines[0] = lines[0].replace(/New site issue submitted\*/, `New site issue submitted* · #${n}`);
+    lines.splice(1, 0, `*Triage:* ${link}`);
+    try { await slack('chat.update', { channel: CHANNEL, ts, text: lines.join('\n') }); return; }
+    catch (e) { console.warn(`[bridge] could not edit report post ${ts}: ${e.message}`); }
+  }
+  await slack('chat.postMessage', { channel: CHANNEL, thread_ts: ts, text: `${link}`, unfurl_links: false });
 }
 
 /** In-game bell for every admin when a new report lands on the board (the
@@ -1272,6 +1306,37 @@ async function tokenReminder() {
 }
 
 /** Post a change update into the thread when an approved row ships. */
+/** A copy of another admin's reply to a player, to Ames's bell only. */
+const SLACK_NAMES = { U033NHWDE: 'Celia D', U033TSX9A: 'M Sorek' };
+const WATCH_PICTURE = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/notes/nurro-geometry.jpg';
+async function copyReplyToAmes(row, slackUser, text) {
+  const r = await sb(`users?select=id&middleauth_email=in.(${encodeURIComponent(['amylr@princeton.edu', 'amyleerobinson@gmail.com'].map(e => `"${e}"`).join(','))})`);
+  if (!r.ok) throw new Error(`users ${r.status}`);
+  const who = SLACK_NAMES[slackUser] || 'An admin';
+  const about = String(row.source_excerpt || 'a report').replace(/\s+/g, ' ').trim().slice(0, 90);
+  const link = `${LIVE_URL.replace(/\/$/, '')}/?triage=board&report=${row.id}`;
+  const rows = (await r.json()).map(o => ({ title: `💬 ${who} replied to a player`, body: `On "${about}":\n\n${String(text).trim().slice(0, 1200)}\n\n${link}`.slice(0, 1500),
+    image_url: WATCH_PICTURE, thumbnail_url: WATCH_PICTURE,
+    target_type: 'user', target_id: o.id, send_at: new Date().toISOString() }));
+  if (!rows.length) return;
+  const res = await sb('notifications', { method: 'POST', body: JSON.stringify(rows) });
+  if (!res.ok) throw new Error(`notifications ${res.status}`);
+}
+
+/** What shippedTags needs to know about a report: who sent it, and its thread. */
+async function shippedContext(row) {
+  let reporterName = '';
+  try {
+    const src = row.source === 'site_issue' ? `site_issues?id=eq.${encodeURIComponent(row.source_id)}&select=user_name`
+      : row.source === 'todo' ? `admin_todos?id=eq.${encodeURIComponent(row.source_id)}&select=created_by` : null;
+    if (src && row.source_id) { const r = await sb(src); if (r.ok) { const [x] = await r.json(); reporterName = (x && (x.user_name || x.created_by)) || ''; } }
+  } catch (e) { console.warn('[bridge] reporter not found for', row.id, e.message); }
+  let thread = [];
+  try { if (row.slack_ts) thread = ((await slackGet('conversations.replies', { channel: CHANNEL, ts: row.slack_ts, limit: 200 })).messages ?? []); }
+  catch (e) { console.warn('[bridge] thread not read for', row.id, e.message); }
+  return { row, reporterName, thread };
+}
+
 async function announceDone() {
   const res = await sb('feedback_triage?status=eq.done&slack_ts=not.is.null&done_slack_ts=is.null&select=*');
   if (!res.ok) {
@@ -1282,10 +1347,13 @@ async function announceDone() {
   const rows = await res.json();
   let announced = 0;
   for (const row of rows) {
-    // Shipped still tags the approvers (Ames 2026-11-04: "Change shipped tag is ok").
-    const tags = APPROVERS.map(id => `<@${id}>`).join(' ');
+    // Shipped tags only Celia or Marissa, and only when it was their report,
+    // they commented, they wrote to the player, or someone @ed them in it
+    // (Celia 2026-11-09). Ames is not tagged ("I don't need to be tagged in
+    // change shipped either").
+    const tags = shippedTags(await shippedContext(row)).map(id => `<@${id}>`).join(' ');
     const note = (row.result_note || '').trim();
-    const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ${tags} ✓`);
+    const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}.${tags ? ` ${tags}` : ''} ✓`);
     await patchRow(row.id, { done_slack_ts: posted.ts });
     // Slack mention syntax means nothing in the game; drop it there.
     const plain = note.replace(/<@[A-Z0-9]+>/g, 'a tester').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1');

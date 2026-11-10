@@ -8,7 +8,6 @@ import { cancellableFetchSpecialOk, parseSpecialUrl } from "neuroglancer/util/sp
 // 2026) and edited since. Swapping in its current id showed that merge
 // (Ames, 2026-09-30), so the ids stay as they are.
 import imgMainBanner from './images/main-banner-vF.jpg';
-import imgSegmentation from './images/segmentation-tutorial.jpg';
 import imgSynapseWide from './images/synapse-wide.png';
 import imgSandboxExplosion from './images/sandbox-explosion.jpg';
 import imgInspectorNurro from './images/inspector-nurro-2.png';
@@ -337,10 +336,12 @@ const STATE_DEFECT_VIEW = {
       "m"
     ]
   },
+  // z 425 is the slice with the black spill; 426 (where this sat) is clean
+  // EM, so the 2D showed no defect (toknow #440).
   "position": [
     77603.1875,
     59828.70703125,
-    426.684326171875
+    425.5
   ],
   "crossSectionScale": 13.46721884640639,
   "projectionOrientation": [
@@ -419,10 +420,10 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
     text: `
 A connectomics dataset starts with a brain! It is imaged at nanoscale and reconstructed in 3D using a mix of AI and human insight.
 
-The map of every neuron and its connections is called a connectome. Learn more with <a href="https://connectome.quest/atlas/" target="_blank" rel="noopener">Connectome 101</a>.`,
+The map of every neuron and its connections is called a connectome.`,
     position: MIDDLE,
-    image:
-      imgSegmentation,
+    // a block of real EM, its slices, then the whole neuron (static/mini-volume)
+    embed: 'mini-volume/index.html?embed',
     width: "500px"
   },
   //4
@@ -705,6 +706,8 @@ Thanks for being a part of the neuroscience community. For Science!`,
     // starts by itself (toolbar_staging getStartedFinished). Ames 2026-10-21:
     // "there should be a button to start Merge".
     nextLabel: 'Start Merge',
+    // Finishes Get Started without starting Merge (toknow #442).
+    notNowLabel: 'Not now',
     position: MIDDLE,
     image:
       imgTutorialFinal,
