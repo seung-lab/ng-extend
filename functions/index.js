@@ -1981,7 +1981,29 @@ exports.ewSecureWrite = onRequest(
           const fields = ewPick(args.fields, EW_TRIAGE_FIELDS);
           if ("todo_rank" in fields) ewTodoRank(fields.todo_rank);
           if ("todo_size" in fields) ewTodoSize(fields.todo_size);
+          // Another admin's reply to a player: a copy to Ames (functions/reply-watch.js).
+          const watch = require("./reply-watch");
+          let replyBefore = null;
+          if ("feedback_log" in fields && !watch.isOwnerEmail(who && who.email)) {
+            try { replyBefore = (await sb(`feedback_triage?id=eq.${args.id}&select=feedback_log,source_excerpt`))[0] || null; }
+            catch (e) { console.warn("[reply-watch] before", e.message); }
+          }
           out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(fields) }))[0];
+          if (replyBefore) {
+            try {
+              const fresh = watch.newReplies(replyBefore.feedback_log, fields.feedback_log);
+              if (fresh.length) {
+                const owners = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(watch.OWNER_EMAILS.map((e) => `"${e}"`).join(",")) + ")");
+                const link = `${EW_LIVE_SITE}/?triage=board&report=${args.id}`;
+                const rows = [];
+                for (const e of fresh) for (const o of owners) {
+                  rows.push({ ...watch.copyNote({ by: e.by || (me && (me.display_name || me.username)), text: e.text, about: replyBefore.source_excerpt, link, imageUrl: e.image_url }),
+                    target_type: "user", target_id: o.id, send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+                }
+                if (rows.length) await sb("notifications", { method: "POST", body: JSON.stringify(rows) });
+              }
+            } catch (e) { console.warn("[reply-watch] copy", e.message); }
+          }
           // Moving or sizing a To do card changes nothing the bridge mirrors.
           const onlyTodo = Object.keys(fields).every(k => k === "todo_rank" || k === "todo_size");
           // An Admin Hub decision: the bridge mirrors it to Slack and starts

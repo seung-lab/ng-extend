@@ -347,6 +347,8 @@ async function reporterUpdates() {
       const userId = await reporterUserId(row);
       const ok = userId ? await notifyUser(userId, '💬 An update on your report', body) : false;
       log.push({ role: 'reporter_update', ts: m.ts, user: m.user, via: 'slack', text: body, sent: ok, at: new Date().toISOString() });
+      // Another admin's reply to a player: a copy to Ames's bell (Ames 2026-11-09, functions/reply-watch.js).
+      if (ok && m.user !== APPROVERS[0]) await copyReplyToAmes(row, m.user, body).catch(e => console.warn('[bridge] reply copy not sent:', e.message));
       await say(row, ok
         ? `✉️ Sent to the reporter, <@${m.user}>:\n> ${body}`
         : `I couldn't send it: this report has no signed-in reporter to notify, so nobody was messaged.`);
@@ -1273,6 +1275,21 @@ async function tokenReminder() {
 }
 
 /** Post a change update into the thread when an approved row ships. */
+/** A copy of another admin's reply to a player, to Ames's bell only. */
+const SLACK_NAMES = { U033NHWDE: 'Celia D', U033TSX9A: 'M Sorek' };
+async function copyReplyToAmes(row, slackUser, text) {
+  const r = await sb(`users?select=id&middleauth_email=in.(${encodeURIComponent(['amylr@princeton.edu', 'amyleerobinson@gmail.com'].map(e => `"${e}"`).join(','))})`);
+  if (!r.ok) throw new Error(`users ${r.status}`);
+  const who = SLACK_NAMES[slackUser] || 'An admin';
+  const about = String(row.source_excerpt || 'a report').replace(/\s+/g, ' ').trim().slice(0, 90);
+  const link = `${LIVE_URL.replace(/\/$/, '')}/?triage=board&report=${row.id}`;
+  const rows = (await r.json()).map(o => ({ title: `👀 ${who} replied to a player`, body: `On "${about}":\n\n${String(text).trim().slice(0, 1200)}\n\n${link}`.slice(0, 1500),
+    target_type: 'user', target_id: o.id, send_at: new Date().toISOString() }));
+  if (!rows.length) return;
+  const res = await sb('notifications', { method: 'POST', body: JSON.stringify(rows) });
+  if (!res.ok) throw new Error(`notifications ${res.status}`);
+}
+
 /** What shippedTags needs to know about a report: who sent it, and its thread. */
 async function shippedContext(row) {
   let reporterName = '';
