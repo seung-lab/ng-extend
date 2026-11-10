@@ -778,13 +778,13 @@ function observeSegmentSelect(targetNode: Element) {
         const segmentIDString =
             item.getAttribute('data-id');
         if (segmentIDString) {
-          // Track this as the active segment for the annotation panel
-          useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
-
           let injected = false;
           let button = item.querySelector('.nge-segment-button.menu');
           if (button == null) {
             injected = true;
+            // A newly listed cell is the side panel's cell; rows redrawn are not
+            // (each one used to set it, and ask CAVE again, on every redraw).
+            useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
             const viewer: ExtendViewer = (<any>window)['viewer'];
             const layerName = viewer.selectedLayer.layer?.name || 'default';
             const dataset = (typeof DATASETS !== 'undefined' && DATASETS) ? (DATASETS[layerName] ?? '') : '';
