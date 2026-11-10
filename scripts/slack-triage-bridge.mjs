@@ -46,6 +46,7 @@
  */
 
 import { releaseCommand, reporterReplyNote, SHA } from './triage-policy.mjs';
+import { shippedTags } from './shipped-tags.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -1272,6 +1273,20 @@ async function tokenReminder() {
 }
 
 /** Post a change update into the thread when an approved row ships. */
+/** What shippedTags needs to know about a report: who sent it, and its thread. */
+async function shippedContext(row) {
+  let reporterName = '';
+  try {
+    const src = row.source === 'site_issue' ? `site_issues?id=eq.${encodeURIComponent(row.source_id)}&select=user_name`
+      : row.source === 'todo' ? `admin_todos?id=eq.${encodeURIComponent(row.source_id)}&select=created_by` : null;
+    if (src && row.source_id) { const r = await sb(src); if (r.ok) { const [x] = await r.json(); reporterName = (x && (x.user_name || x.created_by)) || ''; } }
+  } catch (e) { console.warn('[bridge] reporter not found for', row.id, e.message); }
+  let thread = [];
+  try { if (row.slack_ts) thread = ((await slackGet('conversations.replies', { channel: CHANNEL, ts: row.slack_ts, limit: 200 })).messages ?? []); }
+  catch (e) { console.warn('[bridge] thread not read for', row.id, e.message); }
+  return { row, reporterName, thread };
+}
+
 async function announceDone() {
   const res = await sb('feedback_triage?status=eq.done&slack_ts=not.is.null&done_slack_ts=is.null&select=*');
   if (!res.ok) {
@@ -1282,10 +1297,13 @@ async function announceDone() {
   const rows = await res.json();
   let announced = 0;
   for (const row of rows) {
-    // Shipped still tags the approvers (Ames 2026-11-04: "Change shipped tag is ok").
-    const tags = APPROVERS.map(id => `<@${id}>`).join(' ');
+    // Shipped tags only Celia or Marissa, and only when it was their report,
+    // they commented, they wrote to the player, or someone @ed them in it
+    // (Celia 2026-11-09). Ames is not tagged ("I don't need to be tagged in
+    // change shipped either").
+    const tags = shippedTags(await shippedContext(row)).map(id => `<@${id}>`).join(' ');
     const note = (row.result_note || '').trim();
-    const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ${tags} ✓`);
+    const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}.${tags ? ` ${tags}` : ''} ✓`);
     await patchRow(row.id, { done_slack_ts: posted.ts });
     // Slack mention syntax means nothing in the game; drop it there.
     const plain = note.replace(/<@[A-Z0-9]+>/g, 'a tester').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1');
