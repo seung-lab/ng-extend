@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-10T19:23:00Z",
+      "title": "Help me becomes Hide help",
+      "items": [
+        "In the tutorials and sandboxes, once help is open the Help me button reads Hide help, so it is clear how to close it."
+      ]
+    },
+    {
       "at": "2026-11-10T17:30:45Z",
       "title": "Cheer on achievements",
       "digest": "minor",
