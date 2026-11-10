@@ -1283,7 +1283,7 @@ async function copyReplyToAmes(row, slackUser, text) {
   const who = SLACK_NAMES[slackUser] || 'An admin';
   const about = String(row.source_excerpt || 'a report').replace(/\s+/g, ' ').trim().slice(0, 90);
   const link = `${LIVE_URL.replace(/\/$/, '')}/?triage=board&report=${row.id}`;
-  const rows = (await r.json()).map(o => ({ title: `👀 ${who} replied to a player`, body: `On "${about}":\n\n${String(text).trim().slice(0, 1200)}\n\n${link}`.slice(0, 1500),
+  const rows = (await r.json()).map(o => ({ title: `💬 ${who} replied to a player`, body: `On "${about}":\n\n${String(text).trim().slice(0, 1200)}\n\n${link}`.slice(0, 1500),
     target_type: 'user', target_id: o.id, send_at: new Date().toISOString() }));
   if (!rows.length) return;
   const res = await sb('notifications', { method: 'POST', body: JSON.stringify(rows) });

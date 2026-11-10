@@ -20,7 +20,7 @@ function copyNote({ by, text, about, link, imageUrl }) {
   const who = String(by || 'An admin').trim().slice(0, 60);
   const report = String(about || 'a report').replace(/\s+/g, ' ').trim().slice(0, 90);
   return {
-    title: `👀 ${who} replied to a player`.slice(0, 120),
+    title: `💬 ${who} replied to a player`.slice(0, 120),
     body: `On "${report}":\n\n${String(text).trim().slice(0, 1200)}\n\n${link}`.slice(0, 1500),
     ...(imageUrl ? { image_url: imageUrl } : {}),
   };
