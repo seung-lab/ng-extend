@@ -22,6 +22,7 @@ import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
+import { startTutorialBoxJump } from '../tutorial_box_jump';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
@@ -46,6 +47,7 @@ const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: step
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
 // Time on each box, for Admin Hub > Tutorial times (src/tutorial_timing.ts).
 startTutorialTiming();
+startTutorialBoxJump();
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
@@ -340,6 +342,9 @@ const needsResumePrompt = computed(() => !resumeDecided.value && !!activeStep.va
 // card) came up on every one (util/test_host.ts). There, nothing shows until
 // a tutorial is started from the menu.
 const startedHere = ref(false);
+// An admin's box link (?tutorialBox, tutorial_box_jump.ts) asked for this box:
+// show it now, with no "partway through" question and no test site quiet.
+document.addEventListener('nge:tutorial-box', () => { startedHere.value = true; resumeDecided.value = true; });
 if (QUIET_TEST_HOST) {
     const started = () => { startedHere.value = true; resumeDecided.value = true; };
     document.addEventListener('nge:tutorial-start', started);

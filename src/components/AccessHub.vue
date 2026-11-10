@@ -17,6 +17,7 @@ import { secureWrite } from '../secure_write';
 import { listDatasetRequests, decideDatasetRequest, type DatasetRequestRow } from '../dataset_access_request';
 import { addPilot, welcomeBell, welcomeEmail } from '../beta_let_in';
 import { datasetDisplayName } from '../datasets';
+import { boxLink, PRACTICE_TUTORIALS } from '../tutorial_box_jump';
 import { TUTORIAL_NAMES } from '../tutorial_edits';
 
 interface Person {
@@ -26,15 +27,18 @@ interface Person {
   pilot_enabled: boolean | null; let_in_at: string | null; from_list: boolean;
   joined_at: string | null; tutorial_active: number | null; tutorial_at: string | null; tutorials: number;
   first_edit_at: string | null; last_edit_at: string | null; edits: number; last_dataset: string | null;
-  edits_30d: number; cells: number; cells_30d: number; chats_30d: number; last_chat_at: string | null;
+  edits_30d: number; cells: number; cells_30d: number; chats: number; chats_30d: number;
+  help_asked: number; help_answered_for: number; help_asked_30d: number; help_given: number; help_given_30d: number;
 }
+/** One of a player's 10 latest edits (access_hub_recent_edits). */
+interface RecentEdit { at: string; dataset: string | null; operation: string | null; success: boolean | null }
 interface Activity { dataset: string; edits: number; editors: number; cells: number; finishers: number; chats: number; chatters: number }
 interface Stat { tutorial: number; step: number; last_box: string | null; n: number; players: number; median_s: number; p90_s: number; help_rate: number; closes: number }
 interface Note { id: string; text: string; by: string; at: string }
 type Stage = 'asked' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats_30d,last_chat_at';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d';
 const people = ref<Person[]>([]);
 const marks = ref<Record<string, { mark: string; at: string }>>({});
 const dsRows = ref<DatasetRequestRow[]>([]);
@@ -253,6 +257,32 @@ const tutPlayers = computed(() => Math.max(0, ...stats.value.map(s => s.players)
 const secs = (v: number) => { const s = Math.round(Number(v) || 0); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
 const boxName = (s: Stat) => String(s.last_box || `Box ${s.step + 1}`).replace(/\s+/g, ' ').slice(0, 70);
 const triageUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
+const gameUrl = `${window.location.origin}${window.location.pathname}`;
+
+// ── One player's latest edits, read when their panel opens (Ames: "10
+// recent edits"; no chat, that's theirs) ────────────────────────────────
+const recent = ref<RecentEdit[]>([]);
+const recentFor = ref('');
+const recentError = ref('');
+watch(() => open.value?.p?.user_id || '', async (uid) => {
+  recent.value = []; recentError.value = ''; recentFor.value = '';
+  if (!uid || !open.value?.p?.edits) return;
+  const { data, error: err } = await supabase.from('access_hub_recent_edits').select('at,dataset,operation,success').eq('user_id', uid).order('at', { ascending: false }).limit(10);
+  if ((open.value?.p?.user_id || '') !== uid) return;
+  recent.value = (data ?? []) as RecentEdit[];
+  recentError.value = err ? `Edits: ${err.message}` : '';
+  recentFor.value = uid;
+});
+// edit_log's operations, in the game's words.
+const OP_NAMES: Record<string, string> = {
+  merge: 'Merge', split: 'Cut', annotate: 'Annotation', mark_complete: 'Marked a cell done', unmark_complete: 'Unmarked a cell',
+  set_cell_type: 'Set a cell type', claim_task: 'Claimed a cell', complete_task: 'Finished a cell', release_task: 'Let go of a cell',
+};
+const opName = (e: RecentEdit) => {
+  const o = String(e.operation || '').toLowerCase();
+  const word = OP_NAMES[o] || (o ? (o[0].toUpperCase() + o.slice(1)).replace(/_/g, ' ') : 'Edit');
+  return e.success === false ? `${word} (did not go through)` : word;
+};
 </script>
 
 <template>
@@ -336,11 +366,19 @@ const triageUrl = `${window.location.origin}${window.location.pathname}?triage=b
 
         <div v-if="open.p?.user_id" class="ah-stats" aria-label="Their stats">
           <div><span>All time</span>{{ open.p.edits.toLocaleString() }} edit{{ open.p.edits === 1 ? '' : 's' }} · {{ (open.p.cells ?? 0).toLocaleString() }} cell{{ open.p.cells === 1 ? '' : 's' }} done · {{ open.p.tutorials }} tutorial{{ open.p.tutorials === 1 ? '' : 's' }} finished</div>
-          <div><span>Last 30 days</span>{{ (open.p.edits_30d ?? 0).toLocaleString() }} edit{{ open.p.edits_30d === 1 ? '' : 's' }} · {{ (open.p.cells_30d ?? 0).toLocaleString() }} cell{{ open.p.cells_30d === 1 ? '' : 's' }} done · {{ (open.p.chats_30d ?? 0).toLocaleString() }} chat message{{ open.p.chats_30d === 1 ? '' : 's' }}</div>
-          <div v-if="open.p.last_edit_at"><span>Last edit</span>{{ ago(open.p.last_edit_at) }} ago<template v-if="open.p.last_dataset">, on {{ dsName(open.p.last_dataset) }}</template></div>
-          <div v-if="open.p.last_chat_at"><span>Last chat</span>{{ ago(open.p.last_chat_at) }} ago</div>
+          <div><span>Last 30 days</span>{{ (open.p.edits_30d ?? 0).toLocaleString() }} edit{{ open.p.edits_30d === 1 ? '' : 's' }} · {{ (open.p.cells_30d ?? 0).toLocaleString() }} cell{{ open.p.cells_30d === 1 ? '' : 's' }} done</div>
+          <div><span>Help</span>asked {{ open.p.help_asked }} time{{ open.p.help_asked === 1 ? '' : 's' }}<template v-if="open.p.help_asked">, {{ open.p.help_answered_for }} answered</template> · helped others {{ open.p.help_given }} time{{ open.p.help_given === 1 ? '' : 's' }}<template v-if="open.p.help_asked_30d || open.p.help_given_30d"> ({{ open.p.help_asked_30d }} asked, {{ open.p.help_given_30d }} helped in 30 days)</template></div>
+          <div><span>Chat</span>{{ (open.p.chats ?? 0).toLocaleString() }} message{{ open.p.chats === 1 ? '' : 's' }}, {{ (open.p.chats_30d ?? 0).toLocaleString() }} in 30 days</div>
           <div v-if="open.p.tutorial_active"><span>Now in</span>{{ TUTORIAL_NAMES[open.p.tutorial_active] ?? `tutorial ${open.p.tutorial_active}` }}</div>
         </div>
+        <template v-if="open.p?.user_id && open.p.edits">
+          <h3>Latest 10 actions</h3>
+          <p v-if="recentFor !== open.p.user_id" class="ah-quiet">Reading…</p>
+          <p v-else-if="recentError" class="ah-error">{{ recentError }}</p>
+          <ol v-else class="ah-time ah-edits">
+            <li v-for="(e, i) in recent" :key="i"><span>{{ opName(e) }}<template v-if="e.dataset">, {{ dsName(e.dataset) }}</template></span><span>{{ ago(e.at) }} ago</span></li>
+          </ol>
+        </template>
         <p v-else-if="open.p" class="ah-quiet">Not signed in to Pyr yet.</p>
 
         <ol v-if="timeline.length" class="ah-time">
@@ -383,12 +421,12 @@ const triageUrl = `${window.location.origin}${window.location.pathname}?triage=b
       <div class="ah-box">
         <h3>Tutorial boxes players linger on</h3>
         <div v-for="s in slowSteps" :key="s.tutorial + '-' + s.step" class="ah-bar-row">
-          <span class="ah-bar-name" :title="boxName(s)">{{ TUTORIAL_NAMES[s.tutorial] ?? `Tutorial ${s.tutorial}` }}: {{ boxName(s) }}</span>
+          <a class="ah-bar-name ah-bar-link" :href="boxLink(s.tutorial, s.step, gameUrl)" target="_blank" rel="noopener" :title="PRACTICE_TUTORIALS.includes(s.tutorial) ? `Opens ${TUTORIAL_NAMES[s.tutorial] ?? 'this tutorial'} from its start (it needs its practice cell): ${boxName(s)}` : `Open this box in the game: ${boxName(s)}`">{{ TUTORIAL_NAMES[s.tutorial] ?? `Tutorial ${s.tutorial}` }}: {{ boxName(s) }}</a>
           <span class="ah-bar ah-bar--tut"><span :style="{ width: (Number(s.median_s) / maxStep) * 100 + '%' }"></span></span>
           <span class="ah-bar-n">{{ secs(s.median_s) }} median</span>
           <span class="ah-bar-x">{{ s.players }} players<template v-if="Number(s.help_rate) > 0">, {{ Math.round(Number(s.help_rate) * 100) }}% asked for help</template><template v-if="s.closes">, {{ s.closes }} left here</template></span>
         </div>
-        <p class="ah-quiet">Boxes at least two players reached. Up to {{ tutPlayers }} players so far.</p>
+        <p class="ah-quiet">Boxes at least two players reached. Up to {{ tutPlayers }} players so far. Click a box to open it in the game. Merge, Cut and the Sandboxes open from their start, since they need their practice cell.</p>
       </div>
     </section>
   </div>
@@ -439,6 +477,8 @@ const triageUrl = `${window.location.origin}${window.location.pathname}?triage=b
 .ah-panel-email { color: #a9c4e6; margin-bottom: 6px; overflow-wrap: anywhere; }
 .ah-stats { margin: 10px 0 4px; padding: 8px 10px; border-radius: 8px; background: rgba(55,138,221,.10); border: 1px solid rgba(120,170,255,.25); font-size: 13px; color: #dbe6f5; }
 .ah-stats > div { margin: 3px 0; }
+.ah-bar-link { color: #b9d6ff; text-decoration: none; }
+.ah-bar-link:hover { text-decoration: underline; }
 .ah-stats span { display: inline-block; min-width: 7.5em; color: #8fa6c6; }
 .ah-panel-meta { font-size: 13px; color: #a9bbd3; margin: 3px 0; overflow-wrap: anywhere; }
 .ah-panel blockquote { margin: 8px 0; padding: 6px 10px; border-left: 3px solid rgba(120,170,255,.5); color: #d5e3f7; white-space: pre-wrap; }
