@@ -42,25 +42,30 @@ export function startTutorialBoxJump() {
     window.history.replaceState(window.history.state, '', u.toString());
   } catch { /* keep going */ }
   const backend = useProofreadingBackendStore();
-  const tutorials = useTutorialStore();
   let done = false;
   const go = () => {
     if (done || !want || !backend.isAdmin) return;
     done = true;
-    const [t, s] = want;
-    const len = Number((window as any).__ngeTutorialLengths?.[t]) || 0;
-    if (!len) { console.warn(`[tutorial box] no tutorial ${t}`); return; }
     // After the account's saved tutorial place has loaded, which would
     // otherwise put the admin back where they were.
-    setTimeout(() => {
-      document.dispatchEvent(new CustomEvent('nge:tutorial-box', { detail: { tutorial: t, box: s } }));
-      if (PRACTICE_TUTORIALS.includes(t)) {
-        document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: t } }));
-        return;
-      }
-      tutorials.activeTutorial = t;
-      tutorials.setTutorialStep(Math.min(Math.max(0, s), len - 1));
-    }, 2500);
+    openTutorialBox(want[0], want[1], 2500);
   };
   watch(() => backend.isAdmin, go, { immediate: true });
+}
+
+/** Open tutorial t at box s, now or after a wait (also Open to edit on an
+ *  edit note, src/text_edit_links.ts). */
+export function openTutorialBox(t: number, s: number, delayMs = 0) {
+  const tutorials = useTutorialStore();
+  const len = Number((window as any).__ngeTutorialLengths?.[t]) || 0;
+  if (!len) { console.warn(`[tutorial box] no tutorial ${t}`); return; }
+  setTimeout(() => {
+    document.dispatchEvent(new CustomEvent('nge:tutorial-box', { detail: { tutorial: t, box: s } }));
+    if (PRACTICE_TUTORIALS.includes(t)) {
+      document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: t } }));
+      return;
+    }
+    tutorials.activeTutorial = t;
+    tutorials.setTutorialStep(Math.min(Math.max(0, s), len - 1));
+  }, delayMs);
 }

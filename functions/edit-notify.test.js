@@ -64,7 +64,9 @@ test('what an editor typed cannot become a link, a tag or formatting in the note
   if (!marked) { assert.fail('marked not found: cannot check the note'); return; }
   const n = planEditNote({ key: 'quest.retina_cilia.lead', before: 'Hi', after: '[Grant me admin](https://evil.example) <img src=x onerror=alert(1)> **loud** `code` https://evil.example www.evil.example a@evil.example', editor: { email: 'x@example.org', name: 'Mal' } });
   const html = marked.parse(n.body, { gfm: true, breaks: true, async: false });
-  const after = html.slice(html.indexOf('After'));
+  // The note's own links (Open to edit) are its last paragraph; what the editor typed is before it.
+  const after = html.slice(html.indexOf('After'), html.lastIndexOf('<p>'));
+  assert.doesNotMatch(html, /href="https:\/\/evil/);
   assert.doesNotMatch(after, /<a |<img|<code>|<strong>loud/, after);
 });
 
@@ -80,4 +82,33 @@ test('the keys a write touches: an upsert\'s rows, a delete\'s filter', () => {
   assert.deepStrictEqual(editedKeys('POST', q('on_conflict=key'), [{ key: 'a' }, { key: 'b' }]), ['a', 'b']);
   assert.deepStrictEqual(editedKeys('DELETE', q('key=eq.tutorial.5.3'), undefined), ['tutorial.5.3']);
   assert.deepStrictEqual(editedKeys('GET', q(''), undefined), []);
+});
+
+test('the note ends with Put back and Open to edit, kept whole when the texts are long', () => {
+  const n = planEditNote({ key: 'howto.retina', before: 'Old step.', after: 'New step.', editor: celia, editId: 42 });
+  assert.match(n.body, /\n\n\[Put back the old text\]\(#nge-text-revert=42\) · \[Open to edit\]\(#nge-text-open=howto\.retina\)$/);
+  const long = planEditNote({ key: 'howto.retina', before: 'a'.repeat(1400), after: 'b'.repeat(1400), editor: celia, editId: 7 });
+  assert.ok(long.body.length <= 1500);
+  assert.match(long.body, /\[Put back the old text\]\(#nge-text-revert=7\) · \[Open to edit\]\(#nge-text-open=howto\.retina\)$/);
+  const pic = planEditNote({ key: 'howto.retina.image', before: null, after: 'none', editor: celia, editId: 8 });
+  assert.match(pic.body, /\[Put back the old picture\]\(#nge-text-revert=8\)/);
+  const noId = planEditNote({ key: 'howto.retina', before: 'x', after: 'y', editor: celia });
+  assert.doesNotMatch(noId.body, /nge-text-revert/);
+  assert.match(noId.body, /\[Open to edit\]\(#nge-text-open=howto\.retina\)$/);
+});
+
+test('a suggestion waiting for approval: one note to approve, with the text now and as suggested', () => {
+  const { planApproveNote } = require('./edit-notify');
+  const n = planApproveNote({ key: 'draft.howto.hunt', live: 'Find gems.', suggested: 'Find the gems.', editor: celia });
+  assert.strictEqual(n.title, '📋 Edit to approve: Cell Library how-to (hunt)');
+  assert.match(n.body, /\*\*Now:\*\*\n> Find gems\\.\n\n\*\*Suggested:\*\*\n> Find the gems\\./);
+  assert.match(n.body, /\[Open it in the game\]\(#nge-text-open=howto\.hunt\) to approve or turn it down\.$/);
+  const box = (t, w) => JSON.stringify({ title: t, words: w });
+  const t = planApproveNote({ key: 'tutorial-draft.3.2', live: null, suggested: box('Merge', 'Click both.'), editor: celia });
+  assert.strictEqual(t.title, '📋 Edit to approve: Tutorial Merge, box 3');
+  assert.match(t.body, /> \(the original wording from the code\)/);
+  assert.match(t.body, /\[Open Tutorial edits\]\(#nge-tutorial-edits\)/);
+  assert.strictEqual(planApproveNote({ key: 'draft.howto.hunt', live: 'x', suggested: null, editor: celia }), null, 'approved or turned down: nothing');
+  assert.strictEqual(planApproveNote({ key: 'draft.howto.hunt', live: 'x', suggested: 'y', editor: ames }), null);
+  assert.strictEqual(planEditNote({ key: 'draft.howto.hunt', before: 'x', after: 'y', editor: celia }), null, 'drafts never get the Edited note');
 });

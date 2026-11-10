@@ -1,10 +1,15 @@
 <script setup lang="ts">
 /** The 2D Tools box, a prototype (util/two_d_tools.ts). */
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { onTextEditAsked } from '../text_edit_links';
 import EditableText from './EditableText.vue';
 import { twoD, startTwoDTools, addPair, setSide, renamePair, removePair, goTo, jumpAcross, toggleSkip, removeShape, clearSlice, capture, downloadCompare, LASSO_COLORS, type JumpPair } from '../util/two_d_tools';
 
 onMounted(startTwoDTools);
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts).
+let stopTextEdit: (() => void) | null = null;
+onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'howto.2d_tools') { twoD.open = true; help.value = true; } }); });
+onUnmounted(() => stopTextEdit?.());
 const shapesHere = computed(() => twoD.shapes.filter(s => s.z === twoD.z));
 const hasCapture = computed(() => twoD.captures.some(Boolean));
 // Drag the box by its head, kept on screen. It stays where you left it.

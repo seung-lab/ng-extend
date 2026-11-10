@@ -2764,8 +2764,11 @@ exports.ewCommunityData = onRequest(
         try {
           const keys = require("./edit-notify").editedKeys(plan.method, plan.query, plan.body).slice(0, 5);
           editsBefore = {};
+          const {liveKeyOf, isDraft} = require("./edit-notify");
           for (const k of keys) {
-            const rows = await sb("site_texts?key=eq."+encodeURIComponent(k)+"&select=body&limit=1");
+            // A suggestion's note shows the text players see now, so read that key for a draft.
+            const read = isDraft(k) ? liveKeyOf(k) : k;
+            const rows = read ? await sb("site_texts?key=eq."+encodeURIComponent(read)+"&select=body&limit=1") : [];
             editsBefore[k] = rows.length ? String(rows[0].body ?? "") : null;
           }
         } catch (e) { editsBefore = null; console.warn("[edit-notify] before", e.message); }
@@ -2782,13 +2785,24 @@ exports.ewCommunityData = onRequest(
       // The edit went through: tell Ames, before and after (Ames 2026-11-06).
       if (upstream.ok && editsBefore) {
         try {
-          const {planEditNote, OWNER_EMAILS} = require("./edit-notify");
+          const {planEditNote, planApproveNote, isDraft, OWNER_EMAILS} = require("./edit-notify");
           const rowsAfter = plan.method === "DELETE" ? [] : (Array.isArray(plan.body) ? plan.body : [plan.body]);
-          const notes = Object.keys(editsBefore).map((k) => {
+          const editor = { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" };
+          const notes = [];
+          for (const k of Object.keys(editsBefore)) {
             const row = rowsAfter.find((r) => r && r.key === k);
             const after = plan.method === "DELETE" ? null : row ? String(row.body ?? "") : (plan.body && typeof plan.body.body === "string" ? plan.body.body : null);
-            return planEditNote({ key: k, before: editsBefore[k], after, editor: { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" } });
-          }).filter(Boolean);
+            if (isDraft(k)) { const n = planApproveNote({ key: k, live: editsBefore[k], suggested: after, editor }); if (n) notes.push(n); continue; }
+            if (!planEditNote({ key: k, before: editsBefore[k], after, editor })) continue;
+            // Kept so the note's "Put back the old text" can undo exactly this edit (supabase-site-text-edits.sql).
+            let editId = null;
+            try {
+              const saved = await sb("site_text_edits", { method: "POST", headers: { Prefer: "return=representation" },
+                body: JSON.stringify({ key: k, old_body: editsBefore[k], new_body: after, editor_name: editor.name, editor_email: editor.email || null }) });
+              editId = Number(saved && saved[0] && saved[0].id) || null;
+            } catch (e) { console.warn("[edit-notify] history", e.message); }
+            notes.push(planEditNote({ key: k, before: editsBefore[k], after, editor, editId }));
+          }
           if (notes.length) {
             const owners = await sb("users?select=id&middleauth_email=in.("+encodeURIComponent(OWNER_EMAILS.map((e) => `"${e}"`).join(","))+")");
             const out = [];

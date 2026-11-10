@@ -20,7 +20,6 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import type { Step } from './store-pyr';
 import { siteTexts, loadSiteTexts, saveSiteText, resetSiteText } from './site_texts';
-import { supabase } from './supabase';
 
 /** Pyr accounts whose tutorial edits need no approval, and who approve. */
 export const TUTORIAL_APPROVER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
@@ -86,15 +85,6 @@ export function wordsToHtml(words: string, kind: 'text' | 'html'): string {
 
 export { loadSiteTexts };
 
-/** The notification's text: the box now and as suggested (Ames 2026-10-26:
- *  "add the before and after"), each quoted and kept short. */
-function beforeAfter(now: Wording, next: Wording, kind: 'text' | 'html'): string {
-  const plain = (w: string) => (kind === 'html' ? w.replace(/<[^>]+>/g, ' ') : w).replace(/[ \t]+/g, ' ').trim();
-  const clip = (w: string) => { const p = plain(w); return p.length > 600 ? p.slice(0, 600).trimEnd() + '…' : p; };
-  const quote = (w: string) => clip(w).split(/\r?\n/).map(l => '> ' + l).join('\n');
-  return `**Now:** ${now.title || '(no title)'}\n${quote(now.words)}\n\n**Suggested:** ${next.title || '(no title)'}\n${quote(next.words)}\n\n[Open Tutorial edits](#nge-tutorial-edits) to approve or turn it down.`;
-}
-
 /**
  * Save an edit of a box. An approver's goes to players at once; anyone else's
  * is a suggestion, and the approvers are told. Returns which it was.
@@ -110,12 +100,9 @@ export async function saveTutorialEdit(tutorial: number, box: number, step: Step
     return 'live';
   }
   await saveSiteText(draftKey(tutorial, box), body);
-  try {
-    const { data } = await supabase.from('admins').select('user_id,email');
-    const ids = ((data as any[]) || []).filter(a => a.user_id && isApprover(a.email)).map(a => String(a.user_id));
-    const name = TUTORIAL_NAMES[tutorial] ?? `Tutorial ${tutorial}`;
-    if (ids.length) await notify(ids, `📋 Tutorial edit to approve: ${name}, box ${box + 1}`, beforeAfter(code, next, code.kind));
-  } catch (e) { console.warn('[tutorial edits] could not tell the approvers:', e); }
+  // The server sends the approvers their "to approve" note (functions/edit-notify.js):
+  // this lookup never found them (admins.user_id is empty). notify is kept for callers.
+  void notify;
   return 'draft';
 }
 
