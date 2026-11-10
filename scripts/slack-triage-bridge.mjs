@@ -310,7 +310,9 @@ async function reporterUpdates() {
     // Admin Hub sends that have not been mentioned in the thread yet.
     for (const e of log) {
       if (e.role === 'reporter_update' && e.via === 'admin' && !e.echoed) {
-        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:\n${slackQuote(e.text)}`).catch(() => {});
+        // Ames's "Also send to Celia and Marissa" box tags them here (2026-11-10).
+        const copyTags = e.copied_to_admins ? ' <@U033NHWDE> <@U033TSX9A>' : '';
+        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:${copyTags}\n${slackQuote(e.text)}`).catch(() => {});
         e.echoed = true;
         changed = true;
       }
