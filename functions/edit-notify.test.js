@@ -16,8 +16,8 @@ test('an admin edits the Cilia Quest steps: before and after, in the Admin tab',
   assert.ok(n.title.startsWith('📋 '), 'the Admin tab takes 📋 titles');
   assert.strictEqual(n.title, '📋 Edited: Cilia Quest instructions, the steps');
   assert.match(n.body, /^Celia edited \*\*Cilia Quest instructions, the steps\*\*\./);
-  assert.match(n.body, /\*\*Before:\*\*\n> \\\*\\\*Claim\\\*\\\* a cell\\\.\n> Press Submit\\\./);
-  assert.match(n.body, /\*\*After:\*\*\n> \\\*\\\*Claim\\\*\\\* a cell\\\.\n> Press Submit, then pick a status\\\./);
+  assert.match(n.body, /\*\*Before:\*\*\n> \\\*\\\*Claim\\\*\\\* a cell\\\.\n> Press ~~Submit\\\.~~/);
+  assert.match(n.body, /\*\*After:\*\*\n> \\\*\\\*Claim\\\*\\\* a cell\\\.\n> Press \*\*Submit, then pick a status\\\.\*\*/);
   assert.doesNotMatch(n.title + n.body, /[–—]/);
 });
 
@@ -32,7 +32,7 @@ test('a tutorial box reads as its title and words, not JSON', () => {
   const box = (t, w) => JSON.stringify({ title: t, words: w, code: { title: 'x', words: 'y' } });
   const n = planEditNote({ key: 'tutorial.5.3', before: box('Press G', 'Switch to blue.'), after: box('Press G', 'Switch to blue now.'), editor: celia });
   assert.strictEqual(n.title, '📋 Edited: Tutorial Cut, box 4');
-  assert.match(n.body, /> Press G\n> Switch to blue\\\.\n/);
+  assert.match(n.body, /> Press G\n> Switch to ~~blue\\\.~~\n/);
   assert.doesNotMatch(n.body, /"title"|"words"/);
 });
 
@@ -85,6 +85,38 @@ test('the keys a write touches: an upsert\'s rows, a delete\'s filter', () => {
 test('a tutorial box that showed the code wording quotes that wording as Before', () => {
   const after = JSON.stringify({ title: 'Merge', words: 'New words', from: { title: 'Merge', words: 'Old code words' }, kind: 'text' });
   const n = planEditNote({ key: 'tutorial.3.0', before: null, after, editor: { email: 'celia@eyewire.org', name: 'Celia D' } });
-  assert.match(n.body, /\*\*Before:\*\*\n> Merge\n> Old code words/);
-  assert.match(n.body, /\*\*After:\*\*\n> Merge\n> New words/);
+  assert.match(n.body, /\*\*Before:\*\*\n> Merge\n> ~~Old code~~ words/);
+  assert.match(n.body, /\*\*After:\*\*\n> Merge\n> \*\*New\*\* words/);
+});
+
+test('the changed words stand out: struck in Before, bold in After (Celia, Merge box 6)', () => {
+  const span = '<span class="nge-practice-part">neuron</span>';
+  const head = `Here is a different one: this time it's a ${span}.\n1. Press **M** if the merge tool is off.\n`;
+  const box = (step3, last) => JSON.stringify({ title: "Let's try another merge",
+    words: `${head}3. **Ctrl+Click** the purple ${span}, ${step3}\n4. Press **Submit merge**.\n${last}`, from: { title: 'x', words: 'y' } });
+  const n = planEditNote({ key: 'tutorial.3.5', editor: celia,
+    before: box('close to where the piece should join it.', 'The pink gems show where to click.'),
+    after: box('also in 2D.', 'Hints are shown in pink.') });
+  // No HTML tags or ** markers from the box itself.
+  assert.doesNotMatch(n.body, /span|nge-practice/);
+  assert.match(n.body, /> 1\\\. Press M if the merge tool is off\\\./);
+  // Removed words struck through, added words bold, unchanged words plain.
+  assert.match(n.body, /> 3\\\. Ctrl\\\+Click the purple neuron, ~~close to where the piece should join it\\\.~~/);
+  assert.match(n.body, /> 3\\\. Ctrl\\\+Click the purple neuron, \*\*also in 2D\\\.\*\*/);
+  assert.match(n.body, /> ~~The pink gems show where to click\\\.~~/);
+  assert.match(n.body, /> \*\*Hints are shown in pink\\\.\*\*/);
+  if (marked) {
+    const html = marked.parse(n.body, { gfm: true, breaks: true, async: false });
+    assert.match(html, /<del>close to where the piece should join it\.<\/del>/);
+    assert.match(html, /<strong>also in 2D\.<\/strong>/);
+  }
+});
+
+test('a long text with one change keeps only the changed lines', () => {
+  const lines = Array.from({ length: 40 }, (_, i) => `Line number ${i} says the same thing every time.`);
+  const after = lines.slice(); after[20] = 'Line number 20 says something new.';
+  const n = planEditNote({ key: 'howto.retina', before: lines.join('\n'), after: after.join('\n'), editor: celia });
+  assert.ok(n.body.length <= 1500, n.body.length);
+  assert.match(n.body, /> …\n> Line number 20 says ~~the same thing every time\\\.~~\n> …/);
+  assert.match(n.body, /> Line number 20 says \*\*something new\\\.\*\*/);
 });

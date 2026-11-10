@@ -2298,6 +2298,14 @@ span.nge-notif-reply-part { cursor: default; }
   background: rgb(var(--nd-accent) / 0.06);
   color: #d6e2f0;
 }
+/* An edit note's changed words (functions/edit-notify.js, Ames 2026-11-10:
+   "highlight the difference"): added words lit, removed words struck. */
+.nge-notif-detail-body :deep(blockquote strong) {
+  color: #fff; background: rgba(90, 170, 255, 0.28); border-radius: 3px; padding: 0 2px;
+}
+.nge-notif-detail-body :deep(blockquote del) {
+  color: rgba(214, 226, 240, 0.55); text-decoration-color: rgba(150, 190, 255, 0.9); text-decoration-thickness: 1.5px;
+}
 .nge-notif-detail-body :deep(code) {
   font-size: 0.9em;
   padding: 1px 5px;

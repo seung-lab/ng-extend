@@ -50,7 +50,7 @@ function windowName(key) {
 function readable(key, body) {
   if (body == null) return null;
   if (/^tutorial\./.test(key)) {
-    try { const j = JSON.parse(body); return [j.title, j.words].filter(Boolean).join('\n\n'); } catch (e) { /* plain */ }
+    try { const j = JSON.parse(body); return plainBox([j.title, j.words].filter(Boolean).join('\n\n')); } catch (e) { /* plain */ }
   }
   return String(body);
 }
@@ -58,8 +58,11 @@ function readable(key, body) {
 /** The code's wording a tutorial edit replaced, kept in its JSON as "from". */
 function codeWordingOf(key, after) {
   if (!/^tutorial\./.test(key) || after == null) return null;
-  try { const f = JSON.parse(after).from; return f ? [f.title, f.words].filter(Boolean).join('\n\n') || null : null; } catch (e) { return null; }
+  try { const f = JSON.parse(after).from; return f ? plainBox([f.title, f.words].filter(Boolean).join('\n\n')) || null : null; } catch (e) { return null; }
 }
+
+/** A tutorial box as a player reads it: no HTML tags, no ** or __ markers. */
+const plainBox = (t) => t.replace(/<[^>]*>/g, '').replace(/\*\*|__/g, '').replace(/[ \t]+/g, ' ');
 
 /** Lines as a markdown quote, every character as written (escaped). */
 function quote(text) {
@@ -69,6 +72,59 @@ function quote(text) {
   if (!lines.length) return '> (empty)';
   // Colons and @ too: markdown makes a bare web address or email a link.
   return lines.map(l => '> ' + l.replace(/[\\`*_{}[\]()#+\-.!|<>~:@]/g, c => '\\' + c)).join('\n');
+}
+
+const escapeMd = (w) => w.replace(/[\\`*_{}[\]()#+\-.!|<>~:@]/g, c => '\\' + c);
+/** Words and line breaks, for comparing two texts. */
+const tokens = (text) => {
+  let t = String(text).trim();
+  if (t.length > MAX_QUOTE) t = t.slice(0, MAX_QUOTE) + ' …';
+  return t.match(/[^\s]+|\n/g) || [];
+};
+
+/**
+ * Before and after as quotes, the changed words marked: struck through in
+ * Before (removed), bold in After (added). Word by word, longest common
+ * run. `onlyChanged` keeps just the lines with a change, for a long text.
+ */
+function diffQuotes(beforeText, afterText, onlyChanged = false) {
+  const x = tokens(beforeText), y = tokens(afterText);
+  const n = x.length, m = y.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+    L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  }
+  const keptX = new Array(n).fill(false), keptY = new Array(m).fill(false);
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (x[i] === y[j]) { keptX[i++] = true; keptY[j++] = true; }
+    else if (L[i + 1][j] >= L[i][j + 1]) i++;
+    else j++;
+  }
+  return { before: render(x, keptX, '~~', onlyChanged), after: render(y, keptY, '**', onlyChanged) };
+}
+
+/** Tokens as quote lines; a run of changed words on a line is wrapped in `mark`. */
+function render(toks, kept, mark, onlyChanged) {
+  const lines = [];
+  let words = [], run = [], changed = false;
+  const flushRun = () => { if (run.length) { words.push(mark + run.join(' ') + mark); run = []; } };
+  const endLine = () => { flushRun(); if (words.length) lines.push({ text: words.join(' '), changed }); words = []; changed = false; };
+  toks.forEach((t, i) => {
+    if (t === '\n') { endLine(); return; }
+    if (kept[i]) { flushRun(); words.push(escapeMd(t)); }
+    else { run.push(escapeMd(t)); changed = true; }
+  });
+  endLine();
+  if (!lines.length) return '> (empty)';
+  let shown = lines;
+  if (onlyChanged) {
+    shown = [];
+    for (const l of lines) {
+      if (l.changed) shown.push(l);
+      else if (!shown.length || shown[shown.length - 1].text !== '…') shown.push({ text: '…' });
+    }
+  }
+  return shown.map(l => '> ' + l.text).join('\n');
 }
 
 /** Our own uploaded pictures only, as https links. */
@@ -103,8 +159,14 @@ function planEditNote({ key, before, after, editor }) {
   }
   // A tutorial box that showed the code's wording: the edit keeps that wording as "from".
   const b = readable(key, before) ?? codeWordingOf(key, after), a = readable(key, after);
-  const beforeText = b == null ? '> (the original wording from the code)' : quote(b);
-  const afterText = a == null ? '> (put back to the original wording from the code)' : quote(a);
+  let beforeText = b == null ? '> (the original wording from the code)' : quote(b);
+  let afterText = a == null ? '> (put back to the original wording from the code)' : quote(a);
+  // Both known: the words that changed stand out (Ames 2026-11-10: "highlight the difference").
+  if (b != null && a != null) {
+    const d = diffQuotes(b, a);
+    beforeText = d.before; afterText = d.after;
+    if (`${beforeText}\n${afterText}`.length > 1300) { const s = diffQuotes(b, a, true); beforeText = s.before; afterText = s.after; }
+  }
   let body = `${who} edited **${where}**.\n\n**Before:**\n${beforeText}\n\n**After:**\n${afterText}`;
   if (body.length > 1500) body = body.slice(0, 1497) + '…';
   return { title, body, image: null };
