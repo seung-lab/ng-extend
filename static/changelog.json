@@ -2,6 +2,62 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-10T17:30:45Z",
+      "title": "Cheer on achievements",
+      "digest": "minor",
+      "items": [
+        "You can react to a player's achievement in chat with an emoji, a quick way to say congratulations.",
+        "The Update ready button has an i beside it, so you can still read what changed after pressing Later."
+      ]
+    },
+    {
+      "at": "2026-11-10T17:30:00Z",
+      "title": "A brighter portal",
+      "items": [
+        "The tour's portal swirls with twice as many sparks, spiraling in from the rim to its glowing core.",
+        "The Starship and its contrails now come out of the middle of the portal and stay in front of the ring, even when you replay the flight."
+      ]
+    },
+    {
+      "at": "2026-11-10T16:54:42Z",
+      "title": "Alt+click finds the cell",
+      "digest": "minor",
+      "items": [
+        "Alt+click on a cell finds it in your list, even over a highlight point or annotation, and no longer opens Highlight or moves the mark."
+      ]
+    },
+    {
+      "at": "2026-11-10T13:53:42Z",
+      "title": "Faster with thousands of annotations",
+      "digest": "minor",
+      "items": [
+        "Views with thousands of annotation points stay smoother while you pan and zoom.",
+        "The Retina question fits a small window, so its Save button is always in reach.",
+        "The box drawing tool that could appear by accident is gone.",
+        "Admin notifications no longer jump back to the top while you add players."
+      ]
+    },
+    {
+      "at": "2026-11-10T13:25:32Z",
+      "title": "Smoother scrolling and highlighting",
+      "digest": "minor",
+      "items": [
+        "The annotation list no longer freezes while you scroll it.",
+        "Highlight ignores a click that misses the cell, such as one on the dataset's outline box, instead of putting marks in empty space.",
+        "Long segment lists look up marks for 50 cells at a time."
+      ]
+    },
+    {
+      "at": "2026-11-10T13:11:08Z",
+      "title": "Faster big views",
+      "digest": "minor",
+      "items": [
+        "Views with hundreds of cells kept in folders, or many annotation points, draw and respond faster.",
+        "Cell status is looked up for many cells at once, so long segment lists fill in their marks sooner.",
+        "If the lab's server can't be reached, a cell just cut or merged shows \"couldn't check\" and is asked again, instead of looking unproofread."
+      ]
+    },
+    {
       "at": "2026-11-10T01:12:23Z",
       "title": "BC Challenge on the Retina",
       "digest": "minor",

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * Reword one tutorial box (src/tutorial_edits.ts), opened from the pencil on
- * the box. An approver's save shows to players at once; anyone else's is a
- * suggestion that waits in Admin Hub > Tutorial edits.
+ * the box. Every admin's save shows to players at once; Ames gets a before
+ * and after note of anyone else's (functions/edit-notify.js).
  */
 import { computed, onMounted, ref } from 'vue';
 import type { Step } from '../store-pyr';
@@ -36,10 +36,8 @@ const done = ref('');
 async function save() {
   busy.value = true; error.value = '';
   try {
-    const how = await saveTutorialEdit(props.tutorial, props.box, props.step, { title: title.value.trim(), words: words.value.trim() }, backend.userEmail,
-      async (ids, t, b) => { for (const id of ids) await backend.createNotification({ title: t, body: b, target_type: 'user', target_id: id }); });
-    if (how === 'live') emit('close');
-    else done.value = 'Sent. Players see the change once it is approved.';
+    await saveTutorialEdit(props.tutorial, props.box, props.step, { title: title.value.trim(), words: words.value.trim() }, backend.userEmail);
+    emit('close');
   } catch (e: any) { error.value = 'Not saved: ' + (e?.message || e); }
   finally { busy.value = false; }
 }
@@ -61,9 +59,7 @@ const when = (at: string) => at ? new Date(at).toLocaleString(undefined, { month
           <span class="nge-tutedit-where">{{ name }}, box {{ box + 1 }}</span>
           <button type="button" class="nge-tutedit-x" aria-label="Close" @click="emit('close')">×</button>
         </div>
-        <p v-if="!approver" class="nge-tutedit-note">Your change goes to Ames for approval. Players keep seeing the current wording until then.</p>
         <p v-if="draft && approver" class="nge-tutedit-note nge-tutedit-note--wait">{{ draft.by || 'An admin' }} suggested this wording ({{ when(draft.at) }}). Saving approves it.</p>
-        <p v-else-if="draft" class="nge-tutedit-note">A suggestion by {{ draft.by || 'an admin' }} is already waiting. Yours replaces it.</p>
         <p v-if="live" class="nge-tutedit-note">Edited by {{ live.by || 'an admin' }}, {{ when(live.at) }}.</p>
 
         <label class="nge-tutedit-label">Title</label>
@@ -81,7 +77,7 @@ const when = (at: string) => at ? new Date(at).toLocaleString(undefined, { month
         <div v-if="done" class="nge-tutedit-done">{{ done }}</div>
         <div class="nge-tutedit-actions">
           <button v-if="!done" type="button" class="nge-tutedit-btn nge-tutedit-btn--save" :disabled="busy || !words.trim() || (!changed && !(approver && draft))" @click="save">
-            {{ busy ? 'Saving…' : approver ? 'Save for everyone' : 'Send for approval' }}</button>
+            {{ busy ? 'Saving…' : 'Save for everyone' }}</button>
           <button type="button" class="nge-tutedit-btn" :disabled="busy" @click="emit('close')">{{ done ? 'Close' : 'Cancel' }}</button>
           <button v-if="approver && live && !done" type="button" class="nge-tutedit-btn nge-tutedit-btn--quiet" :disabled="busy" @click="restore">Put back the original</button>
         </div>

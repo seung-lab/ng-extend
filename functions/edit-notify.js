@@ -16,10 +16,10 @@
 // (the edit's row in site_text_edits, #nge-text-revert=<id>) and Open to edit
 // (#nge-text-open=<key>). The game handles both (src/text_edit_links.ts).
 //
-// A suggestion waiting for approval (draft.*, tutorial-draft.*) gets its own
-// note, "to approve", with the text now and as suggested (planApproveNote).
-// It is sent here, on the server, because the game's own lookup of the
-// approvers never found them (admins.user_id is empty).
+// A suggestion waiting for approval (draft.*, the Hunt's and 2D Tools'
+// instructions) gets its own note, "to approve", with the text now and as
+// suggested (planApproveNote). It is sent here, on the server, because the
+// game's own lookup of the approvers never found them (admins.user_id is empty).
 //
 // Not sent: an edit that changes nothing, and Ames's own edits.
 
@@ -27,7 +27,8 @@
 const OWNER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
 /** The bell's Admin tab takes titles that start with 📋 (src/util/notif_kinds.ts). */
 const TITLE_MARK = '📋 ';
-const MAX_QUOTE = 1400;
+const MAX_QUOTE = 3000;
+const MAX_BODY = 6000; // the bell scrolls a long note (Ames 2026-11-10: "we need scroll if needed")
 
 const TUTORIALS = {
   1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut',
@@ -63,14 +64,123 @@ function readable(key, body) {
   return String(body);
 }
 
-/** Lines as a markdown quote, every character as written (escaped). */
-function quote(text) {
+/** The code's wording a tutorial edit replaced, kept in its JSON as "from". */
+function codeWordingOf(key, after) {
+  if (!/^tutorial\./.test(key) || after == null) return null;
+  try { const f = JSON.parse(after).from; return f ? [f.title, f.words].filter(Boolean).join('\n\n') || null : null; } catch (e) { return null; }
+}
+
+const escapeMd = (w) => w.replace(/[\\`*_{}[\]()#+\-.!|<>~:@]/g, c => '\\' + c);
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
+
+/**
+ * The words of a text as a player reads them (Ames 2026-11-10: "show me the
+ * actual formatting in the notif not the html"): each word with its bold and
+ * slanted, from ** and * or <strong> and <em>; a picture is 🖼; every other
+ * tag is dropped. Line breaks are kept as '\n'. Only bold and slanted ever
+ * reach the note: nothing an editor typed becomes a link or a tag.
+ */
+function styledWords(text) {
   let t = String(text).trim();
   if (t.length > MAX_QUOTE) t = t.slice(0, MAX_QUOTE) + ' …';
-  const lines = t.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  t = t.replace(/<a\b[^>]*>\s*open in new tab[^<]*<\/a>/gi, '')
+    .replace(/<img\b[^>]*>/gi, ' 🖼 ')
+    .replace(/<br\s*\/?>|<\/(?:p|div|figure|figcaption|li|h\d|ul|ol)>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '\n• ');
+  const out = [];
+  let b = false, i = false;
+  const re = /<(\/?)(strong|b|em|i)\b[^>]*>|<[^>]*>|\*\*|\*|\n|&(#?\w+);|[^\s<*&]+|&|[ \t\r]+/g;
+  // A piece is glued to the one before when no space came between them
+  // ("<b>M</b>." is a bold M and a plain full stop, one word).
+  let m, word = '', gap = true;
+  const push = () => { if (word) { out.push({ w: word, b, i, glue: !gap }); word = ''; gap = false; } };
+  while ((m = re.exec(t))) {
+    const s = m[0], next = t[re.lastIndex] || ' ', prev = t[m.index - 1] || ' ';
+    if (m[2]) { push(); const on = !m[1]; if (/^(strong|b)$/i.test(m[2])) b = on; else i = on; continue; }
+    if (s[0] === '<') { push(); continue; }
+    if (s === '\n') { push(); out.push('\n'); b = i = false; gap = true; continue; }
+    if (/^[ \t\r]+$/.test(s)) { push(); gap = true; continue; }
+    if (s === '**' || s === '*') {
+      const open = s === '**' ? !b : !i;
+      if ((open && /\S/.test(next)) || (!open && /\S/.test(prev))) { push(); if (s === '**') b = open; else i = open; continue; }
+    }
+    if (m[3]) { word += ENTITIES[m[3].toLowerCase()] ?? s; continue; }
+    word += s;
+  }
+  push();
+  while (out[0] === '\n') out.shift();
+  return out;
+}
+const sameWord = (a, c) => a === c || (a !== '\n' && c !== '\n' && a.w === c.w && a.b === c.b && a.i === c.i);
+
+/** Parts joined, a space only where the text had one. */
+const joinParts = (parts) => parts.map((p, k) => (k && !p.glue ? ' ' : '') + p.text).join('');
+
+/** Words with their bold and slanted, as bell markup: { text, glue }. */
+function styled(words) {
+  const groups = [];
+  let k = 0;
+  while (k < words.length) {
+    const { b, i } = words[k];
+    const group = [];
+    while (k < words.length && words[k].b === b && words[k].i === i) { group.push({ text: escapeMd(words[k].w), glue: words[k].glue }); k++; }
+    let g = joinParts(group);
+    if (i) g = `<em>${g}</em>`;
+    if (b) g = `<strong>${g}</strong>`;
+    groups.push({ text: g, glue: group[0].glue });
+  }
+  return { text: joinParts(groups), glue: groups[0].glue };
+}
+
+/** Tokens as quote lines; a run of changed words is wrapped in `tag` (mark: added, del: removed). */
+function render(toks, kept, tag, onlyChanged) {
+  const lines = [];
+  let parts = [], run = [], same = [], changed = false;
+  const flushSame = () => { if (same.length) { parts.push(styled(same)); same = []; } };
+  const flushRun = () => { if (run.length) { const r = styled(run); parts.push({ text: `<${tag}>${r.text}</${tag}>`, glue: r.glue }); run = []; } };
+  const endLine = () => { flushSame(); flushRun(); if (parts.length) lines.push({ text: joinParts(parts), changed }); parts = []; changed = false; };
+  toks.forEach((t, k) => {
+    if (t === '\n') { endLine(); return; }
+    if (kept[k]) { flushRun(); same.push(t); } else { flushSame(); run.push(t); changed = true; }
+  });
+  endLine();
   if (!lines.length) return '> (empty)';
-  // Colons and @ too: markdown makes a bare web address or email a link.
-  return lines.map(l => '> ' + l.replace(/[\\`*_{}[\]()#+\-.!|<>~:@]/g, c => '\\' + c)).join('\n');
+  let shown = lines;
+  if (onlyChanged) {
+    shown = [];
+    for (const l of lines) {
+      if (l.changed) shown.push(l);
+      else if (!shown.length || shown[shown.length - 1].text !== '…') shown.push({ text: '…' });
+    }
+  }
+  return shown.map(l => '> ' + l.text).join('\n');
+}
+
+/** A text as a quote, formatted as players see it. */
+function quote(text) {
+  const x = styledWords(text);
+  return render(x, x.map(() => true), 'mark', false);
+}
+
+/**
+ * Before and after as quotes, the changed words marked: struck through in
+ * Before (removed), highlighted in After (added). Word by word, longest
+ * common run. `onlyChanged` keeps just the lines with a change, for a long text.
+ */
+function diffQuotes(beforeText, afterText, onlyChanged = false) {
+  const x = styledWords(beforeText), y = styledWords(afterText);
+  const n = x.length, m = y.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+    L[i][j] = sameWord(x[i], y[j]) ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  }
+  const keptX = new Array(n).fill(false), keptY = new Array(m).fill(false);
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (sameWord(x[i], y[j])) { keptX[i++] = true; keptY[j++] = true; }
+    else if (L[i + 1][j] >= L[i][j + 1]) i++;
+    else j++;
+  }
+  return { before: render(x, keptX, 'del', onlyChanged), after: render(y, keptY, 'mark', onlyChanged) };
 }
 
 /** Our own uploaded pictures only, as https links. */
@@ -104,14 +214,20 @@ function planEditNote({ key, before, after, editor, editId }) {
     const body = `${who} changed the picture in **${where}**.\n\n**Before:** ${pictureWords(before)}\n\n**After:** ${pictureWords(after)}`;
     return { title, body: fit(body, links), image };
   }
-  const b = readable(key, before), a = readable(key, after);
-  const beforeText = b == null ? '> (the original wording from the code)' : quote(b);
-  const afterText = a == null ? '> (put back to the original wording from the code)' : quote(a);
+  // A tutorial box that showed the code's wording: the edit keeps that wording as "from".
+  const b = readable(key, before) ?? codeWordingOf(key, after), a = readable(key, after);
+  let beforeText = b == null ? '> (the original wording from the code)' : quote(b);
+  let afterText = a == null ? '> (put back to the original wording from the code)' : quote(a);
+  // Both known: the words that changed stand out (Ames 2026-11-10: "highlight the difference").
+  if (b != null && a != null) {
+    const d = diffQuotes(b, a);
+    beforeText = d.before; afterText = d.after;
+    if (`${beforeText}\n${afterText}`.length > MAX_BODY - 600) { const s = diffQuotes(b, a, true); beforeText = s.before; afterText = s.after; }
+  }
   const body = `${who} edited **${where}**.\n\n**Before:**\n${beforeText}\n\n**After:**\n${afterText}`;
   return { title, body: fit(body, links), image: null };
 }
 
-const MAX_BODY = 1500;
 /** The note's two links: always kept whole, the quotes shortened instead. */
 function editLinks(key, editId, revertWords) {
   const out = [];
@@ -148,11 +264,13 @@ function planApproveNote({ key, live, suggested, editor }) {
   const who = String((editor && editor.name) || 'An admin').slice(0, 80);
   const where = windowName(liveKey);
   const title = `${TITLE_MARK}Edit to approve: ${where}`.slice(0, 120);
-  const n = readable(liveKey, live), s = readable(liveKey, suggested);
-  const nowText = n == null ? '> (the original wording from the code)' : quote(n);
+  const n = readable(liveKey, live) ?? codeWordingOf(liveKey, suggested), s = readable(liveKey, suggested);
+  let nowText = n == null ? '> (the original wording from the code)' : quote(n);
+  let sugText = quote(s);
+  if (n != null) { const d = diffQuotes(n, s); nowText = d.before; sugText = d.after; }
   const link = liveKey.startsWith('tutorial.') ? '[Open Tutorial edits](#nge-tutorial-edits) to approve or turn it down.'
     : `[Open it in the game](#nge-text-open=${liveKey}) to approve or turn it down.`;
-  const body = `${who} suggested a change to **${where}**. Players see nothing until you approve it.\n\n**Now:**\n${nowText}\n\n**Suggested:**\n${quote(s)}`;
+  const body = `${who} suggested a change to **${where}**. Players see nothing until you approve it.\n\n**Now:**\n${nowText}\n\n**Suggested:**\n${sugText}`;
   return { title, body: fit(body, link), image: null };
 }
 

@@ -11,9 +11,11 @@
  * the edit was made. A box shows an edit only while the code still has that
  * wording, so a box rewritten or moved in code never shows a stale edit.
  *
- * The approvers' own edits go straight to players (Ames: "my own edits skip
- * review"); anyone else's wait in Admin Hub > Tutorial edits, and the
- * approvers get a notification. Only the title and words change: where a box
+ * Every admin's edit goes straight to players (Ames 2026-11-10: "I like their
+ * edits being live instantly but I still am always notified of changes"):
+ * the server sends Ames a before and after note of every other admin's edit
+ * (functions/edit-notify.js). Suggestions saved before that change still wait
+ * in Admin Hub > Tutorial edits. Only the title and words change: where a box
  * points, its view and when it shows stay in code.
  */
 import DOMPurify from 'dompurify';
@@ -86,24 +88,16 @@ export function wordsToHtml(words: string, kind: 'text' | 'html'): string {
 export { loadSiteTexts };
 
 /**
- * Save an edit of a box. An approver's goes to players at once; anyone else's
- * is a suggestion, and the approvers are told. Returns which it was.
+ * Save an edit of a box. It goes to players at once, whoever made it.
  */
-export async function saveTutorialEdit(tutorial: number, box: number, step: Step, next: Wording, myEmail: string | null | undefined,
-  notify: (approverUserIds: string[], title: string, body: string) => Promise<void>): Promise<'live' | 'draft'> {
+export async function saveTutorialEdit(tutorial: number, box: number, step: Step, next: Wording, myEmail: string | null | undefined): Promise<'live'> {
   const code = codeWording(step);
   const body = JSON.stringify({ title: next.title, words: next.words, from: { title: code.title, words: code.words }, kind: code.kind });
   if (body.length > 20000) throw new Error('That is too long for one box.');
-  if (isApprover(myEmail)) {
-    await saveSiteText(liveKey(tutorial, box), body);
-    if (siteTexts[draftKey(tutorial, box)]) await resetSiteText(draftKey(tutorial, box));
-    return 'live';
-  }
-  await saveSiteText(draftKey(tutorial, box), body);
-  // The server sends the approvers their "to approve" note (functions/edit-notify.js):
-  // this lookup never found them (admins.user_id is empty). notify is kept for callers.
-  void notify;
-  return 'draft';
+  // Live for every admin; Ames's note comes from the server (functions/edit-notify.js).
+  await saveSiteText(liveKey(tutorial, box), body);
+  if (isApprover(myEmail) && siteTexts[draftKey(tutorial, box)]) await resetSiteText(draftKey(tutorial, box));
+  return 'live';
 }
 
 /** Approve a suggestion: it becomes what players see. */

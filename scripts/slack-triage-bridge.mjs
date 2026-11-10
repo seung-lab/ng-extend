@@ -310,7 +310,9 @@ async function reporterUpdates() {
     // Admin Hub sends that have not been mentioned in the thread yet.
     for (const e of log) {
       if (e.role === 'reporter_update' && e.via === 'admin' && !e.echoed) {
-        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:\n${slackQuote(e.text)}`).catch(() => {});
+        // Ames's "Also send to Celia and Marissa" box tags them here (2026-11-10).
+        const copyTags = e.copied_to_admins ? ' <@U033NHWDE> <@U033TSX9A>' : '';
+        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:${copyTags}\n${slackQuote(e.text)}`).catch(() => {});
         e.echoed = true;
         changed = true;
       }
@@ -544,10 +546,39 @@ async function fileNewReports() {
     const made = await res.json().catch(() => []);
     if (!Array.isArray(made) || !made.length) continue;
     filed++;
+    if (threadTs) await labelSlackReport(made[0], threadTs).catch(e => console.warn(`[bridge] report ${issue.id}: Slack post not numbered: ${e.message}`));
     await notifyAdminsOfReport(made[0]).catch(e => console.warn(`[bridge] new report ${issue.id}: admins not notified: ${e.message}`));
   }
   if (filed) console.log(`[bridge] filed ${filed} new report(s) on the board, no suggestion asked`);
   return filed;
+}
+
+/** The board's number for a card: its place among all reports, oldest first
+ *  (the same count AdminHub.vue loadTriageNumbers makes). */
+async function triageNumberOf(row) {
+  const res = await sb(`feedback_triage?created_at=lte.${encodeURIComponent(row.created_at)}&select=id`, {
+    headers: { Prefer: 'count=exact', Range: '0-0' } });
+  const total = Number(String(res.headers.get('content-range') || '').split('/')[1]);
+  return Number.isFinite(total) && total > 0 ? total : null;
+}
+
+/** Puts the report's triage number and a link to its card on the Slack post
+ *  (Celia #464). The post goes out before the card exists, so it is edited
+ *  once the card is made; if Slack will not let it be edited, the same line
+ *  is said in its thread instead. */
+async function labelSlackReport(row, ts) {
+  const n = await triageNumberOf(row);
+  const link = `<${LIVE_URL}?triage=board&report=${row.id}|${n ? `#${n}` : 'This report'} on the triage board>`;
+  const hist = await slackGet('conversations.history', { channel: CHANNEL, latest: ts, oldest: ts, inclusive: 'true', limit: 1 });
+  const post = (hist.messages ?? []).find(m => m.ts === ts);
+  if (post && /New site issue submitted/i.test(post.text || '') && !/triage=board&report=/.test(post.text || '')) {
+    const lines = String(post.text).split('\n');
+    if (n) lines[0] = lines[0].replace(/New site issue submitted\*/, `New site issue submitted* · #${n}`);
+    lines.splice(1, 0, `*Triage:* ${link}`);
+    try { await slack('chat.update', { channel: CHANNEL, ts, text: lines.join('\n') }); return; }
+    catch (e) { console.warn(`[bridge] could not edit report post ${ts}: ${e.message}`); }
+  }
+  await slack('chat.postMessage', { channel: CHANNEL, thread_ts: ts, text: `${link}`, unfurl_links: false });
 }
 
 /** In-game bell for every admin when a new report lands on the board (the

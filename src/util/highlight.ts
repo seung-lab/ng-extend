@@ -13,7 +13,7 @@ import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph,
 import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
-import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
+import { setNgeMeshTint, getNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 import { isTouchRef } from './mobile';
 import { StatusMessage } from 'neuroglancer/status';
@@ -220,6 +220,11 @@ export function pickUnderMouse(): Pick | { error: string } {
   if (!layer.graphConnection.value) return { error: 'This dataset has no proofreading graph to trace a path through.' };
   let selection: SegmentSelection | undefined;
   try { selection = ngeGrapheneSelectionUnderMouse(layer, viewer.mouseState); } catch { /* not ready */ }
+  // The click must land on the cell itself, not on something drawn in front
+  // of or around it, such as the dataset's outline box (Nseraf #456: a click
+  // on the box line put highlight points out in empty space).
+  const picked = viewer.mouseState.pickedRenderLayer;
+  if (selection && (!picked || !layer.renderLayers.includes(picked))) selection = undefined;
   if (!selection) return { error: 'Click on a cell that is showing in your view.' };
   const global = Array.from(viewer.mouseState.position as Float32Array).slice(0, 3);
   return { selection, root: selection.rootId.toString(), global };
@@ -1221,12 +1226,62 @@ function buildTint(): NgeMeshTint | null {
   return { data, dims: [nx, ny, nz], gridFromGlobal: m, glow, dim };
 }
 
+/** A cheap fingerprint of everything the tint is drawn from. Every annotation
+ *  layer is watched, so a point placed in a plain annotation layer, or a
+ *  folder recolored, used to rebuild the whole tint (up to 24 MB, painted and
+ *  sent to the graphics card): slow in Firefox for players with many marks
+ *  (Nseraf, Ames 2026-11-09). Unchanged marks now skip it. */
+const sourceTags = new WeakMap<object, number>();
+let nextSourceTag = 1;
+function sourceTag(src: object): number {
+  let t = sourceTags.get(src);
+  if (t === undefined) sourceTags.set(src, t = nextSourceTag++);
+  return t;
+}
+function tintSignature(): string {
+  const viewer = viewerOf();
+  if (!viewer) return '';
+  let h = 2166136261 | 0, n = 0;
+  const num = (v: number) => { h = Math.imul(h ^ (Math.round(v * 64) | 0), 16777619); n++; };
+  const str = (s: string) => { for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); n++; };
+  try { for (const s of viewer.coordinateSpace.value.scales as Float64Array) num(s / 1e-9); } catch { /* none */ }
+  str(String(latestMark)); num(tintRadiusNm()); str(String(dimChecked()));
+  str(String(highlightStyles().find(s => s.key === 'checked')?.color));
+  for (const { managed, src, style } of highlightLayers()) {
+    if (managed.visible === false) continue;
+    str(`${style.key}|${style.color}|${style.lab ? 1 : 0}`);
+    // A mark added, moved or removed counts up the layer's change counter:
+    // that says as much as reading every mark (Nseraf has 14,000).
+    const count = (src as any)?.changed?.count;
+    if (typeof count === 'number') { str(`${sourceTag(src)}:${count}`); continue; }
+    for (const ann of src) {
+      str(String(ann.id)); num(ann.type);
+      if (ann.point) for (let i = 0; i < 3; i++) num(ann.point[i]);
+      if (ann.pointA) for (let i = 0; i < 3; i++) { num(ann.pointA[i]); num(ann.pointB[i]); }
+      if (ann.points) for (const q of ann.points as ArrayLike<number>[]) for (let i = 0; i < 3; i++) num(q[i]);
+    }
+  }
+  for (const l of extraTintLines) { for (const v of [...l.a, ...l.b, ...l.rgb]) num(v); }
+  for (const b of extraTintBoxes) { for (const v of [...b.box, ...b.rgb]) num(v); }
+  return `${n}:${h}`;
+}
+let tintBuiltFrom = '';
+let tintBuilt: NgeMeshTint | null = null;
 let tintTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleTint() {
   if (tintTimer) clearTimeout(tintTimer);
   tintTimer = setTimeout(() => {
     tintTimer = null;
-    try { setNgeMeshTint(buildTint()); } catch (e) { console.warn('[highlight] tint failed:', e); setNgeMeshTint(null); }
+    let sig = '';
+    try { sig = tintSignature(); } catch { sig = ''; }
+    // Same marks, and the tint shown is still the one built from them
+    // (the intro may have shown its own): nothing to do.
+    if (sig && sig === tintBuiltFrom && getNgeMeshTint() === tintBuilt) return;
+    try {
+      tintBuilt = buildTint();
+      tintBuiltFrom = sig;
+      setNgeMeshTint(tintBuilt);
+    } catch (e) { console.warn('[highlight] tint failed:', e); tintBuilt = null; tintBuiltFrom = ''; setNgeMeshTint(null); }
     try { viewerOf()?.display?.scheduleRedraw(); } catch { /* no viewer */ }
   }, 120);
 }

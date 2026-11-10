@@ -44,8 +44,14 @@ const PEOPLE = [
   // Editing, and waiting on a dataset request: the dataset column.
   { ...base, email: 'lou@example.org', user_id: UID(14), name: 'Lou Baker', pilot_enabled: true, let_in_at: ago(20), joined_at: ago(19), tutorial_at: ago(19), tutorials: 2, first_edit_at: ago(18), last_edit_at: ago(1), edits: 300, last_dataset: 'pinky_nf_v2' },
 ];
+// An admin, never asked and not on Pilot testers: the Admin step.
+PEOPLE.push({ ...base, email: 'boss@example.org', user_id: UID(15), name: 'Ames Admin', pilot_enabled: false, joined_at: ago(200), tutorial_at: ago(199), tutorials: 6, first_edit_at: ago(198), last_edit_at: ago(2), edits: 782, is_admin: true });
 for (let i = 0; i < 6; i++) PEOPLE.push({ ...base, email: `list${i}@example.org`, pilot_enabled: true, let_in_at: ago(40), from_list: true });
 const EDITS = Array.from({ length: 10 }, (_, i) => ({ at: ago(0.1 + i * 0.01), dataset: 'stroeh_mouse_retina', operation: i % 3 ? 'split' : 'merge', success: i !== 1 }));
+const THEIRS = [{ user_id: UID(13), dataset: 'stroeh_mouse_retina', edits: 1500, cells: 40, chats: 150, last_edit_at: ago(0.1) },
+  { user_id: UID(13), dataset: 'pni_mec', edits: 300, cells: 1, chats: 50, last_edit_at: ago(2) },
+  { user_id: UID(13), dataset: 'pinky_nf_v2', edits: 80, cells: 0, chats: 2, last_edit_at: ago(5) },
+  { user_id: UID(13), dataset: 'pinky_training6', edits: 0, cells: 0, chats: 10, last_edit_at: null }];
 const DS = [{ id: UID(21), userId: UID(14), name: 'Lou Baker', dataset: 'pni_mec', label: 'Medial Entorhinal Cortex', cave: 'pni_mec', email: 'lou@example.org', note: 'Ready for MEC', at: ago(0.5),
   access: null, history: null, caveGroup: 'MEC_Edit', mark: null, markedAt: null, markedBy: '' },
   { id: UID(22), userId: UID(13), name: 'Nik Serafin', dataset: 'pni_mec', label: 'Medial Entorhinal Cortex', cave: 'pni_mec', email: 'nik@example.org', note: '', at: ago(10),
@@ -86,6 +92,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
+      if (a === 'usersSheet') return r.fulfill(ok({ people: 14, url: 'https://docs.google.com/spreadsheets/d/x/edit' }));
       return r.fulfill(ok({}));
     }
     calls.push({ table: input.table, method: input.method, body: input.body, query: input.query });
@@ -94,7 +101,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     const q = new URLSearchParams(input.query || '');
     const limit = Number(q.get('limit') ?? 500), offset = Number(q.get('offset') ?? 0);
     if (!Number.isInteger(limit) || limit < 0 || limit > 500) return r.fulfill(json({ status: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Invalid limit' }) }));
-    const all = input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
+    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
     const rows = all.slice(offset, offset + limit);
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }));
   });
@@ -116,7 +123,26 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     let b = await board();
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
-    check('six columns in order', b.map(c => c.title).join('|') === 'Asked|Let in|Signed in|Tutorial done|Asked for a dataset|Editing', b.map(c => c.title));
+    check('five columns in order, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Let in|Signed in|Tutorial done|Asked for a dataset', b.map(c => c.title));
+    // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
+    const lb = () => page.$$eval('.ah-lb-row', els => els.map(e => ({ rank: e.querySelector('.ah-lb-rank').textContent.trim(), who: e.querySelector('.ah-lb-who b').textContent.trim(), v: e.querySelector('.ah-lb-v').textContent.trim() })));
+    await page.screenshot({ path: path.join(OUT, 'access-hub-lb.png'), fullPage: true });
+    let L = await lb();
+    check('leaderboard: last 30 days by edits, top first, admin left out', L.map(r => r.who + ' ' + r.v).join('|') === 'Nik Serafin 1,880', L);
+    await page.click('.ah-seg button:has-text("All time")');
+    L = await lb();
+    check('leaderboard: all time', L.map(r => r.who + ' ' + r.v).join('|') === 'Nik Serafin 4,210|Lou Baker 300', L);
+    await page.click('.ah-seg button:has-text("Help given")');
+    L = await lb();
+    check('leaderboard: by help given', L.map(r => r.who + ' ' + r.v).join('|') === 'Nik Serafin 27', L);
+    await page.click('.ah-seg button:has-text("Edits")');
+    await page.click('.ah-lb-row:has-text("Lou Baker")');
+    await page.waitForSelector('.ah-panel h2', { timeout: 3000 }).catch(() => {});
+    check('a leaderboard row opens their panel', (await page.textContent('.ah-panel h2').catch(() => '')) === 'Lou Baker');
+    await page.click('.ah-close');
+    await page.click('.ah-lb-col');
+    b = await board();
+    check('the Editing column comes back on request', b.map(c => c.title).pop() === 'Editing', b.map(c => c.title));
     check('Asked: the two waiting, removed left out', col(b, 'Asked').n === '2' && col(b, 'Asked').cards.map(c => c.name).join(',') === 'Ken Mierow,Rae Lin', col(b, 'Asked'));
     check('cards show the full name and the email', col(b, 'Asked').cards[0].email === 'ken@example.org', col(b, 'Asked').cards[0]);
     check('a long wait is flagged, a short one is not', col(b, 'Asked').cards[0].late && !col(b, 'Asked').cards[1].late);
@@ -145,7 +171,11 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     check('their stats and recent activity show', /4,210 edits · 95 cells done · 3 tutorials finished/.test(stats) && /1,880 edits · 41 cells done/.test(stats) && /asked 4 times, 3 answered · helped others 27 times \(1 asked, 6 helped in 30 days\)/.test(stats) && /900 messages, 212 in 30 days/.test(stats), stats);
     const edits = await page.waitForSelector('.ah-edits li', { timeout: 5000 }).then(() => page.$$eval('.ah-edits li', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()))).catch(() => []);
     check('their 10 latest edits, read for that player only', edits.length === 10 && /^Merge, EyeWire II/.test(edits[0]) && /did not go through/.test(edits[1]), edits.slice(0, 3));
-    const editCall = calls.find(c => c.table === 'access_hub_recent_edits');
+    const theirs = await page.$$eval('.ah-their-row', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('their 30 days by dataset, busiest first, training volumes added in', theirs.length === 3 && /^EyeWire II ?1,500 edits ?40 cells done · 150 chat messages/.test(theirs[0]) && /^MEC ?300 edits/.test(theirs[1]) && /^Sandbox ?80 edits ?0 cells done · 12 chat messages/.test(theirs[2]), theirs);
+    const dsCall = [...calls].reverse().find(c => c.table === 'access_hub_player_datasets');
+    check('the dataset snapshot asks for that one player', dsCall && /user_id=eq\.00000000-0000-4000-8000-000000000013/.test(dsCall.query), dsCall && dsCall.query);
+    const editCall = [...calls].reverse().find(c => c.table === 'access_hub_recent_edits');
     check('the latest edits ask for that one player', editCall && /user_id=eq\.00000000-0000-4000-8000-000000000013/.test(editCall.query) && /limit=10/.test(editCall.query), editCall && editCall.query);
     await page.click('.ah-close');
     await page.fill('.ah-search', '');
@@ -171,9 +201,15 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     b = await board();
     check('and they move to Let in', col(b, 'Asked').cards.every(c => c.name !== 'Ken Mierow') && col(b, 'Let in').cards.some(c => c.name === 'Ken Mierow'));
 
-    await page.click('.ah-fold--wide');
+    // Admins are their own step (Ames 2026-11-10), off the board columns.
+    b = await board();
+    check('an admin is in no step column', b.every(c => c.cards.every(x => x.name !== 'Ames Admin')), b.map(c => c.title));
+    await page.click('.ah-fold--wide:has-text("admin")');
+    const admins = await page.$$eval('.ah-admins .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('admins fold away below as Admin', admins.length === 1 && /Ames Admin/.test(admins[0]) && /Admin, 782 edits/.test(admins[0]), admins);
+    await page.click('.ah-fold--wide:has-text("removed")');
     const removed = await page.$$eval('.ah-removed .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
-    check('removed requests fold away below', removed.length === 1 && /Gone Person/.test(removed[0]), removed);
+    check('removed requests fold away below, without the admin', removed.length === 1 && /Gone Person/.test(removed[0]), removed);
 
     const ins = await page.$$eval('.ah-box', els => els.map(e => [...e.querySelectorAll('.ah-bar-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim())));
     check('community: one row per dataset, most edits first', ins[0].length === 3 && /^EyeWire II/.test(ins[0][0]) && /41,347 edits/.test(ins[0][0]) && /Sandbox/.test(ins[0][2]) && /1,594 chat/.test(ins[0][2]), ins[0]);
@@ -185,6 +221,12 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     const barsOk = bs => bs.every(rows => rows.length && rows.every(r => r.track === rows[0].track) && rows[0].track >= 80 && rows[0].fill >= rows[0].track - 1);
     let bw = await bars();
     check('wide: bar tracks are equal and the top bar is full', barsOk(bw), bw);
+
+    await page.click('.ah-head button:has-text("Update the sheet now")');
+    await page.waitForSelector('.ah-sheet-said', { timeout: 5000 }).catch(() => {});
+    const said = await page.textContent('.ah-sheet-said').catch(() => '');
+    check('Update the sheet now asks the server and says how many', /Sheet updated: 14 people/.test(said) && calls.some(c => c.action === 'usersSheet'), said);
+    check('the sheet is linked', await page.$eval('.ah-head a[href*="10VW3cSrtK8y0pLlivJnQIuMAp65_B-eDJAVb3DbpKBs"]', e => e.textContent.trim()).catch(() => '') === 'Pyr Users sheet');
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);

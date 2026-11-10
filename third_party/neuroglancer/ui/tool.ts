@@ -128,7 +128,10 @@ export function restoreTool<Context extends Object>(context: Context, obj: unkno
   while (true) {
     prototype = Object.getPrototypeOf(prototype);
     if (prototype === null) {
-      throw new Error(`Invalid tool type: ${JSON.stringify(obj)}.`);
+      // nge: a tool Pyr no longer has (the lab's cube tool, Nseraf #457) is
+      // left out of an old view instead of stopping it from loading.
+      console.warn(`[tools] no tool ${JSON.stringify(obj)}; left out`);
+      return undefined;
     }
     getter = toolsForPrototype.get(prototype)?.get(type);
     if (getter !== undefined) break;
