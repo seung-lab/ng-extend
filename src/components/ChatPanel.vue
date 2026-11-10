@@ -2188,6 +2188,9 @@ function toggleCollapse() {
 .nge-chat-messages {
   height: 100%;
   overflow-y: auto;
+  /* Never a sideways bar (Ames 2026-11-10): a wide line or an open reaction
+     picker wraps or is clipped instead. */
+  overflow-x: hidden;
   display: flex;
   flex-direction: column-reverse;
   /* No space on the left: a message's own indent is enough, and the bar on
@@ -2363,6 +2366,7 @@ function toggleCollapse() {
 .nge-chat-msg-text {
   color: #b0b8c8;
   white-space: pre-wrap;   /* a message keeps the line breaks it was typed with */
+  overflow-wrap: anywhere; /* a long word or ID wraps instead of widening the chat */
 }
 
 .nge-chat-link {
