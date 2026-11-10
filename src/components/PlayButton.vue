@@ -8,14 +8,15 @@
  * default but I like choice"). Once chosen, Play goes straight in, and the
  * Play bar in the Cell Library can open the card again.
  *
- * Look (Ames 2026-11-10): the button is teal green and sits below the tabs;
- * the card is the Starship intro's hologram box (src/util/intro_tour.ts,
- * after Ames's scifi-ui): cut corners, a light that runs the border, HUD
- * brackets, a scan line, and the hologram plate button. Its words are site
- * texts: admins can Edit them, and Ames gets a note when someone else does.
+ * Look (Ames 2026-11-10): the button is teal green and sits below the tabs.
+ * The card is the Starship intro's transmission box itself, its own styles
+ * and its circuit frame (src/util/intro_tour.ts), with the intro's command
+ * key button, tall enough that nothing scrolls. Its words are site texts:
+ * admins can Edit them, and Ames gets a note when someone else does.
  */
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { play, pressPlay, startPlay, savedKind, canQuest, mappingWhere, type PlayKind } from '../util/play';
+import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
 import { useProofreadingBackendStore } from '../store';
 import EditableText from './EditableText.vue';
 
@@ -40,10 +41,31 @@ const QUEST_LINES = [
   '<b>Good for</b> players who like hunting for small details.',
 ];
 
-watch(() => play.choosing, open => {
+// The circuit frame is drawn to the card's real size, and again whenever
+// that changes (an Edit box opening, the window narrowing).
+const cardEl = ref<HTMLElement | null>(null);
+const frameEl = ref<HTMLElement | null>(null);
+let frameObs: ResizeObserver | null = null;
+let fw = 0, fh = 0;
+function drawFrame() {
+  const c = cardEl.value, host = frameEl.value;
+  if (!c || !host) return;
+  const w = c.offsetWidth, h = c.offsetHeight;
+  if (!w || !h || (w === fw && h === fh)) return;
+  fw = w; fh = h;
+  host.innerHTML = introFrameSvg(w, h, 18);
+}
+
+watch(() => play.choosing, async open => {
+  frameObs?.disconnect(); frameObs = null;
   if (!open) return;
   const k = savedKind();
   picked.value = k === 'quests' && questsOk.value ? 'quests' : 'cells';
+  ensureIntroStyle();
+  await nextTick();
+  fw = 0; fh = 0;
+  drawFrame();
+  try { frameObs = new ResizeObserver(drawFrame); if (cardEl.value) frameObs.observe(cardEl.value); } catch { /* drawn once */ }
 });
 
 function pick(k: PlayKind) { if (k === 'quests' && !questsOk.value) return; picked.value = k; }
@@ -59,7 +81,7 @@ function onButton() {
 }
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && play.choosing) { e.stopPropagation(); play.choosing = false; } }
 onMounted(() => document.addEventListener('keydown', onKey, true));
-onUnmounted(() => document.removeEventListener('keydown', onKey, true));
+onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameObs?.disconnect(); });
 </script>
 
 <template>
@@ -71,18 +93,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKey, true));
     </button>
 
     <div v-if="play.choosing" class="nge-play-screen" @click.self="play.choosing = false">
-      <div class="nge-play-card" role="dialog" aria-label="Choose what to play">
-        <div class="nge-play-plate" aria-hidden="true"></div>
-        <div class="nge-play-ring" aria-hidden="true"></div>
-        <div class="nge-play-scan" aria-hidden="true"></div>
-        <i class="nge-play-corner tr" aria-hidden="true"></i><i class="nge-play-corner bl" aria-hidden="true"></i>
-        <i class="nge-play-corner tl" aria-hidden="true"></i><i class="nge-play-corner br" aria-hidden="true"></i>
-
-        <button class="nge-play-close" aria-label="Close" @click="play.choosing = false">
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </button>
-        <div class="nge-play-kicker"><span class="nge-play-dot"></span>Play</div>
-        <div class="nge-play-title">What would you like to do?</div>
+      <section ref="cardEl" class="ng-extend nge-play-card nge-intro--in" role="dialog" aria-label="Choose what to play">
+        <span class="nge-intro-plate-bg"></span><span ref="frameEl" class="nge-frame-host"></span><span class="nge-intro-ring"></span><span class="nge-intro-scan"></span>
+        <div class="nge-intro-head"><span class="nge-intro-dot"></span>Transmission received · Play
+          <button class="nge-intro-x" type="button" aria-label="Close" @click="play.choosing = false">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="nge-intro-title">What would you like to do?</div>
         <EditableText text-key="play.sub" :original="SUB" text-class="nge-play-sub" notify label="Play card: the line under the title" />
 
         <div class="nge-play-options" role="radiogroup" aria-label="Kind of task">
@@ -106,17 +124,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey, true));
           </div>
         </div>
 
-        <div class="nge-play-actions">
+        <div class="nge-intro-row nge-play-actions">
           <span class="nge-play-note">You can change this any time from the Play bar.</span>
-          <button class="nge-play-go" :disabled="busy" @click="go">
-            <span class="nge-play-go-plate">
-              <i class="nge-play-tick a"></i><i class="nge-play-tick b"></i>
-              {{ busy ? 'Starting…' : 'Start Playing' }}
-              <span class="nge-play-chev"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            </span>
-          </button>
+          <button class="nge-go nge-go--alt" type="button" @click="play.choosing = false"><span class="nge-go-label">Not now</span></button>
+          <button class="nge-go" type="button" :disabled="busy" @click="go"><span class="nge-go-label">{{ busy ? 'Starting…' : 'Start playing' }}</span></button>
         </div>
-      </div>
+      </section>
     </div>
   </Teleport>
 </template>
@@ -151,8 +164,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey, true));
 .nge-play-btn--on .nge-play-icon { color: #7dffb0; animation: nge-play-pulse 1.6s ease-in-out infinite; }
 @keyframes nge-play-pulse { 50% { opacity: 0.45; } }
 
-/* The card: the Starship intro's hologram box (src/util/intro_tour.ts). */
-@property --nge-play-ring { syntax: '<angle>'; inherits: false; initial-value: 45deg; }
+/* The card: the transmission box (intro_tour.ts styles), placed in the
+   middle and tall enough for its words, so it never scrolls (Ames). */
 .nge-play-screen {
   position: fixed; inset: 0; z-index: 1000;
   background: rgba(2, 6, 14, 0.55);
@@ -160,72 +173,27 @@ onUnmounted(() => document.removeEventListener('keydown', onKey, true));
   padding: 16px;
 }
 .nge-play-card {
-  position: relative; isolation: isolate;
-  width: min(720px, 100%);
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
-  box-sizing: border-box;
-  padding: 24px 26px 22px;
-  color: #e6f3ff;
-  font: 16px/1.5 Inter, system-ui, sans-serif;
-  animation: nge-play-in 900ms cubic-bezier(.16,1,.3,1) both;
+  position: relative; isolation: isolate; box-sizing: border-box;
+  width: min(760px, 100%);
+  padding: 18px 24px 20px;
+  color: #e6f3ff; font: 16.5px/1.5 'Inter', 'Roboto', sans-serif;
 }
-@keyframes nge-play-in {
-  0% { opacity: 0; transform: translateY(18px) scaleY(0.04); filter: blur(8px) brightness(2.2); }
-  35% { opacity: 1; transform: translateY(6px) scaleY(1.02); filter: blur(3px) brightness(1.6) drop-shadow(0 0 30px rgba(80, 180, 255, 0.6)); }
-  100% { opacity: 1; transform: none; filter: drop-shadow(0 0 18px rgba(80, 180, 255, 0.28)); }
-}
-.nge-play-plate { position: absolute; inset: 0; z-index: -2; pointer-events: none;
-  clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
-  background: linear-gradient(160deg, rgba(14, 34, 66, 0.96), rgba(6, 12, 28, 0.97) 60%, rgba(22, 14, 48, 0.96));
-  box-shadow: inset 0 0 40px rgba(80, 180, 255, 0.10); }
-.nge-play-plate::before { content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit;
-  background: linear-gradient(135deg, rgba(126, 224, 255, 0.7), rgba(74, 150, 224, 0.2) 40%, rgba(138, 96, 230, 0.55));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
-.nge-play-plate::after { content: ''; position: absolute; inset: 0; opacity: 0.35;
-  background: repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.05) 0 1px, transparent 1px 3px); }
-.nge-play-ring { position: absolute; inset: 0; z-index: -1; pointer-events: none; padding: 1.5px; opacity: 0;
-  clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
-  background: conic-gradient(from var(--nge-play-ring), #c9f6ff 0deg, rgba(126, 224, 255, 0.5) 16deg, transparent 34deg, transparent 180deg,
-    #c9f6ff 180deg, rgba(126, 224, 255, 0.5) 196deg, transparent 214deg, transparent 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
-  animation: nge-play-ring 1500ms linear 250ms forwards; }
-@keyframes nge-play-ring { 0% { --nge-play-ring: 45deg; opacity: 1; } 60% { opacity: 1; } 100% { --nge-play-ring: 405deg; opacity: 0; } }
-.nge-play-scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none; opacity: 0;
-  background: linear-gradient(90deg, transparent, #c9f6ff 20%, #c9f6ff 80%, transparent); box-shadow: 0 0 12px #7ee0ff;
-  animation: nge-play-scan 800ms ease-in-out 350ms both; }
-@keyframes nge-play-scan { 0% { top: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
-.nge-play-corner { position: absolute; width: 14px; height: 14px; border: 2px solid #7ee0ff; pointer-events: none;
-  filter: drop-shadow(0 0 4px #7ee0ff); animation: nge-play-corner 600ms cubic-bezier(.2,1.4,.4,1) 450ms both; }
-.nge-play-corner.tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; --dx: 14px; --dy: -14px; }
-.nge-play-corner.bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; --dx: -14px; --dy: 14px; }
-.nge-play-corner.tl { top: 6px; left: 6px; width: 8px; height: 8px; border-width: 1px; border-right: 0; border-bottom: 0; --dx: -10px; --dy: -10px; }
-.nge-play-corner.br { bottom: 6px; right: 6px; width: 8px; height: 8px; border-width: 1px; border-left: 0; border-top: 0; --dx: 10px; --dy: 10px; }
-@keyframes nge-play-corner { from { opacity: 0; transform: translate(var(--dx, 0), var(--dy, 0)); } to { opacity: 1; transform: none; } }
-
-.nge-play-close {
-  position: absolute; top: 14px; right: 16px; width: 30px; height: 30px; display: grid; place-items: center; padding: 0;
-  border: 1px solid rgba(126, 210, 255, 0.35); border-radius: 50%; background: rgba(126, 210, 255, 0.06); color: #9fc6ea; cursor: pointer;
-}
-.nge-play-close:hover { color: #fff; border-color: rgba(126, 210, 255, 0.8); background: rgba(126, 210, 255, 0.16); }
-.nge-play-kicker { display: flex; align-items: center; gap: 8px; font: 600 12px 'Orbitron', Inter, sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #7ecaff; }
-.nge-play-dot { width: 8px; height: 8px; border-radius: 50%; background: #3eecbe; box-shadow: 0 0 8px #3eecbe; animation: nge-play-pulse 1.6s ease-in-out infinite; }
-.nge-play-title { margin: 8px 0 2px; font: 700 25px 'Orbitron', Inter, sans-serif; letter-spacing: 0.03em; color: #fff; text-shadow: 0 0 14px rgba(126, 210, 255, 0.55); }
-.nge-play-sub { font-size: 17px; color: #d6e8fb; margin-bottom: 4px; }
+/* only a very short window gets a scroll, and then the page does it */
+@media (max-height: 640px) { .nge-play-screen { align-items: flex-start; overflow-y: auto; } }
+.nge-play-card .nge-intro-x { margin-left: auto; }
+.nge-play-sub { font-size: 17px; color: #d6e8fb; }
 .nge-play-card > .nge-edtext { margin-bottom: 14px; }
 .nge-play-options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 600px) { .nge-play-options { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .nge-play-options { grid-template-columns: 1fr; } }
 .nge-play-opt {
   position: relative; display: flex; flex-direction: column; gap: 4px; text-align: left;
-  padding: 16px; cursor: pointer; outline: none;
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  padding: 14px 16px; cursor: pointer; outline: none;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   background: rgba(126, 224, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(126, 224, 255, 0.22);
   transition: background 0.15s, box-shadow 0.15s;
 }
-.nge-play-opt:hover:not(.nge-play-opt--off) { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28); }
+.nge-play-opt:hover:not(.nge-play-opt--off) { box-shadow: inset 0 0 0 1px rgba(126, 224, 255, 0.5); }
 .nge-play-opt:focus-visible { box-shadow: inset 0 0 0 2px #7ecaff; }
 .nge-play-opt--map.nge-play-opt--on { background: rgba(62, 236, 190, 0.09); box-shadow: inset 0 0 0 1.5px #3eecbe, inset 0 0 24px rgba(62, 236, 190, 0.15); }
 .nge-play-opt--note.nge-play-opt--on { background: rgba(255, 211, 110, 0.09); box-shadow: inset 0 0 0 1.5px #ffd36e, inset 0 0 24px rgba(255, 211, 110, 0.15); }
@@ -233,45 +201,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKey, true));
 .nge-play-opt-kind { font: 600 11.5px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; }
 .nge-play-opt--map .nge-play-opt-kind { color: #3eecbe; }
 .nge-play-opt--note .nge-play-opt-kind { color: #ffd36e; }
-.nge-play-opt-name { font-size: 20px; font-weight: 700; color: #fff; }
+.nge-play-opt-name { font: 700 19px 'Orbitron', Inter, sans-serif; letter-spacing: 0.02em; color: #fff; }
 .nge-play-opt-where { font-size: 14px; color: #8fb4d4; margin-bottom: 6px; }
 .nge-play-opt-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .nge-play-opt-lines li { font-size: 15px; line-height: 1.45; color: #cfe0f2; }
 .nge-play-opt-lines li b { color: #fff; font-weight: 600; margin-right: 4px; }
 .nge-play-opt-lock { margin-top: 6px; font-size: 14px; color: #ffb38a; }
 .nge-play-card .nge-edtext-btn { font-size: 12px; }
-.nge-play-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
-.nge-play-note { font-size: 14px; color: #8fb0cc; }
-
-/* Start Playing: the intro's hologram plate button. */
-.nge-play-go { position: relative; border: 0; padding: 0; background: none; cursor: pointer; margin-left: auto; color: inherit;
-  filter: drop-shadow(0 0 10px rgba(74, 150, 224, 0.45)); transition: filter 0.25s, transform 0.2s; }
-.nge-play-go:hover:not(:disabled) { filter: drop-shadow(0 0 18px rgba(126, 224, 255, 0.75)); transform: translateY(-1px); }
-.nge-play-go:active:not(:disabled) { transform: scale(0.98); }
-.nge-play-go:disabled { opacity: 0.6; cursor: default; }
-.nge-play-go:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; }
-.nge-play-go-plate { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 12px; padding: 13px 24px 13px 26px;
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
-  background: linear-gradient(135deg, rgba(74, 150, 224, 0.55) 0%, rgba(74, 150, 224, 0.62) 45%, rgba(138, 96, 230, 0.55) 100%);
-  color: #eaf7ff; font: 700 14px 'Orbitron', Inter, sans-serif; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap;
-  text-shadow: 0 0 8px rgba(126, 224, 255, 0.8); transition: background 0.3s; }
-.nge-play-go:hover .nge-play-go-plate { background: linear-gradient(135deg, rgba(90, 170, 240, 0.72) 0%, rgba(90, 170, 240, 0.78) 45%, rgba(150, 110, 240, 0.7) 100%); }
-.nge-play-go-plate::before { content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit;
-  background: linear-gradient(135deg, #bff3ff, rgba(126, 224, 255, 0.35) 40%, rgba(180, 150, 255, 0.8));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
-.nge-play-go-plate::after { content: ''; position: absolute; top: 0; bottom: 0; left: -70%; width: 50%; pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(201, 246, 255, 0.55), transparent); transform: skewX(-20deg);
-  animation: nge-play-shine 3.4s ease-in-out infinite; }
-@keyframes nge-play-shine { 0%, 50% { left: -70%; } 100% { left: 140%; } }
-.nge-play-tick { position: absolute; width: 6px; height: 6px; border: 1px solid #c9f6ff; pointer-events: none; }
-.nge-play-tick.a { top: 3px; right: 3px; border-left: 0; border-bottom: 0; }
-.nge-play-tick.b { bottom: 3px; left: 3px; border-right: 0; border-top: 0; }
-.nge-play-chev { display: inline-flex; color: #c9f6ff; filter: drop-shadow(0 0 4px #7ee0ff); }
-.nge-play-chev svg { animation: nge-play-nudge 1.4s ease-in-out infinite; }
-@keyframes nge-play-nudge { 50% { transform: translateX(3px); } }
-@media (prefers-reduced-motion: reduce) {
-  .nge-play-card, .nge-play-ring, .nge-play-scan, .nge-play-corner, .nge-play-go-plate::after, .nge-play-chev svg { animation: none; }
-  .nge-play-ring, .nge-play-scan { display: none; }
-}
+.nge-play-actions { margin-top: 18px; flex-wrap: wrap; row-gap: 10px; }
+.nge-play-note { font-size: 14px; color: #8fb0cc; margin-right: auto; }
+.nge-play-actions .nge-go--alt + .nge-go { margin-left: 10px; }
+/* the game's general button rule would make these blocks, flattening the label */
+.nge-play-card .nge-go { display: inline-flex; flex-direction: row; align-items: stretch; height: 50px; }
+.nge-play-card .nge-go .nge-go-label { display: flex; align-items: center; }
+.nge-play-actions .nge-go:disabled { opacity: 0.6; cursor: default; }
 </style>

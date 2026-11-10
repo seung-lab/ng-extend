@@ -2295,3 +2295,9 @@ export function startStarshipIntro() {
 }
 
 (window as any).pyrIntro = {play: playIntro, tour: startIntroTour, end: endTour};
+
+/** The transmission box's look for a box built elsewhere (Ames 2026-11-10,
+ *  the Play card: "stylize the whole box with our own UI"): its styles, and
+ *  the circuit frame drawn to the box's size. */
+export function ensureIntroStyle() { ensureStyle(); }
+export function introFrameSvg(w: number, h: number, cut = 18): string { return frameSvg(w, h, cut); }
