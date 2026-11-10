@@ -545,3 +545,7 @@ body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold::before { content:
 .nge-cq-shown { margin-top: 6px; font-size: 13px; color: #9fd8ff; }
 .nge-cq-score { margin: 8px 0 0; padding-left: 20px; }
 .introductionStep .nge-hud-note .nge-hud-btn { margin-left: 6px; vertical-align: middle; }
+
+/* Cilia Quest tutorial: a mark's name that takes the view to it. */
+.ng-extend .nge-cq-go { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.ng-extend .nge-cq-go:hover { background: rgba(255, 255, 255, 0.08); }

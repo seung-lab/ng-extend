@@ -27,6 +27,7 @@ import { findDatasetByCanonical } from './datasets';
 import { QUEST_EXAMPLES, QUEST_STATUS_GUIDE, type QuestExample } from './annotation_quest_examples';
 import { questWork, questOnScreen, saveQuestWork, markQuestOnScreen } from './annotation_quests';
 import { makeLayer } from 'neuroglancer/layer';
+import { stopWatching } from './tutorial-3';
 import imgCiliaAnnotated from './images/cilia-annotated.jpg';
 
 export const CILIA_TUTORIAL = 14;
@@ -69,7 +70,9 @@ function marksOf(e: QuestExample, tag: string) {
 function exampleState(e: QuestExample, filled: boolean, selected: string = LAYER.basal) {
   const dataset = findDatasetByCanonical('stroeh_mouse_retina');
   const base = (dataset?.layers ?? []).map((l: any) =>
-      typeof l?.type === 'string' && l.type.startsWith('segmentation') ? { ...l, segments: [e.root] } : { ...l });
+      typeof l?.type === 'string' && l.type.startsWith('segmentation')
+        // See-through, so the marks inside the cell show in 3D (Ames, 2026-11-10).
+        ? { ...l, segments: [e.root], objectAlpha: 0.35 } : { ...l });
   const m = filled ? marksOf(e, 'demo') : { centerline: [], daughter: [], basal: [] };
   return {
     dimensions: DIMENSIONS,
@@ -144,6 +147,10 @@ function leaveQuestScreen() {
  *  play) would take the tutorial's Ctrl+clicks as merge points, so it goes
  *  off as the tutorial starts (Ames, 2026-11-10). */
 function toolsOff() {
+  // The Merge or Cut tutorial's checker too, with its "Merge mode is off"
+  // line and Help me button (Ames, 2026-11-10).
+  stopWatching();
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-status, .introductionStepAnchor .nge-practice-helprow').forEach(el => el.remove());
   const v = viewer();
   try { v?.globalToolBinder?.activeTool_?.cancel?.(); } catch { /* */ }
   try { v?.toolBinder?.activeTool_?.cancel?.(); } catch { /* */ }
@@ -285,6 +292,15 @@ document.addEventListener('click', (e) => {
     if (box && !box.querySelector('.nge-cq-shown')) box.insertAdjacentHTML('beforeend', '<div class="nge-cq-shown">The crosshairs are on it now. Look at the center of the 2D view.</div>');
     return;
   }
+  const go = t?.closest?.('[data-nge-cq-go]') as HTMLElement | null;
+  if (go) {
+    e.preventDefault();
+    const what = go.dataset.ngeCqGo;
+    if (what === 'basal') { selectLayer(LAYER.basal); goTo(DEMO.basalBody, 0.3); }
+    else if (what === 'daughter') { selectLayer(LAYER.daughter); goTo(DEMO.daughterCentriole, 0.3); }
+    else if (what === 'centerline') { selectLayer(LAYER.centerline); const c = DEMO.centerline!; goTo(c[Math.floor(c.length / 2)], 0.6); }
+    return;
+  }
   const pick = t?.closest?.('[data-nge-cq-pick]') as HTMLElement | null;
   if (!pick) return;
   e.preventDefault();
@@ -327,6 +343,12 @@ const OVER_3D = { element: '.neuroglancer-rendered-data-panel.nge-3d', x: 0.5, y
 const BOX_W = '400px';
 const chip = (name: string, color: string) => `<span class="nge-hud-chip" style="border-color:${color};color:${color}">${name}</span>`;
 const BB = chip('Basal body', COLORS.basal), DC = chip('Daughter centriole', COLORS.daughter), CL = chip('Cilium centerline', COLORS.centerline);
+/** On the finished example a name is a link: a click takes the view to that
+ *  mark (Ames, 2026-11-10: "click to see the labels"). Not used on the
+ *  practice boxes, where it would give the answer away. */
+const goChip = (name: string, color: string, what: string) =>
+  `<span class="nge-hud-chip nge-cq-go" data-nge-cq-go="${what}" title="Click to go to this mark" style="border-color:${color};color:${color}">${name}</span>`;
+const BBgo = goChip('Basal body', COLORS.basal, 'basal'), DCgo = goChip('Daughter centriole', COLORS.daughter, 'daughter'), CLgo = goChip('Cilium centerline', COLORS.centerline, 'centerline');
 
 export const steps: Step[] = [
   {
@@ -350,18 +372,18 @@ First you'll look at a cell the lab has already marked, then you'll mark it your
     width: BOX_W,
     html: `This starburst cell has been marked by the lab. A finished quest has three marks, each in its own layer:
 <ul>
-<li>${BB} where the cilium starts</li>
-<li>${DC} its partner, just behind it</li>
-<li>${CL} a line along the cilium</li>
+<li>${BBgo} where the cilium starts</li>
+<li>${DCgo} its partner, just behind it</li>
+<li>${CLgo} a line along the cilium</li>
 </ul>
-The 2D view on the left is where you work. Let's look at each mark.`,
+Click a name to go to its mark. The 2D view on the left is where you work. Let's look at each mark.`,
   },
   {
     part: 'Look at a finished one',
     title: 'The basal body',
     position: OVER_3D,
     width: BOX_W,
-    html: `The gold point is the ${BB}. It is a tiny barrel, a <strong>centriole</strong>, sitting right at the base of the cilium, where the cilium leaves the cell.
+    html: `The gold point is the ${BBgo}. It is a tiny barrel, a <strong>centriole</strong>, sitting right at the base of the cilium, where the cilium leaves the cell.
 
 <p>The crosshairs are on it now. Scroll the mouse wheel over the 2D view to move up and down through the slices and see its shape.</p>`,
     onEnter() { selectLayer(LAYER.basal); goTo(DEMO.basalBody, 0.3); },
@@ -371,7 +393,7 @@ The 2D view on the left is where you work. Let's look at each mark.`,
     title: 'The daughter centriole',
     position: OVER_3D,
     width: BOX_W,
-    html: `The red point is the ${DC}, the basal body's partner. It is a second small barrel, set back a little from the base of the cilium and often turned at an angle to the first.
+    html: `The red point is the ${DCgo}, the basal body's partner. It is a second small barrel, set back a little from the base of the cilium and often turned at an angle to the first.
 
 <p>The two always come as a pair. If you find one, look close by for the other.</p>`,
     onEnter() { selectLayer(LAYER.daughter); goTo(DEMO.daughterCentriole, 0.3); },
@@ -381,7 +403,7 @@ The 2D view on the left is where you work. Let's look at each mark.`,
     title: 'The cilium centerline',
     position: OVER_3D,
     width: BOX_W,
-    html: `The green line is the ${CL}. It runs down the middle of the cilium, from the basal body to the cilium's tip.
+    html: `The green line is the ${CLgo}. It runs down the middle of the cilium, from the basal body to the cilium's tip.
 
 <p>To draw one: select its layer, hold <strong>CTRL</strong> and click point by point along the cilium, then press <kbd>ENTER</kbd> to finish. <kbd>BACKSPACE</kbd> takes back the last point and <kbd>ESC</kbd> cancels the line.</p>`,
     onEnter() { selectLayer(LAYER.centerline); const c = DEMO.centerline!; goTo(c[Math.floor(c.length / 2)], 0.6); },
