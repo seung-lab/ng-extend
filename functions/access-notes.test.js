@@ -44,3 +44,24 @@ test('a note needs words, fits, and names a real person', async () => {
   await assert.rejects(handle('access.noteDelete', {key: 'a@b.org', id: '../x'}, admin(notes)), /Unknown note/);
   assert.equal(notes.rows.length, 0);
 });
+
+// Tags (Ames 2026-11-10: "if I leave a note here can it tag celia / Marissa?").
+test('@Marissa or @celia in a note tags them: a bell and a Slack ping, never the writer', async () => {
+  const notes = store();
+  const PEOPLE = [{id: 'u-ames', name: 'amy', email: 'amyleerobinson@gmail.com'}, {id: 'u-celia', name: 'Celia D', email: 'celia@eyewire.org'}, {id: 'u-m', name: 'Marissa Sorek', email: 'm@eyewire.org'}];
+  const bells = [], pings = [];
+  const io = {...admin(notes), me: {id: 'u-celia', display_name: 'Celia D'}, people: async () => PEOPLE,
+    notifyPeople: async b => { bells.push(b); }, slackPing: async (who, text, by) => { pings.push({who: who.map(p => p.id), text, by}); }};
+  await handle('access.note', {key: 'rudometkin@gmail.com', name: 'Egor', text: 'Emailing him FlyWire and BANC. @Marissa @celia can you look?'}, io);
+  assert.deepEqual(bells.map(b => b.ids), [['u-m']], 'Marissa only: Celia wrote it');
+  assert.match(bells[0].title, /Celia D tagged you on the Access page/);
+  assert.match(bells[0].body, /triage=access&person=rudometkin%40gmail\.com/);
+  assert.match(bells[0].body, /Egor/);
+  assert.deepEqual(pings.map(p => p.who), [['u-m']]);
+  assert.match(pings[0].text, /Egor \(rudometkin@gmail\.com\)/);
+  // No tag: nothing sent. A failing bell never loses the note.
+  await handle('access.note', {key: 'a@b.org', text: 'email to a@b.org later'}, io);
+  assert.equal(bells.length, 1);
+  await handle('access.note', {key: 'a@b.org', text: '@marissa'}, {...io, notifyPeople: async () => { throw new Error('down'); }});
+  assert.equal(notes.rows.length, 3);
+});

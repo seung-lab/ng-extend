@@ -8,10 +8,38 @@
 -- the beta. A Beta request is a site_issues row (category 'Beta access')
 -- whose message holds the fields as lines ("Email: ...", "EyeWire username:
 -- ...", functions/access-request.js); the newest request per email counts.
+-- One person, two emails (Ames 2026-11-10: "link their gmail with the email
+-- we had on file"): someone asks with one email and signs in with another.
+-- Each row folds the asking email into the sign in email, so the request,
+-- the Pilot testers rows and the account read as one person. Admin only.
+CREATE TABLE IF NOT EXISTS public.access_email_links (
+  email text PRIMARY KEY CHECK (email = lower(email)),
+  linked_to text NOT NULL CHECK (linked_to = lower(linked_to) AND linked_to <> email),
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.access_email_links ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.access_email_links FROM anon, authenticated;
+
 CREATE OR REPLACE VIEW public.access_hub_people AS
-WITH req AS (
+-- The links: the ones made by hand above, and every invite used from another
+-- Google account (an "Invite used" record holds both emails,
+-- functions/access-request.js linkInvite). A hand made link wins.
+WITH lnk AS (
+  SELECT DISTINCT ON (email) email, linked_to FROM (
+    SELECT email, linked_to, 0 AS pri, created_at FROM public.access_email_links
+    UNION ALL
+    SELECT rtrim(lower(substring(message FROM 'Linked to invite: ([^\s]+@[^\s]+)')), '.'),
+      rtrim(lower(substring(message FROM 'Sign in email: ([^\s]+@[^\s]+)')), '.'), 1, created_at
+    FROM public.site_issues WHERE category = 'Invite used'
+  ) l WHERE email IS NOT NULL AND linked_to IS NOT NULL AND email <> linked_to
+  ORDER BY email, pri, created_at DESC
+),
+req AS (
   SELECT DISTINCT ON (email) * FROM (
-    SELECT
+    SELECT coalesce(lk.linked_to, r0.email) AS email, r0.gave_email, r0.request_id, r0.request_user_id, r0.request_name, r0.asked_at,
+      r0.from_site, r0.ew_name, r0.ew_rank, r0.found_us, r0.their_note
+    FROM (SELECT
       rtrim(lower(coalesce(
         substring(message FROM 'Sign in email: ([^\s]+@[^\s]+)'),
         substring(message FROM '(?:^|\n)Email: ([^\s]+@[^\s]+)'),
@@ -25,15 +53,23 @@ WITH req AS (
       nullif(trim(substring(message FROM 'Their note: (.*)$')), '') AS their_note
     FROM public.site_issues i
     WHERE category = 'Beta access'
+    ) r0 LEFT JOIN lnk lk ON lk.email = r0.email
   ) r
   WHERE email IS NOT NULL
   ORDER BY email, asked_at DESC
 ),
 pil AS (
-  SELECT lower(email) AS email, enabled, created_at AS let_in_at,
-    -- Added together with four or more others: one pasted list.
-    count(*) OVER (PARTITION BY created_at) >= 5 AS from_list
-  FROM public.pilot_members
+  -- A linked email's Pilot row folds into the sign in email's: let in if
+  -- either is on, at the first time either was added.
+  SELECT coalesce(lk.linked_to, p0.email) AS email, bool_or(p0.enabled) AS enabled,
+    min(p0.let_in_at) AS let_in_at, bool_and(p0.from_list) AS from_list
+  FROM (
+    SELECT lower(email) AS email, enabled, created_at AS let_in_at,
+      -- Added together with four or more others: one pasted list.
+      count(*) OVER (PARTITION BY created_at) >= 5 AS from_list
+    FROM public.pilot_members
+  ) p0 LEFT JOIN lnk lk ON lk.email = p0.email
+  GROUP BY 1
 ),
 -- Admins are their own step (Ames 2026-11-10: "show admins as Admin"),
 -- listed even when they never asked and are not on Pilot testers.
