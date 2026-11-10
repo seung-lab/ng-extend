@@ -17,6 +17,9 @@ test('only the new replies to the player are copied', () => {
 test('the copy names the admin, the report and the exact words', () => {
   const n = copyNote({ by: 'Celia D', text: 'Please read the tutorial.', about: 'Cut tool  broken', link: 'https://x/?triage=board&report=1' });
   assert.equal(n.title, '💬 Celia D replied to a player');
+  assert.match(n.image_url, /\/notes\/nurro-geometry\.jpg$/);
+  assert.equal(require('./reply-watch').isCeliaOrMarissa('M Sorek'), true);
+  assert.equal(require('./reply-watch').isCeliaOrMarissa('Marissa Pratt'), false);
   assert.equal(n.body, 'On "Cut tool broken":\n\nPlease read the tutorial.\n\nhttps://x/?triage=board&report=1');
 });
 

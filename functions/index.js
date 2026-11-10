@@ -2792,8 +2792,11 @@ exports.ewCommunityData = onRequest(
           if (notes.length) {
             const owners = await sb("users?select=id&middleauth_email=in.("+encodeURIComponent(OWNER_EMAILS.map((e) => `"${e}"`).join(","))+")");
             const out = [];
+            // Celia's or Marissa's edits carry Nurro doing geometry (Ames 2026-11-09).
+            const watched = require("./reply-watch");
+            const byThem = watched.isCeliaOrMarissa(me && (me.display_name || me.username));
             for (const n of notes) for (const o of owners) out.push({ title: n.title, body: n.body, target_type: "user", target_id: o.id,
-              ...(n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+              ...(byThem ? { image_url: watched.WATCH_PICTURE, thumbnail_url: watched.WATCH_PICTURE } : n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
             if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
           }
         } catch (e) { console.warn("[edit-notify] note", e.message); }

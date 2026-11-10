@@ -1277,6 +1277,7 @@ async function tokenReminder() {
 /** Post a change update into the thread when an approved row ships. */
 /** A copy of another admin's reply to a player, to Ames's bell only. */
 const SLACK_NAMES = { U033NHWDE: 'Celia D', U033TSX9A: 'M Sorek' };
+const WATCH_PICTURE = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/notes/nurro-geometry.jpg';
 async function copyReplyToAmes(row, slackUser, text) {
   const r = await sb(`users?select=id&middleauth_email=in.(${encodeURIComponent(['amylr@princeton.edu', 'amyleerobinson@gmail.com'].map(e => `"${e}"`).join(','))})`);
   if (!r.ok) throw new Error(`users ${r.status}`);
@@ -1284,6 +1285,7 @@ async function copyReplyToAmes(row, slackUser, text) {
   const about = String(row.source_excerpt || 'a report').replace(/\s+/g, ' ').trim().slice(0, 90);
   const link = `${LIVE_URL.replace(/\/$/, '')}/?triage=board&report=${row.id}`;
   const rows = (await r.json()).map(o => ({ title: `💬 ${who} replied to a player`, body: `On "${about}":\n\n${String(text).trim().slice(0, 1200)}\n\n${link}`.slice(0, 1500),
+    image_url: WATCH_PICTURE, thumbnail_url: WATCH_PICTURE,
     target_type: 'user', target_id: o.id, send_at: new Date().toISOString() }));
   if (!rows.length) return;
   const res = await sb('notifications', { method: 'POST', body: JSON.stringify(rows) });

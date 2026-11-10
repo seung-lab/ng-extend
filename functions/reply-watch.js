@@ -7,6 +7,11 @@
  * and the robot's automatic thank you notes, are not copied.
  */
 const OWNER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
+// Nurro doing geometry (Ames 2026-11-09: "Use this image on those
+// notifications and any notifications about changes to my magnum opus by
+// Celia or Marissa"). Served from static/notes/ (scripts/build-prod.js).
+const WATCH_PICTURE = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/notes/nurro-geometry.jpg';
+const isCeliaOrMarissa = name => /^(celia|m[ _.]?sorek|sorek|marissa sorek)\b/i.test(String(name || '').trim());
 
 /** Replies to the player in `after` that were not in `before`. */
 function newReplies(before, after) {
@@ -22,10 +27,10 @@ function copyNote({ by, text, about, link, imageUrl }) {
   return {
     title: `💬 ${who} replied to a player`.slice(0, 120),
     body: `On "${report}":\n\n${String(text).trim().slice(0, 1200)}\n\n${link}`.slice(0, 1500),
-    ...(imageUrl ? { image_url: imageUrl } : {}),
+    image_url: imageUrl || WATCH_PICTURE, thumbnail_url: WATCH_PICTURE,
   };
 }
 
 const isOwnerEmail = email => !!email && OWNER_EMAILS.includes(String(email).toLowerCase());
 
-module.exports = { newReplies, copyNote, isOwnerEmail, OWNER_EMAILS };
+module.exports = { newReplies, copyNote, isOwnerEmail, isCeliaOrMarissa, OWNER_EMAILS, WATCH_PICTURE };
