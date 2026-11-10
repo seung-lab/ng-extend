@@ -2539,6 +2539,15 @@ exports.ewAccessRequest = onRequest(
         // Beta access requests reach every admin (Ames 2026-10-24).
         notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
+        // Tags in an Access page note (access-request.js tagFromNote).
+        people: () => require("./todos").restDb(sb).people(),
+        notifyPeople: ({ ids, title, body }) => note(ids, title, body),
+        slackPing: async (people, text, by) => {
+          const { slackIdOf } = require("./todos");
+          const pings = people.map(p => { const s = slackIdOf(p); return s ? `<@${s}>` : `@${p.name}`; }).join(" ");
+          const r = await slackPost(slackBotToken.value().trim(), "chat.postMessage", { channel: REVIEW_CHANNEL_ID, text: `💬 ${pings} ${by} ${text}`, unfurl_links: false }).catch(e => ({ ok: false, error: e.message }));
+          if (!r.ok) console.warn("[access note] slack failed:", r.error);
+        },
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
         // A player's CAVE access, read with the admin token: the datasets they
         // can edit or view, and their groups (Ames 2026-10-29: "we need to see
@@ -3112,8 +3121,18 @@ exports.ewMentor = onRequest(
 //   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck,functions:ewQuestReviewDigest --project eyewire-ii-e4d52
 const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
 const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
+// One player's CAVE permissions, read with Ames's admin token, for the Pyr
+// users sheet's Can edit column (Celia 2026-11-10). null when CAVE can't say.
+const ewCavePerms = async (caveId) => {
+  if (!/^\d{1,12}$/.test(String(caveId))) return null;
+  try {
+    const r = await fetch(`https://global.daf-apis.com/auth/api/v1/user/${caveId}/permissions`, {
+      headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+    return r.ok ? r.json() : null;
+  } catch (e) { return null; }
+};
 exports.ewQuestReview = onRequest(
-  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 120 },
+  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 300 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -3143,7 +3162,7 @@ exports.ewQuestReview = onRequest(
       // Our own Pyr users sheet, now (the Access page's button; it also runs every hour).
       if (action === "usersSheet") {
         if (!isAdmin) throw ewErr(403, "Admins only");
-        const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore });
+        const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore, cavePerms: ewCavePerms });
         console.info("[ewQuestReview] users sheet by", who.email, out.people);
         return res.json({ ok: true, data: out });
       }
@@ -3166,9 +3185,9 @@ exports.ewQuestReview = onRequest(
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 // Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
 exports.ewUsersSheet = onSchedule(
-  { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
+  { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 300, retryCount: 0 },
   async () => {
-    const out = await require("./users-sheet").syncUsersSheet({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()), marks: betaMarkStore });
+    const out = await require("./users-sheet").syncUsersSheet({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()), marks: betaMarkStore, cavePerms: ewCavePerms });
     console.info("[ewUsersSheet]", out.people, "people");
   }
 );
