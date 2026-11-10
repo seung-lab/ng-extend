@@ -16,6 +16,8 @@ test('each person lands on the Access page\'s step', () => {
   assert.equal(stepOf({ ...base, pilot_enabled: true, user_id: U, tutorial_at: 'x' }), 'Tutorial done');
   assert.equal(stepOf({ ...base, pilot_enabled: true, user_id: U, tutorial_at: 'x', edits: 3 }), 'Editing');
   assert.equal(stepOf({ ...base, pilot_enabled: false, user_id: U, edits: 3 }), 'Removed or paused');
+  assert.equal(stepOf({ ...base, pilot_enabled: false, user_id: U, edits: 3, is_admin: true }), 'Admin');
+  assert.equal(stepOf({ ...base, is_admin: true }), 'Admin');
 });
 
 test('rows: one per person, in step order, with CAVE IDs; test accounts left out; nothing a sheet would run', () => {

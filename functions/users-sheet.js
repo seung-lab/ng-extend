@@ -14,7 +14,7 @@
 const USERS_SHEET_ID = '10VW3cSrtK8y0pLlivJnQIuMAp65_B-eDJAVb3DbpKBs';
 const TAB = 'Users';
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats_30d,help_asked,help_answered_for,help_given';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats_30d,help_asked,help_answered_for,help_given,is_admin';
 
 const HEADERS = ['Name', 'Email', 'Step', 'Pyr username', 'EyeWire username', 'EyeWire rank', 'CAVE ID',
   'Asked', 'Let in', 'Signed in', 'First tutorial done', 'Tutorials finished', 'First edit', 'Last edit', 'Last dataset',
@@ -22,8 +22,9 @@ const HEADERS = ['Name', 'Email', 'Step', 'Pyr username', 'EyeWire username', 'E
   'Chat messages, 30 days', 'How they found us', 'Added from a pasted list', 'Their note when they asked'];
 
 // The steps, in the Access page's words and order.
-const STEPS = ['Asked', 'Let in', 'Signed in', 'Tutorial done', 'Editing', 'Removed or paused'];
+const STEPS = ['Asked', 'Let in', 'Signed in', 'Tutorial done', 'Editing', 'Admin', 'Removed or paused'];
 function stepOf(p, mark) {
+  if (p.is_admin) return 'Admin'; // Ames 2026-11-10: "show admins as Admin"
   if (p.pilot_enabled === false) return 'Removed or paused';
   if (!p.pilot_enabled) {
     if (mark && mark.mark === 'removed' && (!p.asked_at || String(mark.at) > String(p.asked_at))) return 'Removed or paused';

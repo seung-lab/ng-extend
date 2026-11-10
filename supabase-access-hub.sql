@@ -35,8 +35,15 @@ pil AS (
     count(*) OVER (PARTITION BY created_at) >= 5 AS from_list
   FROM public.pilot_members
 ),
+-- Admins are their own step (Ames 2026-11-10: "show admins as Admin"),
+-- listed even when they never asked and are not on Pilot testers.
+adm AS (
+  SELECT DISTINCT lower(coalesce(a.email, us.middleauth_email)) AS email
+  FROM public.admins a LEFT JOIN public.users us ON us.id = a.user_id
+  WHERE coalesce(a.email, us.middleauth_email) IS NOT NULL
+),
 who AS (
-  SELECT email FROM req UNION SELECT email FROM pil
+  SELECT email FROM req UNION SELECT email FROM pil UNION SELECT email FROM adm
 ),
 usr AS (
   SELECT DISTINCT ON (lower(middleauth_email)) lower(middleauth_email) AS email, id, display_name, username, created_at, tutorial_active, last_edit_at
@@ -91,8 +98,10 @@ SELECT
   coalesce(e.edits_30d, 0) AS edits_30d, coalesce(c.cells, 0) AS cells, coalesce(c.cells_30d, 0) AS cells_30d,
   coalesce(m.chats, 0) AS chats, coalesce(m.chats_30d, 0) AS chats_30d,
   coalesce(ha.help_asked, 0) AS help_asked, coalesce(ha.help_answered_for, 0) AS help_answered_for, coalesce(ha.help_asked_30d, 0) AS help_asked_30d,
-  coalesce(hg.help_given, 0) AS help_given, coalesce(hg.help_given_30d, 0) AS help_given_30d
+  coalesce(hg.help_given, 0) AS help_given, coalesce(hg.help_given_30d, 0) AS help_given_30d,
+  (ad.email IS NOT NULL) AS is_admin
 FROM who w
+LEFT JOIN adm ad ON ad.email = w.email
 LEFT JOIN req r ON r.email = w.email
 LEFT JOIN pil p ON p.email = w.email
 LEFT JOIN usr u ON u.email = w.email
