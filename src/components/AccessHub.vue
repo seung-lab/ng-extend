@@ -18,6 +18,7 @@ import { listDatasetRequests, decideDatasetRequest, type DatasetRequestRow } fro
 import { addPilot, welcomeBell, welcomeEmail } from '../beta_let_in';
 import { datasetDisplayName } from '../datasets';
 import { boxLink, PRACTICE_TUTORIALS } from '../tutorial_box_jump';
+import { updateUsersSheet, USERS_SHEET_URL } from '../quest_review';
 import { TUTORIAL_NAMES } from '../tutorial_edits';
 
 interface Person {
@@ -32,6 +33,8 @@ interface Person {
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
 interface RecentEdit { at: string; dataset: string | null; operation: string | null; success: boolean | null }
+/** One player's last 30 days on one dataset (access_hub_player_datasets). */
+interface PlayerDataset { dataset: string; edits: number; cells: number; chats: number; last_edit_at: string | null }
 interface Activity { dataset: string; edits: number; editors: number; cells: number; finishers: number; chats: number; chatters: number }
 interface Stat { tutorial: number; step: number; last_box: string | null; n: number; players: number; median_s: number; p90_s: number; help_rate: number; closes: number }
 interface Note { id: string; text: string; by: string; at: string }
@@ -259,18 +262,44 @@ const boxName = (s: Stat) => String(s.last_box || `Box ${s.step + 1}`).replace(/
 const triageUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
 const gameUrl = `${window.location.origin}${window.location.pathname}`;
 
+// Our own Pyr Users sheet (Ames: "make our own Pyr users sheet"): the game
+// rewrites it every hour; this button does it now.
+const sheetBusy = ref(false);
+const sheetSaid = ref('');
+async function updateSheet() {
+  sheetBusy.value = true; sheetSaid.value = '';
+  try { const out = await updateUsersSheet(); sheetSaid.value = `Sheet updated: ${out.people} people.`; }
+  catch (e: any) { sheetSaid.value = e?.message || 'The sheet did not update. Try again.'; }
+  sheetBusy.value = false;
+}
+
 // ── One player's latest edits, read when their panel opens (Ames: "10
 // recent edits"; no chat, that's theirs) ────────────────────────────────
 const recent = ref<RecentEdit[]>([]);
 const recentFor = ref('');
 const recentError = ref('');
+// Their 30 days, dataset by dataset (Ames: "snapshot of their activity
+// across datasets for 30 days"). Old training volumes share a name with
+// their dataset and are added together, as on the community board.
+const theirDatasets = ref<PlayerDataset[]>([]);
+const theirMax = computed(() => Math.max(1, ...theirDatasets.value.map(d => d.edits)));
 watch(() => open.value?.p?.user_id || '', async (uid) => {
-  recent.value = []; recentError.value = ''; recentFor.value = '';
-  if (!uid || !open.value?.p?.edits) return;
-  const { data, error: err } = await supabase.from('access_hub_recent_edits').select('at,dataset,operation,success').eq('user_id', uid).order('at', { ascending: false }).limit(10);
+  recent.value = []; theirDatasets.value = []; recentError.value = ''; recentFor.value = '';
+  if (!uid) return;
+  const [r, d] = await Promise.all([
+    open.value?.p?.edits ? supabase.from('access_hub_recent_edits').select('at,dataset,operation,success').eq('user_id', uid).order('at', { ascending: false }).limit(10) : Promise.resolve({ data: [], error: null }),
+    supabase.from('access_hub_player_datasets').select('dataset,edits,cells,chats,last_edit_at').eq('user_id', uid).limit(100),
+  ]);
   if ((open.value?.p?.user_id || '') !== uid) return;
-  recent.value = (data ?? []) as RecentEdit[];
-  recentError.value = err ? `Edits: ${err.message}` : '';
+  recent.value = (r.data ?? []) as RecentEdit[];
+  const by = new Map<string, PlayerDataset>();
+  for (const x of (d.data ?? []) as PlayerDataset[]) {
+    const name = dsName(x.dataset), had = by.get(name);
+    by.set(name, had ? { dataset: name, edits: had.edits + x.edits, cells: had.cells + x.cells, chats: had.chats + x.chats,
+      last_edit_at: [had.last_edit_at, x.last_edit_at].filter(Boolean).sort().pop() ?? null } : { ...x, dataset: name });
+  }
+  theirDatasets.value = [...by.values()].sort((a, b) => b.edits - a.edits || b.cells - a.cells || b.chats - a.chats);
+  recentError.value = [r.error && `Edits: ${r.error.message}`, d.error && `Datasets: ${d.error.message}`].filter(Boolean).join(' · ');
   recentFor.value = uid;
 });
 // edit_log's operations, in the game's words.
@@ -295,6 +324,9 @@ const opName = (e: RecentEdit) => {
       <input v-model="search" class="ah-search" type="search" autocomplete="off" placeholder="Search a name, email or username" aria-label="Search people" />
       <button class="ah-btn" type="button" :disabled="loading" @click="load">{{ loading ? 'Reading…' : 'Refresh' }}</button>
       <a class="ah-link" :href="triageUrl">Triage board</a>
+      <a class="ah-link" :href="USERS_SHEET_URL" target="_blank" rel="noopener">Pyr Users sheet</a>
+      <button class="ah-btn" type="button" :disabled="sheetBusy" title="The game rewrites the sheet every hour. This does it now." @click="updateSheet">{{ sheetBusy ? 'Updating the sheet…' : 'Update the sheet now' }}</button>
+      <span v-if="sheetSaid" class="ah-quiet ah-sheet-said" role="status">{{ sheetSaid }}</span>
     </header>
     <p v-if="error" class="ah-error" role="alert">{{ error }}</p>
     <p v-if="loading && !people.length" class="ah-quiet">Reading everyone…</p>
@@ -371,6 +403,19 @@ const opName = (e: RecentEdit) => {
           <div><span>Chat</span>{{ (open.p.chats ?? 0).toLocaleString() }} message{{ open.p.chats === 1 ? '' : 's' }}, {{ (open.p.chats_30d ?? 0).toLocaleString() }} in 30 days</div>
           <div v-if="open.p.tutorial_active"><span>Now in</span>{{ TUTORIAL_NAMES[open.p.tutorial_active] ?? `tutorial ${open.p.tutorial_active}` }}</div>
         </div>
+        <template v-if="open.p?.user_id">
+          <h3>Their last 30 days, by dataset</h3>
+          <p v-if="recentFor !== open.p.user_id" class="ah-quiet">Reading…</p>
+          <p v-else-if="!theirDatasets.length" class="ah-quiet">Nothing on any dataset in the last 30 days.</p>
+          <div v-else class="ah-their">
+            <div v-for="d in theirDatasets" :key="d.dataset" class="ah-bar-row ah-their-row">
+              <span class="ah-bar-name">{{ d.dataset }}</span>
+              <span class="ah-bar"><span :style="{ width: (d.edits ? Math.max(2, (d.edits / theirMax) * 100) : 0) + '%' }"></span></span>
+              <span class="ah-bar-n">{{ d.edits.toLocaleString() }} edit{{ d.edits === 1 ? '' : 's' }}</span>
+              <span class="ah-bar-x">{{ d.cells.toLocaleString() }} cell{{ d.cells === 1 ? '' : 's' }} done · {{ d.chats.toLocaleString() }} chat message{{ d.chats === 1 ? '' : 's' }}<template v-if="d.last_edit_at"> · last edit {{ ago(d.last_edit_at) }} ago</template></span>
+            </div>
+          </div>
+        </template>
         <template v-if="open.p?.user_id && open.p.edits">
           <h3>Latest 10 actions</h3>
           <p v-if="recentFor !== open.p.user_id" class="ah-quiet">Reading…</p>
@@ -478,6 +523,10 @@ const opName = (e: RecentEdit) => {
 .ah-stats { margin: 10px 0 4px; padding: 8px 10px; border-radius: 8px; background: rgba(55,138,221,.10); border: 1px solid rgba(120,170,255,.25); font-size: 13px; color: #dbe6f5; }
 .ah-stats > div { margin: 3px 0; }
 .ah-bar-link { color: #b9d6ff; text-decoration: none; }
+/* The panel is narrow: the player's datasets always stack like phones. */
+.ah-their .ah-bar-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+.ah-their .ah-bar-row > .ah-bar { grid-column: 1 / -1; grid-row: 2; }
+.ah-their .ah-bar-row > .ah-bar-x { grid-column: 1 / -1; }
 .ah-bar-link:hover { text-decoration: underline; }
 .ah-stats span { display: inline-block; min-width: 7.5em; color: #8fa6c6; }
 .ah-panel-meta { font-size: 13px; color: #a9bbd3; margin: 3px 0; overflow-wrap: anywhere; }

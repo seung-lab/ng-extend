@@ -257,7 +257,7 @@ test('tutorial step timings: players add their own, admins read', () => {
 });
 test('the Access page views are for admins only, and a player\'s latest edits are read one player at a time', () => {
   const admin = { ...user, isAdmin: true };
-  for (const t of ['access_hub_people', 'access_hub_activity', 'access_hub_recent_edits']) {
+  for (const t of ['access_hub_people', 'access_hub_activity', 'access_hub_recent_edits', 'access_hub_player_datasets']) {
     assert.throws(() => plan(t, 'GET', 'select=*'), /Admins only/);
     assert.throws(() => plan(t, 'GET', 'select=*', undefined, anon), /Admins only|Sign in/);
   }

@@ -3112,7 +3112,7 @@ exports.ewQuestReview = onRequest(
         const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
         return res.json({ ok: true, waiting: out.checked });
       }
-      if (!["check", "get", "reply", "digest"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      if (!["check", "get", "reply", "digest", "usersSheet"].includes(action)) throw ewErr(400, `unknown action ${action}`);
       const who = await ewVerify(token);
       if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
       const sb = ewSb(ewServiceKey.value().trim());
@@ -3124,6 +3124,13 @@ exports.ewQuestReview = onRequest(
         const out = await review.check({ api, sb, only: args.segmentId ? String(args.segmentId) : "", dryRun: !!args.dryRun });
         console.info("[ewQuestReview] check by", who.email, JSON.stringify(out.results.map(r => ({ row: r.row, sent: r.sent, why: r.why }))));
         return res.json({ ok: true, ...out });
+      }
+      // Our own Pyr users sheet, now (the Access page's button; it also runs every hour).
+      if (action === "usersSheet") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore });
+        console.info("[ewQuestReview] users sheet by", who.email, out.people);
+        return res.json({ ok: true, data: out });
       }
       if (action === "digest") {
         if (!isAdmin) throw ewErr(403, "Admins only");
@@ -3142,6 +3149,14 @@ exports.ewQuestReview = onRequest(
 // 8 am to 9 pm Eastern, nothing overnight. Each run is one
 // read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+// Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
+exports.ewUsersSheet = onSchedule(
+  { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
+  async () => {
+    const out = await require("./users-sheet").syncUsersSheet({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()), marks: betaMarkStore });
+    console.info("[ewUsersSheet]", out.people, "people");
+  }
+);
 exports.ewQuestReviewCheck = onSchedule(
   { schedule: "0 8-21 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
   async () => {

@@ -46,6 +46,10 @@ const PEOPLE = [
 ];
 for (let i = 0; i < 6; i++) PEOPLE.push({ ...base, email: `list${i}@example.org`, pilot_enabled: true, let_in_at: ago(40), from_list: true });
 const EDITS = Array.from({ length: 10 }, (_, i) => ({ at: ago(0.1 + i * 0.01), dataset: 'stroeh_mouse_retina', operation: i % 3 ? 'split' : 'merge', success: i !== 1 }));
+const THEIRS = [{ user_id: UID(13), dataset: 'stroeh_mouse_retina', edits: 1500, cells: 40, chats: 150, last_edit_at: ago(0.1) },
+  { user_id: UID(13), dataset: 'pni_mec', edits: 300, cells: 1, chats: 50, last_edit_at: ago(2) },
+  { user_id: UID(13), dataset: 'pinky_nf_v2', edits: 80, cells: 0, chats: 2, last_edit_at: ago(5) },
+  { user_id: UID(13), dataset: 'pinky_training6', edits: 0, cells: 0, chats: 10, last_edit_at: null }];
 const DS = [{ id: UID(21), userId: UID(14), name: 'Lou Baker', dataset: 'pni_mec', label: 'Medial Entorhinal Cortex', cave: 'pni_mec', email: 'lou@example.org', note: 'Ready for MEC', at: ago(0.5),
   access: null, history: null, caveGroup: 'MEC_Edit', mark: null, markedAt: null, markedBy: '' },
   { id: UID(22), userId: UID(13), name: 'Nik Serafin', dataset: 'pni_mec', label: 'Medial Entorhinal Cortex', cave: 'pni_mec', email: 'nik@example.org', note: '', at: ago(10),
@@ -86,6 +90,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
+      if (a === 'usersSheet') return r.fulfill(ok({ people: 14, url: 'https://docs.google.com/spreadsheets/d/x/edit' }));
       return r.fulfill(ok({}));
     }
     calls.push({ table: input.table, method: input.method, body: input.body, query: input.query });
@@ -94,7 +99,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     const q = new URLSearchParams(input.query || '');
     const limit = Number(q.get('limit') ?? 500), offset = Number(q.get('offset') ?? 0);
     if (!Number.isInteger(limit) || limit < 0 || limit > 500) return r.fulfill(json({ status: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Invalid limit' }) }));
-    const all = input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
+    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
     const rows = all.slice(offset, offset + limit);
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }));
   });
@@ -145,6 +150,10 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     check('their stats and recent activity show', /4,210 edits · 95 cells done · 3 tutorials finished/.test(stats) && /1,880 edits · 41 cells done/.test(stats) && /asked 4 times, 3 answered · helped others 27 times \(1 asked, 6 helped in 30 days\)/.test(stats) && /900 messages, 212 in 30 days/.test(stats), stats);
     const edits = await page.waitForSelector('.ah-edits li', { timeout: 5000 }).then(() => page.$$eval('.ah-edits li', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()))).catch(() => []);
     check('their 10 latest edits, read for that player only', edits.length === 10 && /^Merge, EyeWire II/.test(edits[0]) && /did not go through/.test(edits[1]), edits.slice(0, 3));
+    const theirs = await page.$$eval('.ah-their-row', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('their 30 days by dataset, busiest first, training volumes added in', theirs.length === 3 && /^EyeWire II ?1,500 edits ?40 cells done · 150 chat messages/.test(theirs[0]) && /^MEC ?300 edits/.test(theirs[1]) && /^Sandbox ?80 edits ?0 cells done · 12 chat messages/.test(theirs[2]), theirs);
+    const dsCall = calls.find(c => c.table === 'access_hub_player_datasets');
+    check('the dataset snapshot asks for that one player', dsCall && /user_id=eq\.00000000-0000-4000-8000-000000000013/.test(dsCall.query), dsCall && dsCall.query);
     const editCall = calls.find(c => c.table === 'access_hub_recent_edits');
     check('the latest edits ask for that one player', editCall && /user_id=eq\.00000000-0000-4000-8000-000000000013/.test(editCall.query) && /limit=10/.test(editCall.query), editCall && editCall.query);
     await page.click('.ah-close');
@@ -185,6 +194,12 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     const barsOk = bs => bs.every(rows => rows.length && rows.every(r => r.track === rows[0].track) && rows[0].track >= 80 && rows[0].fill >= rows[0].track - 1);
     let bw = await bars();
     check('wide: bar tracks are equal and the top bar is full', barsOk(bw), bw);
+
+    await page.click('.ah-head button:has-text("Update the sheet now")');
+    await page.waitForSelector('.ah-sheet-said', { timeout: 5000 }).catch(() => {});
+    const said = await page.textContent('.ah-sheet-said').catch(() => '');
+    check('Update the sheet now asks the server and says how many', /Sheet updated: 14 people/.test(said) && calls.some(c => c.action === 'usersSheet'), said);
+    check('the sheet is linked', await page.$eval('.ah-head a[href*="10VW3cSrtK8y0pLlivJnQIuMAp65_B-eDJAVb3DbpKBs"]', e => e.textContent.trim()).catch(() => '') === 'Pyr Users sheet');
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);

@@ -61,6 +61,7 @@ const columns = {
   // The Access page (supabase-access-hub.sql, Ames 2026-11-09). Admins only.
   access_hub_people: 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d',
   access_hub_recent_edits: 'user_id,at,dataset,operation,success',
+  access_hub_player_datasets: 'user_id,dataset,edits,cells,chats,last_edit_at',
   access_hub_activity: 'dataset,edits,editors,cells,finishers,chats,chatters',
 };
 const writable = {
@@ -122,7 +123,7 @@ function authorizeData(input, ctx) {
     } else if (table === 'admins' && !ctx.isAdmin) {
       // Supports the existing maybeSingle admin-status check without exposing addresses.
       scope('id.is.null');
-    } else if (table === 'feedback_triage' || table === 'tutorial_step_events' || table === 'tutorial_step_stats' || table === 'access_hub_people' || table === 'access_hub_activity' || table === 'access_hub_recent_edits') {
+    } else if (table === 'feedback_triage' || table === 'tutorial_step_events' || table === 'tutorial_step_stats' || table === 'access_hub_people' || table === 'access_hub_activity' || table === 'access_hub_recent_edits' || table === 'access_hub_player_datasets') {
       admin();
     } else if (table === 'site_issues' && !ctx.isAdmin) {
       scope('user_id.eq.'+own());
