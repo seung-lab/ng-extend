@@ -220,6 +220,11 @@ export function pickUnderMouse(): Pick | { error: string } {
   if (!layer.graphConnection.value) return { error: 'This dataset has no proofreading graph to trace a path through.' };
   let selection: SegmentSelection | undefined;
   try { selection = ngeGrapheneSelectionUnderMouse(layer, viewer.mouseState); } catch { /* not ready */ }
+  // The click must land on the cell itself, not on something drawn in front
+  // of or around it, such as the dataset's outline box (Nseraf #456: a click
+  // on the box line put highlight points out in empty space).
+  const picked = viewer.mouseState.pickedRenderLayer;
+  if (selection && (!picked || !layer.renderLayers.includes(picked))) selection = undefined;
   if (!selection) return { error: 'Click on a cell that is showing in your view.' };
   const global = Array.from(viewer.mouseState.position as Float32Array).slice(0, 3);
   return { selection, root: selection.rootId.toString(), global };
