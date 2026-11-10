@@ -16,12 +16,12 @@
 // (the edit's row in site_text_edits, #nge-text-revert=<id>) and Open to edit
 // (#nge-text-open=<key>). The game handles both (src/text_edit_links.ts).
 //
-// A suggestion waiting for approval (draft.*, the Hunt's and 2D Tools'
-// instructions) gets its own note, "to approve", with the text now and as
-// suggested (planApproveNote). It is sent here, on the server, because the
-// game's own lookup of the approvers never found them (admins.user_id is empty).
+// planApproveNote words a "to approve" note for a suggestion waiting for
+// approval (draft.*, the Hunt's and 2D Tools' instructions). It is ready but
+// not switched on in index.js (Ames 2026-11-10 asked for the two links only).
 //
-// Not sent: an edit that changes nothing, and Ames's own edits.
+// Not sent: suggestions waiting for approval, an edit that changes nothing,
+// and Ames's own edits.
 
 /** Ames's accounts: the note goes to them, and their own edits send none. */
 const OWNER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];

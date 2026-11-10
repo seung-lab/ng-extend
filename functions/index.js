@@ -2785,14 +2785,15 @@ exports.ewCommunityData = onRequest(
       // The edit went through: tell Ames, before and after (Ames 2026-11-06).
       if (upstream.ok && editsBefore) {
         try {
-          const {planEditNote, planApproveNote, isDraft, OWNER_EMAILS} = require("./edit-notify");
+          const {planEditNote, isDraft, OWNER_EMAILS} = require("./edit-notify");
           const rowsAfter = plan.method === "DELETE" ? [] : (Array.isArray(plan.body) ? plan.body : [plan.body]);
           const editor = { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" };
           const notes = [];
           for (const k of Object.keys(editsBefore)) {
             const row = rowsAfter.find((r) => r && r.key === k);
             const after = plan.method === "DELETE" ? null : row ? String(row.body ?? "") : (plan.body && typeof plan.body.body === "string" ? plan.body.body : null);
-            if (isDraft(k)) { const n = planApproveNote({ key: k, live: editsBefore[k], suggested: after, editor }); if (n) notes.push(n); continue; }
+            // A suggestion waiting for approval sends no note here (planApproveNote is ready, not switched on; Ames 2026-11-10).
+            if (isDraft(k)) continue;
             if (!planEditNote({ key: k, before: editsBefore[k], after, editor })) continue;
             // Kept so the note's "Put back the old text" can undo exactly this edit (supabase-site-text-edits.sql).
             let editId = null;

@@ -58,7 +58,8 @@ async function save() {
       await saveSiteText(draftKey.value, draft.value.trim());
       editing.value = false;
       sentNote.value = 'Sent for approval. Players see it once it is approved.';
-      // The server sends the approvers their "to approve" note (functions/edit-notify.js).
+      // No note is sent for a suggestion: the old lookup here never found the approvers (admins.user_id is empty).
+      // functions/edit-notify.js has planApproveNote ready if Ames wants it.
       return;
     }
     await saveSiteText(props.textKey, draft.value.trim());
