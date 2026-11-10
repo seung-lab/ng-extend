@@ -118,6 +118,7 @@ const ACTIONS: Record<string, [string, KeyGroup] | null> = {
   'toggle-show-statistics': ['Show or hide loading statistics', 'Panels'],
   'help': ["Neuroglancer's own key panel", 'Panels'],
   'add-layer': ['Add a layer', 'Panels'],
+  'nge-select-layer-10-plus': ['Open layers 10 and up, the next one each press', 'Panels'],
 };
 /** Families of nine (keys 1 to 9), shown as one row. */
 const LAYER_FAMILIES: [RegExp, string][] = [
@@ -261,6 +262,8 @@ export function collectKeys(viewer: any, commands: CommandKey[] = []): KeyEntry[
     if (dual && l.where === '3D') continue;
     const where = dual ? '' : l.where;
     if (taken.has(l.stroke)) continue;
+    // the number pad repeats the number row (triage #449); one row each is enough
+    if (/numpad\d$/.test(l.stroke)) continue;
     const fam = LAYER_FAMILIES.find(([re]) => re.test(l.action));
     if (fam) {
       const mods = l.stroke.replace(/digit\d$/, '');

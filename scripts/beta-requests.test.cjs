@@ -161,6 +161,12 @@ const ISSUES = [
     const cardText = await board.$eval('.nge-triage-beta', e => e.innerText).catch(() => '');
     if (!cardText) { console.log('DEBUG', (await board.evaluate(() => document.body.innerText.slice(0, 900))).replace(/\s+/g, ' ')); await board.screenshot({ path: path.join(OUT, 'card-debug.png') }); }
     check('a Beta access triage card has Let them in, with the email it will add', /Let them in/.test(cardText) && /gus@work\.example/.test(cardText), cardText);
+    // The old on/off button is now a purple link to the Access page (Ames 2026-11-10).
+    const acc = await board.$eval('a.nge-triage-access-page', a => ({ text: a.textContent.trim(), href: a.getAttribute('href'), bg: getComputedStyle(a).backgroundColor })).catch(e => (console.log('ACCERR', String(e).slice(0, 300)), null));
+    check('the Access button opens the Access page, in purple', acc && acc.text === '🔑 Access' && /\?triage=access$/.test(acc.href) && /^rgba?\((1[0-9]{2}|[5-9][0-9]), ?([0-9]{1,2}|1[0-4][0-9]), ?(2[0-4][0-9]|2[5][0-5])/.test(acc.bg), acc);
+    check('the old Access requests on/off button is gone', !(await board.$('.nge-triage-access-toggle')) && !/Access requests: (on|off)/.test(await board.evaluate(() => document.body.innerText)));
+    const accBox = await board.locator('a.nge-triage-access-page').boundingBox().catch(() => null);
+    if (accBox) await board.screenshot({ path: path.join(OUT, 'triage-access-button.png'), clip: { x: Math.max(0, accBox.x - 420), y: Math.max(0, accBox.y - 20), width: 700, height: accBox.height + 40 } });
     await board.click('text=Beta access request from Gus Game').catch(() => {});
     await board.waitForTimeout(800);
     const cardBox = await board.locator('.nge-triage-beta').boundingBox().catch(() => null);

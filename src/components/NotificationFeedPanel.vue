@@ -489,9 +489,10 @@ async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
   // A tutorial edit to approve: its before and after show here, and this
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
-  if (a?.getAttribute('href') === ACCESS_LIST_LINK) {
+  if (a?.getAttribute('href') === ACCESS_LIST_LINK || a?.getAttribute('href') === BETA_LIST_LINK) {
     e.preventDefault();
-    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
+    const tab = a.getAttribute('href') === BETA_LIST_LINK ? 'pilot' : 'access';
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab } }));
     closeDetail();
     emit('hide');
     return;
@@ -868,13 +869,17 @@ function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
 }
 const ACCESS_LIST_LINK = '#nge-access-requests';
+// And to the Beta requests (Celia 2026-11-09: she wants both).
+const BETA_LIST_LINK = '#nge-beta-requests';
 const detailBody = computed(() => {
   let body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
   // The daily and weekly Access notes end with the way to the full list.
   if (String(openNotif.value?.title ?? '').startsWith('🔑 Access') && !body.includes(ACCESS_LIST_LINK)) {
     body += `
 
-[Open all access requests](${ACCESS_LIST_LINK})`;
+[Open dataset access requests](${ACCESS_LIST_LINK})
+
+[Open Beta requests](${BETA_LIST_LINK})`;
   }
   return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
 });
@@ -2224,6 +2229,9 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-scroll {
   position: relative;
   z-index: 1;
+  /* Shrinks inside the window so a long note scrolls (Ames 2026-11-10: "we need scroll if needed"). */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 26px 26px;
   scrollbar-width: thin;
@@ -2292,6 +2300,14 @@ span.nge-notif-reply-part { cursor: default; }
   border-left: 2px solid rgb(var(--nd-cyan) / 0.6);
   background: rgb(var(--nd-accent) / 0.06);
   color: #d6e2f0;
+}
+/* An edit note's changed words (functions/edit-notify.js, Ames 2026-11-10:
+   "highlight the difference"): added words lit, removed words struck. */
+.nge-notif-detail-body :deep(mark) {
+  color: #fff; background: rgba(90, 170, 255, 0.3); border-radius: 3px; padding: 0 2px;
+}
+.nge-notif-detail-body :deep(blockquote del) {
+  color: rgba(214, 226, 240, 0.55); text-decoration-color: rgba(150, 190, 255, 0.9); text-decoration-thickness: 1.5px;
 }
 .nge-notif-detail-body :deep(code) {
   font-size: 0.9em;

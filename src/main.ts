@@ -14,6 +14,7 @@ import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
 import {startStarshipIntro} from './util/intro_tour';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
+import { startBoundsColor } from './util/bounds_color';
 import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
@@ -90,7 +91,6 @@ import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
 import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
 import {getLayerScales} from "./widgets/widget_utils";
-import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 import pyrIconUrl from './images/pyr-icon.png';
 // The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
 import pyrTriageIconUrl from './images/pyr-icon-triage.png';
@@ -460,6 +460,7 @@ function setupViewer() {
   startTurkey();
   startLeaves();
   startInvalidSegmentWatch(viewer);
+  startBoundsColor();
   recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
@@ -506,7 +507,10 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
 
-  registerFreeRotateCubeAnnotationTool();
+  // The lab's free rotate cube tool is not offered: players turned it on by
+
+
+  // accident and could not tell what it was (Nseraf #457).
 
   return viewer;
 }
@@ -735,6 +739,31 @@ function observeSegmentSelect(targetNode: Element) {
   // Settings, "Show the segment ID under a cell's label" (Celia 2026-10-14).
   // The ID line is drawn by CSS from a body class, so it changes at once;
   // the typed rows change height, so the list measures them again.
+  // Settings, "Layer tabs show a Hide button" (Ames 2026-11-07): off, a tab
+  // has only the bin; on, the x that hides a layer to the side panel too.
+  watch(() => useUserPreferencesStore().prefs.layerHideButton === true, on => {
+    document.body.classList.toggle('nge-layer-hide-btn', on);
+  }, { immediate: true });
+  // Without the classic buttons, the tab's x closes the layer for good (the
+  // bin's delete, which Ctrl+Z undoes) instead of hiding it to the side panel.
+  const tabCloseX = (t: EventTarget | null): HTMLElement | null => {
+    if (document.body.classList.contains('nge-layer-hide-btn')) return null;
+    const icon = (t as HTMLElement)?.closest?.('.neuroglancer-layer-item-button-container .neuroglancer-icon') as HTMLElement | null;
+    return icon && icon === icon.parentElement?.firstElementChild && icon !== icon.parentElement?.lastElementChild ? icon : null;
+  };
+  document.addEventListener('click', (e) => {
+    const x = tabCloseX(e.target);
+    if (!x) return;
+    e.preventDefault(); e.stopPropagation();
+    (x.parentElement!.lastElementChild as HTMLElement).click();
+  }, true);
+  document.addEventListener('pointerover', (e) => {
+    const x = tabCloseX(e.target);
+    if (x) { x.title = 'Close this layer (Ctrl+Z brings it back)'; return; }
+    const icon = (e.target as HTMLElement)?.closest?.('.neuroglancer-layer-item-button-container .neuroglancer-icon') as HTMLElement | null;
+    if (icon?.title.startsWith('Close this layer')) icon.title = 'Remove layer from this layer group';
+  }, true);
+
   watch(() => useUserPreferencesStore().prefs.segShowId === true, on => {
     document.body.classList.toggle('nge-seg-show-id', on);
     setTimeout(() => document.querySelectorAll<HTMLElement>('.neuroglancer-segment-list-entry.nge-seg-labelled').forEach(remeasureListRow), 0);
@@ -751,13 +780,13 @@ function observeSegmentSelect(targetNode: Element) {
         const segmentIDString =
             item.getAttribute('data-id');
         if (segmentIDString) {
-          // Track this as the active segment for the annotation panel
-          useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
-
           let injected = false;
           let button = item.querySelector('.nge-segment-button.menu');
           if (button == null) {
             injected = true;
+            // A newly listed cell is the side panel's cell; rows redrawn are not
+            // (each one used to set it, and ask CAVE again, on every redraw).
+            useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
             const viewer: ExtendViewer = (<any>window)['viewer'];
             const layerName = viewer.selectedLayer.layer?.name || 'default';
             const dataset = (typeof DATASETS !== 'undefined' && DATASETS) ? (DATASETS[layerName] ?? '') : '';

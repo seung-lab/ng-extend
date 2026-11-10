@@ -180,6 +180,9 @@ export interface Step {
   highlight?: boolean;
   /** No confetti on the last box's button (a failed test is not a party). */
   noConfetti?: boolean;
+  /** Last box only: a quiet second button that closes the tutorial without
+   *  starting the next one (Get Started's "Not now", toknow #442). */
+  notNowLabel?: string;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {

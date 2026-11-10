@@ -22,6 +22,7 @@ import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
+import { startTutorialBoxJump } from '../tutorial_box_jump';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
@@ -46,6 +47,7 @@ const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: step
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
 // Time on each box, for Admin Hub > Tutorial times (src/tutorial_timing.ts).
 startTutorialTiming();
+startTutorialBoxJump();
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
@@ -199,6 +201,10 @@ function stepFrom(i: number, dir: 1 | -1): number {
 // window.__ngeStepPending): the first Next pressed without it says "try it
 // first", the second skips (Ames 2026-10-19: "can it detect if I didn't do it?").
 let nudged = -1;
+// "Not now" on a last box: finish the tutorial as usual, but don't start the
+// next one (toknow #442).
+let skipFollowOn = false;
+const notNow = () => { skipFollowOn = true; try { next(true); } finally { skipFollowOn = false; } };
 const next = (_auto?: unknown) => {
     const w = window as any;
     if (_auto !== true && w.__ngeStepPending && nudged !== store.getTutorialStep()) {
@@ -258,7 +264,8 @@ const next = (_auto?: unknown) => {
             document.dispatchEvent(new CustomEvent('nge:prompt-username'));
             // Then its top bar icons arrive and Merge starts by itself.
             const doneStep = store.getTutorialStep();
-            getStartedFinished(() => store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
+            const startMerge = !skipFollowOn;
+            getStartedFinished(() => startMerge && store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
         }
     }
 };
@@ -272,6 +279,10 @@ watch(() => store.activeTutorial, (now, before) => {
 // A practice step advances by itself when the edit lands (Amy: straight
 // to the success box).
 // Never on the last box: finishing a tutorial is the learner's own click.
+// One guide on screen at a time (toknow #441): the Starship tour closes an
+// open tutorial box as it starts, and a tutorial box showing ends that tour.
+document.addEventListener('nge:tutorial-close', () => { if (activeStep.value) exitIntro(); });
+watch(() => !!activeStep.value, on => { if (on) document.dispatchEvent(new CustomEvent('nge:tutorial-shown')); });
 document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(true); });
 const back = () => { (window as any).__ngeStepPending = false; store.setTutorialStep(Math.max(0, stepFrom(store.getTutorialStep() - 1, -1))); };
 // ── Resuming on page load (Nseraf 2026-09-29) ──
@@ -331,6 +342,9 @@ const needsResumePrompt = computed(() => !resumeDecided.value && !!activeStep.va
 // card) came up on every one (util/test_host.ts). There, nothing shows until
 // a tutorial is started from the menu.
 const startedHere = ref(false);
+// An admin's box link (?tutorialBox, tutorial_box_jump.ts) asked for this box:
+// show it now, with no "partway through" question and no test site quiet.
+document.addEventListener('nge:tutorial-box', () => { startedHere.value = true; resumeDecided.value = true; });
 if (QUIET_TEST_HOST) {
     const started = () => { startedHere.value = true; resumeDecided.value = true; };
     document.addEventListener('nge:tutorial-start', started);
@@ -416,6 +430,7 @@ const exitIntro = () => {
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
         :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
         v-on:next="next"
+        v-on:not-now="notNow"
         :class="{ 'nge-tut-under-card': testCardUp }"
         v-on:back="back" v-on:exitIntro="exitIntro" />
     </template>

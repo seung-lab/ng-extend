@@ -63,6 +63,7 @@ const editing = ref(false);
 
 const emit = defineEmits<{
     next: [],
+    notNow: [],
     back: [],
     exitIntro: [],
 }>();
@@ -674,6 +675,7 @@ async function onHtmlClick(e: MouseEvent) {
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
                         <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
+                        <button v-if="computedStep.last && step.notNowLabel" @click="$emit('notNow')" class="nge-not-now">{{ step.notNowLabel }}</button>
                         <button v-if="computedStep.last" @click="if (!step.noConfetti) launchConfetti(); $emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'done' }}</button>
                         <button v-else @click="$emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'next' }}</button>
                     </div>
@@ -1425,6 +1427,18 @@ async function onHtmlClick(e: MouseEvent) {
     opacity: 0.6;
     transition: opacity 0.2s;
 }
+.ng-extend .chip button.nge-not-now {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    padding: 7px 4px;
+    color: rgba(196, 228, 255, 0.85);
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+.ng-extend .chip button.nge-not-now:hover { background: none; opacity: 1; }
+.ng-extend .chip button.nge-not-now + button.next { margin-left: 16px; }
 .ng-extend .chip button.back::before { content: '\2039'; margin-right: 8px; font-size: 15px; line-height: 0.8; letter-spacing: 0; }
 .ng-extend .chip button.back:hover { background: none; opacity: 1; }
 .ng-extend .chip .nge-chip-rail {

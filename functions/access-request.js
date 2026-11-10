@@ -736,14 +736,16 @@ const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // welcome@connectome.quest, replies to support@eyewire.ai. Once per address:
 // a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
 // Support gets a blind copy of every welcome (Ames 2026-11-06: "copy
-// support@eyewire.org"), so the player never sees it.
+// support@eyewire.org"), and Ames's Gmail (2026-11-10: "add my Gmail"), so
+// the player never sees it.
 const WELCOME_FROM = 'Pyr <welcome@connectome.quest>';
 const WELCOME_REPLY_TO = 'support@eyewire.ai';
-const WELCOME_COPY_TO = 'support@eyewire.org';
+const WELCOME_COPY_TO = ['support@eyewire.org', 'amyleerobinson@gmail.com'];
 function welcomeMessage(name, email) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const text = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
-  const bcc = email !== WELCOME_COPY_TO ? { bcc: [WELCOME_COPY_TO] } : {};
+  const copies = WELCOME_COPY_TO.filter(c => c !== email);
+  const bcc = copies.length ? { bcc: copies } : {};
   return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, ...bcc, subject: "You're in: Pyr early access", text };
 }
 async function welcomeEmail(a, io) {
@@ -767,6 +769,43 @@ async function betaMark(a, io) {
   if (!BETA_MARKS.includes(a.mark)) fail(400, 'Unknown mark.');
   await io.marks.set(email, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
   return io.marks.all();
+}
+
+// ── The team's notes on a person (Celia 2026-11-09: "a place to leave notes
+// on requests from people we don't know, or ones still being discussed").
+// Shown on the Access page (triage hub). Keyed by the person's email, or
+// "user:<id>" when there is none. Admins only; in io.notes (Firestore in
+// index.js), so this needs no new table.
+//   access.notes       admins: every note, {key: [{id, text, by, at}]}.
+//   access.note        admins: {key, text} adds one.
+//   access.noteDelete  admins: {key, id} takes one away.
+const ACCESS_NOTE_MAX = 1000;
+const NOTE_KEY = /^(?:[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+|user:[0-9a-f-]{36})$/i;
+function noteKey(k) {
+  const key = String(k || '').trim().toLowerCase();
+  if (!NOTE_KEY.test(key) || key.length > BETA_EMAIL_MAX) fail(400, 'Unknown person.');
+  return key;
+}
+async function accessNotes(a, io) {
+  needAdmin(io.isAdmin);
+  return io.notes.all();
+}
+async function accessNote(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const text = cleanText(a.text, ACCESS_NOTE_MAX, 'The note', true);
+  if (!text) fail(400, 'Write a note first.');
+  const by = (io.me && (io.me.display_name || io.me.username)) || (io.who && io.who.email) || 'An admin';
+  await io.notes.add(key, {text, by, byEmail: (io.who && io.who.email) || '', at: new Date().toISOString()});
+  return io.notes.all();
+}
+async function accessNoteDelete(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const id = String(a.id || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) fail(400, 'Unknown note.');
+  await io.notes.remove(key, id);
+  return io.notes.all();
 }
 
 // ── Access to one dataset (Ames 2026-10-28) ──────────────────────────────
@@ -1025,6 +1064,9 @@ async function handle(action, args, io) {
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
   if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
+  if (action === 'access.notes') return accessNotes(a, io);
+  if (action === 'access.note') return accessNote(a, io);
+  if (action === 'access.noteDelete') return accessNoteDelete(a, io);
   if (action === 'access.principlesStatus') return principlesStatus(a, io);
   if (action === 'access.principlesAgree') return principlesAgree(a, io);
   if (action === 'access.mine') return mine(a, io);

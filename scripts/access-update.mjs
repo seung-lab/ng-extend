@@ -26,13 +26,13 @@ export function accessBody(requests, approvals) {
 
 export async function gatherAccess(get, sinceIso) {
   const since = encodeURIComponent(sinceIso);
-  const retina = await get('access_requests', `select=player_name&submitted_at=gte.${since}`);
-  const issues = await get('site_issues', `select=user_name,category,title&category=in.("Beta access","Dataset access")&created_at=gte.${since}`);
+  const retina = await get('access_requests', `select=player_name,user_id&submitted_at=gte.${since}`);
+  const issues = await get('site_issues', `select=user_name,user_id,category,title,message&category=in.("Beta access","Dataset access")&created_at=gte.${since}`);
   const requests = [
-    ...retina.map(r => ({ name: r.player_name, what: 'Retina' })),
+    ...retina.map(r => ({ name: r.player_name, what: 'Retina', keys: [r.user_id] })),
     // A dataset request is titled "<dataset> access request from <name>" (functions/access-request.js).
     ...issues.map(i => ({ name: i.user_name, what: i.category === 'Beta access' ? 'Beta'
-      : (String(i.title || '').split(' access request from ')[0].trim() || 'A dataset') })),
+      : (String(i.title || '').split(' access request from ')[0].trim() || 'A dataset'), keys: [i.user_id, ...requestEmails(i.message)] })),
   ];
   const notes = await get('notifications', `select=title,target_id&target_type=eq.user&send_at=gte.${since}`
     + `&or=${encodeURIComponent(`(title.eq."${RETINA_GRANT}",title.like."${DATASET_GRANT}*")`)}`);
@@ -40,9 +40,18 @@ export async function gatherAccess(get, sinceIso) {
   const people = ids.length ? await get('users', `select=id,display_name,username&id=in.(${ids.join(',')})`) : [];
   const nameOf = id => { const p = people.find(x => x.id === id); return p?.display_name || p?.username || 'Someone'; };
   const approvals = notes.map(n => ({ name: nameOf(n.target_id),
-    what: n.title === RETINA_GRANT ? 'Retina' : n.title.slice(DATASET_GRANT.length) }));
+    what: n.title === RETINA_GRANT ? 'Retina' : n.title.slice(DATASET_GRANT.length), keys: [n.target_id] }));
   approvals.push(...await betaApprovals(get, since));
-  return { requests, approvals };
+  // Asked and approved in the same stretch: named once, under Approved (Celia 2026-11-09).
+  const done = new Set(approvals.flatMap(a => a.keys.filter(Boolean).map(k => `${a.what}|${String(k).toLowerCase()}`)));
+  const open = requests.filter(r => !r.keys.some(k => k && done.has(`${r.what}|${String(k).toLowerCase()}`)));
+  const plain = ({ name, what }) => ({ name, what });
+  return { requests: open.map(plain), approvals: approvals.map(plain) };
+}
+
+// The emails a Beta request names: the sign in email and the one they gave.
+function requestEmails(message) {
+  return [...String(message || '').matchAll(/^(?:Sign in email|Email|Email they gave): ([^\s]+@[^\s]+?)\.?(?:\s|$)/gm)].map(m => m[1]);
 }
 
 // Beta approvals (Ames 2026-11-08: "we need a way to see beta access approved
@@ -57,11 +66,11 @@ async function betaApprovals(get, since) {
   for (const a of added) byTime.set(a.created_at, [...(byTime.get(a.created_at) || []), a.email]);
   const single = [...byTime.values()].filter(g => g.length < BETA_LIST_SIZE).flat();
   const emails = single.filter(Boolean).map(e => `"${e}"`).join(',');
-  const people = emails ? await get('users', `select=display_name,username,middleauth_email&middleauth_email=in.(${emails})`) : [];
-  const nameOf = e => { const p = people.find(x => String(x.middleauth_email || '').toLowerCase() === String(e).toLowerCase());
-    return p?.display_name || p?.username || e; };
-  const out = single.map(e => ({ name: nameOf(e), what: 'Beta' }));
-  for (const g of byTime.values()) if (g.length >= BETA_LIST_SIZE) out.push({ name: `${g.length} emails`, what: 'Beta, added as a list' });
+  const people = emails ? await get('users', `select=id,display_name,username,middleauth_email&middleauth_email=in.(${emails})`) : [];
+  const personOf = e => people.find(x => String(x.middleauth_email || '').toLowerCase() === String(e).toLowerCase());
+  const out = single.map(e => { const p = personOf(e);
+    return { name: p?.display_name || p?.username || e, what: 'Beta', keys: [e, p?.id] }; });
+  for (const g of byTime.values()) if (g.length >= BETA_LIST_SIZE) out.push({ name: `${g.length} emails`, what: 'Beta, added as a list', keys: g });
   return out;
 }
 

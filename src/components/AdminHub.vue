@@ -12,6 +12,7 @@ import {renderSafeMarkdown} from '../util/safe_markdown';
 import {withVideoEmbeds} from '../util/video_embeds';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
+import {addPilot, welcomeBell, welcomeEmail} from '../beta_let_in';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
@@ -109,9 +110,17 @@ const pilotFromWeb = (m: { email: string }) => !!pilotSheet.value && !pilotSheet
 const pilotWebCount = computed(() => pilotRows.value.filter(pilotFromWeb).length);
 const pilotJoined = (m: { email: string }) => !!pilotIds.value[m.email.toLowerCase()];
 const pilotJoinedCount = computed(() => pilotRows.value.filter(pilotJoined).length);
+/** The Access page in the triage hub (Ames 2026-11-09): every person, step by step. */
+const accessPageUrl = `${window.location.origin}${window.location.pathname}?triage=access`;
+/** The EyeWire username they gave when they asked, so it can be searched (Celia 2026-11-09). */
+function pilotEwName(m: { email: string }): string {
+  const e = m.email.toLowerCase();
+  return betaRequests.value.find(r => r.email === e)?.ewName || '';
+}
 function openPilotProfile(m: { email: string }) {
   const id = pilotIds.value[m.email.toLowerCase()];
-  if (id) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: id } }));
+  // Closing their profile comes back here (Celia 2026-11-09).
+  if (id) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: id, back: 'pilot' } }));
 }
 const pilotShown = computed(() => {
   const words = pilotSearch.value.toLowerCase().split(/\s+/).filter(Boolean);
@@ -120,7 +129,7 @@ const pilotShown = computed(() => {
       : pilotRows.value.filter(m => pilotJoined(m) === (pilotWho.value === 'joined'));
   if (!words.length) return rows;
   return rows.filter(m => {
-    const hay = (m.email + ' ' + (pilotNames.value[m.email.toLowerCase()] || '')).toLowerCase();
+    const hay = (m.email + ' ' + (pilotNames.value[m.email.toLowerCase()] || '') + ' ' + (pilotEwName(m) || '')).toLowerCase();
     return words.every(w => hay.includes(w));
   });
 });
@@ -239,35 +248,14 @@ async function markBeta(r: BetaRequest, mark: 'listed' | 'removed' | 'waiting') 
 }
 async function letBetaIn(r: BetaRequest) {
   betaBusy.value = r.email; betaError.value = '';
-  const { error } = await supabase.from('pilot_members').upsert([{ email: r.email, enabled: true }], { onConflict: 'email' });
-  if (error) betaError.value = error.message; else { await loadPilot(); void welcomeBell(r.userId); void welcomeEmail(r.email, r.name); }
+  // The bell, the email and Pilot testers: src/beta_let_in.ts, shared with the Access page.
+  try { await addPilot(r.email); } catch (e: any) { betaError.value = e?.message || 'That did not save.'; betaBusy.value = ''; return; }
+  await loadPilot(); void welcomeBell(r.userId);
+  void welcomeEmail(r.email, r.name).then(s => { welcomeEmailed.value = { ...welcomeEmailed.value, [r.email]: s }; });
   betaBusy.value = '';
 }
-/** The "You're in" email, from welcome@connectome.quest (functions/access-request.js
- *  welcomeEmail); once per address, so a second Let in sends nothing. */
+/** What the "You're in" email did, by address (once per address). */
 const welcomeEmailed = ref<Record<string, string>>({});
-async function welcomeEmail(email: string, name: string) {
-  try {
-    const r = await secureWrite<{ sent: boolean; reason?: string }>('access.welcomeEmail', { email, name });
-    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: r?.sent ? 'Emailed them' : r?.reason === 'already sent' ? 'Emailed before' : '' };
-  } catch (e: any) {
-    welcomeEmailed.value = { ...welcomeEmailed.value, [email]: e?.message || 'The email did not go.' };
-  }
-}
-/** Let in: whoever asked from inside Pyr hears it in their bell (Ames
- *  2026-11-05). Someone still on the waiting screen is let in there too
- *  (BetaGate.vue). Asked from connectome.quest, with no account yet: no bell,
- *  the email from the Let in list is the way. */
-async function welcomeBell(userId: string | null | undefined) {
-  if (!userId) return;
-  try {
-    await secureWrite('notification.insert', { row: {
-      title: "🎉 You're in the Pyr beta!",
-      body: "Welcome! You can now claim cells, take the tutorials and help map the brain. Thank you for joining us.\n\nThe Pyr (pronounced \"peer\") team at Princeton University",
-      target_type: 'user', target_id: userId, send_at: new Date().toISOString(),
-    } });
-  } catch { /* they are in either way */ }
-}
 /** An email to tell them, ready to send from the admin's own mail. */
 function betaMailto(r: BetaRequest) {
   const first = r.name.split(' ')[0] || 'there';
@@ -456,7 +444,7 @@ async function letInFromCard(r: TriageRow) {
     if (error) { cardLetInError.value = { ...cardLetInError.value, [r.id]: error.message }; return; }
     const { data: issue } = await supabase.from('site_issues').select('user_id').eq('id', r.source_id).single();
     void welcomeBell((issue as any)?.user_id);
-    void welcomeEmail(email, reporterOf(r)?.name || '');
+    void welcomeEmail(email, reporterOf(r)?.name || '').then(s => { welcomeEmailed.value = { ...welcomeEmailed.value, [email]: s }; });
   } finally { cardLetInBusy.value = ''; }
   await setTriageStatus(r, 'done', false, false, `Let in: ${email} added to Pilot testers.`);
   if (adminSubTab.value === 'pilot') void loadPilot();
@@ -466,6 +454,8 @@ async function letInFromCard(r: TriageRow) {
  *  so the user's full text appears"). The excerpt stands in until the report
  *  itself has loaded, or when there is no report behind the row. */
 const fullTextOf = (r: TriageRow) => reporterOf(r)?.message || r.source_excerpt || '';
+/** Bold, italics or a list, as the bug report's format buttons write them. */
+const looksFormatted = (t: string) => /\*\*[^*\n]+\*\*|(^|\s)\*[^*\s][^*\n]*\*|^\s*(- |\d{1,3}\. )/m.test(t);
 /** A steady color for a name, so each reporter is easy to spot on the board. */
 function avatarHue(name: string): number {
   let h = 0;
@@ -624,7 +614,7 @@ const triageWords = computed(() => triageSearch.value.toLowerCase().split(/\s+/)
 type TriageKind = 'all' | 'bug' | 'feature' | 'other' | 'access';
 const TRIAGE_KIND_KEY = 'nge_triage_kind_v1';
 const triageKind = ref<TriageKind>((() => {
-  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other' || v === 'access') return v; } catch { /* private window */ }
+  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other') return v; } catch { /* private window */ }
   return 'all';
 })());
 watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch { /* not remembered */ } });
@@ -635,15 +625,46 @@ watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch
 const isAccessRequest = (r: TriageRow) => /^beta access$/i.test((reporterOf(r)?.category || '').trim());
 const kindOf = (r: TriageRow): Exclude<TriageKind, 'all'> => (isAccessRequest(r) ? 'access' : closedKind(r, reporterOf(r)?.category));
 const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
-  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' }, { key: 'access', label: '🔑 Access' },
+  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' },
 ];
-const TRIAGE_ACCESS_KEY = 'nge_triage_access_v1';
-const triageAccessOn = ref((() => { try { return localStorage.getItem(TRIAGE_ACCESS_KEY) !== '0'; } catch { return true; } })());
-function toggleTriageAccess() {
-  triageAccessOn.value = !triageAccessOn.value;
-  try { localStorage.setItem(TRIAGE_ACCESS_KEY, triageAccessOn.value ? '1' : '0'); } catch { /* not remembered */ }
-  if (!triageAccessOn.value && triageKind.value === 'access') triageKind.value = 'all';
+// Access requests are off the board (Ames 2026-11-10: "we don't need to see
+// access requests here just put the count in the Access button"); they are
+// handled on the Access page. A Slack link straight to one still opens it.
+const linkedReportId = (() => { try { return new URLSearchParams(window.location.search).get('report') || ''; } catch { return ''; } })();
+// Who is already let in, so their request card closes itself (Ames 2026-11-10:
+// "if someone has been invited we can close that triage item").
+const triagePilotEmails = ref<Set<string> | null>(null);
+async function loadTriagePilotEmails() {
+  const { data, error } = await supabase.from('pilot_members').select('email');
+  if (!error) triagePilotEmails.value = new Set(((data as any[]) || []).map(m => String(m.email || '').toLowerCase()));
 }
+const openAccessRows = computed(() => triageRows.value.filter(r => isAccessRequest(r) && !['done', 'dismissed'].includes(triageGroupOf(r))));
+/** People still waiting: open requests from an email not yet let in. */
+const accessWaitingCount = computed(() => openAccessRows.value.filter(r => {
+  const email = betaEmailOfCard(r).toLowerCase();
+  return !email || !triagePilotEmails.value?.has(email);
+}).length);
+const accessClosing = new Set<string>();
+watch([openAccessRows, triagePilotEmails], async () => {
+  const pilots = triagePilotEmails.value;
+  if (!pilots) return;
+  for (const r of openAccessRows.value) {
+    const email = betaEmailOfCard(r).toLowerCase();
+    if (!email || !pilots.has(email) || accessClosing.has(r.id)) continue;
+    accessClosing.add(r.id);
+    const fields = { status: 'done', result_note: `Let in: ${email} is a Pilot tester.`,
+      reviewed_by: backend.userName || backend.userEmail || 'admin', reviewed_at: new Date().toISOString() };
+    try {
+      await secureWrite('triage.update', { id: r.id, fields });
+      Object.assign(r, fields);
+      triageRows.value = [...triageRows.value];
+    } catch (e) { console.warn('[triage] could not close an access request', e); }
+  }
+});
+// The old "Access requests: on/off" button is now a link to the Access page
+// (Ames 2026-11-10: "change this button to be Access and have it take us to
+// the Access page", "it can be purple"). Access requests always show on the
+// board, under their own kind.
 /** Open reports only (Ames 2026-10-21: the filter is for active reports):
  *  Needs your decision, In progress, On the To do board, Ideas for later. */
 const triageKindCount = computed(() => {
@@ -651,14 +672,15 @@ const triageKindCount = computed(() => {
   for (const r of triageRows.value) {
     if (['done', 'dismissed'].includes(triageGroupOf(r))) continue;
     const k = kindOf(r);
+    if (k === 'access') continue;
     n[k]++;
-    if (k !== 'access' || triageAccessOn.value) n.all++;
+    n.all++;
   }
   return n;
 });
 function triageMatches(r: TriageRow): boolean {
+  if (isAccessRequest(r) && r.id !== linkedReportId) return false;
   if (triageKind.value !== 'all' && kindOf(r) !== triageKind.value) return false;
-  if (triageKind.value === 'all' && !triageAccessOn.value && isAccessRequest(r)) return false;
   const words = triageWords.value;
   if (!words.length) return true;
   const n = triageNumbers.value[r.id];
@@ -799,7 +821,10 @@ async function loadArcaneCards() {
   try {
     const d = await secureWrite<any>('todo.list');
     const me = (d?.people || []).find((p: any) => isMe(p.name));
-    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)))).length : 0;
+    // Cards I own, made without an owner, or worked on as a collaborator (which
+    // includes finishing someone else's card): Ames 2026-11-09, "all collaborators".
+    const helping = (d?.helpers || {}) as Record<string, string[]>;
+    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)) || (helping[c.id] || []).includes(me.id))).length : 0;
     arcaneCardsIn.value = true;
   } catch { /* the cards just do not count this time */ }
 }
@@ -1068,6 +1093,17 @@ function openTodoBoard() {
   if (props.standalone || triageBoard.value) todoView.value = true;
   else window.open(todoBoardUrl, '_blank', 'noopener');
 }
+// The address follows the view: back on Triage drops "&todo" (and any card
+// in it), so a refresh stays on Triage instead of reopening the last To do
+// (Celia #447). Opening the board puts a bare "&todo" back.
+watch(todoView, on => {
+  try {
+    const u = new URL(window.location.href);
+    if (on === u.searchParams.has('todo')) return;
+    if (on) u.searchParams.set('todo', ''); else u.searchParams.delete('todo');
+    window.history.replaceState(window.history.state, '', u.toString().replace(/([?&]todo)=(&|$)/, '$1$2'));
+  } catch { /* the address just stays */ }
+});
 
 // ── Notes, with no decision (Celia #178: "a way to leave notes on entries in
 // the triage panel without submitting any other actions") ──
@@ -1229,6 +1265,7 @@ async function loadTriage() {
     }
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
+    void loadTriagePilotEmails();
     sweepMovedReportNotes();
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
@@ -1898,6 +1935,9 @@ const userLabel = (u: PickedUser) => [u.display_name || 'Unnamed player', u.user
 function onUserQuery() {
   if (userSearchTimer) clearTimeout(userSearchTimer);
   // PostgREST filter syntax characters would break the query; names never need them.
+  userUnfound.value = [];
+  // A list of names is looked up on Enter (or as it is pasted).
+  if (/[,\n;]/.test(userQuery.value)) { userMatches.value = []; return; }
   const q = userQuery.value.trim().replace(/[,()*%\\]/g, ' ').trim();
   if (q.length < 2) { userMatches.value = []; return; }
   userSearchTimer = setTimeout(async () => {
@@ -1910,22 +1950,79 @@ function onUserQuery() {
     } catch { userMatches.value = []; } finally { userSearching.value = false; }
   }, 220);
 }
+// Several players at once (Ames 2026-11-09): picked players are chips, and a
+// list of names separated by commas is looked up name by name. A new
+// notification goes to each of them as its own; notifTargetId holds the first.
+const userPicks = ref<PickedUser[]>([]);
+/** Names from a comma list that matched no one, or more than one player. */
+const userUnfound = ref<string[]>([]);
+const userListResolving = ref(false);
+watch(userPicks, list => {
+  userPicked.value = list[0] ?? null;
+  notifTargetId.value = list[0]?.id ?? '';
+}, { deep: true });
+function addPick(u: PickedUser) {
+  if (!userPicks.value.some(p => p.id === u.id)) userPicks.value.push(u);
+}
 function pickUser(u: PickedUser) {
-  userPicked.value = u;
-  notifTargetId.value = u.id;
+  addPick(u);
   userQuery.value = '';
   userMatches.value = [];
 }
-function clearPickedUser() { userPicked.value = null; notifTargetId.value = ''; }
+function removePick(id: string) { userPicks.value = userPicks.value.filter(p => p.id !== id); }
+function clearPickedUser() { userPicks.value = []; userUnfound.value = []; }
+/** One name from a list: an exact display name or username first, then the
+ *  only player whose name contains it. */
+async function findOne(name: string): Promise<PickedUser | null> {
+  const { supabase } = await import('../supabase');
+  const q = name.replace(/["\\]/g, '').trim();
+  if (q.length < 2) return null;
+  const exact = await supabase.from('users').select('id,display_name,username')
+    .or(`display_name.ilike."${q}",username.ilike."${q.replace(/^@/, '')}"`).limit(2);
+  if ((exact.data ?? []).length === 1) return exact.data![0] as PickedUser;
+  const some = await supabase.from('users').select('id,display_name,username')
+    .or(`display_name.ilike."*${q}*",username.ilike."*${q}*"`).limit(2);
+  return (some.data ?? []).length === 1 ? some.data![0] as PickedUser : null;
+}
+/** Looks up every name in the box, separated by commas (or new lines). */
+async function resolveUserList() {
+  const names = userQuery.value.split(/[,\n;]+/).map(s => s.trim()).filter(Boolean);
+  if (!names.length) return;
+  userListResolving.value = true;
+  userMatches.value = [];
+  const missed: string[] = [];
+  try {
+    for (const n of names) {
+      const u = await findOne(n).catch(() => null);
+      if (u) addPick(u); else missed.push(n);
+    }
+  } finally { userListResolving.value = false; }
+  userUnfound.value = missed;
+  userQuery.value = missed.join(', ');
+}
+const userQueryIsList = computed(() => /[,\n;]/.test(userQuery.value));
+function onUserEnter() {
+  if (userQueryIsList.value) void resolveUserList();
+  else if (userMatches.value.length === 1) pickUser(userMatches.value[0]);
+}
+function onUserPaste(e: ClipboardEvent) {
+  const text = e.clipboardData?.getData('text') ?? '';
+  if (!/[,\n;]/.test(text)) return;
+  e.preventDefault();
+  userQuery.value = (userQuery.value ? userQuery.value + ', ' : '') + text;
+  void resolveUserList();
+}
 // A draft or an edited notification restores only the id: look its name up.
 watch(notifTargetId, async id => {
-  if (!id) { userPicked.value = null; return; }
-  if (userPicked.value?.id === id || notifTargetType.value !== 'user') return;
+  if (!id) { if (userPicks.value.length) userPicks.value = []; return; }
+  if (userPicks.value.some(p => p.id === id) || notifTargetType.value !== 'user') return;
+  let u: PickedUser = { id, display_name: null, username: null };
   try {
     const { supabase } = await import('../supabase');
     const { data } = await supabase.from('users').select('id,display_name,username').eq('id', id).limit(1);
-    userPicked.value = ((data ?? [])[0] as PickedUser) || { id, display_name: null, username: null };
-  } catch { userPicked.value = { id, display_name: null, username: null }; }
+    u = ((data ?? [])[0] as PickedUser) || u;
+  } catch { /* keep the bare id */ }
+  userPicks.value = [u];
 });
 const notifPostToChat = ref(false);
 
@@ -2130,6 +2227,7 @@ function saveDraft() {
       body: notifBody.value,
       targetType: notifTargetType.value,
       targetId: notifTargetId.value,
+      picks: userPicks.value.length > 1 ? userPicks.value : undefined,
       postToChat: notifPostToChat.value,
       sendAt: notifSendAt.value,
       expiresAt: notifExpiresAt.value,
@@ -2147,6 +2245,7 @@ function restoreDraft() {
     notifBody.value = d.body || '';
     notifTargetType.value = d.targetType || 'all';
     notifTargetId.value = d.targetId || '';
+    if (Array.isArray(d.picks) && d.picks.length > 1) userPicks.value = d.picks;
     notifPostToChat.value = !!d.postToChat;
     notifSendAt.value = d.sendAt || '';
     notifExpiresAt.value = d.expiresAt || '';
@@ -2160,7 +2259,7 @@ function clearDraft() {
 const hasDraft = computed(() =>
   !!(notifTitle.value.trim() || notifBody.value.trim() || notifSendAt.value));
 
-watch([notifTitle, notifBody, notifTargetType, notifTargetId,
+watch([notifTitle, notifBody, notifTargetType, notifTargetId, () => userPicks.value.length,
        notifPostToChat, notifSendAt, notifExpiresAt], saveDraft);
 
 /** A title is always needed; words only when there is no picture. A title
@@ -2225,11 +2324,14 @@ async function sendNotification() {
       return;
     }
 
-    await backend.createNotification({
+    // Specific User with several players: one notification each.
+    const recipients = notifTargetType.value === 'user' && userPicks.value.length > 1
+      ? userPicks.value.map(u => u.id) : [notifTargetId.value];
+    for (const rid of recipients) await backend.createNotification({
       title: notifTitle.value.trim(),
       body: notifBody.value.trim(),
       target_type: notifTargetType.value,
-      target_id: notifTargetType.value !== 'all' ? notifTargetId.value : undefined,
+      target_id: notifTargetType.value !== 'all' ? rid : undefined,
       post_to_chat: notifPostToChat.value,
       // Interpret the picker's naive value as EASTERN time, not the admin's
       // local zone — `new Date("2026-07-20T08:00")` would parse in whatever
@@ -2245,7 +2347,7 @@ async function sendNotification() {
     // scheduled time back and the admin knows exactly what was queued.
     const audience = notifTargetType.value === 'all' ? 'all users'
       : notifTargetType.value === 'group' ? 'the selected group'
-      : 'that user';
+      : recipients.length > 1 ? `${recipients.length} players` : 'that user';
     notifConfirm.value = isScheduledForLater.value
       ? `Scheduled for ${formatEt(etNaiveToUtcIso(notifSendAt.value))} to ${audience}.`
         + (notifPostToChat.value ? ' It will post to chat when it sends.' : '')
@@ -2859,6 +2961,7 @@ function practiceWhen(iso: string | null) {
     <TutorialTimesTab v-if="adminSubTab === 'tutorialTimes'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
+    <a v-if="adminSubTab === 'access' || adminSubTab === 'pilot'" class="nge-access-page-link" :href="accessPageUrl" target="_blank" rel="noopener">Open the Access page: everyone, step by step</a>
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
     <HuntsAdminTab v-if="adminSubTab === 'hunts'" />
     <InterneuronQuestsAdminTab v-if="adminSubTab === 'interneurons'" />
@@ -2932,7 +3035,7 @@ function practiceWhen(iso: string | null) {
       <p v-if="pilotError" role="alert">{{ pilotError }}</p>
       <p v-if="!pilotRows.length">No additional testers invited yet.</p>
       <div v-else class="nge-pilot-find">
-        <input v-model="pilotSearch" type="search" autocomplete="off" placeholder="Search by name or email" aria-label="Search testers by name or email"
+        <input v-model="pilotSearch" type="search" autocomplete="off" placeholder="Search by name, email or EyeWire username" aria-label="Search testers by name, email or EyeWire username"
                @keydown.stop @keyup.stop @keypress.stop />
         <span>{{ pilotSearch.trim() || pilotWho !== 'all' ? `${pilotShown.length} of ${pilotRows.length}` : `${pilotRows.length} testers` }}</span>
       </div>
@@ -2951,6 +3054,7 @@ function practiceWhen(iso: string | null) {
           <button v-if="pilotJoined(member)" type="button" class="nge-pilot-name nge-pilot-name--link" title="Open their profile" @click="openPilotProfile(member)">{{ pilotNames[member.email.toLowerCase()] || 'Their profile' }}</button>
           <i v-else class="nge-pilot-noname" title="No Pyr account was found under this email. They may not have signed in yet, or they sign in with a different address.">no Pyr name yet</i>
           · {{ member.email }} ·
+          <template v-if="pilotEwName(member)"><span class="nge-pilot-ew" title="The EyeWire username they gave when they asked">EyeWire {{ pilotEwName(member) }}</span> · </template>
           <span v-if="!member.enabled">Access paused</span>
           <span v-else-if="pilotJoined(member)" class="nge-pilot-joined">Joined</span>
           <span v-else class="nge-pilot-invited" title="Invited, but nobody has signed in to Pyr with this email yet.">Invited, not joined yet</span>
@@ -2997,14 +3101,23 @@ function practiceWhen(iso: string | null) {
             <option v-for="g in backend.groups" :key="g.id" :value="String(g.id)">{{ g.name }}</option>
           </select>
           <div v-if="notifTargetType === 'user'" class="nge-user-pick">
-            <div v-if="userPicked" class="nge-user-picked">
-              <span class="nge-user-picked-name">{{ userLabel(userPicked) }}</span>
-              <button type="button" class="nge-user-picked-x" title="Choose someone else" @click="clearPickedUser">×</button>
+            <div v-if="userPicks.length" class="nge-user-chips">
+              <span v-for="u in userPicks" :key="u.id" class="nge-user-picked nge-user-chip">
+                <span class="nge-user-picked-name">{{ u.display_name || u.username || 'Unnamed player' }}</span>
+                <button v-if="editingId == null || userPicks.length > 1" type="button" class="nge-user-picked-x" title="Remove" @click="removePick(u.id)">×</button>
+              </span>
+              <button v-if="userPicks.length > 1" type="button" class="nge-user-clear" @click="clearPickedUser">Clear all {{ userPicks.length }}</button>
             </div>
-            <template v-else>
-              <input v-model="userQuery" class="nge-admin-input" placeholder="Name or username" autocomplete="off"
-                     @input="onUserQuery" @keydown.stop @keyup.stop />
-              <div v-if="userQuery.trim().length >= 2" class="nge-user-matches">
+            <template v-if="editingId == null || !userPicks.length">
+              <input v-model="userQuery" class="nge-admin-input" autocomplete="off"
+                     :placeholder="userPicks.length ? 'Add another, or paste names separated by commas' : 'Name or username, or names separated by commas'"
+                     @input="onUserQuery" @paste="onUserPaste" @keydown.enter.prevent="onUserEnter" @keydown.stop @keyup.stop />
+              <div v-if="userListResolving" class="nge-user-nomatch">Looking up the names…</div>
+              <div v-else-if="userUnfound.length" class="nge-user-unfound">
+                Not found, or more than one match: {{ userUnfound.join(', ') }}. Fix the spelling and press Enter, or pick each one from the list.
+              </div>
+              <div v-else-if="userQueryIsList" class="nge-user-nomatch">Press Enter to add these players.</div>
+              <div v-if="!userQueryIsList && !userListResolving && userQuery.trim().length >= 2" class="nge-user-matches">
                 <button v-for="u in userMatches" :key="u.id" type="button" class="nge-user-match" @click="pickUser(u)">
                   <span class="nge-user-match-name">{{ u.display_name || 'Unnamed player' }}</span>
                   <span v-if="u.username" class="nge-user-match-handle">@{{ u.username }}</span>
@@ -3470,13 +3583,11 @@ function practiceWhen(iso: string | null) {
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
           <span class="nge-triage-kinds" role="radiogroup" aria-label="Show">
-            <button v-for="k in TRIAGE_KINDS.filter(k => k.key !== 'access' || triageAccessOn)" :key="k.key" type="button" role="radio" class="nge-triage-kind" title="Open reports of this kind. The board shows only these."
+            <button v-for="k in TRIAGE_KINDS" :key="k.key" type="button" role="radio" class="nge-triage-kind" title="Open reports of this kind. The board shows only these."
                     :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
                     @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
           </span>
-          <button type="button" class="nge-admin-action-btn nge-triage-access-toggle" :aria-pressed="triageAccessOn ? 'true' : 'false'"
-                  :title="triageAccessOn ? 'Hide access requests from the board. They wait under 🔑 Access when you turn them back on.' : 'Show access requests on the board again'"
-                  @click="toggleTriageAccess">{{ triageAccessOn ? '🔑 Access requests: on' : '🔑 Access requests: off' }}<template v-if="!triageAccessOn && triageKindCount.access"> ({{ triageKindCount.access }})</template></button>
+          <a class="nge-admin-action-btn nge-triage-access-page" :href="accessPageUrl" title="The Access page: everyone who asked or was let in, step by step. The number is people still waiting to be let in.">🔑 Access<span v-if="accessWaitingCount" class="nge-triage-access-n">{{ accessWaitingCount }}</span></a>
           <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
                   :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
                   @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
@@ -3559,7 +3670,10 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="reporterOf(row)?.title" class="nge-triage-title">{{ reporterOf(row)?.title }}</div>
           <!-- A one line report is all title: say it once. -->
-          <div v-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
+          <!-- A report written with formatting (bold, lists: Celia #446.4) shows formatted. -->
+          <div v-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title && looksFormatted(fullTextOf(row))"
+               class="nge-triage-excerpt nge-triage-excerpt--md" v-html="renderSafeMarkdown(fullTextOf(row))"></div>
+          <div v-else-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
             <a v-if="reporterOf(row)?.url" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.url" target="_blank" rel="noopener noreferrer" @click.stop
                title="The view they were in when they sent the report">↗ Open their view</a>
@@ -3680,6 +3794,13 @@ function practiceWhen(iso: string | null) {
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
             <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
+            <template v-if="row.source === 'site_issue'">
+              <a v-if="mecDone[row.id]" class="nge-admin-action-btn nge-triage-mec-btn nge-triage-mec-btn--done" :href="MEC_SHEET_URL" target="_blank" rel="noopener"
+                 title="Open the MEC segment issues sheet">✓ {{ mecDone[row.id].already ? 'Already on' : 'Added to' }} the MEC sheet<template v-if="mecDone[row.id].row"> (row {{ mecDone[row.id].row }})</template><template v-if="mecDone[row.id].notified">, {{ reporterOf(row)?.name || 'the player' }} told</template> ↗</a>
+              <button v-else class="nge-admin-action-btn nge-triage-mec-btn" :disabled="mecBusy === row.id"
+                      title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors. The player gets a bell saying their report was added."
+                      @click="addToMecSheet(row)">{{ mecBusy === row.id ? 'Adding…' : '🧩 MEC error' }}</button>
+            </template>
             <!-- Dismiss at any stage after approval too (a failed or unwanted
                  build), and Discard for junk (Ames 2026-10-05). -->
             <button v-if="row.status === 'approved'" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
@@ -3693,6 +3814,7 @@ function practiceWhen(iso: string | null) {
                     @click="undismiss(row)">↩ Back to the board</button>
             <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
           </div>
+          <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
           <!-- Going live is approved in Slack only: the deploy checks the
                tester's exact reply there before it touches the live site. -->
           <div v-if="row.status === 'approved' && releaseBuildOf(row)" class="nge-triage-release">
@@ -3827,20 +3949,17 @@ function practiceWhen(iso: string | null) {
             <div class="nge-triage-tools">
             <button v-if="reporterDrafts[row.id] === undefined" class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
-            <template v-if="row.source === 'site_issue'">
-              <a v-if="mecDone[row.id]" class="nge-admin-action-btn nge-triage-mec-btn nge-triage-mec-btn--done" :href="MEC_SHEET_URL" target="_blank" rel="noopener"
-                 title="Open the MEC segment issues sheet">✓ {{ mecDone[row.id].already ? 'Already on' : 'Added to' }} the MEC sheet<template v-if="mecDone[row.id].row"> (row {{ mecDone[row.id].row }})</template><template v-if="mecDone[row.id].notified">, {{ reporterOf(row)?.name || 'the player' }} told</template> ↗</a>
-              <button v-else class="nge-admin-action-btn nge-triage-mec-btn" :disabled="mecBusy === row.id"
-                      title="Adds this report to the MEC segment issues sheet: the player, their words, the segments and spot from their view, their last cut or merge, pictures and the console errors. The player gets a bell saying their report was added."
-                      @click="addToMecSheet(row)">{{ mecBusy === row.id ? 'Adding…' : '🧩 MEC error' }}</button>
-            </template>
             </div>
-            <div v-if="mecError[row.id]" class="nge-triage-mec-err" role="alert">{{ mecError[row.id] }}</div>
           </div>
         </div>
         <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
+          <!-- While searching, an empty column only means no
+               match there, not Triage zero (Celia #448). -->
+          <template v-if="triageWords.length"><div>No matches here.</div></template>
+          <template v-else>
           <img v-if="g.key === 'decide'" :src="imgNurroBravo" alt="" class="nge-triage-zero-nurro" />
           <div>{{ g.empty }}</div>
+          </template>
         </div>
         </template>
         </div>
@@ -3969,6 +4088,11 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-user-picked-name { flex: 1; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .nge-user-picked-x { background: none; border: none; color: #a9c4e4; font-size: 1.2em; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-user-picked-x:hover { color: #fff; }
+.nge-user-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; max-height: 140px; overflow-y: auto; }
+.nge-user-chip { padding: 4px 6px 4px 10px; max-width: 220px; }
+.nge-user-clear { background: none; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px; color: #a9c4e4; font: inherit; font-size: 0.85em; padding: 4px 9px; cursor: pointer; }
+.nge-user-clear:hover { color: #fff; border-color: rgba(74, 158, 255, 0.5); }
+.nge-user-unfound { margin-top: 6px; padding: 7px 9px; border-radius: 6px; background: rgba(255, 196, 0, 0.08); border: 1px solid rgba(255, 196, 0, 0.3); color: #f2dc9a; font-size: 0.88em; }
 
 .nge-admin-textarea {
   background: rgba(255, 255, 255, 0.06);
@@ -4491,6 +4615,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-card--selected { cursor: default; }
 /* The whole report, with the player's own line breaks, on an opened card. */
 .nge-triage-card--selected .nge-triage-excerpt, .nge-triage-cols:not([style]) .nge-triage-excerpt { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nge-triage-excerpt--md { white-space: normal !important; }
+.nge-triage-excerpt--md p { margin: 0 0 6px; }
+.nge-triage-excerpt--md ul, .nge-triage-excerpt--md ol { margin: 2px 0 6px; padding-left: 20px; }
+.nge-triage-excerpt--md a { color: #7db4ff; }
 .nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
 
 /* ── Chips ───────────────────────────────────────────────────────────────
@@ -4979,6 +5107,12 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-later-btn { color: #f0d27a; border-color: rgba(240, 210, 122, 0.4); }
 .nge-triage-later-btn:hover:not(:disabled) { background: rgba(240, 210, 122, 0.12); border-color: rgba(240, 210, 122, 0.75); }
 .nge-triage-light .nge-triage-prog-btn { color: #5b21b6; border-color: #c4b5fd; }
+/* The link to the Access page (Ames 2026-11-10: "it can be purple"). */
+.nge-triage-access-page { text-decoration: none; display: inline-flex; align-items: center; color: #d6c8ff; background: rgba(139, 92, 246, 0.22); border-color: rgba(167, 139, 250, 0.7); }
+.nge-triage-access-page:hover { background: rgba(139, 92, 246, 0.34); border-color: #a78bfa; }
+.nge-triage-access-n { margin-left: 6px; min-width: 18px; padding: 0 6px; border-radius: 9px; background: #fff; color: #5b21b6; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.nge-triage-light .nge-triage-access-page { color: #ffffff; background: #7c3aed; border-color: #6d28d9; }
+.nge-triage-light .nge-triage-access-page:hover { background: #6d28d9; border-color: #5b21b6; }
 .nge-triage-light .nge-triage-prog-btn:hover:not(:disabled) { background: #f3efff; border-color: #8b5cf6; }
 .nge-triage-light .nge-triage-todo-btn { color: #1d4ed8; border-color: #9dbcf0; }
 .nge-triage-light .nge-triage-todo-btn:hover:not(:disabled) { background: #eef4ff; border-color: #3b74e0; }
@@ -5238,6 +5372,9 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-find { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:16px 0 4px; }
 .nge-pilot-find span { color:#b6c2d1; font-size:0.9rem; }
 .nge-pilot-name { font-weight:700; color:#fff; }
+.nge-pilot-ew { color:#b9d6ff; }
+.nge-access-page-link { display:inline-block; margin:2px 0 10px; padding:6px 12px; border-radius:7px; color:#e6f1ff; text-decoration:none; font-weight:600; background:rgba(55,138,221,0.22); border:1px solid rgba(120,170,255,0.55); }
+.nge-access-page-link:hover { background:rgba(55,138,221,0.36); }
 .nge-pilot-noname { font-style:normal; color:#93a1b3; }
 /* Celia D, report 284: joined or only invited, and the name opens the profile. */
 .nge-pilot-who { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 4px; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getDatasetCaveConfig, isRegisteredDataset } from '../config';
 /**
  * DatasetSelectorPanel — lets users switch between known datasets at runtime.
  * Displays as a compact centred hologram panel with dataset cards.
@@ -169,6 +170,8 @@ const hasQuests = (ds: DatasetEntry) => canonicalDataset(segLayerName(ds)) === Q
  *  whatever CAVE says. Signed out, or before CAVE answers: no chips yet.
  *  Admins always. Sandbox gives every signed in account edit. */
 const canClaim = (ds: DatasetEntry) => !!backend.isAdmin || datasetAccess(ds.caveDataset) === 'edit';
+/** The Cell Library's name for a dataset's Available tab (Retina: BC Challenge). */
+const availableLabelOf = (ds: DatasetEntry) => (isRegisteredDataset(ds.id) && getDatasetCaveConfig(ds.id).availableLabel) || '';
 const showTasks = (ds: DatasetEntry) => canClaim(ds) && (!!ds.cellTasks || hasQuests(ds));
 
 // Your claims per dataset: one small read when the window opens (a player
@@ -329,8 +332,8 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   </div>
                   <div v-else-if="showTasks(ds)" class="nge-ds-tasks">
                     <button v-if="ds.cellTasks" class="nge-ds-task" @click.stop="openTask(ds, 'available')"
-                            :title="'Open the Cell Library on the cells nobody has claimed yet' + (ds.id === currentDatasetId ? '' : ', after switching here')">
-                      Available cells<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                            :title="(availableLabelOf(ds) ? 'Open the Cell Library on the bipolar cells nobody has claimed yet' : 'Open the Cell Library on the cells nobody has claimed yet') + (ds.id === currentDatasetId ? '' : ', after switching here')">
+                      {{ availableLabelOf(ds) || 'Available cells' }}<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
                     </button>
                     <button v-if="hasQuests(ds)" class="nge-ds-task" @click.stop="openTask(ds, 'quests')"
                             :title="'Open the Quests: mark the cilia on a starburst amacrine cell' + (ds.id === currentDatasetId ? '' : ', after switching here')">

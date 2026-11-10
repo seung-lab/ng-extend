@@ -813,6 +813,37 @@ function asOneLine(html: string) {
   });
   return parts.length ? parts.join(' ') : t.innerHTML.trim();
 }
+/** Put words into a caption right where the caret is. The browser's own
+ *  paste can spill into the block after the picture: a heading's words or a
+ *  list item ended up in the caption (Celia, triage #407). html is the
+ *  blog's own safe rendering. */
+function putInCaption(html: string) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const holder = (range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer as Element
+    : range.startContainer.parentElement)?.closest('figcaption, .blog-post__more');
+  if (!holder) return;
+  // a selection reaching out of the caption only replaces the part inside it
+  if (!holder.contains(range.endContainer)) range.setEnd(holder, holder.childNodes.length);
+  range.deleteContents();
+  holder.querySelectorAll(':scope > br').forEach(br => br.remove());
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  const last = t.content.lastChild;
+  range.insertNode(t.content);
+  if (last && last.isConnected) {
+    const after = document.createRange();
+    after.setStartAfter(last);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+    savedRange = after.cloneRange();
+  }
+  holder.normalize();
+  keepLocalSoon();
+}
+const escText = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 function onPaste(e: ClipboardEvent) {
   e.preventDefault();
   const inCaption = caretInCaption();
@@ -823,7 +854,13 @@ function onPaste(e: ClipboardEvent) {
   if (pastedUrl) {
     const sel = window.getSelection();
     if (sel && sel.rangeCount && !sel.isCollapsed && sel.toString().trim()) document.execCommand('createLink', false, pastedUrl);
-    else {
+    else if (inCaption) {
+      const a = document.createElement('a');
+      a.href = pastedUrl;
+      a.textContent = pastedUrl.replace(/^https:\/\//, '');
+      putInCaption(a.outerHTML);
+      return;
+    } else {
       const a = document.createElement('a');
       a.href = pastedUrl;
       a.textContent = pastedUrl.replace(/^https:\/\//, '');
@@ -841,21 +878,26 @@ function onPaste(e: ClipboardEvent) {
     .map(i => i.getAsFile()).filter((f): f is File => !!f);
   if (pictures.length && !inCaption) void pastePictures(pictures);
   const text = e.clipboardData?.getData('text/plain') ?? '';
+  const pastedHtml = e.clipboardData?.getData('text/html') ?? '';
   // Pasted text written in the blog's own format (## headings, - lists,
   // **bold**, [links](https://...)) arrives formatted, through the same
   // safe renderer that opens a saved post (Ames 2026-10-15: "give me
-  // something I can paste in").
-  if (/^\s*(#{2,3}\s|[-*]\s|\d+\.\s|>\s|!>\s|---\s*$)/m.test(text) || /\*\*[^*\n]+\*\*/.test(text)) {
+  // something I can paste in"). Not when it was copied from a page or a
+  // document that has real lists or links: its plain text can start with
+  // "- " or "* " too, and read as the blog's format it lost its links
+  // (Celia, triage #407: a link from a bullet list pasted strangely).
+  const pageHasShape = /<(a\s[^>]*href\s*=\s*["']?https?:|ul[\s>]|ol[\s>]|li[\s>]|h[1-6][\s>])/i.test(pastedHtml);
+  if (!pageHasShape && (/^\s*(#{2,3}\s|[-*]\s|\d+\.\s|>\s|!>\s|---\s*$)/m.test(text) || /\*\*[^*\n]+\*\*/.test(text))) {
     const html = renderBlogMarkdown(text.replace(/\r\n?/g, '\n'), true);
     if (html) {
-      document.execCommand('insertHTML', false, inCaption ? asOneLine(html) : html);
+      if (inCaption) { putInCaption(asOneLine(html)); return; }
+      document.execCommand('insertHTML', false, html);
       tidyKeepingCaret();
       return;
     }
   }
   // Copied from a web page or a document: keep its links and formatting
   // (Ames 2026-11-05: "right now it's only copying over plain text").
-  const pastedHtml = e.clipboardData?.getData('text/html') ?? '';
   if (pastedHtml) {
     const md = htmlToBlogMarkdown(pastedHtml);
     const html = md ? renderBlogMarkdown(md, true) : '';
@@ -863,7 +905,8 @@ function onPaste(e: ClipboardEvent) {
       // one paragraph goes into the line being written, not as a new paragraph
       // (a lone link is a button on the page, but pasted into a line it is a link)
       const one = /^<p( class="blog-post__cta")?>([\s\S]*)<\/p>$/.exec(html);
-      const into = inCaption || (one && !one[2].includes('</p>'));
+      if (inCaption) { putInCaption(asOneLine(html)); return; }
+      const into = one && !one[2].includes('</p>');
       document.execCommand('insertHTML', false, into ? asOneLine(html) : html);
       docEl.value?.querySelectorAll('figure').forEach(f => { if (!f.querySelector('figcaption')) f.appendChild(document.createElement('figcaption')); });
       tidyKeepingCaret();
@@ -874,9 +917,9 @@ function onPaste(e: ClipboardEvent) {
   }
   const paras = text.replace(/\r\n?/g, '\n').split(/\n+/).map(x => x.trim()).filter(Boolean);
   if (!paras.length) return;
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  if (paras.length === 1 || inCaption) document.execCommand('insertText', false, paras.join(' '));
-  else document.execCommand('insertHTML', false, paras.map(x => `<p>${esc(x)}</p>`).join(''));
+  if (inCaption) putInCaption(escText(paras.join(' ')));
+  else if (paras.length === 1) document.execCommand('insertText', false, paras[0]);
+  else document.execCommand('insertHTML', false, paras.map(x => `<p>${escText(x)}</p>`).join(''));
 }
 async function pastePictures(files: File[]) {
   keepSelection();
