@@ -167,6 +167,7 @@ async function queryOnce(
   const key = `${caveServer}|${datastack}|${table}`;
   if ((tableDownUntil.get(key) ?? 0) > Date.now()) return null;
   const nowIso = new Date().toISOString();
+  const liveWasDown = (liveDownUntil.get(key) ?? 0) > Date.now();
   // Live query — returns rows including post-materialization writes.
   if ((liveDownUntil.get(key) ?? 0) <= Date.now()) try {
     const res = await fetch(
@@ -203,6 +204,13 @@ async function queryOnce(
     if (res.ok) {
       const rows = await res.json();
       console.info(`[lightbulb] materialized v${version} ${table} → ${rows.length} rows`);
+      // The snapshot only knows the cells as they were when it was made. A
+      // piece cut or merged since has a new ID it has never heard of, so "no
+      // rows" there is "not known", not "no mark" (hi529, triage #451: after a
+      // cut while the live query was down, both pieces looked unproofread).
+      // Unknown is asked again shortly, and the mark shows once the live
+      // query answers.
+      if (Array.isArray(rows) && rows.length === 0 && (liveWasDown || (liveDownUntil.get(key) ?? 0) > Date.now())) return null;
       return rows;
     }
     if (res.status >= 500) {
