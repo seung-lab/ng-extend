@@ -476,11 +476,9 @@ function onlineDatasetName(tag: string): string {
   return d?.shortLabel === 'EyeWire II' ? 'Retina' : d?.shortLabel || '';
 }
 const onlineNow = computed(() => {
-  void chatStore.onlineCount;          // the store's tick: people go stale after 90 s
-  const cutoff = Date.now() - 90_000;
-  return Object.entries(chatStore.online)
-    .filter(([, p]) => p.lastSeen >= cutoff)
-    .map(([id, p]) => ({ id, name: p.name, where: p.dataset ? onlineDatasetName(p.dataset) : '' }))
+  // The same people the "N online" count counts (store.ts onlinePeople).
+  return chatStore.onlinePeople
+    .map(p => ({ id: p.id, name: p.name, where: p.dataset ? onlineDatasetName(p.dataset) : '' }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 });
 function openOnlineProfile(id: string) {
