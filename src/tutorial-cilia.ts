@@ -28,6 +28,9 @@ import { QUEST_EXAMPLES, QUEST_STATUS_GUIDE, type QuestExample } from './annotat
 import { questWork, questOnScreen, saveQuestWork, markQuestOnScreen } from './annotation_quests';
 import { makeLayer } from 'neuroglancer/layer';
 import { stopWatching } from './tutorial-3';
+import { supabase } from './supabase';
+import { useProofreadingBackendStore } from './store';
+import { awardSpecialOnce } from './util/special_award';
 import imgCiliaAnnotated from './images/cilia-annotated.jpg';
 
 export const CILIA_TUTORIAL = 14;
@@ -174,6 +177,25 @@ function addAnswerLayer() {
     v.layerSpecification.add(managed);
   } catch (e) { console.warn('[cilia tutorial] could not add the answer layer:', e); }
 }
+
+/** The Achievement for finishing this tutorial: an admin makes it in the
+ *  Admin Hub with this code name (its name, words and art are theirs). Until
+ *  then nothing happens. The server checks the player's own finish record
+ *  (tutorial_completions, tutorial 14) before it lets the award through. */
+export const CILIA_ACHIEVEMENT = 'cilia-tutorial';
+export async function awardCiliaAchievement() {
+  try {
+    const uid = useProofreadingBackendStore().userId;
+    if (!uid) return;
+    const { data, error } = await supabase.from('tutorial_completions')
+      .select('tutorial').eq('user_id', uid).eq('tutorial', CILIA_TUTORIAL).limit(1);
+    if (error || !data?.length) return;
+    await awardSpecialOnce({ slug: CILIA_ACHIEVEMENT, reason: 'Finished the Cilia Quest tutorial', earnedBy: 'finished the Cilia Quest tutorial' });
+  } catch { /* tried again at the next sign in */ }
+}
+// Also from the account's record, so players who finished before the
+// Achievement existed get it at their next visit.
+setTimeout(() => { void awardCiliaAchievement(); }, 8000);
 
 /** A Cilia Quest open in this tab is saved and marked off screen before the
  *  tutorial's view replaces it, so its autosave never saves the tutorial as

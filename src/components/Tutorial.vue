@@ -19,7 +19,7 @@ import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9, sandboxContinue, sandboxRestart, sandboxNext } from '../merger-sandbox';
 import { extensionSteps as steps13, extensionContinue, extensionRestart, extensionNext, EXTENSION_TUTORIAL } from '../extension-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
-import { steps as steps14, CILIA_TUTORIAL } from '../tutorial-cilia';
+import { steps as steps14, CILIA_TUTORIAL, awardCiliaAchievement } from '../tutorial-cilia';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice, pausePracticeTools } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
@@ -239,7 +239,11 @@ const next = (_auto?: unknown) => {
         console.info(`[tutorial] finished tutorial ${tutorialNum}; step is now ${store.getTutorialStep()} of ${steps.value.length}`);
         // The sandbox records each merger as it is cut, not the box closing.
         // The sandbox and the test record themselves (the test on the server).
-        if (tutorialNum !== 9 && tutorialNum !== EXTENSION_TUTORIAL && tutorialNum !== TEST_TUTORIAL) recordTutorialDone(tutorialNum);
+        if (tutorialNum !== 9 && tutorialNum !== EXTENSION_TUTORIAL && tutorialNum !== TEST_TUTORIAL) {
+            const recorded = recordTutorialDone(tutorialNum);
+            // Its Achievement, once the finish is on record (the server checks it).
+            if (tutorialNum === CILIA_TUTORIAL) void recorded.then(() => awardCiliaAchievement());
+        }
         // Merge and Cut both finished brings the Cell Library (toolbar_staging.ts).
         tutorialFinished(tutorialNum);
         // Say so if anything puts a box back in the next few seconds.

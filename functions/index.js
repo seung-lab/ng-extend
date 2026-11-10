@@ -2712,6 +2712,13 @@ exports.ewCommunityData = onRequest(
             if(new Set(done.map(r=>r.item).filter(Boolean)).size<5) throw ewErr(403,"Cut every merger in the Merger Sandbox first.");
             continue;
           }
+          // The Cilia Quest tutorial Achievement (code name cilia-tutorial):
+          // the player finished tutorial 14 (Ames 2026-11-10).
+          if(badges.some(b=>b.slug==="cilia-tutorial")) {
+            const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.14&select=tutorial&limit=1");
+            if(!done.length) throw ewErr(403,"Finish the Cilia Quest tutorial first.");
+            continue;
+          }
           if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Mini Michelangelo","Safety Scissors","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
         }
       }
