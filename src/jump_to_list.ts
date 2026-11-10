@@ -42,6 +42,26 @@ function getSegmentUnderCursor(): string | null {
   return null;
 }
 
+/** The cell at the mouse even when a mark is drawn over it: the cell
+ *  layers' own data at that spot (a highlight point or annotation in front
+ *  hides the cell from the hover). */
+function segmentBeneathCursor(): string | null {
+  const viewer = (window as any)['viewer'];
+  const ms = viewer?.mouseState;
+  if (!ms?.active) return null;
+  for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+    const layer = ml.layer;
+    if (!layer?.displayState?.segmentSelectionState || ml.visible === false) continue;
+    try {
+      let v: any = layer.getValueAt(ms.position, {pickedRenderLayer: null});
+      if (v && typeof v === 'object' && 'value' in v) v = v.value;
+      const id = v == null ? '' : String(v);
+      if (id && id !== '0') return id;
+    } catch { /* not loaded there */ }
+  }
+  return null;
+}
+
 function findSegmentIndexInSet(set: any, segmentId: string): number {
   if (!set) return -1;
   let i = 0;
@@ -215,13 +235,18 @@ window.addEventListener('mousedown', (e: MouseEvent) => {
   const target = e.target as HTMLElement | null;
   if (!target?.closest('.neuroglancer-rendered-data-panel')) return;
 
-  const segId = getSegmentUnderCursor();
-  if (!segId) return;
-
-  // Win against NG's rotate/translate handlers on the same mousedown.
+  // Alt+click is only ever this: find the cell. It never selects, moves or
+  // opens a mark (neuroglancer's Alt+drag move took the click over a
+  // highlight point and opened the Highlight layer: Nseraf, triage #452).
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
+
+  const segId = getSegmentUnderCursor() ?? segmentBeneathCursor();
+  if (!segId) {
+    StatusMessage.showTemporaryMessage('Alt+click a cell to find it in your list.', 2500);
+    return;
+  }
 
   if (!scrollListToSegment(segId)) {
     StatusMessage.showTemporaryMessage(

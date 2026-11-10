@@ -16,6 +16,7 @@ import {addPilot, welcomeBell, welcomeEmail} from '../beta_let_in';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
+import {datasetDisplayName} from '../datasets';
 import RollUp from 'components/RollUp.vue';
 import CellTypeCheck from 'components/CellTypeCheck.vue';
 import AccessRequestsTab from 'components/AccessRequestsTab.vue';
@@ -380,7 +381,7 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
 }
 
 // ── Who submitted each report (site_issues, admins only via the gateway) ──
-const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string }>>({});
+const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string; dataset?: string }>>({});
 /** Reports asked for by id at most this many at a time. The gateway refuses a
  *  filter over 4096 characters (functions/community-data.js), and 100 ids
  *  come to about 3700. 150 came to 5554: once more than about 110 reports
@@ -399,7 +400,9 @@ async function loadReporters(rows: TriageRow[]) {
     const data: any[] = [];
     for (let k = 0; k < ids.length; k += IDS_PER_ASK) {
       const part = ids.slice(k, k + IDS_PER_ASK);
-      let { data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url').in('id', part);
+      // The dataset the report was sent from (Celia #464).
+      let { data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url,dataset').in('id', part);
+      if (error) ({ data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url').in('id', part));
       if (error) ({ data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', part));
       if (error) ({ data: got } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url').in('id', part));
       data.push(...(got ?? []));
@@ -415,7 +418,7 @@ async function loadReporters(rows: TriageRow[]) {
       return /\s/.test(u) ? undefined : u;
     };
     for (const i of data) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
-      url: web(i.url), shot: web(i.screenshot_url) };
+      url: web(i.url), shot: web(i.screenshot_url), dataset: i.dataset ? datasetDisplayName(String(i.dataset)) : undefined };
     reporters.value = next;
     // Dataset access requests are answered in Access requests, not here
     // (Ames 2026-10-29: "take them out of triage").
@@ -614,7 +617,7 @@ const triageWords = computed(() => triageSearch.value.toLowerCase().split(/\s+/)
 type TriageKind = 'all' | 'bug' | 'feature' | 'other' | 'access';
 const TRIAGE_KIND_KEY = 'nge_triage_kind_v1';
 const triageKind = ref<TriageKind>((() => {
-  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other' || v === 'access') return v; } catch { /* private window */ }
+  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other') return v; } catch { /* private window */ }
   return 'all';
 })());
 watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch { /* not remembered */ } });
@@ -625,8 +628,42 @@ watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch
 const isAccessRequest = (r: TriageRow) => /^beta access$/i.test((reporterOf(r)?.category || '').trim());
 const kindOf = (r: TriageRow): Exclude<TriageKind, 'all'> => (isAccessRequest(r) ? 'access' : closedKind(r, reporterOf(r)?.category));
 const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
-  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' }, { key: 'access', label: '🔑 Access' },
+  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' },
 ];
+// Access requests are off the board (Ames 2026-11-10: "we don't need to see
+// access requests here just put the count in the Access button"); they are
+// handled on the Access page. A Slack link straight to one still opens it.
+const linkedReportId = (() => { try { return new URLSearchParams(window.location.search).get('report') || ''; } catch { return ''; } })();
+// Who is already let in, so their request card closes itself (Ames 2026-11-10:
+// "if someone has been invited we can close that triage item").
+const triagePilotEmails = ref<Set<string> | null>(null);
+async function loadTriagePilotEmails() {
+  const { data, error } = await supabase.from('pilot_members').select('email');
+  if (!error) triagePilotEmails.value = new Set(((data as any[]) || []).map(m => String(m.email || '').toLowerCase()));
+}
+const openAccessRows = computed(() => triageRows.value.filter(r => isAccessRequest(r) && !['done', 'dismissed'].includes(triageGroupOf(r))));
+/** People still waiting: open requests from an email not yet let in. */
+const accessWaitingCount = computed(() => openAccessRows.value.filter(r => {
+  const email = betaEmailOfCard(r).toLowerCase();
+  return !email || !triagePilotEmails.value?.has(email);
+}).length);
+const accessClosing = new Set<string>();
+watch([openAccessRows, triagePilotEmails], async () => {
+  const pilots = triagePilotEmails.value;
+  if (!pilots) return;
+  for (const r of openAccessRows.value) {
+    const email = betaEmailOfCard(r).toLowerCase();
+    if (!email || !pilots.has(email) || accessClosing.has(r.id)) continue;
+    accessClosing.add(r.id);
+    const fields = { status: 'done', result_note: `Let in: ${email} is a Pilot tester.`,
+      reviewed_by: backend.userName || backend.userEmail || 'admin', reviewed_at: new Date().toISOString() };
+    try {
+      await secureWrite('triage.update', { id: r.id, fields });
+      Object.assign(r, fields);
+      triageRows.value = [...triageRows.value];
+    } catch (e) { console.warn('[triage] could not close an access request', e); }
+  }
+});
 // The old "Access requests: on/off" button is now a link to the Access page
 // (Ames 2026-11-10: "change this button to be Access and have it take us to
 // the Access page", "it can be purple"). Access requests always show on the
@@ -638,12 +675,14 @@ const triageKindCount = computed(() => {
   for (const r of triageRows.value) {
     if (['done', 'dismissed'].includes(triageGroupOf(r))) continue;
     const k = kindOf(r);
+    if (k === 'access') continue;
     n[k]++;
     n.all++;
   }
   return n;
 });
 function triageMatches(r: TriageRow): boolean {
+  if (isAccessRequest(r) && r.id !== linkedReportId) return false;
   if (triageKind.value !== 'all' && kindOf(r) !== triageKind.value) return false;
   const words = triageWords.value;
   if (!words.length) return true;
@@ -1229,6 +1268,7 @@ async function loadTriage() {
     }
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
+    void loadTriagePilotEmails();
     sweepMovedReportNotes();
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
@@ -1394,6 +1434,36 @@ const reporterSending = ref<string | null>(null);
 /** "Ask for a reply" ticked in an open composer, keyed by row id (Ames
  *  2026-10-13). Off unless ticked: an ordinary update is exactly as before. */
 const reporterAsk = ref<Record<string, boolean>>({});
+/** "Copy Celia and Marissa" switched on, keyed by row id (Ames 2026-11-10: "a button to
+ *  also send a reply to celia and marissa if there is a reply they should see"). */
+const reporterCopy = ref<Record<string, boolean>>({});
+const OWNER_ADMIN_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
+const isOwnerAdmin = computed(() => OWNER_ADMIN_EMAILS.includes((backend.userEmail || '').trim().toLowerCase()));
+// Their Pyr accounts (users.id): the admins table keeps no user ids.
+const COPY_ADMINS = [
+  { email: 'celia@eyewire.org', id: '942bda30-fcf0-424c-8785-91db4d62d2aa' },  // Celia D
+  { email: 'm@eyewire.org', id: 'ebdb33d8-1cc5-4d2c-bd9e-f1216742fb51' },      // M Sorek
+];
+/** The bell note each of them gets: the exact words sent, in their Admin tab (📋). */
+async function copyReplyToAdmins(row: TriageRow, text: string, imageUrl: string | null): Promise<number> {
+  const me = (backend.userEmail || '').toLowerCase();
+  const ids = COPY_ADMINS.filter(a => a.email !== me).map(a => a.id);
+  const n = triageNumbers.value[row.id];
+  const player = reporterOf(row)?.name || 'a player';
+  const about = (reporterOf(row)?.title || row.source_excerpt || 'a report').replace(/\s+/g, ' ').trim().slice(0, 90);
+  const link = `${window.location.origin}${window.location.pathname}?triage=board&report=${row.id}`;
+  const who = backend.userName || 'An admin';
+  for (const id of ids) {
+    await secureWrite('notification.insert', { row: {
+      title: `📋 ${who} replied to ${player}`.slice(0, 120),
+      body: `${n ? `#${n} ` : ''}"${about}"\n\n${text}\n\n[Open the card](${link})`.slice(0, 6000),
+      thumbnail_url: 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png',
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+      target_type: 'user', target_id: id, send_at: new Date().toISOString(),
+    } });
+  }
+  return ids.length;
+}
 /** The open boxes themselves, so the format buttons act on the right one. */
 const reporterEls: Record<string, HTMLTextAreaElement | null> = {};
 function reporterComposer(row: TriageRow): Composer {
@@ -1685,6 +1755,12 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
     // Everyone who reported the same thing hears too (never asked to reply).
     const toldDups = await notifyDuplicates(row, text, art).catch(() => 0);
     if (toldDups) dupNotice.value = `Also sent to ${toldDups} other ${toldDups === 1 ? 'person' : 'people'} who reported the same thing.`;
+    const copy = !!reporterCopy.value[row.id] && isOwnerAdmin.value;
+    if (copy) {
+      const copied = await copyReplyToAdmins(row, text, imageUrl).catch((e: any) => { console.warn('[triage] copy to admins', e); return -1; });
+      const copyNote = copied < 0 ? 'Sent to the player, but the copy to Celia and Marissa did not go.' : copied ? 'Celia and Marissa got a copy, and are tagged in Slack.' : '';
+      if (copyNote) dupNotice.value = [dupNotice.value, copyNote].filter(Boolean).join(' ');
+    }
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
@@ -1693,11 +1769,12 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
     const at = new Date().toISOString();
     log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false,
-      ...(ask ? { ask: true, notification_id: asked?.id } : {}), ...(imageUrl ? { image_url: imageUrl } : {}) });
+      ...(ask ? { ask: true, notification_id: asked?.id } : {}), ...(imageUrl ? { image_url: imageUrl } : {}), ...(copy ? { copied_to_admins: true } : {}) });
     await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } })
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
     delete reporterAsk.value[row.id];
+    delete reporterCopy.value[row.id];
     dropReplyImage(row);
     sent = true;
     if (!andDone && !andProgress && !andLater) await loadTriage();
@@ -3550,7 +3627,7 @@ function practiceWhen(iso: string | null) {
                     :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
                     @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
           </span>
-          <a class="nge-admin-action-btn nge-triage-access-page" :href="accessPageUrl" title="The Access page: everyone who asked or was let in, step by step">🔑 Access</a>
+          <a class="nge-admin-action-btn nge-triage-access-page" :href="accessPageUrl" title="The Access page: everyone who asked or was let in, step by step. The number is people still waiting to be let in.">🔑 Access<span v-if="accessWaitingCount" class="nge-triage-access-n">{{ accessWaitingCount }}</span></a>
           <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
                   :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
                   @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
@@ -3629,7 +3706,7 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="reporterOf(row)" class="nge-triage-from">
             <span class="nge-triage-avatar" aria-hidden="true" :style="{ '--hue': avatarHue(reporterOf(row)?.name || '') }">{{ (reporterOf(row)?.name || '?').slice(0, 1).toUpperCase() }}</span>
-            <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
+            <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.dataset"> · <span class="nge-triage-dataset" title="The dataset they sent this from">{{ reporterOf(row)?.dataset }}</span></template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
           <div v-if="reporterOf(row)?.title" class="nge-triage-title">{{ reporterOf(row)?.title }}</div>
           <!-- A one line report is all title: say it once. -->
@@ -3890,6 +3967,12 @@ function practiceWhen(iso: string | null) {
                   ? 'They get a reply form under your message: text, a screenshot, their view and console messages. One reply. Ask again to hear more.'
                   : 'They get your message only.' }}</span>
               </div>
+              <!-- Ames only (2026-11-10: "a box I can check to also send update to
+                   celia and marissa ... it should only appear for me"). -->
+              <label v-if="isOwnerAdmin" class="nge-triage-copy" title="Celia and Marissa each get your exact message in their bell, with a link to this card, and are tagged on it in the Slack thread. Never the player.">
+                <input type="checkbox" v-model="reporterCopy[row.id]" :disabled="reporterSending === row.id" />
+                <span>Also send to Celia and Marissa (bell and Slack tag)</span>
+              </label>
               <div class="nge-triage-actions">
                 <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
                   {{ reporterSending === row.id ? 'Sending…' : reporterAsk[row.id] ? 'Send and ask for a reply' : 'Send to submitter' }}
@@ -4958,6 +5041,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-release-row { display: flex; align-items: center; gap: 8px; }
 .nge-triage-release-row code { flex: 1; font-family: ui-monospace, Consolas, monospace; color: #e6eefc; background: rgba(0, 0, 0, 0.3); padding: 4px 8px; border-radius: 4px; user-select: all; }
 .nge-triage-from strong { color: #e6eefc; font-weight: 600; }
+.nge-triage-dataset { color: #9fd3ff; font-weight: 500; }
 /* Section headers: open work first, finished and dismissed folded and grey. */
 .nge-triage-group {
   display: flex; align-items: baseline; gap: 8px; width: 100%;
@@ -5073,6 +5157,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 /* The link to the Access page (Ames 2026-11-10: "it can be purple"). */
 .nge-triage-access-page { text-decoration: none; display: inline-flex; align-items: center; color: #d6c8ff; background: rgba(139, 92, 246, 0.22); border-color: rgba(167, 139, 250, 0.7); }
 .nge-triage-access-page:hover { background: rgba(139, 92, 246, 0.34); border-color: #a78bfa; }
+.nge-triage-access-n { margin-left: 6px; min-width: 18px; padding: 0 6px; border-radius: 9px; background: #fff; color: #5b21b6; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .nge-triage-light .nge-triage-access-page { color: #ffffff; background: #7c3aed; border-color: #6d28d9; }
 .nge-triage-light .nge-triage-access-page:hover { background: #6d28d9; border-color: #5b21b6; }
 .nge-triage-light .nge-triage-prog-btn:hover:not(:disabled) { background: #f3efff; border-color: #8b5cf6; }
@@ -5128,6 +5213,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-card.nge-triage-card--waiting { outline: 1px dashed rgba(160, 140, 255, 0.6); outline-offset: -1px; }
 .nge-triage-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
 .nge-triage-ask-label { font-weight: 600; }
+.nge-triage-copy { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
+.nge-triage-copy input { width: 15px; height: 15px; margin: 0; cursor: pointer; }
 .nge-triage-ask-hint { color: rgba(255,255,255,0.5); flex: 1 1 240px; }
 /* Off / On: a two way switch. The lit side is the current state. */
 .nge-triage-switch { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 2px; border-radius: 7px;

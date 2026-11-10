@@ -1609,7 +1609,24 @@ function toggleCollapse() {
                      @click="openAchievement(msg)" @keydown.enter="openAchievement(msg)">
                   <img v-if="achArt(msg)" class="nge-chat-ach-art" :src="achArt(msg)" alt="" />
                   <span v-else class="nge-chat-ach-star" aria-hidden="true">★</span>
-                  <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b> <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span></span>
+                  <span class="nge-chat-ach-text"><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b> <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span></span>
+                  <!-- Reactions, a quick congratulations (Krzysztof, report 462).
+                       A click on them never opens the Trophy Case. -->
+                  <span v-if="msg.id != null && isLoggedIn" class="nge-chat-react-add nge-chat-react-add--inline" @click.stop @keydown.enter.stop>
+                    <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
+                            @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
+                    <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
+                      <button v-for="e in CHAT_REACTION_QUICK" :key="e" :title="e === CHAT_REACTION_GEM ? 'Pyr gem' : undefined" @click.stop="react(String(msg.id), e)"><img v-if="e === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ e }}</template></button>
+                      <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
+                    </span>
+                  </span>
+                  <div v-if="msg.id != null && Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row nge-chat-react-row--announce nge-chat-react-row--ach" @click.stop @keydown.enter.stop>
+                    <button v-for="(list, emo) in reactionsOf(msg)" :key="emo" class="nge-chat-react"
+                            :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
+                            :title="list.map(r => r.name).join(', ')"
+                            :disabled="!isLoggedIn"
+                            @click.stop="react(String(msg.id), String(emo))"><img v-if="emo === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ emo }}</template><span>{{ list.length }}</span></button>
+                  </div>
                 </div>
 
                 <!-- "Nseraf now has edit access to MEC": said when they next come in. -->
@@ -2605,6 +2622,12 @@ function toggleCollapse() {
 .nge-chat-ach-star { width: 22px; text-align: center; color: #b9c8ff; flex: 0 0 auto; }
 .nge-chat-ach-art { width: 22px; height: 22px; object-fit: contain; flex: 0 0 auto; }
 .nge-chat-ach-why { font-size: 11px; color: #6a7282; margin-left: 3px; white-space: nowrap; }
+/* Reactions on an achievement line: React shows on hover, the tally sits on
+   its own line under it (report 462). */
+.nge-chat-ach { flex-wrap: wrap; }
+.nge-chat-ach-text { flex: 1; min-width: 0; }
+.nge-chat-ach:hover .nge-chat-react-plus, .nge-chat-ach:focus-within .nge-chat-react-plus { opacity: 1; }
+.nge-chat-react-row--ach { padding-left: 29px; margin-top: 1px; }
 
 /* Time separator */
 .nge-chat-time-sep {
