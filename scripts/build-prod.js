@@ -223,6 +223,13 @@ for (const file of fs.readdirSync(STATIC_DIR)) {
     console.log(`Copied ${file} to ${DIST_MIN}`);
   }
 }
+// Pictures that notifications point at by address, so they need a fixed one:
+// static/notes/x.jpg is served at /notes/x.jpg.
+const NOTES_DIR = path.join(STATIC_DIR, 'notes');
+if (fs.existsSync(NOTES_DIR)) {
+  fs.mkdirSync(path.join(DIST_MIN, 'notes'), { recursive: true });
+  for (const file of fs.readdirSync(NOTES_DIR)) fs.copyFileSync(path.join(NOTES_DIR, file), path.join(DIST_MIN, 'notes', file));
+}
 
 // ── Copy the Hunt's medals (the art of its gold, silver and bronze
 // Achievements: functions/hunts.js points special_badges at <site>/hunt/). ──

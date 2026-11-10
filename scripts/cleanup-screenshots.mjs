@@ -6,7 +6,8 @@
  *
  * Images admins sent in replies (admin-uploads/reply-images/) go after 7
  * days once their report is closed, see cleanReplyImages below. Files on To do
- * cards go 7 days after the card is Done, see cleanTodoFiles.
+ * cards go 7 days after the card is Done, see cleanTodoFiles, and so do
+ * pictures on them, see cleanTodoImages. Cards themselves are never deleted.
  *
  * Only the folder admin-uploads/help-screenshots/ is ever touched. Achievement
  * art, notification images and blog images live in other folders.
@@ -266,5 +267,62 @@ async function cleanTodoFiles() {
   console.log(`[cleanup] marked ${marked} To do cards`);
 }
 
-// Player screenshots first, then reply images, then To do files; one failing stops the run.
-main().then(cleanReplyImages).then(cleanTodoFiles).catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });
+// ── Pictures on To do cards (Ames 2026-11-09: "keep the cards just delete
+// images and files") ──
+// admin-uploads/todo-images/<owner>/<id>.<ext>. A picture goes once it is
+// older than TODO_FILE_DAYS and every card showing it is closed: To do cards
+// Done for TODO_FILE_DAYS, triage cards done or dismissed. The cards stay. A
+// picture in a card's pictures is taken off it; one written into notes or a
+// comment becomes the words "(picture deleted after 7 days)".
+const IMG_FOLDER = 'todo-images';
+const IMG_GONE = '(picture deleted after 7 days)';
+
+async function cleanTodoImages() {
+  const files = [];
+  for (const owner of await listFolder(IMG_FOLDER)) {
+    if (owner.id) continue;
+    for (const f of await listFolder(`${IMG_FOLDER}/${owner.name}`)) {
+      if (f.id) files.push({ path: `${IMG_FOLDER}/${owner.name}/${f.name}`, created: f.created_at, size: f.metadata?.size || 0 });
+    }
+  }
+  const urlOf = p => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${p}`;
+  const old = t => t && (now - new Date(t).getTime()) / DAY > TODO_FILE_DAYS;
+  const rows = [
+    ...(await allRows('admin_todos', 'select=*')).map(r => ({ table: 'admin_todos', r, closed: r.list === 'done' && old(r.done_at) })),
+    ...(await allRows('feedback_triage', 'select=*', { optional: true })).map(r => ({ table: 'feedback_triage', r, closed: r.status === 'done' || r.status === 'dismissed' })),
+  ].map(x => ({ ...x, json: JSON.stringify(x.r) }));
+  const users = f => rows.filter(x => x.json.includes(f.path));
+  const held = files.filter(f => users(f).some(x => !x.closed)).length;
+  const doomed = files.filter(f => old(f.created) && users(f).every(x => x.closed));
+  console.log(`[cleanup] ${held} To do pictures kept on open cards`);
+  console.log(`[cleanup] ${files.length} To do pictures stored; ${DELETE ? 'deleting' : 'would delete'} ${doomed.length}, ${mb(doomed.reduce((a, f) => a + f.size, 0))}`);
+  if (!DELETE || !doomed.length) return;
+  const gone = [];
+  for (let i = 0; i < doomed.length; i += 100) {
+    const batch = doomed.slice(i, i + 100).map(f => f.path);
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, { method: 'DELETE', headers: HEADERS, body: JSON.stringify({ prefixes: batch }) });
+    if (!res.ok) throw new Error(`To do picture delete failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    gone.push(...batch);
+  }
+  console.log(`[cleanup] deleted ${gone.length} To do pictures`);
+  const goneUrls = gone.map(urlOf);
+  let marked = 0;
+  for (const x of rows) {
+    if (!gone.some(p => x.json.includes(p))) continue;
+    const change = {};
+    for (const [k, v] of Object.entries(x.r)) {
+      const s = JSON.stringify(v);
+      if (!gone.some(p => s.includes(p))) continue;
+      if (k === 'images' && Array.isArray(v)) { change[k] = v.filter(u => !goneUrls.includes(String(u && (u.url || u)))); continue; }
+      let t = s;
+      for (const u of goneUrls) t = t.split(u).join(IMG_GONE);
+      change[k] = JSON.parse(t);
+    }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${x.table}?id=eq.${x.r.id}`, { method: 'PATCH', headers: HEADERS, body: JSON.stringify(change) });
+    if (res.ok) marked++; else console.warn(`[cleanup] could not mark ${x.table} ${x.r.id}: ${res.status}`);
+  }
+  console.log(`[cleanup] marked ${marked} cards`);
+}
+
+// Player screenshots first, then reply images, then To do files and pictures; one failing stops the run.
+main().then(cleanReplyImages).then(cleanTodoFiles).then(cleanTodoImages).catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });

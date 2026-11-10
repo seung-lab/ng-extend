@@ -30,7 +30,7 @@ import {
 } from '../store';
 import { claimTime, claimTimeLabel, claimStartedLabel, setTimerWorkingClaim } from '../util/claim_time';
 import { showClaimNotice } from '../util/claim_congrats';
-import { getDatasetCaveConfig } from '../config';
+import { getDatasetCaveConfig, isRegisteredDataset } from '../config';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
@@ -234,6 +234,12 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** The Available tab's name here: "BC Challenge" on the Retina, where every
+ *  cell left to map is a bipolar cell (Ames 2026-11-09). Only a registered
+ *  dataset's own config counts; the unregistered fallback is the Retina's. */
+const availableLabel = computed(() => (isRegisteredDataset(activeDataset.value) && getDatasetCaveConfig(activeDataset.value).availableLabel) || 'Available');
+const availableIsChallenge = computed(() => availableLabel.value !== 'Available');
+const howToTitle = computed(() => (isRegisteredDataset(activeDataset.value) && getDatasetCaveConfig(activeDataset.value).howToTitle) || 'How to map a cell');
 /** The picture beside the steps: a Retina bipolar cell (Ames 2026-11-08).
  *  Other datasets start without one; admins can add one in the box. */
 const howToImage = computed(() => /retina/i.test(activeDataset.value || '') ? imgRetinaBipolar : '');
@@ -3255,7 +3261,7 @@ const panelStyle = computed(() => ({
           <div class="nge-cl-tabsettings-title">Tabs on this panel</div>
           <label v-for="t in ALL_CL_TABS" :key="t.key" class="nge-cl-tabsettings-row">
             <input type="checkbox" :checked="visibleTabs.includes(t.key)" @change="toggleTab(t.key)" />
-            <span>{{ t.label }}</span>
+            <span>{{ t.key === 'available' ? availableLabel : t.label }}</span>
           </label>
         </div>
 
@@ -3264,7 +3270,7 @@ const panelStyle = computed(() => ({
              instructions are (Ames 2026-11-08). Admins still edit the steps
              (Celia 2026-10-20) and the picture in the game. -->
         <QuestInstructions v-if="datasetHowTo && showHowTo" :steps="datasetHowTo"
-          :kicker="'Cell Library'" title="How to map a cell" :steps-key="datasetHowToKey"
+          :kicker="'Cell Library'" :title="howToTitle" :steps-key="datasetHowToKey"
           :image-key="datasetHowToKey + '.image'" :image="howToImage" :image-alt="howToImageAlt" :legend="[]"
           @close="showHowTo = false" />
 
@@ -3302,8 +3308,8 @@ const panelStyle = computed(() => ({
                 My Cells <b>{{ myClaimCount }}</b>
               </button>
               <button v-if="tabShown('available')" :class="{ active: filter === 'available' }" @click="filter = 'available'"
-                      title="Cells nobody has claimed yet">
-                Available <b>{{ availableCount }}</b>
+                      :title="availableIsChallenge ? 'Bipolar cells (BCs) nobody has claimed yet: pick one and map it' : 'Cells nobody has claimed yet'">
+                {{ availableLabel }} <b>{{ availableCount }}</b>
               </button>
               <button v-if="tabShown('claimed')" :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'"
                       title="Cells anyone has claimed and is working on, yours included">
@@ -4161,10 +4167,11 @@ const panelStyle = computed(() => ({
           </div>
           <div v-if="backend.loading && filter !== 'mine'" class="nge-cl-more"><span><span class="nge-cl-spin" /> Loading the rest of the cells...</span></div>
           <div v-if="filteredCells.length === 0 && filter === 'mine' && !slim" class="nge-cl-no-results">
-            No claimed cells yet. Claim cells from the All or Available tabs!
+            No claimed cells yet. Claim cells from the All or {{ availableLabel }} tabs!
           </div>
           <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim() && !backend.loading && !slim" class="nge-cl-no-results">
-            No available cells in <strong>{{ currentDatasetLabel }}</strong>.
+            <template v-if="availableIsChallenge">No bipolar cells left to claim in <strong>{{ currentDatasetLabel }}</strong>.</template>
+            <template v-else>No available cells in <strong>{{ currentDatasetLabel }}</strong>.</template>
             <template v-if="suggestedClaimDataset">
               <br />Switch to <strong>{{ suggestedClaimDataset }}</strong> to claim a cell.
             </template>
@@ -4192,7 +4199,7 @@ const panelStyle = computed(() => ({
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
             <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
                     :title="!isLoggedIn ? 'Sign in to claim cells'
-                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
+                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the ${availableLabel} tab) and takes you to it. Not for you? Release it from My Cells.`
                       : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
                     @click="claimNewCell">{{ claimingNew ? 'Claiming…' : canClaimNew ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
           </div>

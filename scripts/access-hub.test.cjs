@@ -22,7 +22,8 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
 
 const ago = d => new Date(Date.now() - d * 864e5).toISOString();
 const base = { user_id: null, name: null, username: null, request_id: null, asked_at: null, from_site: null, gave_email: null, ew_name: null, ew_rank: null, found_us: null, their_note: null,
-  pilot_enabled: null, let_in_at: null, from_list: false, joined_at: null, tutorial_active: null, tutorial_at: null, tutorials: 0, first_edit_at: null, last_edit_at: null, edits: 0, last_dataset: null };
+  pilot_enabled: null, let_in_at: null, from_list: false, joined_at: null, tutorial_active: null, tutorial_at: null, tutorials: 0, first_edit_at: null, last_edit_at: null, edits: 0, last_dataset: null,
+  edits_30d: 0, cells: 0, cells_30d: 0, chats: 0, chats_30d: 0, help_asked: 0, help_answered_for: 0, help_asked_30d: 0, help_given: 0, help_given_30d: 0 };
 const UID = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PEOPLE = [
   // Asked 9 days ago, from the site, with an EyeWire name: late.
@@ -38,11 +39,13 @@ const PEOPLE = [
   // Tutorial done, no edits.
   { ...base, email: 'jo@example.org', user_id: UID(12), name: 'Jo Kim', pilot_enabled: true, let_in_at: ago(8), joined_at: ago(7), tutorial_at: ago(6), tutorials: 1 },
   // Editing.
-  { ...base, email: 'nik@example.org', user_id: UID(13), name: 'Nik Serafin', username: 'nseraf', pilot_enabled: true, let_in_at: ago(30), joined_at: ago(29), tutorial_at: ago(29), tutorials: 3, first_edit_at: ago(29), last_edit_at: ago(0.1), edits: 4210, last_dataset: 'stroeh_mouse_retina' },
+  { ...base, email: 'nik@example.org', user_id: UID(13), name: 'Nik Serafin', username: 'nseraf', pilot_enabled: true, let_in_at: ago(30), joined_at: ago(29), tutorial_at: ago(29), tutorials: 3, first_edit_at: ago(29), last_edit_at: ago(0.1), edits: 4210, last_dataset: 'stroeh_mouse_retina',
+    edits_30d: 1880, cells: 95, cells_30d: 41, chats: 900, chats_30d: 212, help_asked: 4, help_answered_for: 3, help_asked_30d: 1, help_given: 27, help_given_30d: 6 },
   // Editing, and waiting on a dataset request: the dataset column.
   { ...base, email: 'lou@example.org', user_id: UID(14), name: 'Lou Baker', pilot_enabled: true, let_in_at: ago(20), joined_at: ago(19), tutorial_at: ago(19), tutorials: 2, first_edit_at: ago(18), last_edit_at: ago(1), edits: 300, last_dataset: 'pinky_nf_v2' },
 ];
 for (let i = 0; i < 6; i++) PEOPLE.push({ ...base, email: `list${i}@example.org`, pilot_enabled: true, let_in_at: ago(40), from_list: true });
+const EDITS = Array.from({ length: 10 }, (_, i) => ({ at: ago(0.1 + i * 0.01), dataset: 'stroeh_mouse_retina', operation: i % 3 ? 'split' : 'merge', success: i !== 1 }));
 const DS = [{ id: UID(21), userId: UID(14), name: 'Lou Baker', dataset: 'pni_mec', label: 'Medial Entorhinal Cortex', cave: 'pni_mec', email: 'lou@example.org', note: 'Ready for MEC', at: ago(0.5),
   access: null, history: null, caveGroup: 'MEC_Edit', mark: null, markedAt: null, markedBy: '' },
   { id: UID(22), userId: UID(13), name: 'Nik Serafin', dataset: 'pni_mec', label: 'Medial Entorhinal Cortex', cave: 'pni_mec', email: 'nik@example.org', note: '', at: ago(10),
@@ -85,8 +88,14 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
       return r.fulfill(ok({}));
     }
-    calls.push({ table: input.table, method: input.method, body: input.body });
-    const rows = input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
+    calls.push({ table: input.table, method: input.method, body: input.body, query: input.query });
+    // The real gateway's rule (functions/community-data.js): at most 500
+    // rows a read, "Invalid limit" past that (live on 2026-11-09).
+    const q = new URLSearchParams(input.query || '');
+    const limit = Number(q.get('limit') ?? 500), offset = Number(q.get('offset') ?? 0);
+    if (!Number.isInteger(limit) || limit < 0 || limit > 500) return r.fulfill(json({ status: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Invalid limit' }) }));
+    const all = input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
+    const rows = all.slice(offset, offset + limit);
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }));
   });
   await context.route(/supabase\.co/, r => r.fulfill(json([])));
@@ -105,6 +114,8 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     await page.waitForSelector('.ah-card', { timeout: 60000 });
     await page.waitForTimeout(500);
     let b = await board();
+    const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
+    check('every part reads without an error (the 500 row limit)', !errText, errText);
     check('six columns in order', b.map(c => c.title).join('|') === 'Asked|Let in|Signed in|Tutorial done|Asked for a dataset|Editing', b.map(c => c.title));
     check('Asked: the two waiting, removed left out', col(b, 'Asked').n === '2' && col(b, 'Asked').cards.map(c => c.name).join(',') === 'Ken Mierow,Rae Lin', col(b, 'Asked'));
     check('cards show the full name and the email', col(b, 'Asked').cards[0].email === 'ken@example.org', col(b, 'Asked').cards[0]);
@@ -126,6 +137,17 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     b = await board();
     const shown = b.flatMap(c => c.cards.map(k => k.name));
     check('search finds an EyeWire username', shown.join(',') === 'Ken Mierow', shown);
+    await page.waitForSelector('.ah-panel', { timeout: 3000 }).catch(() => {});
+    check('a search with one match opens that person', /ken@example\.org/.test(await page.textContent('.ah-panel').catch(() => '')));
+    await page.fill('.ah-search', 'nseraf');
+    await page.waitForTimeout(300);
+    const stats = await page.$eval('.ah-stats', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+    check('their stats and recent activity show', /4,210 edits · 95 cells done · 3 tutorials finished/.test(stats) && /1,880 edits · 41 cells done/.test(stats) && /asked 4 times, 3 answered · helped others 27 times \(1 asked, 6 helped in 30 days\)/.test(stats) && /900 messages, 212 in 30 days/.test(stats), stats);
+    const edits = await page.waitForSelector('.ah-edits li', { timeout: 5000 }).then(() => page.$$eval('.ah-edits li', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()))).catch(() => []);
+    check('their 10 latest edits, read for that player only', edits.length === 10 && /^Merge, EyeWire II/.test(edits[0]) && /did not go through/.test(edits[1]), edits.slice(0, 3));
+    const editCall = calls.find(c => c.table === 'access_hub_recent_edits');
+    check('the latest edits ask for that one player', editCall && /user_id=eq\.00000000-0000-4000-8000-000000000013/.test(editCall.query) && /limit=10/.test(editCall.query), editCall && editCall.query);
+    await page.click('.ah-close');
     await page.fill('.ah-search', '');
 
     await page.click('.ah-card:has-text("Ken Mierow")');
@@ -157,11 +179,21 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     check('community: one row per dataset, most edits first', ins[0].length === 3 && /^EyeWire II/.test(ins[0][0]) && /41,347 edits/.test(ins[0][0]) && /Sandbox/.test(ins[0][2]) && /1,594 chat/.test(ins[0][2]), ins[0]);
     check('tutorial: slowest boxes reached by two or more', ins[1].length === 2 && /4 min 10 s/.test(ins[1][0]) && /25% asked for help/.test(ins[1][1]), ins[1]);
 
+    // Bars compare across rows: every track the same length, the busiest
+    // one full (Ames's phone, 2026-11-09: EyeWire II had no bar at all).
+    const bars = () => page.$$eval('.ah-box', els => els.map(e => [...e.querySelectorAll('.ah-bar')].map(t => ({ track: Math.round(t.getBoundingClientRect().width), fill: Math.round(t.firstElementChild.getBoundingClientRect().width) }))));
+    const barsOk = bs => bs.every(rows => rows.length && rows.every(r => r.track === rows[0].track) && rows[0].track >= 80 && rows[0].fill >= rows[0].track - 1);
+    let bw = await bars();
+    check('wide: bar tracks are equal and the top bar is full', barsOk(bw), bw);
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
     const wide = await page.evaluate(() => ({ sw: document.querySelector('.ah').scrollWidth, cw: document.querySelector('.ah').clientWidth }));
     check('a phone width page does not scroll sideways', wide.sw <= wide.cw + 1, wide);
+    bw = await bars();
+    check('phone: bar tracks are equal and the top bar is full', barsOk(bw), bw);
     await page.screenshot({ path: path.join(OUT, 'access-hub-phone.png') });
+    await (await page.$('.ah-box')).screenshot({ path: path.join(OUT, 'access-hub-phone-community.png') });
     check('no page errors', errors.length === 0, errors);
   } catch (e) {
     check('ran without throwing', false, String(e).slice(0, 300));

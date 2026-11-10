@@ -1418,7 +1418,8 @@ function notesHtml(text: string) {
 }
 
 // Images on a card: added with the button, pasted, or dropped on the notes.
-// Kept (admin-uploads/todo-images/), not cleaned up like reply images.
+// admin-uploads/todo-images/: deleted 7 days after the card is Done, by
+// scripts/cleanup-screenshots.mjs (cleanTodoImages). The card stays.
 const imageBusy = ref(0);
 async function uploadImage(file: File): Promise<string | null> {
   if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { error.value = 'Use a PNG, JPEG, GIF or WebP image.'; return null; }

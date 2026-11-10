@@ -48,8 +48,34 @@ tut AS (
 ),
 ed AS (
   SELECT user_id, min(timestamp) AS first_edit_at, max(timestamp) AS last_edit_at, count(*)::int AS edits,
-    (array_agg(dataset ORDER BY timestamp DESC))[1] AS last_dataset
-  FROM public.edit_log GROUP BY user_id
+    (array_agg(dataset ORDER BY timestamp DESC))[1] AS last_dataset,
+    count(*) FILTER (WHERE timestamp > now() - interval '30 days')::int AS edits_30d
+  -- An edit is a merge or a cut, as the game counts them (total_merges +
+  -- total_splits): not a claim, an annotation or marking a cell done.
+  FROM public.edit_log WHERE operation IN ('merge', 'split') AND success IS NOT FALSE GROUP BY user_id
+),
+-- One person's stats, for the panel (Ames 2026-11-09: "shouldn't it show
+-- stats for user and recent activity?"): all time and the last 30 days.
+-- Cells done come from ew_cell_completions only: work done in the game.
+-- Chat is a count only, never what they wrote (Ames: "chat counts are ok
+-- just not chat messages"). Help: asked for (and answered), and given.
+cc AS (
+  SELECT user_id, count(*)::int AS cells, count(*) FILTER (WHERE done_at > now() - interval '30 days')::int AS cells_30d
+  FROM public.ew_cell_completions GROUP BY user_id
+),
+ch AS (
+  SELECT user_id, count(*)::int AS chats, count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS chats_30d
+  FROM public.chat_messages GROUP BY user_id
+),
+ha AS (
+  SELECT user_id, count(*)::int AS help_asked, count(*) FILTER (WHERE resolved)::int AS help_answered_for,
+    count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS help_asked_30d
+  FROM public.help_requests GROUP BY user_id
+),
+hg AS (
+  SELECT user_id, count(DISTINCT request_id)::int AS help_given,
+    count(DISTINCT request_id) FILTER (WHERE created_at > now() - interval '30 days')::int AS help_given_30d
+  FROM public.help_responses GROUP BY user_id
 )
 SELECT
   w.email,
@@ -61,20 +87,40 @@ SELECT
   p.enabled AS pilot_enabled, p.let_in_at, coalesce(p.from_list, false) AS from_list,
   u.created_at AS joined_at, u.tutorial_active,
   t.tutorial_at, coalesce(t.tutorials, 0) AS tutorials,
-  e.first_edit_at, e.last_edit_at, coalesce(e.edits, 0) AS edits, e.last_dataset
+  e.first_edit_at, e.last_edit_at, coalesce(e.edits, 0) AS edits, e.last_dataset,
+  coalesce(e.edits_30d, 0) AS edits_30d, coalesce(c.cells, 0) AS cells, coalesce(c.cells_30d, 0) AS cells_30d,
+  coalesce(m.chats, 0) AS chats, coalesce(m.chats_30d, 0) AS chats_30d,
+  coalesce(ha.help_asked, 0) AS help_asked, coalesce(ha.help_answered_for, 0) AS help_answered_for, coalesce(ha.help_asked_30d, 0) AS help_asked_30d,
+  coalesce(hg.help_given, 0) AS help_given, coalesce(hg.help_given_30d, 0) AS help_given_30d
 FROM who w
 LEFT JOIN req r ON r.email = w.email
 LEFT JOIN pil p ON p.email = w.email
 LEFT JOIN usr u ON u.email = w.email
 LEFT JOIN tut t ON t.user_id = u.id
-LEFT JOIN ed e ON e.user_id = u.id;
+LEFT JOIN ed e ON e.user_id = u.id
+LEFT JOIN cc c ON c.user_id = u.id
+LEFT JOIN ch m ON m.user_id = u.id
+LEFT JOIN ha ON ha.user_id = u.id
+LEFT JOIN hg ON hg.user_id = u.id;
 REVOKE ALL ON public.access_hub_people FROM anon, authenticated;
+
+-- A player's 10 latest actions, for the panel ("10 recent edits"): when,
+-- where and which kind (merge, cut, claim, marked done...). Admin only, read
+-- one player at a time.
+CREATE OR REPLACE VIEW public.access_hub_recent_edits AS
+SELECT user_id, at, dataset, operation, success FROM (
+  SELECT user_id, timestamp AS at, dataset, operation, success,
+    row_number() OVER (PARTITION BY user_id ORDER BY timestamp DESC) AS n
+  FROM public.edit_log WHERE user_id IS NOT NULL
+) x WHERE n <= 10;
+REVOKE ALL ON public.access_hub_recent_edits FROM anon, authenticated;
 
 -- Where the community is: the last 30 days per dataset.
 CREATE OR REPLACE VIEW public.access_hub_activity AS
 WITH e AS (
   SELECT dataset, count(*)::int AS edits, count(DISTINCT user_id)::int AS editors
-  FROM public.edit_log WHERE timestamp > now() - interval '30 days' AND dataset IS NOT NULL GROUP BY dataset
+  FROM public.edit_log WHERE timestamp > now() - interval '30 days' AND dataset IS NOT NULL
+    AND operation IN ('merge', 'split') AND success IS NOT FALSE GROUP BY dataset
 ), c AS (
   SELECT dataset, count(*)::int AS cells, count(DISTINCT user_id)::int AS finishers
   FROM public.ew_cell_completions WHERE done_at > now() - interval '30 days' AND dataset IS NOT NULL GROUP BY dataset
