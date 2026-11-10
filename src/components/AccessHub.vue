@@ -30,6 +30,7 @@ interface Person {
   first_edit_at: string | null; last_edit_at: string | null; edits: number; last_dataset: string | null;
   edits_30d: number; cells: number; cells_30d: number; chats: number; chats_30d: number;
   help_asked: number; help_answered_for: number; help_asked_30d: number; help_given: number; help_given_30d: number;
+  is_admin?: boolean;
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
 interface RecentEdit { at: string; dataset: string | null; operation: string | null; success: boolean | null }
@@ -38,10 +39,10 @@ interface PlayerDataset { dataset: string; edits: number; cells: number; chats: 
 interface Activity { dataset: string; edits: number; editors: number; cells: number; finishers: number; chats: number; chatters: number }
 interface Stat { tutorial: number; step: number; last_box: string | null; n: number; players: number; median_s: number; p90_s: number; help_rate: number; closes: number }
 interface Note { id: string; text: string; by: string; at: string }
-type Stage = 'asked' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed';
+type Stage = 'asked' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin';
 const people = ref<Person[]>([]);
 const marks = ref<Record<string, { mark: string; at: string }>>({});
 const dsRows = ref<DatasetRequestRow[]>([]);
@@ -52,6 +53,7 @@ const loading = ref(false);
 const error = ref('');
 const search = ref('');
 const showRemoved = ref(false);
+const showAdmins = ref(false);
 const showLists = ref(false);
 const openKey = ref('');
 const busy = ref('');
@@ -115,6 +117,8 @@ const cards = computed<Card[]>(() => {
     if (ds) used.add(ds.id);
     let stage: Stage; let since: string | null; let listed = false;
     if (ds) { stage = 'dataset'; since = ds.at; }
+    // Admins are their own step (Ames 2026-11-10: "show admins as Admin").
+    else if (p.is_admin) { stage = 'admin'; since = p.joined_at; }
     else if (p.request_id && !p.pilot_enabled) {
       const mk = marks.value[p.email];
       const fresh = mk && String(mk.at) >= String(p.asked_at);
@@ -184,6 +188,7 @@ const columnCards = (s: Stage) => {
     : rows.sort((a, b) => String(a.since).localeCompare(String(b.since)));
 };
 const listCount = computed(() => inStage('letin').filter(c => c.p?.from_list).length);
+const adminCards = computed(() => inStage('admin').filter(matches).sort((a, b) => nameOf(a).localeCompare(nameOf(b))));
 const removedCards = computed(() => inStage('removed').filter(matches).sort((a, b) => String(b.since).localeCompare(String(a.since))));
 
 // ── Words ────────────────────────────────────────────────────────────────
@@ -442,6 +447,15 @@ const opName = (e: RecentEdit) => {
       </aside>
     </div>
 
+    <button v-if="adminCards.length || showAdmins" type="button" class="ah-fold ah-fold--wide" @click="showAdmins = !showAdmins">
+      {{ showAdmins ? 'Hide' : 'Show' }} {{ inStage('admin').length }} admin{{ inStage('admin').length === 1 ? '' : 's' }}
+    </button>
+    <div v-if="showAdmins" class="ah-admins">
+      <button v-for="c in adminCards" :key="'a' + c.key" type="button" class="ah-card" @click="pick(c)">
+        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-line">Admin<template v-if="c.p?.edits">, {{ c.p.edits.toLocaleString() }} edit{{ c.p.edits === 1 ? '' : 's' }}</template></span>
+      </button>
+    </div>
     <button v-if="removedCards.length || showRemoved" type="button" class="ah-fold ah-fold--wide" @click="showRemoved = !showRemoved">
       {{ showRemoved ? 'Hide' : 'Show' }} {{ inStage('removed').length }} removed or paused
     </button>
@@ -515,7 +529,7 @@ const opName = (e: RecentEdit) => {
 .ah-tag--note { background: rgba(93,202,165,.18); color: #c8f1e2; }
 .ah-fold { margin-top: 4px; padding: 6px 8px; border-radius: 7px; border: 1px dashed rgba(120,160,230,.4); background: none; color: #a9c4e6; font: inherit; font-size: 12.5px; cursor: pointer; }
 .ah-fold--wide { margin: 12px 0 0; }
-.ah-removed { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; margin-top: 8px; }
+.ah-removed, .ah-admins { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; margin-top: 8px; }
 .ah-panel { position: sticky; top: 0; align-self: start; max-height: calc(100vh - 80px); overflow-y: auto; background: rgba(14,22,40,.97); border: 1px solid rgba(120,170,255,.45); border-radius: 12px; padding: 14px 16px 16px; }
 .ah-panel h2 { margin: 0 26px 2px 0; font-size: 18px; color: #f2f7ff; overflow-wrap: anywhere; }
 .ah-panel h3 { margin: 16px 0 6px; font-size: 14px; color: #eef4ff; }

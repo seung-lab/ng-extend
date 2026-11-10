@@ -44,6 +44,8 @@ const PEOPLE = [
   // Editing, and waiting on a dataset request: the dataset column.
   { ...base, email: 'lou@example.org', user_id: UID(14), name: 'Lou Baker', pilot_enabled: true, let_in_at: ago(20), joined_at: ago(19), tutorial_at: ago(19), tutorials: 2, first_edit_at: ago(18), last_edit_at: ago(1), edits: 300, last_dataset: 'pinky_nf_v2' },
 ];
+// An admin, never asked and not on Pilot testers: the Admin step.
+PEOPLE.push({ ...base, email: 'boss@example.org', user_id: UID(15), name: 'Ames Admin', pilot_enabled: false, joined_at: ago(200), tutorial_at: ago(199), tutorials: 6, first_edit_at: ago(198), last_edit_at: ago(2), edits: 782, is_admin: true });
 for (let i = 0; i < 6; i++) PEOPLE.push({ ...base, email: `list${i}@example.org`, pilot_enabled: true, let_in_at: ago(40), from_list: true });
 const EDITS = Array.from({ length: 10 }, (_, i) => ({ at: ago(0.1 + i * 0.01), dataset: 'stroeh_mouse_retina', operation: i % 3 ? 'split' : 'merge', success: i !== 1 }));
 const THEIRS = [{ user_id: UID(13), dataset: 'stroeh_mouse_retina', edits: 1500, cells: 40, chats: 150, last_edit_at: ago(0.1) },
@@ -180,9 +182,15 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     b = await board();
     check('and they move to Let in', col(b, 'Asked').cards.every(c => c.name !== 'Ken Mierow') && col(b, 'Let in').cards.some(c => c.name === 'Ken Mierow'));
 
-    await page.click('.ah-fold--wide');
+    // Admins are their own step (Ames 2026-11-10), off the board columns.
+    b = await board();
+    check('an admin is in no step column', b.every(c => c.cards.every(x => x.name !== 'Ames Admin')), b.map(c => c.title));
+    await page.click('.ah-fold--wide:has-text("admin")');
+    const admins = await page.$$eval('.ah-admins .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('admins fold away below as Admin', admins.length === 1 && /Ames Admin/.test(admins[0]) && /Admin, 782 edits/.test(admins[0]), admins);
+    await page.click('.ah-fold--wide:has-text("removed")');
     const removed = await page.$$eval('.ah-removed .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
-    check('removed requests fold away below', removed.length === 1 && /Gone Person/.test(removed[0]), removed);
+    check('removed requests fold away below, without the admin', removed.length === 1 && /Gone Person/.test(removed[0]), removed);
 
     const ins = await page.$$eval('.ah-box', els => els.map(e => [...e.querySelectorAll('.ah-bar-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim())));
     check('community: one row per dataset, most edits first', ins[0].length === 3 && /^EyeWire II/.test(ins[0][0]) && /41,347 edits/.test(ins[0][0]) && /Sandbox/.test(ins[0][2]) && /1,594 chat/.test(ins[0][2]), ins[0]);
