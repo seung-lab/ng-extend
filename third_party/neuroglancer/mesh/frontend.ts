@@ -471,7 +471,7 @@ export class MeshShaderManager {
       const glow = tint.glow;
       gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
       const dim = tint.dim;
-      gl.uniform4f(shader.uniform('uNgeTintDim'), dim?.[0] ?? 0, dim?.[1] ?? 0, dim?.[2] ?? 0, dim ? 1 : 0);
+      gl.uniform4f(shader.uniform('uNgeTintDim'), dim?.[0] ?? 0, dim?.[1] ?? 0, dim?.[2] ?? 0, dim ? (tint.dimLevel ?? 0.32) : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
     }
@@ -742,9 +742,10 @@ if (uNgeTintOn > 0.5 && uNgeTintSkip < 0.5) {
       highp float tintLight = mix(lightingFactor, min(1.0, 0.58 + 0.44 * lightingFactor), isGlow);
       // Dim checked: a Checked mark (its newest, lighter shade too) is drawn
       // as a dim grey of the cell, so what is left to check stands out.
-      if (uNgeTintDim.w > 0.5 && distance(tintRgb, uNgeTintDim.rgb) < 0.16) {
+      // (w is how bright: the cell's grey times it, 0.32 for Highlight)
+      if (uNgeTintDim.w > 0.001 && distance(tintRgb, uNgeTintDim.rgb) < 0.16) {
         highp float cellGrey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
-        vColor.rgb = mix(vColor.rgb, vec3(cellGrey) * 0.32, min(1.0, tint.a * 1.15));
+        vColor.rgb = mix(vColor.rgb, vec3(cellGrey) * uNgeTintDim.w, min(1.0, tint.a * 1.15));
       } else {
         vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
       }

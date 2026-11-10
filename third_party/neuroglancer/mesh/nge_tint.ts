@@ -25,6 +25,10 @@ export interface NgeMeshTint {
    *  in this colour (RGB 0..1, the player's Checked colour) are drawn as a
    *  dim grey instead, so what is left to check stands out. */
   dim?: [number, number, number];
+  /** How bright the dimmed marks are drawn: the cell's grey times this
+   *  (0.32 when unset, Highlight's dim; Signal Controller on a phone uses
+   *  0.07, the branches all but gone). */
+  dimLevel?: number;
   /** Segments (ids as decimal strings) the map leaves alone: drawn in their
    *  own colour everywhere, however the map is painted there (Signal
    *  Controller's target cell, lit whole while the rest is hazed). */

@@ -486,9 +486,16 @@ body.nge-mobile .nge-sig-kicker { display: none; }
 body.nge-mobile .nge-sig-cells { flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin-top: 8px; padding-bottom: 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 body.nge-mobile .nge-sig-cells::-webkit-scrollbar { display: none; }
 body.nge-mobile .nge-sig .nge-sig-chip { flex: none; min-width: 44px; min-height: 42px; padding: 5px 9px; touch-action: manipulation; }
-body.nge-mobile .nge-sig .nge-sig-chip .key small, body.nge-mobile .nge-sig .nge-sig-chip .syn, body.nge-mobile .nge-sig .nge-sig-chip .barlabel { display: none; }
-body.nge-mobile .nge-sig .nge-sig-chip .barrow { margin-top: 4px; }
+body.nge-mobile .nge-sig .nge-sig-chip .key small, body.nge-mobile .nge-sig .nge-sig-chip .syn { display: none; }
+body.nge-mobile .nge-sig .nge-sig-chip .barrow { flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 3px; }
+body.nge-mobile .nge-sig .nge-sig-chip .barlabel { min-width: 0; font-size: 7.5px; letter-spacing: 0.1em; }
 body.nge-mobile .nge-sig .nge-sig-chip .bar { width: 64px; height: 6px; }
+/* the cell to tap wears a "Tap" callout; the target says what it is */
+.ng-extend.nge-sig-tag .tap { display: none; }
+body.nge-mobile .ng-extend.nge-sig-tag--target small { display: inline; }
+body.nge-mobile .ng-extend.nge-sig-tag--hint { font-size: 13px; padding: 6px 12px; transform: translate(-50%, calc(-100% - 22px)); }
+body.nge-mobile .ng-extend.nge-sig-tag--hint::after { height: 20px; }
+body.nge-mobile .ng-extend.nge-sig-tag--hint .tap { display: inline; margin-right: 6px; font: 700 10px 'Inter', sans-serif; letter-spacing: 0.14em; color: #fff; text-transform: uppercase; }
 body.nge-mobile .nge-sig .nge-sig-chip--target .key::after { margin-left: 6px; }
 body.nge-mobile .nge-sig-row { gap: 6px; margin-top: 8px; }
 body.nge-mobile .nge-sig-beam { padding: 9px 10px; touch-action: manipulation; }
@@ -803,7 +810,10 @@ function buildHaze(): NgeMeshTint | null {
   // (Ames 2026-11-08: "the target cell all the way lit up and just the
   // others with this lantern mode").
   const skip = new Set(level.targets.map(k => cells.get(k)!.spec.root));
-  return {data, dims, gridFromGlobal: m, dim: DIM, skip};
+  // On a phone the other branches are all but black: the cell bodies and
+  // the wires between them are the whole picture (Ames 2026-11-10:
+  // "confusing, I couldn't tell which cells I was supposed to be hitting").
+  return {data, dims, gridFromGlobal: m, dim: DIM, dimLevel: phone() ? 0.07 : undefined, skip};
 }
 let hazeTint: NgeMeshTint | null = null;
 function applyHaze() {
@@ -858,7 +868,7 @@ function makeTags() {
     el.type = 'button';
     el.className = 'ng-extend nge-sig-tag' + (c.target ? ' nge-sig-tag--target' : '');
     el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
-    el.innerHTML = `${key}<small>${roleOf(c)}</small>`;
+    el.innerHTML = `<b class="tap">Tap</b>${key}<small>${roleOf(c)}</small>`;
     el.title = c.target ? `${key}: the target` : `Fire the beam at ${key}`;
     el.onclick = () => { shoot(key); el.blur(); };
     el.style.display = 'none';
@@ -952,22 +962,23 @@ function frameLevel() {
   try { v.showAxisLines.value = false; } catch { /* keep them */ }
   // In close on the cell bodies: the rest of each cell is there, greyed, as
   // context (the haze), so the frame need not hold it all.
-  fitNm = viewNm = Math.max(200_000, span * 2.0 + 70_000);
+  viewNm = Math.max(200_000, span * 2.0 + 70_000);
   v.navigationState.position.value = Float32Array.from(center.map((c, i) => c / nm[i]));
   const unit = Math.min(nm[0], nm[1], nm[2]);
   v.projectionScale.value = viewNm / unit;
   // Looking down into the cortex from the pia, the way a two photon
   // microscope does (Ames 2026-11-08: "sort of like I am being a 2p
   // microscope"): the eye toward data -y, screen up along +z.
-  v.projectionOrientation.restoreState([-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
+  // On a phone the view is from the side, the pia at the top, so the cell
+  // bodies spread down the tall screen instead of sitting over one another
+  // (Ames 2026-11-10: "couldn't tap the right cell").
+  v.projectionOrientation.restoreState(phone() ? [0, 0, 0, 1] : [-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
   needsFrame = true;
   shipAt = add(center, [0, -viewNm * 0.4, 0]);
   shipFwd = norm(sub(center, shipAt));
 }
 /** The level's frame: how much of the cortex shows top to bottom, in nm. */
 let viewNm = 260_000;
-/** What the circuit itself needs, in nm, before the screen's shape is known. */
-let fitNm = 260_000;
 /** Set by frameLevel: the next frame with a camera puts the circuit in the
  *  open space above the HUD. */
 let needsFrame = false;
@@ -1251,7 +1262,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     if (!c.shown || !c.target) continue;
     const held = clamp(c.i / 3, 0, 1);
     const ring = mix([1, 0.76, 0.3], VIOLET, held);
-    const R = 14_000;
+    const R = phone() ? viewNm * 0.045 : 14_000;
     for (let k = 0; k < 14; k++) {
       const a = spin * 0.9 + k / 14 * Math.PI * 2;
       const p = add(c.spec.soma, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R)));
@@ -1273,7 +1284,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   if (phase === 'playing') for (const key of hints) {
     const c = cells.get(key);
     if (!c?.shown) continue;
-    const R = 17_000, pulse = 0.5 + 0.5 * Math.sin(spin * 6);
+    const R = phone() ? viewNm * 0.055 : 17_000, pulse = 0.5 + 0.5 * Math.sin(spin * 6);
     for (let k = 0; k < 10; k++) {
       const a = -spin * 1.8 + k / 10 * Math.PI * 2;
       put(add(c.spec.soma, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R))), [0.85, 1, 1, 0.45 + 0.4 * pulse], 2600);
@@ -1378,30 +1389,63 @@ function onDoubleClick(e: MouseEvent) {
   if (!active) return;
   if ((e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) { e.preventDefault(); e.stopPropagation(); }
 }
-function onPointerDown(e: PointerEvent) {
-  if (!active || phase !== 'playing' || e.button !== 0) return;
-  if (!(e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) return;
-  const finger = e.pointerType !== 'mouse';
+/** The cell at a point of the 3D view: Neuroglancer's hovered segment, or
+ *  for a finger (no hover) the cell under it picked now, the way
+ *  Neuroglancer's own click actions do (the position is set and the pick is
+ *  forced; it blocks on the graphics card for a moment), else the nearest
+ *  cell body within a thumb's width. */
+function cellAt(x: number, y: number, finger: boolean): CellState | undefined {
   if (finger) {
-    // A finger has no hover, so the cell under it is picked now, the way
-    // Neuroglancer's own click actions do: the position is set and the pick
-    // is forced (it blocks on the graphics card for a moment).
-    try { threeDPanel()?.handleMouseMove?.(e.clientX, e.clientY); viewerNow()?.mouseState?.updateUnconditionally?.(); } catch { /* no pick: the cell bodies below */ }
+    try { threeDPanel()?.handleMouseMove?.(x, y); viewerNow()?.mouseState?.updateUnconditionally?.(); } catch { /* no pick: the cell bodies below */ }
   }
   const sel = circuitLayer()?.layer?.displayState?.segmentSelectionState;
   const root = sel?.hasSelectedSegment ? sel.selectedSegment.toString() : null;
   let hit = root ? [...cells.values()].find(c => c.shown && c.spec.root === root) : undefined;
   if (!hit && finger) {
-    // Fingers are wide: the nearest cell body within a thumb's width counts.
     let best = 48 * 48;
     for (const c of cells.values()) {
       if (!c.shown) continue;
       const s = toScreen(c.spec.soma);
       if (!s) continue;
-      const d = (s[0] - e.clientX) ** 2 + (s[1] - e.clientY) ** 2;
+      const d = (s[0] - x) ** 2 + (s[1] - y) ** 2;
       if (d < best) { best = d; hit = c; }
     }
   }
+  return hit;
+}
+/** A finger fires a cell with a tap: down, still, and up within half a
+ *  second, one finger. A drag turns the view and a pinch zooms it, and
+ *  neither fires anything (Ames 2026-11-10: "couldn't tap the right cell").
+ *  A mouse fires on the press, as before. */
+let tapStart: {id: number; x: number; y: number; t: number} | null = null;
+let fingers = 0;
+function onPointerDown(e: PointerEvent) {
+  if (!active) return;
+  if (e.pointerType !== 'mouse') {
+    fingers++;
+    tapStart = null;
+    if (fingers === 1 && phase === 'playing' && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) {
+      tapStart = {id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now()};
+    }
+    return;
+  }
+  if (phase !== 'playing' || e.button !== 0) return;
+  if (!(e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) return;
+  const hit = cellAt(e.clientX, e.clientY, false);
+  if (!hit) return;
+  e.preventDefault(); e.stopPropagation();
+  swallowUntil = performance.now() + 500;
+  shoot(hit.key);
+}
+function onPointerUp(e: PointerEvent) {
+  if (e.pointerType === 'mouse') return;
+  fingers = Math.max(0, fingers - 1);
+  const t = tapStart;
+  if (!t || t.id !== e.pointerId) return;
+  tapStart = null;
+  if (e.type === 'pointercancel' || !active || phase !== 'playing') return;
+  if (performance.now() - t.t > 500 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 14) return;
+  const hit = cellAt(e.clientX, e.clientY, true);
   if (!hit) return;
   e.preventDefault(); e.stopPropagation();
   swallowUntil = performance.now() + 500;
@@ -1499,6 +1543,8 @@ export async function playSignalController(levelAt = 0) {
     conns = circuit!.connections;
     routes = new Map(conns.map(k => [k, route([...k.axon, ...k.dendrite])]));
     window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('pointerup', onPointerUp, true);
+    window.addEventListener('pointercancel', onPointerUp, true);
     window.addEventListener('mousedown', swallow, true);
     window.addEventListener('mouseup', swallow, true);
     window.addEventListener('click', swallow, true);
@@ -1520,6 +1566,9 @@ export function stopSignalController() {
   active = false;
   cancelAnimationFrame(raf);
   window.removeEventListener('pointerdown', onPointerDown, true);
+  window.removeEventListener('pointerup', onPointerUp, true);
+  window.removeEventListener('pointercancel', onPointerUp, true);
+  tapStart = null; fingers = 0;
   window.removeEventListener('mousedown', swallow, true);
   window.removeEventListener('mouseup', swallow, true);
   window.removeEventListener('click', swallow, true);
