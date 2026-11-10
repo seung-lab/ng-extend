@@ -51,8 +51,17 @@ export function startTutorialBoxJump() {
     const len = Number((window as any).__ngeTutorialLengths?.[t]) || 0;
     if (!len) { console.warn(`[tutorial box] no tutorial ${t}`); return; }
     // After the account's saved tutorial place has loaded, which would
-    // otherwise put the admin back where they were.
-    setTimeout(() => {
+    // otherwise put the admin back where they were: it sets the active
+    // tutorial and keeps the furthest step, so a box jumped to before it
+    // arrived vanished (Ames 2026-11-10: "took me to blank page", her saved
+    // place was tutorial 1, Advanced Interface finished). Wait for it, at
+    // most 15 s (a failed load never arrives), then a moment for the view.
+    let fired = false;
+    const fire = () => { if (fired) return; fired = true; stop(); setTimeout(jump, 800); };
+    const stop = watch(() => backend.userId && tutorials.hydrateSettledFor === backend.userId, ok => { if (ok) fire(); });
+    if (backend.userId && tutorials.hydrateSettledFor === backend.userId) fire();
+    setTimeout(fire, 15000);
+    function jump() {
       document.dispatchEvent(new CustomEvent('nge:tutorial-box', { detail: { tutorial: t, box: s } }));
       if (PRACTICE_TUTORIALS.includes(t)) {
         document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: t } }));
@@ -60,7 +69,7 @@ export function startTutorialBoxJump() {
       }
       tutorials.activeTutorial = t;
       tutorials.setTutorialStep(Math.min(Math.max(0, s), len - 1));
-    }, 2500);
+    }
   };
   watch(() => backend.isAdmin, go, { immediate: true });
 }
