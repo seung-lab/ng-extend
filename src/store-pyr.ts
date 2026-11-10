@@ -242,6 +242,10 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // lives on the server, so a reload starts from the menu and resumes there.
   const tutorialStep11: Ref<number> = ref(-1);
 
+  // Tutorial 14, the Cilia Quest tutorial (src/tutorial-cilia.ts): its
+  // practice marks live only in the view, so a reload starts it afresh.
+  const tutorialStep14: Ref<number> = ref(-1);
+
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
@@ -259,6 +263,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 13) return tutorialStep13.value;
     if (activeTutorial.value === 10) return tutorialStep10.value;
     if (activeTutorial.value === 11) return tutorialStep11.value;
+    if (activeTutorial.value === 14) return tutorialStep14.value;
     return tutorialStep4.value;
   }
 
@@ -274,6 +279,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 13) tutorialStep13.value = val;
     else if (activeTutorial.value === 10) tutorialStep10.value = val;
     else if (activeTutorial.value === 11) tutorialStep11.value = val;
+    else if (activeTutorial.value === 14) tutorialStep14.value = val;
     else tutorialStep4.value = val;
   }
 
@@ -412,6 +418,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep13,
     tutorialStep10,
     tutorialStep11,
+    tutorialStep14,
     hydrateFromSupabase,
   };
 });

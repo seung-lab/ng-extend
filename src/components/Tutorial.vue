@@ -19,6 +19,7 @@ import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9, sandboxContinue, sandboxRestart, sandboxNext } from '../merger-sandbox';
 import { extensionSteps as steps13, extensionContinue, extensionRestart, extensionNext, EXTENSION_TUTORIAL } from '../extension-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
+import { steps as steps14, CILIA_TUTORIAL } from '../tutorial-cilia';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
@@ -41,7 +42,7 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13, 14: steps14 };
 // The real lengths, for the landing's "is a tutorial under way" test in
 // store.ts (isUserInActiveTutorial), which cannot import the step lists.
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
@@ -62,6 +63,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 13) return store.tutorialStep13;
     if (store.activeTutorial === 10) return store.tutorialStep10;
     if (store.activeTutorial === 11) return store.tutorialStep11;
+    if (store.activeTutorial === 14) return store.tutorialStep14;
     return store.tutorialStep4;
 });
 
@@ -259,6 +261,10 @@ const next = (_auto?: unknown) => {
         // A dataset tour ends by opening the Cell Library on Available.
         if (tutorialNum === 6 || tutorialNum === 7) {
             document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'available' } }));
+        }
+        // The Cilia Quest tutorial ends on "Open Cilia Quests" (its "Not now" only closes it).
+        if (tutorialNum === CILIA_TUTORIAL && !skipFollowOn) {
+            document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
         }
         if (tutorialNum === 1) {
             document.dispatchEvent(new CustomEvent('nge:prompt-username'));

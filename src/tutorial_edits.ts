@@ -29,7 +29,7 @@ export const TUTORIAL_APPROVER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@
 export const TUTORIAL_NAMES: Record<number, string> = {
   1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut',
   6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain',
-  9: 'Merger Sandbox', 10: 'Meet the cells of CA3', 11: 'Proofreading Test', 13: 'Extension Sandbox',
+  9: 'Merger Sandbox', 10: 'Meet the cells of CA3', 11: 'Proofreading Test', 13: 'Extension Sandbox', 14: 'Cilia Quest',
 };
 
 export interface Wording { title: string; words: string }

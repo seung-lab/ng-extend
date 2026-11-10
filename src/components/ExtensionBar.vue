@@ -1615,6 +1615,14 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
             <span class="nge-menu-num">{{ extensionFinished >= EXTENSION_CELLS.length ? '✓' : extensionFinished }}</span><span>Find the missing pieces ({{ extensionFinished }} of {{ EXTENSION_CELLS.length }})</span>
           </div>
         </li>
+        <!-- Quests (Ames 2026-11-10): how to do a Cilia Quest, on the lab's
+             own example cell (src/tutorial-cilia.ts). -->
+        <li class="nge-menu-heading" @click.stop>Quests</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startTutorial(14); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">🔬</span><span>Cilia Quest</span>
+          </div>
+        </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
         <li v-if="ARCADE_ENABLED">
           <div class="logoutButton button nge-menu-item" @click="showArcade = true; closeHamburger()">

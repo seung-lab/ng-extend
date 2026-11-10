@@ -447,7 +447,8 @@ function viewerToolActive(): boolean {
     try {
         if (viewer?.globalToolBinder?.activeTool_ || viewer?.toolBinder?.activeTool_) return true;
     } catch (_) { /* fall through to the DOM check */ }
-    return !!document.querySelector('.neuroglancer-tool-status');
+    // A polyline being drawn (the Cilia Quest centerline): Enter finishes it.
+    return !!document.querySelector('.neuroglancer-tool-status, .nge-polyline-hint');
 }
 
 function onKeyDown(e: KeyboardEvent) {
