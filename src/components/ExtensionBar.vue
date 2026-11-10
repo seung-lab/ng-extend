@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
+import { play, choosePlay, playLabel } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -1364,6 +1365,12 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
       <span v-else class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
       <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
     </button>
+    <!-- Play (util/play.ts): what is being played, a click to change or stop (Ames 2026-11-10). -->
+    <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="choosePlay()"
+            title="Playing. Click to change what you play, or stop.">
+      <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
+      <span>Playing {{ playLabel() }}</span>
+    </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
       <div v-if="shareCopied" class="nge-share-toast">
@@ -2031,6 +2038,19 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .nge-dataset-label { padding-right: 2px; }
+/* Play status in the top bar: the Play button's teal green, a gentle pulse on the triangle. */
+#extensionBar .nge-play-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 14px; margin: 0 10px 0 0;
+  border-radius: 14px; border: 1px solid rgba(62, 236, 190, 0.6); background: rgba(62, 236, 190, 0.1);
+  color: #dcfff4; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 0 10px rgba(62, 236, 190, 0.25); transition: background 0.15s, box-shadow 0.15s;
+}
+#extensionBar .nge-play-chip:hover { background: rgba(62, 236, 190, 0.2); box-shadow: 0 0 16px rgba(62, 236, 190, 0.45); }
+#extensionBar .nge-play-chip svg { color: #3eecbe; animation: nge-play-chip-pulse 1.6s ease-in-out infinite; }
+#extensionBar .nge-play-chip--quests { border-color: rgba(255, 211, 110, 0.6); background: rgba(255, 211, 110, 0.1); box-shadow: 0 0 10px rgba(255, 211, 110, 0.22); }
+#extensionBar .nge-play-chip--quests svg { color: #ffd36e; }
+@keyframes nge-play-chip-pulse { 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { #extensionBar .nge-play-chip svg { animation: none; } }
 .nge-dataset-species { font-size: 14px; line-height: 1; }
 #extensionBar .nge-dataset-btn:hover {
   opacity: 1;

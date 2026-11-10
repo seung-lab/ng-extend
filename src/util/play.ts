@@ -154,6 +154,15 @@ export async function startPlay(k: PlayKind, on?: DatasetEntry): Promise<boolean
   return true;
 }
 
+/** What is being played, for the top bar: "BC Challenge", "Cilia Quest". */
+export function playLabel(): string {
+  if (play.on === 'quests') return 'Cilia Quest';
+  const ds = mappingDataset();
+  if (ds?.id === 'stroeh_mouse_retina') return 'BC Challenge';
+  if (ds?.id === 'pinky_sandbox') return 'Sandbox practice';
+  return ds ? `${ds.shortLabel || ds.label} mapping` : 'Mapping';
+}
+
 /** The Play button: straight in with the kind last chosen, else the card. */
 export function pressPlay() {
   const k = savedKind();

@@ -35,7 +35,7 @@ import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLast
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
-import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
+import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
@@ -1334,13 +1334,25 @@ async function runCrosshairCheck(cell: CellRow) {
     const known = [expected, cell.segId, cell.finalSegId].filter(Boolean) as string[];
     // Edits give the cell a new root id; its edit history still leads back to
     // the claim's Start SegID, so ask CAVE (Amy 2026-09-28).
-    const lineage = known.includes(at.root) ? at.root : await ancestorAmong(at.root, known);
+    let lineage = known.includes(at.root) ? at.root : await ancestorAmong(at.root, known);
+    // Asked the other way: what the claimed cell became. Ames could not
+    // complete a Sandbox cell with the crosshairs in its own soma
+    // (2026-11-10): the history read back from the new id did not reach
+    // the claim, so read it forward from the claim too.
+    if (lineage === null) {
+      for (const k of known) {
+        const ends = await latestDescendants(k);
+        if (ends?.includes(at.root)) { lineage = k; break; }
+      }
+    }
     if (lineage) {
       c.ok = true;
       c.message = lineage === at.root
         ? `The crosshairs are inside this cell (${shortId(at.root)}).`
         : `The crosshairs are inside this cell. It has been edited since the claim, so its ID is now ${shortId(at.root)}; that is recorded as the Final SegID.`;
-    } else if (lineage === undefined && isVisibleRoot(at.root)) {
+    } else if (lineage === undefined && (isVisibleRoot(at.root) || known.some(isVisibleRoot))) {
+      // Could not reach the edit history (a test site, a server hiccup):
+      // the cell Pyr took the player to is on screen, so accept it.
       // Could not reach the edit history: accept the cell on screen.
       c.ok = true;
       c.message = `The crosshairs are inside ${shortId(at.root)}, the cell on screen. It is recorded as the Final SegID.`;
@@ -1394,10 +1406,10 @@ async function submitComplete(cell: CellRow) {
     // Straight on to your next claim. With none left, the next cell is
     // claimed and you are taken there: the cell you land on is yours (Ames
     // 2026-11-09: "it should just take you there").
-    if (await nextClaimAfter(cell, claimsBefore)) showStartNote('On to your next cell.', 6000);
+    if (await nextClaimAfter(cell, claimsBefore)) showStartNote('Your next cell');
     else {
       await claimNewCell();
-      if (myOpenClaims.value.length) showStartNote('Next cell! This one is yours.', 8000);
+      if (myOpenClaims.value.length) showStartNote('Your new cell');
       else if (slim.value) { slimSeg.value = null; slimEmpty.value = true; }
     }
   } catch (e: any) {
@@ -3047,10 +3059,18 @@ async function claimNewCell() {
   } finally { claimingNew.value = false; }
 }
 /** A short line on the slim bar: what to do with the cell in hand. */
+/** "Your new cell": a short flash over the view when Pyr lands you on a
+ *  cell (Ames 2026-11-10: "it should maybe have a temporary 'your new cell'
+ *  type UI thing"). It names the cell and goes by itself. */
 const startNote = ref('');
+const startNoteCell = ref('');
+const startNoteN = ref(0);
 let startNoteTimer: ReturnType<typeof setTimeout> | null = null;
-function showStartNote(text: string, ms: number) {
+function showStartNote(text: string, ms = 4200) {
   startNote.value = text;
+  const c = currentCell();
+  startNoteCell.value = c ? (history.getNickname(c.segId) || c.liveSegId || c.segId) : '';
+  startNoteN.value++;
   if (startNoteTimer) clearTimeout(startNoteTimer);
   startNoteTimer = setTimeout(() => { startNote.value = ''; startNoteTimer = null; }, ms);
 }
@@ -3081,9 +3101,7 @@ function playIfAsked() {
       await collapseTo(mine);
     } else await claimNewCell();
     if (!myOpenClaims.value.length) { await collapseTo(null); return; }  // nothing claimed: the reason shows already
-    showStartNote(mine
-      ? 'Back to your cell. Fix what the AI got wrong with Merge and Cut, then press Complete. The next cell will be waiting.'
-      : 'This cell is yours to proofread. Fix what the AI got wrong with Merge and Cut, then press Complete. Stuck? Ask in Chat.', 30000);
+    showStartNote(mine ? 'Your cell' : 'Your new cell');
     await nextTick();
     clampPanelPos();
   };
@@ -3108,7 +3126,7 @@ async function playSkip() {
     const rest = myOpenClaims.value[0];
     if (rest) { await stepToClaim(rest); await collapseTo(rest); }
     else await claimNewCell();
-    if (myOpenClaims.value.length) showStartNote('Skipped. This one is yours now.', 6000);
+    if (myOpenClaims.value.length) showStartNote('Your new cell');
     else await collapseTo(null);
   } finally { skipping.value = false; }
 }
@@ -3291,6 +3309,15 @@ const panelStyle = computed(() => ({
   <Teleport to="body">
     <Transition name="nge-cl" appear>
       <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
+    <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
+    <Teleport to="body">
+      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" role="status" aria-live="polite" @click="startNote = ''">
+        <span class="nge-cl-newcell-ring" aria-hidden="true"></span>
+        <span class="nge-cl-newcell-kicker">Teleport complete</span>
+        <span class="nge-cl-newcell-title">{{ startNote }}</span>
+        <span v-if="startNoteCell" class="nge-cl-newcell-id">{{ startNoteCell }}</span>
+      </div>
+    </Teleport>
 
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
@@ -3459,17 +3486,6 @@ const panelStyle = computed(() => ({
           />
         </div>
 
-        <!-- Play (util/play.ts): what is being played, Change, Skip and Stop. Above the
-           list, so the slim bar's neuron and arrows never cover it (Ames 2026-11-10). -->
-        <div v-if="slim && play.on" class="nge-cl-play-bar" :class="'nge-cl-play-bar--' + play.on">
-          <span class="nge-cl-play-label"><svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Playing {{ play.on === 'quests' ? 'Cilia Quests' : 'mapping' }}</span>
-          <button class="nge-cl-play-link" @click="choosePlay" title="Choose another kind of task">Change</button>
-          <span class="nge-cl-play-gap"></span>
-          <button class="nge-cl-btn nge-cl-play-skip" :disabled="skipping" @click="playSkip"
-                  :title="play.on === 'quests' ? 'Release this quest cell for someone else and claim the next' : 'Release this cell for someone else and claim the next'">{{ skipping ? 'Skipping…' : 'Skip ›' }}</button>
-          <button class="nge-cl-btn nge-cl-play-stop" @click="playStop" title="Stop playing. You keep the cell you are on.">Stop</button>
-        </div>
-        <div v-if="startNote" class="nge-cl-start-note" @click="startNote = ''" title="Click to hide">{{ startNote }}</div>
 
         <!-- ═══ HELP TAB ═══ -->
         <div v-if="filter === 'help'" class="nge-cl-list">
@@ -4379,7 +4395,7 @@ const panelStyle = computed(() => ({
               ><span v-if="releasing.has(releaseKey(cell))" class="nge-cl-spin" />{{ releasing.has(releaseKey(cell)) ? 'Releasing…' : 'Release' }}</button>
 
               <button
-                v-if="isMyClaim(cell)"
+                v-if="isMyClaim(cell) && completing?.key !== cellKey(cell)"
                 class="nge-cl-btn nge-cl-btn--complete"
                 :class="{ 'nge-cl-btn--complete-open': completing?.key === cellKey(cell) }"
                 @click="completing?.key === cellKey(cell) ? (completing = null) : openComplete(cell)"
@@ -5348,19 +5364,30 @@ const panelStyle = computed(() => ({
 .nge-cl-play-here svg { color: #3eecbe; }
 .nge-cl-play-here:hover { box-shadow: 0 0 18px rgba(62, 236, 190, 0.55); }
 .nge-cl-play-here-hint { font-size: 12px; color: #9fb4cc; }
-/* "Start playing": what to do with the cell just claimed. */
-.nge-cl-start-note {
-  flex-basis: 100%;
-  margin: 6px 10px 2px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(95, 216, 255, 0.45);
-  background: rgba(95, 216, 255, 0.1);
-  color: #dff6ff;
-  font-size: 12.5px;
-  line-height: 1.4;
-  cursor: pointer;
+/* "Your new cell": a hologram flash at the top of the view, then gone. */
+.nge-cl-newcell {
+  position: fixed; top: 96px; left: 50%; z-index: 950; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 34px 14px;
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  background: linear-gradient(160deg, rgba(10, 52, 52, 0.92), rgba(6, 14, 28, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(62, 236, 190, 0.55), inset 0 0 30px rgba(62, 236, 190, 0.12);
+  color: #e6fff8; cursor: pointer; pointer-events: auto;
+  animation: nge-cl-newcell 4200ms cubic-bezier(.16,1,.3,1) both;
 }
+@keyframes nge-cl-newcell {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.6, 0.05); filter: blur(6px) brightness(2.2); }
+  10% { opacity: 1; transform: translateX(-50%) scale(1.04, 1); filter: blur(0) brightness(1.4); }
+  16%, 85% { opacity: 1; transform: translateX(-50%) scale(1); filter: none; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.96); filter: blur(3px); }
+}
+.nge-cl-newcell-ring { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(160, 255, 230, 0.45), transparent); transform: translateX(-100%);
+  animation: nge-cl-newcell-sweep 900ms ease-out 250ms both; }
+@keyframes nge-cl-newcell-sweep { to { transform: translateX(100%); } }
+.nge-cl-newcell-kicker { font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.26em; text-transform: uppercase; color: #3eecbe; }
+.nge-cl-newcell-title { font: 700 24px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(62, 236, 190, 0.6); }
+.nge-cl-newcell-id { font: 500 13px 'Inter', sans-serif; color: #9fe8d4; letter-spacing: 0.03em; }
+@media (prefers-reduced-motion: reduce) { .nge-cl-newcell { animation: none; } .nge-cl-newcell-ring { display: none; } }
 .nge-cl-error-banner {
   display: flex;
   align-items: center;
