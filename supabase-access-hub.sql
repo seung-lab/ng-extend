@@ -115,6 +115,28 @@ SELECT user_id, at, dataset, operation, success FROM (
 ) x WHERE n <= 10;
 REVOKE ALL ON public.access_hub_recent_edits FROM anon, authenticated;
 
+-- One player's last 30 days on each dataset (Ames 2026-11-09: "player
+-- search should show snapshot of their activity across datasets for 30
+-- days"): edits (merges and cuts), cells done, chat count (never what they
+-- wrote). Admin only, read one player at a time.
+CREATE OR REPLACE VIEW public.access_hub_player_datasets AS
+WITH e AS (
+  SELECT user_id, dataset, count(*)::int AS edits, max(timestamp) AS last_edit_at
+  FROM public.edit_log WHERE timestamp > now() - interval '30 days' AND operation IN ('merge', 'split') AND success IS NOT FALSE
+    AND user_id IS NOT NULL AND dataset IS NOT NULL GROUP BY 1, 2
+), c AS (
+  SELECT user_id, dataset, count(*)::int AS cells FROM public.ew_cell_completions
+  WHERE done_at > now() - interval '30 days' AND dataset IS NOT NULL GROUP BY 1, 2
+), m AS (
+  SELECT user_id, dataset, count(*)::int AS chats FROM public.chat_messages
+  WHERE created_at > now() - interval '30 days' AND dataset IS NOT NULL AND dataset !~ ':' AND dataset <> 'test' GROUP BY 1, 2
+)
+SELECT coalesce(e.user_id, c.user_id, m.user_id) AS user_id, coalesce(e.dataset, c.dataset, m.dataset) AS dataset,
+  coalesce(e.edits, 0) AS edits, coalesce(c.cells, 0) AS cells, coalesce(m.chats, 0) AS chats, e.last_edit_at
+FROM e FULL JOIN c ON c.user_id = e.user_id AND c.dataset = e.dataset
+FULL JOIN m ON m.user_id = coalesce(e.user_id, c.user_id) AND m.dataset = coalesce(e.dataset, c.dataset);
+REVOKE ALL ON public.access_hub_player_datasets FROM anon, authenticated;
+
 -- Where the community is: the last 30 days per dataset.
 CREATE OR REPLACE VIEW public.access_hub_activity AS
 WITH e AS (
