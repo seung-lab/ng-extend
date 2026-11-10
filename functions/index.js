@@ -2294,12 +2294,13 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-06-request-bells-read-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-09-celia-tagged-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
-// Marissa stays tagged on access requests (Ames 2026-10-27); Amy and Celia no longer (Ames 2026-11-04).
-const ACCESS_SLACK_MENTIONS = ["U033TSX9A"]; // sorek.m
+// Marissa stays tagged on access requests (Ames 2026-10-27); Amy no longer (Ames
+// 2026-11-04). Celia again (Ames 2026-11-09: "Also @ her on access requests").
+const ACCESS_SLACK_MENTIONS = ["U033TSX9A", "U033NHWDE"]; // sorek.m, Celia
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 // Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
 const ACCESS_CAVE_GROUP = 203;
