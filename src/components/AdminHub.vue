@@ -1431,6 +1431,34 @@ const reporterSending = ref<string | null>(null);
 /** "Ask for a reply" ticked in an open composer, keyed by row id (Ames
  *  2026-10-13). Off unless ticked: an ordinary update is exactly as before. */
 const reporterAsk = ref<Record<string, boolean>>({});
+/** "Copy Celia and Marissa" switched on, keyed by row id (Ames 2026-11-10: "a button to
+ *  also send a reply to celia and marissa if there is a reply they should see"). */
+const reporterCopy = ref<Record<string, boolean>>({});
+// Their Pyr accounts (users.id): the admins table keeps no user ids.
+const COPY_ADMINS = [
+  { email: 'celia@eyewire.org', id: '942bda30-fcf0-424c-8785-91db4d62d2aa' },  // Celia D
+  { email: 'm@eyewire.org', id: 'ebdb33d8-1cc5-4d2c-bd9e-f1216742fb51' },      // M Sorek
+];
+/** The bell note each of them gets: the exact words sent, in their Admin tab (📋). */
+async function copyReplyToAdmins(row: TriageRow, text: string, imageUrl: string | null): Promise<number> {
+  const me = (backend.userEmail || '').toLowerCase();
+  const ids = COPY_ADMINS.filter(a => a.email !== me).map(a => a.id);
+  const n = triageNumbers.value[row.id];
+  const player = reporterOf(row)?.name || 'a player';
+  const about = (reporterOf(row)?.title || row.source_excerpt || 'a report').replace(/\s+/g, ' ').trim().slice(0, 90);
+  const link = `${window.location.origin}${window.location.pathname}?triage=board&report=${row.id}`;
+  const who = backend.userName || 'An admin';
+  for (const id of ids) {
+    await secureWrite('notification.insert', { row: {
+      title: `📋 ${who} replied to ${player}`.slice(0, 120),
+      body: `${n ? `#${n} ` : ''}"${about}"\n\n${text}\n\n[Open the card](${link})`.slice(0, 6000),
+      thumbnail_url: 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png',
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+      target_type: 'user', target_id: id, send_at: new Date().toISOString(),
+    } });
+  }
+  return ids.length;
+}
 /** The open boxes themselves, so the format buttons act on the right one. */
 const reporterEls: Record<string, HTMLTextAreaElement | null> = {};
 function reporterComposer(row: TriageRow): Composer {
@@ -1722,6 +1750,12 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
     // Everyone who reported the same thing hears too (never asked to reply).
     const toldDups = await notifyDuplicates(row, text, art).catch(() => 0);
     if (toldDups) dupNotice.value = `Also sent to ${toldDups} other ${toldDups === 1 ? 'person' : 'people'} who reported the same thing.`;
+    const copy = !!reporterCopy.value[row.id];
+    if (copy) {
+      const copied = await copyReplyToAdmins(row, text, imageUrl).catch((e: any) => { console.warn('[triage] copy to admins', e); return -1; });
+      const copyNote = copied < 0 ? 'Sent to the player, but the copy to Celia and Marissa did not go.' : copied ? 'Celia and Marissa got a copy.' : '';
+      if (copyNote) dupNotice.value = [dupNotice.value, copyNote].filter(Boolean).join(' ');
+    }
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
@@ -1730,11 +1764,12 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
     const at = new Date().toISOString();
     log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false,
-      ...(ask ? { ask: true, notification_id: asked?.id } : {}), ...(imageUrl ? { image_url: imageUrl } : {}) });
+      ...(ask ? { ask: true, notification_id: asked?.id } : {}), ...(imageUrl ? { image_url: imageUrl } : {}), ...(copy ? { copied_to_admins: true } : {}) });
     await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } })
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
     delete reporterAsk.value[row.id];
+    delete reporterCopy.value[row.id];
     dropReplyImage(row);
     sent = true;
     if (!andDone && !andProgress && !andLater) await loadTriage();
@@ -3926,6 +3961,18 @@ function practiceWhen(iso: string | null) {
                 <span class="nge-triage-ask-hint">{{ reporterAsk[row.id]
                   ? 'They get a reply form under your message: text, a screenshot, their view and console messages. One reply. Ask again to hear more.'
                   : 'They get your message only.' }}</span>
+              </div>
+              <div class="nge-triage-ask" title="Celia and Marissa each get your exact message in their bell, under Admin, with a link to this card. Never the player.">
+                <span :id="'nge-triage-copy-' + row.id" class="nge-triage-ask-label">Copy Celia and Marissa</span>
+                <div class="nge-triage-switch" role="radiogroup" :aria-labelledby="'nge-triage-copy-' + row.id" :data-on="reporterCopy[row.id] ? 'on' : 'off'">
+                  <button type="button" role="radio" class="nge-triage-switch-opt" :aria-checked="reporterCopy[row.id] ? 'false' : 'true'" :tabindex="reporterCopy[row.id] ? -1 : 0"
+                          :disabled="reporterSending === row.id" @click="reporterCopy[row.id] = false"
+                          @keydown.right.prevent.stop="reporterCopy[row.id] = true" @keydown.left.prevent.stop="reporterCopy[row.id] = false">Off</button>
+                  <button type="button" role="radio" class="nge-triage-switch-opt nge-triage-switch-opt--on" :aria-checked="reporterCopy[row.id] ? 'true' : 'false'" :tabindex="reporterCopy[row.id] ? 0 : -1"
+                          :disabled="reporterSending === row.id" @click="reporterCopy[row.id] = true"
+                          @keydown.right.prevent.stop="reporterCopy[row.id] = true" @keydown.left.prevent.stop="reporterCopy[row.id] = false">On</button>
+                </div>
+                <span class="nge-triage-ask-hint">{{ reporterCopy[row.id] ? 'They each get your message in their bell, with a link to this card.' : 'Only the player gets it.' }}</span>
               </div>
               <div class="nge-triage-actions">
                 <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
