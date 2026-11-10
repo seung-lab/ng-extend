@@ -48,8 +48,20 @@ tut AS (
 ),
 ed AS (
   SELECT user_id, min(timestamp) AS first_edit_at, max(timestamp) AS last_edit_at, count(*)::int AS edits,
-    (array_agg(dataset ORDER BY timestamp DESC))[1] AS last_dataset
+    (array_agg(dataset ORDER BY timestamp DESC))[1] AS last_dataset,
+    count(*) FILTER (WHERE timestamp > now() - interval '30 days')::int AS edits_30d
   FROM public.edit_log GROUP BY user_id
+),
+-- One person's stats and recent activity, for the panel (Ames 2026-11-09:
+-- "shouldn't it show stats for user and recent activity?"). Cells done come
+-- from ew_cell_completions only: work done in the game.
+cc AS (
+  SELECT user_id, count(*)::int AS cells, count(*) FILTER (WHERE done_at > now() - interval '30 days')::int AS cells_30d
+  FROM public.ew_cell_completions GROUP BY user_id
+),
+ch AS (
+  SELECT user_id, count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS chats_30d, max(created_at) AS last_chat_at
+  FROM public.chat_messages GROUP BY user_id
 )
 SELECT
   w.email,
@@ -61,13 +73,17 @@ SELECT
   p.enabled AS pilot_enabled, p.let_in_at, coalesce(p.from_list, false) AS from_list,
   u.created_at AS joined_at, u.tutorial_active,
   t.tutorial_at, coalesce(t.tutorials, 0) AS tutorials,
-  e.first_edit_at, e.last_edit_at, coalesce(e.edits, 0) AS edits, e.last_dataset
+  e.first_edit_at, e.last_edit_at, coalesce(e.edits, 0) AS edits, e.last_dataset,
+  coalesce(e.edits_30d, 0) AS edits_30d, coalesce(c.cells, 0) AS cells, coalesce(c.cells_30d, 0) AS cells_30d,
+  coalesce(m.chats_30d, 0) AS chats_30d, m.last_chat_at
 FROM who w
 LEFT JOIN req r ON r.email = w.email
 LEFT JOIN pil p ON p.email = w.email
 LEFT JOIN usr u ON u.email = w.email
 LEFT JOIN tut t ON t.user_id = u.id
-LEFT JOIN ed e ON e.user_id = u.id;
+LEFT JOIN ed e ON e.user_id = u.id
+LEFT JOIN cc c ON c.user_id = u.id
+LEFT JOIN ch m ON m.user_id = u.id;
 REVOKE ALL ON public.access_hub_people FROM anon, authenticated;
 
 -- Where the community is: the last 30 days per dataset.

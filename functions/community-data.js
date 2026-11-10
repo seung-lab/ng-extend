@@ -59,7 +59,7 @@ const columns = {
   // Per box, across everyone (a view over the rows above). Admins only.
   tutorial_step_stats: 'tutorial,step,last_box,n,players,median_s,p90_s,help_rate,closes',
   // The Access page (supabase-access-hub.sql, Ames 2026-11-09). Admins only.
-  access_hub_people: 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset',
+  access_hub_people: 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats_30d,last_chat_at',
   access_hub_activity: 'dataset,edits,editors,cells,finishers,chats,chatters',
 };
 const writable = {
