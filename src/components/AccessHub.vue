@@ -20,6 +20,7 @@ import { datasetDisplayName } from '../datasets';
 import { boxLink, PRACTICE_TUTORIALS } from '../tutorial_box_jump';
 import { updateUsersSheet, USERS_SHEET_URL } from '../quest_review';
 import { TUTORIAL_NAMES } from '../tutorial_edits';
+import { outcomeWord, type TestTry, type TestTriesList } from '../proofreading-test-review';
 
 interface Person {
   email: string; user_id: string | null; name: string | null; username: string | null;
@@ -61,6 +62,7 @@ const actionError = ref('');
 const noteDraft = ref('');
 const dsNote = ref('');
 const emailed = ref<Record<string, string>>({});
+const testTries = ref<TestTry[]>([]);
 
 async function load() {
   loading.value = true; error.value = '';
@@ -96,6 +98,7 @@ async function load() {
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
+    show(read('Test tries', async () => (await secureWrite<TestTriesList>('test.tries', { limit: 200 }))?.tries ?? [], [] as TestTry[]), v => { testTries.value = v; }),
     show(read('Tutorial times', () => table<Stat>('tutorial_step_stats', 'tutorial,step,last_box,n,players,median_s,p90_s,help_rate,closes', 500), [] as Stat[]), v => { stats.value = v; }),
   ]);
   error.value = problems.join(' · ');
@@ -149,7 +152,6 @@ watch(() => found.value.map(c => c.key).join('|'), () => {
   if (found.value.length === 1 && openKey.value !== found.value[0].key) pick(found.value[0]);
 });
 
-const DAY = 864e5;
 const ms = (a: string | null, b: string | null) => (a && b ? new Date(b).getTime() - new Date(a).getTime() : NaN);
 const median = (xs: number[]) => { const v = xs.filter(x => Number.isFinite(x) && x >= 0).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : NaN; };
 /** How long people take to move on from each step, from those who did. */
@@ -164,13 +166,6 @@ const typical = computed<Record<string, number>>(() => {
     editing: NaN,
   };
 });
-/** Longer than usual: twice the typical time, and at least a day. */
-const isLate = (c: Card) => {
-  const t = typical.value[c.stage];
-  if (!c.since || !Number.isFinite(t)) return false;
-  return Date.now() - new Date(c.since).getTime() > Math.max(2 * t, DAY);
-};
-
 const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean }[] = [
   { stage: 'asked', title: 'Asked', sub: 'Beta request, waiting on us', ours: true },
   { stage: 'letin', title: 'Let in', sub: 'not signed in yet' },
@@ -206,6 +201,14 @@ function toggleEditingCol() {
   try { localStorage.setItem(EDITING_KEY, showEditingCol.value ? '1' : '0'); } catch { /* not remembered */ }
 }
 const boardColumns = computed(() => COLUMNS.filter(c => c.stage !== 'editing' || showEditingCol.value));
+// Requests waiting on us sit above everyone else's progress (Ames
+// 2026-11-10: "pending requests above list of all users who are at
+// various stages of tutorials"). No late outlines: waiting longest is
+// already first, and someone who stopped playing is not on us.
+const boardGroups = computed(() => [
+  { title: 'Waiting on us', cols: boardColumns.value.filter(c => c.ours) },
+  { title: 'Getting started', cols: boardColumns.value.filter(c => !c.ours) },
+]);
 
 // The admins' leaderboard (Ames 2026-11-10: "rank them by top, sort of like
 // leaderboard ... like an admin version"): everyone who has edited, ranked
@@ -266,6 +269,21 @@ if (wantPerson) {
   }, { immediate: true });
 }
 function pick(c: Card) { openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; }
+// Their Proofreading Test tries, on a dataset request (Ames 2026-11-10:
+// "access request test edits linked"). The tries name the player by
+// username, newest first.
+const triesOf = (c: Card | null | undefined) => {
+  const u = lc(c?.p?.username);
+  return u ? testTries.value.filter(t => lc(t.username) === u) : [];
+};
+const tryLine = (t: TestTry) => {
+  const bits = [outcomeWord(t)];
+  if (t.percent != null && (t.outcome === 'pass' || t.outcome === 'fail')) bits[0] += ` (${Math.round(Number(t.percent))}%)`;
+  if (t.found != null && t.errors != null) bits.push(`${t.found} of ${t.errors} mistake${t.errors === 1 ? '' : 's'} fixed`);
+  if (t.ends_total) bits.push(`${t.ends_found ?? 0} of ${t.ends_total} ends marked`);
+  if (t.damaged != null && t.found != null) bits.push(t.damaged ? `${t.damaged} real branch${t.damaged === 1 ? '' : 'es'} cut off` : 'nothing damaged');
+  return bits.join(' · ');
+};
 const timeline = computed(() => {
   const p = open.value?.p; if (!p) return [];
   return [
@@ -389,8 +407,11 @@ const opName = (e: RecentEdit) => {
     <p v-if="loading && !people.length" class="ah-quiet">Reading everyone…</p>
 
     <div class="ah-main" :class="{ 'ah-main--open': open }">
-      <section class="ah-board" aria-label="People by step">
-        <div v-for="col in boardColumns" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
+      <section class="ah-boards" aria-label="People by step">
+       <div v-for="g in boardGroups" :key="g.title" class="ah-group">
+        <h2 class="ah-group-title">{{ g.title }}</h2>
+        <div class="ah-board">
+        <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
           <div class="ah-col-head">
             <span class="ah-col-title">{{ col.title }}</span>
             <span class="ah-col-n">{{ inStage(col.stage).length }}</span>
@@ -399,7 +420,7 @@ const opName = (e: RecentEdit) => {
           <div v-if="col.stage !== 'editing'" class="ah-col-typ" title="How long people usually take to move on from this step">usually moves on in {{ span(typical[col.stage]) }}</div>
           <div class="ah-col-list">
             <button v-for="c in columnCards(col.stage)" :key="col.stage + c.key" type="button" class="ah-card"
-                    :class="{ 'ah-card--late': isLate(c), 'ah-card--open': openKey === c.key }" @click="pick(c)">
+                    :class="{ 'ah-card--open': openKey === c.key }" @click="pick(c)">
               <span class="ah-card-name">{{ nameOf(c) }}</span>
               <span class="ah-card-email">{{ emailOf(c) || 'no email' }}</span>
               <span class="ah-card-line">
@@ -409,6 +430,7 @@ const opName = (e: RecentEdit) => {
               </span>
               <span class="ah-card-tags">
                 <span v-if="c.listed" class="ah-tag ah-tag--list">On the list</span>
+                <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
                 <span v-if="c.p?.ew_name" class="ah-tag">EyeWire {{ c.p.ew_name }}</span>
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
@@ -419,6 +441,8 @@ const opName = (e: RecentEdit) => {
             <p v-if="!columnCards(col.stage).length && !(col.stage === 'letin' && letinHidden)" class="ah-quiet">Nobody here{{ words.length ? ' matches' : '' }}.</p>
           </div>
         </div>
+        </div>
+       </div>
       </section>
 
       <section class="ah-lb" aria-label="Leaderboard">
@@ -476,6 +500,13 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.ds" class="ah-ds">
           <div class="ah-panel-meta"><b>{{ open.ds.label }}</b>, asked {{ day(open.ds.at) }}<template v-if="open.ds.cave">, CAVE {{ open.ds.cave }}</template></div>
           <blockquote v-if="open.ds.note">{{ open.ds.note }}</blockquote>
+          <div class="ah-tries" aria-label="Their Proofreading Test tries">
+            <div class="ah-panel-meta"><b>Proofreading Test</b><template v-if="!triesOf(open).length">: no tries yet</template></div>
+            <ul v-if="triesOf(open).length">
+              <li v-for="t in triesOf(open).slice(0, 5)" :key="t.id" :class="'ah-try--' + (t.outcome === 'pass' ? 'pass' : t.outcome === 'fail' ? 'fail' : 'other')"><span>{{ tryLine(t) }}</span><span>{{ day(t.submitted_at || t.started_at) }}</span></li>
+            </ul>
+            <div v-if="triesOf(open).length" class="ah-quiet">Their cell, as they left it: Admin Hub, Test tries.</div>
+          </div>
           <input v-model="dsNote" class="ah-input" maxlength="500" placeholder="A note for them (optional)" />
           <div class="ah-actions">
             <button v-if="open.ds.caveGroup" class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="decide(open, 'granted')">{{ busy === 'granted' ? 'Granting…' : `Grant (adds to ${open.ds.caveGroup})` }}</button>
@@ -593,6 +624,13 @@ const opName = (e: RecentEdit) => {
 .ah-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .ah-main--open { grid-template-columns: minmax(0, 1fr) 360px; }
 .ah-main--open .ah-panel { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+.ah-boards { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ah-tries ul { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ah-tries li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 4px 8px; border-radius: 6px; background: rgba(40,60,100,.35); border-left: 3px solid #6f86a8; }
+.ah-tries li span:last-child { color: #8ea3c2; white-space: nowrap; }
+.ah-try--pass { border-left-color: #7CFFB2 !important; }
+.ah-try--fail { border-left-color: #9a8cff !important; }
+.ah-group-title { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: #cfe0ff; letter-spacing: .02em; }
 .ah-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; }
 .ah-col { max-height: min(560px, calc(100vh - 150px)) !important; }
 /* The admins' leaderboard. */
@@ -636,7 +674,6 @@ const opName = (e: RecentEdit) => {
 .ah-card { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 7px 9px; border-radius: 8px; border: 1px solid rgba(110,150,220,.25); background: rgba(24,38,66,.9); color: inherit; font: inherit; cursor: pointer; }
 .ah-card:hover { border-color: rgba(150,190,255,.6); }
 .ah-card--open { border-color: #9fd3ff; background: rgba(36,58,100,.95); }
-.ah-card--late { border-color: rgba(239,159,39,.75); }
 .ah-card-name { font-weight: 700; color: #f2f7ff; overflow-wrap: anywhere; }
 .ah-card-email { font-size: 12px; color: #a9c4e6; overflow-wrap: anywhere; }
 .ah-card-line { font-size: 12px; color: #8ea3c2; }
