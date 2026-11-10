@@ -67,12 +67,12 @@ function marksOf(e: QuestExample, tag: string) {
   };
 }
 /** A view of one example cell, with its three layers filled or left empty. */
-function exampleState(e: QuestExample, filled: boolean, selected: string = LAYER.basal) {
+function exampleState(e: QuestExample, filled: boolean, selected: string = LAYER.centerline) {
   const dataset = findDatasetByCanonical('stroeh_mouse_retina');
   const base = (dataset?.layers ?? []).map((l: any) =>
       typeof l?.type === 'string' && l.type.startsWith('segmentation')
         // See-through, so the marks inside the cell show in 3D (Ames, 2026-11-10).
-        ? { ...l, segments: [e.root], objectAlpha: 0.35 } : { ...l });
+        ? { ...l, segments: [e.root], objectAlpha: 0.35, selectedAlpha: 0.12 } : { ...l });
   const m = filled ? marksOf(e, 'demo') : { centerline: [], daughter: [], basal: [] };
   return {
     dimensions: DIMENSIONS,
@@ -111,6 +111,44 @@ function goTo(p: number[], zoom = 0.6) {
     if (zoom) v.navigationState.zoomFactor.value = zoom;
   } catch { /* the view stays as it is */ }
 }
+/** A pulsing ring and an arrow on the middle of the 2D view, where goTo put
+ *  the mark (Ames, 2026-11-10: "a little arrow pointing to it"). It goes when
+ *  the box changes or the 2D view is dragged, since then it no longer points
+ *  at the mark. */
+let pointerTimer = 0;
+function clearPointer() {
+  document.getElementById('nge-cq-pointer')?.remove();
+  window.clearInterval(pointerTimer);
+}
+function pointAt(color: string, label: string) {
+  clearPointer();
+  const panels = [...document.querySelectorAll<HTMLElement>('.neuroglancer-rendered-data-panel')]
+    .filter(el => !el.classList.contains('nge-3d') && !el.classList.contains('nge-3d-panel') && el.offsetWidth > 0);
+  const panel = panels.sort((a, b) => b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight)[0];
+  if (!panel) return;
+  const r = panel.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.id = 'nge-cq-pointer';
+  el.className = 'nge-cq-pointer';
+  el.style.left = `${r.left + r.width / 2}px`;
+  el.style.top = `${r.top + r.height / 2}px`;
+  el.style.setProperty('--nge-cq-color', color);
+  el.innerHTML = `<div class="nge-cq-pointer__ring"></div><div class="nge-cq-pointer__arrow"><span>${label}</span>&#x2198;</div>`;
+  document.body.appendChild(el);
+  const st = useTutorialStore();
+  const at = `${st.activeTutorial}:${st.getTutorialStep()}`;
+  const drag = () => clearPointer();
+  panel.addEventListener('pointerdown', drag, { once: true });
+  pointerTimer = window.setInterval(() => {
+    const now = `${st.activeTutorial}:${st.getTutorialStep()}`;
+    if (!document.getElementById('nge-cq-pointer') || now !== at) { panel.removeEventListener('pointerdown', drag); clearPointer(); }
+  }, 400);
+}
+const POINT = {
+  basal: () => { selectLayer(LAYER.basal); goTo(DEMO.basalBody, 0.3); setTimeout(() => pointAt(COLORS.basal, 'Basal body'), 300); },
+  daughter: () => { selectLayer(LAYER.daughter); goTo(DEMO.daughterCentriole, 0.3); setTimeout(() => pointAt(COLORS.daughter, 'Daughter centriole'), 300); },
+  centerline: () => { selectLayer(LAYER.centerline); const c = DEMO.centerline!; goTo(c[Math.floor(c.length / 2)], 0.6); setTimeout(() => pointAt(COLORS.centerline, 'Cilium centerline'), 300); },
+};
 function annotationsIn(name: string): any[] {
   try {
     const a = findLayer(name)?.layer?.localAnnotations?.toJSON?.();
@@ -285,9 +323,7 @@ document.addEventListener('click', (e) => {
   if (show) {
     e.preventDefault();
     const what = show.dataset.ngeCqShow;
-    if (what === 'basal') goTo(DEMO.basalBody, 0.3);
-    else if (what === 'daughter') goTo(DEMO.daughterCentriole, 0.3);
-    else if (what === 'centerline') { const c = DEMO.centerline!; goTo(c[Math.floor(c.length / 2)], 0.6); }
+    if (what === 'basal' || what === 'daughter' || what === 'centerline') POINT[what]();
     const box = show.closest('[data-nge-cq-feedback]');
     if (box && !box.querySelector('.nge-cq-shown')) box.insertAdjacentHTML('beforeend', '<div class="nge-cq-shown">The crosshairs are on it now. Look at the center of the 2D view.</div>');
     return;
@@ -296,9 +332,7 @@ document.addEventListener('click', (e) => {
   if (go) {
     e.preventDefault();
     const what = go.dataset.ngeCqGo;
-    if (what === 'basal') { selectLayer(LAYER.basal); goTo(DEMO.basalBody, 0.3); }
-    else if (what === 'daughter') { selectLayer(LAYER.daughter); goTo(DEMO.daughterCentriole, 0.3); }
-    else if (what === 'centerline') { selectLayer(LAYER.centerline); const c = DEMO.centerline!; goTo(c[Math.floor(c.length / 2)], 0.6); }
+    if (what === 'basal' || what === 'daughter' || what === 'centerline') POINT[what]();
     return;
   }
   const pick = t?.closest?.('[data-nge-cq-pick]') as HTMLElement | null;
@@ -372,21 +406,33 @@ First you'll look at a cell the lab has already marked, then you'll mark it your
     width: BOX_W,
     html: `This starburst cell has been marked by the lab. A finished quest has three marks, each in its own layer:
 <ul>
+<li>${CLgo} a line along the cilium</li>
 <li>${BBgo} where the cilium starts</li>
 <li>${DCgo} its partner, just behind it</li>
-<li>${CLgo} a line along the cilium</li>
 </ul>
 Click a name to go to its mark. The 2D view on the left is where you work. Let's look at each mark.`,
+  },
+  {
+    part: 'Look at a finished one',
+    title: 'The cilium centerline',
+    position: OVER_3D,
+    width: BOX_W,
+    html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip.
+
+<p>To draw one: select its layer, hold <strong>CTRL</strong> and click point by point along the cilium, then press <kbd>ENTER</kbd> to finish. <kbd>BACKSPACE</kbd> takes back the last point and <kbd>ESC</kbd> cancels the line.</p>
+
+<p>The line tool is already on for this layer: in the layer panel on the right, the zigzag line button is lit. If CTRL+click ever drops single dots instead of a line, click that button first.</p>`,
+    onEnter() { POINT.centerline(); },
   },
   {
     part: 'Look at a finished one',
     title: 'The basal body',
     position: OVER_3D,
     width: BOX_W,
-    html: `The gold point is the ${BBgo}. It is a tiny barrel, a <strong>centriole</strong>, sitting right at the base of the cilium, where the cilium leaves the cell.
+    html: `The gold point is the ${BBgo}. Follow the green line down to the base of the cilium and you find it: a tiny barrel, a <strong>centriole</strong>, right where the cilium leaves the cell.
 
 <p>The crosshairs are on it now. Scroll the mouse wheel over the 2D view to move up and down through the slices and see its shape.</p>`,
-    onEnter() { selectLayer(LAYER.basal); goTo(DEMO.basalBody, 0.3); },
+    onEnter() { POINT.basal(); },
   },
   {
     part: 'Look at a finished one',
@@ -396,17 +442,7 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     html: `The red point is the ${DCgo}, the basal body's partner. It is a second small barrel, set back a little from the base of the cilium and often turned at an angle to the first.
 
 <p>The two always come as a pair. If you find one, look close by for the other.</p>`,
-    onEnter() { selectLayer(LAYER.daughter); goTo(DEMO.daughterCentriole, 0.3); },
-  },
-  {
-    part: 'Look at a finished one',
-    title: 'The cilium centerline',
-    position: OVER_3D,
-    width: BOX_W,
-    html: `The green line is the ${CLgo}. It runs down the middle of the cilium, from the basal body to the cilium's tip.
-
-<p>To draw one: select its layer, hold <strong>CTRL</strong> and click point by point along the cilium, then press <kbd>ENTER</kbd> to finish. <kbd>BACKSPACE</kbd> takes back the last point and <kbd>ESC</kbd> cancels the line.</p>`,
-    onEnter() { selectLayer(LAYER.centerline); const c = DEMO.centerline!; goTo(c[Math.floor(c.length / 2)], 0.6); },
+    onEnter() { POINT.daughter(); },
   },
   {
     part: 'Your turn',
@@ -421,10 +457,21 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
   },
   {
     part: 'Your turn',
+    title: 'Trace the cilium',
+    position: OVER_3D,
+    width: BOX_W,
+    html: `First the cilium, the easiest part to find. The ${CL} layer is selected and its line tool is on (the lit zigzag button in the layer panel on the right; click it if it is not lit). Hold <strong>CTRL</strong> and click along the middle of the cilium, from its base to its tip, then press <kbd>ENTER</kbd>.
+
+<p>The cilium may run through several slices: scroll as you go and keep clicking.</p>
+<div data-nge-cq-feedback></div>`,
+    onEnter() { removeAnswerLayer(); selectLayer(LAYER.centerline); watchMark('centerline'); },
+  },
+  {
+    part: 'Your turn',
     title: 'Mark the basal body',
     position: OVER_3D,
     width: BOX_W,
-    html: `The ${BB} layer is selected. Find where the cilium leaves the cell, then <strong>CTRL+CLICK</strong> on the basal body at its base in the 2D view.
+    html: `Now the ${BB} layer is selected. Follow your line back to where the cilium leaves the cell, then <strong>CTRL+CLICK</strong> on the basal body at its base in the 2D view.
 <div data-nge-cq-feedback></div>`,
     onEnter() { removeAnswerLayer(); selectLayer(LAYER.basal); watchMark('basal'); },
   },
@@ -433,20 +480,9 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'Mark the daughter centriole',
     position: OVER_3D,
     width: BOX_W,
-    html: `Now the ${DC} layer is selected. Find the basal body's partner, just behind it, and <strong>CTRL+CLICK</strong> on it.
+    html: `Last one: the ${DC} layer is selected. Find the basal body's partner, just behind it, and <strong>CTRL+CLICK</strong> on it.
 <div data-nge-cq-feedback></div>`,
     onEnter() { removeAnswerLayer(); selectLayer(LAYER.daughter); watchMark('daughter'); },
-  },
-  {
-    part: 'Your turn',
-    title: 'Trace the cilium',
-    position: OVER_3D,
-    width: BOX_W,
-    html: `Last one: the ${CL} layer is selected. Hold <strong>CTRL</strong> and click along the middle of the cilium, from the basal body to its tip, then press <kbd>ENTER</kbd>.
-
-<p>The cilium may run through several slices: scroll as you go and keep clicking.</p>
-<div data-nge-cq-feedback></div>`,
-    onEnter() { removeAnswerLayer(); selectLayer(LAYER.centerline); watchMark('centerline'); },
   },
   {
     part: 'Your turn',

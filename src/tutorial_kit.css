@@ -549,3 +549,20 @@ body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold::before { content:
 /* Cilia Quest tutorial: a mark's name that takes the view to it. */
 .ng-extend .nge-cq-go { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .ng-extend .nge-cq-go:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* Cilia Quest tutorial: the arrow on a mark in the 2D view. */
+.nge-cq-pointer { position: fixed; z-index: 60; pointer-events: none; width: 0; height: 0; }
+.nge-cq-pointer__ring {
+  position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--nge-cq-color, #fff); box-shadow: 0 0 10px var(--nge-cq-color, #fff);
+  animation: nge-cq-pulse 1.4s ease-out infinite;
+}
+.nge-cq-pointer__arrow {
+  position: absolute; right: 18px; bottom: 16px; white-space: nowrap;
+  color: var(--nge-cq-color, #fff); font-size: 34px; line-height: 1; font-weight: 700;
+  text-shadow: 0 0 6px #000, 0 0 2px #000;
+  animation: nge-cq-nudge 1.4s ease-in-out infinite;
+}
+.nge-cq-pointer__arrow span { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; margin-right: 4px; vertical-align: middle; }
+@keyframes nge-cq-pulse { 0% { transform: scale(0.7); opacity: 1; } 100% { transform: scale(1.4); opacity: 0.2; } }
+@keyframes nge-cq-nudge { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(5px, 5px); } }
