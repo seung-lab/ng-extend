@@ -1231,6 +1231,13 @@ function buildTint(): NgeMeshTint | null {
  *  folder recolored, used to rebuild the whole tint (up to 24 MB, painted and
  *  sent to the graphics card): slow in Firefox for players with many marks
  *  (Nseraf, Ames 2026-11-09). Unchanged marks now skip it. */
+const sourceTags = new WeakMap<object, number>();
+let nextSourceTag = 1;
+function sourceTag(src: object): number {
+  let t = sourceTags.get(src);
+  if (t === undefined) sourceTags.set(src, t = nextSourceTag++);
+  return t;
+}
 function tintSignature(): string {
   const viewer = viewerOf();
   if (!viewer) return '';
@@ -1243,6 +1250,10 @@ function tintSignature(): string {
   for (const { managed, src, style } of highlightLayers()) {
     if (managed.visible === false) continue;
     str(`${style.key}|${style.color}|${style.lab ? 1 : 0}`);
+    // A mark added, moved or removed counts up the layer's change counter:
+    // that says as much as reading every mark (Nseraf has 14,000).
+    const count = (src as any)?.changed?.count;
+    if (typeof count === 'number') { str(`${sourceTag(src)}:${count}`); continue; }
     for (const ann of src) {
       str(String(ann.id)); num(ann.type);
       if (ann.point) for (let i = 0; i < 3; i++) num(ann.point[i]);
