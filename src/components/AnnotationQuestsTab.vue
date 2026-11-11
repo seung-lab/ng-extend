@@ -449,9 +449,9 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
           <template v-for="r in mineShown" :key="r.segmentId">
             <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r) }">
               <div class="nge-aq-row-left">
-                <span class="nge-aq-pip nge-aq-pip--claimed"></span>
+                <span v-if="!slim" class="nge-aq-pip nge-aq-pip--claimed"></span>
                 <div class="nge-aq-row-info">
-                  <div class="nge-aq-row-name" :title="slim ? `Cell ${r.segmentId}` : undefined">{{ label(r) }}<span v-if="isActive(r)" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
+                  <div class="nge-aq-row-name" :title="slim ? `Cell ${r.segmentId}` : undefined">{{ label(r) }}<span v-if="isActive(r) && !slim" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
                   <!-- Slim view: the essentials on one line (toknow, report 387).
                        The cell ID is the name's tooltip; the save line sits with the buttons. -->
                   <div v-if="!slim" class="nge-aq-row-meta nge-aq-cellid" title="This quest's cell, as the segment list shows it">Cell {{ r.segmentId }}</div>
@@ -468,7 +468,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 </span>
                 <!-- One "go to it" button, Open (Ames 2026-11-10: "why is there a jump and an open button?"),
                      then Skip (or Release), then Submit last, in green. -->
-                <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
+                <button v-if="!(slim && isActive(r))" class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button v-if="play.on !== 'quests'" class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
                 <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy || skippingQuest" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
                 <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
