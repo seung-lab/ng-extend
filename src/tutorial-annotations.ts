@@ -23,7 +23,50 @@ const PART = "Annotations";
 /** The Sandbox cell Advanced Interface adds its first annotation layer on. */
 const START_VIEW = "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384";
 /** Advanced Interface's Find Path view, on the soma. */
-const FIND_PATH_VIEW = "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816";
+/**
+ * Find Path on a real merger (Ames 2026-11-10: not the Advanced Interface
+ * mission's, "that's repetitive"). Cell 648518346357259348 in the tutorial
+ * segmentation holds two nuclei 46 micrometres apart, at 76496, 74272, 601 and
+ * 85056, 66720, 381 (the Sandbox nuclei table; the same pair is one cell in
+ * pinky_nf_v2 too). Never edited; the chunkedgraph's find_path traces one
+ * nucleus to the other through it (checked 2026-11-10). The view is Advanced
+ * Interface's Find Path view (nglstate 4781279796002816) on this cell.
+ */
+const MERGER_CELL = '648518346357259348';
+const FIND_PATH_VIEW = {
+  dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] },
+  position: [80776.5, 70496.5, 491.5],
+  crossSectionScale: 13.47,
+  projectionOrientation: [-0.026123709976673126, -0.9990066289901733, -0.010010872967541218, -0.03468627110123634],
+  projectionScale: 70000,
+  layers: [
+    {
+      type: 'image', source: 'precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em', tab: 'annotations',
+      shader: `#uicontrol float black slider(min=0, max=1, default=0.0)
+#uicontrol float white slider(min=0, max=1, default=1.0)
+float rescale(float value) {
+  return (value - black) / (white - black);
+}
+void main() {
+  float val = toNormalized(getDataValue());
+  if (val < black) {
+    emitRGB(vec3(0,0,0));
+  } else if (val > white) {
+    emitRGB(vec3(1.0, 1.0, 1.0));
+  } else {
+    emitGrayscale(rescale(val));
+  }
+}
+`,
+      shaderControls: { black: 0.29 }, name: 'img',
+    },
+    {
+      type: 'segmentation', source: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6', tab: 'segments',
+      selectedAlpha: 0.3, segments: [MERGER_CELL], segmentColors: { [MERGER_CELL]: '#2ec0ff' }, name: 'pinky_training6',
+    },
+  ],
+  showAxisLines: false, showSlices: false, selectedLayer: { layer: 'pinky_training6' }, layout: '3d',
+};
 
 const viewer = () => (window as any).viewer;
 function annotationLayers(): any[] {
@@ -306,7 +349,7 @@ Points come in sizes. Each line ticks itself off:
     text: `
 Last one: <strong>Find Path</strong> draws the route through a cell between two points, placed with the same CTRL+CLICK.
 
-<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>on the tip of a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or click <strong>Submit</strong> in the Find Path bar).
+This cell has <strong>two somas</strong>, so it is really two cells stuck together: a merger. <strong>Press F</strong>, then <strong>CTRL+CLICK on one soma</strong> and then <strong>on the other</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or click <strong>Submit</strong> in the Find Path bar).
 
 We've made the cell see through, so the path stands out. Your marks come along.`,
     width: "500px",
@@ -318,7 +361,7 @@ We've made the cell see through, so the path stands out. Your marks come along.`
   {
     part: PART,
     text: `
-That route is how you find where a merger joins: one point on the soma, one on the odd branch.
+The route has to cross the merger to get from one soma to the other. Where it passes from one cell into the other is the spot to cut.
 
 That's annotations! Your layers stay in your view, ready for your next cell.`,
     image: imgNurroAtHome,
