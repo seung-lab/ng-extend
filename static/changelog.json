@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-11T16:57:00Z",
+      "title": "Cilia Quest Training touch ups",
+      "items": [
+        "The steps for drawing the cilium line now sit in the box where you draw it.",
+        "A new tip in the daughter centriole box explains how to tell it apart from the basal body.",
+        "The status box links to Celia's Cilia Status Guide, with real examples of each status."
+      ]
+    },
+    {
       "at": "2026-11-11T16:15:19Z",
       "title": "Going back in the Merge and Cut tutorials",
       "items": [
