@@ -20,7 +20,7 @@ import { steps as steps9, sandboxContinue, sandboxRestart, sandboxNext } from '.
 import { extensionSteps as steps13, extensionContinue, extensionRestart, extensionNext, EXTENSION_TUTORIAL } from '../extension-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps14, CILIA_TUTORIAL, awardCiliaAchievement } from '../tutorial-cilia';
-import { steps as steps15 } from '../tutorial-annotations';
+import { steps as steps15, ANNOTATIONS_TUTORIAL, awardAnnotationsAchievement } from '../tutorial-annotations';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice, pausePracticeTools } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
@@ -245,6 +245,7 @@ const next = (_auto?: unknown) => {
             const recorded = recordTutorialDone(tutorialNum);
             // Its Achievement, once the finish is on record (the server checks it).
             if (tutorialNum === CILIA_TUTORIAL) void recorded.then(() => awardCiliaAchievement());
+            if (tutorialNum === ANNOTATIONS_TUTORIAL) void recorded.then(() => awardAnnotationsAchievement());
         }
         // Merge and Cut both finished brings the Cell Library (toolbar_staging.ts).
         tutorialFinished(tutorialNum);

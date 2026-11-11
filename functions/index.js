@@ -2728,6 +2728,13 @@ exports.ewCommunityData = onRequest(
             if(!done.length) throw ewErr(403,"Finish the Cilia Quest tutorial first.");
             continue;
           }
+          // The Annotations tutorial Achievement (code name annotations-tutorial):
+          // the player finished tutorial 15 (Ames 2026-11-10).
+          if(badges.some(b=>b.slug==="annotations-tutorial")) {
+            const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.15&select=tutorial&limit=1");
+            if(!done.length) throw ewErr(403,"Finish the Annotations tutorial first.");
+            continue;
+          }
           if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Mini Michelangelo","Safety Scissors","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
         }
       }

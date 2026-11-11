@@ -15,9 +15,39 @@ import {
   OVER_3D, SELECT_CLICK, waitForAction,
 } from "./tutorial-2";
 import { stopWatching } from "./tutorial-3";
+import { supabase } from "./supabase";
+import { useProofreadingBackendStore } from "./store";
+import { awardSpecialOnce } from "./util/special_award";
 import imgNurroAtHome from './images/nurro-at-home600.png';
 
 export const ANNOTATIONS_TUTORIAL = 15;
+
+/** The Achievement for finishing this tutorial (Ames 2026-11-10: "we need an
+ *  achievement for this"). An admin makes it in the Admin Hub with this code
+ *  name; its name, words and art are theirs. Until then nothing happens. The
+ *  server checks the player's own finish record (tutorial_completions,
+ *  tutorial 15) before it lets the award through (functions/index.js). */
+export const ANNOTATIONS_ACHIEVEMENT = 'annotations-tutorial';
+const FINISHED_HERE = 'nge-annotations-tutorial-finished';
+export async function awardAnnotationsAchievement() {
+  try { localStorage.setItem(FINISHED_HERE, '1'); } catch { /* no storage */ }
+  try {
+    const uid = useProofreadingBackendStore().userId;
+    if (!uid) return;
+    const { data, error } = await supabase.from('tutorial_completions')
+      .select('tutorial').eq('user_id', uid).eq('tutorial', ANNOTATIONS_TUTORIAL).limit(1);
+    if (error || !data?.length) return;
+    await awardSpecialOnce({ slug: ANNOTATIONS_ACHIEVEMENT, reason: 'Finished the Annotations tutorial', earnedBy: 'finished the Annotations tutorial' });
+  } catch { /* tried again at the next visit */ }
+}
+// A finish whose award did not go through (signed out, or before the admin
+// made the Achievement) is tried again at the next visit. Only in a browser
+// that finished it, so no other player's visit costs a database read.
+setTimeout(() => {
+  let finished = false;
+  try { finished = localStorage.getItem(FINISHED_HERE) === '1'; } catch { /* no storage */ }
+  if (finished) void awardAnnotationsAchievement();
+}, 9000);
 
 const PART = "Annotations";
 /** The Sandbox cell Advanced Interface adds its first annotation layer on. */
