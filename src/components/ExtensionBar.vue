@@ -35,6 +35,7 @@ import TeamPanel from "components/TeamPanel.vue";
 import VersionNotice from "components/VersionNotice.vue";
 import SegmentMarksPrompt from './SegmentMarksPrompt.vue';
 import RetinaModePrompt from './RetinaModePrompt.vue';
+import PracticeCandidatesBox from './PracticeCandidatesBox.vue';
 import TwoDTools from './TwoDTools.vue';
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
@@ -1710,6 +1711,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <DatasetTransition />
   <SegmentMarksPrompt />
   <RetinaModePrompt />
+  <PracticeCandidatesBox />
   <TwoDTools />
 </template>
 
