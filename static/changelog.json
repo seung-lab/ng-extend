@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-11T02:45:00Z",
+      "at": "2026-11-11T01:49:20Z",
       "title": "Cut tutorial fixes",
       "items": [
         "The Cut tutorial always uses its own two cells. If you try it again right away, it waits a moment while they are put back, so you always get the 2D cut too.",
@@ -13,7 +13,7 @@
       ]
     },
     {
-      "at": "2026-11-11T02:05:00Z",
+      "at": "2026-11-11T01:49:20Z",
       "title": "Tutorial touch ups",
       "items": [
         "Get Started: the box about finding the continuation shows one hint point, and it no longer flickers away.",
