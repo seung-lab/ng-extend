@@ -808,8 +808,9 @@ function buildMap() {
       edgesSvg += `<path class="head${strong ? '' : ' faint'}" d="M${tx.toFixed(1)} ${ty.toFixed(1)} L${(x2 - ux * 1 + px * 4).toFixed(1)} ${(y2 - uy * 1 + py * 4).toFixed(1)} L${(x2 - ux * 1 - px * 4).toFixed(1)} ${(y2 - uy * 1 - py * 4).toFixed(1)} z" fill="${col}"/>`;
     }
     if (strong) {
-      // the synapse count, beside the line near its end
-      const lx = x2 - ux * 16 - uy * 9, ly = y2 - uy * 16 + ux * 9;
+      // the synapse count, beside the line past its middle (at the end the
+      // counts of arrows meeting one target bunch up)
+      const lx = x1 + (x2 - x1) * 0.58 - uy * 9, ly = y1 + (y2 - y1) * 0.58 + ux * 9;
       edgesSvg += `<text class="count" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" fill="${col}">${k.count}</text>`;
     }
   }
