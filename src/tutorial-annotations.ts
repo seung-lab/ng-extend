@@ -2,7 +2,7 @@
  * Tutorial 15, Annotations (Ames 2026-10-23, player report 220): make an
  * annotation layer, recolor it, move through its points, right click to jump,
  * a second layer and switching back, the other tools and Size, then Find Path.
- * Eleven boxes, kept short on purpose (Ames 2026-11-05: "how short can you make
+ * Twelve boxes, kept short on purpose (Ames 2026-11-05: "how short can you make
  * this tutorial?"). Notes and the gem tool are Advanced Interface's;
  * Find Path reuses its step so the two cannot drift apart.
  *
@@ -11,14 +11,14 @@
  */
 import { Step, useTutorialStore } from "./store-pyr";
 import {
-  advance, classicLayers, findPathStep, MIDDLE, nextWhenAnnotationLayerAdded,
+  advance, classicLayers, findPathStep, nextWhenAnnotationLayerAdded,
   OVER_3D, SELECT_CLICK, waitForAction,
 } from "./tutorial-2";
 import { stopWatching } from "./tutorial-3";
+import imgNurroAtHome from "./images/nurro-at-home600.png";
 import { supabase } from "./supabase";
 import { useProofreadingBackendStore } from "./store";
 import { awardSpecialOnce } from "./util/special_award";
-import imgNurroAtHome from './images/nurro-at-home600.png';
 
 export const ANNOTATIONS_TUTORIAL = 15;
 
@@ -400,14 +400,25 @@ We've made the cell see through, so the path stands out. Your marks come along.`
     state: FIND_PATH_VIEW,
     onEnter: findPathStep,
   },
+  // Two boxes after the path (Ames 2026-11-10: "maybe this should be 2
+  // boxes, one saying how we can use this to find the origin of a merger").
   {
     part: PART,
     text: `
-The route has to cross the merger to get from one soma to the other. Where it passes from one cell into the other is the spot to cut.
+That's how you find where a merger starts. The route has to cross the merger to get from one soma to the other: <strong>where it passes from one cell into the other is the spot to cut</strong>.
 
+Please leave this cell as it is, so the next player finds the same merger.`,
+    // Off to the right, so the path stays in view (Ames 2026-11-10: "this
+    // box was blocking the path").
+    position: { element: "body", x: 0.84, y: 0.2 },
+    width: "380px",
+  },
+  {
+    part: PART,
+    text: `
 That's annotations! Your layers stay in your view, ready for your next cell.`,
     image: imgNurroAtHome,
-    position: MIDDLE,
-    width: "440px",
+    position: { element: "body", x: 0.84, y: 0.4 },
+    width: "380px",
   },
 ];
