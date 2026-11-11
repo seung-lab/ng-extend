@@ -733,7 +733,7 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 .nge-sig-readouts b { font: 500 17px/1.1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.02em; color: #f4f9ff; font-variant-numeric: tabular-nums; }
 .nge-sig-readouts b .u { font: 500 11px 'Inter', sans-serif; margin-left: 3px; color: #a9c3de; text-transform: none; }
 .nge-sig-readouts .k { font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; }
-.nge-sig-wiring { display: grid; grid-template-columns: 54px 1fr; gap: 4px 10px; margin: 10px 0 0; padding-top: 9px; border-top: 1px solid rgba(126, 224, 255, 0.22); align-items: baseline; }
+.nge-sig-wiring { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; margin: 10px 0 0; padding-top: 9px; border-top: 1px solid rgba(126, 224, 255, 0.22); align-items: baseline; }
 .nge-sig-wiring dt { font: 600 9px/1.5 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; white-space: nowrap; }
 .nge-sig-wiring dd { margin: 0; font-size: 12.5px; color: #eaf7ff; }
 [data-show] { cursor: pointer; }
@@ -768,10 +768,12 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 .nge-sig-canopy .id { left: 18px; top: 44px; max-width: 320px; }
 .nge-sig-canopy .id .head { display: flex; align-items: baseline; gap: 10px; }
 .nge-sig-canopy .id .key { font-size: 34px; }
-.nge-sig-canopy .nums { right: 18px; top: 44px; }
+.nge-sig-canopy .nums { right: 18px; top: 44px; max-width: 280px; }
+.nge-sig-canopy .nums .prov { margin-top: 10px; padding-top: 7px; border-top: 1px solid rgba(255, 210, 122, 0.3); text-align: right; }
+.nge-sig-canopy .provenance:empty { display: none; }
 .nge-sig-canopy .nums .nge-sig-readouts { grid-template-columns: 1fr; gap: 10px; margin: 0; padding: 0; border: 0; text-align: right; }
 .nge-sig-canopy .nums .nge-sig-readouts b { font-size: 22px; }
-.nge-sig-canopy .wire { left: 18px; bottom: 44px; max-width: min(460px, 58%); }
+.nge-sig-canopy .wire { left: 18px; bottom: 44px; max-width: min(520px, 62%); }
 .nge-sig-canopy .wire .nge-sig-wiring { margin: 0; padding: 0; border: 0; }
 .nge-sig-canopy .provenance { right: 18px; bottom: 44px; text-align: right; }
 .nge-sig-canopy .provenance .prov { margin: 0; padding: 0; border: 0; }
@@ -1164,6 +1166,9 @@ function placePops() {
     let x: number, y: number;
     if (s) { x = s[0] - w / 2; y = s[1] - 70 - h; }
     else { const left = sideHud() && hud ? hud.right + 12 : r.left; x = (left + r.right) / 2 - w / 2; y = r.top + 56; }
+    if (hud && sideHud()) x = Math.max(x, hud.right + 8); else if (hud) y = Math.min(y, hud.top - h - 8);
+    const card = document.querySelector('.nge-sig-scan-box')?.getBoundingClientRect();
+    if (card && x < card.right + 8 && x + w > card.left - 8 && y < card.bottom + 8 && y + h > card.top - 8) y = card.bottom + 12;
     x = clamp(x, r.left + 8, r.right - w - 8); y = clamp(y, r.top + 8, r.bottom - h - 8);
     o.el.style.left = `${x}px`; o.el.style.top = `${y}px`;
   }
@@ -2115,9 +2120,9 @@ function fillCanopy(c: CellState, parts: ReturnType<typeof readoutParts>) {
   const el = canopyEl!;
   el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
   el.querySelector('.id')!.innerHTML = `<div class="head">${parts.id}</div>${parts.identity}`;
-  el.querySelector('.nums')!.innerHTML = parts.stats;
+  el.querySelector('.nums')!.innerHTML = parts.stats + parts.provenance;
   el.querySelector('.wire')!.innerHTML = parts.wiring;
-  el.querySelector('.provenance')!.innerHTML = parts.provenance;
+  el.querySelector('.provenance')!.innerHTML = '';
   el.classList.add('nge-sig-canopy--lock');
 }
 function clearCanopy() { canopyEl?.classList.remove('nge-sig-canopy--lock'); canopyEl?.style.removeProperty('--c'); }
