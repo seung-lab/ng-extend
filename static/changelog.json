@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-11T00:27:00Z",
+      "title": "Cilia Quest Training",
+      "items": [
+        "The new Cilia Quest tutorial is now called Cilia Quest Training, and its button in the Quests tab reads Training.",
+        "The first time you open Cilia Quests, the training starts by itself if you have not done a quest yet. Close it with the ✕ if you already know how."
+      ]
+    },
+    {
       "at": "2026-11-11T00:10:00Z",
       "title": "A Cilia Quest tutorial",
       "items": [
