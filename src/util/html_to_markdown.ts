@@ -41,18 +41,25 @@ function inline(node: Node): string {
   return text;
 }
 
-function list(el: HTMLElement, depth: number): string {
+// A nested list is indented to the text of the item above it ("- " is two
+// wide, "1. " three), so Markdown reads it as nested. A list sitting right
+// inside a list, as the browser's indent makes it, belongs to the item above.
+function list(el: HTMLElement, indent: string): string {
   const ordered = el.tagName === 'OL';
-  let n = 0;
+  let n = 0, width = 2;
   const lines: string[] = [];
-  for (const li of Array.from(el.children)) {
-    if (li.tagName !== 'LI') continue;
+  for (const child of Array.from(el.children)) {
+    if (/^(UL|OL)$/.test(child.tagName)) { lines.push(list(child as HTMLElement, indent + ' '.repeat(width))); continue; }
+    if (child.tagName !== 'LI') continue;
+    const li = child;
     n++;
+    const mark = ordered ? `${n}.` : '-';
+    width = mark.length + 1;
     const own = Array.from(li.childNodes).filter(c => !(c.nodeType === 1 && /^(UL|OL)$/.test((c as HTMLElement).tagName)));
-    const text = own.map(c => (c.nodeType === 1 && BLOCK.has((c as HTMLElement).tagName) ? inline(c) : inline(c))).join('').replace(/\s*\n\s*/g, ' ').trim();
-    lines.push(`${'  '.repeat(depth)}${ordered ? `${n}.` : '-'} ${text}`);
+    const text = own.map(c => inline(c)).join('').replace(/\s*\n\s*/g, ' ').trim();
+    lines.push(`${indent}${mark} ${text}`);
     for (const sub of Array.from(li.children)) {
-      if (/^(UL|OL)$/.test(sub.tagName)) lines.push(list(sub as HTMLElement, depth + 1));
+      if (/^(UL|OL)$/.test(sub.tagName)) lines.push(list(sub as HTMLElement, indent + ' '.repeat(width)));
     }
   }
   return lines.join('\n');
@@ -60,7 +67,7 @@ function list(el: HTMLElement, depth: number): string {
 
 function block(el: HTMLElement): string {
   const tag = el.tagName;
-  if (tag === 'UL' || tag === 'OL') return `\n\n${list(el, 0)}\n\n`;
+  if (tag === 'UL' || tag === 'OL') return `\n\n${list(el, '')}\n\n`;
   if (tag === 'HR') return '\n\n---\n\n';
   const h = /^H([1-6])$/.exec(tag);
   if (h) {

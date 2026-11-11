@@ -83,6 +83,9 @@ function cleanFields(f, isNew) {
         item.due = String(c.due);
       }
       if (c && c.owner_id) item.owner_id = uuid(c.owner_id, 'item owner');
+      // An item under the one above it (Ames 2026-11-11), two levels in at most.
+      const level = Number(c && c.level);
+      if (Number.isInteger(level) && level > 0) item.level = Math.min(2, level);
       return item;
     }).filter(c => c.text);
   }
@@ -109,6 +112,10 @@ function cleanFields(f, isNew) {
       return url;
     });
   }
+  // Hierarchy (Ames 2026-11-11, supabase-admin-todos-hierarchy.sql): the card
+  // this one sits under, and the section of its column it sits in.
+  if ('parent_id' in f) out.parent_id = f.parent_id === null ? null : uuid(f.parent_id, 'parent card');
+  if ('section_id' in f) out.section_id = f.section_id === null ? null : uuid(f.section_id, 'section');
   if (isNew && f.triage_id) out.triage_id = uuid(f.triage_id, 'report');
   return out;
 }
@@ -135,6 +142,26 @@ function changeWords(fields, before) {
   if (['title', 'notes', 'status', 'links', 'images'].some(k => k in fields)) return 'updated';
   return '';
 }
+/**
+ * A card sits under one parent, one level deep: a sub card has no sub cards
+ * of its own, so no card is ever inside itself. Its section is one of its
+ * column's.
+ */
+async function checkHierarchy(db, id, fields) {
+  if (fields.parent_id) {
+    if (fields.parent_id === id) fail(400, 'A card can not sit inside itself.');
+    const parent = await db.card(fields.parent_id);
+    if (!parent) fail(404, 'That parent card is gone. Refresh the board.');
+    if (parent.parent_id) fail(400, 'That card is already inside another card. Pick its parent instead.');
+    if (id && (await db.children(id)).length) fail(400, 'This card has sub cards of its own, so it can not go inside another card.');
+  }
+  if (fields.section_id) {
+    const sec = await db.section(fields.section_id);
+    if (!sec) fail(404, 'That section is gone. Refresh the board.');
+    const list = fields.list || (id ? ((await db.card(id)) || {}).list : 'todo');
+    if (sec.list !== list) fail(400, 'That section is in another column.');
+  }
+}
 const noFollows = { all: async () => ({}), get: async () => [], set: async () => {} };
 const noSeen = { get: async () => ({}), mark: async () => {} };
 const HELPERS_MAX = 6;
@@ -158,9 +185,11 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (next.length !== had.length) await follows.set(cardId, next);
   };
   if (action === 'todo.list') {
-    const [cards, people, followers, helping, seenAt] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
-      meId ? seen.get(meId).catch(() => ({})) : {}]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt };
+    const [cards, people, followers, helping, seenAt, sections] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
+      meId ? seen.get(meId).catch(() => ({})) : {},
+      // null until supabase-admin-todos-hierarchy.sql is run: the board then hides sections and sub cards.
+      db.sections ? db.sections().catch(() => null) : null]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt, sections };
   }
   // I opened a card: its tags of me so far count as seen (Ames 2026-11-06:
   // "if I click on this it shouldn't still show it as an unread task for me").
@@ -231,9 +260,31 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     return { id, followers: next };
   }
 
+  // Sections of a column (Ames 2026-11-11): named, folding groups of cards.
+  // {list, name} adds one at the bottom; {id, name} renames; {id, rank} moves;
+  // {id, remove: true} takes it away and its cards stay, outside any section.
+  if (action === 'todo.section') {
+    if (args.id) {
+      const id = uuid(args.id, 'section');
+      const had = await db.section(id);
+      if (!had) fail(404, 'That section is gone. Refresh the board.');
+      if (args.remove) { await db.removeSection(id); return { removed: id }; }
+      const row = {};
+      if ('name' in args) { const n = text(args.name, 60, 'A section name').replace(/\s+/g, ' ').trim(); if (!n) fail(400, 'A section needs a name.'); row.name = n; }
+      if ('rank' in args) { if (!Number.isFinite(args.rank)) fail(400, 'Bad rank.'); row.rank = args.rank; }
+      return { section: await db.patchSection(id, row) };
+    }
+    if (!LISTS.includes(args.list)) fail(400, 'Bad list.');
+    const n = text(args.name, 60, 'A section name').replace(/\s+/g, ' ').trim();
+    if (!n) fail(400, 'A section needs a name.');
+    const top = Math.max(0, ...((await db.sections()) || []).filter(x => x.list === args.list).map(x => Number(x.rank) || 0));
+    return { section: await db.insertSection({ list: args.list, name: n, rank: top + 1, created_by: byName }) };
+  }
+
   if (action === 'todo.save') {
     const isNew = !args.id;
     const fields = cleanFields(args.fields || {}, isNew);
+    await checkHierarchy(db, isNew ? null : uuid(args.id, 'card'), fields);
     let card;
     if (isNew && fields.triage_id) {
       // A report already on the board keeps its one card: it comes back to To do.
@@ -260,6 +311,8 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
       if (!before) fail(404, 'That card is gone. Refresh the board.');
       if ('list' in fields && fields.list !== before.list) {
         fields.done_at = fields.list === 'done' ? now : null;
+        // A section belongs to one column: moved without one, it leaves it.
+        if (!('section_id' in fields) && before.section_id) fields.section_id = null;
         // Moved without a place: the bottom of its new list.
         if (!('rank' in fields)) fields.rank = (await db.maxRank(fields.list)) + 1;
       }
@@ -359,7 +412,7 @@ function slackIdOf(person) {
 function makeFollowBell({ sb, site, byName, meId }) {
   return async (ids, card, what, said) => {
     const link = `${site}/?triage=board&todo=${card.id}`;
-    const quote = String(said || '').replace(/\s+/g, ' ').slice(0, 200);
+    const quote = String(said || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200);
     const rows = ids.map(id => ({ title: `📋 ${byName} ${what} a To do you follow`.slice(0, 120),
       body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
       target_type: 'user', target_id: id, send_at: new Date().toISOString(), created_by: meId || null }));
@@ -373,7 +426,7 @@ function makeFollowBell({ sb, site, byName, meId }) {
 function makeTagger({ sb, slackPost, slackToken, channel, site, byName, meId }) {
   return async (people, card, what, said) => {
     const link = `${site}/?triage=board&todo=${card.id}`;
-    const quote = String(said || '').replace(/\s+/g, ' ').slice(0, 200);
+    const quote = String(said || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200);
     const rows = people.map(p => ({ title: `📋 ${byName} ${what} a To do`.slice(0, 120),
       body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
       target_type: 'user', target_id: p.id, send_at: new Date().toISOString(), created_by: meId || null }));
@@ -402,6 +455,12 @@ function restDb(sb) {
     insert: async row => (await sb('admin_todos', { method: 'POST', body: JSON.stringify(row) }))[0],
     patch: async (id, row) => (await sb(`admin_todos?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }))[0],
     remove: id => sb(`admin_todos?id=eq.${id}`, { method: 'DELETE' }),
+    children: id => sb(`admin_todos?parent_id=eq.${id}&select=id&limit=50`),
+    sections: () => sb('admin_todo_sections?select=*&order=list.asc,rank.asc&limit=200'),
+    section: async id => (await sb(`admin_todo_sections?id=eq.${id}&select=*&limit=1`))[0] || null,
+    insertSection: async row => (await sb('admin_todo_sections', { method: 'POST', body: JSON.stringify(row) }))[0],
+    patchSection: async (id, row) => (await sb(`admin_todo_sections?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }))[0],
+    removeSection: id => sb(`admin_todo_sections?id=eq.${id}`, { method: 'DELETE' }),
     activeKey: async userId => (await sb(`admin_todo_keys?user_id=eq.${userId}&revoked_at=is.null&select=created_at,last_used_at&order=created_at.desc&limit=1`))[0] || null,
     revokeKeys: userId => sb(`admin_todo_keys?user_id=eq.${userId}&revoked_at=is.null`, { method: 'PATCH', body: JSON.stringify({ revoked_at: new Date().toISOString() }) }),
     addKey: (userId, hash) => sb('admin_todo_keys', { method: 'POST', body: JSON.stringify({ user_id: userId, key_hash: hash }) }),

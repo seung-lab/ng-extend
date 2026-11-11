@@ -34,7 +34,7 @@ export function caveToken(): string | null {
 export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update' | 'triage.release' | 'triage.note'
-  | 'todo.list' | 'todo.save' | 'todo.comment' | 'todo.delete' | 'todo.key' | 'todo.keyStatus' | 'todo.follow' | 'todo.commentEdit' | 'todo.helpers' | 'todo.seen' | 'todo.react'
+  | 'todo.list' | 'todo.save' | 'todo.comment' | 'todo.delete' | 'todo.key' | 'todo.keyStatus' | 'todo.follow' | 'todo.commentEdit' | 'todo.helpers' | 'todo.seen' | 'todo.react' | 'todo.section'
   | 'pilot.task' | 'pilot.practice' | 'quest.admin' | 'pilot.status' | 'activity.log' | 'activity.visit'
   | 'reply.ask' | 'reply.send' | 'reply.console' | 'reply.open'
   | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
