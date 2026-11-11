@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-11T00:09:18Z",
+      "title": "Who is online, fixed",
+      "items": [
+        "The online count in chat and its list of names now always match, and anyone around in the last 5 minutes counts as online.",
+        "Writing in chat now shows you online right away, even with Pyr open in several tabs.",
+        "Chat no longer gets a sideways scroll bar; long words and links wrap instead."
+      ]
+    },
+    {
       "at": "2026-11-10T19:23:00Z",
       "title": "Help me becomes Hide help",
       "items": [
