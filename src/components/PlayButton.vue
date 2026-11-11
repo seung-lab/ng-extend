@@ -226,7 +226,9 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-opt-lock { margin-top: 6px; font-size: 14px; color: #ffb38a; }
 .nge-play-card .nge-edtext-btn { font-size: 12px; }
 .nge-play-actions { margin-top: 18px; flex-wrap: wrap; row-gap: 10px; }
-.nge-play-note { font-size: 14px; color: #8fb0cc; margin-right: auto; }
+/* The note on its own line, the two keys together below it on the right (Ames 2026-11-10: they were split across two lines). */
+.nge-play-note { flex: 1 0 100%; font-size: 14px; color: #8fb0cc; }
+.nge-play-actions .nge-go--alt { margin-left: auto; }
 .nge-play-actions .nge-go--alt + .nge-go { margin-left: 10px; }
 /* the game's general button rule would make these blocks, flattening the label */
 .nge-play-card .nge-go { display: inline-flex; flex-direction: row; align-items: stretch; height: 50px; }
