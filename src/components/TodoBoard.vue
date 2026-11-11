@@ -559,10 +559,27 @@ function pickMention(p: Person) {
   mention.value = null;
   void nextTick(() => { el.focus(); el.setSelectionRange(at, at); });
 }
+function mentionStillHere(m: NonNullable<typeof mention.value>, target: HTMLElement | null): boolean {
+  if (!target || !(m.el === target || m.el.contains(target))) return false;
+  if (m.range) {
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed || !sel.anchorNode) return false;
+    if (sel.anchorNode !== m.range.endContainer || sel.anchorOffset !== m.range.endOffset) return false;
+    return /^@[^\s@ ]{0,30}$/.test(m.range.toString());
+  }
+  const el = m.el as HTMLTextAreaElement;
+  const caret = el.selectionStart ?? -1;
+  return el.selectionStart === el.selectionEnd && caret === m.start + 1 + m.query.length
+    && el.value.slice(m.start, caret) === '@' + m.query;
+}
 function onMentionKey(e: KeyboardEvent) {
   e.stopPropagation();
   const m = mention.value;
   if (!m || !mentionMatches.value.length) return;
+  // The picker only takes keys in its own box, with the caret still at the
+  // "@name" (Ames 2026-11-10: Enter did nothing in a comment, because a
+  // picker left open elsewhere, or before a paste or a click, took it).
+  if (!mentionStillHere(m, e.target as HTMLElement | null)) { mention.value = null; return; }
   const n = mentionMatches.value.length;
   if (e.key === 'ArrowDown') { e.preventDefault(); mention.value = { ...m, pick: (m.pick + 1) % n }; }
   else if (e.key === 'ArrowUp') { e.preventDefault(); mention.value = { ...m, pick: (m.pick + n - 1) % n }; }
