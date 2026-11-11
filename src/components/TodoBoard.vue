@@ -34,10 +34,14 @@ interface Card {
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
   // Optional (supabase-admin-todos-fields.sql).
   links?: Link[]; status?: string; due_on?: string | null; images?: string[];
+  // Hierarchy (supabase-admin-todos-hierarchy.sql, Ames 2026-11-11).
+  parent_id?: string | null; section_id?: string | null;
 }
+/** A named, folding group of cards in a column (functions/todos.js todo.section). */
+interface Section { id: string; list: ListKey; name: string; rank: number }
 interface Person { id: string; name: string }
 /** A checklist item; owner and due day make it a subtask (Ames 2026-11-02, from Asana). */
-interface Item { text: string; done: boolean; due?: string; owner_id?: string }
+interface Item { text: string; done: boolean; due?: string; owner_id?: string; level?: number }
 
 const LISTS: { key: ListKey; title: string; hint: string; empty: string }[] = [
   { key: 'todo', title: 'To do', hint: 'What we mean to do', empty: 'Nothing waiting.' },
@@ -94,6 +98,7 @@ async function load(quiet = false) {
     followers.value = data.followers || {};
     seenAt.value = data.seen || {};
     helpers.value = data.helpers || {};
+    sections.value = Array.isArray(data.sections) ? data.sections : null;
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
@@ -155,12 +160,127 @@ const matches = (c: Card) => { const w = searchWords.value; if (!w.length) retur
 function onSearchKey(e: KeyboardEvent) {
   if (e.key === 'Escape') { search.value = ''; (e.target as HTMLInputElement).blur(); }
 }
+// ── Hierarchy (Ames 2026-11-11: "can we add hierarchy somehow? Esp to todo"):
+// cards inside cards, one level deep, and named sections in each column.
+// Folds are each person's own, kept in this browser. ──
+/** null until supabase-admin-todos-hierarchy.sql is run: then none of it shows. */
+const sections = ref<Section[] | null>(null);
+const hierarchyOn = computed(() => sections.value !== null);
+const KIDS_KEY = 'nge-todo-open-kids', SECS_KEY = 'nge-todo-folded-sections';
+const readFolds = (key: string): Record<string, boolean> => { try { const v = JSON.parse(localStorage.getItem(key) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
+const openKids = ref<Record<string, boolean>>(readFolds(KIDS_KEY));
+const foldedSecs = ref<Record<string, boolean>>(readFolds(SECS_KEY));
+function toggleKids(id: string) {
+  openKids.value = { ...openKids.value, [id]: !openKids.value[id] };
+  try { localStorage.setItem(KIDS_KEY, JSON.stringify(openKids.value)); } catch { /* not remembered */ }
+}
+function toggleSection(id: string) {
+  foldedSecs.value = { ...foldedSecs.value, [id]: !foldedSecs.value[id] };
+  try { localStorage.setItem(SECS_KEY, JSON.stringify(foldedSecs.value)); } catch { /* not remembered */ }
+}
+const kidsOf = (id: string) => cards.value.filter(c => c.parent_id === id).sort((a, b) => a.rank - b.rank);
+const parentOf = (c: Card) => (c.parent_id ? cards.value.find(x => x.id === c.parent_id) || null : null);
+const kidCount = (c: Card) => { const k = kidsOf(c.id); return { all: k.length, done: k.filter(x => x.list === 'done').length }; };
+const sectionsIn = (list: ListKey) => (sections.value || []).filter(x => x.list === list).sort((a, b) => a.rank - b.rank);
+const LIST_TITLE: Record<ListKey, string> = { todo: 'To do', doing: 'Doing', done: 'Done' };
+/** A line of the board: a section's header, or a card (depth 1 when it sits under its parent). */
+type BoardRow = { kind: 'section'; s: Section; n: number } | { kind: 'card'; c: Card; depth: 0 | 1 };
 const columns = computed(() => LISTS.map(l => {
   const byDue = (a: Card, b: Card) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.rank - b.rank;
   const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c)) && matches(c)).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
   const rows = l.key === 'done' && !showAllDone.value && !searchWords.value.length ? all.filter(c => !doneOld(c)) : all;
-  return { ...l, rows, hidden: all.length - rows.length };
+  const items: BoardRow[] = [];
+  if (!hierarchyOn.value) {
+    for (const c of rows) items.push({ kind: 'card', c, depth: 0 });
+    return { ...l, rows, items, hidden: all.length - rows.length };
+  }
+  // A sub card whose parent is in this column sits under it, shown when the parent is unfolded.
+  const shown = new Set(rows.map(c => c.id));
+  const nested = (c: Card) => !!c.parent_id && shown.has(c.parent_id);
+  const tops = rows.filter(c => !nested(c));
+  const secs = sectionsIn(l.key);
+  const add = (c: Card) => {
+    items.push({ kind: 'card', c, depth: 0 });
+    if (openKids.value[c.id]) for (const k of rows.filter(x => x.parent_id === c.id)) items.push({ kind: 'card', c: k, depth: 1 });
+  };
+  tops.filter(c => !c.section_id || !secs.some(x => x.id === c.section_id)).forEach(add);
+  for (const sec of secs) {
+    const inside = tops.filter(c => c.section_id === sec.id);
+    items.push({ kind: 'section', s: sec, n: inside.length });
+    if (!foldedSecs.value[sec.id]) inside.forEach(add);
+  }
+  return { ...l, rows, items, hidden: all.length - rows.length };
 }));
+/** Cards this one could sit inside: not itself, not already inside another. */
+const parentChoices = (c: Card) => cards.value.filter(x => x.id !== c.id && !x.parent_id).sort((a, b) => a.title.localeCompare(b.title));
+async function setParent(c: Card, id?: string) {
+  await save(c, { parent_id: id || null });
+  if (id) { openKids.value = { ...openKids.value, [id]: true }; try { localStorage.setItem(KIDS_KEY, JSON.stringify(openKids.value)); } catch { /* not remembered */ } }
+}
+const parentLine = (c: Card) => { const p = parentOf(c); return p ? `Part of: ${p.title} (${LIST_TITLE[p.list]}). Click to open it.` : ''; };
+function openParent(c: Card) { const p = parentOf(c); if (p) openUp(p); }
+function commentHeading(level: 2 | 3) {
+  const el = rxEls.comment;
+  if (!el) return;
+  headingIn(el, level);
+  comment.value = rxMd(el);
+}
+const newKid = ref('');
+async function addKid(parent: Card) {
+  const title = newKid.value.trim();
+  if (!title || busy.value) return;
+  busy.value = true;
+  try {
+    const { card } = await secureWrite<any>('todo.save', { fields: { title, list: 'todo', parent_id: parent.id }, tagIds: tagsIn(title) });
+    if (card) put(card);
+    newKid.value = '';
+    if (!openKids.value[parent.id]) toggleKids(parent.id);
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  } finally {
+    busy.value = false;
+  }
+}
+// Sections: added at the bottom of a column, renamed, taken away (their cards stay).
+const sectionDraft = ref<{ list: ListKey; name: string } | null>(null);
+const renamingSec = ref<{ id: string; name: string } | null>(null);
+async function addSection() {
+  const d = sectionDraft.value;
+  if (!d || !d.name.trim()) { sectionDraft.value = null; return; }
+  try {
+    const { section } = await secureWrite<any>('todo.section', { list: d.list, name: d.name });
+    if (section) sections.value = [...(sections.value || []), section];
+    sectionDraft.value = null;
+  } catch (e: any) { error.value = e?.message ?? String(e); }
+}
+async function renameSection() {
+  const r = renamingSec.value;
+  renamingSec.value = null;
+  const had = (sections.value || []).find(x => x.id === r?.id);
+  if (!r || !had || !r.name.trim() || r.name.trim() === had.name) return;
+  try {
+    const { section } = await secureWrite<any>('todo.section', { id: r.id, name: r.name });
+    if (section) sections.value = (sections.value || []).map(x => (x.id === section.id ? section : x));
+  } catch (e: any) { error.value = e?.message ?? String(e); }
+}
+async function removeSection(sec: Section) {
+  const n = cards.value.filter(c => c.section_id === sec.id).length;
+  if (!window.confirm(`Take away the section "${sec.name}"?${n ? ` Its ${n === 1 ? 'card stays' : n + ' cards stay'} in ${LIST_TITLE[sec.list]}, outside any section.` : ''}`)) return;
+  try {
+    await secureWrite<any>('todo.section', { id: sec.id, remove: true });
+    sections.value = (sections.value || []).filter(x => x.id !== sec.id);
+    for (const c of cards.value) if (c.section_id === sec.id) c.section_id = null;
+  } catch (e: any) { error.value = e?.message ?? String(e); }
+}
+// Checklist items inside items: one step in under the item above, or back out.
+function itemLevel(c: Card, i: number, by: 1 | -1) {
+  const it = c.checklist[i];
+  if (!it) return;
+  const now = it.level || 0;
+  const most = i > 0 ? Math.min(2, (c.checklist[i - 1].level || 0) + 1) : 0;
+  const next = Math.max(0, Math.min(most, now + by));
+  if (next !== now) void setItem(c, i, { level: next });
+}
 const sizeSummary = computed(() => {
   const todo = cards.value.filter(c => c.list === 'todo');
   return SIZES.map(s => ({ s, n: todo.filter(c => c.size === s).length })).filter(x => x.n);
@@ -559,10 +679,27 @@ function pickMention(p: Person) {
   mention.value = null;
   void nextTick(() => { el.focus(); el.setSelectionRange(at, at); });
 }
+function mentionStillHere(m: NonNullable<typeof mention.value>, target: HTMLElement | null): boolean {
+  if (!target || !(m.el === target || m.el.contains(target))) return false;
+  if (m.range) {
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed || !sel.anchorNode) return false;
+    if (sel.anchorNode !== m.range.endContainer || sel.anchorOffset !== m.range.endOffset) return false;
+    return /^@[^\s@ ]{0,30}$/.test(m.range.toString());
+  }
+  const el = m.el as HTMLTextAreaElement;
+  const caret = el.selectionStart ?? -1;
+  return el.selectionStart === el.selectionEnd && caret === m.start + 1 + m.query.length
+    && el.value.slice(m.start, caret) === '@' + m.query;
+}
 function onMentionKey(e: KeyboardEvent) {
   e.stopPropagation();
   const m = mention.value;
   if (!m || !mentionMatches.value.length) return;
+  // The picker only takes keys in its own box, with the caret still at the
+  // "@name" (Ames 2026-11-10: Enter did nothing in a comment, because a
+  // picker left open elsewhere, or before a paste or a click, took it).
+  if (!mentionStillHere(m, e.target as HTMLElement | null)) { mention.value = null; return; }
   const n = mentionMatches.value.length;
   if (e.key === 'ArrowDown') { e.preventDefault(); mention.value = { ...m, pick: (m.pick + 1) % n }; }
   else if (e.key === 'ArrowUp') { e.preventDefault(); mention.value = { ...m, pick: (m.pick + n - 1) % n }; }
@@ -623,19 +760,34 @@ const topRank = (list: ListKey) => Math.min(1, ...cards.value.filter(x => x.list
 // ── Dragging, along a list and between lists ──
 // The card takes a rank between its new neighbours, so only it is written.
 const dragId = ref<string | null>(null);
-const dropAt = ref<{ list: ListKey; id: string | null; after: boolean; side?: boolean } | null>(null);
+// into: dropped in the middle of a card, it goes inside it. depth: the card
+// it lands by sits under a parent. section: dropped on a section's header.
+const dropAt = ref<{ list: ListKey; id: string | null; after: boolean; side?: boolean; into?: boolean; depth?: number; section?: string } | null>(null);
+/** Can the dragged card go inside this one? One level only, never itself. */
+function canNest(target: Card) {
+  const id = dragId.value;
+  return hierarchyOn.value && !!id && target.id !== id && !target.parent_id && !cards.value.some(x => x.parent_id === id);
+}
 function onDragStart(e: DragEvent, c: Card) {
   dragId.value = c.id;
   if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', c.id); }
 }
-function onDragOverCard(e: DragEvent, list: ListKey, c: Card) {
+function onDragOverCard(e: DragEvent, list: ListKey, c: Card, depth = 0) {
   if (!dragId.value) return;
   e.preventDefault();
   e.stopPropagation();
   const el = e.currentTarget as HTMLElement;
   const box = el.getBoundingClientRect();
   const side = !!el.parentElement && box.width < el.parentElement.clientWidth * 0.75;
-  dropAt.value = c.id === dragId.value ? null : { list, id: c.id, side, after: side ? e.clientX > box.left + box.width / 2 : e.clientY > box.top + box.height / 2 };
+  // The middle third of a card: inside it, as a sub card.
+  const mid = !side && depth === 0 && canNest(c) && Math.abs(e.clientY - (box.top + box.height / 2)) < box.height / 6;
+  dropAt.value = c.id === dragId.value ? null : { list, id: c.id, side, depth, into: mid, after: side ? e.clientX > box.left + box.width / 2 : e.clientY > box.top + box.height / 2 };
+}
+function onDragOverSection(e: DragEvent, list: ListKey, sec: Section) {
+  if (!dragId.value) return;
+  e.preventDefault();
+  e.stopPropagation();
+  dropAt.value = { list, id: null, after: true, section: sec.id };
 }
 function onDragOverList(e: DragEvent, list: ListKey) {
   if (!dragId.value) return;
@@ -649,15 +801,44 @@ async function onDrop(e: DragEvent, list: ListKey) {
   onDragEnd();
   const c = cards.value.find(x => x.id === id);
   if (!c || !at || at.list !== list) return;
+  const target = at.id ? cards.value.find(x => x.id === at.id) || null : null;
   const rest = columns.value.find(col => col.key === list)!.rows.filter(x => x.id !== c.id);
+  // Hierarchy: where it lands says what it sits in.
+  const extra: Partial<Card> = {};
+  if (hierarchyOn.value) {
+    if (at.into && target) {
+      // Inside a card: its sub card, at the end of its sub cards, in its column and section.
+      extra.parent_id = target.id;
+      extra.section_id = target.section_id || null;
+      const kids = kidsOf(target.id).filter(x => x.id !== c.id);
+      const rank = kids.length ? Math.max(...kids.map(x => x.rank)) + 1 : target.rank + 0.5;
+      if (!openKids.value[target.id]) toggleKids(target.id);
+      await moveTo(c, list, rank, extra);
+      return;
+    }
+    if (at.section) {
+      // On a section's header: the top of that section.
+      extra.section_id = at.section;
+      if (c.parent_id && parentOf(c)?.list === list) extra.parent_id = null;
+      const inside = rest.filter(x => x.section_id === at.section);
+      await moveTo(c, list, inside.length ? Math.min(...inside.map(x => x.rank)) - 1 : c.rank, extra);
+      return;
+    }
+    if (target) {
+      extra.section_id = target.section_id || null;
+      // By a sub card: a sub card of the same parent. By a card on its own: out of any parent shown here.
+      if (at.depth === 1) extra.parent_id = target.parent_id || null;
+      else if (c.parent_id && parentOf(c)?.list === list) extra.parent_id = null;
+    } else if (list !== c.list) extra.section_id = null;
+  }
   const i = at.id ? rest.findIndex(x => x.id === at.id) + (at.after ? 1 : 0) : rest.length;
   const above = rest[i - 1]?.rank, below = rest[i]?.rank;
   const rank = above == null && below == null ? 1 : above == null ? (below as number) - 1 : below == null ? above + 1 : (above + below) / 2;
-  await moveTo(c, list, rank);
+  await moveTo(c, list, rank, extra);
 }
 /** Moving to Done can close the report behind the card too. */
-async function moveTo(c: Card, list: ListKey, rank?: number) {
-  const fields: Partial<Card> = { list };
+async function moveTo(c: Card, list: ListKey, rank?: number, extra: Partial<Card> = {}) {
+  const fields: Partial<Card> = { list, ...Object.fromEntries(Object.entries(extra).filter(([k, v]) => (c as any)[k] !== v && !((c as any)[k] == null && v == null))) };
   if (rank !== undefined) fields.rank = rank;
   else if (list !== c.list) fields.rank = Math.max(0, ...cards.value.filter(x => x.list === list).map(x => x.rank)) + 1;
   let closeReport = false;
@@ -697,7 +878,10 @@ function openAt(c: Card, part: 'comments') {
   if (part === 'comments') setTimeout(toComments, 60);
 }
 /** A comment as one plain line for the card's face. */
-const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼').replace(/[\s​]+/g, ' ').trim().slice(0, 140);
+const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼')
+  // Headings and bullets read as words on one line ("Update: one, two"), not as their marks.
+  .replace(/^[ \t]*#{1,6}[ \t]+(.+)$/gm, '$1:').replace(/^[ \t]*(?:[-*]|\d+\.)[ \t]+/gm, '· ')
+  .replace(/[\s​]+/g, ' ').replace(/\*\*|__/g, '').trim().slice(0, 140);
 function openUp(c: Card) {
   connectOpen.value = false;
   markSeen(c);
@@ -1295,6 +1479,51 @@ function insertNotePic(url: string) {
   syncRich();
 }
 function richCmd(cmd: string) { richEl.value?.focus(); document.execCommand(cmd); syncRich(); }
+// ── Hierarchy in writing (Ames 2026-11-11): headings, and bullets inside
+// bullets. Kept as Markdown: "## " a heading, "### " a smaller one, and a
+// nested bullet indented under the one above. ──
+const LIST_DEPTH_MAX = 3;
+function caretEl(): Element | null {
+  const n = window.getSelection()?.anchorNode;
+  return !n ? null : n.nodeType === 1 ? n as Element : n.parentElement;
+}
+/** How many lists deep a bullet is, inside its box. */
+function listDepth(li: Element, box: Element) {
+  let d = 0;
+  for (let p: Element | null = li; p && p !== box; p = p.parentElement) if (p.tagName === 'UL' || p.tagName === 'OL') d++;
+  return d;
+}
+/** Tab moves a bullet in under the one above, Shift+Tab back out. True when it did. */
+function listIndentKey(e: KeyboardEvent, box: HTMLElement): boolean {
+  if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return false;
+  const li = caretEl()?.closest('li');
+  if (!li || !box.contains(li)) return false;
+  e.preventDefault();
+  if (e.shiftKey) document.execCommand('outdent');
+  else if (listDepth(li, box) < LIST_DEPTH_MAX && li.previousElementSibling) document.execCommand('indent');
+  return true;
+}
+/** The heading buttons: a heading, a smaller one, or back to a line of text. */
+function headingIn(box: HTMLElement | null | undefined, level: 2 | 3) {
+  if (!box) return;
+  box.focus();
+  const h = caretEl()?.closest('h1, h2, h3, h4');
+  const tag = h && box.contains(h) && h.tagName === `H${level}` ? 'p' : `h${level}`;
+  document.execCommand('formatBlock', false, `<${tag}>`);
+}
+/** "# " and "## " at the start of a line make a heading, as in a document. */
+function autoHeadingAtCaret() {
+  const sel = window.getSelection();
+  const node = sel?.anchorNode;
+  if (!node || node.nodeType !== Node.TEXT_NODE || (node.parentElement && node.parentElement.closest('li, h1, h2, h3, h4'))) return;
+  const t = (node as Text).data.replace(/ /g, ' ');
+  const m = t.match(/^(#{1,2}) /);
+  if (!m || sel!.anchorOffset !== m[0].length) return;
+  const r = document.createRange(); r.setStart(node, 0); r.setEnd(node, m[0].length);
+  sel!.removeAllRanges(); sel!.addRange(r);
+  document.execCommand('delete');
+  document.execCommand('formatBlock', false, m[1].length === 1 ? '<h2>' : '<h3>');
+}
 /** "- " or "* " starts a bulleted list, "1. " a numbered one, as in a document. */
 function onRichInput() {
   const sel = window.getSelection();
@@ -1308,10 +1537,12 @@ function onRichInput() {
       document.execCommand(m[1].startsWith('1') ? 'insertOrderedList' : 'insertUnorderedList');
     }
   }
+  autoHeadingAtCaret();
   syncRich();
 }
 function onRichKey(e: KeyboardEvent) {
   e.stopPropagation();   // the game's keys stay out of the notes
+  if (richEl.value && listIndentKey(e, richEl.value)) { syncRich(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (openCard.value) { void saveNotes(openCard.value); notesEditing.value = false; } }
 }
 /** Pasted text keeps its bold, lists and links, and nothing else (safe). Images go on the card. */
@@ -1375,7 +1606,9 @@ const BLANK = '\u200B';
 /** Before turning the editor's HTML into Markdown: an empty paragraph keeps a mark. */
 function keepBlankLines(html: string) {
   const t = document.createElement('template');
-  t.innerHTML = html;
+  // A list the box put inside a line ("<p><ul>") is not a blank line before
+  // and after it: parsed as is, the line splits into two empty ones.
+  t.innerHTML = html.replace(/<p>(\s*<(?:ul|ol)[\s>])/gi, '$1').replace(/(<\/(?:ul|ol)>\s*)<\/p>/gi, '$1');
   for (const el of [...t.content.querySelectorAll('p, div')]) {
     if (el.querySelector('img, li, p, div')) continue;
     if (!(el.textContent || '').replace(/[\s\u00a0\u200B]/g, '')) el.innerHTML = BLANK;
@@ -1587,6 +1820,7 @@ function richMention(el: HTMLElement, sync: () => void) {
 function rxInput(e: Event, set: (v: string) => void) {
   const el = e.currentTarget as HTMLElement;
   autoListAtCaret();
+  autoHeadingAtCaret();
   rxMark(el);
   set(rxMd(el));
   richMention(el, () => set(rxMd(el)));
@@ -1594,6 +1828,8 @@ function rxInput(e: Event, set: (v: string) => void) {
 function rxKey(e: KeyboardEvent, onSend?: () => void) {
   onMentionKey(e);
   if (e.defaultPrevented) return;
+  const box = e.currentTarget as HTMLElement;
+  if (listIndentKey(e, box)) { box.dispatchEvent(new Event('input', { bubbles: true })); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && onSend) { e.preventDefault(); onSend(); }
 }
 function rxPaste(e: ClipboardEvent, set: (v: string) => void, onImages?: (files: File[]) => void) {
@@ -1806,17 +2042,31 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             </form>
           </div>
 
-          <article v-for="c in col.rows" :key="c.id" class="nge-todo-card" :draggable="resizingId !== c.id" :style="cardStyle(c)"
-                   :class="{ 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id, 'nge-todo-card--won': winning === c.id,
+          <template v-for="it in col.items" :key="it.kind === 'section' ? 'sec:' + it.s.id : it.c.id">
+          <div v-if="it.kind === 'section'" class="nge-todo-section" :class="{ 'nge-todo-section--drop': dropAt?.section === it.s.id }"
+               @dragover="onDragOverSection($event, col.key, it.s)">
+            <button type="button" class="nge-todo-section-fold" :aria-expanded="!foldedSecs[it.s.id]" :title="foldedSecs[it.s.id] ? 'Show its cards' : 'Fold its cards away'" @click="toggleSection(it.s.id)">{{ foldedSecs[it.s.id] ? '▸' : '▾' }}</button>
+            <input v-if="renamingSec?.id === it.s.id" v-model="renamingSec.name" class="nge-todo-input nge-todo-section-input" maxlength="60" aria-label="Section name"
+                   @keydown.stop @keydown.enter.prevent="renameSection" @keydown.esc="renamingSec = null" @blur="renameSection" @keyup.stop @keypress.stop />
+            <span v-else class="nge-todo-section-name" title="Double click to rename" @click="toggleSection(it.s.id)" @dblclick="renamingSec = { id: it.s.id, name: it.s.name }">{{ it.s.name }}</span>
+            <span class="nge-todo-count">{{ it.n }}</span>
+            <button type="button" class="nge-todo-mini nge-todo-section-tool" title="Rename this section" aria-label="Rename" @click="renamingSec = { id: it.s.id, name: it.s.name }">✎</button>
+            <button type="button" class="nge-todo-mini nge-todo-section-tool" title="Take this section away. Its cards stay in the column." aria-label="Remove section" @click="removeSection(it.s)">×</button>
+          </div>
+          <template v-else>
+          <template v-for="c in [it.c]" :key="c.id">
+          <article class="nge-todo-card" :draggable="resizingId !== c.id" :style="cardStyle(c)"
+                   :class="{ 'nge-todo-card--sub': it.depth === 1, 'nge-todo-card--drop-into': dropAt?.id === c.id && dropAt.into, 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id, 'nge-todo-card--won': winning === c.id,
                              'nge-todo-card--drop-above': dropAt?.id === c.id && !dropAt.after && !dropAt.side, 'nge-todo-card--drop-below': dropAt?.id === c.id && dropAt.after && !dropAt.side,
                              'nge-todo-card--drop-left': dropAt?.id === c.id && !dropAt.after && dropAt.side, 'nge-todo-card--drop-right': dropAt?.id === c.id && dropAt.after && dropAt.side }"
                    tabindex="0" @click="resizingId || openUp(c)" @keydown.enter="openUp(c)"
-                   @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c)">
+                   @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c, it.depth)">
             <div class="nge-todo-card-tools" @click.stop>
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
             </div>
             <img v-if="(c.images || []).length" class="nge-todo-card-cover" :src="c.images[0]" alt="" loading="lazy" />
+            <button v-if="hierarchyOn && it.depth === 0 && parentOf(c)" type="button" class="nge-todo-card-parent" :title="parentLine(c)" @click.stop="openParent(c)">↳ {{ parentOf(c)?.title }}</button>
             <div class="nge-todo-card-title">{{ c.title }}</div>
             <div v-if="isLive(c) || buildBadges(c).length" class="nge-todo-badges" @click.stop>
               <span v-if="isLive(c)" class="nge-todo-badge nge-todo-badge--live" :title="c.status || 'Its test site build is in the live site'">✓ Live</span>
@@ -1837,6 +2087,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button v-if="c.comments.length" type="button" class="nge-todo-chip nge-todo-chip--btn" title="Open the comments" @click.stop="openAt(c, 'comments')">💬 {{ c.comments.length }}</button>
               <span v-if="c.triage_id" class="nge-todo-chip" title="Made from a player report">{{ reportLabel(c.triage_id) }}</span>
             </div>
+            <template v-if="hierarchyOn && kidCount(c).all">
+              <button type="button" class="nge-todo-kids-btn" :class="{ 'nge-todo-kids-btn--all': kidCount(c).done === kidCount(c).all }" :aria-expanded="!!openKids[c.id]"
+                      :title="openKids[c.id] ? 'Fold its sub cards away' : 'Show its sub cards'" @click.stop="toggleKids(c.id)">
+                {{ openKids[c.id] ? '▾' : '▸' }} {{ kidCount(c).all }} sub card{{ kidCount(c).all === 1 ? '' : 's' }}, {{ kidCount(c).done }} done</button>
+              <div v-if="openKids[c.id] && kidsOf(c.id).some(k => k.list !== c.list)" class="nge-todo-kids-away" @click.stop>
+                <button v-for="k in kidsOf(c.id).filter(k => k.list !== c.list)" :key="k.id" type="button" class="nge-todo-kid-line" :class="{ 'nge-todo-kid-line--done': k.list === 'done' }" @click="openUp(k)">
+                  <span>{{ k.list === 'done' ? '✓' : '↳' }} {{ k.title }}</span><span class="nge-todo-kid-where">{{ LIST_TITLE[k.list] }}</span></button>
+              </div>
+            </template>
             <button v-if="c.comments.length" type="button" class="nge-todo-card-last" title="Open the comments" @click.stop="openAt(c, 'comments')">
               <b>💬 {{ c.comments[c.comments.length - 1].by }}</b> {{ ago(c.comments[c.comments.length - 1].at) }}: {{ plainLine(c.comments[c.comments.length - 1].text) }}
             </button>
@@ -1850,6 +2109,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <span class="nge-todo-card-resize" title="Drag to resize this card. Double click to put it back." aria-hidden="true"
                   @pointerdown="startResize($event, c)" @click.stop @dblclick.stop="resetSize(c)" @dragstart.prevent></span>
           </article>
+          </template>
+          </template>
+          </template>
+          <div v-if="hierarchyOn" class="nge-todo-section-add">
+            <form v-if="sectionDraft?.list === col.key" class="nge-todo-row" @submit.prevent="addSection">
+              <input v-model="sectionDraft.name" class="nge-todo-input nge-todo-grow" maxlength="60" placeholder="Section name, like Tutorial" aria-label="New section name"
+                     @keydown.stop @keydown.esc="sectionDraft = null" @keyup.stop @keypress.stop />
+              <button type="submit" class="nge-todo-btn" :disabled="!sectionDraft.name.trim()">Add</button>
+              <button type="button" class="nge-todo-mini" @click="sectionDraft = null">Cancel</button>
+            </form>
+            <button v-else type="button" class="nge-todo-mini nge-todo-section-new" title="A named group in this column. Drag cards onto its header to put them in it." @click="sectionDraft = { list: col.key, name: '' }">＋ Section</button>
+          </div>
           <div v-if="dropAt?.list === col.key && !dropAt.id" class="nge-todo-drop-end"></div>
           <div v-if="!col.rows.length && !loading" class="nge-todo-list-empty"><img :src="imgNurroWhere" alt="" class="nge-todo-nurro-empty" />{{ searchWords.length ? 'No cards match.' : mineOnly ? 'Nothing of yours here.' : col.empty }}</div>
           <button v-if="col.key === 'done' && (col.hidden || showAllDone)" class="nge-todo-btn nge-todo-more" @click="showAllDone = !showAllDone">
@@ -1976,6 +2247,41 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </div>
         </div>
 
+        <template v-if="hierarchyOn">
+          <div class="nge-todo-field nge-todo-hier">
+            <template v-if="!kidsOf(openCard.id).length">
+              <span class="nge-todo-label">Part of</span>
+              <select class="nge-todo-select nge-todo-grow" :value="openCard.parent_id || ''" aria-label="The card this one is part of" title="Put this card inside another card"
+                      @change="setParent(openCard, fieldValue($event))">
+                <option value="">Nothing, a card of its own</option>
+                <option v-for="p in parentChoices(openCard)" :key="p.id" :value="p.id">{{ p.title }} ({{ LIST_TITLE[p.list] }})</option>
+              </select>
+            </template>
+            <span class="nge-todo-label">Section</span>
+            <select class="nge-todo-select" :value="openCard.section_id || ''" aria-label="Section" :title="'A named group in ' + LIST_TITLE[openCard.list]"
+                    @change="save(openCard, { section_id: fieldValue($event) || null })">
+              <option value="">None</option>
+              <option v-for="x in sectionsIn(openCard.list)" :key="x.id" :value="x.id">{{ x.name }}</option>
+            </select>
+          </div>
+          <template v-if="!openCard.parent_id">
+            <div class="nge-todo-label nge-todo-check-head">Sub cards
+              <span v-if="kidCount(openCard).all" class="nge-todo-check-count" :class="{ 'nge-todo-check-count--all': kidCount(openCard).done === kidCount(openCard).all }">{{ kidCount(openCard).done }}/{{ kidCount(openCard).all }}</span></div>
+            <ul v-if="kidsOf(openCard.id).length" class="nge-todo-kids">
+              <li v-for="k in kidsOf(openCard.id)" :key="k.id" :class="{ 'nge-todo-kid--done': k.list === 'done' }">
+                <button type="button" class="nge-todo-kid-open" :title="'Open ' + k.title" @click="openUp(k)">{{ k.list === 'done' ? '✓' : '↳' }} {{ k.title }}</button>
+                <span class="nge-todo-kid-where">{{ LIST_TITLE[k.list] }}<template v-if="k.owner_id"> · {{ firstName(nameOf(k.owner_id)) }}</template><template v-if="k.status"> · {{ k.status }}</template></span>
+                <button type="button" class="nge-todo-mini" title="Take it out: it stays a card of its own" aria-label="Take out" @click="save(k, { parent_id: null })">×</button>
+              </li>
+            </ul>
+            <form class="nge-todo-row" @submit.prevent="addKid(openCard)">
+              <input v-model="newKid" class="nge-todo-input nge-todo-grow" maxlength="200" placeholder="Add a sub card" aria-label="New sub card"
+                     @input="onMentionInput($event, v => newKid = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+              <button type="submit" class="nge-todo-btn" :disabled="busy || !newKid.trim()">Add</button>
+            </form>
+          </template>
+        </template>
+
         <div class="nge-todo-label">Links</div>
         <div v-if="(openCard.links || []).length" class="nge-todo-links">
           <span v-for="(l, i) in openCard.links" :key="i" class="nge-todo-linkchip" :class="{ 'nge-todo-linkchip--gone': fileGone(l) }"><a :href="l.url" target="_blank" rel="noopener noreferrer" :title="fileGone(l) ? 'Files are deleted 7 days after the card is Done' : l.kind === 'file' ? 'Deleted 7 days after the card is Done' : l.url" @click="openLink($event, l)">{{ linkIcon(l) }} {{ linkWord(l) }}</a><button type="button" class="nge-todo-mini" aria-label="Remove link" @click="removeCardLink(openCard, i)">×</button></span>
@@ -2004,6 +2310,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <button type="button" title="Italic (Ctrl+I)" @mousedown.prevent @click="richCmd('italic')"><i>I</i></button>
             <button type="button" title="Bulleted list (or type - and a space)" @mousedown.prevent @click="richCmd('insertUnorderedList')">• Bullets</button>
             <button type="button" title="Numbered list (or type 1. and a space)" @mousedown.prevent @click="richCmd('insertOrderedList')">1. Numbers</button>
+            <button type="button" title="Heading (or type # and a space). Click again for plain text." @mousedown.prevent @click="headingIn(richEl, 2); syncRich()">H1</button>
+            <button type="button" title="Smaller heading (or type ## and a space). Click again for plain text." @mousedown.prevent @click="headingIn(richEl, 3); syncRich()">H2</button>
             <button type="button" title="Select some lines, then click: they become checklist items" @mousedown.prevent @click="richToChecklist(openCard)">☑ Checklist</button>
             <button type="button" title="Put a picture here in the notes. You can also paste or drop one where you are typing." @mousedown.prevent @click="pickImages(openCard)">🖼 Image</button>
           </div>
@@ -2036,12 +2344,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </template>
         </div>
         <ul class="nge-todo-check">
-          <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done, 'nge-todo-check--now': justTicked === openCard.id + ':' + i }">
+          <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done, 'nge-todo-check--now': justTicked === openCard.id + ':' + i }" :style="it.level ? { marginLeft: it.level * 24 + 'px' } : undefined">
             <label><input type="checkbox" class="nge-todo-tick" :checked="it.done" @change="checkItem(openCard, i, $event)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <input v-if="itemEdit === openCard.id + ':' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
                      @click.prevent @keydown.enter.prevent="saveItemText(openCard, i)" @keydown.esc="itemEdit = null" @blur="saveItemText(openCard, i)"
+                     @keydown.tab.exact.prevent="itemLevel(openCard, i, 1)" @keydown.shift.tab.prevent="itemLevel(openCard, i, -1)"
                      @input="onMentionInput($event, v => itemDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
               <span v-else class="nge-todo-check-text"><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
             <button class="nge-todo-mini" title="Change this item" aria-label="Edit" @click="beginItemEdit(openCard.id + ':' + i, it.text)">✎</button>
+            <button v-if="i > 0 && (it.level || 0) < Math.min(2, (openCard.checklist[i - 1].level || 0) + 1)" class="nge-todo-mini nge-todo-item-lvl" title="Move in, under the item above (Tab while editing)" aria-label="Move in" @click="itemLevel(openCard, i, 1)">⇥</button>
+            <button v-if="it.level" class="nge-todo-mini nge-todo-item-lvl" title="Move back out (Shift+Tab while editing)" aria-label="Move out" @click="itemLevel(openCard, i, -1)">⇤</button>
             <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
                     @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
               <option value="">{{ itemOwner(it) && !it.owner_id ? '@ in the text' : 'Nobody' }}</option>
@@ -2103,6 +2414,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button type="button" title="Italic (Ctrl+I)" @mousedown.prevent @click="rxCmd('comment', 'italic', v => comment = v)"><i>I</i></button>
           <button type="button" title="Bulleted list (or type - and a space)" @mousedown.prevent @click="rxCmd('comment', 'insertUnorderedList', v => comment = v)">• Bullets</button>
           <button type="button" title="Numbered list (or type 1. and a space)" @mousedown.prevent @click="rxCmd('comment', 'insertOrderedList', v => comment = v)">1. Numbers</button>
+          <button type="button" title="Heading (or type # and a space). Click again for plain text." @mousedown.prevent @click="commentHeading(2)">H1</button>
+          <button type="button" title="Smaller heading (or type ## and a space). Click again for plain text." @mousedown.prevent @click="commentHeading(3)">H2</button>
         </div>
         <div :ref="rxRef('comment')" class="nge-todo-input nge-todo-rich nge-todo-rich--small nge-todo-md" data-empty="true" contenteditable="true" @focus="rxFocus" role="textbox" aria-multiline="true" aria-label="Comment"
              data-placeholder="Write a comment. Type @ to tag someone. Paste or drop a picture to add it. Ctrl+Enter sends." data-nge-notes-paste
@@ -2281,6 +2594,13 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 /* Lists sit close, as in a document (Ames 2026-11-05: "too spaced out"). */
 .nge-todo-md :deep(li) { margin: 0; }
 .nge-todo-md :deep(li > p) { margin: 0; }
+/* Headings and nested bullets (Ames 2026-11-11). */
+.nge-todo-md :deep(h1), .nge-todo-md :deep(h2), .nge-todo-rich h1, .nge-todo-rich h2 { font-size: 1.22em; font-weight: 700; line-height: 1.3; margin: 10px 0 4px; }
+.nge-todo-md :deep(h3), .nge-todo-md :deep(h4), .nge-todo-rich h3, .nge-todo-rich h4 { font-size: 1.06em; font-weight: 700; line-height: 1.3; margin: 8px 0 2px; color: var(--dim-strong, inherit); }
+.nge-todo-md :deep(h1:first-child), .nge-todo-md :deep(h2:first-child), .nge-todo-md :deep(h3:first-child), .nge-todo-rich > h2:first-child, .nge-todo-rich > h3:first-child { margin-top: 0; }
+.nge-todo-md :deep(li ul), .nge-todo-md :deep(li ol), .nge-todo-md :deep(ul ul), .nge-todo-md :deep(ol ol), .nge-todo-md :deep(ul ol), .nge-todo-md :deep(ol ul) { margin: 2px 0 2px; }
+.nge-todo-md :deep(ul ul), .nge-todo-md :deep(ul ul ul) { list-style-type: circle; }
+.nge-todo-md :deep(ul ul ul) { list-style-type: square; }
 .nge-todo-md :deep(p:last-child), .nge-todo-md :deep(ul:last-child), .nge-todo-md :deep(ol:last-child) { margin-bottom: 0; }
 .nge-todo-list--folded { padding: 0; overflow: hidden; }
 .nge-todo-rail {
@@ -2413,6 +2733,34 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-link { font-size: 12.5px; }
 .nge-todo-tag { color: var(--accent); font-weight: 700; }
 .nge-todo-check { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+/* Hierarchy (Ames 2026-11-11): sections, sub cards, nested checklist items. */
+.nge-todo-section { display: flex; align-items: center; gap: 6px; margin: 10px 0 2px; padding: 4px 6px; border-bottom: 1px solid var(--line); font-weight: 700; font-size: 13px; letter-spacing: 0.02em; border-radius: 6px 6px 0 0; }
+.nge-todo-section--drop { background: rgba(79, 140, 255, 0.14); outline: 2px dashed var(--accent); }
+.nge-todo-section-fold { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; font-size: 12px; }
+.nge-todo-section-name { flex: 1 1 auto; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-todo-section-input { flex: 1 1 auto; padding: 2px 6px; font-weight: 600; }
+.nge-todo-section-tool { opacity: 0; }
+.nge-todo-section:hover .nge-todo-section-tool, .nge-todo-section-tool:focus-visible { opacity: 1; }
+.nge-todo-section-add { margin-top: 8px; }
+.nge-todo-section-new { opacity: 0.75; }
+.nge-todo-card--sub { margin-left: 18px; border-left: 3px solid var(--accent); }
+.nge-todo-card--drop-into { outline: 2px dashed var(--accent); outline-offset: 2px; background: rgba(79, 140, 255, 0.08); }
+.nge-todo-card-parent { display: block; max-width: 100%; background: none; border: 0; padding: 0; margin: 0 0 2px; color: var(--dim); font-size: 11.5px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-todo-card-parent:hover { color: var(--accent); text-decoration: underline; }
+.nge-todo-kids-btn { display: block; margin: 6px 0 0; background: rgba(79, 140, 255, 0.10); border: 1px solid rgba(79, 140, 255, 0.35); color: inherit; border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+.nge-todo-kids-btn--all { border-color: rgba(60, 170, 110, 0.55); background: rgba(60, 170, 110, 0.12); }
+.nge-todo-kids-away { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.nge-todo-kid-line { display: flex; justify-content: space-between; gap: 8px; background: none; border: 0; padding: 1px 2px; color: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.nge-todo-kid-line:hover span:first-child { text-decoration: underline; }
+.nge-todo-kid-line--done span:first-child { opacity: 0.6; text-decoration: line-through; }
+.nge-todo-kid-where { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+.nge-todo-hier { flex-wrap: wrap; }
+.nge-todo-kids { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nge-todo-kids li { display: flex; align-items: center; gap: 8px; }
+.nge-todo-kid-open { flex: 1 1 auto; min-width: 0; background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-todo-kid-open:hover { color: var(--accent); text-decoration: underline; }
+.nge-todo-kid--done .nge-todo-kid-open { opacity: 0.6; text-decoration: line-through; }
+.nge-todo-item-lvl { font-size: 12px; }
 .nge-todo-check li { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; }
 .nge-todo-check label { flex: 1 1 auto; display: flex; gap: 6px; align-items: flex-start; cursor: pointer; overflow-wrap: anywhere; }
 .nge-todo-check input { accent-color: var(--accent-strong); margin-top: 3px; }
