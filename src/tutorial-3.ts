@@ -900,6 +900,23 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
+/**
+ * A tutorial's first edit box, reached again after the edit was made (Back,
+ * or a restart): the cell on screen is already merged (or cut). Put every
+ * held cell back to its start and release it, so the box can claim it fresh.
+ * Returns true when it did. `wantMerged` is the state the edit leaves.
+ */
+export async function freshStartIfDone(wantMerged: boolean, step: number): Promise<boolean> {
+  const merged = await piecesMerged().catch(() => null);
+  if (merged === null || merged !== wantMerged) return false;
+  if (useTutorialStore().getTutorialStep() !== step) return false;
+  practiceStatus('Putting this cell back to its starting state so you can do it again. One moment.', false, true);
+  await endPractice();
+  resetPracticeLog();
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-status').forEach(el => el.remove());
+  return true;
+}
+
 export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); clearHelp(); helpWanted = true; }
 
 function toolIsOn(): boolean {
@@ -1473,8 +1490,17 @@ The pink gems show where to click.`,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
+      stopWatching();
       await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: holdsSlot('a') ? [] : [MERGE_SECOND] });
+      // Back here after merging (a player went back to the start, 2026-11-11:
+      // the yellow piece never came back): put the cells back and take them
+      // again, so the merge can be made once more.
+      if (await freshStartIfDone(true, 3)) {
+        await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: [MERGE_SECOND] })
+          ?? await beginPractice('merge_then_cut', 'start', { slot: 'a' });
+      }
+      if (useTutorialStore().getTutorialStep() !== 3) return;
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       // The second cell too, if it is not held (after an idle release the
       // cells are taken again here, and the second merge must not be lost).
       if (!holdsSlot('b')) await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
