@@ -2554,6 +2554,10 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
     element.addEventListener('action:move-to-annotation', event => {
       event.stopPropagation();
       event.preventDefault();
+      // nge: the row jumped to becomes the selected one, as the ‹ › arrows
+      // do; it used to move the view and leave the old row lit (Ames
+      // 2026-11-10).
+      layer.selectAnnotation(state, annotation.id, true);
       const {layerRank} = chunkTransform;
       const chunkPosition = new Float32Array(layerRank);
       const layerPosition = new Float32Array(layerRank);

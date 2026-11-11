@@ -55,17 +55,18 @@ const START_VIEW = "middleauth+https://global.daf-apis.com/nglstate/api/v1/63121
 /** Advanced Interface's Find Path view, on the soma. */
 /**
  * Find Path on a real merger (Ames 2026-11-10: not the Advanced Interface
- * mission's, "that's repetitive"). Cell 648518346357259348 in the tutorial
- * segmentation holds two nuclei 46 micrometres apart, at 76496, 74272, 601 and
- * 85056, 66720, 381 (the Sandbox nuclei table; the same pair is one cell in
- * pinky_nf_v2 too). Never edited; the chunkedgraph's find_path traces one
- * nucleus to the other through it (checked 2026-11-10). The view is Advanced
- * Interface's Find Path view (nglstate 4781279796002816) on this cell.
+ * mission's, "that's repetitive"; and not the two-nucleus cell first picked
+ * from the nuclei table, which is a capillary). Ames's pick: Sandbox cell
+ * 648518346352484298, two cells joined by one merge in December 2022
+ * (operation 983), somas at 117716, 53443, 1867 and 115213, 45018, 1093. The
+ * join exists only in pinky_nf_v2 (in pinky_training6 the two are separate),
+ * so the view shows the Sandbox; a split of that merge would take the merger
+ * away. find_path traces soma to soma through it (checked 2026-11-10).
  */
-const MERGER_CELL = '648518346357259348';
+const MERGER_CELL = '648518346352484298';
 const FIND_PATH_VIEW = {
   dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] },
-  position: [80776.5, 70496.5, 491.5],
+  position: [116464.5, 49230.5, 1480.5],
   crossSectionScale: 13.47,
   projectionOrientation: [-0.026123709976673126, -0.9990066289901733, -0.010010872967541218, -0.03468627110123634],
   projectionScale: 70000,
@@ -91,11 +92,11 @@ void main() {
       shaderControls: { black: 0.29 }, name: 'img',
     },
     {
-      type: 'segmentation', source: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6', tab: 'segments',
-      selectedAlpha: 0.3, segments: [MERGER_CELL], segmentColors: { [MERGER_CELL]: '#2ec0ff' }, name: 'pinky_training6',
+      type: 'segmentation', source: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_nf_v2', tab: 'segments',
+      selectedAlpha: 0.3, segments: [MERGER_CELL], segmentColors: { [MERGER_CELL]: '#2ec0ff' }, name: 'pinky_nf_v2',
     },
   ],
-  showAxisLines: false, showSlices: false, selectedLayer: { layer: 'pinky_training6' }, layout: '3d',
+  showAxisLines: false, showSlices: false, selectedLayer: { layer: 'pinky_nf_v2' }, layout: '3d',
 };
 
 const viewer = () => (window as any).viewer;
@@ -135,7 +136,7 @@ function openAnnotationPanel() {
  * on once every line is ticked. `setup` runs once the view has settled and
  * returns the tests, so their starting values are read then.
  */
-function watchChecks(setup: () => Record<string, () => boolean>) {
+function watchChecks(setup: () => Record<string, () => boolean>, autoNext = true) {
   waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
@@ -156,7 +157,18 @@ function watchChecks(setup: () => Record<string, () => boolean>) {
       }
       if (done.size === Object.keys(checks).length) {
         clearInterval(timer);
-        setTimeout(() => { if (here()) advance(); }, 1500);
+        if (autoNext) { setTimeout(() => { if (here()) advance(); }, 1500); return; }
+        // A box with a checklist has more to read: it waits for Next (Ames
+        // 2026-11-10: "I didn't have time to finish reading before this one
+        // advanced"), as the Advanced Interface mission does.
+        (window as any).__ngeStepPending = false;
+        const list = document.querySelector('.introductionStepAnchor .nge-tut-checklist');
+        if (list && !document.querySelector('.introductionStepAnchor .nge-tut-found')) {
+          const p = document.createElement('p');
+          p.className = 'nge-tut-found';
+          p.textContent = 'Nice! Press Next when you are ready.';
+          list.after(p);
+        }
       }
     }, 400);
   }, 1200);
@@ -306,7 +318,7 @@ Two ways to jump straight to a gem. Each line ticks itself off:
     onEnter() {
       openAnnotationPanel();
       const used = countPanelUse();
-      watchChecks(() => ({ jump: () => used.jumps >= 1, view: () => used.viewJumps >= 1 }));
+      watchChecks(() => ({ jump: () => used.jumps >= 1, view: () => used.viewJumps >= 1 }), false);
     },
   },
   {
@@ -329,7 +341,7 @@ New marks always go into the layer whose panel is open.`; },
           add: added,
           back: () => added() && before.has(viewer()?.selectedLayer?.layer),
         };
-      });
+      }, false);
     },
   },
   {
@@ -371,7 +383,7 @@ Points come in sizes. Each line ticks itself off:
           point: () => points() > basePoints && annotationLayers().some(ml => markerOf(ml) === 'dot'),
           size: () => annotationLayers().some(ml => baseSize.has(ml) && sizeOf(ml) !== baseSize.get(ml)),
         };
-      });
+      }, false);
     },
   },
   {
