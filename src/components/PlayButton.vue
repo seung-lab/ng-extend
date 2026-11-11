@@ -26,6 +26,8 @@ const picked = ref<PlayKind>('cells');
 const questsOk = computed(() => canQuest());
 const where = computed(() => mappingWhere());
 const busy = ref(false);
+/** The X beside the button hides it until the page is reloaded (Ames 2026-11-10). */
+const hidden = ref(false);
 
 const SUB = 'Pyr teleports you to a neuron.';
 const MAP_LINES = [
@@ -86,7 +88,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 
 <template>
   <Teleport to="body">
-    <button v-if="signedIn && !play.on" class="nge-play-btn" @click="onButton"
+    <div v-if="signedIn && !play.on && !hidden" class="nge-play-dock">
+    <button class="nge-play-btn" @click="onButton"
             title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
       <span class="nge-play-orb" aria-hidden="true">
         <svg class="nge-play-rings" viewBox="0 0 32 32"><circle class="r1" cx="16" cy="16" r="14"/><circle class="r2" cx="16" cy="16" r="11"/></svg>
@@ -94,6 +97,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
       </span>
       <span class="nge-play-word">Play</span>
     </button>
+    <button class="nge-play-x" type="button" title="Hide the Play button until you reload" aria-label="Hide the Play button" @click="hidden = true">&times;</button>
+    </div>
 
     <div v-if="play.choosing" class="nge-play-screen" @click.self="play.choosing = false">
       <section ref="cardEl" class="ng-extend nge-play-card nge-intro--in" role="dialog" aria-label="Choose what to play">
@@ -142,8 +147,12 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 /* The button (Ames 2026-11-10: teal green, below the tabs, "cooler"): a hologram
    key with cut corners, a hairline frame, a light band that crosses it now
    and then, and an orb whose two rings turn around the play triangle. */
+.nge-play-dock { position: fixed; top: 72px; left: 10px; z-index: 60; display: flex; align-items: flex-start; gap: 4px; }
+.nge-play-x { width: 20px; height: 20px; padding: 0; border: 1px solid rgba(62, 236, 190, 0.45); border-radius: 50%;
+  background: rgba(6, 20, 30, 0.85); color: #9fe8d4; font: 400 15px/1 Inter, system-ui, sans-serif; cursor: pointer; display: grid; place-items: center; }
+.nge-play-x:hover { color: #fff; border-color: #3eecbe; background: rgba(12, 60, 56, 0.95); }
 .nge-play-btn {
-  position: fixed; top: 72px; left: 10px; z-index: 60;
+  position: relative;
   display: inline-flex; align-items: center; gap: 10px;
   padding: 6px 22px 6px 8px; border: 0; overflow: hidden; cursor: pointer;
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
@@ -159,7 +168,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
 .nge-play-btn::after { content: ''; position: absolute; top: 0; bottom: 0; left: -70%; width: 45%; pointer-events: none;
   background: linear-gradient(90deg, transparent, rgba(200, 255, 240, 0.5), transparent); transform: skewX(-20deg);
-  animation: nge-play-shine 4s ease-in-out infinite; }
+}
+.nge-play-btn:hover::after { animation: nge-play-shine 1.2s ease-in-out; }
 @keyframes nge-play-shine { 0%, 60% { left: -70%; } 100% { left: 140%; } }
 .nge-play-btn:hover { filter: drop-shadow(0 0 18px rgba(62, 236, 190, 0.8)); transform: translateY(-1px); }
 .nge-play-btn:active { transform: scale(0.97); }
@@ -167,13 +177,14 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-orb { position: relative; width: 32px; height: 32px; flex: none; display: grid; place-items: center; }
 .nge-play-orb::before { content: ''; position: absolute; inset: 7px; border-radius: 50%;
   background: radial-gradient(circle at 40% 35%, #e9fffa 0%, #5ff0c8 35%, #1aa58c 70%, rgba(20, 90, 120, 0.9) 100%);
-  box-shadow: 0 0 10px rgba(62, 236, 190, 0.9); animation: nge-play-glow 1.8s ease-in-out infinite; }
+  box-shadow: 0 0 10px rgba(62, 236, 190, 0.9); }
 @keyframes nge-play-glow { 50% { box-shadow: 0 0 18px rgba(120, 255, 220, 1), 0 0 30px rgba(62, 236, 190, 0.5); } }
 .nge-play-rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.nge-play-rings .r1 { fill: none; stroke: #3eecbe; stroke-width: 1.4; stroke-dasharray: 14 6 3 6; transform-origin: 16px 16px; animation: nge-play-spin 6s linear infinite; filter: drop-shadow(0 0 2px #3eecbe); }
-.nge-play-rings .r2 { fill: none; stroke: rgba(126, 224, 255, 0.8); stroke-width: 0.9; stroke-dasharray: 2 3; transform-origin: 16px 16px; animation: nge-play-spin 9s linear infinite reverse; }
+.nge-play-rings .r1 { fill: none; stroke: #3eecbe; stroke-width: 1.4; stroke-dasharray: 14 6 3 6; transform-origin: 16px 16px; filter: drop-shadow(0 0 2px #3eecbe); }
+.nge-play-rings .r2 { fill: none; stroke: rgba(126, 224, 255, 0.8); stroke-width: 0.9; stroke-dasharray: 2 3; transform-origin: 16px 16px; }
 @keyframes nge-play-spin { to { transform: rotate(360deg); } }
-.nge-play-btn:hover .r1 { animation-duration: 1.6s; }
+.nge-play-btn:hover .r1 { animation: nge-play-spin 1.6s linear infinite; }
+.nge-play-btn:hover .r2 { animation: nge-play-spin 3s linear infinite reverse; }
 .nge-play-icon { position: relative; color: #04221c; margin-left: 1px; }
 .nge-play-word { position: relative; }
 @media (prefers-reduced-motion: reduce) {
