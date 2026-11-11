@@ -35,6 +35,7 @@ import silverYearTrophy from '../../static/images/champions/silver-year-trophy.p
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
 import { isAwardTitle } from '../util/award_title';
+import { openTextForEdit, revertTextEdit } from '../text_edit_links';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
@@ -495,6 +496,23 @@ async function onDetailBodyClick(e: MouseEvent) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab } }));
     closeDetail();
     emit('hide');
+    return;
+  }
+  // An admin's edit of an in-game text (functions/edit-notify.js): put the old text back, or open it to edit.
+  const rv = a?.getAttribute('href')?.match(/^#nge-text-revert=(\d{1,12})$/);
+  if (rv) {
+    e.preventDefault();
+    helpSolvedNote.value = 'Checking that edit...';
+    const r = await revertTextEdit(Number(rv[1]));
+    helpSolvedNote.value = r.message;
+    return;
+  }
+  const op = a?.getAttribute('href')?.match(/^#nge-text-open=([a-z0-9_.-]{1,64})$/);
+  if (op) {
+    e.preventDefault();
+    closeDetail();
+    emit('hide');
+    openTextForEdit(op[1]);
     return;
   }
   if (a?.getAttribute('href') === '#nge-tutorial-edits') {

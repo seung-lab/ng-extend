@@ -476,11 +476,9 @@ function onlineDatasetName(tag: string): string {
   return d?.shortLabel === 'EyeWire II' ? 'Retina' : d?.shortLabel || '';
 }
 const onlineNow = computed(() => {
-  void chatStore.onlineCount;          // the store's tick: people go stale after 90 s
-  const cutoff = Date.now() - 90_000;
-  return Object.entries(chatStore.online)
-    .filter(([, p]) => p.lastSeen >= cutoff)
-    .map(([id, p]) => ({ id, name: p.name, where: p.dataset ? onlineDatasetName(p.dataset) : '' }))
+  // The same people the "N online" count counts (store.ts onlinePeople).
+  return chatStore.onlinePeople
+    .map(p => ({ id: p.id, name: p.name, where: p.dataset ? onlineDatasetName(p.dataset) : '' }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 });
 function openOnlineProfile(id: string) {
@@ -2188,6 +2186,9 @@ function toggleCollapse() {
 .nge-chat-messages {
   height: 100%;
   overflow-y: auto;
+  /* Never a sideways bar (Ames 2026-11-10): a wide line or an open reaction
+     picker wraps or is clipped instead. */
+  overflow-x: hidden;
   display: flex;
   flex-direction: column-reverse;
   /* No space on the left: a message's own indent is enough, and the bar on
@@ -2363,6 +2364,7 @@ function toggleCollapse() {
 .nge-chat-msg-text {
   color: #b0b8c8;
   white-space: pre-wrap;   /* a message keeps the line breaks it was typed with */
+  overflow-wrap: anywhere; /* a long word or ID wraps instead of widening the chat */
 }
 
 .nge-chat-link {

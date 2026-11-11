@@ -11,6 +11,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
+import { onTextEditAsked } from '../text_edit_links';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
@@ -135,6 +136,10 @@ function startTutorial() {
 /** The Instructions box with the lab's steps (Ames 2026-10-13), in a box of
  *  its own with room for a picture since 2026-11-06 (QuestInstructions). */
 const showHelp = ref(false);
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts).
+let stopTextEdit: (() => void) | null = null;
+onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'quest.retina_cilia.steps') showHelp.value = true; }); });
+onUnmounted(() => stopTextEdit?.());
 /** The first time a player opens the tab, the Instructions button is lit
  *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
  *  browser: it plays one time and never loops. */

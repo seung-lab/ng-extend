@@ -7172,16 +7172,22 @@ export const useChatStore = defineStore('chat', () => {
   // (supabase-chat-presence-and-link-screenshots.sql). So a join notice can't
   // be forged, unlike the old open broadcast the security fix removed.
   // A hidden tab's heartbeat can come up to about 2 minutes apart.
-  const ONLINE_MS = 150_000;
+  // Online = seen in the last 5 minutes (Ames 2026-11-10: "count ppl online at
+  // 5 min intervals"), so a slow or background tab does not drop off the list.
+  const ONLINE_MS = 5 * 60_000;
   const HEARTBEAT_MS = 60_000;
-  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string }>>({});
+  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string; fromChat?: boolean }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
   const presenceTick = ref(0);
-  const onlineCount = computed(() => {
+  /** Who is online now. The count and the list both read this, so they
+   *  always agree (Ames 2026-11-10: "says 5 but there are 4 in list"; the
+   *  list used a shorter cutoff than the count). */
+  const onlinePeople = computed(() => {
     void presenceTick.value; // re-evaluate on the tick; Date.now() is not reactive
     const cutoff = Date.now() - ONLINE_MS;
-    return Object.values(online.value).filter(p => p.lastSeen >= cutoff).length;
+    return Object.entries(online.value).filter(([, p]) => p.lastSeen >= cutoff).map(([id, p]) => ({ id, ...p }));
   });
+  const onlineCount = computed(() => onlinePeople.value.length);
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let staleTimer: ReturnType<typeof setInterval> | null = null;
   // One tab per browser says the player is here and reads who else is
@@ -7199,7 +7205,11 @@ export const useChatStore = defineStore('chat', () => {
       });
     }
     if (useProofreadingBackendStore().userId) presenceLeader.join();
-    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader()) void heartbeat(); }, HEARTBEAT_MS);
+    // The leader beats for the browser, and so does any tab being looked at:
+    // a leader tab left asleep in the background otherwise went quiet and
+    // took the player off the list while they chatted in another tab
+    // (Ames 2026-11-10: Nseraf answered in chat but was not shown online).
+    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader() || !document.hidden) void heartbeat(); }, HEARTBEAT_MS);
     if (!staleTimer) staleTimer = setInterval(() => {
       presenceTick.value++;
       if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
@@ -7390,8 +7400,12 @@ export const useChatStore = defineStore('chat', () => {
       ({ data, error } = await supabase.from('chat_presence').select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500));
     }
     if (error || !data) return;
-    const next: Record<string, { name: string; lastSeen: number; dataset?: string }> = {};
+    const next: Record<string, { name: string; lastSeen: number; dataset?: string; fromChat?: boolean }> = {};
     for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime(), ...(r.dataset ? { dataset: r.dataset } : {}) };
+    // Someone who wrote in chat a moment ago stays listed even if their
+    // heartbeat is late (see the chat_messages listener).
+    const cutoff = Date.now() - ONLINE_MS;
+    for (const [id, p] of Object.entries(online.value)) if (!next[id] && p.lastSeen >= cutoff && p.fromChat) next[id] = p;
     online.value = next;
     if (share) shareResult('chat-online', { user: useProofreadingBackendStore().userId, online: next });
   }
@@ -7793,6 +7807,11 @@ export const useChatStore = defineStore('chat', () => {
       if (!row.user_id && !(row.rank === 'bot' && row.name === NURRO_NAME)) return;
       notePinRow(row);
       const date = new Date(row.created_at);
+      // Whoever just wrote is here, whatever their heartbeat says.
+      if (row.user_id && row.name && row.rank !== 'bot') {
+        const was = online.value[row.user_id];
+        online.value[row.user_id] = { ...was, name: row.name, lastSeen: Math.max(was?.lastSeen ?? 0, date.getTime()), fromChat: true };
+      }
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text,row.dataset), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null, replyTo:row.reply_to ?? null});
@@ -7897,6 +7916,7 @@ export const useChatStore = defineStore('chat', () => {
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
     const row: Record<string, any> = { name, rank, text, dataset: currentDatasetName(), notification_id: notificationId };
+    void heartbeat(); // writing in chat means you are here
     const post = (r: Record<string, any>) => supabase.from('chat_messages').insert(r);
     // With no live connection the message will not come back by itself: fetch it.
     const shown = () => { if (polling.value) void loadMissed(); };
@@ -8003,7 +8023,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };

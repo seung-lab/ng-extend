@@ -11,6 +11,7 @@
  * server (functions/hunts.js).
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { onTextEditAsked } from '../text_edit_links';
 import {
   huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen, reportPlace, crosshairXyz, clockParts,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
@@ -227,6 +228,10 @@ const clock = computed(() => {
 const howChoice = ref<boolean | null>(null);
 const howOpen = computed(() => howChoice.value ?? !opened.value);
 function toggleHow() { howChoice.value = !howOpen.value; }
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts): the instructions unfold.
+let stopTextEdit: (() => void) | null = null;
+onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'howto.hunt') { setMini(false); howChoice.value = true; } }); });
+onUnmounted(() => stopTextEdit?.());
 /** Ames's own five lines (2026-10-21); admins can change them in the game (site text howto.hunt). */
 const HUNT_STEPS = [
   'Ctrl + Click to drop a gem on a merger or missing extension',

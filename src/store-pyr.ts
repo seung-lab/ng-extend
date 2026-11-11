@@ -250,6 +250,8 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
   const hydrating: Ref<boolean> = ref(false);
+  // Whose saved progress was asked for and answered, loaded or failed.
+  const hydrateSettledFor: Ref<string | null> = ref(null);
 
   function getTutorialStep() {
     if (activeTutorial.value === 1) return tutorialStep1.value;
@@ -320,6 +322,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
       console.warn('[tutorial] hydrate failed:', e);
     } finally {
       hydrating.value = false;
+      hydrateSettledFor.value = userId;
     }
   }
 
@@ -420,5 +423,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep11,
     tutorialStep14,
     hydrateFromSupabase,
+    // Whose saved progress has loaded or failed to (tutorial_box_jump.ts waits for it).
+    hydrateSettledFor,
   };
 });

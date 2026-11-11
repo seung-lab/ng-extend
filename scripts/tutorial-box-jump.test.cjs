@@ -12,7 +12,7 @@ const json = (b, status = 200) => ({ status, contentType: 'application/json', bo
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail !== undefined ? ' : ' + JSON.stringify(detail) : '')); };
 
-async function visit(browser, query, admin) {
+async function visit(browser, query, admin, saved) {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
   await context.addInitScript(() => {
     const apps = [];
@@ -24,7 +24,18 @@ async function visit(browser, query, admin) {
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
   await context.route(/minnie\.microns-daf\.com/, r => r.abort());
   await context.route(/sticky_auth\/api\/v1\/user\/me|\/auth\/api\/v1\/user\/(me|cache)/, r => r.fulfill(json({ id: 1, email: 't@example.org', name: 'Test Player' })));
-  await context.route(/cloudfunctions\.net|run\.app/, r => r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: '[]' })));
+  await context.route(/cloudfunctions\.net|run\.app/, async r => {
+    // Reads of "users" go through the server (src/community_fetch.ts): the
+    // account's saved tutorial place, arriving late (Ames 2026-11-10: her
+    // saved place, tutorial 1 with Advanced Interface finished, landed after
+    // the jump and hid the box).
+    if (saved && /tutorial_active/.test(decodeURIComponent(r.request().postData() || '') + r.request().url())) {
+      saved.hit = (saved.hit || 0) + 1;
+      await new Promise(res => setTimeout(res, saved.delay));
+      return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(saved.row) }));
+    }
+    return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: '[]' }));
+  });
   await context.route(/supabase\.co/, r => r.fulfill(json([])));
   const page = await context.newPage();
   const errors = [];
@@ -36,16 +47,17 @@ async function visit(browser, query, admin) {
     const login = pinia._s.get('login');
     if (login && Array.isArray(login.sessions) && login.sessions.length === 0) login.sessions.push({ name: 'Test Player', email: 't@example.org', hostname: 'test' });
     const pb = pinia._s.get('proofreadingBackend');
-    if (pb) { try { pb.userId = 'test-user'; pb.userName = 'Test Player'; pb.isAdmin = isAdmin; } catch (e) {} }
+    if (pb) { const set = () => { try { pb.userId = "test-user"; pb.userName = "Test Player"; pb.isAdmin = isAdmin; } catch (e) {} }; set(); setInterval(set, 100); }
     const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
   }, [HIDE_CSS, admin]);
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(saved ? saved.delay + 4000 : 5000);
   const s = await page.evaluate(() => {
     const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia;
     const t = pinia._s.get('tutorial');
-    return { tutorial: t.activeTutorial, step: t.getTutorialStep(), url: location.search, box: (document.querySelector('.introductionStepAnchor .chip')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) || null, chips: document.querySelectorAll('.introductionStepAnchor .chip').length, anchors: document.querySelectorAll('.introductionStepAnchor').length, resume: !!document.querySelector('.nge-tut-resume') };
+    return { settled: t.hydrateSettledFor, uid: pinia._s.get("proofreadingBackend").userId, admin: pinia._s.get("proofreadingBackend").isAdmin, tutorial: t.activeTutorial, step: t.getTutorialStep(), url: location.search, box: (document.querySelector('.introductionStepAnchor .chip')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) || null, chips: document.querySelectorAll('.introductionStepAnchor .chip').length, anchors: document.querySelectorAll('.introductionStepAnchor').length, resume: !!document.querySelector('.nge-tut-resume') };
   });
   await context.close();
+  if (saved) s.savedLoads = saved.hit || 0;
   return { s, errors };
 }
 
@@ -57,6 +69,9 @@ async function visit(browser, query, admin) {
     check('that box shows (Part 2, box 1), with no "partway through" question', /Part 2 of 4 .* 01 \/ 10/.test(r.s.box || '') && !r.s.resume, r.s);
     check('the link is used once: it leaves the address', !/tutorialBox/.test(r.s.url), r.s.url);
     check('no page errors (admin)', r.errors.length === 0, r.errors);
+    // An admin whose saved place loads late, after where the jump used to fire.
+    r = await visit(browser, '?tutorialBox=2.5', true, { delay: 4000, row: { tutorial_active: 1, tutorial_1_step: 21, tutorial_2_step: 33, tutorial_3_step: 17 } });
+    check('a saved place arriving late does not hide the box', r.s.tutorial === 2 && r.s.step === 5 && /Part 2 of 4/.test(r.s.box || ''), r.s);
     // Cut and Merge boxes wait for a practice cell, which this offline test
     // cannot load: the jump lands, the box waits (as it does for players).
     r = await visit(browser, '?tutorialBox=5.3', true);

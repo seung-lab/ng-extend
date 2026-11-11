@@ -2539,6 +2539,15 @@ exports.ewAccessRequest = onRequest(
         // Beta access requests reach every admin (Ames 2026-10-24).
         notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
+        // Tags in an Access page note (access-request.js tagFromNote).
+        people: () => require("./todos").restDb(sb).people(),
+        notifyPeople: ({ ids, title, body }) => note(ids, title, body),
+        slackPing: async (people, text, by) => {
+          const { slackIdOf } = require("./todos");
+          const pings = people.map(p => { const s = slackIdOf(p); return s ? `<@${s}>` : `@${p.name}`; }).join(" ");
+          const r = await slackPost(slackBotToken.value().trim(), "chat.postMessage", { channel: REVIEW_CHANNEL_ID, text: `💬 ${pings} ${by} ${text}`, unfurl_links: false }).catch(e => ({ ok: false, error: e.message }));
+          if (!r.ok) console.warn("[access note] slack failed:", r.error);
+        },
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
         // A player's CAVE access, read with the admin token: the datasets they
         // can edit or view, and their groups (Ames 2026-10-29: "we need to see
@@ -2771,8 +2780,11 @@ exports.ewCommunityData = onRequest(
         try {
           const keys = require("./edit-notify").editedKeys(plan.method, plan.query, plan.body).slice(0, 5);
           editsBefore = {};
+          const {liveKeyOf, isDraft} = require("./edit-notify");
           for (const k of keys) {
-            const rows = await sb("site_texts?key=eq."+encodeURIComponent(k)+"&select=body&limit=1");
+            // A suggestion's note shows the text players see now, so read that key for a draft.
+            const read = isDraft(k) ? liveKeyOf(k) : k;
+            const rows = read ? await sb("site_texts?key=eq."+encodeURIComponent(read)+"&select=body&limit=1") : [];
             editsBefore[k] = rows.length ? String(rows[0].body ?? "") : null;
           }
         } catch (e) { editsBefore = null; console.warn("[edit-notify] before", e.message); }
@@ -2789,13 +2801,25 @@ exports.ewCommunityData = onRequest(
       // The edit went through: tell Ames, before and after (Ames 2026-11-06).
       if (upstream.ok && editsBefore) {
         try {
-          const {planEditNote, OWNER_EMAILS} = require("./edit-notify");
+          const {planEditNote, isDraft, OWNER_EMAILS} = require("./edit-notify");
           const rowsAfter = plan.method === "DELETE" ? [] : (Array.isArray(plan.body) ? plan.body : [plan.body]);
-          const notes = Object.keys(editsBefore).map((k) => {
+          const editor = { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" };
+          const notes = [];
+          for (const k of Object.keys(editsBefore)) {
             const row = rowsAfter.find((r) => r && r.key === k);
             const after = plan.method === "DELETE" ? null : row ? String(row.body ?? "") : (plan.body && typeof plan.body.body === "string" ? plan.body.body : null);
-            return planEditNote({ key: k, before: editsBefore[k], after, editor: { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" } });
-          }).filter(Boolean);
+            // A suggestion waiting for approval sends no note here (planApproveNote is ready, not switched on; Ames 2026-11-10).
+            if (isDraft(k)) continue;
+            if (!planEditNote({ key: k, before: editsBefore[k], after, editor })) continue;
+            // Kept so the note's "Put back the old text" can undo exactly this edit (supabase-site-text-edits.sql).
+            let editId = null;
+            try {
+              const saved = await sb("site_text_edits", { method: "POST", headers: { Prefer: "return=representation" },
+                body: JSON.stringify({ key: k, old_body: editsBefore[k], new_body: after, editor_name: editor.name, editor_email: editor.email || null }) });
+              editId = Number(saved && saved[0] && saved[0].id) || null;
+            } catch (e) { console.warn("[edit-notify] history", e.message); }
+            notes.push(planEditNote({ key: k, before: editsBefore[k], after, editor, editId }));
+          }
           if (notes.length) {
             const owners = await sb("users?select=id&middleauth_email=in.("+encodeURIComponent(OWNER_EMAILS.map((e) => `"${e}"`).join(","))+")");
             const out = [];
@@ -3104,8 +3128,18 @@ exports.ewMentor = onRequest(
 //   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck,functions:ewQuestReviewDigest --project eyewire-ii-e4d52
 const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
 const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
+// One player's CAVE permissions, read with Ames's admin token, for the Pyr
+// users sheet's Can edit column (Celia 2026-11-10). null when CAVE can't say.
+const ewCavePerms = async (caveId) => {
+  if (!/^\d{1,12}$/.test(String(caveId))) return null;
+  try {
+    const r = await fetch(`https://global.daf-apis.com/auth/api/v1/user/${caveId}/permissions`, {
+      headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+    return r.ok ? r.json() : null;
+  } catch (e) { return null; }
+};
 exports.ewQuestReview = onRequest(
-  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 120 },
+  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 300 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -3135,7 +3169,7 @@ exports.ewQuestReview = onRequest(
       // Our own Pyr users sheet, now (the Access page's button; it also runs every hour).
       if (action === "usersSheet") {
         if (!isAdmin) throw ewErr(403, "Admins only");
-        const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore });
+        const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore, cavePerms: ewCavePerms });
         console.info("[ewQuestReview] users sheet by", who.email, out.people);
         return res.json({ ok: true, data: out });
       }
@@ -3158,9 +3192,9 @@ exports.ewQuestReview = onRequest(
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 // Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
 exports.ewUsersSheet = onSchedule(
-  { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
+  { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 300, retryCount: 0 },
   async () => {
-    const out = await require("./users-sheet").syncUsersSheet({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()), marks: betaMarkStore });
+    const out = await require("./users-sheet").syncUsersSheet({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()), marks: betaMarkStore, cavePerms: ewCavePerms });
     console.info("[ewUsersSheet]", out.people, "people");
   }
 );

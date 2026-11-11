@@ -4,7 +4,9 @@
 // Run:    node scripts/access-hub.test.cjs [shots dir]
 // Checks: each person sits in the column of the furthest step they reached,
 // with full name and email; a waiting dataset request takes its own column;
-// emails from a pasted list fold away; a long wait is flagged; search finds
+// emails from a pasted list fold away; nothing is outlined as late;
+// requests waiting on us sit above the steps; a dataset request shows the
+// player's Proofreading Test tries; search finds
 // an EyeWire username; the side panel shows the request, adds a note and
 // lets someone in (Pilot testers, the bell, the email); removed requests
 // fold away; the community and tutorial boxes read their views; a phone
@@ -42,7 +44,7 @@ const PEOPLE = [
   { ...base, email: 'nik@example.org', user_id: UID(13), name: 'Nik Serafin', username: 'nseraf', pilot_enabled: true, let_in_at: ago(30), joined_at: ago(29), tutorial_at: ago(29), tutorials: 3, first_edit_at: ago(29), last_edit_at: ago(0.1), edits: 4210, last_dataset: 'stroeh_mouse_retina',
     edits_30d: 1880, cells: 95, cells_30d: 41, chats: 900, chats_30d: 212, help_asked: 4, help_answered_for: 3, help_asked_30d: 1, help_given: 27, help_given_30d: 6 },
   // Editing, and waiting on a dataset request: the dataset column.
-  { ...base, email: 'lou@example.org', user_id: UID(14), name: 'Lou Baker', pilot_enabled: true, let_in_at: ago(20), joined_at: ago(19), tutorial_at: ago(19), tutorials: 2, first_edit_at: ago(18), last_edit_at: ago(1), edits: 300, last_dataset: 'pinky_nf_v2' },
+  { ...base, email: 'lou@example.org', user_id: UID(14), name: 'Lou Baker', username: 'lbaker', pilot_enabled: true, let_in_at: ago(20), joined_at: ago(19), tutorial_at: ago(19), tutorials: 2, first_edit_at: ago(18), last_edit_at: ago(1), edits: 300, last_dataset: 'pinky_nf_v2' },
 ];
 // An admin, never asked and not on Pilot testers: the Admin step.
 PEOPLE.push({ ...base, email: 'boss@example.org', user_id: UID(15), name: 'Ames Admin', pilot_enabled: false, joined_at: ago(200), tutorial_at: ago(199), tutorials: 6, first_edit_at: ago(198), last_edit_at: ago(2), edits: 782, is_admin: true });
@@ -56,6 +58,10 @@ const DS = [{ id: UID(21), userId: UID(14), name: 'Lou Baker', dataset: 'pni_mec
   access: null, history: null, caveGroup: 'MEC_Edit', mark: null, markedAt: null, markedBy: '' },
   { id: UID(22), userId: UID(13), name: 'Nik Serafin', dataset: 'pni_mec', label: 'Medial Entorhinal Cortex', cave: 'pni_mec', email: 'nik@example.org', note: '', at: ago(10),
   access: null, history: null, caveGroup: 'MEC_Edit', mark: 'granted', markedAt: ago(9), markedBy: 'amy' }];
+// Proofreading Test tries (test.tries): Lou passed on the second go; Nik's try is not Lou's.
+const TRIES = [{ id: 3, test_id: 't', started_at: ago(0.7), submitted_at: ago(0.68), outcome: 'pass', found: 9, errors: 10, damaged: 0, percent: 88, timed_out: false, error: null, ends_total: 4, ends_found: 4, username: 'lbaker', cave_user_id: 7 },
+  { id: 2, test_id: 't', started_at: ago(3), submitted_at: ago(2.9), outcome: 'fail', found: 4, errors: 10, damaged: 2, percent: 41, timed_out: true, error: null, ends_total: 4, ends_found: 1, username: 'lbaker', cave_user_id: 7 },
+  { id: 1, test_id: 't', started_at: ago(4), submitted_at: null, outcome: 'pass', found: 10, errors: 10, damaged: 0, percent: 100, timed_out: false, error: null, username: 'nseraf', cave_user_id: 8 }];
 const ACTIVITY = [{ dataset: 'stroeh_mouse_retina', edits: 41347, editors: 16, cells: 1800, finishers: 13, chats: 2032, chatters: 14 },
   { dataset: 'pni_mec', edits: 5642, editors: 10, cells: 5, finishers: 2, chats: 743, chatters: 11 },
   { dataset: 'pinky_nf_v2', edits: 2320, editors: 29, cells: 33, finishers: 9, chats: 1347, chatters: 18 },
@@ -89,6 +95,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.betaMarks') return r.fulfill(ok(marks));
       if (a === 'access.betaMark') { if (input.mark === 'waiting') delete marks[input.email]; else marks = { ...marks, [input.email]: { mark: input.mark, at: new Date().toISOString() } }; return r.fulfill(ok(marks)); }
       if (a === 'access.datasetList') return r.fulfill(ok(DS));
+      if (a === 'test.tries') return r.fulfill(ok({ kept: true, test: null, key: null, line: [], tries: TRIES }));
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
@@ -123,7 +130,9 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     let b = await board();
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
-    check('five columns in order, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Let in|Signed in|Tutorial done|Asked for a dataset', b.map(c => c.title));
+    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
+    const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.trim()));
+    check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
     const lb = () => page.$$eval('.ah-lb-row', els => els.map(e => ({ rank: e.querySelector('.ah-lb-rank').textContent.trim(), who: e.querySelector('.ah-lb-who b').textContent.trim(), v: e.querySelector('.ah-lb-v').textContent.trim() })));
     await page.screenshot({ path: path.join(OUT, 'access-hub-lb.png'), fullPage: true });
@@ -139,13 +148,17 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     await page.click('.ah-lb-row:has-text("Lou Baker")');
     await page.waitForSelector('.ah-panel h2', { timeout: 3000 }).catch(() => {});
     check('a leaderboard row opens their panel', (await page.textContent('.ah-panel h2').catch(() => '')) === 'Lou Baker');
+    const tries = await page.$$eval('.ah-tries li', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('their dataset request shows their Proofreading Test tries, newest first, only theirs', tries.length === 2 && /^Passed \(88%\) · 9 of 10 mistakes fixed · 4 of 4 ends marked · nothing damaged/.test(tries[0]) && /^Did not pass \(41%\).*2 real branches cut off/.test(tries[1]), tries);
+    await page.screenshot({ path: path.join(OUT, 'access-hub-tries.png'), fullPage: false });
     await page.click('.ah-close');
     await page.click('.ah-lb-col');
     b = await board();
     check('the Editing column comes back on request', b.map(c => c.title).pop() === 'Editing', b.map(c => c.title));
     check('Asked: the two waiting, removed left out', col(b, 'Asked').n === '2' && col(b, 'Asked').cards.map(c => c.name).join(',') === 'Ken Mierow,Rae Lin', col(b, 'Asked'));
     check('cards show the full name and the email', col(b, 'Asked').cards[0].email === 'ken@example.org', col(b, 'Asked').cards[0]);
-    check('a long wait is flagged, a short one is not', col(b, 'Asked').cards[0].late && !col(b, 'Asked').cards[1].late);
+    check('no card is outlined as late', b.every(c => c.cards.every(k => !k.late)));
+    check('a dataset card names their latest test result', /Test: passed/.test(col(b, 'Asked for a dataset').cards[0].text), col(b, 'Asked for a dataset').cards[0]);
     check('on the list and the EyeWire name show as tags', /On the list/.test(col(b, 'Asked').cards[1].text) && /EyeWire kmierow/.test(col(b, 'Asked').cards[0].text));
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
@@ -227,6 +240,14 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     const said = await page.textContent('.ah-sheet-said').catch(() => '');
     check('Update the sheet now asks the server and says how many', /Sheet updated: 14 people/.test(said) && calls.some(c => c.action === 'usersSheet'), said);
     check('the sheet is linked', await page.$eval('.ah-head a[href*="10VW3cSrtK8y0pLlivJnQIuMAp65_B-eDJAVb3DbpKBs"]', e => e.textContent.trim()).catch(() => '') === 'Pyr Users sheet');
+
+    // A tag's link opens that person, even one folded away (Ames 2026-11-10).
+    const p2 = await context.newPage(); const e2 = []; p2.on('pageerror', e => e2.push(String(e).slice(0, 300))); p2.on('console', m => { if (m.type() === 'error') e2.push('console: ' + m.text().slice(0, 200)); });
+    await p2.goto(`http://localhost:${PORT}/?triage=access&person=boss%40example.org`, { waitUntil: 'load' });
+    await p2.waitForSelector('.ah-panel h2', { timeout: 60000 }).catch(() => {});
+    check('a tag link opens that person, and leaves the address', (await p2.textContent('.ah-panel h2').catch(() => '')) === 'Ames Admin' && !/person=/.test(p2.url()), [p2.url(), e2.slice(0, 4), (await p2.evaluate(() => document.body.innerText).catch(() => '')).replace(/\s+/g, ' ').slice(0, 300)]);
+    check('the note box says how to tag', /@Celia or @Marissa/.test(await p2.getAttribute('.ah-panel textarea', 'placeholder').catch(() => '') || ''));
+    await p2.close();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
