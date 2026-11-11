@@ -468,11 +468,7 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'The cilium centerline',
     position: OVER_3D,
     width: BOX_W,
-    html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip.
-
-<p>To draw one: select its layer, hold <strong>CTRL</strong> and click point by point along the cilium, then press <kbd>ENTER</kbd> to finish. <kbd>BACKSPACE</kbd> takes back the last point and <kbd>ESC</kbd> cancels the line.</p>
-
-<p>The line tool is already on for this layer: in the layer panel on the right, the zigzag line button is lit. If CTRL+click ever drops single dots instead of a line, click that button first.</p>`,
+    html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip. You'll draw one yourself in a moment.`,
     onEnter() { POINT.centerline(); },
   },
   {
@@ -511,7 +507,9 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'Trace the cilium',
     position: OVER_3D,
     width: BOX_W,
-    html: `First the cilium, the easiest part to find. The ${CL} layer is selected and its line tool is on (the lit zigzag button in the layer panel on the right; click it if it is not lit). Hold <strong>CTRL</strong> and click along the middle of the cilium, from its base to its tip, then press <kbd>ENTER</kbd>.
+    html: `First the cilium, the easiest part to find. The ${CL} layer is selected. Hold <strong>CTRL</strong> and click point by point along the middle of the cilium, from its base to its tip, then press <kbd>ENTER</kbd> to finish. <kbd>BACKSPACE</kbd> takes back the last point and <kbd>ESC</kbd> cancels the line.
+
+<p>The line tool is already on for this layer: in the layer panel on the right, the zigzag line button is lit. If CTRL+click ever drops single dots instead of a line, click that button first.</p>
 
 <p>The cilium may run through several slices: scroll as you go and keep clicking.</p>
 <div data-nge-cq-feedback></div>`,
