@@ -10,7 +10,7 @@ import { useUserPreferencesStore } from "./store";
  *  selects and a right click hides; Classic layer tabs in Settings swaps them
  *  (as tutorial-3.ts selectClick). The steps used to say it the old way round
  *  (Ames 2026-10-18). */
-const classicLayers = () => { try { return useUserPreferencesStore().prefs.classicLayerClicks === true; } catch { return false; } };
+export const classicLayers = () => { try { return useUserPreferencesStore().prefs.classicLayerClicks === true; } catch { return false; } };
 export const SELECT_CLICK = () => (classicLayers() ? 'RIGHT-CLICK' : 'CLICK');
 const HIDE_CLICK = () => (classicLayers() ? 'CLICK' : 'RIGHT-CLICK');
 /** A copy button for coordinates (TutorialStep.vue onHtmlClick). */

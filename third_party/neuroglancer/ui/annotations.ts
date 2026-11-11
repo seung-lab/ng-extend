@@ -679,7 +679,22 @@ export class AnnotationLayerView extends Tab {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'nge-ann-step';
-      b.textContent = glyph;
+      // A drawn chevron, not the ‹ › character: a text glyph sits wherever
+      // its font puts it, which was off center (Ames 2026-11-10).
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 12 12');
+      svg.setAttribute('width', '12');
+      svg.setAttribute('height', '12');
+      svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', glyph === '‹' ? 'M7.5 2.5 L4 6 L7.5 9.5' : 'M4.5 2.5 L8 6 L4.5 9.5');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'currentColor');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(path);
+      b.appendChild(svg);
       b.title = title;
       b.setAttribute('aria-label', title);
       b.addEventListener('mousedown', event => event.stopPropagation());
