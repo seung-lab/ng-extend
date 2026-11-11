@@ -1620,7 +1620,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <li class="nge-menu-heading" @click.stop>Quests</li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="startTutorial(14); closeHamburger()">
-            <span class="nge-menu-num nge-menu-num--icon">🔬</span><span>Cilia Quest</span>
+            <span class="nge-menu-num nge-menu-num--icon">🔬</span><span>Cilia Quest Training</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>

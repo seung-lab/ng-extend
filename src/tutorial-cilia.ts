@@ -190,7 +190,7 @@ export async function awardCiliaAchievement() {
     const { data, error } = await supabase.from('tutorial_completions')
       .select('tutorial').eq('user_id', uid).eq('tutorial', CILIA_TUTORIAL).limit(1);
     if (error || !data?.length) return;
-    await awardSpecialOnce({ slug: CILIA_ACHIEVEMENT, reason: 'Finished the Cilia Quest tutorial', earnedBy: 'finished the Cilia Quest tutorial' });
+    await awardSpecialOnce({ slug: CILIA_ACHIEVEMENT, reason: 'Finished Cilia Quest Training', earnedBy: 'finished Cilia Quest Training' });
   } catch { /* tried again at the next sign in */ }
 }
 // Also from the account's record, so players who finished before the
@@ -443,7 +443,9 @@ export const steps: Step[] = [
     width: '620px',
     text: `Almost every cell has one **primary cilium**, a tiny antenna that senses the chemistry around it. In a Cilia Quest you find the cilium on a starburst cell in the retina and mark it for the lab.
 
-First you'll look at a cell the lab has already marked, then you'll mark it yourself and we'll check your work. It takes about five minutes.`,
+This is **Cilia Quest Training**. First you'll look at a cell the lab has already marked, then you'll mark it yourself and we'll check your work. It takes about five minutes.
+
+Already know how? Close this box with the ✕. You can come back any time with the **Training** button in the Quests tab.`,
     nextLabel: 'Start',
     onEnter: leaveQuestScreen,
   },
