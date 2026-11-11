@@ -84,3 +84,9 @@ test('due after 6 pm: nothing that evening, the ping comes at 9 am the next week
   assert.equal(await runF('2026-11-07T10:00:00-05:00'), 0, 'Saturday');
   assert.equal(await runF('2026-11-09T09:05:00-05:00'), 1, 'Monday 9:05 am');
 });
+test('a reply under another name of the same admin stops it (Ames 2026-11-10)', () => {
+  const tag = { kind: 'todo', at: Date.parse('2026-11-09T19:15:57Z') };
+  const card = { list: 'doing', comments: [{ by: 'Amy R. Sterling', at: '2026-11-09T20:22:36Z' }] };
+  assert.equal(answered(tag, 'Amy Sterling', card, 'U02FH1DRC'), true);
+  assert.equal(answered(tag, 'Celia D', card, 'U033NHWDE'), false, 'someone else replying does not count');
+});
