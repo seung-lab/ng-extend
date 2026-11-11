@@ -3153,13 +3153,13 @@ exports.ewQuestReview = onRequest(
         const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
         return res.json({ ok: true, waiting: out.checked });
       }
-      if (!["check", "get", "reply", "digest", "usersSheet"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      if (!["check", "get", "reply", "digest", "usersSheet", "canEdit"].includes(action)) throw ewErr(400, `unknown action ${action}`);
       const who = await ewVerify(token);
       if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
       const sb = ewSb(ewServiceKey.value().trim());
       const { me, isAdmin } = await pilotContext(sb, who);
       if (!me) throw ewErr(403, "Create your Pyr profile first.");
-      if (!(await rateLimit({ ip: who.email }, true, action === "get" ? "read:quests" : "write:sheets")).ok) throw ewErr(429, "Please wait a moment, then try again.");
+      if (!(await rateLimit({ ip: who.email }, true, action === "get" || action === "canEdit" ? "read:quests" : "write:sheets")).ok) throw ewErr(429, "Please wait a moment, then try again.");
       if (action === "check") {
         if (!isAdmin) throw ewErr(403, "Admins only");
         const out = await review.check({ api, sb, only: args.segmentId ? String(args.segmentId) : "", dryRun: !!args.dryRun });
@@ -3172,6 +3172,11 @@ exports.ewQuestReview = onRequest(
         const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore, cavePerms: ewCavePerms });
         console.info("[ewQuestReview] users sheet by", who.email, out.people);
         return res.json({ ok: true, data: out });
+      }
+      // Who can edit which dataset, from the sheet's Can edit column (the Access page).
+      if (action === "canEdit") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        return res.json({ ok: true, data: await require("./users-sheet").readCanEdit({ api }) });
       }
       if (action === "digest") {
         if (!isAdmin) throw ewErr(403, "Admins only");

@@ -18,7 +18,7 @@ import { listDatasetRequests, decideDatasetRequest, type DatasetRequestRow } fro
 import { addPilot, welcomeBell, welcomeEmail } from '../beta_let_in';
 import { datasetDisplayName } from '../datasets';
 import { boxLink, PRACTICE_TUTORIALS } from '../tutorial_box_jump';
-import { updateUsersSheet, USERS_SHEET_URL } from '../quest_review';
+import { updateUsersSheet, readCanEdit, USERS_SHEET_URL } from '../quest_review';
 import { TUTORIAL_NAMES } from '../tutorial_edits';
 import { outcomeWord, type TestTry, type TestTriesList } from '../proofreading-test-review';
 
@@ -63,6 +63,8 @@ const noteDraft = ref('');
 const dsNote = ref('');
 const emailed = ref<Record<string, string>>({});
 const testTries = ref<TestTry[]>([]);
+/** CAVE edit access by email, from the Users sheet (refreshed hourly). */
+const canEdit = ref<Record<string, string> | null>(null);
 
 async function load() {
   loading.value = true; error.value = '';
@@ -98,6 +100,7 @@ async function load() {
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
+    show(read('Dataset access', () => readCanEdit(), null as Record<string, string> | null), v => { canEdit.value = v; }),
     show(read('Test tries', async () => (await secureWrite<TestTriesList>('test.tries', { limit: 200 }))?.tries ?? [], [] as TestTry[]), v => { testTries.value = v; }),
     show(read('Tutorial times', () => table<Stat>('tutorial_step_stats', 'tutorial,step,last_box,n,players,median_s,p90_s,help_rate,closes', 500), [] as Stat[]), v => { stats.value = v; }),
   ]);
@@ -304,18 +307,24 @@ const adminCards = computed(() => inStage('admin').filter(matches).sort((a, b) =
 const laterCards = computed(() => inStage('later').filter(matches).sort((a, b) => String(a.since).localeCompare(String(b.since))));
 const showLater = ref(false);
 // Overall numbers (Ames 2026-11-10: "# users (signed in, passed tutorial 1,
-// production access)"). Admins left out. Dataset access: anyone a dataset
-// request was granted for.
+// production access)"). Admins left out. Dataset access: anyone CAVE lets
+// edit a real dataset (not a public or practice one), as the Users sheet's
+// Can edit column says, read from CAVE every hour (Ames: "more than 4 ppl
+// have dataset access"; granted requests alone missed anyone added by hand).
+const realEdit = (list: string | undefined) => (list || '').split(',').map(x => x.trim()).filter(x => x && !/ public$/i.test(x));
 const totals = computed(() => {
   const ps = people.value.filter(p => !p.is_admin);
-  const granted = new Set(dsRows.value.filter(r => r.mark === 'granted').map(r => r.userId || lc(r.email)));
+  const withAccess = ps.filter(p => realEdit(canEdit.value?.[p.email]).length);
+  const byDs: Record<string, number> = {};
+  for (const p of withAccess) for (const d of realEdit(canEdit.value?.[p.email])) byDs[d] = (byDs[d] || 0) + 1;
+  const split = Object.entries(byDs).sort((a, b) => b[1] - a[1]).map(([d, n]) => `${d} ${n}`).join(', ');
   return [
     { label: 'People', n: ps.length, title: 'Everyone who asked, was let in or signed in' },
     { label: 'Let in', n: ps.filter(p => p.pilot_enabled).length, title: 'On Pilot testers now' },
     { label: 'Signed in', n: ps.filter(p => p.joined_at).length, title: 'Signed in to Pyr at least once' },
     { label: 'Finished a tutorial', n: ps.filter(p => p.tutorial_at).length, title: 'Finished their first tutorial' },
     { label: 'Made an edit', n: ps.filter(p => p.edits > 0).length, title: 'At least one merge or split' },
-    { label: 'Dataset access', n: granted.size, title: 'A dataset request was granted (production datasets)' },
+    { label: 'Dataset access', n: canEdit.value ? withAccess.length : NaN, title: canEdit.value ? `Can edit a real dataset in CAVE, as of the Users sheet's last hourly update${split ? ': ' + split : ''}` : 'Could not read the Users sheet' },
   ];
 });
 const removedCards = computed(() => inStage('removed').filter(matches).sort((a, b) => String(b.since).localeCompare(String(a.since))));
@@ -507,7 +516,7 @@ const opName = (e: RecentEdit) => {
       <span v-if="sheetSaid" class="ah-quiet ah-sheet-said" role="status">{{ sheetSaid }}</span>
     </header>
     <div v-if="people.length" class="ah-totals" aria-label="Overall">
-      <div v-for="t in totals" :key="t.label" class="ah-total" :title="t.title"><b>{{ t.n.toLocaleString() }}</b><span>{{ t.label }}</span></div>
+      <div v-for="t in totals" :key="t.label" class="ah-total" :title="t.title"><b>{{ Number.isFinite(t.n) ? t.n.toLocaleString() : '…' }}</b><span>{{ t.label }}</span></div>
     </div>
     <p v-if="error" class="ah-error" role="alert">{{ error }}</p>
     <p v-if="loading && !people.length" class="ah-quiet">Reading everyone…</p>
@@ -607,6 +616,7 @@ const opName = (e: RecentEdit) => {
             <button class="ah-btn" type="button" :disabled="!!busy" @click="markNotSame(open.p?.email ?? '', d.email)">Not the same</button>
           </div>
         </div>
+        <div v-if="open.p && canEdit?.[open.p.email]" class="ah-panel-meta">Can edit: {{ canEdit[open.p.email] }}</div>
         <div v-if="open.p?.found_us" class="ah-panel-meta">Found us: {{ open.p.found_us }}</div>
         <blockquote v-if="open.p?.their_note">{{ open.p.their_note }}</blockquote>
 
