@@ -115,9 +115,9 @@ async function playNow() {
   if (!playWanted || loading.value || !rows.value.length || busy.value) return;
   playWanted = false;
   const held = mine.value.find(isActive) ?? mine.value[0];
-  if (held) { await openCell(held); message.value = `${held.index || 'Your cell'} is open. Mark the cilium, then press Submit. The next cell will be waiting.`; return; }
+  if (held) { await openCell(held); message.value = `${held.index || 'Your cell'} is open. Mark the cilium, then press Submit. The next cell will be waiting.`; landed('Your quest cell', held); return; }
   const r = nextOpen();
-  if (r) await take(r);
+  if (r) { await take(r); if (mine.value.some(m => m.segmentId === r.segmentId)) landed('Your new quest cell', r); }
   else message.value = 'No quest cells are open right now. Try mapping instead.';
 }
 async function playSkip() {
@@ -125,10 +125,14 @@ async function playSkip() {
   const r = mine.value.find(isActive) ?? mine.value[0];
   if (r) { skippedHere.add(r.segmentId); await letGo(r); }
   const rest = mine.value[0];
-  if (rest) { await openCell(rest); return; }
+  if (rest) { await openCell(rest); landed('Your next quest cell', rest); return; }
   const next = nextOpen();
-  if (next) await take(next);
+  if (next) { await take(next); if (mine.value.some(m => m.segmentId === next.segmentId)) landed('Your new quest cell', next); }
   else message.value = 'No more quest cells are open right now.';
+}
+/** The "Teleport complete" flash over the view (CellLibraryPanel shows it). */
+function landed(title: string, r: QuestRow) {
+  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title, cell: label(r) } }));
 }
 const onPlaySkip = () => { void playSkip(); };
 onMounted(() => document.addEventListener('nge:play-skip-quest', onPlaySkip));
@@ -461,6 +465,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
                 <button class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
+                <button v-if="play.on === 'quests' && isActive(r)" class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy" @click="playSkip" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
@@ -694,6 +699,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-btn--submit:hover { background: rgba(68, 170, 255, 0.12); }
 .nge-aq-btn--submit-open { background: rgba(68, 170, 255, 0.16); border-color: rgba(68, 170, 255, 0.55); }
 .nge-aq-btn--release { border-color: rgba(255, 170, 68, 0.2); color: #a86; }
+.nge-aq-btn--skip { border-color: rgba(62, 236, 190, 0.45); color: #9fe8d4; }
 .nge-aq-btn--release:hover:not(:disabled) { background: rgba(255, 170, 68, 0.08); }
 .nge-aq-btn--send { border-color: rgba(68, 170, 255, 0.55); color: #fff; background: rgba(68, 170, 255, 0.2); }
 .nge-aq-btn--send:hover:not(:disabled) { background: rgba(68, 170, 255, 0.3); }

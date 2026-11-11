@@ -3066,10 +3066,10 @@ const startNote = ref('');
 const startNoteCell = ref('');
 const startNoteN = ref(0);
 let startNoteTimer: ReturnType<typeof setTimeout> | null = null;
-function showStartNote(text: string, ms = 4200) {
+function showStartNote(text: string, ms = 4200, cellName?: string) {
   startNote.value = text;
   const c = currentCell();
-  startNoteCell.value = c ? (history.getNickname(c.segId) || c.liveSegId || c.segId) : '';
+  startNoteCell.value = cellName ?? (c ? (history.getNickname(c.segId) || c.liveSegId || c.segId) : '');
   startNoteN.value++;
   if (startNoteTimer) clearTimeout(startNoteTimer);
   startNoteTimer = setTimeout(() => { startNote.value = ''; startNoteTimer = null; }, ms);
@@ -3109,6 +3109,10 @@ function playIfAsked() {
   const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); void go(); } });
 }
 onMounted(playIfAsked);
+/** Cilia Quest lands you on a cell too: the same flash (AnnotationQuestsTab). */
+const onPlayLanded = (e: Event) => { const d = (e as CustomEvent).detail || {}; showStartNote(d.title || 'Your quest cell', 4200, d.cell || ''); };
+onMounted(() => document.addEventListener('nge:play-landed', onPlayLanded));
+onBeforeUnmount(() => document.removeEventListener('nge:play-landed', onPlayLanded));
 /** "Play here" on the Available and Quests tabs: Play on the dataset on screen. */
 function playHere(k: PlayKind) { void startPlay(k, k === 'cells' ? datasetHere() : undefined); }
 /** Skip: the cell goes back on the Available list and the next one is claimed. */
@@ -4394,6 +4398,15 @@ const panelStyle = computed(() => ({
                 title="Release claim"
               ><span v-if="releasing.has(releaseKey(cell))" class="nge-cl-spin" />{{ releasing.has(releaseKey(cell)) ? 'Releasing…' : 'Release' }}</button>
 
+              <!-- Playing: Skip hands this cell back and takes you to the next (Ames 2026-11-10). -->
+              <button
+                v-if="play.on === 'cells' && isMyClaim(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId && completing?.key !== cellKey(cell)"
+                class="nge-cl-btn nge-cl-btn--skip"
+                :disabled="skipping"
+                @click="playSkip"
+                title="Not this one: it goes back on the list for someone else, and Pyr takes you to your next cell"
+              >{{ skipping ? 'Skipping…' : 'Skip' }}</button>
+
               <button
                 v-if="isMyClaim(cell) && completing?.key !== cellKey(cell)"
                 class="nge-cl-btn nge-cl-btn--complete"
@@ -4410,7 +4423,9 @@ const panelStyle = computed(() => ({
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
-            <div class="nge-cl-complete-title">Complete this cell</div>
+            <div class="nge-cl-complete-title">Complete this cell
+              <button class="nge-cl-complete-x" type="button" title="Close (your cell stays claimed)" aria-label="Close" @click="completing = null">&times;</button>
+            </div>
             <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="marksStartLine(cell)" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
@@ -5151,7 +5166,11 @@ const panelStyle = computed(() => ({
   flex-direction: column;
   gap: 6px;
 }
-.nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; }
+.nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; display: flex; align-items: center; }
+.ng-extend .nge-cl-complete-x { margin-left: auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: #8aa; font-size: 20px; line-height: 1; cursor: pointer; }
+.ng-extend .nge-cl-complete-x:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
+.nge-cl-btn--skip { border-color: rgba(62, 236, 190, 0.5) !important; color: #9fe8d4 !important; }
+.nge-cl-btn--skip:hover:not(:disabled) { background: rgba(62, 236, 190, 0.14) !important; }
 .nge-cl-complete-label { color: #9ab; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
 .nge-cl-complete-statuses { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-cl-complete-status {
