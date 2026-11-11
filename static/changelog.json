@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-11T01:30:00Z",
+      "title": "Get Started: the split screen box",
+      "items": [
+        "In Get Started, the 2D EM tab now glows when the box points to it, and pressing SPACE no longer skips the box before you finish reading. Click Next when you are ready.",
+        "The electron microscope boxes show one yellow point, and the images always open flat in their normal orientation."
+      ]
+    },
+    {
       "at": "2026-11-10T19:23:00Z",
       "title": "Help me becomes Hide help",
       "items": [

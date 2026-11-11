@@ -146,8 +146,9 @@ function tut1Style() {
     const st = document.createElement('style');
     st.id = 'nge-tut1-style';
     st.textContent = `
-      .nge-tut-pulse-tab { animation: nge-tut-tab 1.2s ease-in-out infinite !important; border-radius: 4px; }
-      @keyframes nge-tut-tab { 0%, 100% { box-shadow: 0 0 0 0 rgba(126, 224, 255, 0); } 50% { box-shadow: 0 0 0 3px rgba(126, 224, 255, 0.85), 0 0 14px rgba(126, 224, 255, 0.6); } }
+      .neuroglancer-layer-item.nge-tut-pulse-tab { animation: nge-tut-tab 1.2s ease-in-out infinite !important; border-color: rgba(126, 224, 255, 0.9) !important; }
+      @keyframes nge-tut-tab { 0%, 100% { box-shadow: inset 0 0 0 1px rgba(126, 224, 255, 0.35); } 50% { box-shadow: inset 0 0 0 2px rgba(126, 224, 255, 0.95), inset 0 0 10px rgba(126, 224, 255, 0.55); } }
+      .nge-tut-pulse-next { animation: nge-tut-tab 1.2s ease-in-out infinite !important; }
       .nge-tut-mouse { float: left; margin: 2px 12px 4px 0; line-height: 0; }`;
     document.head.appendChild(st);
   }
@@ -160,7 +161,7 @@ function pulse2DTab() {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   if (tabPulse) clearInterval(tabPulse);
   tabPulse = setInterval(() => {
-    const tab = [...document.querySelectorAll('.neuroglancer-layer-item')].find(el => /2D EM|\bimg\b/i.test((el as HTMLElement).querySelector('[data-nge-label]')?.getAttribute('data-nge-label') ?? (el as HTMLElement).textContent ?? '')) as HTMLElement | undefined;
+    const tab = [...document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')].find(el => /2D EM|\bimg\b/i.test((el as HTMLElement).querySelector('[data-nge-label]')?.getAttribute('data-nge-label') ?? (el as HTMLElement).textContent ?? '')) as HTMLElement | undefined;
     const here = store.activeTutorial === tutorial && store.getTutorialStep() === step;
     document.querySelectorAll('.nge-tut-pulse-tab').forEach(el => { if (!here || el !== tab) el.classList.remove('nge-tut-pulse-tab'); });
     if (!here) { clearInterval(tabPulse!); tabPulse = null; return; }
@@ -264,27 +265,34 @@ function advanceWhenSegmentAdded() {
   }, 2500);
 }
 
-/** Move on once the view goes from 3D only to split screen, whichever way:
- *  SPACE, or a click on the 2D EM tab (Ames 2026-10-22: the tab now shows
- *  and hides the 2D view). SPACE already moves on by itself (spaceAdvances). */
-function advanceWhenSplit() {
+/** Once the view goes from 3D only to split screen (SPACE or the 2D EM tab),
+ *  the Next button glows. The box no longer moves on by itself: a tester
+ *  pressed SPACE before reading the rest of the box (2026-11-10), so the
+ *  player clicks Next when ready. */
+function glowNextWhenSplit() {
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
   const layout = () => { try { const j = getViewer()?.layout?.toJSON?.(); return typeof j === 'string' ? j : (j?.type ?? ''); } catch { return ''; } };
   // Let the step's own view load first (it opens in 3D only).
   setTimeout(() => {
-    let was = layout();
     const timer = setInterval(() => {
-      if (!here()) { clearInterval(timer); return; }
+      const next = document.querySelector('.introductionStepAnchor .chip button.next') as HTMLElement | null;
+      if (!here()) { clearInterval(timer); document.querySelectorAll('.nge-tut-pulse-next').forEach(el => el.classList.remove('nge-tut-pulse-next')); return; }
       const now = layout();
-      if (was === '3d' && now !== '3d' && now) {
-        clearInterval(timer);
-        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 600);
-      }
-      was = now;
+      next?.classList.toggle('nge-tut-pulse-next', !!now && now !== '3d');
     }, 300);
   }, 2000);
+}
+
+/** The 2D boxes: one yellow point, not the saved view's two, and the EM in
+ *  its normal plane. The saved views carry no cross section orientation, so a
+ *  plane the player rotated earlier stayed rotated (tester, 2026-11-10). */
+function flat2D() {
+  void keepOneAnnotation(STATE_AT_ANNOTATION);
+  const reset = () => { try { getViewer()?.navigationState?.pose?.orientation?.restoreState([0, 0, 0, 1]); } catch { /* no viewer */ } };
+  setTimeout(reset, 800);
+  setTimeout(reset, 2000);
 }
 
 /** Close the viewer's side panels through neuroglancer's own state, so they
@@ -546,12 +554,11 @@ It missed a branch. Let's see if we can find it.`,
   {
     text: `Press **SPACE** to bring up a split screen view: the electron microscope images these neurons were reconstructed from.
 
-You can also click the **2D EM** tab, glowing at the top left.`,
+You can also click the **2D EM** tab, glowing at the top left. Then click **Next**.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
-    spaceAdvances: true,
-    onEnter: () => { advanceWhenSplit(); pulse2DTab(); },
+    onEnter: () => { glowNextWhenSplit(); pulse2DTab(); },
   },
   //12 - over 2D - EM cross section view
   {
@@ -559,6 +566,7 @@ You can also click the **2D EM** tab, glowing at the top left.`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    onEnter: flat2D,
   },
   // (The "if you end up in 4 panel view" tip lived here. The app no longer
   // offers a 4 panel view, see no_four_panel.ts, so the step is gone.)
@@ -570,6 +578,7 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    onEnter: flat2D,
   },
   //14 - 2D control + scroll gif
   {
@@ -577,6 +586,7 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    onEnter: flat2D,
   },
   //15 - 2D right click center gif
   {
@@ -584,6 +594,7 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    onEnter: flat2D,
   },
 
   //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
