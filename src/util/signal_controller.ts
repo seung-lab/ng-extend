@@ -86,14 +86,14 @@ const LEVELS: Level[] = [
   // Level 1 is one driver and a rhythm (Ames 2026-11-08: "click some
   // pyramidal neurons to fire downstream at the right frequency"): two quick
   // sparks on E1 add up at the gold cell; slow ones leak away first.
-  {title: 'First Light', objective: 'Fire the gold cell', detail: 'click E1 twice, quickly', timeS: 45, par: 2,
+  {title: 'First Light', objective: 'Fire the gold cell 3 times', detail: 'E1 twice, quickly, each time', timeS: 60, par: 6,
     brief: 'These are real neurons from the brain: an excitatory pyramidal cell (gold) and four of the cells that drive it.\nYour Spark beam fires a cell, and its spike runs down the axon to the gold cell. One spike is not enough on its own, but spikes that arrive close together add up.\nE1 makes the most synapses onto the gold cell, five, so two quick spikes from it are enough on their own. The other drivers carry less and need company.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4'], targets: ['T'], hush: false,
-    goal: {kind: 'fire', target: 'T', count: 1},
-    coach: {begin: 'Click the lit cell, E1, twice, quickly. Each click fires it; watch the gold cell’s charge bar.',
-      driver: 'Again, right away: the second spike has to land while the first is still there.',
+    goal: {kind: 'fire', target: 'T', count: 3},
+    coach: {driver: 'Again, right away: the second spike has to land while the first is still there.',
+      hit: 'One down. Again: E1 twice, quickly.',
       miss: 'Too slow between clicks: the charge leaked away. Two clicks within half a second.'},
-    hint: {begin: ['E1'], driver: ['E1'], miss: ['E1']}},
+    hint: {begin: ['E1'], driver: ['E1'], hit: ['E1'], miss: ['E1']}},
   // The Gatekeeper's rhythm is slow here on purpose (Ames 2026-11-08: "it's
   // flashing through too much, it's not clear when/why other cells are
   // making it so I have to have a gap"): at 2.2 s the go window was half a
@@ -314,7 +314,8 @@ function stepGlide(dt: number) {
   v.projectionScale.value = sc + (glide.scale - sc) * k;
   if ((len(sub(next, glide.look)) < 800 && Math.abs(v.projectionScale.value - glide.scale) < glide.scale * 0.01) || performance.now() - glide.since > 1600) glide = null;
 }
-const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.02, 0.04, 0.08], rim: [0.45, 0.85, 1.0], shade: 1.15};
+/** The ship's look, after scifi-ui's goldOnBlue hologram: a cool blue body, a molten gold rim. */
+const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.05, 0.14, 0.38], rim: [1.0, 0.82, 0.48], shade: 1.1};
 const GROUP = 'signal';
 const MAX_GLOW = 4200;
 const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Float32Array(MAX_GLOW * 4), sizesNm: new Float32Array(MAX_GLOW), count: 0, nmRight: [1, 0, 0]};
@@ -450,11 +451,11 @@ function ensureStyle() {
   background: linear-gradient(160deg, rgba(14, 34, 66, 0.93), rgba(6, 12, 28, 0.95) 60%, rgba(22, 14, 48, 0.94));
   box-shadow: inset 0 0 40px rgba(80, 180, 255, 0.10); }
 .nge-sig-bg::before { content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit;
-  background: linear-gradient(135deg, rgba(126, 224, 255, 0.75), rgba(74, 150, 224, 0.25) 40%, rgba(138, 96, 230, 0.6));
+  background: linear-gradient(135deg, rgba(126, 224, 255, 0.75), rgba(74, 150, 224, 0.25) 40%, rgba(255, 210, 122, 0.65));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
-.nge-sig-bg::after { content: ''; position: absolute; inset: 0; opacity: 0.3;
-  background: repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.05) 0 1px, transparent 1px 3px); }
+.nge-sig-bg::after { content: ''; position: absolute; inset: 0; opacity: 0.5;
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.16) 0.7px, transparent 1.3px) 0 0 / 10px 10px; }
 .nge-sig-corner { position: absolute; width: 12px; height: 12px; border: 2px solid #7ee0ff; pointer-events: none; filter: drop-shadow(0 0 4px #7ee0ff); }
 .nge-sig-corner.tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
 .nge-sig-corner.bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
@@ -697,15 +698,24 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
    behind it, larger type with a shadow (Ames 2026-11-11: "hard to read
    contents of box"); and it drags, to clear the cells it covers ("I want to
    be able to move the box"). */
+/* The card after scifi-ui's goldOnBlue hologram (js/holo-material.js): a cool
+   blue body, a molten gold rim with its halo, gold dots sitting on the
+   surface (no scanlines, nothing scrolls), the colour channels pulled apart
+   a little at the rim, and every few seconds a short burst where the signal
+   degrades and settles (Ames 2026-11-11: "draw inspiration from this
+   hologram shader for the UI / ship's hologram"). */
 .nge-sig-scan-box { position: fixed; width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 11px 15px 12px; pointer-events: auto; transform-origin: 50% 100%; cursor: grab; touch-action: none; user-select: none;
-  border: 1px solid rgba(126, 224, 255, 0.8); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  background: linear-gradient(180deg, rgba(22, 80, 146, 0.86), rgba(6, 24, 58, 0.93)), repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.06) 0 1px, transparent 1px 3px);
-  backdrop-filter: blur(8px); box-shadow: inset 0 0 24px rgba(126, 224, 255, 0.16), 0 10px 30px rgba(0, 0, 0, 0.5); color: #f2fbff; font: 13.5px/1.4 'Inter', 'Roboto', sans-serif;
-  animation: nge-sig-proj-in 520ms cubic-bezier(.2,1,.3,1) both, nge-sig-proj-flicker 6s 1s infinite; }
+  border: 1px solid rgba(255, 210, 122, 0.85); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.22) 0.7px, transparent 1.3px) 0 0 / 9px 9px, linear-gradient(160deg, rgba(34, 104, 200, 0.62), rgba(8, 30, 72, 0.8) 55%, rgba(14, 44, 98, 0.74));
+  backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.22), inset 0 0 30px rgba(62, 150, 240, 0.35), 0 0 12px rgba(255, 194, 74, 0.35), 0 0 34px rgba(255, 194, 74, 0.14), 0 10px 30px rgba(0, 0, 0, 0.5);
+  color: #f2fbff; font: 13.5px/1.4 'Inter', 'Roboto', sans-serif;
+  animation: nge-sig-proj-in 520ms cubic-bezier(.2,1,.3,1) both, nge-sig-glitch 7s 2s infinite; }
+/* the chromatic split, red one way and blue the other, hugging the rim */
+.nge-sig-scan-box::after { content: ''; position: absolute; inset: 0; pointer-events: none; clip-path: inherit; box-shadow: inset 1px 0 0 rgba(255, 90, 90, 0.28), inset -1px 0 0 rgba(90, 170, 255, 0.28); }
 .nge-sig-scan-box.dragging { cursor: grabbing; }
 .nge-sig-scan-box .nge-sig-x { cursor: pointer; }
 @keyframes nge-sig-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
-@keyframes nge-sig-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.75; } 98% { opacity: 0.97; } 99% { opacity: 0.85; } }
+@keyframes nge-sig-glitch { 0%, 2.4%, 100% { transform: none; filter: none; } 0.6% { transform: translate(1px, 0); filter: drop-shadow(-2px 0 rgba(255, 70, 70, 0.55)) drop-shadow(2px 0 rgba(70, 150, 255, 0.55)); } 1.2% { transform: translate(-1px, 0); } 1.8% { transform: translate(0.5px, 0); filter: drop-shadow(-1px 0 rgba(255, 70, 70, 0.4)) drop-shadow(1px 0 rgba(70, 150, 255, 0.4)); } }
 /* The card reads as an instrument (scifi-ui's data-readout: one label, one
    number, one line of provenance): the cell's call sign large, its identity
    in a line, measured numbers as readouts, its wiring in this level, and
@@ -746,11 +756,14 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 .nge-sig-canopy .top i { width: 7px; height: 7px; border-radius: 50%; background: #35b5ff; box-shadow: 0 0 8px rgba(53, 181, 255, 0.9); animation: nge-sig-blink 1.6s infinite; }
 .nge-sig-canopy .top .sub { font: 400 10px 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: none; color: rgba(53, 181, 255, 0.85); }
 .nge-sig-canopy svg.lead { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+.nge-sig-canopy svg.lead line { stroke: rgba(255, 214, 140, 0.75); }
 .nge-sig-canopy .reticle { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; opacity: 0.5; transition: opacity 0.3s; }
 .nge-sig-canopy--lock .reticle { opacity: 1; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--c, #35b5ff) 60%, transparent)); }
 .nge-sig-canopy .reticle .ring { animation: nge-sig-reticle 9s linear infinite; transform-origin: 60px 60px; }
 @keyframes nge-sig-reticle { to { transform: rotate(360deg); } }
-.nge-sig-canopy .block { position: absolute; padding: 7px 10px; border-radius: 4px; background: rgba(4, 10, 24, 0.5); backdrop-filter: blur(4px); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); opacity: 0; transition: opacity 0.35s 0.1s; }
+.nge-sig-canopy .block { position: absolute; padding: 8px 11px; border: 1px solid rgba(255, 210, 122, 0.55); border-radius: 3px;
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.18) 0.7px, transparent 1.3px) 0 0 / 9px 9px, linear-gradient(160deg, rgba(34, 104, 200, 0.5), rgba(8, 30, 72, 0.7));
+  backdrop-filter: blur(6px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.14), inset 0 0 22px rgba(62, 150, 240, 0.28), 0 0 10px rgba(255, 194, 74, 0.22); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); opacity: 0; transition: opacity 0.35s 0.1s; }
 .nge-sig-canopy--lock .block { opacity: 1; }
 .nge-sig-canopy .id { left: 18px; top: 44px; max-width: 320px; }
 .nge-sig-canopy .id .head { display: flex; align-items: baseline; gap: 10px; }
@@ -777,12 +790,21 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .ng-extend.nge-sig-label { position: fixed; z-index: 9400; transform: translate(12px, -50%); padding: 2px 8px; border: 1px solid rgba(255, 224, 160, 0.6); border-radius: 3px; background: rgba(6, 12, 28, 0.78); color: #ffe9b8; font: 600 11px 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
 .ng-extend.nge-sig-label::before { content: ''; position: absolute; left: -12px; top: 50%; width: 11px; height: 1px; background: rgba(255, 224, 160, 0.7); }
 .ng-extend.nge-sig-label--in { opacity: 1; }
+/* a message is a glitch in the hologram: it bursts in with its channels
+   pulled apart, shivers, settles, holds, and fades */
+.ng-extend.nge-sig-pop { position: fixed; z-index: 9470; max-width: 300px; padding: 7px 12px; pointer-events: none; border: 1px solid rgba(255, 210, 122, 0.8); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.2) 0.7px, transparent 1.3px) 0 0 / 9px 9px, linear-gradient(160deg, rgba(34, 104, 200, 0.66), rgba(8, 30, 72, 0.84));
+  backdrop-filter: blur(6px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.2), 0 0 12px rgba(255, 194, 74, 0.35); color: #fff3d6; font: 600 13px/1.35 'Inter', 'Roboto', sans-serif; text-shadow: 0 0 8px rgba(255, 194, 74, 0.4);
+  animation: nge-sig-pop-in 0.5s steps(1, end) both; }
+@keyframes nge-sig-pop-in { 0% { opacity: 0; transform: translate(-2px, 0) skewX(-8deg); filter: drop-shadow(-3px 0 rgba(255, 70, 70, 0.7)) drop-shadow(3px 0 rgba(70, 150, 255, 0.7)); } 15% { opacity: 1; transform: translate(2px, 0) skewX(6deg); } 30% { transform: translate(-1px, 0) skewX(-3deg); filter: drop-shadow(-2px 0 rgba(255, 70, 70, 0.5)) drop-shadow(2px 0 rgba(70, 150, 255, 0.5)); } 45% { transform: translate(1px, 0); opacity: 0.6; } 60% { transform: none; opacity: 1; filter: drop-shadow(-1px 0 rgba(255, 70, 70, 0.3)) drop-shadow(1px 0 rgba(70, 150, 255, 0.3)); } 100% { transform: none; opacity: 1; filter: none; } }
+.ng-extend.nge-sig-pop--out { animation: nge-sig-pop-out 0.35s ease-in both; }
+@keyframes nge-sig-pop-out { to { opacity: 0; transform: translateY(-4px); } }
 /* three, two, one, go: in the middle of the free part of the view */
 .ng-extend.nge-sig-count { position: fixed; z-index: 9460; transform: translate(-50%, -50%); pointer-events: none; font: 700 96px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; color: #e6f7ff; text-shadow: 0 0 30px rgba(126, 224, 255, 0.8), 0 0 60px rgba(74, 150, 224, 0.5); }
 .ng-extend.nge-sig-count.pop { animation: nge-sig-count 0.85s ease-out both; }
 @keyframes nge-sig-count { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); filter: blur(6px); } 25% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: none; } 100% { opacity: 0.15; transform: translate(-50%, -50%) scale(0.9); } }
 body.nge-mobile .ng-extend.nge-sig-count { font-size: 64px; }
-@media (prefers-reduced-motion: reduce) { .nge-sig-scan-box, .ng-extend.nge-sig-scan .cone, .nge-sig-canopy .reticle .ring { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-sig-scan-box, .nge-sig-canopy .block, .ng-extend.nge-sig-pop, .ng-extend.nge-sig-scan .cone, .nge-sig-canopy .reticle .ring { animation: none; } }
 body.nge-mobile .nge-sig-scan-box { min-width: 0; max-width: calc(100vw - 24px); font-size: 11.5px; }
 /* the Intro test panel sits where the HUD now stands: away while the game runs */
 body.nge-signal-on .nge-stt, body.nge-signal-on .nge-stt-dock { display: none !important; }
@@ -846,7 +868,8 @@ function setHushMode(on: boolean) {
   els.hush.setAttribute('aria-pressed', String(on));
 }
 
-function say(text: string, seconds = 2.6) {
+function say(text: string, seconds = 2.6, at?: string) {
+  popup(text, seconds, at);
   message = text;
   messageUntil = performance.now() + seconds * 1000;
   if (els.msg) els.msg.textContent = text;
@@ -1111,6 +1134,43 @@ function showChips() {
   els.row.style.display = '';
 }
 
+/* ── a message as a glitch in the hologram: a small card that bursts in by
+   the cell it is about (else at the top of the free part of the view),
+   holds, and fades (Ames 2026-11-11: "error message should be more like a
+   glitch in the hologram as a popup"). ── */
+interface Pop { el: HTMLElement; p: V3 | null; until: number; }
+let pops: Pop[] = [];
+function popup(text: string, seconds: number, at?: string) {
+  if (!active) return;
+  const c = at ? cells.get(at) : undefined;
+  for (const o of pops) if (o.el.textContent === text) o.el.remove();   // the same line again: once
+  pops = pops.filter(o => o.el.isConnected);
+  const el = document.createElement('div');
+  el.className = 'ng-extend nge-sig-pop';
+  el.textContent = text;
+  if (c) el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
+  document.body.appendChild(el);
+  pops.push({el, p: c?.spec.soma ?? null, until: performance.now() + seconds * 1000});
+}
+function placePops() {
+  if (!pops.length) return;
+  const t = performance.now();
+  const r = threeDPanel()?.element?.getBoundingClientRect?.(), hud = panel?.getBoundingClientRect();
+  for (const o of pops) {
+    if (t > o.until) { o.el.classList.add('nge-sig-pop--out'); if (t > o.until + 400) o.el.remove(); continue; }
+    if (!r) continue;
+    const s = o.p ? toScreen(o.p) : null;
+    const w = o.el.offsetWidth, h = o.el.offsetHeight;
+    let x: number, y: number;
+    if (s) { x = s[0] - w / 2; y = s[1] - 70 - h; }
+    else { const left = sideHud() && hud ? hud.right + 12 : r.left; x = (left + r.right) / 2 - w / 2; y = r.top + 56; }
+    x = clamp(x, r.left + 8, r.right - w - 8); y = clamp(y, r.top + 8, r.bottom - h - 8);
+    o.el.style.left = `${x}px`; o.el.style.top = `${y}px`;
+  }
+  pops = pops.filter(o => o.el.isConnected);
+}
+function clearPops() { for (const o of pops) o.el.remove(); pops = []; }
+
 /* ── the intro tour: level 1 opens as a cinematic (Ames 2026-11-11: "make
    the text more like an interactive tour… as little text as possible"):
    Neuron 101 on the gold cell (dendrites in, cell body, axon out), the ship
@@ -1214,7 +1274,7 @@ const TOUR: TourStep[] = [
     play: async alive => { await sleep(100); if (alive()) hints = new Set(['E1']); }},
   {kicker: 'Scan', text: 'Click any cell to scan it. The letters are call signs: E excitatory, I inhibitory, T target.',
     play: async alive => { await sleep(300); if (alive()) scan('E2'); }},
-  {kicker: 'Ready', text: 'Fire the gold cell: click E1 twice, quickly.'},
+  {kicker: 'Ready', text: 'Fire the gold cell three times: E1 twice, quickly, each time.'},
 ];
 function showTour() {
   phase = 'brief'; demo = true;
@@ -1256,7 +1316,7 @@ function showResult(won: boolean) {
   const stars = won ? (chargesUsed <= level.par ? 3 : chargesUsed <= level.par * 1.6 ? 2 : 1) : 0;
   const next = levelIndex + 1 < LEVELS.length;
   els.body.innerHTML = `<div class="nge-sig-card"><div class="nge-sig-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
-    <p>${won ? `Signal delivered! ${chargesUsed} charge${chargesUsed === 1 ? '' : 's'} used (par ${level.par}).` : 'Time’s up. The circuit held.'}</p>
+    <p>${won ? `Signal delivered in ${chargesUsed} charge${chargesUsed === 1 ? '' : 's'} (par ${level.par}; a spark costs one, a hush two).` : 'Time’s up. The circuit held.'}</p>
     <div class="nge-sig-row">${won && next ? '<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">Next level ›</span></button>' : ''}
       ${won ? '<button class="nge-sig-quiet" type="button" data-act="again">Play it again</button>' : '<button class="nge-sig-go" type="button" data-act="again"><span class="nge-sig-plate">Try again ›</span></button>'}
       ${won && !next ? '<span style="color:#ffd98a">That is every level so far. More circuits are coming.</span>' : ''}</div></div>`;
@@ -1740,7 +1800,7 @@ function drawBox(cam: {right: V3; up: V3; toEye: V3}, put: (p: V3, rgba: [number
     const a = corner(m), b = corner(m | bit);
     for (let k = 0; k <= N; k++) {
       const u = k / N, bracket = u < 0.05 || u > 0.95;
-      put(mix(a, b, u), [R, G, B, bracket ? 0.5 : 0.11], bracket ? 3200 : 2400);
+      if (bracket) put(mix(a, b, u), [1, 0.76, 0.3, 0.55], 3200); else put(mix(a, b, u), [R, G, B, 0.11], 2400);
     }
   }
   // the far face: the one whose outward normal points away from the eye the most
@@ -1781,7 +1841,7 @@ function resetCells() {
 function spike(key: string, byBeam = false) {
   const c = cells.get(key);
   if (!c || !c.shown) return;
-  if (now < c.refractoryUntil || now < c.hushedUntil) { if (byBeam) { sfx.fizzle(); say(`${key} is ${now < c.hushedUntil ? 'hushed' : 'resting'}.`); } return; }
+  if (now < c.refractoryUntil || now < c.hushedUntil) { if (byBeam) { sfx.fizzle(); say(`${key} is ${now < c.hushedUntil ? 'hushed' : 'resting'}.`, 2.6, key); } return; }
   c.e = 0; c.i = 0; c.refractoryUntil = now + REFRACTORY_S; c.lastSpike = now; c.spikes++;
   if (c.gateNext !== null) c.gateNext = now + c.gatePeriod;
   const inhibitory = c.spec.type === 'I';
@@ -1848,8 +1908,8 @@ function shoot(key: string) {
   if (phase !== 'playing') return;
   const c = cells.get(key);
   if (!c || !c.shown) return;
-  if (c.target) { sfx.shield(); say('Shielded. Fire it through its partners.'); shake(key); return; }
-  if (hushMode && level.hushBlocked?.includes(key)) { sfx.shield(); say(`${key}’s shield blocks the Hush beam. Find another way.`); shake(key); return; }
+  if (c.target) { sfx.shield(); say('Shielded. Signal it using partner cells.', 2.6, key); shake(key); return; }
+  if (hushMode && level.hushBlocked?.includes(key)) { sfx.shield(); say(`${key}’s shield blocks the Hush beam. Find another way.`, 2.6, key); shake(key); return; }
   const cost = hushMode ? HUSH_COST : SPARK_COST;
   if (charges < cost) { sfx.fizzle(); say('Not enough charge.'); return; }
   charges -= cost; chargesUsed += cost;
@@ -2043,8 +2103,8 @@ function showScan(key: string) {
   scanEl.className = 'ng-extend nge-sig-scan';
   scanEl.style.setProperty('--c', `rgb(${c.color.join(',')})`);
   scanEl.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-sig-scan-g" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.5"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.05"/></linearGradient></defs>
-    <polygon class="cone"/><line class="pointer" stroke="rgba(160,225,255,0.8)" stroke-width="1" stroke-dasharray="3 3"/><circle class="dot" r="4" fill="#bff0ff"/><circle class="lens" r="3.5" fill="#e6fbff"/></svg>
+      <stop offset="0" stop-color="#fff0cc" stop-opacity="0.5"/><stop offset="1" stop-color="#ffc24a" stop-opacity="0.04"/></linearGradient></defs>
+    <polygon class="cone"/><line class="pointer" stroke="rgba(255,214,140,0.8)" stroke-width="1" stroke-dasharray="3 3"/><circle class="dot" r="4" fill="#ffe3a6"/><circle class="lens" r="3.5" fill="#fff6e0"/></svg>
     <div class="nge-sig-scan-box"><header class="nge-sig-scan-head"><span class="ic"></span>${parts.id}<button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></header>${parts.identity}${parts.stats}${parts.wiring}${parts.provenance}</div>`;
   document.body.appendChild(scanEl);
   (scanEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => endVisit();
@@ -2366,6 +2426,7 @@ function frame(ts: number) {
   placeScan();
   placeCanopy();
   placeTourLabels();
+  placePops();
   closeSidePanel();
   // Once a second: the level's cells stay on, whatever else happens to the
   // layer's segment list (a stray key, another panel), and the layer stays shown.
@@ -2574,7 +2635,9 @@ async function runCountdown() {
   el.remove();
   if (token !== tourToken || !active || phase !== 'countdown') return;
   phase = 'playing'; now = 0; lastFrame = 0;
-  coach('begin');
+  // the opening line, where the level has one; else the line clears and the
+  // level's first cells to click light up
+  if (level.coach.begin) coach('begin'); else { setCoachText('', 'begin'); hints = new Set(level.hint?.begin ?? []); }
   updateHud();
 }
 
@@ -2638,7 +2701,7 @@ export function stopSignalController() {
   setNgeGlow(null, GROUP);
   setNgeProps([], GROUP);
   hideCanopy();
-  demo = false; tourToken++; clearTourLabels();
+  demo = false; tourToken++; clearTourLabels(); clearPops();
   document.querySelector('.nge-sig-count')?.remove();
   glide = null; cockpitNose = null;
   if (savedDefaultAnnotations !== null) { try { viewerNow().showDefaultAnnotations.value = savedDefaultAnnotations; } catch { /* as it is */ } savedDefaultAnnotations = null; }
