@@ -3117,10 +3117,10 @@ onBeforeUnmount(() => document.removeEventListener('nge:play-landed', onPlayLand
 function playHere(k: PlayKind) { void startPlay(k, k === 'cells' ? datasetHere() : undefined); }
 /** Skip: the cell goes back on the Available list and the next one is claimed. */
 const skipping = ref(false);
-async function playSkip() {
+async function playSkip(which?: CellRow) {
   if (skipping.value) return;
   if (play.on === 'quests') { document.dispatchEvent(new CustomEvent('nge:play-skip-quest')); return; }
-  const cell = currentCell();
+  const cell = which ?? currentCell();
   if (!cell || !isMyClaim(cell) || cell.status === 'completed') { await claimNewCell(); return; }
   skipping.value = true;
   try {
@@ -4391,19 +4391,19 @@ const panelStyle = computed(() => ({
               >+ Annotation layers</button>
 
               <button
-                v-if="isMyClaim(cell)"
+                v-if="isMyClaim(cell) && !(play.on === 'cells' && cell.status !== 'completed')"
                 class="nge-cl-btn nge-cl-btn--release"
                 :disabled="releasing.has(releaseKey(cell))"
                 @click="releaseCell(cell)"
                 title="Release claim"
               ><span v-if="releasing.has(releaseKey(cell))" class="nge-cl-spin" />{{ releasing.has(releaseKey(cell)) ? 'Releasing…' : 'Release' }}</button>
 
-              <!-- Playing: Skip hands this cell back and takes you to the next (Ames 2026-11-10). -->
+              <!-- Playing: Release is Skip, which hands this cell back and takes you to the next (Ames 2026-11-10). -->
               <button
-                v-if="play.on === 'cells' && isMyClaim(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId && completing?.key !== cellKey(cell)"
+                v-if="play.on === 'cells' && isMyClaim(cell) && cell.status !== 'completed'"
                 class="nge-cl-btn nge-cl-btn--skip"
-                :disabled="skipping"
-                @click="playSkip"
+                :disabled="skipping || releasing.has(releaseKey(cell))"
+                @click="playSkip(cell)"
                 title="Not this one: it goes back on the list for someone else, and Pyr takes you to your next cell"
               >{{ skipping ? 'Skipping…' : 'Skip' }}</button>
 
@@ -4424,7 +4424,9 @@ const panelStyle = computed(() => ({
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell
-              <button class="nge-cl-complete-x" type="button" title="Close (your cell stays claimed)" aria-label="Close" @click="completing = null">&times;</button>
+              <button class="nge-cl-complete-x" type="button" title="Fold this away (your cell stays claimed)" aria-label="Fold away" @click="completing = null">
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
             </div>
             <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="marksStartLine(cell)" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
@@ -5166,9 +5168,12 @@ const panelStyle = computed(() => ({
   flex-direction: column;
   gap: 6px;
 }
-.nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; display: flex; align-items: center; }
-.ng-extend .nge-cl-complete-x { margin-left: auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: #8aa; font-size: 20px; line-height: 1; cursor: pointer; }
-.ng-extend .nge-cl-complete-x:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
+.nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; display: flex !important; align-items: center; width: 100%; }
+/* The fold-away caret, like the library's own (Ames 2026-11-10: "a collapse carrot on the other side"). */
+.ng-extend .nge-cl-complete-title .nge-cl-complete-x { margin: 0 0 0 auto !important; width: 24px !important; height: 24px !important; min-width: 0 !important; padding: 0 !important;
+  display: inline-grid !important; place-items: center; border: 1px solid rgba(100, 200, 255, 0.25) !important; border-radius: 50% !important;
+  background: rgba(10, 20, 35, 0.6) !important; color: #8cf !important; cursor: pointer; box-shadow: none !important; }
+.ng-extend .nge-cl-complete-title .nge-cl-complete-x:hover { color: #eef !important; border-color: rgba(100, 200, 255, 0.6) !important; background: rgba(100, 200, 255, 0.12) !important; }
 .nge-cl-btn--skip { border-color: rgba(62, 236, 190, 0.5) !important; color: #9fe8d4 !important; }
 .nge-cl-btn--skip:hover:not(:disabled) { background: rgba(62, 236, 190, 0.14) !important; }
 .nge-cl-complete-label { color: #9ab; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }

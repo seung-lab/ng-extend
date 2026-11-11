@@ -120,9 +120,9 @@ async function playNow() {
   if (r) { await take(r); if (mine.value.some(m => m.segmentId === r.segmentId)) landed('Your new quest cell', r); }
   else message.value = 'No quest cells are open right now. Try mapping instead.';
 }
-async function playSkip() {
+async function playSkip(which?: QuestRow) {
   if (busy.value) return;
-  const r = mine.value.find(isActive) ?? mine.value[0];
+  const r = which ?? mine.value.find(isActive) ?? mine.value[0];
   if (r) { skippedHere.add(r.segmentId); await letGo(r); }
   const rest = mine.value[0];
   if (rest) { await openCell(rest); landed('Your next quest cell', rest); return; }
@@ -464,8 +464,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
-                <button class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
-                <button v-if="play.on === 'quests' && isActive(r)" class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy" @click="playSkip" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
+                <button v-if="play.on !== 'quests'" class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
+                <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
