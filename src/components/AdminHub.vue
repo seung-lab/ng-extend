@@ -2302,6 +2302,56 @@ function clearDraft() {
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
 }
 
+// ── Saved drafts (Ames 2026-11-10: "let me save a draft notification", to
+// send once Celia has tried what it announces). Kept in this browser, as many
+// as wanted. Save as draft empties the form; Open puts one back; sending an
+// opened draft takes it off the list. A picture is not kept: pick it again.
+interface SavedNotifDraft { id: string; savedAt: string; title: string; body: string; targetType: string; targetId: string; picks?: any[]; postToChat: boolean; sendAt: string; expiresAt: string }
+const SAVED_DRAFTS_KEY = 'nge-admin-notif-saved-drafts';
+function readSavedDrafts(): SavedNotifDraft[] {
+  try { const v = JSON.parse(localStorage.getItem(SAVED_DRAFTS_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+const savedDrafts = ref<SavedNotifDraft[]>(readSavedDrafts());
+const openDraftId = ref<string | null>(null);
+function writeSavedDrafts() {
+  try { localStorage.setItem(SAVED_DRAFTS_KEY, JSON.stringify(savedDrafts.value)); } catch { /* quota or private mode */ }
+}
+function saveAsDraft() {
+  const d: SavedNotifDraft = {
+    id: openDraftId.value || `d${Date.now()}`, savedAt: new Date().toISOString(),
+    title: notifTitle.value, body: notifBody.value,
+    targetType: notifTargetType.value, targetId: notifTargetId.value,
+    picks: userPicks.value.length > 1 ? userPicks.value : undefined,
+    postToChat: notifPostToChat.value, sendAt: notifSendAt.value, expiresAt: notifExpiresAt.value,
+  };
+  savedDrafts.value = [d, ...savedDrafts.value.filter(x => x.id !== d.id)];
+  writeSavedDrafts();
+  const name = d.title.trim() || 'Untitled';
+  openDraftId.value = null;
+  cancelEdit();
+  notifConfirm.value = `Saved “${name}” as a draft. Nothing was sent. Open it from Drafts below when you are ready.`;
+}
+function openSavedDraft(d: SavedNotifDraft) {
+  if (editingId.value != null) cancelEdit();
+  notifTitle.value = d.title || '';
+  notifBody.value = d.body || '';
+  notifTargetType.value = (d.targetType || 'all') as 'all' | 'group' | 'user';
+  notifTargetId.value = d.targetId || '';
+  if (Array.isArray(d.picks) && d.picks.length > 1) userPicks.value = d.picks;
+  notifPostToChat.value = !!d.postToChat;
+  notifSendAt.value = d.sendAt || '';
+  notifExpiresAt.value = d.expiresAt || '';
+  notifConfirm.value = '';
+  notifError.value = '';
+  openDraftId.value = d.id;
+  requestAnimationFrame(() => notifBodyEl.value?.focus());
+}
+function deleteSavedDraft(id: string) {
+  savedDrafts.value = savedDrafts.value.filter(x => x.id !== id);
+  writeSavedDrafts();
+  if (openDraftId.value === id) openDraftId.value = null;
+}
+
 const hasDraft = computed(() =>
   !!(notifTitle.value.trim() || notifBody.value.trim() || notifSendAt.value));
 
@@ -2409,6 +2459,8 @@ async function sendNotification() {
     notifSendAt.value = '';
     notifExpiresAt.value = '';
     clearDraft();
+    // A saved draft that was opened and sent is done.
+    if (openDraftId.value) deleteSavedDraft(openDraftId.value);
     // Refresh the admin list so a newly-scheduled notification appears in it.
     notifSendStage.value = 'list';
     await backend.loadAdminNotifications();
@@ -3220,6 +3272,8 @@ function practiceWhen(iso: string | null) {
           </button>
           <button class="nge-admin-cancel-btn nge-admin-preview-btn" type="button" :disabled="!notifTitle.trim() && !notifBody.trim()"
                   title="See this notification as players will, before it is sent. Nothing is sent or saved." @click="previewNotification">Preview</button>
+          <button v-if="editingId == null" class="nge-admin-cancel-btn" type="button" :disabled="notifSending || (!notifTitle.trim() && !notifBody.trim())"
+                  title="Keep this notification to send later. Nothing is sent." @click="saveAsDraft">{{ openDraftId ? 'Update draft' : 'Save as draft' }}</button>
           <button v-if="editingId != null" class="nge-admin-cancel-btn" @click="cancelEdit">Cancel edit</button>
         </div>
         <!-- While it sends: a neuron that grows a part for each real step. -->
@@ -3263,6 +3317,18 @@ function practiceWhen(iso: string | null) {
            the scheduled queue is always on the first page. Loading every
            notification ever just to render this panel would get slow for no
            benefit, hence "Load more". -->
+      <div class="nge-admin-block" v-if="savedDrafts.length > 0">
+        <label class="nge-admin-label">Drafts ({{ savedDrafts.length }}) · not sent, kept on this computer</label>
+        <div v-for="d in savedDrafts" :key="d.id" class="nge-admin-notif-row nge-admin-notif-row--queued">
+          <div class="nge-admin-notif-info">
+            <strong>{{ d.title || 'Untitled' }}</strong>
+            <span class="nge-admin-notif-meta">saved {{ formatEt(d.savedAt) }}<span v-if="openDraftId === d.id"> · open in the form above</span></span>
+          </div>
+          <button class="nge-admin-edit-btn" @click="openSavedDraft(d)" title="Put this draft in the form above, to change it or send it">&#9998; Open</button>
+          <button class="nge-admin-delete-btn" @click="deleteSavedDraft(d.id)" title="Delete this draft">&times;</button>
+        </div>
+      </div>
+
       <div class="nge-admin-block" v-if="scheduledNotifs.length > 0">
         <label class="nge-admin-label">Scheduled ({{ scheduledNotifs.length }})</label>
         <div v-for="n in scheduledNotifs" :key="n.id" class="nge-admin-notif-row nge-admin-notif-row--queued">
