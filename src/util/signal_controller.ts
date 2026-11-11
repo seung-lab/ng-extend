@@ -210,7 +210,7 @@ interface CellState {
 interface Arrival { at: number; post: string; units: number; inhibitory: boolean; conn: CircuitConn; }
 interface Spark { r: Route; start: number; end: number; inhibitory: boolean; conn: CircuitConn; }
 interface Flash { p: V3; at: number; life: number; rgb: V3; size: number; }
-interface Beam { from: V3; to: V3; at: number; hush: boolean; cell: string; applied: boolean; }
+interface Beam { from: V3; to: V3; at: number; hush: boolean; cell: string; applied: boolean; scan?: boolean; }
 type Phase = 'loading' | 'brief' | 'playing' | 'done';
 
 let active = false;
@@ -335,6 +335,7 @@ function tone(freq: number, dur: number, type: OscillatorType = 'sine', gain = 0
   o.start(t0); o.stop(t0 + dur + 0.02);
 }
 const sfx = {
+  scan: () => { tone(1320, 0.22, 'sine', 0.045, 2640); tone(660, 0.3, 'triangle', 0.025, 990, 0.08); },
   spark: () => tone(880, 0.14, 'sine', 0.07, 1760),
   hush: () => tone(300, 0.35, 'triangle', 0.07, 90),
   fizzle: () => tone(160, 0.12, 'square', 0.02, 120),
@@ -582,6 +583,29 @@ body.nge-mobile .nge-sig-go, body.nge-mobile .nge-sig-quiet { touch-action: mani
 .nge-sig-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); vertical-align: 0; }
 body.nge-mobile .nge-sig-map .node .role { display: none; }
 body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
+/* the scan: a hologram card the ship projects over a cell, as the intro's callouts */
+.nge-sig-tip { margin: 10px 0 0; font-size: 11.5px; color: #9fc6ea; }
+.ng-extend.nge-sig-scan { position: fixed; left: 0; top: 0; z-index: 9450; pointer-events: none; opacity: 0; transition: opacity 0.35s; }
+.ng-extend.nge-sig-scan--in { opacity: 1; }
+.ng-extend.nge-sig-scan svg { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; overflow: visible; }
+.ng-extend.nge-sig-scan .cone { fill: url(#nge-sig-scan-g); animation: nge-sig-cone 2.4s ease-in-out infinite; }
+@keyframes nge-sig-cone { 50% { opacity: 0.6; } }
+.nge-sig-scan-box { position: fixed; min-width: 220px; max-width: 300px; padding: 9px 13px 10px; pointer-events: auto; transform-origin: 50% 100%;
+  border: 1px solid rgba(126, 224, 255, 0.7); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: linear-gradient(180deg, rgba(40, 140, 220, 0.30), rgba(10, 40, 90, 0.46)), repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.07) 0 1px, transparent 1px 3px);
+  backdrop-filter: blur(2px); box-shadow: inset 0 0 24px rgba(126, 224, 255, 0.18); color: #eaf7ff; font: 12px/1.35 'Inter', 'Roboto', sans-serif;
+  animation: nge-sig-proj-in 520ms cubic-bezier(.2,1,.3,1) both, nge-sig-proj-flicker 5s 1s infinite; }
+@keyframes nge-sig-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
+@keyframes nge-sig-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 0.95; } 99% { opacity: 0.7; } }
+.nge-sig-scan-title { display: flex; align-items: center; gap: 8px; font: 600 15px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: var(--c, #fff); }
+.nge-sig-scan-title .ic { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--c, #7ecaff); background: color-mix(in srgb, var(--c, #7ecaff) 35%, transparent); box-shadow: 0 0 8px var(--c, #7ecaff); flex: none; }
+.nge-sig-scan-title small { font: 600 9.5px 'Inter', sans-serif; letter-spacing: 0.06em; color: #c9dcf0; }
+.nge-sig-scan-title .nge-sig-x { margin-left: auto; }
+.nge-sig-scan-stats { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 6px 0 0; padding-top: 6px; border-top: 1px solid rgba(126, 224, 255, 0.3); }
+.nge-sig-scan-stats dt { color: #7ecaff; font: 600 9.5px/1.9 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+.nge-sig-scan-stats dd { margin: 0; color: #eaf7ff; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .nge-sig-scan-box, .ng-extend.nge-sig-scan .cone { animation: none; } }
+body.nge-mobile .nge-sig-scan-box { min-width: 0; max-width: calc(100vw - 24px); font-size: 11.5px; }
 /* the Intro test panel sits where the HUD now stands: away while the game runs */
 body.nge-signal-on .nge-stt, body.nge-signal-on .nge-stt-dock { display: none !important; }
 @media (max-width: 700px) { .nge-sig { padding: 10px 12px; font-size: 12.5px; } .nge-sig-obj strong { font-size: 14px; } .nge-sig-stats b { font-size: 15px; }
@@ -830,8 +854,9 @@ function buildMap() {
   el.querySelectorAll<SVGGElement>('g.node').forEach(g => {
     const k = g.dataset.cell!;
     mapNodeEls.set(k, g);
-    g.addEventListener('click', () => { if (phase === 'playing') shoot(k); });
-    g.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && phase === 'playing') { e.preventDefault(); shoot(k); } });
+    const act = () => { if (phase === 'playing') shoot(k); else scan(k); };
+    g.addEventListener('click', act);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
   });
   mapSparkEls = [...el.querySelectorAll<SVGCircleElement>('circle.spark')];
 }
@@ -906,7 +931,8 @@ function showBrief() {
   buildMap();
   els.map.style.display = '';
   els.body.innerHTML = `<div class="nge-sig-card">${adapt(level.brief).split('\n').map(p => `<p>${p}</p>`).join('')}
-    <button class="nge-sig-go" type="button"><span class="nge-sig-plate">Begin ›</span></button></div>`;
+    <button class="nge-sig-go" type="button"><span class="nge-sig-plate">Begin ›</span></button>
+    <p class="nge-sig-tip">${adapt('Before you begin, click any cell to scan it.')}</p></div>`;
   (els.body.querySelector('.nge-sig-go') as HTMLButtonElement).onclick = () => beginPlay();
   updateHud();
 }
@@ -1078,7 +1104,7 @@ function makeTags() {
     el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
     el.innerHTML = `<b class="tap">Tap</b>${key}<small>${roleOf(c)}</small>`;
     el.title = c.target ? `${key}: the target` : `Fire the beam at ${key}`;
-    el.onclick = () => { shoot(key); el.blur(); };
+    el.onclick = () => { if (phase === 'playing') shoot(key); else scan(key); el.blur(); };
     el.style.display = 'none';
     document.body.appendChild(el);
     tagEls.set(key, el);
@@ -1422,6 +1448,122 @@ function shake(key: string) {
   el.classList.remove('nge-sig-chip--shake'); void el.offsetWidth; el.classList.add('nge-sig-chip--shake');
 }
 
+/* ── the scan: before Begin (and after the level), the beam reads a cell ──
+   Ames 2026-11-11: "before I begin it should still let me shoot a beam, it
+   should pop out stats on the cells like the UI of the rocket ship in Pyr".
+   A cyan beam from the ship to the cell, and on landing a hologram card the
+   ship projects, as the intro's callouts (src/util/intro_tour.ts): a cone
+   of light from the ship's nose up to the card, a fine line from the card
+   down to the cell body. The card is the cell's record: what it is, its job
+   here, its cable, and its real synapses onto and from the other cells of
+   the level. */
+let scanEl: HTMLElement | null = null;
+let scanKey: string | null = null;
+function scan(key: string) {
+  if (phase === 'playing' || phase === 'loading') return;
+  const c = cells.get(key);
+  if (!c || !c.shown) return;
+  shipAim = c.spec.soma; aimUntil = performance.now() + 1500;
+  beams.push({from: shipNose(), to: c.spec.soma, at: now, hush: false, cell: key, applied: false, scan: true});
+  sfx.scan();
+}
+function cellRecord(c: CellState): [string, string][] {
+  const s = c.spec;
+  const kind = `${s.label}${s.fine ? ` · ${s.fine}` : ''}${s.mtype ? ` (${s.mtype})` : ''}`;
+  const job = c.target ? `Target: fires at ${c.theta} units of charge`
+    : c.gateNext !== null ? `Gatekeeper: pulses every ${c.gatePeriod} s, holds the targets down`
+    : s.type === 'I' ? `${roleOf(c)}: quiets what it reaches`
+    : `${roleOf(c)}: fires when your beam hits it`;
+  const outs = conns.filter(k => k.pre === c.key && cells.get(k.post)?.shown).sort((a, b) => b.count - a.count).map(k => `${k.post} ×${k.count}`).join(', ');
+  const ins = conns.filter(k => k.post === c.key && cells.get(k.pre)?.shown).sort((a, b) => b.count - a.count).map(k => `${k.pre} ×${k.count}`).join(', ');
+  const rows: [string, string][] = [['Type', kind], ['Job', job], ['Cable', `${Math.round(s.cableUm).toLocaleString()} µm, axon ${Math.round(s.axonUm).toLocaleString()} µm`]];
+  if (outs) rows.push([s.type === 'I' ? 'Quiets' : 'Drives', outs]);
+  if (ins) rows.push(['Fed by', ins]);
+  rows.push(['Cell', `MICrONS ${s.root}`]);
+  return rows;
+}
+function showScan(key: string) {
+  const c = cells.get(key);
+  if (!c) return;
+  hideScan();
+  scanKey = key;
+  const rows = cellRecord(c).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  scanEl = document.createElement('div');
+  scanEl.className = 'ng-extend nge-sig-scan';
+  scanEl.style.setProperty('--c', `rgb(${c.color.join(',')})`);
+  scanEl.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-sig-scan-g" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.5"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.05"/></linearGradient></defs>
+    <polygon class="cone"/><line class="pointer" stroke="rgba(160,225,255,0.8)" stroke-width="1" stroke-dasharray="3 3"/><circle class="dot" r="4" fill="#bff0ff"/><circle class="lens" r="3.5" fill="#e6fbff"/></svg>
+    <div class="nge-sig-scan-box"><div class="nge-sig-scan-title"><span class="ic"></span>${key}<small>${roleOf(c)}</small><button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></div><dl class="nge-sig-scan-stats">${rows}</dl></div>`;
+  document.body.appendChild(scanEl);
+  (scanEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => hideScan();
+  requestAnimationFrame(() => scanEl?.classList.add('nge-sig-scan--in'));
+  flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.7, 0.95, 1], size: 20_000});
+}
+function hideScan() {
+  scanEl?.remove();
+  scanEl = null; scanKey = null;
+}
+/** The card each frame: above the ship when the ship is on screen, with the
+ *  cone from its nose, else beside the cell; always clear of the HUD. */
+function placeScan() {
+  if (!scanEl || !scanKey) return;
+  const c = cells.get(scanKey);
+  const s = c && toScreen(c.spec.soma);
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  if (!s || !r) { scanEl.style.display = 'none'; return; }
+  scanEl.style.display = '';
+  const box = scanEl.querySelector('.nge-sig-scan-box') as HTMLElement;
+  const cone = scanEl.querySelector('polygon')!, grad = scanEl.querySelector('linearGradient')!;
+  const line = scanEl.querySelector('line')!, dot = scanEl.querySelector('.dot')!, lens = scanEl.querySelector('.lens') as SVGElement;
+  const hud = panel?.getBoundingClientRect();
+  const ship = toScreen(shipNose());
+  const bw = box.offsetWidth, bh = box.offsetHeight;
+  const onScreen = !!ship && ship[0] > r.left && ship[0] < r.right && ship[1] > r.top + 40 && ship[1] < r.bottom;
+  let bx: number, by: number;
+  if (onScreen) {
+    const lean = ship![0] < s[0] ? -1 : 1;
+    bx = ship![0] - bw / 2 + lean * 60;
+    by = ship![1] - 80 - bh;
+  } else {
+    const right = s[0] < r.left + r.width * 0.55;
+    bx = right ? s[0] + 70 : s[0] - 70 - bw;
+    by = s[1] - 90 - bh / 2;
+  }
+  bx = clamp(bx, r.left + 10, r.right - bw - 10);
+  by = clamp(by, r.top + 50, r.bottom - bh - 16);
+  if (hud && bx < hud.right + 10 && bx + bw > hud.left - 10 && by < hud.bottom + 10 && by + bh > hud.top - 10) {
+    // off the HUD: to its right, or above it when it lies along the bottom
+    if (sideHud()) bx = Math.min(hud.right + 12, r.right - bw - 10); else by = Math.max(r.top + 50, hud.top - bh - 12);
+  }
+  box.style.left = `${bx}px`; box.style.top = `${by}px`;
+  if (onScreen) {
+    const [sx, sy] = ship!;
+    cone.setAttribute('points', `${sx},${sy} ${bx + 6},${by + bh} ${bx + bw - 6},${by + bh}`);
+    grad.setAttribute('x1', String(sx)); grad.setAttribute('y1', String(sy));
+    grad.setAttribute('x2', String(bx + bw / 2)); grad.setAttribute('y2', String(by + bh));
+    lens.setAttribute('cx', String(sx)); lens.setAttribute('cy', String(sy));
+    (cone as SVGElement).style.display = lens.style.display = '';
+  } else {
+    (cone as SVGElement).style.display = lens.style.display = 'none';
+  }
+  const lx = clamp(s[0], bx, bx + bw), ly = s[1] > by + bh ? by + bh : by;
+  line.setAttribute('x1', String(s[0])); line.setAttribute('y1', String(s[1]));
+  line.setAttribute('x2', String(lx)); line.setAttribute('y2', String(ly));
+  dot.setAttribute('cx', String(s[0])); dot.setAttribute('cy', String(s[1]));
+}
+/** Between levels the beams still fly and land: the scan, and the glow. */
+function idleStep(dt: number) {
+  now += dt;
+  for (const b of beams) {
+    if (b.applied || now < b.at + BEAM_S) continue;
+    b.applied = true;
+    if (b.scan) showScan(b.cell);
+  }
+  beams = beams.filter(b => now < b.at + BEAM_S + 0.25);
+  flashes = flashes.filter(f => now < f.at + f.life);
+}
+
 function stepModel(dt: number) {
   now += dt;
   charges = Math.min(MAX_CHARGES, charges + dt / REGEN_S);
@@ -1550,7 +1692,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     const q = clamp((now - b.at) / BEAM_S, 0, 1);
     const after = Math.max(0, now - b.at - BEAM_S);
     const fade = Math.max(0, 1 - after / 0.25);
-    const rgb: V3 = b.hush ? [0.7, 0.45, 1] : [1, 0.82, 0.35];
+    const rgb: V3 = b.scan ? [0.6, 0.95, 1] : b.hush ? [0.7, 0.45, 1] : [1, 0.82, 0.35];
     const N = 48;
     for (let k = 0; k <= N; k++) {
       const u = k / N;
@@ -1582,12 +1724,13 @@ function frame(ts: number) {
   const cam = nm && cameraAxes(nm);
   if (cam) {
     if (needsFrame) settleFrame(cam);
-    if (phase === 'playing') stepModel(dt);
+    if (phase === 'playing') stepModel(dt); else idleStep(dt);
     placeShip(cam, dt);
     writeGlow(cam);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   }
   placeTags();
+  placeScan();
   closeSidePanel();
   // Once a second: the level's cells stay on, whatever else happens to the
   // layer's segment list (a stray key, another panel), and the layer stays shown.
@@ -1656,18 +1799,18 @@ function onPointerDown(e: PointerEvent) {
   if (e.pointerType !== 'mouse') {
     fingers++;
     tapStart = null;
-    if (fingers === 1 && phase === 'playing' && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) {
+    if (fingers === 1 && (phase === 'playing' || phase === 'brief' || phase === 'done') && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) {
       tapStart = {id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now()};
     }
     return;
   }
-  if (phase !== 'playing' || e.button !== 0) return;
+  if ((phase !== 'playing' && phase !== 'brief' && phase !== 'done') || e.button !== 0) return;
   if (!(e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) return;
   const hit = cellAt(e.clientX, e.clientY, false);
   if (!hit) return;
   e.preventDefault(); e.stopPropagation();
   swallowUntil = performance.now() + 500;
-  shoot(hit.key);
+  if (phase === 'playing') shoot(hit.key); else scan(hit.key);
 }
 function onPointerUp(e: PointerEvent) {
   if (e.pointerType === 'mouse') return;
@@ -1675,13 +1818,13 @@ function onPointerUp(e: PointerEvent) {
   const t = tapStart;
   if (!t || t.id !== e.pointerId) return;
   tapStart = null;
-  if (e.type === 'pointercancel' || !active || phase !== 'playing') return;
+  if (e.type === 'pointercancel' || !active || (phase !== 'playing' && phase !== 'brief' && phase !== 'done')) return;
   if (performance.now() - t.t > 500 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 14) return;
   const hit = cellAt(e.clientX, e.clientY, true);
   if (!hit) return;
   e.preventDefault(); e.stopPropagation();
   swallowUntil = performance.now() + 500;
-  shoot(hit.key);
+  if (phase === 'playing') shoot(hit.key); else scan(hit.key);
 }
 function onKey(e: KeyboardEvent) {
   if (!active) return;
@@ -1706,6 +1849,7 @@ async function startLevel(index: number) {
   if (levelIndex === 0) score = 0;
   resetCells();
   clearTags();
+  hideScan();
   els.spark.setAttribute('aria-pressed', 'true'); els.hush.setAttribute('aria-pressed', 'false');
   els.row.style.display = 'none';
   els.body.innerHTML = '<div class="nge-sig-card"><p data-el="loading">Loading the cells…</p></div>';
@@ -1743,6 +1887,7 @@ async function startLevel(index: number) {
 function beginPlay() {
   phase = 'playing';
   now = 0; lastFrame = 0;
+  beams = []; flashes = []; hideScan();
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
   closeSidePanel();
   showChips();
@@ -1812,6 +1957,7 @@ export function stopSignalController() {
   stopMusic();
   clearHaze();
   clearTags();
+  hideScan();
   if (savedRenderScale !== null) { try { circuitLayer().layer.displayState.renderScaleTarget.value = savedRenderScale; } catch { /* as it is */ } savedRenderScale = null; }
   setNgeGlow(null, GROUP);
   setNgeProps([], GROUP);
