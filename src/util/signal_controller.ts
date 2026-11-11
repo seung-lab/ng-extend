@@ -283,6 +283,33 @@ function paint(c: CellState, dim: boolean) {
   c.dimmed = dim;
 }
 
+/* ── the score: Ames's "Bioluminescent Sparks" (2026-11-11), a 90 s loop
+   that starts at Begin (a click, so the browser allows it) and plays on
+   through the levels; the ♪ button mutes it with the sounds. ── */
+let music: HTMLAudioElement | null = null;
+function ensureMusic(): HTMLAudioElement | null {
+  if (!music) {
+    try {
+      music = new Audio('signal/score.mp3');
+      music.loop = true;
+      music.volume = 0.45;
+      music.preload = 'auto';
+    } catch { music = null; }
+  }
+  return music;
+}
+function startMusic() {
+  const m = ensureMusic();
+  if (!m || muted) return;
+  m.muted = false;
+  m.play().catch(() => { /* not allowed yet: the next click tries again */ });
+}
+function stopMusic() {
+  if (!music) return;
+  music.pause();
+  music.currentTime = 0;
+}
+
 /* ── sound, made on the spot ── */
 let audio: AudioContext | null = null;
 function ac(): AudioContext | null {
@@ -508,26 +535,55 @@ body.nge-mobile .nge-sig-msg { margin-left: 0; width: 100%; min-height: 0; text-
 body.nge-mobile .nge-sig-note { display: none; }
 body.nge-mobile .nge-sig-card p { font-size: 13px; }
 body.nge-mobile .nge-sig-go, body.nge-mobile .nge-sig-quiet { touch-action: manipulation; }
-/* the Intro test panel is in the way on a phone while the game runs */
-body.nge-mobile.nge-signal-on .nge-stt, body.nge-mobile.nge-signal-on .nge-stt-dock { display: none !important; }
-/* Wide screens: the HUD stands at the right, the cells get the whole height. */
+/* Wide screens: the HUD stands at the left (Ames 2026-11-11: "move signal
+   control to left, more area for control panel"), the cells get the whole
+   height and the width to its right. */
 @media (min-width: 1000px) {
-  .nge-sig { left: auto; right: 16px; bottom: auto; top: 64px; transform: none; width: 372px; max-height: calc(100vh - 150px); display: flex; flex-direction: column; padding: 12px 16px 12px;
+  .nge-sig { left: 16px; right: auto; bottom: auto; top: 64px; transform: none; width: min(448px, 40vw); max-height: calc(100vh - 110px); display: flex; flex-direction: column; padding: 12px 16px 12px;
     animation-name: nge-sig-in-side; }
   /* Only the content scrolls, and only when it must: the corner brackets
      poke out of the plate, and on the plate itself they made both scrollbars
      appear with everything in view (Ames 2026-11-08). */
   .nge-sig-scroll { min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: rgba(126, 224, 255, 0.35) transparent; margin-right: -8px; padding-right: 8px; }
-  @keyframes nge-sig-in-side { 0% { opacity: 0; transform: translateX(18px) scaleX(0.04); filter: blur(6px) brightness(2); } 100% { opacity: 1; transform: none; filter: none; } }
+  @keyframes nge-sig-in-side { 0% { opacity: 0; transform: translateX(-18px) scaleX(0.04); filter: blur(6px) brightness(2); } 100% { opacity: 1; transform: none; filter: none; } }
   .nge-sig--out { animation-name: nge-sig-out-side; }
-  @keyframes nge-sig-out-side { to { opacity: 0; transform: translateX(14px) scaleX(0.04); filter: blur(6px); } }
-  .nge-sig-top { grid-template-columns: 1fr; gap: 8px; }
-  .nge-sig-stats { text-align: left; }
-  .nge-sig-cells { flex-direction: column; }
-  .nge-sig .nge-sig-chip { width: 100%; box-sizing: border-box; }
+  @keyframes nge-sig-out-side { to { opacity: 0; transform: translateX(-14px) scaleX(0.04); filter: blur(6px); } }
+  .nge-sig-top { grid-template-columns: 1fr auto; gap: 8px; }
+  .nge-sig-cells { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .nge-sig .nge-sig-chip { width: 100%; min-width: 0; box-sizing: border-box; }
+  .nge-sig .nge-sig-chip .bar { width: 90px; }
   .nge-sig-row { gap: 8px; }
   .nge-sig-msg { margin-left: 0; width: 100%; text-align: left; }
 }
+/* the circuit map: the level as a little flow chart, live */
+.nge-sig-map { margin: 8px 0 0; }
+.nge-sig-map svg { display: block; width: 100%; height: auto; overflow: visible; font-family: 'Inter', 'Roboto', sans-serif; }
+.nge-sig-map .edge { stroke-width: 1.6; opacity: 0.9; }
+.nge-sig-map .edge.faint, .nge-sig-map .head.faint { opacity: 0.22; stroke-width: 1; }
+.nge-sig-map .edge.bar { stroke-width: 2.4; }
+.nge-sig-map .count { font: 700 9.5px 'Inter', sans-serif; text-anchor: middle; dominant-baseline: middle; paint-order: stroke; stroke: rgba(6, 12, 28, 0.9); stroke-width: 3px; }
+.nge-sig-map .node { cursor: pointer; outline: none; }
+.nge-sig-map .node.target { cursor: not-allowed; }
+.nge-sig-map .node .halo { fill: none; stroke: #c9f6ff; stroke-width: 2; opacity: 0; }
+.nge-sig-map .node .body { fill: color-mix(in srgb, var(--c) 28%, rgba(8, 14, 30, 0.9)); stroke: var(--c); stroke-width: 1.6; transition: fill 0.15s; }
+.nge-sig-map .node.target .body { stroke-width: 2.2; filter: drop-shadow(0 0 6px rgba(255, 194, 74, 0.7)); }
+.nge-sig-map .node:hover .body, .nge-sig-map .node:focus-visible .body { fill: color-mix(in srgb, var(--c) 45%, rgba(8, 14, 30, 0.9)); }
+.nge-sig-map .node .key { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; fill: var(--c); text-anchor: middle; pointer-events: none; }
+.nge-sig-map .node .role { font: 600 8.5px 'Inter', sans-serif; letter-spacing: 0.04em; fill: #a9c3de; text-anchor: middle; pointer-events: none; }
+.nge-sig-map .node.hint .halo { opacity: 1; animation: nge-sig-map-hint 1s ease-in-out infinite; }
+.nge-sig-map .node.hint .body { fill: color-mix(in srgb, var(--c) 55%, rgba(8, 14, 30, 0.9)); }
+@keyframes nge-sig-map-hint { 50% { opacity: 0.35; stroke-width: 3; } }
+.nge-sig-map .node.hushed { opacity: 0.45; }
+.nge-sig-map .node.held .body { fill: #5a3f9a; stroke: #b68cff; }
+.nge-sig-map .node.spike .body { animation: nge-sig-map-spike 0.5s ease-out; }
+@keyframes nge-sig-map-spike { 0% { fill: #fff; filter: drop-shadow(0 0 10px #fff); } }
+.nge-sig-map .spark { pointer-events: none; filter: drop-shadow(0 0 4px currentColor); }
+.nge-sig-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 2px; font-size: 10.5px; color: #a9c3de; }
+.nge-sig-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); vertical-align: 0; }
+body.nge-mobile .nge-sig-map .node .role { display: none; }
+body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
+/* the Intro test panel sits where the HUD now stands: away while the game runs */
+body.nge-signal-on .nge-stt, body.nge-signal-on .nge-stt-dock { display: none !important; }
 @media (max-width: 700px) { .nge-sig { padding: 10px 12px; font-size: 12.5px; } .nge-sig-obj strong { font-size: 14px; } .nge-sig-stats b { font-size: 15px; }
   .nge-sig .nge-sig-chip .syn { display: none; } .nge-sig .nge-sig-chip { min-width: 0; } .nge-sig .nge-sig-chip .bar { width: 70px; } .nge-sig-note { display: none; } .nge-sig-coach { font-size: 13px; } }
 @media (prefers-reduced-motion: reduce) { .nge-sig, .nge-sig-dot, .nge-sig-chip--spike { animation: none; } }
@@ -551,6 +607,7 @@ function buildPanel() {
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
       <div class="nge-sig-stats"><div>Progress<b data-el="progress">0</b></div><div>Time<b data-el="time">0</b></div><div>Score<b data-el="score">0</b></div></div></div>
     <div class="nge-sig-coach" data-el="coach" aria-live="polite"><i></i><span data-el="coachText"></span></div>
+    <div class="nge-sig-map" data-el="map"></div>
     <div data-el="body"></div>
     <div class="nge-sig-row" data-el="row"><div class="nge-sig-beams"><button class="nge-sig-beam spark" type="button" data-el="spark" aria-pressed="true" title="Spark: the cell fires. Costs 1 charge.">Spark<i class="cost" aria-label="1 charge"><b></b></i></button><button class="nge-sig-beam hush" type="button" data-el="hush" aria-pressed="false" title="Hush: the cell is silent for 2.5 s. Costs 2 charges.">Hush<i class="cost" aria-label="2 charges"><b></b><b></b></i></button></div><kbd class="nge-sig-key" title="Tab (or Space) switches between Spark and Hush">Tab</kbd>
       <div class="nge-sig-charges" data-el="charges"><span>Charge</span></div>
@@ -561,7 +618,11 @@ function buildPanel() {
   els = {};
   panel.querySelectorAll<HTMLElement>('[data-el]').forEach(el => { els[el.dataset.el!] = el; });
   els.x.onclick = () => stopSignalController();
-  els.mute.onclick = () => { muted = !muted; els.mute.textContent = muted ? '♪̸' : '♪'; els.mute.style.opacity = muted ? '0.5' : '1'; };
+  els.mute.onclick = () => {
+    muted = !muted; els.mute.textContent = muted ? '♪̸' : '♪'; els.mute.style.opacity = muted ? '0.5' : '1';
+    if (music) music.muted = muted;
+    if (!muted && (phase === 'playing' || phase === 'done')) startMusic();
+  };
   // Buttons let go of the focus after a click, so Space keeps switching the
   // beam instead of pressing the last button again.
   els.spark.onclick = () => { setHushMode(false); els.spark.blur(); };
@@ -667,8 +728,148 @@ function chipLine(c: CellState): string {
   return `${role} · ${outs[0].count} syn → ${outs[0].post}`;
 }
 
+/* ── the circuit map: a little flow chart of the level ──
+   Ames 2026-11-11: "more visuals of cells, instant color coding, maybe a
+   little flow chart or other stat that will help me instantly understand
+   what I'm seeing and what to do". The level's cells as nodes in their own
+   colours, drivers down the left with arrows into the targets at the right
+   (synapse counts on the arrows), the Gatekeeper and the chain that quiets
+   it across the top with bar-ended inhibitory links. It is live: the cell
+   to click pulses, a hushed cell dims, the target turns violet while held,
+   and every spike runs its arrow in time with the 3D view. Nodes are
+   buttons: clicking one fires the beam at that cell. */
+const MAP_W = 400;
+interface MapNode { x: number; y: number; r: number; }
+let mapNodes = new Map<string, MapNode>();
+let mapEdges = new Map<CircuitConn, {x1: number; y1: number; x2: number; y2: number}>();
+let mapNodeEls = new Map<string, SVGGElement>();
+let mapSparkEls: SVGCircleElement[] = [];
+const MAP_SPARKS = 24;
+function buildMap() {
+  const el = els.map;
+  if (!el) return;
+  const shown = level.cells.filter(k => cells.get(k)?.shown);
+  const isTarget = (k: string) => level.targets.includes(k);
+  const gate = level.gate && shown.includes(level.gate.cell) ? level.gate.cell : null;
+  const key = shown.includes('I2') ? 'I2' : null;
+  const sw = shown.includes('S') ? 'S' : null;
+  const targets = level.targets.filter(k => shown.includes(k));
+  const drivers = shown.filter(k => !isTarget(k) && k !== gate && k !== key && k !== sw);
+  // each driver sits under the target it feeds most
+  const mainTarget = (d: string) => { let best: string | null = null, n = 0; for (const c of conns) if (c.pre === d && targets.includes(c.post) && c.count > n) { n = c.count; best = c.post; } return best; };
+  const byTarget = new Map<string | null, string[]>();
+  for (const d of drivers) { const t = mainTarget(d); if (!byTarget.has(t)) byTarget.set(t, []); byTarget.get(t)!.push(d); }
+  mapNodes = new Map();
+  const R = 13, RT = 16, ROW = 38, XL = 48, XR = MAP_W - 48;
+  const top = [sw, key, gate].filter(Boolean) as string[];
+  let y = 26;
+  if (top.length) {
+    // the chain that quiets the Gatekeeper, across the top, the Gatekeeper
+    // itself above the targets
+    const xs = top.length === 1 ? [XR - 70] : top.length === 2 ? [XR - 160, XR - 70] : [XR - 250, XR - 160, XR - 70];
+    top.forEach((k, i) => mapNodes.set(k, {x: xs[i], y, r: R}));
+    y += 50;
+  }
+  for (const t of targets) {
+    const ds = byTarget.get(t) ?? [];
+    const y0 = y;
+    for (const d of ds) { mapNodes.set(d, {x: XL, y, r: R}); y += ROW; }
+    const yT = ds.length ? (y0 + y - ROW) / 2 : y;
+    mapNodes.set(t, {x: XR, y: yT, r: RT});
+    if (!ds.length) y += ROW;
+  }
+  for (const d of byTarget.get(null) ?? []) { mapNodes.set(d, {x: XL, y, r: R}); y += ROW; }
+  const H = y - ROW + 34;
+  // edges: the real connections among the cells shown, where they matter
+  mapEdges = new Map();
+  const rgb = (k: string) => `rgb(${cells.get(k)!.color.join(',')})`;
+  let edgesSvg = '';
+  for (const k of conns) {
+    if (!live(k)) continue;
+    const a = mapNodes.get(k.pre), b = mapNodes.get(k.post);
+    if (!a || !b) continue;
+    const pre = cells.get(k.pre)!, post = cells.get(k.post)!;
+    const inhib = pre.spec.type === 'I';
+    // strong: into a target, or along the chain that quiets the Gatekeeper; faint: a driver nudging the Gatekeeper
+    const strong = post.target || inhib || (post.spec.type === 'I' && k.count >= 8);
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+    const x1 = a.x + ux * (a.r + 3), y1 = a.y + uy * (a.r + 3), x2 = b.x - ux * (b.r + (inhib ? 6 : 9)), y2 = b.y - uy * (b.r + (inhib ? 6 : 9));
+    mapEdges.set(k, {x1, y1, x2, y2});
+    const col = rgb(k.pre);
+    const cls = `edge${strong ? '' : ' faint'}${inhib ? ' inhib' : ''}`;
+    edgesSvg += `<line class="${cls}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${col}"/>`;
+    const px = -uy, py = ux;   // across the line
+    if (inhib) {
+      // the bar of an inhibitory link, across the line at its end
+      edgesSvg += `<line class="edge inhib bar${strong ? '' : ' faint'}" x1="${(x2 - px * 6).toFixed(1)}" y1="${(y2 - py * 6).toFixed(1)}" x2="${(x2 + px * 6).toFixed(1)}" y2="${(y2 + py * 6).toFixed(1)}" stroke="${col}"/>`;
+    } else {
+      // an arrowhead, in the line's own colour
+      const tx = x2 + ux * 8, ty = y2 + uy * 8;
+      edgesSvg += `<path class="head${strong ? '' : ' faint'}" d="M${tx.toFixed(1)} ${ty.toFixed(1)} L${(x2 - ux * 1 + px * 4).toFixed(1)} ${(y2 - uy * 1 + py * 4).toFixed(1)} L${(x2 - ux * 1 - px * 4).toFixed(1)} ${(y2 - uy * 1 - py * 4).toFixed(1)} z" fill="${col}"/>`;
+    }
+    if (strong) {
+      // the synapse count, beside the line near its end
+      const lx = x2 - ux * 16 - uy * 9, ly = y2 - uy * 16 + ux * 9;
+      edgesSvg += `<text class="count" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" fill="${col}">${k.count}</text>`;
+    }
+  }
+  let nodesSvg = '';
+  for (const [k, n] of mapNodes) {
+    const c = cells.get(k)!;
+    const role = roleOf(c);
+    nodesSvg += `<g class="node${c.target ? ' target' : ''}" data-cell="${k}" transform="translate(${n.x},${n.y})" style="--c:${rgb(k)}" tabindex="0" role="button" aria-label="${c.target ? `${k}, the target` : `Fire the beam at ${k}`}">
+      <circle class="halo" r="${n.r + 7}"/><circle class="body" r="${n.r}"/><text class="key" dy="0.36em">${k}</text><text class="role" y="${n.r + 13}">${role}</text></g>`;
+  }
+  let sparksSvg = '';
+  for (let i = 0; i < MAP_SPARKS; i++) sparksSvg += '<circle class="spark" r="3.5" opacity="0"/>';
+  el.innerHTML = `<svg viewBox="0 0 ${MAP_W} ${H}" xmlns="http://www.w3.org/2000/svg" aria-hidden="false">${edgesSvg}${nodesSvg}${sparksSvg}</svg>
+    <div class="nge-sig-legend">${[targets.length ? '<i style="--c:#ffc24a"></i>target' : '', drivers.length ? '<i style="--c:#5fb8ff"></i>drivers, excitatory →' : '',
+      gate ? '<i style="--c:#b68cff"></i>Gatekeeper, inhibitory ⊣' : '', key ? '<i style="--c:#e58cff"></i>Key, inhibitory ⊣' : ''].filter(Boolean).join('')}</div>`;
+  mapNodeEls = new Map();
+  el.querySelectorAll<SVGGElement>('g.node').forEach(g => {
+    const k = g.dataset.cell!;
+    mapNodeEls.set(k, g);
+    g.addEventListener('click', () => { if (phase === 'playing') shoot(k); });
+    g.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && phase === 'playing') { e.preventDefault(); shoot(k); } });
+  });
+  mapSparkEls = [...el.querySelectorAll<SVGCircleElement>('circle.spark')];
+}
+/** The map, each frame: who to click, who is hushed, the hold on the
+ *  target, and the spikes on their way along the arrows. */
+function updateMap() {
+  if (!mapNodeEls.size) return;
+  for (const [k, g] of mapNodeEls) {
+    const c = cells.get(k)!;
+    g.classList.toggle('hint', phase === 'playing' && hints.has(k));
+    g.classList.toggle('hushed', now < c.hushedUntil);
+    g.classList.toggle('held', c.target && c.i > 0.6);
+  }
+  let i = 0;
+  for (const s of sparks) {
+    if (i >= mapSparkEls.length) break;
+    const e = mapEdges.get(s.conn);
+    if (!e) continue;
+    const q = clamp((now - s.start) / (s.end - s.start), 0, 1);
+    const el = mapSparkEls[i++];
+    el.setAttribute('cx', (e.x1 + (e.x2 - e.x1) * q).toFixed(1));
+    el.setAttribute('cy', (e.y1 + (e.y2 - e.y1) * q).toFixed(1));
+    el.setAttribute('fill', s.inhibitory ? '#cfaeff' : '#fff4cc');
+    el.setAttribute('opacity', now < s.end ? '1' : String(Math.max(0, 1 - (now - s.end) / 0.3)));
+  }
+  for (; i < mapSparkEls.length; i++) mapSparkEls[i].setAttribute('opacity', '0');
+}
+function mapFlash(key: string) {
+  const g = mapNodeEls.get(key);
+  if (!g) return;
+  g.classList.remove('spike'); void (g as any).getBBox?.(); g.classList.add('spike');
+}
+
 function showChips() {
   const body = els.body;
+  buildMap();
+  // On a phone the map has the sheet to itself before Begin; in play the
+  // chips and the controls need the room.
+  els.map.style.display = phone() ? 'none' : '';
   body.innerHTML = '<div class="nge-sig-kicker"><i></i>Neurons involved</div><div class="nge-sig-cells"></div>';
   const wrap = body.querySelector('.nge-sig-cells')!;
   chipEls.clear();
@@ -701,6 +902,8 @@ function showChips() {
 function showBrief() {
   phase = 'brief';
   els.row.style.display = 'none';
+  buildMap();
+  els.map.style.display = '';
   els.body.innerHTML = `<div class="nge-sig-card">${adapt(level.brief).split('\n').map(p => `<p>${p}</p>`).join('')}
     <button class="nge-sig-go" type="button"><span class="nge-sig-plate">Begin ›</span></button></div>`;
   (els.body.querySelector('.nge-sig-go') as HTMLButtonElement).onclick = () => beginPlay();
@@ -739,6 +942,7 @@ function updateHud() {
   (els.hush as HTMLButtonElement).disabled = !level.hush;
   if (message && performance.now() > messageUntil) { message = ''; els.msg.textContent = ''; }
   els.coach.style.display = phase === 'playing' && els.coachText.textContent ? '' : 'none';
+  updateMap();
   for (const [key, el] of chipEls) {
     const c = cells.get(key)!;
     const hushed = now < c.hushedUntil;
@@ -1022,9 +1226,20 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
     v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
     return;
   }
+  if (sideHud()) {
+    // The HUD stands at the left: the circuit centres in the width it leaves
+    // free, and a little above the middle.
+    const r = threeDPanel()?.element?.getBoundingClientRect?.();
+    const h = panel?.getBoundingClientRect();
+    const covered = r && h && r.width > 0 ? clamp((h.right + 16 - r.left) / r.width, 0, 0.6) : 0;
+    const aspect = r && r.height > 0 ? r.width / r.height : 1.5;
+    const look = sub(sub(center, mul(cam.right, -covered * viewNm * aspect / 2)), mul(cam.up, viewNm * 0.03));
+    v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
+    return;
+  }
   // The HUD takes the bottom third, so the camera looks a little below the
   // circuit and the cells sit above.
-  const look = sub(center, mul(cam.up, viewNm * (sideHud() ? 0.03 : 0.1)));
+  const look = sub(center, mul(cam.up, viewNm * 0.1));
   v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
 }
 /** On a wide screen the HUD stands at the right, leaving the whole height
@@ -1067,8 +1282,9 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): V3 | null {
   const halfH = d * tanHalf, halfW = halfH * aspect;
   // half the view's shorter half-extent: on an upright phone, a quarter of the width
   shipLenNm = Math.min(halfH, halfW) * 0.5;
-  // On a phone the ship sits just above the HUD's edge, at the left.
-  const sx = phone() ? -0.55 : -0.6;
+  // On a phone the ship sits just above the HUD's edge, at the left; with
+  // the HUD standing at the left it rides low right, clear of it.
+  const sx = sideHud() ? 0.6 : phone() ? -0.55 : -0.6;
   const sy = sideHud() ? -0.5 : phone() ? Math.min(-0.1, -1 + 2 * hudFrac() + 0.45) : -0.25;
   return add(add(add(look, mul(cam.toEye, eyeDist - d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH));
 }
@@ -1132,6 +1348,7 @@ function spike(key: string, byBeam = false) {
   chipEls.get(key)?.classList.remove('nge-sig-chip--spike');
   void chipEls.get(key)?.offsetWidth;
   chipEls.get(key)?.classList.add('nge-sig-chip--spike');
+  mapFlash(key);
   if (c.target) sfx.target(); else sfx.spike(inhibitory);
   if (byBeam) {
     if (key === 'I2' || key === 'S') coach('key');
@@ -1532,6 +1749,7 @@ function beginPlay() {
   // again for the sheet the level is played with.
   if (phone()) needsFrame = true;
   coach('begin');
+  startMusic();
   updateHud();
 }
 
@@ -1546,6 +1764,7 @@ export async function playSignalController(levelAt = 0) {
     document.body.classList.add('nge-signal-on');
     // On a phone, Pyr's welcome sheet would cover the game.
     if (phone()) hideMobileWelcomeRef.value++;
+    ensureMusic();   // starts loading now, so Begin starts it at once
     await loadAssets();
     if (!active) return;
     shipProp.mesh = shipMesh!;
@@ -1589,6 +1808,7 @@ export function stopSignalController() {
   window.removeEventListener('dblclick', onDoubleClick, true);
   window.removeEventListener('keydown', onKey, true);
   for (const c of cells.values()) if (c.dimmed) paint(c, false);
+  stopMusic();
   clearHaze();
   clearTags();
   if (savedRenderScale !== null) { try { circuitLayer().layer.displayState.renderScaleTarget.value = savedRenderScale; } catch { /* as it is */ } savedRenderScale = null; }
@@ -1613,4 +1833,4 @@ export function startSignalController() {
   setTimeout(go, 1500);
 }
 
-(window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS};
+(window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS, music: () => music};
