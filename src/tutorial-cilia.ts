@@ -468,7 +468,7 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'The cilium centerline',
     position: OVER_3D,
     width: BOX_W,
-    html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip. You'll draw one yourself in a moment.`,
+    html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip. By the end of this training you'll be able to draw your own!`,
     onEnter() { POINT.centerline(); },
   },
   {
