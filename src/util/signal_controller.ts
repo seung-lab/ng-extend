@@ -1241,6 +1241,10 @@ let tourDim = new Set<string>();
 function dimOthers(key: string) {
   for (const c of cells.values()) if (c.shown && c.key !== key) { tourDim.add(c.key); paint(c, true); }
 }
+function undim(key: string) {
+  const c = cells.get(key);
+  if (c?.shown && tourDim.has(key)) { tourDim.delete(key); if (now >= c.hushedUntil) paint(c, false); }
+}
 function undimAll() {
   for (const k of tourDim) { const c = cells.get(k); if (c?.shown && now >= c.hushedUntil) paint(c, false); }
   tourDim.clear();
@@ -1249,43 +1253,52 @@ function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHo
 let tourSteps: TourStep[] = [];
 const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
-  {kicker: 'Neuron 101', text: 'Dendrites listen. The cell body decides. The axon fires.', sub: 'An action potential runs one way: in through the dendrites, out along the axon.',
+  // The gold cell alone, the others grey, close up (Ames 2026-11-11: "start
+  // with just the gold cell and the others grey, then you can add them"). The
+  // labels sit on its own parts: "dendrites" a third of the way along its
+  // longest dendrite path from the synapse end, clear of the other cell
+  // bodies; "axon" a third of the way down its axon.
+  {kicker: 'Neuron 101', text: 'Signals come in through the dendrites. The cell body adds them up. With enough, a spike leaves down the axon.', sub: 'That spike is an action potential. It runs one way only.',
     play: async alive => {
       const t = cells.get('T');
       if (!t) return;
-      const inPath = conns.find(k => k.post === 'T' && k.pre === 'E1')?.dendrite;   // a synapse to the cell body
-      const outPath = conns.find(k => k.pre === 'T')?.axon;                         // the cell body to a synapse
-      glideTo(t, 0.5);
+      dimOthers('T');
+      const inConn = conns.filter(k => k.post === 'T' && k.dendrite.length > 1).sort((a, b) => b.dendriteUm - a.dendriteUm)[0];
+      const inPath = inConn?.dendrite;                                                 // a synapse to the cell body
+      const outPath = conns.find(k => k.pre === 'T' && k.axon.length > 1)?.axon;      // the cell body to a synapse
+      glideTo(t, 0.45);
       await sleep(900); if (!alive()) return;
-      if (inPath?.length) tourLabel('dendrites', inPath[0]);
+      if (inPath) tourLabel('dendrites', inPath[Math.floor(inPath.length * 0.35)]);
       await sleep(500); if (!alive()) return;
-      if (inPath?.length) demoPulse(inPath, 1.2);
+      if (inPath) demoPulse(inPath, 1.2);
       await sleep(1250); if (!alive()) return;
       tourLabel('cell body', t.spec.soma);
       flashes.push({p: t.spec.soma, at: now, life: 0.7, rgb: [1, 0.85, 0.4], size: 24_000});
       sfx.spike(false);
       await sleep(500); if (!alive()) return;
-      if (outPath?.length) { tourLabel('axon', outPath[Math.min(outPath.length - 1, Math.floor(outPath.length * 0.45))]); demoPulse(outPath, 1.6); }
+      if (outPath) { tourLabel('axon', outPath[Math.floor(outPath.length * 0.35)]); demoPulse(outPath, 1.6); }
     }},
   {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Gold: your target.',
     play: async alive => {
+      dimOthers('T');
       await sleep(300); if (!alive()) return;
       const t = cells.get('T');
       if (!t) return;
       const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
-      visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and hovers; no card
+      visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card
       if (view === 'cockpit') glideTo(t, 0.7);
       hints = new Set(['T']);
     }},
   {kicker: 'Its drivers', text: 'Four cells drive it: E1, E2, E3, E4. E is for excitatory.',
     play: async alive => {
+      dimOthers('T');
       for (const k of ['E1', 'E2', 'E3', 'E4']) {
-        if (!alive()) return;
+        await sleep(450); if (!alive()) return;
+        undim(k);
         hints = new Set([...hints, k]);
         const c = cells.get(k);
         if (c) flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.8, 0.95, 1], size: 18_000});
         sfx.spike(false);
-        await sleep(550);
       }
     }},
   {kicker: 'Spark', text: 'Spark a cell: its spike runs down the axon to the gold cell.',
