@@ -1189,6 +1189,7 @@ function tourLabel(text: string, p: V3) {
   const el = document.createElement('span');
   el.className = 'ng-extend nge-sig-label';
   el.textContent = text;
+  el.style.display = 'none';
   document.body.appendChild(el);
   tourLabels.push({el, p});
   requestAnimationFrame(() => el.classList.add('nge-sig-label--in'));
@@ -1810,7 +1811,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   if (spot) shipAt = mix(shipAt, spot, Math.min(1, dt * (vc ? 3 : 5)));
   // a visit: the scan fires once the ship is there (or after 1.8 s, if the
   // way is long); from the cockpit, once the camera's glide has ended
-  const there = view === 'cockpit' ? !glide : len(sub(shipAt, spot ?? shipAt)) < viewNm * 0.02 || now - visit!.since > 1.8;
+  const there = !visit ? false : view === 'cockpit' ? !glide : (len(sub(shipAt, spot ?? shipAt)) < viewNm * 0.02 || now - visit.since > 1.8);
   if (visit && vc && !visit.fired && there) fireScan();
   // on the way it points where it is going; landed, it sits across the cell
   // body's surface, its belly to the cell (its up is the way to the eye)
@@ -2466,6 +2467,10 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
 /* ── the loop ── */
 function frame(ts: number) {
   if (!active) return;
+  try { frameBody(ts); } catch (e) { console.warn('[signal] frame:', e); }
+  raf = requestAnimationFrame(frame);
+}
+function frameBody(ts: number) {
   // Game time follows the clock even on a slow machine (a frame may take a
   // quarter second with these cells on screen); only a long stall is cut.
   const dt = Math.min(0.25, lastFrame ? (ts - lastFrame) / 1000 : 0);
@@ -2491,7 +2496,6 @@ function frame(ts: number) {
   // layer's segment list (a stray key, another panel), and the layer stays shown.
   if ((frameCount++ & 63) === 0) keepCellsOn();
   updateHud();
-  raf = requestAnimationFrame(frame);
 }
 let frameCount = 0;
 function keepCellsOn() {
