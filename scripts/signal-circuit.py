@@ -20,6 +20,7 @@ E4's drivers (F1..F3), two more cells under I1 (G1, G2), and the layer 2/3
 cell that drives I2 (S).
 
     python scripts/signal-circuit.py          (needs caveclient and a CAVE token)
+    python scripts/signal-circuit.py --counts-only   (only the synapse totals, into the existing file)
 """
 import json, os, sys, time
 import numpy as np
@@ -103,10 +104,43 @@ class Skel:
         return self.V[path]
 
 
+def synapse_totals(c, ids):
+    """Every synapse each cell makes and receives in the release (synapses_pni_2),
+    counted: the card the Starship projects over a cell shows them (Ames
+    2026-11-11: "stats should include synapse count")."""
+    print('synapse totals...')
+    out_ = c.materialize.query_table('synapses_pni_2', filter_in_dict={'pre_pt_root_id': ids},
+                                     select_columns=['id', 'pre_pt_root_id', 'post_pt_root_id'])
+    in_ = c.materialize.query_table('synapses_pni_2', filter_in_dict={'post_pt_root_id': ids},
+                                    select_columns=['id', 'pre_pt_root_id', 'post_pt_root_id'])
+    # a synapse onto the same cell (an autapse, or a merge) counts once
+    syn_out = out_[out_.pre_pt_root_id != out_.post_pt_root_id].groupby('pre_pt_root_id').size()
+    syn_in = in_[in_.pre_pt_root_id != in_.post_pt_root_id].groupby('post_pt_root_id').size()
+    return {int(r): (int(syn_in.get(r, 0)), int(syn_out.get(r, 0))) for r in ids}
+
+
+def add_counts():
+    """Add synIn and synOut to the cells of an existing circuit.json."""
+    c = CAVEclient('minnie65_public', version=VERSION)
+    with open(OUT) as f:
+        data = json.load(f)
+    totals = synapse_totals(c, [int(cell['root']) for cell in data['cells']])
+    for cell in data['cells']:
+        cell['synIn'], cell['synOut'] = totals[int(cell['root'])]
+        print(f"  {cell['key']:3s} in {cell['synIn']:6d}  out {cell['synOut']:6d}")
+    with open(OUT, 'w') as f:
+        json.dump(data, f, separators=(',', ':'))
+    print(f'wrote {OUT}')
+
+
 def main():
+    if '--counts-only' in sys.argv:
+        add_counts()
+        return
     c = CAVEclient('minnie65_public', version=VERSION)
     ids = [r for _, r in CELLS]
     key = {r: k for k, r in CELLS}
+    totals = synapse_totals(c, ids)
     print(f'cell types, materialization {VERSION}...')
     ct = c.materialize.tables.aibs_metamodel_celltypes_v661(pt_root_id=ids).query().drop_duplicates('pt_root_id')
     col = c.materialize.tables.allen_column_mtypes_v2(pt_root_id=ids).query().drop_duplicates('pt_root_id')
@@ -136,6 +170,7 @@ def main():
             'key': k, 'root': str(r), 'type': 'I' if cls.get(r) == 'inhibitory_neuron' else 'E',
             'fine': f, 'mtype': mtype.get(r, ''), 'label': LABELS.get(f, 'Neuron'),
             'soma': [int(x) for x in soma[r]], 'cableUm': round(s.cable / 1000), 'axonUm': round(s.axon / 1000),
+            'synIn': totals[r][0], 'synOut': totals[r][1],
         })
 
     conns = []
