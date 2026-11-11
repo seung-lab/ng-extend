@@ -118,26 +118,6 @@ function mouse(part: 'left' | 'right' | 'wheel'): string {
     + `<line x1="4" y1="22" x2="36" y2="22" stroke="${line}" stroke-width="1.4"/><line x1="20" y1="4" x2="20" y2="22" stroke="${line}" stroke-width="1.4"/>${wheel}</svg></span>`;
 }
 
-/** Remove annotation points from this session's copy of the view (the saved
- *  view is not changed). Used where a view carries points the step does not
- *  need: two near-identical ones read as one doubled dot. */
-async function dropPoints(match: (p: number[]) => boolean) {
-  await new Promise(r => setTimeout(r, 1500)); // the step's own view has to finish loading
-  try {
-    for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
-      if ((ml.layer?.constructor as any)?.type !== 'annotation') continue;
-      const src = ml.layer.localAnnotations;
-      if (!src) continue;
-      const gone: string[] = [];
-      for (const a of src) { const pt = (a as any).point; if (pt && pt.length >= 3 && match([...pt].map(Number))) gone.push((a as any).id); }
-      for (const id of gone) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }
-    }
-  } catch (e) { console.warn('[tutorial] could not drop the extra points:', e); }
-}
-/** The pair of points at the end of the cut branch (z 545 and 546): on the
- *  steps about the continuation they doubled up on screen (Ames, 2026-10-24). */
-const AT_DEFECT_END = (p: number[]) => Math.abs(p[2] - 545.5) < 1.6 && Math.abs(p[0] - 65634) < 40 && Math.abs(p[1] - 49706) < 40;
-
 /** The 2D EM tab pulses while a step asks for it (Ames, 2026-10-24: "2D EM
  *  tab at the top" meant nothing until you could see it). */
 let tabPulse: ReturnType<typeof setInterval> | null = null;
@@ -329,6 +309,213 @@ const OVER_3D = {
 // Step 16 view, from Ames (2026-09-29): the cell with the dendrite the
 // defect disconnected, and no purple branch yet. Inline, not a state-server
 // link, so it needs no fetch.
+/** The views of the two continuation boxes, with one hint point each: the
+ *  saved views carry four (the pair at the branch end and two on the
+ *  continuation). Removing the extras after the view loaded made the points
+ *  flash and vanish (tester, 2026-11-10), so the views are kept here already
+ *  thinned. From nglstate 5250067188416512 and 5114308439572480. */
+const STATE_FIND_CONTINUATION = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  "position": [
+    65655.1640625,
+    49711.57421875,
+    546.5
+  ],
+  "crossSectionScale": 3.00494269795261,
+  "projectionOrientation": [
+    0.020236538723111153,
+    0.04917896166443825,
+    -0.034699928015470505,
+    -0.9979819059371948
+  ],
+  "projectionScale": 48392.3499808023,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "annotationColor": "#3b4468",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "annotationColor": "#2e3347",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024",
+        "!648518346356484078"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    },
+    {
+      "type": "annotation",
+      "source": {
+        "url": "local://annotations",
+        "transform": {
+          "outputDimensions": {
+            "x": [
+              4e-09,
+              "m"
+            ],
+            "y": [
+              4e-09,
+              "m"
+            ],
+            "z": [
+              4e-08,
+              "m"
+            ]
+          }
+        }
+      },
+      "tool": "annotatePoint",
+      "tab": "annotations",
+      "annotations": [
+        {
+          "point": [
+            65504.91796875,
+            49734.11328125,
+            542.4999389648438
+          ],
+          "type": "point",
+          "id": "24ba784b3827ae9c137331a47d6f8060f47340d9"
+        }
+      ],
+      "name": "annotation"
+    }
+  ],
+  "showAxisLines": false,
+  "showSlices": false,
+  "layout": "xy-3d"
+};
+const STATE_CONTINUATION_FOUND = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  "position": [
+    65655.1640625,
+    49711.57421875,
+    542.5
+  ],
+  "crossSectionScale": 3.00494269795261,
+  "projectionOrientation": [
+    -0.17005832493305206,
+    -0.11194231361150742,
+    0.022898564115166664,
+    -0.978787362575531
+  ],
+  "projectionScale": 48392.3499808023,
+  "projectionDepth": -30.326532985631673,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "annotationColor": "#3b4468",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "annotationColor": "#2e3347",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024",
+        "648518346356484078"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    },
+    {
+      "type": "annotation",
+      "source": {
+        "url": "local://annotations",
+        "transform": {
+          "outputDimensions": {
+            "x": [
+              4e-09,
+              "m"
+            ],
+            "y": [
+              4e-09,
+              "m"
+            ],
+            "z": [
+              4e-08,
+              "m"
+            ]
+          }
+        }
+      },
+      "tool": "annotatePoint",
+      "tab": "annotations",
+      "annotations": [
+        {
+          "point": [
+            65509.42578125,
+            49675.51953125,
+            542.4999389648438
+          ],
+          "type": "point",
+          "id": "a3fda3388fb7d57639b51574428e669e1e3fed66"
+        }
+      ],
+      "name": "annotation"
+    }
+  ],
+  "showAxisLines": false,
+  "showSlices": false,
+  "layout": "xy-3d"
+};
+
 const STATE_DEFECT_VIEW = {
   "dimensions": {
     "x": [
@@ -617,11 +804,9 @@ This is a tutorial so we dropped a hint. Hit the comma key a few times until you
 
 Hit next to reveal the answer.`,
     position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5250067188416512",
-    // Normal size points (3x read as excessive here) and not the pair at the
-    // branch end, which showed as one doubled dot (Ames, 2026-10-24).
-    onEnter: () => { advanceWhenSegmentAdded(); void dropPoints(AT_DEFECT_END); },
+    // One hint point, at normal size (3x read as excessive here).
+    state: STATE_FIND_CONTINUATION,
+    onEnter: () => { advanceWhenSegmentAdded(); },
   },
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
@@ -633,9 +818,7 @@ Hit next to reveal the answer.`,
     },
     floatingImage:
       imgBravoNurro,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
-    onEnter: () => { void dropPoints(AT_DEFECT_END); },
+    state: STATE_CONTINUATION_FOUND,
   },
   {
     text: `Check out this top right menu for guides, tutorials, and more resources.`,

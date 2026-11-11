@@ -1386,6 +1386,12 @@ async function onHtmlClick(e: MouseEvent) {
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }
 .chip .html :deep(strong) { color: #ffffff; font-weight: 600; }
+/* Lists in a box (Merge box 7's tips showed with no bullets, tester
+   2026-11-10): something upstream resets list markers. */
+.chip .html :deep(ul) { list-style: disc outside !important; padding-left: 1.3em !important; margin: 0 0 0.7em !important; }
+.chip .html :deep(ol) { list-style: decimal outside !important; padding-left: 1.4em !important; margin: 0 0 0.7em !important; }
+.chip .html :deep(li) { display: list-item !important; margin: 0 0 0.35em; }
+.chip .html :deep(li::marker) { color: rgba(159, 211, 255, 0.85); }
 
 /* Footer: Back on the left, the action on the right, segmented rail below. */
 .ng-extend .chip .nge-chip-foot { background: rgb(6, 10, 19); padding-top: 8px; }

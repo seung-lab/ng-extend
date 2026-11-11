@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-11T02:05:00Z",
+      "title": "Tutorial touch ups",
+      "items": [
+        "Get Started: the box about finding the continuation shows one hint point, and it no longer flickers away.",
+        "Merge tutorial: the How to Merge box sits lower so it no longer covers the top bar, and the Merge icon glows until merge mode is on.",
+        "Merge tutorial: the first merge opens closer in, and the tips on the last merge box show as a bulleted list again."
+      ]
+    },
+    {
       "at": "2026-11-11T01:30:00Z",
       "title": "Get Started: the split screen box",
       "items": [
