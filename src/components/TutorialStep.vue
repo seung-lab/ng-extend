@@ -373,6 +373,11 @@ function clampChip() {
 function onReclamp() { nextTick(clampChip); }
 
 const ready = ref(false);
+/** The box is taking a while (its view is loading a cell): a small card
+ *  says so instead of an empty screen (Ames, 2026-11-10). */
+const slow = ref(false);
+let slowTimer = 0;
+onUnmounted(() => window.clearTimeout(slowTimer));
 
 // Element currently wearing the .nge-tour-target highlight class so we can
 // remove it when the step changes or unmounts.
@@ -408,6 +413,7 @@ function settleWithin(p: Promise<unknown> | unknown, what: string): Promise<void
 
 onMounted(async () => {
     const startT = performance.now();
+    slowTimer = window.setTimeout(() => { if (!ready.value) slow.value = true; }, 500);
     if (props.step.state) {
         // Advanced Interface: the annotation layers the player filled keep
         // their points when a step loads its own view (Ames 2026-10-18:
@@ -447,7 +453,8 @@ function viewerToolActive(): boolean {
     try {
         if (viewer?.globalToolBinder?.activeTool_ || viewer?.toolBinder?.activeTool_) return true;
     } catch (_) { /* fall through to the DOM check */ }
-    return !!document.querySelector('.neuroglancer-tool-status');
+    // A polyline being drawn (the Cilia Quest centerline): Enter finishes it.
+    return !!document.querySelector('.neuroglancer-tool-status, .nge-polyline-hint');
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -635,6 +642,7 @@ async function onHtmlClick(e: MouseEvent) {
 </script>
 
 <template>
+    <div v-if="!ready && slow" class="nge-tut-loading" role="status"><span class="nge-tut-loading__dot"></span>Loading the next view…</div>
     <div v-if="ready" ref="root" class="introductionStep" :class="{ hasVideo: computedStep.video !== undefined }">
         <div v-if="computedStep.modal" class="nge-overlay-blocker" @mousedown.stop.prevent></div>
         <!-- Hidden until it has a position: while the step's target was
@@ -703,6 +711,18 @@ async function onHtmlClick(e: MouseEvent) {
 </template>
 
 <style scoped>
+.nge-tut-loading {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1000;
+    display: flex; align-items: center; gap: 10px; padding: 12px 18px;
+    background: rgba(10, 16, 28, 0.92); border: 1px solid rgba(120, 200, 255, 0.35); border-radius: 10px;
+    color: #cfe6ff; font-size: 14px; pointer-events: none;
+}
+.nge-tut-loading__dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(120, 200, 255, 0.3); border-top-color: #7cc8ff;
+    animation: nge-tut-spin 0.8s linear infinite;
+}
+@keyframes nge-tut-spin { to { transform: rotate(360deg); } }
 .nge-chip-drag {
     position: absolute;
     top: 6px;

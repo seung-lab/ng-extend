@@ -10,6 +10,34 @@
       ]
     },
     {
+      "at": "2026-11-11T00:27:00Z",
+      "title": "Cilia Quest Training",
+      "items": [
+        "The new Cilia Quest tutorial is now called Cilia Quest Training, and its button in the Quests tab reads Training.",
+        "The first time you open Cilia Quests, the training starts by itself if you have not done a quest yet. Close it with the ✕ if you already know how."
+      ]
+    },
+    {
+      "at": "2026-11-11T00:10:00Z",
+      "title": "A Cilia Quest tutorial",
+      "items": [
+        "New: a Cilia Quest tutorial. Start it with the Tutorial button in the Quests tab, or from the menu under Quests.",
+        "It shows a cell the lab has already marked, then you mark the cilium and its two centrioles yourself and get checked as you go.",
+        "It ends with a short quiz on choosing a status, and finishing it earns the Cilia Signal Achievement.",
+        "Leaving the Merge or Cut tutorial for another one no longer leaves merge mode or its messages behind.",
+        "A tutorial box that takes a moment to load now shows a loading card."
+      ]
+    },
+    {
+      "at": "2026-11-11T00:09:18Z",
+      "title": "Who is online, fixed",
+      "items": [
+        "The online count in chat and its list of names now always match, and anyone around in the last 5 minutes counts as online.",
+        "Writing in chat now shows you online right away, even with Pyr open in several tabs.",
+        "Chat no longer gets a sideways scroll bar; long words and links wrap instead."
+      ]
+    },
+    {
       "at": "2026-11-10T19:23:00Z",
       "title": "Help me becomes Hide help",
       "items": [

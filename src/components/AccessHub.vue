@@ -18,8 +18,9 @@ import { listDatasetRequests, decideDatasetRequest, type DatasetRequestRow } fro
 import { addPilot, welcomeBell, welcomeEmail } from '../beta_let_in';
 import { datasetDisplayName } from '../datasets';
 import { boxLink, PRACTICE_TUTORIALS } from '../tutorial_box_jump';
-import { updateUsersSheet, USERS_SHEET_URL } from '../quest_review';
+import { updateUsersSheet, readCanEdit, USERS_SHEET_URL } from '../quest_review';
 import { TUTORIAL_NAMES } from '../tutorial_edits';
+import { outcomeWord, type TestTry, type TestTriesList } from '../proofreading-test-review';
 
 interface Person {
   email: string; user_id: string | null; name: string | null; username: string | null;
@@ -39,7 +40,7 @@ interface PlayerDataset { dataset: string; edits: number; cells: number; chats: 
 interface Activity { dataset: string; edits: number; editors: number; cells: number; finishers: number; chats: number; chatters: number }
 interface Stat { tutorial: number; step: number; last_box: string | null; n: number; players: number; median_s: number; p90_s: number; help_rate: number; closes: number }
 interface Note { id: string; text: string; by: string; at: string }
-type Stage = 'asked' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
+type Stage = 'asked' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
 const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin';
@@ -61,6 +62,9 @@ const actionError = ref('');
 const noteDraft = ref('');
 const dsNote = ref('');
 const emailed = ref<Record<string, string>>({});
+const testTries = ref<TestTry[]>([]);
+/** CAVE edit access by email, from the Users sheet (refreshed hourly). */
+const canEdit = ref<Record<string, string> | null>(null);
 
 async function load() {
   loading.value = true; error.value = '';
@@ -96,6 +100,8 @@ async function load() {
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
+    show(read('Dataset access', () => readCanEdit(), null as Record<string, string> | null), v => { canEdit.value = v; }),
+    show(read('Test tries', async () => (await secureWrite<TestTriesList>('test.tries', { limit: 200 }))?.tries ?? [], [] as TestTry[]), v => { testTries.value = v; }),
     show(read('Tutorial times', () => table<Stat>('tutorial_step_stats', 'tutorial,step,last_box,n,players,median_s,p90_s,help_rate,closes', 500), [] as Stat[]), v => { stats.value = v; }),
   ]);
   error.value = problems.join(' · ');
@@ -123,7 +129,10 @@ const cards = computed<Card[]>(() => {
       const mk = marks.value[p.email];
       const fresh = mk && String(mk.at) >= String(p.asked_at);
       if (fresh && mk.mark === 'removed') { stage = 'removed'; since = mk.at; }
-      else { stage = 'asked'; since = p.asked_at; listed = !!(fresh && mk.mark === 'listed'); }
+      // Later: off the Asked list, kept for when we take people new to
+      // EyeWire (Ames 2026-11-10: "add to queue for later").
+      else if (fresh && mk.mark === 'listed') { stage = 'later'; since = mk.at; listed = true; }
+      else { stage = 'asked'; since = p.asked_at; }
     }
     else if (p.pilot_enabled === false) { stage = 'removed'; since = p.let_in_at; }
     else if (!p.joined_at) { stage = 'letin'; since = p.let_in_at; }
@@ -137,6 +146,73 @@ const cards = computed<Card[]>(() => {
   return out;
 });
 
+// ── Maybe the same person (Ames 2026-11-10: "some duplicates if we could
+// detect"): the same full name, the same username, or an EyeWire username
+// that starts another's email or username. Same person links the emails
+// (access.linkEmails); Not the same is remembered in this browser.
+const NOT_SAME_KEY = 'nge_access_not_same_v1';
+const notSame = ref<string[]>((() => { try { return JSON.parse(localStorage.getItem(NOT_SAME_KEY) || '[]'); } catch { return []; } })());
+const pairKey = (a: string, b: string) => [a, b].sort().join('|');
+const dupes = computed<Record<string, Person[]>>(() => {
+  const ps = people.value.filter(p => !p.is_admin);
+  const local = (e: string) => e.split('@')[0];
+  const fullName = (p: Person) => { const n = lc(p.name).trim().replace(/\s+/g, ' '); return n.includes(' ') && n.length >= 5 ? n : ''; };
+  const ew = (p: Person) => { const n = lc(p.ew_name).trim(); return n.length >= 4 ? n : ''; };
+  const same = (a: Person, b: Person) => {
+    if (fullName(a) && fullName(a) === fullName(b)) return true;
+    if (a.username && lc(a.username) === lc(b.username)) return true;
+    for (const [x, y] of [[a, b], [b, a]]) {
+      const e = ew(x);
+      if (e && (local(y.email).startsWith(e) || lc(y.username).startsWith(e) || e === ew(y))) return true;
+    }
+    return false;
+  };
+  const out: Record<string, Person[]> = {};
+  for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+    const a = ps[i], b = ps[j];
+    if (a.email === b.email || notSame.value.includes(pairKey(a.email, b.email)) || !same(a, b)) continue;
+    (out[a.email] = out[a.email] || []).push(b);
+    (out[b.email] = out[b.email] || []).push(a);
+  }
+  return out;
+});
+const dupesOf = (c: Card | null | undefined) => (c?.p ? dupes.value[c.p.email] ?? [] : []);
+function markNotSame(a: string, b: string) {
+  notSame.value = [...notSame.value, pairKey(a, b)];
+  try { localStorage.setItem(NOT_SAME_KEY, JSON.stringify(notSame.value)); } catch { /* this visit only */ }
+}
+
+// ── EyeWire stats, read from eyewire.org's public player pages (open to any
+// page, no sign in): points, cubes, accuracy, roles and when they joined.
+interface EwStats { points: number; cubes: number; accuracy: number | null; roles: string[]; joined: number | null }
+const ewStats = ref<Record<string, EwStats | 'none' | 'reading'>>({});
+async function readEw(name: string) {
+  const k = lc(name).trim();
+  if (!k || ewStats.value[k]) return;
+  ewStats.value = { ...ewStats.value, [k]: 'reading' };
+  const get = async (what: string) => { try { const r = await fetch(`https://eyewire.org/1.0/player/${encodeURIComponent(k)}/${what}`); return r.ok ? await r.json() : null; } catch { return null; } };
+  let v: EwStats | 'none' = 'none';
+  const [st, bio] = await Promise.all([get('stats'), get('bio')]);
+  if (st || bio) {
+    const f = st?.forever ?? {};
+    const fs = Array.isArray(st?.fscore) && st.fscore.length ? Number(st.fscore[0].fscore) : NaN;
+    v = { points: Number(f.points) || 0, cubes: Number(f.cubes) || 0, accuracy: Number.isFinite(fs) ? fs : null,
+      roles: Array.isArray(bio?.roles) ? bio.roles.map(String) : [], joined: Number(bio?.joined) || null };
+  }
+  ewStats.value = { ...ewStats.value, [k]: v };
+}
+const ewOf = (p: Person | null | undefined) => (p?.ew_name ? ewStats.value[lc(p.ew_name).trim()] ?? null : null);
+const ewFound = (p: Person | null | undefined): EwStats | null => { const v = ewOf(p); return v && typeof v === 'object' ? v : null; };
+const ewShort = (p: Person | null | undefined) => {
+  const v = ewOf(p);
+  if (v === 'none') return `EyeWire ${p?.ew_name}: not found`;
+  const f = ewFound(p);
+  if (!f) return `EyeWire ${p?.ew_name ?? ''}`;
+  return `EyeWire ${p?.ew_name}: ${f.cubes ? f.cubes.toLocaleString() + ' cubes' : 'new'}`;
+};
+const openEw = computed(() => ewFound(open.value?.p ?? null));
+const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+
 const nameOf = (c: Card) => c.p?.name || c.ds?.name || c.p?.username || 'No name yet';
 const emailOf = (c: Card) => c.p?.email || c.ds?.email || '';
 const words = computed(() => search.value.toLowerCase().split(/\s+/).filter(Boolean));
@@ -149,7 +225,6 @@ watch(() => found.value.map(c => c.key).join('|'), () => {
   if (found.value.length === 1 && openKey.value !== found.value[0].key) pick(found.value[0]);
 });
 
-const DAY = 864e5;
 const ms = (a: string | null, b: string | null) => (a && b ? new Date(b).getTime() - new Date(a).getTime() : NaN);
 const median = (xs: number[]) => { const v = xs.filter(x => Number.isFinite(x) && x >= 0).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : NaN; };
 /** How long people take to move on from each step, from those who did. */
@@ -164,13 +239,6 @@ const typical = computed<Record<string, number>>(() => {
     editing: NaN,
   };
 });
-/** Longer than usual: twice the typical time, and at least a day. */
-const isLate = (c: Card) => {
-  const t = typical.value[c.stage];
-  if (!c.since || !Number.isFinite(t)) return false;
-  return Date.now() - new Date(c.since).getTime() > Math.max(2 * t, DAY);
-};
-
 const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean }[] = [
   { stage: 'asked', title: 'Asked', sub: 'Beta request, waiting on us', ours: true },
   { stage: 'letin', title: 'Let in', sub: 'not signed in yet' },
@@ -206,6 +274,14 @@ function toggleEditingCol() {
   try { localStorage.setItem(EDITING_KEY, showEditingCol.value ? '1' : '0'); } catch { /* not remembered */ }
 }
 const boardColumns = computed(() => COLUMNS.filter(c => c.stage !== 'editing' || showEditingCol.value));
+// Requests waiting on us sit above everyone else's progress (Ames
+// 2026-11-10: "pending requests above list of all users who are at
+// various stages of tutorials"). No late outlines: waiting longest is
+// already first, and someone who stopped playing is not on us.
+const boardGroups = computed(() => [
+  { title: 'Waiting on us', cols: boardColumns.value.filter(c => c.ours) },
+  { title: 'Getting started', cols: boardColumns.value.filter(c => !c.ours) },
+]);
 
 // The admins' leaderboard (Ames 2026-11-10: "rank them by top, sort of like
 // leaderboard ... like an admin version"): everyone who has edited, ranked
@@ -228,6 +304,29 @@ const lbMax = computed(() => Math.max(1, ...lbRows.value.map(r => r.v)));
 const lbShown = computed(() => (lbAll.value || words.value.length ? lbRows.value : lbRows.value.slice(0, LB_SHOWN)));
 const LB_BY: { key: LbBy; label: string }[] = [{ key: 'edits', label: 'Edits' }, { key: 'cells', label: 'Cells done' }, { key: 'help', label: 'Help given' }];
 const adminCards = computed(() => inStage('admin').filter(matches).sort((a, b) => nameOf(a).localeCompare(nameOf(b))));
+const laterCards = computed(() => inStage('later').filter(matches).sort((a, b) => String(a.since).localeCompare(String(b.since))));
+const showLater = ref(false);
+// Overall numbers (Ames 2026-11-10: "# users (signed in, passed tutorial 1,
+// production access)"). Admins left out. Dataset access: anyone CAVE lets
+// edit a real dataset (not a public or practice one), as the Users sheet's
+// Can edit column says, read from CAVE every hour (Ames: "more than 4 ppl
+// have dataset access"; granted requests alone missed anyone added by hand).
+const realEdit = (list: string | undefined) => (list || '').split(',').map(x => x.trim()).filter(x => x && !/ public$/i.test(x));
+const totals = computed(() => {
+  const ps = people.value.filter(p => !p.is_admin);
+  const withAccess = ps.filter(p => realEdit(canEdit.value?.[p.email]).length);
+  const byDs: Record<string, number> = {};
+  for (const p of withAccess) for (const d of realEdit(canEdit.value?.[p.email])) byDs[d] = (byDs[d] || 0) + 1;
+  const split = Object.entries(byDs).sort((a, b) => b[1] - a[1]).map(([d, n]) => `${d} ${n}`).join(', ');
+  return [
+    { label: 'People', n: ps.length, title: 'Everyone who asked, was let in or signed in' },
+    { label: 'Let in', n: ps.filter(p => p.pilot_enabled).length, title: 'On Pilot testers now' },
+    { label: 'Signed in', n: ps.filter(p => p.joined_at).length, title: 'Signed in to Pyr at least once' },
+    { label: 'Finished a tutorial', n: ps.filter(p => p.tutorial_at).length, title: 'Finished their first tutorial' },
+    { label: 'Made an edit', n: ps.filter(p => p.edits > 0).length, title: 'At least one merge or split' },
+    { label: 'Dataset access', n: canEdit.value ? withAccess.length : NaN, title: canEdit.value ? `Can edit a real dataset in CAVE, as of the Users sheet's last hourly update${split ? ': ' + split : ''}` : 'Could not read the Users sheet' },
+  ];
+});
 const removedCards = computed(() => inStage('removed').filter(matches).sort((a, b) => String(b.since).localeCompare(String(a.since))));
 
 // ── Words ────────────────────────────────────────────────────────────────
@@ -252,7 +351,51 @@ const noteCount = (c: Card) => (notes.value[c.key] || []).length;
 
 // ── One person, in the side panel ────────────────────────────────────────
 const open = computed(() => cards.value.find(c => c.key === openKey.value) || null);
+// A tag's link opens that person (Ames 2026-11-10, tags in notes):
+// "?triage=access&person=<email or user:id>". Used once.
+const wantPerson = (() => { try { return (new URLSearchParams(location.search).get('person') || '').toLowerCase(); } catch { return ''; } })();
+if (wantPerson) {
+  let found = false;
+  const stop = watch(cards, list => {
+    const c = found ? null : list.find(x => x.key.toLowerCase() === wantPerson);
+    if (!c) return;
+    found = true; openKey.value = c.key;
+    try { const u = new URL(location.href); u.searchParams.delete('person'); history.replaceState(history.state, '', u.toString()); } catch { /* keep going */ }
+    queueMicrotask(() => stop());
+  }, { immediate: true });
+}
+// Read EyeWire for the people waiting on us, and anyone opened.
+watch(() => cards.value.filter(c => c.stage === 'asked' || c.stage === 'later' || c.stage === 'dataset' || c.key === openKey.value).map(c => c.p?.ew_name).filter(Boolean).join('|'),
+  names => { for (const n of names.split('|')) if (n) void readEw(n); }, { immediate: true });
+/** The email without a Pyr account folds into the one with (the view keeps
+ *  the account's email). Two accounts: they stay apart. */
+const linkSame = (a: Person | null | undefined, b: Person) => run('link', async () => {
+  if (!a) return;
+  if (a.user_id && b.user_id) throw new Error('Both have their own Pyr account, so they stay as two people.');
+  const [from, to] = a.user_id ? [b, a] : [a, b];
+  await secureWrite('access.linkEmails', { email: from.email, to: to.email });
+  openKey.value = to.email;
+  await load();
+});
 function pick(c: Card) { openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; }
+// Their Proofreading Test tries, on a dataset request (Ames 2026-11-10:
+// "access request test edits linked"). The tries name the player by
+// username, newest first.
+const triesOf = (c: Card | null | undefined) => {
+  const u = lc(c?.p?.username);
+  return u ? testTries.value.filter(t => lc(t.username) === u) : [];
+};
+const tryLine = (t: TestTry) => {
+  const bits = [outcomeWord(t)];
+  if (t.percent != null && (t.outcome === 'pass' || t.outcome === 'fail')) bits[0] += ` (${Math.round(Number(t.percent))}%)`;
+  if (t.found != null && t.errors != null) bits.push(`${t.found} of ${t.errors} mistake${t.errors === 1 ? '' : 's'} fixed`);
+  if (t.ends_total) bits.push(`${t.ends_found ?? 0} of ${t.ends_total} ends marked`);
+  if (t.damaged != null && t.found != null) bits.push(t.damaged ? `${t.damaged} real branch${t.damaged === 1 ? '' : 'es'} cut off` : 'nothing damaged');
+  return bits.join(' · ');
+};
+/** Anything to show beyond zeros (Ames 2026-11-10: "why would we have
+ *  stats ... for someone who hasn't joined?"). */
+const played = (p: Person) => !!(p.edits || p.tutorials || p.tutorial_active || p.chats || p.help_asked || p.help_given || p.cells);
 const timeline = computed(() => {
   const p = open.value?.p; if (!p) return [];
   return [
@@ -280,7 +423,7 @@ const decide = (c: Card, mark: 'granted' | 'declined', byHand = false) => run(ma
 });
 const addNote = (c: Card) => run('note', async () => {
   const text = noteDraft.value.trim(); if (!text) throw new Error('Write a note first.');
-  notes.value = (await secureWrite<Record<string, Note[]>>('access.note', { key: c.key, text })) || {}; noteDraft.value = '';
+  notes.value = (await secureWrite<Record<string, Note[]>>('access.note', { key: c.key, text, name: nameOf(c) })) || {}; noteDraft.value = '';
 });
 const deleteNote = (c: Card, id: string) => run('note', async () => {
   notes.value = (await secureWrite<Record<string, Note[]>>('access.noteDelete', { key: c.key, id })) || {};
@@ -363,7 +506,7 @@ const opName = (e: RecentEdit) => {
     <header class="ah-head">
       <h1>Access</h1>
       <span class="ah-sum" v-if="people.length">
-        {{ inStage('asked').length }} Beta request{{ inStage('asked').length === 1 ? '' : 's' }} and {{ inStage('dataset').length }} dataset request{{ inStage('dataset').length === 1 ? '' : 's' }} waiting on us
+        {{ inStage('asked').length }} Beta request{{ inStage('asked').length === 1 ? '' : 's' }} and {{ inStage('dataset').length }} dataset request{{ inStage('dataset').length === 1 ? '' : 's' }} waiting on us<template v-if="inStage('later').length">, {{ inStage('later').length }} for later</template>
       </span>
       <input v-model="search" class="ah-search" type="search" autocomplete="off" placeholder="Search a name, email or username" aria-label="Search people" />
       <button class="ah-btn" type="button" :disabled="loading" @click="load">{{ loading ? 'Reading…' : 'Refresh' }}</button>
@@ -372,12 +515,18 @@ const opName = (e: RecentEdit) => {
       <button class="ah-btn" type="button" :disabled="sheetBusy" title="The game rewrites the sheet every hour. This does it now." @click="updateSheet">{{ sheetBusy ? 'Updating the sheet…' : 'Update the sheet now' }}</button>
       <span v-if="sheetSaid" class="ah-quiet ah-sheet-said" role="status">{{ sheetSaid }}</span>
     </header>
+    <div v-if="people.length" class="ah-totals" aria-label="Overall">
+      <div v-for="t in totals" :key="t.label" class="ah-total" :title="t.title"><b>{{ Number.isFinite(t.n) ? t.n.toLocaleString() : '…' }}</b><span>{{ t.label }}</span></div>
+    </div>
     <p v-if="error" class="ah-error" role="alert">{{ error }}</p>
     <p v-if="loading && !people.length" class="ah-quiet">Reading everyone…</p>
 
     <div class="ah-main" :class="{ 'ah-main--open': open }">
-      <section class="ah-board" aria-label="People by step">
-        <div v-for="col in boardColumns" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
+      <section class="ah-boards" aria-label="People by step">
+       <div v-for="g in boardGroups" :key="g.title" class="ah-group">
+        <h2 class="ah-group-title">{{ g.title }}</h2>
+        <div class="ah-board">
+        <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
           <div class="ah-col-head">
             <span class="ah-col-title">{{ col.title }}</span>
             <span class="ah-col-n">{{ inStage(col.stage).length }}</span>
@@ -386,7 +535,7 @@ const opName = (e: RecentEdit) => {
           <div v-if="col.stage !== 'editing'" class="ah-col-typ" title="How long people usually take to move on from this step">usually moves on in {{ span(typical[col.stage]) }}</div>
           <div class="ah-col-list">
             <button v-for="c in columnCards(col.stage)" :key="col.stage + c.key" type="button" class="ah-card"
-                    :class="{ 'ah-card--late': isLate(c), 'ah-card--open': openKey === c.key }" @click="pick(c)">
+                    :class="{ 'ah-card--open': openKey === c.key }" @click="pick(c)">
               <span class="ah-card-name">{{ nameOf(c) }}</span>
               <span class="ah-card-email">{{ emailOf(c) || 'no email' }}</span>
               <span class="ah-card-line">
@@ -395,8 +544,9 @@ const opName = (e: RecentEdit) => {
                 <template v-else>{{ ago(c.since) }}<template v-if="col.stage === 'signedin' && c.p?.tutorial_active">, in tutorial {{ c.p.tutorial_active }}</template><template v-if="col.stage === 'asked'">, {{ c.p?.from_site ? 'from connectome.quest' : 'in Pyr' }}</template></template>
               </span>
               <span class="ah-card-tags">
-                <span v-if="c.listed" class="ah-tag ah-tag--list">On the list</span>
-                <span v-if="c.p?.ew_name" class="ah-tag">EyeWire {{ c.p.ew_name }}</span>
+                <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
+                <span v-if="c.p?.ew_name" class="ah-tag">{{ ewShort(c.p) }}</span>
+                <span v-if="dupesOf(c).length" class="ah-tag ah-tag--dupe">Maybe the same as {{ dupesOf(c)[0].name || dupesOf(c)[0].email }}</span>
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
             </button>
@@ -406,6 +556,8 @@ const opName = (e: RecentEdit) => {
             <p v-if="!columnCards(col.stage).length && !(col.stage === 'letin' && letinHidden)" class="ah-quiet">Nobody here{{ words.length ? ' matches' : '' }}.</p>
           </div>
         </div>
+        </div>
+       </div>
       </section>
 
       <section class="ah-lb" aria-label="Leaderboard">
@@ -448,21 +600,45 @@ const opName = (e: RecentEdit) => {
         <div class="ah-panel-email">{{ emailOf(open) }}</div>
         <div v-if="open.p?.gave_email && open.p.gave_email !== open.p.email" class="ah-panel-meta">Gave {{ open.p.gave_email }} on the form</div>
         <div v-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
-        <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, rank {{ open.p.ew_rank }}</template></div>
+        <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, said rank {{ open.p.ew_rank }}</template></div>
+        <div v-if="open.p?.ew_name" class="ah-stats ah-ew" aria-label="Their EyeWire stats">
+          <template v-if="openEw">
+            <div><span>EyeWire</span>{{ openEw.points.toLocaleString() }} points · {{ openEw.cubes.toLocaleString() }} cubes<template v-if="openEw.accuracy != null"> · {{ Math.round(openEw.accuracy * 100) }}% accuracy</template></div>
+            <div v-if="openEw.roles.length || openEw.joined"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined {{ new Date(openEw.joined * 1000).getFullYear() }}</template></div>
+          </template>
+          <template v-else-if="ewOf(open.p) === 'none'">No EyeWire player named {{ open.p.ew_name }}.</template>
+          <template v-else>Reading EyeWire…</template>
+        </div>
+        <div v-for="d in dupesOf(open)" :key="'d' + d.email" class="ah-dupe">
+          <div>Maybe the same person as <button type="button" class="ah-linkbtn" @click="openKey = d.email">{{ d.name || d.username || d.email }}</button> ({{ d.email }})</div>
+          <div class="ah-actions">
+            <button class="ah-btn" type="button" :disabled="!!busy" @click="linkSame(open.p, d)">{{ busy === 'link' ? 'Joining…' : 'Same person' }}</button>
+            <button class="ah-btn" type="button" :disabled="!!busy" @click="markNotSame(open.p?.email ?? '', d.email)">Not the same</button>
+          </div>
+        </div>
+        <div v-if="open.p && canEdit?.[open.p.email]" class="ah-panel-meta">Can edit: {{ canEdit[open.p.email] }}</div>
         <div v-if="open.p?.found_us" class="ah-panel-meta">Found us: {{ open.p.found_us }}</div>
         <blockquote v-if="open.p?.their_note">{{ open.p.their_note }}</blockquote>
 
-        <div v-if="open.stage === 'asked' || open.stage === 'removed' && open.p?.request_id && !open.p?.pilot_enabled" class="ah-actions">
+        <div v-if="open.stage === 'asked' || open.stage === 'later' || open.stage === 'removed' && open.p?.request_id && !open.p?.pilot_enabled" class="ah-actions">
           <button class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="letIn(open)">{{ busy === 'letin' ? 'Letting in…' : 'Let them in' }}</button>
-          <button v-if="!open.listed && open.stage === 'asked'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'listed')">Keep on the list</button>
-          <button v-if="open.stage === 'asked'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'removed')">Remove request</button>
-          <button v-else class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'waiting')">Back to waiting</button>
+          <button v-if="open.stage === 'asked'" class="ah-btn" type="button" :disabled="!!busy" title="Off the Asked list, kept for when we take people new to EyeWire" @click="markBeta(open, 'listed')">Later</button>
+          <button v-if="open.stage !== 'removed'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'removed')">Remove request</button>
+          <button v-if="open.stage !== 'asked'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'waiting')">Back to Asked</button>
         </div>
+        <div v-if="open.stage === 'later'" class="ah-panel-meta">Later since {{ day(open.since) }}</div>
         <div v-if="open.p && emailed[open.p.email]" class="ah-panel-meta">{{ emailed[open.p.email] }}</div>
 
         <div v-if="open.ds" class="ah-ds">
           <div class="ah-panel-meta"><b>{{ open.ds.label }}</b>, asked {{ day(open.ds.at) }}<template v-if="open.ds.cave">, CAVE {{ open.ds.cave }}</template></div>
           <blockquote v-if="open.ds.note">{{ open.ds.note }}</blockquote>
+          <div class="ah-tries" aria-label="Their Proofreading Test tries">
+            <div class="ah-panel-meta"><b>Proofreading Test</b><template v-if="!triesOf(open).length">: no tries yet</template></div>
+            <ul v-if="triesOf(open).length">
+              <li v-for="t in triesOf(open).slice(0, 5)" :key="t.id" :class="'ah-try--' + (t.outcome === 'pass' ? 'pass' : t.outcome === 'fail' ? 'fail' : 'other')"><span>{{ tryLine(t) }}</span><span>{{ day(t.submitted_at || t.started_at) }}</span></li>
+            </ul>
+            <div v-if="triesOf(open).length" class="ah-quiet">Their cell, as they left it: Admin Hub, Test tries.</div>
+          </div>
           <input v-model="dsNote" class="ah-input" maxlength="500" placeholder="A note for them (optional)" />
           <div class="ah-actions">
             <button v-if="open.ds.caveGroup" class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="decide(open, 'granted')">{{ busy === 'granted' ? 'Granting…' : `Grant (adds to ${open.ds.caveGroup})` }}</button>
@@ -474,14 +650,15 @@ const opName = (e: RecentEdit) => {
         </div>
         <p v-if="actionError" class="ah-error" role="alert">{{ actionError }}</p>
 
-        <div v-if="open.p?.user_id" class="ah-stats" aria-label="Their stats">
+        <p v-if="open.p?.user_id && !played(open.p)" class="ah-quiet">Signed in to Pyr, nothing played yet.</p>
+        <div v-if="open.p?.user_id && played(open.p)" class="ah-stats" aria-label="Their stats">
           <div><span>All time</span>{{ open.p.edits.toLocaleString() }} edit{{ open.p.edits === 1 ? '' : 's' }} · {{ (open.p.cells ?? 0).toLocaleString() }} cell{{ open.p.cells === 1 ? '' : 's' }} done · {{ open.p.tutorials }} tutorial{{ open.p.tutorials === 1 ? '' : 's' }} finished</div>
           <div><span>Last 30 days</span>{{ (open.p.edits_30d ?? 0).toLocaleString() }} edit{{ open.p.edits_30d === 1 ? '' : 's' }} · {{ (open.p.cells_30d ?? 0).toLocaleString() }} cell{{ open.p.cells_30d === 1 ? '' : 's' }} done</div>
           <div><span>Help</span>asked {{ open.p.help_asked }} time{{ open.p.help_asked === 1 ? '' : 's' }}<template v-if="open.p.help_asked">, {{ open.p.help_answered_for }} answered</template> · helped others {{ open.p.help_given }} time{{ open.p.help_given === 1 ? '' : 's' }}<template v-if="open.p.help_asked_30d || open.p.help_given_30d"> ({{ open.p.help_asked_30d }} asked, {{ open.p.help_given_30d }} helped in 30 days)</template></div>
           <div><span>Chat</span>{{ (open.p.chats ?? 0).toLocaleString() }} message{{ open.p.chats === 1 ? '' : 's' }}, {{ (open.p.chats_30d ?? 0).toLocaleString() }} in 30 days</div>
           <div v-if="open.p.tutorial_active"><span>Now in</span>{{ TUTORIAL_NAMES[open.p.tutorial_active] ?? `tutorial ${open.p.tutorial_active}` }}</div>
         </div>
-        <template v-if="open.p?.user_id">
+        <template v-if="open.p?.user_id && played(open.p)">
           <h3>Their last 30 days, by dataset</h3>
           <p v-if="recentFor !== open.p.user_id" class="ah-quiet">Reading…</p>
           <p v-else-if="!theirDatasets.length" class="ah-quiet">Nothing on any dataset in the last 30 days.</p>
@@ -502,7 +679,7 @@ const opName = (e: RecentEdit) => {
             <li v-for="(e, i) in recent" :key="i"><span>{{ opName(e) }}<template v-if="e.dataset">, {{ dsName(e.dataset) }}</template></span><span>{{ ago(e.at) }} ago</span></li>
           </ol>
         </template>
-        <p v-else-if="open.p" class="ah-quiet">Not signed in to Pyr yet.</p>
+        <p v-if="open.p && !open.p.user_id" class="ah-quiet">Not signed in to Pyr yet.</p>
 
         <ol v-if="timeline.length" class="ah-time">
           <li v-for="[label, t] in timeline" :key="label"><span>{{ label }}</span><span>{{ day(t) }}</span></li>
@@ -515,7 +692,7 @@ const opName = (e: RecentEdit) => {
             <button type="button" class="ah-note-x" aria-label="Delete this note" title="Delete this note" :disabled="!!busy" @click="deleteNote(open, n.id)">×</button></div>
           <div class="ah-note-text">{{ n.text }}</div>
         </div>
-        <textarea v-model="noteDraft" class="ah-input" rows="3" maxlength="1000" placeholder="Add a note for the team"></textarea>
+        <textarea v-model="noteDraft" class="ah-input" rows="3" maxlength="1000" placeholder="Add a note for the team. @Celia or @Marissa tags them"></textarea>
         <button class="ah-btn" type="button" :disabled="!!busy || !noteDraft.trim()" @click="addNote(open)">{{ busy === 'note' ? 'Saving…' : 'Add note' }}</button>
       </aside>
     </div>
@@ -527,6 +704,15 @@ const opName = (e: RecentEdit) => {
       <button v-for="c in adminCards" :key="'a' + c.key" type="button" class="ah-card" @click="pick(c)">
         <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">Admin<template v-if="c.p?.edits">, {{ c.p.edits.toLocaleString() }} edit{{ c.p.edits === 1 ? '' : 's' }}</template></span>
+      </button>
+    </div>
+    <button v-if="laterCards.length || showLater" type="button" class="ah-fold ah-fold--wide ah-later-fold" @click="showLater = !showLater">
+      {{ showLater ? 'Hide' : 'Show' }} {{ inStage('later').length }} for later
+    </button>
+    <div v-if="showLater" class="ah-removed ah-later">
+      <button v-for="c in laterCards" :key="'l' + c.key" type="button" class="ah-card" @click="pick(c)">
+        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-line">Asked {{ day(c.p?.asked_at ?? null) }}<template v-if="c.p?.ew_name"> · {{ ewShort(c.p) }}</template></span>
       </button>
     </div>
     <button v-if="removedCards.length || showRemoved" type="button" class="ah-fold ah-fold--wide" @click="showRemoved = !showRemoved">
@@ -580,6 +766,22 @@ const opName = (e: RecentEdit) => {
 .ah-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .ah-main--open { grid-template-columns: minmax(0, 1fr) 360px; }
 .ah-main--open .ah-panel { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+.ah-boards { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ah-tries ul { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ah-tries li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 4px 8px; border-radius: 6px; background: rgba(40,60,100,.35); border-left: 3px solid #6f86a8; }
+.ah-tries li span:last-child { color: #8ea3c2; white-space: nowrap; }
+.ah-try--pass { border-left-color: #7CFFB2 !important; }
+.ah-try--fail { border-left-color: #9a8cff !important; }
+.ah-tag--dupe { background: rgba(154,140,255,.22) !important; color: #d9d3ff !important; }
+.ah-dupe { margin: 8px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(154,140,255,.45); background: rgba(154,140,255,.10); font-size: 13px; color: #dbe6f5; }
+.ah-dupe .ah-actions { margin-top: 6px; }
+.ah-linkbtn { background: none; border: 0; padding: 0; color: #9fd3ff; text-decoration: underline; cursor: pointer; font: inherit; }
+.ah-ew { background: rgba(124,255,178,.06); border-color: rgba(124,255,178,.25); }
+.ah-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 0 0 14px; }
+.ah-total { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; }
+.ah-total b { font-size: 22px; color: #9fd3ff; }
+.ah-total span { font-size: 12px; color: #8ea3c2; }
+.ah-group-title { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: #cfe0ff; letter-spacing: .02em; }
 .ah-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; }
 .ah-col { max-height: min(560px, calc(100vh - 150px)) !important; }
 /* The admins' leaderboard. */
@@ -623,7 +825,6 @@ const opName = (e: RecentEdit) => {
 .ah-card { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 7px 9px; border-radius: 8px; border: 1px solid rgba(110,150,220,.25); background: rgba(24,38,66,.9); color: inherit; font: inherit; cursor: pointer; }
 .ah-card:hover { border-color: rgba(150,190,255,.6); }
 .ah-card--open { border-color: #9fd3ff; background: rgba(36,58,100,.95); }
-.ah-card--late { border-color: rgba(239,159,39,.75); }
 .ah-card-name { font-weight: 700; color: #f2f7ff; overflow-wrap: anywhere; }
 .ah-card-email { font-size: 12px; color: #a9c4e6; overflow-wrap: anywhere; }
 .ah-card-line { font-size: 12px; color: #8ea3c2; }

@@ -11,6 +11,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
+import { onTextEditAsked } from '../text_edit_links';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
@@ -21,6 +22,8 @@ import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examp
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
 import { sendWaitingReviews } from '../quest_review';
+import { startCiliaTutorial } from '../tutorial-cilia';
+import { supabase } from '../supabase';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { cellAtCrosshair } from '../util/crosshair_cell';
@@ -99,7 +102,23 @@ async function load() {
   catch (e: any) { error.value = e?.message || String(e); }
   finally { loading.value = false; }
 }
-onMounted(() => { if (backend.userId) void load(); });
+onMounted(() => { if (backend.userId) void load().then(maybePlayTraining); });
+/** The first time a new player opens Cilia Quests, Cilia Quest Training
+ *  plays by itself (Ames 2026-11-10). Only for a player with no quest held
+ *  or done and no finished training, and once per browser. */
+const TRAINING_KEY = 'nge-cilia-training-autoplayed';
+async function maybePlayTraining() {
+  if (props.slim || error.value) return;
+  try { if (localStorage.getItem(TRAINING_KEY) === '1') return; } catch { return; }
+  if (mine.value.length || mineDone.value || mineHeld.value) return;
+  try {
+    const { data } = await supabase.from('tutorial_completions')
+      .select('tutorial').eq('user_id', backend.userId).eq('tutorial', 14).limit(1);
+    if (data?.length) return;
+  } catch { /* play it: the record could not be read */ }
+  try { localStorage.setItem(TRAINING_KEY, '1'); } catch { return; }
+  startTutorial();
+}
 
 /** "A5, OFF Starburst": the sheet's index and the cell's type, in the players' words. */
 function label(r: QuestRow) {
@@ -111,21 +130,39 @@ function label(r: QuestRow) {
  *  sentence on the centerline's keys is ours: the polyline tool is new here. */
 const QUEST_STEPS: string[] = [
   '<b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body, Daughter centriole, and Cilium centerline.</b>',
-  `Use <a href="${QUEST_GUIDE_URL}" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.` +
+  `New to Cilia Quests? <a href="#" data-nge-action="tutorial">Try Cilia Quest Training</a>: it walks you through a real example and checks your marks. ` +
+    `Use <a href="${QUEST_GUIDE_URL}" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.` +
     (QUEST_VIDEO_URL ? ` Check out this <a href="${QUEST_VIDEO_URL}" target="_blank" rel="noopener">training video</a> as well!` : ''),
   `Find the cilium, an appendage that projects from the cell's soma. Annotate its centerline, basal body, and daughter centriole in each of their respective layers. For the centerline, hold <b>Ctrl</b> and click along the cilium, then press <b>Enter</b>.`,
   `Some cells will not have a visible cilium. You may still be able to find their internal basal body and daughter centriole. <a href="#" data-nge-action="examples">Here's a reference</a> for a variety of cilia states you may encounter.`,
   'Press <b>Submit</b>, and choose a cilium status from the list. The lab will receive your view as a share link.',
   'You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.',
 ];
-function onQuestTextAction(name: string) { if (name === 'examples') void openQuestExamples(); }
+function onQuestTextAction(name: string) {
+  if (name === 'examples') void openQuestExamples();
+  if (name === 'tutorial') { showHelp.value = false; startTutorial(); }
+}
+/** The Cilia Quest tutorial (src/tutorial-cilia.ts, Ames 2026-11-10). */
+function startTutorial() {
+  nudging.value = false;
+  markIntroSeen();
+  // The library would sit over the tutorial's boxes; it opens again at the end.
+  document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
+  startCiliaTutorial();
+}
 /** The Instructions box with the lab's steps (Ames 2026-10-13), in a box of
  *  its own with room for a picture since 2026-11-06 (QuestInstructions). */
 const showHelp = ref(false);
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts).
+let stopTextEdit: (() => void) | null = null;
+onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'quest.retina_cilia.steps') showHelp.value = true; }); });
+onUnmounted(() => stopTextEdit?.());
 /** The first time a player opens the tab, the Instructions button is lit
  *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
  *  browser: it plays one time and never loops. */
-const INTRO_KEY = 'nge-cilia-quest-intro-seen';
+// The glow moved to the Tutorial button (2026-11-10), under a new key, so
+// players who saw the Instructions glow see this one once too.
+const INTRO_KEY = 'nge-cilia-tutorial-intro-seen';
 const infoEl = ref<HTMLElement | null>(null);
 const nudging = ref(false);
 function introSeen(): boolean { try { return localStorage.getItem(INTRO_KEY) === '1'; } catch { return true; } }
@@ -370,9 +407,14 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
     <div v-if="!slim" class="nge-aq-head">
       <div class="nge-aq-titlerow">
         <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
-        <button ref="infoEl" class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp, 'nge-aq-info--nudge': nudging }" @click="toggleHelp" title="How to do a Cilia Quest">
-          <span class="nge-aq-info-i" aria-hidden="true">i</span><span class="nge-aq-info-word">Instructions</span>
-        </button>
+        <span class="nge-aq-titlebtns">
+          <button ref="infoEl" class="nge-aq-info nge-aq-info--tut" :class="{ 'nge-aq-info--nudge': nudging }" @click="startTutorial" title="Cilia Quest Training: learn on an example cell, with your marks checked">
+            <span class="nge-aq-info-i" aria-hidden="true">▶</span><span class="nge-aq-info-word">Training</span>
+          </button>
+          <button class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp }" @click="toggleHelp" title="How to do a Cilia Quest">
+            <span class="nge-aq-info-i" aria-hidden="true">i</span><span class="nge-aq-info-word">Instructions</span>
+          </button>
+        </span>
       </div>
       <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
       <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
@@ -569,6 +611,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   background: rgba(126, 202, 255, 0.08); border: 1px solid rgba(126, 202, 255, 0.45);
   cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
+.nge-aq-titlebtns { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.nge-aq-info--tut .nge-aq-info-i { font-size: 8px; padding-left: 1px; }
 .nge-aq-info-i {
   width: 16px; height: 16px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;

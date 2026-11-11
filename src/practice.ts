@@ -601,7 +601,7 @@ export function currentPractice() {
   return session;
 }
 
-function pausePracticeTools() {
+export function pausePracticeTools() {
   const viewer = getViewer();
   viewer?.globalToolBinder?.activeTool_?.cancel?.();
   viewer?.toolBinder?.activeTool_?.cancel?.();

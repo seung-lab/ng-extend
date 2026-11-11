@@ -60,7 +60,11 @@ export function waitingTags(notes, now) {
 export function answered(tag, personName, thing, slackId) {
   if (!thing) return true;                                  // deleted
   const after = iso => Date.parse(iso) > tag.at;
-  const mine = by => personName && String(by || '').trim().toLowerCase() === String(personName).trim().toLowerCase();
+  // The same person signs as more than one name ("Amy R. Sterling" on the
+  // board, "Amy Sterling" as a player): an admin is matched by Slack id.
+  const norm = s => String(s || '').trim().toLowerCase();
+  const mine = by => !!personName && (norm(by) === norm(personName)
+    || (!!slackIdOf(personName) && slackIdOf(by) === slackIdOf(personName)));
   if (tag.kind === 'todo') {
     if (thing.list === 'done') return true;
     return (thing.comments || []).some(c => mine(c.by) && after(c.at));

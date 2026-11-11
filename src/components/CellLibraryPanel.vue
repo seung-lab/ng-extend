@@ -31,6 +31,7 @@ import {
 import { claimTime, claimTimeLabel, claimStartedLabel, setTimerWorkingClaim } from '../util/claim_time';
 import { showClaimNotice } from '../util/claim_congrats';
 import { getDatasetCaveConfig, isRegisteredDataset } from '../config';
+import { onTextEditAsked } from '../text_edit_links';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
@@ -3040,6 +3041,16 @@ async function claimNewCell() {
 /** "Start playing" (util/start_playing.ts): once the cells are in, go to the
  *  player's open cell here, or claim the next one, and say what to do. */
 const startNote = ref('');
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts): this dataset's how-to opens.
+let stopTextEdit: (() => void) | null = null;
+onMounted(() => {
+  stopTextEdit = onTextEditAsked(key => {
+    if (!key.startsWith('howto.') || key === 'howto.hunt' || key === 'howto.2d_tools') return;
+    if (key === datasetHowToKey.value) { showHowTo.value = true; startNote.value = ''; }
+    else startNote.value = 'That how-to belongs to another dataset. Switch to it, then open instructions to edit.';
+  });
+});
+onBeforeUnmount(() => stopTextEdit?.());
 function startPlayingIfAsked() {
   if (!takeStartPlaying()) return;
   const go = async () => {

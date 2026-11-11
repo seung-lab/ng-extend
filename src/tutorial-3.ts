@@ -735,8 +735,13 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       if (token === practiceWatch) setTimeout(tick, 2000);
     }
   };
+  // The tutorial this watch belongs to. Another one open means it is over:
+  // it kept writing "Merge mode is off" and Help me into the Cilia Quest
+  // tutorial's boxes (Ames, 2026-11-10).
+  const ownTutorial = useTutorialStore().activeTutorial;
   const look = async () => {
     if (token !== practiceWatch) return;
+    if (useTutorialStore().activeTutorial !== ownTutorial) { if (token === practiceWatch) stopWatching(); return; }
     const p = currentPractice();
     // Keep looking: the step may get its cell a moment later.
     if (p.phase === 'unavailable') { practiceStatus('Practice needs an invited account and a current session. Sign in, or press back then next to try again. You can read along while waiting.'); setTimeout(tick, 2000); return; }

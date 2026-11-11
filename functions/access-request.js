@@ -730,6 +730,8 @@ async function wakeBoard(io) {
 // store is passed in (Firestore in index.js), so this needs no new table.
 //   access.betaMarks  admins: every mark, by email.
 //   access.betaMark   admins: {email, mark: 'listed' | 'removed' | 'waiting'}.
+//   (On the Access page, listed shows as Later: off the Asked list, kept
+//   for later, Ames 2026-11-10.)
 const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // ── "You're in" by email (Ames 2026-11-05: "let's do resend and we can set up
 // connectome.quest"). Letting someone in sends them this, from
@@ -759,6 +761,21 @@ async function welcomeEmail(a, io) {
   if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
   return {sent: true};
 }
+// ── One person, two emails, joined by hand (Ames 2026-11-10: "some
+// duplicates ... same person"). The Access page suggests pairs; an admin
+// presses Same person. The row goes in access_email_links, which the view
+// access_hub_people folds (supabase-access-hub.sql): the email folds into
+// \`to\`. Admins only.
+//   access.linkEmails  admins: {email, to}.
+async function linkEmails(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email), to = betaEmail(a.to);
+  if (email === to) fail(400, 'Those are the same email.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200);
+  await io.sb('access_email_links?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, linked_to: to, note: `Same person, on the Access page${by ? ' by ' + by : ''}`})});
+  return {linked: true};
+}
 async function betaMarks(a, io) {
   needAdmin(io.isAdmin);
   return io.marks.all();
@@ -780,6 +797,7 @@ async function betaMark(a, io) {
 //   access.note        admins: {key, text} adds one.
 //   access.noteDelete  admins: {key, id} takes one away.
 const ACCESS_NOTE_MAX = 1000;
+const { tagIdsIn } = require('./todo-connector');
 const NOTE_KEY = /^(?:[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+|user:[0-9a-f-]{36})$/i;
 function noteKey(k) {
   const key = String(k || '').trim().toLowerCase();
@@ -797,7 +815,31 @@ async function accessNote(a, io) {
   if (!text) fail(400, 'Write a note first.');
   const by = (io.me && (io.me.display_name || io.me.username)) || (io.who && io.who.email) || 'An admin';
   await io.notes.add(key, {text, by, byEmail: (io.who && io.who.email) || '', at: new Date().toISOString()});
+  // The note is saved whatever happens to the tags.
+  try { await tagFromNote(key, text, by, a.name, io); } catch (e) { console.warn('[access note] tag failed', e && e.message); }
   return io.notes.all();
+}
+// "@Celia" or "@Marissa" in a note tags that admin (Ames 2026-11-10: "if I
+// leave a note here can it tag celia / Marissa?"), as notes on the triage
+// board do (triage-notes.js): a bell in Pyr and a ping in Slack, each with a
+// link that opens this person on the Access page.
+const ACCESS_PAGE = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/?triage=access';
+async function tagFromNote(key, text, by, name, io) {
+  if (!io.people || !io.notifyPeople) return 0;
+  const people = await io.people();
+  const ids = tagIdsIn(text, people).filter(id => id !== (io.me && io.me.id));
+  if (!ids.length) return 0;
+  const who = people.filter(p => ids.includes(p.id));
+  const label = String(name || '').replace(/[\r\n]+/g, ' ').trim().slice(0, BETA_NAME_MAX);
+  const about = label ? `${label}${key.startsWith('user:') ? '' : ` (${key})`}` : (key.startsWith('user:') ? 'a player' : key);
+  const link = `${ACCESS_PAGE}&person=${encodeURIComponent(key)}`;
+  await io.notifyPeople({ids, title: `💬 ${by} tagged you on the Access page`.slice(0, 120),
+    body: `About ${mdText(about)}:\n\n${mdText(text.slice(0, 600))}\n\n${link}`});
+  if (io.slackPing) {
+    const quote = text.replace(/\s+/g, ' ').slice(0, 300);
+    await io.slackPing(who, `left a note on the Access page about ${about}:\n> ${quote}\n<${link}|Open it on the Access page>`, by);
+  }
+  return ids.length;
 }
 async function accessNoteDelete(a, io) {
   needAdmin(io.isAdmin);
@@ -1063,6 +1105,7 @@ async function handle(action, args, io) {
   if (action === 'access.linkInvite') return linkInvite(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
+  if (action === 'access.linkEmails') return linkEmails(a, io);
   if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);

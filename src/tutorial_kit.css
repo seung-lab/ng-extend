@@ -529,3 +529,48 @@ body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold { position: static
   transform: translateY(2px) rotate(45deg);
 }
 body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold::before { content: ''; transform: translateY(-2px) rotate(225deg); }
+
+/* ── Cilia Quest tutorial (src/tutorial-cilia.ts) ── */
+.nge-cq-quiz { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.ng-extend .nge-cq-choice {
+  padding: 7px 12px; border-radius: 6px; cursor: pointer; text-align: left;
+  font: 500 13.5px 'Inter', system-ui, sans-serif; color: #d6e6f8;
+  background: rgba(126, 224, 255, 0.06); border: 1px solid rgba(126, 224, 255, 0.28);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ng-extend .nge-cq-choice:hover { background: rgba(126, 224, 255, 0.16); border-color: rgba(126, 224, 255, 0.6); }
+.ng-extend .nge-cq-choice--right { color: #e6fff4; background: rgba(128, 255, 204, 0.18); border-color: #80ffcc; }
+.ng-extend .nge-cq-choice--wrong { color: #ffdf9e; background: rgba(245, 184, 74, 0.12); border-color: rgba(245, 184, 74, 0.7); }
+.nge-cq-lab { display: block; margin-top: 4px; font-weight: 400; font-size: 13px; color: #bfe9d8; }
+.nge-cq-shown { margin-top: 6px; font-size: 13px; color: #9fd8ff; }
+.nge-cq-score { margin: 8px 0 0; padding-left: 20px; }
+.introductionStep .nge-hud-note .nge-hud-btn { margin-left: 6px; vertical-align: middle; }
+
+/* Cilia Quest tutorial: a mark's name that takes the view to it. */
+.ng-extend .nge-cq-go { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.ng-extend .nge-cq-go:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* Cilia Quest tutorial: the arrow on a mark in the 2D view. */
+.nge-cq-pointer { position: fixed; z-index: 60; pointer-events: none; width: 0; height: 0; }
+.nge-cq-pointer__ring {
+  position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--nge-cq-color, #fff); box-shadow: 0 0 10px var(--nge-cq-color, #fff);
+  animation: nge-cq-pulse 1.4s ease-out infinite;
+}
+.nge-cq-pointer__arrow {
+  position: absolute; right: 18px; bottom: 16px; white-space: nowrap;
+  color: var(--nge-cq-color, #fff); font-size: 34px; line-height: 1; font-weight: 700;
+  text-shadow: 0 0 6px #000, 0 0 2px #000;
+  animation: nge-cq-nudge 1.4s ease-in-out infinite;
+}
+.nge-cq-pointer__arrow span { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; margin-right: 4px; vertical-align: middle; }
+@keyframes nge-cq-pulse { 0% { transform: scale(0.7); opacity: 1; } 100% { transform: scale(1.4); opacity: 0.2; } }
+@keyframes nge-cq-nudge { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(5px, 5px); } }
+
+/* Cilia Quest tutorial: bigger status choices and feedback (Ames, 2026-11-10: "this text is too small"). */
+.ng-extend .introductionStep .nge-cq-choice { font-size: 16px; padding: 9px 14px; }
+.introductionStep [data-nge-cq-feedback] .nge-hud-note,
+.introductionStep [data-nge-cq-feedback] .nge-cq-shown,
+.introductionStep .nge-cq-lab { font-size: 15.5px; line-height: 1.45; }
+.introductionStep .nge-cq-statuses { margin: 8px 0; padding-left: 18px; font-size: 15.5px; line-height: 1.45; }
+.introductionStep .nge-cq-statuses li { margin: 4px 0; }
