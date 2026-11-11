@@ -213,6 +213,7 @@ export function practiceStatus(text: string, done = false, quiet = false) {
   help.style.display = (done || !helpWanted) ? 'none' : '';
   const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;
   if (stuck && done) stuck.remove();
+  if (done) chip.querySelector('.nge-practice-helpnote')?.remove();
   const place = chip.querySelector('.nge-practice-place') as HTMLElement | null;
   if (place) place.style.display = done ? 'none' : '';
   // The chip just grew; keep it on screen.
@@ -237,7 +238,7 @@ function helpRow(chip: Element): HTMLElement {
  *  keeps its extra parts, so "Still need help?" stayed up on the next try
  *  of a merger without Help me being pressed (Ames, 2026-10-11). */
 function clearHelp() {
-  document.querySelectorAll('.introductionStepAnchor .nge-practice-more, .introductionStepAnchor .nge-practice-stuck').forEach(el => el.remove());
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-more, .introductionStepAnchor .nge-practice-stuck, .introductionStepAnchor .nge-practice-helpnote').forEach(el => el.remove());
   syncHelpLabel();
 }
 
@@ -413,6 +414,21 @@ function withoutStrays(h: CutHint): CutHint {
 }
 
 const zoomedForCut = new Set<string>();
+/** Bring the view in close on the cut, without showing the gems (tester,
+ *  2026-11-10: boxes 2 to 4 of the Cut tutorial were too far out). Each box
+ *  reloads the cell's view, so the zoom is applied to that fresh view; Help
+ *  me presses after this only re-centre. */
+export async function focusOnCut(threeD = 0.25): Promise<void> {
+  const ex = currentPractice().example;
+  if (!ex) return;
+  const { hint, trusted } = await cutHintFor(ex);
+  if (!hint || !trusted) return;
+  const h = withoutStrays(hint);
+  const pts = [...h.red, ...h.blue];
+  if (!pts.length) return;
+  zoomedForCut.add(ex.id);
+  focusOn(pts, threeD, 1);
+}
 /** The red and blue hint points for the cell on screen. Exported so the
  *  first cut can start with them showing. */
 export async function showWhereToCut(perColour = 4): Promise<boolean> {
@@ -459,18 +475,42 @@ function syncHelpLabel() {
   const chip = chipBody();
   const btn = chip?.querySelector('.nge-practice-help') as HTMLElement | null;
   if (!chip || !btn) return;
-  const open = !!chip.querySelector('.nge-practice-stuck, .nge-practice-more');
+  const open = !!chip.querySelector('.nge-practice-stuck, .nge-practice-more, .nge-practice-helpnote');
   btn.textContent = open ? 'Hide help' : 'Help me';
   btn.title = open ? 'Close the help' : 'Show me where to click';
+}
+
+/** What Help me says, on its own line above the buttons. It used to go in
+ *  the status line, which the step's "Waiting for..." loop rewrote half a
+ *  second later (tester, 2026-11-10: the help text flashed and vanished). */
+function helpNote(chip: Element, text: string) {
+  chip.querySelector('.nge-practice-helpnote')?.remove();
+  const note = document.createElement('p');
+  note.className = 'nge-hud-note nge-practice-helpnote';
+  note.textContent = text;
+  chip.insertBefore(note, helpRow(chip));
+}
+
+/** Turn the box on screen into a new one: its own title and words hidden,
+ *  a new title on top, the status line and help buttons kept. The next box
+ *  is a fresh component, so nothing has to be undone. */
+function takeOverBox(title: string) {
+  const chip = chipBody();
+  if (!chip || chip.querySelector('.nge-box-retitle')) return;
+  const t = document.createElement('div');
+  t.className = 'nge-box-retitle';
+  t.textContent = title;
+  chip.insertBefore(t, chip.firstChild);
+  document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }
 
 async function helpMe() {
   const chip = chipBody();
   if (!chip) return;
   // While help is open the button reads "Hide help" and closes it.
-  const open = chip.querySelector('.nge-practice-stuck, .nge-practice-more');
+  const open = chip.querySelector('.nge-practice-stuck, .nge-practice-more, .nge-practice-helpnote');
   if (open) {
-    chip.querySelectorAll('.nge-practice-stuck, .nge-practice-more').forEach(el => el.remove());
+    chip.querySelectorAll('.nge-practice-stuck, .nge-practice-more, .nge-practice-helpnote').forEach(el => el.remove());
     syncHelpLabel();
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
     return;
@@ -480,11 +520,11 @@ async function helpMe() {
   if (ex?.kind === 'cut') {
     ensureTool('multicut');
     shown = await showWhereToCut();
-    if (shown) practiceStatus('The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch color, then Submit cut.');
+    if (shown) helpNote(chip, 'The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch color, then Submit cut.');
   } else if (ex?.kind === 'merge_then_cut') {
     ensureTool('merge');
     shown = await showWhereToClick();
-    if (shown) practiceStatus('The pink gems mark the two spots. Ctrl+click one piece by its gem, then the other, then Submit merge.');
+    if (shown) helpNote(chip, 'The pink gems mark the two spots. Ctrl+click one piece by its gem, then the other, then Submit merge.');
   }
   if (!shown) { openStuckPanel(); syncHelpLabel(); return; }
   const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); syncHelpLabel(); });
@@ -763,7 +803,10 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
         const left = await practiceLeftover();
         if (token !== practiceWatch) return;
         if (left) {
-          practiceStatus(left.message);
+          // The box becomes a new one: its title and instructions were about
+          // the points just placed (tester, 2026-11-10).
+          takeOverBox('Almost there');
+          practiceStatus(left.message + ' Cut again by the new gems: Ctrl+click by the red gem, press G, Ctrl+click by the blue gem, then Submit cut or Enter.');
           if (leftoverShown !== token) {
             leftoverShown = token;
             showGemMarkers([
