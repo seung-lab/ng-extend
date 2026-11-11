@@ -530,6 +530,8 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     position: OVER_3D,
     width: BOX_W,
     html: `Last one: the ${DC} layer is selected. Find the basal body's partner, just behind it, and <strong>CTRL+CLICK</strong> on it.
+
+<p><strong>They look alike, so how do you tell them apart?</strong> The basal body is the one the cilium grows out of, sitting right at the cell's surface. The daughter centriole has no cilium. It sits a little deeper inside the cell and is often turned at an angle to the basal body, so in one slice you may see it cut lengthwise while the basal body looks like a ring, or the other way around.</p>
 <div data-nge-cq-feedback></div>`,
     onEnter() { removeAnswerLayer(); selectLayer(LAYER.daughter); watchMark('daughter'); },
   },
