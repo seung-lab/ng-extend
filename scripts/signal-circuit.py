@@ -21,6 +21,7 @@ cell that drives I2 (S).
 
     python scripts/signal-circuit.py          (needs caveclient and a CAVE token)
     python scripts/signal-circuit.py --counts-only   (only the synapse totals, into the existing file)
+    python scripts/signal-circuit.py --partners-only (only the partners by cell type, into the existing file)
 """
 import json, os, sys, time
 import numpy as np
@@ -119,6 +120,61 @@ def synapse_totals(c, ids):
     return {int(r): (int(syn_in.get(r, 0)), int(syn_out.get(r, 0))) for r in ids}
 
 
+def partner_types(c, ids):
+    """Who each cell talks to, by cell type: its synapses onto and from every
+    other cell of the release, counted by the partner's type
+    (aibs_metamodel_celltypes_v661); partners without a type (fragments,
+    glia, unlabelled cells) count as one 'other' bin. Ames 2026-11-11: "do we
+    have any stats on what other cell types this cell connects to?" """
+    print('partner types...')
+    out_ = c.materialize.query_table('synapses_pni_2', filter_in_dict={'pre_pt_root_id': ids},
+                                     select_columns=['id', 'pre_pt_root_id', 'post_pt_root_id'])
+    in_ = c.materialize.query_table('synapses_pni_2', filter_in_dict={'post_pt_root_id': ids},
+                                    select_columns=['id', 'pre_pt_root_id', 'post_pt_root_id'])
+    out_ = out_[out_.pre_pt_root_id != out_.post_pt_root_id]
+    in_ = in_[in_.pre_pt_root_id != in_.post_pt_root_id]
+    partners = sorted(set(out_.post_pt_root_id.astype(int)) | set(in_.pre_pt_root_id.astype(int)))
+    partners = [r for r in partners if r > 0]
+    print(f'  {len(partners)} partner cells to type')
+    types = {}
+    for i in range(0, len(partners), 4000):
+        chunk = partners[i:i + 4000]
+        df = c.materialize.tables.aibs_metamodel_celltypes_v661(pt_root_id=chunk).query(
+            select_columns=['pt_root_id', 'cell_type', 'classification_system'])
+        df = df.drop_duplicates('pt_root_id')
+        for r, t, cls in zip(df.pt_root_id.astype(int), df.cell_type, df.classification_system):
+            types[r] = (str(t), 'I' if cls == 'inhibitory_neuron' else 'E' if cls == 'excitatory_neuron' else 'N')
+        print(f'  typed {min(i + 4000, len(partners))} of {len(partners)}')
+    def tally(series):
+        bins = {}
+        for r in series.astype(int):
+            t = types.get(int(r))
+            key = (t[0], t[1]) if t else ('other', 'N')
+            bins[key] = bins.get(key, 0) + 1
+        return [{'type': k[0], 'cls': k[1], 'n': v} for k, v in sorted(bins.items(), key=lambda kv: -kv[1])]
+    result = {}
+    for r in ids:
+        result[r] = {'out': tally(out_[out_.pre_pt_root_id == r].post_pt_root_id),
+                     'in': tally(in_[in_.post_pt_root_id == r].pre_pt_root_id)}
+    return result
+
+
+def add_partners():
+    """Add partners (synapses by the partner's cell type) to the cells of an existing circuit.json."""
+    c = CAVEclient('minnie65_public', version=VERSION)
+    with open(OUT) as f:
+        data = json.load(f)
+    ids = [int(cell['root']) for cell in data['cells']]
+    pt = partner_types(c, ids)
+    for cell in data['cells']:
+        cell['partners'] = pt[int(cell['root'])]
+        top = ', '.join(f"{b['type']} {b['n']}" for b in cell['partners']['out'][:5])
+        print(f"  {cell['key']:3s} onto: {top}")
+    with open(OUT, 'w') as f:
+        json.dump(data, f, separators=(',', ':'))
+    print(f'wrote {OUT}')
+
+
 def add_counts():
     """Add synIn and synOut to the cells of an existing circuit.json."""
     c = CAVEclient('minnie65_public', version=VERSION)
@@ -136,6 +192,9 @@ def add_counts():
 def main():
     if '--counts-only' in sys.argv:
         add_counts()
+        return
+    if '--partners-only' in sys.argv:
+        add_partners()
         return
     c = CAVEclient('minnie65_public', version=VERSION)
     ids = [r for _, r in CELLS]

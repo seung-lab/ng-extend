@@ -41,7 +41,9 @@ import {IS_LIVE_SITE} from './toolbar_staging';
 import {hideMobileWelcomeRef} from './mobile';
 
 type V3 = [number, number, number];
-interface CircuitCell { key: string; root: string; type: 'E' | 'I'; fine: string; mtype: string; label: string; soma: V3; cableUm: number; axonUm: number; synIn?: number; synOut?: number; }
+/** A cell's synapses onto (or from) the release's cells of one type. */
+interface Partner { type: string; cls: 'E' | 'I' | 'N'; n: number; }
+interface CircuitCell { key: string; root: string; type: 'E' | 'I'; fine: string; mtype: string; label: string; soma: V3; cableUm: number; axonUm: number; synIn?: number; synOut?: number; partners?: {out: Partner[]; in: Partner[]}; }
 interface CircuitConn { pre: string; post: string; count: number; axonUm: number; dendriteUm: number; axon: V3[]; dendrite: V3[]; synapse: V3; synapses: V3[]; }
 interface Circuit { version: number; cells: CircuitCell[]; connections: CircuitConn[]; }
 
@@ -211,7 +213,7 @@ interface Arrival { at: number; post: string; units: number; inhibitory: boolean
 interface Spark { r: Route; start: number; end: number; inhibitory: boolean; conn: CircuitConn; }
 interface Flash { p: V3; at: number; life: number; rgb: V3; size: number; }
 interface Beam { from: V3; to: V3; at: number; hush: boolean; cell: string; applied: boolean; scan?: boolean; }
-type Phase = 'loading' | 'brief' | 'playing' | 'done';
+type Phase = 'loading' | 'brief' | 'countdown' | 'playing' | 'done';
 
 let active = false;
 let phase: Phase = 'loading';
@@ -254,9 +256,67 @@ let prevUp: V3 | null = null;
  *  clicking it make the ship fly over and do the projection?"). */
 interface Visit { key: string; since: number; lean: number; fired: boolean; }
 let visit: Visit | null = null;
+/** Two ways to see it (Ames 2026-11-11: "I want to see two versions of the
+ *  view: cockpit and ship"): the ship in the scene, flying to the cells it
+ *  scans and projecting the card; or from its cockpit, with Pyr's Flight
+ *  Mode canopy over the view, the camera gliding up to a scanned cell and
+ *  the readout laid around the edges. Kept in localStorage. */
+type ViewMode = 'ship' | 'cockpit';
+let view: ViewMode = 'ship';
+try { if (localStorage.getItem('pyr.signal.view') === 'cockpit') view = 'cockpit'; } catch { /* as it is */ }
+function setView(v: ViewMode) {
+  view = v;
+  try { localStorage.setItem('pyr.signal.view', v); } catch { /* not kept */ }
+  els.view?.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === v)));
+  shipProp.alpha = v === 'cockpit' ? 0 : 1;
+  if (v === 'cockpit') showCanopy(); else hideCanopy();
+  if (scanKey) showScan(scanKey); else hideScan();
+}
+/** The cockpit's nose: where its beams leave, low in the middle of the view. */
+let cockpitNose: V3 | null = null;
+/** The camera's glide in the cockpit view: up to a scanned cell, and home. */
+interface Glide { look: V3; scale: number; since: number; }
+let glide: Glide | null = null;
+let homeLook: V3 | null = null, homeScale = 0;
+function rememberHome() {
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) return;
+  homeLook = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  homeScale = v.projectionScale.value;
+}
+/** The look point that puts a spot in the middle of the part of the view
+ *  the HUD leaves free, at a frame of so many nm (settleFrame's own rule). */
+function freeLook(spot: V3, frameNm: number, cam: {right: V3; up: V3; toEye: V3}): V3 {
+  const r = threeDPanel()?.element?.getBoundingClientRect?.(), h = panel?.getBoundingClientRect();
+  if (!r || !h || r.width <= 0) return spot;
+  if (sideHud()) {
+    const covered = clamp((h.right + 16 - r.left) / r.width, 0, 0.6), aspect = r.width / Math.max(1, r.height);
+    return add(spot, mul(cam.right, covered * frameNm * aspect / 2));
+  }
+  return sub(spot, mul(cam.up, hudFrac() * frameNm / 2));
+}
+function glideTo(c: CellState, factor = 0.6) {
+  const v = viewerNow(), nm = nmPerUnit(), cam = nm && cameraAxes(nm);
+  if (!v || !nm || !cam) return;
+  const scale = (homeScale || v.projectionScale.value) * factor;
+  glide = {look: freeLook(c.spec.soma, scale * Math.min(nm[0], nm[1], nm[2]), cam), scale, since: performance.now()};
+}
+function glideHome() { if (homeLook && homeScale) glide = {look: homeLook, scale: homeScale, since: performance.now()}; }
+function stepGlide(dt: number) {
+  if (!glide) return;
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) { glide = null; return; }
+  const pos = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  const k = Math.min(1, dt * 4);
+  const next = mix(pos, glide.look, k);
+  v.navigationState.position.value = Float32Array.from(next.map((c, i) => c / nm[i]));
+  const sc = v.projectionScale.value;
+  v.projectionScale.value = sc + (glide.scale - sc) * k;
+  if ((len(sub(next, glide.look)) < 800 && Math.abs(v.projectionScale.value - glide.scale) < glide.scale * 0.01) || performance.now() - glide.since > 1600) glide = null;
+}
 const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.02, 0.04, 0.08], rim: [0.45, 0.85, 1.0], shade: 1.15};
 const GROUP = 'signal';
-const MAX_GLOW = 1600;
+const MAX_GLOW = 4200;
 const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Float32Array(MAX_GLOW * 4), sizesNm: new Float32Array(MAX_GLOW), count: 0, nmRight: [1, 0, 0]};
 
 const thetaOf = (key: string) => THRESHOLD[key] ?? DEFAULT_THRESHOLD;
@@ -369,6 +429,7 @@ let message = '';
 let messageUntil = 0;
 /** The layer's mesh resolution before the game coarsened it. */
 let savedRenderScale: number | null = null;
+let savedDefaultAnnotations: boolean | null = null;
 
 function ensureStyle() {
   if (document.getElementById('nge-signal-style')) return;
@@ -397,10 +458,19 @@ function ensureStyle() {
 .nge-sig-corner { position: absolute; width: 12px; height: 12px; border: 2px solid #7ee0ff; pointer-events: none; filter: drop-shadow(0 0 4px #7ee0ff); }
 .nge-sig-corner.tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
 .nge-sig-corner.bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
-.nge-sig-head { display: flex; align-items: center; gap: 8px; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; color: #7ecaff; text-transform: uppercase; }
+/* the head is the Pyr gem, the view switch and two small buttons; the level's
+   name sits at the foot (Ames 2026-11-11: "remove (put Level 1 at the
+   bottom)", "put the Pyr icon in the ui box") */
+.nge-sig-head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.nge-sig-gem { flex: none; width: 22px; height: 22px; background: var(--nge-pyr-gem) center / contain no-repeat; filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.4)); }
+.nge-sig-view-key { margin-left: auto; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #7ecaff; }
+.nge-sig-view { display: inline-flex; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; overflow: hidden; }
+.nge-sig .nge-sig-view button { padding: 4px 9px; border: 0; border-radius: 0; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+.nge-sig .nge-sig-view button[aria-pressed="true"] { background: rgba(126, 224, 255, 0.22); color: #e6f7ff; text-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
+.nge-sig .nge-sig-view button:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 .nge-sig-dot { width: 7px; height: 7px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-sig-blink 1.1s infinite; }
 @keyframes nge-sig-blink { 50% { opacity: 0.25; } }
-.nge-sig-head .lvl { margin-left: auto; color: #e6f3ff; }
+.nge-sig-note .lvl { display: block; margin-bottom: 3px; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #7ecaff; }
 .nge-sig-x { flex: none; width: 24px; height: 24px; margin: -2px -6px -2px 6px; display: grid; place-items: center; padding: 0;
   border: 1px solid rgba(126, 210, 255, 0.35); border-radius: 50%; background: rgba(126, 210, 255, 0.06); color: #9fc6ea; cursor: pointer; }
 .nge-sig-x:hover { color: #fff; border-color: rgba(126, 210, 255, 0.8); }
@@ -415,6 +485,7 @@ function ensureStyle() {
 .nge-sig-stats { display: grid; grid-template-columns: auto auto auto; gap: 2px 14px; text-align: right; font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; color: #7ecaff; text-transform: uppercase; }
 .nge-sig-stats b { display: block; font: 700 18px 'Orbitron', 'Inter', sans-serif; color: #fff; letter-spacing: 0.02em; }
 .nge-sig-stats b.warn { color: #ff9a8a; }
+.nge-sig-stats .u, .nge-sig .barlabel .u { text-transform: none; font-size: 0.78em; opacity: 0.75; margin-left: 1px; }
 /* the coach: one instruction at a time */
 .nge-sig-coach { display: flex; align-items: flex-start; gap: 10px; margin: 10px 0 2px; padding: 8px 12px; border-left: 2px solid #ffc24a;
   background: linear-gradient(90deg, rgba(255, 194, 74, 0.10), rgba(255, 194, 74, 0)); color: #fff; font-size: 14px; line-height: 1.4; }
@@ -561,14 +632,15 @@ body.nge-mobile .nge-sig-charges i { width: 11px; height: 7px; }
 body.nge-mobile .nge-sig-recenter { padding: 7px 6px; font-size: 8px; letter-spacing: 0.08em; }
 body.nge-mobile .nge-sig-coach { margin-top: 6px; }
 body.nge-mobile .nge-sig-msg { margin-left: 0; width: 100%; min-height: 0; text-align: left; font-size: 12px; }
-body.nge-mobile .nge-sig-note { display: none; }
+body.nge-mobile .nge-sig-note { margin-top: 4px; }
+body.nge-mobile .nge-sig-note .txt { display: none; }
 body.nge-mobile .nge-sig-card p { font-size: 13px; }
 body.nge-mobile .nge-sig-go, body.nge-mobile .nge-sig-quiet { touch-action: manipulation; }
 /* Wide screens: the HUD stands at the left (Ames 2026-11-11: "move signal
    control to left, more area for control panel"), the cells get the whole
    height and the width to its right. */
 @media (min-width: 1000px) {
-  .nge-sig { left: 16px; right: auto; bottom: auto; top: 64px; transform: none; width: min(448px, 40vw); max-height: calc(100vh - 110px); display: flex; flex-direction: column; padding: 12px 16px 12px;
+  .nge-sig { left: 16px; right: auto; bottom: auto; top: 16px; transform: none; width: min(448px, 40vw); max-height: calc(100vh - 140px); display: flex; flex-direction: column; padding: 12px 16px 12px;
     animation-name: nge-sig-in-side; }
   /* Only the content scrolls, and only when it must: the corner brackets
      poke out of the plate, and on the plate itself they made both scrollbars
@@ -625,7 +697,7 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
    behind it, larger type with a shadow (Ames 2026-11-11: "hard to read
    contents of box"); and it drags, to clear the cells it covers ("I want to
    be able to move the box"). */
-.nge-sig-scan-box { position: fixed; min-width: 250px; max-width: 340px; padding: 10px 14px 11px; pointer-events: auto; transform-origin: 50% 100%; cursor: grab; touch-action: none; user-select: none;
+.nge-sig-scan-box { position: fixed; width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 11px 15px 12px; pointer-events: auto; transform-origin: 50% 100%; cursor: grab; touch-action: none; user-select: none;
   border: 1px solid rgba(126, 224, 255, 0.8); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   background: linear-gradient(180deg, rgba(22, 80, 146, 0.86), rgba(6, 24, 58, 0.93)), repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.06) 0 1px, transparent 1px 3px);
   backdrop-filter: blur(8px); box-shadow: inset 0 0 24px rgba(126, 224, 255, 0.16), 0 10px 30px rgba(0, 0, 0, 0.5); color: #f2fbff; font: 13.5px/1.4 'Inter', 'Roboto', sans-serif;
@@ -634,17 +706,90 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 .nge-sig-scan-box .nge-sig-x { cursor: pointer; }
 @keyframes nge-sig-proj-in { from { transform: scale(0.2, 0.02); opacity: 0; filter: brightness(2.5); } 60% { opacity: 1; } to { transform: none; opacity: 1; filter: none; } }
 @keyframes nge-sig-proj-flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.75; } 98% { opacity: 0.97; } 99% { opacity: 0.85; } }
-.nge-sig-scan-title { display: flex; align-items: center; gap: 8px; padding-bottom: 2px; font: 600 16px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: var(--c, #fff); text-shadow: 0 0 10px color-mix(in srgb, var(--c, #7ecaff) 60%, transparent); }
-.nge-sig-scan-title .ic { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--c, #7ecaff); background: color-mix(in srgb, var(--c, #7ecaff) 35%, transparent); box-shadow: 0 0 8px var(--c, #7ecaff); flex: none; }
-.nge-sig-scan-title small { font: 600 10.5px 'Inter', sans-serif; letter-spacing: 0.06em; color: #d8e8f8; }
-.nge-sig-scan-title .nge-sig-x { margin-left: auto; }
-.nge-sig-scan-stats { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 7px 0 0; padding-top: 8px; border-top: 1px solid rgba(126, 224, 255, 0.35); align-items: baseline; }
-.nge-sig-scan-stats dt { color: #8fd4ff; font: 600 10px/1.4 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
-.nge-sig-scan-stats dd { margin: 0; color: #f6fbff; overflow-wrap: anywhere; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
-@media (prefers-reduced-motion: reduce) { .nge-sig-scan-box, .ng-extend.nge-sig-scan .cone { animation: none; } }
+/* The card reads as an instrument (scifi-ui's data-readout: one label, one
+   number, one line of provenance): the cell's call sign large, its identity
+   in a line, measured numbers as readouts, its wiring in this level, and
+   where the numbers come from (Ames 2026-11-11: "We need a better
+   typographic layout"). */
+.nge-sig-scan-head { display: flex; align-items: center; gap: 9px; padding-bottom: 7px; border-bottom: 1px solid rgba(126, 224, 255, 0.28); }
+.nge-sig-scan-head .ic { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--c, #7ecaff); background: color-mix(in srgb, var(--c, #7ecaff) 35%, transparent); box-shadow: 0 0 8px var(--c, #7ecaff); flex: none; }
+.nge-sig-scan .key, .nge-sig-canopy .key { font: 700 22px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; color: var(--c, #fff); text-shadow: 0 0 12px color-mix(in srgb, var(--c, #7ecaff) 60%, transparent); }
+.nge-sig-scan .role, .nge-sig-canopy .role { font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #9fc6ea; }
+.nge-sig-scan .nge-sig-x { margin-left: auto; }
+.nge-sig-scan .identity, .nge-sig-canopy .identity { margin: 8px 0 0; font-size: 12.5px; color: #dbe9fa; }
+.nge-sig-scan .sign, .nge-sig-canopy .sign { margin: 2px 0 0; font-size: 12px; color: #8fb3d6; }
+.nge-sig-readouts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; margin: 10px 0 0; padding: 9px 0 0; list-style: none; border-top: 1px solid rgba(126, 224, 255, 0.22); }
+.nge-sig-readouts li { display: grid; gap: 2px; }
+.nge-sig-readouts b { font: 500 17px/1.1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.02em; color: #f4f9ff; font-variant-numeric: tabular-nums; }
+.nge-sig-readouts b .u { font: 500 11px 'Inter', sans-serif; margin-left: 3px; color: #a9c3de; text-transform: none; }
+.nge-sig-readouts .k { font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; }
+.nge-sig-wiring { display: grid; grid-template-columns: 54px 1fr; gap: 4px 10px; margin: 10px 0 0; padding-top: 9px; border-top: 1px solid rgba(126, 224, 255, 0.22); align-items: baseline; }
+.nge-sig-wiring dt { font: 600 9px/1.5 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; white-space: nowrap; }
+.nge-sig-wiring dd { margin: 0; font-size: 12.5px; color: #eaf7ff; }
+[data-show] { cursor: pointer; }
+.nge-sig-canopy [data-show] { pointer-events: auto; }
+.nge-sig-readouts li[data-show]:hover .k, .nge-sig-wiring dt[data-show]:hover, .nge-sig-wiring dd[data-show]:hover { color: #bfe6ff; }
+.nge-sig-readouts li.on b, .nge-sig-readouts li.on .k, .nge-sig-wiring dt.on, .nge-sig-wiring dd.on { color: #7ee0ff; text-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
+.nge-sig-scan .prov, .nge-sig-canopy .prov { margin: 10px 0 0; padding-top: 7px; border-top: 1px solid rgba(126, 224, 255, 0.22); font-size: 10px; line-height: 1.5; color: #7f97b3; font-variant-numeric: tabular-nums; }
+/* The cockpit view: Pyr's Flight Mode canopy over the free part of the 3D
+   view, the reticle locked on the scanned cell body, the readout laid around
+   the edges (Ames 2026-11-11: "try cockpit view", "I want to see two versions
+   of the view: cockpit and ship"). */
+.ng-extend.nge-sig-canopy { position: fixed; z-index: 9440; pointer-events: none; color: rgba(216, 238, 255, 0.92); font: 13px/1.4 'Inter', 'Roboto', sans-serif; opacity: 0; transition: opacity 0.4s; }
+.ng-extend.nge-sig-canopy--on { opacity: 1; }
+.nge-sig-canopy .c { position: absolute; width: 42px; height: 42px; border: 1.4px solid rgba(53, 181, 255, 0.55); filter: drop-shadow(0 0 6px rgba(53, 181, 255, 0.35)); }
+.nge-sig-canopy .c.tl { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.nge-sig-canopy .c.tr { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.nge-sig-canopy .c.bl { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.nge-sig-canopy .c.br { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.nge-sig-canopy .top { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; white-space: nowrap; }
+.nge-sig-canopy .top i { width: 7px; height: 7px; border-radius: 50%; background: #35b5ff; box-shadow: 0 0 8px rgba(53, 181, 255, 0.9); animation: nge-sig-blink 1.6s infinite; }
+.nge-sig-canopy .top .sub { font: 400 10px 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: none; color: rgba(53, 181, 255, 0.85); }
+.nge-sig-canopy svg.lead { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+.nge-sig-canopy .reticle { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; opacity: 0.5; transition: opacity 0.3s; }
+.nge-sig-canopy--lock .reticle { opacity: 1; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--c, #35b5ff) 60%, transparent)); }
+.nge-sig-canopy .reticle .ring { animation: nge-sig-reticle 9s linear infinite; transform-origin: 60px 60px; }
+@keyframes nge-sig-reticle { to { transform: rotate(360deg); } }
+.nge-sig-canopy .block { position: absolute; padding: 7px 10px; border-radius: 4px; background: rgba(4, 10, 24, 0.5); backdrop-filter: blur(4px); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); opacity: 0; transition: opacity 0.35s 0.1s; }
+.nge-sig-canopy--lock .block { opacity: 1; }
+.nge-sig-canopy .id { left: 18px; top: 44px; max-width: 320px; }
+.nge-sig-canopy .id .head { display: flex; align-items: baseline; gap: 10px; }
+.nge-sig-canopy .id .key { font-size: 34px; }
+.nge-sig-canopy .nums { right: 18px; top: 44px; }
+.nge-sig-canopy .nums .nge-sig-readouts { grid-template-columns: 1fr; gap: 10px; margin: 0; padding: 0; border: 0; text-align: right; }
+.nge-sig-canopy .nums .nge-sig-readouts b { font-size: 22px; }
+.nge-sig-canopy .wire { left: 18px; bottom: 44px; max-width: min(460px, 58%); }
+.nge-sig-canopy .wire .nge-sig-wiring { margin: 0; padding: 0; border: 0; }
+.nge-sig-canopy .provenance { right: 18px; bottom: 44px; text-align: right; }
+.nge-sig-canopy .provenance .prov { margin: 0; padding: 0; border: 0; }
+.nge-sig-canopy .nge-sig-x { position: absolute; top: 10px; right: 12px; pointer-events: auto; display: grid; place-items: center; width: 26px; height: 26px; margin: 0; border: 1px solid rgba(53, 181, 255, 0.4); border-radius: 8px; background: rgba(6, 10, 22, 0.7); color: rgba(216, 238, 255, 0.85); cursor: pointer; opacity: 0; transition: opacity 0.3s; }
+.nge-sig-canopy--lock .nge-sig-x { opacity: 1; }
+.nge-sig-canopy .nge-sig-x:hover { border-color: rgba(53, 181, 255, 0.8); box-shadow: 0 0 10px rgba(53, 181, 255, 0.35); }
+body.nge-mobile .nge-sig-canopy .nums, body.nge-mobile .nge-sig-canopy .wire, body.nge-mobile .nge-sig-canopy .provenance { display: none; }
+body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
+/* the intro tour: one short line a step, a kicker with the step's number, Next and Skip */
+.nge-sig-tour-kicker { display: flex; align-items: center; gap: 8px; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #7ecaff; }
+.nge-sig-tour-kicker i { width: 14px; height: 1px; background: #7ecaff; box-shadow: 0 0 6px #7ecaff; }
+.nge-sig-tour-text { margin: 8px 0 0; font-size: 16px; line-height: 1.4; color: #fff; }
+.nge-sig-tour-sub { margin: 6px 0 0; font-size: 12.5px; color: #9fc6ea; }
+.nge-sig-tour .nge-sig-row { margin-top: 12px; }
+/* labels the tour pins on parts of a cell (dendrites, cell body, axon) */
+.ng-extend.nge-sig-label { position: fixed; z-index: 9400; transform: translate(12px, -50%); padding: 2px 8px; border: 1px solid rgba(255, 224, 160, 0.6); border-radius: 3px; background: rgba(6, 12, 28, 0.78); color: #ffe9b8; font: 600 11px 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+.ng-extend.nge-sig-label::before { content: ''; position: absolute; left: -12px; top: 50%; width: 11px; height: 1px; background: rgba(255, 224, 160, 0.7); }
+.ng-extend.nge-sig-label--in { opacity: 1; }
+/* three, two, one, go: in the middle of the free part of the view */
+.ng-extend.nge-sig-count { position: fixed; z-index: 9460; transform: translate(-50%, -50%); pointer-events: none; font: 700 96px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; color: #e6f7ff; text-shadow: 0 0 30px rgba(126, 224, 255, 0.8), 0 0 60px rgba(74, 150, 224, 0.5); }
+.ng-extend.nge-sig-count.pop { animation: nge-sig-count 0.85s ease-out both; }
+@keyframes nge-sig-count { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); filter: blur(6px); } 25% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: none; } 100% { opacity: 0.15; transform: translate(-50%, -50%) scale(0.9); } }
+body.nge-mobile .ng-extend.nge-sig-count { font-size: 64px; }
+@media (prefers-reduced-motion: reduce) { .nge-sig-scan-box, .ng-extend.nge-sig-scan .cone, .nge-sig-canopy .reticle .ring { animation: none; } }
 body.nge-mobile .nge-sig-scan-box { min-width: 0; max-width: calc(100vw - 24px); font-size: 11.5px; }
 /* the Intro test panel sits where the HUD now stands: away while the game runs */
 body.nge-signal-on .nge-stt, body.nge-signal-on .nge-stt-dock { display: none !important; }
+/* Pyr's top bar and the layer tabs are away while the game runs, and the
+   viewer takes the window (Ames 2026-11-11: "hide these during the game") */
+body.nge-signal-on #extensionBar, body.nge-signal-on .neuroglancer-viewer-top-row, body.nge-signal-on .neuroglancer-layer-panel { display: none !important; }
+body.nge-signal-on #neuroglancer-container { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; margin: 0 !important; }
 @media (max-width: 700px) { .nge-sig { padding: 10px 12px; font-size: 12.5px; } .nge-sig-obj strong { font-size: 14px; } .nge-sig-stats b { font-size: 15px; }
   .nge-sig .nge-sig-chip .syn { display: none; } .nge-sig .nge-sig-chip { min-width: 0; } .nge-sig .nge-sig-chip .bar { width: 70px; } .nge-sig-note { display: none; } .nge-sig-coach { font-size: 13px; } }
 @media (prefers-reduced-motion: reduce) { .nge-sig, .nge-sig-dot, .nge-sig-chip--spike { animation: none; } }
@@ -662,7 +807,7 @@ function buildPanel() {
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Signal Controller');
   panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i><div class="nge-sig-scroll">
-    <div class="nge-sig-head"><span class="nge-sig-dot"></span>Signal Control · MICrONS cortex<span class="lvl" data-el="lvl"></span>
+    <div class="nge-sig-head"><i class="nge-sig-gem" aria-hidden="true"></i><span class="nge-sig-view-key">View</span><span class="nge-sig-view" data-el="view" role="group" aria-label="View"><button type="button" data-view="ship" aria-pressed="true" title="The ship in the scene: it flies to the cells you scan">Ship</button><button type="button" data-view="cockpit" aria-pressed="false" title="From the ship's cockpit: the canopy, the reticle, the readouts">Cockpit</button></span>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
       <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
@@ -674,7 +819,7 @@ function buildPanel() {
       <div class="nge-sig-charges" data-el="charges"><span>Charge</span></div>
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
-    <div class="nge-sig-note">Real wiring, real synapse counts (MICrONS public release). The firing is a simple model, played about a thousand times slower than life.</div></div>`;
+    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 1,000 times slower than real life.</span></div></div>`;
   document.body.appendChild(panel);
   els = {};
   panel.querySelectorAll<HTMLElement>('[data-el]').forEach(el => { els[el.dataset.el!] = el; });
@@ -688,6 +833,8 @@ function buildPanel() {
   // beam instead of pressing the last button again.
   els.spark.onclick = () => { setHushMode(false); els.spark.blur(); };
   els.hush.onclick = () => { setHushMode(true); els.hush.blur(); };
+  els.view.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { setView(b.dataset.view as ViewMode); b.blur(); }; });
+  setView(view);
   els.recenter.onclick = () => { frameLevel(); say('Back at the circuit.', 1.5); };
   for (let k = 0; k < MAX_CHARGES; k++) els.charges.appendChild(document.createElement('i'));
 }
@@ -733,6 +880,7 @@ function setCoachText(text: string, event: CoachEvent) {
   if (h) hints = new Set(h);
 }
 function coach(event: CoachEvent) {
+  if (phase !== 'playing') return;   // the tour's demonstrations spike cells too
   const text = level.coach[event];
   if (!text) return;
   // The first-time events say their piece once; hits and misses can repeat.
@@ -904,7 +1052,7 @@ function updateMap() {
   if (!mapNodeEls.size) return;
   for (const [k, g] of mapNodeEls) {
     const c = cells.get(k)!;
-    g.classList.toggle('hint', phase === 'playing' && hints.has(k));
+    g.classList.toggle('hint', hints.has(k));
     g.classList.toggle('hushed', now < c.hushedUntil);
     g.classList.toggle('held', holdOn(c) > 0.3);
   }
@@ -963,14 +1111,141 @@ function showChips() {
   els.row.style.display = '';
 }
 
+/* ── the intro tour: level 1 opens as a cinematic (Ames 2026-11-11: "make
+   the text more like an interactive tour… as little text as possible"):
+   Neuron 101 on the gold cell (dendrites in, cell body, axon out), the ship
+   at the gold cell, its four drivers lit in turn, a spark run down an axon,
+   one spike leaking and two adding up to a firing, why E1, the scan, then
+   Begin. Each step plays on the cells themselves (the model runs during the
+   tour, `demo`, with the coach and the scoring held off) and waits for
+   Next. After Begin the play UI comes up with its controls named, then
+   three, two, one, go. ── */
+interface TourStep { kicker: string; text: string; sub?: string; play?: (alive: () => boolean) => Promise<void>; }
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+let demo = false;          // the model runs outside play, for the tour's demonstrations
+let tourAt = 0, tourToken = 0;
+let tourLabels: {el: HTMLElement; p: V3}[] = [];
+function tourLabel(text: string, p: V3) {
+  const el = document.createElement('span');
+  el.className = 'ng-extend nge-sig-label';
+  el.textContent = text;
+  document.body.appendChild(el);
+  tourLabels.push({el, p});
+  requestAnimationFrame(() => el.classList.add('nge-sig-label--in'));
+}
+function clearTourLabels() { for (const l of tourLabels) l.el.remove(); tourLabels = []; }
+function placeTourLabels() {
+  if (!tourLabels.length) return;
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  for (const l of tourLabels) {
+    const s = toScreen(l.p);
+    if (!s || !r || s[0] < r.left || s[0] > r.right || s[1] < r.top || s[1] > r.bottom) { l.el.style.display = 'none'; continue; }
+    l.el.style.display = '';
+    l.el.style.left = `${s[0]}px`; l.el.style.top = `${s[1]}px`;
+  }
+}
+/** A spark from the ship at a cell, as the player's would be. */
+function demoSpark(key: string) {
+  const c = cells.get(key);
+  if (!c?.shown) return;
+  shipAim = c.spec.soma; aimUntil = performance.now() + 1500;
+  beams.push({from: shipNose(), to: c.spec.soma, at: now, hush: false, cell: key, applied: false});
+  sfx.spark();
+}
+const NO_CONN = {} as CircuitConn;   // a spark with no edge on the map
+/** A pulse of light along a path, over so many seconds. */
+function demoPulse(path: V3[], seconds: number) {
+  sparks.push({r: route(path), start: now, end: now + seconds, inhibitory: false, conn: NO_CONN});
+}
+/** What the tour clears between steps: labels, lit cells, the ship's visit, the camera. */
+function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); }
+const TOUR: TourStep[] = [
+  {kicker: 'Neuron 101', text: 'Dendrites listen. The cell body decides. The axon fires.', sub: 'An action potential runs one way: in through the dendrites, out along the axon.',
+    play: async alive => {
+      const t = cells.get('T');
+      if (!t) return;
+      const inPath = conns.find(k => k.post === 'T' && k.pre === 'E1')?.dendrite;   // a synapse to the cell body
+      const outPath = conns.find(k => k.pre === 'T')?.axon;                         // the cell body to a synapse
+      glideTo(t, 0.5);
+      await sleep(900); if (!alive()) return;
+      if (inPath?.length) tourLabel('dendrites', inPath[0]);
+      await sleep(500); if (!alive()) return;
+      if (inPath?.length) demoPulse(inPath, 1.2);
+      await sleep(1250); if (!alive()) return;
+      tourLabel('cell body', t.spec.soma);
+      flashes.push({p: t.spec.soma, at: now, life: 0.7, rgb: [1, 0.85, 0.4], size: 24_000});
+      sfx.spike(false);
+      await sleep(500); if (!alive()) return;
+      if (outPath?.length) { tourLabel('axon', outPath[Math.min(outPath.length - 1, Math.floor(outPath.length * 0.45))]); demoPulse(outPath, 1.6); }
+    }},
+  {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Gold: your target.',
+    play: async alive => {
+      await sleep(300); if (!alive()) return;
+      const t = cells.get('T');
+      if (!t) return;
+      const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
+      visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and hovers; no card
+      if (view === 'cockpit') glideTo(t, 0.7);
+      hints = new Set(['T']);
+    }},
+  {kicker: 'Its drivers', text: 'Four cells drive it: E1, E2, E3, E4. E is for excitatory.',
+    play: async alive => {
+      for (const k of ['E1', 'E2', 'E3', 'E4']) {
+        if (!alive()) return;
+        hints = new Set([...hints, k]);
+        const c = cells.get(k);
+        if (c) flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.8, 0.95, 1], size: 18_000});
+        sfx.spike(false);
+        await sleep(550);
+      }
+    }},
+  {kicker: 'Spark', text: 'Spark a cell: its spike runs down the axon to the gold cell.',
+    play: async alive => { await sleep(400); if (!alive()) return; hints = new Set(['E1']); demoSpark('E1'); }},
+  {kicker: 'Add up', text: 'One spike leaks away. Two, close together, add up: it fires.',
+    play: async alive => {
+      await sleep(400); if (!alive()) return;
+      demoSpark('E1');
+      await sleep(2600); if (!alive()) return;   // the one spike's charge leaks away
+      demoSpark('E1');
+      await sleep(320); if (!alive()) return;
+      demoSpark('E1');
+    }},
+  {kicker: 'Why E1', text: 'E1 makes five synapses onto it, the most: two quick sparks are enough. The others carry less and need company.',
+    play: async alive => { await sleep(100); if (alive()) hints = new Set(['E1']); }},
+  {kicker: 'Scan', text: 'Click any cell to scan it. The letters are call signs: E excitatory, I inhibitory, T target.',
+    play: async alive => { await sleep(300); if (alive()) scan('E2'); }},
+  {kicker: 'Ready', text: 'Fire the gold cell: click E1 twice, quickly.'},
+];
+function showTour() {
+  phase = 'brief'; demo = true;
+  els.row.style.display = 'none';
+  buildMap();
+  els.map.style.display = '';
+  tourAt = 0;
+  renderTourStep();
+}
+function renderTourStep() {
+  const step = TOUR[tourAt], last = tourAt === TOUR.length - 1;
+  tourReset();
+  els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${TOUR.length} · ${step.kicker}</div>
+    <p class="nge-sig-tour-text">${adapt(step.text)}</p>${step.sub ? `<p class="nge-sig-tour-sub">${adapt(step.sub)}</p>` : ''}
+    <div class="nge-sig-row"><button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${last ? '' : '<button class="nge-sig-quiet" type="button" data-act="skip">Skip</button>'}</div></div>`;
+  els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
+    b.onclick = () => { if (b.dataset.act === 'skip') { tourAt = TOUR.length - 1; renderTourStep(); } else if (last) beginPlay(); else { tourAt++; renderTourStep(); } };
+  });
+  const token = ++tourToken;
+  void step.play?.(() => token === tourToken && active && phase === 'brief');
+  updateHud();
+}
+
 function showBrief() {
-  phase = 'brief';
+  if (levelIndex === 0) { showTour(); return; }
+  phase = 'brief'; demo = false;
   els.row.style.display = 'none';
   buildMap();
   els.map.style.display = '';
   els.body.innerHTML = `<div class="nge-sig-card">${adapt(level.brief).split('\n').map(p => `<p>${p}</p>`).join('')}
-    <button class="nge-sig-go" type="button"><span class="nge-sig-plate">Begin ›</span></button>
-    <p class="nge-sig-tip">${adapt('Before you begin, click any cell to scan it: the ship flies over and reads it. The letters are call signs for this level: E for excitatory, I for inhibitory, T for the target.')}</p></div>`;
+    <button class="nge-sig-go" type="button"><span class="nge-sig-plate">Begin ›</span></button></div>`;
   (els.body.querySelector('.nge-sig-go') as HTMLButtonElement).onclick = () => beginPlay();
   updateHud();
 }
@@ -999,14 +1274,14 @@ function updateHud() {
   const total = level.goal.count;
   els.progress.textContent = `${progress} / ${total}`;
   const left = phase === 'playing' ? Math.max(0, level.timeS - now) : level.timeS;
-  els.time.textContent = `${Math.ceil(left)}s`;
+  els.time.innerHTML = `${Math.ceil(left)}<span class="u">s</span>`;
   els.time.classList.toggle('warn', phase === 'playing' && left < 10);
   els.score.textContent = String(score);
   const pips = els.charges.querySelectorAll('i');
   pips.forEach((p, k) => { p.className = charges >= k + 1 ? 'on' : charges > k + 0.5 ? 'half' : ''; });
   (els.hush as HTMLButtonElement).disabled = !level.hush;
   if (message && performance.now() > messageUntil) { message = ''; els.msg.textContent = ''; }
-  els.coach.style.display = phase === 'playing' && els.coachText.textContent ? '' : 'none';
+  els.coach.style.display = (phase === 'playing' || phase === 'countdown') && els.coachText.textContent ? '' : 'none';
   updateMap();
   for (const [key, el] of chipEls) {
     const c = cells.get(key)!;
@@ -1021,7 +1296,7 @@ function updateHud() {
       // down (Ames 2026-11-08: "next pulse, what does it mean?").
       const left = Math.max(0, c.gateNext - now);
       bar.style.width = hushed ? `${Math.round(clamp((c.hushedUntil - now) / HUSH_S, 0, 1) * 100)}%` : `${Math.round(clamp(left / c.gatePeriod, 0, 1) * 100)}%`;
-      label.textContent = hushed ? `hushed ${Math.max(0, c.hushedUntil - now).toFixed(1)} s` : `pulses in ${left.toFixed(1)} s`;
+      label.innerHTML = hushed ? `hushed ${Math.max(0, c.hushedUntil - now).toFixed(1)}<span class="u"> s</span>` : `pulses in ${left.toFixed(1)}<span class="u"> s</span>`;
       continue;
     }
     const v = clamp(potential(c) / c.theta, -1, 1), h = holdOn(c);
@@ -1162,7 +1437,7 @@ function placeTags() {
     el.style.left = `${s[0]}px`;
     el.style.top = `${s[1]}px`;
     el.classList.toggle('nge-sig-tag--hushed', now < c.hushedUntil);
-    el.classList.toggle('nge-sig-tag--hint', phase === 'playing' && hints.has(key));
+    el.classList.toggle('nge-sig-tag--hint', hints.has(key));
     const held = holdOn(c) > 0.5;
     if ((el.dataset.held === '1') !== held) {
       el.dataset.held = held ? '1' : '0';
@@ -1245,6 +1520,9 @@ function frameLevel() {
   // which would clip the ship: it rides close to the eye).
   try { if (v.orthographicProjection?.value) v.orthographicProjection.value = false; } catch { /* as it is */ }
   try { const dr = v.perspectiveNavigationState?.depthRange; if (dr && dr.value > 0) dr.value = -50; } catch { /* as it is */ }
+  // the dataset's box is drawn as a hologram by the game (drawBox), not as
+  // Neuroglancer's blue lines
+  try { if (savedDefaultAnnotations === null) savedDefaultAnnotations = !!v.showDefaultAnnotations.value; v.showDefaultAnnotations.value = false; } catch { /* as it is */ }
   // In close on the cell bodies: the rest of each cell is there, greyed, as
   // context (the haze), so the frame need not hold it all.
   viewNm = Math.max(200_000, span * 2.0 + 70_000);
@@ -1259,6 +1537,7 @@ function frameLevel() {
   // (Ames 2026-11-10: "couldn't tap the right cell").
   v.projectionOrientation.restoreState(phone() ? [0, 0, 0, 1] : [-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
   needsFrame = true;
+  glide = null;
   shipAt = add(center, [0, -viewNm * 0.4, 0]);
   shipFwd = norm(sub(center, shipAt));
 }
@@ -1341,7 +1620,7 @@ function hudFrac(): number {
 /** The ship's length in nm, set with its spot: a fixed share of the screen,
  *  whatever the level's spread or the zoom. */
 let shipLenNm = SHIP_LENGTH_NM;
-function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: number} | null {
+function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: number; nose: V3} | null {
   const v = viewerNow(), nm = nmPerUnit();
   const inv = threeDPanel()?.projectionParameters?.value?.invViewProjectionMat;
   if (!v || !nm || !inv) return null;
@@ -1373,15 +1652,22 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: numbe
   // the HUD standing at the left it rides low right, clear of it.
   const sx = sideHud() ? 0.6 : phone() ? -0.55 : -0.6;
   const sy = sideHud() ? -0.5 : phone() ? Math.min(-0.1, -1 + 2 * hudFrac() + 0.45) : -0.25;
-  // its length: four tenths of the view's shorter half-extent (a fifth of the
-  // height on a wide screen; it was half, "too large", Ames 2026-11-11)
-  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH)), len: Math.min(halfH, halfW) * 0.4};
+  // its length: three tenths of the view's shorter half-extent (15% of the
+  // height on a wide screen; it was half, then four tenths, "too large",
+  // Ames 2026-11-11). The cockpit's nose: low in the middle of the view,
+  // three tenths of the way out from the eye.
+  const d2 = eyeDist * 0.3, halfH2 = d2 * tanHalf;
+  const nose = add(sub(eye, mul(cam.toEye, d2)), mul(cam.up, -0.92 * halfH2));
+  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH)), len: Math.min(halfH, halfW) * 0.22, nose};
 }
-/** Where the ship hovers on a visit: beside the cell body, a little above it
- *  and well in front of it, clear of the branches around the soma, on the
- *  side of the cell with more screen. */
+/** Where the ship lands on a visit: on the near side of the cell body (a
+ *  soma is some 12 µm across), a touch to the side it came from, so it sits
+ *  among the branches with whatever is in front of it in front (Ames
+ *  2026-11-11: "the ship doesn't seem to be properly nested within the 3D
+ *  space… small enough to land on the soma"). */
+const SOMA_R_NM = 7000, VISIT_LEN_NM = 5500;
 function visitSpot(cam: {right: V3; up: V3; toEye: V3}, c: CellState, lean: number): V3 {
-  return add(add(add(c.spec.soma, mul(cam.right, lean * viewNm * 0.12)), mul(cam.up, viewNm * 0.07)), mul(cam.toEye, viewNm * 0.16));
+  return add(add(c.spec.soma, mul(cam.toEye, SOMA_R_NM)), mul(cam.right, lean * 1500));
 }
 
 /** The model's own length along its nose (+z), so it can be sized in nm. */
@@ -1395,21 +1681,27 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
     shipModelLength = (zHi - zLo) || 1;
   }
   const cockpit = cockpitSpot(cam);
+  cockpitNose = cockpit?.nose ?? null;
   const vc = visit ? cells.get(visit.key) : undefined;
   const spot = vc ? visitSpot(cam, vc, visit!.lean) : cockpit?.spot ?? null;
-  // its size: a fixed share of the screen at the cockpit; on a visit a small
-  // craft beside the cell body, six hundredths of the frame's height (a tenth
-  // was "too large", Ames 2026-11-11)
-  const wantLen = vc ? viewNm * 0.06 : cockpit?.len ?? shipLenNm;
+  // its size: a fixed share of the screen at the cockpit; on a visit a craft
+  // smaller than the cell body it lands on, 5.5 µm long
+  const wantLen = vc ? VISIT_LEN_NM : cockpit?.len ?? shipLenNm;
   shipLenNm += (wantLen - shipLenNm) * Math.min(1, dt * 4);
   const scale = shipLenNm / shipModelLength;
   if (spot) shipAt = mix(shipAt, spot, Math.min(1, dt * (vc ? 3 : 5)));
-  // a visit: the scan fires once the ship is there (or after 1.8 s, if the way is long)
-  if (visit && vc && spot && !visit.fired && (len(sub(shipAt, spot)) < viewNm * 0.02 || now - visit.since > 1.8)) fireScan();
-  const aimAt = vc ? vc.spec.soma : shipAim && performance.now() < aimUntil ? shipAim : center;
+  // a visit: the scan fires once the ship is there (or after 1.8 s, if the
+  // way is long); from the cockpit, once the camera's glide has ended
+  const there = view === 'cockpit' ? !glide : len(sub(shipAt, spot ?? shipAt)) < viewNm * 0.02 || now - visit!.since > 1.8;
+  if (visit && vc && !visit.fired && there) fireScan();
+  // on the way it points where it is going; landed, it sits across the cell
+  // body's surface, its belly to the cell (its up is the way to the eye)
+  const landed = !!vc && !!spot && len(sub(shipAt, spot)) < viewNm * 0.03;
+  const aimAt = vc ? (landed ? add(shipAt, mul(cam.right, visit!.lean)) : spot!) : shipAim && performance.now() < aimUntil ? shipAim : center;
   const want = norm(sub(aimAt, shipAt));
   shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * 7)));
-  let up = norm(sub(cam.up, mul(shipFwd, dot(cam.up, shipFwd))));
+  const upRef = landed ? cam.toEye : cam.up;
+  let up = norm(sub(upRef, mul(shipFwd, dot(upRef, shipFwd))));
   if (prevUp) up = norm(mix(prevUp, up, Math.min(1, dt * 6)));
   prevUp = up;
   const fwd = norm(sub(shipFwd, mul(up, dot(shipFwd, up))));
@@ -1421,7 +1713,51 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   for (let k = 0; k < 3; k++) m[12 + k] = at[k] / nm[k];
   shipProp.eye = [dot(right, cam.toEye), dot(up, cam.toEye), dot(fwd, cam.toEye)];
 }
-const shipNose = (): V3 => add(shipAt, mul(shipFwd, shipLenNm * 0.5));
+const shipNose = (): V3 => view === 'cockpit' && cockpitNose ? cockpitNose : add(shipAt, mul(shipFwd, shipLenNm * 0.5));
+
+/** The dataset's box as a hologram in the background (Ames 2026-11-11:
+ *  "make the boundary box more like a hologram in the background instead of
+ *  a blue outline"): dotted light along its twelve edges, brackets at the
+ *  corners, a faint grid on its far face. The bounds are the viewer's own
+ *  (the union of its layers'), in nm. */
+function boxBounds(nm: V3): [V3, V3] | null {
+  const b = viewerNow()?.coordinateSpace?.value?.bounds;
+  if (!b?.lowerBounds || !b?.upperBounds) return null;
+  const lo = [0, 1, 2].map(i => b.lowerBounds[i] * nm[i]) as V3, hi = [0, 1, 2].map(i => b.upperBounds[i] * nm[i]) as V3;
+  if (lo.some(x => !isFinite(x)) || hi.some(x => !isFinite(x))) return null;
+  return [lo, hi];
+}
+function drawBox(cam: {right: V3; up: V3; toEye: V3}, put: (p: V3, rgba: [number, number, number, number], size: number) => void) {
+  const nm = nmPerUnit();
+  const bb = nm && boxBounds(nm);
+  if (!bb) return;
+  const [lo, hi] = bb;
+  const corner = (m: number): V3 => [m & 1 ? hi[0] : lo[0], m & 2 ? hi[1] : lo[1], m & 4 ? hi[2] : lo[2]];
+  const R = 0.5, G = 0.8, B = 1;
+  const N = 120;
+  for (let m = 0; m < 8; m++) for (const bit of [1, 2, 4]) {
+    if (m & bit) continue;
+    const a = corner(m), b = corner(m | bit);
+    for (let k = 0; k <= N; k++) {
+      const u = k / N, bracket = u < 0.05 || u > 0.95;
+      put(mix(a, b, u), [R, G, B, bracket ? 0.5 : 0.11], bracket ? 3200 : 2400);
+    }
+  }
+  // the far face: the one whose outward normal points away from the eye the most
+  let far = 0, best = Infinity;
+  for (let f = 0; f < 6; f++) { const d = (f & 1 ? 1 : -1) * cam.toEye[f >> 1]; if (d < best) { best = d; far = f; } }
+  const axis = far >> 1, at = far & 1 ? hi[axis] : lo[axis];
+  const u = (axis + 1) % 3, w = (axis + 2) % 3;
+  const LINES = 6, M = 60;
+  for (let i = 1; i < LINES; i++) for (const [p, q] of [[u, w], [w, u]]) {
+    const fixed = lo[p] + (hi[p] - lo[p]) * i / LINES;
+    for (let k = 0; k <= M; k++) {
+      const pt: V3 = [0, 0, 0];
+      pt[axis] = at; pt[p] = fixed; pt[q] = lo[q] + (hi[q] - lo[q]) * k / M;
+      put(pt, [R, G, B, 0.07], 2600);
+    }
+  }
+}
 
 /* ── the model ── */
 function resetCells() {
@@ -1472,6 +1808,7 @@ function spike(key: string, byBeam = false) {
 
 function onTargetSpike(key: string) {
   lastTargetSpike[key] = now;
+  if (phase !== 'playing') return;   // a firing in the tour's demonstration counts for nothing
   const g = level.goal;
   let hit = false;
   if (g.kind === 'fire') hit = key === g.target;
@@ -1540,7 +1877,7 @@ let scanKey: string | null = null;
 /** Where the player dragged the card to, if they did: the screen position of its top left corner. */
 let scanPin: [number, number] | null = null;
 function scan(key: string) {
-  if (phase === 'playing' || phase === 'loading') return;
+  if (phase !== 'brief' && phase !== 'done') return;
   const c = cells.get(key);
   if (!c || !c.shown) return;
   hideScan();
@@ -1549,6 +1886,7 @@ function scan(key: string) {
   const lean = s && r && s[0] > r.left + r.width / 2 ? -1 : 1;
   const there = visit?.key === key && visit.fired;
   visit = {key, since: now, lean: there ? visit!.lean : lean, fired: false};
+  if (view === 'cockpit') glideTo(c);
   if (there) fireScan();   // already hovering here: the beam again, at once
 }
 /** The scan beam, from the ship's nose to the cell it is visiting. */
@@ -1560,7 +1898,7 @@ function fireScan() {
   sfx.scan();
 }
 /** The card goes, and the ship flies back to its cockpit spot. */
-function endVisit() { hideScan(); visit = null; }
+function endVisit() { hideScan(); visit = null; if (view === 'cockpit') glideHome(); }
 /** The level's call sign, spelled out: E1 is "E for excitatory, driver 1",
  *  not a name from the data (Ames 2026-11-11: "E1 E2 E3 are these names of
  *  cell type or what?"). */
@@ -1575,10 +1913,27 @@ function callSign(c: CellState): string {
   if (k[0] === 'I') return `I is for inhibitory: ${ROLE[k] ? `the ${ROLE[k]}` : 'an interneuron'}`;
   return k;
 }
+/** The release's cell types, said plainly (aibs_metamodel_celltypes_v661). */
+const TYPE_NAMES: Record<string, string> = {'23P': 'L2/3 pyramidal', '4P': 'L4 pyramidal', '5P-IT': 'L5 IT pyramidal', '5P-ET': 'L5 ET pyramidal', '5P-NP': 'L5 NP pyramidal',
+  '6P-IT': 'L6 IT pyramidal', '6P-CT': 'L6 CT pyramidal', BC: 'basket', BPC: 'bipolar', MC: 'Martinotti', NGC: 'neurogliaform', OPC: 'OPC', oligo: 'oligodendrocyte', astrocyte: 'astrocyte', microglia: 'microglia', pericyte: 'pericyte'};
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-function cellRecord(c: CellState): [string, string][] {
+const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+/** The cell's record, laid out as a readout: who it is, measured numbers,
+ *  its wiring in this level, and where the numbers come from (scifi-ui's
+ *  data-readout rule: one label, one number, one line of provenance; a unit
+ *  never inside an uppercased label). */
+type ShowWhat = 'synapses' | 'axon' | 'in';
+interface Readout { key: string; role: string; identity: string; sign: string; stats: {label: string; value: string; unit?: string; show?: ShowWhat}[]; wiring: {label: string; text: string; show?: ShowWhat}[]; provenance: string; }
+/** What the scanned cell is showing on itself, from a click on its card. */
+let showing: ShowWhat | null = null;
+function toggleShow(what: ShowWhat) {
+  showing = showing === what ? null : what;
+  for (const el of document.querySelectorAll<HTMLElement>('.nge-sig-scan [data-show], .nge-sig-canopy [data-show]')) el.classList.toggle('on', el.dataset.show === showing);
+}
+function readoutOf(c: CellState): Readout {
   const s = c.spec;
-  const kind = `${s.label}${s.fine ? ` · ${s.fine}` : ''}${s.mtype ? ` (${s.mtype})` : ''} · ${s.type === 'I' ? 'inhibitory' : 'excitatory'}`;
+  const identity = `${s.label}${s.fine ? ` · ${s.fine}` : ''}${s.mtype ? ` · ${s.mtype}` : ''} · ${s.type === 'I' ? 'inhibitory' : 'excitatory'}`;
   const job = c.target ? `Target: fires at ${c.theta} units of charge`
     : c.gateNext !== null ? `Gatekeeper: pulses every ${c.gatePeriod} s, holds the targets down`
     : s.type === 'I' ? `${roleOf(c)}: quiets what it reaches`
@@ -1587,35 +1942,117 @@ function cellRecord(c: CellState): [string, string][] {
   // synapse count": "T ×5" did not read as one)
   const outs = conns.filter(k => k.pre === c.key && cells.get(k.post)?.shown).sort((a, b) => b.count - a.count).map((k, i) => `${i ? k.count : plural(k.count, 'synapse')} onto ${k.post}`).join(', ');
   const ins = conns.filter(k => k.post === c.key && cells.get(k.pre)?.shown).sort((a, b) => b.count - a.count).map((k, i) => `${i ? k.count : plural(k.count, 'synapse')} from ${k.pre}`).join(', ');
-  const rows: [string, string][] = [['Call sign', `${callSign(c)} (a name for this level, not from the data)`], ['Type', kind], ['Job', job]];
+  const stats: Readout['stats'] = [];
   // every synapse the cell makes and receives in the release (synapses_pni_2, materialization 1300)
-  if (s.synIn !== undefined && s.synOut !== undefined) rows.push(['Synapses', `${s.synIn.toLocaleString()} in, ${s.synOut.toLocaleString()} out`]);
-  rows.push(['Cable', `${Math.round(s.cableUm).toLocaleString()} µm, axon ${Math.round(s.axonUm).toLocaleString()} µm`]);
-  if (outs) rows.push([s.type === 'I' ? 'Quiets' : 'Drives', outs]);
-  if (ins) rows.push(['Fed by', ins]);
-  rows.push(['Cell', `MICrONS ${s.root}`]);
-  return rows;
+  if (s.synIn !== undefined && s.synOut !== undefined) stats.push({label: 'synapses in', value: fmt(s.synIn), show: 'synapses'}, {label: 'synapses out', value: fmt(s.synOut), show: 'synapses'});
+  stats.push({label: 'cable', value: fmt(s.cableUm), unit: 'µm', show: 'axon'}, {label: 'axon', value: fmt(s.axonUm), unit: 'µm', show: 'axon'});
+  const wiring: Readout['wiring'] = [{label: 'Job', text: job}];
+  if (outs) wiring.push({label: s.type === 'I' ? 'Quiets' : 'Drives', text: outs, show: 'axon'});
+  if (ins) wiring.push({label: 'Fed by', text: ins, show: 'in'});
+  // who it talks to across the whole release, by the partner's cell type
+  // (Ames 2026-11-11: "stats on what other cell types this cell connects to")
+  if (s.partners) {
+    const named = (list: Partner[]) => {
+      const typed = list.filter(x => x.type !== 'other'), untyped = list.find(x => x.type === 'other')?.n ?? 0;
+      const top = typed.slice(0, 4).map(x => `${TYPE_NAMES[x.type] ?? x.type} ${fmt(x.n)}`).join(', ');
+      return top ? `${top}${untyped ? ` (${fmt(untyped)} untyped)` : ''}` : '';
+    };
+    const talks = named(s.partners.out), hears = named(s.partners.in);
+    if (talks) wiring.push({label: 'Talks to', text: talks});
+    if (hears) wiring.push({label: 'Hears from', text: hears});
+  }
+  return {key: c.key, role: roleOf(c), identity, sign: callSign(c), stats, wiring, provenance: `MICrONS minnie65 · materialization 1300 · cell ${s.root}`};
+}
+/** The readout's parts as markup, shared by the card and the cockpit. */
+function readoutParts(r: Readout) {
+  return {
+    id: `<b class="key">${esc(r.key)}</b><span class="role">${esc(r.role)}</span>`,
+    identity: `<p class="identity">${esc(r.identity)}</p><p class="sign">${esc(r.sign)}</p>`,
+    stats: `<ul class="nge-sig-readouts">${r.stats.map(x => `<li${x.show ? ` data-show="${x.show}" title="Light them on the cell"` : ''}><b>${x.value}${x.unit ? `<span class="u">${x.unit}</span>` : ''}</b><span class="k">${esc(x.label)}</span></li>`).join('')}</ul>`,
+    wiring: `<dl class="nge-sig-wiring">${r.wiring.map(w => `<dt${w.show ? ` data-show="${w.show}"` : ''}>${esc(w.label)}</dt><dd${w.show ? ` data-show="${w.show}" title="Light them on the cell"` : ''}>${esc(w.text)}</dd>`).join('')}</dl>`,
+    provenance: `<p class="prov">${esc(r.provenance)}<br>Call signs are this level's names, not the data's. Click a row to light it on the cell.</p>`,
+  };
+}
+/* ── the cockpit's canopy ── */
+let canopyEl: HTMLElement | null = null;
+function showCanopy() {
+  if (canopyEl) return;
+  canopyEl = document.createElement('div');
+  canopyEl.className = 'ng-extend nge-sig-canopy';
+  canopyEl.innerHTML = `<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+    <div class="top"><i></i>Cockpit · Signal Control<span class="sub"></span></div>
+    <svg class="lead" aria-hidden="true"><line stroke="rgba(160,225,255,0.7)" stroke-width="1" stroke-dasharray="3 3"/></svg>
+    <svg class="reticle" viewBox="0 0 120 120" aria-hidden="true"><g class="ring"><circle cx="60" cy="60" r="26" fill="none" stroke="var(--c, rgba(53,181,255,0.55))" stroke-width="1.2" stroke-dasharray="30 11"/></g><circle cx="60" cy="60" r="1.8" fill="rgba(216,238,255,0.9)"/><path d="M60 22 v12 M60 86 v12 M22 60 h12 M86 60 h12" stroke="var(--c, rgba(53,181,255,0.75))" stroke-width="1.4"/><path d="M42 42 l6 6 M78 42 l-6 6 M42 78 l6 -6 M78 78 l-6 -6" stroke="rgba(53,181,255,0.3)" stroke-width="1"/></svg>
+    <div class="block id"></div><div class="block nums"></div><div class="block wire"></div><div class="block provenance"></div>
+    <button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button>`;
+  document.body.appendChild(canopyEl);
+  (canopyEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => endVisit();
+  canopyEl.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat); };
+  requestAnimationFrame(() => canopyEl?.classList.add('nge-sig-canopy--on'));
+}
+function hideCanopy() { canopyEl?.remove(); canopyEl = null; }
+function fillCanopy(c: CellState, parts: ReturnType<typeof readoutParts>) {
+  if (!canopyEl) showCanopy();
+  const el = canopyEl!;
+  el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
+  el.querySelector('.id')!.innerHTML = `<div class="head">${parts.id}</div>${parts.identity}`;
+  el.querySelector('.nums')!.innerHTML = parts.stats;
+  el.querySelector('.wire')!.innerHTML = parts.wiring;
+  el.querySelector('.provenance')!.innerHTML = parts.provenance;
+  el.classList.add('nge-sig-canopy--lock');
+}
+function clearCanopy() { canopyEl?.classList.remove('nge-sig-canopy--lock'); canopyEl?.style.removeProperty('--c'); }
+/** The canopy each frame: over the free part of the 3D view, the reticle on
+ *  the scanned cell body (else at the centre), a leader from it to the
+ *  identity block. */
+function placeCanopy() {
+  if (!canopyEl) return;
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  if (!r) { canopyEl.style.display = 'none'; return; }
+  canopyEl.style.display = '';
+  const hud = panel?.getBoundingClientRect();
+  const left = sideHud() && hud ? hud.right + 12 : r.left + 8, top = r.top + 8, right = r.right - 8;
+  const bottom = !sideHud() && hud ? Math.min(r.bottom - 8, hud.top - 8) : r.bottom - 8;
+  canopyEl.style.left = `${left}px`; canopyEl.style.top = `${top}px`;
+  canopyEl.style.width = `${Math.max(100, right - left)}px`; canopyEl.style.height = `${Math.max(100, bottom - top)}px`;
+  const sub = canopyEl.querySelector('.sub')!, want = phase === 'playing' ? '' : adapt('click a cell to scan it');
+  if (sub.textContent !== want) sub.textContent = want;
+  const ret = canopyEl.querySelector('.reticle') as HTMLElement, lead = canopyEl.querySelector('.lead line') as SVGLineElement;
+  const c = scanKey ? cells.get(scanKey) : null;
+  const s = c && toScreen(c.spec.soma);
+  if (s) {
+    ret.style.left = `${s[0] - left}px`; ret.style.top = `${s[1] - top}px`;
+    const id = canopyEl.querySelector('.id') as HTMLElement;
+    lead.setAttribute('x1', String(s[0] - left)); lead.setAttribute('y1', String(s[1] - top - 36));
+    lead.setAttribute('x2', String(id.offsetLeft + id.offsetWidth / 2)); lead.setAttribute('y2', String(id.offsetTop + id.offsetHeight));
+    lead.style.display = '';
+  } else {
+    ret.style.left = '50%'; ret.style.top = '50%';
+    lead.style.display = 'none';
+  }
 }
 function showScan(key: string) {
   const c = cells.get(key);
   if (!c) return;
   hideScan();
   scanKey = key;
-  const rows = cellRecord(c).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  const parts = readoutParts(readoutOf(c));
+  flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.7, 0.95, 1], size: 20_000});
+  if (view === 'cockpit') { fillCanopy(c, parts); return; }
   scanEl = document.createElement('div');
   scanEl.className = 'ng-extend nge-sig-scan';
   scanEl.style.setProperty('--c', `rgb(${c.color.join(',')})`);
   scanEl.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-sig-scan-g" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#c9f6ff" stop-opacity="0.5"/><stop offset="1" stop-color="#7ee0ff" stop-opacity="0.05"/></linearGradient></defs>
     <polygon class="cone"/><line class="pointer" stroke="rgba(160,225,255,0.8)" stroke-width="1" stroke-dasharray="3 3"/><circle class="dot" r="4" fill="#bff0ff"/><circle class="lens" r="3.5" fill="#e6fbff"/></svg>
-    <div class="nge-sig-scan-box"><div class="nge-sig-scan-title"><span class="ic"></span>${key}<small>${roleOf(c)}</small><button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></div><dl class="nge-sig-scan-stats">${rows}</dl></div>`;
+    <div class="nge-sig-scan-box"><header class="nge-sig-scan-head"><span class="ic"></span>${parts.id}<button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></header>${parts.identity}${parts.stats}${parts.wiring}${parts.provenance}</div>`;
   document.body.appendChild(scanEl);
   (scanEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => endVisit();
   // the card drags, to clear the cells it covers (Ames 2026-11-11: "I want
   // to be able to move the box bc it covers up the neurons some")
   const box = scanEl.querySelector('.nge-sig-scan-box') as HTMLElement;
   box.onpointerdown = (e: PointerEvent) => {
-    if (e.button !== 0 || (e.target as HTMLElement | null)?.closest?.('.nge-sig-x')) return;
+    if (e.button !== 0 || (e.target as HTMLElement | null)?.closest?.('button, [data-show]')) return;
     e.preventDefault(); e.stopPropagation();
     const r = box.getBoundingClientRect();
     const start = {x: e.clientX, y: e.clientY, left: r.left, top: r.top};
@@ -1630,15 +2067,17 @@ function showScan(key: string) {
     };
     box.onpointerup = box.onpointercancel = () => { box.classList.remove('dragging'); box.onpointermove = box.onpointerup = box.onpointercancel = null; };
   };
+  box.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat); };
   requestAnimationFrame(() => scanEl?.classList.add('nge-sig-scan--in'));
-  flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.7, 0.95, 1], size: 20_000});
 }
 function hideScan() {
   scanEl?.remove();
-  scanEl = null; scanKey = null; scanPin = null;
+  scanEl = null; scanKey = null; scanPin = null; showing = null;
+  clearCanopy();
 }
-/** The card each frame: above the ship when the ship is on screen, with the
- *  cone from its nose, else beside the cell; always clear of the HUD. */
+/** The card each frame: docked at the top right of the view (Ames
+ *  2026-11-11: "put the box here"), or where it was dragged to; the cone
+ *  from the ship's nose when the ship is on screen; always clear of the HUD. */
 function placeScan() {
   if (!scanEl || !scanKey) return;
   const c = cells.get(scanKey);
@@ -1654,22 +2093,13 @@ function placeScan() {
   const bw = box.offsetWidth, bh = box.offsetHeight;
   const onScreen = !!ship && ship[0] > r.left && ship[0] < r.right && ship[1] > r.top + 40 && ship[1] < r.bottom;
   let bx: number, by: number;
-  if (scanPin) {
-    [bx, by] = scanPin;
-  } else if (onScreen) {
-    const lean = ship![0] < s[0] ? -1 : 1;
-    bx = ship![0] - bw / 2 + lean * 60;
-    by = ship![1] - 80 - bh;
-  } else {
-    const right = s[0] < r.left + r.width * 0.55;
-    bx = right ? s[0] + 70 : s[0] - 70 - bw;
-    by = s[1] - 90 - bh / 2;
-  }
+  if (scanPin) [bx, by] = scanPin;
+  else { bx = r.right - bw - 24; by = r.top + 24; }
   bx = clamp(bx, r.left + 10, r.right - bw - 10);
-  by = clamp(by, r.top + 50, r.bottom - bh - 16);
+  by = clamp(by, r.top + 10, r.bottom - bh - 16);
   if (!scanPin && hud && bx < hud.right + 10 && bx + bw > hud.left - 10 && by < hud.bottom + 10 && by + bh > hud.top - 10) {
     // off the HUD: to its right, or above it when it lies along the bottom
-    if (sideHud()) bx = Math.min(hud.right + 12, r.right - bw - 10); else by = Math.max(r.top + 50, hud.top - bh - 12);
+    if (sideHud()) bx = Math.min(hud.right + 12, r.right - bw - 10); else by = Math.max(r.top + 10, hud.top - bh - 12);
   }
   box.style.left = `${bx}px`; box.style.top = `${by}px`;
   if (onScreen) {
@@ -1701,6 +2131,7 @@ function idleStep(dt: number) {
     if (b.scan) showScan(b.cell);
   }
   beams = beams.filter(b => now < b.at + BEAM_S + 0.25);
+  sparks = sparks.filter(s => now < s.end + 0.3);
   flashes = flashes.filter(f => now < f.at + f.life);
 }
 
@@ -1715,6 +2146,7 @@ function stepModel(dt: number) {
   for (const b of beams) {
     if (b.applied || now < b.at + BEAM_S) continue;
     b.applied = true;
+    if (b.scan) { showScan(b.cell); continue; }
     const c = cells.get(b.cell)!;
     if (b.hush) {
       c.hushedUntil = now + HUSH_S;
@@ -1807,7 +2239,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     if (q > 0) put(c.spec.soma, [VIOLET[0], VIOLET[1], VIOLET[2], 0.06 + 0.34 * q * q], 9000 + 9000 * q);
   }
   // the cells to click now: a quick ring of white light around each
-  if (phase === 'playing') for (const key of hints) {
+  for (const key of hints) {
     const c = cells.get(key);
     if (!c?.shown) continue;
     const R = phone() ? viewNm * 0.055 : 17_000, pulse = 0.5 + 0.5 * Math.sin(spin * 6);
@@ -1839,6 +2271,35 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
       put(along(s.r, d), [rgb[0], rgb[1], rgb[2], 0.9 * fade], j === 0 ? 4200 : 2600 * (1 - j / 10) + 900);
     }
   }
+  // what the card's clicked row names, on the cell itself: its synapses with
+  // the other cells here (the marks the data has, up to ten a connection),
+  // the axon paths out of it with pulses running out, or the dendrite paths
+  // in with pulses running in
+  if (showing && scanKey) {
+    const t = performance.now() / 1000;
+    for (const k of conns) {
+      const out = k.pre === scanKey, inn = k.post === scanKey;
+      if (!(out || inn) || !cells.get(out ? k.post : k.pre)?.shown) continue;
+      if (showing === 'synapses') {
+        const rgb: V3 = out ? [0.6, 0.95, 1] : [1, 0.85, 0.4];
+        for (const [j, p] of k.synapses.entries()) {
+          const pulse = 0.5 + 0.5 * Math.sin(t * 4 + j);
+          put(p, [rgb[0], rgb[1], rgb[2], 0.5 + 0.4 * pulse], 4000 + 1500 * pulse);
+          put(p, [rgb[0], rgb[1], rgb[2], 0.18], 10_000);
+        }
+      } else if ((showing === 'axon' && out) || (showing === 'in' && inn)) {
+        const path = showing === 'axon' ? k.axon : k.dendrite;
+        const r = route(path), rgb: V3 = showing === 'axon' ? [0.6, 0.95, 1] : [1, 0.85, 0.4];
+        const N = Math.max(8, Math.min(80, Math.round(r.length / 2500)));
+        for (let j = 0; j <= N; j++) put(along(r, r.length * j / N), [rgb[0], rgb[1], rgb[2], 0.3], 2200);
+        for (let j = 0; j < 2; j++) {
+          const q = ((t * 0.3 + j / 2) % 1) * r.length;
+          put(along(r, q), [1, 1, 1, 0.9], 4200);
+          put(along(r, Math.max(0, q - 3000)), [rgb[0], rgb[1], rgb[2], 0.5], 3200);
+        }
+      }
+    }
+  }
   // the scanner: while the ship reads a cell, a thin cyan beam from its nose
   // sweeps across the cell body, a pulse running down it, and the body
   // shimmers (Ames 2026-11-11: "the ship should have like a little scanner beam")
@@ -1846,7 +2307,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     const c = cells.get(visit.key);
     if (c?.shown) {
       const t = performance.now() / 1000;
-      const from = shipNose(), to = add(c.spec.soma, mul(cam.right, Math.sin(t * 2.2) * viewNm * 0.025));
+      const from = shipNose(), to = add(add(add(c.spec.soma, mul(cam.toEye, SOMA_R_NM * 0.8)), mul(cam.right, Math.sin(t * 2.2) * 6000)), mul(cam.up, Math.cos(t * 1.7) * 4500));
       const N = 40;
       for (let k = 0; k <= N; k++) {
         const u = k / N;
@@ -1878,6 +2339,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     const k = clamp((now - f.at) / f.life, 0, 1);
     put(f.p, [f.rgb[0], f.rgb[1], f.rgb[2], 0.9 * Math.pow(1 - k, 1.4)], f.size * (0.6 + 0.9 * k));
   }
+  drawBox(cam, put);
   glow.count = n;
   glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
   setNgeGlow(n ? glow : null, GROUP);
@@ -1893,14 +2355,17 @@ function frame(ts: number) {
   const nm = nmPerUnit();
   const cam = nm && cameraAxes(nm);
   if (cam) {
-    if (needsFrame) settleFrame(cam);
-    if (phase === 'playing') stepModel(dt); else idleStep(dt);
+    if (needsFrame) { settleFrame(cam); rememberHome(); }
+    if (phase === 'playing' || demo) stepModel(dt); else idleStep(dt);
     placeShip(cam, dt);
+    stepGlide(dt);
     writeGlow(cam);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   }
   placeTags();
   placeScan();
+  placeCanopy();
+  placeTourLabels();
   closeSidePanel();
   // Once a second: the level's cells stay on, whatever else happens to the
   // layer's segment list (a stray key, another panel), and the layer stays shown.
@@ -2069,17 +2534,47 @@ async function startLevel(index: number) {
 }
 
 function beginPlay() {
-  phase = 'playing';
+  // The play UI comes up with its controls named, then three, two, one, go
+  // (Ames 2026-11-11: "after click it loads the UI and shows them what the
+  // buttons are and then start the countdown").
+  phase = 'countdown'; demo = false;
   now = 0; lastFrame = 0;
-  beams = []; flashes = []; endVisit();
+  beams = []; flashes = []; sparks = []; arrivals = []; queued = [];
+  endVisit(); clearTourLabels();
+  // the tour's demonstrations left charge and spikes behind
+  for (const c of cells.values()) { c.e = 0; c.i = 0; c.refractoryUntil = -1; c.hushedUntil = -1; c.lastSpike = -1; c.spikes = 0; if (c.gateNext !== null) c.gateNext = 1.2; }
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
   closeSidePanel();
   showChips();
   // On a phone the HUD's height changes with its content: the frame is set
   // again for the sheet the level is played with.
   if (phone()) needsFrame = true;
-  coach('begin');
+  setCoachText(level.hush ? 'Your beams: Spark fires a cell, Hush quiets one. Each shot costs a charge. Click a cell here, or in the view.'
+    : 'Spark is your beam: it fires the cell you click, here or in the view. Each shot costs a charge.', 'begin');
   startMusic();
+  updateHud();
+  void runCountdown();
+}
+async function runCountdown() {
+  const token = ++tourToken;
+  const el = document.createElement('div');
+  el.className = 'ng-extend nge-sig-count';
+  document.body.appendChild(el);
+  const r = threeDPanel()?.element?.getBoundingClientRect?.(), hud = panel?.getBoundingClientRect();
+  const left = r ? (sideHud() && hud ? hud.right : r.left) : 0, right = r ? r.right : window.innerWidth;
+  const top = r ? r.top : 0, bottom = r ? (!sideHud() && hud ? hud.top : r.bottom) : window.innerHeight;
+  el.style.left = `${(left + right) / 2}px`; el.style.top = `${(top + bottom) / 2}px`;
+  for (const t of ['3', '2', '1', 'Go']) {
+    if (token !== tourToken || !active || phase !== 'countdown') { el.remove(); return; }
+    el.textContent = t;
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    if (t === 'Go') sfx.spark(); else sfx.spike(false);
+    await sleep(t === 'Go' ? 650 : 850);
+  }
+  el.remove();
+  if (token !== tourToken || !active || phase !== 'countdown') return;
+  phase = 'playing'; now = 0; lastFrame = 0;
+  coach('begin');
   updateHud();
 }
 
@@ -2092,6 +2587,7 @@ export async function playSignalController(levelAt = 0) {
     els.row.style.display = 'none';
     els.body.innerHTML = '<div class="nge-sig-card"><p>Receiving the circuit…</p></div>';
     document.body.classList.add('nge-signal-on');
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 0);   // the viewer takes the window
     // On a phone, Pyr's welcome sheet would cover the game.
     if (phone()) hideMobileWelcomeRef.value++;
     ensureMusic();   // starts loading now, so Begin starts it at once
@@ -2141,7 +2637,13 @@ export function stopSignalController() {
   if (savedRenderScale !== null) { try { circuitLayer().layer.displayState.renderScaleTarget.value = savedRenderScale; } catch { /* as it is */ } savedRenderScale = null; }
   setNgeGlow(null, GROUP);
   setNgeProps([], GROUP);
+  hideCanopy();
+  demo = false; tourToken++; clearTourLabels();
+  document.querySelector('.nge-sig-count')?.remove();
+  glide = null; cockpitNose = null;
+  if (savedDefaultAnnotations !== null) { try { viewerNow().showDefaultAnnotations.value = savedDefaultAnnotations; } catch { /* as it is */ } savedDefaultAnnotations = null; }
   document.body.classList.remove('nge-signal-on');
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
   if (panel) { const p = panel; p.classList.add('nge-sig--out'); setTimeout(() => p.remove(), 400); panel = null; }
   try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
@@ -2161,7 +2663,7 @@ export function startSignalController() {
 }
 
 (window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS, music: () => music,
-  state: () => ({phase, now, visit, ship: {at: shipAt, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
+  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, ship: {at: shipAt, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
     hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
   step: (seconds: number) => { for (let k = 0; k < seconds / 0.05; k++) if (phase === 'playing') stepModel(0.05); }};
