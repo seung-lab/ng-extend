@@ -1559,6 +1559,23 @@ async function toggleReplyConsole(notificationId: number | string | undefined) {
   }
 }
 
+/** Open reply on an update already sent (Ames 2026-11-11): the note the
+ *  player has gets its reply box (functions/report-reply.js reply.open). */
+const replyOpening = ref<string | null>(null);
+async function openReplyAfter(row: TriageRow, u: { at?: string; ts: string }) {
+  const key = row.id + (u.at || u.ts);
+  replyOpening.value = key;
+  triageError.value = '';
+  try {
+    await secureWrite('reply.open', { triageId: row.id, at: u.at || u.ts });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not open a reply: ${e?.message ?? String(e)}`;
+  } finally {
+    replyOpening.value = null;
+  }
+}
+
 /** What was sent to the submitter and what they wrote back, oldest first. */
 function reporterThreadFor(row: TriageRow) {
   const log = row.feedback_log || [];
@@ -3966,7 +3983,9 @@ function practiceWhen(iso: string | null) {
             <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
                  :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
               <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
-              <div v-if="!u.reply" class="nge-triage-spec-text nge-triage-thread-md"><div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(u.text, true)"></div><a v-if="u.image_url" :href="u.image_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the image you sent"><img :src="u.image_url" alt="Image sent with this reply" loading="lazy" /></a><span v-else-if="u.image_removed" class="nge-triage-reporter-by">Image removed after 7 days. </span><span class="nge-triage-reporter-by">{{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></div>
+              <div v-if="!u.reply" class="nge-triage-spec-text nge-triage-thread-md"><div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(u.text, true)"></div><a v-if="u.image_url" :href="u.image_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the image you sent"><img :src="u.image_url" alt="Image sent with this reply" loading="lazy" /></a><span v-else-if="u.image_removed" class="nge-triage-reporter-by">Image removed after 7 days. </span><span class="nge-triage-reporter-by">{{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span><button v-if="!u.ask" type="button" class="nge-triage-chip nge-triage-open-reply" :disabled="replyOpening === row.id + (u.at || u.ts)"
+                      title="Adds a reply box to the note the player already has, so they can answer it once. Their bell shows it again at the top."
+                      @click="openReplyAfter(row, u)">{{ replyOpening === row.id + (u.at || u.ts) ? 'Opening…' : '💬 Open reply' }}</button></div>
               <span v-else class="nge-triage-spec-text nge-triage-thread-text"><template v-for="(pt, pi) in linkParts(u.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
               <!-- What came with a reply: a screenshot, their view, console messages. -->
               <div v-if="u.reply && (u.screenshot_url || u.view_url || u.console_lines || u.dataset)" class="nge-triage-reply-parts">
@@ -5285,6 +5304,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-card.nge-triage-card--waiting { outline: 1px dashed rgba(160, 140, 255, 0.6); outline-offset: -1px; }
 .nge-triage-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
 .nge-triage-ask-label { font-weight: 600; }
+.nge-triage-open-reply { margin-top: 6px; }
 .nge-triage-copy { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
 .nge-triage-copy input { width: 15px; height: 15px; margin: 0; cursor: pointer; }
 .nge-triage-ask-hint { color: rgba(255,255,255,0.5); flex: 1 1 240px; }
