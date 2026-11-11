@@ -3252,6 +3252,12 @@ function blogMailIo() {
   const doc = (col, id) => db.collection(col).doc(crypto.createHash("sha256").update(String(id)).digest("hex"));
   return {
     resend, cache: blogMailCache,
+    // Who is signed in to Pyr, for the What's new in Pyr box (blog-mail.js notes).
+    verify: ewVerify,
+    notesSubscribers: {
+      get: async (email) => { const d = await doc("notes_subscribers", email).get(); return d.exists ? d.data() : null; },
+      set: (email, v) => doc("notes_subscribers", email).set(v, { merge: true }),
+    },
     subscribers: {
       set: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
       update: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
@@ -3298,6 +3304,7 @@ exports.ewBlogMail = onRequest(
     const { action, ...args } = req.body || {};
     try {
       if (action === "subscribe" && !(await rateLimit(req, false, "visitor:subscribe")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+      if (action === "notes" && typeof args.on === "boolean" && !(await rateLimit(req, false, "visitor:notes")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
       // A test goes only to Ames, but not over and over.
       if (action === "test" && !(await rateLimit({ ip: "blogmail-test" }, false, "visitor:blogmailtest")).ok) return res.status(429).json({ error: "Enough tests for today." });
       // The blog build asks every 15 minutes; one check a minute is plenty.

@@ -22,6 +22,18 @@ const FROM = 'Map the Brain <blog@connectome.quest>';
 const REPLY_TO = 'support@eyewire.ai';
 const SEGMENT = 'connectome.quest blog';
 const TEST_SEGMENT = 'connectome.quest blog test';
+// "What's new in Pyr" by email (Ames 2026-11-11): a box on each release notes
+// page; ticking it signs the player up with their Pyr email (the sign in tells
+// the server who they are, so nobody types an address). One email a week, the
+// Monday after the week ends: each day's summary, with every update on the blog.
+const NOTES_SEGMENT = "What's new in Pyr";
+// Like LIVE: nothing goes to real subscribers until Ames has seen a test.
+const NOTES_LIVE = false;
+// Weeks due before this never go (set when NOTES_LIVE turns on).
+const NOTES_LIVE_SINCE = '2099-01-01T00:00:00Z';
+// A finished week goes out from this long after its Monday (the next Monday,
+// 14:00 UTC, after Sunday's Today in Pyr has been added to it).
+const NOTES_SEND_AFTER_MS = (7 * 24 + 14) * 60 * 60 * 1000;
 // Who the Test segment holds (Ames 2026-11-05: a test only to her).
 const TEST_EMAILS = ['amyleerobinson@gmail.com'];
 // Real subscribers get nothing until Ames has seen a test and said go.
@@ -185,7 +197,8 @@ function postEmail(post, render) {
   const url = postUrl(post.slug);
   const title = String(post.title || '').trim();
   const summary = String(post.summary || '').trim();
-  const { md, cut } = excerpt(post.body);
+  const notes = RELEASE_NOTES.test(String(post.slug || ''));
+  const { md, cut } = notes ? { md: notesMarkdown(post.body), cut: false } : excerpt(post.body);
   const body = emailBody(render(md));
   const cover = /^https:\/\//.test(post.cover_url || '')
     ? `<tr><td style="padding:0"><a href="${esc(url)}"><img src="${esc(post.cover_url)}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0" /></a></td></tr>` : '';
@@ -205,10 +218,10 @@ function postEmail(post, render) {
 ${meta ? `<p style="margin:0 0 22px;font:14px/1.4 ${FONT};color:${C.soft}">${meta}</p>` : ''}
 ${body}
 ${cut ? `<p style="${S.p};color:${C.soft}">The post goes on from here.</p>` : ''}
-<p style="margin:28px 0 24px;text-align:center"><a href="${esc(url)}" style="${S.button}">Read it on the blog</a></p>
+<p style="margin:28px 0 24px;text-align:center"><a href="${esc(url)}" style="${S.button}">${notes ? 'Read every update on the blog' : 'Read it on the blog'}</a></p>
 </td></tr></table></td></tr>
 <tr><td style="padding:20px 8px 8px;text-align:center;font:13px/1.6 ${FONT};color:${C.soft}">
-You're getting this because you signed up at <a href="${SITE}/" style="color:${C.soft}">connectome.quest</a>.<br />
+${notes ? `You're getting this because you asked for What's new in Pyr each week, at <a href="${SITE}/blog/whats-new/" style="color:${C.soft}">connectome.quest</a>.` : `You're getting this because you signed up at <a href="${SITE}/" style="color:${C.soft}">connectome.quest</a>.`}<br />
 <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:${C.soft}">Unsubscribe</a> any time, in one click.<br />
 Seung Lab, Princeton University</td></tr>
 </table></td></tr></table></body></html>`;
@@ -241,7 +254,9 @@ async function broadcast(io, post, segName, label) {
 async function check(a, io) {
   // io.live: the tests only. The deployed function uses the constants.
   const live = io.live || (LIVE ? { since: LIVE_SINCE } : null);
-  if (!live) return { live: false, sent: [] };
+  const notesSent = await sendNotes(io, io.notesLive || (NOTES_LIVE ? { since: NOTES_LIVE_SINCE } : null));
+  const more = notesSent.length ? { notes: notesSent } : {};
+  if (!live) return { live: false, sent: [], ...more };
   const since = Date.parse(live.since);
   // The weekly "What's new in Pyr" release notes are never emailed (Ames
   // 2026-11-10): they change every day, and the bell already has the day.
@@ -266,7 +281,7 @@ async function check(a, io) {
       throw e;
     }
   }
-  return { live: true, sent };
+  return { live: true, sent, ...more };
 }
 
 async function test(a, io) {
@@ -281,11 +296,90 @@ async function test(a, io) {
   return { ok: true, broadcast: await broadcast(io, post, TEST_SEGMENT, 'TEST') };
 }
 
+// ── What's new in Pyr by email ────────────────────────────────────────────
+/** A week's page for email: each day's summary and highlights, without the
+ *  full list of updates or the players line (the button leads to those). */
+function notesMarkdown(body) {
+  const out = [];
+  let skipping = false;
+  for (const block of String(body || '').replace(/\r\n?/g, '\n').split(/\n{2,}/)) {
+    if (/^## /.test(block)) skipping = false;
+    if (/^### /.test(block)) { skipping = true; continue; }
+    if (skipping || /^\*Players made /.test(block) || /^---$/.test(block) || /^\[The week before\]/.test(block)) continue;
+    out.push(block);
+  }
+  return out.join('\n\n');
+}
+
+/** Who is signed in to Pyr on this page, from their sign in token. */
+async function notesEmail(a, io) {
+  const who = typeof a.token === 'string' && a.token ? await io.verify(a.token) : null;
+  if (!who || !who.email) fail(401, 'Please sign in with your Pyr account.');
+  return cleanEmail(who.email);
+}
+
+/** The box: {token} reads it, {token, on} ticks or clears it. */
+async function notes(a, io) {
+  const email = await notesEmail(a, io);
+  if (typeof a.on !== 'boolean') {
+    const mine = await io.notesSubscribers.get(email);
+    let on = !!(mine && mine.on);
+    // An Unsubscribe link in any of our emails stops them all (Resend).
+    if (on) {
+      try { const c = await io.resend(`/contacts/${encodeURIComponent(email)}`); if (c && c.unsubscribed) on = false; }
+      catch (e) { if (e.status !== 404) throw e; on = false; }
+    }
+    return { on, email };
+  }
+  const segId = await segmentId(io.resend, NOTES_SEGMENT, io.cache);
+  if (a.on) {
+    await io.notesSubscribers.set(email, { email, on: true, at: new Date().toISOString() });
+    await upsertContact(io.resend, { email, name: '' }, segId);
+  } else {
+    await io.notesSubscribers.set(email, { email, on: false, at: new Date().toISOString() });
+    try { await io.resend(`/contacts/${encodeURIComponent(email)}/segments/${segId}`, { method: 'DELETE' }); }
+    catch (e) { if (e.status !== 404) throw e; }
+  }
+  return { on: a.on, email };
+}
+
+/** The finished weeks that have not gone out yet, oldest first, one a run. */
+async function sendNotes(io, live) {
+  if (!live) return [];
+  const since = Date.parse(live.since);
+  const now = Date.now();
+  const due = (await io.posts())
+    .filter((p) => RELEASE_NOTES.test(String(p.slug || '')))
+    .filter((p) => {
+      const monday = Date.parse(String(p.slug).slice('whats-new-in-pyr-'.length) + 'T00:00:00Z');
+      return Number.isFinite(monday) && monday + NOTES_SEND_AFTER_MS <= now && monday + NOTES_SEND_AFTER_MS > since;
+    })
+    .sort((x, y) => String(x.slug).localeCompare(String(y.slug)));
+  for (const post of due) {
+    const id = `notes:${post.slug}`;
+    const mark = await io.sentPosts.get(id);
+    if (mark && (mark.state === 'sent' || (mark.tries || 0) >= 3)) continue;
+    if (mark && mark.state === 'sending' && now - Date.parse(mark.at) < 30 * 60000) continue;
+    if (!(await pageIsLive(io, post))) continue;
+    if (!(await io.sentPosts.claim(id, { slug: post.slug, title: post.title, state: 'sending', at: new Date().toISOString(), tries: ((mark && mark.tries) || 0) + 1 }, mark))) continue;
+    try {
+      const b = await broadcast(io, post, NOTES_SEGMENT, 'Whats new');
+      await io.sentPosts.set(id, { state: 'sent', broadcast: b, sentAt: new Date().toISOString() });
+      return [post.slug];
+    } catch (e) {
+      await io.sentPosts.set(id, { state: 'failed', error: String(e && e.message).slice(0, 300) });
+      throw e;
+    }
+  }
+  return [];
+}
+
 async function handle(action, a, io) {
+  if (action === 'notes') return notes(a || {}, io);
   if (action === 'subscribe') return subscribe(a || {}, io);
   if (action === 'check') return check(a || {}, io);
   if (action === 'test') return test(a || {}, io);
   fail(400, 'Unknown action.');
 }
 
-module.exports = { handle, postEmail, emailBody, excerpt, cleanEmail, LIVE, LIVE_SINCE, SEGMENT, TEST_SEGMENT };
+module.exports = { handle, notesMarkdown, NOTES_SEGMENT, NOTES_LIVE, postEmail, emailBody, excerpt, cleanEmail, LIVE, LIVE_SINCE, SEGMENT, TEST_SEGMENT };
