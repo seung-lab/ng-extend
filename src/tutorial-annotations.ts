@@ -320,9 +320,7 @@ We've made the cell see through, so the path stands out. Your marks come along.`
     text: `
 That route is how you find where a merger joins: one point on the soma, one on the odd branch.
 
-<strong>+ Folder</strong> sorts your marks, and a folder's target button sends every new mark into it.
-
-The <strong>Proofreading Test</strong> asks for a point at the end of every branch, in its End layer.`,
+That's annotations! Your layers stay in your view, ready for your next cell.`,
     image: imgNurroAtHome,
     position: MIDDLE,
     width: "440px",
