@@ -15,6 +15,8 @@ const CHROME = 'C:/Users/amyle/AppData/Local/ms-playwright/chromium-1234/chrome-
 const OUT = process.argv[2] || __dirname;
 const PORT = process.env.PORT || 3561;
 const HIDE_CSS = '.nge-login-blocker, .nge-login-modal, .nge-mw-blocker { display: none !important; }';
+// The Request beta access button; Use my invite (2026-11-04) is the small one.
+const REQUEST_BTN = '.nge-beta-btn:not(.nge-beta-btn--small)';
 const json = (b, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(b) });
 const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail !== undefined ? ' : ' + (typeof detail === 'string' ? detail : JSON.stringify(detail)) : '')); };
@@ -78,33 +80,34 @@ async function player(browser, status) {
     check('name and email are filled in from the sign in', pre.name === 'New Player' && pre.email === 'new@example.org', pre);
     // A bad email is caught here, and nothing is sent.
     await p.page.fill('#nge-beta-email', 'not an email');
-    await p.page.click('.nge-beta-btn');
+    await p.page.click(REQUEST_BTN);
     await p.page.waitForTimeout(300);
     const err = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
     check('a bad email says so, and nothing is sent', /email does not look right/.test(err) && !p.calls.some(c => c.action === 'access.beta'), err);
     await p.page.fill('#nge-beta-name', '');
     await p.page.fill('#nge-beta-email', 'new@example.org');
-    await p.page.click('.nge-beta-btn');
+    await p.page.click(REQUEST_BTN);
     await p.page.waitForTimeout(300);
     const err2 = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
     check('an empty name says so, and nothing is sent', /add your name/.test(err2) && !p.calls.some(c => c.action === 'access.beta'), err2);
     await p.page.fill('#nge-beta-name', "Zoë O'Brien");
     // EyeWire username and rank, optional (Ames 2026-10-26); a bad one is caught here.
     await p.page.fill('#nge-beta-ewname', '<b>tester1</b>');
-    await p.page.click('.nge-beta-btn');
+    await p.page.click(REQUEST_BTN);
     await p.page.waitForTimeout(300);
     const err3 = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
     check('a bad EyeWire username says so, and nothing is sent', /EyeWire username/.test(err3) && !p.calls.some(c => c.action === 'access.beta'), err3);
     await p.page.fill('#nge-beta-ewname', 'tester1');
     await p.page.fill('#nge-beta-ewrank', 'Scythe');
+    await p.page.fill('#nge-beta-found', 'The EyeWire forum');
     await p.page.fill('#nge-beta-note', 'Heard about it on the forum');
-    await p.page.click('.nge-beta-btn');
+    await p.page.click(REQUEST_BTN);
     await p.page.waitForSelector('.nge-beta-text--done', { timeout: 5000 }).catch(() => {});
     const sent = p.calls.filter(c => c.action === 'access.beta');
     check('Request beta access sends one request: name, email, EyeWire username and rank, note', sent.length === 1 && sent[0].name === "Zoë O'Brien" && sent[0].email === 'new@example.org'
-      && sent[0].eyewireUsername === 'tester1' && sent[0].eyewireRank === 'Scythe' && sent[0].note === 'Heard about it on the forum', sent);
+      && sent[0].eyewireUsername === 'tester1' && sent[0].eyewireRank === 'Scythe' && sent[0].foundUs === 'The EyeWire forum' && sent[0].note === 'Heard about it on the forum', sent);
     const done = (await p.page.innerText('.nge-beta-panel')).replace(/\s+/g, ' ');
-    check('then it thanks them, signs off, and offers no button', /Thanks for requesting early access to map the brain/.test(done) && /The Pyr \(pronounced "peer"\) team at Princeton University/.test(done) && !(await p.page.$('.nge-beta-btn')), done.slice(0, 200));
+    check('then it thanks them, signs off, and offers no button', /Thanks for requesting early access to map the brain/.test(done) && /The Pyr \(pronounced "peer"\) team at Princeton University/.test(done) && !(await p.page.$(REQUEST_BTN)), done.slice(0, 200));
     const links = await p.page.$$eval('.nge-beta-links a', as => as.map(a => a.href));
     check('and offers EyeWire and things to learn while they wait', links.some(h => /eyewire\.org/.test(h)) && links.filter(h => /connectome\.quest/.test(h)).length >= 2, links);
     check('no dashes in the thanks', !/[–—]/.test(done));
@@ -115,7 +118,7 @@ async function player(browser, status) {
 
     // 2. Already asked: no button, "Your request is in".
     const q = await player(browser, { invited: false, requested: true });
-    check('asked before: the popup says the request is in, no button', !!(await q.page.$('.nge-beta-text--done')) && !(await q.page.$('.nge-beta-btn')));
+    check('asked before: the popup says the request is in, no button', !!(await q.page.$('.nge-beta-text--done')) && !(await q.page.$(REQUEST_BTN)));
     await q.context.close();
 
     // 3. Controls: a tester, and a server that cannot be asked.

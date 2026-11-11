@@ -38,7 +38,15 @@ export function getDefaultGlobalBindings() {
       map.set('shift+digit' + i, 'toggle-layer-' + i);
       map.set('control+digit' + i, 'select-layer-' + i);
       map.set('alt+digit' + i, 'toggle-pick-layer-' + i);
+      // the number pad does the same (Nseraf, triage #449)
+      map.set('numpad' + i, 'nge-number-layer-' + i);
+      map.set('shift+numpad' + i, 'toggle-layer-' + i);
+      map.set('control+numpad' + i, 'select-layer-' + i);
+      map.set('alt+numpad' + i, 'toggle-pick-layer-' + i);
     }
+    // Ctrl + 0 steps through layers 10 and up, one press at a time (Nseraf, triage #450).
+    map.set('control+digit0', 'nge-select-layer-10-plus');
+    map.set('control+numpad0', 'nge-select-layer-10-plus');
 
     for (let i = 0; i < 26; ++i) {
       const lowercase = String.fromCharCode(97 + i);

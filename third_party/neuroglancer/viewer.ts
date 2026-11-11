@@ -771,6 +771,28 @@ export class Viewer extends RefCounted implements ViewerState {
       });
     }
 
+    // Ctrl + 0: layers 10 and up, the next one each press, back to 10 after
+    // the last (Nseraf, triage #450).
+    this.bindAction('nge-select-layer-10-plus', () => {
+      const current = this.selectedLayer.layer;
+      let index = 9;
+      if (current !== undefined && !current.archived) {
+        for (let k = 0; ; ++k) {
+          const l = this.layerManager.getLayerByNonArchivedIndex(k);
+          if (l === undefined) break;
+          if (l === current) { if (k >= 9) index = k + 1; break; }
+        }
+      }
+      let layer = this.layerManager.getLayerByNonArchivedIndex(index);
+      if (layer === undefined) layer = this.layerManager.getLayerByNonArchivedIndex(9);
+      if (layer === undefined) {
+        StatusMessage.showTemporaryMessage('Ctrl + 0 goes through layers 10 and up. This view has fewer than 10 layers.');
+        return;
+      }
+      this.selectedLayer.layer = layer;
+      this.selectedLayer.visible = true;
+    });
+
     for (let i = 0; i < 26; ++i) {
       const uppercase = String.fromCharCode(65 + i);
       this.bindAction(`tool-${uppercase}`, () => {

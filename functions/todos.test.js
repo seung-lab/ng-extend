@@ -157,6 +157,18 @@ test('the maker follows; a follower hears of changes, never of their own', async
   assert.deepEqual(list.followers[card.id], [AMES.id]);
 });
 
+test('opening a card marks it seen, for me only, and the list says when', async () => {
+  const db = memDb(), m = {};
+  const seen = { get: async (me) => ({ ...(m[me] || {}) }), mark: async (me, id, at) => { m[me] = { ...(m[me] || {}), [id]: at }; } };
+  const base = { db, byName: 'Ames', tag: async () => {}, seen };
+  const { card } = await todoAction('todo.save', { fields: { title: 'Look' } }, { ...base, me: { id: AMES.id } });
+  const r = await todoAction('todo.seen', { id: card.id }, { ...base, me: { id: AMES.id } });
+  assert.equal(m[AMES.id][card.id], r.at);
+  assert.equal((await todoAction('todo.list', {}, { ...base, me: { id: AMES.id } })).seen[card.id], r.at);
+  assert.deepEqual((await todoAction('todo.list', {}, { ...base, me: { id: CELIA.id } })).seen, {});
+  await assert.rejects(todoAction('todo.seen', { id: 'nope' }, { ...base, me: { id: AMES.id } }));
+});
+
 test('a nickname tags too: @Marissa reaches M Sorek', () => {
   const { tagIdsIn } = require('./todo-connector');
   const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };
@@ -180,6 +192,21 @@ test('a comment can be changed by its writer, and its first wording is kept', as
   await assert.rejects(todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'mine now' }, { ...base, me: { id: CELIA.id }, byName: 'Celia' }), /Only the person/);
 });
 
+test('a reaction on a comment: one of the six, the same again takes it away', async () => {
+  const db = memDb();
+  const as = (who, name) => ({ db, byName: name, me: { id: who.id }, tag: async () => {} });
+  const { card } = await todoAction('todo.save', { fields: { title: 'Thumbs' } }, as(CELIA, 'Celia D.'));
+  const c1 = await todoAction('todo.comment', { id: card.id, text: 'the email draft' }, as(CELIA, 'Celia D.'));
+  const at = c1.card.comments[0].at;
+  const r = await todoAction('todo.react', { id: card.id, index: 0, at, emoji: '👍' }, as(AMES, 'Amy R. Sterling'));
+  assert.deepEqual(r.card.comments[0].reactions.map(x => [x.emoji, x.by]), [['👍', 'Amy R. Sterling']]);
+  assert.equal(r.card.comments[0].text, 'the email draft');
+  const off = await todoAction('todo.react', { id: card.id, index: 0, at, emoji: '👍' }, as(AMES, 'Amy R. Sterling'));
+  assert.deepEqual(off.card.comments[0].reactions, []);
+  await assert.rejects(todoAction('todo.react', { id: card.id, index: 0, at, emoji: '💩' }, as(AMES, 'Amy R. Sterling')), /Pick one/);
+  await assert.rejects(todoAction('todo.react', { id: card.id, index: 0, at: 'x', emoji: '👍' }, as(AMES, 'Amy R. Sterling')), /moved/);
+});
+
 test('a card can have collaborators: they hear, and they follow it', async () => {
   const db = memDb(), follows = memFollows(), helpers = memFollows(), tags = [];
   const base = { db, byName: 'Ames', tag: async (who, card, what) => tags.push({ who: who.map(p => p.name), what }), follows, helpers, me: { id: AMES.id } };
@@ -193,6 +220,20 @@ test('a card can have collaborators: they hear, and they follow it', async () =>
   assert.equal(tags.length, n, 'nobody is told twice');
   await assert.rejects(todoAction('todo.helpers', { id: card.id, ids: ['99999999-9999-9999-9999-999999999999'] }, base), /must be an admin/);
   assert.deepEqual((await todoAction('todo.list', {}, base)).helpers[card.id], [CELIA.id]);
+});
+
+test('whoever finishes a card they do not own joins its collaborators; the owner does not', async () => {
+  const db = memDb(), follows = memFollows(), helpers = memFollows(), tags = [];
+  const as = (who) => ({ db, byName: who.name, tag: async () => {}, follows, helpers, me: { id: who.id } });
+  const { card } = await todoAction('todo.save', { fields: { title: 'Celia owns it', owner_id: CELIA.id } }, as(CELIA));
+  await todoAction('todo.save', { id: card.id, fields: { list: 'done' } }, as(AMES));
+  assert.deepEqual(helpers.m[card.id], [AMES.id]);
+  await todoAction('todo.save', { id: card.id, fields: { list: 'todo' } }, as(AMES));
+  await todoAction('todo.save', { id: card.id, fields: { list: 'done' } }, as(AMES));
+  assert.deepEqual(helpers.m[card.id], [AMES.id], 'added once');
+  const two = (await todoAction('todo.save', { fields: { title: 'Mine', owner_id: CELIA.id } }, as(CELIA))).card;
+  await todoAction('todo.save', { id: two.id, fields: { list: 'done' } }, as(CELIA));
+  assert.deepEqual(helpers.m[two.id] || [], [], 'the owner is not a collaborator');
 });
 
 test('a reply joins its thread, one level deep, and its writer hears', async () => {

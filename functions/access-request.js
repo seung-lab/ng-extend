@@ -274,8 +274,11 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
 // ── Reviewers ───────────────────────────────────────────────────────────
 function needAdmin(isAdmin) { if (!isAdmin) fail(403, 'Admins only'); }
 
-async function list(args, {sb, isAdmin}) {
+async function list(args, io) {
+  const {sb, isAdmin} = io;
   needAdmin(isAdmin);
+  // Request bells of players who have the retina now go read (Ames 2026-11-06).
+  try { await readRequestBells(io); } catch (e) { console.warn('[access] request bells not swept:', e && e.message); }
   const status = String(args.status || 'open');
   const filter = status === 'all' ? '' : status === 'open' ? '&status=in.(submitted,redo)' : status === 'invited' ? '&status=eq.invited' : '&status=eq.submitted';
   let requests;
@@ -386,7 +389,97 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
     try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
   }
+  // The reviewers' bells for this player's tries are answered now (Ames 2026-11-06).
+  if (outcome === 'invited') {
+    try { await readRequestBells({sb}, {players: [request.user_id], granted: [request.user_id]}); }
+    catch (e) { console.warn('[access] request bells not marked read:', e && e.message); }
+  }
   return {...done[0], redos, pilot_added: pilotAdded, cave_granted: caveGranted};
+}
+
+// ── Request bells read once the player has the retina (Ames 2026-11-06) ──
+// "If that player has ALREADY been granted Retina access, that notification
+// should be marked read for admins." Every reviewer's bell for every try
+// (try 1, try 2) is marked read on the server, in notification_reads, so
+// every admin and every device agrees. A player has the retina when their
+// request was granted here, or when CAVE says they edit it (a request
+// deleted with Start over, or access given in CAVE by hand). Run on Grant,
+// when the Access requests list opens, and from an admin's bell while it
+// holds an unread request bell (access.readGrantedBells).
+const REQUEST_BELL = '🔬 Retina access request from ';
+const RETINA_CAVE = 'stroeh-mouse-retina';
+const RETINA_CHECK_MS = 10 * 60 * 1000;
+const RETINA_CHECK_MAX = 20;
+const retinaSeen = new Map();
+const isUuid = v => /^[0-9a-f-]{36}$/i.test(String(v || ''));
+const bellsQuery = extra => 'notifications?target_type=eq.user&title=like.' + encodeURIComponent(REQUEST_BELL + '*')
+  + extra + '&select=id,target_id,created_by&order=id.desc&limit=1000';
+
+/** The players among these who can edit the retina. */
+async function retinaGranted(io, players) {
+  const yes = new Set();
+  if (!players.length) return yes;
+  const invited = await io.sb(`access_requests?user_id=in.(${players.join(',')})&status=eq.invited&select=user_id`);
+  for (const r of invited) yes.add(String(r.user_id));
+  const ask = players.filter(p => !yes.has(p));
+  if (!ask.length || !io.caveAccessOf) return yes;
+  const now = Date.now();
+  const unknown = [];
+  for (const p of ask) {
+    const hit = retinaSeen.get(p);
+    if (hit && now - hit.at < RETINA_CHECK_MS) { if (hit.edit) yes.add(p); }
+    else unknown.push(p);
+  }
+  if (!unknown.length) return yes;
+  const users = await io.sb(`users?id=in.(${unknown.slice(0, RETINA_CHECK_MAX).join(',')})&select=id,cave_user_id`);
+  for (const u of users) {
+    const caveId = Number(u.cave_user_id);
+    if (!Number.isSafeInteger(caveId) || caveId <= 0) continue;
+    const cave = await io.caveAccessOf(caveId);
+    if (!cave) continue; // CAVE could not say: ask again next time
+    const edit = (cave.edit || []).includes(RETINA_CAVE);
+    retinaSeen.set(String(u.id), {at: now, edit});
+    if (edit) yes.add(String(u.id));
+  }
+  return yes;
+}
+
+/** Mark read every unread request bell of a player who has the retina.
+ *  players: only these players' bells; granted: known to have it already. */
+async function readRequestBells(io, {players = null, granted = null} = {}) {
+  const ids = players ? players.filter(isUuid) : null;
+  if (ids && !ids.length) return {marked: 0, bells: []};
+  const bells = (await io.sb(bellsQuery(ids ? `&created_by=in.(${ids.join(',')})` : '')))
+    .filter(b => isUuid(b.target_id) && isUuid(b.created_by));
+  if (!bells.length) return {marked: 0, bells: []};
+  const read = new Set();
+  for (let i = 0; i < bells.length; i += 100) {
+    const chunk = bells.slice(i, i + 100).map(b => b.id).join(',');
+    for (const r of await io.sb(`notification_reads?notification_id=in.(${chunk})&select=notification_id,user_id`)) read.add(`${r.notification_id}:${r.user_id}`);
+  }
+  const unread = bells.filter(b => !read.has(`${b.id}:${b.target_id}`));
+  if (!unread.length) return {marked: 0, bells: []};
+  const who = [...new Set(unread.map(b => String(b.created_by)))];
+  const yes = granted ? new Set(granted.map(String)) : await retinaGranted(io, who);
+  const mark = unread.filter(b => yes.has(String(b.created_by)));
+  if (mark.length) {
+    await io.sb('notification_reads?on_conflict=notification_id,user_id', {method: 'POST',
+      headers: {Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify(mark.map(b => ({notification_id: b.id, user_id: b.target_id})))});
+  }
+  return {marked: mark.length, bells: mark.map(b => ({id: b.id, user_id: b.target_id}))};
+}
+
+/** access.readGrantedBells: an admin, or a reviewer who gets the bells. */
+async function readGrantedBells(args, io) {
+  needMe(io.me);
+  if (!io.isAdmin) {
+    const mineToo = await io.sb(bellsQuery(`&target_id=eq.${io.me.id}`).replace('limit=1000', 'limit=1'));
+    if (!mineToo.length) fail(403, 'Admins only');
+  }
+  const r = await readRequestBells(io);
+  // The caller's own, so their bell can drop them without a reload.
+  return {marked: r.marked, ids: r.bells.filter(b => b.user_id === io.me.id).map(b => b.id)};
 }
 
 // ── Beta access (Ames 2026-10-24) ────────────────────────────────────────
@@ -614,10 +707,16 @@ function eyewireOf(a) {
   const username = cleanEwName(a.eyewireUsername);
   const rank = cleanText(a.eyewireRank, EW_RANK_MAX, 'Your EyeWire rank');
   if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
-  return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null};
+  // How did you find us? (Ames 2026-11-06), optional plain text, one line.
+  const found = cleanText(a.foundUs, FOUND_US_MAX, 'How you found us');
+  return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null,
+    found: found ? found.replace(/\s+/g, ' ') : null};
 }
-const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : ''];
-const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '');
+const FOUND_US_MAX = 200;
+const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
+  ew.found ? `How they found us: ${ew.found}` : ''];
+const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
+  + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '');
 /** A new request goes on the triage board now, not at the next (often late)
  *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
 async function wakeBoard(io) {
@@ -631,17 +730,25 @@ async function wakeBoard(io) {
 // store is passed in (Firestore in index.js), so this needs no new table.
 //   access.betaMarks  admins: every mark, by email.
 //   access.betaMark   admins: {email, mark: 'listed' | 'removed' | 'waiting'}.
+//   (On the Access page, listed shows as Later: off the Asked list, kept
+//   for later, Ames 2026-11-10.)
 const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // ── "You're in" by email (Ames 2026-11-05: "let's do resend and we can set up
 // connectome.quest"). Letting someone in sends them this, from
 // welcome@connectome.quest, replies to support@eyewire.ai. Once per address:
 // a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
+// Support gets a blind copy of every welcome (Ames 2026-11-06: "copy
+// support@eyewire.org"), and Ames's Gmail (2026-11-10: "add my Gmail"), so
+// the player never sees it.
 const WELCOME_FROM = 'Pyr <welcome@connectome.quest>';
 const WELCOME_REPLY_TO = 'support@eyewire.ai';
+const WELCOME_COPY_TO = ['support@eyewire.org', 'amyleerobinson@gmail.com'];
 function welcomeMessage(name, email) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const text = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
-  return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, subject: "You're in: Pyr early access", text };
+  const copies = WELCOME_COPY_TO.filter(c => c !== email);
+  const bcc = copies.length ? { bcc: copies } : {};
+  return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, ...bcc, subject: "You're in: Pyr early access", text };
 }
 async function welcomeEmail(a, io) {
   needAdmin(io.isAdmin);
@@ -654,6 +761,21 @@ async function welcomeEmail(a, io) {
   if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
   return {sent: true};
 }
+// ── One person, two emails, joined by hand (Ames 2026-11-10: "some
+// duplicates ... same person"). The Access page suggests pairs; an admin
+// presses Same person. The row goes in access_email_links, which the view
+// access_hub_people folds (supabase-access-hub.sql): the email folds into
+// \`to\`. Admins only.
+//   access.linkEmails  admins: {email, to}.
+async function linkEmails(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email), to = betaEmail(a.to);
+  if (email === to) fail(400, 'Those are the same email.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200);
+  await io.sb('access_email_links?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, linked_to: to, note: `Same person, on the Access page${by ? ' by ' + by : ''}`})});
+  return {linked: true};
+}
 async function betaMarks(a, io) {
   needAdmin(io.isAdmin);
   return io.marks.all();
@@ -664,6 +786,68 @@ async function betaMark(a, io) {
   if (!BETA_MARKS.includes(a.mark)) fail(400, 'Unknown mark.');
   await io.marks.set(email, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
   return io.marks.all();
+}
+
+// ── The team's notes on a person (Celia 2026-11-09: "a place to leave notes
+// on requests from people we don't know, or ones still being discussed").
+// Shown on the Access page (triage hub). Keyed by the person's email, or
+// "user:<id>" when there is none. Admins only; in io.notes (Firestore in
+// index.js), so this needs no new table.
+//   access.notes       admins: every note, {key: [{id, text, by, at}]}.
+//   access.note        admins: {key, text} adds one.
+//   access.noteDelete  admins: {key, id} takes one away.
+const ACCESS_NOTE_MAX = 1000;
+const { tagIdsIn } = require('./todo-connector');
+const NOTE_KEY = /^(?:[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+|user:[0-9a-f-]{36})$/i;
+function noteKey(k) {
+  const key = String(k || '').trim().toLowerCase();
+  if (!NOTE_KEY.test(key) || key.length > BETA_EMAIL_MAX) fail(400, 'Unknown person.');
+  return key;
+}
+async function accessNotes(a, io) {
+  needAdmin(io.isAdmin);
+  return io.notes.all();
+}
+async function accessNote(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const text = cleanText(a.text, ACCESS_NOTE_MAX, 'The note', true);
+  if (!text) fail(400, 'Write a note first.');
+  const by = (io.me && (io.me.display_name || io.me.username)) || (io.who && io.who.email) || 'An admin';
+  await io.notes.add(key, {text, by, byEmail: (io.who && io.who.email) || '', at: new Date().toISOString()});
+  // The note is saved whatever happens to the tags.
+  try { await tagFromNote(key, text, by, a.name, io); } catch (e) { console.warn('[access note] tag failed', e && e.message); }
+  return io.notes.all();
+}
+// "@Celia" or "@Marissa" in a note tags that admin (Ames 2026-11-10: "if I
+// leave a note here can it tag celia / Marissa?"), as notes on the triage
+// board do (triage-notes.js): a bell in Pyr and a ping in Slack, each with a
+// link that opens this person on the Access page.
+const ACCESS_PAGE = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/?triage=access';
+async function tagFromNote(key, text, by, name, io) {
+  if (!io.people || !io.notifyPeople) return 0;
+  const people = await io.people();
+  const ids = tagIdsIn(text, people).filter(id => id !== (io.me && io.me.id));
+  if (!ids.length) return 0;
+  const who = people.filter(p => ids.includes(p.id));
+  const label = String(name || '').replace(/[\r\n]+/g, ' ').trim().slice(0, BETA_NAME_MAX);
+  const about = label ? `${label}${key.startsWith('user:') ? '' : ` (${key})`}` : (key.startsWith('user:') ? 'a player' : key);
+  const link = `${ACCESS_PAGE}&person=${encodeURIComponent(key)}`;
+  await io.notifyPeople({ids, title: `💬 ${by} tagged you on the Access page`.slice(0, 120),
+    body: `About ${mdText(about)}:\n\n${mdText(text.slice(0, 600))}\n\n${link}`});
+  if (io.slackPing) {
+    const quote = text.replace(/\s+/g, ' ').slice(0, 300);
+    await io.slackPing(who, `left a note on the Access page about ${about}:\n> ${quote}\n<${link}|Open it on the Access page>`, by);
+  }
+  return ids.length;
+}
+async function accessNoteDelete(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const id = String(a.id || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) fail(400, 'Unknown note.');
+  await io.notes.remove(key, id);
+  return io.notes.all();
 }
 
 // ── Access to one dataset (Ames 2026-10-28) ──────────────────────────────
@@ -921,7 +1105,11 @@ async function handle(action, args, io) {
   if (action === 'access.linkInvite') return linkInvite(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
+  if (action === 'access.linkEmails') return linkEmails(a, io);
   if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
+  if (action === 'access.notes') return accessNotes(a, io);
+  if (action === 'access.note') return accessNote(a, io);
+  if (action === 'access.noteDelete') return accessNoteDelete(a, io);
   if (action === 'access.principlesStatus') return principlesStatus(a, io);
   if (action === 'access.principlesAgree') return principlesAgree(a, io);
   if (action === 'access.mine') return mine(a, io);
@@ -932,6 +1120,7 @@ async function handle(action, args, io) {
   if (action === 'access.list') return list(a, io);
   if (action === 'access.review') return review(a, io);
   if (action === 'access.decide') return decide(a, io);
+  if (action === 'access.readGrantedBells') return readGrantedBells(a, io);
   if (action === 'access.reset') return reset(a, io);
   fail(400, `unknown action ${action}`);
 }

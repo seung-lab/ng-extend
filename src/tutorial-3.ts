@@ -238,6 +238,7 @@ function helpRow(chip: Element): HTMLElement {
  *  of a merger without Help me being pressed (Ames, 2026-10-11). */
 function clearHelp() {
   document.querySelectorAll('.introductionStepAnchor .nge-practice-more, .introductionStepAnchor .nge-practice-stuck').forEach(el => el.remove());
+  syncHelpLabel();
 }
 
 function notePanel(cls: string, html: string): HTMLElement {
@@ -451,13 +452,26 @@ export async function showWhereToCut(perColour = 4): Promise<boolean> {
  * is what a stuck learner wants. Other ways out sit one step further, behind
  * "Still need help?". With nothing to point at, it opens those straight away.
  */
+/** The Help me button says what it will do: "Hide help" while help is
+ *  open, so a second "Help me" never closes it (Ames, 2026-11-10: pressing
+ *  Help me to close the help was confusing). */
+function syncHelpLabel() {
+  const chip = chipBody();
+  const btn = chip?.querySelector('.nge-practice-help') as HTMLElement | null;
+  if (!chip || !btn) return;
+  const open = !!chip.querySelector('.nge-practice-stuck, .nge-practice-more');
+  btn.textContent = open ? 'Hide help' : 'Help me';
+  btn.title = open ? 'Close the help' : 'Show me where to click';
+}
+
 async function helpMe() {
   const chip = chipBody();
   if (!chip) return;
-  // A second press closes whatever the first opened.
+  // While help is open the button reads "Hide help" and closes it.
   const open = chip.querySelector('.nge-practice-stuck, .nge-practice-more');
   if (open) {
     chip.querySelectorAll('.nge-practice-stuck, .nge-practice-more').forEach(el => el.remove());
+    syncHelpLabel();
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
     return;
   }
@@ -472,9 +486,10 @@ async function helpMe() {
     shown = await showWhereToClick();
     if (shown) practiceStatus('The pink gems mark the two spots. Ctrl+click one piece by its gem, then the other, then Submit merge.');
   }
-  if (!shown) { openStuckPanel(); return; }
-  const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); });
+  if (!shown) { openStuckPanel(); syncHelpLabel(); return; }
+  const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); syncHelpLabel(); });
   helpRow(chip).appendChild(more);
+  syncHelpLabel();
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }
 
@@ -507,7 +522,7 @@ function openStuckPanel() {
   close.textContent = '\u00d7';
   close.title = 'Close';
   close.setAttribute('aria-label', 'Close help');
-  close.addEventListener('click', () => { panel.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); });
+  close.addEventListener('click', () => { panel.remove(); syncHelpLabel(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); });
   panel.style.position = 'relative';
   panel.appendChild(close);
   chip.appendChild(panel);
@@ -720,8 +735,13 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       if (token === practiceWatch) setTimeout(tick, 2000);
     }
   };
+  // The tutorial this watch belongs to. Another one open means it is over:
+  // it kept writing "Merge mode is off" and Help me into the Cilia Quest
+  // tutorial's boxes (Ames, 2026-11-10).
+  const ownTutorial = useTutorialStore().activeTutorial;
   const look = async () => {
     if (token !== practiceWatch) return;
+    if (useTutorialStore().activeTutorial !== ownTutorial) { if (token === practiceWatch) stopWatching(); return; }
     const p = currentPractice();
     // Keep looking: the step may get its cell a moment later.
     if (p.phase === 'unavailable') { practiceStatus('Practice needs an invited account and a current session. Sign in, or press back then next to try again. You can read along while waiting.'); setTimeout(tick, 2000); return; }

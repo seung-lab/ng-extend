@@ -81,6 +81,71 @@ const stepsDone = computed(() => Math.max(0, sendSteps.value.map(x => x.key).ind
 const neuronSeed = ref(1);
 const sentWith = ref<{ k: string; v: string }[]>([]);
 
+// ── An unsent report is kept (Celia #446: "very easy to click out of Bug
+// Report and it doesn't save your entry") ──
+// What you wrote is saved in this browser as you type and comes back the next
+// time the form opens, until it is sent or you press Clear. A click outside
+// the box no longer closes it once something is written: × or Cancel does.
+const DRAFT_KEY = 'nge-feedback-draft';
+try {
+  const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+  if (d && typeof d === 'object') {
+    if (typeof d.title === 'string') title.value = d.title.slice(0, TITLE_MAX);
+    if (typeof d.message === 'string') message.value = d.message.slice(0, DETAILS_LONG);
+    if ((CATEGORIES as readonly string[]).includes(d.category)) category.value = d.category;
+    if (d.message) { detailsOpen.value = true; detailsLong.value = d.message.length > DETAILS_SHORT; }
+  }
+} catch { /* no draft */ }
+const hasDraft = computed(() => !!(title.value.trim() || message.value.trim()));
+watch([title, message, category], () => {
+  try {
+    if (hasDraft.value) localStorage.setItem(DRAFT_KEY, JSON.stringify({ title: title.value, message: message.value, category: category.value }));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch { /* storage blocked */ }
+});
+function clearDraft() {
+  title.value = ''; message.value = ''; detailsOpen.value = false; detailsLong.value = false;
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
+}
+// ── Formatting in the details (Celia #446.4) ──
+// Bold, italics, bullets and numbers, written as the same marks the triage
+// reply uses ("**bold**", "- item", "1. item"), shown formatted in Triage.
+const noteEl = ref<HTMLTextAreaElement | null>(null);
+function putText(text: string, selFrom?: number, selTo?: number) {
+  const el = noteEl.value;
+  if (!el) return;
+  const a = el.selectionStart, b = el.selectionEnd;
+  el.focus();
+  el.setRangeText(text, a, b, 'end');
+  if (selFrom !== undefined && selTo !== undefined) el.setSelectionRange(a + selFrom, a + selTo);
+  message.value = el.value.slice(0, detailsMax.value);
+}
+function fmtWrap(mark: string, placeholder: string) {
+  const el = noteEl.value;
+  if (!el) return;
+  const inner = el.value.slice(el.selectionStart, el.selectionEnd) || placeholder;
+  putText(`${mark}${inner}${mark}`, mark.length, mark.length + inner.length);
+}
+function fmtLines(numbered: boolean) {
+  const el = noteEl.value;
+  if (!el) return;
+  const v = el.value;
+  const a = v.lastIndexOf('\n', el.selectionStart - 1) + 1;
+  let b = v.indexOf('\n', el.selectionEnd);
+  if (b < 0) b = v.length;
+  let n = 0;
+  const lines = (v.slice(a, b) || 'List item').split('\n')
+    .map(l => (l.trim() ? (numbered ? `${++n}. ` : '- ') + l.replace(/^\s*([-*•·]\s+|\d{1,3}[.)]\s+)/, '') : l));
+  el.setSelectionRange(a, b);
+  putText(lines.join('\n'));
+}
+function onNoteKey(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === 'b' || e.key === 'B') { e.preventDefault(); fmtWrap('**', 'bold'); }
+  else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); fmtWrap('*', 'italics'); }
+}
+function outsideClick() { if (done.value || !hasDraft.value) emit('hide'); }
+
 // Screenshot attachment. Reuses the help request flow unchanged:
 // ScreenshotDialog in `attach` mode captures the viewer, lets the user
 // annotate it with the pen, uploads the PNG to Supabase Storage
@@ -91,9 +156,25 @@ const showScreenshotDialog = ref(false);
 function onScreenshotAttached(payload: { url: string }) {
   screenshotUrl.value = payload.url;
   error.value = '';
+  if (settingUp.value) endSetup();
 }
 function clearScreenshot() {
   screenshotUrl.value = '';
+}
+// ── Set up the screen first (Celia #446, Ames 2026-11-09) ──
+// The form steps out of the way and a small bar waits at the top of the
+// screen. Open whatever the picture should show (Profile, Settings, the Admin
+// Hub...), then press Take screenshot: the picture is the whole screen, and
+// the form comes back with it attached. Back returns without one.
+const settingUp = ref(false);
+const shotWhole = ref(false);
+function startSetup() { settingUp.value = true; }
+function takeSetupShot() { shotWhole.value = true; showScreenshotDialog.value = true; }
+function endSetup() { settingUp.value = false; shotWhole.value = false; }
+// A cancelled picture leaves the bar up, to try again or go Back.
+function onShotClosed() {
+  showScreenshotDialog.value = false;
+  shotWhole.value = false;
 }
 
 function currentDataset(): string {
@@ -126,7 +207,9 @@ async function submit() {
     // server down), send the bare page URL plus the position so the report
     // still locates the spot without a broken link.
     stage.value = attachView.value ? 'view' : 'send';
-    const shortLink = attachView.value ? await mintShortStateLink() : null;
+    // A view that can't be saved (a layer half loaded: "this.layer is null",
+    // toknow 2026-11-08) must not stop the report: send the position instead.
+    const shortLink = attachView.value ? await mintShortStateLink().catch((e: any) => { console.warn('[feedback] view not attached:', e); return null; }) : null;
     stage.value = 'send';
     let pageUrl = shortLink;
     if (!pageUrl) {
@@ -226,6 +309,7 @@ async function submit() {
       // Saved nowhere: tell the player why instead of pretending.
       if (relayFailure) throw new Error(relayFailure);
     }
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
     sentWith.value = [
       { k: 'Type', v: category.value },
       { k: 'View', v: shortLink ? 'attached' : 'position only' },
@@ -405,7 +489,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" @hide="emit('hide')">
+  <Teleport to="body">
+    <div v-if="settingUp" class="nge-fb-setup-bar" role="toolbar" aria-label="Screenshot setup">
+      <span class="nge-fb-setup-text">Set up the screen, then</span>
+      <button class="nge-fb-setup-go" type="button" @click="takeSetupShot">📸 Take screenshot</button>
+      <button class="nge-fb-setup-back" type="button" @click="endSetup">Back to report</button>
+    </div>
+  </Teleport>
+  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" :class="{ 'nge-fb-hidden': settingUp }" @hide="outsideClick">
     <div class="nge-fb-shell">
       <canvas ref="fxCanvas" class="nge-fb-fx" aria-hidden="true"></canvas>
       <button class="nge-fb-exit" @click="emit('hide')">×</button>
@@ -418,7 +509,9 @@ onBeforeUnmount(() => {
         <ScreenshotDialog
           :show="showScreenshotDialog"
           mode="attach"
-          @close="showScreenshotDialog = false"
+          :whole-screen-now="shotWhole"
+          hide-opener=".nge-fb-setup-bar"
+          @close="onShotClosed"
           @attached="onScreenshotAttached"
         />
       </Teleport>
@@ -462,15 +555,22 @@ onBeforeUnmount(() => {
           @input="error = ''"
         />
         <button v-if="!detailsOpen" type="button" class="nge-fb-more" @click="detailsOpen = true">+ Add details (optional)</button>
+        <div v-if="detailsOpen" class="nge-fb-fmt" role="toolbar" aria-label="Formatting">
+          <button type="button" title="Bold (Ctrl+B)" @mousedown.prevent @click="fmtWrap('**', 'bold')"><b>B</b></button>
+          <button type="button" title="Italics (Ctrl+I)" @mousedown.prevent @click="fmtWrap('*', 'italics')"><i>I</i></button>
+          <button type="button" title="Bulleted list: each selected line becomes a bullet" @mousedown.prevent @click="fmtLines(false)">• List</button>
+          <button type="button" title="Numbered list: each selected line gets a number" @mousedown.prevent @click="fmtLines(true)">1. List</button>
+        </div>
         <textarea
-          v-else
+          v-if="detailsOpen"
+          ref="noteEl"
           v-model="message"
           class="nge-fb-note"
           rows="3"
           placeholder="Anything else that helps, like what you expected."
           aria-label="Details"
           :maxlength="detailsMax"
-          @keydown.stop @keyup.stop @keypress.stop
+          @keydown.stop="onNoteKey" @keyup.stop @keypress.stop
           @input="error = ''"
         ></textarea>
         <div v-if="detailsOpen" class="nge-fb-count" :class="{ 'nge-fb-count--full': message.length >= detailsMax }">
@@ -505,6 +605,9 @@ onBeforeUnmount(() => {
             </svg>
             <span>Screenshot</span>
           </button>
+          <button v-if="!screenshotUrl" class="nge-fb-setup-link" type="button" :disabled="sending"
+                  title="Close this for a moment, open what the picture should show (Profile, Settings...), then take it"
+                  @click="startSetup">or set up the screen first</button>
           <div v-else class="nge-fb-shot-preview">
             <a :href="screenshotUrl" target="_blank" rel="noopener" title="Open full size">
               <img :src="screenshotUrl" alt="Attached screenshot" />
@@ -520,7 +623,8 @@ onBeforeUnmount(() => {
           <button class="nge-fb-submit" :disabled="sending" @click="submit">
             {{ sending ? 'Sending…' : 'Submit' }}
           </button>
-          <button class="nge-fb-cancel" @click="emit('hide')">Cancel</button>
+          <button class="nge-fb-cancel" @click="emit('hide')" :title="hasDraft ? 'Close. What you wrote is kept for next time.' : undefined">Cancel</button>
+          <button v-if="hasDraft && !sending" class="nge-fb-cancel nge-fb-clear" @click="clearDraft" title="Empty the form">Clear</button>
         </div>
       </div>
 
@@ -630,8 +734,11 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  color: #ccd;
-  font-size: 0.86em;
+  color: #e3e8f5;
+  /* Big enough to read while typing (Nseraf, #401): a fixed 16px, not a
+     fraction of the modal's small text. */
+  font-size: 16px;
+  line-height: 1.45;
   font-family: inherit;
   padding: 8px 10px;
   resize: vertical;
@@ -663,6 +770,37 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 .nge-fb-shot-btn:disabled { opacity: 0.5; cursor: default; }
+.nge-fb-fmt { display: flex; gap: 4px; margin: 6px 0 4px; }
+.nge-fb-fmt button {
+  padding: 2px 9px; font-size: 12px; line-height: 1.6; cursor: pointer; border-radius: 6px;
+  color: #b9c6e6; background: rgba(120, 140, 255, 0.08); border: 1px solid rgba(120, 140, 255, 0.25);
+}
+.nge-fb-fmt button:hover { color: #e6ecff; background: rgba(120, 140, 255, 0.18); }
+.nge-fb-setup-link {
+  margin-left: 10px; padding: 0; border: none; background: none; cursor: pointer;
+  font-size: 0.8em; color: #8fa0c8; text-decoration: underline; text-underline-offset: 3px;
+}
+.nge-fb-setup-link:hover:not(:disabled) { color: #c8d4ff; }
+/* While the screen is set up, the form (and its dim backdrop) steps aside. */
+.nge-feedback-modal.nge-fb-hidden { display: none; }
+.nge-fb-setup-bar {
+  position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 2147483000;
+  display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px;
+  background: rgba(8, 14, 28, 0.94); border: 1px solid rgba(120, 150, 255, 0.45); border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(90, 130, 255, 0.25);
+  font: 13px 'Inter', sans-serif; color: #c8d4f0; animation: nge-fb-setup-in 0.25s ease-out;
+}
+@keyframes nge-fb-setup-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+.nge-fb-setup-go {
+  padding: 6px 14px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(90, 130, 255, 0.95); color: #fff; font-weight: 600; font-size: 13px;
+}
+.nge-fb-setup-go:hover { background: rgba(110, 150, 255, 1); }
+.nge-fb-setup-back {
+  padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 12px;
+  background: none; color: #99a6c4; border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.nge-fb-setup-back:hover { color: #dde4f5; border-color: rgba(255, 255, 255, 0.3); }
 .nge-fb-shot-preview {
   position: relative;
   display: inline-block;
@@ -724,6 +862,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-cancel:hover { color: #ccd; border-color: rgba(255, 255, 255, 0.25); }
+.nge-fb-clear { margin-left: auto; border-color: transparent; }
 /* ── Sending: a neuron that grows as the report goes, and the real steps ── */
 .nge-fb-sending {
   display: flex; flex-direction: column; align-items: center;

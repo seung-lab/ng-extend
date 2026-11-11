@@ -25,6 +25,10 @@ export interface NgeMeshTint {
    *  in this colour (RGB 0..1, the player's Checked colour) are drawn as a
    *  dim grey instead, so what is left to check stands out. */
   dim?: [number, number, number];
+  /** Only this object (its getObjectKey) takes the tint; other cells in the
+   *  same layer pass through it untouched (the intro: a partner's axon
+   *  crossing a coloured dendrite stays its own colour, Ames 2026-11-08). */
+  only?: string;
 }
 
 let current: NgeMeshTint|null = null;
@@ -109,3 +113,11 @@ export function bindNgeMeshTintFine(gl: GL, unit: number): boolean {
   }
   return true;
 }
+
+/** Grow-in (the new player intro, Ames 2026-11-08: the cell "is supposed to
+ *  load from soma outward"): one object is drawn only within radiusNm of a
+ *  centre (global coordinates), with a bright rim at the growing edge. */
+export interface NgeReveal { only: string; center: [number, number, number]; radiusNm: number; edgeNm: number; }
+let reveal: NgeReveal|null = null;
+export function setNgeReveal(r: NgeReveal|null) { reveal = r; }
+export function getNgeReveal(): NgeReveal|null { return reveal; }

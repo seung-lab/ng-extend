@@ -3,6 +3,8 @@
 // daily-deploy-digest.mjs at its 4:30 pm run. No robot writes it, so it costs nothing.
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACCESS_TITLE = '🔑 Access update';
+// The week's note (Ames 2026-11-06), on Sunday's run: the same lists over 7 days.
+export const ACCESS_WEEK_TITLE = '🔑 Access this week';
 const RETINA_GRANT = '🎉 Congratulations! Your edit access has been granted!';
 const DATASET_GRANT = '🔓 You have access to ';
 // The open padlock on a dataset grant.
@@ -24,13 +26,13 @@ export function accessBody(requests, approvals) {
 
 export async function gatherAccess(get, sinceIso) {
   const since = encodeURIComponent(sinceIso);
-  const retina = await get('access_requests', `select=player_name&submitted_at=gte.${since}`);
-  const issues = await get('site_issues', `select=user_name,category,title&category=in.("Beta access","Dataset access")&created_at=gte.${since}`);
+  const retina = await get('access_requests', `select=player_name,user_id&submitted_at=gte.${since}`);
+  const issues = await get('site_issues', `select=user_name,user_id,category,title,message&category=in.("Beta access","Dataset access")&created_at=gte.${since}`);
   const requests = [
-    ...retina.map(r => ({ name: r.player_name, what: 'Retina' })),
+    ...retina.map(r => ({ name: r.player_name, what: 'Retina', keys: [r.user_id] })),
     // A dataset request is titled "<dataset> access request from <name>" (functions/access-request.js).
     ...issues.map(i => ({ name: i.user_name, what: i.category === 'Beta access' ? 'Beta'
-      : (String(i.title || '').split(' access request from ')[0].trim() || 'A dataset') })),
+      : (String(i.title || '').split(' access request from ')[0].trim() || 'A dataset'), keys: [i.user_id, ...requestEmails(i.message)] })),
   ];
   const notes = await get('notifications', `select=title,target_id&target_type=eq.user&send_at=gte.${since}`
     + `&or=${encodeURIComponent(`(title.eq."${RETINA_GRANT}",title.like."${DATASET_GRANT}*")`)}`);
@@ -38,17 +40,61 @@ export async function gatherAccess(get, sinceIso) {
   const people = ids.length ? await get('users', `select=id,display_name,username&id=in.(${ids.join(',')})`) : [];
   const nameOf = id => { const p = people.find(x => x.id === id); return p?.display_name || p?.username || 'Someone'; };
   const approvals = notes.map(n => ({ name: nameOf(n.target_id),
-    what: n.title === RETINA_GRANT ? 'Retina' : n.title.slice(DATASET_GRANT.length) }));
-  return { requests, approvals };
+    what: n.title === RETINA_GRANT ? 'Retina' : n.title.slice(DATASET_GRANT.length), keys: [n.target_id] }));
+  approvals.push(...await betaApprovals(get, since));
+  // Asked and approved in the same stretch: named once, under Approved (Celia 2026-11-09).
+  const done = new Set(approvals.flatMap(a => a.keys.filter(Boolean).map(k => `${a.what}|${String(k).toLowerCase()}`)));
+  const open = requests.filter(r => !r.keys.some(k => k && done.has(`${r.what}|${String(k).toLowerCase()}`)));
+  const plain = ({ name, what }) => ({ name, what });
+  return { requests: open.map(plain), approvals: approvals.map(plain) };
+}
+
+// The emails a Beta request names: the sign in email and the one they gave.
+function requestEmails(message) {
+  return [...String(message || '').matchAll(/^(?:Sign in email|Email|Email they gave): ([^\s]+@[^\s]+?)\.?(?:\s|$)/gm)].map(m => m[1]);
+}
+
+// Beta approvals (Ames 2026-11-08: "we need a way to see beta access approved
+// requests as well"). Letting someone in adds their email to pilot_members,
+// and no bell goes to the player, so they are read from there. Emails added
+// together as a list (one paste in Admin Hub) are counted, not named.
+export const BETA_LIST_SIZE = 5;
+async function betaApprovals(get, since) {
+  const added = await get('pilot_members', `select=email,created_at&enabled=is.true&created_at=gte.${since}`);
+  if (!added.length) return [];
+  const byTime = new Map();
+  for (const a of added) byTime.set(a.created_at, [...(byTime.get(a.created_at) || []), a.email]);
+  const single = [...byTime.values()].filter(g => g.length < BETA_LIST_SIZE).flat();
+  const emails = single.filter(Boolean).map(e => `"${e}"`).join(',');
+  const people = emails ? await get('users', `select=id,display_name,username,middleauth_email&middleauth_email=in.(${emails})`) : [];
+  const personOf = e => people.find(x => String(x.middleauth_email || '').toLowerCase() === String(e).toLowerCase());
+  const out = single.map(e => { const p = personOf(e);
+    return { name: p?.display_name || p?.username || e, what: 'Beta', keys: [e, p?.id] }; });
+  for (const g of byTime.values()) if (g.length >= BETA_LIST_SIZE) out.push({ name: `${g.length} emails`, what: 'Beta, added as a list', keys: g });
+  return out;
+}
+
+const shortDay = d => d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+
+/** Sunday in US Eastern, when the week's note goes too. */
+export function isEasternSunday(now) {
+  return now.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Sunday';
 }
 
 export async function sendAccessUpdate({ get, post, now, day, dryRun, preview }) {
-  const { requests, approvals } = await gatherAccess(get, new Date(now.getTime() - DAY_MS).toISOString());
+  await sendAccessNote({ get, post, now, dryRun, preview, days: 1, title: `${ACCESS_TITLE}: ${day}`, quiet: 'today' });
+  if (isEasternSunday(now)) {
+    const from = shortDay(new Date(now.getTime() - 6 * DAY_MS));
+    await sendAccessNote({ get, post, now, dryRun, preview, days: 7, title: `${ACCESS_WEEK_TITLE}: ${from} – ${shortDay(now)}`, quiet: 'this week' });
+  }
+}
+
+async function sendAccessNote({ get, post, now, dryRun, preview, days, title, quiet }) {
+  const { requests, approvals } = await gatherAccess(get, new Date(now.getTime() - days * DAY_MS).toISOString());
   const body = accessBody(requests, approvals);
-  if (!body) { console.log('[access update] nothing new today.'); return; }
-  const title = `${ACCESS_TITLE}: ${day}`;
+  if (!body) { console.log(`[access update] nothing new ${quiet}.`); return; }
   if (dryRun || preview) { console.log(`[access update] would send "${title}":\n${body}`); return; }
-  // Once a day, like the digest.
+  // Once each, like the digest.
   const had = await get('notifications', `select=id&title=eq.${encodeURIComponent(title)}&limit=1`);
   if (had.length) { console.log('[access update] already sent today.'); return; }
   const admins = await get('admins', 'select=user_id,email');

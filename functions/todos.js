@@ -41,7 +41,7 @@ const IMAGES_MAX = 10;
 /** Images added on the board: our own storage, the todo-images folder. */
 const TODO_IMAGES = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/todo-images/';
 /** Test site, live, pull request or branch, doc, anything else. */
-const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'other'];
+const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'file', 'other'];
 const COMMENT_MAX = 2000;
 const COMMENTS_MAX = 200;
 
@@ -98,7 +98,7 @@ function cleanFields(f, isNew) {
       const url = String((l && l.url) || '').trim();
       if (!/^https:\/\/[^\s"'<>]+$/.test(url) || url.length > 500) fail(400, 'A link must be one https address.');
       const kind = LINK_KINDS.includes(l.kind) ? l.kind : 'other';
-      return { kind, url, label: text((l && l.label) || '', 40, 'A link name').trim() };
+      return { kind, url, label: text((l && l.label) || '', 80, 'A link name').trim() };
     });
   }
   if ('images' in f) {
@@ -136,9 +136,11 @@ function changeWords(fields, before) {
   return '';
 }
 const noFollows = { all: async () => ({}), get: async () => [], set: async () => {} };
+const noSeen = { get: async () => ({}), mark: async () => {} };
 const HELPERS_MAX = 6;
+const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 
-async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
+async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, seen = noSeen, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
   const meId = me && me.id;
   /** Followers hear, but never the one who did it, nor anyone already told. */
@@ -156,8 +158,36 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (next.length !== had.length) await follows.set(cardId, next);
   };
   if (action === 'todo.list') {
-    const [cards, people, followers, helping] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({}))]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping };
+    const [cards, people, followers, helping, seenAt] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
+      meId ? seen.get(meId).catch(() => ({})) : {}]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt };
+  }
+  // I opened a card: its tags of me so far count as seen (Ames 2026-11-06:
+  // "if I click on this it shouldn't still show it as an unread task for me").
+  if (action === 'todo.seen') {
+    const id = uuid(args.id, 'card');
+    if (!meId) fail(403, 'No Pyr profile.');
+    await seen.mark(meId, id, now);
+    return { id, at: now };
+  }
+  // Emoji reactions on a comment (Ames 2026-11-09: "can we have emoji reactions
+  // like thumbs up"). The same emoji again takes yours away. The comment's
+  // writer sees it under My Tasks (TodoBoard.vue), not as a bell.
+  if (action === 'todo.react') {
+    const id = uuid(args.id, 'card');
+    const emoji = String(args.emoji || '');
+    if (!REACTIONS.includes(emoji)) fail(400, 'Pick one of the reactions.');
+    const before = await db.card(id);
+    if (!before) fail(404, 'That card is gone. Refresh the board.');
+    const i = Number(args.index);
+    const list = [...(before.comments || [])];
+    const old = Number.isInteger(i) ? list[i] : null;
+    if (!old || (args.at && old.at !== args.at)) fail(404, 'That comment moved. Refresh the board.');
+    const had = Array.isArray(old.reactions) ? old.reactions : [];
+    const mine = had.some(r => r.by === byName && r.emoji === emoji);
+    const next = mine ? had.filter(r => !(r.by === byName && r.emoji === emoji)) : [...had, { emoji, by: byName, at: now }].slice(-60);
+    list[i] = { ...old, reactions: next };
+    return { card: await db.patch(id, { comments: list }) };
   }
   if (action === 'todo.commentEdit') {
     const id = uuid(args.id, 'card');
@@ -235,6 +265,15 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
       }
       card = await db.patch(id, { ...fields, updated_at: now });
       if (fields.list === 'done' && args.closeReport && before.triage_id) await db.closeReport(before.triage_id, byName);
+      // Everyone on a finished card gets the credit (Ames 2026-11-09: "both get
+      // it", "all collaborators"): whoever presses Done, if not the owner, joins
+      // its collaborators, so the board and Arcane Fixes count them too.
+      if (fields.list === 'done' && before.list !== 'done' && meId && meId !== card.owner_id) {
+        try {
+          const had = await helpers.get(id);
+          if (!had.includes(meId) && had.length < HELPERS_MAX) await helpers.set(id, [...had, meId]);
+        } catch (e) { console.warn('[todo] finisher not added:', e.message); }
+      }
       // Given the card: they hear about it, unless they gave it to themselves.
       if (fields.owner_id && fields.owner_id !== before.owner_id && fields.owner_id !== (me && me.id)) {
         const people = await db.people();

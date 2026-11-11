@@ -145,10 +145,10 @@ const RETINA_LAYERS = [
     await shot('quests-nudge');
     await page.click('.nge-aq-info');
     await page.waitForTimeout(300);
-    console.log('help box: ' + JSON.stringify(await page.evaluate(() => { const h = document.querySelector('.nge-aq-help'); return h ? { steps: h.querySelectorAll('li').length, head: h.querySelector('.nge-aq-help-head').innerText.trim(), size: getComputedStyle(h.querySelector('.nge-aq-help-steps')).fontSize } : 'none'; })));
-    console.log('help links: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-aq-help a')].map(x => [x.textContent.trim(), x.href.slice(0, 60), x.target]))));
+    console.log('help box: ' + JSON.stringify(await page.evaluate(() => { const h = document.querySelector('.nge-qi'); return h ? { steps: h.querySelectorAll('li').length, head: h.querySelector('.nge-qi-title').innerText.trim(), size: getComputedStyle(h.querySelector('.nge-qi-steps')).fontSize } : 'none'; })));
+    console.log('help links: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-qi a')].map(x => [x.textContent.trim(), x.href.slice(0, 60), x.target]))));
     await shot('quests-help');
-    await page.click('.nge-aq-help-close');
+    await page.click('.nge-qi-close');
 
     // Jump: only that cell stays visible, and the view goes to its soma.
     await page.evaluate(() => { try { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina').layer.displayState.segmentationGroupState.value; g.visibleSegments.clear(); for (const id of ['1111', '2222', '3333']) g.visibleSegments.add(id); } catch (e) {} });

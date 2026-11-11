@@ -34,6 +34,7 @@ import HighlightModePanel from "components/HighlightModePanel.vue";
 import TeamPanel from "components/TeamPanel.vue";
 import VersionNotice from "components/VersionNotice.vue";
 import SegmentMarksPrompt from './SegmentMarksPrompt.vue';
+import RetinaModePrompt from './RetinaModePrompt.vue';
 import TwoDTools from './TwoDTools.vue';
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
@@ -325,6 +326,7 @@ onMounted(() => {
 
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
+    profileBack.value = (e.detail?.userId && e.detail?.back) || null;
     // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
     if (e.detail?.tab) profileInitialTab.value = e.detail.tab;
     showProfile.value = true;
@@ -386,6 +388,21 @@ const profileUserId = ref<string | null>(null);
 // "Your Week in Science" now lives as a tab inside the profile rather than its
 // own modal. This tells the profile which tab to open on mount.
 const profileInitialTab = ref<string | undefined>(undefined);
+// A profile opened from an Admin Hub list returns to that list when it closes
+// (Celia 2026-11-09): the hub tab it came from, and a new key so the panel
+// opens on it again.
+const profileBack = ref<string | null>(null);
+const profileKey = ref(0);
+function onProfileHide() {
+  if (profileBack.value && profileUserId.value) {
+    profileUserId.value = null;
+    profileInitialTab.value = profileBack.value;
+    profileBack.value = null;
+    profileKey.value++;
+    return;
+  }
+  showProfile.value = false; profileUserId.value = null; profileInitialTab.value = undefined; profileBack.value = null;
+}
 function openWeekRecap() {
   profileUserId.value = null;
   profileInitialTab.value = 'weekInScience';
@@ -885,6 +902,13 @@ const { tutorialStep } = storeToRefs(useTutorialStore());
 function logout(session: loginSession) {
   login.logout(session);
 }
+// Hamburger "Log out": drops every saved sign-in, then reloads so nothing
+// from the old account stays on screen.
+async function logOutAll() {
+  closeHamburger();
+  for (const s of [...login.sessions]) await login.logout(s);
+  window.location.reload();
+}
 
 // ── Toolbar icon definitions ──────────────────────────────────
 interface ToolbarIcon {
@@ -1028,6 +1052,11 @@ const visibleToolbar = computed(() => {
 });
 // The command bar runs a top bar icon's own action (Find Path, Chat, ...), so
 // an icon a new player has not received yet is still within reach.
+// A Retina claim opens with the Checked layer and the Highlight box ready
+// (Ames 2026-11-07). Opens only; never closes it.
+document.addEventListener('nge:open-highlight', () => {
+  if (!highlightOff.value && !showHighlight.value) { showHighlight.value = true; sprayHighlightIcon(); }
+});
 document.addEventListener('nge:toolbar-action', ((e: CustomEvent) => {
   toolbarActions[e.detail?.id]?.action();
 }) as EventListener);
@@ -1279,7 +1308,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
   <beta-gate />
   <principles-gate />
-  <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
+  <user-profile-panel v-if="showProfile" :key="profileKey" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="onProfileHide" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
   <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable, a click elsewhere puts it away. Phones keep the sheet. -->
@@ -1553,7 +1582,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <!-- Annotations (Ames 2026-10-23, player report 220): layers, color,
              stepping, more than one layer, the tools and Size, Find Path. -->
         <li>
-          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 14; tutorialStore.setTutorialStep(0); closeHamburger()">
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 15; tutorialStore.setTutorialStep(0); closeHamburger()">
             <span class="nge-menu-num">5</span><span>Annotations</span>
           </div>
         </li>
@@ -1593,6 +1622,14 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
             <span class="nge-menu-num">{{ extensionFinished >= EXTENSION_CELLS.length ? '✓' : extensionFinished }}</span><span>Find the missing pieces ({{ extensionFinished }} of {{ EXTENSION_CELLS.length }})</span>
           </div>
         </li>
+        <!-- Quests (Ames 2026-11-10): how to do a Cilia Quest, on the lab's
+             own example cell (src/tutorial-cilia.ts). -->
+        <li class="nge-menu-heading" @click.stop>Quests</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startTutorial(14); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">🔬</span><span>Cilia Quest Training</span>
+          </div>
+        </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
         <li v-if="ARCADE_ENABLED">
           <div class="logoutButton button nge-menu-item" @click="showArcade = true; closeHamburger()">
@@ -1617,6 +1654,12 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <li>
           <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
+          </div>
+        </li>
+        <!-- Log out, last in the menu (Ames 2026-11-09). -->
+        <li v-if="login.sessions.length > 0" class="nge-menu-logout">
+          <div class="logoutButton button nge-menu-item" @click="logOutAll()">
+            <span>Log out</span>
           </div>
         </li>
       </template>
@@ -1673,6 +1716,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- "Now entering <dataset>" after a dataset switch (survives the reload). -->
   <DatasetTransition />
   <SegmentMarksPrompt />
+  <RetinaModePrompt />
   <TwoDTools />
 </template>
 
@@ -2706,6 +2750,10 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 }
 #hamburger li.nge-menu-heading:hover { background: none; }
 #hamburger li.nge-menu-heading:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#hamburger li.nge-menu-logout {
   margin-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }

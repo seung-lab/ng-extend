@@ -279,6 +279,13 @@ export class ButtonService {
     } else {
       button.classList.add('nge-lb-incomplete');        // gray: nothing set
     }
+    // Not known yet (the lab's server could not say, triage #451): the gray
+    // pip says so on hover, rather than read as "not proofread".
+    if (!button.classList.contains('nge-lb-outdated')) {
+      button.title = saved?.unreachable && !status.isComplete
+        ? "Couldn't check this cell's status: the lab's server is busy. Trying again shortly."
+        : 'Click for proofreading and annotation status';
+    }
     // Check claim status
     const backend = useProofreadingBackendStore();
     const segId = button.dataset.segmentId || '';
@@ -542,7 +549,9 @@ export class ButtonService {
     // cachedStatus stays the game's own answer, and every button acts on that.
     let lab = labSheetSummary((parent as any)._labSheet);
     const progressText = () => cachedStatus?.isComplete ? '✓ Proofread'
-        : lab?.proofread ? "✓ Proofread, from the lab's sheet" : '○ In Progress';
+        : lab?.proofread ? "✓ Proofread, from the lab's sheet"
+        : cachedStatus?.unreachable ? "? Couldn't check: the lab's server is busy. Try again in a minute."
+        : '○ In Progress';
     // The title reads as the row does: class and type in place of the ID
     // (which stays in the tooltip and on the row's copy button).
     const showTitle = () => {

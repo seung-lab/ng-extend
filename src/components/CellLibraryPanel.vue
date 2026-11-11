@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import QuestInstructions from './QuestInstructions.vue';
+import imgRetinaBipolar from '../images/retina-bipolar-cell.jpg';
 import { datasetAccess } from '../util/dataset_access';
 import { reportWriteFailure } from '../util/error_reporting';
 import EditableText from './EditableText.vue';
@@ -28,7 +30,8 @@ import {
 } from '../store';
 import { claimTime, claimTimeLabel, claimStartedLabel, setTimerWorkingClaim } from '../util/claim_time';
 import { showClaimNotice } from '../util/claim_congrats';
-import { getDatasetCaveConfig } from '../config';
+import { getDatasetCaveConfig, isRegisteredDataset } from '../config';
+import { onTextEditAsked } from '../text_edit_links';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
@@ -45,6 +48,9 @@ import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
+import { startRetinaClaimLight, addRetinaAnnotationLayers, retinaAnnotationLayersShown } from '../util/retina_layers';
+import { onLayersChanged } from '../util/highlight';
+import { retinaAnnotationLayersByDefault } from '../store';
 import MecMarkStatus from './MecMarkStatus.vue';
 import { mecKindOfLayer } from '../util/mec_marks';
 import { buildState } from '../hunt_build';
@@ -189,6 +195,28 @@ const copiedId = ref<string | null>(null);
 /** Last cell the user jumped to — highlighted in the list so it's easy to find
  *  again when the Available list is long. */
 const jumpedSegId = ref<string | null>(null);
+/** A Retina claim opens with one Checked Highlight layer; the annotation
+ *  layers come from a button, or every time with the profile setting
+ *  (Ames 2026-11-07: the bipolar cell guide allows Highlight OR annotations). */
+const isRetinaCell = (cell: { dataset?: string }) => /retina/i.test(cell.dataset || '');
+const retinaAnnotShown = ref(false);
+let offRetinaLayers: (() => void) | null = null;
+onMounted(() => {
+  const look = () => { try { retinaAnnotShown.value = retinaAnnotationLayersShown(); } catch { /* no viewer yet */ } };
+  look();
+  offRetinaLayers = onLayersChanged(look);
+});
+onBeforeUnmount(() => { try { offRetinaLayers?.(); } catch { /* gone */ } });
+/** Bipolar cell claims only: Super Quests, and Cilia Quests (their own tab
+ *  and layers), keep their annotation layers (Ames 2026-11-07). */
+function openLight(_taskId: number | undefined, cell: { dataset?: string; segId: string; quest?: unknown }) {
+  if (isRetinaCell(cell) && !cell.quest && !retinaAnnotationLayersByDefault()) startRetinaClaimLight(cell.segId);
+}
+function addAnnotationLayers(cell: { segId: string; startLink?: string }) {
+  const n = addRetinaAnnotationLayers(cell.segId, cell.startLink);
+  retinaAnnotShown.value = retinaAnnotationLayersShown();
+  if (!n) retinaAnnotShown.value = true;
+}
 function copyId(id: string) {
   navigator.clipboard.writeText(id).then(() => {
     copiedId.value = id;
@@ -207,6 +235,16 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** The Available tab's name here: "BC Challenge" on the Retina, where every
+ *  cell left to map is a bipolar cell (Ames 2026-11-09). Only a registered
+ *  dataset's own config counts; the unregistered fallback is the Retina's. */
+const availableLabel = computed(() => (isRegisteredDataset(activeDataset.value) && getDatasetCaveConfig(activeDataset.value).availableLabel) || 'Available');
+const availableIsChallenge = computed(() => availableLabel.value !== 'Available');
+const howToTitle = computed(() => (isRegisteredDataset(activeDataset.value) && getDatasetCaveConfig(activeDataset.value).howToTitle) || 'How to map a cell');
+/** The picture beside the steps: a Retina bipolar cell (Ames 2026-11-08).
+ *  Other datasets start without one; admins can add one in the box. */
+const howToImage = computed(() => /retina/i.test(activeDataset.value || '') ? imgRetinaBipolar : '');
+const howToImageAlt = 'A bipolar cell from the Retina dataset: the cell body at the top, one long stalk, and its branches spread at the bottom';
 /** Where an admin's edit of the steps is kept (config howToKey, else by dataset). */
 const datasetHowToKey = computed(() => getDatasetCaveConfig(activeDataset.value).howToKey || ('howto.' + (activeDataset.value || 'dataset').toLowerCase().replace(/[^a-z0-9_.-]/g, '_')).slice(0, 64));
 /** A view with one example of each cell type (MEC), loaded in place. */
@@ -841,7 +879,10 @@ async function switchToClaim(cell: CellRow) {
   const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  if (!openStartLink(t?.working_link || cell.startLink)) {
+  const fromStart = !t?.working_link;
+  const openedClaim = openStartLink(t?.working_link || cell.startLink);
+  if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
+  if (!openedClaim) {
     if (leftId && leftId !== cell.taskId) freshLayersForClaim();
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
   }
@@ -961,7 +1002,9 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     // A cell with no start view (MEC) is opened too when you were on another
     // claim, so the new claim is on screen and not the last one (report 373).
     const leftOther = !!leftId && leftId !== claimed?.id;
-    if (!openStartLink(cell.startLink) && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
+    const opened = openStartLink(cell.startLink);
+    if (opened) { openLight(claimed?.id, cell); jumpedSegId.value = cell.segId; }
+    if (!opened && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
       if (leftOther) freshLayersForClaim();
       jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
     }
@@ -969,6 +1012,21 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   }
   // Give the claim its soma anchor as soon as that part of the volume loads.
   if (claimed) void backend.anchorClaimAt(claimed.id).catch(() => null);
+  // Claimed: show it in My Cells, its row open and in view (Ames 2026-11-09).
+  // Quests stay in their own tab.
+  if (claimed && !cell.quest) void showInMyCells(cell);
+}
+async function showInMyCells(cell: CellRow) {
+  if (!jumpedSegId.value) jumpedSegId.value = cell.segId;
+  filter.value = 'mine';
+  const key = cellKey(cell);
+  for (let i = 0; i < 20; i++) {
+    await nextTick();
+    // after the tab's own scroll to the top
+    await new Promise(r => setTimeout(r, 150));
+    const el = document.querySelector(`.nge-cl-panel .nge-cl-row[data-cell-key="${CSS.escape(key)}"]`);
+    if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+  }
 }
 
 // ── Claim limit: name every claim you hold, in any dataset, with Release ──
@@ -1191,7 +1249,32 @@ async function prefillCellType(root: string) {
   }
 }
 
+/** The claim on screen now: its row opens the Complete form when clicked
+ *  (Ames 2026-11-07). */
+function isCurrentClaim(cell: CellRow): boolean {
+  return isMyClaim(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId.value;
+}
+function onRowClick(cell: CellRow, e: MouseEvent) {
+  if (!isCurrentClaim(cell) || slim.value) return;
+  if ((e.target as HTMLElement).closest('button, input, textarea, a, select, .nge-cl-row-name')) return;
+  if (completing.value?.key === cellKey(cell)) completing.value = null; else openComplete(cell);
+}
+/** With the Complete form open, its cell's row goes to the top of the list
+ *  and stays there as a header (sticky), so the form below has the whole
+ *  list to show in and is never cut off at the bottom (Ames 2026-11-07). */
+const cellListEl = ref<HTMLElement | null>(null);
+function scrollCompleteRowToTop(key: string) {
+  void nextTick(() => {
+    const list = cellListEl.value;
+    if (!list || slim.value) return;
+    const row = Array.from(list.querySelectorAll<HTMLElement>('.nge-cl-row')).find(r => r.dataset.cellKey === key);
+    if (!row) return;
+    const top = list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    list.scrollTo({ top, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  });
+}
 function openComplete(cell: CellRow) {
+  scrollCompleteRowToTop(cellKey(cell));
   chooseClaim.value = false;
   // No ending picked to start with: the last one carried over, and a player
   // who forgot to change it sent the wrong one (toknow, report 237).
@@ -1388,6 +1471,7 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
+import { takeStartPlaying } from '../util/start_playing';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 async function triggerCellCelebration(segId?: string) {
@@ -2055,6 +2139,7 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
 function onOpenAsked(e: Event) {
   const tab = (e as CustomEvent).detail?.tab;
   if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+  startPlayingIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
@@ -2953,6 +3038,36 @@ async function claimNewCell() {
     }
   } finally { claimingNew.value = false; }
 }
+/** "Start playing" (util/start_playing.ts): once the cells are in, go to the
+ *  player's open cell here, or claim the next one, and say what to do. */
+const startNote = ref('');
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts): this dataset's how-to opens.
+let stopTextEdit: (() => void) | null = null;
+onMounted(() => {
+  stopTextEdit = onTextEditAsked(key => {
+    if (!key.startsWith('howto.') || key === 'howto.hunt' || key === 'howto.2d_tools') return;
+    if (key === datasetHowToKey.value) { showHowTo.value = true; startNote.value = ''; }
+    else startNote.value = 'That how-to belongs to another dataset. Switch to it, then open instructions to edit.';
+  });
+});
+onBeforeUnmount(() => stopTextEdit?.());
+function startPlayingIfAsked() {
+  if (!takeStartPlaying()) return;
+  const go = async () => {
+    const mine = myOpenClaims.value[0];
+    if (mine) await stepToClaim(mine);
+    else await claimNewCell();
+    if (!myOpenClaims.value.length) return;  // nothing claimed: the reason shows already
+    startNote.value = 'This cell is yours to proofread. Fix what the AI got wrong with Merge and Cut, then press Complete. Stuck? Ask in Chat.';
+    setTimeout(() => { startNote.value = ''; }, 30000);
+    await nextTick();
+    clampPanelPos();
+  };
+  if (!backend.loading) { void nextTick(go); return; }
+  const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); void go(); } });
+}
+onMounted(startPlayingIfAsked);
+
 /** Your open claims in this dataset, in list order: what "next" steps through. */
 const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
 const slimClaimIndex = computed(() => myOpenClaims.value.findIndex(c => c.segId === slimSeg.value));
@@ -3157,19 +3272,18 @@ const panelStyle = computed(() => ({
           <div class="nge-cl-tabsettings-title">Tabs on this panel</div>
           <label v-for="t in ALL_CL_TABS" :key="t.key" class="nge-cl-tabsettings-row">
             <input type="checkbox" :checked="visibleTabs.includes(t.key)" @change="toggleTab(t.key)" />
-            <span>{{ t.label }}</span>
+            <span>{{ t.key === 'available' ? availableLabel : t.label }}</span>
           </label>
         </div>
 
         <!-- How to proofread this dataset's cells (Retina). -->
-        <div v-if="datasetHowTo && showHowTo" class="nge-cl-howto-panel">
-          <div class="nge-cl-howto-panel-head">
-            <span>How to map a cell</span>
-            <button class="nge-cl-howto-close" @click="showHowTo = false" title="Close">×</button>
-          </div>
-          <!-- Admins can change these in the game (Celia 2026-10-20). -->
-          <EditableText :text-key="datasetHowToKey" :original="datasetHowTo" list-class="nge-cl-howto-steps" />
-        </div>
+        <!-- In a box of its own with a picture, as the Cilia Quest's
+             instructions are (Ames 2026-11-08). Admins still edit the steps
+             (Celia 2026-10-20) and the picture in the game. -->
+        <QuestInstructions v-if="datasetHowTo && showHowTo" :steps="datasetHowTo"
+          :kicker="'Cell Library'" :title="howToTitle" :steps-key="datasetHowToKey"
+          :image-key="datasetHowToKey + '.image'" :image="howToImage" :image-alt="howToImageAlt" :legend="[]"
+          @close="showHowTo = false" />
 
         <!-- Filter tabs -->
         <!-- Tabs in three coloured groups: cells (cyan), community (gold),
@@ -3205,8 +3319,8 @@ const panelStyle = computed(() => ({
                 My Cells <b>{{ myClaimCount }}</b>
               </button>
               <button v-if="tabShown('available')" :class="{ active: filter === 'available' }" @click="filter = 'available'"
-                      title="Cells nobody has claimed yet">
-                Available <b>{{ availableCount }}</b>
+                      :title="availableIsChallenge ? 'Bipolar cells (BCs) nobody has claimed yet: pick one and map it' : 'Cells nobody has claimed yet'">
+                {{ availableLabel }} <b>{{ availableCount }}</b>
               </button>
               <button v-if="tabShown('claimed')" :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'"
                       title="Cells anyone has claimed and is working on, yours included">
@@ -4037,7 +4151,7 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- Cell list -->
-        <div v-else class="nge-cl-list">
+        <div v-else ref="cellListEl" class="nge-cl-list">
           <!-- Claim error banner -->
           <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
           <div v-if="chooseClaim" class="nge-cl-limit">
@@ -4064,10 +4178,11 @@ const panelStyle = computed(() => ({
           </div>
           <div v-if="backend.loading && filter !== 'mine'" class="nge-cl-more"><span><span class="nge-cl-spin" /> Loading the rest of the cells...</span></div>
           <div v-if="filteredCells.length === 0 && filter === 'mine' && !slim" class="nge-cl-no-results">
-            No claimed cells yet. Claim cells from the All or Available tabs!
+            No claimed cells yet. Claim cells from the All or {{ availableLabel }} tabs!
           </div>
           <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim() && !backend.loading && !slim" class="nge-cl-no-results">
-            No available cells in <strong>{{ currentDatasetLabel }}</strong>.
+            <template v-if="availableIsChallenge">No bipolar cells left to claim in <strong>{{ currentDatasetLabel }}</strong>.</template>
+            <template v-else>No available cells in <strong>{{ currentDatasetLabel }}</strong>.</template>
             <template v-if="suggestedClaimDataset">
               <br />Switch to <strong>{{ suggestedClaimDataset }}</strong> to claim a cell.
             </template>
@@ -4090,22 +4205,28 @@ const panelStyle = computed(() => ({
                   aria-label="Next claimed cell" @click="nextClaim">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <div v-if="startNote" class="nge-cl-start-note" @click="startNote = ''" title="Click to hide">{{ startNote }}</div>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
             <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
                     :title="!isLoggedIn ? 'Sign in to claim cells'
-                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
+                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the ${availableLabel} tab) and takes you to it. Not for you? Release it from My Cells.`
                       : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
                     @click="claimNewCell">{{ claimingNew ? 'Claiming…' : canClaimNew ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
           </div>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
             class="nge-cl-row"
+            :data-cell-key="cellKey(cell)"
             :class="{
               'nge-cl-row--done': cell.status === 'completed',
               'nge-cl-row--mine': isMyClaim(cell),
               'nge-cl-row--jumped': cell.segId === jumpedSegId,
+              'nge-cl-row--current': isCurrentClaim(cell),
+              'nge-cl-row--completing': completing?.key === cellKey(cell),
             }"
+            :title="isCurrentClaim(cell) && completing?.key !== cellKey(cell) ? 'Click to complete this cell' : undefined"
+            @click="onRowClick(cell, $event)"
           >
             <!-- Left: status pip + name -->
             <div class="nge-cl-row-left">
@@ -4172,6 +4293,13 @@ const panelStyle = computed(() => ({
                 @click="teamUpOnClaim(cell)"
                 title="Work on this cell with up to three other players, each when they can. Opens the Teams tab."
               >{{ teamingUp === cellKey(cell) ? 'Starting…' : '👥 Team up' }}</button>
+
+              <button
+                v-if="isMyClaim(cell) && isRetinaCell(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId && !retinaAnnotShown"
+                class="nge-cl-btn nge-cl-btn--annot"
+                @click="addAnnotationLayers(cell)"
+                title="Add the annotation layers to this cell: Soma, True End, Can't Fix, Hits Edge and Notes. To have them on every Retina claim, turn them on in Settings, Jumping and views."
+              >+ Annotation layers</button>
 
               <button
                 v-if="isMyClaim(cell)"
@@ -4788,6 +4916,23 @@ const panelStyle = computed(() => ({
   flex: 1;
   min-width: 0;
 }
+/* A row with many buttons (your current claim: Save view, jump, Annotation
+   layers, Release, Complete) squeezed the name to nothing and its chips ran
+   under the buttons (Ames 2026-11-07). The name keeps 170px; the buttons move
+   to their own line, on the right, when they do not fit beside it. */
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row { flex-wrap: wrap; row-gap: 6px; }
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-left { flex: 1 1 170px; }
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-actions { margin-left: auto; }
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--current { cursor: pointer; }
+/* The cell being completed is the list's header while the form is open. */
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--completing {
+  position: sticky; top: -4px; z-index: 3;
+  background: linear-gradient(rgba(0, 220, 160, 0.10), rgba(0, 220, 160, 0.10)), #0d121a;
+  border-bottom: 1px solid rgba(68, 170, 255, 0.3);
+}
+.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--completing:hover {
+  background: linear-gradient(rgba(0, 220, 160, 0.14), rgba(0, 220, 160, 0.14)), #0d121a;
+}
 
 .nge-cl-pip {
   width: 8px;
@@ -5101,6 +5246,19 @@ const panelStyle = computed(() => ({
 }
 
 /* Claim error banner */
+/* "Start playing": what to do with the cell just claimed. */
+.nge-cl-start-note {
+  flex-basis: 100%;
+  margin: 6px 4px 2px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(95, 216, 255, 0.45);
+  background: rgba(95, 216, 255, 0.1);
+  color: #dff6ff;
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+}
 .nge-cl-error-banner {
   display: flex;
   align-items: center;
@@ -5350,6 +5508,7 @@ const panelStyle = computed(() => ({
 /* Collapsed state: a quiet action button rather than a standing panel. */
 .nge-cl-team-btn { margin-bottom: 6px; }
 .nge-cl-btn--team { color: #9fe8c0; border-color: rgba(93, 255, 160, 0.35); }
+.nge-cl-btn--annot { color: #9fd6ff; border-color: rgba(126, 202, 255, 0.4); }
 .nge-cl-btn--join { color: #9fe8c0; border-color: rgba(93, 255, 160, 0.35); }
 .nge-cl-btn--join:disabled { opacity: 0.6; cursor: default; }
 .nge-cl-help-open-btn {

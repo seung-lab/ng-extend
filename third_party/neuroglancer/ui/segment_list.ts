@@ -93,6 +93,29 @@ abstract class SegmentListSource extends RefCounted implements VirtualListSource
  *  folder's (by folder id), or the rest ('inview'). */
 type ListMode = 'inview'|'pasted'|{folder: string};
 
+// nge: the selected cells with their IDs as text, made once per change of the
+// set and shared by every section of the list (see segmentsHere).
+const selectedTextCache = new WeakMap<object, {count: number, all: [Uint64, string][]}>();
+function selectedWithText(set: any): [Uint64, string][] {
+  const count = set.changed.count;
+  const had = selectedTextCache.get(set);
+  if (had !== undefined && had.count === count) return had.all;
+  const all: [Uint64, string][] = [];
+  for (const id of set) all.push([id, id.toString()]);
+  selectedTextCache.set(set, {count, all});
+  return all;
+}
+// nge: every folder's members together, once per change of the folders.
+const folderMemberCache = new WeakMap<object, {count: number, members: Set<string>}>();
+function folderMembers(folders: SegmentFolders): Set<string> {
+  const count = folders.changed.count;
+  const had = folderMemberCache.get(folders);
+  if (had !== undefined && had.count === count) return had.members;
+  const members = folders.memberIds();
+  folderMemberCache.set(folders, {count, members});
+  return members;
+}
+
 class StarredSegmentsListSource extends SegmentListSource {
   explicitSegmentsVisible: true;
 
@@ -129,21 +152,28 @@ class StarredSegmentsListSource extends SegmentListSource {
   segmentsHere(): Uint64[] {
     const group = this.segmentationDisplayState.segmentationGroupState.value;
     const filter = listFilterOf(this.filterText?.value ?? '');
-    const keep = (id: Uint64) => !filter || segmentMatchesFilter(id.toString(), filter);
+    // nge: every section (pasted, each folder, in view) reads the same cells.
+    // Each one used to turn every cell ID into text again, and gather the
+    // folders' members again: with 30 folders and 1,200 cells, 40,000 or so
+    // conversions on any change (Nseraf, Ames 2026-11-09). Now done once per
+    // change and shared.
+    const all = selectedWithText(group.selectedSegments);
+    const keep = (_id: Uint64, s: string) => !filter || segmentMatchesFilter(s, filter);
     if (/[a-z]/i.test(filter)) {
       // a name search: find the names of the cells not drawn yet
       const unknown: string[] = [];
-      for (const id of group.selectedSegments) {
-        const s = id.toString();
+      for (const [, s] of all) {
         if (!segmentLabels.has(s)) unknown.push(s);
       }
       if (unknown.length) requestSegmentLabels(unknown);
     }
-    const inFolders = this.folders?.memberIds() ?? new Set<string>();
+    const inFolders = this.folders !== undefined ? folderMembers(this.folders) : new Set<string>();
     const {mode} = this;
     if (typeof mode === 'object') {
       const mine = new Set(this.folders?.value.find(f => f.id === mode.folder)?.ids ?? []);
-      return [...group.selectedSegments].filter(id => mine.has(id.toString()) && keep(id));
+      const out: Uint64[] = [];
+      for (const [id, s] of all) if (mine.has(s) && keep(id, s)) out.push(id);
+      return out;
     }
     const pasted = getPastedSegments(group).ids;
     if (mode === 'pasted') {
@@ -151,13 +181,14 @@ class StarredSegmentsListSource extends SegmentListSource {
       for (const s of pasted) {
         if (inFolders.has(s)) continue;
         const id = Uint64.parseString(s);
-        if (group.selectedSegments.has(id) && keep(id)) out.push(id);
+        if (group.selectedSegments.has(id) && keep(id, s)) out.push(id);
       }
       return out;
     }
     const skip = new Set(pasted);
-    return [...group.selectedSegments].filter(
-        id => !skip.has(id.toString()) && !inFolders.has(id.toString()) && keep(id));
+    const out: Uint64[] = [];
+    for (const [id, s] of all) if (!skip.has(s) && !inFolders.has(s) && keep(id, s)) out.push(id);
+    return out;
   }
 
   update() {

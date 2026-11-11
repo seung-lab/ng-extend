@@ -4,7 +4,9 @@ import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
-import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore } from '../store';
+import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore, useCellHistoryStore } from '../store';
+import { isQuestReview, reviewSegment, reviewLinkIn, getReview, replyToReview, type ReviewState } from '../quest_review';
+import { QUEST_DATASET } from '../annotation_quests';
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
@@ -33,6 +35,7 @@ import silverYearTrophy from '../../static/images/champions/silver-year-trophy.p
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
 import { isAwardTitle } from '../util/award_title';
+import { openTextForEdit, revertTextEdit } from '../text_edit_links';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
@@ -412,7 +415,9 @@ function openDetail(notif: any) {
   const accessTitle = String(notif.title || '');
   // A dataset access request opens the same tab, where Dataset requests has
   // Granted (Ames 2026-10-28).
-  if (accessTitle.startsWith('🔑 Access update') || accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
+  // The Access update itself opens to its own list of who asked and who was
+  // let in (Ames 2026-11-06), with a link to the full list at the end.
+  if (accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
     emit('hide');
     return;
@@ -485,6 +490,31 @@ async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
   // A tutorial edit to approve: its before and after show here, and this
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
+  if (a?.getAttribute('href') === ACCESS_LIST_LINK || a?.getAttribute('href') === BETA_LIST_LINK) {
+    e.preventDefault();
+    const tab = a.getAttribute('href') === BETA_LIST_LINK ? 'pilot' : 'access';
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
+  // An admin's edit of an in-game text (functions/edit-notify.js): put the old text back, or open it to edit.
+  const rv = a?.getAttribute('href')?.match(/^#nge-text-revert=(\d{1,12})$/);
+  if (rv) {
+    e.preventDefault();
+    helpSolvedNote.value = 'Checking that edit...';
+    const r = await revertTextEdit(Number(rv[1]));
+    helpSolvedNote.value = r.message;
+    return;
+  }
+  const op = a?.getAttribute('href')?.match(/^#nge-text-open=([a-z0-9_.-]{1,64})$/);
+  if (op) {
+    e.preventDefault();
+    closeDetail();
+    emit('hide');
+    openTextForEdit(op[1]);
+    return;
+  }
   if (a?.getAttribute('href') === '#nge-tutorial-edits') {
     e.preventDefault();
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
@@ -664,6 +694,92 @@ async function sendReply() {
   }
 }
 
+// ── A review of a Cilia Quest cell (Celia and Ames 2026-11-05) ─────────────
+// The reviewer's notes are in the body; under them, the player sends back an
+// updated link and notes, in separate boxes, straight to the quest sheet
+// (src/quest_review.ts). Where the review stands is read from the sheet when
+// the notification opens, so a reply from another window shows here too.
+const QR_NOTES_MAX = 1000;
+const qrState = ref<ReviewState | null>(null);
+const qrLoading = ref(false);
+const qrLoadError = ref('');
+const qrLink = ref('');
+const qrNotes = ref('');
+const qrSending = ref(false);
+const qrError = ref('');
+const qrJustSent = ref(false);
+const qrSegment = computed(() => (openNotif.value && isQuestReview(openNotif.value) && openNotif.value.target_id === backend.userId) ? reviewSegment(openNotif.value.body) : '');
+const qrReviewLink = computed(() => qrSegment.value ? reviewLinkIn(openNotif.value?.body) : '');
+const qrLinkOk = computed(() => !qrLink.value.trim() || /^https:\/\/[^\s"'<>]+$/i.test(qrLink.value.trim()));
+const qrCanSend = computed(() => !qrSending.value && qrLinkOk.value && !!(qrLink.value.trim() || qrNotes.value.trim()));
+watch(qrSegment, async (seg) => {
+  qrState.value = null; qrLoadError.value = ''; qrLink.value = ''; qrNotes.value = ''; qrError.value = ''; qrJustSent.value = false;
+  if (!seg) return;
+  qrLoading.value = true;
+  try {
+    const st = await getReview(seg);
+    if (qrSegment.value === seg) qrState.value = st;
+  } catch (e: any) {
+    if (qrSegment.value === seg) qrLoadError.value = e?.message || 'Where this review stands could not be read.';
+  } finally {
+    if (qrSegment.value === seg) qrLoading.value = false;
+  }
+}, { immediate: true });
+/** The view on screen, as a share link, for the link box. */
+async function qrUseMyView() {
+  qrError.value = '';
+  const link = await Promise.race([mintShortStateLink().catch(() => null), new Promise<null>(r => setTimeout(() => r(null), 8000))]);
+  if (link) qrLink.value = link;
+  else qrError.value = 'A link to your view could not be made. Use Share in the top bar and paste the link here.';
+}
+async function qrSend() {
+  const seg = qrSegment.value;
+  if (!seg || !qrCanSend.value) return;
+  qrSending.value = true; qrError.value = '';
+  try {
+    const out = await replyToReview(seg, qrLink.value.trim(), qrNotes.value.trim());
+    qrState.value = { ...(qrState.value as ReviewState), status: out.status, playerLink: out.playerLink, playerNotes: out.playerNotes };
+    qrJustSent.value = true;
+  } catch (e: any) {
+    qrError.value = `Your update was not sent: ${e?.message ?? 'please try again'}`;
+    try { qrState.value = await getReview(seg); } catch { /* keep what is shown */ }
+  } finally {
+    qrSending.value = false;
+  }
+}
+/** Go to the cell, the way the Quests tab does: its Start Link, else its
+ *  soma. On another dataset, the Quests tab (it offers the switch).
+ *  Everything is read BEFORE the notification closes: closing it empties
+ *  qrSegment, qrState and qrReviewLink (Celia 2026-11-06: the buttons did
+ *  nothing; the reviewer's link was read after it was gone, and a jump to a
+ *  bare segment ID never moved the view). */
+function qrJump() {
+  const seg = qrSegment.value;
+  if (!seg) return;
+  const start = qrState.value?.startLink || '';
+  const soma = (qrState.value?.soma || '').match(/-?\d+(?:\.\d+)?/g)?.map(Number);
+  let here = false;
+  try { here = canonicalDataset(currentDatasetTag()) === QUEST_DATASET; } catch { /* no viewer */ }
+  closeDetail();
+  emit('hide');
+  if (!here) { document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } })); return; }
+  if (start && openStartLink(start)) return;
+  useCellHistoryStore().jumpToCell(seg, soma?.length === 3 ? soma as [number, number, number] : undefined);
+}
+function qrOpenReviewLink() {
+  const link = qrReviewLink.value;
+  if (!link) return;
+  closeDetail();
+  emit('hide');
+  // A link this game cannot load in place opens in a new tab instead.
+  if (!openStartLink(link)) window.open(link, '_blank', 'noopener');
+}
+function qrOpenQuests() {
+  closeDetail();
+  emit('hide');
+  document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+}
+
 // Weekly Champions: a name opens that player's profile (Ames 2026-10-05).
 // The broadcast carries names only, so they are matched to players here,
 // once, when a champions broadcast is opened. A name two players share, or
@@ -770,8 +886,19 @@ const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(
 function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
 }
+const ACCESS_LIST_LINK = '#nge-access-requests';
+// And to the Beta requests (Celia 2026-11-09: she wants both).
+const BETA_LIST_LINK = '#nge-beta-requests';
 const detailBody = computed(() => {
-  const body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
+  let body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
+  // The daily and weekly Access notes end with the way to the full list.
+  if (String(openNotif.value?.title ?? '').startsWith('🔑 Access') && !body.includes(ACCESS_LIST_LINK)) {
+    body += `
+
+[Open dataset access requests](${ACCESS_LIST_LINK})
+
+[Open Beta requests](${BETA_LIST_LINK})`;
+  }
   return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
 });
 function onPictureLoad(e: Event) {
@@ -1059,7 +1186,7 @@ function padRank(rank: number): string {
     <!-- Inside the Admin tab, when both kinds have notes: which ones to show. -->
     <div v-if="showFeedTabs && showAdminSwitch" class="nge-notif-subtabs" role="tablist">
       <button v-if="showAccessTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'access' }" role="tab" :aria-selected="feedTab === 'access'" @click="feedTab = 'access'"
-              title="Access requests: beta, Retina, other datasets, and the daily Access update">
+              title="Access requests: beta, Retina, other datasets, and the daily and weekly Access notes">
         Access<b v-if="unreadIn(accessNotes) > 0">{{ unreadIn(accessNotes) }}</b>
       </button>
       <button v-if="showAdminTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
@@ -1358,6 +1485,45 @@ function padRank(rank: number): string {
                           @click="markReminderSolved(reminderId)">{{ reminderReq?.resolved || helpSolvedNote.startsWith('Marked solved') ? 'Solved ✓' : '✓ Mark solved' }}</button>
                   <button v-if="reminderView.url" class="nge-notif-open-help" @click="openReminderView">↗ {{ reminderView.label }}</button>
                   <button class="nge-notif-open-help" @click="openHelpTab">Open in Help tab →</button>
+                </div>
+                <!-- A review of a Cilia Quest cell: go to it, then send the update back. -->
+                <div v-if="qrSegment" class="nge-notif-reply nge-qr">
+                  <div class="nge-qr-actions">
+                    <button type="button" class="nge-notif-reply-part" title="Go to this cell" @click="qrJump">Jump to cell</button>
+                    <button v-if="qrReviewLink" type="button" class="nge-notif-reply-part" title="Load the reviewer's link here" @click="qrOpenReviewLink">Open the reviewer's link</button>
+                    <button type="button" class="nge-notif-reply-part" title="Open the Quests tab of the Cell Library" @click="qrOpenQuests">Open Quests</button>
+                  </div>
+                  <div v-if="qrLoading" class="nge-notif-reply-hint">Checking where this review stands…</div>
+                  <div v-else-if="qrLoadError" class="nge-notif-reply-error" role="alert">{{ qrLoadError }}</div>
+                  <template v-else-if="qrState && qrState.status === 'Review Sent'">
+                    <label class="nge-notif-reply-label" for="nge-qr-link">Your updated link</label>
+                    <div class="nge-qr-linkrow">
+                      <input id="nge-qr-link" v-model="qrLink" class="nge-qr-input" type="url" :disabled="qrSending" placeholder="https://…"
+                             @keydown.stop @keyup.stop @keypress.stop />
+                      <button type="button" class="nge-notif-reply-part" :disabled="qrSending" title="Make a share link of what you see now and put it in the box" @click="qrUseMyView">Use my current view</button>
+                    </div>
+                    <div v-if="!qrLinkOk" class="nge-notif-reply-error">The link must be a single https link.</div>
+                    <label class="nge-notif-reply-label" for="nge-qr-notes">Your notes</label>
+                    <textarea id="nge-qr-notes" v-model="qrNotes" class="nge-notif-reply-box" rows="3" :maxlength="QR_NOTES_MAX" :disabled="qrSending"
+                              placeholder="What you changed, or anything for the reviewer" @keydown.stop @keyup.stop @keypress.stop></textarea>
+                    <div class="nge-notif-reply-row">
+                      <span class="nge-notif-reply-hint">{{ QR_NOTES_MAX - qrNotes.length }} characters left.</span>
+                      <button class="nge-notif-reply-send" :disabled="!qrCanSend" @click="qrSend">{{ qrSending ? 'Sending…' : 'Send update' }}</button>
+                    </div>
+                    <div v-if="qrError" class="nge-notif-reply-error" role="alert">{{ qrError }}</div>
+                  </template>
+                  <template v-else-if="qrState">
+                    <div v-if="qrJustSent" class="nge-notif-reply-label" role="status">Sent! {{ qrState.reviewer || 'The reviewer' }} has your update.</div>
+                    <div v-else class="nge-notif-reply-label">{{
+                      qrState.status === 'Reviewed' ? 'Your update is with ' + (qrState.reviewer || 'the reviewer') + '.'
+                      : qrState.status === 'Complete' ? (qrState.accepted === 'Yes' ? 'Review complete. Your update was accepted.' : 'This review is complete.')
+                      : qrState.status === 'Send Review' ? 'A new review of this cell is on its way.'
+                      : 'This review is not waiting for an update.' }}</div>
+                    <template v-if="qrState.playerLink || qrState.playerNotes">
+                      <div v-if="qrState.playerLink" class="nge-notif-reply-hint">Your link: <a :href="qrState.playerLink" target="_blank" rel="noopener noreferrer" class="nge-notif-link">open it</a></div>
+                      <div v-if="qrState.playerNotes" class="nge-notif-reply-sent">{{ qrState.playerNotes }}</div>
+                    </template>
+                  </template>
                 </div>
                 <button
                   v-if="isHelpNotification(openNotif) && !reminderId"
@@ -1847,6 +2013,15 @@ function padRank(rank: number): string {
 .nge-notif-reply-part:disabled { opacity: 0.5; cursor: default; }
 .nge-notif-reply-part--on { border-color: rgb(var(--nd-cyan) / 0.75); background: rgb(var(--nd-cyan) / 0.14); color: rgb(var(--nd-ink)); }
 span.nge-notif-reply-part { cursor: default; }
+/* A Cilia Quest review: the actions, then a link box and a notes box. */
+.nge-qr-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.nge-qr-linkrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nge-qr-input {
+  flex: 1 1 220px; min-width: 0; box-sizing: border-box; padding: 7px 10px;
+  border: 1px solid rgb(var(--nd-accent) / 0.35); border-radius: 8px; background: rgba(0, 0, 0, 0.35);
+  color: rgb(var(--nd-ink)); font: inherit; font-size: 0.9em;
+}
+.nge-qr-input:focus { outline: none; border-color: rgb(var(--nd-cyan) / 0.7); }
 .nge-notif-reply-part img { width: 28px; height: 20px; object-fit: cover; border-radius: 3px; }
 .nge-notif-reply-x { border: 0; background: none; color: inherit; font-size: 1.15em; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-notif-reply-shot img { display: block; max-width: 260px; max-height: 160px; border-radius: 8px; border: 1px solid rgb(var(--nd-accent) / 0.35); }
@@ -2072,6 +2247,9 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-scroll {
   position: relative;
   z-index: 1;
+  /* Shrinks inside the window so a long note scrolls (Ames 2026-11-10: "we need scroll if needed"). */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 26px 26px;
   scrollbar-width: thin;
@@ -2140,6 +2318,14 @@ span.nge-notif-reply-part { cursor: default; }
   border-left: 2px solid rgb(var(--nd-cyan) / 0.6);
   background: rgb(var(--nd-accent) / 0.06);
   color: #d6e2f0;
+}
+/* An edit note's changed words (functions/edit-notify.js, Ames 2026-11-10:
+   "highlight the difference"): added words lit, removed words struck. */
+.nge-notif-detail-body :deep(mark) {
+  color: #fff; background: rgba(90, 170, 255, 0.3); border-radius: 3px; padding: 0 2px;
+}
+.nge-notif-detail-body :deep(blockquote del) {
+  color: rgba(214, 226, 240, 0.55); text-decoration-color: rgba(150, 190, 255, 0.9); text-decoration-thickness: 1.5px;
 }
 .nge-notif-detail-body :deep(code) {
   font-size: 0.9em;

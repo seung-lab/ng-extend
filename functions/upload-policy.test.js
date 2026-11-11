@@ -1,6 +1,20 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {prepareUpload}=require('./upload-policy');
 const who={email:'player@example.invalid'};
+test('a To do file: admins only, any type, risky types stored as plain bytes, 7 MB', () => {
+ const who={email:'ames@x.org'}, data=Buffer.from('<html><script>alert(1)</script></html>').toString('base64');
+ assert.throws(()=>prepareUpload({kind:'todo-file',data,contentType:'text/html',name:'a.html'},who,false),/Admins only/);
+ const html=prepareUpload({kind:'todo-file',data,contentType:'text/html',name:'Email draft (v2).html'},who,true);
+ assert.equal(html.contentType,'application/octet-stream');
+ assert.equal(html.bucket,'admin-files');
+ assert.match(html.path,/^todo-files\/[0-9a-f]{24}\/[0-9a-f-]{36}\/Email_draft_v2.html$/);
+ const pdf=prepareUpload({kind:'todo-file',data,contentType:'application/pdf',name:'../../x.pdf'},who,true);
+ assert.equal(pdf.contentType,'application/pdf');
+ assert.match(pdf.path,/\/x\.pdf$/);
+ const big=Buffer.alloc(7*1024*1024+1).toString('base64');
+ assert.throws(()=>prepareUpload({kind:'todo-file',data:big,contentType:'application/pdf',name:'b.pdf'},who,true),/(under 7|Invalid file)/);
+});
+
 const image={kind:'help',contentType:'image/png',data:Buffer.from('89504e470d0a1a0a00000000','hex').toString('base64')};
 test('public and player uploads cannot overwrite official assets',()=>{
  assert.throws(()=>prepareUpload(image,null,false),/Sign in/);
@@ -28,4 +42,6 @@ test('reply images: admins only, in their own folder that the 7 day cleanup empt
 test('To do board images: admins only, in their own folder',()=>{
  assert.throws(()=>prepareUpload({...image,kind:'todo'},who,false),/Admins only/);
  assert.match(prepareUpload({...image,kind:'todo'},who,true).path,/^todo-images\//);
+ assert.throws(()=>prepareUpload({...image,kind:'instructions'},who,false),/Admins only/);
+ assert.match(prepareUpload({...image,kind:'instructions'},who,true).path,/^instructions\//);
 });

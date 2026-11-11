@@ -69,6 +69,13 @@ async function toggleChanges() {
   if (!showChanges.value || changes.value) return;
   await loadChanges();
 }
+/** The chip's i (Krzysztof, report 463): Later folded the panel away with its
+ *  list unread. It opens the panel again with the list showing. */
+async function reopenWithChanges() {
+  folded.value = false;
+  showChanges.value = true;
+  if (!changes.value) await loadChanges();
+}
 const dayOf = (iso: string) => { try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
 
 /** The chip lives in the top bar with the other tools, first in the row, so
@@ -114,6 +121,7 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
               title="A newer version of Pyr is out. Click to reload and get it." @click="reload">
         <span class="nge-ver-pip" aria-hidden="true"></span>{{ reloading ? 'Reloading' : 'Update ready' }}
       </button>
+      <button type="button" class="nge-ver-chip-i" title="See what changed in this update" aria-label="What changed" @click="reopenWithChanges">i</button>
       <button type="button" class="nge-ver-chip-x" title="Hide this. The update comes with your next reload." aria-label="Hide the update reminder" @click="dismiss">×</button>
     </span>
   </Teleport>
@@ -212,6 +220,9 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
 .nge-ver-chip-go:disabled { cursor: default; }
 .nge-ver-chip--busy { opacity: 0.6; }
 .nge-ver-chip-x { margin-left: 4px; width: 16px; height: 16px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font: 700 12px/1 system-ui, sans-serif; letter-spacing: 0; color: #cfe6ff; background: none; border: 0; border-radius: 50%; cursor: pointer; opacity: 0.7; }
+.nge-ver-chip-i { margin-left: 2px; width: 16px; height: 16px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font: italic 700 11px/1 Georgia, 'Times New Roman', serif; letter-spacing: 0; text-transform: none; color: #cfe6ff; background: none; border: 1px solid rgba(var(--ver-line), 0.55); border-radius: 50%; cursor: pointer; opacity: 0.85; }
+.nge-ver-chip-i:hover { opacity: 1; background: rgba(124, 196, 255, 0.2); }
+#extensionBar .nge-ver-chip .nge-ver-chip-i { display: inline-flex !important; align-items: center; justify-content: center; font: italic 700 11px/1 Georgia, 'Times New Roman', serif !important; letter-spacing: 0; text-transform: none; }
 .nge-ver-chip-x:hover { opacity: 1; background: rgba(124, 196, 255, 0.2); }
 .nge-ver-chip.nge-ver-chip--bar { position: static; transform: none; order: -1; margin-right: 8px; flex-shrink: 0; }
 /* The bar strips its buttons bare; this one keeps its outline and its light. */

@@ -32,7 +32,7 @@ const html = (words: string, kind: 'text' | 'html') => wordsToHtml(words, kind);
 
 <template>
   <div class="nge-admin-section nge-tutedits">
-    <p class="nge-tutedits-intro">Admins reword a tutorial box with the pencil on it. {{ approver ? 'Your own edits go straight to players; other admins\' wait here for you.' : 'Your edits wait here until Ames approves them.' }}</p>
+    <p class="nge-tutedits-intro">Admins reword a tutorial box with the pencil on it. Every edit goes straight to players, and Ames gets a note of each one.</p>
     <div v-if="error" class="nge-tutedits-error">{{ error }}</div>
 
     <h3 class="nge-tutedits-h">Waiting for approval <span class="nge-tutedits-count">{{ waiting.length }}</span></h3>

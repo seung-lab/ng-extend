@@ -12,7 +12,7 @@ import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears }
 import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
-import { achievementTestTrack } from './widgets/badge_definitions';
+import { achievementTestTrack, LOYALTY_BADGES } from './widgets/badge_definitions';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -1099,6 +1099,16 @@ export interface UserPreferences {
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
+  /** A Retina claim opens with the annotation layers (Soma, True End, Can't Fix,
+   *  Hits Edge, Notes). Off by default: it opens with one Checked Highlight
+   *  layer, and a button adds them (Ames 2026-11-07). */
+  retinaAnnotationLayers?: boolean;
+  /** Classic layer tab buttons: neuroglancer's x that hides a layer to the
+   *  side panel, and its bin that deletes it. Off by default: one x, which
+   *  closes (deletes) the layer, and Ctrl+Z brings it back (Ames 2026-11-07). */
+  layerHideButton?: boolean;
+  /** The one time Retina question (RetinaModePrompt.vue) has been answered. */
+  retinaModeAsked?: boolean;
   /** Highlight mode's colours: the three built in ones (recoloured or not)
    *  and any the player added. Unset = the defaults. */
   highlightStyles?: { key: string; label: string; color: string }[];
@@ -1144,6 +1154,9 @@ export interface UserPreferences {
   /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
    *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
   cursorXL?: boolean;
+  /** The 3D view turns slowly on its own (the new player intro's turn, Ames
+   *  2026-11-08: "add a way to turn off cell rotation"). On unless false. */
+  autoTurn?: boolean;
   /** Large text: Pyr's windows and the layer side panel drawn a fifth bigger
    *  (body.nge-large-text, src/large_text.css; Ames 2026-10-25, for older
    *  players). Defaults to false. */
@@ -1165,6 +1178,9 @@ export interface UserPreferences {
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
 
 /** Settings: "Jumping to a cell adds it to my view" (off = replace). */
+export function retinaAnnotationLayersByDefault(): boolean {
+  try { return useUserPreferencesStore().prefs.retinaAnnotationLayers === true; } catch { return false; }
+}
 export function jumpAddsToView(): boolean {
   try { return useUserPreferencesStore().prefs.jumpAddsToView === true; } catch { return false; }
 }
@@ -1202,7 +1218,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -4459,13 +4475,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** A streak milestone, as a notification to yourself. The server allows
    *  only these titles, only when the saved streak has reached the number,
    *  and never the same one twice within six days. */
-  async function sendStreakMilestone(days: number) {
+  async function sendStreakMilestone(days: number, quiet = false) {
     // The chip agrees with the note (lalonso: "shows 1 when my notification
     // says 2"): a slower answer read before the streak grew can't undo it.
     streakFloor = Math.max(streakFloor, days);
     const stats = useUserStatsStore();
     if (stats.stats.currentStreak < days) stats.setStats({ currentStreak: days });
-    if (!isStreakMilestone(days) || !userId.value) return;
+    if (quiet || !isStreakMilestone(days) || !userId.value) return;
     const next = nextStreakMilestone(days);
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
     await secureWrite('notification.self', {
@@ -4728,7 +4744,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       useUserStatsStore().setStats(visitStreak);
       try { localStorage.setItem(VISIT_KEY, key); } catch { /* */ }
       // A recount of old days is a correction, not a day earned just now.
-      if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak).catch(() => {});
+      // When the same visit earns a Days Achievement, its card says it: the
+      // streak's own note stays quiet, so opening Pyr brings one thing, not
+      // two (Ames 2026-11-05: "make sure they're not bombarded with multiple
+      // achievements at opening"). Day 2 is both a 2 day streak and Day 2.
+      const daysCard = !r.days_recounted && typeof r.days_before === 'number' && typeof r.total_days === 'number'
+        && LOYALTY_BADGES.some(b => r.days_before < b.threshold && r.total_days >= b.threshold);
+      if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak, daysCard).catch(() => {});
       celebrateDays(r.days_before, r.total_days, !!r.days_recounted);
     } catch (e: any) {
       console.warn('[backend] visit not counted:', e?.message);
@@ -4918,59 +4940,57 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // ── Quests board: Cilia Quests on the Retina (Ames 2026-11-05) ────────
   /** One row per annotator on the quest sheet: quests submitted today (US
    *  Eastern day, the sheet's Date column), in the last 7 days and all time.
-   *  Counted the way the profile counts them (questCounts: cilium annotated
-   *  or no cilium), by the annotator's name. The
-   *  sheet list is the one the Cell Library reads (cached 5 minutes on the
-   *  server); the only database read is the players matching those names. */
+   *  Counted the way the profile counts them (cilium annotated or no cilium),
+   *  by the annotator's name, from the table (ew_quest_board), not the sheet. */
   const questBoard: Ref<any[]> = ref([]);
   const questBoardState: Ref<'loading' | 'ok' | 'unavailable'> = ref('loading');
   const questBoardAt: Ref<number> = ref(0);
-  /** M/D/YYYY to a day number, or null. */
-  const sheetDay = (v: string) => {
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim());
-    return m ? Date.UTC(+m[3], +m[1] - 1, +m[2]) / 86400000 : null;
-  };
+  /** Counts per annotator key to board rows, with the players behind the
+   *  names, matched like the profile does. */
+  async function questBoardRows(byKey: Map<string, { name: string; today: number; week: number; all: number }>, nameKey: (v: string) => string) {
+    const names = [...new Set([...byKey.values()].map(c => c.name))].slice(0, 300);
+    const players = new Map<string, any>();
+    if (names.length) {
+      const COLS = 'id, display_name, username, flag, current_streak';
+      const [byName, byUser] = await Promise.all([
+        supabase.from('users').select(COLS).in('display_name', names),
+        supabase.from('users').select(COLS).in('username', names),
+      ]);
+      for (const u of [...(byName.data ?? []), ...(byUser.data ?? [])] as any[]) {
+        for (const k of [nameKey(u.display_name), nameKey(u.username)]) if (k && byKey.has(k) && !players.has(k)) players.set(k, u);
+      }
+    }
+    return [...byKey.entries()].map(([key, c]) => {
+      const u = players.get(key);
+      return {
+        id: u?.id ?? `sheet:${key}`,
+        display_name: u?.display_name || c.name,
+        flag: u?.flag ?? '',
+        current_streak: u?.current_streak ?? 0,
+        quests_today: c.today,
+        quests_week: c.week,
+        quests_alltime: c.all,
+      };
+    });
+  }
+  /** Read from a table, never the sheet, like the rest of the leaderboard
+   *  (Ames 2026-11-06: "takes a long time to load"). ew_quest_board counts
+   *  the server's copy of the sheet (ew_quest_sheet_rows), which the server
+   *  updates on every quest submit and whenever the quest list is read. */
   async function loadQuestBoard() {
     try {
-      const { listQuests, nameKey, questCounts } = await import('./annotation_quests');
-      const { rows } = await listQuests();
-      const today = sheetDay(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date()))!;
+      const { nameKey } = await import('./annotation_quests');
+      const { data, error } = await supabase.rpc('ew_quest_board', { p_quest: 'retina_cilia' });
+      if (error) throw error;
       const byKey = new Map<string, { name: string; today: number; week: number; all: number }>();
-      for (const r of rows) {
-        const key = nameKey(r.annotator);
-        if (!questCounts(r.status) || !key) continue;
-        const c = byKey.get(key) ?? { name: r.annotator.trim(), today: 0, week: 0, all: 0 };
-        const d = sheetDay(r.date);
-        c.all++;
-        if (d !== null && d > today - 7 && d <= today) c.week++;
-        if (d === today) c.today++;
+      for (const r of (data ?? []) as any[]) {
+        const key = nameKey(r.name);
+        if (!key) continue;
+        const c = byKey.get(key) ?? { name: String(r.name).trim(), today: 0, week: 0, all: 0 };
+        c.today += r.today | 0; c.week += r.week | 0; c.all += r.alltime | 0;
         byKey.set(key, c);
       }
-      // The players behind the sheet's names, matched like the profile does.
-      const names = [...new Set([...byKey.values()].map(c => c.name))].slice(0, 300);
-      const players = new Map<string, any>();
-      if (names.length) {
-        const COLS = 'id, display_name, username, flag, current_streak';
-        const [byName, byUser] = await Promise.all([
-          supabase.from('users').select(COLS).in('display_name', names),
-          supabase.from('users').select(COLS).in('username', names),
-        ]);
-        for (const u of [...(byName.data ?? []), ...(byUser.data ?? [])] as any[]) {
-          for (const k of [nameKey(u.display_name), nameKey(u.username)]) if (k && byKey.has(k) && !players.has(k)) players.set(k, u);
-        }
-      }
-      questBoard.value = [...byKey.entries()].map(([key, c]) => {
-        const u = players.get(key);
-        return {
-          id: u?.id ?? `sheet:${key}`,
-          display_name: u?.display_name || c.name,
-          flag: u?.flag ?? '',
-          current_streak: u?.current_streak ?? 0,
-          quests_today: c.today,
-          quests_week: c.week,
-          quests_alltime: c.all,
-        };
-      });
+      questBoard.value = await questBoardRows(byKey, nameKey);
       questBoardState.value = 'ok';
       questBoardAt.value = Date.now();
       return;
@@ -5701,6 +5721,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadNotifications();
   }
   let grantLinesAsked = false;
+  // Retina request bells this tab has asked the server about (Ames 2026-11-06).
+  const requestBellsAsked = new Set<number>();
   /** What the leader tab read on its minute check, for the other tabs
    *  (util/tabs.ts). reads and dismissed come with a full check only. */
   interface SharedNotifs { user: string; at: string; rows: any[]; groupIds: string[]; reads?: number[]; dismissed?: number[] }
@@ -5844,6 +5866,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (notificationDismissals.value.size) {
       notifications.value = notifications.value.filter(
         n => !notificationDismissals.value.has(n.id));
+    }
+
+    // A Retina access request bell is answered once the player has the
+    // retina (Ames 2026-11-06): the server marks it read for every reviewer
+    // (access.readGrantedBells), so every admin and device agrees. Asked once
+    // per unread request bell, and only when one is here.
+    const askRequest = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔬 Retina access request from')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askRequest.length) {
+      for (const n of askRequest) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readGrantedBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
     }
   }
 
@@ -7136,16 +7172,22 @@ export const useChatStore = defineStore('chat', () => {
   // (supabase-chat-presence-and-link-screenshots.sql). So a join notice can't
   // be forged, unlike the old open broadcast the security fix removed.
   // A hidden tab's heartbeat can come up to about 2 minutes apart.
-  const ONLINE_MS = 150_000;
+  // Online = seen in the last 5 minutes (Ames 2026-11-10: "count ppl online at
+  // 5 min intervals"), so a slow or background tab does not drop off the list.
+  const ONLINE_MS = 5 * 60_000;
   const HEARTBEAT_MS = 60_000;
-  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string }>>({});
+  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string; fromChat?: boolean }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
   const presenceTick = ref(0);
-  const onlineCount = computed(() => {
+  /** Who is online now. The count and the list both read this, so they
+   *  always agree (Ames 2026-11-10: "says 5 but there are 4 in list"; the
+   *  list used a shorter cutoff than the count). */
+  const onlinePeople = computed(() => {
     void presenceTick.value; // re-evaluate on the tick; Date.now() is not reactive
     const cutoff = Date.now() - ONLINE_MS;
-    return Object.values(online.value).filter(p => p.lastSeen >= cutoff).length;
+    return Object.entries(online.value).filter(([, p]) => p.lastSeen >= cutoff).map(([id, p]) => ({ id, ...p }));
   });
+  const onlineCount = computed(() => onlinePeople.value.length);
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let staleTimer: ReturnType<typeof setInterval> | null = null;
   // One tab per browser says the player is here and reads who else is
@@ -7163,7 +7205,11 @@ export const useChatStore = defineStore('chat', () => {
       });
     }
     if (useProofreadingBackendStore().userId) presenceLeader.join();
-    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader()) void heartbeat(); }, HEARTBEAT_MS);
+    // The leader beats for the browser, and so does any tab being looked at:
+    // a leader tab left asleep in the background otherwise went quiet and
+    // took the player off the list while they chatted in another tab
+    // (Ames 2026-11-10: Nseraf answered in chat but was not shown online).
+    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader() || !document.hidden) void heartbeat(); }, HEARTBEAT_MS);
     if (!staleTimer) staleTimer = setInterval(() => {
       presenceTick.value++;
       if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
@@ -7354,8 +7400,12 @@ export const useChatStore = defineStore('chat', () => {
       ({ data, error } = await supabase.from('chat_presence').select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500));
     }
     if (error || !data) return;
-    const next: Record<string, { name: string; lastSeen: number; dataset?: string }> = {};
+    const next: Record<string, { name: string; lastSeen: number; dataset?: string; fromChat?: boolean }> = {};
     for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime(), ...(r.dataset ? { dataset: r.dataset } : {}) };
+    // Someone who wrote in chat a moment ago stays listed even if their
+    // heartbeat is late (see the chat_messages listener).
+    const cutoff = Date.now() - ONLINE_MS;
+    for (const [id, p] of Object.entries(online.value)) if (!next[id] && p.lastSeen >= cutoff && p.fromChat) next[id] = p;
     online.value = next;
     if (share) shareResult('chat-online', { user: useProofreadingBackendStore().userId, online: next });
   }
@@ -7757,6 +7807,11 @@ export const useChatStore = defineStore('chat', () => {
       if (!row.user_id && !(row.rank === 'bot' && row.name === NURRO_NAME)) return;
       notePinRow(row);
       const date = new Date(row.created_at);
+      // Whoever just wrote is here, whatever their heartbeat says.
+      if (row.user_id && row.name && row.rank !== 'bot') {
+        const was = online.value[row.user_id];
+        online.value[row.user_id] = { ...was, name: row.name, lastSeen: Math.max(was?.lastSeen ?? 0, date.getTime()), fromChat: true };
+      }
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text,row.dataset), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null, replyTo:row.reply_to ?? null});
@@ -7861,6 +7916,7 @@ export const useChatStore = defineStore('chat', () => {
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
     const row: Record<string, any> = { name, rank, text, dataset: currentDatasetName(), notification_id: notificationId };
+    void heartbeat(); // writing in chat means you are here
     const post = (r: Record<string, any>) => supabase.from('chat_messages').insert(r);
     // With no live connection the message will not come back by itself: fetch it.
     const shown = () => { if (polling.value) void loadMissed(); };
@@ -7967,7 +8023,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };

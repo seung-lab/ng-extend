@@ -27,7 +27,7 @@ const ISSUES = [
   { id: 'i3', category: 'Beta access', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-26T14:00:00Z',
     message: 'Vic Visitor asks to join the Pyr beta, from connectome.quest.\nEmail they gave: vic@example.org. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.\nThey agreed to the community principles.' },
   { id: 'i2', category: 'Beta access', user_name: 'Gus Game', title: 'Beta access request from Gus Game', url: null, created_at: '2026-10-25T10:00:00Z',
-    message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.\nEyeWire username: gus_ew\nEyeWire rank: Scythe' },
+    message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.\nEyeWire username: gus_ew\nEyeWire rank: Scythe\nHow they found us: A friend in the lab' },
   { id: 'i1', category: 'Beta access', user_name: 'Tess Tester', title: 'Beta access request from Tess Tester', url: null, created_at: '2026-10-24T10:00:00Z',
     message: 'Tess Tester asks to join the Pyr beta.\nEmail: tess@example.org. To let them in, add this one under Admin Hub, Pilot testers.' },
   { id: 'i0', category: 'Beta access', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-20T10:00:00Z',
@@ -122,6 +122,7 @@ const ISSUES = [
     const rowsNow = () => page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
     const view = async (label) => { await page.click(`.nge-beta-views button:has-text("${label}")`); await page.waitForTimeout(300); };
     check('EyeWire username and rank show', /EyeWire: gus_ew, Scythe/.test(after.find(r => /Gus/.test(r)) || ''), after);
+    check('how they found us shows', /Found us: A friend in the lab/.test(after.find(r => /Gus/.test(r)) || ''), after);
     // Add to list: off the waiting page, onto On the list, kept by the server.
     await page.click('.nge-beta-req li:has-text("Gus") >> text=Add to list');
     await page.waitForTimeout(600);
@@ -160,6 +161,12 @@ const ISSUES = [
     const cardText = await board.$eval('.nge-triage-beta', e => e.innerText).catch(() => '');
     if (!cardText) { console.log('DEBUG', (await board.evaluate(() => document.body.innerText.slice(0, 900))).replace(/\s+/g, ' ')); await board.screenshot({ path: path.join(OUT, 'card-debug.png') }); }
     check('a Beta access triage card has Let them in, with the email it will add', /Let them in/.test(cardText) && /gus@work\.example/.test(cardText), cardText);
+    // The old on/off button is now a purple link to the Access page (Ames 2026-11-10).
+    const acc = await board.$eval('a.nge-triage-access-page', a => ({ text: a.textContent.trim(), href: a.getAttribute('href'), bg: getComputedStyle(a).backgroundColor })).catch(e => (console.log('ACCERR', String(e).slice(0, 300)), null));
+    check('the Access button opens the Access page, in purple', acc && acc.text === '🔑 Access' && /\?triage=access$/.test(acc.href) && /^rgba?\((1[0-9]{2}|[5-9][0-9]), ?([0-9]{1,2}|1[0-4][0-9]), ?(2[0-4][0-9]|2[5][0-5])/.test(acc.bg), acc);
+    check('the old Access requests on/off button is gone', !(await board.$('.nge-triage-access-toggle')) && !/Access requests: (on|off)/.test(await board.evaluate(() => document.body.innerText)));
+    const accBox = await board.locator('a.nge-triage-access-page').boundingBox().catch(() => null);
+    if (accBox) await board.screenshot({ path: path.join(OUT, 'triage-access-button.png'), clip: { x: Math.max(0, accBox.x - 420), y: Math.max(0, accBox.y - 20), width: 700, height: accBox.height + 40 } });
     await board.click('text=Beta access request from Gus Game').catch(() => {});
     await board.waitForTimeout(800);
     const cardBox = await board.locator('.nge-triage-beta').boundingBox().catch(() => null);

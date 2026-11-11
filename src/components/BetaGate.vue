@@ -30,6 +30,8 @@ const note = ref('');
 // Both optional (Ames 2026-10-26: "eyewire username, Eyewire rank").
 const ewName = ref('');
 const ewRank = ref('');
+// Optional (Ames 2026-11-06: "how did you find us?").
+const foundUs = ref('');
 const sending = ref(false);
 const error = ref('');
 const panelEl = ref<HTMLElement | null>(null);
@@ -80,7 +82,8 @@ async function request() {
   try {
     const r = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.beta', {
       name: name.value.trim(), email: email.value.trim(), note: note.value.trim() || undefined,
-      eyewireUsername: ewName.value.trim() || undefined, eyewireRank: ewRank.value.trim() || undefined });
+      eyewireUsername: ewName.value.trim() || undefined, eyewireRank: ewRank.value.trim() || undefined,
+      foundUs: foundUs.value.trim() || undefined });
     if (r?.invited) { show.value = false; betaGate.value = 'in'; return; }
     requested.value = true;
   } catch (e: any) {
@@ -190,9 +193,11 @@ onUnmounted(() => window.clearInterval(waitCheck));
               <input id="nge-beta-ewrank" v-model="ewRank" class="nge-beta-field" type="text" maxlength="40" autocomplete="off" @input="error = ''" />
             </div>
           </div>
+          <label class="nge-beta-label" for="nge-beta-found">How did you find us? <span>(optional)</span></label>
+          <input id="nge-beta-found" v-model="foundUs" class="nge-beta-field" type="text" maxlength="200" autocomplete="off"
+                 placeholder="For example: the EyeWire forum, a friend, a class" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-note">Anything you'd like us to know? <span>(optional)</span></label>
-          <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="2" maxlength="500"
-                    placeholder="Where you heard about Pyr"></textarea>
+          <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="2" maxlength="500"></textarea>
           <button class="nge-beta-btn" :disabled="sending" @click="request">{{ sending ? 'Sending...' : 'Request beta access' }}</button>
           <p v-if="error" class="nge-beta-error" role="alert">{{ error }}</p>
         </template>
@@ -304,7 +309,7 @@ onUnmounted(() => window.clearInterval(waitCheck));
 .nge-beta-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 420px) { .nge-beta-pair { grid-template-columns: 1fr; gap: 0; } }
 .nge-beta-note:focus, .nge-beta-field:focus { outline: none; border-color: rgba(100, 200, 255, 0.7); box-shadow: 0 0 0 2px rgba(79, 207, 255, 0.15); }
-.nge-beta-note::placeholder { color: rgba(190, 210, 240, 0.4); }
+.nge-beta-note::placeholder, .nge-beta-field::placeholder { color: rgba(190, 210, 240, 0.4); }
 /* The one action, in the Dataset Stats button's voice, filled. */
 .nge-beta-btn {
   width: 100%; height: 42px;

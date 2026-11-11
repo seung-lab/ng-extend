@@ -1046,15 +1046,17 @@ export class AnnotationLayerView extends Tab {
   private updateAnnotationElement(annotation: Annotation, state: AnnotationLayerState) {
     annotation; state;
     // nge: the rows are worked out again (numbers and folders move with any
-    // change) and only those that changed are drawn again.
-    this.ngeRefresh();
+    // change) and only those that changed are drawn again. Once for many:
+    // recoloring a folder of 169 points sent 169 updates, and each rebuilt
+    // every row (Nseraf, Ames 2026-11-09).
+    this.ngeScheduleRefresh();
   }
 
   private deleteAnnotationElement(annotationId: string, state: AnnotationLayerState) {
     annotationId; state;
     // nge: the rows are worked out again (numbers and folders move with any
-    // change) and only those that changed are drawn again.
-    this.ngeRefresh();
+    // change) and only those that changed are drawn again, once for many.
+    this.ngeScheduleRefresh();
   }
 
   private resetOnUpdate() {
@@ -2386,49 +2388,77 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       rowActions.appendChild(deleteButton);
     };
 
-    // nge: a pencil on the row writes its note right there, under the row,
-    // with the Selection panel left alone (Ames 2026-11-01).
-    let noteText: HTMLElement|undefined;
+    // nge: a pencil on the row writes its note (Ames 2026-11-01). It opens a
+    // roomy box over the view with large type, so the note is easy to read
+    // while typing (Nseraf, #401); the Selection panel is left alone.
     const openNoteEditor = () => {
-      if (element.querySelector('.nge-ann-note-editor')) return;
+      if (document.querySelector('.nge-ann-note-pop')) return;
+      const backdrop = document.createElement('div');
+      backdrop.className = 'nge-ann-note-pop';
+      const dialog = document.createElement('div');
+      dialog.className = 'nge-ann-note-pop-box';
+      dialog.setAttribute('role', 'dialog');
+      dialog.setAttribute('aria-modal', 'true');
+      dialog.setAttribute('aria-label', 'Annotation note');
+      const heading = document.createElement('div');
+      heading.className = 'nge-ann-note-pop-title';
+      heading.textContent = ngeNoteOf(annotation) ? 'Edit the note' : 'Add a note';
       const box = document.createElement('textarea');
-      box.className = 'nge-ann-note-editor';
-      box.rows = 2;
+      box.className = 'nge-ann-note-pop-text';
+      box.rows = 5;
       box.maxLength = 2000;
-      box.placeholder = 'Write a note. Enter saves, Esc cancels.';
+      box.placeholder = 'Write a note.';
+      box.setAttribute('aria-label', 'Note');
       box.value = ngeNoteOf(annotation);
-      if (noteText) noteText.style.display = 'none';
+      const hint = document.createElement('div');
+      hint.className = 'nge-ann-note-pop-hint';
+      hint.textContent = 'Enter saves, Shift+Enter starts a new line, Esc cancels.';
+      const actions = document.createElement('div');
+      actions.className = 'nge-ann-note-pop-actions';
+      const saveButton = document.createElement('button');
+      saveButton.type = 'button';
+      saveButton.className = 'nge-ann-note-pop-save';
+      saveButton.textContent = 'Save';
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.className = 'nge-ann-note-pop-cancel';
+      cancelButton.textContent = 'Cancel';
+      actions.append(saveButton, cancelButton);
+      dialog.append(heading, box, hint, actions);
+      backdrop.appendChild(dialog);
       let done = false;
       const close = (save: boolean) => {
         if (done) return;
         done = true;
+        backdrop.remove();
         const text = box.value.trim();
-        if (save && text !== ngeNoteOf(annotation)) {
-          const ref = state.source.getReference(annotation.id);
-          try {
-            const now = ref.value;
-            if (now) {
-              state.source.update(ref, {...now, description: text ? text : undefined});
-              state.source.commit(ref);
-            }
-          } finally {
-            ref.dispose();
+        if (!save || text === ngeNoteOf(annotation)) return;
+        const ref = state.source.getReference(annotation.id);
+        try {
+          const now = ref.value;
+          if (now) {
+            state.source.update(ref, {...now, description: text ? text : undefined});
+            state.source.commit(ref);
           }
-          return;  // the list draws the row again, with the note
+        } finally {
+          ref.dispose();
         }
-        box.remove();
-        if (noteText) noteText.style.display = '';
       };
-      for (const type of ['mousedown', 'click', 'dblclick', 'contextmenu', 'keyup', 'keypress', 'wheel']) {
-        box.addEventListener(type, event => event.stopPropagation());
+      // Keep every key and click inside the box, away from neuroglancer.
+      for (const type of ['mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu', 'keyup', 'keypress', 'wheel', 'pointerdown']) {
+        backdrop.addEventListener(type, event => event.stopPropagation());
       }
-      box.addEventListener('keydown', event => {
+      backdrop.addEventListener('keydown', event => {
         event.stopPropagation();
         if (event.key === 'Escape') { event.preventDefault(); close(false); }
-        else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); close(true); }
+        else if (event.key === 'Enter' && !event.shiftKey && event.target === box) { event.preventDefault(); close(true); }
       });
-      box.addEventListener('blur', () => close(true));
-      element.appendChild(box);
+      // A click outside the box saves what was written, as the old inline box
+      // did when it lost focus; the Save button does the same (Ames 2026-11-06).
+      backdrop.addEventListener('click', event => { if (event.target === backdrop) close(true); });
+      saveButton.addEventListener('click', () => close(true));
+      cancelButton.addEventListener('click', () => close(false));
+      document.body.appendChild(backdrop);
       box.focus();
       box.setSelectionRange(box.value.length, box.value.length);
     };
@@ -2489,7 +2519,6 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       description.classList.add('neuroglancer-annotation-description');
       description.textContent = ngeNoteOf(annotation);
       element.appendChild(description);
-      noteText = description;
     }
     icon.style.gridRow = `span ${numRows}`;
     // Added last and pinned to the first line: placed earlier, it sat in the

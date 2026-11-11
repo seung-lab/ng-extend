@@ -1,5 +1,5 @@
 /**
- * Tutorial 14, Annotations (Ames 2026-10-23, player report 220): make an
+ * Tutorial 15, Annotations (Ames 2026-10-23, player report 220): make an
  * annotation layer, recolor it, move through its points, right click to jump,
  * a second layer and switching back, the other tools and Size, then Find Path.
  * Eight boxes, kept short on purpose (Ames 2026-11-05: "how short can you make
@@ -16,7 +16,7 @@ import {
 } from "./tutorial-2";
 import imgNurroAtHome from './images/nurro-at-home600.png';
 
-export const ANNOTATIONS_TUTORIAL = 14;
+export const ANNOTATIONS_TUTORIAL = 15;
 
 const PART = "Annotations";
 /** The Sandbox cell Advanced Interface adds its first annotation layer on. */

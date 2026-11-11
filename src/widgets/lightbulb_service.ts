@@ -131,12 +131,96 @@ function buildFrozenQueryBody(table: string, rootId: string): string {
 const BACKOFF_MS = 2 * 60 * 1000;
 const liveDownUntil = new Map<string, number>();
 const tableDownUntil = new Map<string, number>();
-async function queryAnnotationsForRootId(
+/** The same question already on its way is shared, not asked again (Nseraf,
+ *  report 404: some 30 identical queries went out at once while the table was
+ *  failing, before the first answer could set the back off). At most a few
+ *  per table at a time; the rest wait, and find out from the first whether
+ *  the table is down. */
+const inFlight = new Map<string, Promise<any[] | null>>();
+const MAX_PER_TABLE = 3;
+const running = new Map<string, number>();
+const waiting = new Map<string, (() => void)[]>();
+async function slot(key: string): Promise<() => void> {
+  if ((running.get(key) ?? 0) >= MAX_PER_TABLE) await new Promise<void>(r => (waiting.get(key) ?? waiting.set(key, []).get(key)!).push(r));
+  running.set(key, (running.get(key) ?? 0) + 1);
+  return () => {
+    running.set(key, (running.get(key) ?? 1) - 1);
+    waiting.get(key)?.shift()?.();
+  };
+}
+/** Cells asked about within a moment of each other go to CAVE as one query
+ *  per table, not one each (Nseraf, 2026-11: hundreds of cells kept in
+ *  folders meant hundreds of queries every time the list was drawn). */
+const BATCH_MAX = 50;
+const BATCH_WAIT_MS = 25;
+const batches = new Map<string, Map<string, (rows: any[] | null) => void>>();
+function queryAnnotationsForRootId(
     caveServer: string, datastack: string,
     table: string, rootId: string): Promise<any[] | null> {
+  const ask = `${caveServer}|${datastack}|${table}|${rootId}`;
+  const had = inFlight.get(ask);
+  if (had) return had;
   const key = `${caveServer}|${datastack}|${table}`;
+  const p = new Promise<any[] | null>(resolve => {
+    let b = batches.get(key);
+    if (!b) {
+      const nb = new Map<string, (rows: any[] | null) => void>();
+      b = nb;
+      batches.set(key, nb);
+      setTimeout(() => { if (batches.get(key) === nb) void flushBatch(key, caveServer, datastack, table); }, BATCH_WAIT_MS);
+    }
+    b.set(rootId, resolve);
+    if (b.size >= BATCH_MAX) void flushBatch(key, caveServer, datastack, table);
+  }).finally(() => inFlight.delete(ask));
+  inFlight.set(ask, p);
+  return p;
+}
+async function flushBatch(key: string, caveServer: string, datastack: string, table: string) {
+  const b = batches.get(key);
+  if (!b) return;
+  batches.delete(key);
+  const ids = [...b.keys()];
+  const answers = new Map<string, any[] | null>();
+  const release = await slot(key);
+  try {
+    const got = await queryOnce(caveServer, datastack, table, ids);
+    if (got) {
+      const byRoot = new Map<string, any[]>();
+      const asked = new Set(ids);
+      let strays = 0;
+      for (const r of got.rows) {
+        const root = String(r?.pt_root_id ?? '');
+        if (!asked.has(root)) { strays++; continue; }
+        (byRoot.get(root) ?? byRoot.set(root, []).get(root)!).push(r);
+      }
+      for (const id of ids) {
+        const rows = byRoot.get(id) ?? [];
+        if (rows.length === 0 && strays > 0 && ids.length > 1) continue;  // asked alone below
+        if (ids.length === 1 && strays > 0) { answers.set(id, got.rows); continue; }
+        answers.set(id, rows.length === 0 && got.unknownIfEmpty ? null : rows);
+      }
+    } else ids.forEach(id => answers.set(id, null));
+  } catch { ids.forEach(id => answers.set(id, null)); } finally { release(); }
+  // CAVE filed some rows under another ID (a cell asked for by an older ID):
+  // the cells that got none are asked alone, so each still gets its own rows.
+  for (const id of ids) {
+    if (answers.has(id)) continue;
+    const release1 = await slot(key);
+    try {
+      const got = await queryOnce(caveServer, datastack, table, [id]);
+      answers.set(id, !got ? null : got.rows.length === 0 && got.unknownIfEmpty ? null : got.rows);
+    } catch { answers.set(id, null); } finally { release1(); }
+  }
+  for (const [id, resolve] of b) resolve(answers.get(id) ?? null);
+}
+async function queryOnce(
+    caveServer: string, datastack: string,
+    table: string, rootIds: string[]): Promise<{rows: any[]; unknownIfEmpty: boolean} | null> {
+  const key = `${caveServer}|${datastack}|${table}`;
+  const rootId = rootIds.join(',');
   if ((tableDownUntil.get(key) ?? 0) > Date.now()) return null;
   const nowIso = new Date().toISOString();
+  const liveWasDown = (liveDownUntil.get(key) ?? 0) > Date.now();
   // Live query — returns rows including post-materialization writes.
   if ((liveDownUntil.get(key) ?? 0) <= Date.now()) try {
     const res = await fetch(
@@ -148,12 +232,15 @@ async function queryAnnotationsForRootId(
       });
     if (res.ok) {
       const rows = await res.json();
-      console.info(`[lightbulb] live query ${table} → ${rows.length} rows`);
-      return rows;
+      console.info(`[lightbulb] live query ${table} (${rootIds.length} cells) → ${rows.length} rows`);
+      return {rows: Array.isArray(rows) ? rows : [], unknownIfEmpty: false};
     }
     if (res.status >= 500) liveDownUntil.set(key, Date.now() + BACKOFF_MS);
     console.warn(`[lightbulb] live query ${table} ${res.status} — falling back to materialized`);
   } catch (e) {
+    // Firefox reports a server error without its CORS headers as a network
+    // error (Nseraf, report 404): it is left alone for a while all the same.
+    liveDownUntil.set(key, Date.now() + BACKOFF_MS);
     console.warn(`[lightbulb] live query ${table} error — falling back to materialized:`, e);
   }
   // Fallback: materialized snapshot at the latest version.
@@ -169,15 +256,22 @@ async function queryAnnotationsForRootId(
       });
     if (res.ok) {
       const rows = await res.json();
-      console.info(`[lightbulb] materialized v${version} ${table} → ${rows.length} rows`);
-      return rows;
+      console.info(`[lightbulb] materialized v${version} ${table} (${rootIds.length} cells) → ${rows.length} rows`);
+      // The snapshot only knows the cells as they were when it was made. A
+      // piece cut or merged since has a new ID it has never heard of, so "no
+      // rows" there is "not known", not "no mark" (hi529, triage #451: after a
+      // cut while the live query was down, both pieces looked unproofread).
+      // Unknown is asked again shortly, and the mark shows once the live
+      // query answers.
+      return {rows: Array.isArray(rows) ? rows : [], unknownIfEmpty: liveWasDown || (liveDownUntil.get(key) ?? 0) > Date.now()};
     }
     if (res.status >= 500) {
       tableDownUntil.set(key, Date.now() + BACKOFF_MS);
       console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}; not asking this table again for 2 minutes`);
     } else console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}`);
   } catch (e) {
-    console.warn(`[lightbulb] materialized ${table} error:`, e);
+    tableDownUntil.set(key, Date.now() + BACKOFF_MS);
+    console.warn(`[lightbulb] materialized ${table} error; not asking this table again for 2 minutes:`, e);
   }
   return null;
 }
@@ -273,6 +367,7 @@ function setLocalAnnotation(key: string, data: Partial<{isComplete: boolean; cel
   const store = getLocalAnnotations();
   store[key] = { ...{isComplete: false, cellType: ''}, ...store[key], ...data };
   localStorage.setItem(LOCAL_ANNOTATION_KEY, JSON.stringify(store));
+  forgetCellStatuses();
 }
 
 /**
@@ -513,7 +608,38 @@ async function statusFromEditLog(rootId: string): Promise<CellStatus> {
   return status;
 }
 
-export async function getCellStatus(
+/** A cell's status is kept for a short while: the row's menu button, its
+ *  label and the side panel all ask about the same cell as the list is drawn
+ *  (Nseraf, 2026-11). Any mark saved from this browser clears it, and an
+ *  answer of "couldn't ask" is never kept. */
+const STATUS_FRESH_MS = 20000;
+const statusCache = new Map<string, {at: number; p: Promise<CellStatus | null>}>();
+function forgetCellStatuses() { statusCache.clear(); }
+/** Clears the kept statuses before and after a save, so no read made during
+ *  the save is kept as the answer afterwards. */
+function clearsStatuses<A extends any[], R>(f: (...a: A) => Promise<R>): (...a: A) => Promise<R> {
+  return async (...a: A) => {
+    forgetCellStatuses();
+    try { return await f(...a); } finally { forgetCellStatuses(); }
+  };
+}
+export function getCellStatus(
+    caveServer: string, rootId: string): Promise<CellStatus | null> {
+  const ds = getActiveDatasetConfig();
+  const k = `${caveServer}|${ds.datastack}|${ds.cellStatusTable}|${ds.cellTypeTable}|${rootId}`;
+  const hit = statusCache.get(k);
+  if (!hit || Date.now() - hit.at > STATUS_FRESH_MS) {
+    if (statusCache.size > 5000) statusCache.clear();
+    const entry = {at: Date.now(), p: getCellStatusFresh(caveServer, rootId)};
+    statusCache.set(k, entry);
+    entry.p.then(st => { if ((!st || st.unreachable) && statusCache.get(k) === entry) statusCache.delete(k); },
+                 () => { if (statusCache.get(k) === entry) statusCache.delete(k); });
+    return entry.p.then(st => st && {...st});
+  }
+  return hit.p.then(st => st && {...st});
+}
+
+async function getCellStatusFresh(
     caveServer: string, rootId: string): Promise<CellStatus | null> {
   const dsCfg = getActiveDatasetConfig();
   const {cellStatusTable, cellTypeTable, datastack, cellTypeSchema} = dsCfg;
@@ -655,11 +781,12 @@ async function crosshairProblem(rootId: string, alsoAccept: string[] = []): Prom
   const lineage = await ancestorAmong(at.root, [rootId, ...alsoAccept]);
   if (lineage) return '';
   if (lineage === undefined) return 'Could not check the crosshairs against this cell. Try again in a moment.';
-  const short = (id: string) => '…' + id.slice(-6);
-  return `The crosshairs are inside ${short(at.root)}, not this cell (${short(rootId)}). Move them into the cell, then mark it again.`;
+  // Celia's wording (2026-11-09), with the whole IDs.
+  return `The crosshairs are in the wrong cell (${at.root}). Move them into this cell (${rootId}), then mark it again.`;
 }
 
-export async function setCellComplete(
+export const setCellComplete = clearsStatuses(setCellCompleteNow);
+async function setCellCompleteNow(
     caveServer: string, rootId: string, complete: boolean,
     existingAnnotationId?: number,
     pointOverride?: [number, number, number],
@@ -841,7 +968,7 @@ export async function setCellComplete(
         return true;
       }
       if (!res) {
-        lastCompletionProblem = 'CAVE could not be reached, and the completion could not be kept to send later. Try again in a moment.';
+        lastCompletionProblem = 'The server could not be reached, and the completion could not be added to the queue. Try again in a moment.';
         return false;
       }
       const errText = await res.text().catch(() => '');
@@ -851,12 +978,12 @@ export async function setCellComplete(
       // through to "saved in this browser only": the menu said Proofread,
       // the completion was counted and the sheet was written, while CAVE and
       // every other browser still said In Progress (Krzysztof 2026-10-09).
-      lastCompletionProblem = `CAVE did not save this (error ${res.status}), so the cell is not marked. Try again in a moment.`;
+      lastCompletionProblem = `The server did not save (error ${res.status}), so the cell is not marked. Try again in a moment.`;
       return false;
     }
   } catch (e) {
     console.error('[lightbulb] setCellComplete — CAVE network error:', e);
-    lastCompletionProblem = 'CAVE could not be reached, so nothing was changed. Try again in a moment.';
+    lastCompletionProblem = 'The server could not be reached, so nothing was changed. Try again in a moment.';
     return false;
   }
 
@@ -963,7 +1090,8 @@ export async function listCaveCellTypes(): Promise<{
 
 /** Save a cell type at a point taken from the game's log, for a save CAVE
  *  never took. CAVE records whoever is signed in as the one who saved it. */
-export async function resendCellType(point: [number, number, number], cellType: string): Promise<{ ok: boolean; problem: string }> {
+export const resendCellType = clearsStatuses(resendCellTypeNow);
+async function resendCellTypeNow(point: [number, number, number], cellType: string): Promise<{ ok: boolean; problem: string }> {
   const cfg = getActiveDatasetConfig();
   const { caveServer, cellTypeTable, cellTypeSchema, alignedVolume } = cfg;
   if (!caveServer || !cellTypeTable || cfg.annotationLog || cfg.cellTypeReadOnly) return { ok: false, problem: 'This dataset takes no cell types in CAVE.' };
@@ -984,7 +1112,8 @@ export async function resendCellType(point: [number, number, number], cellType: 
 let lastCellTypeProblem = '';
 export function getLastCellTypeProblem(): string { return lastCellTypeProblem; }
 
-export async function saveCellType(
+export const saveCellType = clearsStatuses(saveCellTypeNow);
+async function saveCellTypeNow(
     caveServer: string, rootId: string, cellType: string,
     existingAnnotationId?: number,
     /** Set when the point is already known to be inside the cell. */
@@ -1132,7 +1261,7 @@ export async function saveCellType(
     // through to "saved in this browser only": the menu said Saved, the type
     // was logged and counted, and CAVE and every other browser had nothing
     // (the same fault completions had until 2026-10-09; Ames 2026-10-12).
-    lastCellTypeProblem = `CAVE did not save this (error ${res.status}), so the cell type is not saved. Try again in a moment.`;
+    lastCellTypeProblem = `The server did not save (error ${res.status}), so the cell type is not saved. Try again in a moment.`;
     return false;
   } catch (e) {
     console.error('[lightbulb] saveCellType — CAVE network error:', e);
@@ -1180,7 +1309,8 @@ if (typeof window !== 'undefined' && (window as any).ngeOutboxTest) {
  * a completion, with the label in it, until the table can be written.
  * True when it was recorded one way or the other.
  */
-export async function labelAxonComplete(caveServer: string, rootId: string, pt?: [number, number, number]): Promise<boolean> {
+export const labelAxonComplete = clearsStatuses(labelAxonCompleteNow);
+async function labelAxonCompleteNow(caveServer: string, rootId: string, pt?: [number, number, number]): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const pos = pt ?? getViewerPosition();
   let inCave = false;

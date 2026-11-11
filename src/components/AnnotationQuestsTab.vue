@@ -11,6 +11,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
+import { onTextEditAsked } from '../text_edit_links';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
@@ -19,12 +20,33 @@ import { mintShortStateLink } from '../util/state_link';
 import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
 import EditableText from './EditableText.vue';
+import QuestInstructions from './QuestInstructions.vue';
+import { sendWaitingReviews } from '../quest_review';
+import { startCiliaTutorial } from '../tutorial-cilia';
+import { supabase } from '../supabase';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { cellAtCrosshair } from '../util/crosshair_cell';
 import { ancestorAmong } from '../widgets/pcg_service';
 
 const backend = useProofreadingBackendStore();
+
+/** Admins: the reviews marked "Send Review" go out now (src/quest_review.ts). */
+const sendingReviews = ref(false);
+async function sendReviews() {
+  sendingReviews.value = true; error.value = ''; message.value = '';
+  try {
+    const out = await sendWaitingReviews();
+    const sent = out.results.filter(r => r.sent);
+    const left = out.results.filter(r => !r.sent).map(r => `${r.index || 'row ' + r.row} (${r.why})`);
+    message.value = !out.checked ? 'No reviews are marked Send Review.'
+      : `Sent ${sent.length} of ${out.checked}${sent.length ? ': ' + sent.map(r => r.index || 'row ' + r.row).join(', ') : ''}.${left.length ? ' Not sent: ' + left.join('; ') + '.' : ''}`;
+  } catch (e: any) {
+    error.value = e?.message || 'The reviews could not be sent.';
+  } finally {
+    sendingReviews.value = false;
+  }
+}
 const rows = ref<QuestRow[]>([]);
 const loading = ref(false);
 const error = ref('');
@@ -59,7 +81,10 @@ const statusHint = computed(() => QUEST_STATUS_GUIDE[form.value.status] || '');
 const atLimit = computed(() => mine.value.length >= QUEST_CLAIM_LIMIT);
 /** Cells this player has completed (Ames 2026-10-13: "a count of how many I
  *  have completed"), from the sheet rows that carry their name and a status. */
-const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r)).length);
+// A cell a reviewer sent back counts again once the player sends their
+// update (Celia 2026-11-06), as on the leaderboard and profile.
+const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && !r.held).length);
+const mineHeld = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && r.held).length);
 const available = computed(() => rows.value.filter(r => !r.annotator && !r.status));
 const taken = computed(() => rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)));
 const done = computed(() => rows.value.filter(isDone).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
@@ -77,7 +102,23 @@ async function load() {
   catch (e: any) { error.value = e?.message || String(e); }
   finally { loading.value = false; }
 }
-onMounted(() => { if (backend.userId) void load(); });
+onMounted(() => { if (backend.userId) void load().then(maybePlayTraining); });
+/** The first time a new player opens Cilia Quests, Cilia Quest Training
+ *  plays by itself (Ames 2026-11-10). Only for a player with no quest held
+ *  or done and no finished training, and once per browser. */
+const TRAINING_KEY = 'nge-cilia-training-autoplayed';
+async function maybePlayTraining() {
+  if (props.slim || error.value) return;
+  try { if (localStorage.getItem(TRAINING_KEY) === '1') return; } catch { return; }
+  if (mine.value.length || mineDone.value || mineHeld.value) return;
+  try {
+    const { data } = await supabase.from('tutorial_completions')
+      .select('tutorial').eq('user_id', backend.userId).eq('tutorial', 14).limit(1);
+    if (data?.length) return;
+  } catch { /* play it: the record could not be read */ }
+  try { localStorage.setItem(TRAINING_KEY, '1'); } catch { return; }
+  startTutorial();
+}
 
 /** "A5, OFF Starburst": the sheet's index and the cell's type, in the players' words. */
 function label(r: QuestRow) {
@@ -89,20 +130,39 @@ function label(r: QuestRow) {
  *  sentence on the centerline's keys is ours: the polyline tool is new here. */
 const QUEST_STEPS: string[] = [
   '<b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body, Daughter centriole, and Cilium centerline.</b>',
-  `Use <a href="${QUEST_GUIDE_URL}" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.` +
+  `New to Cilia Quests? <a href="#" data-nge-action="tutorial">Try Cilia Quest Training</a>: it walks you through a real example and checks your marks. ` +
+    `Use <a href="${QUEST_GUIDE_URL}" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.` +
     (QUEST_VIDEO_URL ? ` Check out this <a href="${QUEST_VIDEO_URL}" target="_blank" rel="noopener">training video</a> as well!` : ''),
   `Find the cilium, an appendage that projects from the cell's soma. Annotate its centerline, basal body, and daughter centriole in each of their respective layers. For the centerline, hold <b>Ctrl</b> and click along the cilium, then press <b>Enter</b>.`,
   `Some cells will not have a visible cilium. You may still be able to find their internal basal body and daughter centriole. <a href="#" data-nge-action="examples">Here's a reference</a> for a variety of cilia states you may encounter.`,
   'Press <b>Submit</b>, and choose a cilium status from the list. The lab will receive your view as a share link.',
   'You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.',
 ];
-function onQuestTextAction(name: string) { if (name === 'examples') void openQuestExamples(); }
-/** The Instructions box with the lab's steps (Ames 2026-10-13). */
+function onQuestTextAction(name: string) {
+  if (name === 'examples') void openQuestExamples();
+  if (name === 'tutorial') { showHelp.value = false; startTutorial(); }
+}
+/** The Cilia Quest tutorial (src/tutorial-cilia.ts, Ames 2026-11-10). */
+function startTutorial() {
+  nudging.value = false;
+  markIntroSeen();
+  // The library would sit over the tutorial's boxes; it opens again at the end.
+  document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
+  startCiliaTutorial();
+}
+/** The Instructions box with the lab's steps (Ames 2026-10-13), in a box of
+ *  its own with room for a picture since 2026-11-06 (QuestInstructions). */
 const showHelp = ref(false);
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts).
+let stopTextEdit: (() => void) | null = null;
+onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'quest.retina_cilia.steps') showHelp.value = true; }); });
+onUnmounted(() => stopTextEdit?.());
 /** The first time a player opens the tab, the Instructions button is lit
  *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
  *  browser: it plays one time and never loops. */
-const INTRO_KEY = 'nge-cilia-quest-intro-seen';
+// The glow moved to the Tutorial button (2026-11-10), under a new key, so
+// players who saw the Instructions glow see this one once too.
+const INTRO_KEY = 'nge-cilia-tutorial-intro-seen';
 const infoEl = ref<HTMLElement | null>(null);
 const nudging = ref(false);
 function introSeen(): boolean { try { return localStorage.getItem(INTRO_KEY) === '1'; } catch { return true; } }
@@ -276,7 +336,12 @@ async function letGo(r: QuestRow) {
  *  2026-10-13), so the share link opens on it. The sheet's ID may be older
  *  than the cell: an edited cell's current root is accepted when the sheet's
  *  ID is in its history. */
-const check = ref<{ busy: boolean; ok: boolean; message: string }>({ busy: false, ok: false, message: '' });
+const check = ref<{ busy: boolean; ok: boolean; message: string; other?: boolean }>({ busy: false, ok: false, message: '' });
+/** Crosshairs inside another segment are allowed with a reason in Notes
+ *  (Jingkai_Li, report 415: the daughter centriole was in another segment,
+ *  so the crosshairs on it never passed). Empty space still blocks. */
+const explained = computed(() => !!check.value.other && !!form.value.notes.trim());
+const canSubmit = computed(() => check.value.ok || explained.value);
 async function runCheck(r: QuestRow) {
   check.value = { busy: true, ok: false, message: 'Checking the crosshairs…' };
   try {
@@ -285,7 +350,7 @@ async function runCheck(r: QuestRow) {
     if (at.root === r.segmentId) { check.value = { busy: false, ok: true, message: 'The crosshairs are inside this cell.' }; return; }
     const hit = await ancestorAmong(at.root, [r.segmentId]);
     if (hit) { check.value = { busy: false, ok: true, message: `The crosshairs are inside this cell. It has been edited since the sheet was made, so its ID is now ${at.root}.` }; return; }
-    check.value = { busy: false, ok: false, message: `The crosshairs are inside ${at.root}, which is not this cell. Move them into the cell and check again.` };
+    check.value = { busy: false, ok: false, other: true, message: `The crosshairs are inside ${at.root}, not this cell. If that's on purpose, say why in Notes (for example, the daughter centriole is in another segment), then Submit.` };
   } catch (e: any) { check.value = { busy: false, ok: false, message: `Could not check the crosshairs: ${e?.message || e}` }; }
 }
 function startSubmit(r: QuestRow) {
@@ -307,7 +372,7 @@ async function send(r: QuestRow, e?: Event) {
   try {
     // The crosshairs may have moved since the check: check once more.
     await runCheck(r);
-    if (!check.value.ok) throw new Error(check.value.message);
+    if (!canSubmit.value) throw new Error(check.value.message);
     // The work is kept with the cell too, should it be needed again.
     if (questOnScreen(r.segmentId)) await saveQuestWork(r.segmentId);
     // The share link is the view as it is now, with the annotation layers.
@@ -342,22 +407,24 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
     <div v-if="!slim" class="nge-aq-head">
       <div class="nge-aq-titlerow">
         <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
-        <button ref="infoEl" class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp, 'nge-aq-info--nudge': nudging }" @click="toggleHelp" title="How to do a Cilia Quest">
-          <span class="nge-aq-info-i" aria-hidden="true">i</span><span class="nge-aq-info-word">Instructions</span>
-        </button>
+        <span class="nge-aq-titlebtns">
+          <button ref="infoEl" class="nge-aq-info nge-aq-info--tut" :class="{ 'nge-aq-info--nudge': nudging }" @click="startTutorial" title="Cilia Quest Training: learn on an example cell, with your marks checked">
+            <span class="nge-aq-info-i" aria-hidden="true">▶</span><span class="nge-aq-info-word">Training</span>
+          </button>
+          <button class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp }" @click="toggleHelp" title="How to do a Cilia Quest">
+            <span class="nge-aq-info-i" aria-hidden="true">i</span><span class="nge-aq-info-word">Instructions</span>
+          </button>
+        </span>
       </div>
       <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
-      <div v-if="showHelp" class="nge-aq-help">
-        <div class="nge-aq-help-head">
-          <span>How to do a Cilia Quest</span>
-          <button class="nge-aq-help-close" @click="showHelp = false" title="Close">×</button>
-        </div>
-        <EditableText text-key="quest.retina_cilia.steps" :original="QUEST_STEPS" list-class="nge-aq-help-steps" @action="onQuestTextAction" />
-      </div>
+      <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
+        <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Open the review in your notifications and send your update, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
         <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
+        <button v-if="backend.showAdminUi" class="nge-aq-btn" :disabled="sendingReviews" @click="sendReviews"
+                title="Admins: send every review marked Send Review in the sheet now. Pyr also does this at 8 am and 4 pm Eastern.">{{ sendingReviews ? 'Sending…' : 'Send waiting reviews now' }}</button>
       </div>
     </div>
 
@@ -410,7 +477,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
-              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !check.ok && !check.busy, 'nge-aq-form-msg--ok': check.ok }">
+              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
                 <span>{{ check.message }}</span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
@@ -419,7 +486,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !canSubmit || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
               </div>
             </div>
           </template>
@@ -474,6 +541,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <div class="nge-aq-row-info">
                   <div class="nge-aq-row-name">{{ label(r) }}</div>
                   <div class="nge-aq-row-meta">{{ r.status }}{{ r.annotator ? ', ' + (isMine(r) ? 'you' : r.annotator) : '' }}{{ r.date ? ', ' + r.date : '' }}</div>
+                  <div v-if="r.held && isMine(r)" class="nge-aq-row-held">A review is waiting for your update. Open it from your notifications.</div>
                 </div>
               </div>
               <div class="nge-aq-row-actions">
@@ -496,7 +564,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
-              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !check.ok && !check.busy, 'nge-aq-form-msg--ok': check.ok }">
+              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
                 <span>{{ check.message }}</span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
@@ -505,7 +573,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !canSubmit || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
               </div>
             </div>
           </template>
@@ -543,6 +611,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   background: rgba(126, 202, 255, 0.08); border: 1px solid rgba(126, 202, 255, 0.45);
   cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
+.nge-aq-titlebtns { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.nge-aq-info--tut .nge-aq-info-i { font-size: 8px; padding-left: 1px; }
 .nge-aq-info-i {
   width: 16px; height: 16px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
@@ -558,29 +628,6 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   100% { box-shadow: 0 0 10px rgba(126, 202, 255, 0.4); transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) { .nge-aq-info--nudge { animation: none; box-shadow: 0 0 0 2px rgba(126, 202, 255, 0.5); } }
-.nge-aq-help {
-  margin: 4px 0 2px;
-  padding: 10px 12px 8px;
-  border-radius: 10px;
-  background: rgba(66, 213, 236, 0.06);
-  border: 1px solid rgba(66, 213, 236, 0.28);
-  animation: nge-aq-help-in 0.2s ease-out both;
-}
-@keyframes nge-aq-help-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .nge-aq-help { animation: none; } }
-.nge-aq-help-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-  color: #7ee8ff; margin-bottom: 6px;
-}
-.nge-aq-help-close { background: none; border: none; color: #8aa; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
-.nge-aq-help-close:hover { color: #fff; }
-:deep(.nge-aq-help-steps) { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.5; color: #cfdcef; }
-:deep(.nge-aq-help-steps li) { margin: 4px 0; padding-left: 2px; }
-:deep(.nge-aq-help-steps li::marker) { color: #42d5ec; font-weight: 700; }
-:deep(.nge-aq-help-steps b) { color: #fff; font-weight: 600; }
-:deep(.nge-aq-help-steps a) { color: #7ecaff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-:deep(.nge-aq-help-steps a:hover) { color: #fff; }
 .nge-aq-section {
   padding: 10px 12px 4px;
   font-family: 'Orbitron', 'Inter', sans-serif;
@@ -621,6 +668,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-pip--done { background: #4af; }
 .nge-aq-row-info { min-width: 0; flex: 1; }
 .nge-aq-row-name { font-size: 15px; font-weight: 600; color: #e4e8f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nge-aq-row-held { font-size: 12px; color: #ffd27a; margin-top: 2px; }
+.nge-aq-tally--held b { color: #ffd27a; }
 .nge-aq-row-meta { font-size: 13px; color: #93a0b6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; align-items: center; }
 .nge-aq-saved--slim { align-items: center; margin-right: 6px; font-size: 12px; max-width: 160px; white-space: nowrap; }

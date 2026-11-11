@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getDatasetCaveConfig, isRegisteredDataset } from '../config';
 /**
  * DatasetSelectorPanel — lets users switch between known datasets at runtime.
  * Displays as a compact centred hologram panel with dataset cards.
@@ -13,6 +14,7 @@ import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
 import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests';
 import { useProofreadingBackendStore } from '../store';
 import { skipNextViewRestoreOffer } from '../util/view_autosave';
+import { basicsDone, askStartPlaying } from '../util/start_playing';
 import RequestAccessButton from './RequestAccessButton.vue';
 import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
@@ -49,7 +51,16 @@ onMounted(detectCurrentDataset);
 
 // ── Access (from CAVE): locked cards are greyed and do not switch ───────────
 onMounted(() => { loadDatasetPermissions(); });
-function startHere() {
+/** After Merge and Cut the Sandbox card's button is "Start playing": a
+ *  Sandbox cell of their own to edit (util/start_playing.ts). Before, it is
+ *  "Start here", the tutorial they are on. */
+const playing = computed(() => basicsDone());
+function startHere(ds: DatasetEntry) {
+  if (playing.value) {
+    askStartPlaying();
+    void openTask(ds, 'available');
+    return;
+  }
   emit('hide');
   document.dispatchEvent(new CustomEvent('nge:start-here'));
 }
@@ -159,6 +170,8 @@ const hasQuests = (ds: DatasetEntry) => canonicalDataset(segLayerName(ds)) === Q
  *  whatever CAVE says. Signed out, or before CAVE answers: no chips yet.
  *  Admins always. Sandbox gives every signed in account edit. */
 const canClaim = (ds: DatasetEntry) => !!backend.isAdmin || datasetAccess(ds.caveDataset) === 'edit';
+/** The Cell Library's name for a dataset's Available tab (Retina: BC Challenge). */
+const availableLabelOf = (ds: DatasetEntry) => (isRegisteredDataset(ds.id) && getDatasetCaveConfig(ds.id).availableLabel) || '';
 const showTasks = (ds: DatasetEntry) => canClaim(ds) && (!!ds.cellTasks || hasQuests(ds));
 
 // Your claims per dataset: one small read when the window opens (a player
@@ -312,15 +325,15 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                   <!-- The Sandbox: one way in, the tutorial you are on (Ames 2026-10-28). -->
                   <div v-if="ds.section === 'sandbox'" class="nge-ds-tasks">
-                    <button class="nge-ds-task" @click.stop="startHere"
-                            title="Open the tutorial you are on, or the next one">
-                      Start here<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    <button class="nge-ds-task" @click.stop="startHere(ds)"
+                            :title="playing ? 'Takes you to a Sandbox cell of your own to proofread' : 'Open the tutorial you are on, or the next one'">
+                      {{ playing ? 'Start playing' : 'Start here' }}<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
                     </button>
                   </div>
                   <div v-else-if="showTasks(ds)" class="nge-ds-tasks">
                     <button v-if="ds.cellTasks" class="nge-ds-task" @click.stop="openTask(ds, 'available')"
-                            :title="'Open the Cell Library on the cells nobody has claimed yet' + (ds.id === currentDatasetId ? '' : ', after switching here')">
-                      Available cells<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                            :title="(availableLabelOf(ds) ? 'Open the Cell Library on the bipolar cells nobody has claimed yet' : 'Open the Cell Library on the cells nobody has claimed yet') + (ds.id === currentDatasetId ? '' : ', after switching here')">
+                      {{ availableLabelOf(ds) || 'Available cells' }}<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
                     </button>
                     <button v-if="hasQuests(ds)" class="nge-ds-task" @click.stop="openTask(ds, 'quests')"
                             :title="'Open the Quests: mark the cilia on a starburst amacrine cell' + (ds.id === currentDatasetId ? '' : ', after switching here')">

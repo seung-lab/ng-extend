@@ -5,7 +5,9 @@
  * out of storage"; 14 days, once screenshots were also stored compressed).
  *
  * Images admins sent in replies (admin-uploads/reply-images/) go after 7
- * days, see cleanReplyImages below.
+ * days once their report is closed, see cleanReplyImages below. Files on To do
+ * cards go 7 days after the card is Done, see cleanTodoFiles, and so do
+ * pictures on them, see cleanTodoImages. Cards themselves are never deleted.
  *
  * Only the folder admin-uploads/help-screenshots/ is ever touched. Achievement
  * art, notification images and blog images live in other folders.
@@ -58,10 +60,10 @@ async function allRows(table, query = 'select=*', { optional = false } = {}) {
 const PATH = new RegExp(`${FOLDER}/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+`, 'g');
 const pathsIn = value => (JSON.stringify(value ?? '').match(PATH) || []);
 
-async function listFolder(prefix) {
+async function listFolder(prefix, bucket = BUCKET) {
   const out = [];
   for (let offset = 0; ; offset += 1000) {
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${bucket}`, {
       method: 'POST', headers: HEADERS, body: JSON.stringify({ prefix, limit: 1000, offset, sortBy: { column: 'name', order: 'asc' } }),
     });
     if (!res.ok) throw new Error(`could not list ${prefix}: ${res.status} ${(await res.text()).slice(0, 200)}`);
@@ -160,7 +162,19 @@ async function cleanReplyImages() {
       if (f.id) files.push({ path: `${REPLY_FOLDER}/${owner.name}/${f.name}`, created: f.created_at, size: f.metadata?.size || 0 });
     }
   }
-  const doomed = files.filter(f => (now - new Date(f.created).getTime()) / DAY > REPLY_IMAGE_DAYS);
+  // Only on closed reports (Ames 2026-11-09: "make sure the auto delete after
+  // 7 days is only on closed reports"). An image on a triage card that is not
+  // done or dismissed stays, whatever its age.
+  const triage = await allRows('feedback_triage', 'select=id,status,feedback_log', { optional: true });
+  const keepOpen = new Set();
+  for (const c of triage) {
+    if (c.status === 'done' || c.status === 'dismissed') continue;
+    for (const e of Array.isArray(c.feedback_log) ? c.feedback_log : []) if (e && e.image_url) keepOpen.add(e.image_url);
+  }
+  const urlOf = p => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${p}`;
+  const held = files.filter(f => keepOpen.has(urlOf(f.path))).length;
+  const doomed = files.filter(f => (now - new Date(f.created).getTime()) / DAY > REPLY_IMAGE_DAYS && !keepOpen.has(urlOf(f.path)));
+  console.log(`[cleanup] ${held} reply images kept on open reports`);
   console.log(`[cleanup] ${files.length} reply images stored; ${DELETE ? 'deleting' : 'would delete'} ${doomed.length} older than ${REPLY_IMAGE_DAYS} days, ${mb(doomed.reduce((a, f) => a + f.size, 0))}`);
   if (!DELETE || !doomed.length) return;
 
@@ -185,7 +199,7 @@ async function cleanReplyImages() {
 
   // The triage card's thread: "Image removed after 7 days".
   let threads = 0;
-  for (const c of await allRows('feedback_triage', 'select=id,feedback_log', { optional: true })) {
+  for (const c of triage) {
     const log = Array.isArray(c.feedback_log) ? c.feedback_log : [];
     if (!log.some(e => e && urls.has(e.image_url))) continue;
     const next = log.map(e => (e && urls.has(e.image_url) ? { ...e, image_url: null, image_removed: true } : e));
@@ -195,5 +209,120 @@ async function cleanReplyImages() {
   console.log(`[cleanup] marked ${threads} triage threads`);
 }
 
-// Player screenshots first, then reply images; one failing stops the run.
-main().then(cleanReplyImages).catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });
+// ── Files on To do cards (Ames 2026-11-09: "delete files after 7 days") ──
+// admin-files/todo-files/<owner>/<id>/<name>. Every file older than
+// TODO_FILE_DAYS on a card Done for TODO_FILE_DAYS is deleted, and its link on the card stays, greyed, as
+// "name (deleted after 7 days)" (TodoBoard.vue shows such a link as gone).
+const FILE_BUCKET = 'admin-files';
+const FILE_FOLDER = 'todo-files';
+const TODO_FILE_DAYS = Number(process.env.TODO_FILE_DAYS || 7);
+const GONE = ' (deleted after 7 days)';
+
+async function cleanTodoFiles() {
+  const files = [];
+  let owners;
+  try { owners = await listFolder(FILE_FOLDER, FILE_BUCKET); }
+  catch (e) { console.log(`[cleanup] no To do files to look at (${e.message.slice(0, 80)})`); return; }
+  for (const owner of owners) {
+    if (owner.id) continue;
+    for (const dir of await listFolder(`${FILE_FOLDER}/${owner.name}`, FILE_BUCKET)) {
+      if (dir.id) continue;
+      for (const f of await listFolder(`${FILE_FOLDER}/${owner.name}/${dir.name}`, FILE_BUCKET)) {
+        if (f.id) files.push({ path: `${FILE_FOLDER}/${owner.name}/${dir.name}/${f.name}`, created: f.created_at, size: f.metadata?.size || 0 });
+      }
+    }
+  }
+  // Only on closed cards (Ames 2026-11-09: "only on closed reports"): a file
+  // goes once its card has been Done for TODO_FILE_DAYS. A file no card links
+  // to any more goes after TODO_FILE_DAYS.
+  const base = `${SUPABASE_URL}/storage/v1/object/public/${FILE_BUCKET}/`;
+  const pathOf = url => { if (!url.startsWith(base)) return ''; try { return decodeURIComponent(url.slice(base.length).split('?')[0]); } catch { return ''; } };
+  const todoCards = await allRows('admin_todos', 'select=id,list,done_at,links');
+  const cardOf = new Map();
+  for (const c of todoCards) for (const l of Array.isArray(c.links) ? c.links : []) { const p = l && pathOf(String(l.url || '')); if (p) cardOf.set(p, c); }
+  const old = t => t && (now - new Date(t).getTime()) / DAY > TODO_FILE_DAYS;
+  const closedLongEnough = c => c.list === 'done' && old(c.done_at);
+  const doomed = files.filter(f => old(f.created) && (!cardOf.has(f.path) || closedLongEnough(cardOf.get(f.path))));
+  console.log(`[cleanup] ${files.filter(f => cardOf.has(f.path) && !closedLongEnough(cardOf.get(f.path))).length} To do files kept on open cards`);
+  console.log(`[cleanup] ${files.length} To do files stored; ${DELETE ? 'deleting' : 'would delete'} ${doomed.length} older than ${TODO_FILE_DAYS} days, ${mb(doomed.reduce((a, f) => a + f.size, 0))}`);
+  if (!DELETE || !doomed.length) return;
+  const gone = [];
+  for (let i = 0; i < doomed.length; i += 100) {
+    const batch = doomed.slice(i, i + 100).map(f => f.path);
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${FILE_BUCKET}`, { method: 'DELETE', headers: HEADERS, body: JSON.stringify({ prefixes: batch }) });
+    if (!res.ok) throw new Error(`To do file delete failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    gone.push(...batch);
+  }
+  console.log(`[cleanup] deleted ${gone.length} To do files`);
+  const goneSet = new Set(gone);
+  let marked = 0;
+  for (const c of todoCards) {
+    const links = Array.isArray(c.links) ? c.links : [];
+    if (!links.some(l => l && goneSet.has(pathOf(String(l.url || ''))))) continue;
+    const next = links.map(l => (l && goneSet.has(pathOf(String(l.url || ''))) && !String(l.label || '').endsWith(GONE)
+      ? { ...l, label: String(l.label || 'File').slice(0, 80 - GONE.length) + GONE } : l));
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/admin_todos?id=eq.${c.id}`, { method: 'PATCH', headers: HEADERS, body: JSON.stringify({ links: next }) });
+    if (res.ok) marked++; else console.warn(`[cleanup] could not mark To do card ${c.id}: ${res.status}`);
+  }
+  console.log(`[cleanup] marked ${marked} To do cards`);
+}
+
+// ── Pictures on To do cards (Ames 2026-11-09: "keep the cards just delete
+// images and files") ──
+// admin-uploads/todo-images/<owner>/<id>.<ext>. A picture goes once it is
+// older than TODO_FILE_DAYS and every card showing it is closed: To do cards
+// Done for TODO_FILE_DAYS, triage cards done or dismissed. The cards stay. A
+// picture in a card's pictures is taken off it; one written into notes or a
+// comment becomes the words "(picture deleted after 7 days)".
+const IMG_FOLDER = 'todo-images';
+const IMG_GONE = '(picture deleted after 7 days)';
+
+async function cleanTodoImages() {
+  const files = [];
+  for (const owner of await listFolder(IMG_FOLDER)) {
+    if (owner.id) continue;
+    for (const f of await listFolder(`${IMG_FOLDER}/${owner.name}`)) {
+      if (f.id) files.push({ path: `${IMG_FOLDER}/${owner.name}/${f.name}`, created: f.created_at, size: f.metadata?.size || 0 });
+    }
+  }
+  const urlOf = p => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${p}`;
+  const old = t => t && (now - new Date(t).getTime()) / DAY > TODO_FILE_DAYS;
+  const rows = [
+    ...(await allRows('admin_todos', 'select=*')).map(r => ({ table: 'admin_todos', r, closed: r.list === 'done' && old(r.done_at) })),
+    ...(await allRows('feedback_triage', 'select=*', { optional: true })).map(r => ({ table: 'feedback_triage', r, closed: r.status === 'done' || r.status === 'dismissed' })),
+  ].map(x => ({ ...x, json: JSON.stringify(x.r) }));
+  const users = f => rows.filter(x => x.json.includes(f.path));
+  const held = files.filter(f => users(f).some(x => !x.closed)).length;
+  const doomed = files.filter(f => old(f.created) && users(f).every(x => x.closed));
+  console.log(`[cleanup] ${held} To do pictures kept on open cards`);
+  console.log(`[cleanup] ${files.length} To do pictures stored; ${DELETE ? 'deleting' : 'would delete'} ${doomed.length}, ${mb(doomed.reduce((a, f) => a + f.size, 0))}`);
+  if (!DELETE || !doomed.length) return;
+  const gone = [];
+  for (let i = 0; i < doomed.length; i += 100) {
+    const batch = doomed.slice(i, i + 100).map(f => f.path);
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, { method: 'DELETE', headers: HEADERS, body: JSON.stringify({ prefixes: batch }) });
+    if (!res.ok) throw new Error(`To do picture delete failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    gone.push(...batch);
+  }
+  console.log(`[cleanup] deleted ${gone.length} To do pictures`);
+  const goneUrls = gone.map(urlOf);
+  let marked = 0;
+  for (const x of rows) {
+    if (!gone.some(p => x.json.includes(p))) continue;
+    const change = {};
+    for (const [k, v] of Object.entries(x.r)) {
+      const s = JSON.stringify(v);
+      if (!gone.some(p => s.includes(p))) continue;
+      if (k === 'images' && Array.isArray(v)) { change[k] = v.filter(u => !goneUrls.includes(String(u && (u.url || u)))); continue; }
+      let t = s;
+      for (const u of goneUrls) t = t.split(u).join(IMG_GONE);
+      change[k] = JSON.parse(t);
+    }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${x.table}?id=eq.${x.r.id}`, { method: 'PATCH', headers: HEADERS, body: JSON.stringify(change) });
+    if (res.ok) marked++; else console.warn(`[cleanup] could not mark ${x.table} ${x.r.id}: ${res.status}`);
+  }
+  console.log(`[cleanup] marked ${marked} cards`);
+}
+
+// Player screenshots first, then reply images, then To do files and pictures; one failing stops the run.
+main().then(cleanReplyImages).then(cleanTodoFiles).then(cleanTodoImages).catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });

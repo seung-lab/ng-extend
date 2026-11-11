@@ -12,15 +12,18 @@
  */
 import { ref, onMounted } from 'vue';
 import AdminHub from 'components/AdminHub.vue';
+import AccessHub from 'components/AccessHub.vue';
 import { useProofreadingBackendStore } from '../store';
 import { caveToken } from '../secure_write';
 
 const backend = useProofreadingBackendStore();
 const state = ref<'checking' | 'ready' | 'signedOut'>('checking');
 const gameUrl = `${window.location.origin}${window.location.pathname}`;
+// "?triage=access": the Access page, everyone step by step (Ames 2026-11-09).
+const view = (() => { try { return new URLSearchParams(window.location.search).get('triage'); } catch { return null; } })();
 
 onMounted(async () => {
-  document.title = 'EyeWire II · Triage';
+  document.title = view === 'access' ? 'Pyr · Access' : 'EyeWire II · Triage';
   const token = caveToken();
   if (!token) { state.value = 'signedOut'; return; }
   // The name shown on your decisions ("approved · Amy Sterling").
@@ -42,9 +45,10 @@ onMounted(async () => {
 
 <template>
   <div class="nge-triage-page">
-    <AdminHub v-if="state === 'ready'" initial-sub-tab="triage" standalone />
+    <AccessHub v-if="state === 'ready' && view === 'access'" />
+    <AdminHub v-else-if="state === 'ready'" initial-sub-tab="triage" standalone />
     <div v-else class="nge-triage-page-msg">
-      <template v-if="state === 'checking'">Opening the triage board…</template>
+      <template v-if="state === 'checking'">{{ view === 'access' ? 'Opening the Access page…' : 'Opening the triage board…' }}</template>
       <template v-else>
         <div class="nge-triage-page-title">Sign in to EyeWire II first</div>
         <div>The triage board uses the sign-in from the game in this browser.</div>

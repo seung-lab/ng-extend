@@ -34,14 +34,14 @@ export function caveToken(): string | null {
 export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update' | 'triage.release' | 'triage.note'
-  | 'todo.list' | 'todo.save' | 'todo.comment' | 'todo.delete' | 'todo.key' | 'todo.keyStatus' | 'todo.follow' | 'todo.commentEdit' | 'todo.helpers'
+  | 'todo.list' | 'todo.save' | 'todo.comment' | 'todo.delete' | 'todo.key' | 'todo.keyStatus' | 'todo.follow' | 'todo.commentEdit' | 'todo.helpers' | 'todo.seen' | 'todo.react'
   | 'pilot.task' | 'pilot.practice' | 'quest.admin' | 'pilot.status' | 'activity.log' | 'activity.visit'
   | 'reply.ask' | 'reply.send' | 'reply.console'
   | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon' | 'test.tries' | 'test.try' | 'test.queueJoin' | 'test.queueLeave' | 'test.queueRemove'
   | 'access.betaStatus' | 'access.beta' | 'access.welcomeEmail' | 'access.linkInvite' | 'access.grantLines' | 'access.profileAccess'
   | 'access.datasetStatus' | 'access.dataset' | 'access.datasetList' | 'access.datasetDecide'
-  | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide' | 'access.reset'
+  | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide' | 'access.reset' | 'access.readGrantedBells'
   | 'notification.self' | 'notification.helpReply' | 'help.dropReminder' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin'
   | 'hunt.current' | 'hunt.submit' | 'hunt.list' | 'hunt.read' | 'hunt.save' | 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.award' | 'hunt.rescore'
   | 'hunt.notes' | 'hunt.test' | 'hunt.test_drop' | 'hunt.drop' | 'hunt.start' | 'hunt.duplicate';
