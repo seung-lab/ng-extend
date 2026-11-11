@@ -552,6 +552,7 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     width: '460px',
     html: `When you submit a quest, you also pick a <strong>status</strong>: one line that tells the lab what you found. Not every cell has a cilium you can see, and the status says so.
 <ul class="nge-cq-statuses">${STATUS_LIST.map(s => `<li><strong>${s}</strong>: ${QUEST_STATUS_GUIDE[s]}</li>`).join('')}</ul>
+<p>See real examples of each one in Celia's <a href="https://connectome.quest/blog/cilia-status-guide/" target="_blank" rel="noopener">Cilia Status Guide</a>.</p>
 <p>Next, two cells from the lab with no cilium. Pick the status that fits each.</p>`,
   },
   {
