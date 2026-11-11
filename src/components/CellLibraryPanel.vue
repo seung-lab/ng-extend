@@ -3312,7 +3312,7 @@ const panelStyle = computed(() => ({
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
       <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" role="status" aria-live="polite" @click="startNote = ''">
@@ -5169,13 +5169,14 @@ const panelStyle = computed(() => ({
   gap: 6px;
 }
 .nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; display: flex !important; align-items: center; width: 100%; }
-/* The fold-away caret, like the library's own (Ames 2026-11-10: "a collapse carrot on the other side"). */
-.ng-extend .nge-cl-complete-title .nge-cl-complete-x { margin: 0 0 0 auto !important; width: 24px !important; height: 24px !important; min-width: 0 !important; padding: 0 !important;
-  display: inline-grid !important; place-items: center; border: 1px solid rgba(100, 200, 255, 0.25) !important; border-radius: 50% !important;
-  background: rgba(10, 20, 35, 0.6) !important; color: #8cf !important; cursor: pointer; box-shadow: none !important; }
-.ng-extend .nge-cl-complete-title .nge-cl-complete-x:hover { color: #eef !important; border-color: rgba(100, 200, 255, 0.6) !important; background: rgba(100, 200, 255, 0.12) !important; }
-.nge-cl-btn--skip { border-color: rgba(62, 236, 190, 0.5) !important; color: #9fe8d4 !important; }
-.nge-cl-btn--skip:hover:not(:disabled) { background: rgba(62, 236, 190, 0.14) !important; }
+/* The fold-away arrow: the heading's own blue, no box (Ames 2026-11-10). */
+.nge-cl-complete-title > button.nge-cl-complete-x { margin: 0 0 0 auto; width: 26px; height: 26px; min-width: 0; padding: 0;
+  display: inline-grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #8cf; cursor: pointer; box-shadow: none; }
+.nge-cl-complete-title > button.nge-cl-complete-x svg { width: 15px; height: 15px; }
+.nge-cl-complete-title > button.nge-cl-complete-x:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
+/* Skip: a plain button; Complete is the one that stands out. */
+.nge-cl-btn--skip { border-color: rgba(140, 160, 200, 0.3); color: #b4c0d6; }
+.nge-cl-btn--skip:hover:not(:disabled) { background: rgba(140, 160, 200, 0.12); color: #e4e8f2; }
 .nge-cl-complete-label { color: #9ab; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
 .nge-cl-complete-statuses { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-cl-complete-status {
@@ -6691,6 +6692,20 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 .nge-cl-btn.nge-cl-slim-claim:disabled { box-shadow: none; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
+/* The slim bar, easier to read (Ames 2026-11-10: "TINY text"): bigger name
+   and buttons, all one shape; no jump arrow (you are on the cell already);
+   Complete in green, the thing to do. */
+.nge-cl-panel--slim .nge-cl-row-name { font-size: 17px; }
+.nge-cl-panel--slim .nge-cl-row-meta { font-size: 13px; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn { font-size: 14px; padding: 7px 14px; border-radius: 6px; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn--jump { display: none; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn--complete { color: #d6ffe6; border-color: rgba(61, 220, 132, 0.6); background: rgba(61, 220, 132, 0.18); }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn--complete:hover { background: rgba(61, 220, 132, 0.3); }
+/* Cilia Quest's slim bar: its row starts after the arrow, not under it, and
+   the arrow is centered when the bar holds one line. */
+.nge-cl-panel--slimquest .nge-cl-list { padding-left: 46px; }
+.nge-cl-panel--slim.nge-cl-panel--slimquest .nge-cl-list > :not(.nge-cl-slim-expand) { margin-left: 0; }
+.nge-cl-panel--slimquest .nge-cl-list:not(:has(.nge-aq-form)) > .nge-cl-slim-expand { top: 50%; transform: translateY(-50%); }
 /* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
 .nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
 .nge-cl-panel--slim .nge-cl-row .nge-cl-pip { display: none; }

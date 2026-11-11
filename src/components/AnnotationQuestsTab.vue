@@ -120,15 +120,20 @@ async function playNow() {
   if (r) { await take(r); if (mine.value.some(m => m.segmentId === r.segmentId)) landed('Your new quest cell', r); }
   else message.value = 'No quest cells are open right now. Try mapping instead.';
 }
+/** While Skip hands one cell back and takes the next, the bar says so. */
+const skippingQuest = ref(false);
 async function playSkip(which?: QuestRow) {
-  if (busy.value) return;
-  const r = which ?? mine.value.find(isActive) ?? mine.value[0];
-  if (r) { skippedHere.add(r.segmentId); await letGo(r); }
-  const rest = mine.value[0];
-  if (rest) { await openCell(rest); landed('Your next quest cell', rest); return; }
-  const next = nextOpen();
-  if (next) { await take(next); if (mine.value.some(m => m.segmentId === next.segmentId)) landed('Your new quest cell', next); }
-  else message.value = 'No more quest cells are open right now.';
+  if (busy.value || skippingQuest.value) return;
+  skippingQuest.value = true;
+  try {
+    const r = which ?? mine.value.find(isActive) ?? mine.value[0];
+    if (r) { skippedHere.add(r.segmentId); await letGo(r); }
+    const rest = mine.value[0];
+    if (rest) { await openCell(rest); landed('Your next quest cell', rest); return; }
+    const next = nextOpen();
+    if (next) { await take(next); if (mine.value.some(m => m.segmentId === next.segmentId)) landed('Your new quest cell', next); }
+    else message.value = 'No more quest cells are open right now.';
+  } finally { skippingQuest.value = false; }
 }
 /** The "Teleport complete" flash over the view (CellLibraryPanel shows it). */
 function landed(title: string, r: QuestRow) {
@@ -438,7 +443,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div v-if="loading && !rows.length" class="nge-aq-empty">Reading the quest sheet…</div>
       <template v-else-if="rows.length">
         <!-- Yours: taken, not yet submitted -->
-        <div v-if="slim && !mineShown.length" class="nge-aq-empty nge-aq-empty--tight">No quest cell of yours yet. Open the full view to claim one.</div>
+        <div v-if="slim && !mineShown.length" class="nge-aq-empty nge-aq-empty--tight">{{ skippingQuest ? 'Finding your next cell…' : 'No quest cell of yours yet. Open the full view to claim one.' }}</div>
         <template v-if="mineShown.length">
           <div v-if="!slim" class="nge-aq-section">Yours</div>
           <template v-for="r in mineShown" :key="r.segmentId">
@@ -461,11 +466,12 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
-                <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
+                <!-- One "go to it" button, Open (Ames 2026-11-10: "why is there a jump and an open button?"),
+                     then Skip (or Release), then Submit last, in green. -->
                 <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
-                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
                 <button v-if="play.on !== 'quests'" class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
-                <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
+                <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy || skippingQuest" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
+                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
@@ -699,7 +705,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-btn--submit:hover { background: rgba(68, 170, 255, 0.12); }
 .nge-aq-btn--submit-open { background: rgba(68, 170, 255, 0.16); border-color: rgba(68, 170, 255, 0.55); }
 .nge-aq-btn--release { border-color: rgba(255, 170, 68, 0.2); color: #a86; }
-.nge-aq-btn--skip { border-color: rgba(62, 236, 190, 0.45); color: #9fe8d4; }
+.nge-aq-btn--skip { border-color: rgba(140, 160, 200, 0.3); color: #b4c0d6; }
+.nge-aq-btn--skip:hover:not(:disabled) { background: rgba(140, 160, 200, 0.12); color: #e4e8f2; }
+/* Submit: green, the thing to do (Ames 2026-11-10). */
+.nge-aq-btn--submit, .nge-aq-btn--submit-open { color: #d6ffe6; border-color: rgba(61, 220, 132, 0.6); background: rgba(61, 220, 132, 0.18); }
+.nge-aq-btn--submit:hover { background: rgba(61, 220, 132, 0.3); }
 .nge-aq-btn--release:hover:not(:disabled) { background: rgba(255, 170, 68, 0.08); }
 .nge-aq-btn--send { border-color: rgba(68, 170, 255, 0.55); color: #fff; background: rgba(68, 170, 255, 0.2); }
 .nge-aq-btn--send:hover:not(:disabled) { background: rgba(68, 170, 255, 0.3); }
