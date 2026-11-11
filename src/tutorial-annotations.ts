@@ -14,6 +14,7 @@ import {
   advance, classicLayers, findPathStep, MIDDLE, nextWhenAnnotationLayerAdded,
   OVER_3D, SELECT_CLICK, waitForAction,
 } from "./tutorial-2";
+import { stopWatching } from "./tutorial-3";
 import imgNurroAtHome from './images/nurro-at-home600.png';
 
 export const ANNOTATIONS_TUTORIAL = 15;
@@ -99,6 +100,15 @@ function viewOnAMark(): boolean {
   });
 }
 
+/** Merge or Cut mode left on would take the tutorial's Ctrl+clicks as edit
+ *  points, so they go off as it starts (as tutorial-cilia.ts toolsOff). */
+function toolsOff() {
+  stopWatching();
+  const v = viewer();
+  try { v?.globalToolBinder?.activeTool_?.cancel?.(); } catch { /* none */ }
+  try { v?.toolBinder?.activeTool_?.cancel?.(); } catch { /* none */ }
+}
+
 /** Counts the presses of ‹ › and right clicks (or ↗ jumps) on list rows, from
  *  the moment it is called. The panel's own handlers stop the events, so these
  *  listen first, on the way down. */
@@ -148,7 +158,7 @@ Annotations are your own marks on a cell: points, lines and shapes. They live in
     position: { element: ".neuroglancer-layer-add-button", side: "bottom", offset: { x: 0, y: 7 } },
     highlight: true,
     state: START_VIEW,
-    onEnter: nextWhenAnnotationLayerAdded,
+    onEnter() { toolsOff(); nextWhenAnnotationLayerAdded(); },
   },
   // Naming the layer (Ames 2026-11-10: "shouldn't it ask me to rename the
   // layer earlier on?"). Any new name counts.
