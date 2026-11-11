@@ -31,7 +31,7 @@
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
 import {getNgeMeshTint, ngeMeshTintChanged, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
-import {mat4} from 'neuroglancer/util/geom';
+import {mat4, quat} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
 import {cameraAxes} from './starship';
@@ -927,7 +927,7 @@ function travelS(pre: string, post: string, fallback: number): number {
  *  two-state light said go while the pulse was still in flight, a trap, and
  *  flipped four times a cycle.) */
 function updateGoWait() {
-  if (!level.gate || !level.coach.go || now < coachHoldUntil) return;
+  if (phase !== 'playing' || !level.gate || !level.coach.go || now < coachHoldUntil) return;
   const gate = cells.get(level.gate.cell);
   const target = cells.get(level.targets[0]);
   if (!gate || !target) return;
@@ -1218,8 +1218,31 @@ function demoPulse(path: V3[], seconds: number) {
   sparks.push({r: route(path), start: now, end: now + seconds, inhibitory: false, conn: NO_CONN});
 }
 /** What the tour clears between steps: labels, lit cells, the ship's visit, the camera. */
-function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); }
-const TOUR: TourStep[] = [
+/** The tour's slow turn around a cell: radians a second about the view's up. */
+let orbit = 0;
+function stepOrbit(dt: number, cam: {right: V3; up: V3; toEye: V3}) {
+  if (!orbit) return;
+  const nm = nmPerUnit(), o = viewerNow()?.perspectiveNavigationState?.pose?.orientation;
+  if (!nm || !o?.orientation) return;
+  const axis = norm([cam.up[0] / nm[0], cam.up[1] / nm[1], cam.up[2] / nm[2]]);
+  const r = quat.setAxisAngle(quat.create(), axis, orbit * dt);
+  quat.multiply(o.orientation, r, o.orientation);
+  quat.normalize(o.orientation, o.orientation);
+  o.changed.dispatch();
+}
+/** The cells the tour has faded, to look at one. */
+let tourDim = new Set<string>();
+function dimOthers(key: string) {
+  for (const c of cells.values()) if (c.shown && c.key !== key) { tourDim.add(c.key); paint(c, true); }
+}
+function undimAll() {
+  for (const k of tourDim) { const c = cells.get(k); if (c?.shown && now >= c.hushedUntil) paint(c, false); }
+  tourDim.clear();
+}
+function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); }
+let tourSteps: TourStep[] = [];
+const TOURS: Record<number, TourStep[]> = {};
+TOURS[0] = [
   {kicker: 'Neuron 101', text: 'Dendrites listen. The cell body decides. The axon fires.', sub: 'An action potential runs one way: in through the dendrites, out along the axon.',
     play: async alive => {
       const t = cells.get('T');
@@ -1276,7 +1299,41 @@ const TOUR: TourStep[] = [
     play: async alive => { await sleep(300); if (alive()) scan('E2'); }},
   {kicker: 'Ready', text: 'Fire the gold cell three times: E1 twice, quickly, each time.'},
 ];
-function showTour() {
+/* Level 2 (Ames 2026-11-11: "each level that introduces more has a cinematic
+   tour: here it should fly to Martinotti, fade others, Martinotti spinning,
+   loads in some stats in the ship hologram, any visualizations on cell;
+   animate the gold cell firing, the purple AP reaching it and it stops"). */
+TOURS[1] = [
+  {kicker: 'The Gatekeeper', text: 'A new cell, in violet: a Martinotti cell. It makes 17 synapses onto the gold cell.',
+    play: async alive => {
+      const g = cells.get('I1');
+      if (!g) return;
+      dimOthers('I1');
+      glideTo(g, 0.55);
+      orbit = 0.22;
+      await sleep(700); if (!alive()) return;
+      scan('I1');
+      await sleep(2600); if (!alive()) return;
+      if (scanKey === 'I1') toggleShow('axon');
+    }},
+  {kicker: 'The pulse', text: 'Every 4 seconds it pulses, stopping the gold target cell.', sub: 'Violet while it is held; gold again when it can be excited.',
+    play: async alive => {
+      const g = cells.get('I1');
+      if (!g || g.gateNext === null) return;
+      hints = new Set(['T']);
+      // the drivers fire the gold cell in a gap; the pulse comes and holds it; the same sparks then do nothing
+      let wait = g.gateNext - now - 2.4;
+      if (wait < 0) wait += g.gatePeriod;
+      await sleep(wait * 1000); if (!alive()) return;
+      demoSpark('E1'); await sleep(320); if (!alive()) return; demoSpark('E1');
+      const landing = g.gateNext + 0.7;
+      await sleep(Math.max(0, landing + 0.25 - now) * 1000); if (!alive()) return;
+      demoSpark('E1'); await sleep(320); if (!alive()) return; demoSpark('E1');
+    }},
+  {kicker: 'Ready', text: 'Fire it three times, in the gaps. The coach line turns blue when a gap opens.'},
+];
+function showTour(steps: TourStep[]) {
+  tourSteps = steps;
   phase = 'brief'; demo = true;
   els.row.style.display = 'none';
   buildMap();
@@ -1285,13 +1342,13 @@ function showTour() {
   renderTourStep();
 }
 function renderTourStep() {
-  const step = TOUR[tourAt], last = tourAt === TOUR.length - 1;
+  const step = tourSteps[tourAt], last = tourAt === tourSteps.length - 1;
   tourReset();
-  els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${TOUR.length} · ${step.kicker}</div>
+  els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length} · ${step.kicker}</div>
     <p class="nge-sig-tour-text">${adapt(step.text)}</p>${step.sub ? `<p class="nge-sig-tour-sub">${adapt(step.sub)}</p>` : ''}
     <div class="nge-sig-row"><button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${last ? '' : '<button class="nge-sig-quiet" type="button" data-act="skip">Skip</button>'}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
-    b.onclick = () => { if (b.dataset.act === 'skip') { tourAt = TOUR.length - 1; renderTourStep(); } else if (last) beginPlay(); else { tourAt++; renderTourStep(); } };
+    b.onclick = () => { if (b.dataset.act === 'skip') { tourAt = tourSteps.length - 1; renderTourStep(); } else if (last) beginPlay(); else { tourAt++; renderTourStep(); } };
   });
   const token = ++tourToken;
   void step.play?.(() => token === tourToken && active && phase === 'brief');
@@ -1299,7 +1356,8 @@ function renderTourStep() {
 }
 
 function showBrief() {
-  if (levelIndex === 0) { showTour(); return; }
+  const steps = TOURS[levelIndex];
+  if (steps) { showTour(steps); return; }
   phase = 'brief'; demo = false;
   els.row.style.display = 'none';
   buildMap();
@@ -2238,7 +2296,7 @@ function stepModel(dt: number) {
   // thresholds, and the Gatekeeper's clock
   for (const c of cells.values()) {
     if (!c.shown) continue;
-    if (c.dimmed && now >= c.hushedUntil) paint(c, false);
+    if (c.dimmed && now >= c.hushedUntil && !tourDim.has(c.key)) paint(c, false);
     if (now < c.hushedUntil) continue;
     if (c.gateNext !== null) { if (now >= c.gateNext) spike(c.key); continue; }
     if (potential(c) >= c.theta && now >= c.refractoryUntil) spike(c.key);
@@ -2419,6 +2477,7 @@ function frame(ts: number) {
     if (phase === 'playing' || demo) stepModel(dt); else idleStep(dt);
     placeShip(cam, dt);
     stepGlide(dt);
+    stepOrbit(dt, cam);
     writeGlow(cam);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   }
@@ -2601,7 +2660,7 @@ function beginPlay() {
   phase = 'countdown'; demo = false;
   now = 0; lastFrame = 0;
   beams = []; flashes = []; sparks = []; arrivals = []; queued = [];
-  endVisit(); clearTourLabels();
+  endVisit(); clearTourLabels(); orbit = 0; undimAll();
   // the tour's demonstrations left charge and spikes behind
   for (const c of cells.values()) { c.e = 0; c.i = 0; c.refractoryUntil = -1; c.hushedUntil = -1; c.lastSpike = -1; c.spikes = 0; if (c.gateNext !== null) c.gateNext = 1.2; }
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
@@ -2701,7 +2760,7 @@ export function stopSignalController() {
   setNgeGlow(null, GROUP);
   setNgeProps([], GROUP);
   hideCanopy();
-  demo = false; tourToken++; clearTourLabels(); clearPops();
+  demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
   glide = null; cockpitNose = null;
   if (savedDefaultAnnotations !== null) { try { viewerNow().showDefaultAnnotations.value = savedDefaultAnnotations; } catch { /* as it is */ } savedDefaultAnnotations = null; }
