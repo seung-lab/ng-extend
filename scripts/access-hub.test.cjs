@@ -30,7 +30,11 @@ const UID = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PEOPLE = [
   // Asked 9 days ago, from the site, with an EyeWire name: late.
   { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.' },
-  // Asked yesterday, kept on the list.
+  // One person, two emails: asked from the site with an EyeWire name, and
+  // asked in Pyr, signed in, with an email starting with that EyeWire name.
+  { ...base, email: 'dom.a@hotmail.example', name: 'Dominic Aitken', request_id: UID(5), asked_at: ago(0.2), from_site: true, ew_name: 'domaitk' },
+  { ...base, email: 'domaitk358@example.org', user_id: UID(16), name: 'Inezh', request_id: UID(6), asked_at: ago(0.21), joined_at: ago(0.2) },
+  // Asked yesterday, then Later.
   { ...base, email: 'rae@example.org', name: 'Rae Lin', request_id: UID(2), asked_at: ago(1.2) },
   // Asked, then removed.
   { ...base, email: 'gone@example.org', name: 'Gone Person', request_id: UID(3), asked_at: ago(5) },
@@ -99,6 +103,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
+      if (a === 'canEdit') return r.fulfill(ok({ 'nik@example.org': 'MEC, Retina', 'jo@example.org': 'MEC', 'lou@example.org': 'FlyWire public', 'boss@example.org': 'Retina' }));
       if (a === 'usersSheet') return r.fulfill(ok({ people: 14, url: 'https://docs.google.com/spreadsheets/d/x/edit' }));
       return r.fulfill(ok({}));
     }
@@ -113,6 +118,16 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }));
   });
   await context.route(/supabase\.co/, r => r.fulfill(json([])));
+  // eyewire.org's public player pages (the page reads them for EyeWire stats).
+  await context.route(/eyewire\.org\/1\.0\/player\//, r => {
+    const [, name, what] = r.request().url().match(/player\/([^/]+)\/(stats|bio)/) || [];
+    calls.push({ eyewire: name, what });
+    if (name === 'kmierow') return r.fulfill(json(what === 'stats'
+      ? { username: 'kmierow', forever: { points: '31685747', cubes: '224881', complete: '13389' }, fscore: [{ fscore: 0.9247 }] }
+      : { username: 'kmierow', joined: 1399207428, roles: ['scout', 'scythe'], level: 2 }));
+    if (name === 'domaitk') return r.fulfill(json(what === 'stats' ? { username: 'domaitk', forever: { points: '0', cubes: '0' }, fscore: [] } : { username: 'domaitk', joined: 1794344311, roles: [] }));
+    return r.fulfill({ status: 404, body: '' });
+  });
 
   const page = await context.newPage();
   const errors = [];
@@ -155,17 +170,24 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     await page.click('.ah-lb-col');
     b = await board();
     check('the Editing column comes back on request', b.map(c => c.title).pop() === 'Editing', b.map(c => c.title));
-    check('Asked: the two waiting, removed left out', col(b, 'Asked').n === '2' && col(b, 'Asked').cards.map(c => c.name).join(',') === 'Ken Mierow,Rae Lin', col(b, 'Asked'));
+    check('Asked: the three waiting, Later and removed left out', col(b, 'Asked').n === '3' && col(b, 'Asked').cards[0].name === 'Ken Mierow' && col(b, 'Asked').cards.map(c => c.name).sort().join(',') === 'Dominic Aitken,Inezh,Ken Mierow', col(b, 'Asked'));
     check('cards show the full name and the email', col(b, 'Asked').cards[0].email === 'ken@example.org', col(b, 'Asked').cards[0]);
     check('no card is outlined as late', b.every(c => c.cards.every(k => !k.late)));
     check('a dataset card names their latest test result', /Test: passed/.test(col(b, 'Asked for a dataset').cards[0].text), col(b, 'Asked for a dataset').cards[0]);
-    check('on the list and the EyeWire name show as tags', /On the list/.test(col(b, 'Asked').cards[1].text) && /EyeWire kmierow/.test(col(b, 'Asked').cards[0].text));
+    check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
+    check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
+    const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
+    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '16 People|11 Let in|5 Signed in|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
     check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
     check('a waiting dataset request takes its own column', col(b, 'Asked for a dataset').cards.length === 1 && /Medial Entorhinal Cortex/.test(col(b, 'Asked for a dataset').cards[0].text), col(b, 'Asked for a dataset'));
     const summary = await page.textContent('.ah-sum');
-    check('the head counts what waits on us', /2 Beta requests and 1 dataset request waiting on us/.test(summary), summary);
+    check('the head counts what waits on us, and Later', /3 Beta requests and 1 dataset request waiting on us, 1 for later/.test(summary), summary);
+    await page.click('.ah-later-fold');
+    const later = await page.$$eval('.ah-later .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('Later folds away below', later.length === 1 && /Rae Lin/.test(later[0]), later);
+    await page.click('.ah-later-fold');
     await page.screenshot({ path: path.join(OUT, 'access-hub.png'), fullPage: false });
 
     await page.click('.ah-fold');
@@ -197,6 +219,8 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     await page.waitForSelector('.ah-panel');
     const panel = await page.textContent('.ah-panel');
     check('the panel shows the request', /Ken Mierow/.test(panel) && /ken@example\.org/.test(panel) && /rank Guardian/.test(panel) && /I traced for years/.test(panel), panel.slice(0, 200));
+    const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+    check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined 2014/.test(ew), ew);
     await page.fill('.ah-panel textarea', 'Do we know him?');
     await page.click('.ah-panel button:has-text("Add note")');
     await page.waitForSelector('.ah-note-text');
@@ -213,6 +237,27 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     check('Let them in adds them to Pilot testers and emails them', upsert && /ken@example\.org/.test(JSON.stringify(upsert)) && mail && mail.args.email === 'ken@example.org', { upsert, mail });
     b = await board();
     check('and they move to Let in', col(b, 'Asked').cards.every(c => c.name !== 'Ken Mierow') && col(b, 'Let in').cards.some(c => c.name === 'Ken Mierow'));
+
+    // One person, two emails: Same person folds the email without an account
+    // into the signed in one (Ames 2026-11-10).
+    await page.click('.ah-card:has(.ah-card-name:text-is("Dominic Aitken"))');
+    await page.waitForSelector('.ah-dupe', { timeout: 3000 }).catch(() => {});
+    check('the panel offers Same person', /Maybe the same person as Inezh/.test(await page.textContent('.ah-panel')));
+    await page.screenshot({ path: path.join(OUT, 'access-hub-dupe.png'), fullPage: false });
+    await page.click('.ah-dupe button:has-text("Same person")');
+    await page.waitForTimeout(500);
+    const link = calls.find(c => c.action === 'access.linkEmails');
+    check('Same person links the email without an account into the one with', link && link.args.email === 'dom.a@hotmail.example' && link.args.to === 'domaitk358@example.org', link);
+    // Inezh signed in but never played: no rows of zeros.
+    const inezh = await page.textContent('.ah-panel').catch(() => '');
+    check('signed in, nothing played: one line, no zero stats', /Signed in to Pyr, nothing played yet/.test(inezh) && !/All time/.test(inezh) && !/Not signed in/.test(inezh), inezh.slice(0, 300));
+    // Later takes them off the Asked list.
+    await page.click('.ah-panel button:has-text("Later")');
+    await page.waitForTimeout(400);
+    const laterCall = [...calls].reverse().find(c => c.action === 'access.betaMark');
+    b = await board();
+    check('Later marks them and takes them off Asked', laterCall && laterCall.args.mark === 'listed' && laterCall.args.email === 'domaitk358@example.org' && col(b, 'Asked').cards.every(c => c.name !== 'Inezh'), laterCall);
+    await page.click('.ah-close').catch(() => {});
 
     // Admins are their own step (Ames 2026-11-10), off the board columns.
     b = await board();

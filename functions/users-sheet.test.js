@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { rows, stepOf, syncUsersSheet, readKept, editList, HEADERS, USERS_SHEET_ID } = require('./users-sheet');
+const { rows, stepOf, syncUsersSheet, readKept, readCanEdit, editList, HEADERS, USERS_SHEET_ID } = require('./users-sheet');
 const col = (h) => HEADERS.indexOf(h);
 
 const base = { user_id: null, name: null, username: null, request_id: null, asked_at: null, gave_email: null, ew_name: null, ew_rank: null, found_us: null, their_note: null,
@@ -91,4 +91,14 @@ test('the hand columns survive a rewrite, follow the person, and are never lost'
   assert.equal(editList(null), null);
   assert.equal(editList({ permissions_v2: { BANC: ['view'] } }), '');
   assert.equal(editList({ permissions_v2: { pinky100: ['edit'], FANC_sandbox: ['edit'], fafb_sandbox: ['edit'], fake_dataset_debug_chris: ['edit'], fafb: ['edit'] } }), 'FlyWire');
+});
+
+test('readCanEdit: the Can edit column by email, read only, blanks left out', async () => {
+  const calls = [];
+  const api = async (url, init) => { calls.push({ url, method: init.method });
+    return { values: [HEADERS, (() => { const r = new Array(HEADERS.length).fill(''); r[1] = 'A@X.org'; r[HEADERS.indexOf('Can edit')] = 'MEC, Retina'; return r; })(),
+      (() => { const r = new Array(HEADERS.length).fill(''); r[1] = 'b@x.org'; return r; })()] }; };
+  const out = await readCanEdit({ api });
+  assert.deepStrictEqual(out, { 'a@x.org': 'MEC, Retina' });
+  assert.deepStrictEqual(calls.map(c => c.method), ['GET']);
 });

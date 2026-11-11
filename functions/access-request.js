@@ -730,6 +730,8 @@ async function wakeBoard(io) {
 // store is passed in (Firestore in index.js), so this needs no new table.
 //   access.betaMarks  admins: every mark, by email.
 //   access.betaMark   admins: {email, mark: 'listed' | 'removed' | 'waiting'}.
+//   (On the Access page, listed shows as Later: off the Asked list, kept
+//   for later, Ames 2026-11-10.)
 const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // ── "You're in" by email (Ames 2026-11-05: "let's do resend and we can set up
 // connectome.quest"). Letting someone in sends them this, from
@@ -758,6 +760,21 @@ async function welcomeEmail(a, io) {
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in.`);
   if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
   return {sent: true};
+}
+// ── One person, two emails, joined by hand (Ames 2026-11-10: "some
+// duplicates ... same person"). The Access page suggests pairs; an admin
+// presses Same person. The row goes in access_email_links, which the view
+// access_hub_people folds (supabase-access-hub.sql): the email folds into
+// \`to\`. Admins only.
+//   access.linkEmails  admins: {email, to}.
+async function linkEmails(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email), to = betaEmail(a.to);
+  if (email === to) fail(400, 'Those are the same email.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200);
+  await io.sb('access_email_links?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, linked_to: to, note: `Same person, on the Access page${by ? ' by ' + by : ''}`})});
+  return {linked: true};
 }
 async function betaMarks(a, io) {
   needAdmin(io.isAdmin);
@@ -1088,6 +1105,7 @@ async function handle(action, args, io) {
   if (action === 'access.linkInvite') return linkInvite(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
+  if (action === 'access.linkEmails') return linkEmails(a, io);
   if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);

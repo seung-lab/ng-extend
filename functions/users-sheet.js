@@ -151,4 +151,16 @@ async function syncUsersSheet(io, { sheetId = USERS_SHEET_ID, now = new Date() }
   return { people: body.length, url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit` };
 }
 
-module.exports = { syncUsersSheet, rows, stepOf, readKept, editList, HEADERS, USERS_SHEET_ID };
+/** Who can edit which dataset, as the sheet's Can edit column says (CAVE,
+ *  read every hour), by email: {email: "Retina, MEC"}. The Access page's
+ *  Dataset access count (Ames 2026-11-10: "more than 4 ppl have dataset
+ *  access"). Read only. */
+async function readCanEdit(io, { sheetId = USERS_SHEET_ID } = {}) {
+  const got = await io.api(`${sheetId}/values/${encodeURIComponent(`'${TAB}'!A1:AZ20000`)}`, { method: 'GET' });
+  const kept = readKept((got && got.values) || []);
+  const out = {};
+  for (const [email, k] of Object.entries(kept)) if (k.canEdit) out[email] = k.canEdit;
+  return out;
+}
+
+module.exports = { syncUsersSheet, readCanEdit, rows, stepOf, readKept, editList, HEADERS, USERS_SHEET_ID };

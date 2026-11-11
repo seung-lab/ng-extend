@@ -1319,6 +1319,21 @@ export function cheatSheet(rows: Array<[string, string]>) {
     + `<p class="nge-hud-fine"><a href="${CHEAT_SHEET_URL}" target="_blank" rel="noopener">Open the cheat sheet in a new tab ↗</a></p>`;
 }
 
+/** The top bar icon a box talks about glows while that box is up and the
+ *  tool is off (tester, 2026-11-10: "the Merge icon indicated in some way"). */
+function glowTopIcon(id: 'merge' | 'split') {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const timer = setInterval(() => {
+    const here = store.activeTutorial === tutorial && store.getTutorialStep() === step && !!document.querySelector('.introductionStepAnchor');
+    const icon = document.querySelector(`[data-icon-id="${id}"]`) as HTMLElement | null;
+    const on = here && !practiceToolOn();
+    document.querySelectorAll('.nge-tut-glow-icon').forEach(el => { if (!on || el !== icon) el.classList.remove('nge-tut-glow-icon'); });
+    if (on) icon?.classList.add('nge-tut-glow-icon');
+    if (!here) clearInterval(timer);
+  }, 400);
+}
+
 export const MIDDLE = {
   element: "body",
   x: 0.5,
@@ -1370,11 +1385,14 @@ This is an example. The yellow branch belongs to the purple cell, but the AI lef
     text: `
 Press the **M** key to start the merge tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
-You can also click the green Merge icon in the top bar. Once it's on, the merge tool appears at the bottom of the viewer.`,
-    position: OVER_3D,
+You can also click the green Merge icon in the top bar, glowing now. Once it's on, the merge tool appears at the bottom of the viewer.`,
+    // Lower than the other boxes: at the top it covered the top bar and the
+    // Merge icon it talks about (tester, 2026-11-10).
+    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.4 },
     width: "450px",
     onEnter: async () => {
       closeSidePanel();
+      glowTopIcon('merge');
       watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.', 'Merge mode is off. Press M again to re-enter merge mode.');
       // Point at the segmentation layer chip without being asked (Amy).
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
@@ -1420,7 +1438,8 @@ The pink gems show where to click.`,
       // The first merge starts with the two click spots marked (Ames: "we
       // want them to control click on each piece, easy peasy"), and the view
       // brought in close on them.
-      setTimeout(() => { showWhereToClick({ threeD: 0.3, twoD: 1 }); }, 1400);
+      // Closer still (tester, 2026-11-10: "would zoom in a bit more here").
+      setTimeout(() => { showWhereToClick({ threeD: 0.15, twoD: 1 }); }, 1400);
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
       setTimeout(() => ensureTool('merge'), 400);
