@@ -7172,7 +7172,9 @@ export const useChatStore = defineStore('chat', () => {
   // (supabase-chat-presence-and-link-screenshots.sql). So a join notice can't
   // be forged, unlike the old open broadcast the security fix removed.
   // A hidden tab's heartbeat can come up to about 2 minutes apart.
-  const ONLINE_MS = 150_000;
+  // Online = seen in the last 5 minutes (Ames 2026-11-10: "count ppl online at
+  // 5 min intervals"), so a slow or background tab does not drop off the list.
+  const ONLINE_MS = 5 * 60_000;
   const HEARTBEAT_MS = 60_000;
   const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string; fromChat?: boolean }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
