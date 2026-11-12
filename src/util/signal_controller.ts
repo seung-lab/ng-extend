@@ -737,6 +737,15 @@ body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: c
 body.nge-mobile .nge-sig { bottom: calc(66px + env(safe-area-inset-bottom)); width: calc(100vw - 12px); max-height: 58vh; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; }
 body.nge-mobile .nge-sig-scroll { min-height: 0; overflow: hidden auto; scrollbar-width: none; }
 body.nge-mobile .nge-sig-head { font-size: 9px; letter-spacing: 0.14em; }
+/* no progress, time or score during the cinematics (Ames 2026-11-12) */
+.nge-sig.nge-sig--intro .nge-sig-stats { display: none !important; }
+/* the fold: the head row alone */
+.nge-sig .nge-sig-fold { flex: none; display: inline-flex; align-items: center; padding: 3px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; line-height: 1; }
+.nge-sig .nge-sig-fold:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
+.nge-sig .nge-sig-fold svg { transition: transform 0.2s; }
+.nge-sig.nge-sig--folded .nge-sig-fold svg { transform: rotate(180deg); }
+.nge-sig.nge-sig--folded > :not(.nge-sig-head):not(.nge-sig-bg):not(.nge-sig-corner) { display: none !important; }
+.nge-sig.nge-sig--folded { max-height: none; }
 /* the intro on a phone is just the tour card under the gem, the sound and the close; the objective and the rest come with play (Ames 2026-11-12: "show the cell first with just the text, then the diagram, then add back the box; put the gem during the intro") */
 body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-top, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-data, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view-key { display: none !important; }
 body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-gem { margin-right: auto; }
@@ -1077,6 +1086,7 @@ function buildPanel() {
       <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
       <button class="nge-sig-edit" type="button" data-el="edit" title="Edit the words on this page">✎</button>
       <button class="nge-sig-data" type="button" data-el="data" title="The cell's data: the last cell you tapped, or the gold cell"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4 6h6M4 8.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+      <button class="nge-sig-fold" type="button" data-el="fold" title="Fold the panel away, or open it again" aria-expanded="true"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
       <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
@@ -1105,6 +1115,8 @@ function buildPanel() {
   els.hush.onclick = () => { setHushMode(true); els.hush.blur(); };
   els.view.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { setView(b.dataset.view as ViewMode); b.blur(); }; });
   els.edit.onclick = () => { toggleEditor(); els.edit.blur(); };
+  // the panel folds to its head row for more of the screen, and opens again (Ames 2026-11-12: "a down caret to collapse the box and an up one to re-expand")
+  els.fold.onclick = () => { const folded = panel!.classList.toggle('nge-sig--folded'); els.fold.setAttribute('aria-expanded', String(!folded)); els.fold.blur(); };
   // the phone's data icon: the full card for the last cell tapped, else the gold cell (Ames 2026-11-12: "we still want UI icons that let me expand the data the ship was carrying")
   els.data.onclick = () => {
     if (scanEl) { hideScan(); els.data.blur(); return; }   // tapped again: the card goes (Ames 2026-11-12)
