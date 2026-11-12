@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-12T21:45:26Z",
+      "title": "New tutorial: Annotations",
+      "items": [
+        "A new Annotations tutorial is in the menu, right after Cut.",
+        "It shows you how to make annotation layers, color them, step through your marks and jump to them.",
+        "It ends with Find Path, used to find where a merger starts.",
+        "Finish it to earn a new Achievement."
+      ]
+    },
+    {
       "at": "2026-11-12T21:11:25Z",
       "title": "Everyone online is listed",
       "items": [
