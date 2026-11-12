@@ -710,13 +710,16 @@ function eyewireOf(a) {
   // How did you find us? (Ames 2026-11-06), optional plain text, one line.
   const found = cleanText(a.foundUs, FOUND_US_MAX, 'How you found us');
   return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null,
-    found: found ? found.replace(/\s+/g, ' ') : null};
+    found: found ? found.replace(/\s+/g, ' ') : null,
+    // Email me Pyr news (Ames 2026-11-12): a box on the request form, unticked
+    // to start. Only said when the form sends it, as yes or no.
+    news: a.emailOptIn === true ? 'yes' : a.emailOptIn === false ? 'no' : null};
 }
 const FOUND_US_MAX = 200;
 const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
-  ew.found ? `How they found us: ${ew.found}` : ''];
+  ew.found ? `How they found us: ${ew.found}` : '', ew.news ? `Pyr news by email: ${ew.news}` : ''];
 const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
-  + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '');
+  + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '') + (ew.news ? `\n\nPyr news by email: ${ew.news}` : '');
 /** A new request goes on the triage board now, not at the next (often late)
  *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
 async function wakeBoard(io) {
