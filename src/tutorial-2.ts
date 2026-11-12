@@ -5,6 +5,7 @@ import { highlightStyles } from "./util/highlight";
 import { setStatedColor } from "./widgets/widget_utils";
 import { Uint64 } from "neuroglancer/util/uint64";
 import { useUserPreferencesStore } from "./store";
+import { makeLayer } from "neuroglancer/layer";
 import { activateGrapheneTool } from "./widgets/graphene_tool_utils";
 
 /** How a layer chip is selected and hidden. Since 2026-10-11 a plain click
@@ -110,6 +111,57 @@ function pointAtSegBox() {
     if (!here()) { clearInterval(timer); box?.classList.remove('nge-tour-target'); return; }
     glow();
   }, 500);
+}
+
+/** The collaborator's pretend link (Ames 2026-11-12). Clicking it adds an
+ *  annotation layer with their note on the merger, and puts the spot through
+ *  the Segments box, which moves there and adds the cell. */
+const COLLAB_LAYER = 'From your collaborator';
+const COLLAB_NOTE = 'Here is a really tough merger!';
+const COLLAB_LINK = `<button type="button" class="nge-tut-copy nge-tut-link" onclick="document.dispatchEvent(new CustomEvent('nge:tut-collab-link'))">📎 Open your collaborator's link</button>`;
+let collabListener: (() => void) | null = null;
+function watchCollaboratorLink() {
+  if (collabListener) document.removeEventListener('nge:tut-collab-link', collabListener);
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const open = () => {
+    if (!here()) { document.removeEventListener('nge:tut-collab-link', open); return; }
+    const v = (window as any).viewer;
+    if (!v) return;
+    const spot = MERGER_SPOT.split(',').map(Number);
+    const had = (v.layerManager?.managedLayers ?? []).some((ml: any) => !ml.archived && ml.name === COLLAB_LAYER);
+    if (!had) {
+      try {
+        v.layerSpecification.add(makeLayer(v.layerSpecification, COLLAB_LAYER, {
+          type: 'annotation', source: { url: 'local://annotations' },
+          annotations: [{ type: 'point', id: 'collaborator-merger', point: spot, description: COLLAB_NOTE }],
+          annotationColor: '#ffd27a', pointSize: 6, onTop: true,
+        }));
+      } catch (e) { console.warn('[tutorial] collaborator layer', e); }
+    }
+    // The Segments box finds the cell at the spot and goes there, as a paste does.
+    setTimeout(() => {
+      openSegmentsTab();
+      setTimeout(() => {
+        const box = document.querySelector<HTMLInputElement>(SEG_BOX);
+        if (!box) return;
+        box.focus();
+        box.value = MERGER_SPOT;
+        box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+      }, 700);
+    }, 300);
+    // Their note, said in the box too.
+    const list = document.querySelector('.introductionStepAnchor .chip .html .nge-tut-steps');
+    if (list && !document.querySelector('.nge-tut-collab-note')) {
+      const p = document.createElement('p');
+      p.className = 'nge-tut-found nge-tut-collab-note';
+      p.textContent = `Your collaborator's note: "${COLLAB_NOTE}"`;
+      list.after(p);
+    }
+  };
+  collabListener = open;
+  document.addEventListener('nge:tut-collab-link', open);
 }
 
 /** Glow the layer side panel button (top bar, far right) for a while. */
@@ -763,17 +815,18 @@ These lines converge at the point we are centered on and represent the volume's 
   {
     part: "Part 2 of 4 · Find your way",
     get text() { return `
-A collaborator found a branch with a merger and wants us to look.
+A collaborator found a branch with a merger and sent you a link to their view.
 
 <ol class="nge-tut-steps">
-<li>Copy this spot and <strong>paste it into the box at the top of the Segments panel</strong>. Pyr adds the cell there and jumps to it: ${copyButton(MERGER_SPOT)}</li>
+<li><strong>Open their link.</strong> It takes you to the spot, adds their cell, and shows their note. ${COLLAB_LINK}</li>
 <li>Then <strong>hide our blue cell</strong>: click the eye next to its ID.</li>
 </ol>`; },
     width: "460px",
     position: { element: SEG_BOX, side: "left", offset: { x: 0, y: 0 } },
-    // Paste first, then the eye (Ames 2026-11-12). The eye sparkles once the
-    // new cell is in.
-    onEnter: () => { openSegmentsTab(); nextWhenAddedThenHidden(); pointAtSegBox(); },
+    // A pretend link from a collaborator (Ames 2026-11-12: "a fake link that
+    // opens with an annotation that says here is a really tough merger!"),
+    // then the eye. The eye sparkles once their cell is in.
+    onEnter: () => { openSegmentsTab(); nextWhenAddedThenHidden(); watchCollaboratorLink(); },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
@@ -783,6 +836,16 @@ A collaborator found a branch with a merger and wants us to look.
 This box always shows where you are. If you ever need to share your spot with a teammate, <strong>click its copy icon</strong> to copy it.`,
     width: "460px",
     position: { element: "#extensionBar .neuroglancer-position-widget", side: "right", offset: { x: 0, y: 0 } },
+    highlight: true,
+  },
+  {
+    part: "Part 2 of 4 · Find your way",
+    text: `
+To send a whole view, like your collaborator did, use <strong>Share</strong>. It copies a link to everything you see: the cells, your marks, and where you are.
+
+Paste the link in chat or a message, and whoever opens it sees exactly your view.`,
+    width: "460px",
+    position: { element: '#extensionBar [title="Share State"]', side: "right", offset: { x: 0, y: 0 } },
     highlight: true,
   },
   {
