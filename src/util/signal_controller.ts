@@ -534,6 +534,7 @@ const sfx = {
 /* ── the HUD ── */
 let panel: HTMLElement | null = null;
 let els: Record<string, HTMLElement> = {};
+let lastHudH = -1;
 /** Puts the level's science line in the foot (set when the HUD is built). */
 let showScience: () => void = () => { /* no HUD yet */ };
 let chipEls = new Map<string, HTMLElement>();
@@ -973,7 +974,8 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig .nge-sig-data { display: none; flex: none; align-items: center; padding: 3px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; line-height: 1; }
 body.nge-mobile .nge-sig .nge-sig-data { display: inline-flex; }
 body.nge-mobile .nge-sig .nge-sig-view, body.nge-mobile .nge-sig .nge-sig-view-key { display: none !important; }
-body.nge-mobile .ng-extend.nge-sig-scan { position: fixed !important; left: 6px !important; right: 6px !important; top: calc(8px + env(safe-area-inset-top)) !important; width: auto !important; max-height: 58vh; overflow: hidden auto; transform: none !important; }
+body.nge-mobile .ng-extend.nge-sig-scan { position: fixed !important; z-index: 9600 !important; left: 6px !important; right: 6px !important; top: calc(8px + env(safe-area-inset-top)) !important; width: auto !important; max-height: calc(100vh - var(--nge-hud-h, 45vh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important; overflow: hidden auto; transform: none !important; }
+body.nge-mobile .ng-extend.nge-sig-scan .nge-sig-scan-box { position: static !important; width: auto !important; max-width: none !important; }
 .nge-sig .nge-sig-edit { flex: none; padding: 2px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font-size: 12px; line-height: 1; }
 .nge-sig .nge-sig-edit:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 /* the editor: a card beside the HUD, a section a box */
@@ -3578,6 +3580,9 @@ function frameBody(ts: number) {
   // Once a second: the level's cells stay on, whatever else happens to the
   // layer's segment list (a stray key, another panel), and the layer stays shown.
   if ((frameCount++ & 63) === 0) keepCellsOn();
+  // the HUD's height, for the phone's card to keep above it
+  const hudH = panel?.offsetHeight ?? 0;
+  if (hudH !== lastHudH) { lastHudH = hudH; document.body.style.setProperty('--nge-hud-h', `${hudH}px`); }
   updateHud();
 }
 let frameCount = 0;
