@@ -26,6 +26,8 @@ const props = defineProps<{ light?: boolean; focusId?: string | null; reportNumb
 const emit = defineEmits<{ (e: 'back'): void }>();
 
 type ListKey = 'todo' | 'doing' | 'done';
+/** A card closed as not finished: off the board, kept for Ames (functions/todos.js INCOMPLETE). */
+const INCOMPLETE = 'incomplete';
 type Size = 'S' | 'M' | 'L';
 interface Card {
   id: string; title: string; notes: string; list: ListKey; rank: number; size: Size | null;
@@ -93,7 +95,10 @@ async function load(quiet = false) {
   try {
     const data = await secureWrite<any>('todo.list');
     if (data?.installed === false) { notInstalled.value = true; return; }
-    cards.value = data.cards || [];
+    // Cards closed as not finished never sit on the board; Ames sees them in their own list.
+    const all: Card[] = data.cards || [];
+    cards.value = all.filter(c => (c.list as string) !== INCOMPLETE);
+    incomplete.value = all.filter(c => (c.list as string) === INCOMPLETE);
     people.value = data.people || [];
     followers.value = data.followers || {};
     seenAt.value = data.seen || {};
@@ -709,9 +714,45 @@ function onMentionKey(e: KeyboardEvent) {
 
 // ── Saving ──
 function put(card: Card) {
+  if ((card.list as string) === INCOMPLETE) {
+    cards.value = cards.value.filter(c => c.id !== card.id);
+    incomplete.value = [...incomplete.value.filter(c => c.id !== card.id), card];
+    return;
+  }
+  incomplete.value = incomplete.value.filter(c => c.id !== card.id);
   const i = cards.value.findIndex(c => c.id === card.id);
   if (i >= 0) cards.value.splice(i, 1, card); else cards.value.push(card);
 }
+// ── Not finished (Ames 2026-11-12: "a button for me only that lets me Delete -
+// mark incomplete (I want to keep track of tasks my team did not finish)").
+// The card leaves the board like a delete, but is kept, with who had it, in
+// a list only Ames sees, and can be reopened. The server checks it is her. ──
+const OWNER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
+const isOwner = computed(() => OWNER_EMAILS.includes(String(backend.userEmail || '').trim().toLowerCase()));
+const incomplete = ref<Card[]>([]);
+const incompleteOpen = ref(false);
+const incompleteSorted = computed(() => [...incomplete.value].sort((a, b) => String(b.done_at || '').localeCompare(String(a.done_at || ''))));
+async function closeUnfinished(c: Card) {
+  if (!isOwner.value) return;
+  if (!window.confirm(`Close "${c.title}" as not finished? It leaves the board and goes in your Not finished list, with who had it. You can reopen it from there.`)) return;
+  try {
+    const { card } = await secureWrite<any>('todo.save', { id: c.id, fields: { list: INCOMPLETE } });
+    put(card || { ...c, list: INCOMPLETE, done_at: new Date().toISOString() });
+    if (openId.value === c.id) openId.value = null;
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  }
+}
+async function reopenUnfinished(c: Card) {
+  try {
+    const { card } = await secureWrite<any>('todo.save', { id: c.id, fields: { list: 'todo', rank: topRank('todo') } });
+    if (card) put(card);
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  }
+}
+/** Who had it: the owner and the collaborators, by name. */
+const whoHad = (c: Card) => [c.owner_id, ...helpersOf(c)].filter(Boolean).map(id => nameOf(id as string)).join(', ');
 async function save(c: Card, fields: Partial<Card>, extra: Record<string, any> = {}) {
   const before = { ...c };
   Object.assign(c, fields);   // shows at once; put back if the save fails
@@ -1915,6 +1956,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★' : '☆' }}<span class="nge-todo-word"> Mine</span></button>
       <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; openId = null"
               title="Everything that is yours: cards you own and checklist items for you, by due day">📌<span class="nge-todo-word"> My Tasks</span><b v-if="myTaskCount" class="nge-todo-mytasks-n">{{ myTaskCount }}</b></button>
+      <button v-if="isOwner" class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': incompleteOpen }" title="Cards you closed as not finished. Only you see this." @click="incompleteOpen = !incompleteOpen; openId = null; connectOpen = false">⊘ Not finished <span v-if="incomplete.length" class="nge-todo-count">{{ incomplete.length }}</span></button>
       <button class="nge-todo-btn nge-todo-wide-only" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load()">↻<span class="nge-todo-word">{{ loading ? ' Loading…' : ' Refresh' }}</span></button>
     </div>
@@ -2064,6 +2106,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <div class="nge-todo-card-tools" @click.stop>
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
+              <button v-if="isOwner" type="button" class="nge-todo-mini nge-todo-unfinished-btn" title="Close as not finished: it leaves the board and goes in your Not finished list (only you see this)" aria-label="Close as not finished" @click="closeUnfinished(c)">⊘</button>
             </div>
             <img v-if="(c.images || []).length" class="nge-todo-card-cover" :src="c.images[0]" alt="" loading="lazy" />
             <button v-if="hierarchyOn && it.depth === 0 && parentOf(c)" type="button" class="nge-todo-card-parent" :title="parentLine(c)" @click.stop="openParent(c)">↳ {{ parentOf(c)?.title }}</button>
@@ -2129,6 +2172,29 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </template>
         </section>
       </div>
+
+      <!-- Not finished: cards Ames closed unfinished, newest first. Only she sees it. -->
+      <aside v-if="isOwner && incompleteOpen && !openCard" class="nge-todo-panel" aria-label="Not finished">
+        <div class="nge-todo-panel-top">
+          <span class="nge-todo-heading">⊘ Not finished</span>
+          <button class="nge-todo-x" @click="incompleteOpen = false" aria-label="Close" title="Close">×</button>
+        </div>
+        <div class="nge-todo-notes">Cards you closed without them being done, and who had them. Only you see this list.</div>
+        <div v-if="!incomplete.length" class="nge-todo-notes">Nothing here yet. ⊘ on a card closes it as not finished.</div>
+        <ul v-else class="nge-todo-unfinished-list">
+          <li v-for="c in incompleteSorted" :key="c.id">
+            <div class="nge-todo-unfinished-title">{{ c.title }}</div>
+            <div class="nge-todo-unfinished-meta">
+              <span>{{ whoHad(c) || 'Nobody had it' }}</span>
+              <span v-if="c.done_at"> · closed {{ ago(c.done_at) }}</span>
+              <span v-if="c.due_on"> · was due {{ dueWords(c.due_on) }}</span>
+              <span v-if="c.checklist.length"> · ☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
+            </div>
+            <div v-if="c.status" class="nge-todo-unfinished-meta">{{ c.status }}</div>
+            <button type="button" class="nge-todo-mini" title="Put it back at the top of To do" @click="reopenUnfinished(c)">↩ Reopen</button>
+          </li>
+        </ul>
+      </aside>
 
       <!-- Connect your AI: the same narrow side panel as an open card. -->
       <aside v-if="connectOpen && !openCard" class="nge-todo-panel" aria-label="Connect your AI">
@@ -2432,6 +2498,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 
         <div class="nge-todo-foot">
           Added by {{ openCard.created_by || 'someone' }}, {{ ago(openCard.created_at) }}
+          <button v-if="isOwner" class="nge-todo-btn nge-todo-unfinished" title="It leaves the board and goes in your Not finished list, with who had it. Only you see this." @click="closeUnfinished(openCard)">⊘ Not finished</button>
           <button class="nge-todo-btn nge-todo-delete" @click="deleteCard(openCard)">Delete card</button>
         </div>
       </aside>
@@ -2761,6 +2828,12 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-kid-open:hover { color: var(--accent); text-decoration: underline; }
 .nge-todo-kid--done .nge-todo-kid-open { opacity: 0.6; text-decoration: line-through; }
 .nge-todo-item-lvl { font-size: 12px; }
+/* Not finished (Ames 2026-11-12). */
+.nge-todo-unfinished { margin-right: 6px; }
+.nge-todo-unfinished-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.nge-todo-unfinished-list li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.nge-todo-unfinished-title { font-weight: 600; text-decoration: line-through; text-decoration-color: rgba(140, 140, 160, 0.7); }
+.nge-todo-unfinished-meta { color: var(--dim); font-size: 12.5px; margin: 2px 0 4px; }
 .nge-todo-check li { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; }
 .nge-todo-check label { flex: 1 1 auto; display: flex; gap: 6px; align-items: flex-start; cursor: pointer; overflow-wrap: anywhere; }
 .nge-todo-check input { accent-color: var(--accent-strong); margin-top: 3px; }

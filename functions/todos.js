@@ -33,6 +33,10 @@
  * "closeReport" with a move to Done closes the report too.
  */
 const LISTS = ['todo', 'doing', 'done'];
+// Closed as not finished (Ames 2026-11-12: "Delete - mark incomplete (I want
+// to keep track of tasks my team did not finish)"): off the board, never
+// counted as done, kept for Ames. Only she moves a card in or out of it.
+const INCOMPLETE = 'incomplete';
 const SIZES = ['S', 'M', 'L'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CHECK_MAX = 60;
@@ -70,7 +74,7 @@ function cleanFields(f, isNew) {
     out.title = t;
   }
   if ('notes' in f) out.notes = text(f.notes, 8000, 'The notes');
-  if ('list' in f) { if (!LISTS.includes(f.list)) fail(400, 'Bad list.'); out.list = f.list; }
+  if ('list' in f) { if (!LISTS.includes(f.list) && f.list !== INCOMPLETE) fail(400, 'Bad list.'); out.list = f.list; }
   if ('rank' in f) { if (!Number.isFinite(f.rank)) fail(400, 'Bad rank.'); out.rank = f.rank; }
   if ('size' in f) { if (f.size !== null && !SIZES.includes(f.size)) fail(400, 'Bad size.'); out.size = f.size; }
   if ('owner_id' in f) out.owner_id = f.owner_id === null ? null : uuid(f.owner_id, 'owner');
@@ -129,7 +133,7 @@ function tagged(people, ids) {
 
 /** What changed, in words, for a follower's bell. Only a move in the list says nothing. */
 function changeWords(fields, before) {
-  if ('list' in fields && fields.list !== before.list) return fields.list === 'done' ? 'finished' : `moved to ${fields.list === 'doing' ? 'Doing' : 'To do'}`;
+  if ('list' in fields && fields.list !== before.list) return fields.list === 'done' ? 'finished' : fields.list === INCOMPLETE ? '' : `moved to ${fields.list === 'doing' ? 'Doing' : 'To do'}`;
   if ('checklist' in fields) {
     const was = before.checklist || [], now = fields.checklist;
     const ticked = now.filter((c, i) => c.done && !(was[i] && was[i].done) && was[i] && was[i].text === c.text);
@@ -167,7 +171,7 @@ const noSeen = { get: async () => ({}), mark: async () => {} };
 const HELPERS_MAX = 6;
 const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 
-async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, seen = noSeen, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
+async function todoAction(action, args, {db, me, byName, tag, isOwner = false, follows = noFollows, helpers = noFollows, seen = noSeen, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
   const meId = me && me.id;
   /** Followers hear, but never the one who did it, nor anyone already told. */
@@ -284,6 +288,7 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
   if (action === 'todo.save') {
     const isNew = !args.id;
     const fields = cleanFields(args.fields || {}, isNew);
+    if (fields.list === INCOMPLETE && (isNew || !isOwner)) fail(403, 'Only Ames closes a card as not finished.');
     await checkHierarchy(db, isNew ? null : uuid(args.id, 'card'), fields);
     let card;
     if (isNew && fields.triage_id) {
@@ -309,8 +314,10 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
       const id = uuid(args.id, 'card');
       const before = await db.card(id);
       if (!before) fail(404, 'That card is gone. Refresh the board.');
+      if (before.list === INCOMPLETE && !isOwner) fail(403, 'Only Ames reopens a card closed as not finished.');
       if ('list' in fields && fields.list !== before.list) {
-        fields.done_at = fields.list === 'done' ? now : null;
+        // done_at is when it closed: finished, or closed as not finished.
+        fields.done_at = fields.list === 'done' || fields.list === INCOMPLETE ? now : null;
         // A section belongs to one column: moved without one, it leaves it.
         if (!('section_id' in fields) && before.section_id) fields.section_id = null;
         // Moved without a place: the bottom of its new list.

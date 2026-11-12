@@ -298,3 +298,17 @@ test('checklist items keep their level, two in at most', async () => {
   const c = (await todoAction('todo.save', { fields: { title: 'x', checklist: [{ text: 'a' }, { text: 'b', level: 1 }, { text: 'c', level: 7 }, { text: 'd', level: 'x' }] } }, ctx(db, tags))).card;
   assert.deepEqual(c.checklist.map(i => i.level || 0), [0, 1, 2, 0]);
 });
+
+test('only Ames closes a card as not finished, and only she reopens it (Ames 2026-11-12)', async () => {
+  const db = memDb(), tags = [];
+  const as = owner => (a, args) => todoAction(a, args, { ...ctx(db, tags), isOwner: owner });
+  const c = (await as(false)('todo.save', { fields: { title: 'Unfinished thing' } })).card;
+  await assert.rejects(as(false)('todo.save', { id: c.id, fields: { list: 'incomplete' } }), /Only Ames/);
+  await assert.rejects(as(true)('todo.save', { fields: { title: 'x', list: 'incomplete' } }), /Only Ames/);
+  const closed = (await as(true)('todo.save', { id: c.id, fields: { list: 'incomplete' } })).card;
+  assert.equal(closed.list, 'incomplete');
+  assert.ok(closed.done_at, 'when it was closed');
+  await assert.rejects(as(false)('todo.save', { id: c.id, fields: { title: 'renamed' } }), /Only Ames reopens/);
+  const back = (await as(true)('todo.save', { id: c.id, fields: { list: 'todo' } })).card;
+  assert.deepEqual([back.list, back.done_at], ['todo', null]);
+});

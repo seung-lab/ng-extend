@@ -288,7 +288,7 @@ async function cleanTodoImages() {
   const urlOf = p => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${p}`;
   const old = t => t && (now - new Date(t).getTime()) / DAY > TODO_FILE_DAYS;
   const rows = [
-    ...(await allRows('admin_todos', 'select=*')).map(r => ({ table: 'admin_todos', r, closed: r.list === 'done' && old(r.done_at) })),
+    ...(await allRows('admin_todos', 'select=*')).map(r => ({ table: 'admin_todos', r, closed: (r.list === 'done' || r.list === 'incomplete') && old(r.done_at) })),
     ...(await allRows('feedback_triage', 'select=*', { optional: true })).map(r => ({ table: 'feedback_triage', r, closed: r.status === 'done' || r.status === 'dismissed' })),
   ].map(x => ({ ...x, json: JSON.stringify(x.r) }));
   const users = f => rows.filter(x => x.json.includes(f.path));
