@@ -11,7 +11,7 @@
  */
 import { Step, useTutorialStore } from "./store-pyr";
 import {
-  advance, classicLayers, findPathStep, nextWhenAnnotationLayerAdded,
+  advance, classicLayers, findPathStep, glowAddButton, nextWhenAnnotationLayerAdded,
   OVER_3D, SELECT_CLICK, waitForAction,
 } from "./tutorial-2";
 import { startTutorialButton, stopWatching } from "./tutorial-3";
@@ -243,7 +243,7 @@ Annotations are your own marks on a cell: points, lines and shapes. They live in
     position: { element: ".neuroglancer-layer-add-button", side: "bottom", offset: { x: 0, y: 7 } },
     highlight: true,
     state: START_VIEW,
-    onEnter() { toolsOff(); nextWhenAnnotationLayerAdded(); },
+    onEnter() { toolsOff(); nextWhenAnnotationLayerAdded(); glowAddButton(); },
   },
   // Naming the layer (Ames 2026-11-10: "shouldn't it ask me to rename the
   // layer earlier on?"). Any new name counts.
