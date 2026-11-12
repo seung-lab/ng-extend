@@ -34,7 +34,10 @@ const FIRST_MS = [25_000, 50_000], EVERY_MS = [5 * 60_000, 10 * 60_000];
 /** How many may rest on the chat box at once, and for how long. */
 const MAX_RESTING = 10, REST_MS = [15_000, 30_000];
 
-export function leavesSeason(): boolean { return fallSeason(); }
+/** Switched off for everyone (Ames 2026-11-12: "turn off the leaves"). True
+ *  brings them back each fall (22 September to the end of Thanksgiving week). */
+const LEAVES_ON = false;
+export function leavesSeason(): boolean { return LEAVES_ON && fallSeason(); }
 
 export function leavesHidden(): boolean {
   try { return useUserPreferencesStore().prefs.hideLeaves === true; } catch { return false; }
