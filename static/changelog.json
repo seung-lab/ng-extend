@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-12T21:11:25Z",
+      "title": "Everyone online is listed",
+      "items": [
+        "The online list in chat now shows everyone signed in, including new players on the Starship tour and anyone with chat closed."
+      ]
+    },
+    {
       "at": "2026-11-12T18:52:00Z",
       "title": "Report a bug during the tour",
       "items": [
