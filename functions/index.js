@@ -3283,6 +3283,7 @@ function blogMailIo() {
     notesSubscribers: {
       get: async (email) => { const d = await doc("notes_subscribers", email).get(); return d.exists ? d.data() : null; },
       set: (email, v) => doc("notes_subscribers", email).set(v, { merge: true }),
+      list: async () => (await db.collection("notes_subscribers").where("on", "==", true).get()).docs.map((d) => d.data()),
     },
     subscribers: {
       set: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
@@ -3325,6 +3326,16 @@ exports.ewBlogMail = onRequest(
   { region: "us-central1", secrets: [resendKey, ewServiceKey], cors: [/^https:\/\/(www\.)?connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/], invoker: "public", maxInstances: 5 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
+    // The unsubscribe link in a What's new in Pyr email: a click (GET) shows a
+    // small page; a mail app's one click unsubscribe (POST) just needs a 200.
+    if (req.query && req.query.action === "notes-off") {
+      let text;
+      try { await require("./blog-mail").handle("notes-off", { e: req.query.e, k: req.query.k }, blogMailIo()); text = "You're off the What's new in Pyr list. You won't get it again unless you tick the box on the blog."; }
+      catch (e) { if (!e.status) console.error("[ewBlogMail] notes-off", e.message); text = e.status ? e.message : "That did not go through. Please try again in a moment."; }
+      if (req.method === "POST") return res.status(200).send("ok");
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      return res.status(200).type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>What's new in Pyr</title></head><body style="margin:0;background:#f4f6fa;font:17px/1.6 system-ui,sans-serif;color:#151b27"><main style="max-width:520px;margin:12vh auto;padding:28px;background:#fff;border-radius:16px"><h1 style="margin:0 0 12px;font-size:22px">What's new in Pyr</h1><p style="margin:0 0 18px">${esc(text)}</p><p style="margin:0"><a href="https://connectome.quest/blog/" style="color:#0a7286">Back to the blog</a></p></main></body></html>`);
+    }
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long." });
     const { action, ...args } = req.body || {};
