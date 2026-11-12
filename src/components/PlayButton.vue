@@ -91,11 +91,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
     <div v-if="signedIn && !play.on && !hidden" class="nge-play-dock">
     <button class="nge-play-btn" @click="onButton"
             title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
-      <span class="nge-play-orb" aria-hidden="true">
-        <svg class="nge-play-rings" viewBox="0 0 32 32"><circle class="r1" cx="16" cy="16" r="14"/><circle class="r2" cx="16" cy="16" r="11"/></svg>
-        <svg class="nge-play-icon" width="11" height="11" viewBox="0 0 12 12"><path d="M3.2 1.8v8.4L10 6z" fill="currentColor"/></svg>
-      </span>
-      <span class="nge-play-word">Play</span>
+      <svg class="nge-play-icon" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
+      <span>Play</span>
     </button>
     <button class="nge-play-x" type="button" title="Hide the Play button until you reload" aria-label="Hide the Play button" @click="hidden = true">&times;</button>
     </div>
@@ -144,52 +141,25 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 </template>
 
 <style>
-/* The button (Ames 2026-11-10: teal green, below the tabs, "cooler"): a hologram
-   key with cut corners, a hairline frame, a light band that crosses it now
-   and then, and an orb whose two rings turn around the play triangle. */
-.nge-play-dock { position: fixed; top: 72px; left: 10px; z-index: 60; display: flex; align-items: flex-start; gap: 4px; }
-.nge-play-x { width: 20px; height: 20px; padding: 0; border: 1px solid rgba(62, 236, 190, 0.45); border-radius: 50%;
+/* The button: the site's own pill, as the "Playing" chip in the top bar and
+   "Play here" in the Cell Library (Ames 2026-11-12: "doesn't match the site"). */
+.nge-play-dock { position: fixed; top: 72px; left: 10px; z-index: 60; display: flex; align-items: center; gap: 6px; }
+.nge-play-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 18px 0 14px;
+  border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(62, 236, 190, 0.7);
+  background: linear-gradient(135deg, rgba(8, 72, 64, 0.94), rgba(10, 48, 66, 0.94));
+  color: #dcfff4; font: 700 14px/1 'Orbitron', Inter, system-ui, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(62, 236, 190, 0.6);
+  box-shadow: 0 0 12px rgba(62, 236, 190, 0.3);
+  transition: box-shadow 0.15s, background 0.15s;
+}
+.nge-play-btn:hover { box-shadow: 0 0 18px rgba(62, 236, 190, 0.55); background: linear-gradient(135deg, rgba(10, 90, 78, 0.96), rgba(12, 60, 80, 0.96)); }
+.nge-play-btn:focus-visible { outline: 2px solid #3eecbe; outline-offset: 3px; }
+.nge-play-icon { color: #3eecbe; }
+.nge-play-x { width: 22px; height: 22px; padding: 0; border: 1px solid rgba(62, 236, 190, 0.4); border-radius: 50%;
   background: rgba(6, 20, 30, 0.85); color: #9fe8d4; font: 400 15px/1 Inter, system-ui, sans-serif; cursor: pointer; display: grid; place-items: center; }
 .nge-play-x:hover { color: #fff; border-color: #3eecbe; background: rgba(12, 60, 56, 0.95); }
-.nge-play-btn {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 6px 22px 6px 8px; border: 0; overflow: hidden; cursor: pointer;
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  background: linear-gradient(135deg, rgba(12, 92, 80, 0.94), rgba(10, 52, 72, 0.94) 60%, rgba(20, 40, 80, 0.94));
-  color: #e6fff8; font: 700 15px/1 'Orbitron', Inter, system-ui, sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(62, 236, 190, 0.8);
-  filter: drop-shadow(0 0 10px rgba(62, 236, 190, 0.45));
-  transition: filter 0.25s, transform 0.15s;
-}
-.nge-play-btn::before { content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit; pointer-events: none;
-  background: linear-gradient(135deg, #b8fff0, rgba(62, 236, 190, 0.35) 45%, rgba(126, 224, 255, 0.8));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
-.nge-play-btn::after { content: ''; position: absolute; top: 0; bottom: 0; left: -70%; width: 45%; pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(200, 255, 240, 0.5), transparent); transform: skewX(-20deg);
-}
-.nge-play-btn:hover::after { animation: nge-play-shine 1.2s ease-in-out; }
-@keyframes nge-play-shine { 0%, 60% { left: -70%; } 100% { left: 140%; } }
-.nge-play-btn:hover { filter: drop-shadow(0 0 18px rgba(62, 236, 190, 0.8)); transform: translateY(-1px); }
-.nge-play-btn:active { transform: scale(0.97); }
-.nge-play-btn:focus-visible { outline: 2px solid #3eecbe; outline-offset: 3px; }
-.nge-play-orb { position: relative; width: 32px; height: 32px; flex: none; display: grid; place-items: center; }
-.nge-play-orb::before { content: ''; position: absolute; inset: 7px; border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #e9fffa 0%, #5ff0c8 35%, #1aa58c 70%, rgba(20, 90, 120, 0.9) 100%);
-  box-shadow: 0 0 10px rgba(62, 236, 190, 0.9); }
-@keyframes nge-play-glow { 50% { box-shadow: 0 0 18px rgba(120, 255, 220, 1), 0 0 30px rgba(62, 236, 190, 0.5); } }
-.nge-play-rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.nge-play-rings .r1 { fill: none; stroke: #3eecbe; stroke-width: 1.4; stroke-dasharray: 14 6 3 6; transform-origin: 16px 16px; filter: drop-shadow(0 0 2px #3eecbe); }
-.nge-play-rings .r2 { fill: none; stroke: rgba(126, 224, 255, 0.8); stroke-width: 0.9; stroke-dasharray: 2 3; transform-origin: 16px 16px; }
-@keyframes nge-play-spin { to { transform: rotate(360deg); } }
-.nge-play-btn:hover .r1 { animation: nge-play-spin 1.6s linear infinite; }
-.nge-play-btn:hover .r2 { animation: nge-play-spin 3s linear infinite reverse; }
-.nge-play-icon { position: relative; color: #04221c; margin-left: 1px; }
-.nge-play-word { position: relative; }
-@media (prefers-reduced-motion: reduce) {
-  .nge-play-btn::after, .nge-play-orb::before, .nge-play-rings .r1, .nge-play-rings .r2 { animation: none; }
-}
 @keyframes nge-play-pulse { 50% { opacity: 0.45; } }
 
 /* The card: the transmission box (intro_tour.ts styles), placed in the
