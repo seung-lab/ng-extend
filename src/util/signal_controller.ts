@@ -3387,12 +3387,12 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     shadeSomaProps();
     let total = 0;
     for (const c of cells.values()) { const pr = c.shown ? parts.get(c.spec.root) : undefined; if (pr) total += pr.arbor.axon.length + pr.arbor.dend.length; }
-    const every = Math.max(1, Math.ceil(total / 9000)), dot = Math.max(1200, viewNm * 0.0032);
+    const every = Math.max(1, Math.ceil(total / 9000)), dot = Math.max(2600, viewNm * 0.0065);
     for (const c of cells.values()) {
       const pr = c.shown ? parts.get(c.spec.root) : undefined;
       if (!pr) continue;
       const lit = c.target || litWhole.has(c.spec.root) || scanLit === c.key;
-      const a = c.dimmed ? 0.045 : lit ? 0.26 : 0.13;
+      const a = c.dimmed ? 0.1 : lit ? 0.55 : 0.3;
       const col: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];
       for (const pts of [pr.arbor.axon, pr.arbor.dend]) for (let j = 0; j < pts.length; j += every) put([pts[j][0], pts[j][1], pts[j][2]], [col[0], col[1], col[2], a], dot);
     }
@@ -3402,7 +3402,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
       if (!r) continue;
       const cp: V3 = [pre.color[0] / 255, pre.color[1] / 255, pre.color[2] / 255], cq: V3 = [post.color[0] / 255, post.color[1] / 255, post.color[2] / 255];
       const axonLen = route(k.axon as V3[]).length;
-      for (let d = 0; d <= r.length; d += 5000) { const col = d <= axonLen ? cp : cq; put(along(r, d), [col[0], col[1], col[2], pre.dimmed && post.dimmed ? 0.08 : 0.3], dot * 1.1); }
+      for (let d = 0; d <= r.length; d += 5000) { const col = d <= axonLen ? cp : cq; put(along(r, d), [col[0], col[1], col[2], pre.dimmed && post.dimmed ? 0.12 : 0.45], dot * 1.3); }
     }
   }
   drawBox(cam, put);
