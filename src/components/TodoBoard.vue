@@ -2103,7 +2103,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                              'nge-todo-card--drop-left': dropAt?.id === c.id && !dropAt.after && dropAt.side, 'nge-todo-card--drop-right': dropAt?.id === c.id && dropAt.after && dropAt.side }"
                    tabindex="0" @click="resizingId || openUp(c)" @keydown.enter="openUp(c)"
                    @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c, it.depth)">
-            <div class="nge-todo-card-tools" @click.stop>
+            <div class="nge-todo-card-tools" :class="{ 'nge-todo-card-tools--shown': linkCopied === c.id }" @click.stop>
+              <button type="button" class="nge-todo-mini" :title="linkCopied === c.id ? 'Link copied' : 'Copy a link to this card'" aria-label="Copy link to this card" @click="copyCardLink(c)">{{ linkCopied === c.id ? '✓' : '🔗' }}</button>
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
               <button v-if="isOwner" type="button" class="nge-todo-mini nge-todo-unfinished-btn" title="Close as not finished: it leaves the board and goes in your Not finished list (only you see this)" aria-label="Close as not finished" @click="closeUnfinished(c)">⊘</button>
@@ -2539,7 +2540,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-fmtbar button:hover { border-color: var(--accent); }
 .nge-todo-card { position: relative; }
 .nge-todo-card-tools { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; background: var(--card); border-radius: 6px; }
-.nge-todo-card:hover .nge-todo-card-tools, .nge-todo-card:focus-within .nge-todo-card-tools { display: flex; }
+.nge-todo-card:hover .nge-todo-card-tools, .nge-todo-card:focus-within .nge-todo-card-tools, .nge-todo-card-tools--shown { display: flex; }
 .nge-todo-card-cover { display: block; width: 100%; max-height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 6px; background: rgba(127, 127, 127, 0.12); }
 .nge-todo-tagging { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 4px 0; font-size: 12.5px; color: var(--dim); }
 .nge-todo-tag-chip { color: #fff; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
