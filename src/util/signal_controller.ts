@@ -2467,7 +2467,10 @@ function unfadeScan() {
  *  spark itself (Ames 2026-11-11: "this should not fly the ship over, it
  *  should do the photon beam to activate the cell"); otherwise the scan. */
 function tourClick(key: string) {
-  if (phase === 'brief' && tourSteps[tourAt]?.click === 'spark') demoSpark(key); else scan(key);
+  if (phase !== 'brief' || tourSteps[tourAt]?.click !== 'spark') { scan(key); return; }
+  const c = cells.get(key);
+  if (c?.target) { sfx.shield(); say('Shielded. Signal it using partner cells.', 2.6, key); shake(key); return; }   // as in play
+  demoSpark(key);
 }
 /** The scan beam, from the ship's nose to the cell it is visiting. */
 function fireScan() {
