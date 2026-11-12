@@ -32,6 +32,7 @@ interface Person {
   edits_30d: number; cells: number; cells_30d: number; chats: number; chats_30d: number;
   help_asked: number; help_answered_for: number; help_asked_30d: number; help_given: number; help_given_30d: number;
   is_admin?: boolean;
+  invited_at?: string | null; invited_for?: string | null; invited_role?: string | null; invited_as?: string | null;
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
 interface RecentEdit { at: string; dataset: string | null; operation: string | null; success: boolean | null }
@@ -43,7 +44,7 @@ interface Note { id: string; text: string; by: string; at: string }
 type Stage = 'asked' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as';
 const people = ref<Person[]>([]);
 const marks = ref<Record<string, { mark: string; at: string }>>({});
 const dsRows = ref<DatasetRequestRow[]>([]);
@@ -345,6 +346,16 @@ function span(t: number): string {
   if (m < 60 * 36) return `${Math.round(m / 60)} hours`;
   return `${Math.round(m / 1440)} days`;
 }
+// We invited them by email (access_invites, Ames 2026-11-12): the envelope
+// on the card, and this line on hover and in the panel.
+const CAMPAIGN: Record<string, string> = { mec_talk: 'the MEC talk email' };
+function invitedLine(p: Person | null | undefined): string {
+  if (!p?.invited_at) return '';
+  const what = CAMPAIGN[p.invited_for || ''] || 'an invite email';
+  const role = p.invited_role ? ` as an EyeWire ${p.invited_role}` : '';
+  const to = p.invited_as && p.invited_as !== p.email ? ` at ${p.invited_as}` : '';
+  return `We invited them by email${role}: ${what}, ${day(p.invited_at)}${to}.`;
+}
 const day = (iso: string | null) => { if (!iso) return ''; try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }); } catch { return ''; } };
 const dsName = (seg: string | null) => datasetDisplayName(seg);
 const noteCount = (c: Card) => (notes.value[c.key] || []).length;
@@ -536,7 +547,7 @@ const opName = (e: RecentEdit) => {
           <div class="ah-col-list">
             <button v-for="c in columnCards(col.stage)" :key="col.stage + c.key" type="button" class="ah-card"
                     :class="{ 'ah-card--open': openKey === c.key }" @click="pick(c)">
-              <span class="ah-card-name">{{ nameOf(c) }}</span>
+              <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span>
               <span class="ah-card-email">{{ emailOf(c) || 'no email' }}</span>
               <span class="ah-card-line">
                 <template v-if="col.stage === 'editing'">{{ c.p?.edits.toLocaleString() }} edit{{ c.p?.edits === 1 ? '' : 's' }}<template v-if="c.p?.last_dataset">, {{ dsName(c.p.last_dataset) }}</template>, last {{ ago(c.p?.last_edit_at ?? null) }} ago</template>
@@ -598,6 +609,7 @@ const opName = (e: RecentEdit) => {
         <button class="ah-close" type="button" aria-label="Close" @click="openKey = ''">×</button>
         <h2>{{ nameOf(open) }}</h2>
         <div class="ah-panel-email">{{ emailOf(open) }}</div>
+        <div v-if="open.p?.invited_at" class="ah-panel-meta ah-panel-invited">{{ invitedLine(open.p) }}</div>
         <div v-if="open.p?.gave_email && open.p.gave_email !== open.p.email" class="ah-panel-meta">Gave {{ open.p.gave_email }} on the form</div>
         <div v-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
         <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, said rank {{ open.p.ew_rank }}</template></div>
@@ -702,7 +714,7 @@ const opName = (e: RecentEdit) => {
     </button>
     <div v-if="showAdmins" class="ah-admins">
       <button v-for="c in adminCards" :key="'a' + c.key" type="button" class="ah-card" @click="pick(c)">
-        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">Admin<template v-if="c.p?.edits">, {{ c.p.edits.toLocaleString() }} edit{{ c.p.edits === 1 ? '' : 's' }}</template></span>
       </button>
     </div>
@@ -711,7 +723,7 @@ const opName = (e: RecentEdit) => {
     </button>
     <div v-if="showLater" class="ah-removed ah-later">
       <button v-for="c in laterCards" :key="'l' + c.key" type="button" class="ah-card" @click="pick(c)">
-        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">Asked {{ day(c.p?.asked_at ?? null) }}<template v-if="c.p?.ew_name"> · {{ ewShort(c.p) }}</template></span>
       </button>
     </div>
@@ -720,7 +732,7 @@ const opName = (e: RecentEdit) => {
     </button>
     <div v-if="showRemoved" class="ah-removed">
       <button v-for="c in removedCards" :key="'r' + c.key" type="button" class="ah-card" @click="pick(c)">
-        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">{{ c.p?.pilot_enabled === false ? 'Access paused' : 'Request removed' }} {{ day(c.since) }}</span>
       </button>
     </div>
@@ -826,6 +838,8 @@ const opName = (e: RecentEdit) => {
 .ah-card:hover { border-color: rgba(150,190,255,.6); }
 .ah-card--open { border-color: #9fd3ff; background: rgba(36,58,100,.95); }
 .ah-card-name { font-weight: 700; color: #f2f7ff; overflow-wrap: anywhere; }
+.ah-invited { display: inline-block; vertical-align: -2px; margin-left: 6px; color: #7fc4ff; }
+.ah-panel-invited { color: #9fd3ff; }
 .ah-card-email { font-size: 12px; color: #a9c4e6; overflow-wrap: anywhere; }
 .ah-card-line { font-size: 12px; color: #8ea3c2; }
 .ah-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
