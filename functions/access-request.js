@@ -779,17 +779,23 @@ const ASK_FROM = 'Amy at Pyr <welcome@connectome.quest>';
 const ASK_REPLY_TO = 'support@eyewire.org';
 const ASK_SUBJECT_MAX = 150;
 const ASK_TEXT_MAX = 4000;
-function askDraft(name) {
+// A request that gave an EyeWire username with no play under it (Ames
+// 2026-11-12: "this username was not found") asks them to check it.
+function askDraft(name, ewName) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const ew = String(ewName || '').trim();
+  const ask = ew
+    ? `We couldn't find any EyeWire play under the username "${ew}". Could you reply with the EyeWire username you played under? If you haven't played EyeWire, we'd love to hear how you found Pyr.`
+    : `Could you reply with your EyeWire username? If you haven't played EyeWire, we'd love to hear how you found Pyr.`;
   return {
     subject: 'Your Pyr beta request',
-    text: `Hi ${first},\n\nThanks for asking to join Pyr! For this beta testing period, we're inviting existing EyeWire players first.\n\nCould you reply with your EyeWire username? If you haven't played EyeWire, we'd love to hear how you found Pyr.\n\nAmy Sterling and the Pyr Team at Princeton`,
+    text: `Hi ${first},\n\nThanks for asking to join Pyr! For this beta testing period, we're inviting existing EyeWire players first.\n\n${ask}\n\nAmy Sterling and the Pyr Team at Princeton`,
   };
 }
 async function askDraftAction(a, io) {
   needAdmin(io.isAdmin);
   betaEmail(a.email);
-  return askDraft(cleanText(a.name, BETA_NAME_MAX, 'The name') || '');
+  return askDraft(cleanText(a.name, BETA_NAME_MAX, 'The name') || '', cleanEwName(a.ewName));
 }
 async function askEmail(a, io) {
   needAdmin(io.isAdmin);

@@ -331,7 +331,8 @@ const totals = computed(() => {
   for (const p of withAccess) for (const d of realEdit(canEdit.value?.[p.email])) byDs[d] = (byDs[d] || 0) + 1;
   const split = Object.entries(byDs).sort((a, b) => b[1] - a[1]).map(([d, n]) => `${d} ${n}`).join(', ');
   return [
-    { label: 'People', n: ps.length, title: 'Everyone who asked, was let in or signed in' },
+    // People opens the Pyr Users sheet, the game's hourly copy of everyone (Ames 2026-11-12).
+    { label: 'People', n: ps.length, title: 'Everyone who asked, was let in or signed in. Opens the Pyr Users sheet', href: USERS_SHEET_URL },
     // Everyone we emailed an invite (access_invites), and how many of them asked.
     { label: 'Invited by email', n: inviteCount.value ?? NaN, title: inviteCount.value == null ? 'Could not read the invite list' : `We emailed ${inviteCount.value} EyeWire players an invite. ${ps.filter(p => p.invited_at).length} of them asked or are in` },
     { label: 'Let in', n: ps.filter(p => p.pilot_enabled).length, title: 'On Pilot testers now' },
@@ -443,7 +444,7 @@ const markBeta = (c: Card, mark: 'listed' | 'removed' | 'waiting') => run(mark, 
   marks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: c.p!.email, mark })) || {};
 });
 const openAsk = (c: Card) => run('askdraft', async () => {
-  const d = await secureWrite<{ subject: string; text: string }>('access.askDraft', { email: c.p!.email, name: nameOf(c) });
+  const d = await secureWrite<{ subject: string; text: string }>('access.askDraft', { email: c.p!.email, name: nameOf(c), ewName: c.p!.ew_name || '' });
   ask.value = { email: c.p!.email, subject: d?.subject || '', text: d?.text || '', editing: false };
 });
 const sendAsk = (c: Card) => run('ask', async () => {
@@ -553,7 +554,8 @@ const opName = (e: RecentEdit) => {
       <span v-if="sheetSaid" class="ah-quiet ah-sheet-said" role="status">{{ sheetSaid }}</span>
     </header>
     <div v-if="people.length" class="ah-totals" aria-label="Overall">
-      <div v-for="t in totals" :key="t.label" class="ah-total" :title="t.title"><b>{{ Number.isFinite(t.n) ? t.n.toLocaleString() : '…' }}</b><span>{{ t.label }}</span></div>
+      <component :is="t.href ? 'a' : 'div'" v-for="t in totals" :key="t.label" class="ah-total" :class="{ 'ah-total--link': t.href }" :title="t.title"
+                 :href="t.href || undefined" :target="t.href ? '_blank' : undefined" :rel="t.href ? 'noopener' : undefined"><b>{{ Number.isFinite(t.n) ? t.n.toLocaleString() : '…' }}</b><span>{{ t.label }}<template v-if="t.href"> ↗</template></span></component>
     </div>
     <p v-if="error" class="ah-error" role="alert">{{ error }}</p>
     <p v-if="loading && !people.length" class="ah-quiet">Reading everyone…</p>
@@ -666,9 +668,9 @@ const opName = (e: RecentEdit) => {
           <button v-if="open.stage !== 'asked' && open.stage !== 'emailed'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'waiting')">Back to Asked</button>
         </div>
         <div v-if="open.stage === 'later'" class="ah-panel-meta">Later since {{ day(open.since) }}</div>
-        <div v-if="(open.stage === 'asked' || open.stage === 'emailed' || open.stage === 'later') && open.p?.email && (!open.p.ew_name || asked[open.p.email])" class="ah-ask">
+        <div v-if="(open.stage === 'asked' || open.stage === 'emailed' || open.stage === 'later') && open.p?.email" class="ah-ask">
           <div v-if="asked[open.p.email]" class="ah-panel-meta">Asked for their EyeWire name by email {{ day(asked[open.p.email].at) }}</div>
-          <button v-if="!askOpen" class="ah-btn" type="button" :disabled="!!busy" @click="openAsk(open)">{{ busy === 'askdraft' ? 'Opening…' : asked[open.p.email] ? 'Ask again by email' : 'Ask for their EyeWire name' }}</button>
+          <button v-if="!askOpen" class="ah-btn" type="button" :disabled="!!busy" @click="openAsk(open)">{{ busy === 'askdraft' ? 'Opening…' : asked[open.p.email] ? 'Ask again by email' : open.p.ew_name ? 'Email them to check their EyeWire name' : 'Ask for their EyeWire name' }}</button>
           <div v-else-if="ask" class="ah-ask-draft" aria-label="Email to send">
             <div class="ah-panel-meta">To {{ ask.email }}, from Amy at Pyr. Replies go to support@eyewire.org.</div>
             <template v-if="ask.editing">
@@ -840,6 +842,8 @@ const opName = (e: RecentEdit) => {
 .ah-total { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; }
 .ah-total b { font-size: 22px; color: #9fd3ff; }
 .ah-total span { font-size: 12px; color: #8ea3c2; }
+a.ah-total--link { text-decoration: none; cursor: pointer; }
+a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,196,255,.6); background: rgba(24,40,70,.9); }
 .ah-group-title { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: #cfe0ff; letter-spacing: .02em; }
 .ah-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; }
 .ah-col { max-height: min(560px, calc(100vh - 150px)) !important; }

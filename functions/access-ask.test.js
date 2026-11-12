@@ -24,6 +24,13 @@ test('the draft greets them by first name and is signed by the team', async () =
   assert.doesNotMatch(d.text, /Ames|—|–/);
 });
 
+test('a username with no play asks them to check it', async () => {
+  const { io: o } = io();
+  const d = await handle('access.askDraft', { email: 'n@x.org', name: 'nakul', ewName: 'nakul' }, o);
+  assert.match(d.text, /couldn't find any EyeWire play under the username "nakul"/);
+  assert.match(d.text, /how you found Pyr/);
+});
+
 test('sends the edited email once, from Amy at Pyr, replies to support', async () => {
   const t = io();
   const r = await handle('access.askEmail', { email: 'A@X.org', name: 'Rob', subject: 'Hello', text: 'Edited.' }, t.io);
