@@ -414,7 +414,7 @@ function camSane(v: any): boolean {
   const q = v?.navigationState?.position?.value as Float32Array | undefined;
   const o = v?.perspectiveNavigationState?.pose?.orientation?.orientation as Float32Array | undefined;
   const sc = v?.projectionScale?.value;
-  return !!q && finite3(q) && (!o || Array.from(o).every(Number.isFinite)) && Number.isFinite(sc) && sc > 0;
+  return !!q && (q.length < 3 || finite3(q)) && (!o || Array.from(o).every(Number.isFinite)) && Number.isFinite(sc) && sc > 0;   // no coordinates yet is not a bad place, only not ready
 }
 let pendingGlide: (() => void) | null = null;
 /** The look point that puts a spot in the middle of the part of the view
@@ -3840,7 +3840,7 @@ function frameBody(ts: number) {
   lastFrame = ts;
   const nm = nmPerUnit();
   const v0 = viewerNow();
-  if (v0 && nm && level?.cells?.length && !camSane(v0)) {
+  if (v0 && nm && phase !== 'loading' && level?.cells?.length && !camSane(v0)) {
     // a camera that is no finite place (a stale address, a frame that slipped through): back to the circuit
     if (!camWarned) { camWarned = true; console.warn('[signal] the camera was not a finite place; back to the circuit'); }
     glide = null; pendingGlide = null;
