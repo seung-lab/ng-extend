@@ -6704,7 +6704,8 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 /* Cilia Quest's slim bar: its row starts after the arrow, not under it, and
    the arrow is centered when the bar holds one line. */
 .nge-cl-panel--slimquest .nge-cl-list { padding-left: 46px; }
-.nge-cl-panel--slim.nge-cl-panel--slimquest .nge-cl-list > :not(.nge-cl-slim-expand) { margin-left: 0; }
+/* !important: the slim bar's pull-left rule (many :not()s) outranks a plain selector. */
+.nge-cl-panel--slim.nge-cl-panel--slimquest .nge-cl-list > :not(.nge-cl-slim-expand) { margin-left: 0 !important; }
 .nge-cl-panel--slimquest .nge-cl-list:not(:has(.nge-aq-form)) > .nge-cl-slim-expand { top: 50%; transform: translateY(-50%); }
 /* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
 .nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
