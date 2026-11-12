@@ -56,7 +56,7 @@ const REFRACTORY_S = 0.4;
 const AP_DELAY_S = 0.35;               // the cell body sparkles first, then the spike leaves (Ames 2026-11-12: "a slight delay between soma particles and the AP leaving the cell")
 /** Fast-spiking cells (the basket cell): no wind-up and spikes that run
  *  this many times faster, as perisomatic inhibition does. */
-const FAST: Record<string, number> = {B1: 6};
+const FAST: Record<string, number> = {B1: 12};   // the clip lands 0.33 s after E1's own excitation: a second E1 spike (0.4 s on) is clipped, E2 then E1 a beat later gets past
 const SPEED_UM_S = 200;                // a spike along the real path: about 2,000 times slower than life, slow enough to watch (Ames 2026-11-11: "too fast!"; "the speed is way too fast")
 const HUSH_S = 2.5;
 const BEAM_S = 0.3;                    // the Spark's flight
@@ -184,7 +184,7 @@ const LEVELS: Level[] = [
   {title: 'All at Once', objective: 'Spike the gold cell', detail: '3 times, with the weak drivers together', timeS: 75, par: 9,
     science: 'Convergence: a pyramidal cell needs many inputs at once. No single driver here reaches threshold; three together, within the window the leak allows, do.',
     brief: 'E1 is gone. E2, E3 and E4 carry 4, 3 and 2 synapses: none enough alone.\nSpark all three together, and they add up.',
-    cells: ['T', 'E2', 'E3', 'E4'], targets: ['T'], hush: false,
+    cells: ['T', 'E2', 'E3', 'E4'], targets: ['T'], hush: false, theta: {T: 7.6},   // E3's path is the longest: the three land over 0.16 s
     goal: {kind: 'fire', target: 'T', count: 3},
     coach: {begin: 'Spark E2, E3 and E4 together: 4 + 3 + 2.',
       driver: 'One is not enough. All three, together.',
@@ -2887,7 +2887,7 @@ function spike(key: string, byBeam = false) {
     // cells that fire together wire together: the synapses whose spikes just
     // helped grow (Hebbian potentiation), up to 2.2 times
     const grown = new Set<string>();
-    for (const r of recentIn) if (r.post === key && now - r.at < 0.9 && !grown.has(r.pre)) { r.conn.w = Math.min(2.2, (r.conn.w ?? 1) + 0.4); grown.add(r.pre); }
+    for (const r of recentIn) if (r.post === key && now - r.at < 1.2 && !grown.has(r.pre)) { r.conn.w = Math.min(2.2, (r.conn.w ?? 1) + 0.4); grown.add(r.pre); }
     const g = level.goal;
     if (g.kind === 'solo' && grown.has(g.driver)) { const k = conns.find(x => x.pre === g.driver && x.post === key); if (k) say(`${g.driver}’s synapses onto ${key} grew: ×${(k.w ?? 1).toFixed(1)}.`, 2.6, g.driver); }
   }
