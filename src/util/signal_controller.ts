@@ -989,6 +989,9 @@ body.nge-signal-on .nge-stt, body.nge-signal-on .nge-stt-dock { display: none !i
 /* Pyr's top bar and the layer tabs are away while the game runs, and the
    viewer takes the window (Ames 2026-11-11: "hide these during the game") */
 body.nge-signal-on #extensionBar, body.nge-signal-on .neuroglancer-viewer-top-row, body.nge-signal-on .neuroglancer-layer-panel { display: none !important; }
+/* on a phone the bottom nav and the corner layout button go too while the game runs, and the HUD takes the room (Ames 2026-11-12: "on mobile this game is still showing the bottom bar") */
+body.nge-signal-on .nge-mobile-nav, body.nge-signal-on .neuroglancer-data-panel-layout-controls { display: none !important; }
+body.nge-signal-on.nge-mobile .nge-sig { bottom: calc(8px + env(safe-area-inset-bottom)); max-height: 64vh; }
 body.nge-signal-on #neuroglancer-container { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; margin: 0 !important; }
 @media (max-width: 700px) { .nge-sig { padding: 10px 12px; font-size: 12.5px; } .nge-sig-obj strong { font-size: 14px; } .nge-sig-stats b { font-size: 15px; }
   .nge-sig .nge-sig-chip .syn { display: none; } .nge-sig .nge-sig-chip { min-width: 0; } .nge-sig .nge-sig-chip .bar { width: 70px; } .nge-sig-note { display: none; } .nge-sig-coach { font-size: 13px; } }
