@@ -4,6 +4,7 @@ import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
 import { taskAction } from './pilot_actions';
 import { startClaimTimer, countsTime, noteClaimSave, noteClaimFinished, type TimedClaim } from './util/claim_time';
+import { startSandboxMatch } from './sandbox_match';
 // A congratulations at 10, 25, 50 and 100 hours on a cell, and a finished Super Quest.
 import './util/claim_congrats';
 import { syncCellToSheet } from './sheet_sync';
@@ -5356,6 +5357,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   setInterval(() => { if (!document.hidden) refreshLaterRoots().catch(() => {}); }, 3 * 60_000);
   watch(() => myActiveClaims().map(t => t.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
   startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
+  // Cell match (Ames 2026-11-12): Sandbox claims, known by the same IDs.
+  const sandboxClaims = computed(() => myActiveClaims().filter(t => canonicalDataset(t.dataset) === 'pinky_nf_v2').map(t => ({
+    id: t.id, dataset: t.dataset,
+    roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
+      .filter((r): r is string => !!r))],
+  })));
+  startSandboxMatch({ claims: () => sandboxClaims.value, signedIn: () => !!userId.value });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
   let laterAgainTimer: ReturnType<typeof setTimeout> | null = null;

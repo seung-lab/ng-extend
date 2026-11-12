@@ -2265,6 +2265,41 @@ exports.ewProofreadingTest = onRequest(
   }
 );
 
+// ── Cell match on Sandbox cells (Ames 2026-11-12): a function of its own ──
+// How close a player's Sandbox Cell Library cell is to its true cell in
+// pinky_training, after each edit. Rules in sandbox-match.js; schema in
+// supabase-sandbox-match.sql; client in src/sandbox_match.ts. Its own function
+// because it binds the CAVE token and keeps answer keys (not ewSecureWrite,
+// which other checkouts redeploy):
+//   firebase deploy --only functions:ewSandboxMatch --project eyewire-ii-e4d52
+const EW_MATCH_CODE_VERSION = "2026-11-12-sandbox-match-1";
+exports.ewSandboxMatch = onRequest(
+  // A cell's supervoxels are ~6 MB; a few at a time per instance. 120 s: the
+  // first check of a cell builds its key (up to ~20 s on the largest cells).
+  { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, concurrency: 4, memory: "1GiB", timeoutSeconds: 120 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") { res.json({ ok: true, code: EW_MATCH_CODE_VERSION }); return; }
+    if (typeof action !== "string" || !action.startsWith("match.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      // Per person only (a "write:" prefix), never the shared global counter.
+      if (!(await rateLimit({ ip: who.email }, true, "write:match", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment." });
+      const { handle } = require("./sandbox-match");
+      const data = await handle({ action, args, me, isAdmin, io: { fetch, caveToken: ewCaveToken.value().trim(), sb } });
+      res.json({ ok: true, data });
+    } catch (e) {
+      console.warn("[ewSandboxMatch]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "The check could not be completed." });
+    }
+  }
+);
+
 // ── Report replies (Ames 2026-10-13): a function of its own ──────────────
 // An approver asks a report's submitter for a reply (reply.ask, admins) and
 // the submitter answers once in the notification (reply.send). Rules in
