@@ -312,3 +312,15 @@ test('only Ames closes a card as not finished, and only she reopens it (Ames 202
   const back = (await as(true)('todo.save', { id: c.id, fields: { list: 'todo' } })).card;
   assert.deepEqual([back.list, back.done_at], ['todo', null]);
 });
+
+test('a due time: kept as HH:MM, checked, and cleared with the day (Ames 2026-11-12)', async () => {
+  const db = memDb(), tags = [];
+  const save = args => todoAction('todo.save', args, ctx(db, tags));
+  const c = (await save({ fields: { title: 'x', due_on: '2026-11-13', due_time: '15:30' } })).card;
+  assert.deepEqual([c.due_on, c.due_time], ['2026-11-13', '15:30']);
+  await assert.rejects(save({ id: c.id, fields: { due_time: '3pm' } }), /like 14:30/);
+  await assert.rejects(save({ id: c.id, fields: { due_time: '24:00' } }), /like 14:30/);
+  assert.equal((await save({ id: c.id, fields: { due_time: null } })).card.due_time, null);
+  await save({ id: c.id, fields: { due_time: '09:05' } });
+  assert.deepEqual(Object.values((({ due_on, due_time }) => ({ due_on, due_time }))((await save({ id: c.id, fields: { due_on: null } })).card)), [null, null]);
+});

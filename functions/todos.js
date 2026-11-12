@@ -99,6 +99,13 @@ function cleanFields(f, isNew) {
     if (f.due_on !== null && f.due_on !== '' && !/^\d{4}-\d\d-\d\d$/.test(String(f.due_on))) fail(400, 'A due date is a day, like 2026-10-31.');
     out.due_on = f.due_on || null;
   }
+  // A time on the due day (Ames 2026-11-12: "add time"), "HH:MM" on a 24 hour
+  // clock, read in the viewer's own time zone. No day, no time.
+  if ('due_time' in f) {
+    if (f.due_time !== null && f.due_time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(f.due_time))) fail(400, 'A due time is like 14:30.');
+    out.due_time = f.due_time || null;
+  }
+  if ('due_on' in out && !out.due_on) out.due_time = null;
   if ('links' in f) {
     if (!Array.isArray(f.links) || f.links.length > LINKS_MAX) fail(400, `At most ${LINKS_MAX} links.`);
     out.links = f.links.map(l => {
@@ -142,7 +149,7 @@ function changeWords(fields, before) {
     return 'updated the checklist on';
   }
   if ('owner_id' in fields) return 'changed who owns';
-  if ('due_on' in fields) return 'changed the due day of';
+  if ('due_on' in fields || 'due_time' in fields) return 'changed the due day of';
   if (['title', 'notes', 'status', 'links', 'images'].some(k => k in fields)) return 'updated';
   return '';
 }

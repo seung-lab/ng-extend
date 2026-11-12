@@ -1652,6 +1652,13 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
             <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
           </div>
         </li>
+        <!-- Terms of Use and Privacy Notice, interim version on connectome.quest
+             while Princeton reviews it (Ames 2026-11-10). -->
+        <li>
+          <a class="logoutButton button nge-menu-item" target="_blank" rel="noopener" href="https://connectome.quest/terms/" @click="closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">📄</span><span>Terms and Privacy ↗</span>
+          </a>
+        </li>
         <!-- Log out, last in the menu (Ames 2026-11-09). -->
         <li v-if="login.sessions.length > 0" class="nge-menu-logout">
           <div class="logoutButton button nge-menu-item" @click="logOutAll()">

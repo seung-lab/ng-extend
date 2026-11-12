@@ -36,6 +36,8 @@ interface Card {
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
   // Optional (supabase-admin-todos-fields.sql).
   links?: Link[]; status?: string; due_on?: string | null; images?: string[];
+  /** "HH:MM" on the due day (supabase-admin-todos-due-time.sql, Ames 2026-11-12). */
+  due_time?: string | null;
   // Hierarchy (supabase-admin-todos-hierarchy.sql, Ames 2026-11-11).
   parent_id?: string | null; section_id?: string | null;
 }
@@ -161,7 +163,68 @@ function cardText(c: Card): string {
     ...(c.links || []).flatMap(k => [k.label || '', k.url || '']),
   ].join('\n').toLowerCase();
 }
-const matches = (c: Card) => { const w = searchWords.value; if (!w.length) return true; const t = cardText(c); return w.every(x => t.includes(x)); };
+// Search that finds your stuff (Ames 2026-11-12: "better search that lets me
+// find like all my stuff"). Besides words: "me" or "@me", "@name" for anyone,
+// and filters, each a word: owner, with, tagged, checklist, overdue, week,
+// nodate, unowned. "owner @celia" is Celia's own cards. The chips under the
+// box put these in.
+const SEARCH_FILTERS: { word: string; label: string; hint: string }[] = [
+  { word: 'me', label: '★ Anything of mine', hint: 'I own it, work on it, am tagged, or have a checklist item on it' },
+  { word: 'owner', label: 'I own', hint: 'Cards owned by me (or by @name)' },
+  { word: 'with', label: 'With me', hint: 'Cards I am a collaborator on (or @name is)' },
+  { word: 'tagged', label: 'Tagged me', hint: 'Cards where I am tagged (or @name is)' },
+  { word: 'checklist', label: 'My checklist items', hint: 'Cards with a checklist item for me (or @name)' },
+  { word: 'overdue', label: 'Overdue', hint: 'Past their due day' },
+  { word: 'week', label: 'Due this week', hint: 'Due in the next 7 days' },
+  { word: 'nodate', label: 'No due day', hint: 'Cards with no due day' },
+  { word: 'unowned', label: 'Nobody owns', hint: 'Cards with no owner yet' },
+];
+const FILTER_WORDS = new Set(SEARCH_FILTERS.map(f => f.word).filter(w => w !== 'me'));
+/** The person a search word names: "me", "@me", "@celia", "@Marissa". */
+function personWord(w: string): string | null {
+  if (w === 'me' || w === '@me' || w === 'mine') return myId.value;
+  if (!w.startsWith('@') || w.length < 2) return null;
+  const q = w.slice(1);
+  return people.value.find(p => namesOf(p).some(n => n.toLowerCase().startsWith(q)))?.id || null;
+}
+const isTaggedOn = (c: Card, id: string) => tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
+const hasItemFor = (c: Card, id: string) => c.checklist.some(it => !it.done && (it.owner_id === id || (!it.owner_id && tagsIn(it.text).includes(id))));
+const involves = (c: Card, id: string) => c.owner_id === id || (helpers.value[c.id] || []).includes(id) || isTaggedOn(c, id) || c.checklist.some(it => it.owner_id === id || tagsIn(it.text).includes(id));
+function searchFilter(c: Card, w: string, who: string | null): boolean {
+  const id = who || myId.value;
+  switch (w) {
+    case 'owner': return !!id && c.owner_id === id;
+    case 'with': return !!id && (helpers.value[c.id] || []).includes(id) && c.owner_id !== id;
+    case 'tagged': return !!id && isTaggedOn(c, id);
+    case 'checklist': return !!id && hasItemFor(c, id);
+    case 'overdue': return isOverdue(c);
+    case 'week': { if (!c.due_on || c.list === 'done') return false; const d = Date.parse(c.due_on + 'T23:59:59'); return d >= Date.now() && d < Date.now() + 7 * 864e5; }
+    case 'nodate': return !c.due_on;
+    case 'unowned': return !c.owner_id;
+  }
+  return true;
+}
+const matches = (c: Card) => {
+  const w = searchWords.value;
+  if (!w.length) return true;
+  const people_ = w.map(personWord);
+  const who = people_.find(Boolean) || null;
+  const hasFilter = w.some(x => FILTER_WORDS.has(x));
+  const t = cardText(c);
+  return w.every((x, i) => {
+    if (FILTER_WORDS.has(x)) return searchFilter(c, x, who);
+    // A person: with a filter, the filter says how; alone, anything involving them.
+    if (people_[i]) return hasFilter || involves(c, people_[i] as string);
+    return t.includes(x);
+  });
+};
+function toggleSearchWord(word: string) {
+  const words = search.value.split(/\s+/).filter(Boolean);
+  const has = words.some(x => x.toLowerCase() === word);
+  search.value = (has ? words.filter(x => x.toLowerCase() !== word) : [...words, word]).join(' ') + (has ? '' : ' ');
+}
+const searchHas = (word: string) => searchWords.value.includes(word);
+const searchFocused = ref(false);
 function onSearchKey(e: KeyboardEvent) {
   if (e.key === 'Escape') { search.value = ''; (e.target as HTMLInputElement).blur(); }
 }
@@ -189,19 +252,51 @@ const kidCount = (c: Card) => { const k = kidsOf(c.id); return { all: k.length, 
 const sectionsIn = (list: ListKey) => (sections.value || []).filter(x => x.list === list).sort((a, b) => a.rank - b.rank);
 const LIST_TITLE: Record<ListKey, string> = { todo: 'To do', doing: 'Doing', done: 'Done' };
 /** A line of the board: a section's header, or a card (depth 1 when it sits under its parent). */
-type BoardRow = { kind: 'section'; s: Section; n: number } | { kind: 'card'; c: Card; depth: 0 | 1 };
+type BoardRow = { kind: 'section'; s: Section; n: number } | { kind: 'card'; c: Card; depth: 0 | 1 } | { kind: 'date'; label: string; n: number; late?: boolean };
+/** Date headings for a column organized by date, in order. */
+function dateGroups(list: ListKey, rows: Card[]): { label: string; late?: boolean; cards: Card[] }[] {
+  const day0 = new Date(new Date().toDateString()).getTime();
+  const daysTo = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-').map(Number); return Math.round((new Date(y, m - 1, d).getTime() - day0) / 864e5); };
+  if (list === 'done') {
+    const g = [{ label: 'Today', cards: [] as Card[] }, { label: 'Yesterday', cards: [] as Card[] }, { label: 'This week', cards: [] as Card[] }, { label: 'Earlier', cards: [] as Card[] }];
+    const localDay = (iso: string) => { const t = new Date(iso); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+    for (const c of [...rows].sort((a, b) => String(b.done_at || '').localeCompare(String(a.done_at || '')))) {
+      const n = c.done_at ? -daysTo(localDay(c.done_at)) : 99;
+      g[n <= 0 ? 0 : n === 1 ? 1 : n < 7 ? 2 : 3].cards.push(c);
+    }
+    return g.filter(x => x.cards.length);
+  }
+  const g = [{ label: 'Overdue', late: true, cards: [] as Card[] }, { label: 'Today', cards: [] as Card[] }, { label: 'Tomorrow', cards: [] as Card[] },
+    { label: 'This week', cards: [] as Card[] }, { label: 'Later', cards: [] as Card[] }, { label: 'No due day', cards: [] as Card[] }];
+  const key = (c: Card) => `${c.due_on || '9999-99-99'} ${c.due_time || '99:99'}`;
+  for (const c of [...rows].sort((a, b) => key(a).localeCompare(key(b)) || a.rank - b.rank)) {
+    if (!c.due_on) { g[5].cards.push(c); continue; }
+    const n = daysTo(c.due_on);
+    g[isOverdue(c) ? 0 : n <= 0 ? 1 : n === 1 ? 2 : n < 7 ? 3 : 4].cards.push(c);
+  }
+  return g.filter(x => x.cards.length);
+}
 const columns = computed(() => LISTS.map(l => {
   const byDue = (a: Card, b: Card) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.rank - b.rank;
   const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c)) && matches(c)).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
   const rows = l.key === 'done' && !showAllDone.value && !searchWords.value.length ? all.filter(c => !doneOld(c)) : all;
   const items: BoardRow[] = [];
+  if (byDate.value[l.key]) {
+    // By date: every card under its date heading, sub cards too, sections set aside.
+    for (const grp of dateGroups(l.key, rows)) {
+      items.push({ kind: 'date', label: grp.label, n: grp.cards.length, late: grp.late });
+      for (const c of grp.cards) items.push({ kind: 'card', c, depth: 0 });
+    }
+    return { ...l, rows, items, hidden: all.length - rows.length };
+  }
   if (!hierarchyOn.value) {
     for (const c of rows) items.push({ kind: 'card', c, depth: 0 });
     return { ...l, rows, items, hidden: all.length - rows.length };
   }
   // A sub card whose parent is in this column sits under it, shown when the parent is unfolded.
   const shown = new Set(rows.map(c => c.id));
-  const nested = (c: Card) => !!c.parent_id && shown.has(c.parent_id);
+  // While searching, every match shows on its own, never folded away under its parent.
+  const nested = (c: Card) => !searchWords.value.length && !!c.parent_id && shown.has(c.parent_id);
   const tops = rows.filter(c => !nested(c));
   const secs = sectionsIn(l.key);
   const add = (c: Card) => {
@@ -767,7 +862,7 @@ async function save(c: Card, fields: Partial<Card>, extra: Record<string, any> =
 
 // A new card, at the bottom of its list.
 const adding = ref<ListKey | null>(null);
-const newDraft = () => ({ title: '', notes: '', size: null as Size | null, status: '', owner_id: '', due_on: '',
+const newDraft = () => ({ title: '', notes: '', size: null as Size | null, status: '', owner_id: '', due_on: '', due_time: '',
   links: [] as Link[], checklist: [] as { text: string; done: boolean }[], images: [] as string[] });
 const draft = ref(newDraft());
 async function addCard(list: ListKey) {
@@ -781,6 +876,7 @@ async function addCard(list: ListKey) {
     if (d.status.trim()) fields.status = d.status.trim();
     if (d.owner_id) fields.owner_id = d.owner_id;
     if (d.due_on) fields.due_on = d.due_on;
+    if (d.due_on && d.due_time) fields.due_time = d.due_time;
     if (d.links.length) fields.links = d.links;
     if (d.checklist.length) fields.checklist = d.checklist;
     if (d.images.length) fields.images = d.images;
@@ -975,30 +1071,64 @@ const followerNames = (c: Card) => (followers.value[c.id] || []).map(id => peopl
 // ── My Tasks (Ames 2026-11-02, from Asana): everything that is mine in one
 // list, cards I own and checklist items that are mine, by due day. ──
 const myTasksOpen = ref(false);
-type Task = { key: string; card: Card; text: string; due: string | null; item: number | null; at?: string };
+// How a task is mine (Ames 2026-11-12: "more organization here -- me owner,
+// collaborator, tags, checklist"): filter by it, or group by it.
+type Role = 'owner' | 'helper' | 'tagged' | 'item';
+const ROLES: { key: Role; label: string; head: string }[] = [
+  { key: 'owner', label: 'I own', head: 'You own' },
+  { key: 'helper', label: 'With me', head: 'You work on it with someone' },
+  { key: 'tagged', label: 'Tagged me', head: 'You are tagged' },
+  { key: 'item', label: 'Checklist', head: 'Checklist items for you' },
+];
+const ROLE_WORD: Record<Role, string> = { owner: 'Owner', helper: 'With', tagged: 'Tagged', item: 'Checklist' };
+type Task = { key: string; card: Card; text: string; due: string | null; time?: string | null; item: number | null; at?: string; role?: Role; actId?: number };
+const MYTASKS_KEY = 'nge-todo-mytasks-view';
+const taskView = ref<{ role: Role | 'all'; group: 'due' | 'role' }>((() => {
+  try { const v = JSON.parse(localStorage.getItem(MYTASKS_KEY) || 'null'); if (v && v.role && v.group) return v; } catch { /* default */ }
+  return { role: 'all', group: 'due' };
+})());
+function setTaskView(patch: Partial<{ role: Role | 'all'; group: 'due' | 'role' }>) {
+  taskView.value = { ...taskView.value, ...patch };
+  try { localStorage.setItem(MYTASKS_KEY, JSON.stringify(taskView.value)); } catch { /* not remembered */ }
+}
 const myTasks = computed(() => {
   const me = myId.value;
   if (!me) return [] as { head: string; rows: Task[]; late?: boolean }[];
-  const out: Task[] = [];
+  const all: Task[] = [];
   for (const c of cards.value) {
     if (c.list === 'done') continue;
-    if (c.owner_id === me || (helpers.value[c.id] || []).includes(me)) out.push({ key: c.id, card: c, text: c.title, due: c.due_on || null, item: null });
+    const card = (role: Role): Task => ({ key: `${role}:${c.id}`, card: c, text: c.title, due: c.due_on || null, time: c.due_time || null, item: null, role });
+    if (c.owner_id === me) all.push(card('owner'));
+    else if ((helpers.value[c.id] || []).includes(me)) all.push(card('helper'));
+    else if (isTaggedOn(c, me)) all.push(card('tagged'));
     c.checklist.forEach((it, i) => {
-      if (!it.done && itemOwner(it)?.id === me) out.push({ key: `${c.id}:${i}`, card: c, text: it.text, due: it.due || null, item: i });
+      if (!it.done && itemOwner(it)?.id === me) all.push({ key: `${c.id}:${i}`, card: c, text: it.text, due: it.due || null, item: i, role: 'item' });
     });
+  }
+  const pick = taskView.value.role;
+  const out = pick === 'all' ? all : all.filter(t => t.role === pick);
+  const dueKey = (t: Task) => `${t.due || '9999'} ${t.time || '99:99'}`;
+  if (taskView.value.group === 'role') {
+    const byRole = ROLES.map(r => ({ head: r.head, rows: out.filter(t => t.role === r.key).sort((a, b) => dueKey(a).localeCompare(dueKey(b))) }));
+    return withTagsAndReactions(byRole, me, pick).filter(g => g.rows.length);
   }
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const day = (d: string) => new Date(d + 'T00:00:00').getTime();
   const week = today.getTime() + 7 * 864e5;
   const groups: { head: string; rows: Task[]; late?: boolean }[] = [
     { head: 'Overdue', rows: [], late: true }, { head: 'Today', rows: [] }, { head: 'This week', rows: [] }, { head: 'Later', rows: [] }, { head: 'No due day', rows: [] }];
-  for (const t of out.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))) {
+  for (const t of out.sort((a, b) => dueKey(a).localeCompare(dueKey(b)))) {
     if (!t.due) groups[4].rows.push(t);
     else if (day(t.due) < today.getTime()) groups[0].rows.push(t);
     else if (day(t.due) === today.getTime()) groups[1].rows.push(t);
     else if (day(t.due) < week) groups[2].rows.push(t);
     else groups[3].rows.push(t);
   }
+  return withTagsAndReactions(groups, me, pick).filter(g => g.rows.length);
+});
+/** The tags waiting on you and the reactions to you, ahead of the rest. */
+function withTagsAndReactions(groups: { head: string; rows: Task[]; late?: boolean }[], me: string, pick: Role | 'all') {
+  if (pick !== 'all' && pick !== 'tagged') return groups;
   // Tagged and not answered yet (Ames 2026-11-05: "how do I find the things
   // I've been tagged in here?"): a card whose newest tag of you, in a comment
   // or its notes, came after your last comment there. First, as the most urgent.
@@ -1028,12 +1158,136 @@ const myTasks = computed(() => {
       }
     }
   }
-  if (reacted.length) groups.splice(tagged.length ? 1 : 0, 0, { head: 'Reactions to you', rows: reacted.sort((a, b) => (b.at || '').localeCompare(a.at || '')) });
-  return groups.filter(g => g.rows.length);
+  if (reacted.length && pick === 'all') groups.splice(tagged.length ? 1 : 0, 0, { head: 'Reactions to you', rows: reacted.sort((a, b) => (b.at || '').localeCompare(a.at || '')) });
+  return groups;
+}
+// ── Activity (Ames 2026-11-12: "can we put the todo notifs on the todo page?",
+// "we need to be able to see replies here"). The board's own bell notes for
+// me (tags, replies, cards given to me, collaborations, finished cards I
+// follow, reminders), read from the same notifications as the bell: reading
+// one here reads it there too. ──
+type ActKind = 'tagged' | 'reply' | 'given' | 'finished' | 'reminder';
+interface Act { id: number; kind: ActKind; who: string; what: string; quote: string; cardId: string | null; cardTitle: string; at: string; read: boolean }
+const ACT_FILTERS: { key: ActKind | 'all'; label: string }[] = [
+  { key: 'all', label: 'All' }, { key: 'tagged', label: 'Tagged' }, { key: 'reply', label: 'Replies' },
+  { key: 'given', label: 'Given to me' }, { key: 'finished', label: 'Finished' }, { key: 'reminder', label: 'Reminders' },
+];
+const activity = ref<Act[]>([]);
+const activityOpen = ref(false);
+const activityFilter = ref<ActKind | 'all'>('all');
+const activityError = ref('');
+const TODO_LINK = /[?&]todo=([0-9a-f-]{36})/i;
+function readAct(n: any, reads: Set<number>): Act | null {
+  const title = String(n.title || ''), body = String(n.body || '');
+  const link = body.match(TODO_LINK);
+  if (!link) return null;
+  const cardId = link[1].toLowerCase();
+  const card = cards.value.find(c => c.id === cardId);
+  const quote = (body.match(/"([\s\S]*?)"\s*\n/) || [])[1] || '';
+  const cardTitle = card?.title || body.split('\n')[0].replace(/^.*?:\s*/, '');
+  let kind: ActKind = 'tagged', who = '', what = '';
+  const m = title.match(/^📋 (.+?) (tagged you on|replied to you on|gave you|added you as a collaborator on|finished) a To do/u);
+  if (m) {
+    who = m[1];
+    kind = m[2] === 'tagged you on' ? 'tagged' : m[2] === 'replied to you on' ? 'reply' : m[2] === 'finished' ? 'finished' : 'given';
+    what = m[2] === 'tagged you on' ? 'tagged you' : m[2] === 'replied to you on' ? 'replied to you' : m[2] === 'gave you' ? 'gave you this card' : m[2] === 'finished' ? 'finished' : 'added you as a collaborator';
+  } else if (title.startsWith('⏰')) {
+    kind = 'reminder'; who = ''; what = 'Still waiting on you';
+  } else if (title.startsWith('📋 ') && !title.startsWith('📋 Edited:')) {
+    what = title.replace(/^📋 /, '');
+  } else return null;
+  return { id: Number(n.id), kind, who, what, quote, cardId, cardTitle, at: String(n.send_at || ''), read: reads.has(Number(n.id)) };
+}
+async function loadActivity() {
+  const me = myId.value;
+  if (!me) return;
+  activityError.value = '';
+  try {
+    const { supabase } = await import('../supabase');
+    const since = new Date(Date.now() - 45 * 864e5).toISOString();
+    const { data, error: e1 } = await supabase.from('notifications').select('id,title,body,send_at')
+      .eq('target_type', 'user').eq('target_id', me).gte('send_at', since).lte('send_at', new Date().toISOString())
+      .ilike('body', '%todo=%').order('send_at', { ascending: false }).limit(200);
+    if (e1) throw e1;
+    const rows = (data || []) as any[];
+    const reads = new Set<number>();
+    // The gateway takes at most 100 values in one in().
+    for (let i = 0; i < rows.length; i += 90) {
+      const { data: r } = await supabase.from('notification_reads').select('notification_id').eq('user_id', me).in('notification_id', rows.slice(i, i + 90).map(x => x.id));
+      for (const x of (r || []) as any[]) reads.add(Number(x.notification_id));
+    }
+    for (const id of (backend.notificationReads || new Set()) as Set<number>) reads.add(Number(id));
+    activity.value = rows.map(n => readAct(n, reads)).filter(Boolean) as Act[];
+  } catch (e: any) {
+    activityError.value = `Could not load your activity: ${e?.message ?? String(e)}`;
+  }
+}
+async function markActsRead(acts: Act[]) {
+  const me = myId.value;
+  const fresh = acts.filter(a => !a.read);
+  if (!me || !fresh.length) return;
+  for (const a of fresh) a.read = true;
+  activity.value = [...activity.value];
+  try {
+    for (const a of fresh) backend.notificationReads?.add?.(a.id);
+    const { supabase } = await import('../supabase');
+    await supabase.from('notification_reads').upsert(fresh.map(a => ({ notification_id: a.id, user_id: me })), { onConflict: 'notification_id,user_id' });
+  } catch { /* read here, at least */ }
+}
+const activityShown = computed(() => activity.value.filter(a => activityFilter.value === 'all' || a.kind === activityFilter.value));
+const activityUnread = computed(() => activity.value.filter(a => !a.read).length);
+const activityGroups = computed(() => {
+  const day0 = new Date(new Date().toDateString()).getTime();
+  const g = [{ head: 'Today', rows: [] as Act[] }, { head: 'Yesterday', rows: [] as Act[] }, { head: 'Earlier', rows: [] as Act[] }];
+  for (const a of activityShown.value) { const t = Date.parse(a.at); g[t >= day0 ? 0 : t >= day0 - 864e5 ? 1 : 2].rows.push(a); }
+  return g.filter(x => x.rows.length);
+});
+function openAct(a: Act) {
+  void markActsRead([a]);
+  const c = a.cardId ? cards.value.find(x => x.id === a.cardId) : null;
+  if (!c) { error.value = 'That card is not on the board any more.'; return; }
+  activityOpen.value = false;
+  myTasksOpen.value = false;
+  if (a.kind === 'reply' || a.kind === 'tagged') openAt(c, 'comments'); else openUp(c);
+}
+// Opening a card reads its notes here too, as it does its tags.
+watch(openId, id => { if (id) void markActsRead(activity.value.filter(a => a.cardId === id)); });
+watch(myId, id => { if (id) void loadActivity(); }, { immediate: true });
+const ACT_ICON: Record<ActKind, string> = { tagged: '🏷', reply: '↩', given: '🤝', finished: '✓', reminder: '⏰' };
+// Replies in My Tasks: unread replies to me, and new comments by others on
+// cards I own or work on since I last opened them (14 days).
+const myReplies = computed(() => {
+  const me = myId.value;
+  if (!me) return [] as Task[];
+  const myName = people.value.find(p => p.id === me)?.name || '';
+  const out: Task[] = [];
+  const since = new Date(Date.now() - 14 * 864e5).toISOString();
+  const noted = new Set<string>();
+  for (const a of activity.value) {
+    if (a.read || a.kind !== 'reply' || !a.cardId) continue;
+    const c = cards.value.find(x => x.id === a.cardId);
+    if (!c || noted.has(c.id)) continue;
+    noted.add(c.id);
+    out.push({ key: 'reply:' + a.id, card: c, text: `${firstName(a.who)} replied${a.quote ? `: "${plainLine(a.quote).slice(0, 80)}"` : ''}`, due: null, item: -3, at: a.at, actId: a.id });
+  }
+  for (const c of cards.value) {
+    if (c.list === 'done' || noted.has(c.id)) continue;
+    if (c.owner_id !== me && !(helpers.value[c.id] || []).includes(me)) continue;
+    const seen = seenAt.value[c.id] || '';
+    const fresh = (c.comments || []).filter(cm => cm.by !== myName && cm.at > seen && cm.at > since);
+    if (!fresh.length) continue;
+    const last = fresh[fresh.length - 1];
+    out.push({ key: 'new:' + c.id, card: c, text: `${firstName(last.by)}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ''}: "${plainLine(last.text).slice(0, 80)}"`, due: null, item: -3, at: last.at });
+  }
+  return out.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
 });
 // Reactions show in My Tasks but are not tasks, so they do not count (Ames 2026-11-09).
 const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.filter(t => t.item !== -2).length, 0));
-function openTask(t: Task) { myTasksOpen.value = false; if (t.item === -1 || t.item === -2) openAt(t.card, 'comments'); else openUp(t.card); }
+function openTask(t: Task) {
+  myTasksOpen.value = false;
+  if (t.actId) { const a = activity.value.find(x => x.id === t.actId); if (a) void markActsRead([a]); }
+  if (t.item === -1 || t.item === -2 || t.item === -3) openAt(t.card, 'comments'); else openUp(t.card);
+}
 // ── Reactions on comments ──
 const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 const reactPick = ref<string | null>(null);
@@ -1346,7 +1600,12 @@ function onLinksDrop(e: DragEvent, c: Card) {
 
 /** Today, on this computer's calendar, as 2026-10-21. */
 function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
-const isOverdue = (c: Card) => !!c.due_on && c.list !== 'done' && c.due_on < todayKey();
+const isOverdue = (c: Card) => !!c.due_on && c.list !== 'done' && (c.due_on < todayKey()
+  || (!!c.due_time && c.due_on === todayKey() && new Date().toTimeString().slice(0, 5) > c.due_time));
+/** "3:30 pm" from "15:30", in the viewer's own way of writing times. */
+const timeWords = (t: string) => { const [h, m] = t.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+/** The due day, with its time when it has one: "due tomorrow, 3:30 PM". */
+const dueText = (c: Card) => (c.due_on ? dueWords(c.due_on) + (c.due_time ? ', ' + timeWords(c.due_time) : '') : '');
 function dueWords(day: string) {
   const [y, m, d] = day.split('-').map(Number);
   const when = new Date(y, m - 1, d);
@@ -1356,7 +1615,8 @@ function dueWords(day: string) {
   if (days > 1 && days < 7) return 'due ' + when.toLocaleDateString(undefined, { weekday: 'short' });
   return 'due ' + when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
-const onDueChange = (c: Card, e: Event) => save(c, { due_on: (e.target as HTMLInputElement).value || null });
+const onDueChange = (c: Card, e: Event) => { const v = (e.target as HTMLInputElement).value || null; return save(c, v ? { due_on: v } : { due_on: null, due_time: null }); };
+const onDueTimeChange = (c: Card, e: Event) => save(c, { due_time: (e.target as HTMLInputElement).value || null });
 const editStatus = ref('');
 async function saveStatus(c: Card) {
   const s = editStatus.value.replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -1365,10 +1625,24 @@ async function saveStatus(c: Card) {
 
 // To do in your own order, or by due day (remembered).
 const SORT_KEY = 'nge_todo_sort_v1';
-const todoByDue = ref((() => { try { return localStorage.getItem(SORT_KEY) === 'due'; } catch { return false; } })());
+// Organize by date (Ames 2026-11-12: "can we add organize by date?"): any
+// column can show its cards under date headings instead of your own order.
+// To do and Doing go by due day and time; Done by the day it was finished.
+const BY_DATE_KEY = 'nge-todo-by-date';
+const byDate = ref<Record<string, boolean>>((() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BY_DATE_KEY) || 'null');
+    if (saved && typeof saved === 'object') return saved;
+    return { todo: localStorage.getItem(SORT_KEY) === 'due' };
+  } catch { return {}; }
+})());
+const todoByDue = computed(() => !!byDate.value.todo);
+function toggleByDate(key: string) {
+  byDate.value = { ...byDate.value, [key]: !byDate.value[key] };
+  try { localStorage.setItem(BY_DATE_KEY, JSON.stringify(byDate.value)); } catch { /* not remembered */ }
+}
 function toggleTodoSort() {
-  todoByDue.value = !todoByDue.value;
-  try { localStorage.setItem(SORT_KEY, todoByDue.value ? 'due' : 'order'); } catch { /* not remembered */ }
+  toggleByDate('todo');
 }
 // Any list folds to a narrow strip (Ames 2026-10-21: "a way to collapse
 // Done"; 2026-10-23: "why can't I collapse To Do").
@@ -1950,30 +2224,79 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <span class="nge-todo-heading nge-todo-heading--home" title="Back to the board" @click="openId = null"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
       <input v-model="search" type="search" class="nge-todo-search" :class="{ 'nge-todo-search--on': searchWords.length }" placeholder="🔍 Search cards" aria-label="Search cards"
-             title="Finds cards by title, notes, checklist, comments, links or people, old finished ones too. Esc clears."
-             @focus="openId = null; myTasksOpen = false" @keydown.stop="onSearchKey" @keyup.stop @keypress.stop />
+             title="Finds cards by title, notes, checklist, comments, links or people, old finished ones too. Type me or @name for someone's cards; owner, with, tagged, checklist, overdue, week, nodate, unowned filter. Esc clears."
+             @focus="openId = null; myTasksOpen = false; activityOpen = false; searchFocused = true" @blur="searchFocused = false" @keydown.stop="onSearchKey" @keyup.stop @keypress.stop />
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★' : '☆' }}<span class="nge-todo-word"> Mine</span></button>
-      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; openId = null"
+      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; activityOpen = false; openId = null; if (myTasksOpen) loadActivity()"
               title="Everything that is yours: cards you own and checklist items for you, by due day">📌<span class="nge-todo-word"> My Tasks</span><b v-if="myTaskCount" class="nge-todo-mytasks-n">{{ myTaskCount }}</b></button>
+      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': activityOpen }" :disabled="!myId" @click="activityOpen = !activityOpen; myTasksOpen = false; openId = null; if (activityOpen) loadActivity()"
+              title="What happened on the board for you: tags, replies, cards given to you, finished cards you follow">🔔<span class="nge-todo-word"> Activity</span><b v-if="activityUnread" class="nge-todo-mytasks-n">{{ activityUnread }}</b></button>
       <button v-if="isOwner" class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': incompleteOpen }" title="Cards you closed as not finished. Only you see this." @click="incompleteOpen = !incompleteOpen; openId = null; connectOpen = false">⊘ Not finished <span v-if="incomplete.length" class="nge-todo-count">{{ incomplete.length }}</span></button>
       <button class="nge-todo-btn nge-todo-wide-only" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load()">↻<span class="nge-todo-word">{{ loading ? ' Loading…' : ' Refresh' }}</span></button>
     </div>
+    <!-- Search filters (Ames 2026-11-12): one click finds all your stuff. -->
+    <div v-if="(searchFocused || searchWords.length) && !openCard && !myTasksOpen" class="nge-todo-searchchips" @mousedown.prevent>
+      <button v-for="f in SEARCH_FILTERS" :key="f.word" type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': searchHas(f.word) }"
+              :title="f.hint" @click="toggleSearchWord(f.word)">{{ f.label }}</button>
+      <span class="nge-todo-searchchip-hint">Type @name for someone else: "owner @celia" is Celia's own cards.</span>
+      <button v-if="searchWords.length" type="button" class="nge-todo-mini" @click="search = ''">Clear</button>
+    </div>
+    <div v-if="activityOpen && !openCard && !myTasksOpen" class="nge-todo-mytasks-panel nge-todo-activity">
+      <div class="nge-todo-mytasks-head">🔔 Activity <span>{{ activityUnread }} new</span>
+        <button v-if="activityUnread" type="button" class="nge-todo-mini nge-todo-activity-all" @click="markActsRead(activity)">✓ Mark all read</button></div>
+      <div class="nge-todo-mytasks-filter">
+        <button v-for="f in ACT_FILTERS" :key="f.key" type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': activityFilter === f.key }" @click="activityFilter = f.key">{{ f.label }}</button>
+      </div>
+      <div v-if="activityError" class="nge-todo-warn">{{ activityError }}</div>
+      <div v-else-if="!activityGroups.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing here in the last 45 days.</div>
+      <section v-for="g in activityGroups" :key="g.head" class="nge-todo-mytasks-group">
+        <h4>{{ g.head }} · {{ g.rows.length }}</h4>
+        <button v-for="a in g.rows" :key="a.id" type="button" class="nge-todo-mytask nge-todo-act" :class="{ 'nge-todo-act--new': !a.read }" @click="openAct(a)">
+          <span class="nge-todo-act-dot" aria-hidden="true"></span>
+          <span class="nge-todo-mytask-kind">{{ ACT_ICON[a.kind] }}</span>
+          <span class="nge-todo-mytask-text"><b v-if="a.who">{{ a.who }}</b> {{ a.what }} <small>on {{ a.cardTitle }}</small>
+            <span v-if="a.quote" class="nge-todo-act-quote">"{{ plainLine(a.quote) }}"</span></span>
+          <span class="nge-todo-mytask-due">{{ ago(a.at) }}</span>
+        </button>
+      </section>
+    </div>
     <div v-if="myTasksOpen && !openCard" class="nge-todo-mytasks-panel">
       <div class="nge-todo-mytasks-head">📌 My Tasks <span>{{ myTaskCount }} open</span></div>
-      <div v-if="!myTasks.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
+      <div class="nge-todo-mytasks-tools">
+        <div class="nge-todo-mytasks-filter" role="group" aria-label="Show">
+          <button type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': taskView.role === 'all' }" @click="setTaskView({ role: 'all' })">All</button>
+          <button v-for="r in ROLES" :key="r.key" type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': taskView.role === r.key }" @click="setTaskView({ role: r.key })">{{ r.label }}</button>
+        </div>
+        <div class="nge-todo-mytasks-filter" role="group" aria-label="Group by">
+          <span class="nge-todo-searchchip-hint">Group by</span>
+          <button type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': taskView.group === 'due' }" @click="setTaskView({ group: 'due' })">📅 Due day</button>
+          <button type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': taskView.group === 'role' }" @click="setTaskView({ group: 'role' })">How it is mine</button>
+        </div>
+      </div>
+      <section v-if="myReplies.length && (taskView.role === 'all' || taskView.role === 'tagged')" class="nge-todo-mytasks-group">
+        <h4 class="nge-todo-mytasks-replies">Replies and new comments · {{ myReplies.length }}</h4>
+        <button v-for="t in myReplies" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
+          <span class="nge-todo-mytask-kind">↩</span>
+          <span class="nge-todo-mytask-text">{{ t.text }}<small> on {{ t.card.title }}</small></span>
+          <span class="nge-todo-mytask-due">{{ ago(t.at || '') }}</span>
+        </button>
+      </section>
+      <div v-if="!myTasks.length && !myReplies.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
       <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
         <h4 :class="{ 'nge-todo-mytasks-late': g.late }">{{ g.head }} · {{ g.rows.length }}</h4>
         <button v-for="t in g.rows" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
           <span class="nge-todo-mytask-kind">{{ t.item === null ? '▣' : t.item === -1 ? '💬' : t.item === -2 ? '✨' : '☐' }}</span>
           <span class="nge-todo-mytask-text">{{ t.text }}<small v-if="t.item !== null"> in {{ t.card.title }}</small></span>
+          <span v-if="t.role && taskView.group !== 'role'" class="nge-todo-mytask-role" :class="'nge-todo-mytask-role--' + t.role">{{ ROLE_WORD[t.role] }}</span>
+          <span v-if="t.role" class="nge-todo-mytask-where">{{ LIST_TITLE[t.card.list] }}</span>
           <span v-if="t.at" class="nge-todo-mytask-due">{{ ago(t.at) }}</span>
-          <span v-if="t.due" class="nge-todo-mytask-due" :class="{ 'nge-todo-mytasks-late': g.late }">{{ dueWords(t.due) }}</span>
+          <span v-if="t.due" class="nge-todo-mytask-due" :class="{ 'nge-todo-mytasks-late': g.late }">{{ dueWords(t.due) }}{{ t.time ? ', ' + timeWords(t.time) : '' }}</span>
         </button>
       </section>
     </div>
-    <div v-if="!openCard && !notInstalled && !myTasksOpen" class="nge-todo-stats" aria-label="Board numbers">
+    <div v-if="!openCard && !notInstalled && !myTasksOpen && !activityOpen" class="nge-todo-stats" aria-label="Board numbers">
       <img :src="imgNurroHome" alt="" class="nge-todo-nurro" />
       <div class="nge-todo-stat nge-todo-stat--todo"><b>{{ stats.todo }}</b><span>to do</span></div>
       <div class="nge-todo-stat nge-todo-stat--doing"><b>{{ stats.doing }}</b><span>doing</span></div>
@@ -1996,11 +2319,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
-      <div v-if="isPhone && !openCard && !myTasksOpen" class="nge-todo-phonetabs" role="tablist">
+      <div v-if="isPhone && !openCard && !myTasksOpen && !activityOpen" class="nge-todo-phonetabs" role="tablist">
         <button v-for="col in columns" :key="col.key" type="button" role="tab" class="nge-todo-phonetab" :class="['nge-todo-phonetab--' + col.key, { 'nge-todo-phonetab--on': phoneList === col.key }]"
                 :aria-selected="phoneList === col.key" @click="phoneList = col.key">{{ col.title }} <b>{{ col.rows.length }}</b></button>
       </div>
-      <div v-if="!openCard && !myTasksOpen" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
+      <div v-if="!openCard && !myTasksOpen && !activityOpen" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
         <section v-for="col in columns" v-show="!isPhone || phoneList === col.key" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) && !isPhone }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
           <button v-if="isFolded(col.key) && !isPhone" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
@@ -2017,8 +2340,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <template v-for="(x, i) in sizeSummary" :key="x.s">{{ i ? ' · ' : '' }}{{ x.n }} {{ x.s }}</template>
             </span>
             <span class="nge-todo-list-hint">{{ col.hint }}</span>
-            <button v-if="col.key === 'todo'" type="button" class="nge-todo-mini nge-todo-sort" :title="todoByDue ? 'Showing by due day. Click for your own order.' : 'Showing your own order. Click to sort by due day.'"
-                    @click="toggleTodoSort">{{ todoByDue ? '⇅ By due day' : '⇅ My order' }}</button>
+            <button type="button" class="nge-todo-mini nge-todo-sort" :class="{ 'nge-todo-sort--on': byDate[col.key] }"
+                    :title="byDate[col.key] ? 'Showing by date. Click for your own order.' : col.key === 'done' ? 'Showing your own order. Click to organize by the day each was finished.' : 'Showing your own order. Click to organize by due day.'"
+                    @click.stop="toggleByDate(col.key)">{{ byDate[col.key] ? '📅 By date' : '⇅ My order' }}</button>
           </header>
 
           <form v-if="col.key === 'todo'" class="nge-todo-quick" @submit.prevent="quickAdd">
@@ -2075,6 +2399,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                   <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
                 </select>
                 <input v-model="draft.due_on" type="date" @click="openCalendar($event)" class="nge-todo-select" aria-label="Due day (optional)" title="Due day (optional)" />
+                <input v-if="draft.due_on" v-model="draft.due_time" type="time" class="nge-todo-select nge-todo-time" aria-label="Due time (optional)" title="Due time (optional)" @keydown.stop @keyup.stop @keypress.stop />
                 <button v-if="linkDraft?.for !== 'new'" type="button" class="nge-todo-btn" @click="linkDraft = { for: 'new', kind: '', url: '', label: '' }">＋ Link</button>
               </div>
               <div class="nge-todo-row">
@@ -2084,8 +2409,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             </form>
           </div>
 
-          <template v-for="it in col.items" :key="it.kind === 'section' ? 'sec:' + it.s.id : it.c.id">
-          <div v-if="it.kind === 'section'" class="nge-todo-section" :class="{ 'nge-todo-section--drop': dropAt?.section === it.s.id }"
+          <template v-for="it in col.items" :key="it.kind === 'section' ? 'sec:' + it.s.id : it.kind === 'date' ? 'date:' + it.label : it.c.id">
+          <div v-if="it.kind === 'date'" class="nge-todo-section nge-todo-dategroup" :class="{ 'nge-todo-dategroup--late': it.late }">
+            <span class="nge-todo-section-name">{{ it.label }}</span>
+            <span class="nge-todo-count">{{ it.n }}</span>
+          </div>
+          <div v-else-if="it.kind === 'section'" class="nge-todo-section" :class="{ 'nge-todo-section--drop': dropAt?.section === it.s.id }"
                @dragover="onDragOverSection($event, col.key, it.s)">
             <button type="button" class="nge-todo-section-fold" :aria-expanded="!foldedSecs[it.s.id]" :title="foldedSecs[it.s.id] ? 'Show its cards' : 'Fold its cards away'" @click="toggleSection(it.s.id)">{{ foldedSecs[it.s.id] ? '▸' : '▾' }}</button>
             <input v-if="renamingSec?.id === it.s.id" v-model="renamingSec.name" class="nge-todo-input nge-todo-section-input" maxlength="60" aria-label="Section name"
@@ -2123,7 +2452,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             </div>
             <div class="nge-todo-card-meta">
               
-              <span v-if="c.due_on" class="nge-todo-chip" :class="{ 'nge-todo-chip--late': isOverdue(c) }" :title="'Due ' + c.due_on">{{ dueWords(c.due_on) }}</span>
+              <span v-if="c.due_on" class="nge-todo-chip" :class="{ 'nge-todo-chip--late': isOverdue(c) }" :title="'Due ' + c.due_on + (c.due_time ? ' ' + c.due_time : '')">{{ dueText(c) }}</span>
               <span v-if="c.checklist.length && !perPerson(c).length" class="nge-todo-chip" :class="{ 'nge-todo-chip--all': checkCount(c).done === checkCount(c).all }" title="Checklist">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
               <span v-for="pp in perPerson(c)" :key="pp.id" class="nge-todo-chip nge-todo-chip--person" :class="{ 'nge-todo-chip--all': pp.done === pp.all }"
                     :style="{ '--pc': colorOf(pp.id) }" :title="`${pp.name}: ${pp.done} of ${pp.all} done`">{{ firstName(pp.name) }} {{ pp.done }}/{{ pp.all }}</span>
@@ -2188,7 +2517,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <div class="nge-todo-unfinished-meta">
               <span>{{ whoHad(c) || 'Nobody had it' }}</span>
               <span v-if="c.done_at"> · closed {{ ago(c.done_at) }}</span>
-              <span v-if="c.due_on"> · was due {{ dueWords(c.due_on) }}</span>
+              <span v-if="c.due_on"> · was due {{ dueText(c) }}</span>
               <span v-if="c.checklist.length"> · ☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
             </div>
             <div v-if="c.status" class="nge-todo-unfinished-meta">{{ c.status }}</div>
@@ -2249,7 +2578,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <span class="nge-todo-strip-meta">
               
               <span v-if="c.checklist.length">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
-              <span v-if="c.due_on" :class="{ 'nge-todo-strip-late': isOverdue(c) }">{{ dueWords(c.due_on) }}</span>
+              <span v-if="c.due_on" :class="{ 'nge-todo-strip-late': isOverdue(c) }">{{ dueText(c) }}</span>
               <span v-if="c.owner_id" class="nge-todo-avatar nge-todo-avatar--small">{{ initialOf(c.owner_id) }}</span>
             </span>
           </button>
@@ -2279,7 +2608,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <span>{{ openCard.owner_id ? nameOf(openCard.owner_id) : 'No owner' }}</span>
           <span v-if="helpersOf(openCard).length">+{{ helpersOf(openCard).length }}</span>
           <span class="nge-todo-details-dot">·</span>
-          <span :class="{ 'nge-todo-chip--late': isOverdue(openCard) }">{{ openCard.due_on ? dueWords(openCard.due_on) : 'No due day' }}</span>
+          <span :class="{ 'nge-todo-chip--late': isOverdue(openCard) }">{{ openCard.due_on ? dueText(openCard) : 'No due day' }}</span>
           <span v-if="openCard.status" class="nge-todo-details-dot">·</span>
           <span v-if="openCard.status" class="nge-todo-details-status">{{ openCard.status }}</span>
           <span class="nge-todo-details-more">{{ phoneDetails ? 'Less ▴' : 'Details ▾' }}</span>
@@ -2310,7 +2639,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <div class="nge-todo-field">
           <span class="nge-todo-label">Due</span>
           <input type="date" @click="openCalendar($event)" class="nge-todo-select" :value="openCard.due_on || ''" aria-label="Due day" @change="onDueChange(openCard, $event)" />
-          <button v-if="openCard.due_on" type="button" class="nge-todo-mini" @click="save(openCard, { due_on: null })">Clear</button>
+          <input v-if="openCard.due_on" type="time" class="nge-todo-select nge-todo-time" :value="openCard.due_time || ''" aria-label="Due time (optional)" title="A time on the due day (optional)"
+                 @change="onDueTimeChange(openCard, $event)" @keydown.stop @keyup.stop @keypress.stop />
+          <button v-if="openCard.due_on" type="button" class="nge-todo-mini" @click="save(openCard, { due_on: null, due_time: null })">Clear</button>
         </div>
         </div>
 
@@ -2829,6 +3160,34 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-kid-open:hover { color: var(--accent); text-decoration: underline; }
 .nge-todo-kid--done .nge-todo-kid-open { opacity: 0.6; text-decoration: line-through; }
 .nge-todo-item-lvl { font-size: 12px; }
+/* Search filters and My Tasks organization (Ames 2026-11-12). */
+.nge-todo-searchchips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.nge-todo-searchchip { border: 1px solid var(--line); background: var(--card); color: inherit; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; }
+.nge-todo-searchchip:hover { border-color: var(--accent); }
+.nge-todo-searchchip--on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.nge-todo-searchchip-hint { color: var(--dim); font-size: 12px; }
+.nge-todo-mytasks-tools { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin: 4px 0 10px; }
+.nge-todo-mytasks-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nge-todo-mytask-role { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+.nge-todo-mytask-role--owner { color: #2f6fe0; border-color: rgba(47, 111, 224, 0.4); }
+.nge-todo-mytask-role--helper { color: #13998f; border-color: rgba(19, 153, 143, 0.4); }
+.nge-todo-mytask-role--tagged { color: #7c5cd6; border-color: rgba(124, 92, 214, 0.4); }
+.nge-todo-mytask-where { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+/* Activity (Ames 2026-11-12). */
+.nge-todo-activity .nge-todo-mytasks-filter { margin: 4px 0 10px; }
+.nge-todo-activity-all { margin-left: auto; }
+.nge-todo-act { align-items: flex-start; }
+.nge-todo-act-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; margin-top: 6px; background: transparent; }
+.nge-todo-act--new .nge-todo-act-dot { background: var(--accent); }
+.nge-todo-act--new .nge-todo-mytask-text { font-weight: 500; }
+.nge-todo-act:not(.nge-todo-act--new) { opacity: 0.78; }
+.nge-todo-act-quote { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.nge-todo-mytasks-replies { color: var(--accent); }
+/* Due time and organize by date (Ames 2026-11-12). */
+.nge-todo-time { width: auto; min-width: 104px; }
+.nge-todo-dategroup .nge-todo-section-name { cursor: default; }
+.nge-todo-dategroup--late { color: #d9534f; border-bottom-color: rgba(217, 83, 79, 0.5); }
+.nge-todo-sort--on { color: var(--accent); font-weight: 600; }
 /* Not finished (Ames 2026-11-12). */
 .nge-todo-unfinished { margin-right: 6px; }
 .nge-todo-unfinished-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
