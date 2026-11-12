@@ -278,6 +278,7 @@ let visit: Visit | null = null;
 type ViewMode = 'ship' | 'cockpit';
 let view: ViewMode = 'ship';
 try { if (localStorage.getItem('pyr.signal.view') === 'cockpit') view = 'cockpit'; } catch { /* as it is */ }
+if (document.body.classList.contains('nge-mobile')) view = 'cockpit';   // a phone has no room for the ship view (Ames 2026-11-12)
 function setView(v: ViewMode) {
   view = v;
   try { localStorage.setItem('pyr.signal.view', v); } catch { /* not kept */ }
@@ -944,6 +945,10 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig .nge-sig-sci-btn.open i { transform: rotate(90deg); }
 .nge-sig .nge-sig-sci-btn:hover { color: #fff; }
 .nge-sig .nge-sig-sci-text { margin: 4px 0 0; font: 11px/1.4 'Inter', 'Roboto', sans-serif; color: #c9dcf2; }
+.nge-sig .nge-sig-data { display: none; flex: none; align-items: center; padding: 3px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; line-height: 1; }
+body.nge-mobile .nge-sig .nge-sig-data { display: inline-flex; }
+body.nge-mobile .nge-sig .nge-sig-view, body.nge-mobile .nge-sig .nge-sig-view-key { display: none !important; }
+body.nge-mobile .ng-extend.nge-sig-scan { position: fixed !important; left: 6px !important; right: 6px !important; top: calc(8px + env(safe-area-inset-top)) !important; width: auto !important; max-height: 58vh; overflow: hidden auto; transform: none !important; }
 .nge-sig .nge-sig-edit { flex: none; padding: 2px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font-size: 12px; line-height: 1; }
 .nge-sig .nge-sig-edit:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 /* the editor: a card beside the HUD, a section a box */
@@ -1015,6 +1020,7 @@ function buildPanel() {
     <div class="nge-sig-head"><i class="nge-sig-gem" aria-hidden="true"></i><span class="nge-sig-view-key">View</span><span class="nge-sig-view" data-el="view" role="group" aria-label="View"><button type="button" data-view="ship" aria-pressed="true" title="The ship in the scene: it flies to the cells you scan">Ship</button><button type="button" data-view="cockpit" aria-pressed="false" title="From the ship's cockpit: the canopy, the reticle, the readouts">Cockpit</button></span>
       <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
       <button class="nge-sig-edit" type="button" data-el="edit" title="Edit the words on this page">✎</button>
+      <button class="nge-sig-data" type="button" data-el="data" title="The cell's data: the last cell you tapped, or the gold cell"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4 6h6M4 8.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
       <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
@@ -1043,6 +1049,8 @@ function buildPanel() {
   els.hush.onclick = () => { setHushMode(true); els.hush.blur(); };
   els.view.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { setView(b.dataset.view as ViewMode); b.blur(); }; });
   els.edit.onclick = () => { toggleEditor(); els.edit.blur(); };
+  // the phone's data icon: the full card for the last cell tapped, else the gold cell (Ames 2026-11-12: "we still want UI icons that let me expand the data the ship was carrying")
+  els.data.onclick = () => { const k = lastTapped && cells.get(lastTapped)?.shown ? lastTapped : level.targets[0]; if (k) showScan(k, true); els.data.blur(); };
   // the science, folded unless it was open last time
   let sciOpen = false;
   try { sciOpen = localStorage.getItem('pyr.signal.sci') === '1'; } catch { /* folded */ }
@@ -2392,6 +2400,8 @@ const phone = () => document.body.classList.contains('nge-mobile');
  *  meshes unless asked). */
 const HOLO_FLAG = (() => { try { return new URLSearchParams(location.search).has('holo'); } catch { return false; } })();
 let holoMode = false;
+/** The cell last tapped or clicked, for the phone's data icon. */
+let lastTapped: string | null = null;
 /** A touch screen is the main pointer: no keys to name, "tap" not "click". */
 const touch = () => !!window.matchMedia?.('(pointer: coarse)').matches;
 /** The share of the 3D view's height the HUD covers when it lies along the
@@ -2670,6 +2680,7 @@ function arrive(a: Arrival) {
 function fireAt(key: string, hush: boolean, demo: boolean): boolean {
   const c = cells.get(key);
   if (!c || !c.shown) return false;
+  lastTapped = key;
   if (c.target) { sfx.shield(); say('Shielded. Signal it using partner cells.', 2.6, key); shake(key); return false; }
   if (hush && level.hushBlocked?.includes(key)) { sfx.shield(); say(`${key}’s shield blocks the Inhibit beam. Find another way.`, 2.6, key); shake(key); return false; }
   if (!demo) {
@@ -2711,6 +2722,7 @@ function scan(key: string) {
   const s = toScreen(c.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
   const lean = s && r && s[0] > r.left + r.width / 2 ? -1 : 1;
   const there = visit?.key === key && visit.fired;
+  lastTapped = key;
   visit = {key, since: now, lean: there ? visit!.lean : lean, fired: false};
   // the cell whole, every branch in colour, the others faded (Ames
   // 2026-11-11: "when I click here it should show the whole cell and fade others")
@@ -2772,6 +2784,16 @@ function unfadeScan() {
  *  spark itself (Ames 2026-11-11: "this should not fly the ship over, it
  *  should do the photon beam to activate the cell"); otherwise the scan. */
 function tourClick(key: string) {
+  if (phone()) {
+    // on a phone a tap is the beam in every step (the data icon opens the
+    // card); in level 1's first two steps the gold cell itself spikes, to
+    // show what one looks like (Ames 2026-11-12: "if I tap the target
+    // shouldn't it trigger an AP?")
+    const c = cells.get(key);
+    if (phase === 'brief' && levelIndex === 0 && tourAt <= 1 && c?.target) { lastTapped = key; spike(key); return; }
+    fireAt(key, hushMode, true);
+    return;
+  }
   if (phase !== 'brief' || tourSteps[tourAt]?.click !== 'spark') { scan(key); return; }
   fireAt(key, hushMode, true);   // the beam chosen, the shields answering, as in play
 }
@@ -2987,14 +3009,14 @@ function placeCanopy() {
     lead.style.display = 'none';
   }
 }
-function showScan(key: string) {
+function showScan(key: string, full = false) {
   const c = cells.get(key);
   if (!c) return;
   hideScan();
   scanKey = key;
   const parts = readoutParts(readoutOf(c));
   flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.7, 0.95, 1], size: 20_000});
-  if (view === 'cockpit') { fillCanopy(c, parts); return; }
+  if (view === 'cockpit' && !full) { fillCanopy(c, parts); return; }
   scanEl = document.createElement('div');
   scanEl.className = 'ng-extend nge-sig-scan';
   scanEl.style.setProperty('--c', `rgb(${c.color.join(',')})`);
