@@ -131,7 +131,7 @@ const LEVELS: Level[] = [
       hit: 'One down. Wait for the next gap.',
       miss: 'The pulse caught it: the charge was still building when the pulse landed. Click twice as soon as the line turns blue.'},
     hint: {go: ['E1'], hit: [], wait: [], soon: []}},
-  {title: 'Inhibit', objective: 'Spike the gold cell', detail: '3 times: Inhibit the Gatekeeper first', timeS: 60, par: 12,
+  {title: 'Lights Out', objective: 'Spike the gold cell', detail: '3 times: Inhibit the Gatekeeper first', timeS: 60, par: 12,
     science: 'Disinhibition: silence an inhibitory cell (as optogenetics can) and its targets are released. Quiet the Gatekeeper, and the gold cell fires on less.',
     brief: 'The Gatekeeper pulses every second now; the gaps are nearly gone.\nA new beam: Inhibit quiets a cell for 2.5 s (2 charges). Inhibit the Gatekeeper, then fire the drivers into the quiet.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: true, gate: {cell: 'I1', periodS: 1.0},
