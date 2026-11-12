@@ -716,6 +716,23 @@ body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: c
 body.nge-mobile .nge-sig { bottom: calc(66px + env(safe-area-inset-bottom)); width: calc(100vw - 12px); max-height: 58vh; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; }
 body.nge-mobile .nge-sig-scroll { min-height: 0; overflow: hidden auto; scrollbar-width: none; }
 body.nge-mobile .nge-sig-head { font-size: 9px; letter-spacing: 0.14em; }
+/* slim and concise on a phone: no Share, no pencil, no data lines in the foot, tighter everywhere */
+body.nge-mobile .nge-sig .nge-sig-share, body.nge-mobile .nge-sig .nge-sig-edit, body.nge-mobile .nge-sig .nge-sig-note .txt { display: none !important; }
+body.nge-mobile .nge-sig { padding: 6px 10px 6px; font-size: 11.5px; }
+body.nge-mobile .nge-sig-obj strong { font-size: 12.5px; }
+body.nge-mobile .nge-sig-obj > span { font-size: 8px; }
+body.nge-mobile .nge-sig-tour-text { font-size: 12px; line-height: 1.35; margin: 4px 0; }
+body.nge-mobile .nge-sig-tour-sub { font-size: 10.5px; margin: 2px 0; }
+body.nge-mobile .nge-sig-tour-kicker { font-size: 8.5px; margin-top: 4px; }
+body.nge-mobile .nge-sig-go { padding: 7px 14px; font-size: 10px; }
+body.nge-mobile .nge-sig-ico { width: 30px; height: 30px; }
+body.nge-mobile .nge-sig-row { margin-top: 6px; gap: 6px; }
+body.nge-mobile .nge-sig-sci { margin: 4px 0 0; }
+body.nge-mobile .nge-sig-note { margin-top: 4px; }
+body.nge-mobile .nge-sig-neuron { max-width: 260px; margin: 4px 0 0; }
+body.nge-mobile .ng-extend.nge-sig-canopy { font-size: 11px; }
+/* the viewer keeps its gestures (a pinch zooms) under the game's overlays */
+body.nge-signal-on #neuroglancer-container, body.nge-signal-on .nge-3d-panel { touch-action: none !important; }
 body.nge-mobile .nge-sig-x { width: 30px; height: 30px; margin: -4px -6px -4px 4px; }
 body.nge-mobile .nge-sig-top { gap: 8px; margin-top: 6px; }
 body.nge-mobile .nge-sig-obj { padding: 2px 0 2px 10px; }
@@ -1636,7 +1653,7 @@ function refreshEditor() {
 interface TourStep { kicker: string; text: string; sub?: string; html?: string; click?: 'spark'; play?: (alive: () => boolean) => Promise<void>; }
 /** The parts of a neuron, colour-coded as the labels in the view and the
  *  signals are: dendrites gold, the cell body pale gold, the axon cyan. */
-const DENDRITE_C = '#ffc24a', SOMA_C = '#fff0c2', AXON_C = '#7ee0ff';
+const DENDRITE_C = '#ff8c5a', SOMA_C = '#fff0c2', AXON_C = '#7ee0ff';   // coral dendrites, so they stand apart from the gold cell they are painted on
 const NEURON_SVG = `<svg class="nge-sig-neuron" viewBox="0 0 330 116" role="img" aria-label="A neuron: signals come in through the dendrites, the cell body adds them up, a spike leaves down the axon">
   <g stroke="${DENDRITE_C}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M110 56 L80 30 L62 14 M80 30 L58 36 M110 56 L74 58 L48 52 M74 58 L52 70 M110 56 L84 84 L64 100 M84 84 L60 86"/></g>
   <path d="M110 56 L141 41 Q152 56 141 71 Z" fill="${SOMA_C}" stroke="#ffd98a" stroke-width="1.6"/>   <!-- the apex toward the dendrites, the axon from the base (Ames 2026-11-12: "the axon looks like a dendrite because of the top of the triangle") -->
@@ -1705,7 +1722,7 @@ function undimAll() {
   for (const k of tourDim) { const c = cells.get(k); if (c?.shown && now >= c.hushedUntil) paint(c, false); }
   tourDim.clear();
 }
-function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); lightWhole([]); clearReveals(); }
+function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); lightWhole([]); clearReveals(); hidePartsTint(); }
 let tourSteps: TourStep[] = [];
 const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
@@ -1736,6 +1753,9 @@ TOURS[0] = [
       const t = cells.get('T');
       if (!t) return;
       dimOthers('T');
+      if (!parts.get(t.spec.root)) await loadParts(t.spec.root);
+      if (!alive()) return;
+      showPartsTint('T');   // its dendrites coral and its axon cyan, on the cell itself
       const inConn = conns.filter(k => k.post === 'T' && k.dendrite.length > 1).sort((a, b) => b.dendriteUm - a.dendriteUm)[0];
       const inPath = inConn?.dendrite;                                                 // a synapse to the cell body
       const outPath = conns.find(k => k.pre === 'T' && k.axon.length > 1)?.axon;      // the cell body to a synapse
@@ -2161,13 +2181,62 @@ function applyHaze() {
  *  While the game runs, the haze goes straight back on; what Highlight wanted
  *  is kept for when the game ends. */
 function keepHaze() {
-  if (!hazeOn || !hazeTint) return;
+  if (!hazeOn || !hazeTint || partsTintOn) return;
   const now = getNgeMeshTint();
   if (now === hazeTint) return;
   savedTint = now;
   setNgeMeshTint(hazeTint);
 }
+/* ── the parts painted on the cell: the dendrites and the axon along their
+   arbor points in a tint map of their own (Highlight mode's mechanism: the
+   mesh takes the map's colour where it is marked), the cell body left in the
+   cell's colour; it stands in for the haze while Neuron 101 plays (Ames
+   2026-11-12: "when I said label dendrites I meant on the cell, not in a
+   cartoon; we have highlight mode"). The skeleton's compartments say which
+   is which (the parts files: axon from compartment 2, dendrites from 3 and 4). ── */
+let partsTintOn = false;
+function showPartsTint(key: string) {
+  const c = cells.get(key), nm = nmPerUnit();
+  const pr = c && parts.get(c.spec.root);
+  if (!c || !pr || !nm || holoMode) return;
+  const lo: V3 = [Infinity, Infinity, Infinity], hi: V3 = [-Infinity, -Infinity, -Infinity];
+  for (const pts of [pr.arbor.axon, pr.arbor.dend]) for (const q of pts) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], q[i]); hi[i] = Math.max(hi[i], q[i]); }
+  if (!(lo[0] < hi[0])) return;
+  for (let i = 0; i < 3; i++) { lo[i] -= 20_000; hi[i] += 20_000; }
+  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  const cell = clamp(extent / 180, 2500, 6000);
+  const dims = [0, 1, 2].map(i => Math.min(220, Math.ceil((hi[i] - lo[i]) / cell))) as V3;
+  const data = new Uint8Array(dims[0] * dims[1] * dims[2] * 4);
+  const A = 0.9;
+  const mark = (q: number[], radius: number, rgb: V3 | null) => {
+    const r = Math.ceil(radius / cell), cc = [0, 1, 2].map(i => Math.floor((q[i] - lo[i]) / cell));
+    for (let z = Math.max(0, cc[2] - r); z <= Math.min(dims[2] - 1, cc[2] + r); z++)
+      for (let y = Math.max(0, cc[1] - r); y <= Math.min(dims[1] - 1, cc[1] + r); y++)
+        for (let x = Math.max(0, cc[0] - r); x <= Math.min(dims[0] - 1, cc[0] + r); x++) {
+          const dx = (x + 0.5) * cell + lo[0] - q[0], dy = (y + 0.5) * cell + lo[1] - q[1], dz = (z + 0.5) * cell + lo[2] - q[2];
+          if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
+          const o = ((z * dims[1] + y) * dims[0] + x) * 4;
+          if (!rgb) { data[o] = 0; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 0; continue; }
+          data[o] = Math.round(rgb[0] * A * 255); data[o + 1] = Math.round(rgb[1] * A * 255); data[o + 2] = Math.round(rgb[2] * A * 255); data[o + 3] = Math.round(A * 255);
+        }
+  };
+  const d255 = hexRgb(DENDRITE_C), a255 = hexRgb(AXON_C);
+  const dc: V3 = [d255[0] / 255, d255[1] / 255, d255[2] / 255], ac: V3 = [a255[0] / 255, a255[1] / 255, a255[2] / 255];
+  for (const q of pr.arbor.dend) mark(q, 6500, dc);
+  for (const q of pr.arbor.axon) mark(q, 6500, ac);
+  mark(c.spec.soma, SOMA_R_NM * 1.7, null);   // the cell body in the cell's own colour
+  const m = mat4.create();
+  for (let i = 0; i < 3; i++) { m[i * 5] = nm[i] / (dims[i] * cell); m[12 + i] = -lo[i] / (dims[i] * cell); }
+  partsTintOn = true;
+  setNgeMeshTint({data, dims, gridFromGlobal: m, glow: ac});   // plain colour marks; the axon's colour glows
+}
+function hidePartsTint() {
+  if (!partsTintOn) return;
+  partsTintOn = false;
+  if (hazeOn) { try { hazeTint = buildHaze(); setNgeMeshTint(hazeTint); } catch (e) { console.warn('[signal] no haze:', e); } }
+}
 function clearHaze() {
+  partsTintOn = false;
   if (!hazeOn) return;
   ngeMeshTintChanged.remove(keepHaze);
   hazeOn = false; hazeTint = null;
@@ -3673,7 +3742,7 @@ function beginPlay() {
   phase = 'countdown'; demo = false;
   now = 0; lastFrame = 0;
   beams = []; flashes = []; sparks = []; arrivals = []; queued = [];
-  endVisit(); clearTourLabels(); orbit = 0; undimAll(); lightWhole([]);
+  endVisit(); clearTourLabels(); orbit = 0; undimAll(); lightWhole([]); hidePartsTint();
   // the tour's demonstrations left charge and spikes behind
   for (const c of cells.values()) { c.e = 0; c.i = 0; c.refractoryUntil = -1; c.hushedUntil = -1; c.lastSpike = -1; c.spikes = 0; if (c.gateNext !== null) c.gateNext = 1.2; }
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
