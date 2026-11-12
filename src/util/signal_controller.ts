@@ -680,6 +680,9 @@ const sfx = {
 
 /* ── the HUD ── */
 let panel: HTMLElement | null = null;
+/** The data and model note, at the foot of the screen (bottom right, clear
+ *  of Pyr's chat) rather than in the panel (Ames 2026-11-12). */
+let footEl: HTMLElement | null = null;
 let els: Record<string, HTMLElement> = {};
 let lastHudH = -1;
 /** Puts the level's science line in the foot (set when the HUD is built). */
@@ -723,12 +726,12 @@ function ensureStyle() {
    toward the cut corner at the bottom right (Ames 2026-11-12: "the orange
    border draws attention to the bottom right; fade to 0 there and add
    circuit dots at the ends of the cyan border top left") */
-.nge-sig-trace { position: absolute; pointer-events: none; background: linear-gradient(90deg, #7ee0ff, rgba(126, 224, 255, 0.8)); box-shadow: 0 0 5px rgba(126, 224, 255, 0.5); }
-.nge-sig-trace.t { top: 0; left: 16px; width: 44%; height: 1px; }
-.nge-sig-trace.l { left: 0; top: 16px; width: 1px; height: 44%; background: linear-gradient(180deg, #7ee0ff, rgba(126, 224, 255, 0.8)); }
-.nge-sig-trace::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #7ee0ff; box-shadow: 0 0 6px #7ee0ff, 0 0 2px #fff; }
-.nge-sig-trace.t::after { right: -3px; top: -2px; }
-.nge-sig-trace.l::after { bottom: -3px; left: -2px; }
+.nge-sig-trace { position: absolute; pointer-events: none; background: linear-gradient(90deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.5)); box-shadow: 0 0 5px rgba(126, 224, 255, 0.45); }
+.nge-sig-trace.t { top: 0; left: 16px; right: 16px; height: 1px; }
+.nge-sig-trace.l { left: 0; top: 16px; bottom: 16px; width: 1px; background: linear-gradient(180deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.5)); }
+.nge-sig-trace::before, .nge-sig-trace::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #7ee0ff; box-shadow: 0 0 6px #7ee0ff, 0 0 2px #fff; }
+.nge-sig-trace.t::before { left: -2px; top: -2px; } .nge-sig-trace.t::after { right: -2px; top: -2px; }
+.nge-sig-trace.l::before { top: -2px; left: -2px; } .nge-sig-trace.l::after { bottom: -2px; left: -2px; }
 /* the head is the Pyr gem, the view switch and two small buttons; the level's
    name sits at the foot (Ames 2026-11-11: "remove (put Level 1 at the
    bottom)", "put the Pyr icon in the ui box") */
@@ -886,6 +889,8 @@ body.nge-mobile .nge-sig-head { font-size: 9px; letter-spacing: 0.14em; }
 .nge-sig.nge-sig--folded { max-height: none; }
 /* a very wide screen (a 4K monitor at its full size): the panel at a readable size */
 @media (min-width: 2600px) { .ng-extend.nge-sig { zoom: 1.35; } }
+.ng-extend.nge-sig-foot { position: fixed; right: 48px; bottom: 10px; z-index: 9400; margin: 0; text-align: right; font: 10.5px/1.45 'Inter', 'Roboto', sans-serif; color: rgba(142, 166, 194, 0.78); letter-spacing: 0.02em; pointer-events: none; text-shadow: 0 1px 3px #000; }
+body.nge-mobile .ng-extend.nge-sig-foot { display: none; }
 /* the intro on a phone is just the tour card under the gem, the sound and the close; the objective and the rest come with play (Ames 2026-11-12: "show the cell first with just the text, then the diagram, then add back the box; put the gem during the intro") */
 body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-top, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-data, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view-key { display: none !important; }
 body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-gem { margin-right: auto; }
@@ -1102,6 +1107,8 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
   background: radial-gradient(circle, rgba(255, 210, 122, 0.12) 0.9px, transparent 1.8px) 0 0 / 13px 13px, linear-gradient(160deg, rgba(34, 104, 200, 0.5), rgba(8, 30, 72, 0.7));
   backdrop-filter: blur(6px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.14), inset 0 0 22px rgba(62, 150, 240, 0.28), 0 0 10px rgba(255, 194, 74, 0.22); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); opacity: 0; transition: opacity 0.35s 0.1s; }
 .nge-sig-canopy--lock .block { opacity: 1; }
+.nge-sig-canopy .block { pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
+.nge-sig-canopy .block.dragging { cursor: grabbing; opacity: 0.92; }
 .nge-sig-canopy .id { left: 18px; top: 44px; max-width: 320px; }
 .nge-sig-canopy .id .head { display: flex; align-items: baseline; gap: 10px; }
 .nge-sig-canopy .id .key { font-size: 34px; }
@@ -1127,9 +1134,9 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig-tour .nge-sig-row { margin-top: 12px; gap: 8px; }
 .nge-sig .nge-sig-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .nge-sig .nge-sig-ico svg { display: block; }
-.nge-sig .nge-sig-key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 7px 0 2px; font: 600 10.5px 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #d6e6f8; }
-.nge-sig .nge-sig-key span { display: inline-flex; align-items: center; gap: 7px; }
-.nge-sig .nge-sig-key span::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 7px var(--c); }
+.nge-sig .nge-sig-parts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 7px 0 2px; padding: 0; border: 0; background: none; font: 600 10.5px 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #d6e6f8; }
+.nge-sig .nge-sig-parts span { display: inline-flex; align-items: center; gap: 7px; }
+.nge-sig .nge-sig-parts span::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 7px var(--c); }
 .nge-sig .nge-sig-fig { margin: 6px 0 0; }
 .nge-sig .nge-sig-fig summary { list-style: none; cursor: pointer; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #7ee0ff; }
 .nge-sig .nge-sig-fig summary::-webkit-details-marker { display: none; }
@@ -1241,8 +1248,13 @@ function buildPanel() {
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
     <div class="nge-sig-sci"><button type="button" class="nge-sig-sci-btn" data-el="sci" aria-expanded="false">The science <i>›</i></button><p class="nge-sig-sci-text" data-el="sciText" hidden></p></div>
-    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 2,000 times slower than real life.</span></div></div>`;
+    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span></div></div>`;
   document.body.appendChild(panel);
+  footEl?.remove();
+  footEl = document.createElement('p');
+  footEl.className = 'ng-extend nge-sig-foot';
+  footEl.innerHTML = 'Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 2,000 times slower than real life.';
+  document.body.appendChild(footEl);
   els = {};
   panel.querySelectorAll<HTMLElement>('[data-el]').forEach(el => { els[el.dataset.el!] = el; });
   els.x.onclick = () => stopSignalController();
@@ -1856,10 +1868,10 @@ function refreshEditor() {
 interface TourStep { kicker: string; text: string; sub?: string; html?: string; click?: 'spark'; play?: (alive: () => boolean) => Promise<void>; }
 /** The parts of a neuron, colour-coded as the labels in the view and the
  *  signals are: dendrites gold, the cell body pale gold, the axon cyan. */
-const DENDRITE_C = '#ff8c5a', SOMA_C = '#fff0c2', AXON_C = '#7ee0ff';   // coral dendrites, so they stand apart from the gold cell they are painted on
+const DENDRITE_C = '#c678ff', SOMA_C = '#fff0c2', AXON_C = '#4fb0ff';   // purple dendrites, a blue axon (Ames 2026-11-12: "not orange and blue")
 /** The key to the parts painted on the cell in Neuron 101 (the cartoon it
  *  replaces: Ames 2026-11-12, "this is so ugly, we have to do better or remove it"). */
-const PARTS_KEY = `<p class="nge-sig-key"><span style="--c:${DENDRITE_C}">Dendrites</span><span style="--c:${SOMA_C}">Cell body</span><span style="--c:${AXON_C}">Axon</span></p>`;
+const PARTS_KEY = `<p class="nge-sig-parts"><span style="--c:${DENDRITE_C}">Dendrites</span><span style="--c:${SOMA_C}">Cell body</span><span style="--c:${AXON_C}">Axon</span></p>`;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 let demo = false;          // the model runs outside play, for the tour's demonstrations
 let tourAt = 0, tourToken = 0;
@@ -3307,6 +3319,57 @@ function readoutParts(r: Readout) {
 }
 /* ── the cockpit's canopy ── */
 let canopyEl: HTMLElement | null = null;
+/** The cockpit's blocks can be dragged where the player likes and stay
+ *  there, kept as fractions of the canopy so a resized window keeps them in
+ *  the same place (Ames 2026-11-12: "make it so I can drag and drop the box
+ *  and it saves"). */
+const CANOPY_POS_KEY = 'pyr.signal.canopy';
+let canopyPos: Record<string, [number, number]> = {};
+try { canopyPos = JSON.parse(localStorage.getItem(CANOPY_POS_KEY) || '{}') || {}; } catch { canopyPos = {}; }
+let canopyDragged = false, canopySized = '';
+function canopyDrag(block: HTMLElement, name: string) {
+  let start: {x: number; y: number; left: number; top: number} | null = null, moved = false;
+  block.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || (e.target as HTMLElement | null)?.closest?.('button')) return;
+    start = {x: e.clientX, y: e.clientY, left: block.offsetLeft, top: block.offsetTop}; moved = false;
+    try { block.setPointerCapture(e.pointerId); } catch { /* no capture */ }
+  });
+  block.addEventListener('pointermove', e => {
+    if (!start || !canopyEl) return;
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    if (!moved && Math.hypot(dx, dy) < 4) return;   // a click stays a click
+    moved = true; block.classList.add('dragging');
+    const w = canopyEl.clientWidth, h = canopyEl.clientHeight;
+    block.style.left = `${clamp(start.left + dx, 0, Math.max(0, w - block.offsetWidth))}px`;
+    block.style.top = `${clamp(start.top + dy, 0, Math.max(0, h - block.offsetHeight))}px`;
+    block.style.right = 'auto'; block.style.bottom = 'auto';
+  });
+  const end = (e: PointerEvent) => {
+    if (!start) return;
+    try { block.releasePointerCapture(e.pointerId); } catch { /* none */ }
+    start = null; block.classList.remove('dragging');
+    if (!moved || !canopyEl) return;
+    canopyDragged = true; setTimeout(() => { canopyDragged = false; }, 0);   // the click that follows a drag is not a click on a bar
+    const w = Math.max(1, canopyEl.clientWidth), h = Math.max(1, canopyEl.clientHeight);
+    canopyPos[name] = [block.offsetLeft / w, block.offsetTop / h];
+    try { localStorage.setItem(CANOPY_POS_KEY, JSON.stringify(canopyPos)); } catch { /* not kept */ }
+  };
+  block.addEventListener('pointerup', end); block.addEventListener('pointercancel', end);
+}
+/** The saved places, once the canopy has its size, and again when it changes or is refilled. */
+function placeCanopyBlocks(force = false) {
+  if (!canopyEl) return;
+  const w = canopyEl.clientWidth, h = canopyEl.clientHeight, key = `${w}x${h}`;
+  if (!force && key === canopySized) return;
+  canopySized = key;
+  for (const block of canopyEl.querySelectorAll<HTMLElement>('.block')) {
+    const at = canopyPos[block.dataset.name || ''];
+    if (!at || block.classList.contains('dragging')) continue;
+    block.style.left = `${clamp(at[0] * w, 0, Math.max(0, w - block.offsetWidth))}px`;
+    block.style.top = `${clamp(at[1] * h, 0, Math.max(0, h - block.offsetHeight))}px`;
+    block.style.right = 'auto'; block.style.bottom = 'auto';
+  }
+}
 function showCanopy() {
   if (canopyEl) return;
   canopyEl = document.createElement('div');
@@ -3315,11 +3378,13 @@ function showCanopy() {
     <div class="top"><i></i>Cockpit · Signal Control<span class="sub"></span></div>
     <svg class="lead" aria-hidden="true"><line stroke="rgba(160,225,255,0.7)" stroke-width="1" stroke-dasharray="3 3"/></svg>
     <svg class="reticle" viewBox="0 0 120 120" aria-hidden="true"><g class="ring"><circle cx="60" cy="60" r="26" fill="none" stroke="var(--c, rgba(53,181,255,0.55))" stroke-width="1.2" stroke-dasharray="30 11"/></g><circle cx="60" cy="60" r="1.8" fill="rgba(216,238,255,0.9)"/><path d="M60 22 v12 M60 86 v12 M22 60 h12 M86 60 h12" stroke="var(--c, rgba(53,181,255,0.75))" stroke-width="1.4"/><path d="M42 42 l6 6 M78 42 l-6 6 M42 78 l6 -6 M78 78 l-6 -6" stroke="rgba(53,181,255,0.3)" stroke-width="1"/></svg>
-    <div class="block id"></div><div class="block nums"></div><div class="block wire"></div><div class="block provenance"></div>
+    <div class="block id" data-name="id"></div><div class="block nums" data-name="nums"></div><div class="block wire" data-name="wire"></div><div class="block provenance" data-name="provenance"></div>
     <button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button>`;
   document.body.appendChild(canopyEl);
   (canopyEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => endVisit();
-  canopyEl.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses'); };
+  canopyEl.onclick = e => { if (canopyDragged) return; const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses'); };
+  canopySized = '';
+  canopyEl.querySelectorAll<HTMLElement>('.block').forEach(b => canopyDrag(b, b.dataset.name || ''));
   requestAnimationFrame(() => canopyEl?.classList.add('nge-sig-canopy--on'));
 }
 function hideCanopy() { canopyEl?.remove(); canopyEl = null; }
@@ -3333,6 +3398,7 @@ function fillCanopy(c: CellState, parts: ReturnType<typeof readoutParts>) {
   el.querySelector('.provenance')!.innerHTML = '';
   buildIn(el);
   el.classList.add('nge-sig-canopy--lock');
+  placeCanopyBlocks(true);
 }
 function clearCanopy() { canopyEl?.classList.remove('nge-sig-canopy--lock'); canopyEl?.style.removeProperty('--c'); }
 /** The canopy each frame: over the free part of the 3D view, the reticle on
@@ -3348,6 +3414,7 @@ function placeCanopy() {
   const bottom = !sideHud() && hud ? Math.min(r.bottom - 8, hud.top - 8) : r.bottom - 8;
   canopyEl.style.left = `${left}px`; canopyEl.style.top = `${top}px`;
   canopyEl.style.width = `${Math.max(100, right - left)}px`; canopyEl.style.height = `${Math.max(100, bottom - top)}px`;
+  placeCanopyBlocks();
   const sub = canopyEl.querySelector('.sub')!, want = phase === 'playing' ? '' : adapt('click a cell to scan it');
   if (sub.textContent !== want) sub.textContent = want;
   const ret = canopyEl.querySelector('.reticle') as HTMLElement, lead = canopyEl.querySelector('.lead line') as SVGLineElement;
@@ -3671,9 +3738,12 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     const sc = cells.get(scanKey), pr = sc && parts.get(sc.spec.root);
     if (pr) {
       // every synapse the cell receives (gold) and makes (cyan) in the release
-      const all = (list: number[][], rgb: V3) => { for (let j = 0; j < list.length; j++) { const p = list[j]; put([p[0], p[1], p[2]], [rgb[0], rgb[1], rgb[2], 0.35 + 0.25 * Math.sin(t * 3 + j * 0.7)], 1700); } };
-      if (showing.has('synIn')) all(pr.syn.in, [1, 0.85, 0.4]);
-      if (showing.has('synOut')) all(pr.syn.out, [0.6, 0.95, 1]);
+      // at least a few pixels each whatever the zoom (zoomed out to a whole cell they were under two), in colours no cell wears: magenta in, mint out
+      const vh = threeDPanel()?.element?.clientHeight || 900, nmPx = ((viewerNow()?.projectionScale?.value ?? 30_000) * Math.min(nm[0], nm[1], nm[2])) / vh;
+      const dotNm = Math.max(1700, nmPx * 3.6);
+      const all = (list: number[][], rgb: V3) => { for (let j = 0; j < list.length; j++) { const p = list[j]; put([p[0], p[1], p[2]], [rgb[0], rgb[1], rgb[2], 0.55 + 0.25 * Math.sin(t * 3 + j * 0.7)], dotNm); } };
+      if (showing.has('synIn')) all(pr.syn.in, [1, 0.45, 0.85]);
+      if (showing.has('synOut')) all(pr.syn.out, [0.55, 1, 0.75]);
       if (showing.has('cable')) {
         // every branch: the cell is lit whole (the haze skips it), with a faint dust of light along the axon (cyan) and the dendrites (gold); no wave
         const dust = (pts: number[][], rgb: V3) => { for (let j = 0; j < pts.length; j += 3) put([pts[j][0], pts[j][1], pts[j][2]], [rgb[0], rgb[1], rgb[2], 0.1 + 0.05 * Math.sin(t * 2 + j * 0.3)], 1800); };
@@ -4169,6 +4239,7 @@ export function stopSignalController() {
   document.body.classList.remove('nge-signal-on');
   setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
   if (panel) { const p = panel; p.classList.add('nge-sig--out'); setTimeout(() => p.remove(), 400); panel = null; }
+  footEl?.remove(); footEl = null;
   try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
 
