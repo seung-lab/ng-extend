@@ -366,11 +366,57 @@ interface Glide { look: V3; scale: number; since: number; seconds?: number; from
 let glide: Glide | null = null;
 let homeLook: V3 | null = null, homeScale = 0;
 function rememberHome() {
-  const v = viewerNow(), nm = nmPerUnit();
-  if (!v || !nm) return;
-  homeLook = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  const v = viewerNow(), nm = nmPerUnit(), look = v && nm && lookNow(v, nm);
+  if (!v || !nm || !look || !(v.projectionScale.value > 0)) return;
+  homeLook = look;
   homeScale = v.projectionScale.value;
 }
+/* ── a camera the game can trust. Every write to the viewer's position and
+   zoom goes through setLook and setZoom, which refuse a non-finite value;
+   the camera's axes are read only when the 3D panel has a size and finite
+   matrices (camNow). A glide made from the panel's matrices right after the
+   layout switched to 3D (its first frame: no size yet, an identity matrix)
+   carried NaN into the position, where it stayed: a black view with the
+   dataset box's corner in the middle (Ames 2026-11-12, desktop: "the cells
+   load for a sec then go to dots"; the address then held "position":
+   [null, null, null]). A glide asked for while the panel has no camera waits
+   for the next frame that has one (pendingGlide). ── */
+const finite3 = (p: ArrayLike<number> | null | undefined): boolean => !!p && p.length >= 3 && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2]);
+function camNow(nm: V3): {right: V3; up: V3; toEye: V3} | null {
+  const pp = threeDPanel()?.projectionParameters?.value;
+  if (!pp || !(pp.width > 0) || !(pp.height > 0)) return null;
+  const cam = cameraAxes(nm);
+  return cam && finite3(cam.right) && finite3(cam.up) && finite3(cam.toEye) ? cam : null;
+}
+/** The camera's look point in nm, or null while it is not a finite place. */
+function lookNow(v: any, nm: V3): V3 | null {
+  const q = v?.navigationState?.position?.value as Float32Array | undefined;
+  return q && finite3(q) ? [q[0] * nm[0], q[1] * nm[1], q[2] * nm[2]] : null;
+}
+function setLook(v: any, nm: V3, look: V3): boolean {
+  if (!finite3(look)) { camRefused('look point', look); return false; }
+  v.navigationState.position.value = Float32Array.from([look[0] / nm[0], look[1] / nm[1], look[2] / nm[2]]);
+  return true;
+}
+function setZoom(v: any, scale: number): boolean {
+  if (!(Number.isFinite(scale) && scale > 0)) { camRefused('zoom', scale); return false; }
+  v.projectionScale.value = scale;
+  return true;
+}
+let camWarned = false;
+function camRefused(what: string, value: unknown) {
+  if (camWarned) return;
+  camWarned = true;
+  console.warn(`[signal] refused a non-finite camera ${what}:`, value, new Error().stack);
+}
+/** True while the viewer's camera is a finite place to look from. */
+function camSane(v: any): boolean {
+  const q = v?.navigationState?.position?.value as Float32Array | undefined;
+  const o = v?.perspectiveNavigationState?.pose?.orientation?.orientation as Float32Array | undefined;
+  const sc = v?.projectionScale?.value;
+  return !!q && finite3(q) && (!o || Array.from(o).every(Number.isFinite)) && Number.isFinite(sc) && sc > 0;
+}
+let pendingGlide: (() => void) | null = null;
 /** The look point that puts a spot in the middle of the part of the view
  *  the HUD leaves free, at a frame of so many nm (settleFrame's own rule). */
 function freeLook(spot: V3, frameNm: number, cam: {right: V3; up: V3; toEye: V3}): V3 {
@@ -383,12 +429,16 @@ function freeLook(spot: V3, frameNm: number, cam: {right: V3; up: V3; toEye: V3}
   return sub(spot, mul(cam.up, hudFrac() * frameNm / 2));
 }
 function glideTo(c: CellState, factor = 0.6) {
-  const v = viewerNow(), nm = nmPerUnit(), cam = nm && cameraAxes(nm);
-  if (!v || !nm || !cam) return;
+  const v = viewerNow(), nm = nmPerUnit(), cam = nm && camNow(nm);
+  if (!v || !nm) return;
+  if (!cam) { pendingGlide = () => glideTo(c, factor); return; }   // the panel has no camera yet: the next frame that has one
+  pendingGlide = null;
   const scale = (homeScale || v.projectionScale.value) * factor;
-  glide = {look: freeLook(c.spec.soma, scale * Math.min(nm[0], nm[1], nm[2]), cam), scale, since: performance.now()};
+  const look = freeLook(c.spec.soma, scale * Math.min(nm[0], nm[1], nm[2]), cam);
+  if (!finite3(look) || !(scale > 0)) return;
+  glide = {look, scale, since: performance.now()};
 }
-function glideHome() { if (homeLook && homeScale) glide = {look: homeLook, scale: homeScale, since: performance.now()}; }
+function glideHome() { if (homeLook && homeScale > 0 && finite3(homeLook)) glide = {look: homeLook, scale: homeScale, since: performance.now()}; }
 /** Where the game last put the camera, and whether the player has moved it
  *  since: then a step's reset leaves the camera alone, and only a step that
  *  moves it on purpose takes it back (Ames 2026-11-12: "I zoomed out so I
@@ -396,30 +446,35 @@ function glideHome() { if (homeLook && homeScale) glide = {look: homeLook, scale
 let camSet: {look: V3; scale: number} | null = null;
 let userCam = false;
 function recordCam() {
-  const v = viewerNow(), nm = nmPerUnit();
-  if (!v || !nm) return;
-  camSet = {look: Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3, scale: v.projectionScale.value};
+  const v = viewerNow(), nm = nmPerUnit(), look = v && nm && lookNow(v, nm);
+  if (!v || !nm || !look || !(v.projectionScale.value > 0)) return;
+  camSet = {look, scale: v.projectionScale.value};
   userCam = false;
 }
 function watchCam() {
   if (glide || !camSet) return;
-  const v = viewerNow(), nm = nmPerUnit();
-  if (!v || !nm) return;
-  const look = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  const v = viewerNow(), nm = nmPerUnit(), look = v && nm && lookNow(v, nm);
+  if (!v || !nm || !look) return;
   if (len(sub(look, camSet.look)) > viewNm * 0.01 || Math.abs(v.projectionScale.value - camSet.scale) > camSet.scale * 0.02) userCam = true;
 }
 /** A slow, even glide to a look point and zoom over so many seconds. */
 function glideSlow(look: V3, scale: number, seconds: number) {
-  const v = viewerNow(), nm = nmPerUnit();
-  if (!v || !nm) return;
-  const pos = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  const v = viewerNow(), nm = nmPerUnit(), pos = v && nm && lookNow(v, nm);
+  if (!v || !nm || !pos || !finite3(look) || !(scale > 0) || !(v.projectionScale.value > 0)) return;
   glide = {look, scale, since: performance.now(), seconds, fromLook: pos, fromScale: v.projectionScale.value};
+}
+/** The slow glide out to a cell's whole frame; if the panel has no camera
+ *  yet, the next frame that has one makes it. */
+function glideWhole(c: CellState, seconds: number) {
+  const f = wholeCellFrame(c);
+  if (f) { pendingGlide = null; glideSlow(f.look, f.scale, seconds); return; }
+  if (nmPerUnit() && parts.get(c.spec.root)) pendingGlide = () => glideWhole(c, seconds);
 }
 /** The frame that shows a cell whole: its dendrites' reach across the view
  *  and the first stretch of its axon, the cell body a little above the
  *  middle so the axon has room below. */
 function wholeCellFrame(c: CellState): {look: V3; scale: number} | null {
-  const nm = nmPerUnit(), cam = nm && cameraAxes(nm), pr = parts.get(c.spec.root);
+  const nm = nmPerUnit(), cam = nm && camNow(nm), pr = parts.get(c.spec.root);
   if (!nm || !cam || !pr) return null;
   let reach = 0;
   const span = (p: number[]) => { const d = sub([p[0], p[1], p[2]], c.spec.soma); reach = Math.max(reach, Math.hypot(dot(d, cam.right), dot(d, cam.up))); };
@@ -430,23 +485,21 @@ function wholeCellFrame(c: CellState): {look: V3; scale: number} | null {
 }
 function stepGlide(dt: number) {
   if (!glide) return;
-  const v = viewerNow(), nm = nmPerUnit();
-  if (!v || !nm) { glide = null; return; }
+  const v = viewerNow(), nm = nmPerUnit(), pos = v && nm && lookNow(v, nm);
+  if (!v || !nm || !pos || !finite3(glide.look) || !(glide.scale > 0) || !(dt >= 0)) { glide = null; return; }
   if (glide.seconds && glide.fromLook && glide.fromScale) {
     // even pace, eased at both ends; the zoom in log space so it looks even too
     const q = clamp((performance.now() - glide.since) / (glide.seconds * 1000), 0, 1), e = q * q * (3 - 2 * q);
-    const next = mix(glide.fromLook, glide.look, e);
-    v.navigationState.position.value = Float32Array.from(next.map((c, i) => c / nm[i]));
-    v.projectionScale.value = Math.exp(Math.log(glide.fromScale) + (Math.log(glide.scale) - Math.log(glide.fromScale)) * e);
+    setLook(v, nm, mix(glide.fromLook, glide.look, e));
+    setZoom(v, Math.exp(Math.log(glide.fromScale) + (Math.log(glide.scale) - Math.log(glide.fromScale)) * e));
     if (q >= 1) { glide = null; recordCam(); }
     return;
   }
-  const pos = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
   const k = Math.min(1, dt * 4);
   const next = mix(pos, glide.look, k);
-  v.navigationState.position.value = Float32Array.from(next.map((c, i) => c / nm[i]));
+  setLook(v, nm, next);
   const sc = v.projectionScale.value;
-  v.projectionScale.value = sc + (glide.scale - sc) * k;
+  setZoom(v, sc + (glide.scale - sc) * k);
   if ((len(sub(next, glide.look)) < 800 && Math.abs(v.projectionScale.value - glide.scale) < glide.scale * 0.01) || performance.now() - glide.since > 1600) { glide = null; recordCam(); }
 }
 /** The ship's look, after scifi-ui's goldOnBlue hologram: a cool blue body, a molten gold rim. */
@@ -573,12 +626,16 @@ function ensureMusic(): HTMLAudioElement | null {
   }
   return music;
 }
+let musicWanted = false;
 function startMusic() {
   const m = ensureMusic();
   if (!m || muted) return;
   m.muted = false;
-  m.play().catch(() => { /* not allowed yet: the next click tries again */ });
+  musicWanted = true;
+  m.play().then(() => { musicWanted = false; }).catch(() => { /* not allowed yet: the next click tries again (nudgeMusic) */ });
 }
+/** A click anywhere: the score the browser refused before a gesture starts now. */
+function nudgeMusic() { if (musicWanted && !muted && music?.paused) startMusic(); }
 function stopMusic() {
   if (!music) return;
   music.pause();
@@ -653,7 +710,7 @@ function ensureStyle() {
   background: linear-gradient(160deg, rgba(14, 34, 66, 0.93), rgba(6, 12, 28, 0.95) 60%, rgba(22, 14, 48, 0.94));
   box-shadow: inset 0 0 40px rgba(80, 180, 255, 0.10); }
 .nge-sig-bg::before { content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit;
-  background: linear-gradient(135deg, rgba(126, 224, 255, 0.75), rgba(74, 150, 224, 0.25) 40%, rgba(255, 210, 122, 0.65));
+  background: linear-gradient(135deg, rgba(126, 224, 255, 0.5), rgba(126, 224, 255, 0.16) 45%, rgba(126, 224, 255, 0) 78%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
 .nge-sig-bg::after { content: ''; position: absolute; inset: 0; opacity: 0.4;
@@ -661,6 +718,17 @@ function ensureStyle() {
 .nge-sig-corner { position: absolute; width: 12px; height: 12px; border: 2px solid #7ee0ff; pointer-events: none; filter: drop-shadow(0 0 4px #7ee0ff); }
 .nge-sig-corner.tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
 .nge-sig-corner.bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
+/* the circuit traces: a bright run along the top and down the left from the
+   cut corner, each ending in a node; the border itself fades to nothing
+   toward the cut corner at the bottom right (Ames 2026-11-12: "the orange
+   border draws attention to the bottom right; fade to 0 there and add
+   circuit dots at the ends of the cyan border top left") */
+.nge-sig-trace { position: absolute; pointer-events: none; background: linear-gradient(90deg, #7ee0ff, rgba(126, 224, 255, 0.8)); box-shadow: 0 0 5px rgba(126, 224, 255, 0.5); }
+.nge-sig-trace.t { top: 0; left: 16px; width: 44%; height: 1px; }
+.nge-sig-trace.l { left: 0; top: 16px; width: 1px; height: 44%; background: linear-gradient(180deg, #7ee0ff, rgba(126, 224, 255, 0.8)); }
+.nge-sig-trace::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #7ee0ff; box-shadow: 0 0 6px #7ee0ff, 0 0 2px #fff; }
+.nge-sig-trace.t::after { right: -3px; top: -2px; }
+.nge-sig-trace.l::after { bottom: -3px; left: -2px; }
 /* the head is the Pyr gem, the view switch and two small buttons; the level's
    name sits at the foot (Ames 2026-11-11: "remove (put Level 1 at the
    bottom)", "put the Pyr icon in the ui box") */
@@ -758,7 +826,7 @@ function ensureStyle() {
 .nge-sig-charges i.half { background: linear-gradient(90deg, #7ee0ff 50%, rgba(126, 224, 255, 0.08) 50%); }
 .nge-sig-charges span { font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; color: #7ecaff; margin-right: 4px; }
 .nge-sig-msg { margin-left: auto; min-height: 1.2em; font-size: 12.5px; color: #ffd98a; text-align: right; }
-.nge-sig-note { margin-top: 6px; font-size: 10.5px; color: #7f97b3; letter-spacing: 0.02em; }
+.nge-sig-note { margin-top: 6px; font-size: 11.5px; color: #8ea6c2; letter-spacing: 0.02em; }
 /* the brief and the result, in place of the chips */
 .nge-sig-card { margin-top: 10px; }
 .nge-sig-card p { margin: 6px 0 10px; color: #d6e8fb; }
@@ -814,8 +882,10 @@ body.nge-mobile .nge-sig-head { font-size: 9px; letter-spacing: 0.14em; }
 .nge-sig .nge-sig-fold:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 .nge-sig .nge-sig-fold svg { transition: transform 0.2s; }
 .nge-sig.nge-sig--folded .nge-sig-fold svg { transform: rotate(180deg); }
-.nge-sig.nge-sig--folded > :not(.nge-sig-head):not(.nge-sig-bg):not(.nge-sig-corner) { display: none !important; }
+.nge-sig.nge-sig--folded .nge-sig-scroll > :not(.nge-sig-head) { display: none !important; }
 .nge-sig.nge-sig--folded { max-height: none; }
+/* a very wide screen (a 4K monitor at its full size): the panel at a readable size */
+@media (min-width: 2600px) { .ng-extend.nge-sig { zoom: 1.35; } }
 /* the intro on a phone is just the tour card under the gem, the sound and the close; the objective and the rest come with play (Ames 2026-11-12: "show the cell first with just the text, then the diagram, then add back the box; put the gem during the intro") */
 body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-top, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-data, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view-key { display: none !important; }
 body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-gem { margin-right: auto; }
@@ -1057,7 +1127,9 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig-tour .nge-sig-row { margin-top: 12px; gap: 8px; }
 .nge-sig .nge-sig-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .nge-sig .nge-sig-ico svg { display: block; }
-.nge-sig .nge-sig-neuron { display: block; width: 100%; max-width: 330px; margin: 6px 0 2px; }
+.nge-sig .nge-sig-key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 7px 0 2px; font: 600 10.5px 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #d6e6f8; }
+.nge-sig .nge-sig-key span { display: inline-flex; align-items: center; gap: 7px; }
+.nge-sig .nge-sig-key span::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 7px var(--c); }
 .nge-sig .nge-sig-fig { margin: 6px 0 0; }
 .nge-sig .nge-sig-fig summary { list-style: none; cursor: pointer; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #7ee0ff; }
 .nge-sig .nge-sig-fig summary::-webkit-details-marker { display: none; }
@@ -1065,11 +1137,11 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig .nge-sig-fig[open] summary i { transform: rotate(90deg); }
 /* the science: a folded line in the foot */
 .nge-sig .nge-sig-sci { margin: 6px 0 2px; }
-.nge-sig .nge-sig-sci-btn { padding: 0; border: 0; background: none; color: #7ee0ff; cursor: pointer; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
+.nge-sig .nge-sig-sci-btn { padding: 0; border: 0; background: none; color: #7ee0ff; cursor: pointer; font: 600 10.5px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
 .nge-sig .nge-sig-sci-btn i { display: inline-block; font-style: normal; margin-left: 3px; transition: transform 0.2s; }
 .nge-sig .nge-sig-sci-btn.open i { transform: rotate(90deg); }
 .nge-sig .nge-sig-sci-btn:hover { color: #fff; }
-.nge-sig .nge-sig-sci-text { margin: 4px 0 0; font: 11px/1.4 'Inter', 'Roboto', sans-serif; color: #c9dcf2; }
+.nge-sig .nge-sig-sci-text { margin: 5px 0 0; font: 13px/1.45 'Inter', 'Roboto', sans-serif; color: #d6e6f8; }
 .nge-sig .nge-sig-data { display: none; flex: none; align-items: center; padding: 3px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; line-height: 1; }
 body.nge-mobile .nge-sig .nge-sig-data { display: inline-flex; }
 body.nge-mobile .nge-sig .nge-sig-view, body.nge-mobile .nge-sig .nge-sig-view-key { display: none !important; }
@@ -1142,7 +1214,7 @@ body.nge-signal-on #neuroglancer-container { position: fixed !important; inset: 
 
 const X_SVG = '<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 const BACK_SVG = '<svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2 3.5 6l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const REPLAY_SVG = '<svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M9.6 6.3A3.6 3.6 0 1 1 8.4 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9.9 1.6v2.6H7.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const REPLAY_SVG = '<svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M8.55 8.55A3.6 3.6 0 1 1 7.8 2.88" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M7.0 0.7 7.8 2.88 5.5 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function buildPanel() {
   ensureStyle();
@@ -1151,7 +1223,7 @@ function buildPanel() {
   panel.className = 'ng-extend nge-sig';
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Signal Controller');
-  panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i><div class="nge-sig-scroll">
+  panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i><i class="nge-sig-trace t"></i><i class="nge-sig-trace l"></i><div class="nge-sig-scroll">
     <div class="nge-sig-head"><i class="nge-sig-gem" aria-hidden="true"></i><span class="nge-sig-view-key">View</span><span class="nge-sig-view" data-el="view" role="group" aria-label="View"><button type="button" data-view="ship" aria-pressed="true" title="The ship in the scene: it flies to the cells you scan">Ship</button><button type="button" data-view="cockpit" aria-pressed="false" title="From the ship's cockpit: the canopy, the reticle, the readouts">Cockpit</button></span>
       <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
       <button class="nge-sig-edit" type="button" data-el="edit" title="Edit the words on this page">✎</button>
@@ -1177,8 +1249,9 @@ function buildPanel() {
   els.mute.onclick = () => {
     muted = !muted; els.mute.textContent = muted ? '♪̸' : '♪'; els.mute.style.opacity = muted ? '0.5' : '1';
     if (music) music.muted = muted;
-    if (!muted && (phase === 'playing' || phase === 'done')) startMusic();
+    if (!muted) startMusic();   // a click, so the browser allows it: in the tour as in play
   };
+  document.addEventListener('pointerdown', nudgeMusic, true);
   // Buttons let go of the focus after a click, so Space keeps switching the
   // beam instead of pressing the last button again.
   els.spark.onclick = () => { setHushMode(false); els.spark.blur(); };
@@ -1784,14 +1857,9 @@ interface TourStep { kicker: string; text: string; sub?: string; html?: string; 
 /** The parts of a neuron, colour-coded as the labels in the view and the
  *  signals are: dendrites gold, the cell body pale gold, the axon cyan. */
 const DENDRITE_C = '#ff8c5a', SOMA_C = '#fff0c2', AXON_C = '#7ee0ff';   // coral dendrites, so they stand apart from the gold cell they are painted on
-const NEURON_SVG = `<svg class="nge-sig-neuron" viewBox="0 0 330 116" role="img" aria-label="A neuron: signals come in through the dendrites, the cell body adds them up, a spike leaves down the axon">
-  <g stroke="${DENDRITE_C}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M110 56 L80 30 L62 14 M80 30 L58 36 M110 56 L74 58 L48 52 M74 58 L52 70 M110 56 L84 84 L64 100 M84 84 L60 86"/></g>
-  <path d="M110 56 L141 41 Q152 56 141 71 Z" fill="${SOMA_C}" stroke="#ffd98a" stroke-width="1.6"/>   <!-- the apex toward the dendrites, the axon from the base (Ames 2026-11-12: "the axon looks like a dendrite because of the top of the triangle") -->
-  <g stroke="${AXON_C}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M150 56 L262 56 M262 56 L288 40 L306 30 M262 56 L290 70 L306 80"/></g>
-  <circle cx="306" cy="30" r="2.6" fill="${AXON_C}"/><circle cx="306" cy="80" r="2.6" fill="${AXON_C}"/>
-  <g fill="none" stroke="#f4f9ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"><path d="M64 48 l7 5 l-7 5"/><path d="M196 49 l8 7 l-8 7"/></g>
-  <g font-family="Inter, Roboto, sans-serif" font-size="9.5" font-weight="600" letter-spacing="1.1"><text x="30" y="112" fill="${DENDRITE_C}">DENDRITES</text><text x="120" y="33" fill="${SOMA_C}">CELL BODY</text><text x="200" y="78" fill="${AXON_C}">AXON</text></g>
-</svg>`;
+/** The key to the parts painted on the cell in Neuron 101 (the cartoon it
+ *  replaces: Ames 2026-11-12, "this is so ugly, we have to do better or remove it"). */
+const PARTS_KEY = `<p class="nge-sig-key"><span style="--c:${DENDRITE_C}">Dendrites</span><span style="--c:${SOMA_C}">Cell body</span><span style="--c:${AXON_C}">Axon</span></p>`;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 let demo = false;          // the model runs outside play, for the tour's demonstrations
 let tourAt = 0, tourToken = 0;
@@ -1878,7 +1946,7 @@ TOURS[0] = [
   // dendrite at a time, slowly, from synapses far out (Ames 2026-11-11:
   // "signals do not come in from all the dendrites at once: one signal per
   // every fourth dendrite, in random order, slower").
-  {kicker: 'Neuron 101', text: 'Signals come in through the dendrites. The cell body adds them up. With enough, a spike leaves down the axon.', sub: 'That spike is an action potential. It runs one way only.', html: NEURON_SVG,
+  {kicker: 'Neuron 101', text: 'Signals come in through the dendrites. The cell body adds them up. With enough, a spike leaves down the axon.', sub: 'That spike is an action potential. It runs one way only.', html: PARTS_KEY,
     play: async alive => {
       const t = cells.get('T');
       if (!t) return;
@@ -1898,8 +1966,7 @@ TOURS[0] = [
       // the camera draws back slowly as the signals come in, until the whole
       // cell is in view for the spike and the axon (Ames 2026-11-11: "when I
       // hit play do a slow camera zoom out"; "zoom out to here")
-      const whole = wholeCellFrame(t);
-      if (whole) glideSlow(whole.look, whole.scale, Math.max(4, (landing || 2.4) + 1.5));
+      glideWhole(t, Math.max(4, (landing || 2.4) + 1.5));
       await sleep((landing || 2.4) * 1000 + 150); if (!alive()) return;
       tourLabel('cell body', t.spec.soma, SOMA_C);
       flashes.push({p: t.spec.soma, at: now, life: 0.7, rgb: [1, 0.85, 0.4], size: 24_000});
@@ -2164,11 +2231,7 @@ function showTour(steps: TourStep[]) {
 /** A step's figure: open the first time it is seen in this browser, folded
  *  after that behind "Diagram" (Ames 2026-11-12: "show the diagram just one
  *  time then collapse it"). */
-function figureHtml(svg: string): string {
-  let seen = false;
-  try { seen = localStorage.getItem('pyr.signal.fig') === '1'; } catch { /* unknown */ }
-  return `<details class="nge-sig-fig"${seen ? '' : ' open'}><summary>Diagram <i>›</i></summary>${svg}</details>`;
-}
+function figureHtml(html: string): string { return `<div class="nge-sig-fig">${html}</div>`; }
 function renderTourStep() {
   const step = tourSteps[tourAt], last = tourAt === tourSteps.length - 1;
   tourReset();
@@ -2188,7 +2251,6 @@ function renderTourStep() {
       else { tourAt++; renderTourStep(); }
     };
   });
-  if ((els.body.querySelector('details.nge-sig-fig') as HTMLDetailsElement | null)?.open) { try { localStorage.setItem('pyr.signal.fig', '1'); } catch { /* not kept */ } }
   refreshEditor();
   const token = ++tourToken;
   void step.play?.(() => token === tourToken && active && phase === 'brief');
@@ -2583,9 +2645,9 @@ function frameLevel() {
   // In close on the cell bodies: the rest of each cell is there, greyed, as
   // context (the haze), so the frame need not hold it all.
   viewNm = Math.max(200_000, span * 2.0 + 70_000);
-  v.navigationState.position.value = Float32Array.from(center.map((c, i) => c / nm[i]));
+  setLook(v, nm, center);
   const unit = Math.min(nm[0], nm[1], nm[2]);
-  v.projectionScale.value = viewNm / unit;
+  setZoom(v, viewNm / unit);
   // Looking down into the cortex from the pia, the way a two photon
   // microscope does (Ames 2026-11-08: "sort of like I am being a 2p
   // microscope"): the eye toward data -y, screen up along +z.
@@ -2631,14 +2693,14 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
     const freeH = Math.max(120, (1 - frac) * P - TOP - BOT), freeW = Math.max(120, Wpx - 2 * SIDE);
     // further out than the bodies alone, so the arbors show too (Ames 2026-11-12: "too far in")
     viewNm = Math.max(200_000, H * P / freeH, W * P / freeW) * 1.4;
-    v.projectionScale.value = viewNm / Math.min(nm[0], nm[1], nm[2]);
+    setZoom(v, viewNm / Math.min(nm[0], nm[1], nm[2]));
     // The box's middle goes to the middle of the free area: that many px
     // above the panel's centre, so the look point sits that far below it.
     const nmPerPx = viewNm / P;
     const boxMid = add(center, add(mul(cam.right, (loR + hiR) / 2), mul(cam.up, (loU + hiU) / 2)));
     const freeMidPx = (TOP + (1 - frac) * P - BOT) / 2 - P / 2;   // down the screen is positive
     const look = add(boxMid, mul(cam.up, freeMidPx * nmPerPx));
-    v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
+    setLook(v, nm, look);
     return;
   }
   if (sideHud()) {
@@ -2649,13 +2711,13 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
     const covered = r && h && r.width > 0 ? clamp((h.right + 16 - r.left) / r.width, 0, 0.6) : 0;
     const aspect = r && r.height > 0 ? r.width / r.height : 1.5;
     const look = sub(sub(center, mul(cam.right, -covered * viewNm * aspect / 2)), mul(cam.up, viewNm * 0.03));
-    v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
+    setLook(v, nm, look);
     return;
   }
   // The HUD takes the bottom third, so the camera looks a little below the
   // circuit and the cells sit above.
   const look = sub(center, mul(cam.up, viewNm * 0.1));
-  v.navigationState.position.value = Float32Array.from(look.map((c, i) => c / nm[i]));
+  setLook(v, nm, look);
 }
 /** On a wide screen the HUD stands at the right, leaving the whole height
  *  for the cells; on a phone it lies along the bottom. */
@@ -3147,7 +3209,7 @@ function toggleShow(what: ShowWhat | 'synapses') {
 /** The camera drawn back (or in) so every synapse the card lights fits the
  *  view: the ones onto the cell, the ones it makes, or both. */
 function frameSynapses(key: string) {
-  const c = cells.get(key), nm = nmPerUnit(), cam = nm && cameraAxes(nm), pr = c && parts.get(c.spec.root);
+  const c = cells.get(key), nm = nmPerUnit(), cam = nm && camNow(nm), pr = c && parts.get(c.spec.root);
   if (!c || !nm || !cam || !pr) return;
   const pts: number[][] = [...(showing.has('synIn') ? pr.syn.in : []), ...(showing.has('synOut') ? pr.syn.out : [])];
   if (!pts.length) return;
@@ -3777,9 +3839,18 @@ function frameBody(ts: number) {
   const dt = Math.min(0.25, lastFrame ? (ts - lastFrame) / 1000 : 0);
   lastFrame = ts;
   const nm = nmPerUnit();
-  const cam = nm && cameraAxes(nm);
+  const v0 = viewerNow();
+  if (v0 && nm && level?.cells?.length && !camSane(v0)) {
+    // a camera that is no finite place (a stale address, a frame that slipped through): back to the circuit
+    if (!camWarned) { camWarned = true; console.warn('[signal] the camera was not a finite place; back to the circuit'); }
+    glide = null; pendingGlide = null;
+    try { v0.projectionOrientation.restoreState(phone() ? [0, 0, 0, 1] : [-Math.SQRT1_2, 0, 0, Math.SQRT1_2]); } catch { /* as it is */ }
+    frameLevel();
+  }
+  const cam = nm && camNow(nm);
   if (cam) {
     if (needsFrame) { settleFrame(cam); rememberHome(); recordCam(); }
+    if (pendingGlide) { const g = pendingGlide; pendingGlide = null; g(); }
     if (phase === 'playing' || demo) stepModel(dt); else idleStep(dt);
     placeShip(cam, dt);
     stepGlide(dt);
@@ -4079,6 +4150,7 @@ export function stopSignalController() {
   window.removeEventListener('keydown', onKey, true);
   for (const c of cells.values()) if (c.dimmed) paint(c, false);
   stopMusic();
+  document.removeEventListener('pointerdown', nudgeMusic, true);
   clearHaze();
   clearTags();
   endVisit();
