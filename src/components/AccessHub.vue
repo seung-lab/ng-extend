@@ -32,6 +32,8 @@ interface Person {
   edits_30d: number; cells: number; cells_30d: number; chats: number; chats_30d: number;
   help_asked: number; help_answered_for: number; help_asked_30d: number; help_given: number; help_given_30d: number;
   is_admin?: boolean;
+  /** Princeton team, not a Pyr admin: shown with the admins, left out of the counts. */
+  is_team?: boolean;
   invited_at?: string | null; invited_for?: string | null; invited_role?: string | null; invited_as?: string | null;
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
@@ -46,6 +48,10 @@ interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; st
 
 const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as';
 const people = ref<Person[]>([]);
+// The Princeton team who play without being Pyr admins (Ames 2026-11-12:
+// Ryan Morey, "team tag"). They sit with the admins and are not counted.
+const TEAM_EMAILS = new Set(['ryan.t.morey@gmail.com']);
+const teamUp = (p: Person): Person => (!p.is_admin && (TEAM_EMAILS.has(p.email) || TEAM_EMAILS.has(lc(p.gave_email || ''))) ? { ...p, is_admin: true, is_team: true } : p);
 const marks = ref<Record<string, { mark: string; at: string }>>({});
 const dsRows = ref<DatasetRequestRow[]>([]);
 const notes = ref<Record<string, Note[]>>({});
@@ -117,7 +123,7 @@ async function load() {
   // a while" when the page waited for the slowest read).
   const show = <T>(p: Promise<T>, set: (v: T) => void) => p.then(set);
   await Promise.all([
-    show(read('People', everyone, [] as Person[]), v => { people.value = v; }),
+    show(read('People', everyone, [] as Person[]), v => { people.value = v.map(teamUp); }),
     show(read('Beta lists', async () => (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}, {} as Record<string, { mark: string; at: string }>), v => { marks.value = v; }),
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
     show(read('Asked by email', async () => (await secureWrite<Record<string, { at: string; by: string }>>('access.askSent')) || {}, {} as Record<string, { at: string; by: string }>), v => { asked.value = v; }),
@@ -307,6 +313,16 @@ const boardColumns = computed(() => COLUMNS.filter(c => c.stage !== 'editing' ||
 // 2026-11-10: "pending requests above list of all users who are at
 // various stages of tutorials"). No late outlines: waiting longest is
 // already first, and someone who stopped playing is not on us.
+// Each section folds, and the page remembers it (Ames 2026-11-12: "I want
+// to be able to collapse these").
+const FOLD_KEY = 'nge_access_folded_v1';
+const folded = ref(new Set<string>((() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '[]') as string[]; } catch { return []; } })()));
+function toggleFold(k: string) {
+  const s = new Set(folded.value);
+  if (s.has(k)) s.delete(k); else s.add(k);
+  folded.value = s;
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify([...s])); } catch { /* this visit only */ }
+}
 const boardGroups = computed(() => [
   { title: 'Waiting on us', cols: boardColumns.value.filter(c => c.ours) },
   { title: 'Getting started', cols: boardColumns.value.filter(c => !c.ours) },
@@ -353,7 +369,7 @@ const totals = computed(() => {
     { label: 'Invited by email', n: inviteCount.value ?? NaN, title: inviteCount.value == null ? 'Could not read the invite list' : `We emailed ${inviteCount.value} EyeWire players an invite. ${ps.filter(p => p.invited_at).length} of them asked or are in` },
     // Ames 2026-11-12: emails added to Pilot testers ahead of time do not
     // count; asked, and signed in (everyone, also those who never asked) do.
-    { label: 'Asked for access', n: ps.filter(p => p.request_id).length, title: 'Sent a Beta request, from connectome.quest or in Pyr' },
+    { label: 'Total access requests', n: ps.filter(p => p.request_id).length, title: 'Sent a Beta request, from connectome.quest or in Pyr' },
     { label: 'Signed in', n: signedInAll.value ?? ps.filter(p => p.joined_at).length, title: 'Signed in to Pyr at least once, admins left out. Opens the Pyr Users sheet', href: USERS_SHEET_URL },
     { label: 'Finished a tutorial', n: ps.filter(p => p.tutorial_at).length, title: 'Finished their first tutorial' },
     { label: 'Made an edit', n: ps.filter(p => p.edits > 0).length, title: 'At least one merge or split' },
@@ -640,8 +656,8 @@ const opName = (e: RecentEdit) => {
     <div class="ah-main" :class="{ 'ah-main--open': open }">
       <section class="ah-boards" aria-label="People by step">
        <div v-for="g in boardGroups" :key="g.title" class="ah-group">
-        <h2 class="ah-group-title">{{ g.title }}</h2>
-        <div class="ah-board">
+        <h2 class="ah-group-title"><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('g:' + g.title)" @click="toggleFold('g:' + g.title)"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('g:' + g.title) ? '▸' : '▾' }}</span>{{ g.title }}</button></h2>
+        <div v-if="!folded.has('g:' + g.title)" class="ah-board">
         <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
           <div class="ah-col-head">
             <span class="ah-col-title">{{ col.title }}</span>
@@ -679,7 +695,7 @@ const opName = (e: RecentEdit) => {
 
       <section class="ah-lb" aria-label="Leaderboard">
         <div class="ah-lb-head">
-          <h2>Leaderboard</h2>
+          <h2><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('lb')" @click="toggleFold('lb')"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('lb') ? '▸' : '▾' }}</span>Leaderboard</button></h2>
           <span class="ah-seg" role="radiogroup" aria-label="When">
             <button type="button" role="radio" :aria-checked="lbSpan === '30d'" :class="{ on: lbSpan === '30d' }" @click="lbSpan = '30d'">Last 30 days</button>
             <button type="button" role="radio" :aria-checked="lbSpan === 'all'" :class="{ on: lbSpan === 'all' }" @click="lbSpan = 'all'">All time</button>
@@ -689,6 +705,7 @@ const opName = (e: RecentEdit) => {
           </span>
           <button type="button" class="ah-link ah-lb-col" :aria-pressed="showEditingCol" @click="toggleEditingCol">{{ showEditingCol ? 'Hide' : 'Show' }} the Editing column</button>
         </div>
+        <template v-if="!folded.has('lb')">
         <p v-if="!lbRows.length" class="ah-quiet">Nobody{{ words.length ? ' matches' : ' yet' }}.</p>
         <ol v-else class="ah-lb-list">
           <li v-for="(r, i) in lbShown" :key="'lb' + r.c.key">
@@ -709,6 +726,7 @@ const opName = (e: RecentEdit) => {
         <button v-if="lbRows.length > LB_SHOWN && !words.length" type="button" class="ah-fold ah-fold--wide" @click="lbAll = !lbAll">
           {{ lbAll ? `Show the top ${LB_SHOWN}` : `Show all ${lbRows.length}` }}
         </button>
+        </template>
       </section>
 
       <aside v-if="open" class="ah-panel" aria-label="Person">
@@ -841,7 +859,7 @@ const opName = (e: RecentEdit) => {
     <div v-if="showAdmins" class="ah-admins">
       <button v-for="c in adminCards" :key="'a' + c.key" type="button" class="ah-card" @click="pick(c)">
         <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
-        <span class="ah-card-line">Admin<template v-if="c.p?.edits">, {{ c.p.edits.toLocaleString() }} edit{{ c.p.edits === 1 ? '' : 's' }}</template></span>
+        <span class="ah-card-line">{{ c.p?.is_team ? 'Team' : 'Admin' }}<template v-if="c.p?.edits">, {{ c.p.edits.toLocaleString() }} edit{{ c.p.edits === 1 ? '' : 's' }}</template></span>
       </button>
     </div>
     <button v-if="laterCards.length || showLater" type="button" class="ah-fold ah-fold--wide ah-later-fold" @click="showLater = !showLater">
@@ -864,7 +882,8 @@ const opName = (e: RecentEdit) => {
     </div>
 
     <section v-if="stats.length || tutRows.length" class="ah-flowbox" aria-label="Tutorials">
-      <h3>Tutorials</h3>
+      <h3><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('tut')" @click="toggleFold('tut')"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('tut') ? '▸' : '▾' }}</span>Tutorials</button></h3>
+      <template v-if="!folded.has('tut')">
       <div class="ah-flow">
         <template v-for="(t, i) in FLOW_MAIN" :key="'m' + t">
           <button type="button" class="ah-node" :class="{ 'ah-node--open': openTut === t }" :aria-expanded="openTut === t" @click="openTut = openTut === t ? null : t">
@@ -894,11 +913,13 @@ const opName = (e: RecentEdit) => {
         <p v-if="!tutOpen.rows.length" class="ah-quiet">No box times yet for this one.</p>
         <p v-if="tutOpen.unknown.length" class="ah-step-here">In it, box not known (they started before box times were kept): <button v-for="p in tutOpen.unknown" :key="p.email" type="button" class="ah-chip" @click="openPerson(p)">{{ p.name || p.username || p.email }}</button></p>
       </div>
+      </template>
     </section>
 
     <section class="ah-insights">
       <div class="ah-box">
-        <h3>Where the community is, last 30 days</h3>
+        <h3><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('places')" @click="toggleFold('places')"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('places') ? '▸' : '▾' }}</span>Where the community is, last 30 days</button></h3>
+        <template v-if="!folded.has('places')">
         <div v-for="a in places" :key="a.dataset" class="ah-bar-row">
           <span class="ah-bar-name">{{ a.dataset }}</span>
           <span class="ah-bar"><span :style="{ width: Math.max(1, (a.edits / maxEdits) * 100) + '%' }"></span></span>
@@ -906,9 +927,11 @@ const opName = (e: RecentEdit) => {
           <span class="ah-bar-x">{{ a.cells.toLocaleString() }} cells done · {{ a.chats.toLocaleString() }} chat messages</span>
         </div>
         <p v-if="!places.length" class="ah-quiet">Nothing read yet.</p>
+        </template>
       </div>
       <div class="ah-box">
-        <h3>Tutorial boxes players linger on</h3>
+        <h3><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('linger')" @click="toggleFold('linger')"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('linger') ? '▸' : '▾' }}</span>Tutorial boxes players linger on</button></h3>
+        <template v-if="!folded.has('linger')">
         <div v-for="s in slowSteps" :key="s.tutorial + '-' + s.step" class="ah-bar-row">
           <a class="ah-bar-name ah-bar-link" :href="boxLink(s.tutorial, s.step, gameUrl)" target="_blank" rel="noopener" :title="PRACTICE_TUTORIALS.includes(s.tutorial) ? `Opens ${TUTORIAL_NAMES[s.tutorial] ?? 'this tutorial'} from its start (it needs its practice cell): ${boxName(s)}` : `Open this box in the game: ${boxName(s)}`">{{ TUTORIAL_NAMES[s.tutorial] ?? `Tutorial ${s.tutorial}` }}: {{ boxName(s) }}</a>
           <span class="ah-bar ah-bar--tut"><span :style="{ width: (Number(s.median_s) / maxStep) * 100 + '%' }"></span></span>
@@ -916,6 +939,7 @@ const opName = (e: RecentEdit) => {
           <span class="ah-bar-x">{{ s.players }} players<template v-if="Number(s.help_rate) > 0">, {{ Math.round(Number(s.help_rate) * 100) }}% asked for help</template><template v-if="s.closes">, {{ s.closes }} left here</template></span>
         </div>
         <p class="ah-quiet">Boxes at least two players reached. Up to {{ tutPlayers }} players so far. Click a box to open it in the game. Merge, Cut and the Sandboxes open from their start, since they need their practice cell.</p>
+        </template>
       </div>
     </section>
   </div>
@@ -958,6 +982,11 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 .ah-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; }
 .ah-col { max-height: min(560px, calc(100vh - 150px)) !important; }
 /* The admins' leaderboard. */
+.ah-fold-btn { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.ah-fold-btn:hover .ah-fold-mark, .ah-fold-btn:focus-visible .ah-fold-mark { color: #9fd3ff; }
+.ah-fold-mark { display: inline-block; width: 1em; color: #6f8fbf; font-size: .85em; }
+/* Not full width (Ames 2026-11-12: "this doesn't need to be full width"). */
+.ah-lb { max-width: 900px; width: 100%; box-sizing: border-box; }
 .ah-lb { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 12px 14px; min-width: 0; }
 .ah-lb-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .ah-lb-head h2 { margin: 0 6px 0 0; font-size: 16px; color: #eef4ff; }

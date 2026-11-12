@@ -51,6 +51,7 @@ const PEOPLE = [
   { ...base, email: 'lou@example.org', user_id: UID(14), name: 'Lou Baker', username: 'lbaker', pilot_enabled: true, let_in_at: ago(20), joined_at: ago(19), tutorial_at: ago(19), tutorials: 2, first_edit_at: ago(18), last_edit_at: ago(1), edits: 300, last_dataset: 'pinky_nf_v2' },
 ];
 // An admin, never asked and not on Pilot testers: the Admin step.
+PEOPLE.push({ ...base, email: 'ryan.t.morey@gmail.com', user_id: UID(16), name: 'Ryan Morey', pilot_enabled: true, joined_at: ago(30), tutorial_at: ago(29), tutorials: 3, first_edit_at: ago(28), last_edit_at: ago(1), edits: 50, edits_30d: 50 });
 PEOPLE.push({ ...base, email: 'boss@example.org', user_id: UID(15), name: 'Ames Admin', pilot_enabled: false, joined_at: ago(200), tutorial_at: ago(199), tutorials: 6, first_edit_at: ago(198), last_edit_at: ago(2), edits: 782, is_admin: true });
 for (let i = 0; i < 6; i++) PEOPLE.push({ ...base, email: `list${i}@example.org`, pilot_enabled: true, let_in_at: ago(40), from_list: true });
 const EDITS = Array.from({ length: 10 }, (_, i) => ({ at: ago(0.1 + i * 0.01), dataset: 'stroeh_mouse_retina', operation: i % 3 ? 'split' : 'merge', success: i !== 1 }));
@@ -159,13 +160,25 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
     check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
-    const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.trim()));
+    const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.replace(/[▾▸]/g, '').trim()));
     check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
     const lb = () => page.$$eval('.ah-lb-row', els => els.map(e => ({ rank: e.querySelector('.ah-lb-rank').textContent.trim(), who: e.querySelector('.ah-lb-who b').textContent.trim(), v: e.querySelector('.ah-lb-v').textContent.trim() })));
     await page.screenshot({ path: path.join(OUT, 'access-hub-lb.png'), fullPage: true });
     let L = await lb();
     check('leaderboard: last 30 days by edits, top first, admin left out', L.map(r => r.who + ' ' + r.v).join('|') === 'Nik Serafin 1,880', L);
+    // Sections fold, and stay folded on the next visit (Ames 2026-11-12).
+    const lbWidth = await page.$eval('.ah-lb', e => e.getBoundingClientRect().width);
+    check('the leaderboard is not full width', lbWidth <= 900, lbWidth);
+    await page.click('.ah-lb .ah-fold-btn');
+    check('the leaderboard folds', (await page.$$('.ah-lb-row')).length === 0 && await page.$eval('.ah-lb .ah-fold-btn', e => e.getAttribute('aria-expanded')) === 'false');
+    await page.click('.ah-group-title .ah-fold-btn:has-text("Getting started")');
+    check('a board row folds', (await page.$$('.ah-group')).length === 2 && await page.$$eval('.ah-group', gs => gs.map(g => !!g.querySelector('.ah-board')).join(',')) === 'true,false');
+    await page.reload(); await page.waitForSelector('.ah-lb .ah-fold-btn');
+    check('folds are remembered', (await page.$$('.ah-lb-row')).length === 0 && await page.$$eval('.ah-group', gs => gs.map(g => !!g.querySelector('.ah-board')).join(',')) === 'true,false');
+    await page.click('.ah-lb .ah-fold-btn');
+    await page.click('.ah-group-title .ah-fold-btn:has-text("Getting started")');
+    await page.waitForSelector('.ah-lb-row');
     await page.click('.ah-seg button:has-text("All time")');
     L = await lb();
     check('leaderboard: all time', L.map(r => r.who + ' ' + r.v).join('|') === 'Nik Serafin 4,210|Lou Baker 300', L);
@@ -190,7 +203,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
     check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
     const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
-    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Asked for access|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
+    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Total access requests|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
     check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
@@ -308,7 +321,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('an admin is in no step column', b.every(c => c.cards.every(x => x.name !== 'Ames Admin')), b.map(c => c.title));
     await page.click('.ah-fold--wide:has-text("admin")');
     const admins = await page.$$eval('.ah-admins .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
-    check('admins fold away below as Admin', admins.length === 1 && /Ames Admin/.test(admins[0]) && /Admin, 782 edits/.test(admins[0]), admins);
+    check('admins fold away below as Admin, and the team as Team (Ryan Morey, Ames 2026-11-12)', admins.length === 2 && /Ames Admin/.test(admins[0]) && /Admin, 782 edits/.test(admins[0]) && /Ryan Morey/.test(admins[1]) && /Team, 50 edits/.test(admins[1]), admins);
     await page.click('.ah-fold--wide:has-text("removed")');
     const removed = await page.$$eval('.ah-removed .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
     check('removed requests fold away below, without the admin', removed.length === 1 && /Gone Person/.test(removed[0]), removed);

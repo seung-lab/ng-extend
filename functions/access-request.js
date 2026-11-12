@@ -825,6 +825,7 @@ async function askEmail(a, io) {
 // And everyone who has signed in to Pyr, admins left out (Ames 2026-11-12:
 // "I want to see all the people we've invited, all the people who have
 // signed in"), including those who signed in and never asked.
+const TEAM_EMAILS = ['ryan.t.morey@gmail.com'];
 async function inviteCount(a, io) {
   needAdmin(io.isAdmin);
   const [rows, users, admins] = await Promise.all([
@@ -834,6 +835,9 @@ async function inviteCount(a, io) {
   ]);
   const adminIds = new Set((admins || []).map(r => r.user_id).filter(Boolean));
   const adminEmails = new Set((admins || []).map(r => String(r.email || '').toLowerCase()).filter(Boolean));
+  // The Princeton team who are not Pyr admins (Ames 2026-11-12, Ryan Morey)
+  // are left out too, as on the Access page.
+  for (const e of TEAM_EMAILS) adminEmails.add(e);
   const signedIn = (users || []).filter(u => !adminIds.has(u.id) && !adminEmails.has(String(u.middleauth_email || '').toLowerCase())).length;
   return {invited: new Set((rows || []).map(r => r.email)).size, signedIn};
 }
