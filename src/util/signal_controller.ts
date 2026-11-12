@@ -982,6 +982,10 @@ body.nge-mobile .ng-extend.nge-sig-scan { -webkit-overflow-scrolling: touch; ove
 body.nge-mobile .ng-extend.nge-sig-scan::-webkit-scrollbar { width: 7px; }
 body.nge-mobile .ng-extend.nge-sig-scan::-webkit-scrollbar-track { background: rgba(6, 12, 28, 0.4); }
 body.nge-mobile .ng-extend.nge-sig-scan::-webkit-scrollbar-thumb { background: rgba(126, 224, 255, 0.7); border-radius: 4px; }
+/* compact: the header and the synapse counts only; More opens the rest */
+body.nge-mobile .nge-sig-scan--compact .identity, body.nge-mobile .nge-sig-scan--compact .sign, body.nge-mobile .nge-sig-scan--compact .nge-sig-wiring, body.nge-mobile .nge-sig-scan--compact .nge-sig-chart, body.nge-mobile .nge-sig-scan--compact .prov, body.nge-mobile .nge-sig-scan--compact .nge-sig-readouts li:nth-child(n+3) { display: none !important; }
+body.nge-mobile .nge-sig-scan--compact .nge-sig-scan-box { padding-bottom: 8px; }
+body.nge-mobile .nge-sig-more { margin-top: 8px; padding: 6px 12px; font: 700 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
 .nge-sig .nge-sig-edit { flex: none; padding: 2px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font-size: 12px; line-height: 1; }
 .nge-sig .nge-sig-edit:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 /* the editor: a card beside the HUD, a section a box */
@@ -3148,6 +3152,17 @@ function showScan(key: string, full = false) {
   };
   box.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses'); };
   buildIn(box);
+  if (phone()) {
+    // on a phone the card opens compact: the name and the two synapse counts
+    // (tap one to light them, the view stays in sight), and More for the
+    // rest (Ames 2026-11-12: "maybe with that button it loads synapse counts
+    // at top, and a More button which gives me the rest of the cell's data")
+    scanEl.classList.add('nge-sig-scan--compact');
+    const more = document.createElement('button');
+    more.type = 'button'; more.className = 'nge-sig-quiet nge-sig-more'; more.textContent = 'More ›';
+    more.onclick = () => { const compact = scanEl?.classList.toggle('nge-sig-scan--compact'); more.textContent = compact ? 'More ›' : 'Less ‹'; more.blur(); };
+    box.appendChild(more);
+  }
   requestAnimationFrame(() => scanEl?.classList.add('nge-sig-scan--in'));
 }
 function hideScan() {
