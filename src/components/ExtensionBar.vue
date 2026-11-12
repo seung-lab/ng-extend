@@ -852,6 +852,9 @@ function handleAssistantAction(e: Event) {
 onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
+// Everyone signed in counts as online, chat open or not: new players on the
+// Starship tour were missing from "N online" (Ames 2026-11-12).
+watch(() => backendStore.userId, (id) => { if (id) chatStore.startPresence(); }, { immediate: true });
 // A reviewer who refreshed mid review goes back into review mode (Celia #195).
 watch(() => backendStore.isAdmin, (admin) => { if (admin) void resumeReview(); }, { immediate: true });
 // Signed in: give the page a moment to settle, then greet with the leaderboard.
