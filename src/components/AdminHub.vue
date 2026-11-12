@@ -3845,14 +3845,14 @@ function practiceWhen(iso: string | null) {
             <div v-if="row.impl_summary"><span class="nge-triage-spec-label">Change</span> {{ row.impl_summary }}</div>
             <div v-if="row.preview_url"><span class="nge-triage-spec-label">Preview</span> <a :href="row.preview_url" target="_blank" rel="noopener">{{ row.preview_url }}</a></div>
             <div v-if="row.impl_state === 'testing' || row.impl_state === 'live_testing' || row.impl_state === 'needs_info'"><span class="nge-triage-spec-label">Waiting on</span> the tester in the Slack thread{{ row.impl_state === 'needs_info' ? ', to answer Claude' : '' }}. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
-            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> <template v-for="(pt, pi) in linkParts(f.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
+            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts" class="nge-triage-note-text"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> <template v-for="(pt, pi) in linkParts(f.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
             <div v-if="row.impl_run_url"><a :href="row.impl_run_url" target="_blank" rel="noopener">Claude's run log</a><template v-if="row.impl_attempts"> · attempt {{ row.impl_attempts }}</template></div>
           </div>
           <!-- Notes from admins, with no decision (Celia #178). -->
           <div class="nge-triage-notes" @click.stop>
             <div v-for="(n, i) in row.admin_notes || []" :key="i" class="nge-triage-note nge-triage-admin-note">
               <span class="nge-triage-spec-label">Note</span>
-              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
+              <span class="nge-triage-spec-text nge-triage-note-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
             </div>
             <template v-if="noteOpen[row.id]">
               <textarea v-autogrow v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
@@ -5353,6 +5353,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   text-transform: uppercase; color: rgba(100, 200, 255, 0.75);
 }
 .nge-triage-spec-text { color: rgba(235, 238, 250, 0.88); min-width: 0; overflow-wrap: anywhere; }
+/* Notes keep the lines and lists they were written with (Ames 2026-11-12: "notes don't have formatting"). */
+.nge-triage-note-text { white-space: pre-line; }
 .nge-triage-actions { display: flex; gap: 8px; }
 
 .nge-admin-badge-grid {
