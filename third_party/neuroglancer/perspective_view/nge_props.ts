@@ -74,6 +74,9 @@ export interface NgeGlow {
   /** One nanometre across the screen (toward the camera's right), in global
    *  coordinates: how the sprites get their size on screen. */
   nmRight: [number, number, number];
+  /** Drawn through everything, with no depth test (Signal Controller's
+   *  beacons on the cell bodies, seen behind the branches in front). */
+  through?: boolean;
 }
 const glows = new Map<string, NgeGlow>();
 export function setNgeGlow(glow: NgeGlow|null, group = 'starship') {
@@ -405,6 +408,7 @@ export function drawNgeGlow(gl: GL, viewProjectionMat: mat4) {
   gl.blendFuncSeparate(T.ONE, T.ONE, T.ONE, T.ONE);
   gl.bindVertexArray(st.vao);
   for (const g of glows.values()) {
+    if (g.through) gl.disable(T.DEPTH_TEST); else gl.enable(T.DEPTH_TEST);
     gl.uniform3f(st.u.uNmRight, g.nmRight[0], g.nmRight[1], g.nmRight[2]);
     gl.bindBuffer(T.ARRAY_BUFFER, st.buffers[0]);
     gl.bufferData(T.ARRAY_BUFFER, g.positions.subarray(0, g.count * 3), T.DYNAMIC_DRAW);
@@ -416,6 +420,7 @@ export function drawNgeGlow(gl: GL, viewProjectionMat: mat4) {
   }
   gl.bindVertexArray(null);
   gl.bindBuffer(T.ARRAY_BUFFER, null);
+  gl.enable(T.DEPTH_TEST);
   gl.depthMask(true);
   gl.disable(T.BLEND);
   gl.blendFunc(T.SRC_ALPHA, T.ONE_MINUS_SRC_ALPHA);

@@ -77,6 +77,8 @@ interface Level {
   /** The Gatekeeper's own rhythm, if it is awake. */
   gate?: {cell: string; periodS: number};
   hush: boolean; hushBlocked?: string[];
+  /** The principle at work, in a sentence or two, behind "The science" in the HUD's foot. */
+  science?: string;
   goal: Goal; timeS: number; par: number;
   coach: Partial<Record<CoachEvent, string>>;
   /** Which cells light up as the thing to click, per coach event (Ames
@@ -90,6 +92,7 @@ const LEVELS: Level[] = [
   // pyramidal neurons to fire downstream at the right frequency"): two quick
   // sparks on E1 add up at the gold cell; slow ones leak away first.
   {title: 'First Light', objective: 'Spike the gold cell', detail: '', timeS: 60, par: 6,
+    science: 'Temporal summation: a neuron adds its inputs up, and the charge leaks away in about a second, so spikes that arrive close together reach the threshold where one alone cannot.',
     brief: 'These are real neurons from the brain: an excitatory pyramidal cell (gold) and four of the cells that drive it.\nYour Spark beam fires a cell, and its spike runs down the axon to the gold cell. One spike is not enough on its own, but spikes that arrive close together add up.\nE1 makes the most synapses onto the gold cell, five, so two quick spikes from it are enough on their own. The other drivers carry less and need company.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4'], targets: ['T'], hush: false,
     goal: {kind: 'fire', target: 'T', count: 3},
@@ -104,6 +107,7 @@ const LEVELS: Level[] = [
   // reads as a story: the violet cell winds up and pulses, the pulse runs
   // down its axon, the gold cell turns violet and comes back, go.
   {title: 'The Gatekeeper', objective: 'Spike the gold cell', detail: '3 times, in the gaps between pulses', timeS: 60, par: 6,
+    science: 'Inhibition: a Martinotti cell (SST+) synapses onto pyramidal cells’ dendrites. While its inhibition lasts, the same excitation falls short of threshold.',
     brief: 'A new cell, in violet: a Martinotti cell, the Gatekeeper. About every four seconds it pulses, and the pulse runs down its axon and holds the gold cell down for a moment: watch the gold cell turn violet, then come back.\nFire the gold cell three times, in the gaps between pulses. The coach line turns blue when a gap opens.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: false, gate: {cell: 'I1', periodS: 4.2},
     goal: {kind: 'fire', target: 'T', count: 3},
@@ -115,6 +119,7 @@ const LEVELS: Level[] = [
       miss: 'The pulse caught it: the charge was still building when the pulse landed. Click twice as soon as the line turns blue.'},
     hint: {go: ['E1'], hit: [], wait: [], soon: []}},
   {title: 'Inhibit', objective: 'Spike the gold cell', detail: '3 times: Inhibit the Gatekeeper first', timeS: 60, par: 12,
+    science: 'Disinhibition: silence an inhibitory cell (as optogenetics can) and its targets are released. Quiet the Gatekeeper, and the gold cell fires on less.',
     brief: 'The Gatekeeper pulses every second now; the gaps are nearly gone.\nA new beam: Inhibit quiets a cell for 2.5 s (2 charges). Inhibit the Gatekeeper, then fire the drivers into the quiet.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: true, gate: {cell: 'I1', periodS: 1.0},
     goal: {kind: 'fire', target: 'T', count: 3},
@@ -125,6 +130,7 @@ const LEVELS: Level[] = [
       miss: 'Inhibit first, then two quick sparks inside the 2.5 s.'},
     hint: {begin: ['I1'], wait: ['I1'], go: ['E1'], hit: ['I1']}},
   {title: 'The Key', objective: 'Fire T, then E4', detail: 'within 2 s, twice', timeS: 75, par: 13,
+    science: 'The disinhibitory motif: a bipolar cell (VIP+) inhibits the Martinotti cell (SST+) and not the pyramidal cells, so firing it lifts the brake on them. VIP → SST → pyramidal (Pfeffer et al. 2013; Pi et al. 2013).',
     brief: 'The Gatekeeper’s shield blocks your Inhibit beam now. But a bipolar cell (magenta) makes 20 synapses onto the Gatekeeper and none onto the pyramidal cells: a key.\nE4 is a second target, with its own drivers F1, F2 and F3.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'F1', 'F2', 'F3', 'I1', 'I2'], targets: ['T', 'E4'], hush: true, hushBlocked: ['I1'], gate: {cell: 'I1', periodS: 1.0},
     goal: {kind: 'sequence', order: ['T', 'E4'], withinS: 2, count: 2},
@@ -135,6 +141,7 @@ const LEVELS: Level[] = [
       miss: 'The order is I2 first, then E1 twice, then F1 + F2 + F3.'},
     hint: {begin: ['I2'], wait: ['I2'], go: ['E1', 'F1', 'F2', 'F3'], hit: ['I2']}},
   {title: 'In Sync', objective: 'Fire T and E4 together', detail: 'three times', timeS: 90, par: 18,
+    science: 'A chain and a coincidence: a pyramidal cell drives the VIP cell that quiets the SST cell, and two cells fire together only when their inputs land within the window the leak allows.',
     brief: 'A layer 2/3 pyramidal cell, S, sits above the circuit and drives the Key with 10 synapses: a chain of three.\nLand T and E4 within a quarter second of each other, three times.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'F1', 'F2', 'F3', 'G1', 'G2', 'I1', 'I2', 'S'], targets: ['T', 'E4'], hush: true, hushBlocked: ['I1'], gate: {cell: 'I1', periodS: 1.0},
     goal: {kind: 'sync', targets: ['T', 'E4'], withinS: 0.25, count: 3},
@@ -356,6 +363,11 @@ const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1,
 const GROUP = 'signal';
 const MAX_GLOW = 24_000;   // room for every synapse of a cell, and an arbor's wave
 const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Float32Array(MAX_GLOW * 4), sizesNm: new Float32Array(MAX_GLOW), count: 0, nmRight: [1, 0, 0]};
+/** Beacons on the cell bodies, drawn through everything so a body is seen
+ *  behind the branches in front of it (Ames 2026-11-11: "it's hard to see
+ *  the somas"). */
+const MAX_OVER = 128;
+const glowOver: NgeGlow = {positions: new Float32Array(MAX_OVER * 3), colors: new Float32Array(MAX_OVER * 4), sizesNm: new Float32Array(MAX_OVER), count: 0, nmRight: [1, 0, 0], through: true};
 
 const thetaOf = (key: string) => THRESHOLD[key] ?? DEFAULT_THRESHOLD;
 const potential = (c: CellState) => c.e - c.i;
@@ -464,6 +476,8 @@ const sfx = {
 /* ── the HUD ── */
 let panel: HTMLElement | null = null;
 let els: Record<string, HTMLElement> = {};
+/** Puts the level's science line in the foot (set when the HUD is built). */
+let showScience: () => void = () => { /* no HUD yet */ };
 let chipEls = new Map<string, HTMLElement>();
 let message = '';
 let messageUntil = 0;
@@ -864,6 +878,13 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig .nge-sig-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .nge-sig .nge-sig-ico svg { display: block; }
 .nge-sig .nge-sig-neuron { display: block; width: 100%; max-width: 330px; margin: 8px 0 2px; }
+/* the science: a folded line in the foot */
+.nge-sig .nge-sig-sci { margin: 6px 0 2px; }
+.nge-sig .nge-sig-sci-btn { padding: 0; border: 0; background: none; color: #7ee0ff; cursor: pointer; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
+.nge-sig .nge-sig-sci-btn i { display: inline-block; font-style: normal; margin-left: 3px; transition: transform 0.2s; }
+.nge-sig .nge-sig-sci-btn.open i { transform: rotate(90deg); }
+.nge-sig .nge-sig-sci-btn:hover { color: #fff; }
+.nge-sig .nge-sig-sci-text { margin: 4px 0 0; font: 11px/1.4 'Inter', 'Roboto', sans-serif; color: #c9dcf2; }
 .nge-sig .nge-sig-edit { flex: none; padding: 2px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font-size: 12px; line-height: 1; }
 .nge-sig .nge-sig-edit:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 /* the editor: a card beside the HUD, a section a box */
@@ -943,6 +964,7 @@ function buildPanel() {
       <div class="nge-sig-charges" data-el="charges"><span>Charge</span></div>
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
+    <div class="nge-sig-sci"><button type="button" class="nge-sig-sci-btn" data-el="sci" aria-expanded="false">The science <i>›</i></button><p class="nge-sig-sci-text" data-el="sciText" hidden></p></div>
     <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 2,000 times slower than real life.</span></div></div>`;
   document.body.appendChild(panel);
   els = {};
@@ -959,6 +981,20 @@ function buildPanel() {
   els.hush.onclick = () => { setHushMode(true); els.hush.blur(); };
   els.view.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { setView(b.dataset.view as ViewMode); b.blur(); }; });
   els.edit.onclick = () => { toggleEditor(); els.edit.blur(); };
+  // the science, folded unless it was open last time
+  let sciOpen = false;
+  try { sciOpen = localStorage.getItem('pyr.signal.sci') === '1'; } catch { /* folded */ }
+  const showSci = () => {
+    const t = level.science ?? '';
+    els.sci.parentElement!.style.display = t ? '' : 'none';
+    els.sciText.textContent = t;
+    (els.sciText as HTMLElement).hidden = !sciOpen;
+    els.sci.setAttribute('aria-expanded', String(sciOpen));
+    els.sci.classList.toggle('open', sciOpen);
+  };
+  els.sci.onclick = () => { sciOpen = !sciOpen; try { localStorage.setItem('pyr.signal.sci', sciOpen ? '1' : '0'); } catch { /* not kept */ } showSci(); els.sci.blur(); };
+  showScience = showSci;
+  showSci();
   // Pyr's own Share lives in the top bar, which is away while the game runs
   els.share.onclick = async () => {
     const link = `${location.origin}${location.pathname}?signal`;
@@ -1079,6 +1115,12 @@ function drives(c: CellState): CircuitConn | undefined {
   if (c.spec.type === 'I') return undefined;
   return conns.filter(k => k.pre === c.key && cells.get(k.post)?.target && cells.get(k.post)?.shown).sort((a, b) => b.count - a.count)[0];
 }
+/** The kind of cell, one word: "pyramidal", "bipolar", "Martinotti". */
+function typeWord(c: CellState): string { return (c.spec.label || '').replace(/\s*cell$/i, '').replace(/^pyramidal$/i, 'pyramidal'); }
+/** A tag's second line: the role and the kind of cell, since the call sign
+ *  says the job and not the kind (Ames 2026-11-11: "is the key cell the
+ *  bipolar cell? make some indicator for cell type"). */
+function tagLine(c: CellState): string { const t = typeWord(c); return t ? `${roleOf(c)} · ${t.charAt(0) === t.charAt(0).toUpperCase() && t !== t.toUpperCase() ? t : t.toLowerCase()}` : roleOf(c); }
 function chipLine(c: CellState): string {
   const outs = conns.filter(k => k.pre === c.key && cells.get(k.post)?.shown)
     .sort((a, b) => Number(cells.get(b.post)!.target) - Number(cells.get(a.post)!.target) || b.count - a.count);
@@ -1557,21 +1599,9 @@ function placeTourLabels() {
   }
 }
 /** A spark from the ship at a cell, as the player's would be. */
-function demoSpark(key: string) {
-  const c = cells.get(key);
-  if (!c?.shown) return;
-  shipAim = c.spec.soma; aimUntil = performance.now() + 1500;
-  beams.push({from: shipNose(), to: c.spec.soma, at: now, hush: false, cell: key, applied: false});
-  sfx.spark();
-}
-/** A Hush from the ship at a cell: the violet beam, the cell quiet for a while. */
-function demoHush(key: string) {
-  const c = cells.get(key);
-  if (!c?.shown) return;
-  shipAim = c.spec.soma; aimUntil = performance.now() + 1500;
-  beams.push({from: shipNose(), to: c.spec.soma, at: now, hush: true, cell: key, applied: false});
-  sfx.hush();
-}
+function demoSpark(key: string) { fireAt(key, false, true); }
+/** An Inhibit from the ship at a cell: the violet ribbon, the cell quiet for a while (or its shield's answer). */
+function demoHush(key: string) { fireAt(key, true, true); }
 const NO_CONN = {} as CircuitConn;   // a spark with no edge on the map
 /** A pulse of light along a path, over so many seconds. */
 function demoPulse(path: V3[], seconds: number) {
@@ -1793,6 +1823,54 @@ TOURS[2] = [
     }},
   {kicker: 'Ready', text: 'Inhibit the Gatekeeper, then spike the gold cell through its partners. Three times.', click: 'spark'},
 ];
+/** The tour step from which the map shows (level 1 keeps it until the drivers are introduced). */
+const MAP_FROM: Record<number, number> = {0: 2};
+/* Level 4 (Ames 2026-11-11: "Do we maybe need a demo here? This got a lot
+   more complicated"): the shield, the Key, the second target. */
+TOURS[3] = [
+  {kicker: 'The shield', text: 'The Gatekeeper pulses every second now, and its shield blocks your Inhibit beam.',
+    play: async alive => {
+      dimTo(['T', 'I1']); lightWhole(['I1']); hints = new Set(['I1']);
+      await sleep(900); if (!alive()) return;
+      demoHush('I1');   // the shield answers
+    }},
+  {kicker: 'The Key', text: 'I2, in magenta, is a bipolar cell. It makes 20 synapses onto the Gatekeeper and none onto the pyramidal cells. Spark it, and the Gatekeeper’s next pulse is pushed back.',
+    play: async alive => {
+      const k = conns.find(x => x.pre === 'I2' && x.post === 'I1');
+      dimTo(['I2', 'I1']); lightWhole(['I2', 'I1']); hints = new Set(['I2']);
+      const key = cells.get('I2');
+      if (key) glideTo(key, 0.7);
+      revealCell('I2', 1.4, [1, 0.65, 1]);
+      if (k) showGems(k.synapses, '#ff8fd1');
+      await sleep(1800); if (!alive()) return;
+      demoSpark('I2');
+    }},
+  {kicker: 'Two targets', text: 'E4 is a second target, in gold too, with its own drivers: F1, F2 and F3.',
+    play: async alive => {
+      dimTo(['E4', 'F1', 'F2', 'F3']); lightWhole(['E4']); hints = new Set(['F1', 'F2', 'F3']);
+      revealCell('E4', 1.4, [1, 0.95, 0.75]);
+      await sleep(50); if (!alive()) return;
+    }},
+  {kicker: 'Ready', text: 'Spark the Key first. Then E1 twice for the gold cell, and F1, F2 and F3 for E4, within 2 seconds of each other. Twice.', click: 'spark'},
+];
+/* Level 5: the chain, S to the Key to the Gatekeeper, and two targets in sync. */
+TOURS[4] = [
+  {kicker: 'A chain', text: 'S, a layer 2/3 pyramidal cell, sits above the circuit. It drives the Key with 10 synapses, and the Key quiets the Gatekeeper: a chain of three.',
+    play: async alive => {
+      dimTo(['S', 'I2', 'I1']); lightWhole(['S', 'I2', 'I1']); hints = new Set(['S']);
+      const sc = cells.get('S');
+      if (sc) glideTo(sc, 0.8);
+      revealCell('S', 1.4, [0.8, 0.9, 1]);
+      await sleep(1800); if (!alive()) return;
+      demoSpark('S');
+    }},
+  {kicker: 'In sync', text: 'Two targets, five drivers: E1 and E2 for the gold cell, F1, F2 and F3 for E4. Land both within a quarter second of each other.',
+    play: async alive => {
+      dimTo(['T', 'E4', 'E1', 'E2', 'F1', 'F2', 'F3']); lightWhole(['T', 'E4']); hints = new Set(['E1', 'E2', 'F1', 'F2', 'F3']);
+      await sleep(50); if (!alive()) return;
+    }},
+  {kicker: 'Ready', text: 'Spark S, then all five drivers together. Three times.', click: 'spark'},
+];
 function showTour(steps: TourStep[]) {
   tourSteps = steps;
   phase = 'brief'; demo = true;
@@ -1805,7 +1883,7 @@ function renderTourStep() {
   const step = tourSteps[tourAt], last = tourAt === tourSteps.length - 1;
   tourReset();
   // the map joins once the drivers are introduced (Ames 2026-11-11: "we don't need this in every box")
-  els.map.style.display = tourAt >= 2 ? '' : 'none';
+  els.map.style.display = tourAt >= (MAP_FROM[levelIndex] ?? 0) ? '' : 'none';
   const textKey = `tour.${levelIndex}.${tourAt}.text`, subKey = `tour.${levelIndex}.${tourAt}.sub`;
   els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length} · ${step.kicker}</div>
     <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}${step.html ?? ''}
@@ -1971,7 +2049,8 @@ function buildHaze(): NgeMeshTint | null {
   // On a phone the other branches are all but black: the cell bodies and
   // the wires between them are the whole picture (Ames 2026-11-10:
   // "confusing, I couldn't tell which cells I was supposed to be hitting").
-  return {data, dims, gridFromGlobal: m, dim: DIM, dimLevel: phone() ? 0.07 : undefined, skip, own};
+  // the hazed branches a little darker, so the bodies behind them show (Ames 2026-11-11: "it's hard to see the somas")
+  return {data, dims, gridFromGlobal: m, dim: DIM, dimLevel: phone() ? 0.07 : 0.24, skip, own};
 }
 let hazeTint: NgeMeshTint | null = null;
 /** Cells lit whole, every branch in colour, beyond the targets: what the
@@ -2051,7 +2130,7 @@ function makeTags() {
     el.type = 'button';
     el.className = 'ng-extend nge-sig-tag' + (c.target ? ' nge-sig-tag--target' : '');
     el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
-    el.innerHTML = `<b class="tap">Tap</b>${key}<small>${roleOf(c)}</small>`;
+    el.innerHTML = `<b class="tap">Tap</b>${key}<small>${tagLine(c)}</small>`;
     el.title = c.target ? `${key}: the target` : `Fire the beam at ${key}`;
     el.onclick = () => { if (phase === 'playing') shoot(key); else tourClick(key); el.blur(); };
     el.style.display = 'none';
@@ -2080,7 +2159,7 @@ function placeTags() {
       el.classList.toggle('nge-sig-tag--held', held);
       el.style.setProperty('--c', held ? 'rgb(182,140,255)' : `rgb(${c.color.join(',')})`);
       const small = el.querySelector('small');
-      if (small) small.textContent = held ? 'Held down' : roleOf(c);
+      if (small) small.textContent = held ? 'Held down' : tagLine(c);
     }
   }
 }
@@ -2512,19 +2591,25 @@ function arrive(a: Arrival) {
   else { c.e += a.units; if (c.target) pendingExcitation.set(c.key, now); }
 }
 
-function shoot(key: string) {
-  if (phase !== 'playing') return;
+/** A beam at a cell, the player's or the tour's: the shields answer either
+ *  way (a target; a cell the level shields against the Inhibit beam); the
+ *  player's costs a charge. */
+function fireAt(key: string, hush: boolean, demo: boolean): boolean {
   const c = cells.get(key);
-  if (!c || !c.shown) return;
-  if (c.target) { sfx.shield(); say('Shielded. Signal it using partner cells.', 2.6, key); shake(key); return; }
-  if (hushMode && level.hushBlocked?.includes(key)) { sfx.shield(); say(`${key}’s shield blocks the Inhibit beam. Find another way.`, 2.6, key); shake(key); return; }
-  const cost = hushMode ? HUSH_COST : SPARK_COST;
-  if (charges < cost) { sfx.fizzle(); say('Not enough charge.'); return; }
-  charges -= cost; chargesUsed += cost;
+  if (!c || !c.shown) return false;
+  if (c.target) { sfx.shield(); say('Shielded. Signal it using partner cells.', 2.6, key); shake(key); return false; }
+  if (hush && level.hushBlocked?.includes(key)) { sfx.shield(); say(`${key}’s shield blocks the Inhibit beam. Find another way.`, 2.6, key); shake(key); return false; }
+  if (!demo) {
+    const cost = hush ? HUSH_COST : SPARK_COST;
+    if (charges < cost) { sfx.fizzle(); say('Not enough charge.'); return false; }
+    charges -= cost; chargesUsed += cost;
+  }
   shipAim = c.spec.soma; aimUntil = performance.now() + 1500;
-  beams.push({from: shipNose(), to: c.spec.soma, at: now, hush: hushMode, cell: key, applied: false});
-  if (hushMode) sfx.hush(); else sfx.spark();
+  beams.push({from: shipNose(), to: c.spec.soma, at: now, hush, cell: key, applied: false});
+  if (hush) sfx.hush(); else sfx.spark();
+  return true;
 }
+function shoot(key: string) { if (phase === 'playing') fireAt(key, hushMode, false); }
 function shake(key: string) {
   const el = chipEls.get(key);
   if (!el) return;
@@ -2615,9 +2700,7 @@ function unfadeScan() {
  *  should do the photon beam to activate the cell"); otherwise the scan. */
 function tourClick(key: string) {
   if (phase !== 'brief' || tourSteps[tourAt]?.click !== 'spark') { scan(key); return; }
-  const c = cells.get(key);
-  if (c?.target) { sfx.shield(); say('Shielded. Signal it using partner cells.', 2.6, key); shake(key); return; }   // as in play
-  demoSpark(key);
+  fireAt(key, hushMode, true);   // the beam chosen, the shields answering, as in play
 }
 /** The scan beam, from the ship's nose to the cell it is visiting. */
 function fireScan() {
@@ -2981,7 +3064,7 @@ function stepModel(dt: number) {
   // thresholds, and the Gatekeeper's clock
   for (const c of cells.values()) {
     if (!c.shown) continue;
-    if (c.dimmed && now >= c.hushedUntil && !tourDim.has(c.key)) paint(c, false);
+    if (c.dimmed && now >= c.hushedUntil && !tourDim.has(c.key) && !(scanLit && c.key !== scanLit)) paint(c, false);
     if (now < c.hushedUntil) continue;
     if (c.gateNext !== null) { if (now >= c.gateNext) spike(c.key); continue; }
     if (potential(c) >= c.theta && now >= c.refractoryUntil) spike(c.key);
@@ -3233,6 +3316,25 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   glow.count = n;
   glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
   setNgeGlow(n ? glow : null, GROUP);
+  // the beacons: a soft orb in the cell's colour on each body, fainter on a
+  // dimmed cell, with a small core, through the branches
+  let m = 0;
+  const over = (p: V3, rgba: [number, number, number, number], size: number) => {
+    if (m >= MAX_OVER) return;
+    glowOver.positions[m * 3] = p[0] / nm[0]; glowOver.positions[m * 3 + 1] = p[1] / nm[1]; glowOver.positions[m * 3 + 2] = p[2] / nm[2];
+    glowOver.colors[m * 4] = rgba[0] * rgba[3]; glowOver.colors[m * 4 + 1] = rgba[1] * rgba[3]; glowOver.colors[m * 4 + 2] = rgba[2] * rgba[3]; glowOver.colors[m * 4 + 3] = rgba[3];
+    glowOver.sizesNm[m] = size;
+    m++;
+  };
+  for (const c of cells.values()) {
+    if (!c.shown) continue;
+    const k = c.dimmed ? 0.4 : 1, col: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];
+    over(c.spec.soma, [col[0], col[1], col[2], 0.2 * k], SOMA_R_NM * 2.6);
+    over(c.spec.soma, [col[0] * 0.5 + 0.5, col[1] * 0.5 + 0.5, col[2] * 0.5 + 0.5, 0.22 * k], SOMA_R_NM * 1.2);
+  }
+  glowOver.count = m;
+  glowOver.nmRight = glow.nmRight;
+  setNgeGlow(m ? glowOver : null, GROUP + '-over');
 }
 
 /* ── the loop ── */
@@ -3420,6 +3522,7 @@ async function startLevel(index: number) {
   setNgeProps([shipProp], GROUP);
   applyHaze();
   makeTags();
+  showScience();
   // wait for most of the cells to draw, up to half a minute
   const loading = els.body.querySelector('[data-el="loading"]') as HTMLElement | null;
   for (let k = 0; k < 120 && active && phase === 'loading'; k++) {
@@ -3537,6 +3640,7 @@ export function stopSignalController() {
   endVisit();
   if (savedRenderScale !== null) { try { circuitLayer().layer.displayState.renderScaleTarget.value = savedRenderScale; } catch { /* as it is */ } savedRenderScale = null; }
   setNgeGlow(null, GROUP);
+  setNgeGlow(null, GROUP + '-over');
   setNgeProps([], GROUP);
   hideCanopy();
   editorEl?.remove(); editorEl = null;
