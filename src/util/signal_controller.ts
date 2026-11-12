@@ -880,8 +880,8 @@ body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: c
 body.nge-mobile .nge-sig { bottom: calc(66px + env(safe-area-inset-bottom)); width: calc(100vw - 12px); max-height: 58vh; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; }
 body.nge-mobile .nge-sig-scroll { min-height: 0; overflow: hidden auto; scrollbar-width: none; }
 body.nge-mobile .nge-sig-head { font-size: 9px; letter-spacing: 0.14em; }
-/* no progress, time or score during the cinematics (Ames 2026-11-12) */
-.nge-sig.nge-sig--intro .nge-sig-stats { display: none !important; }
+/* no progress, time or score during the cinematics, nor the objective's small print (Ames 2026-11-12: "I want this text GONE while we are in the pre-level tours") */
+.nge-sig.nge-sig--intro .nge-sig-stats, .nge-sig.nge-sig--intro .nge-sig-obj em { display: none !important; }
 /* the fold: the head row alone */
 .nge-sig .nge-sig-fold { flex: none; display: inline-flex; align-items: center; padding: 3px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; line-height: 1; }
 .nge-sig .nge-sig-fold:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
@@ -2196,7 +2196,7 @@ TOURS[3] = [
       await sleep(900); if (!alive()) return;
       demoHush('I1');   // the shield answers
     }},
-  {kicker: 'The Key', text: 'I2, in magenta, is a bipolar cell. It makes 20 synapses onto the Gatekeeper and none onto the pyramidal cells. Spark it, and the Gatekeeper’s next pulse is pushed back.',
+  {kicker: 'The Key', text: 'I2, in magenta, is a bipolar cell. It makes 20 synapses onto the Gatekeeper and has the power to stop (inhibit) it.',
     play: async alive => {
       const k = conns.find(x => x.pre === 'I2' && x.post === 'I1');
       dimTo(['I2', 'I1']); lightWhole(['I2', 'I1']); hints = new Set(['I2']);
