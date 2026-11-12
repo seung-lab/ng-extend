@@ -1625,9 +1625,9 @@ interface TourStep { kicker: string; text: string; sub?: string; html?: string; 
  *  signals are: dendrites gold, the cell body pale gold, the axon cyan. */
 const DENDRITE_C = '#ffc24a', SOMA_C = '#fff0c2', AXON_C = '#7ee0ff';
 const NEURON_SVG = `<svg class="nge-sig-neuron" viewBox="0 0 330 116" role="img" aria-label="A neuron: signals come in through the dendrites, the cell body adds them up, a spike leaves down the axon">
-  <g stroke="${DENDRITE_C}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M112 56 L80 30 L62 14 M80 30 L58 36 M112 56 L74 58 L48 52 M74 58 L52 70 M112 56 L84 84 L64 100 M84 84 L60 86"/></g>
-  <path d="M112 40 L140 56 L112 72 Q98 56 112 40 Z" fill="${SOMA_C}" stroke="#ffd98a" stroke-width="1.6"/>
-  <g stroke="${AXON_C}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M140 56 L262 56 M262 56 L288 40 L306 30 M262 56 L290 70 L306 80"/></g>
+  <g stroke="${DENDRITE_C}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M110 56 L80 30 L62 14 M80 30 L58 36 M110 56 L74 58 L48 52 M74 58 L52 70 M110 56 L84 84 L64 100 M84 84 L60 86"/></g>
+  <path d="M110 56 L141 41 Q152 56 141 71 Z" fill="${SOMA_C}" stroke="#ffd98a" stroke-width="1.6"/>   <!-- the apex toward the dendrites, the axon from the base (Ames 2026-11-12: "the axon looks like a dendrite because of the top of the triangle") -->
+  <g stroke="${AXON_C}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M150 56 L262 56 M262 56 L288 40 L306 30 M262 56 L290 70 L306 80"/></g>
   <circle cx="306" cy="30" r="2.6" fill="${AXON_C}"/><circle cx="306" cy="80" r="2.6" fill="${AXON_C}"/>
   <g fill="none" stroke="#f4f9ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"><path d="M64 48 l7 5 l-7 5"/><path d="M196 49 l8 7 l-8 7"/></g>
   <g font-family="Inter, Roboto, sans-serif" font-size="9.5" font-weight="600" letter-spacing="1.1"><text x="30" y="112" fill="${DENDRITE_C}">DENDRITES</text><text x="120" y="33" fill="${SOMA_C}">CELL BODY</text><text x="200" y="78" fill="${AXON_C}">AXON</text></g>
