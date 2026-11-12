@@ -335,6 +335,9 @@ let prevUp: V3 | null = null;
 /** In flight on a visit (far from where it lands), and the barrel roll under way, if any. */
 let flying = false;
 let roll: {at: number; dur: number} | null = null;
+/** A loop over the top when the ship turns right around, leaving a cell for
+ *  its spot or for another cell (Ames 2026-11-12: "it could do a flip spin"). */
+let flip: {at: number; dur: number} | null = null;
 /** The ship's visit to a scanned cell: it flies over, hovers beside the cell
  *  body and projects the card from there, then flies back to its cockpit
  *  spot when the card is closed or the level begins (Ames 2026-11-11: "can
@@ -2589,7 +2592,8 @@ function placeTags() {
   for (const [key, el] of tagEls) {
     const c = cells.get(key)!;
     const s = c.shown ? toScreen(c.spec.soma) : null;
-    if (!s || !r || s[0] < r.left + 20 || s[0] > r.right - 20 || s[1] < r.top + 40 || s[1] > r.bottom - 10 || behindHud(s[0], s[1])) { el.style.display = 'none'; continue; }
+    const notYet = phase !== 'playing' && tourDim.has(key);   // the tour has not introduced it (Ames 2026-11-12: "hide the labels of the other cells")
+    if (notYet || !s || !r || s[0] < r.left + 20 || s[0] > r.right - 20 || s[1] < r.top + 40 || s[1] > r.bottom - 10 || behindHud(s[0], s[1])) { el.style.display = 'none'; continue; }
     shown.push({key, el, s: [s[0], s[1]]});
   }
   let push = 0, cx = 0, cy = 0;
@@ -2926,6 +2930,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const homeward = !vc && spot ? sub(spot, shipAt) : null;
   const aimAt = vc ? (landed ? add(shipAt, mul(cam.right, visit!.lean)) : spot!) : homeward && len(homeward) > viewNm * 0.04 ? add(shipAt, homeward) : shipAim && performance.now() < aimUntil ? shipAim : center;
   const want = norm(sub(aimAt, shipAt));
+  if (!flip && !landed && view === 'ship' && shipProp.alpha > 0 && dot(shipFwd, want) < -0.35) flip = {at: performance.now(), dur: 850};
   shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * (vc ? 12 : 7))));
   const upRef = landed ? cam.toEye : cam.up;
   let up = norm(sub(upRef, mul(shipFwd, dot(upRef, shipFwd))));
@@ -2940,8 +2945,18 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
     if (q >= 1) roll = null;
     else { const a = (q < 0.5 ? 2 * q * q : 1 - 2 * (1 - q) * (1 - q)) * Math.PI * 2; up = norm(add(mul(up, Math.cos(a)), mul(cross(shipFwd, up), Math.sin(a)))); }
   }
-  const fwd = norm(sub(shipFwd, mul(up, dot(shipFwd, up))));
+  let fwd = norm(sub(shipFwd, mul(up, dot(shipFwd, up))));
   const right = norm(cross(up, fwd));
+  if (flip) {
+    // a full loop about its own wings over 0.85 s, nose up and over, eased
+    const q = (performance.now() - flip.at) / flip.dur;
+    if (q >= 1) flip = null;
+    else {
+      const a = (q < 0.5 ? 2 * q * q : 1 - 2 * (1 - q) * (1 - q)) * Math.PI * 2, f0 = fwd, u0 = up;
+      fwd = norm(add(mul(f0, Math.cos(a)), mul(u0, Math.sin(a))));
+      up = norm(sub(mul(u0, Math.cos(a)), mul(f0, Math.sin(a))));
+    }
+  }
   const bob = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : viewNm * 0.004 * Math.sin(performance.now() / 1000 * 1.3);
   const at = add(shipAt, mul(up, bob));
   if (shipProp.alpha > 0 && view === 'ship') {
@@ -4354,7 +4369,7 @@ export function stopSignalController() {
   somaProps = []; somaPropOf.clear();
   hideCanopy();
   editorEl?.remove(); editorEl = null;
-  litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flying = false;
+  litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flip = null; flying = false;
   demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
   glide = null; cockpitNose = null;
