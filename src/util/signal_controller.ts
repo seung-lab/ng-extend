@@ -977,6 +977,11 @@ body.nge-mobile .nge-sig .nge-sig-data { display: inline-flex; }
 body.nge-mobile .nge-sig .nge-sig-view, body.nge-mobile .nge-sig .nge-sig-view-key { display: none !important; }
 body.nge-mobile .ng-extend.nge-sig-scan { position: fixed !important; z-index: 9600 !important; left: 6px !important; right: 6px !important; top: calc(8px + env(safe-area-inset-top)) !important; width: auto !important; max-height: calc(100vh - var(--nge-hud-h, 45vh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important; overflow: hidden auto; transform: none !important; }
 body.nge-mobile .ng-extend.nge-sig-scan .nge-sig-scan-box { position: static !important; width: auto !important; max-width: none !important; }
+/* the sheet scrolls within itself, with a scroll bar that shows (Ames 2026-11-12: "this needs a scroll bar") */
+body.nge-mobile .ng-extend.nge-sig-scan { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(126, 224, 255, 0.7) rgba(6, 12, 28, 0.4); scrollbar-gutter: stable; }
+body.nge-mobile .ng-extend.nge-sig-scan::-webkit-scrollbar { width: 7px; }
+body.nge-mobile .ng-extend.nge-sig-scan::-webkit-scrollbar-track { background: rgba(6, 12, 28, 0.4); }
+body.nge-mobile .ng-extend.nge-sig-scan::-webkit-scrollbar-thumb { background: rgba(126, 224, 255, 0.7); border-radius: 4px; }
 .nge-sig .nge-sig-edit { flex: none; padding: 2px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font-size: 12px; line-height: 1; }
 .nge-sig .nge-sig-edit:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 /* the editor: a card beside the HUD, a section a box */
@@ -1078,7 +1083,12 @@ function buildPanel() {
   els.view.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { setView(b.dataset.view as ViewMode); b.blur(); }; });
   els.edit.onclick = () => { toggleEditor(); els.edit.blur(); };
   // the phone's data icon: the full card for the last cell tapped, else the gold cell (Ames 2026-11-12: "we still want UI icons that let me expand the data the ship was carrying")
-  els.data.onclick = () => { const k = lastTapped && cells.get(lastTapped)?.shown ? lastTapped : level.targets[0]; if (k) showScan(k, true); els.data.blur(); };
+  els.data.onclick = () => {
+    if (scanEl) { hideScan(); els.data.blur(); return; }   // tapped again: the card goes (Ames 2026-11-12)
+    const k = lastTapped && cells.get(lastTapped)?.shown ? lastTapped : level.targets[0];
+    if (k) showScan(k, true);
+    els.data.blur();
+  };
   // the science, folded unless it was open last time
   let sciOpen = false;
   try { sciOpen = localStorage.getItem('pyr.signal.sci') === '1'; } catch { /* folded */ }
