@@ -45,7 +45,8 @@ type V3 = [number, number, number];
 /** A cell's synapses onto (or from) the release's cells of one type. */
 interface Partner { type: string; cls: 'E' | 'I' | 'N'; n: number; }
 interface CircuitCell { key: string; root: string; type: 'E' | 'I'; fine: string; mtype: string; label: string; soma: V3; cableUm: number; axonUm: number; synIn?: number; synOut?: number; partners?: {out: Partner[]; in: Partner[]}; }
-interface CircuitConn { pre: string; post: string; count: number; axonUm: number; dendriteUm: number; axon: V3[]; dendrite: V3[]; synapse: V3; synapses: V3[]; }
+/** w: the synapses' weight in play (1 as the data has them; a plastic level grows it). */
+interface CircuitConn { pre: string; post: string; count: number; axonUm: number; dendriteUm: number; axon: V3[]; dendrite: V3[]; synapse: V3; synapses: V3[]; w?: number; }
 interface Circuit { version: number; cells: CircuitCell[]; connections: CircuitConn[]; }
 
 /* ── the rules ── */
@@ -53,6 +54,9 @@ const TAU_E = 1.2, TAU_I = 0.35;       // seconds of leak
 const E_UNIT = 1.0, I_UNIT = 0.6;      // units per synapse
 const REFRACTORY_S = 0.4;
 const AP_DELAY_S = 0.35;               // the cell body sparkles first, then the spike leaves (Ames 2026-11-12: "a slight delay between soma particles and the AP leaving the cell")
+/** Fast-spiking cells (the basket cell): no wind-up and spikes that run
+ *  this many times faster, as perisomatic inhibition does. */
+const FAST: Record<string, number> = {B1: 6};
 const SPEED_UM_S = 200;                // a spike along the real path: about 2,000 times slower than life, slow enough to watch (Ames 2026-11-11: "too fast!"; "the speed is way too fast")
 const HUSH_S = 2.5;
 const BEAM_S = 0.3;                    // the Spark's flight
@@ -68,7 +72,11 @@ const SHIP_LENGTH_NM = 26_000;
 /* ── the levels ── */
 type Goal = {kind: 'fire'; target: string; count: number}
   | {kind: 'sequence'; order: [string, string]; withinS: number; count: number}
-  | {kind: 'sync'; targets: [string, string]; withinS: number; count: number};
+  | {kind: 'sync'; targets: [string, string]; withinS: number; count: number}
+  /** on the beat: each firing within withinS of the last, or the count starts over */
+  | {kind: 'beat'; target: string; withinS: number; count: number}
+  /** on its own: a firing to which only the driver's spikes contributed in the last windowS */
+  | {kind: 'solo'; target: string; driver: string; windowS: number; count: number};
 /** The coach line says one thing at a time, as the level unfolds (Ames
  *  2026-11-08: "what am I supposed to do? it's too complicated"). */
 type CoachEvent = 'begin' | 'driver' | 'pulse' | 'hushed' | 'key' | 'hit' | 'miss' | 'go' | 'wait' | 'soon';
@@ -80,6 +88,10 @@ interface Level {
   hush: boolean; hushBlocked?: string[];
   /** The principle at work, in a sentence or two, behind "The science" in the HUD's foot. */
   science?: string;
+  /** Thresholds for this level alone, by cell. */
+  theta?: Record<string, number>;
+  /** Synapses that grow when their spikes help a target fire (level 9). */
+  plastic?: boolean;
   goal: Goal; timeS: number; par: number;
   coach: Partial<Record<CoachEvent, string>>;
   /** Which cells light up as the thing to click, per coach event (Ames
@@ -87,7 +99,7 @@ interface Level {
   hint?: Partial<Record<CoachEvent, string[]>>;
 }
 /** What each cell is for, on its chip and tag. */
-const ROLE: Record<string, string> = {T: 'Target', E4: 'Driver', I1: 'Gatekeeper', I2: 'Key', S: 'Switch'};
+const ROLE: Record<string, string> = {T: 'Target', E4: 'Driver', I1: 'Gatekeeper', I2: 'Key', S: 'Switch', B1: 'Clipper'};
 const LEVELS: Level[] = [
   // Level 1 is one driver and a rhythm (Ames 2026-11-08: "click some
   // pyramidal neurons to fire downstream at the right frequency"): two quick
@@ -152,11 +164,65 @@ const LEVELS: Level[] = [
       hit: 'In sync! Two more.',
       miss: 'Both targets within a quarter second: fire all five drivers together.'},
     hint: {begin: ['S'], wait: ['S'], go: ['E1', 'E2', 'F1', 'F2', 'F3'], hit: ['S']}},
+  // Level 6: feedforward inhibition. E1 drives the gold cell and a basket
+  // cell, B1 (10 synapses); B1 is fast and inhibits the gold cell (8
+  // synapses) right after E1's own excitation lands, so a second E1 spike is
+  // clipped. E2 does not wake B1 (5 synapses, under its threshold), so E2
+  // first and E1 a beat later land together, before the clip.
+  {title: 'The Clipper', objective: 'Spike the gold cell', detail: '3 times, past the Clipper', timeS: 75, par: 8,
+    science: 'Feedforward inhibition: the input that excites a pyramidal cell also drives a basket cell (PV+), whose fast perisomatic inhibition arrives a moment later and closes the window. Only inputs that arrive together get through.',
+    brief: 'E1 drives the gold cell, and a basket cell, B1, the Clipper. B1 is fast: its inhibition lands right after E1’s excitation and clips what follows.\nE2 does not wake it. E2 first, then E1 a beat later, land together.',
+    cells: ['T', 'E1', 'E2', 'B1'], targets: ['T'], hush: false,
+    goal: {kind: 'fire', target: 'T', count: 3},
+    coach: {begin: 'E1 wakes the Clipper. Spark E2 first, then E1 half a second later, so both land before the clip.',
+      driver: 'A spike is on its way.',
+      hit: 'Past the Clipper! Again: E2, then E1.',
+      miss: 'Clipped. E2 first, then E1 a beat later. Two E1 sparks alone get clipped.'},
+    hint: {begin: ['E2', 'E1'], hit: ['E2', 'E1']}},
+  // Level 7: convergence. No E1; E2, E3 and E4 carry 4, 3 and 2 synapses,
+  // none enough alone; together they cross the threshold.
+  {title: 'All at Once', objective: 'Spike the gold cell', detail: '3 times, with the weak drivers together', timeS: 75, par: 9,
+    science: 'Convergence: a pyramidal cell needs many inputs at once. No single driver here reaches threshold; three together, within the window the leak allows, do.',
+    brief: 'E1 is gone. E2, E3 and E4 carry 4, 3 and 2 synapses: none enough alone.\nSpark all three together, and they add up.',
+    cells: ['T', 'E2', 'E3', 'E4'], targets: ['T'], hush: false,
+    goal: {kind: 'fire', target: 'T', count: 3},
+    coach: {begin: 'Spark E2, E3 and E4 together: 4 + 3 + 2.',
+      driver: 'One is not enough. All three, together.',
+      hit: 'Together! Again.',
+      miss: 'They have to land together: spark all three at once.'},
+    hint: {begin: ['E2', 'E3', 'E4'], hit: ['E2', 'E3', 'E4']}},
+  // Level 8: rhythm. The Gatekeeper pulses every 1.6 s; the gold cell has
+  // to fire in three gaps in a row.
+  {title: 'On the Beat', objective: 'Spike the gold cell', detail: '3 gaps in a row', timeS: 75, par: 6,
+    science: 'Rhythm: inhibitory interneurons pace cortical activity, and excitation gets through in the gaps between their pulses. Staying on the beat is staying in the gaps.',
+    brief: 'The Gatekeeper pulses every 1.6 seconds. Spike the gold cell in three gaps in a row: miss a gap and the count starts over.',
+    cells: ['T', 'E1', 'E2', 'I1'], targets: ['T'], hush: false, gate: {cell: 'I1', periodS: 1.6},
+    goal: {kind: 'beat', target: 'T', withinS: 2.4, count: 3},
+    coach: {begin: 'Wait for the gap, then E1 twice. Keep the beat.',
+      wait: 'Held down: the next gap.',
+      go: 'Go: E1 twice, now.',
+      soon: 'The next pulse is close: wait for the gap after it.',
+      hit: 'On the beat! The next gap.',
+      miss: 'Off the beat. Into the next gap: E1 twice.'},
+    hint: {begin: ['E1'], go: ['E1'], hit: ['E1']}},
+  // Level 9: plasticity. E4 carries 2 synapses and cannot fire the gold cell
+  // alone; each time the gold cell fires with E4's spike having just landed,
+  // E4's synapses grow (Hebbian potentiation), until E4 alone can do it.
+  {title: 'Wire Together', objective: 'Spike the gold cell with E4 alone', detail: 'twice, after E4 has learned', timeS: 90, par: 14,
+    science: 'Hebbian plasticity: synapses that take part in firing a cell grow stronger (cells that fire together wire together: long-term potentiation). Pair a weak input with a strong one, and the weak one learns.',
+    brief: 'E4 makes 2 synapses onto the gold cell: alone it can never fire it. Pair it: spark E4, then E1 twice, so E4’s spike lands as the gold cell fires. Each time, E4’s synapses grow.\nOnce they have grown, spark E4 alone, three times quickly.',
+    cells: ['T', 'E1', 'E4'], targets: ['T'], hush: false, plastic: true,
+    goal: {kind: 'solo', target: 'T', driver: 'E4', windowS: 1.5, count: 2},
+    coach: {begin: 'Spark E4, then E1 twice. When the gold cell fires with E4’s help, E4’s synapses grow.',
+      driver: 'A spike is on its way.',
+      hit: 'E4 did it alone! Once more.',
+      miss: 'Pair E4 with E1 first: E4, then E1 twice. Then E4 alone, three times quickly.'},
+    hint: {begin: ['E4', 'E1'], hit: ['E4']}},
 ];
 
 /* ── colours: a cool field, one warm accent (scifi-ui) ── */
 const E_COLORS = ['#5fb8ff', '#3f9cf0', '#7ed0ff', '#4fc3e8', '#6aa8ff', '#52d8ff', '#3c8de0', '#86c8ff', '#4ab0ff', '#62c4f4'];
-const I_COLOR: Record<string, string> = {I1: '#b68cff', I2: '#e58cff'};
+const I_COLOR: Record<string, string> = {I1: '#b68cff', I2: '#e58cff', B1: '#ff7eb6'};
 const TARGET_COLOR = '#ffc24a';
 const S_COLOR = '#9fd6ff';
 const hexRgb = (hex: string): V3 => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
@@ -253,6 +319,10 @@ let progress = 0;
 let hushMode = false;
 let lastTargetSpike: Record<string, number> = {};
 let sequenceArmedAt = -1;
+/** On the beat: when the last counted firing was. */
+let lastBeatAt = -1;
+/** The excitatory arrivals of the last seconds, for a firing on its own and for plasticity. */
+let recentIn: {post: string; pre: string; conn: CircuitConn; at: number}[] = [];
 let raf = 0;
 let lastFrame = 0;
 let muted = false;
@@ -447,7 +517,7 @@ const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Fl
 const MAX_OVER = 128;
 const glowOver: NgeGlow = {positions: new Float32Array(MAX_OVER * 3), colors: new Float32Array(MAX_OVER * 4), sizesNm: new Float32Array(MAX_OVER), count: 0, nmRight: [1, 0, 0], through: true};
 
-const thetaOf = (key: string) => THRESHOLD[key] ?? DEFAULT_THRESHOLD;
+const thetaOf = (key: string) => level?.theta?.[key] ?? THRESHOLD[key] ?? DEFAULT_THRESHOLD;
 const potential = (c: CellState) => c.e - c.i;
 /** How hard the Gatekeeper holds a cell now, 0..1: fully while a pulse is
  *  on the wire to it, then as the inhibition it left leaks away. Everything
@@ -1206,7 +1276,8 @@ function coach(event: CoachEvent) {
 /** Travel time of a spike along a connection, in seconds. */
 function travelS(pre: string, post: string, fallback: number): number {
   const k = conns.find(c => c.pre === pre && c.post === post);
-  return k ? AP_DELAY_S + routes.get(k)!.length / 1000 / SPEED_UM_S : fallback;
+  const fast = FAST[pre] ?? 1;
+  return k ? (fast > 1 ? 0.05 : AP_DELAY_S) + routes.get(k)!.length / 1000 / (SPEED_UM_S * fast) : fallback;
 }
 /** In the levels with the Gatekeeper, the coach line is a three-colour
  *  light. Violet, wait: a pulse is on its way to the target or holding it
@@ -1270,9 +1341,11 @@ function chipLine(c: CellState): string {
   const role = roleOf(c);
   if (c.target || !outs.length) return role;
   const d = drives(c);
-  const need = d ? sparksToFire(d.count, cells.get(d.post)!) : null;
+  const wt = d?.w ?? 1;
+  const need = d ? sparksToFire(d.count * wt, cells.get(d.post)!) : null;
   const sparks = !d ? '' : need ? ` · ${need} spark${need > 1 ? 's' : ''}` : ' · with others';
-  return `${role} · ${outs[0].count} syn → ${outs[0].post}${sparks}`;
+  const weight = d && wt > 1.05 ? ` ×${wt.toFixed(1)}` : '';
+  return `${role} · ${outs[0].count} syn${weight} → ${outs[0].post}${sparks}`;
 }
 
 /* ── the circuit map: a little flow chart of the level ──
@@ -1373,7 +1446,7 @@ function buildMap() {
   for (let i = 0; i < MAP_SPARKS; i++) sparksSvg += '<circle class="spark" r="3.5" opacity="0"/>';
   el.innerHTML = `<svg viewBox="0 0 ${MAP_W} ${H}" xmlns="http://www.w3.org/2000/svg" aria-hidden="false">${edgesSvg}${nodesSvg}${sparksSvg}</svg>
     <div class="nge-sig-legend">${[targets.length ? '<i style="--c:#ffc24a"></i>target' : '', drivers.length ? '<i style="--c:#5fb8ff"></i>drivers, excitatory →' : '',
-      gate ? '<i style="--c:#b68cff"></i>Gatekeeper, inhibitory ⊣' : '', key ? '<i style="--c:#e58cff"></i>Key, inhibitory ⊣' : ''].filter(Boolean).join('')}</div>`;
+      gate ? '<i style="--c:#b68cff"></i>Gatekeeper, inhibitory ⊣' : '', key ? '<i style="--c:#e58cff"></i>Key, inhibitory ⊣' : '', shown.includes('B1') ? '<i style="--c:#ff7eb6"></i>Clipper, inhibitory ⊣' : ''].filter(Boolean).join('')}</div>`;
   mapNodeEls = new Map();
   el.querySelectorAll<SVGGElement>('g.node').forEach(g => {
     const k = g.dataset.cell!;
@@ -1482,7 +1555,8 @@ function arborWave(key: string, inhibitory: boolean) {
   const pr = c && parts.get(c.spec.root);
   if (!pr || !pr.arbor.axon.length) return;
   // the wave runs at the model's conduction speed, so its band and the sparks along the real paths keep step
-  waves.push({root: c!.spec.root, part: 'axon', start: performance.now() / 1000 + AP_DELAY_S, seconds: clamp(pr.axonMax / (SPEED_UM_S * 1000), 1, 12), inward: false, rgb: inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7]});
+  const fast = FAST[key] ?? 1;
+  waves.push({root: c!.spec.root, part: 'axon', start: performance.now() / 1000 + (fast > 1 ? 0.05 : AP_DELAY_S), seconds: clamp(pr.axonMax / (SPEED_UM_S * 1000 * fast), 0.5, 12), inward: false, rgb: inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7]});
 }
 /** Signals coming in one dendrite at a time (Ames 2026-11-11: "signals do
  *  not come in from all the dendrites at once: one signal per every fourth
@@ -1972,7 +2046,66 @@ TOURS[2] = [
   {kicker: 'Ready', text: 'Inhibit the Gatekeeper, then spike the gold cell through its partners. Three times.', click: 'spark'},
 ];
 /** The tour step from which the map shows (level 1 keeps it until the drivers are introduced). */
-const MAP_FROM: Record<number, number> = {0: 2, 1: 2, 2: 3, 3: 2, 4: 1};   // the cell first, the diagram later (Ames 2026-11-12)
+const MAP_FROM: Record<number, number> = {0: 2, 1: 2, 2: 3, 3: 2, 4: 1, 5: 2, 6: 1, 7: 1, 8: 2};   // the cell first, the diagram later (Ames 2026-11-12)
+/* Level 6: the Clipper, its clip, and the way past it. */
+TOURS[5] = [
+  {kicker: 'The Clipper', text: 'A basket cell, B1, in pink: fast, and wired to the gold cell’s body. E1 wakes it with 10 synapses, and its inhibition lands right after E1’s own excitation.',
+    play: async alive => {
+      dimTo(['T', 'E1', 'B1']); lightWhole(['B1']); hints = new Set(['B1']);
+      const b = cells.get('B1');
+      if (b) glideTo(b, 0.7);
+      revealCell('B1', 1.4, [1, 0.6, 0.8]);
+      const k = conns.find(x => x.pre === 'B1' && x.post === 'T');
+      if (k) showGems(k.synapses, '#ff7eb6');
+      await sleep(1800); if (!alive()) return;
+      demoSpark('E1'); await sleep(400); if (!alive()) return; demoSpark('E1');   // clipped
+    }},
+  {kicker: 'Past it', text: 'E2 does not wake the Clipper. Spark E2 first, then E1 a beat later: both land before the clip, and the gold cell fires.',
+    play: async alive => {
+      dimTo(['T', 'E1', 'E2', 'B1']); hints = new Set(['E2', 'E1']);
+      await sleep(600); if (!alive()) return;
+      demoSpark('E2'); await sleep(450); if (!alive()) return; demoSpark('E1');
+    }},
+  {kicker: 'Ready', text: 'Spike the gold cell three times: E2, then E1 half a second later, each time.', click: 'spark'},
+];
+/* Level 7: not enough alone, enough together. */
+TOURS[6] = [
+  {kicker: 'Not enough', text: 'E1 is gone. E2, E3 and E4 carry 4, 3 and 2 synapses. Two E3 sparks: the charge falls short.',
+    play: async alive => {
+      dimTo(['T', 'E3']); hints = new Set(['E3']);
+      await sleep(600); if (!alive()) return;
+      demoSpark('E3'); await sleep(400); if (!alive()) return; demoSpark('E3');
+    }},
+  {kicker: 'All at once', text: 'E2, E3 and E4 together: 4 + 3 + 2, and the gold cell fires.',
+    play: async alive => {
+      dimTo(['T', 'E2', 'E3', 'E4']); hints = new Set(['E2', 'E3', 'E4']);
+      await sleep(600); if (!alive()) return;
+      demoSpark('E2'); demoSpark('E3'); demoSpark('E4');
+    }},
+  {kicker: 'Ready', text: 'Three times: the three drivers together, each time.', click: 'spark'},
+];
+/* Level 8: the beat. */
+TOURS[7] = [
+  {kicker: 'The beat', text: 'The Gatekeeper pulses every 1.6 seconds. Every pulse holds the gold cell for a moment; between them is a gap.',
+    play: async alive => { dimTo(['T', 'I1']); lightWhole(['I1']); hints = new Set(['I1']); await sleep(50); if (!alive()) return; }},
+  {kicker: 'Ready', text: 'Spike the gold cell in three gaps in a row: E1 twice in each. Miss a gap, and the count starts over.', click: 'spark'},
+];
+/* Level 9: a weak synapse learns. */
+TOURS[8] = [
+  {kicker: 'Weak', text: 'E4 makes 2 synapses onto the gold cell. Three quick sparks: still not enough.',
+    play: async alive => {
+      dimTo(['T', 'E4']); hints = new Set(['E4']);
+      await sleep(600); if (!alive()) return;
+      demoSpark('E4'); await sleep(400); if (!alive()) return; demoSpark('E4'); await sleep(400); if (!alive()) return; demoSpark('E4');
+    }},
+  {kicker: 'Pair it', text: 'Spark E4, then E1 twice. The gold cell fires with E4’s spike just landed, and E4’s synapses grow: cells that fire together wire together.',
+    play: async alive => {
+      dimTo(['T', 'E1', 'E4']); hints = new Set(['E4', 'E1']);
+      await sleep(600); if (!alive()) return;
+      demoSpark('E4'); await sleep(500); if (!alive()) return; demoSpark('E1'); await sleep(400); if (!alive()) return; demoSpark('E1');
+    }},
+  {kicker: 'Ready', text: 'Pair E4 with E1 until its synapses have grown, then spark E4 alone, three times quickly. Twice.', click: 'spark'},
+];
 /* Level 4 (Ames 2026-11-11: "Do we maybe need a demo here? This got a lot
    more complicated"): the shield, the Key, the second target. */
 TOURS[3] = [
@@ -2126,6 +2259,7 @@ function updateHud() {
       label.innerHTML = hushed ? `inhibited ${Math.max(0, c.hushedUntil - now).toFixed(1)}<span class="u"> s</span>` : `pulses in ${left.toFixed(1)}<span class="u"> s</span>`;
       continue;
     }
+    if (level.plastic) { const syn = el.querySelector('.syn'); if (syn && syn.textContent !== chipLine(c)) syn.textContent = chipLine(c); }
     const v = clamp(potential(c) / c.theta, -1, 1), h = holdOn(c);
     bar.classList.toggle('neg', h > 0.3 || v < 0);
     bar.style.width = `${Math.round((h > 0.3 ? h : Math.abs(v)) * 100)}%`;
@@ -2732,6 +2866,7 @@ function resetCells() {
     c.refractoryUntil = -1; c.hushedUntil = -1; c.lastSpike = -1; c.spikes = 0;
     c.gateNext = null; c.gatePeriod = 1;
     const eIndex = level.cells.filter(k => cells.get(k)!.spec.type === 'E').indexOf(c.key);
+    for (const k of conns) k.w = 1;
     c.color = hexRgb(c.target ? TARGET_COLOR : cellColor(c.spec, Math.max(0, eIndex)));
   }
   if (level.gate) {
@@ -2748,6 +2883,14 @@ function spike(key: string, byBeam = false) {
   if (now < c.refractoryUntil || now < c.hushedUntil) { if (byBeam) { sfx.fizzle(); say(`${key} is ${now < c.hushedUntil ? 'inhibited' : 'resting'}.`, 2.6, key); } return; }
   c.e = 0; c.i = 0; c.refractoryUntil = now + REFRACTORY_S; c.lastSpike = now; c.spikes++;
   if (c.gateNext !== null) c.gateNext = now + c.gatePeriod;
+  if (level.plastic && c.target && phase === 'playing') {
+    // cells that fire together wire together: the synapses whose spikes just
+    // helped grow (Hebbian potentiation), up to 2.2 times
+    const grown = new Set<string>();
+    for (const r of recentIn) if (r.post === key && now - r.at < 0.9 && !grown.has(r.pre)) { r.conn.w = Math.min(2.2, (r.conn.w ?? 1) + 0.4); grown.add(r.pre); }
+    const g = level.goal;
+    if (g.kind === 'solo' && grown.has(g.driver)) { const k = conns.find(x => x.pre === g.driver && x.post === key); if (k) say(`${g.driver}’s synapses onto ${key} grew: ×${(k.w ?? 1).toFixed(1)}.`, 2.6, g.driver); }
+  }
   const inhibitory = c.spec.type === 'I';
   flashes.push({p: c.spec.soma, at: now, life: 0.55, rgb: c.target ? [1, 0.85, 0.4] : inhibitory ? [0.85, 0.7, 1] : [0.8, 0.95, 1], size: c.target ? 22_000 : 16_000});
   arborWave(key, inhibitory);
@@ -2766,9 +2909,10 @@ function spike(key: string, byBeam = false) {
   for (const k of conns) {
     if (k.pre !== key || !live(k)) continue;
     const r = routes.get(k)!;
-    const travel = r.length / 1000 / SPEED_UM_S;
-    sparks.push({r, start: now + AP_DELAY_S, end: now + AP_DELAY_S + travel, inhibitory, conn: k});
-    arrivals.push({at: now + AP_DELAY_S + travel, post: k.post, units: k.count * (inhibitory ? I_UNIT : E_UNIT), inhibitory, conn: k});
+    const fast = FAST[key] ?? 1, leave = now + (fast > 1 ? 0.05 : AP_DELAY_S);
+    const travel = r.length / 1000 / (SPEED_UM_S * fast);
+    sparks.push({r, start: leave, end: leave + travel, inhibitory, conn: k});
+    arrivals.push({at: leave + travel, post: k.post, units: k.count * (k.w ?? 1) * (inhibitory ? I_UNIT : E_UNIT), inhibitory, conn: k});
   }
   if (c.target) onTargetSpike(key);
 }
@@ -2786,6 +2930,18 @@ function onTargetSpike(key: string) {
   } else if (g.kind === 'sync') {
     const other = g.targets[0] === key ? g.targets[1] : g.targets[0];
     if (g.targets.includes(key) && lastTargetSpike[other] !== undefined && now - lastTargetSpike[other] <= g.withinS) { hit = true; lastTargetSpike[other] = -Infinity; }
+  } else if (g.kind === 'beat') {
+    if (key === g.target) {
+      if (progress > 0 && lastBeatAt >= 0 && now - lastBeatAt > g.withinS) { progress = 0; say('The beat broke. From the top.', 2.6); }
+      lastBeatAt = now; hit = true;
+    }
+  } else if (g.kind === 'solo') {
+    if (key === g.target) {
+      const helpers = [...new Set(recentIn.filter(r => r.post === key && now - r.at <= g.windowS).map(r => r.pre))];
+      if (helpers.length && helpers.every(q => q === g.driver)) hit = true;
+      else if (helpers.includes(g.driver)) { /* the pairing: the growth has its own line */ }
+      else say(`${g.driver} took no part in that.`, 2.6, g.driver);
+    }
   }
   pendingExcitation.delete(key);
   if (!hit) { score += 25; return; }
@@ -2808,7 +2964,7 @@ function arrive(a: Arrival) {
     return;
   }
   if (a.inhibitory) { c.i += a.units; if (c.target) { coach('pulse'); lastGo = null; } }
-  else { c.e += a.units; if (c.target) pendingExcitation.set(c.key, now); }
+  else { c.e += a.units; if (c.target) pendingExcitation.set(c.key, now); recentIn.push({post: a.post, pre: a.conn.pre, conn: a.conn, at: now}); }
 }
 
 /** A beam at a cell, the player's or the tour's: the shields answer either
@@ -3302,6 +3458,9 @@ function stepModel(dt: number) {
   const due = arrivals.filter(a => a.at <= now);
   arrivals = arrivals.filter(a => a.at > now);
   for (const a of due) arrive(a);
+  recentIn = recentIn.filter(r => now - r.at < 4);
+  // plastic synapses settle back slowly when unused
+  if (level.plastic) for (const k of conns) if (k.w && k.w > 1) k.w = 1 + (k.w - 1) * Math.exp(-dt / 40);
   sparks = sparks.filter(s => now < s.end + 0.3);
   flashes = flashes.filter(f => now < f.at + f.life);
   // thresholds, and the Gatekeeper's clock
@@ -3830,6 +3989,7 @@ function beginPlay() {
   // the tour's demonstrations left charge and spikes behind
   for (const c of cells.values()) { c.e = 0; c.i = 0; c.refractoryUntil = -1; c.hushedUntil = -1; c.lastSpike = -1; c.spikes = 0; if (c.gateNext !== null) c.gateNext = 1.2; }
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
+  lastBeatAt = -1; recentIn = [];
   closeSidePanel();
   showChips();
   // On a phone the HUD's height changes with its content: the frame is set

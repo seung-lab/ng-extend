@@ -38,6 +38,7 @@ CELLS = [
     ('E1', 864691135838788755), ('E2', 864691137021245294), ('E3', 864691135562147041), ('E4', 864691135996497834),
     ('F1', 864691135503611829), ('F2', 864691135479705030), ('F3', 864691135183426562),
     ('G1', 864691134941824611), ('G2', 864691134919019274), ('S', 864691135270780837),
+    ('B1', 864691135688166624),   # a basket cell: 10 synapses from E1, 8 onto T (level 6, feedforward inhibition)
 ]
 LABELS = {'4P': 'Pyramidal cell', '23P': 'Pyramidal cell', '5P-IT': 'Pyramidal cell', 'MC': 'Martinotti cell',
           'BPC': 'Bipolar cell', 'BC': 'Basket cell', 'NGC': 'Neurogliaform cell'}
