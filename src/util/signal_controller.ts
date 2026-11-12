@@ -1514,7 +1514,7 @@ const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
   // The gold cell first, whole, the others grey, a sweep of light down it;
   // the ship goes and lands on it (Ames 2026-11-11: "this should be step 1").
-  {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Gold: your target.',
+  {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Your target.',
     play: async alive => {
       dimOthers('T');
       await sleep(300); if (!alive()) return;
