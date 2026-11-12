@@ -1304,10 +1304,12 @@ const myReplies = computed(() => {
   return out.sort((a, b) => Number(!!a.read) - Number(!!b.read) || (b.at || '').localeCompare(a.at || ''));
 });
 const repliesUnread = computed(() => myReplies.value.filter(t => !t.read).length);
-// All the unread, and the newest few already read; the rest behind "Show all".
-const REPLIES_READ_SHOWN = 4;
-const repliesAll = ref(false);
-const repliesShown = computed(() => repliesAll.value ? myReplies.value : myReplies.value.slice(0, repliesUnread.value + REPLIES_READ_SHOWN));
+// Only the unread, until "Load read" pulls in the newest read ones, 10 at a
+// time (Ames 2026-11-12: "not on by default").
+const REPLIES_READ_STEP = 10;
+const repliesRead = ref(0);
+const repliesReadTotal = computed(() => myReplies.value.length - repliesUnread.value);
+const repliesShown = computed(() => myReplies.value.slice(0, repliesUnread.value + repliesRead.value));
 /** The read or unread toggle on a row in My Tasks. */
 function flipTask(t: Task) {
   if (t.actId) { const a = activity.value.find(x => x.id === t.actId); if (a) flipAct(a); return; }
@@ -2321,8 +2323,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </button>
           <button v-if="t.actId || !t.read" type="button" class="nge-todo-actflip" :title="t.read ? 'Mark unread' : 'Mark read'" :aria-label="t.read ? 'Mark unread' : 'Mark read'" @click="flipTask(t)">{{ t.read ? 'Mark unread' : 'Mark read' }}</button>
         </div>
-        <button v-if="myReplies.length > repliesShown.length || repliesAll" type="button" class="nge-todo-mini nge-todo-replies-more" @click="repliesAll = !repliesAll">
-          {{ repliesAll ? 'Show fewer' : `Show all ${myReplies.length}` }}</button>
+        <div v-if="!repliesUnread && !repliesRead" class="nge-todo-replies-none">Nothing new.</div>
+        <div v-if="repliesReadTotal" class="nge-todo-replies-more">
+          <button v-if="repliesShown.length < myReplies.length" type="button" class="nge-todo-mini" @click="repliesRead += REPLIES_READ_STEP">
+            {{ repliesRead ? 'Load more read' : 'Load read' }} ({{ repliesReadTotal - repliesRead > 0 ? Math.min(REPLIES_READ_STEP, repliesReadTotal - repliesRead) : 0 }})</button>
+          <button v-if="repliesRead" type="button" class="nge-todo-mini" @click="repliesRead = 0">Hide read</button>
+        </div>
       </section>
       <div v-if="!myTasks.length && !myReplies.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
       <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
@@ -3233,7 +3239,8 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-actrow:hover .nge-todo-actflip, .nge-todo-actflip:focus-visible { opacity: 1; pointer-events: auto; }
 .nge-todo-actflip:hover { border-color: var(--accent); }
 @media (hover: none) { .nge-todo-actflip { position: static; transform: none; opacity: 1; pointer-events: auto; margin: 2px 0 0 auto; display: block; } }
-.nge-todo-replies-more { margin: 2px 0 0; }
+.nge-todo-replies-more { margin: 2px 0 0; display: flex; gap: 6px; }
+.nge-todo-replies-none { color: var(--dim); font-size: 13px; margin: 0 0 4px; }
 /* Due time and organize by date (Ames 2026-11-12). */
 .nge-todo-time { width: auto; min-width: 104px; }
 .nge-todo-dategroup .nge-todo-section-name { cursor: default; }
