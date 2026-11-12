@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-12T21:47:04Z",
+      "title": "Claim 10 and folders",
+      "items": [
+        "Claim 10 skips a cell someone else already holds and claims the next one, and tells you how many it claimed.",
+        "Folders tell you, when you point at their name, that you can drag them into any order. Dropping above or below another folder is easier too."
+      ]
+    },
+    {
       "at": "2026-11-12T21:45:26Z",
       "title": "New tutorial: Annotations",
       "items": [
