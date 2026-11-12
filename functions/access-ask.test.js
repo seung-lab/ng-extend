@@ -52,8 +52,10 @@ test('sends the edited email once, from Amy at Pyr, replies to support', async (
 });
 
 test('counts each email we invited once', async () => {
-  const t = io({ sb: async (q) => (q.startsWith('access_invites') ? [{ email: 'a@x.org' }, { email: 'b@x.org' }, { email: 'a@x.org' }] : []) });
-  assert.deepStrictEqual(await handle('access.inviteCount', {}, t.io), { invited: 2 });
+  const t = io({ sb: async (q) => (q.startsWith('access_invites') ? [{ email: 'a@x.org' }, { email: 'b@x.org' }, { email: 'a@x.org' }]
+    : q.startsWith('users') ? [{ id: 'u1', middleauth_email: 'a@x.org' }, { id: 'u2', middleauth_email: 'Boss@X.org' }, { id: 'u3', middleauth_email: 'c@x.org' }]
+    : q.startsWith('admins') ? [{ user_id: null, email: 'boss@x.org' }, { user_id: 'u3', email: null }] : []) });
+  assert.deepStrictEqual(await handle('access.inviteCount', {}, t.io), { invited: 2, signedIn: 1 });
   await assert.rejects(handle('access.inviteCount', {}, io({ isAdmin: false }).io));
 });
 

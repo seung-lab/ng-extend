@@ -70,6 +70,7 @@ const emailed = ref<Record<string, string>>({});
 // and the draft open in the panel (shown first, Edit to change it).
 const asked = ref<Record<string, { at: string; by: string }>>({});
 const inviteCount = ref<number | null>(null);
+const signedInAll = ref<number | null>(null);
 const ask = ref<{ email: string; subject: string; text: string; editing: boolean } | null>(null);
 const testTries = ref<TestTry[]>([]);
 /** CAVE edit access by email, from the Users sheet (refreshed hourly). */
@@ -120,7 +121,7 @@ async function load() {
     show(read('Beta lists', async () => (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}, {} as Record<string, { mark: string; at: string }>), v => { marks.value = v; }),
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
     show(read('Asked by email', async () => (await secureWrite<Record<string, { at: string; by: string }>>('access.askSent')) || {}, {} as Record<string, { at: string; by: string }>), v => { asked.value = v; }),
-    show(read('Invites', async () => (await secureWrite<{ invited: number }>('access.inviteCount'))?.invited ?? null, null as number | null), v => { inviteCount.value = v; }),
+    show(read('Invites', async () => (await secureWrite<{ invited: number; signedIn?: number }>('access.inviteCount')) ?? null, null as { invited: number; signedIn?: number } | null), v => { inviteCount.value = v?.invited ?? null; signedInAll.value = v?.signedIn ?? null; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
     show(read('Dataset access', () => readCanEdit(), null as Record<string, string> | null), v => { canEdit.value = v; }),
@@ -348,11 +349,12 @@ const totals = computed(() => {
   const split = Object.entries(byDs).sort((a, b) => b[1] - a[1]).map(([d, n]) => `${d} ${n}`).join(', ');
   return [
     // People opens the Pyr Users sheet, the game's hourly copy of everyone (Ames 2026-11-12).
-    { label: 'People', n: ps.length, title: 'Everyone who asked, was let in or signed in. Opens the Pyr Users sheet', href: USERS_SHEET_URL },
     // Everyone we emailed an invite (access_invites), and how many of them asked.
     { label: 'Invited by email', n: inviteCount.value ?? NaN, title: inviteCount.value == null ? 'Could not read the invite list' : `We emailed ${inviteCount.value} EyeWire players an invite. ${ps.filter(p => p.invited_at).length} of them asked or are in` },
-    { label: 'Let in', n: ps.filter(p => p.pilot_enabled).length, title: 'On Pilot testers now' },
-    { label: 'Signed in', n: ps.filter(p => p.joined_at).length, title: 'Signed in to Pyr at least once' },
+    // Ames 2026-11-12: emails added to Pilot testers ahead of time do not
+    // count; asked, and signed in (everyone, also those who never asked) do.
+    { label: 'Asked for access', n: ps.filter(p => p.request_id).length, title: 'Sent a Beta request, from connectome.quest or in Pyr' },
+    { label: 'Signed in', n: signedInAll.value ?? ps.filter(p => p.joined_at).length, title: 'Signed in to Pyr at least once, admins left out. Opens the Pyr Users sheet', href: USERS_SHEET_URL },
     { label: 'Finished a tutorial', n: ps.filter(p => p.tutorial_at).length, title: 'Finished their first tutorial' },
     { label: 'Made an edit', n: ps.filter(p => p.edits > 0).length, title: 'At least one merge or split' },
     { label: 'Dataset access', n: canEdit.value ? withAccess.length : NaN, title: canEdit.value ? `Can edit a real dataset in CAVE, as of the Users sheet's last hourly update${split ? ': ' + split : ''}` : 'Could not read the Users sheet' },

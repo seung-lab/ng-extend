@@ -822,10 +822,20 @@ async function askEmail(a, io) {
 // invited via email ... in stats up top"): rows in access_invites, one per
 // email per campaign, counted once per email.
 //   access.inviteCount  admins: {invited}.
+// And everyone who has signed in to Pyr, admins left out (Ames 2026-11-12:
+// "I want to see all the people we've invited, all the people who have
+// signed in"), including those who signed in and never asked.
 async function inviteCount(a, io) {
   needAdmin(io.isAdmin);
-  const rows = await io.sb('access_invites?select=email&limit=20000');
-  return {invited: new Set((rows || []).map(r => r.email)).size};
+  const [rows, users, admins] = await Promise.all([
+    io.sb('access_invites?select=email&limit=20000'),
+    io.sb('users?select=id,middleauth_email&limit=20000'),
+    io.sb('admins?select=user_id,email&limit=1000'),
+  ]);
+  const adminIds = new Set((admins || []).map(r => r.user_id).filter(Boolean));
+  const adminEmails = new Set((admins || []).map(r => String(r.email || '').toLowerCase()).filter(Boolean));
+  const signedIn = (users || []).filter(u => !adminIds.has(u.id) && !adminEmails.has(String(u.middleauth_email || '').toLowerCase())).length;
+  return {invited: new Set((rows || []).map(r => r.email)).size, signedIn};
 }
 async function askSentAll(a, io) {
   needAdmin(io.isAdmin);

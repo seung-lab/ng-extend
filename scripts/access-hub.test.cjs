@@ -109,7 +109,7 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
       if (a === 'access.askSent') return r.fulfill(ok({}));
-      if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414 }));
+      if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414, signedIn: 20 }));
       if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
 
 Could you reply with your EyeWire username?
@@ -190,7 +190,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
     check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
     const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
-    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '16 People ↗|414 Invited by email|11 Let in|5 Signed in|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
+    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Asked for access|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
     check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
