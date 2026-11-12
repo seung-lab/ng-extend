@@ -5948,12 +5948,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
     const m = e.data || {};
     if (m.user !== userId.value || !Array.isArray(m.ids)) return;
+    if (m.unread) { for (const id of m.ids) notificationReads.value.delete(id); return; }
     const set = m.dismissed ? notificationDismissals : notificationReads;
     for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
     if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
   };
   function tellOtherTabs(ids: number[], dismissed = false) {
     if (ids.length) try { readsChannel?.postMessage({ user: userId.value, ids, dismissed }); } catch { /* closed */ }
+  }
+
+  /** Unread again (Ames 2026-11-12, To do board "mark unread"): drops the
+   *  read row, never one that hides a note the player deleted. */
+  async function markNotificationsUnread(ids: number[]) {
+    if (!userId.value || !ids.length) return;
+    for (const id of ids) notificationReads.value.delete(id);
+    try { readsChannel?.postMessage({ user: userId.value, ids, unread: true }); } catch { /* closed */ }
+    const { error } = await supabase.from('notification_reads').delete()
+      .eq('user_id', userId.value).eq('dismissed', false).in('notification_id', ids);
+    if (error) console.warn('[notifications] mark unread failed:', error.message);
   }
 
   async function markNotificationRead(notifId: number) {
@@ -6809,7 +6821,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, markNotificationsUnread, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead, markReportNotesRead, markReportsNotesRead,
