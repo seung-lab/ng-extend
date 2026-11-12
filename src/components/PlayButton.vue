@@ -17,7 +17,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, mappingWhere, type PlayKind } from '../util/play';
 import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
-import { useProofreadingBackendStore } from '../store';
+import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import EditableText from './EditableText.vue';
 
 const backend = useProofreadingBackendStore();
@@ -26,8 +26,9 @@ const picked = ref<PlayKind>('cells');
 const questsOk = computed(() => canQuest());
 const where = computed(() => mappingWhere());
 const busy = ref(false);
-/** The X beside the button hides it until the page is reloaded (Ames 2026-11-10). */
-const hidden = ref(false);
+/** Settings, Screen: "Show the Play button" (Ames 2026-11-12). */
+const prefs = useUserPreferencesStore();
+const hidden = computed(() => prefs.prefs.hidePlayButton === true);
 
 const SUB = 'Pyr teleports you to a neuron.';
 const MAP_LINES = [
@@ -94,7 +95,6 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
       <svg class="nge-play-icon" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
       <span>Play</span>
     </button>
-    <button class="nge-play-x" type="button" title="Hide the Play button until you reload" aria-label="Hide the Play button" @click="hidden = true">&times;</button>
     </div>
 
     <div v-if="play.choosing" class="nge-play-screen" @click.self="play.choosing = false">
