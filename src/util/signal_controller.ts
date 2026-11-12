@@ -250,6 +250,9 @@ let shipFwd: V3 = [0, 0, 1];
 let shipAim: V3 | null = null;
 let aimUntil = 0;
 let prevUp: V3 | null = null;
+/** In flight on a visit (far from where it lands), and the barrel roll under way, if any. */
+let flying = false;
+let roll: {at: number; dur: number} | null = null;
 /** The ship's visit to a scanned cell: it flies over, hovers beside the cell
  *  body and projects the card from there, then flies back to its cockpit
  *  spot when the card is closed or the level begins (Ames 2026-11-11: "can
@@ -822,10 +825,28 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig-tour-text { margin: 8px 0 0; font-size: 16px; line-height: 1.4; color: #fff; }
 .nge-sig-tour-sub { margin: 6px 0 0; font-size: 12.5px; color: #9fc6ea; }
 .nge-sig-tour .nge-sig-row { margin-top: 12px; gap: 8px; }
-.nge-sig .nge-sig-edit { margin-left: 6px; padding: 0 4px; border: 0; border-radius: 0; background: none; color: #6ba4e6; cursor: pointer; font-size: 12px; opacity: 0.55; vertical-align: baseline; }
-.nge-sig .nge-sig-edit:hover { opacity: 1; color: #fff; background: none; }
-.nge-sig [contenteditable="true"] { outline: 1px dashed rgba(126, 224, 255, 0.7); outline-offset: 2px; background: rgba(126, 224, 255, 0.06); }
-.nge-sig .nge-sig-edits { float: right; margin: -2px 0 0 8px; padding: 3px 8px; font-size: 8.5px; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.nge-sig .nge-sig-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.nge-sig .nge-sig-ico svg { display: block; }
+.nge-sig .nge-sig-edit { flex: none; padding: 2px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font-size: 12px; line-height: 1; }
+.nge-sig .nge-sig-edit:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
+/* the editor: a card beside the HUD, a section a box */
+.ng-extend.nge-sig-editor { position: fixed; z-index: 9520; top: 16px; left: calc(min(448px, 40vw) + 32px); width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 11px 15px 12px; color: #f2fbff; font: 12.5px/1.4 'Inter', 'Roboto', sans-serif;
+  border: 1px solid rgba(255, 210, 122, 0.85); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.13) 0.9px, transparent 1.8px) 0 0 / 13px 13px, linear-gradient(160deg, rgba(34, 104, 200, 0.7), rgba(8, 30, 72, 0.9));
+  backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.2), 0 0 12px rgba(255, 194, 74, 0.3); }
+.nge-sig-editor .head { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 210, 122, 0.3); font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #ffd98a; }
+.nge-sig-editor .head .nge-sig-x { margin-left: auto; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid rgba(126, 210, 255, 0.45); border-radius: 50%; background: rgba(126, 210, 255, 0.08); color: #cfe6ff; cursor: pointer; }
+.nge-sig-editor section { margin-top: 9px; }
+.nge-sig-editor h4 { margin: 0 0 4px; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; }
+.nge-sig-editor label { display: block; margin: 4px 0; }
+.nge-sig-editor label span { display: block; font-size: 10px; color: #8fb3d6; margin-bottom: 2px; }
+.nge-sig-editor textarea { display: block; width: 100%; box-sizing: border-box; padding: 5px 7px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 3px; background: rgba(6, 12, 28, 0.6); color: #f4f9ff; font: 12.5px/1.4 'Inter', 'Roboto', sans-serif; resize: vertical; }
+.nge-sig-editor textarea:focus { outline: none; border-color: rgba(255, 210, 122, 0.8); }
+.nge-sig-editor .nge-sig-row { margin-top: 10px; }
+.nge-sig-editor .nge-sig-quiet { position: relative; background: none; border: 0; padding: 7px 14px 7px 16px; color: #bfe0ff; cursor: pointer; white-space: nowrap; font: 700 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); outline: 1px solid rgba(126, 224, 255, 0.5); outline-offset: -1px; }
+.nge-sig-editor .nge-sig-quiet:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
+.nge-sig-editor .hint { margin: 8px 0 0; font-size: 10px; color: #7f97b3; }
+body.nge-mobile .ng-extend.nge-sig-editor { left: 6px; right: 6px; width: auto; top: 8px; }
 /* labels the tour pins on parts of a cell (dendrites, cell body, axon) */
 .ng-extend.nge-sig-label { position: fixed; z-index: 9400; transform: translate(12px, -50%); padding: 2px 8px; border: 1px solid rgba(255, 224, 160, 0.6); border-radius: 3px; background: rgba(6, 12, 28, 0.78); color: #ffe9b8; font: 600 11px 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
 .ng-extend.nge-sig-label::before { content: ''; position: absolute; left: -12px; top: 50%; width: 11px; height: 1px; background: rgba(255, 224, 160, 0.7); }
@@ -860,6 +881,8 @@ body.nge-signal-on #neuroglancer-container { position: fixed !important; inset: 
 }
 
 const X_SVG = '<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const BACK_SVG = '<svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2 3.5 6l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const REPLAY_SVG = '<svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M9.6 6.3A3.6 3.6 0 1 1 8.4 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9.9 1.6v2.6H7.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function buildPanel() {
   ensureStyle();
@@ -871,6 +894,7 @@ function buildPanel() {
   panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i><div class="nge-sig-scroll">
     <div class="nge-sig-head"><i class="nge-sig-gem" aria-hidden="true"></i><span class="nge-sig-view-key">View</span><span class="nge-sig-view" data-el="view" role="group" aria-label="View"><button type="button" data-view="ship" aria-pressed="true" title="The ship in the scene: it flies to the cells you scan">Ship</button><button type="button" data-view="cockpit" aria-pressed="false" title="From the ship's cockpit: the canopy, the reticle, the readouts">Cockpit</button></span>
       <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
+      <button class="nge-sig-edit" type="button" data-el="edit" title="Edit the words on this page">✎</button>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
       <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
@@ -882,7 +906,7 @@ function buildPanel() {
       <div class="nge-sig-charges" data-el="charges"><span>Charge</span></div>
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
-    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><button class="nge-sig-quiet nge-sig-edits" type="button" data-el="edits" title="Copy every line you rewrote, as JSON">Copy my edits</button><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 1,000 times slower than real life.</span></div></div>`;
+    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 1,000 times slower than real life.</span></div></div>`;
   document.body.appendChild(panel);
   els = {};
   panel.querySelectorAll<HTMLElement>('[data-el]').forEach(el => { els[el.dataset.el!] = el; });
@@ -897,14 +921,7 @@ function buildPanel() {
   els.spark.onclick = () => { setHushMode(false); els.spark.blur(); };
   els.hush.onclick = () => { setHushMode(true); els.hush.blur(); };
   els.view.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { setView(b.dataset.view as ViewMode); b.blur(); }; });
-  editable(els.obj, `obj.${levelIndex}`, level.objective);
-  editable(els.detail, `detail.${levelIndex}`, level.detail);
-  els.edits.style.display = Object.keys(copyEdits).length ? '' : 'none';
-  els.edits.onclick = async () => {
-    const text = JSON.stringify(copyEdits, null, 2);
-    try { await navigator.clipboard.writeText(text); say('Your edits are copied. Paste them to Claude to bake them in.', 3.5); } catch { say(text, 8); }
-    els.edits.blur();
-  };
+  els.edit.onclick = () => { toggleEditor(); els.edit.blur(); };
   // Pyr's own Share lives in the top bar, which is away while the game runs
   els.share.onclick = async () => {
     const link = `${location.origin}${location.pathname}?signal`;
@@ -1008,12 +1025,32 @@ function roleOf(c: CellState): string {
   if (ROLE[c.key]) return ROLE[c.key];
   return c.spec.type === 'I' ? 'Interneuron' : 'Driver';
 }
+/** How many of the cell's spikes, as close together as it can fire them
+ *  (REFRACTORY_S apart), spike the cell it drives on their own: its
+ *  synapses' charge, leaking at TAU_E, against the threshold. Null when six
+ *  are not enough (Ames 2026-11-11: "show the number of APs required to
+ *  spike the target, like 2 clicks for E1, 3 clicks for E2"). */
+function sparksToFire(count: number, post: CellState): number | null {
+  const k = Math.exp(-REFRACTORY_S / TAU_E);
+  let charge = 0;
+  for (let i = 1; i <= 6; i++) { charge = charge * k + count * E_UNIT; if (charge >= post.theta) return i; }
+  return null;
+}
+const WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six'];
+/** The cell it drives hardest, when that is a target. */
+function drives(c: CellState): CircuitConn | undefined {
+  if (c.spec.type === 'I') return undefined;
+  return conns.filter(k => k.pre === c.key && cells.get(k.post)?.target && cells.get(k.post)?.shown).sort((a, b) => b.count - a.count)[0];
+}
 function chipLine(c: CellState): string {
   const outs = conns.filter(k => k.pre === c.key && cells.get(k.post)?.shown)
     .sort((a, b) => Number(cells.get(b.post)!.target) - Number(cells.get(a.post)!.target) || b.count - a.count);
   const role = roleOf(c);
   if (c.target || !outs.length) return role;
-  return `${role} · ${outs[0].count} syn → ${outs[0].post}`;
+  const d = drives(c);
+  const need = d ? sparksToFire(d.count, cells.get(d.post)!) : null;
+  const sparks = !d ? '' : need ? ` · ${need} spark${need > 1 ? 's' : ''}` : ' · with others';
+  return `${role} · ${outs[0].count} syn → ${outs[0].post}${sparks}`;
 }
 
 /* ── the circuit map: a little flow chart of the level ──
@@ -1119,7 +1156,7 @@ function buildMap() {
   el.querySelectorAll<SVGGElement>('g.node').forEach(g => {
     const k = g.dataset.cell!;
     mapNodeEls.set(k, g);
-    const act = () => { if (phase === 'playing') shoot(k); else scan(k); };
+    const act = () => { if (phase === 'playing') shoot(k); else tourClick(k); };
     g.addEventListener('click', act);
     g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
   });
@@ -1197,7 +1234,8 @@ function showChips() {
    runs down every branch at once (Ames 2026-11-11: "axon animation is cool,
    it should propagate out and down all the branches"); the Synapses row
    shows them all ("synapses, can we see all 3,000?"). ── */
-interface CellParts { arbor: {axon: number[][]; dend: number[][]}; syn: {out: number[][]; in: number[][]}; axonMax: number; dendMax: number; }
+/** dendPaths: each dendrite tip's way in to the cell body, as indices into dend from the tip end (signal-circuit.py --paths-only). */
+interface CellParts { arbor: {axon: number[][]; dend: number[][]; dendPaths?: number[][]}; syn: {out: number[][]; in: number[][]}; axonMax: number; dendMax: number; }
 const parts = new Map<string, CellParts>();
 const partsPending = new Map<string, Promise<CellParts | null>>();
 function loadParts(root: string): Promise<CellParts | null> {
@@ -1222,6 +1260,51 @@ function arborWave(key: string, inhibitory: boolean) {
   const pr = c && parts.get(c.spec.root);
   if (!pr || !pr.arbor.axon.length) return;
   waves.push({root: c!.spec.root, part: 'axon', start: performance.now() / 1000, seconds: clamp(pr.axonMax / 1_500_000, 0.6, 2), inward: false, rgb: inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7]});
+}
+/** Signals coming in one dendrite at a time (Ames 2026-11-11: "signals do
+ *  not come in from all the dendrites at once: one signal per every fourth
+ *  dendrite, in random order, slower"): a share of the cell's dendrite tips
+ *  in random order, up to `cap`, each a slow pulse from the synapse farthest
+ *  out on that dendrite (its tip when none is near) in to the cell body,
+ *  `each` seconds on the way and `gap` seconds apart. Returns when the last
+ *  lands, or 0 when the cell has no dendrite paths. */
+function demoDendrites(key: string, share = 0.25, each = 2.5, gap = 0.5, cap = 10, rgb: V3 = [1, 0.95, 0.7], alive?: () => boolean): number {
+  const c = cells.get(key);
+  const pr = c && parts.get(c.spec.root);
+  const paths = pr?.arbor.dendPaths;
+  if (!c || !pr || !paths?.length) return 0;
+  const pick = paths.map((_, i) => i).sort(() => Math.random() - 0.5).slice(0, clamp(Math.round(paths.length * share), 2, cap));
+  const syn = pr.syn.in, dend = pr.arbor.dend, soma = c.spec.soma;
+  pick.forEach((i, k) => {
+    const idx = paths[i];
+    let from = -1;
+    for (let j = 0; j < idx.length && from < 0; j++) {
+      const p = dend[idx[j]];
+      if (!p) break;
+      for (const q of syn) if (Math.abs(q[0] - p[0]) < 3000 && Math.abs(q[1] - p[1]) < 3000 && Math.abs(q[2] - p[2]) < 3000) { from = j; break; }
+    }
+    const pts = idx.slice(Math.max(0, from)).map(ii => [dend[ii][0], dend[ii][1], dend[ii][2]] as V3);
+    if (pts.length < 2) return;
+    pts.push(soma);
+    setTimeout(() => {
+      if (!active || !demo || (alive && !alive())) return;
+      flashes.push({p: pts[0], at: now, life: 0.6, rgb, size: 7000});
+      sparks.push({r: route(pts), start: now, end: now + each, inhibitory: false, conn: NO_CONN});
+    }, k * gap * 1000);
+  });
+  return (pick.length - 1) * gap + each;
+}
+/** A sweep of light down a cell: a band crossing every branch from the top
+ *  of the view to the bottom, the branches lit as it passes (Ames
+ *  2026-11-11: "a light sweep that highlights the cells"). */
+interface Sweep { root: string; start: number; seconds: number; rgb: V3; lo?: number; hi?: number; }
+let sweeps: Sweep[] = [];
+function sweepCell(key: string, seconds = 1.1, rgb: V3 = [0.85, 0.97, 1]): boolean {
+  const c = cells.get(key);
+  const pr = c && parts.get(c.spec.root);
+  if (!c || !pr || !(pr.arbor.axon.length + pr.arbor.dend.length)) return false;
+  sweeps.push({root: c.spec.root, start: performance.now() / 1000, seconds, rgb});
+  return true;
 }
 /** A target's firing: a gold burst from its cell body, sparks flying out,
  *  a ring widening, the body lit (Ames 2026-11-11: "the gold cell needs to
@@ -1295,21 +1378,52 @@ const copyOf = (key: string, fallback: string) => copyEdits[key] ?? fallback;
 function saveCopy(key: string, text: string) {
   if (!text.trim()) delete copyEdits[key]; else copyEdits[key] = text.trim();
   try { localStorage.setItem('pyr.signal.copy', JSON.stringify(copyEdits)); } catch { /* not kept */ }
-  if (els.edits) els.edits.style.display = Object.keys(copyEdits).length ? '' : 'none';
 }
-/** A ✎ after the element; a click makes it editable, Enter or a click away keeps it, Escape puts the original back. */
-function editable(el: HTMLElement, key: string, original: string) {
-  if (el.nextElementSibling?.classList.contains('nge-sig-edit')) return;
-  const btn = document.createElement('button');
-  btn.type = 'button'; btn.className = 'nge-sig-edit'; btn.title = 'Edit this line (kept in this browser; Copy my edits sends them on)'; btn.textContent = '✎';
-  el.insertAdjacentElement('afterend', btn);
-  btn.onclick = () => { el.contentEditable = 'true'; el.focus(); try { document.getSelection()?.selectAllChildren(el); } catch { /* no selection */ } };
-  el.onblur = () => { el.contentEditable = 'false'; saveCopy(key, el.textContent ?? ''); };
-  el.onkeydown = e => {
-    if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
-    if (e.key === 'Escape') { e.preventDefault(); el.textContent = original; saveCopy(key, ''); el.blur(); }
-    e.stopPropagation();
-  };
+/** The editor: one ✎ in the HUD's head opens a card with a section for each
+ *  box on the page (the objective, the tour's current step); a change is
+ *  kept as it is typed and shows at once (Ames 2026-11-11: "one edit pencil
+ *  for the whole page that has sections for each box"). */
+let editorEl: HTMLElement | null = null;
+function toggleEditor() {
+  if (editorEl) { editorEl.remove(); editorEl = null; return; }
+  editorEl = document.createElement('div');
+  editorEl.className = 'ng-extend nge-sig-editor';
+  document.body.appendChild(editorEl);
+  refreshEditor();
+}
+function applyCopy(key: string) {
+  if (key === `obj.${levelIndex}`) els.obj.textContent = copyOf(key, level.objective);
+  else if (key === `detail.${levelIndex}`) els.detail.textContent = adapt(copyOf(key, level.detail));
+  else if (key === `tour.${levelIndex}.${tourAt}.text`) { const el = els.body.querySelector('.nge-sig-tour-text'); if (el) el.textContent = adapt(copyOf(key, tourSteps[tourAt]?.text ?? '')); }
+  else if (key === `tour.${levelIndex}.${tourAt}.sub`) { const el = els.body.querySelector('.nge-sig-tour-sub'); if (el) el.textContent = adapt(copyOf(key, tourSteps[tourAt]?.sub ?? '')); }
+}
+function refreshEditor() {
+  if (!editorEl) return;
+  const field = (key: string, label: string, fallback: string) => `<label><span>${label}</span><textarea data-key="${key}" rows="2">${esc(copyOf(key, fallback))}</textarea></label>`;
+  let sections = `<section><h4>Objective</h4>${field(`obj.${levelIndex}`, 'Objective', level.objective)}${field(`detail.${levelIndex}`, 'Under it', level.detail)}</section>`;
+  const st = phase === 'brief' && tourSteps.length ? tourSteps[tourAt] : null;
+  if (st) sections += `<section><h4>Step ${tourAt + 1} · ${esc(st.kicker)}</h4>${field(`tour.${levelIndex}.${tourAt}.text`, 'Line', st.text)}${st.sub !== undefined ? field(`tour.${levelIndex}.${tourAt}.sub`, 'Under it', st.sub) : ''}</section>`;
+  editorEl.innerHTML = `<div class="head"><b>Edit the words</b><button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></div>${sections}
+    <div class="nge-sig-row"><button class="nge-sig-quiet" type="button" data-act="copy">Copy my edits</button><button class="nge-sig-quiet" type="button" data-act="reset">Reset this level</button></div>
+    <p class="hint">Edits live in this browser. Copy them and paste them to Claude to bake them in.</p>`;
+  (editorEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => toggleEditor();
+  editorEl.querySelectorAll<HTMLTextAreaElement>('textarea').forEach(t => {
+    t.oninput = () => { saveCopy(t.dataset.key!, t.value); applyCopy(t.dataset.key!); };
+    t.onkeydown = e => e.stopPropagation();
+  });
+  editorEl.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
+    b.onclick = async () => {
+      if (b.dataset.act === 'copy') {
+        const text = JSON.stringify(copyEdits, null, 2);
+        try { await navigator.clipboard.writeText(text); say('Your edits are copied. Paste them to Claude to bake them in.', 3.5); } catch { say(text, 8); }
+      } else {
+        for (const k of Object.keys(copyEdits)) if (k === `obj.${levelIndex}` || k === `detail.${levelIndex}` || k.startsWith(`tour.${levelIndex}.`)) delete copyEdits[k];
+        saveCopy('', '');
+        for (const k of [`obj.${levelIndex}`, `detail.${levelIndex}`, `tour.${levelIndex}.${tourAt}.text`, `tour.${levelIndex}.${tourAt}.sub`]) applyCopy(k);
+        refreshEditor();
+      }
+    };
+  });
 }
 
 /* ── the intro tour: level 1 opens as a cinematic (Ames 2026-11-11: "make
@@ -1321,7 +1435,8 @@ function editable(el: HTMLElement, key: string, original: string) {
    tour, `demo`, with the coach and the scoring held off) and waits for
    Next. After Begin the play UI comes up with its controls named, then
    three, two, one, go. ── */
-interface TourStep { kicker: string; text: string; sub?: string; play?: (alive: () => boolean) => Promise<void>; }
+/** click: what a click on a cell does during the step; the scan unless 'spark'. */
+interface TourStep { kicker: string; text: string; sub?: string; click?: 'spark'; play?: (alive: () => boolean) => Promise<void>; }
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 let demo = false;          // the model runs outside play, for the tour's demonstrations
 let tourAt = 0, tourToken = 0;
@@ -1393,15 +1508,32 @@ function undimAll() {
   for (const k of tourDim) { const c = cells.get(k); if (c?.shown && now >= c.hushedUntil) paint(c, false); }
   tourDim.clear();
 }
-function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); }
+function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); lightWhole([]); }
 let tourSteps: TourStep[] = [];
 const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
-  // The gold cell alone, the others grey, close up (Ames 2026-11-11: "start
-  // with just the gold cell and the others grey, then you can add them"). The
-  // labels sit on its own parts: "dendrites" a third of the way along its
-  // longest dendrite path from the synapse end, clear of the other cell
-  // bodies; "axon" a third of the way down its axon.
+  // The gold cell first, whole, the others grey, a sweep of light down it;
+  // the ship goes and lands on it (Ames 2026-11-11: "this should be step 1").
+  {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Gold: your target.',
+    play: async alive => {
+      dimOthers('T');
+      await sleep(300); if (!alive()) return;
+      const t = cells.get('T');
+      if (!t) return;
+      sweepCell('T', 1.3, [1, 0.95, 0.75]);
+      const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
+      visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card
+      if (view === 'cockpit') glideTo(t, 0.7);
+      hints = new Set(['T']);
+    }},
+  // The gold cell alone, close up (Ames 2026-11-11: "start with just the
+  // gold cell and the others grey, then you can add them"). The labels sit
+  // on its own parts: "dendrites" a third of the way along its longest
+  // dendrite path from the synapse end, clear of the other cell bodies;
+  // "axon" a third of the way down its axon. The signals come in one
+  // dendrite at a time, slowly, from synapses far out (Ames 2026-11-11:
+  // "signals do not come in from all the dendrites at once: one signal per
+  // every fourth dendrite, in random order, slower").
   {kicker: 'Neuron 101', text: 'Signals come in through the dendrites. The cell body adds them up. With enough, a spike leaves down the axon.', sub: 'That spike is an action potential. It runs one way only.',
     play: async alive => {
       const t = cells.get('T');
@@ -1414,48 +1546,46 @@ TOURS[0] = [
       await sleep(900); if (!alive()) return;
       if (inPath) tourLabel('dendrites', inPath[Math.floor(inPath.length * 0.35)]);
       await sleep(500); if (!alive()) return;
-      if (!demoWave('T', 'dend', 1.4, true, [1, 0.95, 0.7]) && inPath) demoPulse(inPath, 1.2);
-      await sleep(1450); if (!alive()) return;
+      const landing = demoDendrites('T', 0.25, 2.5, 0.5, 10, [1, 0.95, 0.7], alive);
+      if (!landing && !demoWave('T', 'dend', 2.4, true, [1, 0.95, 0.7]) && inPath) demoPulse(inPath, 2.2);
+      await sleep((landing || 2.4) * 1000 + 150); if (!alive()) return;
       tourLabel('cell body', t.spec.soma);
       flashes.push({p: t.spec.soma, at: now, life: 0.7, rgb: [1, 0.85, 0.4], size: 24_000});
       sfx.spike(false);
       await sleep(500); if (!alive()) return;
       if (outPath) tourLabel('axon', outPath[Math.floor(outPath.length * 0.35)]);
-      if (!demoWave('T', 'axon', 1.8, false, [1, 0.95, 0.7]) && outPath) demoPulse(outPath, 1.6);
+      if (!demoWave('T', 'axon', 3, false, [1, 0.95, 0.7]) && outPath) demoPulse(outPath, 2.6);
     }},
-  {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Gold: your target.',
-    play: async alive => {
-      dimOthers('T');
-      await sleep(300); if (!alive()) return;
-      const t = cells.get('T');
-      if (!t) return;
-      const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
-      visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card
-      if (view === 'cockpit') glideTo(t, 0.7);
-      hints = new Set(['T']);
-    }},
-  // one driver at a time, whole, the gold cell and the rest grey; then all
-  // of them (Ames 2026-11-11: "step through these 1 at a time, dim the
-  // yellow and show these full cells")
+  // one driver at a time, whole, every branch lit, a sweep of light down it
+  // as it comes in; the gold cell and the rest grey; then all of them (Ames
+  // 2026-11-11: "step through these 1 at a time, dim the yellow and show
+  // these full cells"; "a light sweep that highlights the cells"; "I want to
+  // see all the branches when they are highlighted")
   {kicker: 'Its drivers', text: 'Four cells drive it: E1, E2, E3, E4. E is for excitatory.',
     play: async alive => {
       const all = ['E1', 'E2', 'E3', 'E4'];
       for (const k of all) {
         for (const c of cells.values()) if (c.shown && c.key !== k) { tourDim.add(c.key); paint(c, true); }
         undim(k);
+        lightWhole([k]);
         hints = new Set([k]);
         const c = cells.get(k);
-        if (c) flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.8, 0.95, 1], size: 18_000});
-        sfx.spike(false);
-        await sleep(1400); if (!alive()) return;
+        if (!sweepCell(k, 1.1) && c) flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.8, 0.95, 1], size: 18_000});
+        sfx.scan();
+        await sleep(1700); if (!alive()) return;
       }
       undimAll();
+      lightWhole(all);
       hints = new Set(all);
     }},
-  {kicker: 'Spark', text: 'Spark a cell: its spike runs down the axon to the gold cell.',
-    play: async alive => { await sleep(400); if (!alive()) return; hints = new Set(['E1']); demoSpark('E1'); }},
-  {kicker: 'Add up', text: 'One spike alone leaks away. Two spikes close together add up, and the gold cell fires.',
+  // From here a click on a cell is the spark itself, not the scan (Ames
+  // 2026-11-11: "this should not fly the ship over, it should do the photon
+  // beam to activate the cell").
+  {kicker: 'Spark', text: 'Spark a cell: its spike runs down the axon to the gold cell.', click: 'spark',
+    play: async alive => { lightWhole(['E1']); await sleep(400); if (!alive()) return; hints = new Set(['E1']); demoSpark('E1'); }},
+  {kicker: 'Add up', text: 'One spike alone leaks away. Two spikes close together add up, and the gold cell fires.', click: 'spark',
     play: async alive => {
+      lightWhole(['E1']);
       await sleep(400); if (!alive()) return;
       demoSpark('E1');
       await sleep(2600); if (!alive()) return;   // the one spike's charge leaks away
@@ -1463,11 +1593,17 @@ TOURS[0] = [
       await sleep(320); if (!alive()) return;
       demoSpark('E1');
     }},
-  {kicker: 'Why E1', text: 'E1 makes five synapses onto it, the most: two quick sparks are enough. The others carry less and need company.',
-    play: async alive => { await sleep(100); if (alive()) hints = new Set(['E1']); }},
+  {kicker: 'Why E1', text: 'E1 makes five synapses onto it, the most: two quick sparks are enough. The others carry less and need company.', click: 'spark',
+    play: async alive => { lightWhole(['E1']); await sleep(100); if (alive()) hints = new Set(['E1']); }},
   {kicker: 'Scan', text: 'Click any cell to scan it. The letters are call signs: E excitatory, I inhibitory, T target.',
     play: async alive => { await sleep(300); if (alive()) scan('E2'); }},
-  {kicker: 'Ready', text: 'Fire the gold cell three times: E1 twice, quickly, each time.'},
+  {kicker: 'Ready', text: 'Spike the gold cell three times: E1 twice, quickly, each time. Like this.', click: 'spark',
+    play: async alive => {
+      lightWhole(['E1']);
+      hints = new Set(['E1']);
+      await sleep(700); if (!alive()) return;
+      demoSpark('E1'); await sleep(320); if (!alive()) return; demoSpark('E1');
+    }},
 ];
 /* Level 2 (Ames 2026-11-11: "each level that introduces more has a cinematic
    tour: here it should fly to Martinotti, fade others, Martinotti spinning,
@@ -1479,6 +1615,8 @@ TOURS[1] = [
       const g = cells.get('I1');
       if (!g) return;
       dimOthers('I1');
+      lightWhole(['I1']);
+      sweepCell('I1', 1.3, [0.9, 0.8, 1]);
       glideTo(g, 0.55);
       orbit = 0.22;
       await sleep(700); if (!alive()) return;
@@ -1501,6 +1639,7 @@ TOURS[1] = [
       const t = cells.get('T'), g = cells.get('I1');
       if (!t || !g) return;
       for (const c of cells.values()) if (c.shown && c.key !== 'T' && c.key !== 'I1') { tourDim.add(c.key); paint(c, true); }
+      lightWhole(['I1']);
       hints = new Set(['T']);
       const pr = parts.get(t.spec.root) ?? await loadParts(t.spec.root);
       if (!alive()) return;
@@ -1508,16 +1647,21 @@ TOURS[1] = [
       const far = pr ? pr.syn.in.map(q => ({p: [q[0], q[1], q[2]] as V3, d: len(sub([q[0], q[1], q[2]], t.spec.soma))})).sort((a, b) => b.d - a.d).slice(0, Math.max(20, Math.floor(pr.syn.in.length / 4))) : [];
       while (alive()) {
         if (holdOn(t) > 0.3) { await sleep(120); continue; }   // held: it stays quiet, in violet (the Gatekeeper's own spike ran its wave)
-        for (let i = 0; i < 6 && far.length; i++) { const q = far[Math.floor(Math.random() * far.length)]; flashes.push({p: q.p, at: now, life: 0.55, rgb: [1, 0.9, 0.5], size: 7000}); }
-        demoWave('T', 'dend', 0.9, true, [1, 0.9, 0.55]);
-        await sleep(900); if (!alive()) return;
+        // one dendrite at a time, from synapses far out; the whole-tree wave when the cell has no dendrite paths
+        let landing = demoDendrites('T', 0.2, 1.2, 0.25, 6, [1, 0.9, 0.55], alive);
+        if (!landing) {
+          for (let i = 0; i < 6 && far.length; i++) { const q = far[Math.floor(Math.random() * far.length)]; flashes.push({p: q.p, at: now, life: 0.55, rgb: [1, 0.9, 0.5], size: 7000}); }
+          demoWave('T', 'dend', 0.9, true, [1, 0.9, 0.55]);
+          landing = 0.9;
+        }
+        await sleep(landing * 1000); if (!alive()) return;
         if (holdOn(t) > 0.3) continue;
         spike('T');
-        demoWave('T', 'axon', 1.2, false, [1, 0.9, 0.55]);
-        await sleep(1400);
+        demoWave('T', 'axon', 1.4, false, [1, 0.9, 0.55]);
+        await sleep(1100);
       }
     }},
-  {kicker: 'Ready', text: 'Use the partner cells to spike the gold cell in the gaps: not while the Gatekeeper is inhibiting it. The coach line turns blue when a gap opens.'},
+  {kicker: 'Ready', text: 'Use the partner cells to spike the gold cell in the gaps: not while the Gatekeeper is inhibiting it. The coach line turns blue when a gap opens.', click: 'spark'},
 ];
 /* Level 3: the Hush, shown with the ship (Ames 2026-11-11: "visualize the
    hush sequence using the ship and animations"): the Gatekeeper on its fast
@@ -1525,10 +1669,11 @@ TOURS[1] = [
 const dimTo = (keep: string[]) => { for (const c of cells.values()) if (c.shown && !keep.includes(c.key)) { tourDim.add(c.key); paint(c, true); } };
 TOURS[2] = [
   {kicker: 'No gaps', text: 'The Gatekeeper pulses every second now. The gaps are gone.',
-    play: async alive => { dimTo(['T', 'I1']); hints = new Set(['I1']); await sleep(50); if (!alive()) return; }},
+    play: async alive => { dimTo(['T', 'I1']); lightWhole(['I1']); hints = new Set(['I1']); await sleep(50); if (!alive()) return; }},
   {kicker: 'The Hush beam', text: 'A new beam: Hush. It quiets a cell for 2.5 seconds, for 2 charges.',
     play: async alive => {
       dimTo(['T', 'I1']);
+      lightWhole(['I1']);
       hints = new Set(['I1']);
       await sleep(700); if (!alive()) return;
       demoHush('I1');
@@ -1536,6 +1681,7 @@ TOURS[2] = [
   {kicker: 'Into the quiet', text: 'While it is quiet, spike the gold cell: E1 twice, quickly.',
     play: async alive => {
       dimTo(['T', 'I1', 'E1']);
+      lightWhole(['I1', 'E1']);
       hints = new Set(['I1']);
       await sleep(400); if (!alive()) return;
       demoHush('I1');
@@ -1543,7 +1689,7 @@ TOURS[2] = [
       hints = new Set(['E1']);
       demoSpark('E1'); await sleep(320); if (!alive()) return; demoSpark('E1');
     }},
-  {kicker: 'Ready', text: 'Hush the Gatekeeper, then spike the gold cell through its partners. Three times.'},
+  {kicker: 'Ready', text: 'Hush the Gatekeeper, then spike the gold cell through its partners. Three times.', click: 'spark'},
 ];
 function showTour(steps: TourStep[]) {
   tourSteps = steps;
@@ -1561,7 +1707,7 @@ function renderTourStep() {
   const textKey = `tour.${levelIndex}.${tourAt}.text`, subKey = `tour.${levelIndex}.${tourAt}.sub`;
   els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length} · ${step.kicker}</div>
     <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}
-    <div class="nge-sig-row">${tourAt ? '<button class="nge-sig-quiet" type="button" data-act="back">‹ Back</button>' : ''}<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${step.play ? '<button class="nge-sig-quiet" type="button" data-act="replay">Replay</button>' : ''}${last ? '' : '<button class="nge-sig-quiet" type="button" data-act="skip">Skip</button>'}</div></div>`;
+    <div class="nge-sig-row">${tourAt ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="back" title="Back" aria-label="Back">${BACK_SVG}</button>` : ''}<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${step.play ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="replay" title="Replay" aria-label="Replay">${REPLAY_SVG}</button>` : ''}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
     b.onclick = () => {
       const act = b.dataset.act;
@@ -1572,7 +1718,7 @@ function renderTourStep() {
       else { tourAt++; renderTourStep(); }
     };
   });
-  els.body.querySelectorAll<HTMLElement>('[data-copy]').forEach(el => editable(el, el.dataset.copy!, el.textContent ?? ''));
+  refreshEditor();
   const token = ++tourToken;
   void step.play?.(() => token === tourToken && active && phase === 'brief');
   updateHud();
@@ -1581,6 +1727,7 @@ function renderTourStep() {
 function showBrief() {
   const steps = TOURS[levelIndex];
   if (steps) { showTour(steps); return; }
+  tourSteps = [];
   phase = 'brief'; demo = false;
   els.row.style.display = 'none';
   buildMap();
@@ -1610,8 +1757,8 @@ function showResult(won: boolean) {
 function updateHud() {
   if (!panel) return;
   els.lvl.textContent = `Level ${levelIndex + 1} · ${level.title}`;
-  if (!els.obj.isContentEditable) { const t = copyOf(`obj.${levelIndex}`, level.objective); if (els.obj.textContent !== t) els.obj.textContent = t; }
-  if (!els.detail.isContentEditable) { const t = adapt(copyOf(`detail.${levelIndex}`, level.detail)); if (els.detail.textContent !== t) els.detail.textContent = t; }
+  { const t = copyOf(`obj.${levelIndex}`, level.objective); if (els.obj.textContent !== t) els.obj.textContent = t; }
+  { const t = adapt(copyOf(`detail.${levelIndex}`, level.detail)); if (els.detail.textContent !== t) els.detail.textContent = t; }
   const total = level.goal.count;
   els.progress.textContent = `${progress} / ${total}`;
   const left = phase === 'playing' ? Math.max(0, level.timeS - now) : level.timeS;
@@ -1657,6 +1804,9 @@ function updateHud() {
 let savedTint: NgeMeshTint | null = null;
 let hazeOn = false;
 const DIM: V3 = [0.5, 0.5, 0.5];
+/** Each cell's own mark in the haze: colours far from each other and from
+ *  the grey (the mesh shader matches to 0.2). */
+const OWN_MARKS: [number, number, number][] = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1], [0, 0, 0], [1, 0.5, 0], [0.5, 0, 1], [0, 1, 0.5], [0.5, 1, 0], [1, 0, 0.5], [0, 0.5, 1]];
 function buildHaze(): NgeMeshTint | null {
   const nm = nmPerUnit();
   if (!nm) return null;
@@ -1677,33 +1827,76 @@ function buildHaze(): NgeMeshTint | null {
   // premultiplied dim grey, alpha 0.85
   const A = 0.85, g = Math.round(DIM[0] * A * 255), a = Math.round(A * 255);
   for (let i = 0; i < n; i++) { data[i * 4] = g; data[i * 4 + 1] = g; data[i * 4 + 2] = g; data[i * 4 + 3] = a; }
-  const carve = (p: V3, radius: number) => {
+  // Each cell's marks are in a colour of its own (OWN_MARKS), and the mesh
+  // shader lights a cell only where the map holds ITS colour: a tube
+  // cleared along one cell's wire used to light every other branch passing
+  // through it, banding the cells with lit stripes (Ames 2026-11-11: "weird
+  // striping on the E cells"). Where two cells' marks meet, and at the
+  // synapses themselves, the voxel is cleared for all.
+  const own = new Map<string, [number, number, number]>();
+  shown.forEach((c, i) => own.set(c.spec.root, OWN_MARKS[i % OWN_MARKS.length]));
+  const carve = (p: V3, radius: number, rgb: [number, number, number] | null) => {
     const r = Math.ceil(radius / cell);
     const c = [0, 1, 2].map(i => Math.floor((p[i] - lo[i]) / cell));
+    const mr = rgb ? rgb.map(v => Math.round(v * A * 255)) : null;
     for (let z = Math.max(0, c[2] - r); z <= Math.min(dims[2] - 1, c[2] + r); z++)
       for (let y = Math.max(0, c[1] - r); y <= Math.min(dims[1] - 1, c[1] + r); y++)
         for (let x = Math.max(0, c[0] - r); x <= Math.min(dims[0] - 1, c[0] + r); x++) {
           const dx = (x + 0.5) * cell + lo[0] - p[0], dy = (y + 0.5) * cell + lo[1] - p[1], dz = (z + 0.5) * cell + lo[2] - p[2];
-          if (dx * dx + dy * dy + dz * dz <= radius * radius) data[((z * dims[1] + y) * dims[0] + x) * 4 + 3] = 0;
+          if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
+          const o = ((z * dims[1] + y) * dims[0] + x) * 4;
+          if (data[o + 3] === 0) continue;                                       // cleared for all already
+          if (!mr) { data[o] = 0; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 0; continue; }
+          const grey = data[o] === g && data[o + 1] === g && data[o + 2] === g;
+          const mine = data[o] === mr[0] && data[o + 1] === mr[1] && data[o + 2] === mr[2];
+          if (grey) { data[o] = mr[0]; data[o + 1] = mr[1]; data[o + 2] = mr[2]; }
+          else if (!mine) { data[o] = 0; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 0; }   // another cell's mark: lit for both
         }
   };
-  for (const c of shown) carve(c.spec.soma, 24_000);
+  for (const c of shown) carve(c.spec.soma, 24_000, own.get(c.spec.root)!);
   for (const k of used) {
-    const r = routes.get(k)!;
-    for (let s = 0; s <= r.length; s += cell * 0.5) carve(along(r, s), 7000);
+    const pre = own.get(cells.get(k.pre)!.spec.root)!, post = own.get(cells.get(k.post)!.spec.root)!;
+    if (k.axon.length) { const ra = route(k.axon as V3[]); for (let s = 0; s <= ra.length; s += cell * 0.5) carve(along(ra, s), 7000, pre); }
+    if (k.dendrite.length) { const rd = route(k.dendrite as V3[]); for (let s = 0; s <= rd.length; s += cell * 0.5) carve(along(rd, s), 7000, post); }
+    for (const q of k.synapses) carve(q as V3, 5000, null);
   }
   const m = mat4.create();
   for (let i = 0; i < 3; i++) { m[i * 5] = nm[i] / (dims[i] * cell); m[12 + i] = -lo[i] / (dims[i] * cell); }
   // The target is lit whole, in its own colour; the haze is for the others
   // (Ames 2026-11-08: "the target cell all the way lit up and just the
   // others with this lantern mode").
-  const skip = new Set(level.targets.map(k => cells.get(k)!.spec.root));
+  const skip = skipSet();
   // On a phone the other branches are all but black: the cell bodies and
   // the wires between them are the whole picture (Ames 2026-11-10:
   // "confusing, I couldn't tell which cells I was supposed to be hitting").
-  return {data, dims, gridFromGlobal: m, dim: DIM, dimLevel: phone() ? 0.07 : undefined, skip};
+  return {data, dims, gridFromGlobal: m, dim: DIM, dimLevel: phone() ? 0.07 : undefined, skip, own};
 }
 let hazeTint: NgeMeshTint | null = null;
+/** Cells lit whole, every branch in colour, beyond the targets: what the
+ *  tour highlights, and a scanned cell (Ames 2026-11-11: "I want to see all
+ *  the branches when they are highlighted"; "when I click here it should
+ *  show the whole cell and fade others"). The haze's skip set is changed in
+ *  place, so the map is not rebuilt. */
+let litWhole = new Set<string>();
+let scanLit: string | null = null;
+function lightWhole(keys: string[]) {
+  litWhole = new Set(keys.map(k => cells.get(k)?.spec.root).filter((r): r is string => !!r));
+  refreshSkip();
+}
+function skipSet(): Set<string> {
+  const s = new Set<string>(litWhole);
+  for (const k of level.targets) { const c = cells.get(k); if (c) s.add(c.spec.root); }
+  const sc = scanLit ? cells.get(scanLit) : undefined;
+  if (sc) s.add(sc.spec.root);
+  return s;
+}
+function refreshSkip() {
+  if (!hazeTint?.skip) return;
+  const want = skipSet();
+  hazeTint.skip.clear();
+  for (const r of want) hazeTint.skip.add(r);
+  try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+}
 function applyHaze() {
   if (!hazeOn) { savedTint = getNgeMeshTint(); hazeOn = true; ngeMeshTintChanged.add(keepHaze); }
   try { hazeTint = buildHaze(); setNgeMeshTint(hazeTint); } catch (e) { console.warn('[signal] no haze:', e); }
@@ -1758,7 +1951,7 @@ function makeTags() {
     el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
     el.innerHTML = `<b class="tap">Tap</b>${key}<small>${roleOf(c)}</small>`;
     el.title = c.target ? `${key}: the target` : `Fire the beam at ${key}`;
-    el.onclick = () => { if (phase === 'playing') shoot(key); else scan(key); el.blur(); };
+    el.onclick = () => { if (phase === 'playing') shoot(key); else tourClick(key); el.blur(); };
     el.style.display = 'none';
     document.body.appendChild(el);
     tagEls.set(key, el);
@@ -2035,14 +2228,21 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
       // on a visit it turns first, then flies at a steady pace and eases in
       // to land; it used to leap most of the way while still turning (Ames
       // 2026-11-11: "ship is facing wrong direction while flying")
-      const dir = sub(spot, shipAt), dist = len(dir);
+      // The way is lifted toward the eye, up to three tenths of the view
+      // until it is near, so it flies over the cells and comes down onto the
+      // cell body, never through the branches (Ames 2026-11-11: "make sure
+      // the ship never drives through the neuron").
+      const left = len(sub(spot, shipAt));
+      const goal = add(spot, mul(cam.toEye, Math.min(viewNm * 0.3, left * 0.8)));
+      const dir = sub(goal, shipAt), dist = len(dir);
+      flying = left > viewNm * 0.06;
       if (dist > 1) {
         const aligned = dot(shipFwd, mul(dir, 1 / dist));
-        let v = Math.min(dist, Math.min(viewNm * 0.6 * dt, Math.max(dist * 4 * dt, viewNm * 0.03 * dt)));
+        let v = Math.min(dist, Math.min(viewNm * 0.32 * dt, Math.max(left * 3 * dt, viewNm * 0.02 * dt)));
         if (aligned < 0.8 && dist > viewNm * 0.03) v *= 0.12;
         shipAt = add(shipAt, mul(dir, v / dist));
       }
-    } else shipAt = mix(shipAt, spot, Math.min(1, dt * 5));
+    } else { shipAt = mix(shipAt, spot, Math.min(1, dt * 5)); flying = false; }
   }
   // a visit: the scan fires once the ship is there (or after 1.8 s, if the
   // way is long); from the cockpit, once the camera's glide has ended
@@ -2058,6 +2258,15 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   let up = norm(sub(upRef, mul(shipFwd, dot(upRef, shipFwd))));
   if (prevUp) up = norm(mix(prevUp, up, Math.min(1, dt * 6)));
   prevUp = up;
+  // the occasional barrel roll in flight (Ames 2026-11-11): a full turn
+  // about its own length over 0.9 s, about one in every four seconds of
+  // flying, and only with room to finish before it lands
+  if (flying && view === 'ship' && !roll && vc && len(sub(spot ?? shipAt, shipAt)) > viewNm * 0.35 && Math.random() < dt * 0.25) roll = {at: performance.now(), dur: 900};
+  if (roll) {
+    const q = (performance.now() - roll.at) / roll.dur;
+    if (q >= 1) roll = null;
+    else { const a = (q < 0.5 ? 2 * q * q : 1 - 2 * (1 - q) * (1 - q)) * Math.PI * 2; up = norm(add(mul(up, Math.cos(a)), mul(cross(shipFwd, up), Math.sin(a)))); }
+  }
   const fwd = norm(sub(shipFwd, mul(up, dot(shipFwd, up))));
   const right = norm(cross(up, fwd));
   const bob = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : viewNm * 0.004 * Math.sin(performance.now() / 1000 * 1.3);
@@ -2242,8 +2451,23 @@ function scan(key: string) {
   const lean = s && r && s[0] > r.left + r.width / 2 ? -1 : 1;
   const there = visit?.key === key && visit.fired;
   visit = {key, since: now, lean: there ? visit!.lean : lean, fired: false};
+  // the cell whole, every branch in colour, the others faded (Ames
+  // 2026-11-11: "when I click here it should show the whole cell and fade others")
+  scanLit = key;
+  for (const o of cells.values()) if (o.shown) paint(o, o.key !== key);
+  refreshSkip();
   if (view === 'cockpit') glideTo(c);
   if (there) fireScan();   // already hovering here: the beam again, at once
+}
+/** The scan's fade undone: each cell as the tour or its hush would have it. */
+function unfadeScan() {
+  for (const o of cells.values()) if (o.shown) paint(o, tourDim.has(o.key) || now < o.hushedUntil);
+}
+/** A click on a cell during the tour: in a step about sparking it is the
+ *  spark itself (Ames 2026-11-11: "this should not fly the ship over, it
+ *  should do the photon beam to activate the cell"); otherwise the scan. */
+function tourClick(key: string) {
+  if (phase === 'brief' && tourSteps[tourAt]?.click === 'spark') demoSpark(key); else scan(key);
 }
 /** The scan beam, from the ship's nose to the cell it is visiting. */
 function fireScan() {
@@ -2278,14 +2502,33 @@ const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
  *  its wiring in this level, and where the numbers come from (scifi-ui's
  *  data-readout rule: one label, one number, one line of provenance; a unit
  *  never inside an uppercased label). */
-type ShowWhat = 'synapses' | 'axon' | 'in';
+/** What the card lights on the cell: the synapses onto it, the synapses it
+ *  makes, every branch, the axon with a wave running out, the dendrite
+ *  paths in; each on its own, any together (Ames 2026-11-11: "I want to be
+ *  able to click either or and both"; "cable could just highlight all the
+ *  branches"). */
+type ShowWhat = 'synIn' | 'synOut' | 'cable' | 'axon' | 'in';
 interface Readout { key: string; role: string; identity: string; sign: string; stats: {label: string; value: string; unit?: string; show?: ShowWhat}[]; wiring: {label: string; text: string; show?: ShowWhat}[];
   local: {key: string; color: V3; from: number; to: number}[]; partners?: {out: Partner[]; in: Partner[]}; provenance: string; }
 /** What the scanned cell is showing on itself, from a click on its card. */
-let showing: ShowWhat | null = null;
-function toggleShow(what: ShowWhat) {
-  showing = showing === what ? null : what;
-  for (const el of document.querySelectorAll<HTMLElement>('.nge-sig-scan [data-show], .nge-sig-canopy [data-show]')) el.classList.toggle('on', el.dataset.show === showing);
+let showing = new Set<ShowWhat>();
+function toggleShow(what: ShowWhat | 'synapses') {
+  if (what === 'synapses') {   // Drives: every synapse, both ways
+    const both = showing.has('synIn') && showing.has('synOut');
+    if (both) { showing.delete('synIn'); showing.delete('synOut'); } else { showing.add('synIn'); showing.add('synOut'); }
+  } else if (showing.has(what)) showing.delete(what); else showing.add(what);
+  for (const el of document.querySelectorAll<HTMLElement>('.nge-sig-scan [data-show], .nge-sig-canopy [data-show]')) {
+    const w = el.dataset.show;
+    el.classList.toggle('on', w === 'synapses' ? showing.has('synIn') && showing.has('synOut') : showing.has(w as ShowWhat));
+  }
+}
+/** For a driver's job line: the sparks it needs on its own to spike its target. */
+function sparksLine(c: CellState): string {
+  const d = drives(c);
+  if (!d) return '';
+  const need = sparksToFire(d.count, cells.get(d.post)!);
+  if (!need) return ` Alone it cannot spike ${d.post}: pair it with another driver.`;
+  return need === 1 ? ` One spark spikes ${d.post}.` : ` ${WORDS[need]} sparks, quickly, spike ${d.post}.`;
 }
 function readoutOf(c: CellState): Readout {
   const s = c.spec;
@@ -2293,11 +2536,11 @@ function readoutOf(c: CellState): Readout {
   const job = c.target ? `Target: fires at a charge of ${c.theta}. Each synapse that fires onto it adds 1, and the charge leaks away in about a second.`
     : c.gateNext !== null ? `Gatekeeper: pulses every ${c.gatePeriod} s, holds the targets down`
     : s.type === 'I' ? `${roleOf(c)}: quiets what it reaches`
-    : `${roleOf(c)}: fires when your beam hits it`;
+    : `${roleOf(c)}: fires when your beam hits it.${sparksLine(c)}`;
   const stats: Readout['stats'] = [];
   // every synapse the cell makes and receives in the release (synapses_pni_2, materialization 1300)
-  if (s.synIn !== undefined && s.synOut !== undefined) stats.push({label: 'synapses in', value: fmt(s.synIn), show: 'synapses'}, {label: 'synapses out', value: fmt(s.synOut), show: 'synapses'});
-  stats.push({label: 'cable', value: fmt(s.cableUm), unit: 'µm', show: 'axon'}, {label: 'axon', value: fmt(s.axonUm), unit: 'µm', show: 'axon'});
+  if (s.synIn !== undefined && s.synOut !== undefined) stats.push({label: 'synapses in', value: fmt(s.synIn), show: 'synIn'}, {label: 'synapses out', value: fmt(s.synOut), show: 'synOut'});
+  stats.push({label: 'cable', value: fmt(s.cableUm), unit: 'µm', show: 'cable'}, {label: 'axon', value: fmt(s.axonUm), unit: 'µm', show: 'axon'});
   const wiring: Readout['wiring'] = [{label: 'Job', text: job}];
   // the level's cells it is wired to, synapses from each and onto each
   const local = new Map<string, {key: string; color: V3; from: number; to: number}>();
@@ -2377,7 +2620,7 @@ function showCanopy() {
     <button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button>`;
   document.body.appendChild(canopyEl);
   (canopyEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => endVisit();
-  canopyEl.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat); };
+  canopyEl.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses'); };
   requestAnimationFrame(() => canopyEl?.classList.add('nge-sig-canopy--on'));
 }
 function hideCanopy() { canopyEl?.remove(); canopyEl = null; }
@@ -2458,13 +2701,14 @@ function showScan(key: string) {
     };
     box.onpointerup = box.onpointercancel = () => { box.classList.remove('dragging'); box.onpointermove = box.onpointerup = box.onpointercancel = null; };
   };
-  box.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat); };
+  box.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses'); };
   buildIn(box);
   requestAnimationFrame(() => scanEl?.classList.add('nge-sig-scan--in'));
 }
 function hideScan() {
   scanEl?.remove();
-  scanEl = null; scanKey = null; scanPin = null; showing = null;
+  scanEl = null; scanKey = null; scanPin = null; showing = new Set();
+  if (scanLit) { scanLit = null; unfadeScan(); refreshSkip(); }
   clearCanopy();
 }
 /** The card each frame: docked at the top right of the view (Ames
@@ -2684,6 +2928,28 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
       put([p[0], p[1], p[2]], [w.rgb[0], w.rgb[1], w.rgb[2], 0.9 * k], 2600 + 2200 * k);
     }
   }
+  // sweeps: a band of light down a cell, from the top of the view to the
+  // bottom, every branch lit as it passes
+  sweeps = sweeps.filter(w => tNow < w.start + w.seconds + 0.3);
+  for (const w of sweeps) {
+    const pr = parts.get(w.root);
+    if (!pr) continue;
+    const lists = [pr.arbor.axon, pr.arbor.dend];
+    if (w.lo === undefined || w.hi === undefined) {
+      let lo = Infinity, hi = -Infinity;
+      for (const pts of lists) for (const p of pts) { const u = p[0] * cam.up[0] + p[1] * cam.up[1] + p[2] * cam.up[2]; if (u < lo) lo = u; if (u > hi) hi = u; }
+      w.lo = lo; w.hi = hi;
+    }
+    const span = w.hi - w.lo, band = Math.max(15_000, span * 0.12);
+    const q = clamp((tNow - w.start) / w.seconds, 0, 1);
+    const front = w.hi - (span + band) * q;
+    for (const pts of lists) for (const p of pts) {
+      const gap = p[0] * cam.up[0] + p[1] * cam.up[1] + p[2] * cam.up[2] - front;
+      if (gap < -band * 0.2 || gap > band) continue;
+      const k = gap < 0 ? 1 + gap / (band * 0.2) : 1 - gap / band;
+      put([p[0], p[1], p[2]], [w.rgb[0], w.rgb[1], w.rgb[2], 0.85 * k], 2400 + 2600 * k);
+    }
+  }
   // a target's burst: sparks out from the cell body, a ring widening, the body lit
   bursts = bursts.filter(b => tNow < b.at + b.life);
   for (const b of bursts) {
@@ -2693,15 +2959,21 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; put(add(b.p, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R))), [b.rgb[0], b.rgb[1], b.rgb[2], 0.6 * (1 - q)], 2600); }
     put(b.p, [1, 0.95, 0.7, 0.8 * (1 - q)], 30_000 * (1 - q * 0.5));
   }
-  if (showing && scanKey) {
+  if (showing.size && scanKey) {
     const t = performance.now() / 1000;
     const sc = cells.get(scanKey), pr = sc && parts.get(sc.spec.root);
-    if (pr && showing === 'synapses') {
+    if (pr) {
       // every synapse the cell receives (gold) and makes (cyan) in the release
       const all = (list: number[][], rgb: V3) => { for (let j = 0; j < list.length; j++) { const p = list[j]; put([p[0], p[1], p[2]], [rgb[0], rgb[1], rgb[2], 0.35 + 0.25 * Math.sin(t * 3 + j * 0.7)], 1700); } };
-      all(pr.syn.in, [1, 0.85, 0.4]); all(pr.syn.out, [0.6, 0.95, 1]);
+      if (showing.has('synIn')) all(pr.syn.in, [1, 0.85, 0.4]);
+      if (showing.has('synOut')) all(pr.syn.out, [0.6, 0.95, 1]);
+      if (showing.has('cable')) {
+        // every branch: the cell is lit whole (the haze skips it), with a faint dust of light along the axon (cyan) and the dendrites (gold); no wave
+        const dust = (pts: number[][], rgb: V3) => { for (let j = 0; j < pts.length; j += 3) put([pts[j][0], pts[j][1], pts[j][2]], [rgb[0], rgb[1], rgb[2], 0.1 + 0.05 * Math.sin(t * 2 + j * 0.3)], 1800); };
+        dust(pr.arbor.axon, [0.6, 0.95, 1]); dust(pr.arbor.dend, [1, 0.85, 0.4]);
+      }
     }
-    const arborAxon = !!(pr && showing === 'axon' && pr.arbor.axon.length);
+    const arborAxon = !!(pr && showing.has('axon') && pr.arbor.axon.length);
     if (pr && arborAxon) {
       // the whole axon, faint, and a wave running out from the soma down every branch, over and over
       const pts = pr.arbor.axon, maxD = pr.axonMax || 1;
@@ -2712,16 +2984,17 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     for (const k of conns) {
       const out = k.pre === scanKey, inn = k.post === scanKey;
       if (!(out || inn) || !cells.get(out ? k.post : k.pre)?.shown) continue;
-      if (showing === 'synapses') {
+      if ((out && showing.has('synOut')) || (inn && showing.has('synIn'))) {
         const rgb: V3 = out ? [0.6, 0.95, 1] : [1, 0.85, 0.4];
         for (const [j, p] of k.synapses.entries()) {
           const pulse = 0.5 + 0.5 * Math.sin(t * 4 + j);
           put(p, [rgb[0], rgb[1], rgb[2], 0.5 + 0.4 * pulse], 4000 + 1500 * pulse);
           put(p, [rgb[0], rgb[1], rgb[2], 0.18], 10_000);
         }
-      } else if (!arborAxon && ((showing === 'axon' && out) || (showing === 'in' && inn))) {
-        const path = showing === 'axon' ? k.axon : k.dendrite;
-        const r = route(path), rgb: V3 = showing === 'axon' ? [0.6, 0.95, 1] : [1, 0.85, 0.4];
+      }
+      if ((!arborAxon && showing.has('axon') && out) || (showing.has('in') && inn)) {
+        const path = out ? k.axon : k.dendrite;
+        const r = route(path), rgb: V3 = out ? [0.6, 0.95, 1] : [1, 0.85, 0.4];
         const N = Math.max(8, Math.min(80, Math.round(r.length / 2500)));
         for (let j = 0; j <= N; j++) put(along(r, r.length * j / N), [rgb[0], rgb[1], rgb[2], 0.3], 2200);
         for (let j = 0; j < 2; j++) {
@@ -2897,7 +3170,7 @@ function onPointerUp(e: PointerEvent) {
     if (!m || e.type === 'pointercancel' || !active || (phase !== 'playing' && phase !== 'brief' && phase !== 'done')) return;
     if (performance.now() - m.t > 500 || Math.hypot(e.clientX - m.x, e.clientY - m.y) > 6) return;
     swallowUntil = performance.now() + 400;   // the click that follows is the game's, not the layer's
-    if (phase === 'playing') shoot(m.key); else scan(m.key);
+    if (phase === 'playing') shoot(m.key); else tourClick(m.key);
     return;
   }
   fingers = Math.max(0, fingers - 1);
@@ -2910,7 +3183,7 @@ function onPointerUp(e: PointerEvent) {
   if (!hit) return;
   e.preventDefault(); e.stopPropagation();
   swallowUntil = performance.now() + 500;
-  if (phase === 'playing') shoot(hit.key); else scan(hit.key);
+  if (phase === 'playing') shoot(hit.key); else tourClick(hit.key);
 }
 function onKey(e: KeyboardEvent) {
   if (!active) return;
@@ -2980,7 +3253,7 @@ function beginPlay() {
   phase = 'countdown'; demo = false;
   now = 0; lastFrame = 0;
   beams = []; flashes = []; sparks = []; arrivals = []; queued = [];
-  endVisit(); clearTourLabels(); orbit = 0; undimAll();
+  endVisit(); clearTourLabels(); orbit = 0; undimAll(); lightWhole([]);
   // the tour's demonstrations left charge and spikes behind
   for (const c of cells.values()) { c.e = 0; c.i = 0; c.refractoryUntil = -1; c.hushedUntil = -1; c.lastSpike = -1; c.spikes = 0; if (c.gateNext !== null) c.gateNext = 1.2; }
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
@@ -3080,6 +3353,8 @@ export function stopSignalController() {
   setNgeGlow(null, GROUP);
   setNgeProps([], GROUP);
   hideCanopy();
+  editorEl?.remove(); editorEl = null;
+  litWhole = new Set(); scanLit = null; sweeps = []; roll = null; flying = false;
   demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
   glide = null; cockpitNose = null;

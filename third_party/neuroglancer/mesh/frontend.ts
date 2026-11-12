@@ -422,8 +422,15 @@ export class MeshShaderManager {
    *  own colour everywhere (mesh/nge_tint.ts). Nothing to set when the map
    *  skips no one; beginModel has already cleared the flag. */
   setTintSkip(gl: GL, shader: ShaderProgram, objectId: {toString(): string}) {
-    const skip = getNgeMeshTint()?.skip;
+    const tint = getNgeMeshTint();
+    const skip = tint?.skip;
     if (skip !== undefined) gl.uniform1f(shader.uniform('uNgeTintSkip'), skip.has(objectId.toString()) ? 1 : 0);
+    // its own mark colour, when the map has one a cell (w = 1)
+    const own = tint?.own;
+    if (own !== undefined) {
+      const m = own.get(objectId.toString());
+      gl.uniform4f(shader.uniform('uNgeTintOwn'), m?.[0] ?? 0, m?.[1] ?? 0, m?.[2] ?? 0, m ? 1 : 0);
+    }
   }
 
   setColor(gl: GL, shader: ShaderProgram, color: vec4) {
@@ -475,8 +482,9 @@ export class MeshShaderManager {
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
     }
-    // No cell is skipped until its own draw says so (setTintSkip).
+    // No cell is skipped, and none has a mark of its own, until its own draw says so (setTintSkip).
     gl.uniform1f(shader.uniform('uNgeTintSkip'), 0);
+    gl.uniform4f(shader.uniform('uNgeTintOwn'), 0, 0, 0, 0);
     // The fine map of the cut preview, over the map above.
     const fineTint = renderContext.emitColor ? getNgeMeshTintFine() : null;
     const fineUnit = shader.textureUnit(ngeFineSamplerSymbol);
@@ -588,6 +596,8 @@ export class MeshShaderManager {
         builder.addUniform('highp mat4', 'uNgeTintMatrix');
         builder.addUniform('highp float', 'uNgeTintOn');
         builder.addUniform('highp float', 'uNgeTintSkip');
+        // The cell's own mark colour (rgb) and whether it has one (w).
+        builder.addUniform('highp vec4', 'uNgeTintOwn');
         builder.addUniform('highp float', 'uNgeGlow');
         builder.addUniform('highp vec4', 'uNgeShell');
         builder.addUniform('highp vec4', 'uNgeShellColor');
@@ -743,10 +753,14 @@ if (uNgeTintOn > 0.5 && uNgeTintSkip < 0.5) {
       // Dim checked: a Checked mark (its newest, lighter shade too) is drawn
       // as a dim grey of the cell, so what is left to check stands out.
       // (w is how bright: the cell's grey times it, 0.32 for Highlight)
-      if (uNgeTintDim.w > 0.001 && distance(tintRgb, uNgeTintDim.rgb) < 0.16) {
+      // Own marks (Signal Controller's haze): a mark in this cell's own
+      // colour lights it, and any other, the grey or another cell's, dims
+      // it, so one cell's wire never lights the branches passing through.
+      bool ownLit = uNgeTintOwn.w > 0.5 && distance(tintRgb, uNgeTintOwn.rgb) < 0.2;
+      if (!ownLit && (uNgeTintOwn.w > 0.5 || (uNgeTintDim.w > 0.001 && distance(tintRgb, uNgeTintDim.rgb) < 0.16))) {
         highp float cellGrey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
         vColor.rgb = mix(vColor.rgb, vec3(cellGrey) * uNgeTintDim.w, min(1.0, tint.a * 1.15));
-      } else {
+      } else if (!ownLit) {
         vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
       }
     }

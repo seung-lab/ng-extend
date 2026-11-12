@@ -23,6 +23,7 @@ cell that drives I2 (S).
     python scripts/signal-circuit.py --counts-only   (only the synapse totals, into the existing file)
     python scripts/signal-circuit.py --partners-only (only the partners by cell type, into the existing file)
     python scripts/signal-circuit.py --parts-only    (one file a cell: arbors with path distances, every synapse)
+    python scripts/signal-circuit.py --paths-only    (each dendrite's way in to the cell body, added to those files)
 """
 import json, os, sys, time
 import numpy as np
@@ -176,14 +177,12 @@ def add_partners():
     print(f'wrote {OUT}')
 
 
-def arbor_points(skel, comps, step=3000):
-    """The skeleton's vertices of those compartments, one every `step` nm of
-    path from the soma, each with its path distance: [x, y, z, d] in nm. A
-    wavefront drawn at distance d then runs down every branch at once."""
+def arbor_walk(skel):
+    """The skeleton from the root: its vertices parents first, each one's
+    path distance from the root, and each one's children."""
     n = len(skel.V)
     dist = np.zeros(n)
     order = []
-    # parents come before children in a traversal from the root
     stack = [skel.root]
     kids = [[] for _ in range(n)]
     for v in range(n):
@@ -195,15 +194,91 @@ def arbor_points(skel, comps, step=3000):
         for w in kids[u]:
             dist[w] = dist[u] + float(np.linalg.norm(skel.V[w] - skel.V[u]))
             stack.append(w)
+    return order, dist, kids
+
+
+def sampled(skel, comps, order, dist, step):
+    """The vertices of those compartments at which the path distance crosses
+    a multiple of `step`, in traversal order: the arbor's points."""
     out = []
     for v in order:
         p = skel.parent[v]
         if p < 0 or not len(skel.comp) or skel.comp[v] not in comps:
             continue
         if int(dist[v] // step) > int(dist[p] // step):
-            x, y, z = skel.V[v]
-            out.append([int(x), int(y), int(z), int(dist[v])])
+            out.append(v)
     return out
+
+
+def arbor_points(skel, comps, step=3000):
+    """The skeleton's vertices of those compartments, one every `step` nm of
+    path from the soma, each with its path distance: [x, y, z, d] in nm. A
+    wavefront drawn at distance d then runs down every branch at once."""
+    order, dist, _ = arbor_walk(skel)
+    out = []
+    for v in sampled(skel, comps, order, dist, step):
+        x, y, z = skel.V[v]
+        out.append([int(x), int(y), int(z), int(dist[v])])
+    return out
+
+
+def dend_paths(skel, comps, step=3000, min_nm=40_000, cap=100):
+    """Each dendrite tip's way in to the cell body, as indices into
+    arbor_points(skel, comps, step) from the tip end, so a signal can run in
+    along one dendrite at a time (Ames 2026-11-11: "signals do not come in
+    from all the dendrites at once"). Tips nearer than 40 µm of path to the
+    cell body are left out, and the hundred farthest are kept."""
+    order, dist, kids = arbor_walk(skel)
+    idx = {v: i for i, v in enumerate(sampled(skel, comps, order, dist, step))}
+    tips = [v for v in order if len(skel.comp) and skel.comp[v] in comps and not kids[v] and dist[v] >= min_nm]
+    tips.sort(key=lambda v: -dist[v])
+    paths = []
+    for v in tips[:cap]:
+        path = []
+        while v >= 0:
+            i = idx.get(v)
+            if i is not None:
+                path.append(i)
+            v = skel.parent[v]
+        if len(path) >= 3:
+            paths.append(path)
+    return paths
+
+
+def add_paths():
+    """Add dendPaths (dend_paths) to every cell file that has its arbors,
+    from the skeleton again so the indices match the dendrite points written
+    with them; the synapses are kept as they are."""
+    c = CAVEclient('minnie65_public', version=VERSION)
+    with open(OUT) as f:
+        data = json.load(f)
+    folder = os.path.dirname(OUT)
+    for cell in data['cells']:
+        r = int(cell['root'])
+        path = os.path.join(folder, f'cell-{r}.json')
+        if not os.path.exists(path):
+            print(f"  {cell['key']:3s} has no file yet: run --parts-only first")
+            continue
+        with open(path) as f:
+            part = json.load(f)
+        if part.get('arbor', {}).get('dendPaths'):
+            print(f"  {cell['key']:3s} already has its dendrite paths")
+            continue
+        t0 = time.time()
+        sk = None
+        for attempt in range(3):
+            try:
+                sk = Skel(c.skeleton.get_skeleton(r, skeleton_version=4, output_format='dict'))
+                break
+            except Exception as e:  # noqa: BLE001
+                print(f"  {cell['key']:3s} skeleton attempt {attempt + 1} failed: {str(e)[:80]}")
+                time.sleep(20)
+        if sk is None:
+            continue
+        part['arbor'] = {'axon': arbor_points(sk, (2,)), 'dend': arbor_points(sk, (3, 4)), 'dendPaths': dend_paths(sk, (3, 4))}
+        with open(path, 'w') as f:
+            json.dump(part, f, separators=(',', ':'))
+        print(f"  {cell['key']:3s} {len(part['arbor']['dendPaths'])} dendrite paths, {os.path.getsize(path) // 1024} KB ({time.time() - t0:.1f}s)", flush=True)
 
 
 def add_parts():
@@ -236,12 +311,13 @@ def add_parts():
             if old.get('arbor', {}).get('axon'):
                 print(f"  {cell['key']:3s} already has its arbors")
                 continue
-        axon, dend = [], []
+        axon, dend, dpaths = [], [], []
         for attempt in range(3):
             try:
                 sk = Skel(c.skeleton.get_skeleton(r, skeleton_version=4, output_format='dict'))
                 axon = arbor_points(sk, (2,))
                 dend = arbor_points(sk, (3, 4))
+                dpaths = dend_paths(sk, (3, 4))
                 break
             except Exception as e:  # noqa: BLE001
                 print(f"  {cell['key']:3s} skeleton attempt {attempt + 1} failed: {str(e)[:80]}")
@@ -250,7 +326,7 @@ def add_parts():
         si = in_pos[(in_post == r) & (in_pre != r)]
         part = {
             'root': str(r),
-            'arbor': {'axon': axon, 'dend': dend},
+            'arbor': {'axon': axon, 'dend': dend, 'dendPaths': dpaths},
             'syn': {'out': [[int(v) for v in p] for p in so], 'in': [[int(v) for v in p] for p in si]},
         }
         with open(path, 'w') as f:
@@ -281,6 +357,9 @@ def main():
         return
     if '--parts-only' in sys.argv:
         add_parts()
+        return
+    if '--paths-only' in sys.argv:
+        add_paths()
         return
     c = CAVEclient('minnie65_public', version=VERSION)
     ids = [r for _, r in CELLS]

@@ -33,6 +33,13 @@ export interface NgeMeshTint {
    *  own colour everywhere, however the map is painted there (Signal
    *  Controller's target cell, lit whole while the rest is hazed). */
   skip?: Set<string>;
+  /** Each cell's own mark colour (RGB 0..1, by segment id as a decimal
+   *  string): a mark in a cell's own colour lights it, and any other mark,
+   *  the grey or another cell's, dims it, so a mark laid along one cell's
+   *  wire never lights the branches of other cells passing through it
+   *  (Signal Controller's haze; Ames 2026-11-11: "weird striping on the E
+   *  cells"). A cell with no entry is tinted as without this. */
+  own?: Map<string, [number, number, number]>;
 }
 
 let current: NgeMeshTint|null = null;
