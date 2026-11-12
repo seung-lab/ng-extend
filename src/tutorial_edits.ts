@@ -78,10 +78,36 @@ export function draftEdit(tutorial: number, box: number): TutorialEdit | null {
   return parse(draftKey(tutorial, box));
 }
 
+/**
+ * The looks a box's words may keep in a style attribute. The tutorials color
+ * words with style="color:..." (and lay a few out), so dropping every style
+ * stripped the colors from any box an admin saved (Celia #481, 2026-11-12:
+ * "it is removing any color that was previously added"). Only these
+ * properties stay, and never a value that loads anything.
+ */
+const KEPT_STYLE = /^(color|background-color|border-color|border|border-radius|font-weight|font-style|font-size|text-align|text-decoration|display|align-items|justify-content|vertical-align|line-height|width|height|margin(-(top|right|bottom|left))?|padding(-(top|right|bottom|left))?|cursor)$/;
+export function keepSafeStyle(style: string): string {
+  return style.split(';').map(d => d.trim()).filter(d => {
+    const i = d.indexOf(':');
+    if (i < 1) return false;
+    const prop = d.slice(0, i).trim().toLowerCase(), value = d.slice(i + 1).trim().toLowerCase();
+    return KEPT_STYLE.test(prop) && !!value && !/url\(|expression|javascript:|@import|\\/.test(value);
+  }).join(';');
+}
+let cleaningWords = false;
+DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
+  if (!cleaningWords || data.attrName !== 'style') return;
+  const kept = keepSafeStyle(data.attrValue || '');
+  if (kept) data.attrValue = kept; else data.keepAttr = false;
+});
+
 /** Words as the box shows them: links open a new tab; edited words are cleaned. */
 export function wordsToHtml(words: string, kind: 'text' | 'html'): string {
   const html = kind === 'text' ? (marked.parse(words, { async: false }) as string) : words;
-  const clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form', 'input', 'iframe'], FORBID_ATTR: ['style'] });
+  cleaningWords = true;
+  let clean: string;
+  try { clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form', 'input', 'iframe'] }); }
+  finally { cleaningWords = false; }
   return clean.replace(/<a\s+(?![^>]*\btarget=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
 }
 
