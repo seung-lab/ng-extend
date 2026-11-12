@@ -25,7 +25,7 @@
  */
 import { useUserPreferencesStore } from '../store';
 import { isCalm } from './calm';
-import { fallSeason } from './season';
+import { fallSeason, seasonToday } from './season';
 import { AUTUMN, leafShapes, leafVein, pick } from './leaf_shapes';
 import {IS_LIVE_SITE} from './toolbar_staging';
 
@@ -34,10 +34,13 @@ const FIRST_MS = [25_000, 50_000], EVERY_MS = [5 * 60_000, 10 * 60_000];
 /** How many may rest on the chat box at once, and for how long. */
 const MAX_RESTING = 10, REST_MS = [15_000, 30_000];
 
-/** Switched off for everyone (Ames 2026-11-12: "turn off the leaves"). True
- *  brings them back each fall (22 September to the end of Thanksgiving week). */
-const LEAVES_ON = false;
-export function leavesSeason(): boolean { return LEAVES_ON && fallSeason(); }
+/** Off for the rest of 2026 (Ames 2026-11-12: "turn the leaves off for everyone"). From
+ *  2027 they come back by themselves the day after Halloween, 1 November, and
+ *  fall until the end of Thanksgiving week ("turn them on auto the day after
+ *  halloween next year"). Test a date with nge.seasonDate (src/util/season.ts). */
+export function leavesSeason(now = seasonToday()): boolean {
+  return now.getFullYear() >= 2027 && now.getMonth() >= 10 && fallSeason(now);
+}
 
 export function leavesHidden(): boolean {
   try { return useUserPreferencesStore().prefs.hideLeaves === true; } catch { return false; }
