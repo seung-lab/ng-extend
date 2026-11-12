@@ -716,6 +716,9 @@ body.nge-signal-on .nge-3d-panel, body.nge-signal-on .nge-3d-panel * { cursor: c
 body.nge-mobile .nge-sig { bottom: calc(66px + env(safe-area-inset-bottom)); width: calc(100vw - 12px); max-height: 58vh; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; }
 body.nge-mobile .nge-sig-scroll { min-height: 0; overflow: hidden auto; scrollbar-width: none; }
 body.nge-mobile .nge-sig-head { font-size: 9px; letter-spacing: 0.14em; }
+/* the intro on a phone is just the tour card under the gem, the sound and the close; the objective and the rest come with play (Ames 2026-11-12: "show the cell first with just the text, then the diagram, then add back the box; put the gem during the intro") */
+body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-top, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-data, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view, body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-view-key { display: none !important; }
+body.nge-mobile .nge-sig.nge-sig--intro .nge-sig-gem { margin-right: auto; }
 /* slim and concise on a phone: no Share, no pencil, no data lines in the foot, tighter everywhere */
 body.nge-mobile .nge-sig .nge-sig-share, body.nge-mobile .nge-sig .nge-sig-edit, body.nge-mobile .nge-sig .nge-sig-note .txt { display: none !important; }
 body.nge-mobile .nge-sig { padding: 6px 10px 6px; font-size: 11.5px; }
@@ -1921,7 +1924,7 @@ TOURS[2] = [
   {kicker: 'Ready', text: 'Inhibit the Gatekeeper, then spike the gold cell through its partners. Three times.', click: 'spark'},
 ];
 /** The tour step from which the map shows (level 1 keeps it until the drivers are introduced). */
-const MAP_FROM: Record<number, number> = {0: 2};
+const MAP_FROM: Record<number, number> = {0: 2, 1: 2, 2: 3, 3: 2, 4: 1};   // the cell first, the diagram later (Ames 2026-11-12)
 /* Level 4 (Ames 2026-11-11: "Do we maybe need a demo here? This got a lot
    more complicated"): the shield, the Key, the second target. */
 TOURS[3] = [
@@ -1969,6 +1972,7 @@ TOURS[4] = [
   {kicker: 'Ready', text: 'Spark S, then all five drivers together. Three times.', click: 'spark'},
 ];
 function showTour(steps: TourStep[]) {
+  panel?.classList.add('nge-sig--intro');
   tourSteps = steps;
   phase = 'brief'; demo = true;
   els.row.style.display = 'none';
@@ -2013,6 +2017,7 @@ function renderTourStep() {
 function showBrief() {
   const steps = TOURS[levelIndex];
   if (steps) { showTour(steps); return; }
+  panel?.classList.add('nge-sig--intro');
   tourSteps = [];
   phase = 'brief'; demo = false;
   els.row.style.display = 'none';
@@ -3754,6 +3759,7 @@ function beginPlay() {
   // (Ames 2026-11-11: "after click it loads the UI and shows them what the
   // buttons are and then start the countdown").
   phase = 'countdown'; demo = false;
+  panel?.classList.remove('nge-sig--intro');   // the box comes back with play
   now = 0; lastFrame = 0;
   beams = []; flashes = []; sparks = []; arrivals = []; queued = [];
   endVisit(); clearTourLabels(); orbit = 0; undimAll(); lightWhole([]); hidePartsTint();
