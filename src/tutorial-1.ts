@@ -73,13 +73,17 @@ function mouse(part: 'left' | 'right' | 'wheel'): string {
     + `<line x1="4" y1="22" x2="36" y2="22" stroke="${line}" stroke-width="1.4"/><line x1="20" y1="4" x2="20" y2="22" stroke="${line}" stroke-width="1.4"/>${wheel}</svg></span>`;
 }
 
-/** The 2D EM tab no longer pulses: clicking it does not open the 2D view
- *  (Celia, 2026-11-11), so only SPACE is taught. */
+/** The 2D EM tab pulses while a step asks for it (Ames, 2026-10-24: "2D EM
+ *  tab at the top" meant nothing until you could see it). Clicking it opens
+ *  and closes the 2D images, unless classic layer tabs are on (Ames,
+ *  2026-11-12). */
+let tabPulse: ReturnType<typeof setInterval> | null = null;
 function tut1Style() {
   if (!document.getElementById('nge-tut1-style')) {
     const st = document.createElement('style');
     st.id = 'nge-tut1-style';
     st.textContent = `
+      .neuroglancer-layer-item.nge-tut-pulse-tab { animation: nge-tut-tab 1.2s ease-in-out infinite !important; border-color: rgba(126, 224, 255, 0.9) !important; }
       @keyframes nge-tut-tab { 0%, 100% { box-shadow: inset 0 0 0 1px rgba(126, 224, 255, 0.35); } 50% { box-shadow: inset 0 0 0 2px rgba(126, 224, 255, 0.95), inset 0 0 10px rgba(126, 224, 255, 0.55); } }
       .nge-tut-pulse-next { animation: nge-tut-tab 1.2s ease-in-out infinite !important; }
       .nge-tut-mouse { float: left; margin: 2px 12px 4px 0; line-height: 0; }`;
@@ -88,6 +92,19 @@ function tut1Style() {
 }
 // At load: the mouse pictures need it from the first box that shows one.
 tut1Style();
+function pulse2DTab() {
+  tut1Style();
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  if (tabPulse) clearInterval(tabPulse);
+  tabPulse = setInterval(() => {
+    const tab = [...document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')].find(el => /2D EM|\bimg\b/i.test((el as HTMLElement).querySelector('[data-nge-label]')?.getAttribute('data-nge-label') ?? (el as HTMLElement).textContent ?? '')) as HTMLElement | undefined;
+    const here = store.activeTutorial === tutorial && store.getTutorialStep() === step;
+    document.querySelectorAll('.nge-tut-pulse-tab').forEach(el => { if (!here || el !== tab) el.classList.remove('nge-tut-pulse-tab'); });
+    if (!here) { clearInterval(tabPulse!); tabPulse = null; return; }
+    tab?.classList.add('nge-tut-pulse-tab');
+  }, 400);
+}
 
 /**
  * No merging or cutting during Get Started (Ames, 2026-10-24): the lesson's
@@ -1026,10 +1043,12 @@ It missed a branch. Let's see if we can find it.`,
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
   {
-    text: `Press **SPACE** to bring up a split screen view: the electron microscope images these neurons were reconstructed from. Then click **Next**.`,
+    text: `Press **SPACE** to bring up a split screen view: the electron microscope images these neurons were reconstructed from.
+
+You can also click the **2D EM** tab, glowing at the top left. Then click **Next**.`,
     position: OVER_3D,
     state: STATE_AT_END,
-    onEnter: () => { glowNextWhenSplit(); },
+    onEnter: () => { glowNextWhenSplit(); pulse2DTab(); },
   },
   //12 - over 2D - EM cross section view
   {

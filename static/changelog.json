@@ -5,7 +5,6 @@
       "at": "2026-11-12T16:01:06Z",
       "title": "Tutorial fixes",
       "items": [
-        "Get Started: the 2D EM tab no longer glows, since clicking it does not open the images. Press SPACE instead.",
         "Get Started: the branch end views open with one yellow point, with no second point flashing in first.",
         "Merge tutorial: the Merge icon glows while the box asks you to turn merge on.",
         "Merge tutorial: the second merge box sits higher, so the merge bar no longer covers it."
