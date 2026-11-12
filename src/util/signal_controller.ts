@@ -319,6 +319,25 @@ function glideTo(c: CellState, factor = 0.6) {
   glide = {look: freeLook(c.spec.soma, scale * Math.min(nm[0], nm[1], nm[2]), cam), scale, since: performance.now()};
 }
 function glideHome() { if (homeLook && homeScale) glide = {look: homeLook, scale: homeScale, since: performance.now()}; }
+/** Where the game last put the camera, and whether the player has moved it
+ *  since: then a step's reset leaves the camera alone, and only a step that
+ *  moves it on purpose takes it back (Ames 2026-11-12: "I zoomed out so I
+ *  could see all the cells but Replay zooms me back in"). */
+let camSet: {look: V3; scale: number} | null = null;
+let userCam = false;
+function recordCam() {
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) return;
+  camSet = {look: Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3, scale: v.projectionScale.value};
+  userCam = false;
+}
+function watchCam() {
+  if (glide || !camSet) return;
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) return;
+  const look = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  if (len(sub(look, camSet.look)) > viewNm * 0.01 || Math.abs(v.projectionScale.value - camSet.scale) > camSet.scale * 0.02) userCam = true;
+}
 /** A slow, even glide to a look point and zoom over so many seconds. */
 function glideSlow(look: V3, scale: number, seconds: number) {
   const v = viewerNow(), nm = nmPerUnit();
@@ -349,7 +368,7 @@ function stepGlide(dt: number) {
     const next = mix(glide.fromLook, glide.look, e);
     v.navigationState.position.value = Float32Array.from(next.map((c, i) => c / nm[i]));
     v.projectionScale.value = Math.exp(Math.log(glide.fromScale) + (Math.log(glide.scale) - Math.log(glide.fromScale)) * e);
-    if (q >= 1) glide = null;
+    if (q >= 1) { glide = null; recordCam(); }
     return;
   }
   const pos = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
@@ -358,7 +377,7 @@ function stepGlide(dt: number) {
   v.navigationState.position.value = Float32Array.from(next.map((c, i) => c / nm[i]));
   const sc = v.projectionScale.value;
   v.projectionScale.value = sc + (glide.scale - sc) * k;
-  if ((len(sub(next, glide.look)) < 800 && Math.abs(v.projectionScale.value - glide.scale) < glide.scale * 0.01) || performance.now() - glide.since > 1600) glide = null;
+  if ((len(sub(next, glide.look)) < 800 && Math.abs(v.projectionScale.value - glide.scale) < glide.scale * 0.01) || performance.now() - glide.since > 1600) { glide = null; recordCam(); }
 }
 /** The ship's look, after scifi-ui's goldOnBlue hologram: a cool blue body, a molten gold rim. */
 const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.05, 0.14, 0.38], rim: [1.0, 0.82, 0.48], shade: 1.1};
@@ -1747,7 +1766,7 @@ function undimAll() {
   for (const k of tourDim) { const c = cells.get(k); if (c?.shown && now >= c.hushedUntil) paint(c, false); }
   tourDim.clear();
 }
-function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); lightWhole([]); clearReveals(); hidePartsTint(); }
+function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); if (!userCam) glideHome(); orbit = 0; undimAll(); lightWhole([]); clearReveals(); hidePartsTint(); }
 let tourSteps: TourStep[] = [];
 const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
@@ -2464,7 +2483,8 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
     }
     const W = hiR - loR + 30_000, H = hiU - loU + 30_000;   // the bodies, 15 µm of radius each side
     const freeH = Math.max(120, (1 - frac) * P - TOP - BOT), freeW = Math.max(120, Wpx - 2 * SIDE);
-    viewNm = Math.max(120_000, H * P / freeH, W * P / freeW);
+    // further out than the bodies alone, so the arbors show too (Ames 2026-11-12: "too far in")
+    viewNm = Math.max(200_000, H * P / freeH, W * P / freeW) * 1.4;
     v.projectionScale.value = viewNm / Math.min(nm[0], nm[1], nm[2]);
     // The box's middle goes to the middle of the free area: that many px
     // above the panel's centre, so the look point sits that far below it.
@@ -3588,10 +3608,11 @@ function frameBody(ts: number) {
   const nm = nmPerUnit();
   const cam = nm && cameraAxes(nm);
   if (cam) {
-    if (needsFrame) { settleFrame(cam); rememberHome(); }
+    if (needsFrame) { settleFrame(cam); rememberHome(); recordCam(); }
     if (phase === 'playing' || demo) stepModel(dt); else idleStep(dt);
     placeShip(cam, dt);
     stepGlide(dt);
+    watchCam();
     stepOrbit(dt, cam);
     stepReveals();
     writeGlow(cam);
