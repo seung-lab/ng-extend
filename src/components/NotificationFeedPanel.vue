@@ -219,14 +219,15 @@ const confirmDeleteAll = ref(false);
 // Hunt reports (Ames 2026-10-27: "a special category of hunt submission
 // notifications"), a third side of the Admin tab: clicking one opens the
 // reports queue, the oldest first (HuntReportCard).
-type FeedTab = 'mine' | 'updates' | 'access' | 'admin' | 'triage' | 'hunt';
-type AdminSide = 'access' | 'admin' | 'triage' | 'hunt';
+type FeedTab = 'mine' | 'updates' | 'access' | 'admin' | 'edits' | 'triage' | 'hunt';
+type AdminSide = 'access' | 'admin' | 'edits' | 'triage' | 'hunt';
 const TAB_KEY = 'nge-notif-tab';
-const feedTab = ref<FeedTab>((() => { try { const t = localStorage.getItem(TAB_KEY); return (['mine', 'updates', 'access', 'admin', 'triage', 'hunt'] as string[]).includes(t || '') ? t as FeedTab : 'mine'; } catch { return 'mine'; } })());
+const feedTab = ref<FeedTab>((() => { try { const t = localStorage.getItem(TAB_KEY); return (['mine', 'updates', 'access', 'admin', 'edits', 'triage', 'hunt'] as string[]).includes(t || '') ? t as FeedTab : 'mine'; } catch { return 'mine'; } })());
 watch(feedTab, t => { try { localStorage.setItem(TAB_KEY, t); } catch { /* private mode */ } });
 const kindOf = (n: { title?: string | null }) => notifKind(n.title, backend.isAdmin);
 const triageNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'triage'));
 const adminNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'admin'));
+const editNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'edits'));
 const accessNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'access'));
 const huntNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'hunt'));
 const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
@@ -251,21 +252,22 @@ const showTriageTab = computed(() => backend.showAdminUi && triageNotes.value.le
 // (Ames 2026-10-27: "Hunt Reports don't need to be there always, only during
 // a Hunt or Hunt Prep").
 const huntOn = computed(() => !!huntState.test || huntState.hunts.some(h => phaseNow(h) !== 'ended'));
+const showEditsTab = computed(() => backend.showAdminUi && editNotes.value.length > 0);
 const showHuntTab = computed(() => backend.showAdminUi && huntOn.value && huntNotes.value.length > 0);
 watch(huntOn, on => { backend.huntReportsShown = on; }, { immediate: true });
-const isAdminSide = (t: FeedTab): t is AdminSide => t === 'access' || t === 'admin' || t === 'triage' || t === 'hunt';
+const isAdminSide = (t: FeedTab): t is AdminSide => t === 'access' || t === 'admin' || t === 'edits' || t === 'triage' || t === 'hunt';
 watch(() => backend.showAdminUi, on => { if (!on && isAdminSide(feedTab.value)) feedTab.value = 'mine'; }, { immediate: true });
 // Admin and Triage share one tab, so four tabs fit (Ames 2026-10-25: "admins
 // will need a wider notifications tab"). It holds both, with a switch inside
 // it when both have notes; underneath they stay the two lists they were, so
 // Mark read, Delete all and loading more still work on the side you are on.
-const sideNotes = (t: AdminSide) => (t === 'access' ? accessNotes.value : t === 'admin' ? adminNotes.value : t === 'triage' ? triageNotes.value : huntNotes.value);
-const sideShown = (t: AdminSide) => (t === 'access' ? showAccessTab.value : t === 'admin' ? showAdminTab.value : t === 'triage' ? showTriageTab.value : showHuntTab.value);
-const ADMIN_SIDES: AdminSide[] = ['access', 'admin', 'triage', 'hunt'];
+const sideNotes = (t: AdminSide) => (t === 'access' ? accessNotes.value : t === 'admin' ? adminNotes.value : t === 'edits' ? editNotes.value : t === 'triage' ? triageNotes.value : huntNotes.value);
+const sideShown = (t: AdminSide) => (t === 'access' ? showAccessTab.value : t === 'admin' ? showAdminTab.value : t === 'edits' ? showEditsTab.value : t === 'triage' ? showTriageTab.value : showHuntTab.value);
+const ADMIN_SIDES: AdminSide[] = ['access', 'admin', 'edits', 'triage', 'hunt'];
 const showAdminGroup = computed(() => ADMIN_SIDES.some(sideShown));
 const onAdminGroup = computed(() => isAdminSide(feedTab.value));
 const showAdminSwitch = computed(() => onAdminGroup.value && ADMIN_SIDES.filter(sideShown).length > 1);
-const adminGroupUnread = computed(() => unreadIn(accessNotes.value) + unreadIn(adminNotes.value) + unreadIn(triageNotes.value) + (huntOn.value ? unreadIn(huntNotes.value) : 0));
+const adminGroupUnread = computed(() => unreadIn(accessNotes.value) + unreadIn(adminNotes.value) + unreadIn(editNotes.value) + unreadIn(triageNotes.value) + (huntOn.value ? unreadIn(huntNotes.value) : 0));
 let lastAdminSide: AdminSide = isAdminSide(feedTab.value) ? feedTab.value : 'admin';
 watch(feedTab, t => { if (isAdminSide(t)) lastAdminSide = t; });
 /** The Admin tab opens on the side with the newest unread note, else the side
@@ -288,6 +290,7 @@ watch(() => props.visible, open => {
   const tabs: [FeedTab, any[]][] = splitMain.value ? [['mine', mineNotes.value], ['updates', updateNotes.value]] : [['mine', mainNotes.value]];
   if (showAccessTab.value) tabs.push(['access', accessNotes.value]);
   if (showAdminTab.value) tabs.push(['admin', adminNotes.value]);
+  if (showEditsTab.value) tabs.push(['edits', editNotes.value]);
   if (showTriageTab.value) tabs.push(['triage', triageNotes.value]);
   if (showHuntTab.value) tabs.push(['hunt', huntNotes.value]);
   let best: FeedTab | null = null, bestAt = '';
@@ -1137,7 +1140,7 @@ function padRank(rank: number): string {
           v-if="showFeedTabs ? unreadIn(isAdminSide(feedTab) ? sideNotes(feedTab) : mainNotes) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
           @click="markAllRead()"
-        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && (feedTab === 'admin' || feedTab === 'access') ? 'Mark admin read' : showFeedTabs && feedTab === 'hunt' ? 'Mark reports read' : 'Mark all read' }}</button>
+        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && (feedTab === 'admin' || feedTab === 'access' || feedTab === 'edits') ? 'Mark admin read' : showFeedTabs && feedTab === 'hunt' ? 'Mark reports read' : 'Mark all read' }}</button>
         <!-- Separate from "mark all read" on purpose: read state controls the
              unread pip, this clears the feed. Only hides them for THIS user —
              the underlying notification rows are untouched. -->
@@ -1192,6 +1195,10 @@ function padRank(rank: number): string {
       <button v-if="showAdminTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
               title="To do board tags, players' answers to replies you asked for, and proofreading tests">
         To do and replies<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
+      </button>
+      <button v-if="showEditsTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'edits' }" role="tab" :aria-selected="feedTab === 'edits'" @click="feedTab = 'edits'"
+              title="Admins' edits of in-game windows, before and after">
+        Edits<b v-if="unreadIn(editNotes) > 0">{{ unreadIn(editNotes) }}</b>
       </button>
       <button v-if="showTriageTab" class="nge-notif-subtab nge-notif-subtab--triage" :class="{ 'nge-notif-subtab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'"
               title="Triage: bug reports and ideas from players, and what the triage loop did with them">

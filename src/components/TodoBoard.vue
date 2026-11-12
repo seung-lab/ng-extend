@@ -1081,7 +1081,7 @@ const ROLES: { key: Role; label: string; head: string }[] = [
   { key: 'item', label: 'Checklist', head: 'Checklist items for you' },
 ];
 const ROLE_WORD: Record<Role, string> = { owner: 'Owner', helper: 'With', tagged: 'Tagged', item: 'Checklist' };
-type Task = { key: string; card: Card; text: string; due: string | null; time?: string | null; item: number | null; at?: string; role?: Role };
+type Task = { key: string; card: Card; text: string; due: string | null; time?: string | null; item: number | null; at?: string; role?: Role; actId?: number };
 const MYTASKS_KEY = 'nge-todo-mytasks-view';
 const taskView = ref<{ role: Role | 'all'; group: 'due' | 'role' }>((() => {
   try { const v = JSON.parse(localStorage.getItem(MYTASKS_KEY) || 'null'); if (v && v.role && v.group) return v; } catch { /* default */ }
@@ -1161,9 +1161,133 @@ function withTagsAndReactions(groups: { head: string; rows: Task[]; late?: boole
   if (reacted.length && pick === 'all') groups.splice(tagged.length ? 1 : 0, 0, { head: 'Reactions to you', rows: reacted.sort((a, b) => (b.at || '').localeCompare(a.at || '')) });
   return groups;
 }
+// ── Activity (Ames 2026-11-12: "can we put the todo notifs on the todo page?",
+// "we need to be able to see replies here"). The board's own bell notes for
+// me (tags, replies, cards given to me, collaborations, finished cards I
+// follow, reminders), read from the same notifications as the bell: reading
+// one here reads it there too. ──
+type ActKind = 'tagged' | 'reply' | 'given' | 'finished' | 'reminder';
+interface Act { id: number; kind: ActKind; who: string; what: string; quote: string; cardId: string | null; cardTitle: string; at: string; read: boolean }
+const ACT_FILTERS: { key: ActKind | 'all'; label: string }[] = [
+  { key: 'all', label: 'All' }, { key: 'tagged', label: 'Tagged' }, { key: 'reply', label: 'Replies' },
+  { key: 'given', label: 'Given to me' }, { key: 'finished', label: 'Finished' }, { key: 'reminder', label: 'Reminders' },
+];
+const activity = ref<Act[]>([]);
+const activityOpen = ref(false);
+const activityFilter = ref<ActKind | 'all'>('all');
+const activityError = ref('');
+const TODO_LINK = /[?&]todo=([0-9a-f-]{36})/i;
+function readAct(n: any, reads: Set<number>): Act | null {
+  const title = String(n.title || ''), body = String(n.body || '');
+  const link = body.match(TODO_LINK);
+  if (!link) return null;
+  const cardId = link[1].toLowerCase();
+  const card = cards.value.find(c => c.id === cardId);
+  const quote = (body.match(/"([\s\S]*?)"\s*\n/) || [])[1] || '';
+  const cardTitle = card?.title || body.split('\n')[0].replace(/^.*?:\s*/, '');
+  let kind: ActKind = 'tagged', who = '', what = '';
+  const m = title.match(/^📋 (.+?) (tagged you on|replied to you on|gave you|added you as a collaborator on|finished) a To do/u);
+  if (m) {
+    who = m[1];
+    kind = m[2] === 'tagged you on' ? 'tagged' : m[2] === 'replied to you on' ? 'reply' : m[2] === 'finished' ? 'finished' : 'given';
+    what = m[2] === 'tagged you on' ? 'tagged you' : m[2] === 'replied to you on' ? 'replied to you' : m[2] === 'gave you' ? 'gave you this card' : m[2] === 'finished' ? 'finished' : 'added you as a collaborator';
+  } else if (title.startsWith('⏰')) {
+    kind = 'reminder'; who = ''; what = 'Still waiting on you';
+  } else if (title.startsWith('📋 ') && !title.startsWith('📋 Edited:')) {
+    what = title.replace(/^📋 /, '');
+  } else return null;
+  return { id: Number(n.id), kind, who, what, quote, cardId, cardTitle, at: String(n.send_at || ''), read: reads.has(Number(n.id)) };
+}
+async function loadActivity() {
+  const me = myId.value;
+  if (!me) return;
+  activityError.value = '';
+  try {
+    const { supabase } = await import('../supabase');
+    const since = new Date(Date.now() - 45 * 864e5).toISOString();
+    const { data, error: e1 } = await supabase.from('notifications').select('id,title,body,send_at')
+      .eq('target_type', 'user').eq('target_id', me).gte('send_at', since).lte('send_at', new Date().toISOString())
+      .ilike('body', '%todo=%').order('send_at', { ascending: false }).limit(200);
+    if (e1) throw e1;
+    const rows = (data || []) as any[];
+    const reads = new Set<number>();
+    // The gateway takes at most 100 values in one in().
+    for (let i = 0; i < rows.length; i += 90) {
+      const { data: r } = await supabase.from('notification_reads').select('notification_id').eq('user_id', me).in('notification_id', rows.slice(i, i + 90).map(x => x.id));
+      for (const x of (r || []) as any[]) reads.add(Number(x.notification_id));
+    }
+    for (const id of (backend.notificationReads || new Set()) as Set<number>) reads.add(Number(id));
+    activity.value = rows.map(n => readAct(n, reads)).filter(Boolean) as Act[];
+  } catch (e: any) {
+    activityError.value = `Could not load your activity: ${e?.message ?? String(e)}`;
+  }
+}
+async function markActsRead(acts: Act[]) {
+  const me = myId.value;
+  const fresh = acts.filter(a => !a.read);
+  if (!me || !fresh.length) return;
+  for (const a of fresh) a.read = true;
+  activity.value = [...activity.value];
+  try {
+    for (const a of fresh) backend.notificationReads?.add?.(a.id);
+    const { supabase } = await import('../supabase');
+    await supabase.from('notification_reads').upsert(fresh.map(a => ({ notification_id: a.id, user_id: me })), { onConflict: 'notification_id,user_id' });
+  } catch { /* read here, at least */ }
+}
+const activityShown = computed(() => activity.value.filter(a => activityFilter.value === 'all' || a.kind === activityFilter.value));
+const activityUnread = computed(() => activity.value.filter(a => !a.read).length);
+const activityGroups = computed(() => {
+  const day0 = new Date(new Date().toDateString()).getTime();
+  const g = [{ head: 'Today', rows: [] as Act[] }, { head: 'Yesterday', rows: [] as Act[] }, { head: 'Earlier', rows: [] as Act[] }];
+  for (const a of activityShown.value) { const t = Date.parse(a.at); g[t >= day0 ? 0 : t >= day0 - 864e5 ? 1 : 2].rows.push(a); }
+  return g.filter(x => x.rows.length);
+});
+function openAct(a: Act) {
+  void markActsRead([a]);
+  const c = a.cardId ? cards.value.find(x => x.id === a.cardId) : null;
+  if (!c) { error.value = 'That card is not on the board any more.'; return; }
+  activityOpen.value = false;
+  myTasksOpen.value = false;
+  if (a.kind === 'reply' || a.kind === 'tagged') openAt(c, 'comments'); else openUp(c);
+}
+// Opening a card reads its notes here too, as it does its tags.
+watch(openId, id => { if (id) void markActsRead(activity.value.filter(a => a.cardId === id)); });
+watch(myId, id => { if (id) void loadActivity(); }, { immediate: true });
+const ACT_ICON: Record<ActKind, string> = { tagged: '🏷', reply: '↩', given: '🤝', finished: '✓', reminder: '⏰' };
+// Replies in My Tasks: unread replies to me, and new comments by others on
+// cards I own or work on since I last opened them (14 days).
+const myReplies = computed(() => {
+  const me = myId.value;
+  if (!me) return [] as Task[];
+  const myName = people.value.find(p => p.id === me)?.name || '';
+  const out: Task[] = [];
+  const since = new Date(Date.now() - 14 * 864e5).toISOString();
+  const noted = new Set<string>();
+  for (const a of activity.value) {
+    if (a.read || a.kind !== 'reply' || !a.cardId) continue;
+    const c = cards.value.find(x => x.id === a.cardId);
+    if (!c || noted.has(c.id)) continue;
+    noted.add(c.id);
+    out.push({ key: 'reply:' + a.id, card: c, text: `${firstName(a.who)} replied${a.quote ? `: "${plainLine(a.quote).slice(0, 80)}"` : ''}`, due: null, item: -3, at: a.at, actId: a.id });
+  }
+  for (const c of cards.value) {
+    if (c.list === 'done' || noted.has(c.id)) continue;
+    if (c.owner_id !== me && !(helpers.value[c.id] || []).includes(me)) continue;
+    const seen = seenAt.value[c.id] || '';
+    const fresh = (c.comments || []).filter(cm => cm.by !== myName && cm.at > seen && cm.at > since);
+    if (!fresh.length) continue;
+    const last = fresh[fresh.length - 1];
+    out.push({ key: 'new:' + c.id, card: c, text: `${firstName(last.by)}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ''}: "${plainLine(last.text).slice(0, 80)}"`, due: null, item: -3, at: last.at });
+  }
+  return out.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+});
 // Reactions show in My Tasks but are not tasks, so they do not count (Ames 2026-11-09).
 const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.filter(t => t.item !== -2).length, 0));
-function openTask(t: Task) { myTasksOpen.value = false; if (t.item === -1 || t.item === -2) openAt(t.card, 'comments'); else openUp(t.card); }
+function openTask(t: Task) {
+  myTasksOpen.value = false;
+  if (t.actId) { const a = activity.value.find(x => x.id === t.actId); if (a) void markActsRead([a]); }
+  if (t.item === -1 || t.item === -2 || t.item === -3) openAt(t.card, 'comments'); else openUp(t.card);
+}
 // ── Reactions on comments ──
 const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 const reactPick = ref<string | null>(null);
@@ -2101,11 +2225,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
       <input v-model="search" type="search" class="nge-todo-search" :class="{ 'nge-todo-search--on': searchWords.length }" placeholder="🔍 Search cards" aria-label="Search cards"
              title="Finds cards by title, notes, checklist, comments, links or people, old finished ones too. Type me or @name for someone's cards; owner, with, tagged, checklist, overdue, week, nodate, unowned filter. Esc clears."
-             @focus="openId = null; myTasksOpen = false; searchFocused = true" @blur="searchFocused = false" @keydown.stop="onSearchKey" @keyup.stop @keypress.stop />
+             @focus="openId = null; myTasksOpen = false; activityOpen = false; searchFocused = true" @blur="searchFocused = false" @keydown.stop="onSearchKey" @keyup.stop @keypress.stop />
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★' : '☆' }}<span class="nge-todo-word"> Mine</span></button>
-      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; openId = null"
+      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; activityOpen = false; openId = null; if (myTasksOpen) loadActivity()"
               title="Everything that is yours: cards you own and checklist items for you, by due day">📌<span class="nge-todo-word"> My Tasks</span><b v-if="myTaskCount" class="nge-todo-mytasks-n">{{ myTaskCount }}</b></button>
+      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': activityOpen }" :disabled="!myId" @click="activityOpen = !activityOpen; myTasksOpen = false; openId = null; if (activityOpen) loadActivity()"
+              title="What happened on the board for you: tags, replies, cards given to you, finished cards you follow">🔔<span class="nge-todo-word"> Activity</span><b v-if="activityUnread" class="nge-todo-mytasks-n">{{ activityUnread }}</b></button>
       <button v-if="isOwner" class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': incompleteOpen }" title="Cards you closed as not finished. Only you see this." @click="incompleteOpen = !incompleteOpen; openId = null; connectOpen = false">⊘ Not finished <span v-if="incomplete.length" class="nge-todo-count">{{ incomplete.length }}</span></button>
       <button class="nge-todo-btn nge-todo-wide-only" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load()">↻<span class="nge-todo-word">{{ loading ? ' Loading…' : ' Refresh' }}</span></button>
@@ -2116,6 +2242,25 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               :title="f.hint" @click="toggleSearchWord(f.word)">{{ f.label }}</button>
       <span class="nge-todo-searchchip-hint">Type @name for someone else: "owner @celia" is Celia's own cards.</span>
       <button v-if="searchWords.length" type="button" class="nge-todo-mini" @click="search = ''">Clear</button>
+    </div>
+    <div v-if="activityOpen && !openCard && !myTasksOpen" class="nge-todo-mytasks-panel nge-todo-activity">
+      <div class="nge-todo-mytasks-head">🔔 Activity <span>{{ activityUnread }} new</span>
+        <button v-if="activityUnread" type="button" class="nge-todo-mini nge-todo-activity-all" @click="markActsRead(activity)">✓ Mark all read</button></div>
+      <div class="nge-todo-mytasks-filter">
+        <button v-for="f in ACT_FILTERS" :key="f.key" type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': activityFilter === f.key }" @click="activityFilter = f.key">{{ f.label }}</button>
+      </div>
+      <div v-if="activityError" class="nge-todo-warn">{{ activityError }}</div>
+      <div v-else-if="!activityGroups.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing here in the last 45 days.</div>
+      <section v-for="g in activityGroups" :key="g.head" class="nge-todo-mytasks-group">
+        <h4>{{ g.head }} · {{ g.rows.length }}</h4>
+        <button v-for="a in g.rows" :key="a.id" type="button" class="nge-todo-mytask nge-todo-act" :class="{ 'nge-todo-act--new': !a.read }" @click="openAct(a)">
+          <span class="nge-todo-act-dot" aria-hidden="true"></span>
+          <span class="nge-todo-mytask-kind">{{ ACT_ICON[a.kind] }}</span>
+          <span class="nge-todo-mytask-text"><b v-if="a.who">{{ a.who }}</b> {{ a.what }} <small>on {{ a.cardTitle }}</small>
+            <span v-if="a.quote" class="nge-todo-act-quote">"{{ plainLine(a.quote) }}"</span></span>
+          <span class="nge-todo-mytask-due">{{ ago(a.at) }}</span>
+        </button>
+      </section>
     </div>
     <div v-if="myTasksOpen && !openCard" class="nge-todo-mytasks-panel">
       <div class="nge-todo-mytasks-head">📌 My Tasks <span>{{ myTaskCount }} open</span></div>
@@ -2130,7 +2275,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button type="button" class="nge-todo-searchchip" :class="{ 'nge-todo-searchchip--on': taskView.group === 'role' }" @click="setTaskView({ group: 'role' })">How it is mine</button>
         </div>
       </div>
-      <div v-if="!myTasks.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
+      <section v-if="myReplies.length && (taskView.role === 'all' || taskView.role === 'tagged')" class="nge-todo-mytasks-group">
+        <h4 class="nge-todo-mytasks-replies">Replies and new comments · {{ myReplies.length }}</h4>
+        <button v-for="t in myReplies" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
+          <span class="nge-todo-mytask-kind">↩</span>
+          <span class="nge-todo-mytask-text">{{ t.text }}<small> on {{ t.card.title }}</small></span>
+          <span class="nge-todo-mytask-due">{{ ago(t.at || '') }}</span>
+        </button>
+      </section>
+      <div v-if="!myTasks.length && !myReplies.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
       <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
         <h4 :class="{ 'nge-todo-mytasks-late': g.late }">{{ g.head }} · {{ g.rows.length }}</h4>
         <button v-for="t in g.rows" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
@@ -2143,7 +2296,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </button>
       </section>
     </div>
-    <div v-if="!openCard && !notInstalled && !myTasksOpen" class="nge-todo-stats" aria-label="Board numbers">
+    <div v-if="!openCard && !notInstalled && !myTasksOpen && !activityOpen" class="nge-todo-stats" aria-label="Board numbers">
       <img :src="imgNurroHome" alt="" class="nge-todo-nurro" />
       <div class="nge-todo-stat nge-todo-stat--todo"><b>{{ stats.todo }}</b><span>to do</span></div>
       <div class="nge-todo-stat nge-todo-stat--doing"><b>{{ stats.doing }}</b><span>doing</span></div>
@@ -2166,11 +2319,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
-      <div v-if="isPhone && !openCard && !myTasksOpen" class="nge-todo-phonetabs" role="tablist">
+      <div v-if="isPhone && !openCard && !myTasksOpen && !activityOpen" class="nge-todo-phonetabs" role="tablist">
         <button v-for="col in columns" :key="col.key" type="button" role="tab" class="nge-todo-phonetab" :class="['nge-todo-phonetab--' + col.key, { 'nge-todo-phonetab--on': phoneList === col.key }]"
                 :aria-selected="phoneList === col.key" @click="phoneList = col.key">{{ col.title }} <b>{{ col.rows.length }}</b></button>
       </div>
-      <div v-if="!openCard && !myTasksOpen" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
+      <div v-if="!openCard && !myTasksOpen && !activityOpen" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
         <section v-for="col in columns" v-show="!isPhone || phoneList === col.key" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) && !isPhone }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
           <button v-if="isFolded(col.key) && !isPhone" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
@@ -3020,6 +3173,16 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-mytask-role--helper { color: #13998f; border-color: rgba(19, 153, 143, 0.4); }
 .nge-todo-mytask-role--tagged { color: #7c5cd6; border-color: rgba(124, 92, 214, 0.4); }
 .nge-todo-mytask-where { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+/* Activity (Ames 2026-11-12). */
+.nge-todo-activity .nge-todo-mytasks-filter { margin: 4px 0 10px; }
+.nge-todo-activity-all { margin-left: auto; }
+.nge-todo-act { align-items: flex-start; }
+.nge-todo-act-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; margin-top: 6px; background: transparent; }
+.nge-todo-act--new .nge-todo-act-dot { background: var(--accent); }
+.nge-todo-act--new .nge-todo-mytask-text { font-weight: 500; }
+.nge-todo-act:not(.nge-todo-act--new) { opacity: 0.78; }
+.nge-todo-act-quote { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.nge-todo-mytasks-replies { color: var(--accent); }
 /* Due time and organize by date (Ames 2026-11-12). */
 .nge-todo-time { width: auto; min-width: 104px; }
 .nge-todo-dategroup .nge-todo-section-name { cursor: default; }
