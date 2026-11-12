@@ -796,6 +796,8 @@ body.nge-mobile .nge-sig-go, body.nge-mobile .nge-sig-quiet { touch-action: mani
 .nge-sig-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 6px 0 4px; padding-left: 2px; font-size: 11px; line-height: 1.3; color: #a9c3de; }
 .nge-sig-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); vertical-align: -0.5px; }
 body.nge-mobile .nge-sig-map .node .role { display: none; }
+/* no room for the map on a phone (Ames 2026-11-12); the chips carry the wiring */
+body.nge-mobile .nge-sig-map { display: none !important; }
 body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 /* the scan: a hologram card the ship projects over a cell, as the intro's callouts */
 .nge-sig-tip { margin: 10px 0 0; font-size: 11.5px; color: #9fc6ea; }
