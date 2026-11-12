@@ -394,6 +394,32 @@ function nextWhenCellsAdded(count: number) {
     }, 400);
   }, 1500);
 }
+/** The merger spot box: a pasted cell joins the view, then a cell that was
+ *  in view before is hidden with its eye; then on. */
+function nextWhenAddedThenHidden() {
+  waitForAction();
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  setTimeout(() => {
+    const base = visibleIds();
+    let added = false;
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      const now = visibleIds();
+      if (!added) {
+        const fresh = [...now].filter(id => !base.has(id));
+        fresh.forEach(colorNewCell);
+        if (fresh.length) { added = true; sparkleEye(); }
+        return;
+      }
+      if ([...base].some(id => !now.has(id))) {
+        clearInterval(timer);
+        setTimeout(() => { if (here()) advance(); }, 1200);
+      }
+    }, 400);
+  }, 1500);
+}
 /** Each cell the player adds gets its own color, so a new cell stands
  *  apart from the ones already in view (Ames 2026-10-18). */
 const NEW_CELL_COLORS = [0xf5d142, 0x7cffb2, 0xb48cff, 0xff7aa8];
@@ -731,14 +757,17 @@ These lines converge at the point we are centered on and represent the volume's 
   {
     part: "Part 2 of 4 · Find your way",
     get text() { return `
-A collaborator found a branch with a merger and wants us to look. First, <strong>hide our cell</strong>: click the eye next to its ID in the Segments panel.
+A collaborator found a branch with a merger and wants us to look.
 
-Then copy this spot and <strong>paste it into the box at the top of the Segments panel</strong>. Pyr adds the cell there and jumps to it:
-
-${copyButton(MERGER_SPOT)}`; },
+<ol class="nge-tut-steps">
+<li>Copy this spot and <strong>paste it into the box at the top of the Segments panel</strong>. Pyr adds the cell there and jumps to it: ${copyButton(MERGER_SPOT)}</li>
+<li>Then <strong>hide our blue cell</strong>: click the eye next to its ID.</li>
+</ol>`; },
     width: "460px",
     position: { element: SEG_BOX, side: "left", offset: { x: 0, y: 0 } },
-    onEnter: () => { openSegmentsTab(); sparkleEye(); nextWhenCellsAdded(1); pointAtSegBox(); },
+    // Paste first, then the eye (Ames 2026-11-12). The eye sparkles once the
+    // new cell is in.
+    onEnter: () => { openSegmentsTab(); nextWhenAddedThenHidden(); pointAtSegBox(); },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
