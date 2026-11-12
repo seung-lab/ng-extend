@@ -703,9 +703,9 @@ function ensureStyle() {
    scifi-ui's cockpit HUD arrangement: objective bracket, the neurons
    involved as chips, the controls, one warm accent for the target. */
 .nge-sig { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 9500; isolation: isolate;
-  width: min(760px, calc(100vw - 20px)); box-sizing: border-box; padding: 12px 16px 12px;
-  color: #e6f3ff; font: 13.5px/1.4 'Inter', 'Roboto', sans-serif; animation: nge-sig-in 700ms cubic-bezier(.16,1,.3,1) both; }
-@keyframes nge-sig-in { 0% { opacity: 0; transform: translate(-50%, 16px) scaleY(0.05); filter: blur(6px) brightness(2); } 100% { opacity: 1; transform: translate(-50%, 0); filter: none; } }
+  width: min(760px, calc(100vw - 20px)); box-sizing: border-box; padding: 16px 20px 16px;
+  color: #e6f3ff; font: 13.5px/1.4 'Inter', 'Roboto', sans-serif; animation: nge-sig-in 300ms ease-out both; }
+@keyframes nge-sig-in { 0% { opacity: 0; } 100% { opacity: 1; } }
 .nge-sig--out { animation: nge-sig-out 350ms ease-in both; }
 @keyframes nge-sig-out { to { opacity: 0; transform: translate(-50%, 10px) scaleY(0.05); filter: blur(6px); } }
 .nge-sig-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none;
@@ -718,20 +718,26 @@ function ensureStyle() {
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
 .nge-sig-bg::after { content: ''; position: absolute; inset: 0; opacity: 0.4;
   background: radial-gradient(circle, rgba(255, 210, 122, 0.12) 0.9px, transparent 1.8px) 0 0 / 13px 13px; }
-.nge-sig-corner { position: absolute; width: 12px; height: 12px; border: 2px solid #7ee0ff; pointer-events: none; filter: drop-shadow(0 0 4px #7ee0ff); }
-.nge-sig-corner.tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
-.nge-sig-corner.bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
 /* the circuit traces: a bright run along the top and down the left from the
    cut corner, each ending in a node; the border itself fades to nothing
    toward the cut corner at the bottom right (Ames 2026-11-12: "the orange
    border draws attention to the bottom right; fade to 0 there and add
    circuit dots at the ends of the cyan border top left") */
-.nge-sig-trace { position: absolute; pointer-events: none; background: linear-gradient(90deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.5)); box-shadow: 0 0 5px rgba(126, 224, 255, 0.45); }
-.nge-sig-trace.t { top: 0; left: 16px; right: 16px; height: 1px; }
-.nge-sig-trace.l { left: 0; top: 16px; bottom: 16px; width: 1px; background: linear-gradient(180deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.5)); }
-.nge-sig-trace::before, .nge-sig-trace::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #7ee0ff; box-shadow: 0 0 6px #7ee0ff, 0 0 2px #fff; }
-.nge-sig-trace.t::before { left: -2px; top: -2px; } .nge-sig-trace.t::after { right: -2px; top: -2px; }
-.nge-sig-trace.l::before { top: -2px; left: -2px; } .nge-sig-trace.l::after { bottom: -2px; left: -2px; }
+.nge-sig-trace { position: absolute; pointer-events: none; }
+.nge-sig-trace.t { top: 0; left: 16px; right: 0; height: 1px; transform-origin: 0 50%; background: linear-gradient(90deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.35) 55%, rgba(126, 224, 255, 0)); animation: nge-sig-trace-x 700ms 320ms cubic-bezier(.2,.9,.2,1) both; }
+.nge-sig-trace.l { left: 0; top: 16px; bottom: 0; width: 1px; transform-origin: 50% 0; background: linear-gradient(180deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.35) 55%, rgba(126, 224, 255, 0)); animation: nge-sig-trace-y 700ms 420ms cubic-bezier(.2,.9,.2,1) both; }
+@keyframes nge-sig-trace-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes nge-sig-trace-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* the power-on: the screen opens as a bright line from the top left corner,
+   unfolds down, a scan line sweeps it, the traces draw themselves, and the
+   words come in from the top */
+.nge-sig-bg { transform-origin: 0 0; animation: nge-sig-bg-in 760ms cubic-bezier(.2,.9,.2,1) both; }
+@keyframes nge-sig-bg-in { 0% { transform: scale(0.2, 0.02); filter: brightness(3.2) saturate(0.3); } 40% { transform: scale(1, 0.02); filter: brightness(2.4); } 100% { transform: scale(1, 1); filter: none; } }
+.nge-sig-sweep { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(126, 224, 255, 0) 0%, rgba(126, 224, 255, 0.22) 50%, rgba(126, 224, 255, 0) 100%) 0 -80px / 100% 80px no-repeat; animation: nge-sig-sweep 900ms 300ms ease-out both; }
+@keyframes nge-sig-sweep { from { background-position-y: -80px; } to { background-position-y: calc(100% + 80px); } }
+.nge-sig-scroll { animation: nge-sig-content-in 650ms 380ms cubic-bezier(.2,.9,.2,1) both; }
+@keyframes nge-sig-content-in { 0% { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateY(4px); filter: brightness(1.7); } 55% { opacity: 1; clip-path: inset(0); filter: brightness(1.25); } 100% { opacity: 1; clip-path: inset(0); transform: none; filter: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-sig-bg, .nge-sig-sweep, .nge-sig-scroll, .nge-sig-trace { animation: none !important; } }
 /* the head is the Pyr gem, the view switch and two small buttons; the level's
    name sits at the foot (Ames 2026-11-11: "remove (put Level 1 at the
    bottom)", "put the Pyr icon in the ui box") */
@@ -742,8 +748,8 @@ function ensureStyle() {
 .nge-sig .nge-sig-view button { padding: 4px 9px; border: 0; border-radius: 0; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
 .nge-sig .nge-sig-view button[aria-pressed="true"] { background: rgba(126, 224, 255, 0.22); color: #e6f7ff; text-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
 .nge-sig .nge-sig-view button:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
-.nge-sig .nge-sig-share { padding: 4px 9px; border: 1px solid rgba(255, 210, 122, 0.5); border-radius: 6px; background: rgba(255, 210, 122, 0.08); color: #ffd98a; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
-.nge-sig .nge-sig-share:hover { background: rgba(255, 210, 122, 0.18); color: #fff; }
+.nge-sig .nge-sig-share { flex: none; padding: 4px 9px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+.nge-sig .nge-sig-share:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
 .nge-sig-dot { width: 7px; height: 7px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-sig-blink 1.1s infinite; }
 @keyframes nge-sig-blink { 50% { opacity: 0.25; } }
 .nge-sig-note .lvl { display: block; margin-bottom: 3px; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #7ecaff; }
@@ -952,8 +958,7 @@ body.nge-mobile .nge-sig-go, body.nge-mobile .nge-sig-quiet { touch-action: mani
    control to left, more area for control panel"), the cells get the whole
    height and the width to its right. */
 @media (min-width: 1000px) {
-  .nge-sig { left: 16px; right: auto; bottom: auto; top: 16px; transform: none; width: min(448px, 40vw); max-height: calc(100vh - 140px); display: flex; flex-direction: column; padding: 12px 16px 12px;
-    animation-name: nge-sig-in-side; }
+  .nge-sig { left: 16px; right: auto; bottom: auto; top: 16px; transform: none; width: min(448px, 40vw); max-height: calc(100vh - 140px); display: flex; flex-direction: column; padding: 18px 22px 18px; }
   /* Only the content scrolls, and only when it must: the corner brackets
      poke out of the plate, and on the plate itself they made both scrollbars
      appear with everything in view (Ames 2026-11-08). */
@@ -1070,6 +1075,9 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 .nge-sig-chart .h, .nge-sig-chart .row { display: grid; grid-template-columns: 1fr 66px 66px; gap: 8px; align-items: center; }
 .nge-sig-chart .h { margin-bottom: 5px; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; }
 .nge-sig-chart .h[data-show] { cursor: pointer; }
+.nge-sig-chart.local .key[data-gem] { cursor: pointer; }
+.nge-sig-chart.local .key[data-gem]:hover { text-decoration: underline; }
+.nge-sig-chart.local .key[data-gem].on { text-shadow: 0 0 8px var(--c), 0 0 2px #fff; }
 .nge-sig-chart .h.on span:first-child { color: #7ee0ff; text-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
 .nge-sig-chart .row { margin: 3px 0; font-size: 11.5px; }
 .nge-sig-chart .row .key { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; color: var(--c); }
@@ -1232,13 +1240,13 @@ function buildPanel() {
   panel.className = 'ng-extend nge-sig';
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Signal Controller');
-  panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i><i class="nge-sig-trace t"></i><i class="nge-sig-trace l"></i><div class="nge-sig-scroll">
+  panel.innerHTML = `<span class="nge-sig-bg"><i class="nge-sig-sweep"></i></span><i class="nge-sig-trace t"></i><i class="nge-sig-trace l"></i><div class="nge-sig-scroll">
     <div class="nge-sig-head"><i class="nge-sig-gem" aria-hidden="true"></i><span class="nge-sig-view-key">View</span><span class="nge-sig-view" data-el="view" role="group" aria-label="View"><button type="button" data-view="ship" aria-pressed="true" title="The ship in the scene: it flies to the cells you scan">Ship</button><button type="button" data-view="cockpit" aria-pressed="false" title="From the ship's cockpit: the canopy, the reticle, the readouts">Cockpit</button></span>
-      <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
       <button class="nge-sig-edit" type="button" data-el="edit" title="Edit the words on this page">✎</button>
       <button class="nge-sig-data" type="button" data-el="data" title="The cell's data: the last cell you tapped, or the gold cell"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4 6h6M4 8.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
       <button class="nge-sig-fold" type="button" data-el="fold" title="Fold the panel away, or open it again" aria-expanded="true"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
+      <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
       <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
       <div class="nge-sig-stats"><div>Progress<b data-el="progress">0</b></div><div>Time<b data-el="time">0</b></div><div>Score<b data-el="score">0</b></div></div></div>
@@ -1940,7 +1948,7 @@ const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
   // The gold cell first, whole, the others grey, a sweep of light down it;
   // the ship goes and lands on it (Ames 2026-11-11: "this should be step 1").
-  {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Your target.',
+  {kicker: 'A real neuron', text: 'A real pyramidal neuron from the brain. Your target.',
     play: async alive => {
       dimOthers('T');
       await sleep(300); if (!alive()) return;
@@ -2253,7 +2261,7 @@ function renderTourStep() {
   // the map joins once the drivers are introduced (Ames 2026-11-11: "we don't need this in every box")
   els.map.style.display = tourAt >= (MAP_FROM[levelIndex] ?? 0) ? '' : 'none';
   const textKey = `tour.${levelIndex}.${tourAt}.text`, subKey = `tour.${levelIndex}.${tourAt}.sub`;
-  els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length} · ${step.kicker}</div>
+  els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length}</div>
     <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}${step.html ? figureHtml(step.html) : ''}
     <div class="nge-sig-row">${tourAt ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="back" title="Back" aria-label="Back">${BACK_SVG}</button>` : ''}<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${step.play ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="replay" title="Replay" aria-label="Replay">${REPLAY_SVG}</button>` : ''}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
@@ -3120,7 +3128,6 @@ function scan(key: string) {
   scanLit = key;
   for (const o of cells.values()) if (o.shown) paint(o, o.key !== key, o.key !== key);
   refreshSkip();
-  gemsFor(key);
   if (view === 'cockpit') glideTo(c);
   if (there) fireScan();   // already hovering here: the beam again, at once
 }
@@ -3154,18 +3161,30 @@ function clearGems(remove = false) {
   try { managed.layer?.localAnnotations?.clear(); } catch { /* stays */ }
 }
 /** The synapses between a cell and the level's targets, either way round. */
-function gemsFor(key: string) {
-  const c = cells.get(key);
-  if (!c) return;
+/** The synapses between the scanned cell and one partner, as Pyr gems, on a
+ *  click on the partner's name in the card (a second click takes them away).
+ *  They used to come with every scan, unexplained (Ames 2026-11-12: "pyr gems
+ *  are randomly appearing when I click cells; they're out of place here"). */
+let gemPair: string | null = null;
+function toggleGems(partner: string) {
+  if (!scanKey) return;
+  if (gemPair === partner) { clearGems(); gemPair = null; markGemRows(); return; }
   const pts: V3[] = [];
+  let onto = 0, from = 0;
   for (const k of conns) {
-    const other = k.pre === key ? k.post : k.post === key ? k.pre : null;
-    if (!other) continue;
-    const oc = cells.get(other);
-    if (!oc?.shown || !(oc.target || c.target)) continue;
-    pts.push(...k.synapses);
+    if (k.pre === scanKey && k.post === partner) { pts.push(...k.synapses); onto += k.count; }
+    else if (k.pre === partner && k.post === scanKey) { pts.push(...k.synapses); from += k.count; }
   }
-  if (pts.length) showGems(pts, '#ffc24a'); else clearGems();
+  if (!pts.length) { say(`No synapses between ${scanKey} and ${partner} in the release.`, 2.6); return; }
+  const oc = cells.get(partner);
+  showGems(pts, oc ? `rgb(${oc.color.join(',')})` : '#ffc24a');
+  gemPair = partner;
+  markGemRows();
+  const parts = [onto ? `${onto} from ${scanKey} onto ${partner}` : '', from ? `${from} from ${partner} onto ${scanKey}` : ''].filter(Boolean).join(', ');
+  say(`${pts.length} synapse${pts.length === 1 ? '' : 's'} between ${scanKey} and ${partner}: ${parts}. The gems mark them.`, 4);
+}
+function markGemRows() {
+  for (const el of document.querySelectorAll<HTMLElement>('.nge-sig-scan [data-gem], .nge-sig-canopy [data-gem]')) el.classList.toggle('on', el.dataset.gem === gemPair);
 }
 /** The scan's fade undone: each cell as the tour or its hush would have it. */
 function unfadeScan() {
@@ -3318,7 +3337,7 @@ function chartsHtml(r: Readout): string {
     const max = Math.max(1, ...r.local.map(x => Math.max(x.from, x.to)));
     const bar = (nn: number, cls: string, show: ShowWhat) => `<span class="bar ${cls}" data-show="${show}" title="Light them on the cell"><i style="width:${Math.round(nn / max * 100)}%"></i><em>${nn ? fmt(nn) : ''}</em></span>`;
     html += `<div class="nge-sig-chart local"><div class="h"><span>Local partners</span><span>from</span><span>to</span></div>${r.local.map(x =>
-      `<div class="row"><b class="key" style="--c:rgb(${x.color.join(',')})">${esc(x.key)}</b>${bar(x.from, 'from', 'in')}${bar(x.to, 'to', 'axon')}</div>`).join('')}</div>`;
+      `<div class="row"><b class="key" data-gem="${esc(x.key)}" title="Mark the synapses between the two cells with gems" style="--c:rgb(${x.color.join(',')})">${esc(x.key)}</b>${bar(x.from, 'from', 'in')}${bar(x.to, 'to', 'axon')}</div>`).join('')}</div>`;
   }
   if (r.partners) {
     const list = (items: Partner[], cls: string) => {
@@ -3406,7 +3425,13 @@ function showCanopy() {
     <button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button>`;
   document.body.appendChild(canopyEl);
   (canopyEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => endVisit();
-  canopyEl.onclick = e => { if (canopyDragged) return; const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses'); };
+  canopyEl.onclick = e => {
+    if (canopyDragged) return;
+    const g = (e.target as HTMLElement | null)?.closest?.('[data-gem]') as HTMLElement | null;
+    if (g) { toggleGems(g.dataset.gem!); return; }
+    const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null;
+    if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses');
+  };
   canopySized = '';
   canopyEl.querySelectorAll<HTMLElement>('.block').forEach(b => canopyDrag(b, b.dataset.name || ''));
   requestAnimationFrame(() => canopyEl?.classList.add('nge-sig-canopy--on'));
@@ -3491,7 +3516,12 @@ function showScan(key: string, full = false) {
     };
     box.onpointerup = box.onpointercancel = () => { box.classList.remove('dragging'); box.onpointermove = box.onpointerup = box.onpointercancel = null; };
   };
-  box.onclick = e => { const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null; if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses'); };
+  box.onclick = e => {
+    const g = (e.target as HTMLElement | null)?.closest?.('[data-gem]') as HTMLElement | null;
+    if (g) { toggleGems(g.dataset.gem!); return; }
+    const t = (e.target as HTMLElement | null)?.closest?.('[data-show]') as HTMLElement | null;
+    if (t) toggleShow(t.dataset.show as ShowWhat | 'synapses');
+  };
   buildIn(box);
   if (phone()) {
     // on a phone the card opens compact: the name and the two synapse counts
@@ -3508,7 +3538,7 @@ function showScan(key: string, full = false) {
 }
 function hideScan(keepLit = false) {
   scanEl?.remove();
-  scanEl = null; scanKey = null; scanPin = null; showing = new Set();
+  scanEl = null; scanKey = null; scanPin = null; showing = new Set(); gemPair = null;
   if (scanLit && !keepLit) { scanLit = null; unfadeScan(); refreshSkip(); }
   clearGems();
   clearCanopy();
