@@ -283,7 +283,7 @@ function setView(v: ViewMode) {
   view = v;
   try { localStorage.setItem('pyr.signal.view', v); } catch { /* not kept */ }
   els.view?.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === v)));
-  shipProp.alpha = v === 'cockpit' ? 0 : 1;
+  shipProp.alpha = v === 'cockpit' || document.body.classList.contains('nge-mobile') ? 0 : 1;   // no ship on a phone (Ames 2026-11-12)
   if (v === 'cockpit') showCanopy(); else hideCanopy();
   if (scanKey) showScan(scanKey); else hideScan();
 }
@@ -418,7 +418,7 @@ function shadeSomaProps() {
     prop.rim = c.dimmed ? [col[0] * 0.35, col[1] * 0.35, col[2] * 0.35] : [col[0] * 0.5 + 0.5, col[1] * 0.5 + 0.5, col[2] * 0.5 + 0.5];
   }
 }
-function syncProps() { setNgeProps([shipProp, ...somaProps], GROUP); }
+function syncProps() { setNgeProps([...(phone() ? [] : [shipProp]), ...somaProps], GROUP); }   // no ship on a phone (Ames 2026-11-12: "remove the ship on mobile")
 const MAX_GLOW = 24_000;   // room for every synapse of a cell, and an arbor's wave
 const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Float32Array(MAX_GLOW * 4), sizesNm: new Float32Array(MAX_GLOW), count: 0, nmRight: [1, 0, 0]};
 /** Beacons on the cell bodies, drawn through everything so a body is seen
