@@ -14,7 +14,7 @@ import {
   advance, classicLayers, findPathStep, nextWhenAnnotationLayerAdded,
   OVER_3D, SELECT_CLICK, waitForAction,
 } from "./tutorial-2";
-import { stopWatching } from "./tutorial-3";
+import { startTutorialButton, stopWatching } from "./tutorial-3";
 import imgNurroAtHome from "./images/nurro-at-home600.png";
 import { supabase } from "./supabase";
 import { useProofreadingBackendStore } from "./store";
@@ -391,7 +391,7 @@ Points come in sizes. Each line ticks itself off:
     text: `
 Last one: <strong>Find Path</strong> draws the route through a cell between two points, placed with the same CTRL+CLICK.
 
-This cell has <strong>two somas</strong>, so it is really two cells stuck together: a merger. <strong>Press F</strong>, then <strong>CTRL+CLICK on one soma</strong> and then <strong>on the other</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or click <strong>Submit</strong> in the Find Path bar).
+This cell has <strong>two somas</strong>, so it is really two cells stuck together: a merger. We've switched Find Path on: <strong>CTRL+CLICK on one soma</strong> and then <strong>on the other</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or click <strong>Submit</strong> in the Find Path bar).
 
 We've made the cell see through, so the path stands out. Your marks come along.`,
     width: "500px",
@@ -416,7 +416,11 @@ Please leave this cell as it is, so the next player finds the same merger.`,
   {
     part: PART,
     text: `
-That's annotations! Your layers stay in your view, ready for your next cell.`,
+That's annotations! Your layers stay in your view, ready for your next cell.
+
+Next is **Advanced Interface**: working with many cells, finding your way, and the tools for tracking down mergers.
+
+<div style="text-align:center;margin:12px 0 4px">${startTutorialButton(2, 'Start Advanced Interface')}</div>`,
     image: imgNurroAtHome,
     position: { element: "body", x: 0.84, y: 0.4 },
     width: "380px",

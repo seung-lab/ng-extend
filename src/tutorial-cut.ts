@@ -281,9 +281,9 @@ The red and blue dots on the images show where the points go.`,
 
 The cells you practised on are put back for the next person. Happy proofreading!
 
-Good, you've learned the basics of cut. Next is **Advanced Interface**: annotations, finding your way, working with many cells, and using **Find Path** to track down where a merger starts. After that, the Merger Sandbox's **${SANDBOX_TOTAL} mergers** put it all to work.
+Good, you've learned the basics of cut. Next is **Annotations**: marking what you see with gems, lines and colors, and a first look at **Find Path**. Then **Advanced Interface**, and after that the Merger Sandbox's **${SANDBOX_TOTAL} mergers** put it all to work.
 
-<div style="text-align:center;margin:16px 0 18px">` + startTutorialButton(2, 'Start Advanced Interface') + `</div>
+<div style="text-align:center;margin:16px 0 18px">` + startTutorialButton(15, 'Start Annotations') + `</div>
 
 <a href="` + CHEAT_SHEET_URL + `" target="_blank" rel="noopener" style="color:#7ecaff">Open the cheat sheet in a new tab ↗</a>`,
     position: MIDDLE,
