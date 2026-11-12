@@ -30,8 +30,11 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $fn$
          count(*)::int
   FROM r, t WHERE r.k <> '' GROUP BY r.k;
 $fn$;
-REVOKE ALL ON FUNCTION public.ew_quest_board(text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.ew_quest_board(text) TO authenticated, service_role;
+-- Pyr reads Supabase as anon (it never signs in there; players sign in through
+-- CAVE), so anon must run it: without this the Quests tab said "The quest
+-- sheet could not be read just now" for everyone (Ames 2026-11-12).
+REVOKE ALL ON FUNCTION public.ew_quest_board(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.ew_quest_board(text) TO anon, authenticated, service_role;
 
 NOTIFY pgrst, 'reload schema';
 
