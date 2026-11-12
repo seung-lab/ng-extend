@@ -22,6 +22,7 @@ cell that drives I2 (S).
     python scripts/signal-circuit.py          (needs caveclient and a CAVE token)
     python scripts/signal-circuit.py --counts-only   (only the synapse totals, into the existing file)
     python scripts/signal-circuit.py --partners-only (only the partners by cell type, into the existing file)
+    python scripts/signal-circuit.py --parts-only    (one file a cell: arbors with path distances, every synapse)
 """
 import json, os, sys, time
 import numpy as np
@@ -175,6 +176,88 @@ def add_partners():
     print(f'wrote {OUT}')
 
 
+def arbor_points(skel, comps, step=3000):
+    """The skeleton's vertices of those compartments, one every `step` nm of
+    path from the soma, each with its path distance: [x, y, z, d] in nm. A
+    wavefront drawn at distance d then runs down every branch at once."""
+    n = len(skel.V)
+    dist = np.zeros(n)
+    order = []
+    # parents come before children in a traversal from the root
+    stack = [skel.root]
+    kids = [[] for _ in range(n)]
+    for v in range(n):
+        if skel.parent[v] >= 0:
+            kids[skel.parent[v]].append(v)
+    while stack:
+        u = stack.pop()
+        order.append(u)
+        for w in kids[u]:
+            dist[w] = dist[u] + float(np.linalg.norm(skel.V[w] - skel.V[u]))
+            stack.append(w)
+    out = []
+    for v in order:
+        p = skel.parent[v]
+        if p < 0 or not len(skel.comp) or skel.comp[v] not in comps:
+            continue
+        if int(dist[v] // step) > int(dist[p] // step):
+            x, y, z = skel.V[v]
+            out.append([int(x), int(y), int(z), int(dist[v])])
+    return out
+
+
+def add_parts():
+    """One file a cell, static/signal/cell-<root>.json: its axon and dendrite
+    arbors as points with their distance from the soma (arbor_points), and
+    every synapse it makes and receives in the release, by position
+    (Ames 2026-11-11: "axon animation is cool, it should propagate out and
+    down all the branches"; "synapses, can we see all 3,000?")."""
+    c = CAVEclient('minnie65_public', version=VERSION)
+    with open(OUT) as f:
+        data = json.load(f)
+    ids = [int(cell['root']) for cell in data['cells']]
+    print('synapse positions...')
+    out_ = c.materialize.synapse_query(pre_ids=ids).reset_index(drop=True)
+    in_ = c.materialize.synapse_query(post_ids=ids).reset_index(drop=True)
+    out_pos = positions(out_, 'ctr_pt_position'); in_pos = positions(in_, 'ctr_pt_position')
+    out_pre = out_.pre_pt_root_id.astype(int).to_numpy(); out_post = out_.post_pt_root_id.astype(int).to_numpy()
+    in_pre = in_.pre_pt_root_id.astype(int).to_numpy(); in_post = in_.post_pt_root_id.astype(int).to_numpy()
+    folder = os.path.dirname(OUT)
+    for cell in data['cells']:
+        r = int(cell['root'])
+        t0 = time.time()
+        path = os.path.join(folder, f'cell-{r}.json')
+        # a file already holding arbors is done; one without gets another try
+        # at the skeleton service (it answered 503 on 2026-11-11)
+        old = None
+        if os.path.exists(path):
+            with open(path) as f:
+                old = json.load(f)
+            if old.get('arbor', {}).get('axon'):
+                print(f"  {cell['key']:3s} already has its arbors")
+                continue
+        axon, dend = [], []
+        for attempt in range(3):
+            try:
+                sk = Skel(c.skeleton.get_skeleton(r, skeleton_version=4, output_format='dict'))
+                axon = arbor_points(sk, (2,))
+                dend = arbor_points(sk, (3, 4))
+                break
+            except Exception as e:  # noqa: BLE001
+                print(f"  {cell['key']:3s} skeleton attempt {attempt + 1} failed: {str(e)[:80]}")
+                time.sleep(20)
+        so = out_pos[(out_pre == r) & (out_post != r)]
+        si = in_pos[(in_post == r) & (in_pre != r)]
+        part = {
+            'root': str(r),
+            'arbor': {'axon': axon, 'dend': dend},
+            'syn': {'out': [[int(v) for v in p] for p in so], 'in': [[int(v) for v in p] for p in si]},
+        }
+        with open(path, 'w') as f:
+            json.dump(part, f, separators=(',', ':'))
+        print(f"  {cell['key']:3s} axon {len(axon)} pts, dendrites {len(dend)} pts, synapses {len(si)} in {len(so)} out, {os.path.getsize(path) // 1024} KB ({time.time() - t0:.1f}s)")
+
+
 def add_counts():
     """Add synIn and synOut to the cells of an existing circuit.json."""
     c = CAVEclient('minnie65_public', version=VERSION)
@@ -195,6 +278,9 @@ def main():
         return
     if '--partners-only' in sys.argv:
         add_partners()
+        return
+    if '--parts-only' in sys.argv:
+        add_parts()
         return
     c = CAVEclient('minnie65_public', version=VERSION)
     ids = [r for _, r in CELLS]

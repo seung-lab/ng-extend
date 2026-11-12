@@ -86,7 +86,7 @@ const LEVELS: Level[] = [
   // Level 1 is one driver and a rhythm (Ames 2026-11-08: "click some
   // pyramidal neurons to fire downstream at the right frequency"): two quick
   // sparks on E1 add up at the gold cell; slow ones leak away first.
-  {title: 'First Light', objective: 'Fire the gold cell 3 times', detail: 'E1 twice, quickly, each time', timeS: 60, par: 6,
+  {title: 'First Light', objective: 'Spike the gold cell', detail: '3 times: E1 twice, quickly, each time', timeS: 60, par: 6,
     brief: 'These are real neurons from the brain: an excitatory pyramidal cell (gold) and four of the cells that drive it.\nYour Spark beam fires a cell, and its spike runs down the axon to the gold cell. One spike is not enough on its own, but spikes that arrive close together add up.\nE1 makes the most synapses onto the gold cell, five, so two quick spikes from it are enough on their own. The other drivers carry less and need company.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4'], targets: ['T'], hush: false,
     goal: {kind: 'fire', target: 'T', count: 3},
@@ -317,7 +317,7 @@ function stepGlide(dt: number) {
 /** The ship's look, after scifi-ui's goldOnBlue hologram: a cool blue body, a molten gold rim. */
 const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.05, 0.14, 0.38], rim: [1.0, 0.82, 0.48], shade: 1.1};
 const GROUP = 'signal';
-const MAX_GLOW = 4200;
+const MAX_GLOW = 24_000;   // room for every synapse of a cell, and an arbor's wave
 const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Float32Array(MAX_GLOW * 4), sizesNm: new Float32Array(MAX_GLOW), count: 0, nmRight: [1, 0, 0]};
 
 const thetaOf = (key: string) => THRESHOLD[key] ?? DEFAULT_THRESHOLD;
@@ -454,8 +454,8 @@ function ensureStyle() {
   background: linear-gradient(135deg, rgba(126, 224, 255, 0.75), rgba(74, 150, 224, 0.25) 40%, rgba(255, 210, 122, 0.65));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
-.nge-sig-bg::after { content: ''; position: absolute; inset: 0; opacity: 0.5;
-  background: radial-gradient(circle, rgba(255, 210, 122, 0.16) 0.7px, transparent 1.3px) 0 0 / 10px 10px; }
+.nge-sig-bg::after { content: ''; position: absolute; inset: 0; opacity: 0.4;
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.12) 0.9px, transparent 1.8px) 0 0 / 13px 13px; }
 .nge-sig-corner { position: absolute; width: 12px; height: 12px; border: 2px solid #7ee0ff; pointer-events: none; filter: drop-shadow(0 0 4px #7ee0ff); }
 .nge-sig-corner.tr { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
 .nge-sig-corner.bl { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
@@ -469,6 +469,8 @@ function ensureStyle() {
 .nge-sig .nge-sig-view button { padding: 4px 9px; border: 0; border-radius: 0; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
 .nge-sig .nge-sig-view button[aria-pressed="true"] { background: rgba(126, 224, 255, 0.22); color: #e6f7ff; text-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
 .nge-sig .nge-sig-view button:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
+.nge-sig .nge-sig-share { padding: 4px 9px; border: 1px solid rgba(255, 210, 122, 0.5); border-radius: 6px; background: rgba(255, 210, 122, 0.08); color: #ffd98a; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+.nge-sig .nge-sig-share:hover { background: rgba(255, 210, 122, 0.18); color: #fff; }
 .nge-sig-dot { width: 7px; height: 7px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-sig-blink 1.1s infinite; }
 @keyframes nge-sig-blink { 50% { opacity: 0.25; } }
 .nge-sig-note .lvl { display: block; margin-bottom: 3px; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #7ecaff; }
@@ -706,7 +708,7 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
    hologram shader for the UI / ship's hologram"). */
 .nge-sig-scan-box { position: fixed; width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 11px 15px 12px; pointer-events: auto; transform-origin: 50% 100%; cursor: grab; touch-action: none; user-select: none;
   border: 1px solid rgba(255, 210, 122, 0.85); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  background: radial-gradient(circle, rgba(255, 210, 122, 0.22) 0.7px, transparent 1.3px) 0 0 / 9px 9px, linear-gradient(160deg, rgba(34, 104, 200, 0.62), rgba(8, 30, 72, 0.8) 55%, rgba(14, 44, 98, 0.74));
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.13) 0.9px, transparent 1.8px) 0 0 / 13px 13px, linear-gradient(160deg, rgba(34, 104, 200, 0.62), rgba(8, 30, 72, 0.8) 55%, rgba(14, 44, 98, 0.74));
   backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.22), inset 0 0 30px rgba(62, 150, 240, 0.35), 0 0 12px rgba(255, 194, 74, 0.35), 0 0 34px rgba(255, 194, 74, 0.14), 0 10px 30px rgba(0, 0, 0, 0.5);
   color: #f2fbff; font: 13.5px/1.4 'Inter', 'Roboto', sans-serif;
   animation: nge-sig-proj-in 520ms cubic-bezier(.2,1,.3,1) both, nge-sig-glitch 7s 2s infinite; }
@@ -740,6 +742,24 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 .nge-sig-canopy [data-show] { pointer-events: auto; }
 .nge-sig-readouts li[data-show]:hover .k, .nge-sig-wiring dt[data-show]:hover, .nge-sig-wiring dd[data-show]:hover { color: #bfe6ff; }
 .nge-sig-readouts li.on b, .nge-sig-readouts li.on .k, .nge-sig-wiring dt.on, .nge-sig-wiring dd.on { color: #7ee0ff; text-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
+.nge-sig-chart { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid rgba(126, 224, 255, 0.22); }
+.nge-sig-chart .h, .nge-sig-chart .row { display: grid; grid-template-columns: 1fr 66px 66px; gap: 8px; align-items: center; }
+.nge-sig-chart .h { margin-bottom: 5px; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; }
+.nge-sig-chart .h[data-show] { cursor: pointer; }
+.nge-sig-chart .h.on span:first-child { color: #7ee0ff; text-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
+.nge-sig-chart .row { margin: 3px 0; font-size: 11.5px; }
+.nge-sig-chart .row .key { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; color: var(--c); }
+.nge-sig-chart .lbl { color: #dbe9fa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nge-sig-chart .bar { position: relative; display: block; height: 14px; border-radius: 2px; background: rgba(126, 224, 255, 0.08); }
+.nge-sig-chart .bar[data-show] { cursor: pointer; }
+.nge-sig-chart .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: #7ee0ff; opacity: 0.75; }
+.nge-sig-chart .bar.from i { background: #ffc24a; }
+.nge-sig-chart .bar.untyped i { background: #7f97b3; opacity: 0.45; }
+.nge-sig-chart .bar em { position: absolute; right: 4px; top: 0; line-height: 14px; font: 600 10px 'Inter', sans-serif; font-style: normal; color: #f4f9ff; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+.nge-sig-chart .bar.on { outline: 1px solid rgba(126, 224, 255, 0.8); outline-offset: 1px; }
+.nge-sig-chart .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.nge-sig-chart .two .row { grid-template-columns: 1fr 56px; gap: 6px; }
+.nge-sig-chart .sub { margin: 2px 0 4px; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; }
 .nge-sig-scan .prov, .nge-sig-canopy .prov { margin: 10px 0 0; padding-top: 7px; border-top: 1px solid rgba(126, 224, 255, 0.22); font-size: 10px; line-height: 1.5; color: #7f97b3; font-variant-numeric: tabular-nums; }
 /* The cockpit view: Pyr's Flight Mode canopy over the free part of the 3D
    view, the reticle locked on the scanned cell body, the readout laid around
@@ -762,7 +782,7 @@ body.nge-mobile .nge-sig-legend { font-size: 10px; gap: 3px 10px; }
 .nge-sig-canopy .reticle .ring { animation: nge-sig-reticle 9s linear infinite; transform-origin: 60px 60px; }
 @keyframes nge-sig-reticle { to { transform: rotate(360deg); } }
 .nge-sig-canopy .block { position: absolute; padding: 8px 11px; border: 1px solid rgba(255, 210, 122, 0.55); border-radius: 3px;
-  background: radial-gradient(circle, rgba(255, 210, 122, 0.18) 0.7px, transparent 1.3px) 0 0 / 9px 9px, linear-gradient(160deg, rgba(34, 104, 200, 0.5), rgba(8, 30, 72, 0.7));
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.12) 0.9px, transparent 1.8px) 0 0 / 13px 13px, linear-gradient(160deg, rgba(34, 104, 200, 0.5), rgba(8, 30, 72, 0.7));
   backdrop-filter: blur(6px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.14), inset 0 0 22px rgba(62, 150, 240, 0.28), 0 0 10px rgba(255, 194, 74, 0.22); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); opacity: 0; transition: opacity 0.35s 0.1s; }
 .nge-sig-canopy--lock .block { opacity: 1; }
 .nge-sig-canopy .id { left: 18px; top: 44px; max-width: 320px; }
@@ -787,7 +807,11 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig-tour-kicker i { width: 14px; height: 1px; background: #7ecaff; box-shadow: 0 0 6px #7ecaff; }
 .nge-sig-tour-text { margin: 8px 0 0; font-size: 16px; line-height: 1.4; color: #fff; }
 .nge-sig-tour-sub { margin: 6px 0 0; font-size: 12.5px; color: #9fc6ea; }
-.nge-sig-tour .nge-sig-row { margin-top: 12px; }
+.nge-sig-tour .nge-sig-row { margin-top: 12px; gap: 8px; }
+.nge-sig .nge-sig-edit { margin-left: 6px; padding: 0 4px; border: 0; border-radius: 0; background: none; color: #6ba4e6; cursor: pointer; font-size: 12px; opacity: 0.55; vertical-align: baseline; }
+.nge-sig .nge-sig-edit:hover { opacity: 1; color: #fff; background: none; }
+.nge-sig [contenteditable="true"] { outline: 1px dashed rgba(126, 224, 255, 0.7); outline-offset: 2px; background: rgba(126, 224, 255, 0.06); }
+.nge-sig .nge-sig-edits { float: right; margin: -2px 0 0 8px; padding: 3px 8px; font-size: 8.5px; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
 /* labels the tour pins on parts of a cell (dendrites, cell body, axon) */
 .ng-extend.nge-sig-label { position: fixed; z-index: 9400; transform: translate(12px, -50%); padding: 2px 8px; border: 1px solid rgba(255, 224, 160, 0.6); border-radius: 3px; background: rgba(6, 12, 28, 0.78); color: #ffe9b8; font: 600 11px 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
 .ng-extend.nge-sig-label::before { content: ''; position: absolute; left: -12px; top: 50%; width: 11px; height: 1px; background: rgba(255, 224, 160, 0.7); }
@@ -795,7 +819,7 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 /* a message is a glitch in the hologram: it bursts in with its channels
    pulled apart, shivers, settles, holds, and fades */
 .ng-extend.nge-sig-pop { position: fixed; z-index: 9470; max-width: 300px; padding: 7px 12px; pointer-events: none; border: 1px solid rgba(255, 210, 122, 0.8); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-  background: radial-gradient(circle, rgba(255, 210, 122, 0.2) 0.7px, transparent 1.3px) 0 0 / 9px 9px, linear-gradient(160deg, rgba(34, 104, 200, 0.66), rgba(8, 30, 72, 0.84));
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.12) 0.9px, transparent 1.8px) 0 0 / 13px 13px, linear-gradient(160deg, rgba(34, 104, 200, 0.66), rgba(8, 30, 72, 0.84));
   backdrop-filter: blur(6px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.2), 0 0 12px rgba(255, 194, 74, 0.35); color: #fff3d6; font: 600 13px/1.35 'Inter', 'Roboto', sans-serif; text-shadow: 0 0 8px rgba(255, 194, 74, 0.4);
   animation: nge-sig-pop-in 0.5s steps(1, end) both; }
 @keyframes nge-sig-pop-in { 0% { opacity: 0; transform: translate(-2px, 0) skewX(-8deg); filter: drop-shadow(-3px 0 rgba(255, 70, 70, 0.7)) drop-shadow(3px 0 rgba(70, 150, 255, 0.7)); } 15% { opacity: 1; transform: translate(2px, 0) skewX(6deg); } 30% { transform: translate(-1px, 0) skewX(-3deg); filter: drop-shadow(-2px 0 rgba(255, 70, 70, 0.5)) drop-shadow(2px 0 rgba(70, 150, 255, 0.5)); } 45% { transform: translate(1px, 0); opacity: 0.6; } 60% { transform: none; opacity: 1; filter: drop-shadow(-1px 0 rgba(255, 70, 70, 0.3)) drop-shadow(1px 0 rgba(70, 150, 255, 0.3)); } 100% { transform: none; opacity: 1; filter: none; } }
@@ -832,6 +856,7 @@ function buildPanel() {
   panel.setAttribute('aria-label', 'Signal Controller');
   panel.innerHTML = `<span class="nge-sig-bg"></span><i class="nge-sig-corner tr"></i><i class="nge-sig-corner bl"></i><div class="nge-sig-scroll">
     <div class="nge-sig-head"><i class="nge-sig-gem" aria-hidden="true"></i><span class="nge-sig-view-key">View</span><span class="nge-sig-view" data-el="view" role="group" aria-label="View"><button type="button" data-view="ship" aria-pressed="true" title="The ship in the scene: it flies to the cells you scan">Ship</button><button type="button" data-view="cockpit" aria-pressed="false" title="From the ship's cockpit: the canopy, the reticle, the readouts">Cockpit</button></span>
+      <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
       <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
@@ -843,7 +868,7 @@ function buildPanel() {
       <div class="nge-sig-charges" data-el="charges"><span>Charge</span></div>
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
-    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 1,000 times slower than real life.</span></div></div>`;
+    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><button class="nge-sig-quiet nge-sig-edits" type="button" data-el="edits" title="Copy every line you rewrote, as JSON">Copy my edits</button><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 1,000 times slower than real life.</span></div></div>`;
   document.body.appendChild(panel);
   els = {};
   panel.querySelectorAll<HTMLElement>('[data-el]').forEach(el => { els[el.dataset.el!] = el; });
@@ -858,6 +883,21 @@ function buildPanel() {
   els.spark.onclick = () => { setHushMode(false); els.spark.blur(); };
   els.hush.onclick = () => { setHushMode(true); els.hush.blur(); };
   els.view.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { setView(b.dataset.view as ViewMode); b.blur(); }; });
+  editable(els.obj, `obj.${levelIndex}`, level.objective);
+  editable(els.detail, `detail.${levelIndex}`, level.detail);
+  els.edits.style.display = Object.keys(copyEdits).length ? '' : 'none';
+  els.edits.onclick = async () => {
+    const text = JSON.stringify(copyEdits, null, 2);
+    try { await navigator.clipboard.writeText(text); say('Your edits are copied. Paste them to Claude to bake them in.', 3.5); } catch { say(text, 8); }
+    els.edits.blur();
+  };
+  // Pyr's own Share lives in the top bar, which is away while the game runs
+  els.share.onclick = async () => {
+    const link = `${location.origin}${location.pathname}?signal`;
+    els.share.blur();
+    if (touch() && (navigator as any).share) { try { await (navigator as any).share({title: 'Signal Controller', url: link}); return; } catch { /* the copy, then */ } }
+    try { await navigator.clipboard.writeText(link); say('Link copied.', 2.2); } catch { say(link, 6); }
+  };
   setView(view);
   els.recenter.onclick = () => { frameLevel(); say('Back at the circuit.', 1.5); };
   for (let k = 0; k < MAX_CHARGES; k++) els.charges.appendChild(document.createElement('i'));
@@ -1136,6 +1176,41 @@ function showChips() {
   els.row.style.display = '';
 }
 
+/* ── a cell's parts (static/signal/cell-<root>.json, from signal-circuit.py
+   --parts-only): its axon and dendrite arbors as points with their path
+   distance from the soma, every 3 µm, and every synapse it makes and
+   receives in the release, by position. A wave drawn at one path distance
+   runs down every branch at once (Ames 2026-11-11: "axon animation is cool,
+   it should propagate out and down all the branches"); the Synapses row
+   shows them all ("synapses, can we see all 3,000?"). ── */
+interface CellParts { arbor: {axon: number[][]; dend: number[][]}; syn: {out: number[][]; in: number[][]}; axonMax: number; dendMax: number; }
+const parts = new Map<string, CellParts>();
+const partsPending = new Map<string, Promise<CellParts | null>>();
+function loadParts(root: string): Promise<CellParts | null> {
+  const have = parts.get(root);
+  if (have) return Promise.resolve(have);
+  const pending = partsPending.get(root);
+  if (pending) return pending;
+  const p = fetch(`signal/cell-${root}.json`).then(r => r.ok ? r.json() : null).then((j: CellParts | null) => {
+    if (j) { j.axonMax = j.arbor.axon.reduce((m, q) => Math.max(m, q[3]), 0); j.dendMax = j.arbor.dend.reduce((m, q) => Math.max(m, q[3]), 0); parts.set(root, j); }
+    partsPending.delete(root);
+    return j;
+  }).catch(() => { partsPending.delete(root); return null; });
+  partsPending.set(root, p);
+  return p;
+}
+/** A wave of light over an arbor: out from the soma down every branch of
+ *  the axon, or in from the dendrites' tips to the soma. */
+interface Wave { root: string; part: 'axon' | 'dend'; start: number; seconds: number; inward: boolean; rgb: V3; }
+let waves: Wave[] = [];
+function demoWave(key: string, part: 'axon' | 'dend', seconds: number, inward: boolean, rgb: V3): boolean {
+  const c = cells.get(key);
+  const pr = c && parts.get(c.spec.root);
+  if (!pr || !pr.arbor[part].length) return false;
+  waves.push({root: c!.spec.root, part, start: performance.now() / 1000, seconds, inward, rgb});
+  return true;
+}
+
 /* ── a message as a glitch in the hologram: a small card that bursts in by
    the cell it is about (else at the top of the free part of the view),
    holds, and fades (Ames 2026-11-11: "error message should be more like a
@@ -1175,6 +1250,33 @@ function placePops() {
   pops = pops.filter(o => o.el.isConnected);
 }
 function clearPops() { for (const o of pops) o.el.remove(); pops = []; }
+
+/* ── Ames's edits: the tour's lines and the objective can be rewritten in
+   place (the ✎ on a box), kept in this browser and copied out as JSON to
+   be baked in (Ames 2026-11-11: "BE SPECIFIC, give me an edit button for
+   these boxes"). ── */
+let copyEdits: Record<string, string> = {};
+try { copyEdits = JSON.parse(localStorage.getItem('pyr.signal.copy') || '{}'); } catch { copyEdits = {}; }
+const copyOf = (key: string, fallback: string) => copyEdits[key] ?? fallback;
+function saveCopy(key: string, text: string) {
+  if (!text.trim()) delete copyEdits[key]; else copyEdits[key] = text.trim();
+  try { localStorage.setItem('pyr.signal.copy', JSON.stringify(copyEdits)); } catch { /* not kept */ }
+  if (els.edits) els.edits.style.display = Object.keys(copyEdits).length ? '' : 'none';
+}
+/** A ✎ after the element; a click makes it editable, Enter or a click away keeps it, Escape puts the original back. */
+function editable(el: HTMLElement, key: string, original: string) {
+  if (el.nextElementSibling?.classList.contains('nge-sig-edit')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'nge-sig-edit'; btn.title = 'Edit this line (kept in this browser; Copy my edits sends them on)'; btn.textContent = '✎';
+  el.insertAdjacentElement('afterend', btn);
+  btn.onclick = () => { el.contentEditable = 'true'; el.focus(); try { document.getSelection()?.selectAllChildren(el); } catch { /* no selection */ } };
+  el.onblur = () => { el.contentEditable = 'false'; saveCopy(key, el.textContent ?? ''); };
+  el.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); el.textContent = original; saveCopy(key, ''); el.blur(); }
+    e.stopPropagation();
+  };
+}
 
 /* ── the intro tour: level 1 opens as a cinematic (Ames 2026-11-11: "make
    the text more like an interactive tour… as little text as possible"):
@@ -1270,13 +1372,14 @@ TOURS[0] = [
       await sleep(900); if (!alive()) return;
       if (inPath) tourLabel('dendrites', inPath[Math.floor(inPath.length * 0.35)]);
       await sleep(500); if (!alive()) return;
-      if (inPath) demoPulse(inPath, 1.2);
-      await sleep(1250); if (!alive()) return;
+      if (!demoWave('T', 'dend', 1.4, true, [1, 0.95, 0.7]) && inPath) demoPulse(inPath, 1.2);
+      await sleep(1450); if (!alive()) return;
       tourLabel('cell body', t.spec.soma);
       flashes.push({p: t.spec.soma, at: now, life: 0.7, rgb: [1, 0.85, 0.4], size: 24_000});
       sfx.spike(false);
       await sleep(500); if (!alive()) return;
-      if (outPath) { tourLabel('axon', outPath[Math.floor(outPath.length * 0.35)]); demoPulse(outPath, 1.6); }
+      if (outPath) tourLabel('axon', outPath[Math.floor(outPath.length * 0.35)]);
+      if (!demoWave('T', 'axon', 1.8, false, [1, 0.95, 0.7]) && outPath) demoPulse(outPath, 1.6);
     }},
   {kicker: 'A real neuron', text: 'A real pyramidal cell, from a mouse’s brain. Gold: your target.',
     play: async alive => {
@@ -1289,21 +1392,27 @@ TOURS[0] = [
       if (view === 'cockpit') glideTo(t, 0.7);
       hints = new Set(['T']);
     }},
+  // one driver at a time, whole, the gold cell and the rest grey; then all
+  // of them (Ames 2026-11-11: "step through these 1 at a time, dim the
+  // yellow and show these full cells")
   {kicker: 'Its drivers', text: 'Four cells drive it: E1, E2, E3, E4. E is for excitatory.',
     play: async alive => {
-      dimOthers('T');
-      for (const k of ['E1', 'E2', 'E3', 'E4']) {
-        await sleep(450); if (!alive()) return;
+      const all = ['E1', 'E2', 'E3', 'E4'];
+      for (const k of all) {
+        for (const c of cells.values()) if (c.shown && c.key !== k) { tourDim.add(c.key); paint(c, true); }
         undim(k);
-        hints = new Set([...hints, k]);
+        hints = new Set([k]);
         const c = cells.get(k);
         if (c) flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.8, 0.95, 1], size: 18_000});
         sfx.spike(false);
+        await sleep(1400); if (!alive()) return;
       }
+      undimAll();
+      hints = new Set(all);
     }},
   {kicker: 'Spark', text: 'Spark a cell: its spike runs down the axon to the gold cell.',
     play: async alive => { await sleep(400); if (!alive()) return; hints = new Set(['E1']); demoSpark('E1'); }},
-  {kicker: 'Add up', text: 'One spike leaks away. Two, close together, add up: it fires.',
+  {kicker: 'Add up', text: 'One spike alone leaks away. Two spikes close together add up, and the gold cell fires.',
     play: async alive => {
       await sleep(400); if (!alive()) return;
       demoSpark('E1');
@@ -1356,19 +1465,29 @@ function showTour(steps: TourStep[]) {
   phase = 'brief'; demo = true;
   els.row.style.display = 'none';
   buildMap();
-  els.map.style.display = '';
   tourAt = 0;
   renderTourStep();
 }
 function renderTourStep() {
   const step = tourSteps[tourAt], last = tourAt === tourSteps.length - 1;
   tourReset();
+  // the map joins once the drivers are introduced (Ames 2026-11-11: "we don't need this in every box")
+  els.map.style.display = tourAt >= 2 ? '' : 'none';
+  const textKey = `tour.${levelIndex}.${tourAt}.text`, subKey = `tour.${levelIndex}.${tourAt}.sub`;
   els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length} · ${step.kicker}</div>
-    <p class="nge-sig-tour-text">${adapt(step.text)}</p>${step.sub ? `<p class="nge-sig-tour-sub">${adapt(step.sub)}</p>` : ''}
-    <div class="nge-sig-row"><button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${last ? '' : '<button class="nge-sig-quiet" type="button" data-act="skip">Skip</button>'}</div></div>`;
+    <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}
+    <div class="nge-sig-row">${tourAt ? '<button class="nge-sig-quiet" type="button" data-act="back">‹ Back</button>' : ''}<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${step.play ? '<button class="nge-sig-quiet" type="button" data-act="replay">Replay</button>' : ''}${last ? '' : '<button class="nge-sig-quiet" type="button" data-act="skip">Skip</button>'}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
-    b.onclick = () => { if (b.dataset.act === 'skip') { tourAt = tourSteps.length - 1; renderTourStep(); } else if (last) beginPlay(); else { tourAt++; renderTourStep(); } };
+    b.onclick = () => {
+      const act = b.dataset.act;
+      if (act === 'skip') { tourAt = tourSteps.length - 1; renderTourStep(); }
+      else if (act === 'back') { tourAt = Math.max(0, tourAt - 1); renderTourStep(); }
+      else if (act === 'replay') renderTourStep();
+      else if (last) beginPlay();
+      else { tourAt++; renderTourStep(); }
+    };
   });
+  els.body.querySelectorAll<HTMLElement>('[data-copy]').forEach(el => editable(el, el.dataset.copy!, el.textContent ?? ''));
   const token = ++tourToken;
   void step.play?.(() => token === tourToken && active && phase === 'brief');
   updateHud();
@@ -1406,8 +1525,8 @@ function showResult(won: boolean) {
 function updateHud() {
   if (!panel) return;
   els.lvl.textContent = `Level ${levelIndex + 1} · ${level.title}`;
-  els.obj.textContent = level.objective;
-  els.detail.textContent = adapt(level.detail);
+  if (!els.obj.isContentEditable) { const t = copyOf(`obj.${levelIndex}`, level.objective); if (els.obj.textContent !== t) els.obj.textContent = t; }
+  if (!els.detail.isContentEditable) { const t = adapt(copyOf(`detail.${levelIndex}`, level.detail)); if (els.detail.textContent !== t) els.detail.textContent = t; }
   const total = level.goal.count;
   els.progress.textContent = `${progress} / ${total}`;
   const left = phase === 'playing' ? Math.max(0, level.timeS - now) : level.timeS;
@@ -1826,7 +1945,20 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const wantLen = vc ? VISIT_LEN_NM : cockpit?.len ?? shipLenNm;
   shipLenNm += (wantLen - shipLenNm) * Math.min(1, dt * 4);
   const scale = shipLenNm / shipModelLength;
-  if (spot) shipAt = mix(shipAt, spot, Math.min(1, dt * (vc ? 3 : 5)));
+  if (spot) {
+    if (vc) {
+      // on a visit it turns first, then flies at a steady pace and eases in
+      // to land; it used to leap most of the way while still turning (Ames
+      // 2026-11-11: "ship is facing wrong direction while flying")
+      const dir = sub(spot, shipAt), dist = len(dir);
+      if (dist > 1) {
+        const aligned = dot(shipFwd, mul(dir, 1 / dist));
+        let v = Math.min(dist, Math.min(viewNm * 0.6 * dt, Math.max(dist * 4 * dt, viewNm * 0.03 * dt)));
+        if (aligned < 0.8 && dist > viewNm * 0.03) v *= 0.12;
+        shipAt = add(shipAt, mul(dir, v / dist));
+      }
+    } else shipAt = mix(shipAt, spot, Math.min(1, dt * 5));
+  }
   // a visit: the scan fires once the ship is there (or after 1.8 s, if the
   // way is long); from the cockpit, once the camera's glide has ended
   const there = !visit ? false : view === 'cockpit' ? !glide : (len(sub(shipAt, spot ?? shipAt)) < viewNm * 0.02 || now - visit.since > 1.8);
@@ -1836,7 +1968,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const landed = !!vc && !!spot && len(sub(shipAt, spot)) < viewNm * 0.03;
   const aimAt = vc ? (landed ? add(shipAt, mul(cam.right, visit!.lean)) : spot!) : shipAim && performance.now() < aimUntil ? shipAim : center;
   const want = norm(sub(aimAt, shipAt));
-  shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * 7)));
+  shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * (vc ? 12 : 7))));
   const upRef = landed ? cam.toEye : cam.up;
   let up = norm(sub(upRef, mul(shipFwd, dot(upRef, shipFwd))));
   if (prevUp) up = norm(mix(prevUp, up, Math.min(1, dt * 6)));
@@ -2053,7 +2185,6 @@ function callSign(c: CellState): string {
 /** The release's cell types, said plainly (aibs_metamodel_celltypes_v661). */
 const TYPE_NAMES: Record<string, string> = {'23P': 'L2/3 pyramidal', '4P': 'L4 pyramidal', '5P-IT': 'L5 IT pyramidal', '5P-ET': 'L5 ET pyramidal', '5P-NP': 'L5 NP pyramidal',
   '6P-IT': 'L6 IT pyramidal', '6P-CT': 'L6 CT pyramidal', BC: 'basket', BPC: 'bipolar', MC: 'Martinotti', NGC: 'neurogliaform', OPC: 'OPC', oligo: 'oligodendrocyte', astrocyte: 'astrocyte', microglia: 'microglia', pericyte: 'pericyte'};
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 /** The cell's record, laid out as a readout: who it is, measured numbers,
@@ -2061,7 +2192,8 @@ const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
  *  data-readout rule: one label, one number, one line of provenance; a unit
  *  never inside an uppercased label). */
 type ShowWhat = 'synapses' | 'axon' | 'in';
-interface Readout { key: string; role: string; identity: string; sign: string; stats: {label: string; value: string; unit?: string; show?: ShowWhat}[]; wiring: {label: string; text: string; show?: ShowWhat}[]; provenance: string; }
+interface Readout { key: string; role: string; identity: string; sign: string; stats: {label: string; value: string; unit?: string; show?: ShowWhat}[]; wiring: {label: string; text: string; show?: ShowWhat}[];
+  local: {key: string; color: V3; from: number; to: number}[]; partners?: {out: Partner[]; in: Partner[]}; provenance: string; }
 /** What the scanned cell is showing on itself, from a click on its card. */
 let showing: ShowWhat | null = null;
 function toggleShow(what: ShowWhat) {
@@ -2071,43 +2203,58 @@ function toggleShow(what: ShowWhat) {
 function readoutOf(c: CellState): Readout {
   const s = c.spec;
   const identity = `${s.label}${s.fine ? ` · ${s.fine}` : ''}${s.mtype ? ` · ${s.mtype}` : ''} · ${s.type === 'I' ? 'inhibitory' : 'excitatory'}`;
-  const job = c.target ? `Target: fires at ${c.theta} units of charge`
+  const job = c.target ? `Target: fires at a charge of ${c.theta}. Each synapse that fires onto it adds 1, and the charge leaks away in about a second.`
     : c.gateNext !== null ? `Gatekeeper: pulses every ${c.gatePeriod} s, holds the targets down`
     : s.type === 'I' ? `${roleOf(c)}: quiets what it reaches`
     : `${roleOf(c)}: fires when your beam hits it`;
-  // "5 synapses onto T, 1 onto E3" (Ames 2026-11-11: "stats should include
-  // synapse count": "T ×5" did not read as one)
-  const outs = conns.filter(k => k.pre === c.key && cells.get(k.post)?.shown).sort((a, b) => b.count - a.count).map((k, i) => `${i ? k.count : plural(k.count, 'synapse')} onto ${k.post}`).join(', ');
-  const ins = conns.filter(k => k.post === c.key && cells.get(k.pre)?.shown).sort((a, b) => b.count - a.count).map((k, i) => `${i ? k.count : plural(k.count, 'synapse')} from ${k.pre}`).join(', ');
   const stats: Readout['stats'] = [];
   // every synapse the cell makes and receives in the release (synapses_pni_2, materialization 1300)
   if (s.synIn !== undefined && s.synOut !== undefined) stats.push({label: 'synapses in', value: fmt(s.synIn), show: 'synapses'}, {label: 'synapses out', value: fmt(s.synOut), show: 'synapses'});
   stats.push({label: 'cable', value: fmt(s.cableUm), unit: 'µm', show: 'axon'}, {label: 'axon', value: fmt(s.axonUm), unit: 'µm', show: 'axon'});
   const wiring: Readout['wiring'] = [{label: 'Job', text: job}];
-  if (outs) wiring.push({label: s.type === 'I' ? 'Quiets' : 'Drives', text: outs, show: 'axon'});
-  if (ins) wiring.push({label: 'Fed by', text: ins, show: 'in'});
-  // who it talks to across the whole release, by the partner's cell type
-  // (Ames 2026-11-11: "stats on what other cell types this cell connects to")
-  if (s.partners) {
-    const named = (list: Partner[]) => {
-      const typed = list.filter(x => x.type !== 'other'), untyped = list.find(x => x.type === 'other')?.n ?? 0;
-      const top = typed.slice(0, 4).map(x => `${TYPE_NAMES[x.type] ?? x.type} ${fmt(x.n)}`).join(', ');
-      return top ? `${top}${untyped ? ` (${fmt(untyped)} untyped)` : ''}` : '';
-    };
-    const talks = named(s.partners.out), hears = named(s.partners.in);
-    if (talks) wiring.push({label: 'Talks to', text: talks});
-    if (hears) wiring.push({label: 'Hears from', text: hears});
+  // the level's cells it is wired to, synapses from each and onto each
+  const local = new Map<string, {key: string; color: V3; from: number; to: number}>();
+  for (const k of conns) {
+    const other = k.pre === c.key ? k.post : k.post === c.key ? k.pre : null;
+    const oc = other ? cells.get(other) : undefined;
+    if (!other || !oc?.shown) continue;
+    const row = local.get(other) ?? {key: other, color: oc.color, from: 0, to: 0};
+    if (k.pre === c.key) row.to += k.count; else row.from += k.count;
+    local.set(other, row);
   }
-  return {key: c.key, role: roleOf(c), identity, sign: callSign(c), stats, wiring, provenance: `MICrONS minnie65 · materialization 1300 · cell ${s.root}`};
+  return {key: c.key, role: roleOf(c), identity, sign: callSign(c), stats, wiring,
+    local: [...local.values()].sort((a, b) => b.from + b.to - a.from - a.to), partners: s.partners,
+    provenance: `MICrONS minnie65 · materialization 1300 · cell ${s.root}`};
 }
-/** The readout's parts as markup, shared by the card and the cockpit. */
+/** The charts: the level's partners with a bar from each and to each, and
+ *  the cell's partners across the release by type, to and from. */
+function chartsHtml(r: Readout): string {
+  let html = '';
+  if (r.local.length) {
+    const max = Math.max(1, ...r.local.map(x => Math.max(x.from, x.to)));
+    const bar = (nn: number, cls: string, show: ShowWhat) => `<span class="bar ${cls}" data-show="${show}" title="Light them on the cell"><i style="width:${Math.round(nn / max * 100)}%"></i><em>${nn ? fmt(nn) : ''}</em></span>`;
+    html += `<div class="nge-sig-chart local"><div class="h"><span>Local partners</span><span>from</span><span>to</span></div>${r.local.map(x =>
+      `<div class="row"><b class="key" style="--c:rgb(${x.color.join(',')})">${esc(x.key)}</b>${bar(x.from, 'from', 'in')}${bar(x.to, 'to', 'axon')}</div>`).join('')}</div>`;
+  }
+  if (r.partners) {
+    const list = (items: Partner[], cls: string) => {
+      const typed = items.filter(x => x.type !== 'other').slice(0, 5), untyped = items.find(x => x.type === 'other');
+      const rows = untyped ? [...typed, untyped] : typed;
+      const max = Math.max(1, ...rows.map(x => x.n));
+      return rows.map(x => `<div class="row"><span class="lbl">${esc(x.type === 'other' ? 'untyped' : TYPE_NAMES[x.type] ?? x.type)}</span><span class="bar ${cls}${x.type === 'other' ? ' untyped' : ''}"><i style="width:${Math.round(x.n / max * 100)}%"></i><em>${fmt(x.n)}</em></span></div>`).join('');
+    };
+    html += `<div class="nge-sig-chart drives"><div class="h" data-show="synapses" title="Light every synapse on the cell"><span>Drives</span></div><div class="two"><div><div class="sub">To</div>${list(r.partners.out, 'to')}</div><div><div class="sub">From</div>${list(r.partners.in, 'from')}</div></div></div>`;
+  }
+  return html;
+}
 function readoutParts(r: Readout) {
   return {
     id: `<b class="key">${esc(r.key)}</b><span class="role">${esc(r.role)}</span>`,
     identity: `<p class="identity">${esc(r.identity)}</p><p class="sign">${esc(r.sign)}</p>`,
     stats: `<ul class="nge-sig-readouts">${r.stats.map(x => `<li${x.show ? ` data-show="${x.show}" title="Light them on the cell"` : ''}><b>${x.value}${x.unit ? `<span class="u">${x.unit}</span>` : ''}</b><span class="k">${esc(x.label)}</span></li>`).join('')}</ul>`,
     wiring: `<dl class="nge-sig-wiring">${r.wiring.map(w => `<dt${w.show ? ` data-show="${w.show}"` : ''}>${esc(w.label)}</dt><dd${w.show ? ` data-show="${w.show}" title="Light them on the cell"` : ''}>${esc(w.text)}</dd>`).join('')}</dl>`,
-    provenance: `<p class="prov">${esc(r.provenance)}<br>Call signs are this level's names, not the data's. Click a row to light it on the cell.</p>`,
+    charts: chartsHtml(r),
+    provenance: `<p class="prov">${esc(r.provenance)}<br>Click a bar, a number or Drives to light it on the cell.</p>`,
   };
 }
 /* ── the cockpit's canopy ── */
@@ -2134,7 +2281,7 @@ function fillCanopy(c: CellState, parts: ReturnType<typeof readoutParts>) {
   el.style.setProperty('--c', `rgb(${c.color.join(',')})`);
   el.querySelector('.id')!.innerHTML = `<div class="head">${parts.id}</div>${parts.identity}`;
   el.querySelector('.nums')!.innerHTML = parts.stats + parts.provenance;
-  el.querySelector('.wire')!.innerHTML = parts.wiring;
+  el.querySelector('.wire')!.innerHTML = parts.wiring + parts.charts;
   el.querySelector('.provenance')!.innerHTML = '';
   el.classList.add('nge-sig-canopy--lock');
 }
@@ -2182,7 +2329,7 @@ function showScan(key: string) {
   scanEl.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="nge-sig-scan-g" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#fff0cc" stop-opacity="0.5"/><stop offset="1" stop-color="#ffc24a" stop-opacity="0.04"/></linearGradient></defs>
     <polygon class="cone"/><line class="pointer" stroke="rgba(255,214,140,0.8)" stroke-width="1" stroke-dasharray="3 3"/><circle class="dot" r="4" fill="#ffe3a6"/><circle class="lens" r="3.5" fill="#fff6e0"/></svg>
-    <div class="nge-sig-scan-box"><header class="nge-sig-scan-head"><span class="ic"></span>${parts.id}<button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></header>${parts.identity}${parts.stats}${parts.wiring}${parts.provenance}</div>`;
+    <div class="nge-sig-scan-box"><header class="nge-sig-scan-head"><span class="ic"></span>${parts.id}<button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></header>${parts.identity}${parts.stats}${parts.wiring}${parts.charts}${parts.provenance}</div>`;
   document.body.appendChild(scanEl);
   (scanEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => endVisit();
   // the card drags, to clear the cells it covers (Ames 2026-11-11: "I want
@@ -2231,7 +2378,7 @@ function placeScan() {
   const onScreen = !!ship && ship[0] > r.left && ship[0] < r.right && ship[1] > r.top + 40 && ship[1] < r.bottom;
   let bx: number, by: number;
   if (scanPin) [bx, by] = scanPin;
-  else { bx = r.right - bw - 24; by = r.top + 24; }
+  else { bx = r.right - bw - Math.max(24, r.width * 0.15); by = r.top + Math.max(24, r.height * 0.11); }
   bx = clamp(bx, r.left + 10, r.right - bw - 10);
   by = clamp(by, r.top + 10, r.bottom - bh - 16);
   if (!scanPin && hud && bx < hud.right + 10 && bx + bw > hud.left - 10 && by < hud.bottom + 10 && by + bh > hud.top - 10) {
@@ -2412,8 +2559,39 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   // the other cells here (the marks the data has, up to ten a connection),
   // the axon paths out of it with pulses running out, or the dendrite paths
   // in with pulses running in
+  // waves over an arbor: a band of light at one path distance from the soma,
+  // on every branch at once, fading behind the front
+  const tNow = performance.now() / 1000;
+  waves = waves.filter(w => tNow < w.start + w.seconds + 0.3);
+  for (const w of waves) {
+    const pr = parts.get(w.root);
+    if (!pr) continue;
+    const pts = pr.arbor[w.part], maxD = (w.part === 'axon' ? pr.axonMax : pr.dendMax) || 1;
+    const q = clamp((tNow - w.start) / w.seconds, 0, 1);
+    const front = w.inward ? maxD * (1 - q) : maxD * q, band = Math.max(14_000, maxD * 0.07);
+    for (const p of pts) {
+      const gap = w.inward ? p[3] - front : front - p[3];
+      if (gap < -band * 0.25 || gap > band) continue;
+      const k = gap < 0 ? 1 + gap / (band * 0.25) : 1 - gap / band;
+      put([p[0], p[1], p[2]], [w.rgb[0], w.rgb[1], w.rgb[2], 0.9 * k], 2600 + 2200 * k);
+    }
+  }
   if (showing && scanKey) {
     const t = performance.now() / 1000;
+    const sc = cells.get(scanKey), pr = sc && parts.get(sc.spec.root);
+    if (pr && showing === 'synapses') {
+      // every synapse the cell receives (gold) and makes (cyan) in the release
+      const all = (list: number[][], rgb: V3) => { for (let j = 0; j < list.length; j++) { const p = list[j]; put([p[0], p[1], p[2]], [rgb[0], rgb[1], rgb[2], 0.35 + 0.25 * Math.sin(t * 3 + j * 0.7)], 1700); } };
+      all(pr.syn.in, [1, 0.85, 0.4]); all(pr.syn.out, [0.6, 0.95, 1]);
+    }
+    const arborAxon = !!(pr && showing === 'axon' && pr.arbor.axon.length);
+    if (pr && arborAxon) {
+      // the whole axon, faint, and a wave running out from the soma down every branch, over and over
+      const pts = pr.arbor.axon, maxD = pr.axonMax || 1;
+      for (let j = 0; j < pts.length; j += 5) put([pts[j][0], pts[j][1], pts[j][2]], [0.6, 0.95, 1, 0.14], 2000);
+      const front = (t * 1_500_000) % (maxD * 1.3), band = Math.max(15_000, maxD * 0.05);
+      for (const p of pts) { const gap = front - p[3]; if (gap < 0 || gap > band) continue; const k2 = 1 - gap / band; put([p[0], p[1], p[2]], [1, 1, 1, 0.9 * k2], 2600 + 2000 * k2); }
+    }
     for (const k of conns) {
       const out = k.pre === scanKey, inn = k.post === scanKey;
       if (!(out || inn) || !cells.get(out ? k.post : k.pre)?.shown) continue;
@@ -2424,7 +2602,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
           put(p, [rgb[0], rgb[1], rgb[2], 0.5 + 0.4 * pulse], 4000 + 1500 * pulse);
           put(p, [rgb[0], rgb[1], rgb[2], 0.18], 10_000);
         }
-      } else if ((showing === 'axon' && out) || (showing === 'in' && inn)) {
+      } else if (!arborAxon && ((showing === 'axon' && out) || (showing === 'in' && inn))) {
         const path = showing === 'axon' ? k.axon : k.dendrite;
         const r = route(path), rgb: V3 = showing === 'axon' ? [0.6, 0.95, 1] : [1, 0.85, 0.4];
         const N = Math.max(8, Math.min(80, Math.round(r.length / 2500)));
@@ -2619,10 +2797,10 @@ function onPointerUp(e: PointerEvent) {
 }
 function onKey(e: KeyboardEvent) {
   if (!active) return;
-  if (e.key === 'Escape') { e.stopPropagation(); stopSignalController(); return; }
-  if (phase !== 'playing') return;
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key === 'Escape') { e.stopPropagation(); stopSignalController(); return; }
+  if (phase !== 'playing') return;
   if (e.key === 'Tab' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setHushMode(!hushMode); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= 9) {
@@ -2641,6 +2819,7 @@ async function startLevel(index: number) {
   resetCells();
   clearTags();
   endVisit();
+  for (const k of level.cells) { const c = cells.get(k); if (c) void loadParts(c.spec.root); }   // arbors and synapses, for the tour and the card
   els.spark.setAttribute('aria-pressed', 'true'); els.hush.setAttribute('aria-pressed', 'false');
   els.row.style.display = 'none';
   els.body.innerHTML = '<div class="nge-sig-card"><p data-el="loading">Loading the cells…</p></div>';
@@ -2807,7 +2986,7 @@ export function startSignalController() {
 }
 
 (window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS, music: () => music,
-  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, ship: {at: shipAt, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
+  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
     hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
   step: (seconds: number) => { for (let k = 0; k < seconds / 0.05; k++) if (phase === 'playing') stepModel(0.05); }};
