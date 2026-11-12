@@ -1446,6 +1446,25 @@ async function onHtmlClick(e: MouseEvent) {
 .hasVideo .chip:not(.exitConfirm) .title { margin: 38px 20px 0; }
 
 .chip .html { min-width: 0; max-width: 100%; overflow-wrap: break-word; }
+/* A tall box keeps its title and buttons still and scrolls only its words
+   (toknow 2026-11-11, Cilia Quest Training: "fix title and scroll contents
+   only"). The whole box used to scroll, title and all. */
+.chip:not(.exitConfirm) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    row-gap: 14px;
+    overflow: hidden;
+}
+.chip:not(.exitConfirm) > * { flex: none; }
+.chip:not(.exitConfirm) > .html {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+}
+.chip:not(.exitConfirm) > .html::-webkit-scrollbar { display: none; }
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }
 .chip .html :deep(strong) { color: #ffffff; font-weight: 600; }
