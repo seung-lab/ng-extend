@@ -841,6 +841,9 @@ async function onHtmlClick(e: MouseEvent) {
     padding-bottom: 20px;
     border-radius: 8px;
     display: grid;
+    /* One column no wider than the box: its contents wrap inside it instead
+       of running off the right edge (toknow #472, 2026-11-11). */
+    grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     font-size: 18px;
     font-weight: 300;
@@ -1383,6 +1386,7 @@ async function onHtmlClick(e: MouseEvent) {
 .chip.modal { padding-top: 46px; }
 .hasVideo .chip:not(.exitConfirm) .title { margin: 38px 20px 0; }
 
+.chip .html { min-width: 0; max-width: 100%; overflow-wrap: break-word; }
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }
 .chip .html :deep(strong) { color: #ffffff; font-weight: 600; }

@@ -533,7 +533,7 @@ body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold::before { content:
 /* ── Cilia Quest tutorial (src/tutorial-cilia.ts) ── */
 .nge-cq-quiz { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .ng-extend .nge-cq-choice {
-  padding: 7px 12px; border-radius: 6px; cursor: pointer; text-align: left;
+  padding: 7px 12px; border-radius: 6px; cursor: pointer; text-align: left; white-space: normal; overflow-wrap: break-word;
   font: 500 13.5px 'Inter', system-ui, sans-serif; color: #d6e6f8;
   background: rgba(126, 224, 255, 0.06); border: 1px solid rgba(126, 224, 255, 0.28);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
