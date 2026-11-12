@@ -549,6 +549,59 @@ watch(() => [props.step.title, props.step.text, props.step.html, props.step.next
     if (html) html = html.replace(/<a\s+(?![^>]*target=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
     computedStep.value = { ...computedStep.value, title, html, nextLabel, image, embed };
 });
+/**
+ * A line in a box that starts with "Tip:" folds into a small tip the player
+ * opens with a click (Ames, 2026-11-12, on Celia's edit of Cilia Quest box
+ * 8: a tip, not another sentence in the box). Works on the code's words and
+ * on admins' edits alike: everything from "Tip:" to the end of its paragraph
+ * moves into the tip.
+ */
+const TIP_AT = /(^|\n)\s*Tip:\s*/;
+function foldTips() {
+  const html = root.value?.querySelector('.chip .html');
+  if (!html || html.querySelector('.nge-box-tip')) return;
+  const walker = document.createTreeWalker(html, NodeFilter.SHOW_TEXT);
+  const starts: Text[] = [];
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+    const parent = n.parentElement;
+    if (!parent || parent.closest('.nge-box-tip, a, button, code')) continue;
+    // "Tip:" at the start of a line: a paragraph's start or after a <br>.
+    const m = TIP_AT.exec(n.data);
+    if (!m) continue;
+    const prev = n.previousSibling;
+    const lineStart = m.index > 0 || !prev || prev.nodeName === 'BR';
+    if (lineStart) starts.push(n);
+  }
+  for (const n of starts) {
+    const m = TIP_AT.exec(n.data)!;
+    const block = (n.parentElement?.closest('p, li') ?? n.parentElement) as HTMLElement;
+    const body = document.createElement('div');
+    body.className = 'nge-box-tip-body';
+    // Split off the tip's own words, then move every node after it in the block.
+    const tipText = n.splitText(m.index);
+    tipText.data = tipText.data.replace(/^\n?\s*Tip:\s*/, '');
+    const prevSib = tipText.previousSibling;
+    if (prevSib && prevSib.nodeName === 'BR') prevSib.remove();
+    let node: ChildNode | null = tipText;
+    // Climb to a direct child of the block, so siblings can be moved.
+    while (node && node.parentNode !== block) node = node.parentNode as ChildNode | null;
+    if (!node) continue;
+    while (node) { const next: ChildNode | null = node.nextSibling; body.appendChild(node); node = next; }
+    const tip = document.createElement('details');
+    tip.className = 'nge-box-tip';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Tip';
+    tip.appendChild(summary);
+    tip.appendChild(body);
+    tip.addEventListener('toggle', () => nextTick(clampChip));
+    // The line break and blank text the tip leaves at the block's end.
+    while (block.lastChild && (block.lastChild.nodeName === 'BR' || (block.lastChild.nodeType === 3 && !block.lastChild.textContent?.trim()))) block.lastChild.remove();
+    block.after(tip);
+    if (!block.textContent?.trim() && block !== html) block.remove();
+  }
+}
+watch(() => shownHtml.value, () => nextTick(foldTips), { immediate: true, flush: 'post' });
+
 watch(ready, (r) => { if (r) nextTick(observeChip); });
 watch(() => computedStep.value, () => nextTick(observeChip));
 
@@ -1386,6 +1439,13 @@ async function onHtmlClick(e: MouseEvent) {
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }
 .chip .html :deep(strong) { color: #ffffff; font-weight: 600; }
+/* A folded "Tip:" line (foldTips). */
+.chip .html :deep(.nge-box-tip) { margin: 0 0 0.7em; }
+.chip .html :deep(.nge-box-tip > summary) { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8fd0ff; list-style: none; }
+.chip .html :deep(.nge-box-tip > summary::-webkit-details-marker) { display: none; }
+.chip .html :deep(.nge-box-tip > summary::before) { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.15s; }
+.chip .html :deep(.nge-box-tip[open] > summary::before) { transform: rotate(45deg); }
+.chip .html :deep(.nge-box-tip-body) { margin-top: 6px; padding: 6px 10px; border-left: 2px solid rgba(143, 208, 255, 0.4); color: #cfe0f0; font-size: 0.92em; }
 /* Lists in a box (Merge box 7's tips showed with no bullets, tester
    2026-11-10): something upstream resets list markers. */
 .chip .html :deep(ul) { list-style: disc outside !important; padding-left: 1.3em !important; margin: 0 0 0.7em !important; }
