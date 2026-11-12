@@ -24,7 +24,7 @@ const listOf = (name) => [...icons.match(new RegExp(name + '\\s*=\\s*\\[([^\\]]*
 const TOP_BAR = [...listOf('DEFAULT_TOOLBAR_ORDER'), 'screenshot'];
 const RETIRED = listOf('RETIRED_TOOLBAR_ICON_IDS');
 
-const FILES = { 2: 'src/tutorial-2.ts', 3: 'src/tutorial-3.ts', 5: 'src/tutorial-cut.ts', 9: 'src/merger-sandbox.ts', 11: 'src/proofreading-test.ts' };
+const FILES = { 2: 'src/tutorial-2.ts', 3: 'src/tutorial-3.ts', 5: 'src/tutorial-cut.ts', 9: 'src/merger-sandbox.ts', 11: 'src/proofreading-test.ts', 15: 'src/tutorial-annotations.ts' };
 const moment = (key) => STAGE_MOMENTS.find(m => m.key === key);
 
 test('every top bar icon has a moment that brings it, or is knowingly left to Settings', () => {

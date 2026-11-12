@@ -803,11 +803,23 @@ body.nge-mobile .nge-intro-hint, .nge-intro--phone .nge-intro-hint { visibility:
 }
 /* the whole tour, every screen: no top bars but the Pyr icon, no bottom bar
    (Ames 2026-11-09) */
-body.nge-intro-on #extensionBar > :not(.ng-extend-logo), body.nge-intro-on .neuroglancer-layer-panel,
+body.nge-intro-on #extensionBar > :not(.ng-extend-logo):not(.nge-toolbar-icons), body.nge-intro-on .neuroglancer-layer-panel,
+body.nge-intro-on #extensionBar > .nge-toolbar-icons > :not(.nge-feedback-btn),
 body.nge-intro-on .nge-mobile-nav, body.nge-intro-on [title^="Switch to"], body.nge-intro-on #statusContainer,
 body.nge-intro-on .neuroglancer-data-panel-layout-controls,
 body.nge-intro-on .nge-stt-tab { display: none !important; }
 body.nge-intro-on #extensionBar { background: transparent !important; border: 0 !important; box-shadow: none !important; }
+/* ...but the bug button stays, top right and above the tour, so a player can
+   report a bug in the middle of the flight (Ames 2026-11-12), and its form
+   opens over the tour. */
+body.nge-intro-on #extensionBar > .nge-toolbar-icons { display: block !important; overflow: visible !important; }
+body.nge-intro-on #extensionBar .nge-feedback-btn { display: grid !important; place-items: center; position: fixed !important;
+  top: calc(8px + env(safe-area-inset-top)); right: 12px; z-index: 2147483001; width: 38px; height: 38px; padding: 0; margin: 0;
+  border-radius: 50%; border: 1px solid rgba(120, 220, 255, 0.4); background: rgba(6, 18, 40, 0.6);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 0 14px rgba(80, 220, 255, 0.25); cursor: pointer; }
+body.nge-intro-on #extensionBar .nge-feedback-btn:hover { border-color: rgba(150, 235, 255, 0.85); }
+body.nge-intro-on #nge-feedback-modal { z-index: 2147483002 !important; }
+body.nge-intro-on .nge-shotdlg-overlay { z-index: 2147483003 !important; }
 @media (max-width: 820px) {
   /* sharp on phones: no blur or glow filters on the box (they left it soft) */
   /* frosted behind, sharp in front: a blur of what is behind it (not of the

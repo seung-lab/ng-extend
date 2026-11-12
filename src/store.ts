@@ -7215,6 +7215,18 @@ export const useChatStore = defineStore('chat', () => {
       if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
     }, 60_000);
   }
+  /** Be on the online list from sign in, whether or not chat was ever opened.
+   *  The heartbeat used to start only when the chat box connected, so a new
+   *  player on the Starship tour (chat not open yet) or anyone who had closed
+   *  chat was missing from "N online" (Ames 2026-11-12: "we want to show also
+   *  new users - everyone online!"). */
+  function startPresence() {
+    if (heartbeatTimer || !useProofreadingBackendStore().userId) return;
+    void heartbeat().then(() => loadOnline());
+    startPresenceLoops();
+    window.addEventListener('pagehide', leavePresence);
+    document.addEventListener('visibilitychange', beatWhenBack);
+  }
   // The leader closed: this tab says so at once instead of up to a minute on.
   presenceLeader.onChange((leader, takeover) => {
     if (leader && takeover && channel) void heartbeat().then(() => loadOnline(true));
@@ -8023,7 +8035,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, startPresence, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };

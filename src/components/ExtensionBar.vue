@@ -852,6 +852,9 @@ function handleAssistantAction(e: Event) {
 onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
+// Everyone signed in counts as online, chat open or not: new players on the
+// Starship tour were missing from "N online" (Ames 2026-11-12).
+watch(() => backendStore.userId, (id) => { if (id) chatStore.startPresence(); }, { immediate: true });
 // A reviewer who refreshed mid review goes back into review mode (Celia #195).
 watch(() => backendStore.isAdmin, (admin) => { if (admin) void resumeReview(); }, { immediate: true });
 // Signed in: give the page a moment to settle, then greet with the leaderboard.
@@ -1575,11 +1578,18 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
             <span class="nge-menu-num">3</span><span>Cut</span>
           </div>
         </li>
-        <!-- Advanced Interface after Merge and Cut, then the Merger Sandbox
-             (Ames 2026-10-18: the ideal order). -->
+        <!-- Annotations (Ames 2026-10-23, player report 220): layers, color,
+             stepping, more than one layer, the tools and Size, Find Path. -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 15; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">4</span><span>Annotations</span>
+          </div>
+        </li>
+        <!-- Advanced Interface after Merge, Cut and Annotations (Ames
+             2026-11-12: Annotations straight after Cut). -->
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">4</span><span>Advanced Interface</span>
+            <span class="nge-menu-num">5</span><span>Advanced Interface</span>
           </div>
         </li>
         <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
@@ -1587,7 +1597,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
              2026-10-23), the next step once the tutorials are done. -->
         <li>
           <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">5</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+            <span class="nge-menu-num">6</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
           </div>
         </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
@@ -1595,7 +1605,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '7' }}</span>
             <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>

@@ -1108,26 +1108,38 @@ async function batchClaim() {
       for (let i = 0; i < 5 && batchCandidates.value.length < n && !backend.taskPages.available.done; i++) await backend.loadMoreTasks('available');
     }
   }
-  const picks = batchCandidates.value.slice(0, n);
-  if (!picks.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
-  batchClaiming.value = { done: 0, total: picks.length };
-  let ok = 0, lastError = '';
-  for (const c of picks) {
+  // A cell someone else took a moment ago (or one held under a second row of
+  // the same cell) is skipped and the next one tried, so Claim 10 still fills
+  // all 10. Nseraf 2026-11-12: one taken cell left "Claimed 9 of 10. This cell
+  // is already claimed", which read as if nothing had been claimed.
+  const pool = batchCandidates.value.slice(0, n + 10);
+  if (!pool.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
+  const want = Math.min(n, pool.length);
+  batchClaiming.value = { done: 0, total: want };
+  let ok = 0, taken = 0, lastError = '';
+  for (const c of pool) {
+    if (ok >= want) break;
     const point = (c.claimPoint ?? parseCoords(c.somaCoords || c.nucCoords)) as ClaimPoint;
     const r = c.taskId ? { ok: await backend.claimTask(c.taskId), reason: backend.error } : await backend.claimCell(point, c.segId);
     if (r.ok) {
       ok++;
       syncCellToSheet('claim', c.segId, undefined, c.dataset).catch(showSheetError);
+      batchClaiming.value = { done: ok, total: want };
     } else {
       lastError = r.reason || 'Claim failed';
       if (/max \d+ claims/i.test(lastError)) break;
+      if (/already (claimed|completed)|claimed by another/i.test(lastError)) taken++;
     }
-    batchClaiming.value = { done: batchClaiming.value!.done + 1, total: picks.length };
   }
   batchClaiming.value = null;
   await backend.loadTasks();
   filter.value = 'mine';
-  if (ok < picks.length) claimError.value = `Claimed ${ok} of ${picks.length}. ${lastError}`;
+  if (ok < want) {
+    claimError.value = ok
+      ? `Claimed ${ok} ${ok === 1 ? 'cell' : 'cells'}, all in My Cells. ${want - ok} more could not be claimed: ${lastError}`
+      : `No cells were claimed: ${lastError}`;
+  }
+  if (taken) console.info(`[cells] Claim ${n}: skipped ${taken} taken ${taken === 1 ? 'cell' : 'cells'}`);
 }
 // A tab opens at its top. The cell tabs (Available, Mine, ...) share one list
 // element, so it kept the scroll position of the tab before: after "Claim 10"
