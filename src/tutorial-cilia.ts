@@ -423,7 +423,7 @@ const MIDDLE = { element: 'body', x: 0.5, y: 0.5 };
 /** Over the 3D panel, out of the way of the 2D view where the work is. */
 const OVER_3D = { element: '.neuroglancer-rendered-data-panel.nge-3d-panel', x: 0.5, y: 0.03 };
 /** Room for the status choices and the feedback line. */
-const BOX_W = 'clamp(280px, 24vw, 380px)';
+const BOX_W = '400px';
 const chip = (name: string, color: string) => `<span class="nge-hud-chip" style="border-color:${color};color:${color}">${name}</span>`;
 const BB = chip('Basal body', COLORS.basal), DC = chip('Daughter centriole', COLORS.daughter), CL = chip('Cilium centerline', COLORS.centerline);
 /** On the finished example a name is a link: a click takes the view to that
@@ -454,7 +454,6 @@ Already know how? Close this box with the ✕. You can come back any time with t
     title: 'A finished Cilia Quest',
     state: exampleState(DEMO, true),
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `This starburst cell has been marked by the lab. A finished quest has three marks, each in its own layer:
 <ul>
@@ -468,7 +467,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Look at a finished one',
     title: 'The cilium centerline',
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip. By the end of this training you'll be able to draw your own!`,
     onEnter() { POINT.centerline(); },
@@ -477,7 +475,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Look at a finished one',
     title: 'The basal body',
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `The gold point is the ${BBgo}. Follow the green line down to the base of the cilium and you find it: a tiny barrel, a <strong>centriole</strong>, right where the cilium leaves the cell.
 
@@ -488,7 +485,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Look at a finished one',
     title: 'The daughter centriole',
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `The red point is the ${DCgo}, the basal body's partner. It is a second small barrel, set back a little from the base of the cilium and often turned at an angle to the first.
 
@@ -500,7 +496,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'Now you try',
     state: exampleState(DEMO, false),
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `Same cell, but the lab's marks are hidden. You have the three empty layers a real quest gives you: ${CL}, ${DC} and ${BB}.
 
@@ -511,7 +506,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Your turn',
     title: 'Trace the cilium',
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     // Short: the long version covered most of a laptop screen, and the key
     // caps shouted (Ames, 2026-11-12).
@@ -525,7 +519,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Your turn',
     title: 'Mark the basal body',
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `Now the ${BB} layer is selected. Follow your line back to where the cilium leaves the cell, then <strong>CTRL+CLICK</strong> on the basal body at its base in the 2D view.
 <div data-nge-cq-feedback></div>`,
@@ -535,7 +528,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Your turn',
     title: 'Mark the daughter centriole',
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `Last one: the ${DC} layer is selected. Find the basal body's partner, just behind it, and <strong>CTRL+CLICK</strong> on it.
 
@@ -547,7 +539,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Your turn',
     title: 'Compare with the lab',
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `The lab's answer is back, in white, in its own layer called <strong>Lab's answer</strong>. Your marks are in color. How did you do?
 <div data-nge-cq-feedback></div>
@@ -558,8 +549,7 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     part: 'Choose a status',
     title: 'Every quest gets a status',
     position: OVER_3D,
-    dock: 'side',
-    width: BOX_W,
+    width: '460px',
     html: `When you submit a quest, you also pick a <strong>status</strong>: one line that tells the lab what you found. Not every cell has a cilium you can see, and the status says so.
 <ul class="nge-cq-statuses">${STATUS_LIST.map(s => `<li><strong>${s}</strong>: ${QUEST_STATUS_GUIDE[s]}</li>`).join('')}</ul>
 <p>See real examples of each one in Celia's <a href="https://connectome.quest/blog/cilia-status-guide/" target="_blank" rel="noopener">Cilia Status Guide</a>.</p>
@@ -570,7 +560,6 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'No cilium here',
     state: exampleState(CLEAR, true),
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `Some cells have no cilium you can see. You still mark the two centrioles if you can find them, and the status says what you found.
 
@@ -583,7 +572,6 @@ ${quiz('clear')}`,
     title: 'Which one is which?',
     state: exampleState(UNCLEAR, true),
     position: OVER_3D,
-    dock: 'side',
     width: BOX_W,
     html: `Here is another cell with no cilium. This time its two centrioles sit deep inside the cell, side by side. Which status fits?
 ${quiz('unclear')}`,

@@ -160,13 +160,6 @@ export interface Step {
   preloading?: boolean;
   videoCache?: HTMLVideoElement;
   width?: string;
-  /** 'top-right': a slim box tucked into the top right corner of its target
-   *  (the 3D view), smaller text, scrolling when long, so a small screen
-   *  keeps most of the view (toknow via Ames, 2026-11-12). 'side': the same
-   *  slim box in the layer panel on the right, under its buttons, where it
-   *  is mostly empty space; the top right of the target when that panel is
-   *  shut. */
-  dock?: 'top-right' | 'side';
   nextLabel?: string;
   spaceAdvances?: boolean;
   clickAfterState?: string;

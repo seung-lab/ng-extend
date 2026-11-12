@@ -215,14 +215,6 @@ function wider(width: string): string {
     return m ? `max(${m[1]}px, ${(Number(m[1]) / 1750 * 100).toFixed(2)}vw)` : width;
 }
 
-/** The open layer panel on the right (Step.dock 'side'). */
-function sidePanelRect(): DOMRect | null {
-    const tab = document.querySelector('.neuroglancer-layer-side-panel-tab-view');
-    const panel = tab?.closest('.neuroglancer-side-panel') as HTMLElement | null;
-    const r = panel?.getBoundingClientRect();
-    return r && r.width >= 240 && r.height >= 400 ? r : null;
-}
-
 async function updateChipPosition() {
     const step = props.step;
 
@@ -238,17 +230,7 @@ async function updateChipPosition() {
     if (element) {
         const rect = element.getBoundingClientRect();
 
-        // The layer panel on the right, when it is open and wide enough.
-        const side = step.dock === 'side' ? sidePanelRect() : null;
-        if (side) {
-            cssClass = 'dock-side';
-            left = `${side.left + 8}px`;
-            top = `${side.bottom - 8}px`;
-        } else if (step.dock === 'top-right' || step.dock === 'side') {
-            cssClass = 'dock-tr';
-            left = `${rect.right - 10}px`;
-            top = `${rect.top + 10}px`;
-        } else if (isNextToElementPostition(step.position)) {
+        if (isNextToElementPostition(step.position)) {
             cssClass = step.position.side;
 
             const { x: xOff, y: yOff } = step.position.offset || { x: 0, y: 0 };
@@ -289,15 +271,6 @@ async function updateChipPosition() {
 
     if (step.width) {
         chipBounds.value.width = wider(step.width);
-    }
-    // In the layer panel: its width, and no taller than the panel below its
-    // buttons, list head and first few marks (about 290px).
-    if (cssClass === 'dock-side') {
-        const side = sidePanelRect();
-        if (side) {
-            chipBounds.value.width = `${Math.round(side.width - 16)}px`;
-            (chipBounds.value as any)['max-height'] = `${Math.max(220, Math.round(side.height - 300))}px`;
-        }
     }
 
     let html = step.html;
@@ -892,26 +865,6 @@ async function onHtmlClick(e: MouseEvent) {
 
 .introductionStepAnchor.center>* {
     transform: translate(-50%, -50%);
-}
-
-/* Docked in the top right of its view (Step.dock): slim, smaller text, and
-   a thin scroll bar when the box is long. */
-.introductionStepAnchor.dock-tr>* {
-    transform: translate(-100%, 0);
-}
-.introductionStepAnchor.dock-side>* {
-    transform: translate(0, -100%);
-}
-.introductionStepAnchor.dock-tr .arrow,
-.introductionStepAnchor.dock-side .arrow { display: none; }
-.introductionStepAnchor.dock-side .chip,
-.introductionStepAnchor.dock-tr .chip {
-    box-sizing: border-box;
-    font-size: 15px;
-    padding: 18px 20px 14px;
-    max-height: calc(100vh - 150px);
-    scrollbar-width: thin;
-    scrollbar-color: rgba(126, 224, 255, 0.35) transparent;
 }
 
 
