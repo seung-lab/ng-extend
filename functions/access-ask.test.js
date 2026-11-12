@@ -78,3 +78,30 @@ test('access.setEwName: admins save a typed EyeWire username, lowercased, for th
   await assert.rejects(handle('access.setEwName', { email: 'ann@x.org', ewName: 'bad<name>' }, t.io));
   await assert.rejects(handle('access.setEwName', { email: 'ann@x.org', ewName: 'k' }, io({ isAdmin: false }).io));
 });
+
+test('access.readHandledBetaBells: a Beta request bell is read for every admin once the request is dealt with', async () => {
+  const A1 = '11111111-1111-1111-1111-111111111111', A2 = '22222222-2222-2222-2222-222222222222';
+  const esc = s => s.replace(/[\\`*_{}\[\]()#+\-.!|<>~&:@]/g, c => '\\' + c);
+  const bell = (id, target, email) => ({ id, target_id: target, body: `X asks to join the Pyr beta.\n\nEmail they gave: ${esc(email)}\n\nClick this note.` });
+  const bells = [bell(1, A1, 'in@x.org'), bell(2, A2, 'in@x.org'), bell(3, A1, 'later@x.org'), bell(4, A1, 'asked@x.org'),
+    bell(5, A1, 'waiting@x.org'), bell(6, A1, 'old@x.org'), bell(7, A1, 'Linked@x.org')];
+  const posted = [];
+  const t = io({
+    me: { id: A1 },
+    marks: { all: async () => ({ 'later@x.org': { mark: 'listed', at: 'x' }, 'waiting@x.org': null }) },
+    sb: async (q, init) => {
+      if (q.startsWith('notifications?')) return bells;
+      if (q.startsWith('notification_reads?notification_id')) return [{ notification_id: 6, user_id: A1 }];
+      if (q.startsWith('pilot_members')) return [{ email: 'in@x.org' }, { email: 'main@x.org' }];
+      if (q.startsWith('access_email_links')) return [{ email: 'linked@x.org', linked_to: 'main@x.org' }];
+      if (q.startsWith('notification_reads?on_conflict')) { posted.push(...JSON.parse(init.body)); return []; }
+      return [];
+    },
+  });
+  t.store['asked@x.org'] = { at: 'x' };
+  const r = await handle('access.readHandledBetaBells', {}, t.io);
+  assert.deepStrictEqual(posted.map(p => p.notification_id).sort(), [1, 2, 3, 4, 7]);
+  assert.strictEqual(posted.find(p => p.notification_id === 2).user_id, A2);
+  assert.deepStrictEqual(r, { marked: 5, ids: [1, 3, 4, 7] });
+  await assert.rejects(handle('access.readHandledBetaBells', {}, io({ isAdmin: false }).io));
+});

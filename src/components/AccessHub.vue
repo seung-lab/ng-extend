@@ -140,7 +140,10 @@ async function load() {
   error.value = problems.join(' · ');
   loading.value = false;
 }
-onMounted(() => { document.title = 'Pyr · Access'; void load(); });
+// Beta request bells of requests dealt with here are marked read for every
+// admin (Ames 2026-11-12), on open and after each action on a request.
+const readBells = () => { void secureWrite('access.readHandledBetaBells').catch(() => { /* next time */ }); };
+onMounted(() => { document.title = 'Pyr · Access'; void load().then(readBells); });
 
 // ── Where each person is ─────────────────────────────────────────────────
 const later = (...t: (string | null | undefined)[]) => t.filter(Boolean).sort().pop() || null;
@@ -488,6 +491,7 @@ async function run(what: string, f: () => Promise<void>) {
 }
 const letIn = (c: Card) => run('letin', async () => {
   const p = c.p!; await addPilot(p.email);
+  readBells();
   void welcomeBell(p.user_id);
   emailed.value = { ...emailed.value, [p.email]: 'Sending the email…' };
   void welcomeEmail(p.email, p.name || '').then(s => { emailed.value = { ...emailed.value, [p.email]: s }; });
@@ -495,6 +499,7 @@ const letIn = (c: Card) => run('letin', async () => {
 });
 const markBeta = (c: Card, mark: 'listed' | 'removed' | 'waiting') => run(mark, async () => {
   marks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: c.p!.email, mark })) || {};
+  readBells();
 });
 const openAsk = (c: Card) => run('askdraft', async () => {
   const d = await secureWrite<{ subject: string; text: string }>('access.askDraft', { email: c.p!.email, name: nameOf(c), ewName: c.p!.ew_name || '' });
@@ -506,6 +511,7 @@ const sendAsk = (c: Card) => run('ask', async () => {
     { email: a.email, name: nameOf(c), subject: a.subject, text: a.text, again: !!asked.value[a.email] });
   if (!r?.sent) throw new Error(r?.reason === 'not set up' ? 'Email is not set up.' : 'Already asked. Reload the page to see when.');
   asked.value = { ...asked.value, [a.email]: { at: r.at || new Date().toISOString(), by: '' } };
+  readBells();
   ask.value = null;
 });
 const askOpen = computed(() => !!ask.value && !!open.value?.p && ask.value.email === open.value.p.email);

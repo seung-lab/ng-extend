@@ -5872,6 +5872,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // retina (Ames 2026-11-06): the server marks it read for every reviewer
     // (access.readGrantedBells), so every admin and device agrees. Asked once
     // per unread request bell, and only when one is here.
+    // A Beta request bell, once the request is dealt with on the Access page
+    // (Ames 2026-11-12): access.readHandledBetaBells marks it read for every
+    // admin. Asked once per unread bell on this page.
+    const askBeta = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔑 Beta access request')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askBeta.length) {
+      for (const n of askBeta) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readHandledBetaBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
+    }
     const askRequest = notifications.value.filter(n => n.target_type === 'user'
       && String(n.title || '').startsWith('🔬 Retina access request from')
       && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
