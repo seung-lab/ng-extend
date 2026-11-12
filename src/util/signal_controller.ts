@@ -503,7 +503,7 @@ function stepGlide(dt: number) {
   if ((len(sub(next, glide.look)) < 800 && Math.abs(v.projectionScale.value - glide.scale) < glide.scale * 0.01) || performance.now() - glide.since > 1600) { glide = null; recordCam(); }
 }
 /** The ship's look, after scifi-ui's goldOnBlue hologram: a cool blue body, a molten gold rim. */
-const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.03, 0.09, 0.26], rim: [0.85, 0.7, 0.42], shade: 0.8};   // shade 1.1 and a brighter rim were "too overwashed" (Ames 2026-11-12)
+const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.02, 0.05, 0.12], rim: [0.5, 0.85, 1.0], shade: 0.55};   // a dark body under the head light (the front was blown out white at shade 1.1 and 0.8: Ames 2026-11-12, "this lighting is the issue"), a cyan rim as the Starship intro has
 const GROUP = 'signal';
 /** A faceted sphere: an icosahedron subdivided once, flat-shaded (80 faces). */
 function icosphere(): {positions: Float32Array; normals: Float32Array} {
@@ -783,7 +783,15 @@ function ensureStyle() {
 /* the cell to click now */
 .nge-sig .nge-sig-chip--hint { border-color: #c9f6ff; box-shadow: 0 0 16px rgba(126, 224, 255, 0.55), inset 0 0 12px rgba(126, 224, 255, 0.15); animation: nge-sig-hint 1s ease-in-out infinite; }
 @keyframes nge-sig-hint { 50% { box-shadow: 0 0 6px rgba(126, 224, 255, 0.25), inset 0 0 4px rgba(126, 224, 255, 0.08); } }
-.ng-extend.nge-sig-tag--hint { border-color: #c9f6ff; color: #fff; background: rgba(20, 60, 110, 0.9); box-shadow: 0 0 16px rgba(126, 224, 255, 0.7); animation: nge-sig-hint 1s ease-in-out infinite; }
+.ng-extend.nge-sig-tag--hint { border-color: #c9f6ff; color: #fff; background: rgba(20, 60, 110, 0.9); box-shadow: 0 0 12px rgba(126, 224, 255, 0.5); animation: nge-sig-hint 1.8s ease-in-out infinite; }
+.ng-extend.nge-sig-tag--cue { border-color: #c9f6ff; color: #fff; background: rgba(20, 60, 110, 0.9); box-shadow: 0 0 10px rgba(126, 224, 255, 0.4); }
+/* a scan: the other cells' tags step back (Ames 2026-11-12: "dim the other cell labels as well, they obscure the view") */
+.ng-extend.nge-sig-tag--dim { opacity: 0.26; }
+/* zoomed out, the tags move away from the crowded cell bodies, each on a leader (Ames 2026-11-12) */
+.ng-extend.nge-sig-tag--out::after { display: none; }
+.ng-extend.nge-sig-tag-leads { position: fixed; inset: 0; z-index: 9399; pointer-events: none; }
+.ng-extend.nge-sig-tag-leads line { stroke: rgba(160, 215, 255, 0.55); stroke-width: 1; stroke-dasharray: 3 3; }
+.ng-extend.nge-sig-tag-leads circle { fill: rgba(200, 235, 255, 0.8); }
 /* the neurons involved */
 .nge-sig-kicker { margin: 10px 0 4px; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; color: #7ecaff; text-transform: uppercase; display: flex; gap: 8px; align-items: center; }
 .nge-sig-kicker i { width: 14px; height: 1px; background: #7ecaff; box-shadow: 0 0 6px #7ecaff; }
@@ -988,7 +996,7 @@ body.nge-mobile .nge-sig-go, body.nge-mobile .nge-sig-quiet { touch-action: mani
 .nge-sig-map .node:hover .body, .nge-sig-map .node:focus-visible .body { fill: color-mix(in srgb, var(--c) 45%, rgba(8, 14, 30, 0.9)); }
 .nge-sig-map .node .key { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; fill: var(--c); text-anchor: middle; pointer-events: none; }
 .nge-sig-map .node .role { font: 600 8.5px 'Inter', sans-serif; letter-spacing: 0.04em; fill: #a9c3de; text-anchor: middle; pointer-events: none; }
-.nge-sig-map .node.hint .halo { opacity: 1; animation: nge-sig-map-hint 1s ease-in-out infinite; }
+.nge-sig-map .node.hint .halo { opacity: 1; animation: nge-sig-map-hint 1.8s ease-in-out infinite; }
 .nge-sig-map .node.hint .body { fill: color-mix(in srgb, var(--c) 55%, rgba(8, 14, 30, 0.9)); }
 @keyframes nge-sig-map-hint { 50% { opacity: 0.35; stroke-width: 3; } }
 .nge-sig-map .node.hushed { opacity: 0.45; }
@@ -1558,7 +1566,7 @@ function updateMap() {
   if (!mapNodeEls.size) return;
   for (const [k, g] of mapNodeEls) {
     const c = cells.get(k)!;
-    g.classList.toggle('hint', hints.has(k));
+    g.classList.toggle('hint', hints.has(k) && phase === 'playing');
     g.classList.toggle('hushed', now < c.hushedUntil);
     g.classList.toggle('held', holdOn(c) > 0.3);
   }
@@ -2467,8 +2475,9 @@ function applyHaze() {
  *  While the game runs, the haze goes straight back on; what Highlight wanted
  *  is kept for when the game ends. */
 function keepHaze() {
-  if (!hazeOn || !hazeTint || partsTintOn) return;
+  if (!hazeOn || !hazeTint) return;
   const now = getNgeMeshTint();
+  if (partsTintOn) { if (partsTint && now !== partsTint) setNgeMeshTint(partsTint); return; }   // the parts paint stays too
   if (now === hazeTint) return;
   savedTint = now;
   setNgeMeshTint(hazeTint);
@@ -2480,7 +2489,7 @@ function keepHaze() {
    2026-11-12: "when I said label dendrites I meant on the cell, not in a
    cartoon; we have highlight mode"). The skeleton's compartments say which
    is which (the parts files: axon from compartment 2, dendrites from 3 and 4). ── */
-let partsTintOn = false;
+let partsTintOn = false, partsTint: NgeMeshTint | null = null;
 function showPartsTint(key: string) {
   const c = cells.get(key), nm = nmPerUnit();
   const pr = c && parts.get(c.spec.root);
@@ -2514,11 +2523,12 @@ function showPartsTint(key: string) {
   const m = mat4.create();
   for (let i = 0; i < 3; i++) { m[i * 5] = nm[i] / (dims[i] * cell); m[12 + i] = -lo[i] / (dims[i] * cell); }
   partsTintOn = true;
-  setNgeMeshTint({data, dims, gridFromGlobal: m, glow: ac});   // plain colour marks; the axon's colour glows
+  partsTint = {data, dims, gridFromGlobal: m, glow: ac};   // plain colour marks; the axon's colour glows
+  setNgeMeshTint(partsTint);
 }
 function hidePartsTint() {
   if (!partsTintOn) return;
-  partsTintOn = false;
+  partsTintOn = false; partsTint = null;
   if (hazeOn) { try { hazeTint = buildHaze(); setNgeMeshTint(hazeTint); } catch (e) { console.warn('[signal] no haze:', e); } }
 }
 function clearHaze() {
@@ -2565,21 +2575,52 @@ function makeTags() {
     tagEls.set(key, el);
   }
 }
+let tagLeads: SVGSVGElement | null = null;
 function placeTags() {
   if (!tagEls.size) return;
   const pn = threeDPanel();
   const r = pn?.element?.getBoundingClientRect();
   const hud = panel?.getBoundingClientRect();
   const behindHud = (x: number, y: number) => !!hud && x > hud.left - 8 && x < hud.right + 8 && y > hud.top - 40 && y < hud.bottom + 8;
+  // every tag's cell body on screen first: zoomed out, the bodies crowd, and
+  // the tags move out from their middle, each on a leader back to its body
+  // (Ames 2026-11-12: "migrate the labels farther from the soma with leader lines")
+  const shown: {key: string; el: HTMLElement; s: [number, number]}[] = [];
   for (const [key, el] of tagEls) {
     const c = cells.get(key)!;
     const s = c.shown ? toScreen(c.spec.soma) : null;
     if (!s || !r || s[0] < r.left + 20 || s[0] > r.right - 20 || s[1] < r.top + 40 || s[1] > r.bottom - 10 || behindHud(s[0], s[1])) { el.style.display = 'none'; continue; }
+    shown.push({key, el, s: [s[0], s[1]]});
+  }
+  let push = 0, cx = 0, cy = 0;
+  if (shown.length > 1 && !phone()) {
+    let sum = 0;
+    for (const p of shown) {
+      let best = Infinity;
+      for (const q of shown) if (q !== p) best = Math.min(best, Math.hypot(p.s[0] - q.s[0], p.s[1] - q.s[1]));
+      sum += best; cx += p.s[0] / shown.length; cy += p.s[1] / shown.length;
+    }
+    push = clamp((130 - sum / shown.length) * 1.1, 0, 120);
+  }
+  if (!tagLeads) { tagLeads = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); tagLeads.setAttribute('class', 'ng-extend nge-sig-tag-leads'); tagLeads.setAttribute('aria-hidden', 'true'); document.body.appendChild(tagLeads); }
+  let leads = '';
+  for (const {key, el, s} of shown) {
+    const c = cells.get(key)!;
+    let x = s[0], y = s[1];
+    if (push > 0) {
+      const dx = s[0] - cx, dy = s[1] - cy, d = Math.hypot(dx, dy) || 1;
+      x = clamp(s[0] + dx / d * push, (r?.left ?? 0) + 70, (r?.right ?? innerWidth) - 70);
+      y = clamp(s[1] + dy / d * push, (r?.top ?? 0) + 60, (r?.bottom ?? innerHeight) - 16);
+      leads += `<line x1="${x.toFixed(0)}" y1="${(y - 4).toFixed(0)}" x2="${s[0].toFixed(0)}" y2="${s[1].toFixed(0)}"/><circle cx="${s[0].toFixed(0)}" cy="${s[1].toFixed(0)}" r="2"/>`;
+    }
     el.style.display = '';
-    el.style.left = `${s[0]}px`;
-    el.style.top = `${s[1]}px`;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.classList.toggle('nge-sig-tag--out', push > 0);
+    el.classList.toggle('nge-sig-tag--dim', !!scanLit && key !== scanLit);
     el.classList.toggle('nge-sig-tag--hushed', now < c.hushedUntil);
-    el.classList.toggle('nge-sig-tag--hint', hints.has(key));
+    el.classList.toggle('nge-sig-tag--hint', hints.has(key) && (phase === 'playing' || phone()));   // a phone's tap cue stays in the tour
+    el.classList.toggle('nge-sig-tag--cue', hints.has(key) && phase !== 'playing' && !phone());
     const held = holdOn(c) > 0.5;
     if ((el.dataset.held === '1') !== held) {
       el.dataset.held = held ? '1' : '0';
@@ -2589,10 +2630,12 @@ function placeTags() {
       if (small) small.textContent = held ? 'Held down' : tagLine(c);
     }
   }
+  if (tagLeads && tagLeads.innerHTML !== leads) tagLeads.innerHTML = leads;
 }
 function clearTags() {
   for (const el of tagEls.values()) el.remove();
   tagEls.clear();
+  if (tagLeads) tagLeads.innerHTML = '';
 }
 
 /* ── the scene: cells, camera, ship ── */
@@ -2878,7 +2921,9 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   // on the way it points where it is going; landed, it sits across the cell
   // body's surface, its belly to the cell (its up is the way to the eye)
   const landed = !!vc && !!spot && len(sub(shipAt, spot)) < viewNm * 0.03;
-  const aimAt = vc ? (landed ? add(shipAt, mul(cam.right, visit!.lean)) : spot!) : shipAim && performance.now() < aimUntil ? shipAim : center;
+  // on the way back to its spot it flies nose first, and faces the circuit once it is there (it used to face the circuit all the way, flying backwards: Ames 2026-11-12)
+  const homeward = !vc && spot ? sub(spot, shipAt) : null;
+  const aimAt = vc ? (landed ? add(shipAt, mul(cam.right, visit!.lean)) : spot!) : homeward && len(homeward) > viewNm * 0.04 ? add(shipAt, homeward) : shipAim && performance.now() < aimUntil ? shipAim : center;
   const want = norm(sub(aimAt, shipAt));
   shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * (vc ? 12 : 7))));
   const upRef = landed ? cam.toEye : cam.up;
