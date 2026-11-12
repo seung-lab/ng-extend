@@ -954,7 +954,12 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig-tour .nge-sig-row { margin-top: 12px; gap: 8px; }
 .nge-sig .nge-sig-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .nge-sig .nge-sig-ico svg { display: block; }
-.nge-sig .nge-sig-neuron { display: block; width: 100%; max-width: 330px; margin: 8px 0 2px; }
+.nge-sig .nge-sig-neuron { display: block; width: 100%; max-width: 330px; margin: 6px 0 2px; }
+.nge-sig .nge-sig-fig { margin: 6px 0 0; }
+.nge-sig .nge-sig-fig summary { list-style: none; cursor: pointer; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #7ee0ff; }
+.nge-sig .nge-sig-fig summary::-webkit-details-marker { display: none; }
+.nge-sig .nge-sig-fig summary i { display: inline-block; font-style: normal; margin-left: 3px; transition: transform 0.2s; }
+.nge-sig .nge-sig-fig[open] summary i { transform: rotate(90deg); }
 /* the science: a folded line in the foot */
 .nge-sig .nge-sig-sci { margin: 6px 0 2px; }
 .nge-sig .nge-sig-sci-btn { padding: 0; border: 0; background: none; color: #7ee0ff; cursor: pointer; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
@@ -1971,6 +1976,14 @@ function showTour(steps: TourStep[]) {
   tourAt = 0;
   renderTourStep();
 }
+/** A step's figure: open the first time it is seen in this browser, folded
+ *  after that behind "Diagram" (Ames 2026-11-12: "show the diagram just one
+ *  time then collapse it"). */
+function figureHtml(svg: string): string {
+  let seen = false;
+  try { seen = localStorage.getItem('pyr.signal.fig') === '1'; } catch { /* unknown */ }
+  return `<details class="nge-sig-fig"${seen ? '' : ' open'}><summary>Diagram <i>›</i></summary>${svg}</details>`;
+}
 function renderTourStep() {
   const step = tourSteps[tourAt], last = tourAt === tourSteps.length - 1;
   tourReset();
@@ -1978,7 +1991,7 @@ function renderTourStep() {
   els.map.style.display = tourAt >= (MAP_FROM[levelIndex] ?? 0) ? '' : 'none';
   const textKey = `tour.${levelIndex}.${tourAt}.text`, subKey = `tour.${levelIndex}.${tourAt}.sub`;
   els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length} · ${step.kicker}</div>
-    <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}${step.html ?? ''}
+    <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}${step.html ? figureHtml(step.html) : ''}
     <div class="nge-sig-row">${tourAt ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="back" title="Back" aria-label="Back">${BACK_SVG}</button>` : ''}<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${step.play ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="replay" title="Replay" aria-label="Replay">${REPLAY_SVG}</button>` : ''}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
     b.onclick = () => {
@@ -1990,6 +2003,7 @@ function renderTourStep() {
       else { tourAt++; renderTourStep(); }
     };
   });
+  if ((els.body.querySelector('details.nge-sig-fig') as HTMLDetailsElement | null)?.open) { try { localStorage.setItem('pyr.signal.fig', '1'); } catch { /* not kept */ } }
   refreshEditor();
   const token = ++tourToken;
   void step.play?.(() => token === tourToken && active && phase === 'brief');
