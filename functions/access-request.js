@@ -775,6 +775,8 @@ async function welcomeEmail(a, io) {
 //   access.askEmail  admins: {email, name, subject, text, again} sends it.
 //   access.askSent   admins: every send, {email: {at, by}}.
 const ASK_FROM = 'Amy at Pyr <welcome@connectome.quest>';
+// Replies go to support@eyewire.org (Ames 2026-11-12).
+const ASK_REPLY_TO = 'support@eyewire.org';
 const ASK_SUBJECT_MAX = 150;
 const ASK_TEXT_MAX = 4000;
 function askDraft(name) {
@@ -804,11 +806,20 @@ async function askEmail(a, io) {
   const before = io.askSent && await io.askSent.get(email);
   if (before && !a.again) return {sent: false, reason: 'already sent', at: before.at};
   const copies = WELCOME_COPY_TO.filter(c => c !== email);
-  const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: WELCOME_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), subject, text});
+  const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), subject, text});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
   const at = new Date().toISOString();
   if (io.askSent) await io.askSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || ''});
   return {sent: true, at};
+}
+// How many we emailed an invite (Ames 2026-11-12: "how many ppl we have
+// invited via email ... in stats up top"): rows in access_invites, one per
+// email per campaign, counted once per email.
+//   access.inviteCount  admins: {invited}.
+async function inviteCount(a, io) {
+  needAdmin(io.isAdmin);
+  const rows = await io.sb('access_invites?select=email&limit=20000');
+  return {invited: new Set((rows || []).map(r => r.email)).size};
 }
 async function askSentAll(a, io) {
   needAdmin(io.isAdmin);
@@ -1163,6 +1174,7 @@ async function handle(action, args, io) {
   if (action === 'access.askDraft') return askDraftAction(a, io);
   if (action === 'access.askEmail') return askEmail(a, io);
   if (action === 'access.askSent') return askSentAll(a, io);
+  if (action === 'access.inviteCount') return inviteCount(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);
   if (action === 'access.noteDelete') return accessNoteDelete(a, io);

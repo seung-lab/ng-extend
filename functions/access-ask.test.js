@@ -31,7 +31,7 @@ test('sends the edited email once, from Amy at Pyr, replies to support', async (
   assert.strictEqual(t.sent.length, 1);
   assert.deepStrictEqual(t.sent[0].to, ['a@x.org']);
   assert.strictEqual(t.sent[0].from, 'Amy at Pyr <welcome@connectome.quest>');
-  assert.strictEqual(t.sent[0].reply_to, 'support@eyewire.ai');
+  assert.strictEqual(t.sent[0].reply_to, 'support@eyewire.org');
   assert.strictEqual(t.sent[0].subject, 'Hello');
   assert.strictEqual(t.sent[0].text, 'Edited.');
   assert.ok(t.store['a@x.org'].at);
@@ -42,6 +42,12 @@ test('sends the edited email once, from Amy at Pyr, replies to support', async (
   assert.strictEqual(forced.sent, true);
   assert.match(t.sent[1].text, /^Hi Rob,/);
   assert.deepStrictEqual(Object.keys(await handle('access.askSent', {}, t.io)), ['a@x.org']);
+});
+
+test('counts each email we invited once', async () => {
+  const t = io({ sb: async (q) => (q.startsWith('access_invites') ? [{ email: 'a@x.org' }, { email: 'b@x.org' }, { email: 'a@x.org' }] : []) });
+  assert.deepStrictEqual(await handle('access.inviteCount', {}, t.io), { invited: 2 });
+  await assert.rejects(handle('access.inviteCount', {}, io({ isAdmin: false }).io));
 });
 
 test('admins only, and no empty email', async () => {

@@ -41,7 +41,7 @@ interface PlayerDataset { dataset: string; edits: number; cells: number; chats: 
 interface Activity { dataset: string; edits: number; editors: number; cells: number; finishers: number; chats: number; chatters: number }
 interface Stat { tutorial: number; step: number; last_box: string | null; n: number; players: number; median_s: number; p90_s: number; help_rate: number; closes: number }
 interface Note { id: string; text: string; by: string; at: string }
-type Stage = 'asked' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
+type Stage = 'asked' | 'emailed' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
 const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as';
@@ -66,6 +66,7 @@ const emailed = ref<Record<string, string>>({});
 // Asking for their EyeWire name by email (Ames 2026-11-12): who was asked,
 // and the draft open in the panel (shown first, Edit to change it).
 const asked = ref<Record<string, { at: string; by: string }>>({});
+const inviteCount = ref<number | null>(null);
 const ask = ref<{ email: string; subject: string; text: string; editing: boolean } | null>(null);
 const testTries = ref<TestTry[]>([]);
 /** CAVE edit access by email, from the Users sheet (refreshed hourly). */
@@ -104,6 +105,7 @@ async function load() {
     show(read('Beta lists', async () => (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}, {} as Record<string, { mark: string; at: string }>), v => { marks.value = v; }),
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
     show(read('Asked by email', async () => (await secureWrite<Record<string, { at: string; by: string }>>('access.askSent')) || {}, {} as Record<string, { at: string; by: string }>), v => { asked.value = v; }),
+    show(read('Invites', async () => (await secureWrite<{ invited: number }>('access.inviteCount'))?.invited ?? null, null as number | null), v => { inviteCount.value = v; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
     show(read('Dataset access', () => readCanEdit(), null as Record<string, string> | null), v => { canEdit.value = v; }),
@@ -138,6 +140,9 @@ const cards = computed<Card[]>(() => {
       // Later: off the Asked list, kept for when we take people new to
       // EyeWire (Ames 2026-11-10: "add to queue for later").
       else if (fresh && mk.mark === 'listed') { stage = 'later'; since = mk.at; listed = true; }
+      // Emailed: we asked them by email after they asked, and wait on
+      // their reply (Ames 2026-11-12: "put emailed into a separate column").
+      else if (asked.value[p.email] && String(asked.value[p.email].at) >= String(p.asked_at)) { stage = 'emailed'; since = asked.value[p.email].at; }
       else { stage = 'asked'; since = p.asked_at; }
     }
     else if (p.pilot_enabled === false) { stage = 'removed'; since = p.let_in_at; }
@@ -247,6 +252,7 @@ const typical = computed<Record<string, number>>(() => {
 });
 const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean }[] = [
   { stage: 'asked', title: 'Asked', sub: 'Beta request, waiting on us', ours: true },
+  { stage: 'emailed', title: 'Emailed', sub: 'we asked them by email, waiting on their reply', ours: true },
   { stage: 'letin', title: 'Let in', sub: 'not signed in yet' },
   { stage: 'signedin', title: 'Signed in', sub: 'no tutorial finished yet' },
   { stage: 'tutorial', title: 'Tutorial done', sub: 'no edits yet' },
@@ -326,6 +332,8 @@ const totals = computed(() => {
   const split = Object.entries(byDs).sort((a, b) => b[1] - a[1]).map(([d, n]) => `${d} ${n}`).join(', ');
   return [
     { label: 'People', n: ps.length, title: 'Everyone who asked, was let in or signed in' },
+    // Everyone we emailed an invite (access_invites), and how many of them asked.
+    { label: 'Invited by email', n: inviteCount.value ?? NaN, title: inviteCount.value == null ? 'Could not read the invite list' : `We emailed ${inviteCount.value} EyeWire players an invite. ${ps.filter(p => p.invited_at).length} of them asked or are in` },
     { label: 'Let in', n: ps.filter(p => p.pilot_enabled).length, title: 'On Pilot testers now' },
     { label: 'Signed in', n: ps.filter(p => p.joined_at).length, title: 'Signed in to Pyr at least once' },
     { label: 'Finished a tutorial', n: ps.filter(p => p.tutorial_at).length, title: 'Finished their first tutorial' },
@@ -381,7 +389,7 @@ if (wantPerson) {
   }, { immediate: true });
 }
 // Read EyeWire for the people waiting on us, and anyone opened.
-watch(() => cards.value.filter(c => c.stage === 'asked' || c.stage === 'later' || c.stage === 'dataset' || c.key === openKey.value).map(c => c.p?.ew_name).filter(Boolean).join('|'),
+watch(() => cards.value.filter(c => c.stage === 'asked' || c.stage === 'emailed' || c.stage === 'later' || c.stage === 'dataset' || c.key === openKey.value).map(c => c.p?.ew_name).filter(Boolean).join('|'),
   names => { for (const n of names.split('|')) if (n) void readEw(n); }, { immediate: true });
 /** The email without a Pyr account folds into the one with (the view keeps
  *  the account's email). Two accounts: they stay apart. */
@@ -535,7 +543,7 @@ const opName = (e: RecentEdit) => {
     <header class="ah-head">
       <h1>Access</h1>
       <span class="ah-sum" v-if="people.length">
-        {{ inStage('asked').length }} Beta request{{ inStage('asked').length === 1 ? '' : 's' }} and {{ inStage('dataset').length }} dataset request{{ inStage('dataset').length === 1 ? '' : 's' }} waiting on us<template v-if="inStage('later').length">, {{ inStage('later').length }} for later</template>
+        {{ inStage('asked').length }} Beta request{{ inStage('asked').length === 1 ? '' : 's' }} and {{ inStage('dataset').length }} dataset request{{ inStage('dataset').length === 1 ? '' : 's' }} waiting on us<template v-if="inStage('emailed').length">, {{ inStage('emailed').length }} emailed</template><template v-if="inStage('later').length">, {{ inStage('later').length }} for later</template>
       </span>
       <input v-model="search" class="ah-search" type="search" autocomplete="off" placeholder="Search a name, email or username" aria-label="Search people" />
       <button class="ah-btn" type="button" :disabled="loading" @click="load">{{ loading ? 'Reading…' : 'Refresh' }}</button>
@@ -561,7 +569,7 @@ const opName = (e: RecentEdit) => {
             <span class="ah-col-n">{{ inStage(col.stage).length }}</span>
           </div>
           <div class="ah-col-sub">{{ col.sub }}</div>
-          <div v-if="col.stage !== 'editing'" class="ah-col-typ" title="How long people usually take to move on from this step">usually moves on in {{ span(typical[col.stage]) }}</div>
+          <div v-if="col.stage !== 'editing' && col.stage !== 'emailed'" class="ah-col-typ" title="How long people usually take to move on from this step">usually moves on in {{ span(typical[col.stage]) }}</div>
           <div class="ah-col-list">
             <button v-for="c in columnCards(col.stage)" :key="col.stage + c.key" type="button" class="ah-card"
                     :class="{ 'ah-card--open': openKey === c.key }" @click="pick(c)">
@@ -570,7 +578,7 @@ const opName = (e: RecentEdit) => {
               <span class="ah-card-line">
                 <template v-if="col.stage === 'editing'">{{ c.p?.edits.toLocaleString() }} edit{{ c.p?.edits === 1 ? '' : 's' }}<template v-if="c.p?.last_dataset">, {{ dsName(c.p.last_dataset) }}</template>, last {{ ago(c.p?.last_edit_at ?? null) }} ago</template>
                 <template v-else-if="col.stage === 'dataset'">{{ c.ds?.label }}, {{ ago(c.since) }}</template>
-                <template v-else>{{ ago(c.since) }}<template v-if="col.stage === 'signedin' && c.p?.tutorial_active">, in tutorial {{ c.p.tutorial_active }}</template><template v-if="col.stage === 'asked'">, {{ c.p?.from_site ? 'from connectome.quest' : 'in Pyr' }}</template></template>
+                <template v-else>{{ ago(c.since) }}<template v-if="col.stage === 'signedin' && c.p?.tutorial_active">, in tutorial {{ c.p.tutorial_active }}</template><template v-if="col.stage === 'emailed'"> since we emailed, asked {{ day(c.p?.asked_at ?? null) }}</template><template v-if="col.stage === 'asked'">, {{ c.p?.from_site ? 'from connectome.quest' : 'in Pyr' }}</template></template>
               </span>
               <span class="ah-card-tags">
                 <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
@@ -651,18 +659,18 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.found_us" class="ah-panel-meta">Found us: {{ open.p.found_us }}</div>
         <blockquote v-if="open.p?.their_note">{{ open.p.their_note }}</blockquote>
 
-        <div v-if="open.stage === 'asked' || open.stage === 'later' || open.stage === 'removed' && open.p?.request_id && !open.p?.pilot_enabled" class="ah-actions">
+        <div v-if="open.stage === 'asked' || open.stage === 'emailed' || open.stage === 'later' || open.stage === 'removed' && open.p?.request_id && !open.p?.pilot_enabled" class="ah-actions">
           <button class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="letIn(open)">{{ busy === 'letin' ? 'Letting in…' : 'Let them in' }}</button>
-          <button v-if="open.stage === 'asked'" class="ah-btn" type="button" :disabled="!!busy" title="Off the Asked list, kept for when we take people new to EyeWire" @click="markBeta(open, 'listed')">Later</button>
+          <button v-if="open.stage === 'asked' || open.stage === 'emailed'" class="ah-btn" type="button" :disabled="!!busy" title="Off the Asked list, kept for when we take people new to EyeWire" @click="markBeta(open, 'listed')">Later</button>
           <button v-if="open.stage !== 'removed'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'removed')">Remove request</button>
-          <button v-if="open.stage !== 'asked'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'waiting')">Back to Asked</button>
+          <button v-if="open.stage !== 'asked' && open.stage !== 'emailed'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'waiting')">Back to Asked</button>
         </div>
         <div v-if="open.stage === 'later'" class="ah-panel-meta">Later since {{ day(open.since) }}</div>
-        <div v-if="(open.stage === 'asked' || open.stage === 'later') && open.p?.email && (!open.p.ew_name || asked[open.p.email])" class="ah-ask">
+        <div v-if="(open.stage === 'asked' || open.stage === 'emailed' || open.stage === 'later') && open.p?.email && (!open.p.ew_name || asked[open.p.email])" class="ah-ask">
           <div v-if="asked[open.p.email]" class="ah-panel-meta">Asked for their EyeWire name by email {{ day(asked[open.p.email].at) }}</div>
           <button v-if="!askOpen" class="ah-btn" type="button" :disabled="!!busy" @click="openAsk(open)">{{ busy === 'askdraft' ? 'Opening…' : asked[open.p.email] ? 'Ask again by email' : 'Ask for their EyeWire name' }}</button>
           <div v-else-if="ask" class="ah-ask-draft" aria-label="Email to send">
-            <div class="ah-panel-meta">To {{ ask.email }}, from Amy at Pyr. Replies go to support.</div>
+            <div class="ah-panel-meta">To {{ ask.email }}, from Amy at Pyr. Replies go to support@eyewire.org.</div>
             <template v-if="ask.editing">
               <input v-model="ask.subject" class="ah-ask-subject" maxlength="150" aria-label="Subject">
               <textarea v-model="ask.text" class="ah-ask-text" rows="10" maxlength="4000" aria-label="Email"></textarea>

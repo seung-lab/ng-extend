@@ -104,6 +104,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
       if (a === 'access.askSent') return r.fulfill(ok({}));
+      if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414 }));
       if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
 
 Could you reply with your EyeWire username?
@@ -152,7 +153,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     let b = await board();
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
-    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
+    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
     const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.trim()));
     check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
@@ -184,7 +185,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
     check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
     const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
-    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '16 People|11 Let in|5 Signed in|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
+    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '16 People|414 Invited by email|11 Let in|5 Signed in|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
     check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
@@ -275,7 +276,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('Send sends the edited email', askCall && askCall.args.email === 'domaitk358@example.org' && askCall.args.text === 'Hi Inezh, edited by us.' && askCall.args.subject === 'Your Pyr beta request' && askCall.args.again === false, askCall);
     const afterAsk = await page.textContent('.ah-panel').catch(() => '');
     b = await board();
-    check('the panel and card say they were asked', /Asked for their EyeWire name by email/.test(afterAsk) && /Asked by email/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text), afterAsk.slice(0, 300));
+    check('the panel says they were asked, and they move to Emailed', /Asked for their EyeWire name by email/.test(afterAsk) && col(b, 'Asked').cards.every(c => c.name !== 'Inezh') && col(b, 'Emailed').cards.some(c => c.name === 'Inezh'), { afterAsk: afterAsk.slice(0, 200), emailed: col(b, 'Emailed') });
     // Later takes them off the Asked list.
     await page.click('.ah-panel button:has-text("Later")');
     await page.waitForTimeout(400);
