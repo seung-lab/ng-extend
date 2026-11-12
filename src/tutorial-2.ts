@@ -433,22 +433,6 @@ function nextWhenAnnotationLayerAdded() {
     }, 400);
   }, 1200);
 }
-/** Move on by itself once an annotation layer is called "Tutorial". */
-function nextWhenRenamedTutorial() {
-  waitForAction();
-  const store = useTutorialStore();
-  const tutorial = store.activeTutorial, step = store.getTutorialStep();
-  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
-  const timer = setInterval(() => {
-    if (!here()) { clearInterval(timer); return; }
-    const named = ((window as any).viewer?.layerManager?.managedLayers ?? [])
-      .some((ml: any) => !ml.archived && /^tutorial$/i.test(String(ml.name || '').trim()));
-    if (named) {
-      clearInterval(timer);
-      setTimeout(() => { if (here()) advance(); }, 1200);
-    }
-  }, 400);
-}
 /** The annotations in layers with these names, counted. */
 function annotationsIn(names: RegExp): number {
   let n = 0;
@@ -607,53 +591,33 @@ They live in an ANNOTATION LAYER. <strong>CLICK the "+" to add one.</strong>`,
       `;
     },
   },
+  // The rename box went 2026-11-12: the Annotations tutorial teaches it, and
+  // the mission's hint still says to click the ✎ pencil (Ames: "go").
   {
     part: "Part 1 of 4 · Mark what you see",
     text: `
-This is your new layer's side panel. Let's give the layer a name of its own.
+The Pyr gem tool is already picked. <strong>CTRL+CLICK on the cell</strong> to drop a few gems.
 
-<strong>Click the ✎ pencil next to the layer's name</strong> (or the name itself), type <strong>Tutorial</strong> and press Enter.`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-title",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    onEnter() { ensureAnnotationLayer(); nextWhenRenamedTutorial(); },
-  },
-  {
-    part: "Part 1 of 4 · Mark what you see",
-    text: `
-The Pyr gem tool is already picked. <strong>CTRL+CLICK anywhere on the cell</strong> to drop a gem. Try placing a few!
-
-Each gem is listed in the panel. Hover its row: the pencil adds a note to it, and the trash icon removes it. Your gems stay with you for the rest of the tutorial. Press Next when you're ready to move on.`,
+Hover a gem's row in the panel: the pencil adds a note, the trash removes it. The <strong>Annotations</strong> tutorial in the menu covers colors, lines and more.`,
     position: OVER_3D,
+    // Was on the rename box: the player's layer, or a new one, with its panel open.
+    onEnter() { ensureAnnotationLayer(); },
   },
   {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-Now for something new: LAYERS. Each tab up here is one layer, one kind of thing in your view, like the 2D images or the 3D cells.
-
-The selected layer is the one with the bright line around its border and the brighter background.`,
-    position: {
-      element: ".neuroglancer-layer-panel > .neuroglancer-layer-item[data-selected=\"true\"]",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-      state:
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
-  },
-  {
+    // The "Now for something new: LAYERS" box is folded in here (2026-11-12).
     part: "Part 2 of 4 · Working with cells",
     get text() { return `
-<strong>${SELECT_CLICK()}</strong> on <strong>3D segmentation</strong> to select it instead.
+Each tab up here is one LAYER, like the 2D images or the 3D cells. The selected one has the bright border.
 
-If it worked, the bright line moves to its border! Each layer also has a number on its tab, and ${classicLayers() ? '<strong>CTRL</strong> and that number' : 'that number key'} selects it.`; },
+<strong>${SELECT_CLICK()}</strong> on <strong>3D segmentation</strong> to select it. Each tab also has a number, and ${classicLayers() ? '<strong>SHIFT</strong> and that number' : 'that number key'} selects it too.`; },
     onEnter: () => { markSegChip(); nextWhenSegSelected(); },
     position: {
       element: ".nge-tut-seg-chip",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
   },
   {
     part: "Part 2 of 4 · Working with cells",
@@ -854,7 +818,7 @@ Now let's go back to our cell:
     text: `
 Now let's put it together. <strong>Find Path</strong> draws the route through a cell between two points.
 
-<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> to trace the path. (Points from before still there? Click <strong>Clear</strong> in the Find Path bar first.) (or click <strong>Submit</strong> in the Find Path bar at the bottom).
+<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or <strong>Submit</strong> in the Find Path bar) to trace the path. Points from before still there? Click <strong>Clear</strong> first.
 
 We've made the cell see through, so the path stands out.`,
     width: "500px",
@@ -867,9 +831,9 @@ We've made the cell see through, so the path stands out.`,
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-That's how you find where a merger starts. When a branch looks wrong, put one point on the soma and one on the wrong branch, and Find Path shows exactly where the wrong piece joins the cell. That join is where you cut.
+That's how you find where a merger starts: Find Path shows exactly where the wrong branch joins the cell, and that join is where you cut.
 
-If you are scouting mergers, you can then tag the spot with the glowing <strong>Tag</strong> tool on the top bar, so you or a teammate can find it again.`,
+Scouting mergers? Tag the spot with the glowing <strong>Tag</strong> tool so you or a teammate can find it again.`,
     width: "500px",
     position: { element: '#extensionBar [data-icon-id="tags"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
