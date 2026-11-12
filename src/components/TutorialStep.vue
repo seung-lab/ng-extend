@@ -1883,8 +1883,15 @@ async function onHtmlClick(e: MouseEvent) {
   content: '✦'; position: absolute; color: #fff6a8; pointer-events: none; font-size: 10px; line-height: 1;
   animation: nge-spark-twinkle 1.2s ease-in-out infinite;
 }
-.nge-tut-sparkle::before { left: -9px; top: -8px; }
-.nge-tut-sparkle::after { right: -9px; bottom: -7px; animation-delay: 0.6s; font-size: 8px; }
+/* The stars sit close to the eye, and the row lets them show past its edge
+   (Ames 2026-11-12: "the stars are also sort of cropped by the eye box"). */
+.nge-tut-sparkle::before { left: -6px; top: -5px; }
+.nge-tut-sparkle::after { right: -6px; bottom: -4px; animation-delay: 0.6s; font-size: 8px; }
+.neuroglancer-segment-list-entry:has(.nge-tut-sparkle),
+.neuroglancer-segment-list-entry:has(.nge-tut-sparkle) > *,
+.neuroglancer-segment-list-entry-sticky:has(.nge-tut-sparkle) { overflow: visible !important; }
+/* The test site's Intro test dock sits under an open tutorial box. */
+body:has(.introductionStepAnchor) .nge-stt-dock { z-index: 80 !important; }
 @keyframes nge-spark-glow { 50% { filter: drop-shadow(0 0 10px #fff6a8) drop-shadow(0 0 16px #ffd84d); } }
 @keyframes nge-spark-twinkle { 0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); } 50% { opacity: 1; transform: scale(1.2) rotate(90deg); } }
 @media (prefers-reduced-motion: reduce) { .nge-tut-sparkle, .nge-tut-sparkle::before, .nge-tut-sparkle::after { animation: none; } }
