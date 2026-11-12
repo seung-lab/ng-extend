@@ -2380,10 +2380,11 @@ const sideHud = () => window.innerWidth >= 1000;
 const phone = () => document.body.classList.contains('nge-mobile');
 /** The low-poly look: no meshes at all; each cell a faceted body in its
  *  colour with its arbors as a dust of light and the wires between the cells
- *  as beaded lines, all from the parts files. Phones get it (the whole cells,
- *  millimetres of axon each, are too heavy there); `?signal&holo` tries it
- *  anywhere (Ames 2026-11-11: "a simplified visual version like low poly
- *  mini neurons, stylized for the mobile version"). */
+ *  as beaded lines, all from the parts files, behind `?signal&holo` on any
+ *  device (Ames 2026-11-11: "a simplified visual version like low poly mini
+ *  neurons, stylized for the mobile version"; 2026-11-12: "a little too low
+ *  poly; let me try the original version on my phone", so phones keep the
+ *  meshes unless asked). */
 const HOLO_FLAG = (() => { try { return new URLSearchParams(location.search).has('holo'); } catch { return false; } })();
 let holoMode = false;
 /** A touch screen is the main pointer: no keys to name, "tap" not "click". */
@@ -3599,7 +3600,7 @@ async function startLevel(index: number) {
   els.body.innerHTML = '<div class="nge-sig-card"><p data-el="loading">Loading the cells…</p></div>';
   updateHud();
   const ml = await openCircuit();
-  holoMode = phone() || HOLO_FLAG;
+  holoMode = HOLO_FLAG;   // opt in only, on any device (Ames 2026-11-12: "a little too low poly; let me try the original version on my phone")
   // These are whole cells with millimetres of axon each; a slightly coarser
   // mesh level keeps the frame rate up for the beams and sparks. In the
   // low-poly look no mesh is shown at all.
