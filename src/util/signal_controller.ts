@@ -4119,4 +4119,4 @@ export function startSignalController() {
     hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))]),
     spikes: [...cells.values()].filter(c => c.shown).map(c => [c.key, c.spikes]), progress, weights: conns.filter(k => (k.w ?? 1) !== 1).map(k => [k.pre, k.post, Number((k.w ?? 1).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
-  step: (seconds: number) => { for (let k = 0; k < seconds / 0.05; k++) if (phase === 'playing') stepModel(0.05); }};
+  step: (seconds: number) => { for (let k = 0; k < seconds / 0.05; k++) if (phase === 'playing' || demo) stepModel(0.05); }};   // in play, or in a tour's demonstration
