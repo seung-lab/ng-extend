@@ -21,6 +21,23 @@ CREATE TABLE IF NOT EXISTS public.access_email_links (
 ALTER TABLE public.access_email_links ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.access_email_links FROM anon, authenticated;
 
+-- Who we invited by email (Ames 2026-11-12: "an icon that indicates this is
+-- a person we invited via email or not"): one row per email per send, from
+-- the send log of each campaign (the first, the MEC talk email to EyeWire
+-- Scouts and up, 2026-11-09 to 11). The EyeWire username lets a request made
+-- with another email still match. Admin only.
+CREATE TABLE IF NOT EXISTS public.access_invites (
+  email text NOT NULL CHECK (email = lower(email)),
+  campaign text NOT NULL,
+  ew_name text CHECK (ew_name = lower(ew_name)),
+  ew_role text,
+  sent_at timestamptz NOT NULL,
+  PRIMARY KEY (email, campaign)
+);
+CREATE INDEX IF NOT EXISTS access_invites_ew_name ON public.access_invites (ew_name);
+ALTER TABLE public.access_invites ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.access_invites FROM anon, authenticated;
+
 CREATE OR REPLACE VIEW public.access_hub_people AS
 -- The links: the ones made by hand above, and every invite used from another
 -- Google account (an "Invite used" record holds both emails,
@@ -135,7 +152,8 @@ SELECT
   coalesce(m.chats, 0) AS chats, coalesce(m.chats_30d, 0) AS chats_30d,
   coalesce(ha.help_asked, 0) AS help_asked, coalesce(ha.help_answered_for, 0) AS help_answered_for, coalesce(ha.help_asked_30d, 0) AS help_asked_30d,
   coalesce(hg.help_given, 0) AS help_given, coalesce(hg.help_given_30d, 0) AS help_given_30d,
-  (ad.email IS NOT NULL) AS is_admin
+  (ad.email IS NOT NULL) AS is_admin,
+  iv.sent_at AS invited_at, iv.campaign AS invited_for, iv.ew_role AS invited_role, iv.email AS invited_as
 FROM who w
 LEFT JOIN adm ad ON ad.email = w.email
 LEFT JOIN req r ON r.email = w.email
@@ -146,7 +164,16 @@ LEFT JOIN ed e ON e.user_id = u.id
 LEFT JOIN cc c ON c.user_id = u.id
 LEFT JOIN ch m ON m.user_id = u.id
 LEFT JOIN ha ON ha.user_id = u.id
-LEFT JOIN hg ON hg.user_id = u.id;
+LEFT JOIN hg ON hg.user_id = u.id
+-- The first invite that reached them: this email, the email they gave on
+-- the form, an email folded into this one, or their EyeWire username.
+LEFT JOIN LATERAL (
+  SELECT i.email, i.campaign, i.ew_role, i.sent_at FROM public.access_invites i
+  WHERE i.email = w.email OR i.email = r.gave_email
+    OR i.email IN (SELECT l.email FROM lnk l WHERE l.linked_to = w.email)
+    OR (r.ew_name IS NOT NULL AND i.ew_name = lower(r.ew_name))
+  ORDER BY i.sent_at LIMIT 1
+) iv ON true;
 REVOKE ALL ON public.access_hub_people FROM anon, authenticated;
 
 -- A player's 10 latest actions, for the panel ("10 recent edits"): when,
@@ -202,3 +229,22 @@ SELECT coalesce(e.dataset, c.dataset, m.dataset) AS dataset,
   coalesce(m.chats, 0) AS chats, coalesce(m.chatters, 0) AS chatters
 FROM e FULL JOIN c ON c.dataset = e.dataset FULL JOIN m ON m.dataset = coalesce(e.dataset, c.dataset);
 REVOKE ALL ON public.access_hub_activity FROM anon, authenticated;
+
+-- Where each player is in each tutorial (Ames 2026-11-12: "show which
+-- tutorial users are on like a flow chart ... what step users are on and
+-- average time spent per step"): one row per player and tutorial, with the
+-- last box they left (and how: next, back, close...) and when they finished
+-- it, if they did. Admins only, through ewCommunityData.
+CREATE OR REPLACE VIEW public.access_hub_tutorials AS
+WITH ev AS (
+  SELECT DISTINCT ON (user_id, tutorial) user_id, tutorial, step AS last_step, left_by AS last_left, created_at AS last_at
+  FROM public.tutorial_step_events
+  ORDER BY user_id, tutorial, created_at DESC
+),
+dn AS (
+  SELECT user_id, tutorial, min(completed_at) AS done_at FROM public.tutorial_completions GROUP BY user_id, tutorial
+)
+SELECT coalesce(ev.user_id, dn.user_id) AS user_id, coalesce(ev.tutorial, dn.tutorial) AS tutorial,
+  ev.last_step, ev.last_left, ev.last_at, dn.done_at
+FROM ev FULL JOIN dn ON dn.user_id = ev.user_id AND dn.tutorial = ev.tutorial;
+REVOKE ALL ON public.access_hub_tutorials FROM anon, authenticated;
