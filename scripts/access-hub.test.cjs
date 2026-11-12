@@ -34,6 +34,8 @@ const PEOPLE = [
   // asked in Pyr, signed in, with an email starting with that EyeWire name.
   { ...base, email: 'dom.a@hotmail.example', name: 'Dominic Aitken', request_id: UID(5), asked_at: ago(0.2), from_site: true, ew_name: 'domaitk' },
   { ...base, email: 'domaitk358@example.org', user_id: UID(16), name: 'Inezh', request_id: UID(6), asked_at: ago(0.21), joined_at: ago(0.2) },
+  // Emailed an invite, never asked or signed in: the Emailed list, not the board.
+  { ...base, email: 'pat@old.example', name: 'patew', invited_at: '2026-11-10T01:47:00Z', invited_for: 'mec_talk', invited_role: 'Scythe', invited_as: 'pat@old.example', invited_ew_name: 'patew' },
   // Asked yesterday, then Later.
   { ...base, email: 'rae@example.org', name: 'Rae Lin', request_id: UID(2), asked_at: ago(1.2) },
   // Asked, then removed.
@@ -184,13 +186,18 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
     check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
     const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
-    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '16 People|11 Let in|5 Signed in|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
+    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '16 People|2 Invited by email|11 Let in|5 Signed in|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
     check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
     check('a waiting dataset request takes its own column', col(b, 'Asked for a dataset').cards.length === 1 && /Medial Entorhinal Cortex/.test(col(b, 'Asked for a dataset').cards[0].text), col(b, 'Asked for a dataset'));
     const summary = await page.textContent('.ah-sum');
     check('the head counts what waits on us, and Later', /3 Beta requests and 1 dataset request waiting on us, 1 for later/.test(summary), summary);
+    check('the people we only emailed are not on the board', (await board()).every(cl => cl.cards.every(c => c.name !== 'patew')));
+    await page.click('.ah-invited-fold');
+    const emailedOnly = await page.$$eval('.ah-invited-list .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('they fold away in their own list', emailedOnly.length === 1 && /patew/.test(emailedOnly[0]) && /Emailed Nov (9|10), EyeWire Scythe/.test(emailedOnly[0]), emailedOnly);
+    await page.click('.ah-invited-fold');
     await page.click('.ah-later-fold');
     const later = await page.$$eval('.ah-later .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
     check('Later folds away below', later.length === 1 && /Rae Lin/.test(later[0]), later);

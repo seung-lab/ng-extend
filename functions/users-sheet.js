@@ -80,7 +80,9 @@ const isTest = (email) => /@example\.(org|com|net)$|\.invalid$/i.test(String(ema
  *  {user_id: "Retina, MEC"} from CAVE (null or missing: CAVE couldn't say). */
 function rows(people, caveIds = {}, marks = {}, kept = {}, canEdit = {}) {
   const listed = new Set();
-  const out = people.filter(p => p.email && !isTest(p.email)).map(p => {
+  // People we only emailed (no request, not let in, never signed in) stay
+  // off the sheet; the Access page lists them on their own.
+  const out = people.filter(p => p.email && !isTest(p.email) && (p.request_id || p.pilot_enabled != null || p.user_id || p.is_admin)).map(p => {
     const step = stepOf(p, marks[p.email]);
     const k = kept[String(p.email).toLowerCase()] || {};
     listed.add(String(p.email).toLowerCase());

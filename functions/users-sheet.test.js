@@ -41,7 +41,8 @@ test('rows: one per person, in step order, with CAVE IDs; test accounts left out
 test('a sync clears the Users tab, then writes headers, rows and when it ran', async () => {
   const calls = [];
   const io = {
-    sb: async (path) => (path.startsWith('access_hub_people') ? [{ ...base, email: 'a@x.org', name: 'A', pilot_enabled: true }] : [{ id: U, cave_user_id: 9 }]),
+    // pat@ was only emailed an invite (Ames 2026-11-12): off the sheet.
+    sb: async (path) => (path.startsWith('access_hub_people') ? [{ ...base, email: 'a@x.org', name: 'A', pilot_enabled: true }, { ...base, email: 'pat@x.org', name: 'patew', pilot_enabled: null }] : [{ id: U, cave_user_id: 9 }]),
     api: async (path, init) => { calls.push({ path: decodeURIComponent(path), method: init.method, body: init.body }); return {}; },
   };
   const out = await syncUsersSheet(io, { now: new Date('2026-11-10T03:00:00Z') });
