@@ -63,6 +63,7 @@ const columns = {
   access_hub_recent_edits: 'user_id,at,dataset,operation,success',
   access_hub_player_datasets: 'user_id,dataset,edits,cells,chats,last_edit_at',
   access_hub_activity: 'dataset,edits,editors,cells,finishers,chats,chatters',
+  access_hub_tutorials: 'user_id,tutorial,last_step,last_left,last_at,done_at',
   // Each admin edit of an in-game text, before and after, so Ames's note can put it back
   // (supabase-site-text-edits.sql, Ames 2026-11-09). Admins read; only the server writes.
   site_text_edits: 'id,key,old_body,new_body,editor_name,created_at',
@@ -126,7 +127,7 @@ function authorizeData(input, ctx) {
     } else if (table === 'admins' && !ctx.isAdmin) {
       // Supports the existing maybeSingle admin-status check without exposing addresses.
       scope('id.is.null');
-    } else if (table === 'feedback_triage' || table === 'tutorial_step_events' || table === 'tutorial_step_stats' || table === 'access_hub_people' || table === 'access_hub_activity' || table === 'access_hub_recent_edits' || table === 'access_hub_player_datasets' || table === 'site_text_edits') {
+    } else if (table === 'feedback_triage' || table === 'tutorial_step_events' || table === 'tutorial_step_stats' || table === 'access_hub_people' || table === 'access_hub_activity' || table === 'access_hub_recent_edits' || table === 'access_hub_player_datasets' || table === 'access_hub_tutorials' || table === 'site_text_edits') {
       admin();
     } else if (table === 'site_issues' && !ctx.isAdmin) {
       scope('user_id.eq.'+own());

@@ -229,3 +229,22 @@ SELECT coalesce(e.dataset, c.dataset, m.dataset) AS dataset,
   coalesce(m.chats, 0) AS chats, coalesce(m.chatters, 0) AS chatters
 FROM e FULL JOIN c ON c.dataset = e.dataset FULL JOIN m ON m.dataset = coalesce(e.dataset, c.dataset);
 REVOKE ALL ON public.access_hub_activity FROM anon, authenticated;
+
+-- Where each player is in each tutorial (Ames 2026-11-12: "show which
+-- tutorial users are on like a flow chart ... what step users are on and
+-- average time spent per step"): one row per player and tutorial, with the
+-- last box they left (and how: next, back, close...) and when they finished
+-- it, if they did. Admins only, through ewCommunityData.
+CREATE OR REPLACE VIEW public.access_hub_tutorials AS
+WITH ev AS (
+  SELECT DISTINCT ON (user_id, tutorial) user_id, tutorial, step AS last_step, left_by AS last_left, created_at AS last_at
+  FROM public.tutorial_step_events
+  ORDER BY user_id, tutorial, created_at DESC
+),
+dn AS (
+  SELECT user_id, tutorial, min(completed_at) AS done_at FROM public.tutorial_completions GROUP BY user_id, tutorial
+)
+SELECT coalesce(ev.user_id, dn.user_id) AS user_id, coalesce(ev.tutorial, dn.tutorial) AS tutorial,
+  ev.last_step, ev.last_left, ev.last_at, dn.done_at
+FROM ev FULL JOIN dn ON dn.user_id = ev.user_id AND dn.tutorial = ev.tutorial;
+REVOKE ALL ON public.access_hub_tutorials FROM anon, authenticated;

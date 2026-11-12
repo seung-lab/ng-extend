@@ -51,6 +51,9 @@ const dsRows = ref<DatasetRequestRow[]>([]);
 const notes = ref<Record<string, Note[]>>({});
 const activity = ref<Activity[]>([]);
 const stats = ref<Stat[]>([]);
+/** One player in one tutorial (access_hub_tutorials): the last box they left, how, and when they finished. */
+interface TutRow { user_id: string; tutorial: number; last_step: number | null; last_left: string | null; last_at: string | null; done_at: string | null }
+const tutRows = ref<TutRow[]>([]);
 const loading = ref(false);
 const error = ref('');
 const search = ref('');
@@ -87,6 +90,18 @@ async function load() {
   // Ames's phone 2026-11-09), so everyone is read in pages, in email order
   // (one row per email, so no page skips or repeats a person).
   const PAGE = 500;
+  const paged = async <T>(name: string, cols: string, orders: string[]): Promise<T[]> => {
+    const all: T[] = [];
+    for (let from = 0; from < 20000; from += PAGE) {
+      let q = supabase.from(name).select(cols);
+      for (const o of orders) q = q.order(o);
+      const { data, error: err } = await q.range(from, from + PAGE - 1);
+      if (err) throw new Error(err.message);
+      all.push(...((data ?? []) as T[]));
+      if (!data || data.length < PAGE) break;
+    }
+    return all;
+  };
   const everyone = async (): Promise<Person[]> => {
     const all: Person[] = [];
     for (let from = 0; from < 20000; from += PAGE) {
@@ -110,6 +125,7 @@ async function load() {
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
     show(read('Dataset access', () => readCanEdit(), null as Record<string, string> | null), v => { canEdit.value = v; }),
     show(read('Test tries', async () => (await secureWrite<TestTriesList>('test.tries', { limit: 200 }))?.tries ?? [], [] as TestTry[]), v => { testTries.value = v; }),
+    show(read('Tutorial places', () => paged<TutRow>('access_hub_tutorials', 'user_id,tutorial,last_step,last_left,last_at,done_at', ['user_id', 'tutorial']), [] as TutRow[]), v => { tutRows.value = v; }),
     show(read('Tutorial times', () => table<Stat>('tutorial_step_stats', 'tutorial,step,last_box,n,players,median_s,p90_s,help_rate,closes', 500), [] as Stat[]), v => { stats.value = v; }),
   ]);
   error.value = problems.join(' · ');
@@ -482,6 +498,65 @@ const maxEdits = computed(() => Math.max(1, ...places.value.map(a => a.edits)));
 const slowSteps = computed(() => stats.value.filter(s => s.players >= 2).sort((a, b) => Number(b.median_s) - Number(a.median_s)).slice(0, 8));
 const maxStep = computed(() => Math.max(1, ...slowSteps.value.map(s => Number(s.median_s))));
 const tutPlayers = computed(() => Math.max(0, ...stats.value.map(s => s.players)));
+// The tutorials as a flow (Ames 2026-11-12: "show which tutorial users are
+// on like a flow chart and then when I click on a tutorial ... show what
+// step users are on and like average time spent per step"). The main path
+// in the order of the game's menu, then the others. Counts are players on
+// this page (not admins): finished, and in it now (the tutorial the game
+// says they are in, not finished). Open one for its boxes: the median time
+// on each, how many reached it, and who is on it now.
+const FLOW_MAIN = [1, 3, 5, 2, 11];
+const FLOW_MORE = [9, 13, 14, 4, 6, 7, 8, 10];
+const tutName = (t: number) => TUTORIAL_NAMES[t] ?? `Tutorial ${t}`;
+const players = computed(() => new Map(people.value.filter(p => p.user_id && !p.is_admin).map(p => [p.user_id as string, p])));
+const tutOf = computed(() => {
+  const m = new Map<string, TutRow>();
+  for (const r of tutRows.value) m.set(`${r.user_id}|${r.tutorial}`, r);
+  return m;
+});
+const nodes = computed(() => {
+  const out: Record<number, { done: number; now: number }> = {};
+  for (const t of [...FLOW_MAIN, ...FLOW_MORE]) out[t] = { done: 0, now: 0 };
+  for (const r of tutRows.value) if (r.done_at && out[r.tutorial] && players.value.has(r.user_id)) out[r.tutorial].done++;
+  for (const p of players.value.values()) {
+    const t = p.tutorial_active; if (!t || !out[t]) continue;
+    if (!tutOf.value.get(`${p.user_id}|${t}`)?.done_at) out[t].now++;
+  }
+  return out;
+});
+const openTut = ref<number | null>(null);
+/** The box a player is on: the one after the box they left with Next. */
+function stepNow(r: TutRow | undefined): number | null {
+  if (!r || r.last_step == null) return null;
+  if (r.last_left === 'next' || r.last_left === 'auto') return r.last_step + 1;
+  if (r.last_left === 'back') return Math.max(0, r.last_step - 1);
+  return r.last_step;
+}
+interface StepRow { step: number; name: string; s: Stat | null; here: Person[] }
+const tutOpen = computed(() => {
+  const t = openTut.value; if (t == null) return null;
+  const steps = stats.value.filter(s => s.tutorial === t).sort((a, b) => a.step - b.step);
+  const here = new Map<number, Person[]>(); const unknown: Person[] = [];
+  for (const p of players.value.values()) {
+    if (p.tutorial_active !== t) continue;
+    const r = tutOf.value.get(`${p.user_id}|${t}`);
+    if (r?.done_at) continue;
+    const s = stepNow(r);
+    if (s == null) unknown.push(p); else here.set(s, [...(here.get(s) || []), p]);
+  }
+  const rows: StepRow[] = steps.map(s => ({ step: s.step, name: boxName(s), s, here: here.get(s.step) || [] }));
+  // Someone on a box nobody has left yet (often the last one).
+  for (const [step, ps] of here) if (!steps.some(s => s.step === step)) rows.push({ step, name: `Box ${step + 1}`, s: null, here: ps });
+  rows.sort((a, b) => a.step - b.step);
+  const first = steps[0]?.players || 0;
+  const total = steps.reduce((n, s) => n + Number(s.median_s || 0), 0);
+  const maxMedian = Math.max(1, ...steps.map(s => Number(s.median_s || 0)));
+  return { t, rows, unknown, first, total, maxMedian };
+});
+function openPerson(p: Person) {
+  const c = cards.value.find(x => x.key === p.email);
+  if (c) { openKey.value = c.key; actionError.value = ''; }
+}
 const secs = (v: number) => { const s = Math.round(Number(v) || 0); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
 const boxName = (s: Stat) => String(s.last_box || `Box ${s.step + 1}`).replace(/\s+/g, ' ').slice(0, 70);
 const triageUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
@@ -786,6 +861,39 @@ const opName = (e: RecentEdit) => {
       </button>
     </div>
 
+    <section v-if="stats.length || tutRows.length" class="ah-flowbox" aria-label="Tutorials">
+      <h3>Tutorials</h3>
+      <div class="ah-flow">
+        <template v-for="(t, i) in FLOW_MAIN" :key="'m' + t">
+          <button type="button" class="ah-node" :class="{ 'ah-node--open': openTut === t }" :aria-expanded="openTut === t" @click="openTut = openTut === t ? null : t">
+            <span class="ah-node-name">{{ tutName(t) }}</span>
+            <span class="ah-node-n"><b>{{ nodes[t].done }}</b> finished</span>
+            <span class="ah-node-n"><b>{{ nodes[t].now }}</b> in it now</span>
+          </button>
+          <span v-if="i < FLOW_MAIN.length - 1" class="ah-arrow" aria-hidden="true">→</span>
+        </template>
+      </div>
+      <div class="ah-flow ah-flow--more">
+        <span class="ah-flow-label">Also</span>
+        <button v-for="t in FLOW_MORE" :key="'o' + t" type="button" class="ah-node ah-node--small" :class="{ 'ah-node--open': openTut === t }" :aria-expanded="openTut === t" @click="openTut = openTut === t ? null : t">
+          <span class="ah-node-name">{{ tutName(t) }}</span>
+          <span class="ah-node-n"><b>{{ nodes[t].done }}</b> finished · <b>{{ nodes[t].now }}</b> in it</span>
+        </button>
+      </div>
+      <div v-if="tutOpen" class="ah-tut-open">
+        <h4>{{ tutName(tutOpen.t) }}<span class="ah-quiet"> · {{ nodes[tutOpen.t].done }} finished, {{ nodes[tutOpen.t].now }} in it now<template v-if="tutOpen.total">, about {{ secs(tutOpen.total) }} start to end</template></span></h4>
+        <div v-for="r in tutOpen.rows" :key="r.step" class="ah-step">
+          <a class="ah-bar-name ah-bar-link" :href="boxLink(tutOpen.t, r.step, gameUrl)" target="_blank" rel="noopener" :title="`Open this box in the game: ${r.name}`">{{ r.step + 1 }}. {{ r.name }}</a>
+          <span class="ah-bar ah-bar--tut"><span v-if="r.s" :style="{ width: (Number(r.s.median_s) / tutOpen.maxMedian) * 100 + '%' }"></span></span>
+          <span class="ah-bar-n"><template v-if="r.s">{{ secs(r.s.median_s) }} median</template></span>
+          <span class="ah-bar-x"><template v-if="r.s">{{ r.s.players }} reached<template v-if="tutOpen.first && r.s.players < tutOpen.first"> of {{ tutOpen.first }}</template><template v-if="Number(r.s.help_rate) > 0">, {{ Math.round(Number(r.s.help_rate) * 100) }}% asked for help</template><template v-if="r.s.closes">, {{ r.s.closes }} left here</template></template></span>
+          <span v-if="r.here.length" class="ah-step-here">On it now: <button v-for="p in r.here" :key="p.email" type="button" class="ah-chip" @click="openPerson(p)">{{ p.name || p.username || p.email }}</button></span>
+        </div>
+        <p v-if="!tutOpen.rows.length" class="ah-quiet">No box times yet for this one.</p>
+        <p v-if="tutOpen.unknown.length" class="ah-step-here">In it, box not known (they started before box times were kept): <button v-for="p in tutOpen.unknown" :key="p.email" type="button" class="ah-chip" @click="openPerson(p)">{{ p.name || p.username || p.email }}</button></p>
+      </div>
+    </section>
+
     <section class="ah-insights">
       <div class="ah-box">
         <h3>Where the community is, last 30 days</h3>
@@ -933,6 +1041,26 @@ input.ah-ask-subject, textarea.ah-ask-text { background: #0d1626; color: #e8f1ff
 .ah-note-by span { font-weight: 400; color: #7f93b0; }
 .ah-note-x { margin-left: auto; background: none; border: none; color: #7f93b0; cursor: pointer; font-size: 15px; }
 .ah-note-text { font-size: 13.5px; white-space: pre-wrap; color: #e4edf9; }
+.ah-flowbox { margin-top: 18px; background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 12px 14px; }
+.ah-flowbox h3 { margin: 0 0 8px; font-size: 15px; color: #eef4ff; }
+.ah-flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+.ah-flow--more { margin-top: 10px; align-items: center; }
+.ah-flow-label { font-size: 12px; color: #8ea3c2; margin-right: 2px; }
+.ah-node { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 130px; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(127,196,255,.3); background: rgba(24,40,70,.75); color: #dbe6f5; font: inherit; cursor: pointer; }
+.ah-node:hover, .ah-node:focus-visible { border-color: rgba(127,196,255,.65); }
+.ah-node--open { border-color: #7fc4ff; background: rgba(55,138,221,.25); }
+.ah-node--small { min-width: 0; padding: 5px 10px; }
+.ah-node-name { font-weight: 700; color: #f2f7ff; font-size: 13.5px; }
+.ah-node-n { font-size: 12px; color: #9fb6d6; }
+.ah-node-n b { color: #9fd3ff; }
+.ah-arrow { align-self: center; color: #5f8fc8; font-size: 18px; }
+.ah-tut-open { margin-top: 12px; border-top: 1px solid rgba(90,130,200,.22); padding-top: 10px; }
+.ah-tut-open h4 { margin: 0 0 8px; font-size: 14px; color: #eef4ff; }
+.ah-step { display: grid; grid-template-columns: minmax(140px, 34%) minmax(0, 1fr) 9em; column-gap: 10px; align-items: center; padding: 4px 0; font-size: 13px; border-bottom: 1px solid rgba(90,130,200,.08); }
+.ah-step .ah-bar-x { grid-column: 1 / -1; font-size: 12px; color: #8ea3c2; }
+.ah-step-here { grid-column: 1 / -1; font-size: 12px; color: #9fb6d6; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 2px; }
+.ah-chip { font: inherit; font-size: 12px; padding: 1px 8px; border-radius: 10px; border: 1px solid rgba(127,196,255,.35); background: rgba(55,138,221,.15); color: #cfe4ff; cursor: pointer; }
+.ah-chip:hover { background: rgba(55,138,221,.3); }
 .ah-insights { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; margin-top: 18px; }
 .ah-box { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 12px 14px; }
 .ah-box h3 { margin: 0 0 8px; font-size: 15px; color: #eef4ff; }

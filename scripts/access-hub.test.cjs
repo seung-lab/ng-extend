@@ -72,7 +72,12 @@ const ACTIVITY = [{ dataset: 'stroeh_mouse_retina', edits: 41347, editors: 16, c
   { dataset: 'pinky_training6', edits: 0, editors: 0, cells: 0, finishers: 0, chats: 247, chatters: 17 }];
 const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator found a merger.', n: 3, players: 2, median_s: 250, p90_s: 530, help_rate: 0, closes: 0 },
   { tutorial: 3, step: 3, last_box: 'Make the merge', n: 8, players: 3, median_s: 78, p90_s: 233, help_rate: 0.25, closes: 4 },
+  { tutorial: 3, step: 2, last_box: 'Find the gap', n: 5, players: 4, median_s: 40, p90_s: 90, help_rate: 0, closes: 0 },
   { tutorial: 8, step: 1, last_box: 'Optic: T4 Cell', n: 1, players: 1, median_s: 129, p90_s: 129, help_rate: 0, closes: 1 }];
+// Where each player is in each tutorial (access_hub_tutorials): Ann Vo left
+// Merge's box 3 with Next, so she is on box 4; Nik finished Get Started.
+const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', last_at: ago(2), done_at: null },
+  { user_id: UID(11), tutorial: 1, last_step: 18, last_left: 'next', last_at: ago(2.1), done_at: ago(2.1) }];
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -121,7 +126,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const q = new URLSearchParams(input.query || '');
     const limit = Number(q.get('limit') ?? 500), offset = Number(q.get('offset') ?? 0);
     if (!Number.isInteger(limit) || limit < 0 || limit > 500) return r.fulfill(json({ status: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Invalid limit' }) }));
-    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
+    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : input.table === 'access_hub_tutorials' ? TUTS : [];
     const rows = all.slice(offset, offset + limit);
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }));
   });
@@ -285,6 +290,19 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('Later marks them and takes them off Asked', laterCall && laterCall.args.mark === 'listed' && laterCall.args.email === 'domaitk358@example.org' && col(b, 'Asked').cards.every(c => c.name !== 'Inezh'), laterCall);
     await page.click('.ah-close').catch(() => {});
 
+    // The tutorials as a flow; open one for its boxes and who is on each (Ames 2026-11-12).
+    const flow = await page.$$eval('.ah-flow .ah-node', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('the tutorial flow: the main path in order, with finished and in it now', /^Get Started ?1 finished ?0 in it now$/.test(flow[0]) && /^Merge ?0 finished ?1 in it now$/.test(flow[1]) && /^Cut/.test(flow[2]) && /^Advanced Interface/.test(flow[3]) && /^Proofreading Test/.test(flow[4]), flow);
+    await page.click('.ah-node:has-text("Merge")');
+    const steps = await page.$$eval('.ah-tut-open .ah-step', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('opening Merge shows each box with its median time, and who is on it now', steps.length === 2 && /^3\. Find the gap.*40 s median.*4 reached/.test(steps[0]) && /^4\. Make the merge.*1 min 18 s median.*3 reached of 4.*25% asked for help.*4 left here.*On it now: Ann Vo/.test(steps[1]), steps);
+    await page.$eval('.ah-flowbox', e => e.scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: path.join(OUT, 'access-hub-tutorials.png') });
+    await page.click('.ah-tut-open .ah-chip:has-text("Ann Vo")');
+    await page.waitForTimeout(300);
+    check('a name on a box opens that person', /Ann Vo/.test(await page.textContent('.ah-panel').catch(() => '')));
+    await page.click('.ah-close').catch(() => {});
+
     // Admins are their own step (Ames 2026-11-10), off the board columns.
     b = await board();
     check('an admin is in no step column', b.every(c => c.cards.every(x => x.name !== 'Ames Admin')), b.map(c => c.title));
@@ -297,7 +315,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
 
     const ins = await page.$$eval('.ah-box', els => els.map(e => [...e.querySelectorAll('.ah-bar-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim())));
     check('community: one row per dataset, most edits first', ins[0].length === 3 && /^EyeWire II/.test(ins[0][0]) && /41,347 edits/.test(ins[0][0]) && /Sandbox/.test(ins[0][2]) && /1,594 chat/.test(ins[0][2]), ins[0]);
-    check('tutorial: slowest boxes reached by two or more', ins[1].length === 2 && /4 min 10 s/.test(ins[1][0]) && /25% asked for help/.test(ins[1][1]), ins[1]);
+    check('tutorial: slowest boxes reached by two or more', ins[1].length === 3 && /4 min 10 s/.test(ins[1][0]) && /25% asked for help/.test(ins[1][1]), ins[1]);
 
     // Bars compare across rows: every track the same length, the busiest
     // one full (Ames's phone, 2026-11-09: EyeWire II had no bar at all).
