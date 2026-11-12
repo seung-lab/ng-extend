@@ -1334,7 +1334,7 @@ function typeWord(c: CellState): string { return (c.spec.label || '').replace(/\
 /** A tag's second line: the role and the kind of cell, since the call sign
  *  says the job and not the kind (Ames 2026-11-11: "is the key cell the
  *  bipolar cell? make some indicator for cell type"). */
-function tagLine(c: CellState): string { const t = typeWord(c); return t ? `${roleOf(c)} · ${t.charAt(0) === t.charAt(0).toUpperCase() && t !== t.toUpperCase() ? t : t.toLowerCase()}` : roleOf(c); }
+function tagLine(c: CellState): string { const t = typeWord(c); return t ? `${roleOf(c)} · ${t === 'Martinotti' ? t : t.toLowerCase()}` : roleOf(c); }
 function chipLine(c: CellState): string {
   const outs = conns.filter(k => k.pre === c.key && cells.get(k.post)?.shown)
     .sort((a, b) => Number(cells.get(b.post)!.target) - Number(cells.get(a.post)!.target) || b.count - a.count);
@@ -2248,6 +2248,7 @@ function updateHud() {
     const hushed = now < c.hushedUntil;
     el.classList.toggle('nge-sig-chip--hushed', hushed);
     el.classList.toggle('nge-sig-chip--hint', hints.has(key));
+    if (level.plastic) { const syn = el.querySelector('.syn'); if (syn && syn.textContent !== chipLine(c)) syn.textContent = chipLine(c); }   // a grown weight shows
     const bar = el.querySelector('.bar b') as HTMLElement | null;
     const label = el.querySelector('.barlabel') as HTMLElement | null;
     if (!bar || !label) continue;
@@ -2259,7 +2260,6 @@ function updateHud() {
       label.innerHTML = hushed ? `inhibited ${Math.max(0, c.hushedUntil - now).toFixed(1)}<span class="u"> s</span>` : `pulses in ${left.toFixed(1)}<span class="u"> s</span>`;
       continue;
     }
-    if (level.plastic) { const syn = el.querySelector('.syn'); if (syn && syn.textContent !== chipLine(c)) syn.textContent = chipLine(c); }
     const v = clamp(potential(c) / c.theta, -1, 1), h = holdOn(c);
     bar.classList.toggle('neg', h > 0.3 || v < 0);
     bar.style.width = `${Math.round((h > 0.3 ? h : Math.abs(v)) * 100)}%`;
@@ -4116,6 +4116,7 @@ export function startSignalController() {
 
 (window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS, music: () => music,
   state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
-    hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))])}),
+    hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))]),
+    spikes: [...cells.values()].filter(c => c.shown).map(c => [c.key, c.spikes]), progress, weights: conns.filter(k => (k.w ?? 1) !== 1).map(k => [k.pre, k.post, Number((k.w ?? 1).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
   step: (seconds: number) => { for (let k = 0; k < seconds / 0.05; k++) if (phase === 'playing') stepModel(0.05); }};
