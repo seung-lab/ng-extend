@@ -2714,13 +2714,14 @@ function frameLevel() {
   setLook(v, nm, center);
   const unit = Math.min(nm[0], nm[1], nm[2]);
   setZoom(v, viewNm / unit);
-  // Looking down into the cortex from the pia, the way a two photon
-  // microscope does (Ames 2026-11-08: "sort of like I am being a 2p
-  // microscope"): the eye toward data -y, screen up along +z.
-  // On a phone the view is from the side, the pia at the top, so the cell
-  // bodies spread down the tall screen instead of sitting over one another
-  // (Ames 2026-11-10: "couldn't tap the right cell").
-  v.projectionOrientation.restoreState(phone() ? [0, 0, 0, 1] : [-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
+  // The view is from the side, the pia at the top, so a pyramidal cell
+  // stands the way it does in the cortex: apical dendrite up, axon down,
+  // and the tour's slow turn spins it on that axis (Ames 2026-11-12: "it's
+  // rotating, oriented sideways; this direction is up"). It was the two
+  // photon microscope's look down from the pia (Ames 2026-11-08), which a
+  // phone had already left for this one (Ames 2026-11-10: "couldn't tap the
+  // right cell").
+  v.projectionOrientation.restoreState([0, 0, 0, 1]);
   needsFrame = true;
   glide = null;
   shipAt = add(center, [0, -viewNm * 0.4, 0]);
@@ -4036,7 +4037,7 @@ function frameBody(ts: number) {
     // a camera that is no finite place (a stale address, a frame that slipped through): back to the circuit
     if (!camWarned) { camWarned = true; console.warn('[signal] the camera was not a finite place; back to the circuit'); }
     glide = null; pendingGlide = null;
-    try { v0.projectionOrientation.restoreState(phone() ? [0, 0, 0, 1] : [-Math.SQRT1_2, 0, 0, Math.SQRT1_2]); } catch { /* as it is */ }
+    try { v0.projectionOrientation.restoreState([0, 0, 0, 1]); } catch { /* as it is */ }
     frameLevel();
   }
   const cam = nm && camNow(nm);
