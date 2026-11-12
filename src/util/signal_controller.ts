@@ -361,6 +361,63 @@ function stepGlide(dt: number) {
 /** The ship's look, after scifi-ui's goldOnBlue hologram: a cool blue body, a molten gold rim. */
 const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.05, 0.14, 0.38], rim: [1.0, 0.82, 0.48], shade: 1.1};
 const GROUP = 'signal';
+/** A faceted sphere: an icosahedron subdivided once, flat-shaded (80 faces). */
+function icosphere(): {positions: Float32Array; normals: Float32Array} {
+  const t = (1 + Math.sqrt(5)) / 2;
+  const v: V3[] = ([[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]] as V3[]).map(q => norm(q));
+  const f = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+  const tris: V3[][] = [];
+  for (const [a, b, c] of f) {
+    const A = v[a], B = v[b], C = v[c], ab = norm(mix(A, B, 0.5)), bc = norm(mix(B, C, 0.5)), ca = norm(mix(C, A, 0.5));
+    tris.push([A, ab, ca], [B, bc, ab], [C, ca, bc], [ab, bc, ca]);
+  }
+  const positions = new Float32Array(tris.length * 9), normals = new Float32Array(tris.length * 9);
+  tris.forEach((tr, i) => {
+    const nrm = norm(add(add(tr[0], tr[1]), tr[2]));   // flat: the face's own direction
+    tr.forEach((q, j) => { for (let k = 0; k < 3; k++) { positions[i * 9 + j * 3 + k] = q[k]; normals[i * 9 + j * 3 + k] = nrm[k]; } });
+  });
+  return {positions, normals};
+}
+let somaProps: NgeProp[] = [];
+const somaPropOf = new Map<string, NgeProp>();
+/** The low-poly bodies: one faceted sphere a cell, in its colour, 1.1 cell-body radii across. */
+function buildSomaProps(): NgeProp[] {
+  const nm = nmPerUnit();
+  somaProps = []; somaPropOf.clear();
+  if (!nm) return somaProps;
+  const ico = icosphere();
+  let i = 0;
+  for (const c of cells.values()) {
+    if (!c.shown) continue;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 2;
+    const ctx = cv.getContext('2d');
+    if (ctx) { ctx.fillStyle = `rgb(${c.color.join(',')})`; ctx.fillRect(0, 0, 2, 2); }
+    const count = ico.positions.length / 3;
+    const mesh: NgePropMesh = {key: {}, positions: ico.positions, normals: ico.normals, uvs: new Float32Array(count * 2), indices: Uint32Array.from({length: count}, (_, k) => k), image: cv};
+    const m = mat4.create(), R = SOMA_R_NM * 1.1;
+    m[0] = R / nm[0]; m[5] = R / nm[1]; m[10] = R / nm[2];
+    m[12] = c.spec.soma[0] / nm[0]; m[13] = c.spec.soma[1] / nm[1]; m[14] = c.spec.soma[2] / nm[2];
+    const col: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];
+    const prop: NgeProp = {mesh, modelMat: m, alpha: 1, dissolve: 0, seed: (i++ * 0.37) % 1, glow: [col[0] * 0.3, col[1] * 0.3, col[2] * 0.3], rim: [col[0] * 0.5 + 0.5, col[1] * 0.5 + 0.5, col[2] * 0.5 + 0.5], shade: 0.95};
+    somaProps.push(prop); somaPropOf.set(c.key, prop);
+  }
+  return somaProps;
+}
+/** Each body's look follows its cell: dim when the cell is dimmed, bright when it is lit whole or scanned. */
+function shadeSomaProps() {
+  for (const c of cells.values()) {
+    const prop = somaPropOf.get(c.key);
+    if (!prop) continue;
+    const col: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];
+    const lit = c.target || litWhole.has(c.spec.root) || scanLit === c.key;
+    const k = c.dimmed ? 0.28 : lit ? 1.15 : 0.9;
+    prop.shade = k;
+    prop.glow = [col[0] * 0.3 * k, col[1] * 0.3 * k, col[2] * 0.3 * k];
+    prop.rim = c.dimmed ? [col[0] * 0.35, col[1] * 0.35, col[2] * 0.35] : [col[0] * 0.5 + 0.5, col[1] * 0.5 + 0.5, col[2] * 0.5 + 0.5];
+  }
+}
+function syncProps() { setNgeProps([shipProp, ...somaProps], GROUP); }
 const MAX_GLOW = 24_000;   // room for every synapse of a cell, and an arbor's wave
 const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Float32Array(MAX_GLOW * 4), sizesNm: new Float32Array(MAX_GLOW), count: 0, nmRight: [1, 0, 0]};
 /** Beacons on the cell bodies, drawn through everything so a body is seen
@@ -1385,14 +1442,16 @@ function revealCell(key: string, seconds = 1.4, rgb: V3 = [0.85, 0.97, 1]): bool
   const c = cells.get(key);
   const pr = c && parts.get(c.spec.root);
   const nm = nmPerUnit();
-  if (!c || !pr || !hazeTint || !nm) return false;
-  let reach = 0;
-  for (const pts of [pr.arbor.axon, pr.arbor.dend]) for (const p of pts) reach = Math.max(reach, len(sub([p[0], p[1], p[2]], c.spec.soma)));
-  reveals = reveals.filter(r => r.root !== c.spec.root);
-  reveals.push({root: c.spec.root, soma: c.spec.soma, at: performance.now() / 1000, seconds, reach: reach * 1.05 + 20_000});
-  if (!hazeTint.reveal) hazeTint.reveal = new Map();
-  hazeTint.revealNm = [nm[0], nm[1], nm[2]];
-  hazeTint.reveal.set(c.spec.root, [c.spec.soma[0] / nm[0], c.spec.soma[1] / nm[1], c.spec.soma[2] / nm[2], 5000]);   // from the first frame, only the body
+  if (!c || !pr || !nm) return false;
+  if (hazeTint) {   // the mesh lit outward; without meshes (the low-poly look) the waves alone
+    let reach = 0;
+    for (const pts of [pr.arbor.axon, pr.arbor.dend]) for (const p of pts) reach = Math.max(reach, len(sub([p[0], p[1], p[2]], c.spec.soma)));
+    reveals = reveals.filter(r => r.root !== c.spec.root);
+    reveals.push({root: c.spec.root, soma: c.spec.soma, at: performance.now() / 1000, seconds, reach: reach * 1.05 + 20_000});
+    if (!hazeTint.reveal) hazeTint.reveal = new Map();
+    hazeTint.revealNm = [nm[0], nm[1], nm[2]];
+    hazeTint.reveal.set(c.spec.root, [c.spec.soma[0] / nm[0], c.spec.soma[1] / nm[1], c.spec.soma[2] / nm[2], 5000]);   // from the first frame, only the body
+  }
   demoWave(key, 'axon', seconds, false, rgb);
   demoWave(key, 'dend', seconds, false, rgb);
   return true;
@@ -2319,6 +2378,14 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
 const sideHud = () => window.innerWidth >= 1000;
 /** A phone: Pyr's own mobile mode (body.nge-mobile, src/util/mobile.ts). */
 const phone = () => document.body.classList.contains('nge-mobile');
+/** The low-poly look: no meshes at all; each cell a faceted body in its
+ *  colour with its arbors as a dust of light and the wires between the cells
+ *  as beaded lines, all from the parts files. Phones get it (the whole cells,
+ *  millimetres of axon each, are too heavy there); `?signal&holo` tries it
+ *  anywhere (Ames 2026-11-11: "a simplified visual version like low poly
+ *  mini neurons, stylized for the mobile version"). */
+const HOLO_FLAG = (() => { try { return new URLSearchParams(location.search).has('holo'); } catch { return false; } })();
+let holoMode = false;
 /** A touch screen is the main pointer: no keys to name, "tap" not "click". */
 const touch = () => !!window.matchMedia?.('(pointer: coarse)').matches;
 /** The share of the 3D view's height the HUD covers when it lies along the
@@ -3312,6 +3379,32 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     const k = clamp((now - f.at) / f.life, 0, 1);
     put(f.p, [f.rgb[0], f.rgb[1], f.rgb[2], 0.9 * Math.pow(1 - k, 1.4)], f.size * (0.6 + 0.9 * k));
   }
+  if (holoMode) {
+    // the low-poly look: each cell's arbors as a dust of light in its colour
+    // (brighter lit whole or scanned, faint dimmed), every few points so the
+    // whole level fits the budget, and the wires between the cells as beaded
+    // lines in the sending cell's colour
+    shadeSomaProps();
+    let total = 0;
+    for (const c of cells.values()) { const pr = c.shown ? parts.get(c.spec.root) : undefined; if (pr) total += pr.arbor.axon.length + pr.arbor.dend.length; }
+    const every = Math.max(1, Math.ceil(total / 9000)), dot = Math.max(1200, viewNm * 0.0032);
+    for (const c of cells.values()) {
+      const pr = c.shown ? parts.get(c.spec.root) : undefined;
+      if (!pr) continue;
+      const lit = c.target || litWhole.has(c.spec.root) || scanLit === c.key;
+      const a = c.dimmed ? 0.045 : lit ? 0.26 : 0.13;
+      const col: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];
+      for (const pts of [pr.arbor.axon, pr.arbor.dend]) for (let j = 0; j < pts.length; j += every) put([pts[j][0], pts[j][1], pts[j][2]], [col[0], col[1], col[2], a], dot);
+    }
+    for (const k of conns) {
+      if (!live(k)) continue;
+      const pre = cells.get(k.pre)!, post = cells.get(k.post)!, r = routes.get(k);
+      if (!r) continue;
+      const cp: V3 = [pre.color[0] / 255, pre.color[1] / 255, pre.color[2] / 255], cq: V3 = [post.color[0] / 255, post.color[1] / 255, post.color[2] / 255];
+      const axonLen = route(k.axon as V3[]).length;
+      for (let d = 0; d <= r.length; d += 5000) { const col = d <= axonLen ? cp : cq; put(along(r, d), [col[0], col[1], col[2], pre.dimmed && post.dimmed ? 0.08 : 0.3], dot * 1.1); }
+    }
+  }
   drawBox(cam, put);
   glow.count = n;
   glow.nmRight = [cam.right[0] / nm[0], cam.right[1] / nm[1], cam.right[2] / nm[2]];
@@ -3410,7 +3503,7 @@ function cellAt(x: number, y: number, finger: boolean): CellState | undefined {
   const sel = circuitLayer()?.layer?.displayState?.segmentSelectionState;
   const root = sel?.hasSelectedSegment ? sel.selectedSegment.toString() : null;
   let hit = root ? [...cells.values()].find(c => c.shown && c.spec.root === root) : undefined;
-  if (!hit && finger) {
+  if (!hit && (finger || holoMode)) {
     let best = 48 * 48;
     for (const c of cells.values()) {
       if (!c.shown) continue;
@@ -3505,31 +3598,40 @@ async function startLevel(index: number) {
   els.body.innerHTML = '<div class="nge-sig-card"><p data-el="loading">Loading the cells…</p></div>';
   updateHud();
   const ml = await openCircuit();
+  holoMode = phone() || HOLO_FLAG;
   // These are whole cells with millimetres of axon each; a slightly coarser
-  // mesh level keeps the frame rate up for the beams and sparks.
+  // mesh level keeps the frame rate up for the beams and sparks. In the
+  // low-poly look no mesh is shown at all.
   try { const rs = ml.layer.displayState.renderScaleTarget; if (rs && savedRenderScale === null) { savedRenderScale = rs.value; rs.value = Math.max(rs.value, phone() ? 3 : 2); } } catch { /* as it is */ }
   const g = ml.layer.displayState.segmentationGroupState.value;
-  const want = new Set(level.cells.map(k => cells.get(k)!.spec.root));
+  const want = new Set(holoMode ? [] : level.cells.map(k => cells.get(k)!.spec.root));
   for (const s of [...g.visibleSegments]) if (!want.has(s.toString())) g.visibleSegments.delete(s);
   for (const c of cells.values()) {
     if (!c.shown) continue;
     const seg = Uint64.parseString(c.spec.root);
-    if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
+    if (!holoMode && !g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
     paint(c, false);
   }
   frameLevel();
   if (!active) return;
-  setNgeProps([shipProp], GROUP);
-  applyHaze();
+  somaProps = []; somaPropOf.clear();
+  if (holoMode) buildSomaProps();
+  syncProps();
+  if (!holoMode) applyHaze();
   makeTags();
   showScience();
-  // wait for most of the cells to draw, up to half a minute
   const loading = els.body.querySelector('[data-el="loading"]') as HTMLElement | null;
-  for (let k = 0; k < 120 && active && phase === 'loading'; k++) {
-    const drawn = level.cells.filter(key => meshDrawn(ml, cells.get(key)!.spec.root)).length;
-    if (loading) loading.textContent = `Loading the cells… ${drawn} of ${level.cells.length}`;
-    if (drawn >= Math.ceil(level.cells.length * 0.8)) break;
-    await new Promise(r => setTimeout(r, 250));
+  if (holoMode) {
+    // the parts files are the picture: wait for them, up to eight seconds
+    await Promise.race([Promise.all(level.cells.map(key => loadParts(cells.get(key)!.spec.root))), new Promise(r => setTimeout(r, 8000))]);
+  } else {
+    // wait for most of the cells to draw, up to half a minute
+    for (let k = 0; k < 120 && active && phase === 'loading'; k++) {
+      const drawn = level.cells.filter(key => meshDrawn(ml, cells.get(key)!.spec.root)).length;
+      if (loading) loading.textContent = `Loading the cells… ${drawn} of ${level.cells.length}`;
+      if (drawn >= Math.ceil(level.cells.length * 0.8)) break;
+      await new Promise(r => setTimeout(r, 250));
+    }
   }
   if (!active || phase !== 'loading') return;
   showBrief();
@@ -3642,6 +3744,7 @@ export function stopSignalController() {
   setNgeGlow(null, GROUP);
   setNgeGlow(null, GROUP + '-over');
   setNgeProps([], GROUP);
+  somaProps = []; somaPropOf.clear();
   hideCanopy();
   editorEl?.remove(); editorEl = null;
   litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flying = false;
