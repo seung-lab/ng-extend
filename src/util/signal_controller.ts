@@ -2860,7 +2860,9 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: numbe
   // three tenths of the way out from the eye.
   const d2 = eyeDist * 0.3, halfH2 = d2 * tanHalf;
   const nose = add(sub(eye, mul(cam.toEye, d2)), mul(cam.up, -0.92 * halfH2));
-  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH)), len: Math.min(halfH, halfW) * 0.14, nose};   // 0.22 was "too large" (Ames 2026-11-12)
+  // zoomed out past the level's own frame, its spot comes in toward the middle: at twice the frame about 0.6 of the way out, at three times under half (Ames 2026-11-12: "the ship can stop like 50% closer while the camera pans out")
+  const zoomOut = homeScale > 0 ? clamp(v.projectionScale.value / homeScale, 1, 4) : 1, k = 1 / (1 + (zoomOut - 1) * 0.65);
+  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * k * halfW)), mul(cam.up, sy * k * halfH)), len: Math.min(halfH, halfW) * 0.14, nose};   // 0.22 was "too large" (Ames 2026-11-12)
 }
 /** Where the ship lands on a visit: on the near side of the cell body (a
  *  soma is some 12 µm across), a touch to the side it came from, so it sits
