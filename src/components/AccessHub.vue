@@ -34,6 +34,8 @@ interface Person {
   is_admin?: boolean;
   /** Princeton team, not a Pyr admin: shown with the admins, left out of the counts. */
   is_team?: boolean;
+  /** When an admin typed in their EyeWire username, if one did. */
+  ew_name_set_at?: string | null;
   invited_at?: string | null; invited_for?: string | null; invited_role?: string | null; invited_as?: string | null;
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
@@ -46,7 +48,7 @@ interface Note { id: string; text: string; by: string; at: string }
 type Stage = 'asked' | 'emailed' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as,ew_name_set_at';
 const people = ref<Person[]>([]);
 // The Princeton team who play without being Pyr admins (Ames 2026-11-12:
 // Ryan Morey, "team tag"). They sit with the admins and are not counted.
@@ -165,7 +167,8 @@ const cards = computed<Card[]>(() => {
       else if (fresh && mk.mark === 'listed') { stage = 'later'; since = mk.at; listed = true; }
       // Emailed: we asked them by email after they asked, and wait on
       // their reply (Ames 2026-11-12: "put emailed into a separate column").
-      else if (asked.value[p.email] && String(asked.value[p.email].at) >= String(p.asked_at)) { stage = 'emailed'; since = asked.value[p.email].at; }
+      // Back to Asked once we have typed in the EyeWire name they replied with.
+      else if (asked.value[p.email] && String(asked.value[p.email].at) >= String(p.asked_at) && !(p.ew_name_set_at && String(p.ew_name_set_at) >= String(asked.value[p.email].at))) { stage = 'emailed'; since = asked.value[p.email].at; }
       else { stage = 'asked'; since = p.asked_at; }
     }
     else if (p.pilot_enabled === false) { stage = 'removed'; since = p.let_in_at; }
@@ -399,6 +402,7 @@ function span(t: number): string {
 const CAMPAIGN: Record<string, string> = { mec_talk: 'the MEC talk email' };
 function invitedLine(p: Person | null | undefined): string {
   if (!p?.invited_at) return '';
+  if (p.invited_for === 'by_hand') return `An EyeWire player: their EyeWire username was added on this page ${day(p.invited_at)}.`;
   const what = CAMPAIGN[p.invited_for || ''] || 'an invite email';
   const role = p.invited_role ? ` as an EyeWire ${p.invited_role}` : '';
   const to = p.invited_as && p.invited_as !== p.email ? ` at ${p.invited_as}` : '';
@@ -428,6 +432,21 @@ watch(() => cards.value.filter(c => c.stage === 'asked' || c.stage === 'emailed'
   names => { for (const n of names.split('|')) if (n) void readEw(n); }, { immediate: true });
 /** The email without a Pyr account folds into the one with (the view keeps
  *  the account's email). Two accounts: they stay apart. */
+// Type in their EyeWire username by hand (Ames 2026-11-12), often from their
+// reply to the ask email; the EyeWire stats fill in from eyewire.org.
+const ewDraft = ref('');
+const ewEdit = ref('');
+function startEwEdit(c: Card) { ewEdit.value = c.key; ewDraft.value = c.p?.ew_name || ''; actionError.value = ''; }
+const saveEwName = (c: Card) => run('ewname', async () => {
+  const p = c.p; const name = ewDraft.value.trim();
+  if (!p || !name) return;
+  const out = await secureWrite<{ ewName: string }>('access.setEwName', { email: p.email, ewName: name });
+  const at = new Date().toISOString();
+  const ew = out?.ewName || name.toLowerCase();
+  people.value = people.value.map(x => x.email === p.email ? { ...x, ew_name: ew, ew_name_set_at: at, invited_at: x.invited_at || at, invited_for: x.invited_for || 'by_hand' } : x);
+  ewDraft.value = ''; ewEdit.value = '';
+  void readEw(ew);
+});
 const linkSame = (a: Person | null | undefined, b: Person) => run('link', async () => {
   if (!a) return;
   if (a.user_id && b.user_id) throw new Error('Both have their own Pyr account, so they stay as two people.');
@@ -436,7 +455,7 @@ const linkSame = (a: Person | null | undefined, b: Person) => run('link', async 
   openKey.value = to.email;
   await load();
 });
-function pick(c: Card) { openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; }
+function pick(c: Card) { openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; ewDraft.value = ''; ewEdit.value = ''; }
 // Their Proofreading Test tries, on a dataset request (Ames 2026-11-10:
 // "access request test edits linked"). The tries name the player by
 // username, newest first.
@@ -736,7 +755,13 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.invited_at" class="ah-panel-meta ah-panel-invited">{{ invitedLine(open.p) }}</div>
         <div v-if="open.p?.gave_email && open.p.gave_email !== open.p.email" class="ah-panel-meta">Gave {{ open.p.gave_email }} on the form</div>
         <div v-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
-        <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, said rank {{ open.p.ew_rank }}</template></div>
+        <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, said rank {{ open.p.ew_rank }}</template><template v-if="open.p?.ew_name_set_at">, added by hand</template>
+          <button v-if="open.p?.ew_name && !open.p.is_admin && ewEdit !== open.key" type="button" class="ah-linkbtn ah-ewset-change" @click="startEwEdit(open)">Change</button></div>
+        <div v-if="open.p && !open.p.is_admin && (ewEdit === open.key || !open.p.ew_name)" class="ah-ewset">
+          <input v-model="ewDraft" class="ah-input ah-ewset-input" maxlength="40" placeholder="Their EyeWire username" aria-label="Their EyeWire username" @keydown.enter="saveEwName(open)">
+          <button class="ah-btn" type="button" :disabled="!!busy || !ewDraft.trim()" @click="saveEwName(open)">{{ busy === 'ewname' ? 'Saving…' : 'Save' }}</button>
+          <button v-if="open.p.ew_name" class="ah-btn" type="button" :disabled="!!busy" @click="ewEdit = ''">Cancel</button>
+        </div>
         <div v-if="open.p?.ew_name" class="ah-stats ah-ew" aria-label="Their EyeWire stats">
           <template v-if="openEw">
             <div><span>EyeWire</span>{{ openEw.points.toLocaleString() }} points · {{ openEw.cubes.toLocaleString() }} cubes<template v-if="openEw.accuracy != null"> · {{ Math.round(openEw.accuracy * 100) }}% accuracy</template></div>
@@ -1058,6 +1083,9 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 .ah-close { position: absolute; right: 10px; top: 8px; background: none; border: none; color: #a9c4e6; font-size: 22px; cursor: pointer; }
 .ah-panel { position: sticky; }
 .ah-ask { margin: 8px 0 4px; }
+.ah-ewset { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+.ah-ewset-input { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; }
+.ah-ewset-change { margin-left: 6px; font-size: 12px; }
 .ah-ask-draft { border: 1px solid rgba(127,196,255,.3); border-radius: 8px; padding: 8px 10px; margin-top: 6px; background: rgba(55,138,221,.08); }
 .ah-ask-subject { display: block; width: 100%; box-sizing: border-box; font-weight: 700; margin: 6px 0; }
 .ah-ask-text { display: block; width: 100%; box-sizing: border-box; white-space: pre-wrap; font: inherit; line-height: 1.45; }

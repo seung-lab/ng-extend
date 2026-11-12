@@ -59,7 +59,7 @@ const columns = {
   // Per box, across everyone (a view over the rows above). Admins only.
   tutorial_step_stats: 'tutorial,step,last_box,n,players,median_s,p90_s,help_rate,closes',
   // The Access page (supabase-access-hub.sql, Ames 2026-11-09). Admins only.
-  access_hub_people: 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as',
+  access_hub_people: 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as,ew_name_set_at',
   access_hub_recent_edits: 'user_id,at,dataset,operation,success',
   access_hub_player_datasets: 'user_id,dataset,edits,cells,chats,last_edit_at',
   access_hub_activity: 'dataset,edits,editors,cells,finishers,chats,chatters',

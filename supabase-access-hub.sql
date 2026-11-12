@@ -38,6 +38,19 @@ CREATE INDEX IF NOT EXISTS access_invites_ew_name ON public.access_invites (ew_n
 ALTER TABLE public.access_invites ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.access_invites FROM anon, authenticated;
 
+-- An EyeWire username typed in by an admin on the Access page (Ames
+-- 2026-11-12: "add eyewire username manually to invite"), often from their
+-- reply to the ask email. It wins over the one on their request, matches
+-- them to an invite, and marks them invited when no invite matches.
+CREATE TABLE IF NOT EXISTS public.access_ew_names (
+  email text PRIMARY KEY CHECK (email = lower(email)),
+  ew_name text NOT NULL CHECK (ew_name = lower(ew_name)),
+  set_by text,
+  set_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.access_ew_names ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.access_ew_names FROM anon, authenticated;
+
 CREATE OR REPLACE VIEW public.access_hub_people AS
 -- The links: the ones made by hand above, and every invite used from another
 -- Google account (an "Invite used" record holds both emails,
@@ -143,7 +156,7 @@ SELECT
   coalesce(r.request_name, u.display_name, u.username) AS name,
   u.username,
   r.request_id, r.asked_at, r.from_site, r.gave_email,
-  r.ew_name, r.ew_rank, r.found_us, r.their_note,
+  coalesce(xn.ew_name, r.ew_name) AS ew_name, r.ew_rank, r.found_us, r.their_note,
   p.enabled AS pilot_enabled, p.let_in_at, coalesce(p.from_list, false) AS from_list,
   u.created_at AS joined_at, u.tutorial_active,
   t.tutorial_at, coalesce(t.tutorials, 0) AS tutorials,
@@ -153,7 +166,10 @@ SELECT
   coalesce(ha.help_asked, 0) AS help_asked, coalesce(ha.help_answered_for, 0) AS help_answered_for, coalesce(ha.help_asked_30d, 0) AS help_asked_30d,
   coalesce(hg.help_given, 0) AS help_given, coalesce(hg.help_given_30d, 0) AS help_given_30d,
   (ad.email IS NOT NULL) AS is_admin,
-  iv.sent_at AS invited_at, iv.campaign AS invited_for, iv.ew_role AS invited_role, iv.email AS invited_as
+  coalesce(iv.sent_at, xn.set_at) AS invited_at,
+  coalesce(iv.campaign, CASE WHEN xn.email IS NOT NULL THEN 'by_hand' END) AS invited_for,
+  iv.ew_role AS invited_role, iv.email AS invited_as,
+  xn.set_at AS ew_name_set_at
 FROM who w
 LEFT JOIN adm ad ON ad.email = w.email
 LEFT JOIN req r ON r.email = w.email
@@ -165,13 +181,14 @@ LEFT JOIN cc c ON c.user_id = u.id
 LEFT JOIN ch m ON m.user_id = u.id
 LEFT JOIN ha ON ha.user_id = u.id
 LEFT JOIN hg ON hg.user_id = u.id
+LEFT JOIN public.access_ew_names xn ON xn.email = w.email
 -- The first invite that reached them: this email, the email they gave on
 -- the form, an email folded into this one, or their EyeWire username.
 LEFT JOIN LATERAL (
   SELECT i.email, i.campaign, i.ew_role, i.sent_at FROM public.access_invites i
   WHERE i.email = w.email OR i.email = r.gave_email
     OR i.email IN (SELECT l.email FROM lnk l WHERE l.linked_to = w.email)
-    OR (r.ew_name IS NOT NULL AND i.ew_name = lower(r.ew_name))
+    OR (coalesce(xn.ew_name, r.ew_name) IS NOT NULL AND i.ew_name = lower(coalesce(xn.ew_name, r.ew_name)))
   ORDER BY i.sent_at LIMIT 1
 ) iv ON true;
 REVOKE ALL ON public.access_hub_people FROM anon, authenticated;

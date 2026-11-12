@@ -825,6 +825,21 @@ async function askEmail(a, io) {
 // And everyone who has signed in to Pyr, admins left out (Ames 2026-11-12:
 // "I want to see all the people we've invited, all the people who have
 // signed in"), including those who signed in and never asked.
+// ── An EyeWire username typed in on the Access page (Ames 2026-11-12: "add
+// eyewire username manually to invite"). Goes in access_ew_names, which the
+// view access_hub_people reads (supabase-access-hub.sql). Admins only.
+//   access.setEwName  admins: {email, ewName}.
+async function setEwName(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const ewName = cleanEwName(a.ewName);
+  if (!ewName) fail(400, 'Type their EyeWire username.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200) || null;
+  await io.sb('access_ew_names?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, ew_name: ewName.toLowerCase(), set_by: by, set_at: new Date().toISOString()})});
+  return {ewName: ewName.toLowerCase()};
+}
+
 const TEAM_EMAILS = ['ryan.t.morey@gmail.com'];
 async function inviteCount(a, io) {
   needAdmin(io.isAdmin);
@@ -1195,6 +1210,7 @@ async function handle(action, args, io) {
   if (action === 'access.askEmail') return askEmail(a, io);
   if (action === 'access.askSent') return askSentAll(a, io);
   if (action === 'access.inviteCount') return inviteCount(a, io);
+  if (action === 'access.setEwName') return setEwName(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);
   if (action === 'access.noteDelete') return accessNoteDelete(a, io);

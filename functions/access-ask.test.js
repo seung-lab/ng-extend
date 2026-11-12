@@ -67,3 +67,14 @@ test('admins only, and no empty email', async () => {
   await assert.rejects(handle('access.askEmail', { email: 'a@x.org', text: '  ' }, u.io), /empty/);
   assert.strictEqual(u.sent.length, 0);
 });
+
+test('access.setEwName: admins save a typed EyeWire username, lowercased, for that email', async () => {
+  const seen = [];
+  const t = io({ sb: async (q, init) => { seen.push({ q, body: init && init.body }); return []; } });
+  assert.deepStrictEqual(await handle('access.setEwName', { email: 'Ann@X.org', ewName: ' KMierow ' }, t.io), { ewName: 'kmierow' });
+  const row = JSON.parse(seen[0].body);
+  assert.ok(seen[0].q.startsWith('access_ew_names?on_conflict=email'));
+  assert.strictEqual(row.email, 'ann@x.org'); assert.strictEqual(row.ew_name, 'kmierow');
+  await assert.rejects(handle('access.setEwName', { email: 'ann@x.org', ewName: 'bad<name>' }, t.io));
+  await assert.rejects(handle('access.setEwName', { email: 'ann@x.org', ewName: 'k' }, io({ isAdmin: false }).io));
+});

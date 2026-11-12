@@ -110,6 +110,7 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
       if (a === 'access.askSent') return r.fulfill(ok({}));
+      if (a === 'access.setEwName') return r.fulfill(ok({ ewName: String(input.ewName).toLowerCase() }));
       if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414, signedIn: 20 }));
       if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
 
@@ -297,6 +298,19 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const afterAsk = await page.textContent('.ah-panel').catch(() => '');
     b = await board();
     check('the panel says they were asked, and they move to Emailed', /Asked for their EyeWire name by email/.test(afterAsk) && col(b, 'Asked').cards.every(c => c.name !== 'Inezh') && col(b, 'Emailed').cards.some(c => c.name === 'Inezh'), { afterAsk: afterAsk.slice(0, 200), emailed: col(b, 'Emailed') });
+    // Their reply gave their EyeWire name: type it in, the stats fill in, and
+    // they come back to Asked with the envelope (Ames 2026-11-12).
+    await page.fill('.ah-ewset-input', 'KMierow');
+    await page.click('.ah-ewset button:has-text("Save")');
+    await page.waitForTimeout(600);
+    const setCall = calls.find(c => c.action === 'access.setEwName');
+    check('typing in their EyeWire username saves it', setCall && setCall.args.email === 'domaitk358@example.org' && setCall.args.ewName === 'KMierow', setCall);
+    const afterEw = await page.textContent('.ah-panel').catch(() => '');
+    b = await board();
+    check('their EyeWire stats fill in, they show as an EyeWire player, and move back to Asked', /31,685,747 points · 224,881 cubes/.test(afterEw) && /added by hand/.test(afterEw) && /An EyeWire player/.test(afterEw) && col(b, 'Asked').cards.some(c => c.name === 'Inezh') && !(await page.$('.ah-ewset-input')), afterEw.slice(0, 400));
+    await page.click('.ah-ewset-change');
+    check('Change opens the field again with the name in it', await page.$eval('.ah-ewset-input', e => e.value).catch(() => '') === 'kmierow');
+    await page.click('.ah-ewset button:has-text("Cancel")');
     // Later takes them off the Asked list.
     await page.click('.ah-panel button:has-text("Later")');
     await page.waitForTimeout(400);
