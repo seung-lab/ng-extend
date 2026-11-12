@@ -530,9 +530,9 @@ function glowRenderControls() {
 
 export const steps: Step[] = [
   {
-    part: "Part 1 of 4 · Mark what you see",
+    part: "Part 1 of 4 · Working with cells",
     text: `
-You've merged and cut your first cells. Now let's take a deeper dive into the interface, in four short parts: marking what you see, working with cells, finding your way, and putting it together to find where a merger starts.`,
+You've merged and cut your first cells. Now let's take a deeper dive into the interface, in four short parts: working with cells, finding your way, marking what you see, and putting it together to find where a merger starts.`,
     image:
       imgWheresNurro,
     position: MIDDLE,
@@ -541,7 +541,7 @@ You've merged and cut your first cells. Now let's take a deeper dive into the in
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   {
-    part: "Part 1 of 4 · Mark what you see",
+    part: "Part 1 of 4 · Working with cells",
     text: `
 During this tutorial, you may make a mistake, accidentally delete something or become lost. 
 
@@ -552,9 +552,221 @@ You can step backwards in the tutorial to retry. If you are still lost, just kee
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   {
-    part: "Part 1 of 4 · Mark what you see",
+    // The "Now for something new: LAYERS" box is folded in here (2026-11-12).
+    part: "Part 1 of 4 · Working with cells",
+    get text() { return `
+Each tab up here is one LAYER, like the 2D images or the 3D cells. The selected one has the bright border.
+
+<strong>${SELECT_CLICK()}</strong> on <strong>3D segmentation</strong> to select it. Each tab also has a number, and ${classicLayers() ? '<strong>SHIFT</strong> and that number' : 'that number key'} selects it too.`; },
+    onEnter: () => { markSegChip(); nextWhenSegSelected(); },
+    position: {
+      element: ".nge-tut-seg-chip",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    get text() { return `
+Try both ways to HIDE and SHOW <strong>3D segmentation</strong>:
+
+<ol class="nge-tut-steps">
+<li><strong>${HIDE_CLICK()}</strong> on it to hide it, then again to show it.</li>
+<li>Press <strong>${classicLayers() ? '2' : 'SHIFT+2'}</strong> on your keyboard to hide it, and again to show it.</li>
+</ol>`; },
+    onEnter: () => { markSegChip(); nextWhenSegHiddenAndShown(2); },
+    position: {
+      element: ".nge-tut-seg-chip",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
     text: `
-Let's start by marking what we see. Annotations are your notes on the cells: points, lines and boxes you place yourself.
+Selecting a layer opens its SIDE PANEL: this is your control panel for that layer. For <strong>3D segmentation</strong>, it's where the cells live.
+
+The glowing button at the right end of the top bar opens and closes it any time.`,
+    onEnter: glowPanelButton,
+    position: {
+      element: ".neuroglancer-layer-side-panel-title",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    text: `
+Let's add more cells. The box at the top of the Segments tab takes cell IDs. Copy this one:
+
+${copyButton('648518346356982336')}
+
+<strong>Click the box, then press CTRL+V</strong>. The cell appears in 3D and in the list.`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    onEnter: () => { nextWhenCellsAdded(1); pointAtSegBox(); },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    text: `
+Good job! You added a second cell.
+
+You can paste several IDs at once, separated by commas:
+
+${copyButton('648518346352672169, 648518346356973888')}
+
+<strong>Paste them into the same box.</strong>`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    onEnter: () => { nextWhenCellsAdded(2); pointAtSegBox(); },
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    text: `
+Great work! That's four pyramidal neurons now. Pyramidal neurons are the main excitatory neurons of the brain, and the cells Pyr is named after!
+
+The box also takes coordinates: it adds whichever cell is at that spot. Copy these:
+
+${copyButton('85624, 70674, 651')}
+
+<strong>Paste them into the box too.</strong>`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    onEnter: () => { showTwoPanels(); nextWhenCellsAdded(1); pointAtSegBox(); },
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    text: `
+That spot was inside a <strong>NUCLEUS</strong>, so the whole cell came with it: the big round shape in the 2D view is its nucleus, in the middle of the soma.
+
+In some cells the nucleus is still its own piece. If a spot gives you only a round blob, <strong>DOUBLE CLICK the EM just around it</strong> in the 2D view to add the rest of the cell.`,
+    width: "460px",
+    position: OVER_3D,
+    // The nucleus here was joined to its cell (Ames 2026-11-12), so there is
+    // no second cell to add: the box waits for Next.
+    onEnter: () => { showTwoPanels(); },
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    text: `
+Each cell in view has a row in the panel. Its buttons appear when you <strong>hover over the row</strong>, like this:
+
+${FAKE_ROW}
+
+<div class="nge-tut-legend">
+<div><span class="nge-tut-key">${EYE_ICON}</span>shows or hides the cell</div>
+<div><span class="nge-tut-key nge-tut-key--trash">${TRASH_ICON}</span>takes it out of view</div>
+<div><span class="nge-tut-key">${COPY_ICON}</span>copies its ID</div>
+<div><span class="nge-tut-key">↗</span>flies to the cell</div>
+<div><span class="nge-tut-key">▲</span>marks it Proofread or gives it a cell type</div>
+</div>
+
+You can also make folders with <strong>+ Folder</strong> and drag and drop cell IDs into them to keep them organized.`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-segment-list-entry",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    highlight: true,
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    text: `
+<span class="nge-tut-tab">Render</span> is another important tab. Here you change how your cells look.
+
+We've lit up a few worth trying: <strong>Opacity</strong> under 2D view, for how strongly the cell is colored over the image, and <strong>Opacity</strong> and <strong>Silhouette</strong> under 3D view. We've opened the 2D view so you can see both.
+
+Try them! We'll restore the default view in the next slide.`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-tab-view-bar",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    state: 
+        //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
+    "middleauth+https://global.daf-apis.com/nglstate/api/v1/5352335057354752",
+    onEnter: glowRenderControls,
+  },
+  {
+    part: "Part 2 of 4 · Find your way",
+    text: `
+Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text at the top of the screen. The help text may need a few seconds to load.
+
+If you get confused in the future, hovering may help!`,
+    image:
+      imgNurroAtHome,
+    position: MIDDLE,
+    width: "400px",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 2 of 4 · Find your way",
+    text: `
+Right now we are centered in the cell's <strong>soma</strong>, the round cell body where its branches start. <strong>Press the "A" key</strong> to reveal the axis lines. 
+
+These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
+
+<strong>Press "A" again</strong> to remove them. Many of our keyboard commands act as a toggle switch between SHOW and HIDE.`,
+    width: "500px",
+    position: OVER_3D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 2 of 4 · Find your way",
+    get text() { return `
+A collaborator found a branch with a merger and wants us to look. First, <strong>hide our cell</strong>: click the eye next to its ID in the Segments panel.
+
+Then copy this spot and <strong>paste it into the box at the top of the Segments panel</strong>. Pyr adds the cell there and jumps to it:
+
+${copyButton(MERGER_SPOT)}`; },
+    width: "460px",
+    position: { element: SEG_BOX, side: "left", offset: { x: 0, y: 0 } },
+    onEnter: () => { openSegmentsTab(); sparkleEye(); nextWhenCellsAdded(1); pointAtSegBox(); },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 2 of 4 · Find your way",
+    text: `
+This box always shows where you are. If you ever need to share your spot with a teammate, <strong>click its copy icon</strong> to copy it.`,
+    width: "460px",
+    position: { element: "#extensionBar .neuroglancer-position-widget", side: "right", offset: { x: 0, y: 0 } },
+    highlight: true,
+  },
+  {
+    part: "Part 2 of 4 · Find your way",
+    get text() { return `
+Now let's go back to our cell:
+
+<ol class="nge-tut-steps">
+<li>In the Segments panel, <strong>click the eye</strong> next to our cell to show it again.</li>
+<li>Copy the soma's spot, then <strong>press CTRL+V anywhere in the viewer</strong> to jump there: ${copyButton(SOMA)}</li>
+</ol>`; },
+    width: "460px",
+    position: OVER_3D,
+    onEnter: () => { sparkleEye(); nextWhenAt(SOMA); },
+  },
+  {
+    part: "Part 3 of 4 · Mark what you see",
+    text: `
+Now let's mark what we see. Annotations are your notes on the cells: points, lines and boxes you place yourself.
 
 They live in an ANNOTATION LAYER. <strong>CLICK the "+" to add one.</strong>`,
     width: "500px",
@@ -594,7 +806,7 @@ They live in an ANNOTATION LAYER. <strong>CLICK the "+" to add one.</strong>`,
   // The rename box went 2026-11-12: the Annotations tutorial teaches it, and
   // the mission's hint still says to click the ✎ pencil (Ames: "go").
   {
-    part: "Part 1 of 4 · Mark what you see",
+    part: "Part 3 of 4 · Mark what you see",
     text: `
 The Pyr gem tool is already picked. <strong>CTRL+CLICK on the cell</strong> to drop a few gems.
 
@@ -602,216 +814,6 @@ Hover a gem's row in the panel: the pencil adds a note, the trash removes it. Th
     position: OVER_3D,
     // Was on the rename box: the player's layer, or a new one, with its panel open.
     onEnter() { ensureAnnotationLayer(); },
-  },
-  {
-    // The "Now for something new: LAYERS" box is folded in here (2026-11-12).
-    part: "Part 2 of 4 · Working with cells",
-    get text() { return `
-Each tab up here is one LAYER, like the 2D images or the 3D cells. The selected one has the bright border.
-
-<strong>${SELECT_CLICK()}</strong> on <strong>3D segmentation</strong> to select it. Each tab also has a number, and ${classicLayers() ? '<strong>SHIFT</strong> and that number' : 'that number key'} selects it too.`; },
-    onEnter: () => { markSegChip(); nextWhenSegSelected(); },
-    position: {
-      element: ".nge-tut-seg-chip",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    get text() { return `
-Try both ways to HIDE and SHOW <strong>3D segmentation</strong>:
-
-<ol class="nge-tut-steps">
-<li><strong>${HIDE_CLICK()}</strong> on it to hide it, then again to show it.</li>
-<li>Press <strong>${classicLayers() ? '2' : 'SHIFT+2'}</strong> on your keyboard to hide it, and again to show it.</li>
-</ol>`; },
-    onEnter: () => { markSegChip(); nextWhenSegHiddenAndShown(2); },
-    position: {
-      element: ".nge-tut-seg-chip",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-Selecting a layer opens its SIDE PANEL: this is your control panel for that layer. For <strong>3D segmentation</strong>, it's where the cells live.
-
-The glowing button at the right end of the top bar opens and closes it any time.`,
-    onEnter: glowPanelButton,
-    position: {
-      element: ".neuroglancer-layer-side-panel-title",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-Let's add more cells. The box at the top of the Segments tab takes cell IDs. Copy this one:
-
-${copyButton('648518346356982336')}
-
-<strong>Click the box, then press CTRL+V</strong>. The cell appears in 3D and in the list.`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    onEnter: () => { nextWhenCellsAdded(1); pointAtSegBox(); },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-Good job! You added a second cell.
-
-You can paste several IDs at once, separated by commas:
-
-${copyButton('648518346352672169, 648518346356973888')}
-
-<strong>Paste them into the same box.</strong>`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    onEnter: () => { nextWhenCellsAdded(2); pointAtSegBox(); },
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-Great work! That's four pyramidal neurons now. Pyramidal neurons are the main excitatory neurons of the brain, and the cells Pyr is named after!
-
-The box also takes coordinates: it adds whichever cell is at that spot. Copy these:
-
-${copyButton('85624, 70674, 651')}
-
-<strong>Paste them into the box too.</strong>`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    onEnter: () => { showTwoPanels(); nextWhenCellsAdded(1); pointAtSegBox(); },
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-That's the <strong>NUCLEUS</strong> of a cell! Here the nucleus is its own piece, apart from the rest of its cell.
-
-To find the cell it belongs to, <strong>DOUBLE CLICK the EM just around the nucleus</strong> in the 2D view.`,
-    width: "460px",
-    position: OVER_3D,
-    onEnter: () => { showTwoPanels(); nextWhenCellsAdded(1); },
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-Each cell in view has a row in the panel. Its buttons appear when you <strong>hover over the row</strong>, like this:
-
-${FAKE_ROW}
-
-<div class="nge-tut-legend">
-<div><span class="nge-tut-key">${EYE_ICON}</span>shows or hides the cell</div>
-<div><span class="nge-tut-key nge-tut-key--trash">${TRASH_ICON}</span>takes it out of view</div>
-<div><span class="nge-tut-key">${COPY_ICON}</span>copies its ID</div>
-<div><span class="nge-tut-key">↗</span>flies to the cell</div>
-<div><span class="nge-tut-key">▲</span>marks it Proofread or gives it a cell type</div>
-</div>
-
-You can also make folders with <strong>+ Folder</strong> and drag and drop cell IDs into them to keep them organized.`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-segment-list-entry",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    highlight: true,
-  },
-  {
-    part: "Part 2 of 4 · Working with cells",
-    text: `
-<span class="nge-tut-tab">Render</span> is another important tab. Here you change how your cells look.
-
-We've lit up a few worth trying: <strong>Opacity</strong> under 2D view, for how strongly the cell is colored over the image, and <strong>Opacity</strong> and <strong>Silhouette</strong> under 3D view. We've opened the 2D view so you can see both.
-
-Try them! We'll restore the default view in the next slide.`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-tab-view-bar",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
-    "middleauth+https://global.daf-apis.com/nglstate/api/v1/5352335057354752",
-    onEnter: glowRenderControls,
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    text: `
-Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text at the top of the screen. The help text may need a few seconds to load.
-
-If you get confused in the future, hovering may help!`,
-    image:
-      imgNurroAtHome,
-    position: MIDDLE,
-    width: "400px",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    text: `
-Right now we are centered in the cell's <strong>soma</strong>, the round cell body where its branches start. <strong>Press the "A" key</strong> to reveal the axis lines. 
-
-These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
-
-<strong>Press "A" again</strong> to remove them. Many of our keyboard commands act as a toggle switch between SHOW and HIDE.`,
-    width: "500px",
-    position: OVER_3D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    get text() { return `
-A collaborator found a branch with a merger and wants us to look. First, <strong>hide our cell</strong>: click the eye next to its ID in the Segments panel.
-
-Then copy this spot and <strong>paste it into the box at the top of the Segments panel</strong>. Pyr adds the cell there and jumps to it:
-
-${copyButton(MERGER_SPOT)}`; },
-    width: "460px",
-    position: { element: SEG_BOX, side: "left", offset: { x: 0, y: 0 } },
-    onEnter: () => { openSegmentsTab(); sparkleEye(); nextWhenCellsAdded(1); pointAtSegBox(); },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    text: `
-This box always shows where you are. If you ever need to share your spot with a teammate, <strong>click its copy icon</strong> to copy it.`,
-    width: "460px",
-    position: { element: "#extensionBar .neuroglancer-position-widget", side: "right", offset: { x: 0, y: 0 } },
-    highlight: true,
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    get text() { return `
-Now let's go back to our cell:
-
-<ol class="nge-tut-steps">
-<li>In the Segments panel, <strong>click the eye</strong> next to our cell to show it again.</li>
-<li>Copy the soma's spot, then <strong>press CTRL+V anywhere in the viewer</strong> to jump there: ${copyButton(SOMA)}</li>
-</ol>`; },
-    width: "460px",
-    position: OVER_3D,
-    onEnter: () => { sparkleEye(); nextWhenAt(SOMA); },
   },
   {
     part: "Part 4 of 4 · Put it together",

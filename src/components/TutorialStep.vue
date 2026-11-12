@@ -346,6 +346,8 @@ function followTarget(element: Element | null, step: Step) {
         const l = `${left}px`, t = `${top}px`;
         if (computedStep.value.left !== l || computedStep.value.top !== t) {
             computedStep.value = { ...computedStep.value, left: l, top: t };
+            // The target moved: work out the on screen shift again.
+            nextTick(clampChip);
         }
     }, 250);
 }
@@ -360,15 +362,28 @@ function clampChip() {
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const cur = (v: string) => (typeof v === 'string' && v.endsWith('px')) ? parseFloat(v) : 0;
-    let top = cur(chipBounds.value.top), left = cur(chipBounds.value.left);
-    let changed = false;
-    if (rect.top < 0) { top += -rect.top + 8; changed = true; }
-    else if (rect.bottom > window.innerHeight && rect.top > 8) {
-        top += Math.max(window.innerHeight - rect.bottom - 8, 8 - rect.top); changed = true;
+    // Worked out from where the box would sit with no shift, every time, so
+    // a shift made while the target was still settling goes away once it
+    // has (Ames 2026-11-12: the box sat below its leader line, "line is
+    // disconnected from box"). It used to add to the old shift and keep it.
+    const oldTop = cur(chipBounds.value.top), oldLeft = cur(chipBounds.value.left);
+    const baseTop = rect.top - oldTop, baseLeft = rect.left - oldLeft;
+    const h = rect.height, w = rect.width;
+    let top = 0, left = 0;
+    if (baseTop < 0) top = -baseTop + 8;
+    else if (baseTop + h > window.innerHeight && baseTop > 8) top = Math.max(window.innerHeight - (baseTop + h) - 8, 8 - baseTop);
+    if (baseLeft < 0) left = -baseLeft + 8;
+    else if (baseLeft + w > window.innerWidth) left = window.innerWidth - (baseLeft + w) - 8;
+    // A box beside its target keeps the leader line on its edge: the line's
+    // height (the anchor's) stays inside the box, 12px from either end.
+    const anchor = root.value?.querySelector('.introductionStepAnchor');
+    if (anchor && (anchor.classList.contains('left') || anchor.classList.contains('right'))) {
+        const y = anchor.getBoundingClientRect().top;
+        if (baseTop + top > y - 12) top = y - 12 - baseTop;
+        if (baseTop + top + h < y + 12) top = y + 12 - h - baseTop;
     }
-    if (rect.left < 0) { left += -rect.left + 8; changed = true; }
-    else if (rect.right > window.innerWidth) { left += window.innerWidth - rect.right - 8; changed = true; }
-    if (changed) chipBounds.value = { ...chipBounds.value, top: `${top}px`, left: `${left}px` };
+    const t = top ? `${top}px` : 'auto', l = left ? `${left}px` : 'auto';
+    if (chipBounds.value.top !== t || chipBounds.value.left !== l) chipBounds.value = { ...chipBounds.value, top: t, left: l };
 }
 function onReclamp() { nextTick(clampChip); }
 
