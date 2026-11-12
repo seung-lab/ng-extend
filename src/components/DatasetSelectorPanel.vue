@@ -15,7 +15,7 @@ import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests'
 import { useProofreadingBackendStore } from '../store';
 import { skipNextViewRestoreOffer } from '../util/view_autosave';
 import { basicsDone } from '../util/start_playing';
-import { startPlay } from '../util/play';
+import { startPlay, openMyCell, savedKind } from '../util/play';
 import RequestAccessButton from './RequestAccessButton.vue';
 import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
@@ -56,6 +56,15 @@ onMounted(() => { loadDatasetPermissions(); });
  *  Sandbox cell of their own to edit (util/start_playing.ts). Before, it is
  *  "Start here", the tutorial they are on. */
 const playing = computed(() => basicsDone());
+/** A card's Start playing: mapping here, or Cilia Quest on Retina when that is what was played last. */
+function playOn(ds: DatasetEntry) {
+  emit('hide');
+  void startPlay(hasQuests(ds) && savedKind() === 'quests' ? 'quests' : 'cells', ds);
+}
+function openActive(ds: DatasetEntry) {
+  emit('hide');
+  void openMyCell(ds);
+}
 function startHere(ds: DatasetEntry) {
   if (playing.value) {
     // Play on this card's dataset (util/play.ts): a cell, then the next.
@@ -333,17 +342,18 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                     </button>
                   </div>
                   <div v-else-if="showTasks(ds)" class="nge-ds-tasks">
-                    <button v-if="ds.cellTasks" class="nge-ds-task" @click.stop="openTask(ds, 'available')"
-                            :title="(availableLabelOf(ds) ? 'Open the Cell Library on the bipolar cells nobody has claimed yet' : 'Open the Cell Library on the cells nobody has claimed yet') + (ds.id === currentDatasetId ? '' : ', after switching here')">
-                      {{ availableLabelOf(ds) || 'Available cells' }}<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    <!-- Two ways in (Ames 2026-11-12): play, or back to the cell you were on. -->
+                    <button v-if="ds.cellTasks" class="nge-ds-task" @click.stop="playOn(ds)"
+                            :title="'Play: Pyr teleports you to a cell to work on here. After each one, the next.' + (ds.id === currentDatasetId ? '' : ' Switches here first.')">
+                      Start playing<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
                     </button>
-                    <button v-if="hasQuests(ds)" class="nge-ds-task" @click.stop="openTask(ds, 'quests')"
+                    <button v-else-if="hasQuests(ds)" class="nge-ds-task" @click.stop="openTask(ds, 'quests')"
                             :title="'Open the Quests: mark the cilia on a starburst amacrine cell' + (ds.id === currentDatasetId ? '' : ', after switching here')">
                       Quests<b v-if="questCount" class="nge-ds-task-n">{{ questCount }} open</b><span class="nge-ds-task-arrow" aria-hidden="true">›</span>
                     </button>
-                    <button v-if="ds.cellTasks && claimsOn(ds)" class="nge-ds-task nge-ds-task--in" @click.stop="openTask(ds, 'mine')"
-                            :title="'Open the Cell Library on the cells you have claimed here' + (ds.id === currentDatasetId ? '' : ', after switching here')">
-                      My cells<b class="nge-ds-task-n">{{ claimsOn(ds) }}</b><span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    <button v-if="ds.cellTasks && claimsOn(ds)" class="nge-ds-task nge-ds-task--in" @click.stop="openActive(ds)"
+                            :title="'Go to the cell you have claimed here, without playing' + (ds.id === currentDatasetId ? '' : '. Switches here first.')">
+                      Open active cell<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
                     </button>
                   </div>
                   </div>

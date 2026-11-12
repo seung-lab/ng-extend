@@ -117,13 +117,12 @@ export function mappingWhere(): string {
  * and open the Cell Library there, which takes the task. A switch that
  * reloads the page carries the note across.
  */
-export async function startPlay(k: PlayKind, on?: DatasetEntry): Promise<boolean> {
+export async function startPlay(k: PlayKind, on?: DatasetEntry, justOpen = false): Promise<boolean> {
   play.choosing = false;
   const target = on ?? (k === 'quests' ? RETINA() : mappingDataset());
   if (!target) return false;
   if (k === 'quests' && !canQuest()) return false;
-  keepKind(k);
-  setOn(k);
+  if (!justOpen) { keepKind(k); setOn(k); }
   askEnter(k);
   const tab = k === 'quests' ? 'quests' : 'available';
   const here = datasetHere();
@@ -153,6 +152,10 @@ export async function startPlay(k: PlayKind, on?: DatasetEntry): Promise<boolean
   document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab, play: k } }));
   return true;
 }
+
+/** "Open active cell" on a dataset card: go there and open your cell, as
+ *  Play does, without playing (Ames 2026-11-12). */
+export function openMyCell(ds: DatasetEntry): Promise<boolean> { return startPlay('cells', ds, true); }
 
 /** What is being played, for the top bar: "BC Challenge", "Cilia Quest". */
 export function playLabel(): string {

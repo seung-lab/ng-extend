@@ -4237,7 +4237,7 @@ const panelStyle = computed(() => ({
         <div v-else ref="cellListEl" class="nge-cl-list">
           <!-- Claim error banner -->
           <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
-          <div v-if="filter === 'available' && !slim && isLoggedIn && !viewOnlyDataset && availableCount > 0" class="nge-cl-play-here-row">
+          <div v-if="filter === 'available' && !slim && !play.on && isLoggedIn && !viewOnlyDataset && availableCount > 0" class="nge-cl-play-here-row">
             <button class="nge-cl-play-here" @click="playHere('cells')"
                     title="Play: claims the next cell for you and takes you there. After Complete, the next one.">
               <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
