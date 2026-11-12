@@ -10,8 +10,8 @@ import { useUserPreferencesStore } from "./store";
  *  selects and a right click hides; Classic layer tabs in Settings swaps them
  *  (as tutorial-3.ts selectClick). The steps used to say it the old way round
  *  (Ames 2026-10-18). */
-const classicLayers = () => { try { return useUserPreferencesStore().prefs.classicLayerClicks === true; } catch { return false; } };
-const SELECT_CLICK = () => (classicLayers() ? 'RIGHT-CLICK' : 'CLICK');
+export const classicLayers = () => { try { return useUserPreferencesStore().prefs.classicLayerClicks === true; } catch { return false; } };
+export const SELECT_CLICK = () => (classicLayers() ? 'RIGHT-CLICK' : 'CLICK');
 const HIDE_CLICK = () => (classicLayers() ? 'CLICK' : 'RIGHT-CLICK');
 /** A copy button for coordinates (TutorialStep.vue onHtmlClick). */
 const copyButton = (coords: string) => `<button type="button" class="nge-tut-copy" data-nge-copy="${coords}">📋 Copy ${coords}</button>`;
@@ -24,14 +24,14 @@ import imgWheresNurro from './images/wheres-nurro.png';
 import imgNurroAtHome from './images/nurro-at-home600.png';
 import imgTutorialFinal from './images/ng-tutorial-final-image.png';
 
-const MIDDLE = {
+export const MIDDLE = {
   element: "body",
   x: 0.5,
   y: 0.5,
 };
 
 
-const OVER_3D = {
+export const OVER_3D = {
   element: ".neuroglancer-layer-group-viewer > div:nth-child(2)",
   x: 0.75,
   y: 0.15,
@@ -134,7 +134,7 @@ const FAKE_ROW = `<div class="nge-tut-row nge-tut-row--hover" aria-hidden="true"
 /** Find Path in the tutorial: the cells go see through so the path shows,
  *  a big "Path found!" when it arrives, then on. The cells come back to
  *  full strength once the player is past the next box. */
-function findPathStep() {
+export function findPathStep() {
   waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
@@ -336,12 +336,12 @@ function pinkHighlights() {
 }
 
 /** Moves on, and the step no longer waits on the player. */
-function advance() {
+export function advance() {
   (window as any).__ngeStepPending = false;
   document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
 }
 /** This step waits on the player's action (Tutorial.vue nudges on Next). */
-function waitForAction() { (window as any).__ngeStepPending = true; }
+export function waitForAction() { (window as any).__ngeStepPending = true; }
 
 /** Sparkles around the eye of our cell's row (Ames 2026-10-19: "bring
  *  attention to the eye, sparkles or something silly"), while the step shows. */
@@ -414,7 +414,7 @@ function colorNewCell(id: string) {
   } catch { /* the layer is not ready */ }
 }
 /** Move on by itself once an annotation layer has been added. */
-function nextWhenAnnotationLayerAdded() {
+export function nextWhenAnnotationLayerAdded() {
   waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
