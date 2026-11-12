@@ -503,7 +503,7 @@ function stepGlide(dt: number) {
   if ((len(sub(next, glide.look)) < 800 && Math.abs(v.projectionScale.value - glide.scale) < glide.scale * 0.01) || performance.now() - glide.since > 1600) { glide = null; recordCam(); }
 }
 /** The ship's look, after scifi-ui's goldOnBlue hologram: a cool blue body, a molten gold rim. */
-const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.05, 0.14, 0.38], rim: [1.0, 0.82, 0.48], shade: 1.1};
+const shipProp: NgeProp = {mesh: null as any, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.03, 0.09, 0.26], rim: [0.85, 0.7, 0.42], shade: 0.8};   // shade 1.1 and a brighter rim were "too overwashed" (Ames 2026-11-12)
 const GROUP = 'signal';
 /** A faceted sphere: an icosahedron subdivided once, flat-shaded (80 faces). */
 function icosphere(): {positions: Float32Array; normals: Float32Array} {
@@ -815,6 +815,8 @@ function ensureStyle() {
 .nge-sig-beam[aria-pressed="true"] { background: rgba(255, 194, 74, 0.22); color: #ffd98a; text-shadow: 0 0 8px rgba(255, 194, 74, 0.6); }
 .nge-sig-beam.hush[aria-pressed="true"] { background: rgba(182, 140, 255, 0.25); color: #d9c4ff; text-shadow: 0 0 8px rgba(182, 140, 255, 0.7); }
 .nge-sig-beam:disabled { opacity: 0.35; cursor: not-allowed; }
+.nge-sig-beam { white-space: nowrap; }
+.nge-sig-beam + .nge-sig-beam { border-left: 1px solid rgba(126, 224, 255, 0.35); }
 /* what a beam costs, in the charge meter's own pips */
 .nge-sig-beam .cost { display: inline-flex; gap: 2px; margin-left: 7px; vertical-align: 1px; }
 .nge-sig-beam .cost b { width: 7px; height: 6px; transform: skewX(-18deg); background: currentColor; opacity: 0.65; }
@@ -2801,7 +2803,7 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: numbe
   // three tenths of the way out from the eye.
   const d2 = eyeDist * 0.3, halfH2 = d2 * tanHalf;
   const nose = add(sub(eye, mul(cam.toEye, d2)), mul(cam.up, -0.92 * halfH2));
-  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH)), len: Math.min(halfH, halfW) * 0.22, nose};
+  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * halfW)), mul(cam.up, sy * halfH)), len: Math.min(halfH, halfW) * 0.14, nose};   // 0.22 was "too large" (Ames 2026-11-12)
 }
 /** Where the ship lands on a visit: on the near side of the cell body (a
  *  soma is some 12 µm across), a touch to the side it came from, so it sits
@@ -2815,13 +2817,20 @@ function visitSpot(cam: {right: V3; up: V3; toEye: V3}, c: CellState, lean: numb
 
 /** The model's own length along its nose (+z), so it can be sized in nm. */
 let shipModelLength = 0;
+/** The engines' contrails: particles streaming back from the two nozzles, a
+ *  trickle at rest and a stream in flight (Ames 2026-11-12: "it doesn't have
+ *  its contrails!"). The nozzles sit at the back, a third of the way out to
+ *  each side, as in the Starship intro. */
+let shipModelZLo = 0, shipModelXHi = 0, lastShipAt: V3 | null = null, trailDebt = 0;
+interface Trail { p: V3; v: V3; at: number; life: number; }
+let trail: Trail[] = [];
 function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const nm = nmPerUnit();
   if (!nm || !shipMesh) return;
   if (!shipModelLength) {
-    let zLo = Infinity, zHi = -Infinity;
-    for (let i = 2; i < shipMesh.positions.length; i += 3) { zLo = Math.min(zLo, shipMesh.positions[i]); zHi = Math.max(zHi, shipMesh.positions[i]); }
-    shipModelLength = (zHi - zLo) || 1;
+    let zLo = Infinity, zHi = -Infinity, xHi = 0;
+    for (let i = 2; i < shipMesh.positions.length; i += 3) { zLo = Math.min(zLo, shipMesh.positions[i]); zHi = Math.max(zHi, shipMesh.positions[i]); xHi = Math.max(xHi, Math.abs(shipMesh.positions[i - 2])); }
+    shipModelLength = (zHi - zLo) || 1; shipModelZLo = zLo; shipModelXHi = xHi;
   }
   const cockpit = cockpitSpot(cam);
   cockpitNose = cockpit?.nose ?? null;
@@ -2880,6 +2889,20 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const right = norm(cross(up, fwd));
   const bob = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : viewNm * 0.004 * Math.sin(performance.now() / 1000 * 1.3);
   const at = add(shipAt, mul(up, bob));
+  if (shipProp.alpha > 0 && view === 'ship') {
+    const moved = lastShipAt ? len(sub(at, lastShipAt)) : 0;
+    trailDebt += dt * 10 + moved / (shipLenNm * 0.04);
+    const tail = add(at, mul(fwd, shipModelZLo * scale)), tNow = performance.now() / 1000;
+    while (trailDebt >= 1 && trail.length < 600) {
+      trailDebt -= 1;
+      for (const sideSign of [1, -1]) {
+        const p0 = add(add(tail, mul(right, sideSign * shipModelXHi * 0.3 * scale)), mul(up, (Math.random() - 0.5) * shipLenNm * 0.03));
+        const v = add(add(mul(fwd, -shipLenNm * (0.5 + Math.random() * 0.4)), mul(right, (Math.random() - 0.5) * shipLenNm * 0.12)), mul(up, (Math.random() - 0.5) * shipLenNm * 0.12));
+        trail.push({p: p0, v, at: tNow, life: 0.45 + Math.random() * 0.45});
+      }
+    }
+  }
+  lastShipAt = at;
   const m = shipProp.modelMat, axes = [right, up, fwd];
   for (let col = 0; col < 3; col++) for (let k = 0; k < 3; k++) m[col * 4 + k] = axes[col][k] * scale / nm[k];
   for (let k = 0; k < 3; k++) m[12 + k] = at[k] / nm[k];
@@ -3434,7 +3457,7 @@ function placeCanopy() {
 function showScan(key: string, full = false) {
   const c = cells.get(key);
   if (!c) return;
-  hideScan();
+  hideScan(true);   // the spotlight stays: the card used to take it away as it opened (Ames 2026-11-12: "then all the others fade back so I can't see")
   scanKey = key;
   const parts = readoutParts(readoutOf(c));
   flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.7, 0.95, 1], size: 20_000});
@@ -3482,10 +3505,10 @@ function showScan(key: string, full = false) {
   }
   requestAnimationFrame(() => scanEl?.classList.add('nge-sig-scan--in'));
 }
-function hideScan() {
+function hideScan(keepLit = false) {
   scanEl?.remove();
   scanEl = null; scanKey = null; scanPin = null; showing = new Set();
-  if (scanLit) { scanLit = null; unfadeScan(); refreshSkip(); }
+  if (scanLit && !keepLit) { scanLit = null; unfadeScan(); refreshSkip(); }
   clearGems();
   clearCanopy();
 }
@@ -3733,6 +3756,14 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; put(add(b.p, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R))), [b.rgb[0], b.rgb[1], b.rgb[2], 0.6 * (1 - q)], 2600); }
     put(b.p, [1, 0.95, 0.7, 0.8 * (1 - q)], 30_000 * (1 - q * 0.5));
   }
+  if (trail.length) {
+    const tNow = performance.now() / 1000;
+    trail = trail.filter(k => tNow - k.at < k.life);
+    for (const k of trail) {
+      const age = tNow - k.at, q = age / k.life;
+      put(add(k.p, mul(k.v, age)), [0.55 + 0.3 * q, 0.85, 1, 0.5 * (1 - q)], shipLenNm * (0.025 + 0.07 * q));
+    }
+  }
   if (showing.size && scanKey) {
     const t = performance.now() / 1000;
     const sc = cells.get(scanKey), pr = sc && parts.get(sc.spec.root);
@@ -3807,9 +3838,24 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     const fade = Math.max(0, 1 - after / 0.25);
     const rgb: V3 = b.scan ? [0.6, 0.95, 1] : b.hush ? [0.7, 0.45, 1] : [1, 0.82, 0.35];
     if (!b.hush && !b.scan) {
-      // a spark: no bullet; the cell lights up over the beam's time, in its
-      // own colour with a white-hot core, and then sends its spike
+      // a spark: a friendly stream of particles from the nose, a gentle helix
+      // flowing to the cell (nothing shot at it), and the cell lighting up
+      // over the beam's time in its own colour with a white-hot core, then
+      // its spike (Ames 2026-11-12: "a particle beam that looks friendly")
       const c = cells.get(b.cell), col: V3 = c ? [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255] : rgb;
+      const d = sub(b.to, b.from), L = len(d);
+      if (L > 1) {
+        const dir = mul(d, 1 / L), side = norm(cross(dir, cam.toEye)), lift = norm(cross(side, dir));
+        const age = now - b.at, N2 = 40, rad = Math.max(2500, L * 0.012), dotNm2 = Math.max(1800, L * 0.0075);
+        for (let k = 0; k < N2; k++) {
+          const u = (k / N2 + age / landS(b) * 0.85) % 1;   // flowing toward the cell, behind the stream's front
+          if (u > q) continue;
+          const ph = k * 1.9 + age * 8, rr = rad * (1 - u * 0.55);
+          const pp = add(add(add(b.from, mul(dir, u * L)), mul(side, Math.cos(ph) * rr)), mul(lift, Math.sin(ph) * rr));
+          const warm = k % 5 === 0;
+          put(pp, warm ? [1, 0.92, 0.65, 0.85 * fade] : [0.62, 0.9, 1, 0.7 * fade], dotNm2 * (0.75 + 0.35 * Math.sin(ph * 1.3)));
+        }
+      }
       const swell = q * q;
       put(b.to, [col[0], col[1], col[2], 0.45 * swell * fade], 34_000 * (0.4 + 0.6 * swell));
       put(b.to, [1, 0.97, 0.85, 0.9 * swell * fade], 7000 + 15_000 * swell);
@@ -3888,7 +3934,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   };
   for (const c of cells.values()) {
     if (!c.shown) continue;
-    const k = c.dimmed ? 0.4 : 1, col: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];
+    const k = c.dimmed ? (scanLit && c.key !== scanLit ? 0.95 : 0.4) : 1, col: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];   // in a scan the others' bodies stay bright, only their branches dim
     over(c.spec.soma, [col[0], col[1], col[2], 0.2 * k], SOMA_R_NM * 2.6);
     over(c.spec.soma, [col[0] * 0.5 + 0.5, col[1] * 0.5 + 0.5, col[2] * 0.5 + 0.5, 0.22 * k], SOMA_R_NM * 1.2);
   }
