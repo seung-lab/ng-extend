@@ -72,6 +72,7 @@ function jumpTo(i: number) {
     (window as any).__ngeStepPending = false;
     openTutorialBox(store.activeTutorial, Math.min(Math.max(0, i), steps.value.length - 1));
 }
+function onSection(e: Event) { const sel = e.target as HTMLSelectElement; const i = Number(sel.value); sel.value = ''; jumpTo(i); }
 function jumpToTyped() { const n = parseInt(jumpBox.value, 10); if (n >= 1) jumpTo(n - 1); jumpBox.value = ''; }
 
 const currentStep = computed(() => {
@@ -478,7 +479,7 @@ const exitIntro = () => {
         v-on:back="back" v-on:exitIntro="exitIntro" />
     <div v-if="jumpBar && activeStep && !needsResumePrompt" class="ng-extend nge-tut-jump" aria-label="Jump to a box (test site)">
         <span class="nge-tut-jump-label">Jump to</span>
-        <select v-if="sections.length > 1" class="nge-tut-jump-sel" :value="''" @change="jumpTo(Number(($event.target as HTMLSelectElement).value)); ($event.target as HTMLSelectElement).value = ''">
+        <select v-if="sections.length > 1" class="nge-tut-jump-sel" :value="''" @change="onSection">
             <option value="" disabled>Section</option>
             <option v-for="sec in sections" :key="sec.index" :value="sec.index">{{ sec.label }}</option>
         </select>
