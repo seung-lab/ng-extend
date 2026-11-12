@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-12T16:01:06Z",
+      "title": "Tutorial fixes",
+      "items": [
+        "Get Started: the 2D EM tab no longer glows, since clicking it does not open the images. Press SPACE instead.",
+        "Get Started: the branch end views open with one yellow point, with no second point flashing in first.",
+        "Merge tutorial: the Merge icon glows while the box asks you to turn merge on.",
+        "Merge tutorial: the second merge box sits higher, so the merge bar no longer covers it."
+      ]
+    },
+    {
       "at": "2026-11-12T15:55:57Z",
       "title": "More sandbox practice",
       "items": [

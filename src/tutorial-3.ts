@@ -1420,16 +1420,23 @@ export function cheatSheet(rows: Array<[string, string]>) {
 /** The top bar icon a box talks about glows while that box is up and the
  *  tool is off (tester, 2026-11-10: "the Merge icon indicated in some way"). */
 function glowTopIcon(id: 'merge' | 'split') {
+  // A ring drawn over the icon, not a class on it: the top bar is redrawn by
+  // Vue often (badge counts), which wiped the class, and re-adding it every
+  // tick restarted the pulse before it got bright (Celia, 2026-11-11: "Merge
+  // icon is still not glowing").
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  let ring = document.querySelector('.nge-tut-glow-ring') as HTMLElement | null;
+  if (!ring) { ring = document.createElement('div'); ring.className = 'nge-tut-glow-ring'; document.body.appendChild(ring); }
   const timer = setInterval(() => {
     const here = store.activeTutorial === tutorial && store.getTutorialStep() === step && !!document.querySelector('.introductionStepAnchor');
     const icon = document.querySelector(`[data-icon-id="${id}"]`) as HTMLElement | null;
-    const on = here && !practiceToolOn();
-    document.querySelectorAll('.nge-tut-glow-icon').forEach(el => { if (!on || el !== icon) el.classList.remove('nge-tut-glow-icon'); });
-    if (on) icon?.classList.add('nge-tut-glow-icon');
-    if (!here) clearInterval(timer);
-  }, 400);
+    const r = icon?.getBoundingClientRect();
+    const on = here && !practiceToolOn() && !!r && r.width > 0;
+    if (on && r) Object.assign(ring!.style, { display: 'block', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    else ring!.style.display = 'none';
+    if (!here) { clearInterval(timer); ring!.remove(); }
+  }, 250);
 }
 
 export const MIDDLE = {
@@ -1580,9 +1587,10 @@ Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` 
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
 The pink gems show where to click.`,
-    // Low on the 3D side: the view is centred on the join, and the box at
-    // the top sat right over the cell (Ames, 2026-10-25).
-    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.82 },
+    // Lower on the 3D side: the view is centred on the join, and the box at
+    // the top sat right over the cell (Ames, 2026-10-25). Not at the very
+    // bottom, where the merge bar covered it (Celia, 2026-11-11).
+    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.6 },
     width: "420px",
     onEnter: async () => {
       closeSidePanel();
