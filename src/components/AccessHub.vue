@@ -32,7 +32,7 @@ interface Person {
   edits_30d: number; cells: number; cells_30d: number; chats: number; chats_30d: number;
   help_asked: number; help_answered_for: number; help_asked_30d: number; help_given: number; help_given_30d: number;
   is_admin?: boolean;
-  invited_at?: string | null; invited_for?: string | null; invited_role?: string | null; invited_as?: string | null; invited_ew_name?: string | null;
+  invited_at?: string | null; invited_for?: string | null; invited_role?: string | null; invited_as?: string | null;
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
 interface RecentEdit { at: string; dataset: string | null; operation: string | null; success: boolean | null }
@@ -41,10 +41,10 @@ interface PlayerDataset { dataset: string; edits: number; cells: number; chats: 
 interface Activity { dataset: string; edits: number; editors: number; cells: number; finishers: number; chats: number; chatters: number }
 interface Stat { tutorial: number; step: number; last_box: string | null; n: number; players: number; median_s: number; p90_s: number; help_rate: number; closes: number }
 interface Note { id: string; text: string; by: string; at: string }
-type Stage = 'invited' | 'asked' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
+type Stage = 'asked' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as,invited_ew_name';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as';
 const people = ref<Person[]>([]);
 const marks = ref<Record<string, { mark: string; at: string }>>({});
 const dsRows = ref<DatasetRequestRow[]>([]);
@@ -118,9 +118,6 @@ onMounted(() => { document.title = 'Pyr · Access'; void load(); });
 // ── Where each person is ─────────────────────────────────────────────────
 const later = (...t: (string | null | undefined)[]) => t.filter(Boolean).sort().pop() || null;
 const lc = (s: string | null | undefined) => String(s || '').toLowerCase();
-// Emailed and not heard from yet (Ames 2026-11-12): no request, not on
-// Pilot testers, never signed in.
-const onlyEmailed = (p: Person) => !p.request_id && p.pilot_enabled == null && !p.joined_at && !p.is_admin && !!p.invited_at;
 
 const cards = computed<Card[]>(() => {
   const out: Card[] = [];
@@ -144,7 +141,6 @@ const cards = computed<Card[]>(() => {
       else { stage = 'asked'; since = p.asked_at; }
     }
     else if (p.pilot_enabled === false) { stage = 'removed'; since = p.let_in_at; }
-    else if (onlyEmailed(p)) { stage = 'invited'; since = p.invited_at ?? null; }
     else if (!p.joined_at) { stage = 'letin'; since = p.let_in_at; }
     else if (p.edits > 0) { stage = 'editing'; since = p.first_edit_at; }
     else if (p.tutorial_at) { stage = 'tutorial'; since = p.tutorial_at; }
@@ -164,7 +160,7 @@ const NOT_SAME_KEY = 'nge_access_not_same_v1';
 const notSame = ref<string[]>((() => { try { return JSON.parse(localStorage.getItem(NOT_SAME_KEY) || '[]'); } catch { return []; } })());
 const pairKey = (a: string, b: string) => [a, b].sort().join('|');
 const dupes = computed<Record<string, Person[]>>(() => {
-  const ps = people.value.filter(p => !p.is_admin && !onlyEmailed(p));
+  const ps = people.value.filter(p => !p.is_admin);
   const local = (e: string) => e.split('@')[0];
   const fullName = (p: Person) => { const n = lc(p.name).trim().replace(/\s+/g, ' '); return n.includes(' ') && n.length >= 5 ? n : ''; };
   const ew = (p: Person) => { const n = lc(p.ew_name).trim(); return n.length >= 4 ? n : ''; };
@@ -316,8 +312,6 @@ const LB_BY: { key: LbBy; label: string }[] = [{ key: 'edits', label: 'Edits' },
 const adminCards = computed(() => inStage('admin').filter(matches).sort((a, b) => nameOf(a).localeCompare(nameOf(b))));
 const laterCards = computed(() => inStage('later').filter(matches).sort((a, b) => String(a.since).localeCompare(String(b.since))));
 const showLater = ref(false);
-const invitedCards = computed(() => inStage('invited').filter(matches).sort((a, b) => nameOf(a).localeCompare(nameOf(b))));
-const showInvited = ref(false);
 // Overall numbers (Ames 2026-11-10: "# users (signed in, passed tutorial 1,
 // production access)"). Admins left out. Dataset access: anyone CAVE lets
 // edit a real dataset (not a public or practice one), as the Users sheet's
@@ -325,16 +319,13 @@ const showInvited = ref(false);
 // have dataset access"; granted requests alone missed anyone added by hand).
 const realEdit = (list: string | undefined) => (list || '').split(',').map(x => x.trim()).filter(x => x && !/ public$/i.test(x));
 const totals = computed(() => {
-  // People: everyone who asked, was let in or signed in; the people we only
-  // emailed are counted on their own.
-  const ps = people.value.filter(p => !p.is_admin && !onlyEmailed(p));
+  const ps = people.value.filter(p => !p.is_admin);
   const withAccess = ps.filter(p => realEdit(canEdit.value?.[p.email]).length);
   const byDs: Record<string, number> = {};
   for (const p of withAccess) for (const d of realEdit(canEdit.value?.[p.email])) byDs[d] = (byDs[d] || 0) + 1;
   const split = Object.entries(byDs).sort((a, b) => b[1] - a[1]).map(([d, n]) => `${d} ${n}`).join(', ');
   return [
     { label: 'People', n: ps.length, title: 'Everyone who asked, was let in or signed in' },
-    { label: 'Invited by email', n: people.value.filter(p => !p.is_admin && p.invited_at).length, title: `We emailed them an invite. ${inStage('invited').length} haven't asked or signed in yet` },
     { label: 'Let in', n: ps.filter(p => p.pilot_enabled).length, title: 'On Pilot testers now' },
     { label: 'Signed in', n: ps.filter(p => p.joined_at).length, title: 'Signed in to Pyr at least once' },
     { label: 'Finished a tutorial', n: ps.filter(p => p.tutorial_at).length, title: 'Finished their first tutorial' },
@@ -764,15 +755,6 @@ const opName = (e: RecentEdit) => {
       <button v-for="c in adminCards" :key="'a' + c.key" type="button" class="ah-card" @click="pick(c)">
         <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">Admin<template v-if="c.p?.edits">, {{ c.p.edits.toLocaleString() }} edit{{ c.p.edits === 1 ? '' : 's' }}</template></span>
-      </button>
-    </div>
-    <button v-if="invitedCards.length || showInvited" type="button" class="ah-fold ah-fold--wide ah-invited-fold" @click="showInvited = !showInvited">
-      {{ showInvited ? 'Hide' : 'Show' }} {{ inStage('invited').length }} we emailed who haven't asked yet
-    </button>
-    <div v-if="showInvited" class="ah-removed ah-invited-list">
-      <button v-for="c in invitedCards" :key="'i' + c.key" type="button" class="ah-card" @click="pick(c)">
-        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
-        <span class="ah-card-line">Emailed {{ day(c.since) }}<template v-if="c.p?.invited_role">, EyeWire {{ c.p.invited_role }}</template></span>
       </button>
     </div>
     <button v-if="laterCards.length || showLater" type="button" class="ah-fold ah-fold--wide ah-later-fold" @click="showLater = !showLater">

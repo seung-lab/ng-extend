@@ -95,16 +95,8 @@ adm AS (
   FROM public.admins a LEFT JOIN public.users us ON us.id = a.user_id
   WHERE coalesce(a.email, us.middleauth_email) IS NOT NULL
 ),
--- Everyone we emailed who has not asked (Ames 2026-11-12: "there should be
--- like 400"): their own step, Emailed, unless a request already matches the
--- invite by the email they gave or their EyeWire username.
-ivw AS (
-  SELECT DISTINCT coalesce(lk.linked_to, i.email) AS email
-  FROM public.access_invites i LEFT JOIN lnk lk ON lk.email = i.email
-  WHERE NOT EXISTS (SELECT 1 FROM req r WHERE r.gave_email = i.email OR (r.ew_name IS NOT NULL AND lower(r.ew_name) = i.ew_name))
-),
 who AS (
-  SELECT email FROM req UNION SELECT email FROM pil UNION SELECT email FROM adm UNION SELECT email FROM ivw
+  SELECT email FROM req UNION SELECT email FROM pil UNION SELECT email FROM adm
 ),
 usr AS (
   SELECT DISTINCT ON (lower(middleauth_email)) lower(middleauth_email) AS email, id, display_name, username, created_at, tutorial_active, last_edit_at
@@ -148,7 +140,7 @@ hg AS (
 SELECT
   w.email,
   u.id AS user_id,
-  coalesce(r.request_name, u.display_name, u.username, iv.ew_name) AS name,
+  coalesce(r.request_name, u.display_name, u.username) AS name,
   u.username,
   r.request_id, r.asked_at, r.from_site, r.gave_email,
   r.ew_name, r.ew_rank, r.found_us, r.their_note,
@@ -161,7 +153,7 @@ SELECT
   coalesce(ha.help_asked, 0) AS help_asked, coalesce(ha.help_answered_for, 0) AS help_answered_for, coalesce(ha.help_asked_30d, 0) AS help_asked_30d,
   coalesce(hg.help_given, 0) AS help_given, coalesce(hg.help_given_30d, 0) AS help_given_30d,
   (ad.email IS NOT NULL) AS is_admin,
-  iv.sent_at AS invited_at, iv.campaign AS invited_for, iv.ew_role AS invited_role, iv.email AS invited_as, iv.ew_name AS invited_ew_name
+  iv.sent_at AS invited_at, iv.campaign AS invited_for, iv.ew_role AS invited_role, iv.email AS invited_as
 FROM who w
 LEFT JOIN adm ad ON ad.email = w.email
 LEFT JOIN req r ON r.email = w.email
@@ -176,7 +168,7 @@ LEFT JOIN hg ON hg.user_id = u.id
 -- The first invite that reached them: this email, the email they gave on
 -- the form, an email folded into this one, or their EyeWire username.
 LEFT JOIN LATERAL (
-  SELECT i.email, i.campaign, i.ew_role, i.ew_name, i.sent_at FROM public.access_invites i
+  SELECT i.email, i.campaign, i.ew_role, i.sent_at FROM public.access_invites i
   WHERE i.email = w.email OR i.email = r.gave_email
     OR i.email IN (SELECT l.email FROM lnk l WHERE l.linked_to = w.email)
     OR (r.ew_name IS NOT NULL AND i.ew_name = lower(r.ew_name))
