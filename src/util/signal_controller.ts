@@ -86,7 +86,7 @@ const LEVELS: Level[] = [
   // Level 1 is one driver and a rhythm (Ames 2026-11-08: "click some
   // pyramidal neurons to fire downstream at the right frequency"): two quick
   // sparks on E1 add up at the gold cell; slow ones leak away first.
-  {title: 'First Light', objective: 'Spike the gold cell', detail: '3 times: E1 twice, quickly, each time', timeS: 60, par: 6,
+  {title: 'First Light', objective: 'Spike the gold cell', detail: '', timeS: 60, par: 6,
     brief: 'These are real neurons from the brain: an excitatory pyramidal cell (gold) and four of the cells that drive it.\nYour Spark beam fires a cell, and its spike runs down the axon to the gold cell. One spike is not enough on its own, but spikes that arrive close together add up.\nE1 makes the most synapses onto the gold cell, five, so two quick spikes from it are enough on their own. The other drivers carry less and need company.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4'], targets: ['T'], hush: false,
     goal: {kind: 'fire', target: 'T', count: 3},
@@ -1393,7 +1393,7 @@ function toggleEditor() {
 }
 function applyCopy(key: string) {
   if (key === `obj.${levelIndex}`) els.obj.textContent = copyOf(key, level.objective);
-  else if (key === `detail.${levelIndex}`) els.detail.textContent = adapt(copyOf(key, level.detail));
+  else if (key === `detail.${levelIndex}`) { const t = adapt(copyOf(key, level.detail)); els.detail.textContent = t; els.detail.style.display = t ? '' : 'none'; }
   else if (key === `tour.${levelIndex}.${tourAt}.text`) { const el = els.body.querySelector('.nge-sig-tour-text'); if (el) el.textContent = adapt(copyOf(key, tourSteps[tourAt]?.text ?? '')); }
   else if (key === `tour.${levelIndex}.${tourAt}.sub`) { const el = els.body.querySelector('.nge-sig-tour-sub'); if (el) el.textContent = adapt(copyOf(key, tourSteps[tourAt]?.sub ?? '')); }
 }
@@ -1758,7 +1758,7 @@ function updateHud() {
   if (!panel) return;
   els.lvl.textContent = `Level ${levelIndex + 1} · ${level.title}`;
   { const t = copyOf(`obj.${levelIndex}`, level.objective); if (els.obj.textContent !== t) els.obj.textContent = t; }
-  { const t = adapt(copyOf(`detail.${levelIndex}`, level.detail)); if (els.detail.textContent !== t) els.detail.textContent = t; }
+  { const t = adapt(copyOf(`detail.${levelIndex}`, level.detail)); if (els.detail.textContent !== t) els.detail.textContent = t; const show = t ? '' : 'none'; if (els.detail.style.display !== show) els.detail.style.display = show; }
   const total = level.goal.count;
   els.progress.textContent = `${progress} / ${total}`;
   const left = phase === 'playing' ? Math.max(0, level.timeS - now) : level.timeS;
