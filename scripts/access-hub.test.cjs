@@ -29,7 +29,7 @@ const base = { user_id: null, name: null, username: null, request_id: null, aske
 const UID = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PEOPLE = [
   // Asked 9 days ago, from the site, with an EyeWire name: late.
-  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.' },
+  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.', invited_at: '2026-11-09T21:05:00Z', invited_for: 'mec_talk', invited_role: 'Scout', invited_as: 'kmierow@old.example' },
   // One person, two emails: asked from the site with an EyeWire name, and
   // asked in Pyr, signed in, with an email starting with that EyeWire name.
   { ...base, email: 'dom.a@hotmail.example', name: 'Dominic Aitken', request_id: UID(5), asked_at: ago(0.2), from_site: true, ew_name: 'domaitk' },
@@ -72,7 +72,12 @@ const ACTIVITY = [{ dataset: 'stroeh_mouse_retina', edits: 41347, editors: 16, c
   { dataset: 'pinky_training6', edits: 0, editors: 0, cells: 0, finishers: 0, chats: 247, chatters: 17 }];
 const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator found a merger.', n: 3, players: 2, median_s: 250, p90_s: 530, help_rate: 0, closes: 0 },
   { tutorial: 3, step: 3, last_box: 'Make the merge', n: 8, players: 3, median_s: 78, p90_s: 233, help_rate: 0.25, closes: 4 },
+  { tutorial: 3, step: 2, last_box: 'Find the gap', n: 5, players: 4, median_s: 40, p90_s: 90, help_rate: 0, closes: 0 },
   { tutorial: 8, step: 1, last_box: 'Optic: T4 Cell', n: 1, players: 1, median_s: 129, p90_s: 129, help_rate: 0, closes: 1 }];
+// Where each player is in each tutorial (access_hub_tutorials): Ann Vo left
+// Merge's box 3 with Next, so she is on box 4; Nik finished Get Started.
+const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', last_at: ago(2), done_at: null },
+  { user_id: UID(11), tutorial: 1, last_step: 18, last_left: 'next', last_at: ago(2.1), done_at: ago(2.1) }];
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -103,6 +108,15 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
+      if (a === 'access.askSent') return r.fulfill(ok({}));
+      if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414, signedIn: 20 }));
+      if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
+
+Could you reply with your EyeWire username?
+
+Amy Sterling and the Pyr Team at Princeton` }));
+      if (a === 'access.askEmail') return r.fulfill(ok({ sent: true, at: new Date().toISOString() }));
+      if (a === 'canEdit') return r.fulfill(ok({ 'nik@example.org': 'MEC, Retina', 'jo@example.org': 'MEC', 'lou@example.org': 'FlyWire public', 'boss@example.org': 'Retina' }));
       if (a === 'usersSheet') return r.fulfill(ok({ people: 14, url: 'https://docs.google.com/spreadsheets/d/x/edit' }));
       return r.fulfill(ok({}));
     }
@@ -112,7 +126,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     const q = new URLSearchParams(input.query || '');
     const limit = Number(q.get('limit') ?? 500), offset = Number(q.get('offset') ?? 0);
     if (!Number.isInteger(limit) || limit < 0 || limit > 500) return r.fulfill(json({ status: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Invalid limit' }) }));
-    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : [];
+    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : input.table === 'access_hub_tutorials' ? TUTS : [];
     const rows = all.slice(offset, offset + limit);
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }));
   });
@@ -144,7 +158,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     let b = await board();
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
-    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
+    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
     const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.trim()));
     check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
@@ -176,7 +190,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
     check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
     const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
-    check('overall numbers, admins left out', totals.join('|') === '16 People|11 Let in|5 Signed in|3 Finished a tutorial|2 Made an edit|1 Dataset access', totals);
+    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Asked for access|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
     check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
@@ -217,6 +231,9 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     await page.click('.ah-card:has-text("Ken Mierow")');
     await page.waitForSelector('.ah-panel');
     const panel = await page.textContent('.ah-panel');
+    const env = await page.$$eval('.ah-card', els => els.filter(e => e.querySelector('.ah-invited')).map(e => [e.querySelector('.ah-card-name').textContent.trim(), e.querySelector('.ah-invited').getAttribute('title')]));
+    check('the envelope marks only the person we invited by email', env.length === 1 && env[0][0] === 'Ken Mierow' && /invited them by email as an EyeWire Scout: the MEC talk email, Nov 9 at kmierow@old\.example/.test(env[0][1]), env);
+    check('the panel says we invited them', /We invited them by email as an EyeWire Scout/.test(panel), panel.slice(0, 300));
     check('the panel shows the request', /Ken Mierow/.test(panel) && /ken@example\.org/.test(panel) && /rank Guardian/.test(panel) && /I traced for years/.test(panel), panel.slice(0, 200));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
     check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined 2014/.test(ew), ew);
@@ -250,12 +267,40 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     // Inezh signed in but never played: no rows of zeros.
     const inezh = await page.textContent('.ah-panel').catch(() => '');
     check('signed in, nothing played: one line, no zero stats', /Signed in to Pyr, nothing played yet/.test(inezh) && !/All time/.test(inezh) && !/Not signed in/.test(inezh), inezh.slice(0, 300));
+    // No EyeWire name: ask for it by email, read the draft, edit, send (Ames 2026-11-12).
+    await page.click('.ah-panel button:has-text("Ask for their EyeWire name")');
+    await page.waitForSelector('.ah-ask-draft', { timeout: 3000 }).catch(() => {});
+    const draft = await page.textContent('.ah-ask-draft').catch(() => '');
+    check('the draft shows before sending, to them, from Amy at Pyr', /To domaitk358@example\.org, from Amy at Pyr/.test(draft) && /Hi Inezh,/.test(draft) && /EyeWire username/.test(draft), draft.slice(0, 200));
+    await page.screenshot({ path: path.join(OUT, 'access-hub-ask.png') });
+    await page.click('.ah-ask-draft button:has-text("Edit")');
+    await page.fill('.ah-ask-draft textarea', 'Hi Inezh, edited by us.');
+    await page.click('.ah-ask-draft button:has-text("Send")');
+    await page.waitForTimeout(500);
+    const askCall = calls.find(c => c.action === 'access.askEmail');
+    check('Send sends the edited email', askCall && askCall.args.email === 'domaitk358@example.org' && askCall.args.text === 'Hi Inezh, edited by us.' && askCall.args.subject === 'Your Pyr beta request' && askCall.args.again === false, askCall);
+    const afterAsk = await page.textContent('.ah-panel').catch(() => '');
+    b = await board();
+    check('the panel says they were asked, and they move to Emailed', /Asked for their EyeWire name by email/.test(afterAsk) && col(b, 'Asked').cards.every(c => c.name !== 'Inezh') && col(b, 'Emailed').cards.some(c => c.name === 'Inezh'), { afterAsk: afterAsk.slice(0, 200), emailed: col(b, 'Emailed') });
     // Later takes them off the Asked list.
     await page.click('.ah-panel button:has-text("Later")');
     await page.waitForTimeout(400);
     const laterCall = [...calls].reverse().find(c => c.action === 'access.betaMark');
     b = await board();
     check('Later marks them and takes them off Asked', laterCall && laterCall.args.mark === 'listed' && laterCall.args.email === 'domaitk358@example.org' && col(b, 'Asked').cards.every(c => c.name !== 'Inezh'), laterCall);
+    await page.click('.ah-close').catch(() => {});
+
+    // The tutorials as a flow; open one for its boxes and who is on each (Ames 2026-11-12).
+    const flow = await page.$$eval('.ah-flow .ah-node', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('the tutorial flow: the main path in order, with finished and in it now', /^Get Started ?1 finished ?0 in it now$/.test(flow[0]) && /^Merge ?0 finished ?1 in it now$/.test(flow[1]) && /^Cut/.test(flow[2]) && /^Advanced Interface/.test(flow[3]) && /^Proofreading Test/.test(flow[4]), flow);
+    await page.click('.ah-node:has-text("Merge")');
+    const steps = await page.$$eval('.ah-tut-open .ah-step', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('opening Merge shows each box with its median time, and who is on it now', steps.length === 2 && /^3\. Find the gap.*40 s median.*4 reached/.test(steps[0]) && /^4\. Make the merge.*1 min 18 s median.*3 reached of 4.*25% asked for help.*4 left here.*On it now: Ann Vo/.test(steps[1]), steps);
+    await page.$eval('.ah-flowbox', e => e.scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: path.join(OUT, 'access-hub-tutorials.png') });
+    await page.click('.ah-tut-open .ah-chip:has-text("Ann Vo")');
+    await page.waitForTimeout(300);
+    check('a name on a box opens that person', /Ann Vo/.test(await page.textContent('.ah-panel').catch(() => '')));
     await page.click('.ah-close').catch(() => {});
 
     // Admins are their own step (Ames 2026-11-10), off the board columns.
@@ -270,7 +315,7 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
 
     const ins = await page.$$eval('.ah-box', els => els.map(e => [...e.querySelectorAll('.ah-bar-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim())));
     check('community: one row per dataset, most edits first', ins[0].length === 3 && /^EyeWire II/.test(ins[0][0]) && /41,347 edits/.test(ins[0][0]) && /Sandbox/.test(ins[0][2]) && /1,594 chat/.test(ins[0][2]), ins[0]);
-    check('tutorial: slowest boxes reached by two or more', ins[1].length === 2 && /4 min 10 s/.test(ins[1][0]) && /25% asked for help/.test(ins[1][1]), ins[1]);
+    check('tutorial: slowest boxes reached by two or more', ins[1].length === 3 && /4 min 10 s/.test(ins[1][0]) && /25% asked for help/.test(ins[1][1]), ins[1]);
 
     // Bars compare across rows: every track the same length, the busiest
     // one full (Ames's phone, 2026-11-09: EyeWire II had no bar at all).

@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
+import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, focusOnCut, freshStartIfDone, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -36,6 +36,28 @@ export function show2D() {
  * finished cut (the two post-cut roots), "How to Cut" loads the fused root
  * for the learner to separate, and the wrap-up hands the cell back.
  */
+
+/**
+ * Take one of the Cut tutorial's own cells, waiting while it is put back.
+ * The tutorial used to fall back to any free cut cell, so a quick retry
+ * (the first run's cells still being put back) got a stand-in with one gem a
+ * side and no 2D cut (tester, 2026-11-10). It now waits for its own cells.
+ * `step` is the box (index) this runs for: leaving it stops the wait.
+ */
+async function takeStaged(id: string, slot: 'a' | 'b', view: 'preview' | 'start', show: boolean, step: number, loud: boolean) {
+  const store = useTutorialStore();
+  const here = () => store.activeTutorial === 5 && store.getTutorialStep() === step;
+  let got = await beginPractice('cut', view, { slot, show, only: id });
+  for (let tries = 0; !got && tries < 40 && here(); tries++) {
+    if (loud) practiceStatus('This cell is being put back to its starting state for you. It opens by itself in a moment.');
+    await new Promise(r => setTimeout(r, 15000));
+    if (!here()) return null;
+    got = await beginPractice('cut', view, { slot, show, only: id });
+  }
+  // The waiting line goes once the cell is here.
+  if (got && loud) document.querySelectorAll('.introductionStepAnchor .nge-practice-status, .introductionStepAnchor .nge-practice-helprow').forEach(el => el.remove());
+  return got;
+}
 
 export const steps: Step[] = [
   // 1: Welcome
@@ -68,10 +90,11 @@ In a moment you'll get the fused version of this very cell and make the cut your
       stopWatching();
       // Claim before loading any shared practice geometry.
       await movingToSandbox('Cut', async () => {
-        const first = await beginPractice('cut', 'preview', { prefer: CUT_FIRST });
+        const first = await takeStaged(CUT_FIRST, 'a', 'preview', true, 1, true);
+        if (first) setTimeout(() => { void focusOnCut(); }, 1200);
         // The second cut cell is taken now and shown at "Your Turn" (the
-        // Merge tutorial does the same).
-        if (first) await beginPractice('cut', 'start', { slot: 'b', show: false, prefer: CUT_SECOND });
+        // Merge tutorial does the same). Quietly: the first is on screen.
+        if (first) await takeStaged(CUT_SECOND, 'b', 'start', false, 1, false);
         // The staged first cell has a finished cut to show. A stand-in cell
         // (when that one is busy) may never have been cut: say so rather
         // than call a fused cell a finished cut (Ames, 2026-10-05).
@@ -99,7 +122,8 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
       closeSidePanel();
       // No "?" yet: the help it opens is about placing points, the next box.
       watchTool('Press C to start the cut tool.', 'Cut mode is on. Press next.', 'Cut mode is off. Press C again to re-enter cut mode.');
-      await beginPractice('cut', 'start');
+      await beginPractice('cut', 'start', { slot: 'a', only: holdsSlot('a') ? undefined : CUT_FIRST });
+      setTimeout(() => { void focusOnCut(); }, 1200);
     },
   },
 
@@ -118,9 +142,15 @@ More than one point on each side tells the cut where the whole join is.`,
     onEnter: async () => {
       closeSidePanel();
       stopWatching();
-      await beginPractice('cut', 'start', { slot: 'a', prefer: holdsSlot('a') ? undefined : CUT_FIRST });
+      await beginPractice('cut', 'start', { slot: 'a', only: holdsSlot('a') ? undefined : CUT_FIRST });
+      // Back here after the cut was made: put the cells back and take the
+      // first again (the merge tutorial does the same).
+      if (await freshStartIfDone(false, 3)) await takeStaged(CUT_FIRST, 'a', 'start', true, 3, true);
+      if (useTutorialStore().getTutorialStep() !== 3) return;
+      // Closer in on the join first; the gems below then only re-centre.
+      setTimeout(() => { void focusOnCut(); }, 1200);
       // The second cell too, if it is not held (taken again after an idle release).
-      if (!holdsSlot('b')) await beginPractice('cut', 'start', { slot: 'b', show: false, prefer: CUT_SECOND });
+      if (!holdsSlot('b')) void takeStaged(CUT_SECOND, 'b', 'start', false, 3, false);
       // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
       // Two red and two blue gems show where the points go. One point a
@@ -179,9 +209,11 @@ You did it. The piece that didn't belong is its own segment now.
 
   // 8: Cutting in 2D, then straight to the second cell
   {
-    title: "You can also cut in 2D",
+    title: "Next up: cut in 2D",
     text: `
-**Ctrl+Click** places points on the 2D images too, not only on the 3D shape: 3 or 4 <strong style="color:#ff5c5c">red</strong> inside one cell's outline and 3 or 4 <strong style="color:#5c8cff">blue</strong> inside the other's, spread over a few slices. With one point a side the cut may take only part of the piece, or break off small extra pieces. It helps when the join is hard to see in 3D.
+Cut points don't have to go on the 3D shape. **Ctrl+Click** works on the 2D images on the left too, which helps when a join is hard to see in 3D.
+
+In 2D, place 3 or 4 <strong style="color:#ff5c5c">red</strong> points inside one cell's outline and 3 or 4 <strong style="color:#5c8cff">blue</strong> inside the other's, spread over a few slices. With one point a side the cut may take only part of the piece.
 
 <span class="nge-cut-2d-next">Press next to try it on a new cell.</span>`,
     position: OVER_2D,
@@ -219,6 +251,9 @@ The red and blue dots on the images show where the points go.`,
       closeSidePanel();
       // No second cut cell: never show the first again (it is already cut),
       // go to the wrap up.
+      // Its cell is waited for (it may still be being put back from an
+      // earlier try); only if it never comes is the box skipped.
+      if (!holdsSlot('b')) await takeStaged(CUT_SECOND, 'b', 'start', false, 8, true);
       if (!holdsSlot('b')) { const st = useTutorialStore(); if (st.getTutorialStep() === 8) st.setTutorialStep(9); return; }
       // The second cut cell, taken at the start together with the first. The
       // watch starts only once it is the cell on screen: started before, it

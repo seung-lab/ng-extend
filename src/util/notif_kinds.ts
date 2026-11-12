@@ -11,7 +11,7 @@
  *   2026-10-27: "a special category of hunt submission notifications").
  * - main: everything else.
  */
-export type NotifKind = 'main' | 'triage' | 'admin' | 'access' | 'hunt';
+export type NotifKind = 'main' | 'triage' | 'admin' | 'access' | 'hunt' | 'edits';
 
 // To do board tags and hand overs start with 📋 (functions/todos.js makeTagger; Ames 2026-10-23).
 // Beta access requests from players not on Pilot testers (Ames 2026-10-24).
@@ -28,6 +28,9 @@ export function notifKind(title: string | null | undefined, isAdmin: boolean): N
   if (!isAdmin) return 'main';
   const t = title || '';
   if (ACCESS_STARTS.some(s => t.startsWith(s))) return 'access';
+  // Admins' edits of in-game windows (functions/edit-notify.js) have a tab of
+  // their own, apart from To do news (Ames 2026-11-12).
+  if (t.startsWith('📋 Edited:')) return 'edits';
   if (ADMIN_STARTS.some(s => t.startsWith(s))) return 'admin';
   // Hunters' reports of what the answers missed (functions/hunts.js), a tab of their own (Ames 2026-10-27).
   if (t.startsWith('🔎 Hunt report')) return 'hunt';

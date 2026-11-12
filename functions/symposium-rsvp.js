@@ -10,6 +10,13 @@
  */
 const SYMPOSIUM_SHEET_ID = '1ECFHBYUNtxkU6wAlc6ClpRefl53cHSe4-wTEyD4PygA';
 const SYMPOSIUM_TAB = 'RSVPs';
+// One sheet, one tab per event (Ames 2026-11-12: the Retina Citizen Science
+// Symposium, 10 December, connectome.quest/retina-symposium/). An RSVP with no
+// event is the MEC symposium's, as it was before the field existed.
+const EVENTS = {
+  mec: { tab: SYMPOSIUM_TAB, collection: 'symposium_rsvps' },
+  retina: { tab: 'Retina RSVPs', collection: 'retina_symposium_rsvps' },
+};
 const EMAIL = /^[^\s@<>()",;:]{1,64}@[^\s@<>()",;:]{1,190}\.[A-Za-z]{2,24}$/;
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
@@ -23,6 +30,8 @@ const plain = (s) => (/^[=+\-@\t\r]/.test(s) ? "'" + s : s);
 function planRsvp(input, now = new Date()) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail(400, 'That did not go through. Please try again.');
   if (input.website) fail(400, 'That did not go through. Please try again.');          // bot trap
+  const event = input.event == null || input.event === '' ? 'mec' : String(input.event);
+  if (!Object.prototype.hasOwnProperty.call(EVENTS, event)) fail(400, 'That did not go through. Please try again.');
   const name = oneLine(input.name, 120);
   const email = oneLine(input.email, 254).toLowerCase();
   // Pyr username, optional (Ames 2026-10-29), so the RSVP can be matched to a player.
@@ -32,7 +41,7 @@ function planRsvp(input, now = new Date()) {
   if (!EMAIL.test(email)) fail(400, 'Please check your email address.');
   // Sheet columns: Submitted (UTC), Name, Email, Pyr username, Questions, Note.
   return {
-    email,
+    email, event, ...EVENTS[event],
     row: [now.toISOString().replace('T', ' ').slice(0, 19), plain(name), plain(email), plain(username), plain(question), ''],
   };
 }
@@ -40,4 +49,4 @@ function planRsvp(input, now = new Date()) {
 const NOTE_COLUMN = 5;
 const SHEET_RANGE = 'A:F';
 
-module.exports = { planRsvp, SYMPOSIUM_SHEET_ID, SYMPOSIUM_TAB, NOTE_COLUMN, SHEET_RANGE };
+module.exports = { planRsvp, SYMPOSIUM_SHEET_ID, SYMPOSIUM_TAB, EVENTS, NOTE_COLUMN, SHEET_RANGE };

@@ -1,7 +1,7 @@
 import { functionUrl } from './functions_base';
 // Preserve Supabase's response contract while protecting private reads and writes.
 const ENDPOINT = functionUrl('ewCommunityData');
-const PROTECTED = new Set(['users', 'admins', 'notifications', 'notification_reads', 'working_links', 'feedback_triage', 'site_issues', 'user_groups', 'user_group_members', 'chat_messages', 'pilot_members', 'user_settings', 'user_views', 'blog_posts', 'blog_authors', 'tutorial_step_events', 'tutorial_step_stats', 'access_hub_people', 'access_hub_activity', 'access_hub_recent_edits', 'access_hub_player_datasets']);
+const PROTECTED = new Set(['users', 'admins', 'notifications', 'notification_reads', 'working_links', 'feedback_triage', 'site_issues', 'user_groups', 'user_group_members', 'chat_messages', 'pilot_members', 'user_settings', 'user_views', 'blog_posts', 'blog_authors', 'tutorial_step_events', 'tutorial_step_stats', 'access_hub_people', 'access_hub_activity', 'access_hub_recent_edits', 'access_hub_player_datasets', 'access_hub_tutorials', 'site_text_edits']);
 const nativeFetch = window.fetch.bind(window);
 
 export const communityFetch: typeof fetch = async (input, init) => {

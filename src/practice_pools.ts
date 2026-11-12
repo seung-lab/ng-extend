@@ -33,6 +33,20 @@ export const SANDBOX_CELLS: SandboxCell[] = [
   // the baseline is just after.
   { id: 'b5656b45-bd19-4b39-ac9d-65902b1a1b94', title: 'Merger 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4924675628990464',
     spots: [[61010, 43273, 1557], [60986, 43313, 1566]] },
+  // Ames, 2026-11-12: five mergers made in 2022 and cut apart on 2026-11-11
+  // (the reference cuts). Each starts fused again at a baseline just before
+  // its cut. The hints are that cut's own red and blue points (CUT_HINTS in
+  // tutorial-3.ts); spots are the checked supervoxels, good cell then merger.
+  { id: '2152de4d-25c9-4c61-b0e3-33b69c38ba08', title: 'Merger 9', hintState: '',
+    spots: [[115096, 57560, 1344], [115162, 57470, 1361]] },
+  { id: 'ecfb5c70-5791-4c4f-a806-113b60d5c352', title: 'Merger 10', hintState: '',
+    spots: [[81854, 51294, 396], [81904, 51638, 387]] },
+  { id: 'cf702af3-b811-4020-b51f-96a0ce08f1ee', title: 'Merger 11', hintState: '',
+    spots: [[81772, 47716, 446], [82088, 47746, 444]] },
+  { id: '818b1d1b-a243-4711-a2a6-444a84dca010', title: 'Merger 12', hintState: '',
+    spots: [[65766, 44394, 170], [65818, 44534, 168]] },
+  { id: '0e9ca4e1-e3c1-44db-8d95-61f6cd6df4c0', title: 'Merger 13', hintState: '',
+    spots: [[104094, 73648, 1991], [104062, 73636, 1991]] },
 ];
 
 /** How many mergers the sandbox holds. Every "all N mergers" a player reads
@@ -70,11 +84,19 @@ export const EXTENSION_CELLS: SandboxCell[] = [
   // Ames, 2026-10-24: a cell with two branches left behind, at
   // (77321, 49937, 213) and (87334, 52032, 994); the cell at (58256, 36905, 1161).
   { id: '63a057ed-ce08-4a6f-915d-eca29214e48c', title: 'Cell 2', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960', pieces: 2 },
+  // Ames, 2026-11-12: six cells each missing one branch. Click spots are
+  // MERGE_HINT_POINTS in tutorial-3.ts (and point_a / point_b on the rows).
+  { id: 'e00d8987-7a7d-47cc-b100-392d9f88e85c', title: 'Cell 3', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6369809629446144', pieces: 1 },
+  { id: '72a8858a-756b-4a62-8b81-5857359960ef', title: 'Cell 4', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5515217693835264', pieces: 1 },
+  { id: 'aca4c7fa-33d4-48ac-8b6d-f6a20dbdab3e', title: 'Cell 5', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5813860661460992', pieces: 1 },
+  { id: '5f88242a-ca3f-450d-9208-61c6a0ed713d', title: 'Cell 6', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6027189204025344', pieces: 1 },
+  { id: '0e67d1ab-0f11-40c9-8898-bc89e38f3560', title: 'Cell 7', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4676782632468480', pieces: 1 },
+  { id: 'c8bf3478-c45b-49e4-9fb1-3dd6f02f1fc3', title: 'Cell 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5024496754884608', pieces: 1 },
   // Ames, 2026-10-24, medium, kept last: extending through a black spill. The cell at
   // (62612, 39202, 558); pieces at (62448, 39130, 537) and (61025, 38968, 394).
   // Two more small ones further on, (59871, 38215, 136) and (59810, 38060,
   // 129), are a bonus and not checked.
-  { id: 'f3dfed18-9592-46ed-8ca7-90310aea0d60', title: 'Cell 3', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600', pieces: 2,
+  { id: 'f3dfed18-9592-46ed-8ca7-90310aea0d60', title: 'Cell 9', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600', pieces: 2,
     note: 'There are a few more small pieces at the very end of this branch. Add them if you like, but they are not needed to finish. The blue box is where this dataset\'s cells end: past it, the 2D images go on, but there is nothing to add.' },
 ];
 

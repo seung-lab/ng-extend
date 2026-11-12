@@ -33,8 +33,10 @@ function world({columns = true, parts = true} = {}) {
     if (table === 'report_reply_console' && !parts) throw new Error('supabase 404');
     if (table === 'report_reply_console' && method === 'POST') { state.report_reply_console.push(body); return null; }
     if (table === 'feedback_triage' && method === 'PATCH' && state.failLog) throw new Error('supabase 500');
-    const match = r => [...q].every(([k, v]) => ['select', 'limit'].includes(k)
-      || (v === 'is.null' ? r[k] == null : String(r[k]) === v.replace(/^eq\./, '')));
+    const match = r => [...q].every(([k, v]) => ['select', 'limit', 'order'].includes(k)
+      || (v === 'is.null' ? r[k] == null
+        : v.startsWith('gte.') ? String(r[k]) >= v.slice(4) : v.startsWith('lte.') ? String(r[k]) <= v.slice(4)
+        : String(r[k]) === v.replace(/^eq\./, '')));
     if (method === 'POST') { const row = {id: state.notifications.length + 1, ...body}; state[table].push(row); return [row]; }
     const rows = state[table].filter(match);
     if (method === 'PATCH') { rows.forEach(r => Object.assign(r, body)); return rows.map(r => ({...r})); }
@@ -254,4 +256,25 @@ test('a reply image must be one of ours from the reply-images folder', () => {
   assert.equal(replyImage(undefined), null);
   assert.throws(() => replyImage('https://evil.example/x.png'), /reply box/);
   assert.throws(() => replyImage(OWN_STORAGE + 'admin-uploads/badges/x.png'), /reply box/);
+});
+
+test('Open reply after sending: the note the player has gets its reply box (Ames 2026-11-11)', async () => {
+  const {state, as} = world();
+  const at = new Date(Date.now() - 60e3).toISOString();
+  state.notifications.push({id: 41, title: '💬 An update on your report', body: 'Fixed, thanks!', target_type: 'user', target_id: sam.id, send_at: at, reply_triage_id: null},
+    {id: 42, title: '💬 An update on your report', body: 'Another card', target_type: 'user', target_id: sam.id, send_at: at, reply_triage_id: null});
+  state.feedback_triage[0].feedback_log.push({role: 'reporter_update', via: 'admin', text: 'Fixed, thanks!', ts: at, at, sent: true});
+  await rejects(as(sam)('reply.open', {triageId: T(1), at}), 403);
+  const out = await as(amy, true)('reply.open', {triageId: T(1), at});
+  assert.equal(out.notification_id, 41);
+  assert.equal(state.notifications[0].reply_triage_id, T(1));
+  assert.ok(state.notifications[0].send_at > at, 'moved to now so an open game sees it');
+  assert.equal(state.notifications[1].reply_triage_id, null, 'the other note is untouched');
+  const e = state.feedback_triage[0].feedback_log.at(-1);
+  assert.equal(e.ask, true); assert.equal(e.notification_id, 41);
+  // Opening twice does nothing more; the player can now reply once.
+  assert.equal((await as(amy, true)('reply.open', {triageId: T(1), at})).already, true);
+  await as(sam)('reply.send', {notificationId: 41, text: 'Works now'});
+  assert.equal(state.feedback_triage[0].feedback_log.at(-1).role, 'reporter_reply');
+  await rejects(as(amy, true)('reply.open', {triageId: T(1), at: 'nope'}), 404);
 });

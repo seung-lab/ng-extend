@@ -274,7 +274,7 @@ function gradePoint(which: 'basal' | 'daughter'): { grade: Grade | null; html: s
 
 function gradeLine(): { grade: Grade | null; html: string } {
   const lines = annotationsIn(LAYER.centerline).filter(a => a?.type === 'polyline' && Array.isArray(a.points) && a.points.length >= 2);
-  if (!lines.length) return { grade: null, html: note('', 'Waiting for your line. Hold <strong>CTRL</strong> and click along the cilium, then press <kbd>ENTER</kbd>. Stuck? ' + showMe('centerline')) };
+  if (!lines.length) return { grade: null, html: note('', 'Waiting for your line. Hold <strong>CTRL</strong> and click along the cilium, then press <strong>ENTER</strong>. Stuck? ' + showMe('centerline')) };
   const mine: number[][] = lines[lines.length - 1].points;
   const lab = DEMO.centerline!;
   const off = mine.map(p => toLine(p, lab));
@@ -468,11 +468,7 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'The cilium centerline',
     position: OVER_3D,
     width: BOX_W,
-    html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip.
-
-<p>To draw one: select its layer, hold <strong>CTRL</strong> and click point by point along the cilium, then press <kbd>ENTER</kbd> to finish. <kbd>BACKSPACE</kbd> takes back the last point and <kbd>ESC</kbd> cancels the line.</p>
-
-<p>The line tool is already on for this layer: in the layer panel on the right, the zigzag line button is lit. If CTRL+click ever drops single dots instead of a line, click that button first.</p>`,
+    html: `The green line is the ${CLgo}. We start with it because the cilium is the easiest part to spot: a thin finger sticking out of the cell. The line runs down its middle, from its base to its tip. By the end of this training you'll be able to draw your own!`,
     onEnter() { POINT.centerline(); },
   },
   {
@@ -511,9 +507,11 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     title: 'Trace the cilium',
     position: OVER_3D,
     width: BOX_W,
-    html: `First the cilium, the easiest part to find. The ${CL} layer is selected and its line tool is on (the lit zigzag button in the layer panel on the right; click it if it is not lit). Hold <strong>CTRL</strong> and click along the middle of the cilium, from its base to its tip, then press <kbd>ENTER</kbd>.
+    // Short: the long version covered most of a laptop screen, and the key
+    // caps shouted (Ames, 2026-11-12).
+    html: `<p>The ${CL} layer is selected. Hold <strong>CTRL</strong> and click along the middle of the cilium, base to tip, then press <strong>ENTER</strong>. <strong>BACKSPACE</strong> undoes a point, <strong>ESC</strong> cancels.</p>
 
-<p>The cilium may run through several slices: scroll as you go and keep clicking.</p>
+<p>Scroll through the slices as you go. If CTRL+click drops single dots, click the lit zigzag button in the layer panel first.</p>
 <div data-nge-cq-feedback></div>`,
     onEnter() { removeAnswerLayer(); selectLayer(LAYER.centerline); watchMark('centerline'); },
   },
@@ -532,6 +530,8 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     position: OVER_3D,
     width: BOX_W,
     html: `Last one: the ${DC} layer is selected. Find the basal body's partner, just behind it, and <strong>CTRL+CLICK</strong> on it.
+
+<p><strong>They look alike, so how do you tell them apart?</strong> The basal body is the one the cilium grows out of, sitting right at the cell's surface. The daughter centriole has no cilium. It sits a little deeper inside the cell and is often turned at an angle to the basal body, so in one slice you may see it cut lengthwise while the basal body looks like a ring, or the other way around.</p>
 <div data-nge-cq-feedback></div>`,
     onEnter() { removeAnswerLayer(); selectLayer(LAYER.daughter); watchMark('daughter'); },
   },
@@ -552,6 +552,7 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     width: '460px',
     html: `When you submit a quest, you also pick a <strong>status</strong>: one line that tells the lab what you found. Not every cell has a cilium you can see, and the status says so.
 <ul class="nge-cq-statuses">${STATUS_LIST.map(s => `<li><strong>${s}</strong>: ${QUEST_STATUS_GUIDE[s]}</li>`).join('')}</ul>
+<p>See real examples of each one in Celia's <a href="https://connectome.quest/blog/cilia-status-guide/" target="_blank" rel="noopener">Cilia Status Guide</a>.</p>
 <p>Next, two cells from the lab with no cilium. Pick the status that fits each.</p>`,
   },
   {

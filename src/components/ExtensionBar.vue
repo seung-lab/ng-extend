@@ -852,6 +852,9 @@ function handleAssistantAction(e: Event) {
 onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
+// Everyone signed in counts as online, chat open or not: new players on the
+// Starship tour were missing from "N online" (Ames 2026-11-12).
+watch(() => backendStore.userId, (id) => { if (id) chatStore.startPresence(); }, { immediate: true });
 // A reviewer who refreshed mid review goes back into review mode (Celia #195).
 watch(() => backendStore.isAdmin, (admin) => { if (admin) void resumeReview(); }, { immediate: true });
 // Signed in: give the page a moment to settle, then greet with the leaderboard.
@@ -991,8 +994,11 @@ const toolbarActions: Record<string, ToolbarAction> = {
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : backendStore.unreadStaffNotificationCount),
-                 adminBadge: () => backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : 0 },
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadStaffNotificationCount,
+                 // The two counts match the bell's two tabs, Pyr and Admin: triage and hunt
+                 // notes are in the Admin tab, so they count there (Ames 2026-11-12: the bell
+                 // said 12 and 19 while the tabs said Pyr 5, Admin 26).
+                 adminBadge: () => backendStore.showAdminUi ? backendStore.unreadStaffNotificationCount : 0 },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
@@ -1228,7 +1234,7 @@ watch([barAutoHide, barShown], ([on, shown]) => {
 // help requests, chat and the Admin tab are not about you. A click on the dot
 // opens the bell. With no 3D view on screen it sits in the window's top right corner.
 const tuckedNotifCount = computed(() => barTucked.value
-  ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount) : 0);
+  ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadStaffNotificationCount) : 0);
 let notifDot: HTMLButtonElement | null = null;
 let notifDotTimer: ReturnType<typeof setInterval> | null = null;
 function placeNotifDot() {
@@ -1655,6 +1661,13 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
           <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
           </div>
+        </li>
+        <!-- Terms of Use and Privacy Notice, interim version on connectome.quest
+             while Princeton reviews it (Ames 2026-11-10). -->
+        <li>
+          <a class="logoutButton button nge-menu-item" target="_blank" rel="noopener" href="https://connectome.quest/terms/" @click="closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">📄</span><span>Terms and Privacy ↗</span>
+          </a>
         </li>
         <!-- Log out, last in the menu (Ames 2026-11-09). -->
         <li v-if="login.sessions.length > 0" class="nge-menu-logout">

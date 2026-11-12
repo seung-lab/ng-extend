@@ -36,6 +36,8 @@ export interface CheckResult { checked: number; results: { row: number; index: s
 /** Admins: send every review marked "Send Review" now, without waiting for the timer. */
 export const sendWaitingReviews = () => post({ action: 'check' }) as Promise<CheckResult>;
 /** Admins: rewrite our own Pyr Users sheet now (functions/users-sheet.js; it also runs every hour). */
+/** Admins: who can edit which dataset, by email, from the Users sheet's Can edit column. */
+export const readCanEdit = () => call<Record<string, string>>('canEdit', {});
 export const updateUsersSheet = () => call<{ people: number; url: string }>('usersSheet', {});
 export const USERS_SHEET_URL = 'https://docs.google.com/spreadsheets/d/10VW3cSrtK8y0pLlivJnQIuMAp65_B-eDJAVb3DbpKBs/edit';
 export const getReview =(segmentId: string) => call<ReviewState>('get', { segmentId });
