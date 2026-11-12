@@ -21,7 +21,7 @@ import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
-import { sendWaitingReviews } from '../quest_review';
+import { sendWaitingReviews, isQuestReview, reviewSegment, reviewLinkIn, replyToReview } from '../quest_review';
 import { startCiliaTutorial } from '../tutorial-cilia';
 import { supabase } from '../supabase';
 import { currentSegLayer } from '../datasets';
@@ -85,9 +85,56 @@ const atLimit = computed(() => mine.value.length >= QUEST_CLAIM_LIMIT);
 // update (Celia 2026-11-06), as on the leaderboard and profile.
 const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && !r.held).length);
 const mineHeld = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && r.held).length);
+// Needs your update (toknow #483, 2026-11-12: "Players can open and update
+// annotations more conveniently than open cell from the notification msg"):
+// the cells a reviewer sent back sit in their own group at the top, with the
+// review, the reviewer's view and the update form right there. The same reply
+// as the notification's (src/quest_review.ts).
+const needsUpdate = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && r.held));
+/** The newest review notification for this cell, if it has reached the bell. */
+function reviewNote(r: QuestRow): any {
+  const mine = (backend.notifications as any[]).filter(n => isQuestReview(n) && n.target_id === backend.userId && reviewSegment(n.body) === r.segmentId);
+  return mine.sort((a, b) => String(b.send_at).localeCompare(String(a.send_at)))[0] || null;
+}
+function readReview(r: QuestRow) {
+  const n = reviewNote(r);
+  if (n) document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: { id: n.id } }));
+}
+function openReviewerView(r: QuestRow) {
+  const link = reviewLinkIn(reviewNote(r)?.body);
+  current.value = r.segmentId;
+  if (link && !openStartLink(link)) window.open(link, '_blank', 'noopener');
+}
+const updating = ref('');
+const upLink = ref('');
+const upNotes = ref('');
+const upSending = ref(false);
+const upError = ref('');
+const upLinkOk = computed(() => !upLink.value.trim() || /^https:\/\/[^\s"'<>]+$/i.test(upLink.value.trim()));
+function startUpdate(r: QuestRow) {
+  updating.value = updating.value === r.segmentId ? '' : r.segmentId;
+  upLink.value = ''; upNotes.value = ''; upError.value = '';
+}
+async function upUseMyView() {
+  upError.value = '';
+  const link = await Promise.race([mintShortStateLink().catch(() => null), new Promise<null>(res => setTimeout(() => res(null), 8000))]);
+  if (link) upLink.value = link;
+  else upError.value = 'A link to your view could not be made. Use Share in the top bar and paste the link here.';
+}
+async function sendUpdate(r: QuestRow) {
+  if (upSending.value || !upLinkOk.value || !(upLink.value.trim() || upNotes.value.trim())) return;
+  upSending.value = true; upError.value = ''; message.value = '';
+  try {
+    await replyToReview(r.segmentId, upLink.value.trim(), upNotes.value.trim());
+    updating.value = '';
+    message.value = `Your update on ${r.index || label(r)} went to the reviewer. It counts again now.`;
+    await load();
+  } catch (e: any) { upError.value = `Your update was not sent: ${e?.message ?? 'please try again'}`; }
+  finally { upSending.value = false; }
+}
 const available = computed(() => rows.value.filter(r => !r.annotator && !r.status));
 const taken = computed(() => rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)));
-const done = computed(() => rows.value.filter(isDone).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
+const done = computed(() => rows.value.filter(r => isDone(r) && !(r.held && isMine(r))).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
 
 async function load() {
   loading.value = true;
@@ -421,7 +468,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
-        <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Open the review in your notifications and send your update, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
+        <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Send your update from Needs your update below, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
         <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
         <button v-if="backend.showAdminUi" class="nge-aq-btn" :disabled="sendingReviews" @click="sendReviews"
                 title="Admins: send every review marked Send Review in the sheet now. Pyr also does this at 8 am and 4 pm Eastern.">{{ sendingReviews ? 'Sending…' : 'Send waiting reviews now' }}</button>
@@ -433,6 +480,44 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div v-if="error" class="nge-aq-error">{{ error }}</div>
       <div v-if="loading && !rows.length" class="nge-aq-empty">Reading the quest sheet…</div>
       <template v-else-if="rows.length">
+        <!-- Needs your update: cells a reviewer sent back (toknow #483) -->
+        <template v-if="needsUpdate.length">
+          <div class="nge-aq-section nge-aq-section--update">Needs your update <span class="nge-aq-count">{{ needsUpdate.length }}</span></div>
+          <template v-for="r in needsUpdate" :key="r.segmentId">
+            <div class="nge-aq-row nge-aq-row--mine nge-aq-row--update" :class="{ 'nge-aq-row--current': current === r.segmentId }">
+              <div class="nge-aq-row-left">
+                <span class="nge-aq-pip nge-aq-pip--update"></span>
+                <div class="nge-aq-row-info">
+                  <div class="nge-aq-row-name">{{ label(r) }}</div>
+                  <div class="nge-aq-row-held">{{ reviewNote(r) ? 'A reviewer asked for an update.' : 'A review is on its way to your notifications.' }}</div>
+                </div>
+              </div>
+              <div class="nge-aq-row-actions">
+                <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
+                <button v-if="reviewNote(r)" class="nge-aq-btn" @click="readReview(r)" title="Read the reviewer's notes">Review</button>
+                <button v-if="reviewLinkIn(reviewNote(r)?.body)" class="nge-aq-btn" @click="openReviewerView(r)" title="Open the view the reviewer sent, to fix your annotations in it">Reviewer's view</button>
+                <button v-else class="nge-aq-btn" @click="viewDone(r)" title="Open your submitted view, to fix your annotations in it">Open</button>
+                <button v-if="reviewNote(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': updating === r.segmentId }" @click="startUpdate(r)" title="Send the reviewer your updated view and notes">Send update</button>
+              </div>
+            </div>
+            <div v-if="updating === r.segmentId" class="nge-aq-form">
+              <div class="nge-aq-form-title">Your update on {{ r.index || label(r) }}</div>
+              <div class="nge-aq-form-label">Link to your updated view</div>
+              <div class="nge-aq-update-link">
+                <input v-model="upLink" class="nge-aq-notes nge-aq-update-input" placeholder="https://…" @keydown.stop @keyup.stop @keypress.stop />
+                <button class="nge-aq-btn" @click="upUseMyView" title="Use a share link of the view on screen now">Use my view</button>
+              </div>
+              <div v-if="!upLinkOk" class="nge-aq-form-msg nge-aq-form-msg--bad">The link must be a single https link.</div>
+              <div class="nge-aq-form-label">Notes for the reviewer</div>
+              <textarea v-model="upNotes" class="nge-aq-notes" rows="2" maxlength="1000" placeholder="What you changed" @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <div v-if="upError" class="nge-aq-form-msg nge-aq-form-msg--bad">{{ upError }}</div>
+              <div class="nge-aq-form-actions">
+                <button class="nge-aq-btn" @click="updating = ''">Cancel</button>
+                <button class="nge-aq-btn nge-aq-btn--submit" :disabled="upSending || !upLinkOk || !(upLink.trim() || upNotes.trim())" @click="sendUpdate(r)">{{ upSending ? 'Sending…' : 'Send update' }}</button>
+              </div>
+            </div>
+          </template>
+        </template>
         <!-- Yours: taken, not yet submitted -->
         <div v-if="slim && !mineShown.length" class="nge-aq-empty nge-aq-empty--tight">No quest cell of yours yet. Open the full view to claim one.</div>
         <template v-if="mineShown.length">
@@ -669,6 +754,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-row-info { min-width: 0; flex: 1; }
 .nge-aq-row-name { font-size: 15px; font-weight: 600; color: #e4e8f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-held { font-size: 12px; color: #ffd27a; margin-top: 2px; }
+.nge-aq-section--update { color: #ffd27a; }
+.nge-aq-row--update { border-left: 2px solid #ffd27a; }
+.nge-aq-pip--update { background: #ffd27a; }
+.nge-aq-update-link { display: flex; gap: 6px; align-items: center; }
+.nge-aq-update-input { flex: 1; min-width: 0; resize: none; }
 .nge-aq-tally--held b { color: #ffd27a; }
 .nge-aq-row-meta { font-size: 13px; color: #93a0b6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; align-items: center; }
