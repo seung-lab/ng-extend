@@ -3466,6 +3466,7 @@ function frameBody(ts: number) {
 }
 let frameCount = 0;
 function keepCellsOn() {
+  if (holoMode) return;   // the low-poly look shows no mesh
   const ml = circuitLayer();
   if (!ml) return;
   try {
