@@ -2410,6 +2410,23 @@ const welcomeSentStore = {
     await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
   },
 };
+// Who was asked for their EyeWire name (access-request.js askEmail), from the
+// Access page. One document per address.
+const askSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+  all: async () => {
+    const snap = await db.collection("beta_ask_emails").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { at: v.at, by: v.by || "" }; });
+    return out;
+  },
+};
 const betaMarkStore = {
   all: async () => {
     const snap = await db.collection("beta_request_marks").get();
@@ -2507,6 +2524,7 @@ exports.ewAccessRequest = onRequest(
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
         wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
+        askSent: askSentStore,
         sendEmail: async (msg) => {
           try {
             const r = await fetch("https://api.resend.com/emails", {

@@ -63,6 +63,10 @@ const actionError = ref('');
 const noteDraft = ref('');
 const dsNote = ref('');
 const emailed = ref<Record<string, string>>({});
+// Asking for their EyeWire name by email (Ames 2026-11-12): who was asked,
+// and the draft open in the panel (shown first, Edit to change it).
+const asked = ref<Record<string, { at: string; by: string }>>({});
+const ask = ref<{ email: string; subject: string; text: string; editing: boolean } | null>(null);
 const testTries = ref<TestTry[]>([]);
 /** CAVE edit access by email, from the Users sheet (refreshed hourly). */
 const canEdit = ref<Record<string, string> | null>(null);
@@ -99,6 +103,7 @@ async function load() {
     show(read('People', everyone, [] as Person[]), v => { people.value = v; }),
     show(read('Beta lists', async () => (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}, {} as Record<string, { mark: string; at: string }>), v => { marks.value = v; }),
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
+    show(read('Asked by email', async () => (await secureWrite<Record<string, { at: string; by: string }>>('access.askSent')) || {}, {} as Record<string, { at: string; by: string }>), v => { asked.value = v; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
     show(read('Dataset access', () => readCanEdit(), null as Record<string, string> | null), v => { canEdit.value = v; }),
@@ -429,6 +434,19 @@ const letIn = (c: Card) => run('letin', async () => {
 const markBeta = (c: Card, mark: 'listed' | 'removed' | 'waiting') => run(mark, async () => {
   marks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: c.p!.email, mark })) || {};
 });
+const openAsk = (c: Card) => run('askdraft', async () => {
+  const d = await secureWrite<{ subject: string; text: string }>('access.askDraft', { email: c.p!.email, name: nameOf(c) });
+  ask.value = { email: c.p!.email, subject: d?.subject || '', text: d?.text || '', editing: false };
+});
+const sendAsk = (c: Card) => run('ask', async () => {
+  const a = ask.value; if (!a || a.email !== c.p!.email) return;
+  const r = await secureWrite<{ sent: boolean; reason?: string; at?: string }>('access.askEmail',
+    { email: a.email, name: nameOf(c), subject: a.subject, text: a.text, again: !!asked.value[a.email] });
+  if (!r?.sent) throw new Error(r?.reason === 'not set up' ? 'Email is not set up.' : 'Already asked. Reload the page to see when.');
+  asked.value = { ...asked.value, [a.email]: { at: r.at || new Date().toISOString(), by: '' } };
+  ask.value = null;
+});
+const askOpen = computed(() => !!ask.value && !!open.value?.p && ask.value.email === open.value.p.email);
 const decide = (c: Card, mark: 'granted' | 'declined', byHand = false) => run(mark, async () => {
   dsRows.value = await decideDatasetRequest(c.ds!.id, mark, dsNote.value, byHand); dsNote.value = '';
 });
@@ -557,6 +575,7 @@ const opName = (e: RecentEdit) => {
               <span class="ah-card-tags">
                 <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
                 <span v-if="c.p?.ew_name" class="ah-tag">{{ ewShort(c.p) }}</span>
+                <span v-if="c.p && asked[c.p.email] && (col.stage === 'asked' || col.stage === 'later')" class="ah-tag">Asked by email {{ day(asked[c.p.email].at) }}</span>
                 <span v-if="dupesOf(c).length" class="ah-tag ah-tag--dupe">Maybe the same as {{ dupesOf(c)[0].name || dupesOf(c)[0].email }}</span>
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
@@ -639,6 +658,26 @@ const opName = (e: RecentEdit) => {
           <button v-if="open.stage !== 'asked'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'waiting')">Back to Asked</button>
         </div>
         <div v-if="open.stage === 'later'" class="ah-panel-meta">Later since {{ day(open.since) }}</div>
+        <div v-if="(open.stage === 'asked' || open.stage === 'later') && open.p?.email && (!open.p.ew_name || asked[open.p.email])" class="ah-ask">
+          <div v-if="asked[open.p.email]" class="ah-panel-meta">Asked for their EyeWire name by email {{ day(asked[open.p.email].at) }}</div>
+          <button v-if="!askOpen" class="ah-btn" type="button" :disabled="!!busy" @click="openAsk(open)">{{ busy === 'askdraft' ? 'Opening…' : asked[open.p.email] ? 'Ask again by email' : 'Ask for their EyeWire name' }}</button>
+          <div v-else-if="ask" class="ah-ask-draft" aria-label="Email to send">
+            <div class="ah-panel-meta">To {{ ask.email }}, from Amy at Pyr. Replies go to support.</div>
+            <template v-if="ask.editing">
+              <input v-model="ask.subject" class="ah-ask-subject" maxlength="150" aria-label="Subject">
+              <textarea v-model="ask.text" class="ah-ask-text" rows="10" maxlength="4000" aria-label="Email"></textarea>
+            </template>
+            <template v-else>
+              <div class="ah-ask-subject ah-ask-subject--read">{{ ask.subject }}</div>
+              <div class="ah-ask-text ah-ask-text--read">{{ ask.text }}</div>
+            </template>
+            <div class="ah-actions">
+              <button class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="sendAsk(open)">{{ busy === 'ask' ? 'Sending…' : 'Send' }}</button>
+              <button class="ah-btn" type="button" :disabled="!!busy" @click="ask.editing = !ask.editing">{{ ask.editing ? 'Done editing' : 'Edit' }}</button>
+              <button class="ah-btn" type="button" :disabled="!!busy" @click="ask = null">Cancel</button>
+            </div>
+          </div>
+        </div>
         <div v-if="open.p && emailed[open.p.email]" class="ah-panel-meta">{{ emailed[open.p.email] }}</div>
 
         <div v-if="open.ds" class="ah-ds">
@@ -867,6 +906,11 @@ const opName = (e: RecentEdit) => {
 .ah-panel blockquote { margin: 8px 0; padding: 6px 10px; border-left: 3px solid rgba(120,170,255,.5); color: #d5e3f7; white-space: pre-wrap; }
 .ah-close { position: absolute; right: 10px; top: 8px; background: none; border: none; color: #a9c4e6; font-size: 22px; cursor: pointer; }
 .ah-panel { position: sticky; }
+.ah-ask { margin: 8px 0 4px; }
+.ah-ask-draft { border: 1px solid rgba(127,196,255,.3); border-radius: 8px; padding: 8px 10px; margin-top: 6px; background: rgba(55,138,221,.08); }
+.ah-ask-subject { display: block; width: 100%; box-sizing: border-box; font-weight: 700; margin: 6px 0; }
+.ah-ask-text { display: block; width: 100%; box-sizing: border-box; white-space: pre-wrap; font: inherit; line-height: 1.45; }
+input.ah-ask-subject, textarea.ah-ask-text { background: #0d1626; color: #e8f1ff; border: 1px solid rgba(127,196,255,.35); border-radius: 6px; padding: 6px 8px; font-weight: 400; }
 .ah-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .ah-ds { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(120,160,230,.2); }
 .ah-input { width: 100%; box-sizing: border-box; margin: 6px 0; padding: 7px 9px; border-radius: 7px; border: 1px solid rgba(120,160,230,.35); background: rgba(10,16,30,.9); color: #eef4ff; font: inherit; resize: vertical; }
