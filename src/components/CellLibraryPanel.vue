@@ -198,7 +198,7 @@ const jumpedSegId = ref<string | null>(null);
 /** A Retina claim opens with one Checked Highlight layer; the annotation
  *  layers come from a button, or every time with the profile setting
  *  (Ames 2026-11-07: the bipolar cell guide allows Highlight OR annotations). */
-const isRetinaCell = (cell: { dataset?: string }) => /retina/i.test(cell.dataset || '');
+const isRetinaCell = (cell: { dataset?: string }) => /retina/i.test(cell.dataset || canonicalDataset(activeDataset.value) || '');
 const retinaAnnotShown = ref(false);
 let offRetinaLayers: (() => void) | null = null;
 onMounted(() => {
@@ -281,6 +281,13 @@ async function loadCellsForActiveDataset() {
   if (!sheetUrl) { queue.items = []; return; }
   if (queue.sheetUrl !== sheetUrl || queue.items.length === 0) {
     await queue.loadFromSheet(sheetUrl, canonicalDataset(dsName));
+  } else {
+    // The game reloads the last sheet as it starts, without its dataset (the
+    // sheets have no dataset column), so every row came in untagged and a
+    // Retina claim never opened with Highlight (Ames 2026-11-12). This is
+    // that dataset's sheet: tag its rows.
+    const tag = canonicalDataset(dsName);
+    if (tag) for (const item of queue.items) if (!item.dataset) item.dataset = tag;
   }
 }
 
