@@ -141,7 +141,12 @@ export function findPathStep() {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const segLayers = () => ((window as any).viewer?.layerManager?.managedLayers ?? [])
     .filter((ml: any) => ml?.layer?.displayState?.objectAlpha);
-  setTimeout(() => { for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 0.6; }, 1500);  // 0.35 lost the thin branches (lalonso, report 321)
+  setTimeout(() => { for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 0.6; }, 1500);
+  // Find Path comes on by itself (Ames 2026-11-12: "shouldn't it turn Find
+  // Path on?"). F toggles it, so only when it is off.
+  setTimeout(() => {
+    if (store.activeTutorial === tutorial && store.getTutorialStep() === step && !document.querySelector('.graphene-find-path')) activateGrapheneTool('findPath');
+  }, 1200);  // 0.35 lost the thin branches (lalonso, report 321)
   const restore = setInterval(() => {
     const s = store.getTutorialStep();
     if (store.activeTutorial === tutorial && (s === step || s === step + 1)) return;
@@ -559,7 +564,7 @@ export const steps: Step[] = [
   {
     part: "Part 1 of 4 · Working with cells",
     text: `
-You've merged and cut your first cells. Now let's take a deeper dive into the interface, in four short parts: working with cells, finding your way, marking what you see, and the tools for finding where a merger starts.`,
+You've merged, cut and marked your first cells. Now let's take a deeper dive into the interface, in four short parts: working with cells, finding your way, marking what you see, and the tools for finding where a merger starts.`,
     image:
       imgWheresNurro,
     position: MIDDLE,
@@ -856,12 +861,7 @@ Next time, <strong>F</strong> or the Find Path button on the top bar switches it
     width: "500px",
     position: OVER_3D,
     reveals: ['findPath'],
-    // Find Path comes on by itself (Ames 2026-11-12: "shouldn't it turn Find
-    // Path on?"). F toggles, so only when it is off.
-    onEnter: () => {
-      findPathStep();
-      setTimeout(() => { if (!document.querySelector('.graphene-find-path')) activateGrapheneTool('findPath'); }, 1200);
-    },
+    onEnter: findPathStep,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },

@@ -1578,22 +1578,24 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
             <span class="nge-menu-num">3</span><span>Cut</span>
           </div>
         </li>
-        <!-- Advanced Interface after Merge and Cut, then the Merger Sandbox
+        <!-- Annotations (Ames 2026-10-23, player report 220): layers, color,
+             stepping, more than one layer, the tools and Size, Find Path.
+             Straight after Merge and Cut, before Advanced Interface (Ames
+             2026-11-12: "def before advanced interface. annotations are fun"). -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 15; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">4</span><span>Annotations</span>
+          </div>
+        </li>
+        <!-- Advanced Interface after Annotations, then the Merger Sandbox
              (Ames 2026-10-18: the ideal order). -->
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">4</span><span>Advanced Interface</span>
-          </div>
-        </li>
-        <!-- Annotations (Ames 2026-10-23, player report 220): layers, color,
-             stepping, more than one layer, the tools and Size, Find Path. -->
-        <li>
-          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 15; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">5</span><span>Annotations</span>
+            <span class="nge-menu-num">5</span><span>Advanced Interface</span>
           </div>
         </li>
         <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
-             game. Number 5, straight after Advanced Interface (Ames
+             game. Number 6, straight after Advanced Interface (Ames
              2026-10-23), the next step once the tutorials are done. -->
         <li>
           <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
