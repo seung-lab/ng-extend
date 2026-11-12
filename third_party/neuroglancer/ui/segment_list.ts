@@ -1365,6 +1365,9 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     heading.title = 'Drag to move this folder: drop on the top or bottom edge of another folder to put it above or below, or on its middle to put it inside.';
     heading.addEventListener('dragstart', (event: DragEvent) => {
       if (name.contentEditable === 'true') { event.preventDefault(); return; }
+      // The side panel cancels every drag that reaches it (side_panel.ts
+      // addBody), which stopped folders moving at all (Ames 2026-11-12).
+      event.stopPropagation();
       event.dataTransfer?.setData(FOLDER_DRAG_TYPE, mode.folder);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     });

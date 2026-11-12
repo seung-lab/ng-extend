@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-12T23:11:29.189Z",
+      "title": "Folders drag again, and cut pieces stand apart",
+      "items": [
+        "Folders in the Segments list can be dragged again: drop on the top or bottom edge of another folder to put it above or below, or on its middle to put it inside.",
+        "After a cut, a piece whose color is close to the other piece now gets a clearly different color, so you no longer have to recolor it by hand."
+      ]
+    },
+    {
       "at": "2026-11-12T21:59:36Z",
       "title": "Retina claims really open with Highlight",
       "items": [
