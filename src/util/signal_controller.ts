@@ -52,6 +52,7 @@ interface Circuit { version: number; cells: CircuitCell[]; connections: CircuitC
 const TAU_E = 1.2, TAU_I = 0.35;       // seconds of leak
 const E_UNIT = 1.0, I_UNIT = 0.6;      // units per synapse
 const REFRACTORY_S = 0.4;
+const AP_DELAY_S = 0.35;               // the cell body sparkles first, then the spike leaves (Ames 2026-11-12: "a slight delay between soma particles and the AP leaving the cell")
 const SPEED_UM_S = 200;                // a spike along the real path: about 2,000 times slower than life, slow enough to watch (Ames 2026-11-11: "too fast!"; "the speed is way too fast")
 const HUSH_S = 2.5;
 const BEAM_S = 0.3;                    // the Spark's flight
@@ -1160,7 +1161,7 @@ function coach(event: CoachEvent) {
 /** Travel time of a spike along a connection, in seconds. */
 function travelS(pre: string, post: string, fallback: number): number {
   const k = conns.find(c => c.pre === pre && c.post === post);
-  return k ? routes.get(k)!.length / 1000 / SPEED_UM_S : fallback;
+  return k ? AP_DELAY_S + routes.get(k)!.length / 1000 / SPEED_UM_S : fallback;
 }
 /** In the levels with the Gatekeeper, the coach line is a three-colour
  *  light. Violet, wait: a pulse is on its way to the target or holding it
@@ -1436,7 +1437,7 @@ function arborWave(key: string, inhibitory: boolean) {
   const pr = c && parts.get(c.spec.root);
   if (!pr || !pr.arbor.axon.length) return;
   // the wave runs at the model's conduction speed, so its band and the sparks along the real paths keep step
-  waves.push({root: c!.spec.root, part: 'axon', start: performance.now() / 1000, seconds: clamp(pr.axonMax / (SPEED_UM_S * 1000), 1, 12), inward: false, rgb: inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7]});
+  waves.push({root: c!.spec.root, part: 'axon', start: performance.now() / 1000 + AP_DELAY_S, seconds: clamp(pr.axonMax / (SPEED_UM_S * 1000), 1, 12), inward: false, rgb: inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7]});
 }
 /** Signals coming in one dendrite at a time (Ames 2026-11-11: "signals do
  *  not come in from all the dendrites at once: one signal per every fourth
@@ -2720,8 +2721,8 @@ function spike(key: string, byBeam = false) {
     if (k.pre !== key || !live(k)) continue;
     const r = routes.get(k)!;
     const travel = r.length / 1000 / SPEED_UM_S;
-    sparks.push({r, start: now, end: now + travel, inhibitory, conn: k});
-    arrivals.push({at: now + travel, post: k.post, units: k.count * (inhibitory ? I_UNIT : E_UNIT), inhibitory, conn: k});
+    sparks.push({r, start: now + AP_DELAY_S, end: now + AP_DELAY_S + travel, inhibitory, conn: k});
+    arrivals.push({at: now + AP_DELAY_S + travel, post: k.post, units: k.count * (inhibitory ? I_UNIT : E_UNIT), inhibitory, conn: k});
   }
   if (c.target) onTargetSpike(key);
 }
