@@ -358,6 +358,11 @@ async function runCheck(r: QuestRow) {
     check.value = { busy: false, ok: false, other: true, message: `The crosshairs are inside ${at.root}, not this cell. If that's on purpose, say why in Notes (for example, the daughter centriole is in another segment), then Submit.` };
   } catch (e: any) { check.value = { busy: false, ok: false, message: `Could not check the crosshairs: ${e?.message || e}` }; }
 }
+/** Slim bar: the row opens or folds the Submit form (Ames 2026-11-12). */
+function onSlimRowClick(r: QuestRow, e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+  if (open.value === r.segmentId) open.value = ''; else startSubmit(r);
+}
 function startSubmit(r: QuestRow) {
   open.value = r.segmentId;
   form.value = { status: r.status || '', splitMerged: r.splitMerged || '', notes: r.notes || '' };
@@ -447,7 +452,9 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         <template v-if="mineShown.length">
           <div v-if="!slim" class="nge-aq-section">Yours</div>
           <template v-for="r in mineShown" :key="r.segmentId">
-            <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r) }">
+            <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r), 'nge-aq-row--clickable': slim }"
+                 :title="slim ? (open === r.segmentId ? 'Click to fold the form away' : 'Click to submit this quest') : undefined"
+                 @click="slim && onSlimRowClick(r, $event)">
               <div class="nge-aq-row-left">
                 <span v-if="!slim" class="nge-aq-pip nge-aq-pip--claimed"></span>
                 <div class="nge-aq-row-info">
@@ -471,7 +478,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <button v-if="!(slim && isActive(r))" class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button v-if="play.on !== 'quests'" class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
                 <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy || skippingQuest" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
-                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
+                <button v-if="!slim" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
@@ -662,6 +669,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 /* The quest being worked on: Highlight's green, the colour key's (player report 2026-10-14). */
 .nge-aq-row--active { background: rgba(124, 255, 178, 0.09); box-shadow: inset 3px 0 0 #7CFFB2; }
 .nge-aq-row--active:hover { background: rgba(124, 255, 178, 0.13); }
+.nge-aq-row--clickable { cursor: pointer; }
 .nge-aq-active-pill { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font: 700 11px/18px 'Inter', 'Roboto', sans-serif; letter-spacing: 0.04em; color: #08140e; background: #7CFFB2; vertical-align: 2px; }
 .nge-aq-cellid { font-family: 'JetBrains Mono', 'Consolas', monospace; color: #b4c8de; user-select: text; }
 .nge-aq-saved { display: flex; align-items: baseline; gap: 8px; color: #8fb3cf; }
