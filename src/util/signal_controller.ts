@@ -1947,6 +1947,7 @@ TOURS[0] = [
       const t = cells.get('T');
       if (!t) return;
       revealCell('T', 1.6, [1, 0.95, 0.75]);
+      orbit = 0.12;   // the slow turn around it, as around the Gatekeeper (Ames 2026-11-12: "box 1, it is supposed to be spinning")
       const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
       visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card
       if (view === 'cockpit') glideTo(t, 0.7);
