@@ -94,6 +94,8 @@ import {getLayerScales} from "./widgets/widget_utils";
 import pyrIconUrl from './images/pyr-icon.png';
 // The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
 import pyrTriageIconUrl from './images/pyr-icon-triage.png';
+// The Access page's own gem, purple, so its tab stands apart from Triage's (Ames 2026-11-12).
+import pyrAccessIconUrl from './images/pyr-icon-access.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
 import {startStarshipFlyby} from './util/starship_flyby';
 
@@ -158,11 +160,15 @@ function injectNeuronFavicon() {
   const link = document.createElement('link');
   link.rel = 'icon';
   link.type = 'image/png';
-  link.href = isTriagePage() ? pyrTriageIconUrl : pyrIconUrl;
+  link.href = !isTriagePage() ? pyrIconUrl : triageView() === 'access' ? pyrAccessIconUrl : pyrTriageIconUrl;
   document.head.appendChild(link);
   // Also set the page title (neuroglancer's bindTitle keeps it, see
   // third_party/neuroglancer/ui/title.ts)
   document.title = 'Pyr · EyeWire II';
+}
+
+function triageView(): string | null {
+  try { return new URLSearchParams(window.location.search).get('triage'); } catch { return null; }
 }
 
 /** "?triage=board": the admin triage board on its own, without the game. */

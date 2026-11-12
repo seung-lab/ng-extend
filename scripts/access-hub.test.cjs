@@ -202,6 +202,8 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('a dataset card names their latest test result', /Test: passed/.test(col(b, 'Asked for a dataset').cards[0].text), col(b, 'Asked for a dataset').cards[0]);
     check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
     check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
+    const icon = await page.$eval('link[rel=icon]', e => e.getAttribute('href')).catch(() => '');
+    check('the Access tab has its own purple gem (Ames 2026-11-12)', /pyr-icon-access/.test(icon), icon);
     const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
     check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Total access requests|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
