@@ -23,7 +23,8 @@ import { steps as steps14, CILIA_TUTORIAL, awardCiliaAchievement } from '../tuto
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice, pausePracticeTools } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
-import { startTutorialBoxJump } from '../tutorial_box_jump';
+import { startTutorialBoxJump, openTutorialBox } from '../tutorial_box_jump';
+import { IS_LIVE_SITE } from '../util/toolbar_staging';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
@@ -50,6 +51,27 @@ const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: step
 startTutorialTiming();
 startTutorialBoxJump();
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
+
+/** Test sites only: jump to any box or section of the open tutorial (Ames
+ *  2026-11-12: "on the test server I need a way to put in what box # to
+ *  jump to", "or maybe let me jump to sections"). Box numbers count from 1
+ *  across the whole tutorial. */
+const jumpBar = !IS_LIVE_SITE;
+const jumpBox = ref('');
+const sections = computed(() => {
+    const out: { label: string; index: number }[] = [];
+    steps.value.forEach((s: any, i: number) => {
+        const label = s?.part ? String(s.part).replace(/^Part \d+ of \d+ · /, '') : '';
+        if (label && !out.some(o => o.label === label)) out.push({ label, index: i });
+    });
+    return out;
+});
+function jumpTo(i: number) {
+    if (!Number.isFinite(i)) return;
+    (window as any).__ngeStepPending = false;
+    openTutorialBox(store.activeTutorial, Math.min(Math.max(0, i), steps.value.length - 1));
+}
+function jumpToTyped() { const n = parseInt(jumpBox.value, 10); if (n >= 1) jumpTo(n - 1); jumpBox.value = ''; }
 
 const currentStep = computed(() => {
     if (store.activeTutorial === 1) return store.tutorialStep1;
@@ -451,6 +473,15 @@ const exitIntro = () => {
         v-on:not-now="notNow"
         :class="{ 'nge-tut-under-card': testCardUp }"
         v-on:back="back" v-on:exitIntro="exitIntro" />
+    <div v-if="jumpBar && activeStep && !needsResumePrompt" class="ng-extend nge-tut-jump" aria-label="Jump to a box (test site)">
+        <span class="nge-tut-jump-label">Jump to</span>
+        <select v-if="sections.length > 1" class="nge-tut-jump-sel" :value="''" @change="jumpTo(Number(($event.target as HTMLSelectElement).value)); ($event.target as HTMLSelectElement).value = ''">
+            <option value="" disabled>Section</option>
+            <option v-for="sec in sections" :key="sec.index" :value="sec.index">{{ sec.label }}</option>
+        </select>
+        <input class="nge-tut-jump-box" v-model="jumpBox" inputmode="numeric" :placeholder="`Box 1 to ${steps.length}`" @keydown.enter.stop="jumpToTyped" @keydown.stop />
+        <button type="button" class="nge-tut-jump-go" @click="jumpToTyped">Go</button>
+    </div>
     </template>
 
 </template>
@@ -460,6 +491,23 @@ const exitIntro = () => {
 </style>
 
 <style scoped>
+.nge-tut-jump {
+    position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 95;
+    display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+    background: rgba(8, 13, 24, 0.92); border: 1px solid rgba(126, 214, 255, 0.25); border-radius: 6px;
+    font-size: 12px; color: #9fb8d4;
+}
+.nge-tut-jump-label { letter-spacing: 0.04em; }
+.nge-tut-jump-sel, .nge-tut-jump-box {
+    background: rgba(20, 32, 54, 0.9); color: #d0e8ff; border: 1px solid rgba(126, 214, 255, 0.25);
+    border-radius: 4px; font-size: 12px; padding: 3px 6px;
+}
+.nge-tut-jump-box { width: 88px; }
+.nge-tut-jump-go {
+    background: rgba(74, 150, 224, 0.2); color: #d0e8ff; border: 1px solid rgba(126, 214, 255, 0.35);
+    border-radius: 4px; font-size: 12px; padding: 3px 9px; cursor: pointer;
+}
+.nge-tut-jump-go:hover { background: rgba(74, 150, 224, 0.35); }
 .nge-tut-resume {
     position: fixed;
     left: 50%;

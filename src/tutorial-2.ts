@@ -5,6 +5,7 @@ import { highlightStyles } from "./util/highlight";
 import { setStatedColor } from "./widgets/widget_utils";
 import { Uint64 } from "neuroglancer/util/uint64";
 import { useUserPreferencesStore } from "./store";
+import { activateGrapheneTool } from "./widgets/graphene_tool_utils";
 
 /** How a layer chip is selected and hidden. Since 2026-10-11 a plain click
  *  selects and a right click hides; Classic layer tabs in Settings swaps them
@@ -558,7 +559,7 @@ export const steps: Step[] = [
   {
     part: "Part 1 of 4 · Working with cells",
     text: `
-You've merged and cut your first cells. Now let's take a deeper dive into the interface, in four short parts: working with cells, finding your way, marking what you see, and putting it together to find where a merger starts.`,
+You've merged and cut your first cells. Now let's take a deeper dive into the interface, in four short parts: working with cells, finding your way, marking what you see, and the tools for finding where a merger starts.`,
     image:
       imgWheresNurro,
     position: MIDDLE,
@@ -845,22 +846,27 @@ Hover a gem's row in the panel: the pencil adds a note, the trash removes it. Th
     onEnter() { ensureAnnotationLayer(); },
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
-Now let's put it together. <strong>Find Path</strong> draws the route through a cell between two points.
+<strong>Find Path</strong> draws the route through a cell between two points. We've switched it on for you, and made the cell see through so the path stands out.
 
-<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or <strong>Submit</strong> in the Find Path bar) to trace the path. Points from before still there? Click <strong>Clear</strong> first.
+<strong>CTRL+CLICK on the soma</strong>, then <strong>anywhere down a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> (or <strong>Submit</strong> in the Find Path bar) to trace the path. Points from before still there? Click <strong>Clear</strong> first.
 
-We've made the cell see through, so the path stands out.`,
+Next time, <strong>F</strong> or the Find Path button on the top bar switches it on.`,
     width: "500px",
     position: OVER_3D,
     reveals: ['findPath'],
-    onEnter: findPathStep,
+    // Find Path comes on by itself (Ames 2026-11-12: "shouldn't it turn Find
+    // Path on?"). F toggles, so only when it is off.
+    onEnter: () => {
+      findPathStep();
+      setTimeout(() => { if (!document.querySelector('.graphene-find-path')) activateGrapheneTool('findPath'); }, 1200);
+    },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 That's how you find where a merger starts: Find Path shows exactly where the wrong branch joins the cell, and that join is where you cut.
 
@@ -870,7 +876,7 @@ Scouting mergers? Tag the spot with the glowing <strong>Tag</strong> tool so you
     highlight: true,
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 One more tool for keeping track: <strong>Highlight</strong> marks the parts of a cell you have already checked, so you never look twice.
 
@@ -881,7 +887,7 @@ One more tool for keeping track: <strong>Highlight</strong> marks the parts of a
     onEnter: () => { pinkHighlights(); nextWhenHighlighted(); },
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 Now pick a <strong>different color</strong> in the Highlight box (<strong>Needs a look</strong>, or make your own with <strong>+ Add</strong>), then <strong>CTRL+CLICK two points</strong> along another branch.`,
     width: "500px",
@@ -889,7 +895,7 @@ Now pick a <strong>different color</strong> in the Highlight box (<strong>Needs 
     onEnter: () => nextWhenOtherHighlight(),
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 For a big cell, <strong>Lantern</strong> lights the part around where you are and dims the rest, so you can check it one part at a time.
 
@@ -900,7 +906,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
     onEnter: () => nextWhenLanternOn(),
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 <strong>RIGHT-CLICK</strong> anywhere on the cell to move there: the light follows you. In the Lantern box, <strong>Size</strong> sets how much of the cell is lit and <strong>Flame</strong> how bright.
 
@@ -912,7 +918,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
     onEnter: () => { if (!lantern.on) lantern.on = true; nextWhenLanternOn(false); },
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 <strong>Your mission:</strong> a collaborator found a merger. Mark where it starts. Each line ticks itself off as you do it:
 
@@ -934,7 +940,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
   // video is redone (Ames 2026-10-19: the video is out of date). Video:
   // https://www.youtube.com/watch?v=vnAqH91EgNQ (playlist index 6).
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 Thank you! Nurro will investigate that merger right away.`,
     image:
@@ -943,7 +949,7 @@ Thank you! Nurro will investigate that merger right away.`,
     position: MIDDLE,
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 Stuck, or found something odd? <strong>Chat</strong> is where the Pyr community helps each other. Ask a question, share your view, or just say hi: the community is the best place for help and for working together.`,
     width: "460px",
@@ -951,7 +957,7 @@ Stuck, or found something odd? <strong>Chat</strong> is where the Pyr community 
     highlight: true,
   },
   {
-    part: "Part 4 of 4 · Put it together",
+    part: "Part 4 of 4 · Merger tools",
     text: `
 That's a high level view of the interface! Next: put it to work in the <strong>Merger Sandbox</strong>. Seven cells, each with a merger to find and cut.
 
