@@ -497,6 +497,40 @@ function colorNewCell(id: string) {
     }
   } catch { /* the layer is not ready */ }
 }
+/** The + glows and grows so it is easy to find (Nik took it for an
+ *  airplane), while the step shows; it stops once a layer is added (see
+ *  nextWhenAnnotationLayerAdded) or the player moves on. Annotations box 1
+ *  uses it too (Ames 2026-11-12: "add sparkles or highlight to the +"). */
+export function glowAddButton() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  let style = document.getElementById('nge-tutorial-highlight');
+  if (!style) { style = document.createElement('style'); style.id = 'nge-tutorial-highlight'; document.head.appendChild(style); }
+  style.textContent = `
+        .neuroglancer-layer-add-button {
+          animation: nge-pulse-highlight 1.2s ease-in-out infinite !important;
+          border-radius: 4px !important;
+          position: relative;
+          z-index: 1;
+          /* Big enough to read as a plus (Nik took it for an airplane). */
+          transform: scale(1.7);
+          transform-origin: left center;
+          margin-right: 18px !important;
+          color: #fff !important;
+          border-color: #7ee0ff !important;
+          background: rgba(126, 224, 255, 0.22) !important;
+        }
+        @keyframes nge-pulse-highlight {
+          0%, 100% { box-shadow: 0 0 8px 3px rgba(80, 160, 255, 0.7), inset 0 0 4px rgba(80, 160, 255, 0.3); }
+          50% { box-shadow: 0 0 18px 6px rgba(80, 160, 255, 1), inset 0 0 8px rgba(80, 160, 255, 0.5); }
+        }
+`;
+  const timer = setInterval(() => {
+    const el = document.getElementById('nge-tutorial-highlight');
+    if (!el) { clearInterval(timer); return; }
+    if (store.activeTutorial !== tutorial || store.getTutorialStep() !== step) { clearInterval(timer); el.remove(); }
+  }, 400);
+}
 /** Move on by itself once an annotation layer has been added. */
 export function nextWhenAnnotationLayerAdded() {
   waitForAction();
@@ -845,7 +879,7 @@ To send a whole view, like your collaborator did, use <strong>Share</strong>. It
 
 Paste the link in chat or a message, and whoever opens it sees exactly your view.`,
     width: "460px",
-    position: { element: '#extensionBar [title="Share State"]', side: "right", offset: { x: 0, y: 0 } },
+    position: { element: '#extensionBar [title="Share State"]', side: "bottom", offset: { x: 0, y: 7 } },
     highlight: true,
   },
   {
@@ -875,31 +909,7 @@ They live in an ANNOTATION LAYER. <strong>CLICK the "+" to add one.</strong>`,
     },
     state:
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
-    onEnter() {
-      nextWhenAnnotationLayerAdded();
-      // Highlight the + button with a pulsing glow so it's easy to find
-      let style = document.getElementById('nge-tutorial-highlight');
-      if (!style) { style = document.createElement('style'); style.id = 'nge-tutorial-highlight'; document.head.appendChild(style); }
-      style.textContent = `
-        .neuroglancer-layer-add-button {
-          animation: nge-pulse-highlight 1.2s ease-in-out infinite !important;
-          border-radius: 4px !important;
-          position: relative;
-          z-index: 1;
-          /* Big enough to read as a plus (Nik took it for an airplane). */
-          transform: scale(1.7);
-          transform-origin: left center;
-          margin-right: 18px !important;
-          color: #fff !important;
-          border-color: #7ee0ff !important;
-          background: rgba(126, 224, 255, 0.22) !important;
-        }
-        @keyframes nge-pulse-highlight {
-          0%, 100% { box-shadow: 0 0 8px 3px rgba(80, 160, 255, 0.7), inset 0 0 4px rgba(80, 160, 255, 0.3); }
-          50% { box-shadow: 0 0 18px 6px rgba(80, 160, 255, 1), inset 0 0 8px rgba(80, 160, 255, 0.5); }
-        }
-      `;
-    },
+    onEnter() { nextWhenAnnotationLayerAdded(); glowAddButton(); },
   },
   // The rename box went 2026-11-12: the Annotations tutorial teaches it, and
   // the mission's hint still says to click the ✎ pencil (Ames: "go").
