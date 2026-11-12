@@ -40,6 +40,12 @@ export interface NgeMeshTint {
    *  (Signal Controller's haze; Ames 2026-11-11: "weird striping on the E
    *  cells"). A cell with no entry is tinted as without this. */
   own?: Map<string, [number, number, number]>;
+  /** A cell lit from its cell body outward (Signal Controller's reveal): by
+   *  segment id, the body's centre in global units and the radius in nm
+   *  beyond which the cell is drawn dim, set frame by frame as it grows;
+   *  revealNm is nm per global unit, for the distance. */
+  reveal?: Map<string, [number, number, number, number]>;
+  revealNm?: [number, number, number];
 }
 
 let current: NgeMeshTint|null = null;

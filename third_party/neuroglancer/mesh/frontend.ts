@@ -431,6 +431,14 @@ export class MeshShaderManager {
       const m = own.get(objectId.toString());
       gl.uniform4f(shader.uniform('uNgeTintOwn'), m?.[0] ?? 0, m?.[1] ?? 0, m?.[2] ?? 0, m ? 1 : 0);
     }
+    // lit from its cell body out to a radius (w, nm), while one is set for it
+    const reveal = tint?.reveal;
+    if (reveal !== undefined) {
+      const r = reveal.get(objectId.toString());
+      gl.uniform4f(shader.uniform('uNgeTintReveal'), r?.[0] ?? 0, r?.[1] ?? 0, r?.[2] ?? 0, r?.[3] ?? 0);
+      const nmv = tint!.revealNm;
+      if (nmv) gl.uniform3f(shader.uniform('uNgeTintRevealNm'), nmv[0], nmv[1], nmv[2]);
+    }
   }
 
   setColor(gl: GL, shader: ShaderProgram, color: vec4) {
@@ -485,6 +493,7 @@ export class MeshShaderManager {
     // No cell is skipped, and none has a mark of its own, until its own draw says so (setTintSkip).
     gl.uniform1f(shader.uniform('uNgeTintSkip'), 0);
     gl.uniform4f(shader.uniform('uNgeTintOwn'), 0, 0, 0, 0);
+    gl.uniform4f(shader.uniform('uNgeTintReveal'), 0, 0, 0, 0);
     // The fine map of the cut preview, over the map above.
     const fineTint = renderContext.emitColor ? getNgeMeshTintFine() : null;
     const fineUnit = shader.textureUnit(ngeFineSamplerSymbol);
@@ -598,6 +607,9 @@ export class MeshShaderManager {
         builder.addUniform('highp float', 'uNgeTintSkip');
         // The cell's own mark colour (rgb) and whether it has one (w).
         builder.addUniform('highp vec4', 'uNgeTintOwn');
+        // Lit from the cell body (xyz, global units) out to a radius (w, nm; 0 for none), and nm per unit.
+        builder.addUniform('highp vec4', 'uNgeTintReveal');
+        builder.addUniform('highp vec3', 'uNgeTintRevealNm');
         builder.addUniform('highp float', 'uNgeGlow');
         builder.addUniform('highp vec4', 'uNgeShell');
         builder.addUniform('highp vec4', 'uNgeShellColor');
@@ -764,6 +776,15 @@ if (uNgeTintOn > 0.5 && uNgeTintSkip < 0.5) {
         vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
       }
     }
+  }
+}
+if (uNgeTintReveal.w > 0.0) {
+  // Signal Controller's reveal: beyond a radius from the cell body, growing
+  // frame by frame, the cell is drawn dim, so it lights from the body outward.
+  highp vec3 revealAt = (uNgeModel * vec4(vertexPosition, 1.0)).xyz;
+  if (length((revealAt - uNgeTintReveal.xyz) * uNgeTintRevealNm) > uNgeTintReveal.w) {
+    highp float revealGrey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
+    vColor.rgb = vec3(revealGrey) * max(uNgeTintDim.w, 0.2);
   }
 }
 if (uNgeFineOn > 0.5) {

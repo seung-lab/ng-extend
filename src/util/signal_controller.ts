@@ -31,6 +31,7 @@
  */
 import {setNgeGlow, setNgeProps, type NgeGlow, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
 import {getNgeMeshTint, ngeMeshTintChanged, setNgeMeshTint, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
+import {makeLayer} from 'neuroglancer/layer';
 import {mat4, quat} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
@@ -51,9 +52,11 @@ interface Circuit { version: number; cells: CircuitCell[]; connections: CircuitC
 const TAU_E = 1.2, TAU_I = 0.35;       // seconds of leak
 const E_UNIT = 1.0, I_UNIT = 0.6;      // units per synapse
 const REFRACTORY_S = 0.4;
-const SPEED_UM_S = 500;                // a spike along the real path
+const SPEED_UM_S = 200;                // a spike along the real path: about 2,000 times slower than life, slow enough to watch (Ames 2026-11-11: "too fast!"; "the speed is way too fast")
 const HUSH_S = 2.5;
-const BEAM_S = 0.3;                    // the beam's flight
+const BEAM_S = 0.3;                    // the Spark's flight
+const HUSH_BEAM_S = 1.3;               // the Hush's: slow, a ribbon drifting over (Ames 2026-11-11: "slow down the hush beam")
+const landS = (b: {hush: boolean}) => b.hush ? HUSH_BEAM_S : BEAM_S;
 const MAX_CHARGES = 6, REGEN_S = 1.5, SPARK_COST = 1, HUSH_COST = 2;
 /** The Gatekeeper's clock: seconds its next spike moves per unit of input. */
 const GATE_PUSH_S = 0.15, GATE_PULL_S = 0.08;
@@ -111,18 +114,18 @@ const LEVELS: Level[] = [
       hit: 'One down. Wait for the next gap.',
       miss: 'The pulse caught it: the charge was still building when the pulse landed. Click twice as soon as the line turns blue.'},
     hint: {go: ['E1'], hit: [], wait: [], soon: []}},
-  {title: 'Hush', objective: 'Spike the gold cell', detail: '3 times: Hush the Gatekeeper first', timeS: 60, par: 12,
-    brief: 'The Gatekeeper pulses every second now; the gaps are nearly gone.\nA new beam: Hush quiets a cell for 2.5 s (2 charges). Hush the Gatekeeper, then fire the drivers into the quiet.',
+  {title: 'Inhibit', objective: 'Spike the gold cell', detail: '3 times: Inhibit the Gatekeeper first', timeS: 60, par: 12,
+    brief: 'The Gatekeeper pulses every second now; the gaps are nearly gone.\nA new beam: Inhibit quiets a cell for 2.5 s (2 charges). Inhibit the Gatekeeper, then fire the drivers into the quiet.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'I1'], targets: ['T'], hush: true, gate: {cell: 'I1', periodS: 1.0},
     goal: {kind: 'fire', target: 'T', count: 3},
-    coach: {begin: 'Choose Hush (the button, or Tab), then click the violet cell, I1.',
-      wait: 'Choose Hush, then click I1 to quiet it.',
+    coach: {begin: 'Choose Inhibit (the button, or Tab), then click the violet cell, I1.',
+      wait: 'Choose Inhibit, then click I1 to quiet it.',
       go: 'Go: Spark E1 twice, quickly.',
-      hit: 'Again: Hush the Gatekeeper, then E1 twice.',
-      miss: 'Hush first, then two quick sparks inside the 2.5 s.'},
+      hit: 'Again: Inhibit the Gatekeeper, then E1 twice.',
+      miss: 'Inhibit first, then two quick sparks inside the 2.5 s.'},
     hint: {begin: ['I1'], wait: ['I1'], go: ['E1'], hit: ['I1']}},
   {title: 'The Key', objective: 'Fire T, then E4', detail: 'within 2 s, twice', timeS: 75, par: 13,
-    brief: 'The Gatekeeper’s shield blocks your Hush beam now. But a bipolar cell (magenta) makes 20 synapses onto the Gatekeeper and none onto the pyramidal cells: a key.\nE4 is a second target, with its own drivers F1, F2 and F3.',
+    brief: 'The Gatekeeper’s shield blocks your Inhibit beam now. But a bipolar cell (magenta) makes 20 synapses onto the Gatekeeper and none onto the pyramidal cells: a key.\nE4 is a second target, with its own drivers F1, F2 and F3.',
     cells: ['T', 'E1', 'E2', 'E3', 'E4', 'F1', 'F2', 'F3', 'I1', 'I2'], targets: ['T', 'E4'], hush: true, hushBlocked: ['I1'], gate: {cell: 'I1', periodS: 1.0},
     goal: {kind: 'sequence', order: ['T', 'E4'], withinS: 2, count: 2},
     coach: {begin: 'Spark I2, the magenta cell. Its 20 synapses quiet the Gatekeeper for a moment.',
@@ -210,7 +213,8 @@ interface CellState {
   color: V3; packed: number; dimmed: boolean;
 }
 interface Arrival { at: number; post: string; units: number; inhibitory: boolean; conn: CircuitConn; }
-interface Spark { r: Route; start: number; end: number; inhibitory: boolean; conn: CircuitConn; }
+/** scale: how large it is drawn (1 in play; the tour's dendrite signals are 2.4, with a halo). */
+interface Spark { r: Route; start: number; end: number; inhibitory: boolean; conn: CircuitConn; scale?: number; }
 interface Flash { p: V3; at: number; life: number; rgb: V3; size: number; }
 interface Beam { from: V3; to: V3; at: number; hush: boolean; cell: string; applied: boolean; scan?: boolean; }
 type Phase = 'loading' | 'brief' | 'countdown' | 'playing' | 'done';
@@ -278,7 +282,8 @@ function setView(v: ViewMode) {
 /** The cockpit's nose: where its beams leave, low in the middle of the view. */
 let cockpitNose: V3 | null = null;
 /** The camera's glide in the cockpit view: up to a scanned cell, and home. */
-interface Glide { look: V3; scale: number; since: number; }
+/** seconds: a slow, even glide over so long from where the camera was (fromLook, fromScale); without it, a quick ease. */
+interface Glide { look: V3; scale: number; since: number; seconds?: number; fromLook?: V3; fromScale?: number; }
 let glide: Glide | null = null;
 let homeLook: V3 | null = null, homeScale = 0;
 function rememberHome() {
@@ -305,10 +310,39 @@ function glideTo(c: CellState, factor = 0.6) {
   glide = {look: freeLook(c.spec.soma, scale * Math.min(nm[0], nm[1], nm[2]), cam), scale, since: performance.now()};
 }
 function glideHome() { if (homeLook && homeScale) glide = {look: homeLook, scale: homeScale, since: performance.now()}; }
+/** A slow, even glide to a look point and zoom over so many seconds. */
+function glideSlow(look: V3, scale: number, seconds: number) {
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) return;
+  const pos = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  glide = {look, scale, since: performance.now(), seconds, fromLook: pos, fromScale: v.projectionScale.value};
+}
+/** The frame that shows a cell whole: its dendrites' reach across the view
+ *  and the first stretch of its axon, the cell body a little above the
+ *  middle so the axon has room below. */
+function wholeCellFrame(c: CellState): {look: V3; scale: number} | null {
+  const nm = nmPerUnit(), cam = nm && cameraAxes(nm), pr = parts.get(c.spec.root);
+  if (!nm || !cam || !pr) return null;
+  let reach = 0;
+  const span = (p: number[]) => { const d = sub([p[0], p[1], p[2]], c.spec.soma); reach = Math.max(reach, Math.hypot(dot(d, cam.right), dot(d, cam.up))); };
+  for (const p of pr.arbor.dend) span(p);
+  for (const p of pr.arbor.axon) if (p[3] < 250_000) span(p);
+  const frameNm = Math.max(150_000, reach * 2.3);
+  return {look: freeLook(sub(c.spec.soma, mul(cam.up, frameNm * 0.08)), frameNm, cam), scale: frameNm / Math.min(nm[0], nm[1], nm[2])};
+}
 function stepGlide(dt: number) {
   if (!glide) return;
   const v = viewerNow(), nm = nmPerUnit();
   if (!v || !nm) { glide = null; return; }
+  if (glide.seconds && glide.fromLook && glide.fromScale) {
+    // even pace, eased at both ends; the zoom in log space so it looks even too
+    const q = clamp((performance.now() - glide.since) / (glide.seconds * 1000), 0, 1), e = q * q * (3 - 2 * q);
+    const next = mix(glide.fromLook, glide.look, e);
+    v.navigationState.position.value = Float32Array.from(next.map((c, i) => c / nm[i]));
+    v.projectionScale.value = Math.exp(Math.log(glide.fromScale) + (Math.log(glide.scale) - Math.log(glide.fromScale)) * e);
+    if (q >= 1) glide = null;
+    return;
+  }
   const pos = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
   const k = Math.min(1, dt * 4);
   const next = mix(pos, glide.look, k);
@@ -354,10 +388,12 @@ function cellColor(c: CircuitCell, k: number): string {
 
 /** Paint a cell in the viewer: its colour, or that colour dimmed while it is
  *  hushed or asleep. */
-function paint(c: CellState, dim: boolean) {
+function paint(c: CellState, dim: boolean, grey = false) {
   const ml = circuitLayer();
   if (!ml) return;
-  const rgb: V3 = dim ? mul(c.color, 0.32) as V3 : c.color;
+  const lum = 0.299 * c.color[0] + 0.587 * c.color[1] + 0.114 * c.color[2];
+  const base: V3 = grey ? [lum, lum, lum] : c.color;   // grey: out of the spotlight, its colour gone
+  const rgb: V3 = dim ? mul(base, grey ? 0.45 : 0.32) as V3 : base;
   try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, Uint64.parseString(c.spec.root), packRgb([Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])])); } catch { /* colour stays */ }
   c.dimmed = dim;
 }
@@ -827,6 +863,7 @@ body.nge-mobile .nge-sig-canopy .id .key { font-size: 26px; }
 .nge-sig-tour .nge-sig-row { margin-top: 12px; gap: 8px; }
 .nge-sig .nge-sig-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .nge-sig .nge-sig-ico svg { display: block; }
+.nge-sig .nge-sig-neuron { display: block; width: 100%; max-width: 330px; margin: 8px 0 2px; }
 .nge-sig .nge-sig-edit { flex: none; padding: 2px 6px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font-size: 12px; line-height: 1; }
 .nge-sig .nge-sig-edit:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 /* the editor: a card beside the HUD, a section a box */
@@ -902,11 +939,11 @@ function buildPanel() {
     <div class="nge-sig-coach" data-el="coach" aria-live="polite"><i></i><span data-el="coachText"></span></div>
     <div class="nge-sig-map" data-el="map"></div>
     <div data-el="body"></div>
-    <div class="nge-sig-row" data-el="row"><div class="nge-sig-beams"><button class="nge-sig-beam spark" type="button" data-el="spark" aria-pressed="true" title="Spark: the cell fires. Costs 1 charge. Key: S">Spark<kbd class="hk">S</kbd><i class="cost" aria-label="1 charge"><b></b></i></button><button class="nge-sig-beam hush" type="button" data-el="hush" aria-pressed="false" title="Hush: the cell is silent for 2.5 s. Costs 2 charges. Key: H">Hush<kbd class="hk">H</kbd><i class="cost" aria-label="2 charges"><b></b><b></b></i></button></div><kbd class="nge-sig-key" title="Tab (or Space) switches between Spark and Hush; S and H pick one">Tab</kbd>
+    <div class="nge-sig-row" data-el="row"><div class="nge-sig-beams"><button class="nge-sig-beam spark" type="button" data-el="spark" aria-pressed="true" title="Spark: the cell fires. Costs 1 charge. Key: S">Spark<kbd class="hk">S</kbd><i class="cost" aria-label="1 charge"><b></b></i></button><button class="nge-sig-beam hush" type="button" data-el="hush" aria-pressed="false" title="Inhibit: the cell is silent for 2.5 s. Costs 2 charges. Key: I (or H)">Inhibit<kbd class="hk">I</kbd><i class="cost" aria-label="2 charges"><b></b><b></b></i></button></div><kbd class="nge-sig-key" title="Tab (or Space) switches between Spark and Inhibit; S and I pick one">Tab</kbd>
       <div class="nge-sig-charges" data-el="charges"><span>Charge</span></div>
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
-    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 1,000 times slower than real life.</span></div></div>`;
+    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span><span class="txt">Data (neurons, synapses): MICrONS public release.<br>Firing is a simple model played 2,000 times slower than real life.</span></div></div>`;
   document.body.appendChild(panel);
   els = {};
   panel.querySelectorAll<HTMLElement>('[data-el]').forEach(el => { els[el.dataset.el!] = el; });
@@ -935,7 +972,7 @@ function buildPanel() {
 }
 
 function setHushMode(on: boolean) {
-  if (on && !level.hush) { say('Hush is not yours yet.'); return; }
+  if (on && !level.hush) { say('Inhibit is not yours yet.'); return; }
   hushMode = on;
   els.spark.setAttribute('aria-pressed', String(!on));
   els.hush.setAttribute('aria-pressed', String(on));
@@ -1259,7 +1296,8 @@ function arborWave(key: string, inhibitory: boolean) {
   const c = cells.get(key);
   const pr = c && parts.get(c.spec.root);
   if (!pr || !pr.arbor.axon.length) return;
-  waves.push({root: c!.spec.root, part: 'axon', start: performance.now() / 1000, seconds: clamp(pr.axonMax / 1_500_000, 0.6, 2), inward: false, rgb: inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7]});
+  // the wave runs at the model's conduction speed, so its band and the sparks along the real paths keep step
+  waves.push({root: c!.spec.root, part: 'axon', start: performance.now() / 1000, seconds: clamp(pr.axonMax / (SPEED_UM_S * 1000), 1, 12), inward: false, rgb: inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7]});
 }
 /** Signals coming in one dendrite at a time (Ames 2026-11-11: "signals do
  *  not come in from all the dendrites at once: one signal per every fourth
@@ -1288,29 +1326,66 @@ function demoDendrites(key: string, share = 0.25, each = 2.5, gap = 0.5, cap = 1
     pts.push(soma);
     setTimeout(() => {
       if (!active || !demo || (alive && !alive())) return;
-      flashes.push({p: pts[0], at: now, life: 0.6, rgb, size: 7000});
-      sparks.push({r: route(pts), start: now, end: now + each, inhibitory: false, conn: NO_CONN});
+      flashes.push({p: pts[0], at: now, life: 0.9, rgb, size: 16_000});
+      sparks.push({r: route(pts), start: now, end: now + each, inhibitory: false, conn: NO_CONN, scale: 2.4});
     }, k * gap * 1000);
   });
   return (pick.length - 1) * gap + each;
 }
-/** A sweep of light down a cell: a band crossing every branch from the top
- *  of the view to the bottom, the branches lit as it passes (Ames
- *  2026-11-11: "a light sweep that highlights the cells"). */
-interface Sweep { root: string; start: number; seconds: number; rgb: V3; lo?: number; hi?: number; }
-let sweeps: Sweep[] = [];
-function sweepCell(key: string, seconds = 1.1, rgb: V3 = [0.85, 0.97, 1]): boolean {
+/** A cell lit from its cell body outward (Ames 2026-11-11: "load highlight
+ *  on the cells from soma outward"): the mesh beyond a radius growing from
+ *  the cell body is drawn dim (the haze's `reveal`, per cell, set each
+ *  frame) while waves of light run out over the axon and the dendrites at
+ *  the same pace. */
+interface Reveal { root: string; soma: V3; at: number; seconds: number; reach: number; }
+let reveals: Reveal[] = [];
+function revealCell(key: string, seconds = 1.4, rgb: V3 = [0.85, 0.97, 1]): boolean {
   const c = cells.get(key);
   const pr = c && parts.get(c.spec.root);
-  if (!c || !pr || !(pr.arbor.axon.length + pr.arbor.dend.length)) return false;
-  sweeps.push({root: c.spec.root, start: performance.now() / 1000, seconds, rgb});
+  const nm = nmPerUnit();
+  if (!c || !pr || !hazeTint || !nm) return false;
+  let reach = 0;
+  for (const pts of [pr.arbor.axon, pr.arbor.dend]) for (const p of pts) reach = Math.max(reach, len(sub([p[0], p[1], p[2]], c.spec.soma)));
+  reveals = reveals.filter(r => r.root !== c.spec.root);
+  reveals.push({root: c.spec.root, soma: c.spec.soma, at: performance.now() / 1000, seconds, reach: reach * 1.05 + 20_000});
+  if (!hazeTint.reveal) hazeTint.reveal = new Map();
+  hazeTint.revealNm = [nm[0], nm[1], nm[2]];
+  hazeTint.reveal.set(c.spec.root, [c.spec.soma[0] / nm[0], c.spec.soma[1] / nm[1], c.spec.soma[2] / nm[2], 5000]);   // from the first frame, only the body
+  demoWave(key, 'axon', seconds, false, rgb);
+  demoWave(key, 'dend', seconds, false, rgb);
   return true;
 }
+function stepReveals() {
+  if (!reveals.length) return;
+  const nm = nmPerUnit(), tint = hazeTint;
+  if (!nm || !tint?.reveal) { reveals = []; return; }
+  const t = performance.now() / 1000;
+  for (const r of reveals) {
+    const q = clamp((t - r.at) / r.seconds, 0, 1);
+    if (q >= 1) { tint.reveal.delete(r.root); continue; }
+    tint.reveal.set(r.root, [r.soma[0] / nm[0], r.soma[1] / nm[1], r.soma[2] / nm[2], Math.max(5000, r.reach * q)]);
+  }
+  reveals = reveals.filter(r => t < r.at + r.seconds);
+  try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+}
+function clearReveals() { reveals = []; hazeTint?.reveal?.clear(); }
 /** A target's firing: a gold burst from its cell body, sparks flying out,
  *  a ring widening, the body lit (Ames 2026-11-11: "the gold cell needs to
  *  glow gold or sparkle from soma when you successfully activate it"). */
-interface Burst { p: V3; dirs: V3[]; at: number; life: number; rgb: V3; }
+interface Burst { p: V3; dirs: V3[]; at: number; life: number; rgb: V3; sparkle?: boolean; scale?: number; }
 let bursts: Burst[] = [];
+/** A sparkle from a cell body as it fires: particles flying out and slowing,
+ *  each with its own glint (Ames 2026-11-11: "I want particle sparkle from
+ *  the soma when cell sends AP"). Every spike has one; a target's firing has
+ *  its burst besides. */
+function sparkleAt(p: V3, rgb: V3, count = 28, scale = 1) {
+  const dirs: V3[] = [];
+  for (let i = 0; i < count; i++) {
+    const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u), sp = 0.45 + Math.random() * 1.1;
+    dirs.push([r * Math.cos(th) * sp, r * Math.sin(th) * sp, u * sp]);
+  }
+  bursts.push({p, dirs, at: performance.now() / 1000, life: 1.1, rgb, sparkle: true, scale});
+}
 function burstAt(p: V3, rgb: V3) {
   const dirs: V3[] = [];
   for (let i = 0; i < 36; i++) { const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u); dirs.push([r * Math.cos(th), r * Math.sin(th), u]); }
@@ -1405,7 +1480,8 @@ function refreshEditor() {
   if (st) sections += `<section><h4>Step ${tourAt + 1} · ${esc(st.kicker)}</h4>${field(`tour.${levelIndex}.${tourAt}.text`, 'Line', st.text)}${st.sub !== undefined ? field(`tour.${levelIndex}.${tourAt}.sub`, 'Under it', st.sub) : ''}</section>`;
   editorEl.innerHTML = `<div class="head"><b>Edit the words</b><button type="button" class="nge-sig-x" aria-label="Close">${X_SVG}</button></div>${sections}
     <div class="nge-sig-row"><button class="nge-sig-quiet" type="button" data-act="copy">Copy my edits</button><button class="nge-sig-quiet" type="button" data-act="reset">Reset this level</button></div>
-    <p class="hint">Edits live in this browser. Copy them and paste them to Claude to bake them in.</p>`;
+    <section><h4>View</h4><div class="nge-sig-row"><button class="nge-sig-quiet" type="button" data-act="view" title="The camera's look point, zoom and turn, for a step to use">Copy view</button></div></section>
+    <p class="hint">Edits live in this browser. Copy them, or the view, and paste them to Claude to bake them in.</p>`;
   (editorEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => toggleEditor();
   editorEl.querySelectorAll<HTMLTextAreaElement>('textarea').forEach(t => {
     t.oninput = () => { saveCopy(t.dataset.key!, t.value); applyCopy(t.dataset.key!); };
@@ -1416,6 +1492,13 @@ function refreshEditor() {
       if (b.dataset.act === 'copy') {
         const text = JSON.stringify(copyEdits, null, 2);
         try { await navigator.clipboard.writeText(text); say('Your edits are copied. Paste them to Claude to bake them in.', 3.5); } catch { say(text, 8); }
+      } else if (b.dataset.act === 'view') {
+        const v = viewerNow(), nm = nmPerUnit();
+        if (!v || !nm) return;
+        const look = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => Math.round(x * nm[i]));
+        const o = v.perspectiveNavigationState?.pose?.orientation?.orientation;
+        const text = JSON.stringify({level: levelIndex + 1, step: phase === 'brief' ? tourAt + 1 : null, view, look, scale: Math.round(v.projectionScale.value), orientation: o ? Array.from(o as Float32Array).map(x => Math.round(x * 10_000) / 10_000) : null});
+        try { await navigator.clipboard.writeText(text); say('The view is copied. Paste it to Claude.', 3); } catch { say(text, 8); }
       } else {
         for (const k of Object.keys(copyEdits)) if (k === `obj.${levelIndex}` || k === `detail.${levelIndex}` || k.startsWith(`tour.${levelIndex}.`)) delete copyEdits[k];
         saveCopy('', '');
@@ -1435,16 +1518,28 @@ function refreshEditor() {
    tour, `demo`, with the coach and the scoring held off) and waits for
    Next. After Begin the play UI comes up with its controls named, then
    three, two, one, go. ── */
-/** click: what a click on a cell does during the step; the scan unless 'spark'. */
-interface TourStep { kicker: string; text: string; sub?: string; click?: 'spark'; play?: (alive: () => boolean) => Promise<void>; }
+/** click: what a click on a cell does during the step; the scan unless 'spark'. html: a figure under the words. */
+interface TourStep { kicker: string; text: string; sub?: string; html?: string; click?: 'spark'; play?: (alive: () => boolean) => Promise<void>; }
+/** The parts of a neuron, colour-coded as the labels in the view and the
+ *  signals are: dendrites gold, the cell body pale gold, the axon cyan. */
+const DENDRITE_C = '#ffc24a', SOMA_C = '#fff0c2', AXON_C = '#7ee0ff';
+const NEURON_SVG = `<svg class="nge-sig-neuron" viewBox="0 0 330 116" role="img" aria-label="A neuron: signals come in through the dendrites, the cell body adds them up, a spike leaves down the axon">
+  <g stroke="${DENDRITE_C}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M112 56 L80 30 L62 14 M80 30 L58 36 M112 56 L74 58 L48 52 M74 58 L52 70 M112 56 L84 84 L64 100 M84 84 L60 86"/></g>
+  <path d="M112 40 L140 56 L112 72 Q98 56 112 40 Z" fill="${SOMA_C}" stroke="#ffd98a" stroke-width="1.6"/>
+  <g stroke="${AXON_C}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M140 56 L262 56 M262 56 L288 40 L306 30 M262 56 L290 70 L306 80"/></g>
+  <circle cx="306" cy="30" r="2.6" fill="${AXON_C}"/><circle cx="306" cy="80" r="2.6" fill="${AXON_C}"/>
+  <g fill="none" stroke="#f4f9ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"><path d="M64 48 l7 5 l-7 5"/><path d="M196 49 l8 7 l-8 7"/></g>
+  <g font-family="Inter, Roboto, sans-serif" font-size="9.5" font-weight="600" letter-spacing="1.1"><text x="30" y="112" fill="${DENDRITE_C}">DENDRITES</text><text x="120" y="33" fill="${SOMA_C}">CELL BODY</text><text x="200" y="78" fill="${AXON_C}">AXON</text></g>
+</svg>`;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 let demo = false;          // the model runs outside play, for the tour's demonstrations
 let tourAt = 0, tourToken = 0;
 let tourLabels: {el: HTMLElement; p: V3}[] = [];
-function tourLabel(text: string, p: V3) {
+function tourLabel(text: string, p: V3, color?: string) {
   const el = document.createElement('span');
   el.className = 'ng-extend nge-sig-label';
   el.textContent = text;
+  if (color) { el.style.color = color; el.style.borderColor = color; }
   el.style.display = 'none';
   document.body.appendChild(el);
   tourLabels.push({el, p});
@@ -1508,7 +1603,7 @@ function undimAll() {
   for (const k of tourDim) { const c = cells.get(k); if (c?.shown && now >= c.hushedUntil) paint(c, false); }
   tourDim.clear();
 }
-function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); lightWhole([]); }
+function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); glideHome(); orbit = 0; undimAll(); lightWhole([]); clearReveals(); }
 let tourSteps: TourStep[] = [];
 const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
@@ -1520,7 +1615,7 @@ TOURS[0] = [
       await sleep(300); if (!alive()) return;
       const t = cells.get('T');
       if (!t) return;
-      sweepCell('T', 1.3, [1, 0.95, 0.75]);
+      revealCell('T', 1.6, [1, 0.95, 0.75]);
       const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
       visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card
       if (view === 'cockpit') glideTo(t, 0.7);
@@ -1534,7 +1629,7 @@ TOURS[0] = [
   // dendrite at a time, slowly, from synapses far out (Ames 2026-11-11:
   // "signals do not come in from all the dendrites at once: one signal per
   // every fourth dendrite, in random order, slower").
-  {kicker: 'Neuron 101', text: 'Signals come in through the dendrites. The cell body adds them up. With enough, a spike leaves down the axon.', sub: 'That spike is an action potential. It runs one way only.',
+  {kicker: 'Neuron 101', text: 'Signals come in through the dendrites. The cell body adds them up. With enough, a spike leaves down the axon.', sub: 'That spike is an action potential. It runs one way only.', html: NEURON_SVG,
     play: async alive => {
       const t = cells.get('T');
       if (!t) return;
@@ -1544,23 +1639,31 @@ TOURS[0] = [
       const outPath = conns.find(k => k.pre === 'T' && k.axon.length > 1)?.axon;      // the cell body to a synapse
       glideTo(t, 0.45);
       await sleep(900); if (!alive()) return;
-      if (inPath) tourLabel('dendrites', inPath[Math.floor(inPath.length * 0.35)]);
+      if (inPath) tourLabel('dendrites', inPath[Math.floor(inPath.length * 0.35)], DENDRITE_C);
       await sleep(500); if (!alive()) return;
       const landing = demoDendrites('T', 0.25, 2.5, 0.5, 10, [1, 0.95, 0.7], alive);
       if (!landing && !demoWave('T', 'dend', 2.4, true, [1, 0.95, 0.7]) && inPath) demoPulse(inPath, 2.2);
+      // the camera draws back slowly as the signals come in, until the whole
+      // cell is in view for the spike and the axon (Ames 2026-11-11: "when I
+      // hit play do a slow camera zoom out"; "zoom out to here")
+      const whole = wholeCellFrame(t);
+      if (whole) glideSlow(whole.look, whole.scale, Math.max(4, (landing || 2.4) + 1.5));
       await sleep((landing || 2.4) * 1000 + 150); if (!alive()) return;
-      tourLabel('cell body', t.spec.soma);
+      tourLabel('cell body', t.spec.soma, SOMA_C);
       flashes.push({p: t.spec.soma, at: now, life: 0.7, rgb: [1, 0.85, 0.4], size: 24_000});
+      sparkleAt(t.spec.soma, [1, 0.9, 0.5], 44, 1.4);
       sfx.spike(false);
       await sleep(500); if (!alive()) return;
-      if (outPath) tourLabel('axon', outPath[Math.floor(outPath.length * 0.35)]);
-      if (!demoWave('T', 'axon', 3, false, [1, 0.95, 0.7]) && outPath) demoPulse(outPath, 2.6);
+      if (outPath) tourLabel('axon', outPath[Math.floor(outPath.length * 0.35)], AXON_C);
+      // the spike runs out at the model's conduction speed, in the axon's colour
+      const axonS = clamp((parts.get(t.spec.root)?.axonMax ?? 0) / (SPEED_UM_S * 1000), 3, 8);
+      if (!demoWave('T', 'axon', axonS, false, [0.7, 0.95, 1]) && outPath) demoPulse(outPath, 2.6);
     }},
-  // one driver at a time, whole, every branch lit, a sweep of light down it
-  // as it comes in; the gold cell and the rest grey; then all of them (Ames
-  // 2026-11-11: "step through these 1 at a time, dim the yellow and show
-  // these full cells"; "a light sweep that highlights the cells"; "I want to
-  // see all the branches when they are highlighted")
+  // one driver at a time, whole, lit from its cell body outward; the gold
+  // cell and the rest grey; then all of them (Ames 2026-11-11: "step through
+  // these 1 at a time, dim the yellow and show these full cells"; "I want to
+  // see all the branches when they are highlighted"; "load highlight on the
+  // cells from soma outward")
   {kicker: 'Its drivers', text: 'Four cells drive it: E1, E2, E3, E4. E is for excitatory.',
     play: async alive => {
       const all = ['E1', 'E2', 'E3', 'E4'];
@@ -1570,9 +1673,9 @@ TOURS[0] = [
         lightWhole([k]);
         hints = new Set([k]);
         const c = cells.get(k);
-        if (!sweepCell(k, 1.1) && c) flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.8, 0.95, 1], size: 18_000});
+        if (!revealCell(k, 1.4) && c) flashes.push({p: c.spec.soma, at: now, life: 0.6, rgb: [0.8, 0.95, 1], size: 18_000});
         sfx.scan();
-        await sleep(1700); if (!alive()) return;
+        await sleep(1900); if (!alive()) return;
       }
       undimAll();
       lightWhole(all);
@@ -1583,7 +1686,7 @@ TOURS[0] = [
   // beam to activate the cell").
   {kicker: 'Spark', text: 'Spark a cell: its spike runs down the axon to the gold cell.', click: 'spark',
     play: async alive => { lightWhole(['E1']); await sleep(400); if (!alive()) return; hints = new Set(['E1']); demoSpark('E1'); }},
-  {kicker: 'Add up', text: 'One spike alone leaks away. Two spikes close together add up, and the gold cell fires.', click: 'spark',
+  {kicker: 'Add up', text: 'One spike alone leaks away. Two spikes close together add up and make the gold cell spike.', click: 'spark',
     play: async alive => {
       lightWhole(['E1']);
       await sleep(400); if (!alive()) return;
@@ -1593,7 +1696,7 @@ TOURS[0] = [
       await sleep(320); if (!alive()) return;
       demoSpark('E1');
     }},
-  {kicker: 'Why E1', text: 'E1 makes five synapses onto it, the most: two quick sparks are enough. The others carry less and need company.', click: 'spark',
+  {kicker: 'Why E1', text: 'E1 makes five synapses onto the gold cell, the most. Two quick sparks from E1 add up past its threshold. E2 needs three, E3 five, and E4 alone can never do it: pair it with another driver.', click: 'spark',
     play: async alive => { lightWhole(['E1']); await sleep(100); if (alive()) hints = new Set(['E1']); }},
   {kicker: 'Scan', text: 'Click any cell to scan it. The letters are call signs: E excitatory, I inhibitory, T target.',
     play: async alive => { await sleep(300); if (alive()) scan('E2'); }},
@@ -1616,7 +1719,7 @@ TOURS[1] = [
       if (!g) return;
       dimOthers('I1');
       lightWhole(['I1']);
-      sweepCell('I1', 1.3, [0.9, 0.8, 1]);
+      revealCell('I1', 1.6, [0.9, 0.8, 1]);
       glideTo(g, 0.55);
       orbit = 0.22;
       await sleep(700); if (!alive()) return;
@@ -1648,7 +1751,7 @@ TOURS[1] = [
       while (alive()) {
         if (holdOn(t) > 0.3) { await sleep(120); continue; }   // held: it stays quiet, in violet (the Gatekeeper's own spike ran its wave)
         // one dendrite at a time, from synapses far out; the whole-tree wave when the cell has no dendrite paths
-        let landing = demoDendrites('T', 0.2, 1.2, 0.25, 6, [1, 0.9, 0.55], alive);
+        let landing = demoDendrites('T', 0.2, 2.0, 0.4, 5, [1, 0.9, 0.55], alive);   // unhurried (Ames 2026-11-11: "slow the pulse")
         if (!landing) {
           for (let i = 0; i < 6 && far.length; i++) { const q = far[Math.floor(Math.random() * far.length)]; flashes.push({p: q.p, at: now, life: 0.55, rgb: [1, 0.9, 0.5], size: 7000}); }
           demoWave('T', 'dend', 0.9, true, [1, 0.9, 0.55]);
@@ -1656,9 +1759,8 @@ TOURS[1] = [
         }
         await sleep(landing * 1000); if (!alive()) return;
         if (holdOn(t) > 0.3) continue;
-        spike('T');
-        demoWave('T', 'axon', 1.4, false, [1, 0.9, 0.55]);
-        await sleep(1100);
+        spike('T');   // its own wave runs out down the axon at the conduction speed
+        await sleep(3000);
       }
     }},
   {kicker: 'Ready', text: 'Use the partner cells to spike the gold cell in the gaps: not while the Gatekeeper is inhibiting it. The coach line turns blue when a gap opens.', click: 'spark'},
@@ -1670,7 +1772,7 @@ const dimTo = (keep: string[]) => { for (const c of cells.values()) if (c.shown 
 TOURS[2] = [
   {kicker: 'No gaps', text: 'The Gatekeeper pulses every second now. The gaps are gone.',
     play: async alive => { dimTo(['T', 'I1']); lightWhole(['I1']); hints = new Set(['I1']); await sleep(50); if (!alive()) return; }},
-  {kicker: 'The Hush beam', text: 'A new beam: Hush. It quiets a cell for 2.5 seconds, for 2 charges.',
+  {kicker: 'The Inhibit beam', text: 'A new beam: Inhibit. It quiets a cell for 2.5 seconds, for 2 charges.',
     play: async alive => {
       dimTo(['T', 'I1']);
       lightWhole(['I1']);
@@ -1689,7 +1791,7 @@ TOURS[2] = [
       hints = new Set(['E1']);
       demoSpark('E1'); await sleep(320); if (!alive()) return; demoSpark('E1');
     }},
-  {kicker: 'Ready', text: 'Hush the Gatekeeper, then spike the gold cell through its partners. Three times.', click: 'spark'},
+  {kicker: 'Ready', text: 'Inhibit the Gatekeeper, then spike the gold cell through its partners. Three times.', click: 'spark'},
 ];
 function showTour(steps: TourStep[]) {
   tourSteps = steps;
@@ -1706,7 +1808,7 @@ function renderTourStep() {
   els.map.style.display = tourAt >= 2 ? '' : 'none';
   const textKey = `tour.${levelIndex}.${tourAt}.text`, subKey = `tour.${levelIndex}.${tourAt}.sub`;
   els.body.innerHTML = `<div class="nge-sig-card nge-sig-tour"><div class="nge-sig-tour-kicker"><i></i>${tourAt + 1} / ${tourSteps.length} · ${step.kicker}</div>
-    <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}
+    <p class="nge-sig-tour-text" data-copy="${textKey}">${adapt(copyOf(textKey, step.text))}</p>${step.sub ? `<p class="nge-sig-tour-sub" data-copy="${subKey}">${adapt(copyOf(subKey, step.sub))}</p>` : ''}${step.html ?? ''}
     <div class="nge-sig-row">${tourAt ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="back" title="Back" aria-label="Back">${BACK_SVG}</button>` : ''}<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">${last ? 'Begin ›' : 'Next ›'}</span></button>${step.play ? `<button class="nge-sig-quiet nge-sig-ico" type="button" data-act="replay" title="Replay" aria-label="Replay">${REPLAY_SVG}</button>` : ''}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
     b.onclick = () => {
@@ -1784,7 +1886,7 @@ function updateHud() {
       // down (Ames 2026-11-08: "next pulse, what does it mean?").
       const left = Math.max(0, c.gateNext - now);
       bar.style.width = hushed ? `${Math.round(clamp((c.hushedUntil - now) / HUSH_S, 0, 1) * 100)}%` : `${Math.round(clamp(left / c.gatePeriod, 0, 1) * 100)}%`;
-      label.innerHTML = hushed ? `hushed ${Math.max(0, c.hushedUntil - now).toFixed(1)}<span class="u"> s</span>` : `pulses in ${left.toFixed(1)}<span class="u"> s</span>`;
+      label.innerHTML = hushed ? `inhibited ${Math.max(0, c.hushedUntil - now).toFixed(1)}<span class="u"> s</span>` : `pulses in ${left.toFixed(1)}<span class="u"> s</span>`;
       continue;
     }
     const v = clamp(potential(c) / c.theta, -1, 1), h = holdOn(c);
@@ -2344,13 +2446,14 @@ function resetCells() {
 function spike(key: string, byBeam = false) {
   const c = cells.get(key);
   if (!c || !c.shown) return;
-  if (now < c.refractoryUntil || now < c.hushedUntil) { if (byBeam) { sfx.fizzle(); say(`${key} is ${now < c.hushedUntil ? 'hushed' : 'resting'}.`, 2.6, key); } return; }
+  if (now < c.refractoryUntil || now < c.hushedUntil) { if (byBeam) { sfx.fizzle(); say(`${key} is ${now < c.hushedUntil ? 'inhibited' : 'resting'}.`, 2.6, key); } return; }
   c.e = 0; c.i = 0; c.refractoryUntil = now + REFRACTORY_S; c.lastSpike = now; c.spikes++;
   if (c.gateNext !== null) c.gateNext = now + c.gatePeriod;
   const inhibitory = c.spec.type === 'I';
   flashes.push({p: c.spec.soma, at: now, life: 0.55, rgb: c.target ? [1, 0.85, 0.4] : inhibitory ? [0.85, 0.7, 1] : [0.8, 0.95, 1], size: c.target ? 22_000 : 16_000});
   arborWave(key, inhibitory);
   if (c.target) burstAt(c.spec.soma, [1, 0.85, 0.4]);
+  sparkleAt(c.spec.soma, c.target ? [1, 0.9, 0.5] : inhibitory ? [0.85, 0.7, 1] : [0.85, 0.97, 1], c.target ? 36 : 26, c.target ? 1.3 : 1);
   chipEls.get(key)?.classList.remove('nge-sig-chip--spike');
   void chipEls.get(key)?.offsetWidth;
   chipEls.get(key)?.classList.add('nge-sig-chip--spike');
@@ -2414,7 +2517,7 @@ function shoot(key: string) {
   const c = cells.get(key);
   if (!c || !c.shown) return;
   if (c.target) { sfx.shield(); say('Shielded. Signal it using partner cells.', 2.6, key); shake(key); return; }
-  if (hushMode && level.hushBlocked?.includes(key)) { sfx.shield(); say(`${key}’s shield blocks the Hush beam. Find another way.`, 2.6, key); shake(key); return; }
+  if (hushMode && level.hushBlocked?.includes(key)) { sfx.shield(); say(`${key}’s shield blocks the Inhibit beam. Find another way.`, 2.6, key); shake(key); return; }
   const cost = hushMode ? HUSH_COST : SPARK_COST;
   if (charges < cost) { sfx.fizzle(); say('Not enough charge.'); return; }
   charges -= cost; chargesUsed += cost;
@@ -2454,10 +2557,54 @@ function scan(key: string) {
   // the cell whole, every branch in colour, the others faded (Ames
   // 2026-11-11: "when I click here it should show the whole cell and fade others")
   scanLit = key;
-  for (const o of cells.values()) if (o.shown) paint(o, o.key !== key);
+  for (const o of cells.values()) if (o.shown) paint(o, o.key !== key, o.key !== key);
   refreshSkip();
+  gemsFor(key);
   if (view === 'cockpit') glideTo(c);
   if (there) fireScan();   // already hovering here: the beam again, at once
+}
+/* ── the synapses between a scanned cell and the target, as Pyr gems: a
+   local annotation layer with the Pyr point marker, as Highlight's start
+   marker is drawn (Ames 2026-11-11: "highlight the synapses between the cell
+   and target, use Pyr gem annotations") ── */
+const GEM_LAYER = 'Signal synapses';
+function gemLayer(): any { return (viewerNow()?.layerManager?.managedLayers ?? []).find((m: any) => m.name === GEM_LAYER && !m.archived); }
+function showGems(points: V3[], color: string) {
+  const v = viewerNow(), nm = nmPerUnit();
+  if (!v || !nm) return;
+  const pts = points.map(p => [p[0] / nm[0], p[1] / nm[1], p[2] / nm[2]]);
+  const managed = gemLayer();
+  if (!managed) {
+    try {
+      v.layerSpecification.add(makeLayer(v.layerSpecification, GEM_LAYER, {type: 'annotation', source: 'local://annotations', annotations: pts.map((q, i) => ({type: 'point', id: `syn-${i}`, point: q, description: 'A synapse between the cells'})), annotationColor: color, pointMarker: 'pyr', pointSize: 1.5, onTop: true}));
+    } catch (e) { console.warn('[signal] no gem layer:', e); }
+    return;
+  }
+  const src = managed.layer?.localAnnotations;
+  if (!src) return;
+  try { managed.layer.annotationDisplayState.color.restoreState(color); } catch { /* keeps its colour */ }
+  src.clear();
+  pts.forEach((q, i) => { try { src.add({id: `syn-${i}`, type: 0, point: Float32Array.from(q), properties: [], description: 'A synapse between the cells'}, true).dispose(); } catch { /* skipped */ } });
+}
+function clearGems(remove = false) {
+  const managed = gemLayer();
+  if (!managed) return;
+  if (remove) { try { viewerNow()?.layerManager?.removeManagedLayer(managed); } catch { /* stays */ } return; }
+  try { managed.layer?.localAnnotations?.clear(); } catch { /* stays */ }
+}
+/** The synapses between a cell and the level's targets, either way round. */
+function gemsFor(key: string) {
+  const c = cells.get(key);
+  if (!c) return;
+  const pts: V3[] = [];
+  for (const k of conns) {
+    const other = k.pre === key ? k.post : k.post === key ? k.pre : null;
+    if (!other) continue;
+    const oc = cells.get(other);
+    if (!oc?.shown || !(oc.target || c.target)) continue;
+    pts.push(...k.synapses);
+  }
+  if (pts.length) showGems(pts, '#ffc24a'); else clearGems();
 }
 /** The scan's fade undone: each cell as the tour or its hush would have it. */
 function unfadeScan() {
@@ -2524,6 +2671,22 @@ function toggleShow(what: ShowWhat | 'synapses') {
     const w = el.dataset.show;
     el.classList.toggle('on', w === 'synapses' ? showing.has('synIn') && showing.has('synOut') : showing.has(w as ShowWhat));
   }
+  if (scanKey && (what === 'synIn' || what === 'synOut' || what === 'synapses') && (showing.has('synIn') || showing.has('synOut'))) frameSynapses(scanKey);
+}
+/** The camera drawn back (or in) so every synapse the card lights fits the
+ *  view: the ones onto the cell, the ones it makes, or both. */
+function frameSynapses(key: string) {
+  const c = cells.get(key), nm = nmPerUnit(), cam = nm && cameraAxes(nm), pr = c && parts.get(c.spec.root);
+  if (!c || !nm || !cam || !pr) return;
+  const pts: number[][] = [...(showing.has('synIn') ? pr.syn.in : []), ...(showing.has('synOut') ? pr.syn.out : [])];
+  if (!pts.length) return;
+  const mid: V3 = [0, 0, 0];
+  for (const q of pts) { mid[0] += q[0] / pts.length; mid[1] += q[1] / pts.length; mid[2] += q[2] / pts.length; }
+  let ex = 0, ey = 0;
+  for (const q of pts) { const d = sub([q[0], q[1], q[2]], mid); ex = Math.max(ex, Math.abs(dot(d, cam.right))); ey = Math.max(ey, Math.abs(dot(d, cam.up))); }
+  const r = threeDPanel()?.element?.getBoundingClientRect?.(), aspect = r && r.height > 0 ? r.width / r.height : 1.6;
+  const frameNm = Math.max(120_000, 2.3 * ey, 2.3 * ex / aspect);
+  glideSlow(freeLook(mid, frameNm, cam), frameNm / Math.min(nm[0], nm[1], nm[2]), 1.4);
 }
 /** For a driver's job line: the sparks it needs on its own to spike its target. */
 function sparksLine(c: CellState): string {
@@ -2712,6 +2875,7 @@ function hideScan() {
   scanEl?.remove();
   scanEl = null; scanKey = null; scanPin = null; showing = new Set();
   if (scanLit) { scanLit = null; unfadeScan(); refreshSkip(); }
+  clearGems();
   clearCanopy();
 }
 /** The card each frame: docked at the top right of the view (Ames
@@ -2765,11 +2929,11 @@ function placeScan() {
 function idleStep(dt: number) {
   now += dt;
   for (const b of beams) {
-    if (b.applied || now < b.at + BEAM_S) continue;
+    if (b.applied || now < b.at + landS(b)) continue;
     b.applied = true;
     if (b.scan) showScan(b.cell);
   }
-  beams = beams.filter(b => now < b.at + BEAM_S + 0.25);
+  beams = beams.filter(b => now < b.at + landS(b) + 0.25);
   sparks = sparks.filter(s => now < s.end + 0.3);
   flashes = flashes.filter(f => now < f.at + f.life);
 }
@@ -2783,7 +2947,7 @@ function stepModel(dt: number) {
   for (const c of cells.values()) if (c.shown) { c.e *= kE; c.i *= kI; }
   // beams land
   for (const b of beams) {
-    if (b.applied || now < b.at + BEAM_S) continue;
+    if (b.applied || now < b.at + landS(b)) continue;
     b.applied = true;
     if (b.scan) { showScan(b.cell); continue; }
     const c = cells.get(b.cell)!;
@@ -2807,7 +2971,7 @@ function stepModel(dt: number) {
     if (now - lastMissCoach > 8) { lastMissCoach = now; coach('miss'); }
   }
   updateGoWait();
-  beams = beams.filter(b => now < b.at + BEAM_S + 0.25);
+  beams = beams.filter(b => now < b.at + landS(b) + 0.25);
   // spikes arrive
   const due = arrivals.filter(a => a.at <= now);
   arrivals = arrivals.filter(a => a.at > now);
@@ -2901,13 +3065,19 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   // sparks along the paths, with a trail
   for (const s of sparks) {
     const q = clamp((now - s.start) / (s.end - s.start), 0, 1);
-    const head = q * s.r.length;
+    const head = q * s.r.length, sc = s.scale ?? 1;
     const rgb: V3 = s.inhibitory ? [0.8, 0.55, 1] : [1, 0.95, 0.7];
+    const gone = now < s.end ? 1 : Math.max(0, 1 - (now - s.end) / 0.3);
     for (let j = 0; j < 10; j++) {
-      const d = head - j * 2200;
+      const d = head - j * 2200 * sc;
       if (d < 0) break;
-      const fade = Math.pow(1 - j / 10, 1.5) * (now < s.end ? 1 : Math.max(0, 1 - (now - s.end) / 0.3));
-      put(along(s.r, d), [rgb[0], rgb[1], rgb[2], 0.9 * fade], j === 0 ? 4200 : 2600 * (1 - j / 10) + 900);
+      const fade = Math.pow(1 - j / 10, 1.5) * gone;
+      put(along(s.r, d), [rgb[0], rgb[1], rgb[2], 0.9 * fade], (j === 0 ? 4200 : 2600 * (1 - j / 10) + 900) * sc);
+    }
+    if (sc > 1) {   // a large one wears a halo and a white-hot core, so it reads against a lit cell
+      const h = along(s.r, head);
+      put(h, [rgb[0], rgb[1], rgb[2], 0.3 * gone], 13_000 * sc);
+      put(h, [1, 1, 0.97, 0.95 * gone], 2600 * sc);
     }
   }
   // what the card's clicked row names, on the cell itself: its synapses with
@@ -2923,40 +3093,27 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     if (!pr) continue;
     const pts = pr.arbor[w.part], maxD = (w.part === 'axon' ? pr.axonMax : pr.dendMax) || 1;
     const q = clamp((tNow - w.start) / w.seconds, 0, 1);
-    const front = w.inward ? maxD * (1 - q) : maxD * q, band = Math.max(14_000, maxD * 0.07);
+    const front = w.inward ? maxD * (1 - q) : maxD * q, band = clamp(maxD * 0.05, 14_000, 70_000);
     for (const p of pts) {
       const gap = w.inward ? p[3] - front : front - p[3];
       if (gap < -band * 0.25 || gap > band) continue;
       const k = gap < 0 ? 1 + gap / (band * 0.25) : 1 - gap / band;
-      put([p[0], p[1], p[2]], [w.rgb[0], w.rgb[1], w.rgb[2], 0.9 * k], 2600 + 2200 * k);
-    }
-  }
-  // sweeps: a band of light down a cell, from the top of the view to the
-  // bottom, every branch lit as it passes
-  sweeps = sweeps.filter(w => tNow < w.start + w.seconds + 0.3);
-  for (const w of sweeps) {
-    const pr = parts.get(w.root);
-    if (!pr) continue;
-    const lists = [pr.arbor.axon, pr.arbor.dend];
-    if (w.lo === undefined || w.hi === undefined) {
-      let lo = Infinity, hi = -Infinity;
-      for (const pts of lists) for (const p of pts) { const u = p[0] * cam.up[0] + p[1] * cam.up[1] + p[2] * cam.up[2]; if (u < lo) lo = u; if (u > hi) hi = u; }
-      w.lo = lo; w.hi = hi;
-    }
-    const span = w.hi - w.lo, band = Math.max(15_000, span * 0.12);
-    const q = clamp((tNow - w.start) / w.seconds, 0, 1);
-    const front = w.hi - (span + band) * q;
-    for (const pts of lists) for (const p of pts) {
-      const gap = p[0] * cam.up[0] + p[1] * cam.up[1] + p[2] * cam.up[2] - front;
-      if (gap < -band * 0.2 || gap > band) continue;
-      const k = gap < 0 ? 1 + gap / (band * 0.2) : 1 - gap / band;
-      put([p[0], p[1], p[2]], [w.rgb[0], w.rgb[1], w.rgb[2], 0.85 * k], 2400 + 2600 * k);
+      put([p[0], p[1], p[2]], [w.rgb[0], w.rgb[1], w.rgb[2], 0.75 * k], 2600 + 2200 * k);
     }
   }
   // a target's burst: sparks out from the cell body, a ring widening, the body lit
   bursts = bursts.filter(b => tNow < b.at + b.life);
   for (const b of bursts) {
-    const age = tNow - b.at, q = age / b.life;
+    const age = tNow - b.at, q = age / b.life, sc = b.scale ?? 1;
+    if (b.sparkle) {
+      // particles flying out and slowing, each twinkling at its own beat, the body lit
+      b.dirs.forEach((d, i) => {
+        const tw = 0.55 + 0.45 * Math.sin(tNow * 23 + i * 1.7);
+        put(add(b.p, mul(d, 24_000 * sc * age * (1.5 - q))), [b.rgb[0], b.rgb[1], b.rgb[2], 0.95 * (1 - q) * tw], (1500 + 1500 * tw) * sc * (1 - q * 0.6));
+      });
+      put(b.p, [1, 0.98, 0.9, 0.45 * (1 - q)], 12_000 * sc * (1 - q * 0.5));
+      continue;
+    }
     for (const d of b.dirs) put(add(b.p, mul(d, 30_000 * age * (1.4 - q))), [b.rgb[0], b.rgb[1], b.rgb[2], 0.9 * (1 - q)], 3400 * (1 - q) + 800);
     const R = 8000 + 40_000 * q;
     for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; put(add(b.p, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R))), [b.rgb[0], b.rgb[1], b.rgb[2], 0.6 * (1 - q)], 2600); }
@@ -2981,7 +3138,7 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
       // the whole axon, faint, and a wave running out from the soma down every branch, over and over
       const pts = pr.arbor.axon, maxD = pr.axonMax || 1;
       for (let j = 0; j < pts.length; j += 5) put([pts[j][0], pts[j][1], pts[j][2]], [0.6, 0.95, 1, 0.14], 2000);
-      const front = (t * 1_500_000) % (maxD * 1.3), band = Math.max(15_000, maxD * 0.05);
+      const front = (t * SPEED_UM_S * 1000) % (maxD * 1.3), band = clamp(maxD * 0.04, 15_000, 60_000);   // at the conduction speed (Ames 2026-11-11: "pulsing VERY quickly")
       for (const p of pts) { const gap = front - p[3]; if (gap < 0 || gap > band) continue; const k2 = 1 - gap / band; put([p[0], p[1], p[2]], [1, 1, 1, 0.9 * k2], 2600 + 2000 * k2); }
     }
     for (const k of conns) {
@@ -3028,10 +3185,35 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   }
   // the beams: a line of light from the ship's nose, its head racing to the cell
   for (const b of beams) {
-    const q = clamp((now - b.at) / BEAM_S, 0, 1);
-    const after = Math.max(0, now - b.at - BEAM_S);
+    const q = clamp((now - b.at) / landS(b), 0, 1);
+    const after = Math.max(0, now - b.at - landS(b));
     const fade = Math.max(0, 1 - after / 0.25);
     const rgb: V3 = b.scan ? [0.6, 0.95, 1] : b.hush ? [0.7, 0.45, 1] : [1, 0.82, 0.35];
+    if (!b.hush && !b.scan) {
+      // a spark: no bullet; the cell lights up over the beam's time, in its
+      // own colour with a white-hot core, and then sends its spike
+      const c = cells.get(b.cell), col: V3 = c ? [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255] : rgb;
+      const swell = q * q;
+      put(b.to, [col[0], col[1], col[2], 0.45 * swell * fade], 34_000 * (0.4 + 0.6 * swell));
+      put(b.to, [1, 0.97, 0.85, 0.9 * swell * fade], 7000 + 15_000 * swell);
+      continue;
+    }
+    if (b.hush) {
+      // the Hush: a slow, wide violet ribbon from the ship's nose, wavering
+      // as it goes, its soft head settling over the cell
+      const tt = performance.now() / 1000, N2 = 40;
+      for (let k = 0; k <= N2; k++) {
+        const u = k / N2;
+        if (u > q + 0.01) break;
+        const sway = Math.sin(u * 9 - tt * 6) * 2600 * (1 - u * 0.5), lift = Math.cos(u * 7 + tt * 4) * 1800;
+        const pp = add(add(mix(b.from, b.to, u), mul(cam.right, sway)), mul(cam.up, lift));
+        const nearHead = Math.exp(-Math.pow((q - u) * 6, 2));
+        put(pp, [0.62, 0.42, 1, (0.1 + 0.35 * nearHead) * fade], 3200 + 5000 * nearHead);
+      }
+      put(mix(b.from, b.to, q), [0.75, 0.55, 1, 0.5 * fade], 16_000 + 10_000 * q);
+      if (q >= 1) put(b.to, [0.7, 0.5, 1, 0.7 * fade], 26_000);
+      continue;
+    }
     const N = 48;
     for (let k = 0; k <= N; k++) {
       const u = k / N;
@@ -3072,6 +3254,7 @@ function frameBody(ts: number) {
     placeShip(cam, dt);
     stepGlide(dt);
     stepOrbit(dt, cam);
+    stepReveals();
     writeGlow(cam);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   }
@@ -3195,7 +3378,7 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') { e.stopPropagation(); stopSignalController(); return; }
   if (phase !== 'playing') return;
   if (e.key === 'Tab' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setHushMode(!hushMode); return; }
-  if (e.key === 'h' || e.key === 'H') { e.preventDefault(); e.stopPropagation(); if (level.hush) setHushMode(true); return; }
+  if (e.key === 'h' || e.key === 'H' || e.key === 'i' || e.key === 'I') { e.preventDefault(); e.stopPropagation(); if (level.hush) setHushMode(true); return; }
   if (e.key === 's' || e.key === 'S') { e.preventDefault(); e.stopPropagation(); setHushMode(false); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= 9) {
@@ -3265,7 +3448,7 @@ function beginPlay() {
   // On a phone the HUD's height changes with its content: the frame is set
   // again for the sheet the level is played with.
   if (phone()) needsFrame = true;
-  setCoachText(level.hush ? 'Your beams: Spark fires a cell, Hush quiets one. S and H pick one, Tab switches. Each shot costs a charge. Click a cell here, or in the view.'
+  setCoachText(level.hush ? 'Your beams: Spark fires a cell, Inhibit quiets one. S and I pick one, Tab switches. Each shot costs a charge. Click a cell here, or in the view.'
     : 'Spark is your beam: it fires the cell you click, here or in the view. Each shot costs a charge.', 'begin');
   startMusic();
   updateHud();
@@ -3357,7 +3540,7 @@ export function stopSignalController() {
   setNgeProps([], GROUP);
   hideCanopy();
   editorEl?.remove(); editorEl = null;
-  litWhole = new Set(); scanLit = null; sweeps = []; roll = null; flying = false;
+  litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flying = false;
   demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
   glide = null; cockpitNose = null;
