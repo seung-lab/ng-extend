@@ -32,6 +32,7 @@ interface Person {
   edits_30d: number; cells: number; cells_30d: number; chats: number; chats_30d: number;
   help_asked: number; help_answered_for: number; help_asked_30d: number; help_given: number; help_given_30d: number;
   is_admin?: boolean;
+  invited_at?: string | null; invited_for?: string | null; invited_role?: string | null; invited_as?: string | null;
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
 interface RecentEdit { at: string; dataset: string | null; operation: string | null; success: boolean | null }
@@ -43,7 +44,7 @@ interface Note { id: string; text: string; by: string; at: string }
 type Stage = 'asked' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as';
 const people = ref<Person[]>([]);
 const marks = ref<Record<string, { mark: string; at: string }>>({});
 const dsRows = ref<DatasetRequestRow[]>([]);
@@ -62,6 +63,10 @@ const actionError = ref('');
 const noteDraft = ref('');
 const dsNote = ref('');
 const emailed = ref<Record<string, string>>({});
+// Asking for their EyeWire name by email (Ames 2026-11-12): who was asked,
+// and the draft open in the panel (shown first, Edit to change it).
+const asked = ref<Record<string, { at: string; by: string }>>({});
+const ask = ref<{ email: string; subject: string; text: string; editing: boolean } | null>(null);
 const testTries = ref<TestTry[]>([]);
 /** CAVE edit access by email, from the Users sheet (refreshed hourly). */
 const canEdit = ref<Record<string, string> | null>(null);
@@ -98,6 +103,7 @@ async function load() {
     show(read('People', everyone, [] as Person[]), v => { people.value = v; }),
     show(read('Beta lists', async () => (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}, {} as Record<string, { mark: string; at: string }>), v => { marks.value = v; }),
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
+    show(read('Asked by email', async () => (await secureWrite<Record<string, { at: string; by: string }>>('access.askSent')) || {}, {} as Record<string, { at: string; by: string }>), v => { asked.value = v; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
     show(read('Community', () => table<Activity>('access_hub_activity', 'dataset,edits,editors,cells,finishers,chats,chatters', 200), [] as Activity[]), v => { activity.value = v; }),
     show(read('Dataset access', () => readCanEdit(), null as Record<string, string> | null), v => { canEdit.value = v; }),
@@ -345,6 +351,16 @@ function span(t: number): string {
   if (m < 60 * 36) return `${Math.round(m / 60)} hours`;
   return `${Math.round(m / 1440)} days`;
 }
+// We invited them by email (access_invites, Ames 2026-11-12): the envelope
+// on the card, and this line on hover and in the panel.
+const CAMPAIGN: Record<string, string> = { mec_talk: 'the MEC talk email' };
+function invitedLine(p: Person | null | undefined): string {
+  if (!p?.invited_at) return '';
+  const what = CAMPAIGN[p.invited_for || ''] || 'an invite email';
+  const role = p.invited_role ? ` as an EyeWire ${p.invited_role}` : '';
+  const to = p.invited_as && p.invited_as !== p.email ? ` at ${p.invited_as}` : '';
+  return `We invited them by email${role}: ${what}, ${day(p.invited_at)}${to}.`;
+}
 const day = (iso: string | null) => { if (!iso) return ''; try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }); } catch { return ''; } };
 const dsName = (seg: string | null) => datasetDisplayName(seg);
 const noteCount = (c: Card) => (notes.value[c.key] || []).length;
@@ -418,6 +434,19 @@ const letIn = (c: Card) => run('letin', async () => {
 const markBeta = (c: Card, mark: 'listed' | 'removed' | 'waiting') => run(mark, async () => {
   marks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: c.p!.email, mark })) || {};
 });
+const openAsk = (c: Card) => run('askdraft', async () => {
+  const d = await secureWrite<{ subject: string; text: string }>('access.askDraft', { email: c.p!.email, name: nameOf(c) });
+  ask.value = { email: c.p!.email, subject: d?.subject || '', text: d?.text || '', editing: false };
+});
+const sendAsk = (c: Card) => run('ask', async () => {
+  const a = ask.value; if (!a || a.email !== c.p!.email) return;
+  const r = await secureWrite<{ sent: boolean; reason?: string; at?: string }>('access.askEmail',
+    { email: a.email, name: nameOf(c), subject: a.subject, text: a.text, again: !!asked.value[a.email] });
+  if (!r?.sent) throw new Error(r?.reason === 'not set up' ? 'Email is not set up.' : 'Already asked. Reload the page to see when.');
+  asked.value = { ...asked.value, [a.email]: { at: r.at || new Date().toISOString(), by: '' } };
+  ask.value = null;
+});
+const askOpen = computed(() => !!ask.value && !!open.value?.p && ask.value.email === open.value.p.email);
 const decide = (c: Card, mark: 'granted' | 'declined', byHand = false) => run(mark, async () => {
   dsRows.value = await decideDatasetRequest(c.ds!.id, mark, dsNote.value, byHand); dsNote.value = '';
 });
@@ -536,7 +565,7 @@ const opName = (e: RecentEdit) => {
           <div class="ah-col-list">
             <button v-for="c in columnCards(col.stage)" :key="col.stage + c.key" type="button" class="ah-card"
                     :class="{ 'ah-card--open': openKey === c.key }" @click="pick(c)">
-              <span class="ah-card-name">{{ nameOf(c) }}</span>
+              <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span>
               <span class="ah-card-email">{{ emailOf(c) || 'no email' }}</span>
               <span class="ah-card-line">
                 <template v-if="col.stage === 'editing'">{{ c.p?.edits.toLocaleString() }} edit{{ c.p?.edits === 1 ? '' : 's' }}<template v-if="c.p?.last_dataset">, {{ dsName(c.p.last_dataset) }}</template>, last {{ ago(c.p?.last_edit_at ?? null) }} ago</template>
@@ -546,6 +575,7 @@ const opName = (e: RecentEdit) => {
               <span class="ah-card-tags">
                 <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
                 <span v-if="c.p?.ew_name" class="ah-tag">{{ ewShort(c.p) }}</span>
+                <span v-if="c.p && asked[c.p.email] && (col.stage === 'asked' || col.stage === 'later')" class="ah-tag">Asked by email {{ day(asked[c.p.email].at) }}</span>
                 <span v-if="dupesOf(c).length" class="ah-tag ah-tag--dupe">Maybe the same as {{ dupesOf(c)[0].name || dupesOf(c)[0].email }}</span>
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
@@ -598,6 +628,7 @@ const opName = (e: RecentEdit) => {
         <button class="ah-close" type="button" aria-label="Close" @click="openKey = ''">×</button>
         <h2>{{ nameOf(open) }}</h2>
         <div class="ah-panel-email">{{ emailOf(open) }}</div>
+        <div v-if="open.p?.invited_at" class="ah-panel-meta ah-panel-invited">{{ invitedLine(open.p) }}</div>
         <div v-if="open.p?.gave_email && open.p.gave_email !== open.p.email" class="ah-panel-meta">Gave {{ open.p.gave_email }} on the form</div>
         <div v-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
         <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, said rank {{ open.p.ew_rank }}</template></div>
@@ -627,6 +658,26 @@ const opName = (e: RecentEdit) => {
           <button v-if="open.stage !== 'asked'" class="ah-btn" type="button" :disabled="!!busy" @click="markBeta(open, 'waiting')">Back to Asked</button>
         </div>
         <div v-if="open.stage === 'later'" class="ah-panel-meta">Later since {{ day(open.since) }}</div>
+        <div v-if="(open.stage === 'asked' || open.stage === 'later') && open.p?.email && (!open.p.ew_name || asked[open.p.email])" class="ah-ask">
+          <div v-if="asked[open.p.email]" class="ah-panel-meta">Asked for their EyeWire name by email {{ day(asked[open.p.email].at) }}</div>
+          <button v-if="!askOpen" class="ah-btn" type="button" :disabled="!!busy" @click="openAsk(open)">{{ busy === 'askdraft' ? 'Opening…' : asked[open.p.email] ? 'Ask again by email' : 'Ask for their EyeWire name' }}</button>
+          <div v-else-if="ask" class="ah-ask-draft" aria-label="Email to send">
+            <div class="ah-panel-meta">To {{ ask.email }}, from Amy at Pyr. Replies go to support.</div>
+            <template v-if="ask.editing">
+              <input v-model="ask.subject" class="ah-ask-subject" maxlength="150" aria-label="Subject">
+              <textarea v-model="ask.text" class="ah-ask-text" rows="10" maxlength="4000" aria-label="Email"></textarea>
+            </template>
+            <template v-else>
+              <div class="ah-ask-subject ah-ask-subject--read">{{ ask.subject }}</div>
+              <div class="ah-ask-text ah-ask-text--read">{{ ask.text }}</div>
+            </template>
+            <div class="ah-actions">
+              <button class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="sendAsk(open)">{{ busy === 'ask' ? 'Sending…' : 'Send' }}</button>
+              <button class="ah-btn" type="button" :disabled="!!busy" @click="ask.editing = !ask.editing">{{ ask.editing ? 'Done editing' : 'Edit' }}</button>
+              <button class="ah-btn" type="button" :disabled="!!busy" @click="ask = null">Cancel</button>
+            </div>
+          </div>
+        </div>
         <div v-if="open.p && emailed[open.p.email]" class="ah-panel-meta">{{ emailed[open.p.email] }}</div>
 
         <div v-if="open.ds" class="ah-ds">
@@ -702,7 +753,7 @@ const opName = (e: RecentEdit) => {
     </button>
     <div v-if="showAdmins" class="ah-admins">
       <button v-for="c in adminCards" :key="'a' + c.key" type="button" class="ah-card" @click="pick(c)">
-        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">Admin<template v-if="c.p?.edits">, {{ c.p.edits.toLocaleString() }} edit{{ c.p.edits === 1 ? '' : 's' }}</template></span>
       </button>
     </div>
@@ -711,7 +762,7 @@ const opName = (e: RecentEdit) => {
     </button>
     <div v-if="showLater" class="ah-removed ah-later">
       <button v-for="c in laterCards" :key="'l' + c.key" type="button" class="ah-card" @click="pick(c)">
-        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">Asked {{ day(c.p?.asked_at ?? null) }}<template v-if="c.p?.ew_name"> · {{ ewShort(c.p) }}</template></span>
       </button>
     </div>
@@ -720,7 +771,7 @@ const opName = (e: RecentEdit) => {
     </button>
     <div v-if="showRemoved" class="ah-removed">
       <button v-for="c in removedCards" :key="'r' + c.key" type="button" class="ah-card" @click="pick(c)">
-        <span class="ah-card-name">{{ nameOf(c) }}</span><span class="ah-card-email">{{ emailOf(c) }}</span>
+        <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span><span class="ah-card-email">{{ emailOf(c) }}</span>
         <span class="ah-card-line">{{ c.p?.pilot_enabled === false ? 'Access paused' : 'Request removed' }} {{ day(c.since) }}</span>
       </button>
     </div>
@@ -826,6 +877,8 @@ const opName = (e: RecentEdit) => {
 .ah-card:hover { border-color: rgba(150,190,255,.6); }
 .ah-card--open { border-color: #9fd3ff; background: rgba(36,58,100,.95); }
 .ah-card-name { font-weight: 700; color: #f2f7ff; overflow-wrap: anywhere; }
+.ah-invited { display: inline-block; vertical-align: -2px; margin-left: 6px; color: #7fc4ff; }
+.ah-panel-invited { color: #9fd3ff; }
 .ah-card-email { font-size: 12px; color: #a9c4e6; overflow-wrap: anywhere; }
 .ah-card-line { font-size: 12px; color: #8ea3c2; }
 .ah-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
@@ -853,6 +906,11 @@ const opName = (e: RecentEdit) => {
 .ah-panel blockquote { margin: 8px 0; padding: 6px 10px; border-left: 3px solid rgba(120,170,255,.5); color: #d5e3f7; white-space: pre-wrap; }
 .ah-close { position: absolute; right: 10px; top: 8px; background: none; border: none; color: #a9c4e6; font-size: 22px; cursor: pointer; }
 .ah-panel { position: sticky; }
+.ah-ask { margin: 8px 0 4px; }
+.ah-ask-draft { border: 1px solid rgba(127,196,255,.3); border-radius: 8px; padding: 8px 10px; margin-top: 6px; background: rgba(55,138,221,.08); }
+.ah-ask-subject { display: block; width: 100%; box-sizing: border-box; font-weight: 700; margin: 6px 0; }
+.ah-ask-text { display: block; width: 100%; box-sizing: border-box; white-space: pre-wrap; font: inherit; line-height: 1.45; }
+input.ah-ask-subject, textarea.ah-ask-text { background: #0d1626; color: #e8f1ff; border: 1px solid rgba(127,196,255,.35); border-radius: 6px; padding: 6px 8px; font-weight: 400; }
 .ah-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .ah-ds { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(120,160,230,.2); }
 .ah-input { width: 100%; box-sizing: border-box; margin: 6px 0; padding: 7px 9px; border-radius: 7px; border: 1px solid rgba(120,160,230,.35); background: rgba(10,16,30,.9); color: #eef4ff; font: inherit; resize: vertical; }

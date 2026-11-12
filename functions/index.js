@@ -2317,7 +2317,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-09-celia-tagged-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-12-news-optin-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2408,6 +2408,23 @@ const welcomeSentStore = {
   },
   set: async (email, v) => {
     await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+};
+// Who was asked for their EyeWire name (access-request.js askEmail), from the
+// Access page. One document per address.
+const askSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+  all: async () => {
+    const snap = await db.collection("beta_ask_emails").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { at: v.at, by: v.by || "" }; });
+    return out;
   },
 };
 const betaMarkStore = {
@@ -2507,6 +2524,7 @@ exports.ewAccessRequest = onRequest(
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
         wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
+        askSent: askSentStore,
         sendEmail: async (msg) => {
           try {
             const r = await fetch("https://api.resend.com/emails", {
@@ -2885,15 +2903,15 @@ exports.ewSymposiumRsvp = onRequest(
   if(req.method!=="POST") return res.status(405).json({error:"POST only"});
   if(Buffer.byteLength(JSON.stringify(req.body||{}))>8000) return res.status(413).json({error:"That is too long. Please shorten your question."});
   try {
-   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
+   const {planRsvp,SYMPOSIUM_SHEET_ID,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
    const plan=planRsvp(req.body||{});
    if(!(await rateLimit(req,false,"visitor:rsvp")).ok) throw ewErr(429,"Please wait a little while, then try again.");
-   const ref=db.collection("symposium_rsvps").doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
+   const ref=db.collection(plan.collection).doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
    const before=await ref.get();
    if(before.exists) plan.row[NOTE_COLUMN]="Sent again (latest answers)";
    await ref.set({name:plan.row[1],email:plan.email,username:plan.row[3],question:plan.row[4],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
    try {
-    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent("'"+plan.tab+"'!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
       {method:"POST",body:JSON.stringify({values:[plan.row]})});
     await ref.update({sheet:true});
    } catch(e) {

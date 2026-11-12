@@ -29,7 +29,7 @@ const base = { user_id: null, name: null, username: null, request_id: null, aske
 const UID = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PEOPLE = [
   // Asked 9 days ago, from the site, with an EyeWire name: late.
-  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.' },
+  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.', invited_at: '2026-11-09T21:05:00Z', invited_for: 'mec_talk', invited_role: 'Scout', invited_as: 'kmierow@old.example' },
   // One person, two emails: asked from the site with an EyeWire name, and
   // asked in Pyr, signed in, with an email starting with that EyeWire name.
   { ...base, email: 'dom.a@hotmail.example', name: 'Dominic Aitken', request_id: UID(5), asked_at: ago(0.2), from_site: true, ew_name: 'domaitk' },
@@ -103,6 +103,13 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
+      if (a === 'access.askSent') return r.fulfill(ok({}));
+      if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
+
+Could you reply with your EyeWire username?
+
+Amy Sterling and the Pyr Team at Princeton` }));
+      if (a === 'access.askEmail') return r.fulfill(ok({ sent: true, at: new Date().toISOString() }));
       if (a === 'canEdit') return r.fulfill(ok({ 'nik@example.org': 'MEC, Retina', 'jo@example.org': 'MEC', 'lou@example.org': 'FlyWire public', 'boss@example.org': 'Retina' }));
       if (a === 'usersSheet') return r.fulfill(ok({ people: 14, url: 'https://docs.google.com/spreadsheets/d/x/edit' }));
       return r.fulfill(ok({}));
@@ -218,6 +225,9 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     await page.click('.ah-card:has-text("Ken Mierow")');
     await page.waitForSelector('.ah-panel');
     const panel = await page.textContent('.ah-panel');
+    const env = await page.$$eval('.ah-card', els => els.filter(e => e.querySelector('.ah-invited')).map(e => [e.querySelector('.ah-card-name').textContent.trim(), e.querySelector('.ah-invited').getAttribute('title')]));
+    check('the envelope marks only the person we invited by email', env.length === 1 && env[0][0] === 'Ken Mierow' && /invited them by email as an EyeWire Scout: the MEC talk email, Nov 9 at kmierow@old\.example/.test(env[0][1]), env);
+    check('the panel says we invited them', /We invited them by email as an EyeWire Scout/.test(panel), panel.slice(0, 300));
     check('the panel shows the request', /Ken Mierow/.test(panel) && /ken@example\.org/.test(panel) && /rank Guardian/.test(panel) && /I traced for years/.test(panel), panel.slice(0, 200));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
     check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined 2014/.test(ew), ew);
@@ -251,6 +261,21 @@ const STATS = [{ tutorial: 2, step: 26, last_box: 'Your mission: a collaborator 
     // Inezh signed in but never played: no rows of zeros.
     const inezh = await page.textContent('.ah-panel').catch(() => '');
     check('signed in, nothing played: one line, no zero stats', /Signed in to Pyr, nothing played yet/.test(inezh) && !/All time/.test(inezh) && !/Not signed in/.test(inezh), inezh.slice(0, 300));
+    // No EyeWire name: ask for it by email, read the draft, edit, send (Ames 2026-11-12).
+    await page.click('.ah-panel button:has-text("Ask for their EyeWire name")');
+    await page.waitForSelector('.ah-ask-draft', { timeout: 3000 }).catch(() => {});
+    const draft = await page.textContent('.ah-ask-draft').catch(() => '');
+    check('the draft shows before sending, to them, from Amy at Pyr', /To domaitk358@example\.org, from Amy at Pyr/.test(draft) && /Hi Inezh,/.test(draft) && /EyeWire username/.test(draft), draft.slice(0, 200));
+    await page.screenshot({ path: path.join(OUT, 'access-hub-ask.png') });
+    await page.click('.ah-ask-draft button:has-text("Edit")');
+    await page.fill('.ah-ask-draft textarea', 'Hi Inezh, edited by us.');
+    await page.click('.ah-ask-draft button:has-text("Send")');
+    await page.waitForTimeout(500);
+    const askCall = calls.find(c => c.action === 'access.askEmail');
+    check('Send sends the edited email', askCall && askCall.args.email === 'domaitk358@example.org' && askCall.args.text === 'Hi Inezh, edited by us.' && askCall.args.subject === 'Your Pyr beta request' && askCall.args.again === false, askCall);
+    const afterAsk = await page.textContent('.ah-panel').catch(() => '');
+    b = await board();
+    check('the panel and card say they were asked', /Asked for their EyeWire name by email/.test(afterAsk) && /Asked by email/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text), afterAsk.slice(0, 300));
     // Later takes them off the Asked list.
     await page.click('.ah-panel button:has-text("Later")');
     await page.waitForTimeout(400);
