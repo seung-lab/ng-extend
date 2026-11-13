@@ -936,10 +936,15 @@ function startOf(ann: any): number[] | null {
  * it was placed on is an ancestor of the cell. After a split that can also
  * count a mark on the other half, which is why the player is asked.
  */
-export async function marksNowOn(roots: string[], stillShown: string[] = []): Promise<TrackedMark[]> {
+export async function marksNowOn(roots: string[], stillShown: string[] = [], addedAt = 0): Promise<TrackedMark[]> {
   const want = new Set(roots.map(String));
   const items: (TrackedMark & { at: number[] | null; cell: string; piece?: string })[] = [];
+  // A segment the player added after a mark was made is not what the mark was
+  // made on, even when the mark sits inside it: a test add, removed again,
+  // does not take the marks around it (Nseraf, report 517).
+  const madeBefore = (t: number) => addedAt > 0 && t < addedAt;
   for (const m of listHighlights()) {
+    if (madeBefore(parseInt(m.mark.slice(ID_PREFIX.length), 36) || 0)) continue;
     const src = managedLayer(m.style.layer)?.layer?.localAnnotations;
     let at: number[] | null = null;
     for (const ann of src ?? []) if (String(ann.id).startsWith(m.mark + '_')) { at = startOf(ann); break; }
@@ -948,7 +953,7 @@ export async function marksNowOn(roots: string[], stillShown: string[] = []): Pr
   for (const { src, style } of highlightLayers()) {
     if (!style.lab) continue;
     for (const ann of src) {
-      if (!String(ann.id).startsWith(ID_PREFIX)) items.push({ label: style.label, style, ids: [String(ann.id)], at: startOf(ann), cell: '' });
+      if (!String(ann.id).startsWith(ID_PREFIX) && !madeBefore(handPointAt.get(String(ann.id)) ?? 0)) items.push({ label: style.label, style, ids: [String(ann.id)], at: startOf(ann), cell: '' });
     }
   }
   for (let i = 0; i < items.length; i += 8) {

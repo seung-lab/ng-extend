@@ -320,7 +320,7 @@ function buildActions(): PaletteItem[] {
     action: () => document.dispatchEvent(new CustomEvent('nge:toolbar-action', { detail: { id } })),
   });
   toolbarItem('findPath', 'Find Path', 'Draw the route through a cell between two points', '🛤️', ['find path', 'path', 'route', 'trace'], 'F');
-  toolbarItem('highlight', 'Highlight Mode', 'Mark the parts of a cell you have checked', '🖍️', ['highlight', 'checked', 'mark', 'paint'], 'Shift+H');
+  toolbarItem('highlight', 'Highlight Mode', 'Mark the parts of a cell you have checked', '🖍️', ['highlight', 'checked', 'mark', 'paint'], 'H');
   toolbarItem('lantern', 'Lantern', 'Light the cell around where you are and dim the rest', '🏮', ['lantern', 'light', 'dim', 'focus'], 'Shift+N');
   toolbarItem('undelete', 'Undelete', 'Bring back a cell you removed from view', '↩️', ['undelete', 'undo', 'restore', 'bring back'], 'Ctrl+Z');
   toolbarItem('batch', 'Batch Processor', 'Work on many cells at once', '📦', ['batch', 'many cells', 'bulk']);
@@ -484,7 +484,8 @@ function buildActions(): PaletteItem[] {
         icon: '⌨️',
         shortcut: row.keys.length === 2 ? row.keys.join(' or ') : row.keys.join(' '),
         aliases: ['key', 'keys', 'shortcut', row.group.toLowerCase(), ...row.keys.map(k => k.toLowerCase())],
-        action: runs ? runs.action : () => { close(); pressKey(row.strokes[0], row.where); },
+        // A mouse or touch control is only read: there is no key to press.
+        action: row.mouse ? () => {} : runs ? runs.action : () => { close(); pressKey(row.strokes[0], row.where); },
       });
     }
   } catch (e) {

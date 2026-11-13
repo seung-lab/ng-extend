@@ -9,6 +9,7 @@ import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import nurroTrophy from '../../static/badges/pyr/nurro-trophy.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import { isBugReportClick } from '../util/bug_report_click';
 
 const {prefs} = storeToRefs(useUserPreferencesStore());
 const backendStore = useProofreadingBackendStore();
@@ -453,11 +454,13 @@ function userFlag(user: DemoUser): string {
 
 const emit = defineEmits({hide: null});
 /** Peek: the arrival greeting. No dim or blur, the site stays usable, and
- *  the first click anywhere else zips it away (Ames 2026-09-28). */
+ *  the first click anywhere else zips it away (Ames 2026-09-28). Except the
+ *  bug report: it stays open so a player can report a problem with it (#512). */
 const props = defineProps<{ peek?: boolean }>();
 function onPeekPointerDown(e: PointerEvent) {
   const panel = document.querySelector('#nge-lb-modal .nge-overlay');
-  if (panel && !panel.contains(e.target as Node)) void close();
+  if (!panel || panel.contains(e.target as Node) || isBugReportClick(e)) return;
+  void close();
 }
 function onPeekKey(e: KeyboardEvent) { if (e.key === 'Escape') void close(); }
 onMounted(() => {

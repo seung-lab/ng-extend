@@ -3695,7 +3695,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * with a numeric suffix if that's taken, so the prompt is usually one click.
    */
   async function suggestUsername(): Promise<string> {
-    const base = (userName.value || userEmail.value.split('@')[0] || 'user')
+    // Never a name made from the email: a sign-in with no name gets an empty
+    // box to fill in (#512).
+    const front = userEmail.value.split('@')[0];
+    if (!userName.value || userName.value === front) return '';
+    const base = userName.value
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')   // spaces and punctuation become separators
       .replace(/^_+|_+$/g, '')       // no leading/trailing separators
@@ -3716,9 +3720,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const invalid = validateUsername(n);
     if (invalid) throw new Error(invalid);
     if (!userId.value) throw new Error('Not signed in.');
+    // No name on the account (it shows the email's front, or an earlier
+    // username): the new username becomes the shown name too (#512).
+    const noName = userName.value === emailFront(userEmail.value) || (!!username.value && userName.value === username.value);
     const { error } = await supabase
       .from('users')
-      .update({ username: n, updated_at: new Date().toISOString() })
+      .update({ username: n, ...(noName ? { display_name: n } : {}), updated_at: new Date().toISOString() })
       .eq('id', userId.value);
     if (error) {
       // 23505 = unique violation, i.e. someone already has it.
@@ -3728,6 +3735,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       throw new Error(error.message);
     }
     username.value = n;
+    if (noName) userName.value = n;
   }
   const tasks = ref<ProofreadingTask[]>([]);
   const activeTaskId = ref<number | null>(null);
@@ -3739,6 +3747,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let feedSubscription: any = null;
 
   // ── User sync ─────────────────────────────────────────────────────────
+  /** What a sign-in with no name shows: the part of the email before the @. */
+  const emailFront = (email: string) => (email || '').split('@')[0];
   /** Upsert user from middleauth identity. Call after login. */
   async function syncUser(email: string, displayName: string) {
     userEmail.value = email;
@@ -3772,6 +3782,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // importing this store (it may not exist yet during a bootstrap failure).
         (window as any).__ngeUserId = existing.id;
         console.info('[backend] syncUser: found existing user', existing.id);
+        // An account with no name signs in as the front of its email. If the
+        // player has picked a username, that is their name on the leaderboard
+        // and everywhere else, not the email (#512, 2026-11-13).
+        if (existing.username && displayName === emailFront(email)) {
+          displayName = existing.username;
+          userName.value = displayName;
+        }
         // Update display name if changed
         await supabase
           .from('users')
@@ -6129,9 +6146,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
           // Only mark it when it was really posted: if chat was offline or the
           // server refused it, leave chat_posted_at null for a later try.
-          if (await chatStore.postAnnouncement(data.title, newNotifId)) {
-            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: new Date().toISOString() } })
-              .catch(() => { /* the cron's copy check is the fallback */ });
+          // Claimed BEFORE posting, as the catch-up below does: marking it
+          // only after the post let the catch-up (run by loadNotifications)
+          // post a second copy in between (Ames 2026-11-12: "Play" showed
+          // twice in chat, 0.7 s apart).
+          let claimed = false;
+          try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: newNotifId })).claimed; }
+          catch (e: any) { console.warn('[admin] claim chat announcement failed:', e?.message); }
+          if (claimed && !(await chatStore.postAnnouncement(data.title, newNotifId))) {
+            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: null } }).catch(() => {});
           }
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }

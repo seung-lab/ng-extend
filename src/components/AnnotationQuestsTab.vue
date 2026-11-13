@@ -342,7 +342,7 @@ async function saveNow(r: QuestRow) {
   if (!questOnScreen(r.segmentId)) { error.value = `${r.index || 'This cell'} is not on screen. Press Open first.`; return; }
   if (await saveQuestWork(r.segmentId)) message.value = `Your work on ${r.index || 'this cell'} is saved.`;
 }
-/** "Saved at 2:02 PM", or what is happening to it. */
+/** "Saved: 2:02 pm", or what is happening to it. */
 function savedLine(r: QuestRow): string {
   if (questWork.saving === r.segmentId) return 'Saving your work…';
   if (isActive(r) && questWork.error) return questWork.error;
@@ -350,7 +350,8 @@ function savedLine(r: QuestRow): string {
   if (at) {
     const d = new Date(at);
     const today = d.toDateString() === new Date().toDateString();
-    return 'Saved ' + (today ? 'at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'on ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' }));
+    // Shorter (Ames 2026-11-12): "Saved: 10:55 pm".
+    return 'Saved: ' + (today ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase() : d.toLocaleDateString([], { month: 'short', day: 'numeric' }));
   }
   return isActive(r) ? 'Not saved yet' : 'Yours to annotate';
 }
@@ -433,13 +434,17 @@ async function letGo(r: QuestRow) {
 const check = ref<{ busy: boolean; ok: boolean; message: string; other?: boolean }>({ busy: false, ok: false, message: '' });
 /** Crosshairs inside another segment are allowed with a reason in Notes
  *  (Jingkai_Li, report 415: the daughter centriole was in another segment,
- *  so the crosshairs on it never passed). Empty space still blocks. */
+ *  so the crosshairs on it never passed). Empty space still blocks (Ames
+ *  2026-11-12, as the Cilia Quest blog says: the crosshairs go inside the
+ *  cell; a basal body outside every segment gets the crosshairs in the cell
+ *  nearby and a note). */
 const explained = computed(() => !!check.value.other && !!form.value.notes.trim());
 const canSubmit = computed(() => check.value.ok || explained.value);
 async function runCheck(r: QuestRow) {
   check.value = { busy: true, ok: false, message: 'Checking the crosshairs…' };
   try {
     const at = await cellAtCrosshair();
+    if (!at.root && at.supervoxel === '0') { check.value = { busy: false, ok: false, message: 'The crosshairs are on empty space. Place them inside the cell. If what you marked is outside the cell, put the crosshairs in the cell nearby and say so in Notes.' }; return; }
     if (!at.root) { check.value = { busy: false, ok: false, message: at.problem || 'Could not check the crosshairs.' }; return; }
     if (at.root === r.segmentId) { check.value = { busy: false, ok: true, message: 'The crosshairs are inside this cell.' }; return; }
     const hit = await ancestorAmong(at.root, [r.segmentId]);
@@ -502,7 +507,6 @@ async function send(r: QuestRow, e?: Event) {
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
-const pointsLine = computed(() => `${points.value === 1 ? '1 annotation point' : points.value + ' annotation points'} in this view.`);
 const noPoints = computed(() => points.value === 0 && form.value.status.startsWith('Cilium annotated'));
 </script>
 
@@ -605,12 +609,13 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
+                <!-- Submit shows on the slim bar too (Kim_OZ 2026-11-12: players did not know the row opens it). -->
                 <!-- One "go to it" button, Open (Ames 2026-11-10: "why is there a jump and an open button?"),
                      then Skip (or Release), then Submit last, in green. -->
                 <button v-if="!(slim && isActive(r))" class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button v-if="play.on !== 'quests'" class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
                 <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy || skippingQuest" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
-                <button v-if="!slim" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
+                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
@@ -626,13 +631,14 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <button v-for="s in QUEST_SPLIT_MERGED" :key="s" class="nge-aq-pill" :class="{ 'nge-aq-pill--on': form.splitMerged === s }" @click="form.splitMerged = form.splitMerged === s ? '' : s">{{ s }}</button>
               </div>
               <div class="nge-aq-form-label">Notes</div>
-              <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <textarea v-model="form.notes" class="nge-aq-notes" rows="1" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
-                <span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
+                <span><span v-if="canSubmit && !check.busy" class="nge-aq-tick" aria-hidden="true">✓</span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
-              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">
-                <span>{{ pointsLine }} The share link is made from the view as it is now.</span>
+              <div class="nge-aq-form-msg nge-aq-form-facts" :class="{ 'nge-aq-form-msg--bad': noPoints }">
+                <span title="The share link is made from the view as it is when you submit">Share link: current view</span>
+                <span>Annotation points: {{ points }}</span>
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
@@ -713,13 +719,14 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <button v-for="s in QUEST_SPLIT_MERGED" :key="s" class="nge-aq-pill" :class="{ 'nge-aq-pill--on': form.splitMerged === s }" @click="form.splitMerged = form.splitMerged === s ? '' : s">{{ s }}</button>
               </div>
               <div class="nge-aq-form-label">Notes</div>
-              <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <textarea v-model="form.notes" class="nge-aq-notes" rows="1" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
-                <span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
+                <span><span v-if="canSubmit && !check.busy" class="nge-aq-tick" aria-hidden="true">✓</span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
-              <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">
-                <span>{{ pointsLine }} The share link is made from the view as it is now.</span>
+              <div class="nge-aq-form-msg nge-aq-form-facts" :class="{ 'nge-aq-form-msg--bad': noPoints }">
+                <span title="The share link is made from the view as it is when you submit">Share link: current view</span>
+                <span>Annotation points: {{ points }}</span>
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
@@ -806,7 +813,14 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 /* The slim bar is always the cell in hand: no green edge, and the Submit form
    runs the full width under it, past the fold arrow (Ames 2026-11-12). */
 .nge-aq--slim .nge-aq-row--active { box-shadow: none; background: transparent; }
-.nge-aq--slim .nge-aq-row--active:hover { background: rgba(124, 255, 178, 0.05); }
+/* Hover on the slim bar: a soft light that sweeps in from the left (Ames 2026-11-12). */
+.nge-aq--slim .nge-aq-row--clickable {
+  background-image: linear-gradient(90deg, rgba(124, 255, 178, 0.10), rgba(124, 255, 178, 0.03) 60%, rgba(124, 255, 178, 0) 100%);
+  background-repeat: no-repeat; background-size: 0% 100%; border-radius: 8px;
+  transition: background-size 0.45s ease-out;
+}
+.nge-aq--slim .nge-aq-row--clickable:hover { background-color: transparent; background-size: 100% 100%; }
+@media (prefers-reduced-motion: reduce) { .nge-aq--slim .nge-aq-row--clickable { transition: none; } }
 .nge-aq--slim .nge-aq-form { margin: 6px 0 4px -40px; }
 .nge-aq-row--clickable { cursor: pointer; }
 .nge-aq-active-pill { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font: 700 11px/18px 'Inter', 'Roboto', sans-serif; letter-spacing: 0.04em; color: #08140e; background: #7CFFB2; vertical-align: 2px; }
@@ -904,9 +918,10 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 }
 .nge-aq-pill:hover { background: rgba(68, 170, 255, 0.1); border-color: rgba(68, 170, 255, 0.4); }
 .nge-aq-pill--on { color: #fff; background: rgba(68, 170, 255, 0.2); border-color: #4af; box-shadow: 0 0 10px rgba(68, 170, 255, 0.3); }
+/* One line to start, smaller; the corner drags it taller (Ames 2026-11-12). */
 .nge-aq-notes {
-  resize: vertical; min-height: 2.6em; width: 100%; box-sizing: border-box;
-  font-family: inherit; font-size: 14px; color: #dde;
+  resize: vertical; min-height: 2em; width: 100%; box-sizing: border-box;
+  font-family: inherit; font-size: 13px; color: #dde;
   padding: 6px 8px; border-radius: 6px;
   background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(120, 140, 255, 0.2);
 }
@@ -914,6 +929,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-form-msg { font-size: 14px; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nge-aq-form-msg--bad { color: #f98; }
 .nge-aq-form-msg--ok { color: #6d9; }
+.nge-aq-tick { font-weight: 700; margin-right: 6px; }
+.nge-aq-form-facts { flex-direction: column; align-items: flex-start; gap: 2px; }
 .nge-aq-recheck {
   margin-left: auto; background: none;
   border: 1px solid rgba(160, 190, 220, 0.3); border-radius: 4px;

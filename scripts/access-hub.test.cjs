@@ -29,7 +29,7 @@ const base = { user_id: null, name: null, username: null, request_id: null, aske
 const UID = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PEOPLE = [
   // Asked 9 days ago, from the site, with an EyeWire name: late.
-  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.', invited_at: '2026-11-09T21:05:00Z', invited_for: 'mec_talk', invited_role: 'Scout', invited_as: 'kmierow@old.example' },
+  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.', invited_at: '2026-11-09T21:05:00Z', invited_for: 'mec_talk', invited_role: 'Scout', invited_as: 'kmierow@old.example', ew_email: 'kmierow@old.example' },
   // One person, two emails: asked from the site with an EyeWire name, and
   // asked in Pyr, signed in, with an email starting with that EyeWire name.
   { ...base, email: 'dom.a@hotmail.example', name: 'Dominic Aitken', request_id: UID(5), asked_at: ago(0.2), from_site: true, ew_name: 'domaitk' },
@@ -252,6 +252,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the envelope marks only the person we invited by email', env.length === 1 && env[0][0] === 'Ken Mierow' && /invited them by email as an EyeWire Scout: the MEC talk email, Nov 9 at kmierow@old\.example/.test(env[0][1]), env);
     check('the panel says we invited them', /We invited them by email as an EyeWire Scout/.test(panel), panel.slice(0, 300));
     check('the panel shows the request', /Ken Mierow/.test(panel) && /ken@example\.org/.test(panel) && /rank Guardian/.test(panel) && /I traced for years/.test(panel), panel.slice(0, 200));
+    check('the panel shows their EyeWire email (Ames 2026-11-12)', /EyeWire email kmierow@old\.example/.test(panel), panel.slice(0, 400));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
     check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined 2014/.test(ew), ew);
     await page.fill('.ah-panel textarea', 'Do we know him?');

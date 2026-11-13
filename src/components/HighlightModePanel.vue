@@ -165,6 +165,7 @@ async function setSlim(v: boolean) {
     const ghost = el ? snapshotPanel(el) : null;
     adding.value = false;
     slim.value = true;
+    pos.value = keptFor(true) ?? pos.value;
     await nextTick();
     clampPos();
     if (ghost && el) morphIntoSlim(ghost, el, Array.from(el.querySelectorAll('.nge-hl-slim > *')));
@@ -173,6 +174,7 @@ async function setSlim(v: boolean) {
   // Hidden until the beam draws it, so the full box never flashes in first.
   if (el && !reduce) el.style.clipPath = 'inset(0 0 100% 0)';
   slim.value = false;
+  pos.value = keptFor(false) ?? pos.value;
   await nextTick();
   clampPos();
   if (el) revealWithBeam(el);
@@ -188,10 +190,19 @@ const slimStep = computed(() => {
 });
 
 // ── Drag the box by its header; it remembers where it was put ─────────────
+// The slim strip and the full box each keep their own place (Nseraf, report
+// 515): opening the box pushed it up to fit the screen, and slimming it again
+// left the strip there. Fitting the screen moves what is shown, never the
+// place kept.
+type Pos = { x: number; y: number };
 const POS_KEY = 'nge_highlight_panel_pos';
-const pos = ref<{ x: number; y: number } | null>((() => {
-  try { const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); return p && isFinite(p.x) && isFinite(p.y) ? p : null; } catch { return null; }
-})());
+const POS_SLIM_KEY = 'nge_highlight_panel_pos_slim';
+const readPos = (key: string): Pos | null => {
+  try { const p = JSON.parse(localStorage.getItem(key) || 'null'); return p && isFinite(p.x) && isFinite(p.y) ? p : null; } catch { return null; }
+};
+const kept: { full: Pos | null; slim: Pos | null } = { full: readPos(POS_KEY), slim: readPos(POS_SLIM_KEY) };
+const keptFor = (isSlim: boolean) => (isSlim ? kept.slim ?? kept.full : kept.full ?? kept.slim);
+const pos = ref<Pos | null>(keptFor(slim.value));
 const dragging = ref(false);
 const posStyle = computed(() => (pos.value ? { left: pos.value.x + 'px', top: pos.value.y + 'px', bottom: 'auto' } : {}));
 function clampPos() {
@@ -214,7 +225,10 @@ function startDrag(e: MouseEvent) {
     dragging.value = false;
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
-    try { if (pos.value) localStorage.setItem(POS_KEY, JSON.stringify(pos.value)); } catch { /* private mode */ }
+    if (!pos.value) return;
+    const p = { ...pos.value };
+    if (slim.value) kept.slim = p; else kept.full = p;
+    try { localStorage.setItem(slim.value ? POS_SLIM_KEY : POS_KEY, JSON.stringify(p)); } catch { /* private mode */ }
   };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);

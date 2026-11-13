@@ -36,6 +36,8 @@ interface Person {
   is_team?: boolean;
   /** When an admin typed in their EyeWire username, if one did. */
   ew_name_set_at?: string | null;
+  /** The email on their EyeWire account, from their request (Ames 2026-11-12). */
+  ew_email?: string | null;
   invited_at?: string | null; invited_for?: string | null; invited_role?: string | null; invited_as?: string | null;
 }
 /** One of a player's 10 latest edits (access_hub_recent_edits). */
@@ -48,7 +50,7 @@ interface Note { id: string; text: string; by: string; at: string }
 type Stage = 'asked' | 'emailed' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
 interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
 
-const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as,ew_name_set_at';
+const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as,ew_name_set_at,ew_email';
 const people = ref<Person[]>([]);
 // The Princeton team who play without being Pyr admins (Ames 2026-11-12:
 // Ryan Morey, "team tag"). They sit with the admins and are not counted.
@@ -257,7 +259,7 @@ const nameOf = (c: Card) => c.p?.name || c.ds?.name || c.p?.username || 'No name
 const emailOf = (c: Card) => c.p?.email || c.ds?.email || '';
 const words = computed(() => search.value.toLowerCase().split(/\s+/).filter(Boolean));
 const matches = (c: Card) => !words.value.length || words.value.every(w =>
-  [nameOf(c), emailOf(c), c.p?.username, c.p?.ew_name, c.p?.gave_email, c.ds?.label].map(lc).join(' ').includes(w));
+  [nameOf(c), emailOf(c), c.p?.username, c.p?.ew_name, c.p?.gave_email, c.p?.ew_email, c.ds?.label].map(lc).join(' ').includes(w));
 // A search that finds one person opens them, with their stats (Ames
 // 2026-11-09: "shouldn't it show stats for user and recent activity?").
 const found = computed(() => (words.value.length ? cards.value.filter(matches) : []));
@@ -760,6 +762,7 @@ const opName = (e: RecentEdit) => {
         <div class="ah-panel-email">{{ emailOf(open) }}</div>
         <div v-if="open.p?.invited_at" class="ah-panel-meta ah-panel-invited">{{ invitedLine(open.p) }}</div>
         <div v-if="open.p?.gave_email && open.p.gave_email !== open.p.email" class="ah-panel-meta">Gave {{ open.p.gave_email }} on the form</div>
+        <div v-if="open.p?.ew_email" class="ah-panel-meta">EyeWire email {{ open.p.ew_email }}</div>
         <div v-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
         <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, said rank {{ open.p.ew_rank }}</template><template v-if="open.p?.ew_name_set_at">, added by hand</template>
           <button v-if="open.p?.ew_name && !open.p.is_admin && ewEdit !== open.key" type="button" class="ah-linkbtn ah-ewset-change" @click="startEwEdit(open)">Change</button></div>

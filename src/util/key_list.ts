@@ -22,8 +22,8 @@ import CUSTOM_KEYBINDS from '../../config/custom-keybinds.json';
 import { isMac } from './platform';
 import { UNDELETE_KEYS } from './undelete';
 
-export type KeyGroup = 'Moving around' | 'Editing' | 'Tools' | 'Panels';
-export const KEY_GROUPS: KeyGroup[] = ['Moving around', 'Editing', 'Tools', 'Panels'];
+export type KeyGroup = 'Moving around' | 'Editing' | 'Tools' | 'Panels' | 'Mouse' | 'Touch';
+export const KEY_GROUPS: KeyGroup[] = ['Moving around', 'Editing', 'Tools', 'Panels', 'Mouse', 'Touch'];
 
 export interface KeyEntry {
   id: string;
@@ -37,6 +37,8 @@ export interface KeyEntry {
   where?: string;
   /** A command to run when the row is clicked (CommandPalette ids). */
   runId?: string;
+  /** A mouse or touch control: listed to read, not pressed when clicked. */
+  mouse?: boolean;
 }
 
 /** A Pyr handler on the window or document. `keys` are neuroglancer style
@@ -59,7 +61,7 @@ export const PYR_KEYS: PyrKey[] = [
   { keys: ['mod+keyk'], label: 'Ask Nurro, or search for a command', group: 'Panels', owner: 'ExtensionBar' },
   { keys: ['shift+slash'], shown: '?', label: 'This list of keys', group: 'Panels', owner: 'ExtensionBar' },
   { keys: ['shift+keyt'], label: 'Scout Tag mode', group: 'Tools', owner: 'ExtensionBar' },
-  { keys: ['shift+keyh'], label: 'Highlight mode', group: 'Tools', owner: 'ExtensionBar' },
+  { keys: ['keyh', 'shift+keyh'], label: 'Highlight mode (H opens it, Shift+H also closes it)', group: 'Tools', owner: 'ExtensionBar' },
   { keys: ['keym'], label: 'Quick merge: point at a piece and press M, then the other piece and M', group: 'Editing', owner: 'graphene MergeSegmentsTool', where: 'With Quick merge on in Settings', scoped: true },
   { keys: ['keyh'], label: 'Hold to place a point', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode', scoped: true },
   { keys: ['shift+keyn'], label: 'Lantern on or off', group: 'Tools', owner: 'ExtensionBar' },
@@ -120,6 +122,103 @@ const ACTIONS: Record<string, [string, KeyGroup] | null> = {
   'add-layer': ['Add a layer', 'Panels'],
   'nge-select-layer-10-plus': ['Open layers 10 and up, the next one each press', 'Panels'],
 };
+/** neuroglancer's mouse and touch actions, in Pyr's words (Ames 2026-11-12:
+ *  its own controls list was out of date, so Pyr's list has them all). An
+ *  action not here still shows, in neuroglancer's own name. */
+const POINTER_ACTIONS: Record<string, string | null> = {
+  'translate-via-mouse-drag': 'Move the view',
+  'rotate-via-mouse-drag': 'Turn the view',
+  'move-to-mouse-position': 'Center the view here',
+  'nge-pan-or-center': 'Drag to move the view, click to center it here',
+  'select': 'Add or remove the cell under the mouse',
+  'star': 'Star the cell under the mouse',
+  'annotate': 'Place a mark with the active tool',
+  'move-annotation': 'Move the mark under the mouse',
+  'delete-annotation': 'Delete the mark under the mouse',
+  'select-position': 'Pin what is under the mouse in the selection panel',
+  'zoom-via-wheel': 'Zoom',
+  'z+1-via-wheel': 'Step through the slices',
+  'z+10-via-wheel': 'Step through the slices, 10 at a time',
+  'adjust-depth-range-via-wheel': 'Show more or less depth',
+  'zoom-via-touchpinch': 'Zoom',
+  'rotate-in-plane-via-touchrotate': 'Turn the view',
+  'rotate-out-of-plane-via-touchtranslate': 'Turn the view',
+  'translate-in-plane-via-touchtranslate': 'Move the view',
+  'translate-z-via-touchtranslate': 'Step through the slices',
+  'nge-tap': 'Same as a click',
+  'nge-tap-double': 'Same as a double-click: add or remove the cell',
+  'snap': 'Snap the view straight',
+};
+/** Pyr's own mouse handlers, which nothing can read (see PYR_KEYS). */
+const PYR_POINTER: { shown: string; label: string; where?: string }[] = [
+  { shown: 'Click a mark', label: 'Select it in the Annotations list' },
+  { shown: 'H+click', label: 'Place a highlight point', where: 'In Highlight mode' },
+  { shown: 'Ctrl+click', label: 'Pick the pieces to merge or cut', where: 'With Merge or Cut open' },
+];
+const POINTER_NAMES: Record<string, string> = {
+  mousedown0: 'Click', mousedown1: 'Middle click', mousedown2: 'Right click',
+  dblclick0: 'Double-click', dblclick2: 'Right double-click', wheel: 'Scroll',
+  touchpinch: 'Pinch', touchrotate: 'Twist two fingers', touchhold1: 'Press and hold',
+  touchtap1x1: 'Tap', touchtap1x2: 'Double tap', touchtap2x3: 'Triple tap with two fingers',
+  touchtranslate1: 'Drag one finger', touchtranslate2: 'Drag two fingers',
+};
+/** 'shift+mousedown0' to 'Shift+Drag' (a drag action) or 'Shift+Click'. */
+function showPointer(stroke: string, action: string): string {
+  const parts = stroke.split('+');
+  const base = parts.pop()!;
+  let name = POINTER_NAMES[base] ?? base;
+  if (/drag|move-annotation/.test(action) && base === 'mousedown0') name = 'Drag';
+  if (/drag/.test(action) && base === 'mousedown2') name = 'Right drag';
+  const mods = parts.map(p => p === 'control' ? 'Ctrl' : p === 'meta' ? 'Cmd' : p.charAt(0).toUpperCase() + p.slice(1));
+  return [...mods, name].join('+');
+}
+/** The mouse and touch controls bound in 2D and 3D, as rows. */
+function pointerRows(viewer: any): KeyEntry[] {
+  const b = viewer?.inputEventBindings;
+  const rows = new Map<string, KeyEntry>();
+  const add = (label: string, group: KeyGroup, shown: string, where: string) => {
+    const k = `${group}|${label}|${where}`;
+    let row = rows.get(k);
+    if (!row) {
+      const slug = `${group} ${label} ${where}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+      row = { id: `key-${slug}`, label, group, keys: [], strokes: [], mouse: true, ...(where ? { where } : {}) };
+      rows.set(k, row);
+    }
+    if (!row.keys.includes(shown)) row.keys.push(shown);
+  };
+  for (const p of PYR_POINTER) add(p.label, 'Mouse', p.shown, p.where ?? '');
+  if (!b) return [...rows.values()];
+  const found: { stroke: string; action: string; where: '2D' | '3D' }[] = [];
+  for (const [map, where] of [[b.sliceView, '2D'], [b.perspectiveView, '3D']] as [any, '2D' | '3D'][]) {
+    if (!map?.bindings) continue;
+    const seen = new Set<any>();
+    const ids = new Set<string>();
+    const walk = (m: any) => {
+      if (!m || seen.has(m)) return;
+      seen.add(m);
+      for (const [id] of m.bindings ?? []) if (/^at:/.test(id) && !isKeyStroke(id.slice(3))) ids.add(id);
+      for (const p of m.parents ?? []) walk(p);
+    };
+    walk(map);
+    for (const id of ids) {
+      const action = map.get(id)?.action;
+      if (action) found.push({ stroke: id.slice(3), action: String(action), where });
+    }
+  }
+  // The same control doing the same thing in 2D and 3D is one row.
+  const in2d = new Set(found.filter(f => f.where === '2D').map(f => f.stroke + '>' + f.action));
+  const in3d = new Set(found.filter(f => f.where === '3D').map(f => f.stroke + '>' + f.action));
+  for (const f of found) {
+    const both = in2d.has(f.stroke + '>' + f.action) && in3d.has(f.stroke + '>' + f.action);
+    if (both && f.where === '3D') continue;
+    const known = POINTER_ACTIONS[f.action];
+    if (known === null) continue;
+    const label = known ?? f.action.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase());
+    add(label, /touch/.test(f.stroke) ? 'Touch' : 'Mouse', showPointer(f.stroke, f.action), both ? '' : f.where);
+  }
+  return [...rows.values()];
+}
+
 /** Families of nine (keys 1 to 9), shown as one row. */
 const LAYER_FAMILIES: [RegExp, string][] = [
   [/^nge-number-layer-\d$/, 'Make layer 1 to 9 the active one (with Classic Layers in Settings: show or hide it)'],
@@ -312,7 +411,11 @@ export function collectKeys(viewer: any, commands: CommandKey[] = []): KeyEntry[
   };
   const list = [...rows.values()].map((r, i) => ({ r, k: rank(r, i) }));
   const order = (g: KeyGroup) => KEY_GROUPS.indexOf(g);
-  return list.sort((a, b) => order(a.r.group) - order(b.r.group) || a.k - b.k).map(x => x.r);
+  const keys = list.sort((a, b) => order(a.r.group) - order(b.r.group) || a.k - b.k).map(x => x.r);
+  // Then the mouse and touch (they come after every key group).
+  let pointer: KeyEntry[] = [];
+  try { pointer = pointerRows(viewer); } catch { /* keys only */ }
+  return [...keys, ...pointer.sort((a, b) => order(a.group) - order(b.group))];
 }
 
 /** Dev and test sites, or a player who asks with localStorage nge_key_check=1. */
@@ -397,6 +500,20 @@ export function warnKeyClashes(viewer: () => any, commands: () => CommandKey[] =
 }
 
 /** Is this search asking for the list of keys? */
+const KEYS_WORD = /^\s*(\?|keys?|key list|shortcuts?|hotkeys?|keyboard( shortcuts)?|keybindings?|controls?|mouse)(\s+(.*))?$/i;
 export function isKeysQuery(q: string): boolean {
-  return /^\s*(\?|keys?|key list|shortcuts?|hotkeys?|keyboard( shortcuts)?|keybindings?)\s*$/i.test(q);
+  return KEYS_WORD.test(q);
+}
+/** What to search the list for: "keys zoom" or "? scroll" -> "zoom", "scroll". */
+export function keysSearch(q: string): string {
+  const m = q.match(KEYS_WORD);
+  const rest = (m?.[4] ?? '').trim().toLowerCase();
+  // "mouse" on its own is the Mouse section.
+  return rest || (m?.[1]?.toLowerCase() === 'mouse' ? 'mouse' : '');
+}
+/** Whether a row (label, keys, group, where) has every word searched for. */
+export function keyRowMatches(row: { label: string; keys: string; group?: string; description?: string }, search: string): boolean {
+  if (!search) return true;
+  const text = `${row.label} ${row.keys} ${row.group ?? ''} ${row.description ?? ''}`.toLowerCase();
+  return search.split(/\s+/).every(w => text.includes(w));
 }
