@@ -212,7 +212,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     answer = ANSWERS.none;
     await edit([ANSWERS.worse.root]);
     await page.waitForTimeout(3500);
-    check('a cell with no true cell has no numbers, and says so', /cell match no key/.test(await cardText() || '') && !/%/.test(await cardText() || ''), await cardText());
+    check('a cell with no true cell has no card when not playing', (await cardText()) === null, await cardText());
 
     // Back to a score, then the cell leaves the screen: the card goes too.
     answer = ANSWERS.merged;
@@ -341,20 +341,20 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
     });
     await page.waitForTimeout(3000);
-    // On the Sandbox with no cell on screen: Standby, with Play (Ames 2026-11-13:
-    // "this should load a Play button if they are not actively playing").
+    // Not playing, no cell on screen: no card; the Play button is the way in
+    // (Ames 2026-11-13: "it should appear after I'm already playing").
     const go = () => page.evaluate(() => { const b = document.querySelector('#nge-cell-match .nge-cm-idle-go'); return b ? b.textContent : null; });
-    check('not playing: Standby with a Play button', /standby/.test(await cardText() || '') && /press play for a practice cell/.test(await cardText() || '') && (await go()) === 'Play', { text: await cardText(), go: await go() });
-    const pressed = await page.evaluate(() => { let hit = false; const b = document.querySelector('.nge-play-btn'); if (!b) return 'no play button'; b.addEventListener('click', e => { hit = true; e.stopImmediatePropagation(); }, { capture: true, once: true }); document.querySelector('#nge-cell-match .nge-cm-idle-go').click(); return hit; });
-    check('Play on the card presses the game Play button', pressed === true, pressed);
-    // Playing, with the cell not on screen: Open my cell.
+    check('not playing and off screen: no card', (await cardText()) === null, await cardText());
+    // Playing, with the cell not on screen: Standby with Open my cell.
     await page.evaluate(() => sessionStorage.setItem('nge_play_on', 'cells'));
     await page.waitForTimeout(3000);
     check('playing: Standby with Open my cell', /your cell is not on screen/.test(await cardText() || '') && (await go()) === 'Open my cell', { text: await cardText(), go: await go() });
+    const pressed = await page.evaluate(() => { let hit = false; const t = document.querySelector('.nge-play-chip') || document.querySelector('.nge-play-btn'); if (!t) return 'no play control'; t.addEventListener('click', e => { hit = true; e.stopImmediatePropagation(); }, { capture: true, once: true }); document.querySelector('#nge-cell-match .nge-cm-idle-go').click(); return hit; });
+    check('Open my cell presses the game Play control', pressed === true, pressed);
     await shot('cell-match-standby.png');
     await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));
     await page.waitForTimeout(3000);
-    check('Play off again: back to Play', (await go()) === 'Play', await go());
+    check('Play off: the card goes', (await cardText()) === null, await cardText());
     check('no page errors', errors.length === 0, errors);
   } catch (e) { check('the run finished', false, String(e).slice(0, 300)); }
   await browser.close();

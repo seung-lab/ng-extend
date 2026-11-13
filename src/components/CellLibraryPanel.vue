@@ -271,8 +271,19 @@ function openCellTypes() {
   applyShowcaseWhenLoaded(before);
 }
 
-async function loadCellsForActiveDataset() {
+let datasetWait: ReturnType<typeof setTimeout> | null = null;
+async function loadCellsForActiveDataset(tries = 0) {
   const dsName = getCurrentDatasetName();
+  // Opened before the dataset's layer is there (a page still loading, a
+  // switch under way): no dataset yet. It used to load the Retina sheet (the
+  // default) and list every dataset's cells, so Play on the Sandbox took a
+  // Retina claim and went to Retina (Ames 2026-11-13, two videos). Wait for
+  // the layer instead, up to 15 s.
+  if (!dsName && tries < 50) {
+    if (datasetWait) clearTimeout(datasetWait);
+    datasetWait = setTimeout(() => { datasetWait = null; void loadCellsForActiveDataset(tries + 1); }, 300);
+    return;
+  }
   activeDataset.value = dsName;
   const cfg = getDatasetCaveConfig(dsName);
   // No fallback sheet: borrowing the pinky sheet here tagged its rows with the
@@ -3179,9 +3190,21 @@ function showStartNote(text: string, ms = 4200, cellName?: string) {
  *  here, or claims the next one. Quests go to the Quests tab, which does the
  *  same with its own cells (questPlay). */
 const questPlay = ref(0);
+/** The dataset on screen, once its layer is there (up to 6 s after a switch). */
+async function liveDatasetName(): Promise<string> {
+  for (let i = 0; i < 30; i++) {
+    const n = getCurrentDatasetName();
+    if (n) return n;
+    await new Promise(res => setTimeout(res, 200));
+  }
+  return '';
+}
 function playIfAsked() {
   const k = takePlayEnter();
   if (!k) return;
+  // Play opens the slim row only, at once; the full library is a click away
+  // (Ames 2026-11-13: "just load the chip and I can expand if I want").
+  setSlimMode(true);
   const go = async () => {
     setSlimMode(true);
     showTabSettings.value = false;
@@ -3195,7 +3218,16 @@ function playIfAsked() {
       return;
     }
     if (!CELL_TABS.includes(filter.value)) filter.value = 'available';
-    const mine = currentCell() && isMyClaim(currentCell()!) && currentCell()!.status !== 'completed' ? currentCell() : myOpenClaims.value[0];
+    // Play right after a dataset switch: the library can still be on the
+    // dataset left behind, and took a Retina claim as the cell to play on the
+    // Sandbox, switching back to Retina for it (Ames 2026-11-13, the Switch
+    // Dataset's Start playing). Wait for the new dataset, catch the list up,
+    // and play only a claim of the dataset on screen.
+    const live = await liveDatasetName();
+    if (live && canonicalDataset(live) !== canonicalDataset(activeDataset.value)) await loadCellsForActiveDataset();
+    const here = (c: CellRow | null | undefined) => !!c && (!c.dataset || !live || canonicalDataset(c.dataset) === canonicalDataset(live));
+    const cur = currentCell();
+    const mine = cur && isMyClaim(cur) && cur.status !== 'completed' && here(cur) ? cur : myOpenClaims.value.find(here);
     if (mine) {
       await stepToClaim(mine);
       await collapseTo(mine);

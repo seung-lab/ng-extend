@@ -56,11 +56,11 @@ function isPlaying(): boolean {
   try { on = sessionStorage.getItem('nge_play_on'); } catch { /* private window */ }
   return on === 'cells';
 }
-/** Signed in on the Sandbox: the card is up, playing or not (Ames
- *  2026-11-13: "this should load a Play button if they are not actively
- *  playing"). */
+/** Signed in and playing on the Sandbox: the card is up. */
 function onSandbox(): boolean {
-  return !!deps && deps.signedIn() && canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
+  // Only while playing (Ames 2026-11-13: "it should appear after I'm already
+  // playing"): before that the Play button is the way in.
+  return !!deps && deps.signedIn() && isPlaying() && canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
 }
 /** The Standby line and its button: Play when not playing, else back to the
  *  cell in hand. Both press the game's own Play controls. */
