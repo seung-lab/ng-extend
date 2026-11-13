@@ -862,7 +862,8 @@ async function saveClaimView(cell: CellRow) {
  *  beginning?"). Only a claim with no saved view yet: a saved one keeps its
  *  own until you save again or move on. */
 let firstSaveTimer: ReturnType<typeof setTimeout> | null = null;
-watch(() => {
+// Started once the panel is set up: the cell list reads things defined further down.
+onMounted(() => watch(() => {
   const c = datasetScopedCells.value.find(x => x.segId === jumpedSegId.value && isMyClaim(x) && x.status !== 'completed');
   return c?.taskId ?? null;
 }, (id) => {
@@ -875,7 +876,8 @@ watch(() => {
     if (backend.tasks.find(x => x.id === id)?.working_link) return;
     void saveClaimView(c);
   }, 5000);
-});
+}));
+onBeforeUnmount(() => { if (firstSaveTimer) clearTimeout(firstSaveTimer); });
 
 /** Is any of this cell's IDs showing? */
 function claimInView(cell: CellRow): boolean {
