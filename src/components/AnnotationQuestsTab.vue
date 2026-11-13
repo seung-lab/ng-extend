@@ -204,6 +204,10 @@ async function playSkip(which?: QuestRow) {
 /** The "Teleport complete" flash over the view (CellLibraryPanel shows it). */
 function landed(title: string, r: QuestRow) {
   document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title, cell: label(r) } }));
+  // Saved as you arrive, so the bar never says "Not saved yet" (Ames 2026-11-12).
+  setTimeout(() => {
+    if (!questWork.savedAt[r.segmentId] && questOnScreen(r.segmentId)) void saveQuestWork(r.segmentId);
+  }, 5000);
 }
 const onPlaySkip = () => { void playSkip(); };
 onMounted(() => document.addEventListener('nge:play-skip-quest', onPlaySkip));

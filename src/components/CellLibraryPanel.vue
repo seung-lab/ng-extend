@@ -856,6 +856,26 @@ async function saveClaimView(cell: CellRow) {
   }
 }
 
+/** A claim you arrive on is saved straight away, a few seconds in, so it is
+ *  never "Not saved yet" (Ames 2026-11-12: "should it autosave at the
+ *  beginning?"). Only a claim with no saved view yet: a saved one keeps its
+ *  own until you save again or move on. */
+let firstSaveTimer: ReturnType<typeof setTimeout> | null = null;
+watch(() => {
+  const c = datasetScopedCells.value.find(x => x.segId === jumpedSegId.value && isMyClaim(x) && x.status !== 'completed');
+  return c?.taskId ?? null;
+}, (id) => {
+  if (firstSaveTimer) { clearTimeout(firstSaveTimer); firstSaveTimer = null; }
+  if (id == null) return;
+  firstSaveTimer = setTimeout(() => {
+    firstSaveTimer = null;
+    const c = datasetScopedCells.value.find(x => x.taskId === id && x.segId === jumpedSegId.value);
+    if (!c || c.status === 'completed') return;
+    if (backend.tasks.find(x => x.id === id)?.working_link) return;
+    void saveClaimView(c);
+  }, 5000);
+});
+
 /** Is any of this cell's IDs showing? */
 function claimInView(cell: CellRow): boolean {
   try {
