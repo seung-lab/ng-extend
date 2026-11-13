@@ -40,6 +40,9 @@ import {findDatasetBySegName, switchToDataset} from '../datasets';
 import {setStatedColor} from '../widgets/widget_utils';
 import {IS_LIVE_SITE} from './toolbar_staging';
 import {hideMobileWelcomeRef} from './mobile';
+import {supabase} from '../supabase';
+
+declare const NGE_BUILD: string | undefined;
 
 type V3 = [number, number, number];
 /** A cell's synapses onto (or from) the release's cells of one type. */
@@ -824,6 +827,43 @@ function ensureStyle() {
 .nge-sig .nge-sig-view button:hover { color: #fff; background: rgba(126, 224, 255, 0.14); }
 .nge-sig .nge-sig-share { flex: none; padding: 4px 9px; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 6px; background: rgba(126, 224, 255, 0.06); color: #9fc6ea; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
 .nge-sig .nge-sig-share:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
+.nge-sig .nge-sig-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 14px; }
+.nge-sig .nge-sig-note .ranks { margin: 0 0 3px auto; padding: 0; border: 0; background: none; cursor: pointer; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #7ecaff; }
+.nge-sig .nge-sig-note .ranks::after { content: '›'; display: inline-block; margin-left: 8px; }
+.nge-sig .nge-sig-note .ranks:hover { color: #fff; background: none; }
+.nge-sig .nge-sig-note .nge-sig-levels { flex-basis: 100%; }
+.nge-sig .nge-sig-result .rank { display: block; margin: 10px 0 0; padding: 0; border: 0; background: none; min-height: 1.3em; font: inherit; font-size: 12.5px; text-align: left; color: #ffd98a; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+.nge-sig .nge-sig-result .rank.on { opacity: 1; pointer-events: auto; cursor: pointer; }
+.nge-sig .nge-sig-result .rank.on::after { content: ' ›'; }
+.nge-sig .nge-sig-result .rank.on:hover { color: #fff; background: none; }
+/* the leaderboard: a card beside the HUD, in the editor's hologram */
+.ng-extend.nge-sig-board { position: fixed; z-index: 9520; top: 16px; left: calc(min(448px, 40vw) + 32px); width: 320px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 11px 15px 12px; color: #f2fbff; font: 12.5px/1.4 'Inter', 'Roboto', sans-serif;
+  border: 1px solid rgba(255, 210, 122, 0.85); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: radial-gradient(circle, rgba(255, 210, 122, 0.13) 0.9px, transparent 1.8px) 0 0 / 13px 13px, linear-gradient(160deg, rgba(34, 104, 200, 0.7), rgba(8, 30, 72, 0.9));
+  backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgba(255, 246, 224, 0.2), 0 0 12px rgba(255, 194, 74, 0.3); animation: nge-sig-lock-fade 0.35s ease-out both; }
+.nge-sig-board .head { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 210, 122, 0.3); font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #ffd98a; }
+.ng-extend.nge-sig-board .head .nge-sig-x { margin-left: auto; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid rgba(126, 210, 255, 0.45); border-radius: 50%; background: rgba(126, 210, 255, 0.08); color: #cfe6ff; cursor: pointer; }
+.nge-sig-board .tabs { display: flex; gap: 6px; margin: 9px 0 4px; }
+.ng-extend.nge-sig-board .tabs button { padding: 4px 10px; border: 1px solid rgba(126, 224, 255, 0.3); border-radius: 6px; background: rgba(126, 224, 255, 0.05); color: #9fc6ea; cursor: pointer; font: 700 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+.ng-extend.nge-sig-board .tabs button:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
+.ng-extend.nge-sig-board .tabs button[aria-pressed="true"] { border-color: rgba(255, 210, 122, 0.8); background: rgba(255, 210, 122, 0.12); color: #ffe7b0; }
+.nge-sig-board .cols { margin: 8px 0 2px; font: 600 9px 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #6ba4e6; }
+.nge-sig-board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.nge-sig-board li { display: grid; grid-template-columns: 22px 1fr auto 62px; align-items: baseline; gap: 8px; padding: 4px 8px 4px 6px; border-left: 2px solid transparent; background: rgba(126, 202, 255, 0.05); }
+.nge-sig-board li.me { border-left-color: #ffc24a; background: rgba(255, 210, 122, 0.1); }
+.nge-sig-board li b { font: 600 10.5px 'Orbitron', 'Inter', sans-serif; color: #7ecaff; }
+.nge-sig-board li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #eaf4ff; }
+.nge-sig-board li i { font-style: normal; font-size: 11px; letter-spacing: 1.5px; color: #ffc24a; }
+.nge-sig-board li i.lv { letter-spacing: 0.02em; color: #a9c3de; }
+.nge-sig-board li em { font: 500 13px 'Orbitron', 'Inter', sans-serif; font-style: normal; text-align: right; color: #f4f9ff; font-variant-numeric: tabular-nums; }
+.nge-sig-board li em .u { font: 500 10px 'Inter', sans-serif; margin-left: 2px; color: #a9c3de; }
+.nge-sig-board .note { margin: 12px 0 6px; color: #b9d2ec; }
+.nge-sig-board .you { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 7px; border-top: 1px solid rgba(126, 224, 255, 0.2); font-size: 11.5px; color: #a9c3de; }
+.nge-sig-board .you b { color: #ffe7b0; font-weight: 600; }
+.ng-extend.nge-sig-board .you button { margin-left: auto; width: 22px; height: 22px; padding: 0; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 50%; background: rgba(126, 224, 255, 0.06); color: #cfe6ff; cursor: pointer; font-size: 13px; line-height: 1; }
+.ng-extend.nge-sig-board .you button:hover { background: rgba(126, 224, 255, 0.16); color: #fff; }
+body.nge-mobile .ng-extend.nge-sig-board { left: 6px; right: 6px; top: calc(8px + env(safe-area-inset-top)); width: auto; }
+@media (max-width: 999px) { .ng-extend.nge-sig-board { left: 12px; } }
 .nge-sig-dot { width: 7px; height: 7px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-sig-blink 1.1s infinite; }
 @keyframes nge-sig-blink { 50% { opacity: 0.25; } }
 .nge-sig .nge-sig-note .lvl { display: block; margin: 0 0 3px; padding: 0; border: 0; background: none; cursor: pointer; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #7ecaff; }
@@ -1343,6 +1383,7 @@ body.nge-mobile .ng-extend.nge-sig-count { font-size: 64px; }
 body.nge-mobile .nge-sig-scan-box { min-width: 0; max-width: calc(100vw - 24px); font-size: 11.5px; }
 /* the Intro test panel sits where the HUD now stands: away while the game runs */
 body.nge-signal-on .nge-stt, body.nge-signal-on .nge-stt-dock { display: none !important; }
+body.nge-signal-on.nge-signal-guest .nge-chat-float { display: none !important; }
 /* Pyr's top bar and the layer tabs are away while the game runs, and the
    viewer takes the window (Ames 2026-11-11: "hide these during the game") */
 body.nge-signal-on #extensionBar, body.nge-signal-on .neuroglancer-viewer-top-row, body.nge-signal-on .neuroglancer-layer-panel { display: none !important; }
@@ -1386,7 +1427,7 @@ function buildPanel() {
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
     <div class="nge-sig-sci"><button type="button" class="nge-sig-sci-btn" data-el="sci" aria-expanded="false">The science <i>›</i></button><p class="nge-sig-sci-text" data-el="sciText" hidden></p></div>
-    <div class="nge-sig-note"><button type="button" class="lvl" data-el="lvl" aria-expanded="false" title="Choose a level"></button><div class="nge-sig-levels" data-el="levels" hidden></div></div></div>`;
+    <div class="nge-sig-note"><button type="button" class="lvl" data-el="lvl" aria-expanded="false" title="Choose a level"></button><button type="button" class="ranks" data-el="ranks" title="The leaderboard">Ranks</button><div class="nge-sig-levels" data-el="levels" hidden></div></div></div>`;
   document.body.appendChild(panel);
   footEl?.remove();
   footEl = document.createElement('p');
@@ -1440,6 +1481,7 @@ function buildPanel() {
   };
   setView(view);
   els.lvl.onclick = () => { toggleLevels(); els.lvl.blur(); };
+  els.ranks.onclick = () => { toggleBoard(); els.ranks.blur(); };
   els.recenter.onclick = () => { frameLevel(); say('Back at the circuit.', 1.5); };
   for (let k = 0; k < MAX_CHARGES; k++) els.charges.appendChild(document.createElement('i'));
 }
@@ -2461,12 +2503,13 @@ function showResult(wonIt: boolean) {
   els.row.style.display = 'none';
   const stars = wonIt ? (chargesUsed <= level.par ? 3 : chargesUsed <= level.par * 1.6 ? 2 : 1) : 0;
   const next = levelIndex + 1 < LEVELS.length;
-  if (wonIt) keepStars(levelIndex, stars);
+  if (wonIt) { keepStars(levelIndex, stars); void lbFinish(stars); } else lbRound = null;
   const starRow = [0, 1, 2].map(k => `<i${k < stars ? ' class="on"' : ''} style="--i:${k}">${k < stars ? '★' : '☆'}</i>`).join('');
   // the result as readouts, like the card's (Ames 2026-11-11, of the old sentence: "charges?")
   const result = wonIt
     ? `<div class="nge-sig-stars">${starRow}</div>
       <ul class="nge-sig-readouts"><li><b>${chargesUsed}</b><span class="k">Charges used</span></li><li><b>${level.par}</b><span class="k">Par</span></li><li><b>${wonAt.toFixed(1)}<span class="u">s</span></b><span class="k">Time</span></li></ul>
+      <button type="button" class="rank" data-rank data-act="board" title="The leaderboard"></button>
       ${stars < 3 ? `<p class="tip">Three stars: ${level.par} charges or fewer.</p>` : ''}`
     : '<p>Time’s up. The circuit held.</p>';
   els.body.innerHTML = `<div class="nge-sig-card nge-sig-result">${result}
@@ -2474,7 +2517,7 @@ function showResult(wonIt: boolean) {
       ${wonIt ? '<button class="nge-sig-quiet" type="button" data-act="again">Play it again</button>' : '<button class="nge-sig-go" type="button" data-act="again"><span class="nge-sig-plate">Try again ›</span></button>'}
       ${wonIt && !next ? '<span style="color:#ffd98a">That is every level so far. More circuits are coming.</span>' : ''}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
-    b.onclick = () => { if (b.dataset.act === 'next') void startLevel(levelIndex + 1); else void startLevel(levelIndex); };
+    b.onclick = () => { if (b.dataset.act === 'board') { toggleBoard(true); b.blur(); } else if (b.dataset.act === 'next') void startLevel(levelIndex + 1); else void startLevel(levelIndex); };
   });
   if (wonIt) {
     sfx.goal();
@@ -2583,6 +2626,146 @@ function titleCard() {
     lockup(html, 'nge-sig-lock--title', first ? 3000 : 2600);
   };
   show();
+}
+
+/* ── the leaderboard: each level's best times, and how far each player has
+   got (Ames 2026-11-13: "We need a leaderboard! Level, time (detect and
+   remove bot rounds)"). No account is needed: a callsign is made up for each
+   browser. A round is timed by the server as well as the game
+   (signal_run_begin as the countdown ends, signal_run_finish as the level is
+   won), and what the round's input looked like goes with it: whether each
+   shot followed a real press, how the pointer moved, how nearly the gaps
+   between shots repeat. The server flags the rounds no hand played and
+   leaves them off the board (supabase-signal-leaderboard.sql). Until that
+   SQL is applied the calls fail and the game says nothing about ranks. ── */
+type LbRpc = (fn: string, args: Record<string, unknown>) => PromiseLike<{data: any; error: any}>;
+let lbRpc: LbRpc = (fn, args) => supabase.rpc(fn, args);
+const LB_CLIENT_KEY = 'pyr.signal.client', LB_NAME_KEY = 'pyr.signal.callsign';
+const LB_ADJ = ['Swift', 'Golden', 'Bright', 'Cosmic', 'Lucky', 'Quiet', 'Bold', 'Nimble', 'Electric', 'Radiant', 'Clever', 'Stellar', 'Sparkling', 'Daring', 'Gentle', 'Curious'];
+const LB_NOUN = ['Axon', 'Dendrite', 'Synapse', 'Neuron', 'Spike', 'Soma', 'Spark', 'Signal', 'Cortex', 'Photon', 'Comet', 'Nebula', 'Pilot', 'Starling', 'Otter', 'Fox'];
+function lbClient(): string {
+  let id = '';
+  try { id = localStorage.getItem(LB_CLIENT_KEY) || ''; } catch { /* not kept */ }
+  if (id.length < 8) {
+    id = (crypto as any)?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
+    try { localStorage.setItem(LB_CLIENT_KEY, id); } catch { /* a new one next time */ }
+  }
+  return id;
+}
+/** This browser's callsign on the board: made up, never typed, so the board needs no moderating. */
+function lbCallsign(reroll = false): string {
+  let name = '';
+  if (!reroll) { try { name = localStorage.getItem(LB_NAME_KEY) || ''; } catch { /* made up again */ } }
+  if (name.length < 2) {
+    const pick = (a: string[]) => a[Math.floor(Math.random() * a.length)];
+    name = `${pick(LB_ADJ)} ${pick(LB_NOUN)} ${10 + Math.floor(Math.random() * 90)}`;
+    try { localStorage.setItem(LB_NAME_KEY, name); } catch { /* not kept */ }
+  }
+  return name;
+}
+/** The round under way: the server's id for it (once it answers), and what its input looked like. */
+interface LbRound { run: Promise<string | null>; shots: number[]; untrusted: number; moves: number; keys: number; touches: number; hiddenMs: number; hiddenAt: number; tampered: boolean; }
+let lbRound: LbRound | null = null;
+/** The last press, tap, click or key the browser itself reported, and when. */
+let lbLast: {trusted: boolean; at: number} | null = null;
+const lbNote = (e: Event) => {
+  lbLast = {trusted: e.isTrusted, at: performance.now()};
+  if (!lbRound || !e.isTrusted) return;
+  if (e.type === 'keydown') lbRound.keys++;
+  else if (e.type === 'pointerdown' && (e as PointerEvent).pointerType !== 'mouse') lbRound.touches++;
+};
+const lbMove = (e: PointerEvent) => { if (lbRound && e.isTrusted) lbRound.moves++; };
+const lbVis = () => {
+  if (!lbRound) return;
+  if (document.hidden) lbRound.hiddenAt = performance.now();
+  else if (lbRound.hiddenAt) { lbRound.hiddenMs += performance.now() - lbRound.hiddenAt; lbRound.hiddenAt = 0; }
+};
+function lbBegin() {
+  const call = Promise.resolve(lbRpc('signal_run_begin', {p_level: levelIndex + 1, p_client: lbClient()}))
+    .then(({data, error}) => (error || typeof data !== 'string' ? null : data), () => null);
+  lbRound = {run: call, shots: [], untrusted: 0, moves: 0, keys: 0, touches: 0, hiddenMs: 0, hiddenAt: document.hidden ? performance.now() : 0, tampered: false};
+}
+/** A shot of the player's: when, and whether a real press came just before it (a script's click reports itself untrusted, or comes from nowhere). */
+function lbShot() {
+  if (!lbRound) return;
+  const t = performance.now();
+  lbRound.shots.push(t);
+  if (!(lbLast && lbLast.trusted && t - lbLast.at < 400)) lbRound.untrusted++;
+}
+async function lbFinish(stars: number) {
+  const round = lbRound;
+  lbRound = null;
+  if (!round) return;
+  const at = levelIndex, timeMs = Math.round(wonAt * 1000), used = chargesUsed, points = score;
+  const gaps = round.shots.slice(1).map((t, i) => t - round.shots[i]);
+  // how nearly its gaps repeat: for each gap the nearest other one, and the middle of those (a script's waits repeat to a few ms, a hand's do not)
+  const near = gaps.map((g, i) => Math.min(...gaps.filter((_, j) => j !== i).map(o => Math.abs(o - g)))).filter(Number.isFinite).sort((a, b) => a - b);
+  const features = {shots: round.shots.length, untrusted: round.untrusted, moves: round.moves, keys: round.keys, touches: round.touches, tampered: round.tampered,
+    hidden_ms: Math.round(round.hiddenMs), min_gap_ms: gaps.length ? Math.round(Math.min(...gaps)) : null, repeat_ms: near.length ? Math.round(near[Math.floor(near.length / 2)]) : null,
+    view, touch: touch(), w: window.innerWidth, h: window.innerHeight};
+  const run = await round.run;
+  if (!run) return;   // the board is not switched on, or the start never reached it
+  let res: {data: any; error: any};
+  try {
+    res = await lbRpc('signal_run_finish', {p_run: run, p_player: lbCallsign(), p_time_ms: timeMs, p_charges: used, p_stars: stars, p_score: points, p_features: features,
+      p_build: typeof NGE_BUILD !== 'undefined' && NGE_BUILD ? String(NGE_BUILD) : null});
+  } catch { return; }
+  if (res.error || !res.data?.ok) return;
+  if (res.data.ranked && active && phase === 'done' && levelIndex === at) {
+    const line = els.body?.querySelector('[data-rank]') as HTMLElement | null;
+    if (line) {
+      line.textContent = `Rank ${res.data.rank} of ${res.data.of} on this level${res.data.new_best && res.data.of > 1 ? '. Your best yet.' : ''}`;
+      line.classList.add('on');
+    }
+  }
+  if (boardEl) void loadBoard();
+}
+let boardEl: HTMLElement | null = null;
+let boardTab: 'level' | 'overall' = 'level';
+let boardState: 'loading' | 'ready' | 'off' = 'loading';
+let boardData: {level?: any[] | null; overall?: any[]; players?: number; forLevel: number} | null = null;
+const lbTime = (ms: number) => ms >= 60_000
+  ? `${Math.floor(ms / 60_000)}:${String(Math.floor(ms % 60_000 / 1000)).padStart(2, '0')}.${Math.floor(ms % 1000 / 100)}`
+  : `${(ms / 1000).toFixed(1)}<span class="u">s</span>`;
+function toggleBoard(open?: boolean) {
+  const show = open ?? !boardEl;
+  if (!show) { boardEl?.remove(); boardEl = null; return; }
+  if (editorEl) { editorEl.remove(); editorEl = null; }
+  if (!boardEl) { boardEl = document.createElement('div'); boardEl.className = 'ng-extend nge-sig-board'; document.body.appendChild(boardEl); }
+  void loadBoard();
+}
+async function loadBoard() {
+  const at = levelIndex;
+  if (!boardData || boardData.forLevel !== at) { boardState = 'loading'; boardData = null; }
+  renderBoard();
+  let res: {data: any; error: any};
+  try { res = await lbRpc('signal_board', {p_level: at + 1, p_limit: 12}); } catch (e) { res = {data: null, error: e}; }
+  if (!boardEl || levelIndex !== at) return;
+  if (res.error || !res.data || typeof res.data !== 'object') { boardState = 'off'; boardData = null; }
+  else { boardState = 'ready'; boardData = {...res.data, forLevel: at}; }
+  renderBoard();
+}
+function renderBoard() {
+  if (!boardEl) return;
+  const me = lbCallsign();
+  const rows: any[] = boardState !== 'ready' || !boardData ? [] : boardTab === 'level' ? (boardData.level ?? []) : (boardData.overall ?? []);
+  const row = (r: any, i: number) => {
+    const mine = String(r.player) === me ? ' class="me"' : '';
+    return boardTab === 'level'
+      ? `<li${mine}><b>${i + 1}</b><span>${esc(String(r.player))}</span><i>${'★'.repeat(clamp(Number(r.stars) | 0, 0, 3))}</i><em>${lbTime(Number(r.time_ms) || 0)}</em></li>`
+      : `<li${mine}><b>${i + 1}</b><span>${esc(String(r.player))}</span><i class="lv">${Number(r.levels) | 0} of ${LEVELS.length}</i><em>${lbTime(Number(r.total_ms) || 0)}</em></li>`;
+  };
+  const body = boardState === 'loading' ? '<p class="note">Reading the board…</p>'
+    : boardState === 'off' ? '<p class="note">The leaderboard is not switched on yet.</p>'
+    : !rows.length ? '<p class="note">No rounds yet. Be the first.</p>'
+    : `<div class="cols"><span>${boardTab === 'level' ? 'Fastest' : 'Levels cleared, then time'}</span></div><ol>${rows.map(row).join('')}</ol>`;
+  boardEl.innerHTML = `<div class="head"><span>Leaderboard</span><button type="button" class="nge-sig-x" aria-label="Close the leaderboard">${X_SVG}</button></div>
+    <div class="tabs"><button type="button" data-tab="level" aria-pressed="${boardTab === 'level'}">Level ${levelIndex + 1}</button><button type="button" data-tab="overall" aria-pressed="${boardTab === 'overall'}">All levels</button></div>
+    ${body}
+    <div class="you">You fly as <b>${esc(me)}</b><button type="button" data-act="reroll" title="A new callsign">↻</button></div>`;
+  (boardEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => toggleBoard(false);
+  boardEl.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => { b.onclick = () => { boardTab = b.dataset.tab as 'level' | 'overall'; renderBoard(); }; });
+  (boardEl.querySelector('[data-act="reroll"]') as HTMLButtonElement).onclick = () => { lbCallsign(true); renderBoard(); };
 }
 
 /* ── the levels: the level's name at the foot of the panel opens the list,
@@ -3541,7 +3724,7 @@ function fireAt(key: string, hush: boolean, demo: boolean): boolean {
   if (hush) sfx.hush(); else sfx.spark();
   return true;
 }
-function shoot(key: string) { if (phase === 'playing') fireAt(key, hushMode, false); }
+function shoot(key: string) { if (phase !== 'playing') return; lbShot(); fireAt(key, hushMode, false); }
 function shake(key: string) {
   const el = chipEls.get(key);
   if (!el) return;
@@ -4509,7 +4692,10 @@ function frameBody(ts: number) {
   closeSidePanel();
   // Once a second: the level's cells stay on, whatever else happens to the
   // layer's segment list (a stray key, another panel), and the layer stays shown.
-  if ((frameCount++ & 63) === 0) keepCellsOn();
+  if ((frameCount++ & 63) === 0) {
+    keepCellsOn();
+    if (document.querySelector('.nge-login-blocker')) document.dispatchEvent(new CustomEvent('nge:dismiss-login'));   // play needs no sign-in
+  }
   // the HUD's height, for the phone's card to keep above it
   const hudH = panel?.offsetHeight ?? 0;
   if (hudH !== lastHudH) { lastHudH = hudH; document.body.style.setProperty('--nge-hud-h', `${hudH}px`); }
@@ -4653,6 +4839,8 @@ async function startLevel(index: number) {
   shownScore = score;
   // what the last level's finale left: its lit cells, its turn, its title
   shipAwayMove = false; shipVelAt = null; shipVel = [0, 0, 0];
+  lbRound = null;
+  if (boardEl) void loadBoard();
   if (!shipDue()) { shipOff = 1; shipProp.dissolve = 1; }   // a level that brings the ship on later starts without it, with no flash of it first
   won = false; finaleToken++; stopOrbit(); litWhole = new Set(); clearReveals(); ringQ.clear(); clearLockup(); hints = new Set();
   titleCard();
@@ -4750,6 +4938,7 @@ async function runCountdown() {
   el.remove();
   if (token !== tourToken || !active || phase !== 'countdown') return;
   phase = 'playing'; now = 0; lastFrame = 0;
+  lbBegin();
   // the opening line, where the level has one; else the line clears and the
   // level's first cells to click light up
   if (level.coach.begin) coach('begin'); else { setCoachText('', 'begin'); hints = new Set(level.hint?.begin ?? []); }
@@ -4765,6 +4954,10 @@ export async function playSignalController(levelAt = 0) {
     els.row.style.display = 'none';
     els.body.innerHTML = '<div class="nge-sig-card"><p>Receiving the circuit…</p></div>';
     document.body.classList.add('nge-signal-on');
+    // No account is needed to play: the circuit's data is public. A visitor who is not signed in gets no chat dock over the game, and Pyr's sign-in box is put away as its own Bypass does (frameBody, once a second, since the box comes up when the login check completes).
+    { let signedIn = false;
+      try { signedIn = !!JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken; } catch { /* a guest */ }
+      document.body.classList.toggle('nge-signal-guest', !signedIn); }
     setTimeout(() => window.dispatchEvent(new Event('resize')), 0);   // the viewer takes the window
     // On a phone, Pyr's welcome sheet would cover the game.
     if (phone()) hideMobileWelcomeRef.value++;
@@ -4786,6 +4979,9 @@ export async function playSignalController(levelAt = 0) {
     window.addEventListener('dblclick', onDoubleClick, true);
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('wheel', noteWheel, {capture: true, passive: true});
+    for (const type of ['pointerdown', 'pointerup', 'click', 'keydown']) window.addEventListener(type, lbNote, true);
+    window.addEventListener('pointermove', lbMove, {capture: true, passive: true});
+    document.addEventListener('visibilitychange', lbVis);
     window.addEventListener('pointermove', noteDrag, true);
     lastFrame = 0;
     raf = requestAnimationFrame(frame);
@@ -4811,6 +5007,10 @@ export function stopSignalController() {
   window.removeEventListener('dblclick', onDoubleClick, true);
   window.removeEventListener('keydown', onKey, true);
   window.removeEventListener('wheel', noteWheel, true);
+  for (const type of ['pointerdown', 'pointerup', 'click', 'keydown']) window.removeEventListener(type, lbNote, true);
+  window.removeEventListener('pointermove', lbMove, true);
+  document.removeEventListener('visibilitychange', lbVis);
+  lbRound = null; toggleBoard(false);
   window.removeEventListener('pointermove', noteDrag, true);
   for (const c of cells.values()) if (c.dimmed) paint(c, false);
   stopMusic();
@@ -4832,7 +5032,7 @@ export function stopSignalController() {
   clearLockup(); won = false; finaleToken++; orbitArc = null; titledLevel = -1; opening = false; ringQ.clear();
   glide = null; cockpitNose = null;
   if (savedDefaultAnnotations !== null) { try { viewerNow().showDefaultAnnotations.value = savedDefaultAnnotations; } catch { /* as it is */ } savedDefaultAnnotations = null; }
-  document.body.classList.remove('nge-signal-on');
+  document.body.classList.remove('nge-signal-on', 'nge-signal-guest');
   setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
   if (panel) { const p = panel; p.classList.add('nge-sig--out'); setTimeout(() => p.remove(), 400); panel = null; }
   footEl?.remove(); footEl = null;
@@ -4858,4 +5058,6 @@ export function startSignalController() {
     hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))]),
     spikes: [...cells.values()].filter(c => c.shown).map(c => [c.key, c.spikes]), progress, weights: conns.filter(k => (k.w ?? 1) !== 1).map(k => [k.pre, k.post, Number((k.w ?? 1).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
-  step: (seconds: number) => { for (let k = 0; k < seconds / 0.05; k++) if (phase === 'playing' || demo) stepModel(0.05); }};   // in play, or in a tour's demonstration
+  step: (seconds: number) => { if (lbRound) lbRound.tampered = true; for (let k = 0; k < seconds / 0.05; k++) if (phase === 'playing' || demo) stepModel(0.05); },
+  /** Checks only: stand in for the leaderboard's server (a function of the call's name and arguments), and read this browser's callsign. */
+  lb: {mock: (fn: LbRpc | null) => { lbRpc = fn ?? ((f, a) => supabase.rpc(f, a)); }, callsign: () => lbCallsign(), board: (open?: boolean) => toggleBoard(open)}};   // in play, or in a tour's demonstration
