@@ -2275,7 +2275,12 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
  *  the dataset on screen): go to it. */
 function onOpenAsked(e: Event) {
   const tab = (e as CustomEvent).detail?.tab;
-  if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+  if (tab && ALL_CL_TABS.some(t => t.key === tab)) {
+    filter.value = tab;
+    // Asked for a tab while slim: show the full library on it (the tab list
+    // was out of sight, Ames 2026-11-13).
+    if (slim.value) expandFull();
+  }
   playIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
@@ -3225,13 +3230,26 @@ async function liveDatasetName(): Promise<string> {
   }
   return '';
 }
+/** Play is finding the cell: the panel stays out of sight until it is the slim
+ *  row, so the full library never flashes up first (Ames 2026-11-13: "it still
+ *  loads the large cell library before zipping it away in the chip"). */
+const playOpening = ref(false);
+let playOpeningTimer: ReturnType<typeof setTimeout> | null = null;
+function playOpened() {
+  playOpening.value = false;
+  if (playOpeningTimer) { clearTimeout(playOpeningTimer); playOpeningTimer = null; }
+}
 function playIfAsked() {
   const k = takePlayEnter();
   if (!k) return;
+  playOpening.value = true;
+  if (playOpeningTimer) clearTimeout(playOpeningTimer);
+  playOpeningTimer = setTimeout(playOpened, 20000);
   // Play opens the slim row only, at once; the full library is a click away
   // (Ames 2026-11-13: "just load the chip and I can expand if I want").
   setSlimMode(true);
-  const go = async () => {
+  const go = async () => { try { await goPlay(); } finally { playOpened(); } };
+  const goPlay = async () => {
     setSlimMode(true);
     showTabSettings.value = false;
     showHowTo.value = false;
@@ -3471,7 +3489,7 @@ const panelStyle = computed(() => ({
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest }" :style="panelStyle" @mousedown="onSlimMouseDown">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
       <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
@@ -4657,15 +4675,16 @@ const panelStyle = computed(() => ({
               placeholder="Anything the reviewers should know, e.g. axon cut off at the edge"
               @keydown.stop @keyup.stop @keypress.stop
             ></textarea>
-            <!-- Crosshairs on the left with Check again under it, the two
-                 buttons beside it on the right: a shorter box (Ames 2026-11-12). -->
-            <div class="nge-cl-complete-xhrow">
-            <div class="nge-cl-complete-xhcol">
+            <!-- The crosshairs line across the whole box (Ames 2026-11-13: it was
+                 squeezed into a narrow column beside the buttons), then Check
+                 again on the left and the buttons on the right. -->
             <label class="nge-cl-complete-label">Crosshairs</label>
-            <div class="nge-cl-complete-msg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
+            <div class="nge-cl-complete-msg nge-cl-complete-xhmsg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
               <template v-if="completing.checking">Checking where the crosshairs are…</template>
               <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}<CrosshairHelp v-if="!completing.ok" /></template>
             </div>
+            <div class="nge-cl-complete-xhrow">
+            <div class="nge-cl-complete-xhcol">
             <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
@@ -5402,8 +5421,9 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-recheck:hover:not(:disabled) { border-color: rgba(160, 190, 220, 0.6); }
 .nge-cl-complete-notes { resize: vertical; min-height: 2.6em; font-family: inherit; width: 100%; box-sizing: border-box; }
 .nge-cl-complete-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
-.nge-cl-complete-xhrow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
-.nge-cl-complete-xhcol { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.nge-cl-complete-xhrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 6px; }
+.nge-cl-complete-xhcol { flex: 0 0 auto; display: flex; align-items: center; }
+.nge-cl-complete-xhmsg { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
 .nge-cl-complete-xhrow .nge-cl-complete-recheck { margin-left: 0; font-size: 13px; padding: 2px 10px; }
 .nge-cl-complete-xhrow .nge-cl-complete-actions { margin-top: 0; margin-left: auto; }
 
@@ -6576,6 +6596,7 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
   width: 8px;
   text-align: center;
 }
+.nge-cl-panel--opening { visibility: hidden; }
 .nge-cl-help-ds-arrow--collapsed {
   transform: rotate(-90deg);
 }

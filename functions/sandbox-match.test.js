@@ -131,6 +131,7 @@ function world() {
     if ((m = p.match(/^sandbox_match_keys\?task_id=eq\.(\d+)/))) return db.keys[m[1]] ? [JSON.parse(JSON.stringify(db.keys[m[1]]))] : [];
     if (p.startsWith('sandbox_match_keys?on_conflict')) { const k = JSON.parse(init.body); db.keys[k.task_id] = k; return null; }
     if (p === 'rpc/sandbox_match_record') { db.records.push(JSON.parse(init.body)); return null; }
+    if ((m = p.match(/^edit_log\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&operation=in\.\(merge,split\)/))) return (db.edits || []).filter(e => e.task_id === +m[1] && e.user_id === decodeURIComponent(m[2]));
     throw new Error('unexpected ' + p);
   };
   return {io: {fetch, sb, caveToken: 'x'}, sandbox, truth, ID, calls, db};
@@ -140,7 +141,7 @@ test('a check builds the key once, then scores each edit', async () => {
   M._reset();
   const w = world();
   const first = await M.check(w.io, {taskId: 1, me: ME});
-  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, score: 38, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}});
+  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, score: 38, startScore: 38, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}, edits: 0});
   const key = w.db.keys[1];
   assert.equal(key.truth_root, w.ID.T);
   assert.equal(key.start_root, w.ID.S0);
@@ -288,4 +289,18 @@ test('SQL: runs twice, keeps last and best, closed to the public', async () => {
   }
   const f = (await db.query(`SELECT has_function_privilege('anon', 'sandbox_match_record(uuid,integer,integer,text,integer,integer,integer,integer)', 'EXECUTE') a`)).rows[0];
   assert.equal(f.a, false);
+});
+
+test('a check counts the player\'s own merges and cuts on this cell', async () => {
+  M._reset();
+  const w = world();
+  w.db.edits = [
+    {task_id: 1, user_id: ME.id, operation: 'merge'},
+    {task_id: 1, user_id: ME.id, operation: 'split'},
+    {task_id: 1, user_id: 'someone else', operation: 'merge'},
+    {task_id: 2, user_id: ME.id, operation: 'merge'},
+  ];
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(r.edits, 2);
+  assert.equal(r.startScore, 38);
 });

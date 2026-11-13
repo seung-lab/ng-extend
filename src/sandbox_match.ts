@@ -30,6 +30,8 @@ export interface MatchResult {
   /** The match score: how much the player's cell and the true cell match, by
    *  size (shared over the two together), 0 to 100. */
   score?: number | null;
+  /** The score the cell started at, and the player's merges and cuts on it. */
+  startScore?: number | null; edits?: number | null;
   /** Share of the missing parts merged in, and of the extra parts cut off, by
    *  size; null when there was nothing of that kind to fix. */
   merge?: number | null; cut?: number | null;
@@ -146,7 +148,15 @@ const ROW_LABEL: Record<Row, string> = { merge: 'Merge', cut: 'Cut' };
 const ROW_SHORT: Record<Row, string> = { merge: 'M', cut: 'C' };
 // Ames 2026-11-13: "Playing: Practice Cell" over one Match Score.
 const TITLE_HTML = '<span class="nge-cm-pre">Playing: </span>Practice cell';
-const scoreTip = (pct: number | null | undefined) => `Match score${pct == null ? '' : ` ${pct}%`}: how much your cell matches the true cell, by size`;
+// Merge and Cut together, half each, so it starts at 0 (Ames 2026-11-13:
+// "match score should start at 0"). By total size, one big merger cut off read
+// 90% with every thin missing piece still missed ("I got 90% and missed everything").
+const scoreTip = (pct: number | null | undefined) => `Match score${pct == null ? '' : ` ${pct}%`}: your Merge and Cut together, half each`;
+/** The match score: Merge and Cut averaged (only the ones this cell has). */
+export function matchScore(r: MatchResult): number | null {
+  const parts = [r.merge, r.cut].filter((n): n is number => n != null);
+  return parts.length ? Math.floor(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+}
 
 /** Under a row's percent: pieces done of all, or that there is nothing to do. */
 export function rowPieces(r: MatchResult, row: Row): string {
@@ -258,6 +268,25 @@ const CSS = `
 #${CARD_ID} .nge-cm-score .nge-cm-state{justify-self:end;align-self:end;font-size:12px;line-height:1.3}
 #${CARD_ID} .nge-cm-head .nge-cm-i{margin-left:auto}
 #${CARD_ID} .nge-cm-score .nge-cm-num{font-size:18px}
+#${GUIDE_ID}{position:fixed;inset:0;z-index:9500;pointer-events:none}
+#${GUIDE_ID} .nge-cm-guide-ring{position:fixed;border:2px solid #7fd8ff;border-radius:8px;box-shadow:0 0 0 4px rgba(127,216,255,.18),0 0 22px rgba(127,216,255,.6);
+  animation:nge-cm-guide 1s ease-in-out infinite}
+#${GUIDE_ID} .nge-cm-guide-label{position:fixed;padding:5px 10px;border:1px solid rgba(74,158,255,.6);border-radius:8px;background:rgba(6,12,26,.96);
+  color:#eaf6ff;font:600 11px/1 Orbitron,Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+@keyframes nge-cm-guide{0%,100%{box-shadow:0 0 0 4px rgba(127,216,255,.18),0 0 22px rgba(127,216,255,.6)}50%{box-shadow:0 0 0 9px rgba(127,216,255,0),0 0 30px rgba(127,216,255,.85)}}
+@media (prefers-reduced-motion:reduce){#${GUIDE_ID} .nge-cm-guide-ring{animation:none}}
+#${CARD_ID} .nge-cm-progress{grid-column:1/-1;margin:-1px 0 4px;color:#a9c3e0;font-size:12.5px}
+#${CARD_ID} .nge-cm-progress:empty{display:none}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-progress{display:none}
+/* Checking (Ames 2026-11-13: "it needs a loading indicator"): a light runs
+   along the score bar and a small ring turns beside the word. */
+#${CARD_ID}.nge-cm-checking .nge-cm-score .nge-cm-gauge::after{content:'';position:absolute;top:0;bottom:0;left:-40%;width:40%;
+  background:linear-gradient(90deg,transparent,rgba(190,240,255,.85),transparent);animation:nge-cm-load 1.1s ease-in-out infinite}
+@keyframes nge-cm-load{from{left:-40%}to{left:100%}}
+#${CARD_ID}.nge-cm-checking .nge-cm-state::before{content:'';display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px;
+  border:1.5px solid rgba(127,216,255,.35);border-top-color:#7fd8ff;border-radius:50%;animation:nge-cm-spin .8s linear infinite}
+@keyframes nge-cm-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID}.nge-cm-checking .nge-cm-score .nge-cm-gauge::after{animation:none;left:30%}#${CARD_ID}.nge-cm-checking .nge-cm-state::before{animation:none}}
 #${CARD_ID} .nge-cm-score .nge-cm-gauge{height:7px;margin:7px 0 6px}
 #${CARD_ID} .nge-cm-row[data-row="merge"]{margin-top:2px;border-top:1px solid rgba(127,190,255,.18);padding-top:7px}
 #${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:58px 1fr auto;align-items:baseline}
@@ -333,7 +362,16 @@ const rowHtml = (row: Row) => `<div class="nge-cm-row" data-row="${row}">`
 const scoreHtml = '<div class="nge-cm-row nge-cm-score" data-row="score">'
   + '<span class="nge-cm-label">Match score</span><span class="nge-cm-state"></span>'
   + '<span class="nge-cm-read"><span class="nge-cm-delta"></span><span class="nge-cm-num"></span></span>'
-  + '<div class="nge-cm-gauge"><i class="nge-cm-fill"></i></div></div>';
+  + '<div class="nge-cm-gauge"><i class="nge-cm-fill"></i></div>'
+  + '<span class="nge-cm-progress"></span></div>';
+
+/** Under the score: where the cell started and the edits made (Ames
+ *  2026-11-13: "why is my score 95%, how much have I done? count my edits"). */
+export function progressLine(r: MatchResult): string {
+  const parts: string[] = [];
+  if (r.edits != null) parts.push(plural(r.edits, 'edit'));
+  return parts.join(', ');
+}
 
 function card(): HTMLElement {
   ensureStyle();
@@ -344,7 +382,7 @@ function card(): HTMLElement {
   el.className = 'ng-extend';
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
-  el.title = 'How much your cell matches the true cell, by size. Merge: the missing pieces you have merged in. Cut: the wrong parts you have cut off.';
+  el.title = 'Your Merge and Cut together, half each. Merge: the missing pieces you have merged in. Cut: the wrong parts you have cut off.';
   el.innerHTML = '<div class="nge-cm-head"><span class="nge-cm-dot"></span><span class="nge-cm-title">' + TITLE_HTML + '</span>'
     + '<button type="button" class="nge-cm-tool nge-cm-i" aria-label="What do these numbers mean?" aria-pressed="false" aria-controls="nge-cell-match-info" title="What do these numbers mean?">i</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the score"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
@@ -354,7 +392,7 @@ function card(): HTMLElement {
     // Ames 2026-11-13: say what the Sandbox is, that real cells have no known
     // answer, and where research datasets are asked for.
     + '<p>You are in the <b>Sandbox</b>, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.</p>'
-    + '<p><b>Match score</b>: how much your cell matches the true cell, by size. 100% means they are the same.</p>'
+    + '<p><b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.</p>'
     + '<p><b>Merge</b>: the missing pieces you have merged back in. <b>Cut</b>: the wrong parts you have cut off.</p>'
     + '<p>In real cells there is no known answer. That is up to you and the brain.</p>'
     + '<p>When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the &#127828; menu, top right.</p></div>'
@@ -395,13 +433,15 @@ function idle(state: string, note: string, action = false) {
   if (isClosed()) { chip(undefined); return; }
   const el = card();
   el.classList.add('nge-cm-idle');
-  el.classList.remove('nge-cm-checking', 'nge-cm-done', 'nge-cm-bad');
+  el.classList.remove('nge-cm-done', 'nge-cm-bad');
+  el.classList.toggle('nge-cm-checking', state === 'Checking');
   (el.querySelector('.nge-cm-state') as HTMLElement).textContent = state;
   const sbox = el.querySelector('.nge-cm-score') as HTMLElement;
   (sbox.querySelector('.nge-cm-num') as HTMLElement).textContent = '';
   (sbox.querySelector('.nge-cm-delta') as HTMLElement).textContent = '';
   (sbox.querySelector('.nge-cm-fill') as HTMLElement).style.width = '0%';
   sbox.title = `Match score: ${note || 'no reading yet'}`;
+  (sbox.querySelector('.nge-cm-progress') as HTMLElement).textContent = '';
   sbox.dataset.pct = ''; sbox.dataset.pctWas = '';
   for (const row of ['merge', 'cut'] as Row[]) {
     const box = el.querySelector(`.nge-cm-row[data-row="${row}"]`) as HTMLElement;
@@ -531,7 +571,7 @@ function chip(r: MatchResult | undefined): HTMLElement {
     b.addEventListener('click', openCard);
     document.body.appendChild(b);
   }
-  (b.querySelector('.nge-cm-chipnum') as HTMLElement).textContent = r?.score != null ? `${r.score}%` : '';
+  (b.querySelector('.nge-cm-chipnum') as HTMLElement).textContent = r && matchScore(r) != null ? `${matchScore(r)}%` : '';
   place(b);
   return b;
 }
@@ -588,8 +628,9 @@ function ping(el: HTMLElement) {
 
 function showScore(el: HTMLElement, r: MatchResult, fresh: boolean) {
   const box = el.querySelector('.nge-cm-score') as HTMLElement;
-  box.title = scoreTip(r.score);
-  setReading(box, r.score ?? null, fresh);
+  box.title = scoreTip(matchScore(r));
+  (box.querySelector('.nge-cm-progress') as HTMLElement).textContent = progressLine(r);
+  setReading(box, matchScore(r), fresh);
 }
 
 function showRow(el: HTMLElement, r: MatchResult, row: Row, fresh: boolean) {
@@ -727,9 +768,10 @@ async function saveReviewView(btn: HTMLButtonElement, r: ReviewResult) {
   const shown: string[] = [];
   try { for (const id of currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? []) shown.push(String(id)); } catch { /* none */ }
   const pct = (n: number | null | undefined) => (n == null ? 'none' : `${n}%`);
+  savedTitle = `Sandbox review, cell ${r.root ?? ''}`.trim();
   const id = await deps.saveLink({
-    title: `Sandbox review, cell ${r.root ?? ''}`.trim(),
-    note: `Merge ${pct(r.merge)}, Cut ${pct(r.cut)}. Pieces not merged in gold, parts not cut pinned.`,
+    title: savedTitle,
+    note: `Match score ${pct(matchScore(r))}. Merge ${pct(r.merge)}, Cut ${pct(r.cut)}. Missed pieces in gold, merged parts pinned.`,
     url, dataset: 'pinky_nf_v2', position, visibleSegments: shown,
   }).catch(() => null);
   if (!id) {
@@ -742,6 +784,7 @@ async function saveReviewView(btn: HTMLButtonElement, r: ReviewResult) {
   savedTip(btn, true);
 }
 
+let savedTitle = '';
 function savedTip(btn: HTMLElement, ok: boolean) {
   document.getElementById(SAVED_ID)?.remove();
   const h = document.createElement('div');
@@ -760,8 +803,68 @@ function savedTip(btn: HTMLElement, ok: boolean) {
   h.querySelector('.nge-cm-tip-close')?.addEventListener('click', () => h.remove());
   h.querySelector('.nge-cm-tip-open')?.addEventListener('click', () => {
     h.remove();
-    document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'links' } }));
+    void guideToLinks(savedTitle);
   });
+}
+
+// ── The way to My Links, shown (Ames 2026-11-13: "animate highlight cell
+// library, click to expand, click to My Links and then show here") ─────────
+const GUIDE_ID = 'nge-cell-match-guide';
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+const visible = (e: Element | null): e is HTMLElement => !!e && (e as HTMLElement).getBoundingClientRect().width > 0;
+async function waitFor(find: () => HTMLElement | null, ms: number): Promise<HTMLElement | null> {
+  for (let t = 0; t < ms; t += 100) { const e = find(); if (visible(e)) return e; await sleep(100); }
+  return null;
+}
+/** A glowing ring on an element with a label under it, for `ms`. */
+async function ring(target: HTMLElement, label: string, ms: number) {
+  document.getElementById(GUIDE_ID)?.remove();
+  const g = document.createElement('div');
+  g.id = GUIDE_ID;
+  g.className = 'ng-extend';
+  g.innerHTML = `<div class="nge-cm-guide-ring"></div><div class="nge-cm-guide-label">${label}</div>`;
+  document.body.appendChild(g);
+  const box = g.firstElementChild as HTMLElement, tag = g.lastElementChild as HTMLElement;
+  const follow = () => {
+    if (!g.isConnected) return;
+    const r = target.getBoundingClientRect();
+    Object.assign(box.style, { left: `${r.left - 5}px`, top: `${r.top - 5}px`, width: `${r.width + 10}px`, height: `${r.height + 10}px` });
+    tag.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - tag.offsetWidth - 8)))}px`;
+    tag.style.top = `${Math.round(r.bottom + 10)}px`;
+    requestAnimationFrame(follow);
+  };
+  follow();
+  await sleep(ms);
+  g.remove();
+}
+async function guideToLinks(title: string) {
+  ensureStyle();
+  const panel = () => document.querySelector('.nge-cl-panel') as HTMLElement | null;
+  // 1. The Cell Library button in the top bar, pressed.
+  const btn = document.querySelector('#extensionBar [data-icon-id="cells"]') as HTMLElement | null;
+  if (visible(btn)) {
+    await ring(btn, 'Cell Library', 1300);
+    if (!visible(panel())) btn.click();
+  }
+  if (!visible(panel())) document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: {} }));
+  if (!await waitFor(panel, 5000)) return;
+  // 2. Slim: Full view.
+  const full = document.querySelector('.nge-cl-panel .nge-cl-slim-expand') as HTMLElement | null;
+  if (visible(full)) { await ring(full, 'Full view', 1300); full.click(); await sleep(700); }
+  // 3. The My Links tab.
+  const tab = await waitFor(() => document.querySelector('.nge-cl-panel .nge-cl-links-tab'), 3000);
+  if (!tab) { document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'links' } })); return; }
+  await ring(tab, 'My Links', 1300);
+  tab.click();
+  // 4. The saved view.
+  const row = await waitFor(() => {
+    const t = [...document.querySelectorAll<HTMLElement>('.nge-cl-panel .nge-cl-link-title')].find(e => e.textContent?.trim() === title);
+    return (t?.closest('.nge-cl-link-item') as HTMLElement | null) ?? null;
+  }, 4000);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  await sleep(400);
+  await ring(row, 'Your review view', 4000);
 }
 
 function flyTo(nm: number[]) {
@@ -872,8 +975,8 @@ export async function showReview(_taskId: number, pending: Promise<ReviewResult 
     clean.textContent = 'Nothing missed. Clean cell.';
     extra.appendChild(clean);
   } else {
-    if (missed.length) line(GOLD, 'Not merged', plural(missed.length, 'piece'), 'Pieces of the cell you did not merge in, drawn in gold in the 3D view', missed);
-    if (mergers.length) line(RED, 'Not cut', plural(mergers.length, 'part'), 'Parts of other cells still merged into yours, each marked with a pin', mergers);
+    if (missed.length) line(GOLD, 'Missed', plural(missed.length, 'piece'), 'Pieces of the cell you did not merge in, drawn in gold in the 3D view', missed);
+    if (mergers.length) line(RED, 'Merged', plural(mergers.length, 'part'), 'Parts of other cells still merged into yours, each marked with a pin', mergers);
   }
   const actions = document.createElement('div');
   actions.className = 'nge-cm-actions';
@@ -960,4 +1063,4 @@ export function startSandboxMatch(d: Deps) {
 }
 
 /** For headless checks. */
-(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, hasReview, startReview, showReview };
+(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview };

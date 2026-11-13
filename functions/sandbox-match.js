@@ -321,6 +321,8 @@ async function check(io, {taskId, me, isAdmin}) {
       taskId: id, scorable: true, root,
       match: matchPercent({missingNow, extraNow, missingStart: key.missing_start, extraStart: key.extra_start}),
       score: scorePercent({truthSize: truth.length, missingNow, extraNow}),
+      // Where the cell started (Ames 2026-11-13: "how much have I done?").
+      startScore: scorePercent({truthSize: truth.length, missingNow: key.missing_start, extraNow: key.extra_start}),
       merge: partPercent(missingNow, key.missing_start),
       cut: partPercent(extraNow, key.extra_start),
       missing: {left: piecesLeft(key.missing_pieces, rootOf, root, 'missing'), total: key.missing_pieces.length},
@@ -328,6 +330,9 @@ async function check(io, {taskId, me, isAdmin}) {
     };
     lastResult.set(memo, result);
   }
+  // The player's merges and cuts on this cell, from the edit log.
+  const edits = await countEdits(io, id, me.id).catch(e => { console.warn('[sandbox-match] no edit count', id, e.message); return null; });
+  result = {...result, edits};
   // Keeping the score never stands between the player and their number.
   await io.sb('rpc/sandbox_match_record', {method: 'POST', body: JSON.stringify({
     p_user: me.id, p_task: id, p_match: result.match, p_root: root,
@@ -335,6 +340,12 @@ async function check(io, {taskId, me, isAdmin}) {
     p_extra_left: result.extra.left, p_extra_total: result.extra.total,
   })}).catch(e => console.warn('[sandbox-match] score not kept', id, e.message));
   return result;
+}
+
+/** How many merges and cuts this player made on this cell. */
+async function countEdits(io, taskId, userId) {
+  const rows = await io.sb(`edit_log?task_id=eq.${taskId}&user_id=eq.${encodeURIComponent(userId)}&operation=in.(merge,split)&success=eq.true&select=id`);
+  return Array.isArray(rows) ? rows.length : null;
 }
 
 /** After Complete (Ames 2026-11-12: "show me what I missed"): the check, plus
