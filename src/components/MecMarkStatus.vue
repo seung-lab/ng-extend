@@ -29,7 +29,9 @@ const soma = ref(somaState());
 const hasStart = ref(!!startXyz());
 const marks = computed(() => (props.superQuest
   ? SUPER_QUEST_MARKS.map(key => MEC_KINDS.find(k => k.key === key)!).filter(Boolean)
-  : MEC_KINDS.filter(k => k !== MEC_SOMA && k.key !== 'mec:checked')));
+  // Only the AIS is marked on a claim now (Ames 2026-11-12); another kind
+  // shows only on a cell that already has marks of it.
+  : MEC_KINDS.filter(k => k !== MEC_SOMA && k.key !== 'mec:checked' && (k.key === 'mec:ais' || (counts.value[k.key] ?? 0) > 0))));
 
 // ── Hide the marks (Ames 2026-10-28: zoomed out, "all I see are
 // annotations but I want to see colored cell"). Hides the lab's layers in
@@ -212,7 +214,7 @@ onBeforeUnmount(() => {
             :title="open ? 'Hide the marks' : 'Mark this cell for the lab, and see what is placed'">
       <svg class="nge-mms-caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 7 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span class="nge-mms-title">Marks</span>
-      <span class="nge-mms-chip" :style="{ '--k': MEC_SOMA.color }" :class="{ 'nge-mms-chip--none': soma.state === 'none' }">
+      <span v-if="superQuest" class="nge-mms-chip" :style="{ '--k': MEC_SOMA.color }" :class="{ 'nge-mms-chip--none': soma.state === 'none' }">
         <i></i>Soma {{ soma.state === 'none' ? 'not yet' : '✓' }}
       </span>
       <span v-if="started" class="nge-mms-started" title="When you first worked on this cell. A Super Quest is yours for 2 months from when you claimed it.">{{ started }}</span>
@@ -223,11 +225,12 @@ onBeforeUnmount(() => {
     <div v-if="open" class="nge-mms-body">
       <p class="nge-mms-how">Pick a mark (or press its number), then Ctrl + click the cell to place it.<template v-if="superQuest"> Only the AIS is required.</template></p>
       <div class="nge-mms-list" role="radiogroup" aria-label="Mark to place">
-        <button type="button" role="radio" class="nge-mms-row" :class="{ 'nge-mms-row--on': armed === MEC_SOMA.key }"
+        <!-- No Soma on an ordinary claim (Ames 2026-11-12): the Cell Library sends the soma to the sheet. -->
+        <button v-if="superQuest" type="button" role="radio" class="nge-mms-row" :class="{ 'nge-mms-row--on': armed === MEC_SOMA.key }"
                 :aria-checked="armed === MEC_SOMA.key ? 'true' : 'false'" :style="{ '--k': MEC_SOMA.color }" @click="arm(MEC_SOMA.key)">
           <i></i><b>Soma<kbd v-if="keyOf[MEC_SOMA.key]" class="nge-mms-key" :title="`Key ${keyOf[MEC_SOMA.key]}`">{{ keyOf[MEC_SOMA.key] }}</kbd></b><span>{{ somaLine() }}</span>
         </button>
-        <div v-if="armed === MEC_SOMA.key" class="nge-mms-sub">
+        <div v-if="superQuest && armed === MEC_SOMA.key" class="nge-mms-sub">
           <template v-if="hasStart">
             <span>The starting point is the nucleus, inside the soma.</span>
             <span class="nge-mms-btns">
