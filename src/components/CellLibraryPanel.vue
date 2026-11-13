@@ -1567,7 +1567,7 @@ async function triggerCellCelebration(segId?: string) {
 const releasing = reactive(new Set<string>());
 function releaseKey(cell: CellRow): string { return cell.taskId != null ? String(cell.taskId) : cellKey(cell); }
 
-async function releaseCell(cell: typeof cells.value[0]) {
+async function releaseCell(cell: typeof cells.value[0], stayOnBar = false) {
   const key = releaseKey(cell);
   if (releasing.has(key)) return;
   releasing.add(key);
@@ -1588,7 +1588,12 @@ async function releaseCell(cell: typeof cells.value[0]) {
     return;
   }
   if (completing.value?.key === cellKey(cell)) completing.value = null;
-  if (slimSeg.value === cell.segId) expandFull();
+  // Skip keeps the slim bar: the next cell lands on it (Ames 2026-11-13: the
+  // full library opened and shut again on every Skip).
+  if (slimSeg.value === cell.segId) {
+    if (stayOnBar) { slimSeg.value = null; slimEmpty.value = true; }
+    else expandFull();
+  }
   if (cell.taskId) endedClaims.add(cell.taskId);
   if (cell.taskId && workingTaskId === cell.taskId) setWorkingTask(null);
   // Dispatch event so seg dot pips update
@@ -3036,7 +3041,9 @@ watch(filter, f => {
   else if (f !== 'quests') slimQuest.value = false;
 });
 /** The rows the cell list draws: one in the slim view, none on the empty bar. */
-const listCells = computed(() => (slimCell.value ? [slimCell.value] : slimEmpty.value ? [] : shownCells.value));
+// Slim with no cell of its own draws none: never the whole tab on the bar
+// (Ames 2026-11-13: two cells showed on the slim bar).
+const listCells = computed(() => (slimCell.value ? [slimCell.value] : slim.value ? [] : shownCells.value));
 const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed', 'hunt', 'giants'];
 /** The cell the caret shrinks to: the one on screen, else the claim being
  *  worked on, else your first claim. */
@@ -3111,6 +3118,7 @@ async function claimNewCell() {
       if (!cell.startLink) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
       jumpedSegId.value = cell.segId;
       slimEmpty.value = false;
+      slimQuest.value = false;
       slimSeg.value = cell.segId;
       await nextTick();
       clampPanelPos();
@@ -3194,7 +3202,7 @@ async function playSkip(which?: CellRow) {
   skipping.value = true;
   try {
     const skipped = new Set(playSkipped.value); skipped.add(cell.segId); playSkipped.value = skipped;
-    await releaseCell(cell);
+    await releaseCell(cell, true);
     if (myOpenClaims.value.some(c => c.segId === cell.segId)) return;  // not released: the reason shows
     const rest = myOpenClaims.value[0];
     if (rest) { await stepToClaim(rest); await collapseTo(rest); }
@@ -3305,6 +3313,7 @@ async function collapseTo(cell: CellRow | null) {
   showHowTo.value = false;
   slimSeg.value = cell ? cell.segId : null;
   slimEmpty.value = !cell;
+  slimQuest.value = false;
   await nextTick();
   clampPanelPos();
   if (!ghost || !el) return;
