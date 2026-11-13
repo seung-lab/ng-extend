@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T13:31:30Z",
+      "title": "Side panels close on a click again",
+      "items": [
+        "The leaderboard and Dataset Stats close again when you click elsewhere, as before. They stay open while you send a bug report, so you can report a problem with them."
+      ]
+    },
+    {
       "at": "2026-11-13T13:19:56Z",
       "title": "Your username on the leaderboard",
       "items": [
