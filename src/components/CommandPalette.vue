@@ -484,7 +484,8 @@ function buildActions(): PaletteItem[] {
         icon: '⌨️',
         shortcut: row.keys.length === 2 ? row.keys.join(' or ') : row.keys.join(' '),
         aliases: ['key', 'keys', 'shortcut', row.group.toLowerCase(), ...row.keys.map(k => k.toLowerCase())],
-        action: runs ? runs.action : () => { close(); pressKey(row.strokes[0], row.where); },
+        // A mouse or touch control is only read: there is no key to press.
+        action: row.mouse ? () => {} : runs ? runs.action : () => { close(); pressKey(row.strokes[0], row.where); },
       });
     }
   } catch (e) {
