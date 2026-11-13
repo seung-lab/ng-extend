@@ -15,6 +15,7 @@ import { useProofreadingBackendStore } from '../store';
 import { onTextEditAsked } from '../text_edit_links';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
+import CrosshairHelp from './CrosshairHelp.vue';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { mintShortStateLink } from '../util/state_link';
@@ -627,7 +628,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
-                <span>{{ check.message }}</span>
+                <span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">
@@ -714,7 +715,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
-                <span>{{ check.message }}</span>
+                <span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">

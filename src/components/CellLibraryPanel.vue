@@ -4,6 +4,7 @@ import imgRetinaBipolar from '../images/retina-bipolar-cell.jpg';
 import { datasetAccess } from '../util/dataset_access';
 import { reportWriteFailure } from '../util/error_reporting';
 import EditableText from './EditableText.vue';
+import CrosshairHelp from './CrosshairHelp.vue';
 import { otherTabCount } from '../util/tabs';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam, whenSettled } from '../util/panel_collapse';
@@ -4564,7 +4565,7 @@ const panelStyle = computed(() => ({
             <label class="nge-cl-complete-label">Crosshairs</label>
             <div class="nge-cl-complete-msg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
               <template v-if="completing.checking">Checking where the crosshairs are…</template>
-              <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}</template>
+              <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}<CrosshairHelp v-if="!completing.ok" /></template>
               <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
