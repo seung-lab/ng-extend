@@ -6,7 +6,7 @@ import { setStatedColor } from "./widgets/widget_utils";
 import { Uint64 } from "neuroglancer/util/uint64";
 import { useUserPreferencesStore } from "./store";
 import { makeLayer } from "neuroglancer/layer";
-import { activateGrapheneTool } from "./widgets/graphene_tool_utils";
+import { activateGrapheneTool, exitGrapheneTool } from "./widgets/graphene_tool_utils";
 
 /** How a layer chip is selected and hidden. Since 2026-10-11 a plain click
  *  selects and a right click hides; Classic layer tabs in Settings swaps them
@@ -136,7 +136,7 @@ function watchCollaboratorLink() {
         v.layerSpecification.add(makeLayer(v.layerSpecification, COLLAB_LAYER, {
           type: 'annotation', source: { url: 'local://annotations' },
           annotations: [{ type: 'point', id: 'collaborator-merger', point: spot, description: COLLAB_NOTE }],
-          annotationColor: '#ffd27a', pointSize: 6, onTop: true,
+          annotationColor: '#ffd27a', pointMarker: 'pyr', pointSize: 3, onTop: true,
         }));
       } catch (e) { console.warn('[tutorial] collaborator layer', e); }
     }
@@ -331,7 +331,9 @@ function nextWhenSegSelected() {
       if (!here()) { clearInterval(timer); return; }
       if (selected() && !was) {
         clearInterval(timer);
-        setTimeout(() => { if (here()) advance(); }, 1200);
+        // Waits for Next, with a word that it worked (Ames 2026-11-12: "make
+        // me click next in stead of auto advance").
+        doneWaitForNext();
       }
     }, 300);
   }, 800);
@@ -393,6 +395,17 @@ function pinkHighlights() {
   }, 400);
 }
 
+/** The step's action is done: Next is free, and the box says so. */
+function doneWaitForNext() {
+  (window as any).__ngeStepPending = false;
+  const html = document.querySelector('.introductionStepAnchor .chip .html');
+  if (html && !html.querySelector('.nge-tut-found')) {
+    const p = document.createElement('p');
+    p.className = 'nge-tut-found';
+    p.textContent = 'Nice! Press Next when you are ready.';
+    html.appendChild(p);
+  }
+}
 /** Moves on, and the step no longer waits on the player. */
 export function advance() {
   (window as any).__ngeStepPending = false;
@@ -531,6 +544,18 @@ export function glowAddButton() {
     if (store.activeTutorial !== tutorial || store.getTutorialStep() !== step) { clearInterval(timer); el.remove(); }
   }, 400);
 }
+/** Find Path off, and its points cleared (its Clear button). Starting
+ *  Advanced Interface from the end of Annotations left the bar up with both
+ *  points set (Ames 2026-11-12). */
+export function endFindPath() {
+  try { exitGrapheneTool(); } catch { /* no viewer */ }
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    try {
+      const fp = ml.layer?.graphConnection?.value?.state?.findPathState;
+      if (fp) { fp.source.reset(); fp.target.reset(); fp.centroids.reset(); }
+    } catch { /* not a cell layer */ }
+  }
+}
 /** Move on by itself once an annotation layer has been added. */
 export function nextWhenAnnotationLayerAdded() {
   waitForAction();
@@ -657,6 +682,7 @@ You've merged, cut and marked your first cells. Now let's take a deeper dive int
     width: "400px",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+    onEnter: endFindPath,
   },
   {
     part: "Part 1 of 4 · Working with cells",

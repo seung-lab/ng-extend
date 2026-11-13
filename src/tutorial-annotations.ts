@@ -11,10 +11,11 @@
  */
 import { Step, useTutorialStore } from "./store-pyr";
 import {
-  advance, classicLayers, findPathStep, glowAddButton, nextWhenAnnotationLayerAdded,
+  advance, classicLayers, endFindPath, findPathStep, glowAddButton, nextWhenAnnotationLayerAdded,
   OVER_3D, SELECT_CLICK, waitForAction,
 } from "./tutorial-2";
 import { startTutorialButton, stopWatching } from "./tutorial-3";
+import { makeLayer } from "neuroglancer/layer";
 import imgNurroAtHome from "./images/nurro-at-home600.png";
 import { supabase } from "./supabase";
 import { useProofreadingBackendStore } from "./store";
@@ -183,6 +184,33 @@ function viewOnAMark(): boolean {
     const q = a?.point ?? a?.pointA;
     return Array.isArray(q) && Math.abs(q[0] - p[0]) < 150 && Math.abs(q[1] - p[1]) < 150 && Math.abs(q[2] - p[2]) < 15;
   });
+}
+
+/** The merger's start, shown with a purple Pyr gem, and the view zoomed in
+ *  on it (Ames 2026-11-12). Added by the tutorial, so it shows even with
+ *  Find Path still on, when the player could not place one. */
+const MERGER_START = [114948, 57207, 1348];
+const MERGER_START_LAYER = 'Merger starts here';
+function markMergerStart() {
+  const v = viewer();
+  if (!v) return;
+  const had = (v.layerManager?.managedLayers ?? []).some((ml: any) => !ml.archived && ml.name === MERGER_START_LAYER);
+  if (!had) {
+    try {
+      v.layerSpecification.add(makeLayer(v.layerSpecification, MERGER_START_LAYER, {
+        type: 'annotation', source: { url: 'local://annotations' },
+        annotations: [{ type: 'point', id: 'merger-start', point: MERGER_START, description: 'The merger starts here: cut here' }],
+        annotationColor: '#b46cff', pointMarker: 'pyr', pointSize: 3, onTop: true,
+      }));
+    } catch (e) { console.warn('[tutorial] merger start gem', e); }
+  }
+  // The new layer must not take Find Path's place as the selected layer.
+  setTimeout(() => {
+    try {
+      v.navigationState.position.value = Float32Array.from(MERGER_START);
+      v.perspectiveNavigationState.zoomFactor.value = Math.min(v.perspectiveNavigationState.zoomFactor.value, 4000);
+    } catch { /* no viewer */ }
+  }, 300);
 }
 
 /** Merge or Cut mode left on would take the tutorial's Ctrl+clicks as edit
@@ -420,11 +448,12 @@ Please leave this cell as it is, so the next player finds the same merger.`,
     // box was blocking the path").
     position: { element: "body", x: 0.84, y: 0.2 },
     width: "380px",
+    onEnter: markMergerStart,
   },
   {
     part: PART,
     text: `
-That's annotations! Your layers stay in your view, ready for your next cell.
+That's annotations! They're how you proofread in Pyr. Every cut and every merge starts with points you drop: they tell Pyr exactly what to split apart or join together. Your layers stay in your view, ready for your next cell.
 
 Next is **Advanced Interface**: working with many cells, finding your way, and the tools for tracking down mergers.
 
