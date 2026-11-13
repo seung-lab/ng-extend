@@ -10,7 +10,7 @@
  * Fails open: if the server cannot be asked, nothing shows. The server still
  * refuses every write from a player who is not on the list.
  */
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useLoginStore, useProofreadingBackendStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { runPanelTrace } from '../util/holo_trace';
@@ -34,7 +34,12 @@ const ewRank = ref('');
 // username at the point of requesting beta access"). A sign-in with no name
 // showed the email on the leaderboard (#512). Saved to the account with the
 // request.
+// With an EyeWire username typed in, a box (on to start) uses it in Pyr too;
+// unticked, they choose another (Ames 2026-11-13).
 const pyrName = ref('');
+const useEwName = ref(true);
+const usingEw = computed(() => useEwName.value && !!ewName.value.trim());
+const chosenName = computed(() => (usingEw.value ? ewName.value : pyrName.value).trim());
 const pyrNameNote = ref('');
 const pyrNameBad = ref(false);
 let pyrNameTimer: ReturnType<typeof setTimeout> | null = null;
@@ -43,15 +48,21 @@ function onPyrName() {
   pyrNameBad.value = false;
   pyrNameNote.value = '';
   if (pyrNameTimer) clearTimeout(pyrNameTimer);
-  const v = pyrName.value.trim();
+  const v = chosenName.value;
   if (!v || v === backend.username) return;
   const invalid = backend.validateUsername(v);
-  if (invalid) { pyrNameNote.value = invalid; pyrNameBad.value = true; return; }
+  if (invalid) {
+    pyrNameNote.value = usingEw.value
+      ? 'A Pyr username has 3 to 20 letters, numbers or underscores. Untick the box to choose another.'
+      : invalid;
+    pyrNameBad.value = true;
+    return;
+  }
   pyrNameTimer = setTimeout(async () => {
     const free = await backend.isUsernameAvailable(v);
-    if (pyrName.value.trim() !== v) return;
+    if (chosenName.value !== v) return;
     pyrNameBad.value = !free;
-    pyrNameNote.value = free ? 'Available' : 'That username is taken.';
+    pyrNameNote.value = free ? 'Available' : (usingEw.value ? 'That username is taken in Pyr. Untick the box to choose another.' : 'That username is taken.');
   }, 400);
 }
 async function fillPyrName() {
@@ -104,11 +115,11 @@ function problem(): string {
   if (!NAME_OK.test(n)) return 'Your name can have letters, spaces, periods, apostrophes and hyphens only.';
   if (!e) return 'Please add your email.';
   if (!EMAIL_OK.test(e)) return 'That email does not look right.';
-  const u = pyrName.value.trim();
+  const u = chosenName.value;
   if (!u) return 'Please choose a username.';
   if (u !== backend.username) {
     const invalid = backend.validateUsername(u);
-    if (invalid) return invalid;
+    if (invalid) return usingEw.value ? 'Your EyeWire username will not work as a Pyr username. Untick the box to choose another.' : invalid;
   }
   if (ewName.value.trim() && !EW_NAME_OK.test(ewName.value.trim())) return 'An EyeWire username has letters, numbers, dots, dashes and underscores only.';
   if (ewRank.value.trim() && !EW_RANK_OK.test(ewRank.value.trim())) return 'An EyeWire rank has letters, numbers and spaces only.';
@@ -121,7 +132,7 @@ async function request() {
   sending.value = true;
   try {
     // The username first: a taken one stops here, before the request is sent.
-    const u = pyrName.value.trim();
+    const u = chosenName.value;
     if (u !== backend.username) {
       try { await backend.saveUsername(u); }
       catch (e: any) { pyrNameBad.value = true; pyrNameNote.value = e?.message || 'That username could not be saved.'; throw e; }
@@ -229,20 +240,26 @@ onUnmounted(() => window.clearInterval(waitCheck));
           <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-email">Your email</label>
           <input id="nge-beta-email" v-model="email" class="nge-beta-field" type="email" maxlength="254" autocomplete="email" @input="error = ''" />
-          <label class="nge-beta-label" for="nge-beta-username">Choose a username <span>(what other players see)</span></label>
-          <input id="nge-beta-username" v-model="pyrName" class="nge-beta-field" type="text" maxlength="20" autocomplete="off" spellcheck="false"
-                 placeholder="3 to 20 letters, numbers or _" @input="onPyrName" />
-          <p v-if="pyrNameNote" class="nge-beta-uname" :class="{ 'nge-beta-uname--bad': pyrNameBad }" role="status">{{ pyrNameNote }}</p>
           <div class="nge-beta-pair">
             <div>
               <label class="nge-beta-label" for="nge-beta-ewname">EyeWire username <span>(optional)</span></label>
-              <input id="nge-beta-ewname" v-model="ewName" class="nge-beta-field" type="text" maxlength="60" autocomplete="off" spellcheck="false" @input="error = ''" />
+              <input id="nge-beta-ewname" v-model="ewName" class="nge-beta-field" type="text" maxlength="60" autocomplete="off" spellcheck="false" @input="onPyrName" />
             </div>
             <div>
               <label class="nge-beta-label" for="nge-beta-ewrank">EyeWire rank <span>(optional)</span></label>
               <input id="nge-beta-ewrank" v-model="ewRank" class="nge-beta-field" type="text" maxlength="40" autocomplete="off" @input="error = ''" />
             </div>
           </div>
+          <label v-if="ewName.trim()" class="nge-beta-check">
+            <input v-model="useEwName" type="checkbox" @change="onPyrName" />
+            Use my EyeWire username in Pyr
+          </label>
+          <template v-if="!usingEw">
+            <label class="nge-beta-label" for="nge-beta-username">Choose a username</label>
+            <input id="nge-beta-username" v-model="pyrName" class="nge-beta-field" type="text" maxlength="20" autocomplete="off" spellcheck="false"
+                   placeholder="3 to 20 letters, numbers or _" @input="onPyrName" />
+          </template>
+          <p v-if="pyrNameNote" class="nge-beta-uname" :class="{ 'nge-beta-uname--bad': pyrNameBad }" role="status">{{ pyrNameNote }}</p>
           <label class="nge-beta-label" for="nge-beta-found">How did you find us? <span>(optional)</span></label>
           <input id="nge-beta-found" v-model="foundUs" class="nge-beta-field" type="text" maxlength="200" autocomplete="off"
                  placeholder="For example: the EyeWire forum, a friend, a class" @input="error = ''" />
@@ -388,6 +405,8 @@ onUnmounted(() => window.clearInterval(waitCheck));
 .nge-beta-error { margin: 10px 0 0; font-size: 13px; color: #ff9a9a; }
 .nge-beta-uname { margin: -8px 0 12px; font-size: 12px; color: #7fe0a8; }
 .nge-beta-uname--bad { color: #ff9a9a; }
+.nge-beta-check { display: flex; align-items: center; gap: 8px; margin: -4px 0 12px; font-size: 13px; color: rgba(200, 220, 245, 0.85); cursor: pointer; }
+.nge-beta-check input { accent-color: #4fcfff; }
 .nge-beta-foot {
   margin: 20px 0 0; padding-top: 14px;
   border-top: 1px solid rgba(79, 207, 255, 0.15);

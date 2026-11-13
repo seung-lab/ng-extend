@@ -159,21 +159,16 @@ const nothingHere = computed(() =>
 const readAt = computed(() => (stats.value
   ? new Date(stats.value.readAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''));
 
-// ── Peek: a click outside, or Escape, puts the panel away ────────────────
-function onPeekPointerDown(e: PointerEvent) {
-  const panel = document.querySelector('#nge-dsp-modal .nge-overlay');
-  if (panel && !panel.contains(e.target as Node)) emit('hide');
-}
+// ── Peek: Escape or x puts the panel away. A click elsewhere on the site no
+// longer does, so it stays open while the player reports a problem (#512).
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('hide'); }
 onMounted(() => {
   if (props.embedded) return;        // the profile owns Escape and its own close
   document.addEventListener('keydown', onKey);
-  if (props.peek) document.addEventListener('pointerdown', onPeekPointerDown, true);
 });
 onUnmounted(() => {
   ticket++;
   document.removeEventListener('keydown', onKey);
-  document.removeEventListener('pointerdown', onPeekPointerDown, true);
 });
 </script>
 
