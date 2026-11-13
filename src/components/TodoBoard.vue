@@ -645,16 +645,21 @@ async function finish(c: Card, e?: MouseEvent) {
 }
 
 // ── Numbers ──
+/** 7.5 reads "7½". */
+const halfPoints = (n: number) => { const w = Math.floor(n); return n - w ? (w ? `${w}½` : '½') : String(w); };
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
-  // A finished card counts for its owner and every collaborator (Ames 2026-11-09).
-  // Triage reports each one closed this week count too (Ames 2026-11-12).
+  // A finished card is a point for its owner and half a point for each
+  // collaborator (Ames 2026-11-12: "If I complete the task I should get more
+  // points, the assist people should get less"). Each triage report closed
+  // this week is a point too.
   const tw = triageWeek.value;
   const byPerson = people.value.map(p => {
-    const cardsN = doneWeek.filter(c => c.owner_id === p.id || (helpers.value[c.id] || []).includes(p.id)).length;
+    const owned = doneWeek.filter(c => c.owner_id === p.id).length;
+    const helped = doneWeek.filter(c => c.owner_id !== p.id && (helpers.value[c.id] || []).includes(p.id)).length;
     const reports = tw?.byPerson?.[p.id] || 0;
-    return { id: p.id, name: firstName(p.name), n: cardsN + reports, cards: cardsN, reports };
+    return { id: p.id, name: firstName(p.name), n: owned + helped / 2 + reports, owned, helped, reports };
   }).filter(x => x.n).sort((a, b) => b.n - a.n);
   const month = Date.now() - 30 * 864e5;
   const spans = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= month && c.created_at)
@@ -2351,7 +2356,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
       <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
       <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
-        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.cards} cards, ${p.reports} triage reports`">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (1 point each), ${p.helped} helped on (½ point each), ${p.reports} triage reports (1 point each)`">{{ p.name }} <b>{{ halfPoints(p.n) }}</b></span>
         <span class="nge-todo-stat-word">done this week</span>
       </div>
     </div>
