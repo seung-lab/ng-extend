@@ -450,8 +450,7 @@ function maybeOpenLeaderboardOnArrival() {
 // (toolbar icon, Switch Dataset panel, command list). This is the narrow
 // panel: the leaderboard's link, and every way in on a phone.
 const showDatasetStats = ref(false);
-// The two share the right side and no longer close on a click elsewhere, so
-// opening one puts the other away (#512).
+// The two share the right side, so opening one puts the other away.
 watch(showLeaderboard, on => { if (on) showDatasetStats.value = false; });
 watch(showDatasetStats, on => { if (on) { showLeaderboard.value = false; leaderboardPeek.value = false; } });
 /** Its home is the profile's Dataset Stats tab. Phones have no room for
@@ -1341,7 +1340,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <user-profile-panel v-if="showProfile" :key="profileKey" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="onProfileHide" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
-  <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable. It stays open until x, Escape or another panel (#512). Phones keep the sheet. -->
+  <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable, a click elsewhere puts it away (except on the bug report, #512). Phones keep the sheet. -->
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />

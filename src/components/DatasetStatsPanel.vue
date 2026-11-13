@@ -18,6 +18,7 @@ import { canonicalDataset, currentDatasetTag, type DatasetEntry } from '../datas
 import { datasetKey } from '../util/completion_rule';
 import { datasetsWithStats, loadDatasetStats, statsKey, weeklySeries, type DatasetStats } from '../util/dataset_stats';
 import { useProofreadingBackendStore } from '../store';
+import { isBugReportClick } from '../util/bug_report_click';
 
 const emit = defineEmits({ hide: null });
 /** Peek (desktop): no dim, the site stays usable, a click elsewhere puts it away.
@@ -159,16 +160,23 @@ const nothingHere = computed(() =>
 const readAt = computed(() => (stats.value
   ? new Date(stats.value.readAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''));
 
-// ── Peek: Escape or x puts the panel away. A click elsewhere on the site no
-// longer does, so it stays open while the player reports a problem (#512).
+// ── Peek: a click outside, or Escape, puts the panel away ────────────────
+// Except the bug report: it stays open so a player can report a problem with
+// it (#512).
+function onPeekPointerDown(e: PointerEvent) {
+  const panel = document.querySelector('#nge-dsp-modal .nge-overlay');
+  if (panel && !panel.contains(e.target as Node) && !isBugReportClick(e)) emit('hide');
+}
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('hide'); }
 onMounted(() => {
   if (props.embedded) return;        // the profile owns Escape and its own close
   document.addEventListener('keydown', onKey);
+  if (props.peek) document.addEventListener('pointerdown', onPeekPointerDown, true);
 });
 onUnmounted(() => {
   ticket++;
   document.removeEventListener('keydown', onKey);
+  document.removeEventListener('pointerdown', onPeekPointerDown, true);
 });
 </script>
 

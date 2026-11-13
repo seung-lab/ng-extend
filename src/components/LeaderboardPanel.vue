@@ -9,6 +9,7 @@ import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import nurroTrophy from '../../static/badges/pyr/nurro-trophy.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import { isBugReportClick } from '../util/bug_report_click';
 
 const {prefs} = storeToRefs(useUserPreferencesStore());
 const backendStore = useProofreadingBackendStore();
@@ -452,16 +453,23 @@ function userFlag(user: DemoUser): string {
 }
 
 const emit = defineEmits({hide: null});
-/** Peek: the arrival greeting. No dim or blur, the site stays usable. It
- *  stays open while the player clicks around the site, so they can report a
- *  problem with it (#512, 2026-11-13); x, Escape or another panel closes it. */
+/** Peek: the arrival greeting. No dim or blur, the site stays usable, and
+ *  the first click anywhere else zips it away (Ames 2026-09-28). Except the
+ *  bug report: it stays open so a player can report a problem with it (#512). */
 const props = defineProps<{ peek?: boolean }>();
+function onPeekPointerDown(e: PointerEvent) {
+  const panel = document.querySelector('#nge-lb-modal .nge-overlay');
+  if (!panel || panel.contains(e.target as Node) || isBugReportClick(e)) return;
+  void close();
+}
 function onPeekKey(e: KeyboardEvent) { if (e.key === 'Escape') void close(); }
 onMounted(() => {
   if (!props.peek) return;
+  document.addEventListener('pointerdown', onPeekPointerDown, true);
   document.addEventListener('keydown', onPeekKey);
 });
 onUnmounted(() => {
+  document.removeEventListener('pointerdown', onPeekPointerDown, true);
   document.removeEventListener('keydown', onPeekKey);
 });
 </script>
