@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T17:01:29Z",
+      "title": "S for To soma",
+      "items": [
+        "In Highlight, with a start point placed, press S for To soma or B for Beyond instead of clicking the buttons.",
+        "Clear all asks if you are sure, and Enter says OK."
+      ]
+    },
+    {
       "at": "2026-11-13T16:59:16Z",
       "title": "Clear all asks first",
       "items": [
