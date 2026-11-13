@@ -10,6 +10,14 @@
       ]
     },
     {
+      "at": "2026-11-13T17:00:00Z",
+      "title": "Play pill shows and hides the box",
+      "items": [
+        "The Play pill in the top bar now shows and hides the box you play in: click once to put it away, click again to bring it back on your cell.",
+        "On Retina, a small arrows button beside the pill lets you switch between the BC Challenge and Cilia Quests, or stop playing."
+      ]
+    },
+    {
       "at": "2026-11-13T16:59:16Z",
       "title": "Clear all asks first",
       "items": [
