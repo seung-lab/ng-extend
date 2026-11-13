@@ -28,7 +28,7 @@ import {makeLayer} from 'neuroglancer/layer';
 import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
 /** The Sandbox pyramidal cell: the colors land on it alone. */
 const CELL_KEY = getObjectKey(Uint64.parseString('648518346355727683'));
-import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, starshipCruise, undockStarship} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipLengthNm, starshipMoving, starshipCruise, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import starshipIcon from '../images/starship-icon.png';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
@@ -231,6 +231,35 @@ function frameAboveCard(at: V3, viewNm: number, ms: number) {
     const nmWide = viewNm / Math.pow(room, 0.6);
     moveCamera(framed(at, nmWide), nmWide, ms);
   }, 80);
+}
+/** How far the camera has to pull back (about the framed subject) for the
+ *  whole parked ship to be in the open space of the 3D view: not cut by its
+ *  top edge, its sides, or hidden behind the panel. 1 when it already is.
+ *  (Marissa 2026-11-13, a short laptop window: the ship was cut off at the
+ *  top in the soma, dendrite and synapse steps.) */
+function shipPullBack(): number {
+  const p = starshipAt(), len = starshipLengthNm(), nm = nmPerUnit();
+  const pe = threeDPanel()?.element as HTMLElement | undefined;
+  const cam = nm && cameraAxes(nm);
+  if (!p || !len || !cam || !pe) return 1;
+  const r = pe.getBoundingClientRect();
+  if (r.height < 50) return 1;
+  const box = panel ?? [...document.querySelectorAll<HTMLElement>('section.nge-intro')].find(e => !e.classList.contains('nge-intro--out'));
+  const floor = Math.min(r.bottom, box ? box.offsetTop - 10 : r.bottom);
+  // the subject sits in the middle of the open space (as framed() put it):
+  // the camera pulls back about that point
+  const cx = (r.left + r.right) / 2, cy = (r.top + floor) / 2, m = 16;
+  const room = {l: cx - r.left - m, r: r.right - m - cx, t: cy - r.top - m, b: floor - m - cy};
+  if (Math.min(room.l, room.r, room.t, room.b) < 20) return 1;
+  let need = 1;
+  const R = len * 0.65;
+  for (const [a, c] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const s = toScreen(p.map((x, k) => x + (cam.right[k] * a + cam.up[k] * c) * R) as V3);
+    if (!s) continue;
+    const dx = s[0] - cx, dy = s[1] - cy;
+    need = Math.max(need, dx > 0 ? dx / room.r : -dx / room.l, dy < 0 ? -dy / room.t : dy / room.b);
+  }
+  return need;
 }
 function cellCenter(t: Tour): V3 {
   const g = t.grid;
@@ -1521,6 +1550,22 @@ export async function startIntroTour() {
       if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, vnm), vnm, ms); }, 1300);
       else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, vnm), vnm, msNow);
       setTimeout(() => { if (active && i === n) revealTint(shown, b.part); }, b.key === 'spike' ? 600 : ms * 0.55);
+      // once the camera and the ship have both stopped, the whole ship should
+      // be in view: on a short window it hovered cut off at the top edge
+      // (Marissa 2026-11-13), so the camera eases back a little until it fits
+      if (want === 'dock' || want === 'pad' || b.key === 'spike') return;
+      let viewNm = vnm, tries = 0;
+      const fit = () => {
+        if (!active || i !== n) return;
+        if (performance.now() < camBusyUntil || starshipMoving()) { setTimeout(fit, 200); return; }
+        const k = shipPullBack();
+        if (k <= 1.02 || tries++ >= 2) return;
+        viewNm *= Math.min(2.2, k * 1.08);
+        const to = framed(center, viewNm), glide = glideMs(to, viewNm, 1400);
+        moveCamera(to, viewNm, glide);
+        setTimeout(fit, glide + 150);
+      };
+      setTimeout(fit, msNow);
     };
     camBusyUntil = Math.max(camBusyUntil, performance.now() + camDelay + 120);
     setTimeout(camera, camDelay);

@@ -261,6 +261,8 @@ let upNow: V3 = [0, -1, 0];
 let sizeK = 1;
 /** Where the ship is now (nm), while it is out. */
 export function starshipAt(): V3 | null { return running ? shipNow : null; }
+/** How long the ship is drawn now (nm), jets and all, for keeping it in frame. */
+export function starshipLengthNm(): number { return flight ? flight.shipLength * sizeK : 0; }
 let liftNormal: V3 = [0, -1, 0];
 function along(path: V3[], cum: number[], s: number): V3 {
   s = Math.max(0, Math.min(cum[cum.length - 1], s));
