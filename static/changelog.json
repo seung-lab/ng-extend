@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T01:22:00Z",
+      "title": "Switch what you play from the top bar",
+      "items": [
+        "While you play, clicking the chip in the top bar opens the choice again, so you can switch between mapping and Cilia Quest, go back to your cell, or stop."
+      ]
+    },
+    {
       "at": "2026-11-13T01:11:00Z",
       "title": "The Cell Library opens again",
       "items": [
