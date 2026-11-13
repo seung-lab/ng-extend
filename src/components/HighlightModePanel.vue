@@ -7,6 +7,7 @@
  */
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
+import ConfirmDialog from './ConfirmDialog.vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
 import { claimTouchTaps } from '../util/touch_tap';
@@ -509,10 +510,17 @@ function undo() {
   say(undoHighlight() ? 'Removed the last mark.' : 'Nothing to undo.');
   refresh();
 }
+// Clear all asks first, in Pyr's own red confirm box with Cancel picked
+// (Ames 2026-11-13: "should have an are you sure warning"). The browser's
+// own box was easy to click through.
+const clearAsk = ref(0);
 function clearAll() {
   const n = listHighlights().filter(m => !m.style.lab).length;
   if (!n) { say(markCount.value ? 'Clear all leaves the lab marks. Undo or the annotation list removes one.' : 'Nothing to clear.'); return; }
-  if (!window.confirm(`Remove all ${n} highlight marks from this view? The lab marks stay.`)) return;
+  clearAsk.value = n;
+}
+function clearAllYes() {
+  clearAsk.value = 0;
   clearHighlights();
   first.value = null;
   clearStartMarker();
@@ -725,7 +733,11 @@ onBeforeUnmount(() => {
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
         <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
-        <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
+        <button class="nge-hl-btn nge-hl-btn--danger" :disabled="busy || !markCount" @click="clearAll"
+                title="Remove every highlight mark in this view. Asks first. Your segments and lab marks stay.">Clear all</button>
+        <ConfirmDialog v-if="clearAsk" :title="`Clear all ${clearAsk} highlight ${clearAsk === 1 ? 'mark' : 'marks'}?`"
+          text="Every highlight in this view goes. Your segments stay, and so do the lab marks. This cannot be undone."
+          yes="Clear all highlights" @yes="clearAllYes" @no="clearAsk = 0" />
       </div>
       <label class="nge-hl-width" title="How far out from the middle of the branch the color reaches. Wider covers thick branches and their spines; narrower keeps the color off neighboring branches.">
         <span>Color reach</span>
@@ -942,6 +954,9 @@ onBeforeUnmount(() => {
   color: #cfe6ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.3);
 }
 .nge-hl-btn:hover:not(:disabled) { background: rgba(74, 158, 255, 0.2); }
+/* Clear all: gray, apart from Undo, and red on hover. */
+.nge-hl-btn--danger { color: rgba(220, 228, 240, 0.7); background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.16); }
+.nge-hl-btn--danger:hover:not(:disabled) { color: #ffb3bd; background: rgba(255, 93, 115, 0.12); border-color: rgba(255, 93, 115, 0.5); }
 .nge-hl-btn:disabled { opacity: 0.4; cursor: default; }
 .nge-hl-btn--main { flex: 1; color: #06140c; background: #7cffb2; border-color: #7cffb2; }
 .nge-hl-btn--main:hover:not(:disabled) { background: #a5ffca; }
