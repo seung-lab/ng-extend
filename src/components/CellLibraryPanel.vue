@@ -69,6 +69,8 @@ import { datasetHasTour, startDatasetTour } from '../dataset_tour';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 import { useDragBox } from '../util/drag_box';
+import { landShipOnSoma, clearSomaShip } from '../util/soma_ship';
+import starshipIcon from '../../static/badges/pyr/center-art/exploration/starship.png';
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -3058,6 +3060,37 @@ watch(filter, f => {
 // Slim with no cell of its own draws none: never the whole tab on the bar
 // (Ames 2026-11-13: two cells showed on the slim bar).
 const listCells = computed(() => (slimCell.value ? [slimCell.value] : slim.value ? [] : shownCells.value));
+// ── The Starship marks your soma (Ames 2026-11-13, prototype A) ──────────
+// A Sandbox cell can come with other somas merged on. The ship button on the
+// slim bar sends the Starship down onto the soma the cell was listed by, and
+// it stays parked there until the cell changes, is completed or released, or
+// the player leaves the Sandbox (src/util/soma_ship.ts).
+const SOMA_SHIP_HINT = 'Yours is the soma the ship lands on. Other somas attached to it are mergers: cut them off.';
+const sandboxHere = computed(() => !!getDatasetCaveConfig(activeDataset.value).cellsFromTasks);
+const somaShipCell = computed<CellRow | null>(() => {
+  const c = slimCell.value;
+  return c && sandboxHere.value && c.status !== 'completed' && (c.nucCoords || c.somaCoords) ? c : null;
+});
+const somaShipFor = (c: CellRow) => `${c.taskId ?? ''}|${c.segId}|${c.status}|${c.assignedTo ?? ''}`;
+const somaShipOn = ref<string | null>(null);
+const somaShipFlying = ref(false);
+async function sendSomaShip(cell: CellRow) {
+  const at = parseCoords(cell.nucCoords || cell.somaCoords);
+  if (!(at[0] || at[1] || at[2])) return;
+  const key = somaShipFor(cell);
+  somaShipFlying.value = true;
+  somaShipOn.value = key;
+  const ok = await landShipOnSoma(at, key);
+  somaShipFlying.value = false;
+  if (somaShipOn.value !== key) return;
+  if (!ok) { somaShipOn.value = null; return; }
+  showStartNote('This soma is yours', 7000, SOMA_SHIP_HINT, 'Starship landed');
+}
+// gone with the cell: another cell, completed, released, or out of the Sandbox
+watch(() => (somaShipCell.value ? somaShipFor(somaShipCell.value) : null), k => {
+  if (somaShipOn.value && k !== somaShipOn.value) { clearSomaShip(); somaShipOn.value = null; }
+});
+onBeforeUnmount(() => { clearSomaShip(); somaShipOn.value = null; });
 const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed', 'hunt', 'giants'];
 /** The cell the caret shrinks to: the one on screen, else the claim being
  *  worked on, else your first claim. */
@@ -4444,6 +4477,16 @@ const panelStyle = computed(() => ({
               <!-- Save view comes first: it shows on the claim being worked on
                    only, so the buttons after it stay put on every row (toknow,
                    report 236). -->
+              <!-- Sandbox: the Starship lands on your soma (Ames 2026-11-13) -->
+              <button
+                v-if="slim && somaShipCell && somaShipCell === cell"
+                class="nge-cl-btn nge-cl-btn--somaship"
+                :class="{ 'nge-cl-btn--somaship-on': somaShipOn === somaShipFor(cell) }"
+                :disabled="somaShipFlying"
+                @click="sendSomaShip(cell)"
+                :title="'Send the Starship to land on your soma. ' + SOMA_SHIP_HINT"
+                :aria-label="'Send the Starship to land on your soma. ' + SOMA_SHIP_HINT"
+              ><img :src="starshipIcon" alt="" aria-hidden="true" /></button>
               <button
                 v-if="isWorkingClaim(cell)"
                 class="nge-cl-btn nge-cl-btn--saveview"
@@ -5285,6 +5328,11 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-title > button.nge-cl-complete-x svg { width: 15px; height: 15px; }
 .nge-cl-complete-title > button.nge-cl-complete-x:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
 /* Skip: a plain button; Complete is the one that stands out. */
+/* Sandbox: the Starship button (src/util/soma_ship.ts). */
+.nge-cl-btn--somaship { padding: 1px 5px; display: inline-flex; align-items: center; border-color: rgba(120, 200, 255, 0.35); }
+.nge-cl-btn--somaship img { width: 20px; height: 20px; object-fit: contain; display: block; }
+.nge-cl-btn--somaship:hover:not(:disabled) { background: rgba(120, 200, 255, 0.14); }
+.nge-cl-btn--somaship-on { border-color: rgba(120, 220, 255, 0.8); box-shadow: 0 0 6px rgba(90, 200, 255, 0.45); }
 .nge-cl-btn--skip { border-color: rgba(140, 160, 200, 0.3); color: #b4c0d6; }
 .nge-cl-btn--skip:hover:not(:disabled) { background: rgba(140, 160, 200, 0.12); color: #e4e8f2; }
 .nge-cl-add-note { align-self: flex-start; padding: 2px 0; border: 0; background: none; color: #7cc4ff; font: inherit; font-size: 0.82em; cursor: pointer; }
