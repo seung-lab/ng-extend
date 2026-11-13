@@ -39,7 +39,7 @@ import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } f
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
 import { freshenClaimView } from '../util/fresh_claim_view';
-import { mintShortStateLink } from '../util/state_link';
+import { mintShortStateLink, readStateLink, stateSegTable } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
@@ -840,6 +840,12 @@ function savedAtLabel(cell: CellRow): { text: string; title: string } {
 
 async function saveClaimView(cell: CellRow) {
   if (!cell.taskId || savingView.value) return;
+  // Only the cell's own dataset is saved as its view: a save made while
+  // another dataset was on screen (during a switch) sent Play there later.
+  if (cell.dataset && canonicalDataset(cell.dataset) !== canonicalDataset(currentDatasetTag())) {
+    console.warn('[cell library] not saving claim', cell.taskId, 'view: on', currentDatasetTag(), 'not', cell.dataset);
+    return;
+  }
   savingView.value = cell.taskId;
   claimError.value = '';
   try {
@@ -910,8 +916,12 @@ async function switchToClaim(cell: CellRow) {
   const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  const fromStart = !t?.working_link;
-  const openedClaim = openStartLink(t?.working_link || cell.startLink);
+  // A saved view of another dataset is not this cell's: it took Play on the
+  // Sandbox to Retina (Ames 2026-11-13: "when I click Play Sandbox Practice it
+  // takes me to retina"). It is passed over and the cell opened instead.
+  const saved = t?.working_link && await viewIsOnDataset(t.working_link, cell.dataset) ? t.working_link : null;
+  const fromStart = !saved;
+  const openedClaim = openStartLink(saved || cell.startLink);
   if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
   // A saved view with the five empty annotation layers (a claim from before
   // Highlight) opens with Highlight too, as the player chose (Ames 2026-11-12).
@@ -925,6 +935,19 @@ async function switchToClaim(cell: CellRow) {
   setWorkingTask(cell.taskId);
 }
 
+
+/** Does a saved view show this dataset? True when it cannot be told (the
+ *  view is opened as before) or the claim has no dataset. */
+async function viewIsOnDataset(link: string, dataset: string | undefined): Promise<boolean> {
+  if (!dataset) return true;
+  // A slow state server never holds the cell up: past 4 s the view opens as before.
+  const state = await Promise.race([readStateLink(link), new Promise<null>(res => setTimeout(() => res(null), 4000))]);
+  const table = state ? stateSegTable(state) : '';
+  if (!table) return true;
+  const same = canonicalDataset(table) === canonicalDataset(dataset);
+  if (!same) console.warn('[cell library] saved view is on', table, 'not', dataset, ': opening the cell instead');
+  return same;
+}
 
 // ── Actions ──────────────────────────────────────────────────────────
 /** A jump replaces what is on screen with the target cell, so first save

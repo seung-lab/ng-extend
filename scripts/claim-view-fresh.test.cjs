@@ -79,6 +79,32 @@ async function run(browser, ids) {
   return out;
 }
 
+async function links(browser) {
+  const context = await browser.newContext();
+  const retina = { layers: [{ type: 'image', name: '2D EM' }, { type: 'segmentation', name: '3D Retina Cells', source: [{ url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/stroeh_mouse_retina_v2' }] }] };
+  // Last registered is asked first: the catch all goes in first.
+  await context.route(/global\.daf-apis\.com/, r => r.fulfill(json({})));
+  await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
+  await context.route(/sticky_auth\/api\/v1\/user\/me|\/auth\/api\/v1\/user\/(me|cache)/, r => r.fulfill(json({ id: 1, email: 't@example.org', name: 'Test Player' })));
+  await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json(retina)));
+  await context.route(/minnie\.microns-daf\.com|cloudfunctions\.net|run\.app|supabase\.co|docs\.google\.com/, r => r.abort());
+  await context.addInitScript(() => {
+    const t = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: ['https://global.daf-apis.com', 'https://global.daf-apis.com/', 'https://global.daf-apis.com/nglstate/'] };
+    try { localStorage.setItem('auth_token_v2_https://global.daf-apis.com/sticky_auth', JSON.stringify(t)); } catch (e) {}
+  });
+  const page = await context.newPage();
+  await page.goto(BASE, { waitUntil: 'load' });
+  await page.waitForFunction(() => !!window.__ngeStateLink, null, { timeout: 120000 });
+  const out = await page.evaluate(async ([sb, rt]) => {
+    const L = window.__ngeStateLink;
+    const at = (st) => location.origin + '/#!' + encodeURIComponent(JSON.stringify(st));
+    const read = async (link) => { const s = await L.readStateLink(link); return s ? L.stateSegTable(s) : null; };
+    return { sandbox: await read(at(sb)), retina: await read(at(rt)), short: await Promise.race([read(location.origin + '/#!middleauth+https://global.daf-apis.com/nglstate/api/v1/5555555555'), new Promise(r => setTimeout(() => r('timeout'), 20000))]) };
+  }, [{ layers: [{ type: 'image', name: '2D EM' }, { type: 'segmentation', name: '3D segmentation', source: { url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_nf_v2' } }] }, retina]);
+  await context.close();
+  return out;
+}
+
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const a = await run(browser, [OLD, OTHER]);
@@ -88,6 +114,13 @@ async function run(browser, ids) {
   check('another out of date cell is left as it is', a.shown && a.shown.includes(OTHER) && !a.shown.includes(OTHER_NOW), a.shown);
   const b = await run(browser, [NOW]);
   check('a view already current is left alone', b.swapped && b.swapped.length === 0 && b.shown.join() === NOW, b);
+  // A saved view on another dataset is told apart (Ames 2026-11-13: Play on
+  // the Sandbox went to Retina): its table is read from the link itself, or
+  // from the state server for a short link.
+  const c = await links(browser);
+  check('a Sandbox view named 3D segmentation reads as pinky_nf_v2', c.sandbox === 'pinky_nf_v2', c);
+  check('a Retina view reads as Retina', /stroeh/.test(c.retina || ''), c);
+  check('a short link is read from the state server', /stroeh/.test(c.short || ''), c);
   check('no page errors', !a.errors.length && !b.errors.length, [...a.errors, ...b.errors]);
   await browser.close();
   console.log(`${results.filter(Boolean).length}/${results.length} passed`);

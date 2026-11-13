@@ -51,11 +51,25 @@ const MIN_KEY = 'nge-cell-match-min';
  *  (Ames 2026-11-13: "if I am actively playing on Sandbox have the accuracy box
  *  there"). Read from Play's own session flag (util/play.ts imports the store,
  *  which imports this file, so it is not imported here). */
-function playingSandbox(): boolean {
-  if (!deps || !deps.signedIn()) return false;
+function isPlaying(): boolean {
   let on: string | null = null;
   try { on = sessionStorage.getItem('nge_play_on'); } catch { /* private window */ }
-  return on === 'cells' && canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
+  return on === 'cells';
+}
+/** Signed in on the Sandbox: the card is up, playing or not (Ames
+ *  2026-11-13: "this should load a Play button if they are not actively
+ *  playing"). */
+function onSandbox(): boolean {
+  return !!deps && deps.signedIn() && canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
+}
+/** The Standby line and its button: Play when not playing, else back to the
+ *  cell in hand. Both press the game's own Play controls. */
+function standbyNote(): string { return isPlaying() ? 'Your cell is not on screen' : 'Press Play for a practice cell'; }
+function standbyAction() {
+  const playing = isPlaying();
+  const chip = document.querySelector('.nge-play-chip') as HTMLElement | null;
+  const btn = document.querySelector('.nge-play-btn') as HTMLElement | null;
+  (playing ? (chip ?? btn) : (btn ?? chip))?.click();
 }
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -105,6 +119,7 @@ function flash(text: string, tone: 'plain' | 'good' | 'bad', ms: number) {
     const c = document.getElementById(CARD_ID);
     if (!c || reviewing || Date.now() < doneUntil) return;
     c.classList.remove('nge-cm-done', 'nge-cm-bad');
+    if (c.classList.contains('nge-cm-idle')) return;
     (c.querySelector('.nge-cm-state') as HTMLElement).textContent = c.classList.contains('nge-cm-checking') ? 'Checking' : 'Live';
   }, ms + 50);
 }
@@ -224,6 +239,7 @@ const CSS = `
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row{padding:0}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-gauge{margin:4px 0 3px}
 #${CARD_ID}.nge-cm-idle .nge-cm-pieces{color:#8fb6dc}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-idle-go{display:none}
 #${CHIP_ID}{position:fixed;top:64px;left:12px;z-index:59;display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;
   border:1px solid rgba(110,190,255,.4);border-radius:3px;background:linear-gradient(180deg,rgba(7,18,36,.9),rgba(3,9,20,.94));
   box-shadow:0 0 16px rgba(60,150,255,.18);color:#7fc8ff;font:600 12px/1 Orbitron,Inter,sans-serif;letter-spacing:.18em;text-transform:uppercase}
@@ -334,7 +350,7 @@ function setMin(el: HTMLElement, min: boolean, quiet = false) {
 
 /** Playing the Sandbox with no reading to show: the card stays, empty, and
  *  says why. */
-function idle(state: string, note: string) {
+function idle(state: string, note: string, action = false) {
   if (reviewing) return;
   if (isClosed()) { chip(undefined); return; }
   const el = card();
@@ -349,6 +365,19 @@ function idle(state: string, note: string) {
     (box.querySelector('.nge-cm-pieces') as HTMLElement).textContent = row === 'merge' ? note : '';
     box.dataset.pct = ''; box.dataset.pctWas = '';
   }
+  const extra = el.querySelector('.nge-cm-extra') as HTMLElement;
+  const label = isPlaying() ? 'Open my cell' : 'Play';
+  let b = extra.querySelector('.nge-cm-idle-go') as HTMLButtonElement | null;
+  if (!action) { extra.innerHTML = ''; b = null; }
+  else if (!b) {
+    extra.innerHTML = '<div class="nge-cm-actions"></div>';
+    b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'nge-cm-btn nge-cm-go nge-cm-idle-go';
+    b.addEventListener('click', standbyAction);
+    extra.firstElementChild!.appendChild(b);
+  }
+  if (b && b.textContent !== label) b.textContent = label;
   place(el);
   shownFor = null;
 }
@@ -540,14 +569,15 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
     // Checking a cell not seen before: say nothing until there is a number,
     // unless Play is on, when the card waits with the player.
     if (!checking || !r) {
-      if (!playingSandbox()) hide();
-      else if (!r) idle(checking ? 'Checking' : 'Standby', checking ? 'Reading your cell' : 'Open your cell to see its match');
+      if (!onSandbox()) hide();
+      else if (!r) idle(checking ? 'Checking' : 'Standby', checking ? 'Reading your cell' : standbyNote(), !checking);
       else idle('No key', 'No finished cell to compare this one with');
       return;
     }
   }
   if (isClosed()) { chip(r); return; }
   const el = card();
+  if (el.classList.contains('nge-cm-idle')) (el.querySelector('.nge-cm-extra') as HTMLElement).innerHTML = '';
   el.classList.remove('nge-cm-idle');
   const state = el.querySelector('.nge-cm-state') as HTMLElement;
   el.classList.toggle('nge-cm-checking', checking);
@@ -823,7 +853,7 @@ function tick() {
   const id = claimOnScreen();
   if (id == null) {
     onScreen = null;
-    if (playingSandbox()) idle('Standby', 'Open your cell to see its match'); else hide();
+    if (onSandbox()) idle('Standby', standbyNote(), true); else hide();
     return;
   }
   if (id === onScreen) return;
