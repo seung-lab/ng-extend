@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T00:19:00Z",
+      "title": "Play",
+      "items": [
+        "A new Play button at the top left takes you straight to a cell to work on. Pyr claims one for you and flies you there, and after you Complete it, the next one is waiting.",
+        "If you have not finished the tutorials yet, Play takes you through them first: Get Started, Merge, Cut, Annotations, then Advanced Interface.",
+        "On Retina you can play Cilia Quests the same way: click the quest bar to submit your answer, and Pyr brings you the next cell.",
+        "While you play, Skip hands the cell back for someone else and finds you a new one.",
+        "Each dataset in Switch Dataset now has Start playing, and Open active cell when you already have a cell claimed there.",
+        "Rather not see the Play button? Turn it off in Settings, under Screen.",
+        "The Twine Achievement now shows sideways, like an infinity sign, everywhere it appears."
+      ]
+    },
+    {
       "at": "2026-11-12T23:11:29.189Z",
       "title": "Folders drag again, and cut pieces stand apart",
       "items": [

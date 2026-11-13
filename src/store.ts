@@ -1082,6 +1082,9 @@ export interface UserPreferences {
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;
+  /** Hide the Play button at the top left (Ames 2026-11-12: in Settings, not
+   *  an X on the button). Defaults to false: it shows. */
+  hidePlayButton?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
