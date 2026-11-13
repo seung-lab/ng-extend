@@ -2957,23 +2957,20 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
     const {eye, eyeDist} = cockpit;
     const toCam = (p: V3): V3 => { const d = sub(p, eye); return [dot(d, cam.right) / eyeDist, dot(d, cam.up) / eyeDist, dot(d, cam.toEye) / eyeDist]; };
     const spotCam = toCam(spot);
-    if (!shipCam || shipPark) { shipCam = shipPark ? spotCam : toCam(shipAt); shipPark = false; }
+    // back from a visit (its place in the frame taken from where it is), it flies home; a level's start parks it
+    if (!shipCam || shipPark) { shipCam = shipPark ? spotCam : toCam(shipAt); homing = !shipPark; shipPark = false; }
     // the way left, in shares of the eye's distance (the ship is 0.023 of it long), so a flight looks the same at any zoom
     const way = sub(spotCam, shipCam), lenC = len(way);
-    // a long way off (home from a visit, a spot moved far) it flies; near, it shuffles on
-    if (lenC > 0.05) homing = true; else if (lenC < 0.004) homing = false;
+    if (homing && lenC < 0.001) homing = false;
     flying = homing;
-    if (lenC * eyeDist > 1) {
+    if (homing) {
       const dir = norm(add(add(mul(cam.right, way[0]), mul(cam.up, way[1])), mul(cam.toEye, way[2])));
-      let v: number;
-      if (homing) {
-        going = dir;
-        // half the eye's distance a second at most (its spot is 0.4 of that out from the eye), easing in over the last 0.12
-        v = Math.min(lenC, Math.min(0.5 * dt, Math.max(lenC * 4 * dt, 0.02 * dt)));
-        if (dot(shipFwd, dir) < 0.8 && lenC > 0.03) v *= 0.05;   // it turns first
-      } else v = lenC * Math.min(1, dt * 5);
+      going = dir;
+      // half the eye's distance a second at most (its spot is 0.4 of that out from the eye), easing in over the last 0.12
+      let v = Math.min(lenC, Math.min(0.5 * dt, Math.max(lenC * 4 * dt, 0.02 * dt)));
+      if (dot(shipFwd, dir) < 0.8 && lenC > 0.03) v *= 0.05;   // it turns first
       shipCam = add(shipCam, mul(way, v / lenC));
-    }
+    } else shipCam = spotCam;   // parked: it rides with the frame, a zoom's parking shift and all (a slide after the spot read as a short flight sideways on every zoom notch)
     shipAt = add(add(add(eye, mul(cam.right, shipCam[0] * eyeDist)), mul(cam.up, shipCam[1] * eyeDist)), mul(cam.toEye, shipCam[2] * eyeDist));
   }
   // a visit: the scan fires once the ship is there (or after 1.8 s, if the
