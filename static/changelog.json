@@ -6,7 +6,7 @@
       "title": "A shorter Advanced Interface tutorial",
       "items": [
         "The Annotations tutorial now comes straight after Cut, before Advanced Interface, in the menu and at the end of Cut.",
-        "Advanced Interface now starts with layers and cells, and is two boxes shorter: renaming a layer and the rest of the annotation tools live in the Annotations tutorial.",
+        "Advanced Interface now starts with adding cells, and is two boxes shorter: renaming a layer and the rest of the annotation tools live in the Annotations tutorial.",
         "In Advanced Interface, a collaborator sends you a link to a tough merger, and a new box shows how Share sends your own view.",
         "Find Path switches on by itself in the tutorials.",
         "Starting Advanced Interface turns Find Path off and clears its points.",

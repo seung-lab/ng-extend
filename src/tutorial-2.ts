@@ -166,11 +166,19 @@ function watchCollaboratorLink() {
 
 /** Glow the layer side panel button (top bar, far right) for a while. */
 function glowPanelButton() {
+  // Only while this box shows (Ames 2026-11-12: it kept flashing on the next box).
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
   setTimeout(() => {
     const el = document.querySelector<HTMLElement>('#ngFarRight > .neuroglancer-icon:last-child');
     if (!el) return;
     el.classList.add('nge-tour-target');
-    setTimeout(() => el.classList.remove('nge-tour-target'), 20000);
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      if (store.activeTutorial === tutorial && store.getTutorialStep() === step && Date.now() - t0 < 20000) return;
+      clearInterval(timer);
+      el.classList.remove('nge-tour-target');
+    }, 300);
   }, 800);
 }
 /** The eye from the Segments panel, and a pretend row built from the
@@ -696,41 +704,9 @@ You can step backwards in the tutorial to retry. If you are still lost, just kee
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   {
-    // The "Now for something new: LAYERS" box is folded in here (2026-11-12).
-    part: "Part 1 of 4 · Working with cells",
-    get text() { return `
-Each tab up here is one LAYER, like the 2D images or the 3D cells. The selected one has the bright border.
-
-<strong>${SELECT_CLICK()}</strong> on <strong>3D segmentation</strong> to select it. Each tab also has a number, and ${classicLayers() ? '<strong>SHIFT</strong> and that number' : 'that number key'} selects it too.`; },
-    onEnter: () => { markSegChip(); nextWhenSegSelected(); },
-    position: {
-      element: ".nge-tut-seg-chip",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
-  },
-  {
-    part: "Part 1 of 4 · Working with cells",
-    get text() { return `
-Try both ways to HIDE and SHOW <strong>3D segmentation</strong>:
-
-<ol class="nge-tut-steps">
-<li><strong>${HIDE_CLICK()}</strong> on it to hide it, then again to show it.</li>
-<li>Press <strong>${classicLayers() ? '2' : 'SHIFT+2'}</strong> on your keyboard to hide it, and again to show it.</li>
-</ol>`; },
-    onEnter: () => { markSegChip(); nextWhenSegHiddenAndShown(2); },
-    position: {
-      element: ".nge-tut-seg-chip",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  {
     part: "Part 1 of 4 · Working with cells",
     text: `
-Selecting a layer opens its SIDE PANEL: this is your control panel for that layer. For <strong>3D segmentation</strong>, it's where the cells live.
+Let's start with the cells. This is the SIDE PANEL for <strong>3D segmentation</strong>: it's where the cells live.
 
 The glowing button at the right end of the top bar opens and closes it any time.`,
     onEnter: glowPanelButton,
@@ -845,6 +821,38 @@ Try them! We'll restore the default view in the next slide.`,
         //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
     "middleauth+https://global.daf-apis.com/nglstate/api/v1/5352335057354752",
     onEnter: glowRenderControls,
+  },
+  {
+    // The "Now for something new: LAYERS" box is folded in here (2026-11-12).
+    part: "Part 1 of 4 · Working with cells",
+    get text() { return `
+Now for LAYERS. Each tab up here is one layer, like the 2D images or the 3D cells. The selected one has the bright border.
+
+<strong>${SELECT_CLICK()}</strong> on <strong>3D segmentation</strong> to select it. Each tab also has a number, and ${classicLayers() ? '<strong>SHIFT</strong> and that number' : 'that number key'} selects it too.`; },
+    onEnter: () => { markSegChip(); nextWhenSegSelected(); },
+    position: {
+      element: ".nge-tut-seg-chip",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
+  },
+  {
+    part: "Part 1 of 4 · Working with cells",
+    get text() { return `
+Try both ways to HIDE and SHOW <strong>3D segmentation</strong>:
+
+<ol class="nge-tut-steps">
+<li><strong>${HIDE_CLICK()}</strong> on it to hide it, then again to show it.</li>
+<li>Press <strong>${classicLayers() ? '2' : 'SHIFT+2'}</strong> on your keyboard to hide it, and again to show it.</li>
+</ol>`; },
+    onEnter: () => { markSegChip(); nextWhenSegHiddenAndShown(2); },
+    position: {
+      element: ".nge-tut-seg-chip",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
   },
   {
     part: "Part 2 of 4 · Find your way",
