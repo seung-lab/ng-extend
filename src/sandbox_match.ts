@@ -38,6 +38,7 @@ export interface ReviewResult extends MatchResult {
 type Row = 'merge' | 'cut';
 
 const CARD_ID = 'nge-cell-match';
+const DONE_MS = 2500;
 const STYLE_ID = 'nge-cell-match-style';
 const CHIP_ID = 'nge-cell-match-open';
 const HINT_ID = 'nge-cell-match-hint';
@@ -64,6 +65,10 @@ let editTimer: ReturnType<typeof setTimeout> | null = null;
 let asking = 0;
 /** While a review is up the HUD belongs to it, whatever is on screen. */
 let reviewing = false;
+/** "Cut complete" / "Merge complete" for a moment after an edit (Ames 2026-11-13). */
+let doneText = '';
+let doneUntil = 0;
+let doneTimer: ReturnType<typeof setTimeout> | null = null;
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 const ROW_LABEL: Record<Row, string> = { merge: 'Missing', cut: 'Mergers' };
@@ -139,6 +144,9 @@ const CSS = `
 #${CARD_ID} .nge-cm-read{display:flex;align-items:baseline;gap:6px;justify-self:end}
 #${CARD_ID} .nge-cm-num{font:700 25px/1 Orbitron,Inter,sans-serif;color:#eaf6ff;text-shadow:0 0 10px rgba(127,216,255,.45);transition:opacity .3s}
 #${CARD_ID}.nge-cm-checking .nge-cm-num{opacity:.5}
+#${CARD_ID}.nge-cm-done{border-color:rgba(89,227,167,.75);box-shadow:0 0 26px rgba(89,227,167,.28),inset 0 0 18px rgba(89,227,167,.12);transition:border-color .3s,box-shadow .3s}
+#${CARD_ID}.nge-cm-done .nge-cm-state{color:#59e3a7;text-shadow:0 0 8px rgba(89,227,167,.7)}
+#${CARD_ID}.nge-cm-done .nge-cm-dot{background:#59e3a7;box-shadow:0 0 8px #59e3a7}
 #${CARD_ID} .nge-cm-x{margin-left:4px;width:22px;height:22px;display:grid;place-items:center;padding:0;border:1px solid transparent;border-radius:2px;
   background:transparent;color:#8fb6dc;font:400 18px/1 Inter,sans-serif;cursor:pointer}
 #${CARD_ID} .nge-cm-x:hover{color:#fff;border-color:rgba(127,200,255,.45);background:rgba(127,200,255,.12)}
@@ -396,10 +404,12 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   const el = card();
   const state = el.querySelector('.nge-cm-state') as HTMLElement;
   el.classList.toggle('nge-cm-checking', checking);
+  const done = Date.now() < doneUntil;
+  el.classList.toggle('nge-cm-done', done);
   if (checking) {
-    state.textContent = 'Checking';
+    state.textContent = done ? doneText : 'Checking';
   } else {
-    state.textContent = 'Live';
+    state.textContent = done ? doneText : 'Live';
     const fresh = shownFor !== taskId;
     showRow(el, r!, 'merge', fresh);
     showRow(el, r!, 'cut', fresh);
@@ -616,7 +626,19 @@ export function startSandboxMatch(d: Deps) {
     const roots: string[] = Array.isArray(det.roots) ? det.roots.map(String) : [];
     if (roots.length) aliases.set(id, new Set([...(aliases.get(id) ?? []), ...roots]));
     if (editTimer) clearTimeout(editTimer);
+    doneText = det.kind === 'split' ? 'Cut complete' : 'Merge complete';
+    doneUntil = Date.now() + DONE_MS;
     show(id, last.get(id), true);
+    const shown = document.getElementById(CARD_ID);
+    if (shown) ping(shown);
+    if (doneTimer) clearTimeout(doneTimer);
+    doneTimer = setTimeout(() => {
+      doneTimer = null;
+      const el = document.getElementById(CARD_ID);
+      if (!el || reviewing) return;
+      el.classList.remove('nge-cm-done');
+      (el.querySelector('.nge-cm-state') as HTMLElement).textContent = el.classList.contains('nge-cm-checking') ? 'Checking' : 'Live';
+    }, DONE_MS + 50);
     editTimer = setTimeout(() => { editTimer = null; onScreen = id; void ask(id); }, EDIT_WAIT_MS);
   }) as EventListener);
   setInterval(() => { if (!document.hidden) tick(); }, 2000);

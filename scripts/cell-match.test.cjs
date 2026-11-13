@@ -73,7 +73,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
   const cardText = () => page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? c.innerText.replace(/\s+/g, ' ').trim().toLowerCase() : null; });
   const waitText = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.getElementById('nge-cell-match'); return !!c && new RegExp(src, 'i').test(c.innerText.replace(/\s+/g, ' ')); }, re.source, { timeout: ms }).then(() => true, () => false);
-  const edit = (roots) => page.evaluate((r) => window.dispatchEvent(new CustomEvent('nge-graph-edit', { detail: { kind: 'merge', roots: r } })), roots);
+  const edit = (roots, kind = 'merge') => page.evaluate(([r, k]) => window.dispatchEvent(new CustomEvent('nge-graph-edit', { detail: { kind: k, roots: r } })), [roots, kind]);
   try {
     await page.goto(BASE + '#!' + encodeURIComponent(JSON.stringify(STATE)), { waitUntil: 'load' });
     await page.waitForFunction(() => { const a = document.querySelector('#app'); return !!(a && a.__vue_app__ && window.viewer); }, null, { timeout: 120000 });
@@ -136,7 +136,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(300);
-    check('an edit dims the card to Checking at once', /checking/.test(await cardText() || ''), await cardText());
+    const dim = await page.evaluate(() => document.getElementById('nge-cell-match').classList.contains('nge-cm-checking'));
+    check('an edit dims the numbers at once and says Merge complete', dim && /merge complete/.test(await cardText() || ''), await cardText());
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(1200);
@@ -151,6 +152,13 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await edit([ANSWERS.worse.root]);
     const worse = await waitText(/36%/, 10000);
     check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /missing −3 36% 10 of 28 pieces found mergers \+67 67% 2 of 3 cut off/.test(await cardText() || ''), await cardText());
+    // A cut: "Cut complete" lights up for a moment, then back to the reading.
+    await edit([ANSWERS.worse.root], 'split');
+    const doneNow = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { state: c.querySelector('.nge-cm-state').textContent, done: c.classList.contains('nge-cm-done') }; });
+    check('a cut says Cut complete for a moment', doneNow.state === 'Cut complete' && doneNow.done, doneNow);
+    await page.waitForTimeout(3500);
+    const doneLater = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { state: c.querySelector('.nge-cm-state').textContent, done: c.classList.contains('nge-cm-done') }; });
+    check('then back to Live', doneLater.state === 'Live' && !doneLater.done, doneLater);
     const copy = (await cardText() || '').replace(/−3/, '');
     check('no dashes in the card', !/[\u2013\u2014]|\s-\s/.test(copy), copy);
 
