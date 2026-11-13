@@ -513,7 +513,9 @@ function recordCam() {
 /** When the player last touched the view: a press, a drag, the wheel, a key. */
 let lastInputAt = -Infinity;
 const noteInput = () => { lastInputAt = performance.now(); };
-const noteDrag = (e: PointerEvent) => { if (e.buttons || e.pointerType !== 'mouse') lastInputAt = performance.now(); };
+const inView = (e: Event) => !!(e.target as HTMLElement | null)?.closest?.('.nge-3d-panel');
+const noteWheel = (e: Event) => { if (inView(e)) noteInput(); };
+const noteDrag = (e: PointerEvent) => { if ((e.buttons || e.pointerType !== 'mouse') && inView(e)) noteInput(); };
 function watchCam() {
   if (glide || !camSet) return;
   const v = viewerNow(), nm = nmPerUnit(), look = v && nm && lookNow(v, nm);
@@ -2110,7 +2112,7 @@ TOURS[0] = [
       revealCell('T', 1.6, [1, 0.95, 0.75]);
       orbit = 0.12; orbitPivot = t.spec.soma;   // the slow turn around it, as around the Gatekeeper (Ames 2026-11-12: "box 1, it is supposed to be spinning"); the cell keeps its place
       const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
-      visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card
+      if (shipDue()) visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card (not in level 1, where the ship comes on with the Spark)
       if (view === 'cockpit') glideTo(t, 0.7);
       hints = new Set(['T']);
     }},
@@ -2180,7 +2182,7 @@ TOURS[0] = [
   // 2026-11-11: "this should not fly the ship over, it should do the photon
   // beam to activate the cell").
   {kicker: 'Spark', text: 'Spark a cell: its spike runs down the axon to the gold cell.', click: 'spark',
-    play: async alive => { lightWhole(['E1']); await sleep(400); if (!alive()) return; hints = new Set(['E1']); demoSpark('E1'); }},
+    play: async alive => { lightWhole(['E1']); await sleep(shipOff > 0.3 && view === 'ship' ? 1200 : 400); if (!alive()) return; hints = new Set(['E1']); demoSpark('E1'); }},   // the ship arrives first, where this step brings it on
   {kicker: 'Add up', text: 'One spike alone leaks away. Two spikes close together add up and make the gold cell spike.', click: 'spark',
     play: async alive => {
       lightWhole(['E1']);
@@ -2217,6 +2219,8 @@ TOURS[1] = [
       revealCell('I1', 1.6, [0.9, 0.8, 1]);
       glideTo(g, 0.55);
       orbit = 0.22; orbitPivot = g.spec.soma;
+      // the ship sets off for the cell at once, nose first, as the camera goes in (left on its spot it was carried in sideways for the first moments, or went off stage for them and came straight back)
+      if (view === 'ship' && !phone()) { const s0 = toScreen(g.spec.soma), r0 = threeDPanel()?.element?.getBoundingClientRect?.(); visit = {key: 'I1', since: now, lean: s0 && r0 && s0[0] > r0.left + r0.width / 2 ? -1 : 1, fired: false}; }
       await sleep(700); if (!alive()) return;
       scan('I1');
       await sleep(2600); if (!alive()) return;
@@ -2497,7 +2501,7 @@ function finale(key: string) {
   setCoachText('', 'hit');
   hints = new Set();   // after the coach line, which lights its own
   clearPops();
-  setTimeout(() => { if (alive() && view === 'ship' && !roll && !visit) roll = {at: performance.now(), dur: 1100}; }, 500);   // a victory roll, where it is parked
+  setTimeout(() => { if (alive() && view === 'ship' && !roll && !visit) roll = {at: performance.now(), dur: 1100}; }, 300);   // a victory roll, where it is parked, before the camera moves
   shockAt(t.spec.soma, [1, 0.86, 0.45]);
   for (const k of level.targets) demoWave(k, 'dend', 1.6, false, [1, 0.9, 0.6]);
   const away = (k: string) => len(sub(cells.get(k)!.spec.soma, t.spec.soma));
@@ -2520,7 +2524,7 @@ function finale(key: string) {
     if (!userCam && home && homeScale > 0) glideSlow(home, homeScale * 1.14, 7);
     orbitArc = {from: performance.now(), until: performance.now() + 14_000, peak: 0.088};   // about 45 degrees in all
     orbitPivot = center;   // the circuit keeps its place as the view goes round it
-  }, 600);
+  }, 1700);
   setTimeout(() => { if (alive() && phase === 'playing') showResult(true); }, 900);
 }
 
@@ -3156,8 +3160,11 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: numbe
   const o = back(0, 0, 0.5), halfHAtO = len(sub(back(0, 1, 0.5), o)), halfWAtO = len(sub(back(1, 0, 0.5), o));
   if (!(halfHAtO > 0)) return null;
   const eye = add(o, mul(cam.toEye, halfHAtO / tanHalf)), aspect = halfWAtO / halfHAtO;
-  const look = Array.from(v.navigationState.position.value as Float32Array).map((x, i) => x * nm[i]) as V3;
+  const look = lookNow(v, nm);
+  // While the dataset switches, the position reads as nothing for a frame or two. A spot worked out from that was not a number, and the ship's length took it and never came back: no ship for the rest of the game (seen 2026-11-13; "where is the ship?" before that may have been this).
+  if (!look || !finite3(eye)) return null;
   const eyeDist = Math.max(1, dot(sub(eye, look), cam.toEye));
+  if (!Number.isFinite(eyeDist)) return null;
   // The ship sits four tenths of the way out from the eye, in front of the
   // tissue in most frames, placed in screen terms: low and to the left,
   // clear of the HUD. It had been 26 µm long and 300 µm deep, lost among
@@ -3199,6 +3206,32 @@ let shipModelLength = 0;
 let shipModelZLo = 0, shipModelXHi = 0, lastShipAt: V3 | null = null, trailDebt = 0;
 interface Trail { p: V3; v: V3; at: number; life: number; }
 let trail: Trail[] = [];
+/* ── the ship's stage. The ship is on screen when it has something to do,
+   and off (the prop's dissolve, which burns it in and out) otherwise:
+   - before a tour brings it on: level 1 has no ship until its fourth step,
+     where it arrives to fire the first Spark (Ames 2026-11-13: "I would
+     not have the ship appear until step 4"). A scan the player asks for
+     brings it on at any step, and it goes again when the scan ends.
+   - while the game itself moves the camera and the ship, riding the frame,
+     would be carried any way but nose first: the draw-back after a close
+     look, the finale's draw-back and turn. Fixed in the frame it backed
+     away from the cells tail first, its exhaust ahead of it (Ames
+     2026-11-13: "the ship still flies backwards"). It comes back parked on
+     its spot once the camera rests. A move that carries it nose first (a
+     glide in) leaves it on, and so do the player's own drags and zooms. ── */
+const SHIP_FROM: Record<number, number> = {0: 3};
+/** 0 on stage, 1 off: the ship prop's dissolve. */
+let shipOff = 0;
+/** Off for the game's camera move now under way. */
+let shipAwayMove = false;
+/** Its speed through the tissue, smoothed (nm a second), and where it was last frame. */
+let shipVel: V3 = [0, 0, 0], shipVelAt: V3 | null = null;
+function shipDue(): boolean {
+  const from = SHIP_FROM[levelIndex] ?? 0;
+  if (!from) return true;
+  if (phase === 'loading') return false;
+  return !(phase === 'brief' && tourSteps.length > 0 && tourAt < from);
+}
 function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const nm = nmPerUnit();
   if (!nm || !shipMesh) return;
@@ -3214,7 +3247,10 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   // its size: a fixed share of the screen at the cockpit; on a visit a craft
   // smaller than the cell body it lands on, 5.5 µm long
   const wantLen = vc ? VISIT_LEN_NM : cockpit?.len ?? shipLenNm;
-  shipLenNm += (wantLen - shipLenNm) * Math.min(1, dt * 4);
+  if (!(shipLenNm > 0)) shipLenNm = SHIP_LENGTH_NM;   // never a bad number for good
+  if (wantLen > 0 && Number.isFinite(wantLen)) shipLenNm += (wantLen - shipLenNm) * Math.min(1, dt * 4);
+  if (!finite3(shipAt)) { shipAt = add(center, [0, -viewNm * 0.4, 0]); shipCam = null; shipPark = true; }
+  if (!finite3(shipFwd)) shipFwd = norm(sub(center, shipAt));
   const scale = shipLenNm / shipModelLength;
   // Which way it goes this frame, if it goes anywhere: the nose leads it
   // (Ames 2026-11-12: "make sure the ship never flies backwards").
@@ -3259,6 +3295,17 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
     } else shipCam = spotCam;   // parked: it rides with the frame, a zoom's parking shift and all (a slide after the spot read as a short flight sideways on every zoom notch)
     shipAt = add(add(add(eye, mul(cam.right, shipCam[0] * eyeDist)), mul(cam.up, shipCam[1] * eyeDist)), mul(cam.toEye, shipCam[2] * eyeDist));
   }
+  // on stage or off (see SHIP_FROM)
+  if (shipVelAt && dt > 0) shipVel = mix(shipVel, mul(sub(shipAt, shipVelAt), 1 / dt), Math.min(1, dt * 8));
+  if (!finite3(shipVel)) shipVel = [0, 0, 0];
+  shipVelAt = finite3(shipAt) ? shipAt : null;
+  const riding = !vc, gameMove = !!glide || orbit !== 0, speed = len(shipVel);
+  if (riding && gameMove && speed > shipLenNm * 0.25 && dot(shipVel, shipFwd) < speed * 0.55) shipAwayMove = true;   // carried, and not nose first: off before it has gone a tenth of its length that way
+  else if (!gameMove || !riding) shipAwayMove = false;
+  const off = (!shipDue() && !vc) || shipAwayMove;
+  if (off && shipOff >= 1) { homing = false; shipPark = true; }   // it comes back parked on its spot
+  shipOff = clamp(shipOff + (off ? dt / 0.35 : -dt / 0.7), 0, 1);
+  shipProp.dissolve = shipOff;
   // a visit: the scan fires once the ship is there (or after 1.8 s, if the
   // way is long); from the cockpit, once the camera's glide has ended
   const there = !visit ? false : view === 'cockpit' ? !glide : (len(sub(shipAt, spot ?? shipAt)) < viewNm * 0.02 || now - visit.since > 1.8);
@@ -3269,7 +3316,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const landed = !!vc && !!spot && len(sub(shipAt, spot)) < viewNm * 0.03;
   const rest = vc ? add(shipAt, mul(cam.right, visit!.lean)) : shipAim && performance.now() < aimUntil ? shipAim : center;
   const want = going && !landed ? going : norm(sub(rest, shipAt));
-  if (!flip && !landed && view === 'ship' && shipProp.alpha > 0 && dot(shipFwd, want) < -0.35) flip = {at: performance.now(), dur: 850};
+  if (!flip && !landed && view === 'ship' && shipProp.alpha > 0 && shipOff < 0.5 && dot(shipFwd, want) < -0.35) flip = {at: performance.now(), dur: 850};
   shipFwd = turnToward(shipFwd, want, Math.min(1, dt * (vc || homing ? 12 : 7)), prevUp ?? cam.up);
   if (cockpit) { const d = sub(shipAt, cockpit.eye), e = cockpit.eyeDist; shipDbg = {cam: [dot(d, cam.right) / e, dot(d, cam.up) / e, dot(d, cam.toEye) / e], fwd: [dot(shipFwd, cam.right), dot(shipFwd, cam.up), dot(shipFwd, cam.toEye)], eyeDist: e}; }
   const upRef = landed ? cam.toEye : cam.up;
@@ -3299,8 +3346,8 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   }
   const bob = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : viewNm * 0.004 * Math.sin(performance.now() / 1000 * 1.3);
   const at = add(shipAt, mul(up, bob));
-  if (shipProp.alpha > 0 && view === 'ship') {
-    const moved = lastShipAt ? len(sub(at, lastShipAt)) : 0;
+  if (shipProp.alpha > 0 && view === 'ship' && shipOff < 0.5) {
+    const moved = lastShipAt ? Math.max(0, dot(sub(at, lastShipAt), fwd)) : 0;   // exhaust for the way made nose first only: carried backwards by a zoom, it left a trail ahead of itself
     trailDebt += dt * 10 + moved / (shipLenNm * 0.04);
     const tail = add(at, mul(fwd, shipModelZLo * scale)), tNow = performance.now() / 1000;
     while (trailDebt >= 1 && trail.length < 600) {
@@ -4437,7 +4484,12 @@ function frameBody(ts: number) {
   }
   const cam = nm && camNow(nm);
   if (cam) {
-    if (needsFrame && (!settleStrict || panelFresh(cam))) { settleStrict = false; settleFrame(cam); rememberHome(); recordCam(); }
+    if (needsFrame && (!settleStrict || panelFresh(cam))) {
+      settleFrame(cam); rememberHome(); recordCam();
+      // It holds only once the viewer has taken it. While the dataset is still switching its coordinate space the position does not read back, nothing is recorded as the game's, and whatever the switch writes next stands (seen 2026-11-13, one load in three: the level opened on a far corner of the dataset). Then it is settled again on the next frame.
+      const v1 = viewerNow(), got = v1 && lookNow(v1, nm);
+      if (got && camSet && len(sub(got, camSet.look)) < 1000) settleStrict = false; else if (++settleWait <= 240) needsFrame = true;
+    }
     if (pendingGlide) { const g = pendingGlide; pendingGlide = null; g(); }
     if (phase === 'playing' || demo) stepModel(dt); else idleStep(dt);
     placeShip(cam, dt);
@@ -4529,7 +4581,7 @@ let fingers = 0;
 let mouseStart: {x: number; y: number; key: string; t: number} | null = null;
 function onPointerDown(e: PointerEvent) {
   if (!active) return;
-  noteInput();
+  if (inView(e)) noteInput();   // a press on the HUD is not a hand on the view
   if (phase === 'done' && (orbit || orbitArc || glide) && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) { stopOrbit(); if (glide) { glide = null; recordCam(); } }   // the finale's slow turn ends where the player takes the view
   if (e.pointerType !== 'mouse') {
     fingers++;
@@ -4570,7 +4622,6 @@ function onPointerUp(e: PointerEvent) {
 }
 function onKey(e: KeyboardEvent) {
   if (!active) return;
-  noteInput();
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   if (e.key === 'Escape') { e.stopPropagation(); stopSignalController(); return; }
@@ -4579,7 +4630,7 @@ function onKey(e: KeyboardEvent) {
     if (go) { e.preventDefault(); e.stopPropagation(); go.click(); }
     return;
   }
-  if (phase !== 'playing') return;
+  if (phase !== 'playing') { noteInput(); return; }   // a key the game does not take may be one of the viewer's own, which move the view
   if (e.key === 'Tab' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setHushMode(!hushMode); return; }
   if (e.key === 'h' || e.key === 'H' || e.key === 'i' || e.key === 'I') { e.preventDefault(); e.stopPropagation(); if (level.hush) setHushMode(true); return; }
   if (e.key === 's' || e.key === 'S') { e.preventDefault(); e.stopPropagation(); setHushMode(false); return; }
@@ -4587,7 +4638,9 @@ function onKey(e: KeyboardEvent) {
   if (n >= 1 && n <= 9) {
     const key = [...chipEls.keys()][n - 1];
     if (key) { e.preventDefault(); e.stopPropagation(); shoot(key); }
+    return;
   }
+  noteInput();
 }
 
 /* ── levels ── */
@@ -4599,6 +4652,8 @@ async function startLevel(index: number) {
   if (levelIndex === 0) score = 0;
   shownScore = score;
   // what the last level's finale left: its lit cells, its turn, its title
+  shipAwayMove = false; shipVelAt = null; shipVel = [0, 0, 0];
+  if (!shipDue()) { shipOff = 1; shipProp.dissolve = 1; }   // a level that brings the ship on later starts without it, with no flash of it first
   won = false; finaleToken++; stopOrbit(); litWhole = new Set(); clearReveals(); ringQ.clear(); clearLockup(); hints = new Set();
   titleCard();
   resetCells();
@@ -4730,7 +4785,7 @@ export async function playSignalController(levelAt = 0) {
     window.addEventListener('click', swallow, true);
     window.addEventListener('dblclick', onDoubleClick, true);
     window.addEventListener('keydown', onKey, true);
-    window.addEventListener('wheel', noteInput, {capture: true, passive: true});
+    window.addEventListener('wheel', noteWheel, {capture: true, passive: true});
     window.addEventListener('pointermove', noteDrag, true);
     lastFrame = 0;
     raf = requestAnimationFrame(frame);
@@ -4755,7 +4810,7 @@ export function stopSignalController() {
   window.removeEventListener('click', swallow, true);
   window.removeEventListener('dblclick', onDoubleClick, true);
   window.removeEventListener('keydown', onKey, true);
-  window.removeEventListener('wheel', noteInput, true);
+  window.removeEventListener('wheel', noteWheel, true);
   window.removeEventListener('pointermove', noteDrag, true);
   for (const c of cells.values()) if (c.dimmed) paint(c, false);
   stopMusic();
@@ -4771,6 +4826,7 @@ export function stopSignalController() {
   hideCanopy();
   editorEl?.remove(); editorEl = null;
   litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flip = null; flying = false; homing = false; shipCam = null; shipPark = false;
+  shipOff = 0; shipAwayMove = false; shipVelAt = null; shipVel = [0, 0, 0]; shipProp.dissolve = 0;
   demo = false; tourToken++; clearTourLabels(); clearPops(); stopOrbit(); tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
   clearLockup(); won = false; finaleToken++; orbitArc = null; titledLevel = -1; opening = false; ringQ.clear();
@@ -4798,7 +4854,7 @@ export function startSignalController() {
 }
 
 (window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS, music: () => music,
-  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, fwd: shipFwd, homing, cam: shipCam, dbg: shipDbg, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
+  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, fwd: shipFwd, homing, cam: shipCam, dbg: shipDbg, len: shipLenNm, nose: toScreen(shipNose()), off: Number(shipOff.toFixed(2)), due: shipDue(), away: shipAwayMove}, pin: scanPin,
     hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))]),
     spikes: [...cells.values()].filter(c => c.shown).map(c => [c.key, c.spikes]), progress, weights: conns.filter(k => (k.w ?? 1) !== 1).map(k => [k.pre, k.post, Number((k.w ?? 1).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
