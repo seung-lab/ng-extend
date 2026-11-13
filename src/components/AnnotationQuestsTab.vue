@@ -506,7 +506,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 </script>
 
 <template>
-  <div class="nge-aq">
+  <div class="nge-aq" :class="{ 'nge-aq--slim': slim }">
     <div v-if="!slim" class="nge-aq-head">
       <div class="nge-aq-titlerow">
         <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
@@ -802,6 +802,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 /* The quest being worked on: Highlight's green, the colour key's (player report 2026-10-14). */
 .nge-aq-row--active { background: rgba(124, 255, 178, 0.09); box-shadow: inset 3px 0 0 #7CFFB2; }
 .nge-aq-row--active:hover { background: rgba(124, 255, 178, 0.13); }
+/* The slim bar is always the cell in hand: no green edge, and the Submit form
+   runs the full width under it, past the fold arrow (Ames 2026-11-12). */
+.nge-aq--slim .nge-aq-row--active { box-shadow: none; background: transparent; }
+.nge-aq--slim .nge-aq-row--active:hover { background: rgba(124, 255, 178, 0.05); }
+.nge-aq--slim .nge-aq-form { margin: 6px 0 4px -40px; }
 .nge-aq-row--clickable { cursor: pointer; }
 .nge-aq-active-pill { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font: 700 11px/18px 'Inter', 'Roboto', sans-serif; letter-spacing: 0.04em; color: #08140e; background: #7CFFB2; vertical-align: 2px; }
 .nge-aq-cellid { font-family: 'JetBrains Mono', 'Consolas', monospace; color: #b4c8de; user-select: text; }
