@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T04:00:00Z",
+      "title": "Your big view survives a browser restart",
+      "items": [
+        "A very big view kept in your browser now comes back after Firefox restarts or restores your tabs, not only after a refresh.",
+        "Clicking a mark in the 2D or 3D view selects it in the Annotations list every time, even in a very full tab.",
+        "An announcement no longer shows up twice in chat."
+      ]
+    },
+    {
       "at": "2026-11-13T03:56:00Z",
       "title": "Submit is back, and MEC is just the AIS",
       "items": [
