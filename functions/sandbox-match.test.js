@@ -28,6 +28,15 @@ test('ids past 2^53 keep every digit', () => {
   assert.deepEqual([...M.toSet(big)].map(String), big);
 });
 
+test('score: shared over the two cells together, 0 to 100, rounded down', () => {
+  // A cell that starts close reads high from the start, not 0.
+  assert.equal(M.scorePercent({truthSize: 1000, missingNow: 100, extraNow: 60}), 84);
+  assert.equal(M.scorePercent({truthSize: 1000, missingNow: 0, extraNow: 0}), 100);
+  // A wrong merge brings it down.
+  assert.equal(M.scorePercent({truthSize: 1000, missingNow: 0, extraNow: 1000}), 50);
+  assert.equal(M.scorePercent({truthSize: 0, missingNow: 0, extraNow: 0}), null);
+});
+
 test('match: share of the starting error that is fixed, 0 to 100, rounded down', () => {
   assert.equal(M.matchPercent({missingNow: 100, extraNow: 60, missingStart: 100, extraStart: 60}), 0);
   assert.equal(M.matchPercent({missingNow: 40, extraNow: 60, missingStart: 100, extraStart: 60}), 37);
@@ -131,7 +140,7 @@ test('a check builds the key once, then scores each edit', async () => {
   M._reset();
   const w = world();
   const first = await M.check(w.io, {taskId: 1, me: ME});
-  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}});
+  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, score: 38, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}});
   const key = w.db.keys[1];
   assert.equal(key.truth_root, w.ID.T);
   assert.equal(key.start_root, w.ID.S0);

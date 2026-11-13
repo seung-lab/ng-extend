@@ -23,11 +23,11 @@ const CLAIM = { id: 16762, segment_id: SEG, dataset: 'pinky_nf_v2', status: 'ass
   nucleus_coords: null, claim_point_x: 84054, claim_point_y: 50604, claim_point_z: 1424, supervoxel_id: '75295862611928762', notes: 'Sheet #2', source_sheet_url: null, kind: 'cell',
   priority: 0, created_at: '2026-11-01T00:00:00+00:00', updated_at: '2026-11-01T00:00:00+00:00' };
 const ANSWERS = {
-  first: { taskId: 16762, scorable: true, root: SEG, match: 0, merge: 0, cut: 0, missing: { left: 28, total: 28 }, extra: { left: 3, total: 3 } },
-  merged: { taskId: 16762, scorable: true, root: '648518346351002000', match: 37, merge: 39, cut: 0, missing: { left: 17, total: 28 }, extra: { left: 3, total: 3 } },
-  worse: { taskId: 16762, scorable: true, root: '648518346351003000', match: 31, merge: 36, cut: 67, missing: { left: 18, total: 28 }, extra: { left: 1, total: 3 } },
+  first: { taskId: 16762, scorable: true, root: SEG, match: 0, score: 62, merge: 0, cut: 0, missing: { left: 28, total: 28 }, extra: { left: 3, total: 3 } },
+  merged: { taskId: 16762, scorable: true, root: '648518346351002000', match: 37, score: 74, merge: 39, cut: 0, missing: { left: 17, total: 28 }, extra: { left: 3, total: 3 } },
+  worse: { taskId: 16762, scorable: true, root: '648518346351003000', match: 31, score: 70, merge: 36, cut: 67, missing: { left: 18, total: 28 }, extra: { left: 1, total: 3 } },
   // A cell with nothing to cut at the start.
-  clean: { taskId: 16762, scorable: true, root: '648518346351004000', match: 50, merge: 50, cut: null, missing: { left: 10, total: 20 }, extra: { left: 0, total: 0 } },
+  clean: { taskId: 16762, scorable: true, root: '648518346351004000', match: 50, score: 80, merge: 50, cut: null, missing: { left: 10, total: 20 }, extra: { left: 0, total: 0 } },
   none: { taskId: 16762, scorable: false },
 };
 const results = [];
@@ -94,9 +94,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const shown = await waitText(/merge 0%/i, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.length >= 1 && asks[0].action === 'match.check' && asks[0].taskId === 16762 && asks[0].hasToken, asks);
-    check('a Missing row and a Mergers row, each on its own line with its pieces', /merge 0% 0 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
+    check('Playing: Practice cell, the Match score, then Merge and Cut with their pieces', /^playing: practice cell .*match score [a-z ]*62% merge 0% 0 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 345 && box.h < 200, box);
+    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 200, box);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -144,14 +144,14 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('no ask while the edits keep coming', asks.length === before, asks.length - before);
     const updated = await waitText(/39%/, 10000);
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
-    check('the change shows beside the row that moved, and only there', /merge \+39 39% 11 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
+    check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+12 74% merge \+39 39% 11 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     await shot('cell-match-after-merge.png');
 
     // A worse edit: the number goes down, and says so.
     answer = ANSWERS.worse;
     await edit([ANSWERS.worse.root]);
     const worse = await waitText(/36%/, 10000);
-    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /merge −3 36% 10 of 28 pieces merged in cut \+67 67% 2 of 3 cut off/.test(await cardText() || ''), await cardText());
+    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /match score [a-z ]*−4 70% merge −3 36% 10 of 28 pieces merged in cut \+67 67% 2 of 3 cut off/.test(await cardText() || ''), await cardText());
     // A cut: "Cut complete" lights up for a moment, then back to the reading.
     // A cut: "Cut complete" at once, plain; then the reading says good or wrong
     // (Ames 2026-11-13: "I got cut complete ... but it was wrong cut").
@@ -226,7 +226,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const label = await page.evaluate(() => window.__ngeCellMatch.hasReview(16762));
     check('the cell offers Complete and Review', label === true, label);
     const choice1 = page.evaluate(() => window.__ngeCellMatch.showReview(16762, window.__ngeCellMatch.startReview(16762), true));
-    const reviewed = await waitText(/review final/, 10000);
+    const reviewed = await waitText(/review match score final/, 10000);
     check('the review shows the final numbers', reviewed && /merge 84%/.test(await cardText() || '') && /cut 67%/.test(await cardText() || ''), await cardText());
     check('what was missed, and the cut left', /not merged 2 pieces show 1 of 2 not cut 1 part show/.test(await cardText() || ''), await cardText());
     await page.waitForTimeout(3000);
@@ -301,7 +301,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-x').click());
     await page.waitForTimeout(400);
     const folded = await page.evaluate(() => ({ card: !!document.getElementById('nge-cell-match'), chip: (document.getElementById('nge-cell-match-open') || {}).textContent, hint: ((document.querySelector('#nge-cell-match-hint .nge-cm-tip-text') || {}).textContent) }));
-    check('X closes the card, a Cell match button stays', !folded.card && /cell match\s*39%/i.test(folded.chip || ''), folded);
+    check('X closes the card, a Match button stays with the score', !folded.card && /match\s*74%/i.test(folded.chip || ''), folded);
     check('the first close says Click here to reopen', folded.hint === 'Click here to reopen', folded);
     await shot('cell-match-closed.png');
     answer = ANSWERS.merged;
@@ -319,7 +319,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     // The info box (Ames 2026-11-13: "Also an info box").
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-i').click());
     const infoText = await page.evaluate(() => { const i = document.querySelector('#nge-cell-match .nge-cm-info'); return getComputedStyle(i).display !== 'none' ? i.innerText : null; });
-    check('i opens an explanation', /Merge:/.test(infoText || '') && /Cut:/.test(infoText || '') && !/[\u2013\u2014]|\s-\s/.test(infoText || ''), infoText);
+    check('i opens an explanation', /Match score:/.test(infoText || '') && /Merge:/.test(infoText || '') && /Cut:/.test(infoText || '') && !/[\u2013\u2014]|\s-\s/.test(infoText || ''), infoText);
     await shot('cell-match-info.png');
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-i').click());
     // Collapsed: Cell match and the two bars only, and it stays collapsed.
@@ -328,8 +328,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(300);
     const mini = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const vis = s => [...c.querySelectorAll(s)].filter(e => e.offsetParent !== null).length; return { h: c.offsetHeight, gauges: vis('.nge-cm-gauge'), nums: vis('.nge-cm-num'), pieces: vis('.nge-cm-pieces'), title: c.querySelector('.nge-cm-title').offsetParent !== null }; });
     const tips = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-row')].map(r => r.title));
-    check('hovering a bar says what it means', /^Merge \d+%: \d+ of \d+ pieces merged in$/.test(tips[0]) && /^Cut/.test(tips[1]), tips);
-    check('collapse shows the title and two bars only', mini.title && mini.gauges === 2 && mini.nums === 0 && mini.pieces === 0 && mini.h < fullH / 2, { mini, fullH });
+    check('hovering says what each line means', /^Match score 74%: how much your cell matches the true cell, by size$/.test(tips[0]) && /^Merge \d+%: \d+ of \d+ pieces merged in$/.test(tips[1]) && /^Cut/.test(tips[2]), tips);
+    const miniText = await page.evaluate(() => document.getElementById('nge-cell-match').innerText.replace(/\s+/g, ' ').trim());
+    check('collapse shows Practice cell and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^practice cell/i.test(miniText) && /74%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
     await shot('cell-match-collapsed.png');
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
