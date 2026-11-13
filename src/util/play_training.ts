@@ -15,6 +15,8 @@
 import { supabase } from '../supabase';
 import { useProofreadingBackendStore } from '../store';
 import { useTutorialStore } from '../store-pyr';
+import { DATASETS } from '../datasets';
+import { editsAny, loadDatasetPermissions } from './dataset_access';
 
 export const TRAINING: number[] = [1, 3, 5, 15, 2];
 
@@ -56,8 +58,20 @@ async function finished(): Promise<Set<number>> {
   return done;
 }
 
+/** Production access (or an admin): the training is behind them, whatever
+ *  the records say (Ames 2026-11-12). */
+async function hasProduction(): Promise<boolean> {
+  try { if (useProofreadingBackendStore().isAdmin) return true; } catch { /* store not ready */ }
+  try {
+    await loadDatasetPermissions();
+    return editsAny(DATASETS.filter(d => d.section === 'production').map(d => d.caveDataset)) === true;
+  } catch { return false; }
+}
+
 /** The first tutorial still to do, or null when the training is behind them. */
 export async function trainingLeft(): Promise<number | null> {
+  const pro = await Promise.race([hasProduction(), new Promise<boolean>(r => setTimeout(() => r(false), 3000))]);
+  if (pro) return null;
   const done = await Promise.race([
     finished(),
     new Promise<null>(r => setTimeout(() => r(null), 4000)),
