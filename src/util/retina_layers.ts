@@ -50,6 +50,19 @@ function putAside(taskId: string): boolean {
   return true;
 }
 
+/** Whether the five on screen hold no marks at all: null while none are on
+ *  screen or one is still loading. A layer whose marks cannot be read counts
+ *  as holding some. */
+function retinaAnnotationLayersEmpty(): boolean | null {
+  const viewer = viewerOf();
+  const managed: any[] = (viewer?.layerManager?.managedLayers ?? []).filter((l: any) => !l.archived && isRetinaAnnotationLayer(l.name));
+  if (!managed.length || managed.some(l => !l.layer)) return null;
+  try {
+    const specs = (viewer.layerSpecification.toJSON() as any[]).filter(s => s && isRetinaAnnotationLayer(s.name));
+    return specs.every(s => Array.isArray(s.annotations) && s.annotations.length === 0);
+  } catch { return false; }
+}
+
 /** The claim being opened light, until its start link has finished loading. */
 let watching: { stop: () => void } | null = null;
 const WATCH_MS = 60000;
@@ -59,13 +72,21 @@ const WATCH_MS = 60000;
  *  missed it, Ames 2026-11-07), they go aside and the Checked Highlight layer
  *  is there to mark with. Watches for a minute, or until the Annotation
  *  layers button is pressed. */
-export function startRetinaClaimLight(cellKey: string): void {
+export function startRetinaClaimLight(cellKey: string, onlyIfEmpty = false): void {
   watching?.stop();
   const viewer = viewerOf();
   let opened = false;
   const look = () => {
     try {
       if (currentDatasetTag() !== RETINA_DATASET) return;
+      // A saved view (Ames 2026-11-12: claims from before Highlight kept
+      // opening with the five): Highlight only if the five hold no marks, so
+      // nobody's marks leave the screen.
+      if (onlyIfEmpty && !opened) {
+        const empty = retinaAnnotationLayersEmpty();
+        if (empty === null) return;
+        if (!empty) { me.stop(); return; }
+      }
       const moved = putAside(cellKey);
       if (!viewerOf()?.layerManager?.managedLayers?.length) return;
       // The Checked layer once, then again whenever the start link's layers
