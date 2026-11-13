@@ -20,6 +20,7 @@ import { useProofreadingBackendStore } from '../store';
 import { vAutogrow } from '../util/autogrow';
 import imgNurroHome from '../images/nurro-at-home600.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import pyrTodoIcon from '../images/pyr-icon-todo.png';
 /** The game, and the Access page, from the board's top bar (Ames 2026-11-13). */
 const gameUrl = `${window.location.origin}${window.location.pathname}`;
 const accessUrl = `${gameUrl}?triage=access`;
@@ -2258,6 +2259,10 @@ async function onPagePaste(e: ClipboardEvent) {
 onMounted(() => document.addEventListener('paste', onPagePaste));
 onUnmounted(() => document.removeEventListener('paste', onPagePaste));
 onUnmounted(() => document.removeEventListener('keydown', onKey));
+// Its own green gem in the browser tab (Celia #529), apart from Triage's gold one.
+let tabIconWas = '';
+onMounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel="icon"]'); if (l) { tabIconWas = l.href; l.href = pyrTodoIcon; } });
+onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel="icon"]'); if (l && tabIconWas) l.href = tabIconWas; });
 </script>
 
 <template>
