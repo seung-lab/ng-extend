@@ -857,6 +857,20 @@ async function saveClaimView(cell: CellRow) {
   }
 }
 
+/** "Save and come back" in the Complete form (Ames 2026-11-13): save the
+ *  view, close the form, and say the cell is kept for you. An ordinary claim
+ *  has no time limit; a Super Quest is held for 2 months. */
+async function saveAndComeBack(cell: CellRow) {
+  await saveClaimView(cell);
+  if (claimError.value) return;
+  completing.value = null;
+  const superQuest = questCells.value.some(c => c.segId === cell.segId);
+  showStartNote('Your cell is saved', 6500,
+    superQuest ? 'It is reserved for you for 2 months from when you claimed it.'
+      : 'It is reserved for you until you complete or release it. Come back anytime.',
+    'See you soon');
+}
+
 /** A claim you arrive on is saved straight away, a few seconds in, so it is
  *  never "Not saved yet" (Ames 2026-11-12: "should it autosave at the
  *  beginning?"). Only a claim with no saved view yet: a saved one keeps its
@@ -3141,10 +3155,14 @@ onMounted(() => {
 });
 onBeforeUnmount(() => stopTextEdit?.());
 const startNoteCell = ref('');
+const startNoteKicker = ref('Teleport complete');
+const startNoteMs = ref(4200);
 const startNoteN = ref(0);
 let startNoteTimer: ReturnType<typeof setTimeout> | null = null;
-function showStartNote(text: string, ms = 4200, cellName?: string) {
+function showStartNote(text: string, ms = 4200, cellName?: string, kicker = 'Teleport complete') {
   startNote.value = text;
+  startNoteKicker.value = kicker;
+  startNoteMs.value = ms;
   const c = currentCell();
   startNoteCell.value = cellName ?? (c ? (history.getNickname(c.segId) || c.liveSegId || c.segId) : '');
   startNoteN.value++;
@@ -3393,9 +3411,9 @@ const panelStyle = computed(() => ({
       <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
-      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" role="status" aria-live="polite" @click="startNote = ''">
+      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
         <span class="nge-cl-newcell-ring" aria-hidden="true"></span>
-        <span class="nge-cl-newcell-kicker">Teleport complete</span>
+        <span class="nge-cl-newcell-kicker">{{ startNoteKicker }}</span>
         <span class="nge-cl-newcell-title">{{ startNote }}</span>
         <span v-if="startNoteCell" class="nge-cl-newcell-id">{{ startNoteCell }}</span>
       </div>
@@ -4594,6 +4612,10 @@ const panelStyle = computed(() => ({
                 :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
               ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : play.on ? 'Complete and next' : 'Mark complete' }}</button>
+              <!-- Not finished yet: keep it for later (Ames 2026-11-13). -->
+              <button v-if="cell.taskId && isMyClaim(cell)" class="nge-cl-btn" :disabled="completing.submitting || savingView === cell.taskId"
+                      title="Saves your view and keeps this cell claimed for you, so you can finish it later"
+                      @click="saveAndComeBack(cell)">{{ savingView === cell.taskId ? 'Saving…' : 'Save and come back' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
             </div>
@@ -5505,7 +5527,7 @@ const panelStyle = computed(() => ({
 @keyframes nge-cl-newcell-sweep { to { transform: translateX(100%); } }
 .nge-cl-newcell-kicker { font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.26em; text-transform: uppercase; color: #3eecbe; }
 .nge-cl-newcell-title { font: 700 24px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(62, 236, 190, 0.6); }
-.nge-cl-newcell-id { font: 500 13px 'Inter', sans-serif; color: #9fe8d4; letter-spacing: 0.03em; }
+.nge-cl-newcell-id { font: 500 13px 'Inter', sans-serif; color: #9fe8d4; letter-spacing: 0.03em; max-width: 340px; text-align: center; }
 @media (prefers-reduced-motion: reduce) { .nge-cl-newcell { animation: none; } .nge-cl-newcell-ring { display: none; } }
 .nge-cl-error-banner {
   display: flex;
