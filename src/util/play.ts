@@ -172,11 +172,21 @@ export function playLabel(): string {
   return ds ? `${ds.shortLabel || ds.label} mapping` : 'Mapping';
 }
 
+/** The choice between mapping and Cilia Quest is only ever offered on Retina,
+ *  where the quests are, to a player who may do them. On any other dataset
+ *  (the Sandbox, MEC) Play just starts mapping there (Ames 2026-11-12: "if I'm
+ *  in the sandbox ... it should just start me playing in the sandbox"). */
+export function offersChoice(): boolean { return isQuestDataset(datasetHere()) && canQuest(); }
+
 /** The Play button: straight in with the kind last chosen, else the card. */
 export function pressPlay() {
+  if (!offersChoice()) { void startPlay('cells'); return; }
   const k = savedKind();
   if (k && (k === 'cells' || canQuest())) { void startPlay(k); return; }
   play.choosing = true;
 }
-/** Open the choice card to change the kind. */
-export function choosePlay() { play.choosing = true; }
+/** Open the choice card to change the kind; off Retina, just play here. */
+export function choosePlay() {
+  if (!offersChoice()) { void startPlay('cells'); return; }
+  play.choosing = true;
+}
