@@ -3,8 +3,9 @@
 // Build:  DATASET=pinky_sandbox node scripts/build-prod.js
 // Serve:  python -m http.server 3571 --directory dist/min
 // Run:    node scripts/play-sandbox-name.test.cjs [base url]
-// Checks: with edit access on both Retina and the Sandbox, the Play card offers
-// "Sandbox cells" while a Sandbox view is on screen, whether its segmentation
+// Checks: with edit access on both Retina and the Sandbox, Play plays Sandbox
+// practice right here (the Cell Library opens, no switch to Retina) while a
+// Sandbox view is on screen, whether its segmentation
 // layer is named exactly pinky_nf_v2 (the control) or another pinky name that
 // the top bar already reads as "Data: Sandbox". Nothing reaches production.
 const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
@@ -57,9 +58,17 @@ async function playCard(browser, layerName) {
     await page.waitForTimeout(4000);
     out.layer = await page.evaluate(() => (window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState) || {}).name);
     out.topBar = await page.evaluate(() => { const b = [...document.querySelectorAll('button, span, div')].find(e => e.children.length === 0 && /^Data:/.test((e.textContent || '').trim())); return b ? b.textContent.trim() : null; });
-    await page.evaluate(() => document.querySelector('.nge-play-btn').click());
-    await page.waitForSelector('.nge-play-opt-where', { timeout: 10000 });
-    out.where = await page.evaluate(() => document.querySelector('.nge-play-opt-where').textContent.trim());
+    // Play: on the Sandbox it opens the Cell Library here; for Retina it would
+    // switch datasets first. The top bar's chip names what is being played.
+    await page.evaluate(() => {
+      window.__opened = null;
+      document.addEventListener('nge:open-cell-library', e => { window.__opened = e.detail || {}; });
+      document.querySelector('.nge-play-btn').click();
+    });
+    await page.waitForTimeout(4000);
+    out.where = await page.evaluate(() => { const c = document.querySelector('.nge-play-chip'); return c ? c.textContent.trim() : null; });
+    out.openedHere = await page.evaluate(() => !!window.__opened);
+    out.switching = await page.evaluate(() => { try { return !!sessionStorage.getItem('nge_cl_after_switch'); } catch (e) { return null; } });
   } catch (e) { out.error = String(e).slice(0, 200); }
   await context.close();
   return out;
@@ -68,10 +77,10 @@ async function playCard(browser, layerName) {
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const exact = await playCard(browser, 'pinky_nf_v2');
-  check('control: the exact layer name plays on the Sandbox', /Sandbox/.test(exact.where || ''), exact);
+  check('control: the exact layer name plays on the Sandbox', /Sandbox/.test(exact.where || '') && exact.openedHere && !exact.switching, exact);
   const other = await playCard(browser, 'pinky_training6');
   check('another pinky name: the top bar says Sandbox', /Sandbox/.test(other.topBar || ''), other);
-  check('another pinky name: Play plays on the Sandbox too', /Sandbox/.test(other.where || ''), other);
+  check('another pinky name: Play plays on the Sandbox too', /Sandbox/.test(other.where || '') && other.openedHere && !other.switching, other);
   await browser.close();
   console.log(`${results.filter(Boolean).length}/${results.length} passed`);
   process.exit(results.every(Boolean) ? 0 : 1);
