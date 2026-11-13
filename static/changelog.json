@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T22:08:00Z",
+      "title": "The Starship stays in view",
+      "items": [
+        "On shorter screens the camera now eases back during the Starship tour, so the whole ship stays in view instead of being cut off at the top."
+      ]
+    },
+    {
       "at": "2026-11-13T22:00:00Z",
       "title": "Time on Quests",
       "items": [
