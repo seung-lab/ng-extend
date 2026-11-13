@@ -548,25 +548,31 @@ async function beta(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
   if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
   const name = betaName(a.name);
-  const email = betaEmail(a.email);
-  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
-  const ew = eyewireOf(a);
-  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  // The game form asks for their EyeWire email instead of a second email
+  // (Ames 2026-11-12), so the email is their sign in unless they give one.
+  const email = betaEmail(a.email || signIn);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
+  if (ew.email === signIn || ew.email === email) ew.email = null;
+  if (a.agree === false) fail(400, 'Please tick the box to say you agree to the Eyewire II Principles and the Terms of Use.');
+  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
   const same = email === signIn;
   // Invited under another address (Ames 2026-11-04: invites went to the
   // emails on the EyeWire form, many not Google accounts, and Pyr signs in
   // with Google). The admin still lets them in by hand: anyone could type an
   // invited address, so the row says to check it is them first.
-  const invitedAs = !same && await invitedEmail(io.sb, email);
+  const invitedAs = (!same && await invitedEmail(io.sb, email)) ? email
+    : (ew.email && await invitedEmail(io.sb, ew.email)) ? ew.email : '';
   const message = [
     `${name} asks to join the Pyr beta.`,
     same ? '' : `Email they gave: ${email}`,
-    invitedAs ? `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.` : '',
+    invitedAs ? `Invited as: ${invitedAs}, already on Pilot testers. They sign in with another Google account.` : '',
     `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    a.agree === true ? 'They agreed to the community principles.' : '',
     ...ewLines(ew),
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
@@ -574,7 +580,7 @@ async function beta(a, io) {
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
   const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
-    + (invitedAs ? `Already invited as ${mdText(email)}, and signs in with another Google account.\n\n` : '')
+    + (invitedAs ? `Already invited as ${mdText(invitedAs)}, and signs in with another Google account.\n\n` : '')
     + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
     + ewForBell(ew)
     + `\n\n${LET_IN}`
@@ -709,16 +715,24 @@ function eyewireOf(a) {
   if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
   // How did you find us? (Ames 2026-11-06), optional plain text, one line.
   const found = cleanText(a.foundUs, FOUND_US_MAX, 'How you found us');
+  // The email on their EyeWire account (Ames 2026-11-12: "we for sure need
+  // eyewire email"), optional: it is where our invites went, so it matches
+  // them to an invite and to their EyeWire stats.
+  let ewEmail = null;
+  if (a.eyewireEmail) {
+    try { ewEmail = betaEmail(a.eyewireEmail); } catch (e) { fail(400, 'That EyeWire email does not look right.'); }
+  }
   return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null,
+    email: ewEmail,
     found: found ? found.replace(/\s+/g, ' ') : null,
     // Email me Pyr news (Ames 2026-11-12): a box on the request form, unticked
     // to start. Only said when the form sends it, as yes or no.
     news: a.emailOptIn === true ? 'yes' : a.emailOptIn === false ? 'no' : null};
 }
 const FOUND_US_MAX = 200;
-const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
+const ewLines = ew => [ew.email ? `EyeWire email: ${ew.email}` : '', ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
   ew.found ? `How they found us: ${ew.found}` : '', ew.news ? `Pyr news by email: ${ew.news}` : ''];
-const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
+const ewForBell = ew => (ew.email ? `\n\nEyeWire email: ${mdText(ew.email)}` : '') + (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
   + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '') + (ew.news ? `\n\nPyr news by email: ${ew.news}` : '');
 /** A new request goes on the triage board now, not at the next (often late)
  *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */

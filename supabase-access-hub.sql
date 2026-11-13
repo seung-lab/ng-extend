@@ -68,7 +68,7 @@ WITH lnk AS (
 req AS (
   SELECT DISTINCT ON (email) * FROM (
     SELECT coalesce(lk.linked_to, r0.email) AS email, r0.gave_email, r0.request_id, r0.request_user_id, r0.request_name, r0.asked_at,
-      r0.from_site, r0.ew_name, r0.ew_rank, r0.found_us, r0.their_note
+      r0.from_site, r0.ew_name, r0.ew_rank, r0.found_us, r0.their_note, r0.ew_email
     FROM (SELECT
       rtrim(lower(coalesce(
         substring(message FROM 'Sign in email: ([^\s]+@[^\s]+)'),
@@ -78,6 +78,8 @@ req AS (
       id AS request_id, user_id AS request_user_id, user_name AS request_name, created_at AS asked_at,
       (coalesce(url, '') || coalesce(title, '')) ~ 'connectome\.quest' AS from_site,
       nullif(trim(substring(message FROM 'EyeWire username: ([^\n]*)')), '') AS ew_name,
+      -- The email on their EyeWire account (Ames 2026-11-12), where invites went.
+      rtrim(lower(substring(message FROM 'EyeWire email: ([^\s]+@[^\s]+)')), '.') AS ew_email,
       nullif(trim(substring(message FROM 'EyeWire rank: ([^\n]*)')), '') AS ew_rank,
       nullif(trim(substring(message FROM 'How they found us: ([^\n]*)')), '') AS found_us,
       nullif(trim(substring(message FROM 'Their note: (.*)$')), '') AS their_note
@@ -156,7 +158,7 @@ SELECT
   coalesce(r.request_name, u.display_name, u.username) AS name,
   u.username,
   r.request_id, r.asked_at, r.from_site, r.gave_email,
-  coalesce(xn.ew_name, r.ew_name) AS ew_name, r.ew_rank, r.found_us, r.their_note,
+  coalesce(xn.ew_name, r.ew_name, iv.ew_name) AS ew_name, r.ew_rank, r.found_us, r.their_note,
   p.enabled AS pilot_enabled, p.let_in_at, coalesce(p.from_list, false) AS from_list,
   u.created_at AS joined_at, u.tutorial_active,
   t.tutorial_at, coalesce(t.tutorials, 0) AS tutorials,
@@ -169,7 +171,8 @@ SELECT
   coalesce(iv.sent_at, xn.set_at) AS invited_at,
   coalesce(iv.campaign, CASE WHEN xn.email IS NOT NULL THEN 'by_hand' END) AS invited_for,
   iv.ew_role AS invited_role, iv.email AS invited_as,
-  xn.set_at AS ew_name_set_at
+  xn.set_at AS ew_name_set_at,
+  r.ew_email
 FROM who w
 LEFT JOIN adm ad ON ad.email = w.email
 LEFT JOIN req r ON r.email = w.email
@@ -183,10 +186,11 @@ LEFT JOIN ha ON ha.user_id = u.id
 LEFT JOIN hg ON hg.user_id = u.id
 LEFT JOIN public.access_ew_names xn ON xn.email = w.email
 -- The first invite that reached them: this email, the email they gave on
--- the form, an email folded into this one, or their EyeWire username.
+-- the form, their EyeWire email, an email folded into this one, or their
+-- EyeWire username. An invite found by email gives its EyeWire username.
 LEFT JOIN LATERAL (
-  SELECT i.email, i.campaign, i.ew_role, i.sent_at FROM public.access_invites i
-  WHERE i.email = w.email OR i.email = r.gave_email
+  SELECT i.email, i.campaign, i.ew_role, i.sent_at, i.ew_name FROM public.access_invites i
+  WHERE i.email = w.email OR i.email = r.gave_email OR i.email = r.ew_email
     OR i.email IN (SELECT l.email FROM lnk l WHERE l.linked_to = w.email)
     OR (coalesce(xn.ew_name, r.ew_name) IS NOT NULL AND i.ew_name = lower(coalesce(xn.ew_name, r.ew_name)))
   ORDER BY i.sent_at LIMIT 1
