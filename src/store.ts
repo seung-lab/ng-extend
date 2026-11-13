@@ -3715,9 +3715,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const invalid = validateUsername(n);
     if (invalid) throw new Error(invalid);
     if (!userId.value) throw new Error('Not signed in.');
+    // No name on the account (it shows the email's front, or an earlier
+    // username): the new username becomes the shown name too (#512).
+    const noName = userName.value === emailFront(userEmail.value) || (!!username.value && userName.value === username.value);
     const { error } = await supabase
       .from('users')
-      .update({ username: n, updated_at: new Date().toISOString() })
+      .update({ username: n, ...(noName ? { display_name: n } : {}), updated_at: new Date().toISOString() })
       .eq('id', userId.value);
     if (error) {
       // 23505 = unique violation, i.e. someone already has it.
@@ -3727,6 +3730,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       throw new Error(error.message);
     }
     username.value = n;
+    if (noName) userName.value = n;
   }
   const tasks = ref<ProofreadingTask[]>([]);
   const activeTaskId = ref<number | null>(null);
@@ -3738,6 +3742,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let feedSubscription: any = null;
 
   // ── User sync ─────────────────────────────────────────────────────────
+  /** What a sign-in with no name shows: the part of the email before the @. */
+  const emailFront = (email: string) => (email || '').split('@')[0];
   /** Upsert user from middleauth identity. Call after login. */
   async function syncUser(email: string, displayName: string) {
     userEmail.value = email;
@@ -3771,6 +3777,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // importing this store (it may not exist yet during a bootstrap failure).
         (window as any).__ngeUserId = existing.id;
         console.info('[backend] syncUser: found existing user', existing.id);
+        // An account with no name signs in as the front of its email. If the
+        // player has picked a username, that is their name on the leaderboard
+        // and everywhere else, not the email (#512, 2026-11-13).
+        if (existing.username && displayName === emailFront(email)) {
+          displayName = existing.username;
+          userName.value = displayName;
+        }
         // Update display name if changed
         await supabase
           .from('users')
