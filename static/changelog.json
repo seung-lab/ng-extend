@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T00:49:00Z",
+      "title": "Play bar tidy up",
+      "items": [
+        "The Playing chip in the top bar is shorter: the play icon and what you are playing.",
+        "While you play, click anywhere on the cell bar to open Complete, or to fold it away again.",
+        "The notes box in Complete folds away behind Add a note for the reviewers until you want it.",
+        "Pyr asks how the cell ended only if you press Complete without picking one.",
+        "A cell or Cilia Quest cell you arrive on is saved a few seconds in, so it never says Not saved yet.",
+        "The crosshairs check now says Place the crosshairs inside the cell, with an (i) that shows how in a small picture.",
+        "On the Cilia Quest bar, the Submit box runs the full width and the green edge is gone."
+      ]
+    },
+    {
       "at": "2026-11-13T00:41:00Z",
       "title": "Play skips the tutorials for proofreaders",
       "items": [
