@@ -1,30 +1,38 @@
 #!/usr/bin/env node
 /**
- * Deletes old player screenshots from Supabase Storage so the bucket does
- * not fill up (Ames 2026-10-07: "delete screenshots... so that we don't run
- * out of storage"; 14 days, once screenshots were also stored compressed).
+ * Keeps player screenshot storage small WITHOUT losing any (Ames 2026-11-13:
+ * "I don't want to delete them, we may want to learn from them. Can we just
+ * make them small?"). A player screenshot older than MAX_AGE_DAYS that
+ * nothing is still working from is rewritten IN PLACE as a small WebP, its
+ * long side at most SMALL_SIDE px: the same address, so every bug report,
+ * request, reply and chat message that shows it keeps showing it. They used
+ * to be deleted (Ames 2026-10-07); since 2026-11-13 none are.
  *
  * Images admins sent in replies (admin-uploads/reply-images/) go after 7
  * days once their report is closed, see cleanReplyImages below. Files on To do
  * cards go 7 days after the card is Done, see cleanTodoFiles, and so do
  * pictures on them, see cleanTodoImages. Cards themselves are never deleted.
  *
- * Only the folder admin-uploads/help-screenshots/ is ever touched. Achievement
+ * Only the folder admin-uploads/help-screenshots/ is shrunk. Achievement
  * art, notification images and blog images live in other folders.
  *
- * A screenshot is KEPT, whatever its age, while any of these still point at it:
+ * A screenshot keeps its full size, whatever its age, while any of these
+ * still point at it:
  *   - a help request that is still open, or a reply on one
  *   - an issue tag that is still open
  *   - a saved Working Link
- *   - any notification or chat message
- *   - any bug report or triage card, however old (Ames 2026-11-13: "Don't
- *     delete the screenshots attached to bug reports"). They are stored
- *     compressed, WebP at most 2560 px, a fraction of the PNG.
- * Everything else older than MAX_AGE_DAYS is deleted, and the link on the
- * row that pointed at it is cleared so nothing shows a broken image.
+ *   - a bug report (or its triage card) newer than BUG_REPORT_DAYS
+ * Bug report screenshots are never deleted (Ames 2026-11-13); after
+ * BUG_REPORT_DAYS they are shrunk like the rest.
  *
- * It writes nothing unless DELETE=1. Without it, it prints what it would do.
- * If any table it must read cannot be read, it stops and deletes nothing.
+ * Careful by design, like recompress-screenshots.mjs: a file is replaced only
+ * when the small one decodes, is the size asked for, and is smaller; it is
+ * read back after the write and a mismatch stops the run. A file already
+ * small (under SMALL_BYTES) is left alone, so each is shrunk once.
+ *
+ * It writes nothing unless DELETE=1 (the name the workflow already passes).
+ * Without it, it prints what it would do. If any table it must read cannot be
+ * read, it stops and changes nothing.
  *
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/cleanup-screenshots.mjs
  */
@@ -34,6 +42,10 @@ if (!SUPABASE_URL || !KEY) { console.error('Missing SUPABASE_URL or SUPABASE_SER
 
 const DELETE = process.env.DELETE === '1';
 const MAX_AGE_DAYS = Number(process.env.MAX_AGE_DAYS || 14);
+const SMALL_SIDE = Number(process.env.SMALL_SIDE || 1600);
+const SMALL_QUALITY = Number(process.env.SMALL_QUALITY || 60);
+const SMALL_BYTES = 300 * 1024;
+const BUG_REPORT_DAYS = Number(process.env.BUG_REPORT_DAYS || 30);
 const BUCKET = 'admin-uploads';
 const FOLDER = 'help-screenshots';
 const DAY = 86400000;
@@ -76,6 +88,25 @@ async function listFolder(prefix, bucket = BUCKET) {
 
 const mb = bytes => (bytes / 1048576).toFixed(1) + ' MB';
 
+const AUTH = { apikey: KEY, ...(KEY.startsWith('sb_') ? {} : { Authorization: `Bearer ${KEY}` }) };
+async function download(path) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, { headers: AUTH });
+  if (!res.ok) throw new Error(`could not download ${path}: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+/** sharp, the image library. The workflow runs this script without
+ *  installing anything, so it installs sharp itself the first time. */
+async function loadSharp() {
+  try { return (await import('sharp')).default; } catch { /* not installed here */ }
+  const { execSync } = await import('node:child_process');
+  const { createRequire } = await import('node:module');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = join(tmpdir(), 'pyr-sharp');
+  execSync(`npm install --prefix "${dir}" --no-audit --no-fund --no-save sharp@0.33`, { stdio: 'inherit' });
+  return createRequire(join(dir, 'package.json'))('sharp');
+}
+
 async function main() {
   // 1. What is stored.
   const files = [];
@@ -99,49 +130,53 @@ async function main() {
   for (const r of await allRows('help_responses', 'select=id,request_id,screenshot_url')) if (open.has(r.request_id)) protect(r.screenshot_url, 'reply on an open help request');
   for (const t of await allRows('issue_tags', 'select=id,status,screenshot_url')) if (t.status !== 'resolved') protect(t.screenshot_url, 'open issue tag');
   for (const l of await allRows('working_links', 'select=id,screenshot_url,note')) protect(l, 'saved Working Link');
-  for (const n of await allRows('notifications')) protect(n, 'notification');
-  for (const m of await allRows('chat_messages', `select=id,text&text=ilike.*${FOLDER}*`)) protect(m, 'chat message');
-  // Bug reports keep their screenshots for good.
-  for (const i of await allRows('site_issues')) protect(i, 'bug report');
-  for (const c of await allRows('feedback_triage', 'select=*', { optional: true })) protect(c, 'triage card');
+  // Notifications and chat only show a screenshot: the small one shows fine.
+  const recent = row => !row.created_at || now - new Date(row.created_at).getTime() < BUG_REPORT_DAYS * DAY;
+  for (const i of await allRows('site_issues')) if (recent(i)) protect(i, `bug report under ${BUG_REPORT_DAYS} days old`);
+  for (const c of await allRows('feedback_triage', 'select=*', { optional: true })) if (recent(c)) protect(c, `triage card under ${BUG_REPORT_DAYS} days old`);
 
-  // 3. What goes.
-  const doomed = [], kept = {};
+  // 3. What is shrunk: old, not still being worked from, and not small yet.
+  const todo = [], kept = {};
+  const count = why => { kept[why] = (kept[why] || 0) + 1; };
   for (const f of files) {
     const age = (now - new Date(f.created).getTime()) / DAY;
-    if (!(age > MAX_AGE_DAYS)) { kept[`under ${MAX_AGE_DAYS} days old`] = (kept[`under ${MAX_AGE_DAYS} days old`] || 0) + 1; continue; }
+    if (!(age > MAX_AGE_DAYS)) { count(`under ${MAX_AGE_DAYS} days old`); continue; }
     const why = keep.get(f.path);
-    if (why) { kept[why] = (kept[why] || 0) + 1; continue; }
-    doomed.push({ ...f, age });
+    if (why) { count(why); continue; }
+    if (f.size && f.size < SMALL_BYTES) { count('already small'); continue; }
+    todo.push({ ...f, age });
   }
-  for (const [why, n] of Object.entries(kept)) console.log(`[cleanup] kept ${n}: ${why}`);
-  console.log(`[cleanup] ${DELETE ? 'deleting' : 'would delete'} ${doomed.length} screenshots, ${mb(doomed.reduce((a, f) => a + f.size, 0))}`);
-  for (const f of doomed) console.log(`  ${f.path}  ${Math.round(f.age)} days  ${mb(f.size)}`);
-  if (!DELETE) { console.log('[cleanup] DRY RUN, nothing deleted. Set DELETE=1 to delete.'); return; }
-  if (!doomed.length) return;
+  for (const [why, n] of Object.entries(kept)) console.log(`[cleanup] left as is ${n}: ${why}`);
+  console.log(`[cleanup] ${DELETE ? 'shrinking' : 'would shrink'} ${todo.length} screenshots, ${mb(todo.reduce((a, f) => a + f.size, 0))} now`);
+  if (!todo.length) return;
 
-  // 4. Delete, then clear the links that pointed at what is gone.
-  let gone = [];
-  for (let i = 0; i < doomed.length; i += 100) {
-    const batch = doomed.slice(i, i + 100).map(f => f.path);
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, { method: 'DELETE', headers: HEADERS, body: JSON.stringify({ prefixes: batch }) });
-    if (!res.ok) throw new Error(`delete failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
-    gone = gone.concat(batch);
+  // 4. Shrink each in place. Nothing is deleted, no link changes.
+  const sharp = await loadSharp();
+  let done = 0, saved = 0, left = 0;
+  for (const f of todo) {
+    let original, out, meta;
+    try {
+      original = await download(f.path);
+      out = await sharp(original).rotate().resize({ width: SMALL_SIDE, height: SMALL_SIDE, fit: 'inside', withoutEnlargement: true })
+        .flatten({ background: '#000' }).webp({ quality: SMALL_QUALITY }).toBuffer();
+      meta = await sharp(out).metadata();
+    } catch (e) { console.log(`  left as is (could not read): ${f.path}  ${String(e.message).slice(0, 80)}`); left++; continue; }
+    if (meta.format !== 'webp' || !meta.width || !meta.height || Math.max(meta.width, meta.height) > SMALL_SIDE) { console.log(`  left as is (bad result): ${f.path}`); left++; continue; }
+    if (out.length >= original.length * 0.9) { console.log(`  left as is (not much smaller): ${f.path}`); left++; continue; }
+    console.log(`  ${f.path}  ${Math.round(f.age)} days  ${mb(original.length)} -> ${mb(out.length)}  ${meta.width}x${meta.height}`);
+    saved += original.length - out.length;
+    done++;
+    if (!DELETE) continue;
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${f.path}`, {
+      method: 'PUT', headers: { ...AUTH, 'Content-Type': 'image/webp', 'x-upsert': 'true', 'cache-control': 'max-age=3600' }, body: out,
+    });
+    if (!res.ok) throw new Error(`could not replace ${f.path}: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    // Read it back: what is stored must be exactly what was sent.
+    const stored = await download(f.path);
+    if (!stored.equals(out)) throw new Error(`${f.path} read back differently after the write. Stopping.`);
   }
-  console.log(`[cleanup] deleted ${gone.length} screenshots`);
-  const urlOf = p => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${p}`;
-  for (const table of ['help_requests', 'help_responses', 'issue_tags', 'site_issues']) {
-    let cleared = 0;
-    for (let i = 0; i < gone.length; i += 40) {
-      const list = gone.slice(i, i + 40).map(p => `"${urlOf(p)}"`).join(',');
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?screenshot_url=in.(${encodeURIComponent(list)})`, {
-        method: 'PATCH', headers: { ...HEADERS, Prefer: 'return=representation' }, body: JSON.stringify({ screenshot_url: null }),
-      });
-      if (!res.ok) { console.warn(`[cleanup] could not clear links in ${table}: ${res.status} ${(await res.text()).slice(0, 160)}`); break; }
-      cleared += (await res.json()).length;
-    }
-    console.log(`[cleanup] cleared ${cleared} links in ${table}`);
-  }
+  console.log(`[cleanup] ${DELETE ? 'shrank' : 'would shrink'} ${done}, left ${left} as is, ${DELETE ? 'saved' : 'would save'} ${mb(saved)}`);
+  if (!DELETE) console.log('[cleanup] DRY RUN, nothing written. Set DELETE=1 to write.');
 }
 
 
