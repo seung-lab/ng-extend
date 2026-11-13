@@ -99,6 +99,7 @@ function buildStaticReference(): string {
     "- Not done with a cell yet? 'Save and come back' in the Complete form saves the view and keeps the cell claimed. An ordinary claim has no time limit: it stays the player's until they complete or release it. A Super Quest is held for 2 months from when it was claimed.",
     "- On Retina, Play offers a choice: the BC Challenge (bipolar cells to proofread) or Cilia Quests (mark the cilium on a starburst cell).",
     "- While playing, a pill in the top bar says what is being played, such as 'BC Challenge' or 'Cilia Quest'. Clicking it goes back to the cell in hand.",
+    "- In Highlight mode, with a start point placed, S marks the way back to the soma (To soma) and B marks every branch beyond the point (Beyond). Clear all asks first; Enter confirms. It removes only highlights, never segments or lab marks.",
     "- A player chooses a username when they request beta access (3 to 20 letters, numbers or underscores). It is how they appear in chat and how others tag them with @. If their sign-in has no name, it is also the name on the leaderboard. It can be changed any time in Profile > Settings.",
     "",
     "## Toolbar buttons (the icon row)",

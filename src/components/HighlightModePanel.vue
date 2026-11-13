@@ -461,6 +461,12 @@ function onKeyDown(e: KeyboardEvent) {
     hHeld.value = true;
   } else if (e.key === 'Escape' && first.value) {
     cancelPick();
+  } else if ((e.key === 's' || e.key === 'S' || e.key === 'b' || e.key === 'B') && first.value && !busy.value && !branchWay.value && !labOn.value) {
+    // S for To soma, B for Beyond, while their buttons show (Ames 2026-11-13).
+    // Only then: S and B keep their usual jobs the rest of the time.
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    void markBranch(e.key.toLowerCase() === 's' ? 'toward' : 'away');
   }
 }
 function onKeyUp(e: KeyboardEvent) {
@@ -633,8 +639,8 @@ onBeforeUnmount(() => {
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--sm" type="button" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop</button>
         <template v-if="first && !busy && !branchWay && !labOn">
-          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
-          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
+          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark the way from this point back to the soma. (S)" @click="markBranch('toward')">To soma</button>
+          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too. (B)" @click="markBranch('away')">Beyond</button>
         </template>
         <span class="nge-hl-slim-step" :class="{ 'nge-hl-bad': messageBad }" :title="slimStep">{{ busy ? 'Tracing' : slimStep }}</span>
         <button class="nge-hl-btn nge-hl-btn--sm" type="button" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
@@ -735,9 +741,9 @@ onBeforeUnmount(() => {
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn nge-hl-btn--danger" :disabled="busy || !markCount" @click="clearAll"
                 title="Remove every highlight mark in this view. Asks first. Your segments and lab marks stay.">Clear all</button>
-        <ConfirmDialog v-if="clearAsk" :title="`Clear all ${clearAsk} highlight ${clearAsk === 1 ? 'mark' : 'marks'}?`"
-          text="Every highlight in this view goes. Your segments stay, and so do the lab marks. This cannot be undone."
-          yes="Clear all highlights" @yes="clearAllYes" @no="clearAsk = 0" />
+        <ConfirmDialog v-if="clearAsk" title="Clear all highlights?" enter-yes
+          text="Are you sure you want to clear all highlights in this view? This cannot be undone."
+          yes="OK" @yes="clearAllYes" @no="clearAsk = 0" />
       </div>
       <label class="nge-hl-width" title="How far out from the middle of the branch the color reaches. Wider covers thick branches and their spines; narrower keeps the color off neighboring branches.">
         <span>Color reach</span>
@@ -789,8 +795,8 @@ onBeforeUnmount(() => {
            beyond the point (Krzysztof Kruk's idea, 2026-10-09). -->
       <div v-if="first && !busy && !branchWay && !labOn" class="nge-hl-branch">
         <span class="nge-hl-branch-label">From here</span>
-        <button class="nge-hl-btn" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
-        <button class="nge-hl-btn" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
+        <button class="nge-hl-btn" type="button" title="Mark the way from this point back to the soma. (S)" @click="markBranch('toward')">To soma</button>
+        <button class="nge-hl-btn" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too. (B)" @click="markBranch('away')">Beyond</button>
       </div>
       <!-- The soma is not on record: one clear ask, lit as it arrives so the
            eye goes to it (Ames 2026-10-10). -->
