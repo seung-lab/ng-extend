@@ -252,21 +252,29 @@ Annotations are your own marks on a cell: points, lines and shapes. They live in
     text: `
 This is your layer's panel. Give the layer a name of its own.
 
-<strong>Click the ✎ pencil</strong> (or the name itself), type a name such as <strong>Branch ends</strong>, and press Enter.`,
+<strong>Click the ✎ pencil</strong> (or the name itself), type a name such as <strong>Gem stash</strong>, and press Enter.`,
     position: { element: ".nge-ann-panel .neuroglancer-layer-side-panel-title", side: "left", offset: { x: 0, y: 0 } },
     onEnter() {
       openAnnotationPanel();
-      watchChecks(() => {
-        const base = new Map(annotationLayers().map(ml => [ml, String(ml.name || '')]));
-        return { name: () => annotationLayers().some(ml => base.has(ml) && String(ml.name || '').trim() !== '' && ml.name !== base.get(ml)) };
-      });
+      // Counted once the name is finished (Enter, or a click away): the name
+      // changes with every letter, so the box moved on mid typing (Ames
+      // 2026-11-12: "the pencil icon makes the tutorial advance"). Any name
+      // of the player's own counts, also one given before this box opened
+      // ("i named it but it didn't count": the layer was already Test).
+      watchChecks(() => ({
+        name: () => {
+          if ((document.activeElement as HTMLElement | null)?.matches?.('.neuroglancer-layer-side-panel-name')) return false;
+          return annotationLayers().some(ml => {
+            const name = String(ml.name || '').trim();
+            return name !== '' && !/^(annotation|new layer)\s*\d*$/i.test(name);
+          });
+        },
+      }));
     },
   },
   {
     part: PART,
     text: `
-The Pyr gem tool is already picked.
-
 <strong>CTRL+CLICK three spots on the cell</strong> to drop three gems.`,
     position: OVER_3D,
     onEnter() {
