@@ -25,7 +25,6 @@ const requested = ref(false);
 // Name and email (Ames 2026-10-24: "It should just ask for their name and
 // email", "and we can have an optional note"), filled in from the sign in.
 const name = ref('');
-const email = ref('');
 const note = ref('');
 // Both optional (Ames 2026-10-26: "eyewire username, Eyewire rank").
 const ewName = ref('');
@@ -76,6 +75,13 @@ async function fillPyrName() {
 }
 // Optional (Ames 2026-11-06: "how did you find us?").
 const foundUs = ref('');
+// Ames 2026-11-12: "we for sure need eyewire email", optional (where our
+// invites went; their sign in is their email). The Principles and Terms box
+// and the news box match the connectome.quest form.
+const ewEmail = ref('');
+const agree = ref(false);
+const agreeFlag = ref(false);
+const news = ref(false);
 const sending = ref(false);
 const error = ref('');
 const panelEl = ref<HTMLElement | null>(null);
@@ -90,7 +96,6 @@ async function check(userId: string) {
     if (s && s.invited === false) {
       requested.value = !!s.requested;
       if (!name.value) name.value = backend.userName || login.sessions[0]?.name || '';
-      if (!email.value) email.value = login.sessions[0]?.email || '';
       void fillPyrName();
       show.value = true;
       betaGate.value = 'out';
@@ -110,11 +115,10 @@ const EMAIL_OK = /^[^\s@<>()\[\],;:"]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.
 const EW_NAME_OK = /^[A-Za-z0-9_.\- ]+$/;
 const EW_RANK_OK = /^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u;
 function problem(): string {
-  const n = name.value.trim(), e = email.value.trim();
+  const n = name.value.trim(), e = ewEmail.value.trim();
   if (!n) return 'Please add your name.';
   if (!NAME_OK.test(n)) return 'Your name can have letters, spaces, periods, apostrophes and hyphens only.';
-  if (!e) return 'Please add your email.';
-  if (!EMAIL_OK.test(e)) return 'That email does not look right.';
+  if (e && !EMAIL_OK.test(e)) return 'That EyeWire email does not look right.';
   const u = chosenName.value;
   if (!u) return 'Please choose a username.';
   if (u !== backend.username) {
@@ -123,6 +127,7 @@ function problem(): string {
   }
   if (ewName.value.trim() && !EW_NAME_OK.test(ewName.value.trim())) return 'An EyeWire username has letters, numbers, dots, dashes and underscores only.';
   if (ewRank.value.trim() && !EW_RANK_OK.test(ewRank.value.trim())) return 'An EyeWire rank has letters, numbers and spaces only.';
+  if (!agree.value) { agreeFlag.value = true; return 'Please tick the box to say you agree to the Eyewire II Principles and the Terms of Use.'; }
   return '';
 }
 async function request() {
@@ -138,9 +143,10 @@ async function request() {
       catch (e: any) { pyrNameBad.value = true; pyrNameNote.value = e?.message || 'That username could not be saved.'; throw e; }
     }
     const r = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.beta', {
-      name: name.value.trim(), email: email.value.trim(), note: note.value.trim() || undefined,
+      name: name.value.trim(), note: note.value.trim() || undefined,
+      eyewireEmail: ewEmail.value.trim() || undefined,
       eyewireUsername: ewName.value.trim() || undefined, eyewireRank: ewRank.value.trim() || undefined,
-      foundUs: foundUs.value.trim() || undefined });
+      foundUs: foundUs.value.trim() || undefined, agree: true, emailOptIn: news.value });
     if (r?.invited) { show.value = false; betaGate.value = 'in'; return; }
     requested.value = true;
   } catch (e: any) {
@@ -238,8 +244,9 @@ onUnmounted(() => window.clearInterval(waitCheck));
           <p class="nge-beta-text">No invite yet? Pyr is in a closed beta while we get it ready. Ask to join and we'll add you as soon as we can.</p>
           <label class="nge-beta-label" for="nge-beta-name">Your name</label>
           <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
-          <label class="nge-beta-label" for="nge-beta-email">Your email</label>
-          <input id="nge-beta-email" v-model="email" class="nge-beta-field" type="email" maxlength="254" autocomplete="email" @input="error = ''" />
+          <label class="nge-beta-label" for="nge-beta-ewemail">Your EyeWire email <span>(if you play EyeWire)</span></label>
+          <input id="nge-beta-ewemail" v-model="ewEmail" class="nge-beta-field" type="email" maxlength="254" autocomplete="off"
+                 placeholder="The email on your EyeWire account" @input="error = ''" />
           <div class="nge-beta-pair">
             <div>
               <label class="nge-beta-label" for="nge-beta-ewname">EyeWire username <span>(optional)</span></label>
@@ -265,8 +272,15 @@ onUnmounted(() => window.clearInterval(waitCheck));
                  placeholder="For example: the EyeWire forum, a friend, a class" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-note">Anything you'd like us to know? <span>(optional)</span></label>
           <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="2" maxlength="500"></textarea>
+          <label class="nge-beta-check-row" :class="{ 'nge-beta-check-row--flag': agreeFlag }">
+            <input v-model="agree" type="checkbox" @change="error = ''; agreeFlag = false" />
+            <span>I've read and agree to the <a href="https://eyewire.ai/principles" target="_blank" rel="noreferrer">Eyewire II Principles</a> and the <a href="https://connectome.quest/terms/" target="_blank" rel="noreferrer">Terms of Use and Privacy Notice</a>.</span>
+          </label>
+          <label class="nge-beta-check-row">
+            <input v-model="news" type="checkbox" />
+            <span>Email me Pyr news, like new datasets and events. <em>(optional, stop any time)</em></span>
+          </label>
           <button class="nge-beta-btn" :disabled="sending" @click="request">{{ sending ? 'Sending...' : 'Request beta access' }}</button>
-          <p class="nge-beta-agree">By asking to join, you agree to the <a href="https://connectome.quest/terms/" target="_blank" rel="noreferrer">Terms of Use and Privacy Notice</a>.</p>
           <p v-if="error" class="nge-beta-error" role="alert">{{ error }}</p>
         </template>
         <div v-else-if="letIn" class="nge-beta-text nge-beta-text--done" role="status">
@@ -418,6 +432,9 @@ onUnmounted(() => window.clearInterval(waitCheck));
 .nge-beta-sep { color: rgba(200, 220, 245, 0.35); }
 .nge-beta-link { padding: 0; background: none; border: 0; font: inherit; color: rgba(200, 220, 245, 0.7); cursor: pointer; }
 .nge-beta-link:hover { color: #fff; text-decoration: underline; }
-.nge-beta-agree { margin: 8px 0 0; font-size: 12px; color: rgba(200, 220, 245, 0.7); }
-.nge-beta-agree a { color: #8fc8ff; }
+.nge-beta-check-row { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 10px; font-size: 12px; line-height: 1.4; color: rgba(200, 220, 245, 0.8); cursor: pointer; }
+.nge-beta-check-row input { margin: 2px 0 0; flex: none; accent-color: #5aa8ff; }
+.nge-beta-check-row a { color: #8fc8ff; }
+.nge-beta-check-row em { font-style: normal; color: rgba(200, 220, 245, 0.55); }
+.nge-beta-check-row--flag { color: #ffd27a; outline: 1px solid rgba(255, 210, 122, 0.6); outline-offset: 3px; border-radius: 4px; }
 </style>
