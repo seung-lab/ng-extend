@@ -2,13 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-12T23:09:23Z",
+      "at": "2026-11-13T00:10:10Z",
       "title": "A shorter Advanced Interface tutorial",
       "items": [
         "The Annotations tutorial now comes straight after Cut, before Advanced Interface, in the menu and at the end of Cut.",
         "Advanced Interface now starts with layers and cells, and is two boxes shorter: renaming a layer and the rest of the annotation tools live in the Annotations tutorial.",
         "In Advanced Interface, a collaborator sends you a link to a tough merger, and a new box shows how Share sends your own view.",
         "Find Path switches on by itself in the tutorials.",
+        "Starting Advanced Interface turns Find Path off and clears its points.",
+        "In Annotations, a purple Pyr gem now marks where the two soma merger starts.",
         "The nucleus box matches the cell as it is now, nucleus and all.",
         "Tutorial boxes beside a panel stay joined to their pointer line.",
         "With Classic layer tabs on, Advanced Interface now says SHIFT and the number selects a layer, as the game does."
