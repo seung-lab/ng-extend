@@ -934,6 +934,13 @@ function plainText(text: string): string {
     .replace(/`(.+?)`/g, '$1')
     .replace(/^\s*#+\s*/gm, '')
     .replace(/\[(.+?)\]\((.+?)\)/g, '$1')
+    // The tags a note may carry (an edit note's <strong>, <em>, <del> and <mark>,
+    // functions/edit-notify.js) and its quote marks are for the open note only;
+    // the preview line shows the words (Ames 2026-11-12: "clean up the tags").
+    // A tag a player typed is escaped (\<) and survives as text.
+    .replace(/(^|[^\\])<\/?[a-z][a-z0-9]*\b[^<>]*>/gi, '$1')
+    .replace(/(^|[^\\])<\/?[a-z][a-z0-9]*\b[^<>]*>/gi, '$1')
+    .replace(/^[ \t]*>[ \t]?/gm, '')
     // Escaped characters lose the backslash (the server escapes what a
     // player typed, so emails read "joe\@mail\.com" here otherwise).
     .replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
