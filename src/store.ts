@@ -6106,9 +6106,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
           // Only mark it when it was really posted: if chat was offline or the
           // server refused it, leave chat_posted_at null for a later try.
-          if (await chatStore.postAnnouncement(data.title, newNotifId)) {
-            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: new Date().toISOString() } })
-              .catch(() => { /* the cron's copy check is the fallback */ });
+          // Claimed BEFORE posting, as the catch-up below does: marking it
+          // only after the post let the catch-up (run by loadNotifications)
+          // post a second copy in between (Ames 2026-11-12: "Play" showed
+          // twice in chat, 0.7 s apart).
+          let claimed = false;
+          try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: newNotifId })).claimed; }
+          catch (e: any) { console.warn('[admin] claim chat announcement failed:', e?.message); }
+          if (claimed && !(await chatStore.postAnnouncement(data.title, newNotifId))) {
+            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: null } }).catch(() => {});
           }
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
