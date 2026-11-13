@@ -2958,19 +2958,21 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
     const toCam = (p: V3): V3 => { const d = sub(p, eye); return [dot(d, cam.right) / eyeDist, dot(d, cam.up) / eyeDist, dot(d, cam.toEye) / eyeDist]; };
     const spotCam = toCam(spot);
     if (!shipCam || shipPark) { shipCam = shipPark ? spotCam : toCam(shipAt); shipPark = false; }
-    const way = sub(spotCam, shipCam), left = len(way) * eyeDist;
+    // the way left, in shares of the eye's distance (the ship is 0.023 of it long), so a flight looks the same at any zoom
+    const way = sub(spotCam, shipCam), lenC = len(way);
     // a long way off (home from a visit, a spot moved far) it flies; near, it shuffles on
-    if (left > viewNm * 0.06) homing = true; else if (left < viewNm * 0.012) homing = false;
+    if (lenC > 0.05) homing = true; else if (lenC < 0.004) homing = false;
     flying = homing;
-    if (left > 1) {
+    if (lenC * eyeDist > 1) {
       const dir = norm(add(add(mul(cam.right, way[0]), mul(cam.up, way[1])), mul(cam.toEye, way[2])));
       let v: number;
       if (homing) {
         going = dir;
-        v = Math.min(left, Math.min(viewNm * 0.36 * dt, Math.max(left * 4 * dt, viewNm * 0.02 * dt)));
-        if (dot(shipFwd, dir) < 0.8 && left > viewNm * 0.03) v *= 0.05;   // it turns first
-      } else v = left * Math.min(1, dt * 5);
-      shipCam = add(shipCam, mul(way, v / left));
+        // half the eye's distance a second at most (its spot is 0.4 of that out from the eye), easing in over the last 0.12
+        v = Math.min(lenC, Math.min(0.5 * dt, Math.max(lenC * 4 * dt, 0.02 * dt)));
+        if (dot(shipFwd, dir) < 0.8 && lenC > 0.03) v *= 0.05;   // it turns first
+      } else v = lenC * Math.min(1, dt * 5);
+      shipCam = add(shipCam, mul(way, v / lenC));
     }
     shipAt = add(add(add(eye, mul(cam.right, shipCam[0] * eyeDist)), mul(cam.up, shipCam[1] * eyeDist)), mul(cam.toEye, shipCam[2] * eyeDist));
   }
