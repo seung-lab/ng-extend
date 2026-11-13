@@ -259,7 +259,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the panel shows the request', /Ken Mierow/.test(panel) && /ken@example\.org/.test(panel) && /rank Guardian/.test(panel) && /I traced for years/.test(panel), panel.slice(0, 200));
     check('the panel shows their EyeWire email (Ames 2026-11-12)', /EyeWire email kmierow@old\.example/.test(panel), panel.slice(0, 400));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
-    check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined EyeWire May 4, 2014/.test(ew) && calls.some(c => c.ewBio === 'kmierow'), ew);
+    check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined EyeWire May 4, 2014 · Germany/.test(ew) && calls.some(c => c.ewBio === 'kmierow'), ew);
     await page.fill('.ah-panel textarea', 'Do we know him?');
     await page.click('.ah-panel button:has-text("Add note")');
     await page.waitForSelector('.ah-note-text');

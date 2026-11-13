@@ -226,7 +226,7 @@ function markNotSame(a: string, b: string) {
 
 // ── EyeWire stats, read from eyewire.org's public player pages (open to any
 // page, no sign in): points, cubes, accuracy, roles and when they joined.
-interface EwStats { points: number; cubes: number; accuracy: number | null; roles: string[]; joined: number | null }
+interface EwStats { points: number; cubes: number; accuracy: number | null; roles: string[]; joined: number | null; country: string | null }
 const ewStats = ref<Record<string, EwStats | 'none' | 'reading'>>({});
 async function readEw(name: string) {
   const k = lc(name).trim();
@@ -241,7 +241,7 @@ async function readEw(name: string) {
     const f = st?.forever ?? {};
     const fs = Array.isArray(st?.fscore) && st.fscore.length ? Number(st.fscore[0].fscore) : NaN;
     v = { points: Number(f.points) || 0, cubes: Number(f.cubes) || 0, accuracy: Number.isFinite(fs) ? fs : null,
-      roles: Array.isArray(bio?.roles) ? bio.roles.map(String) : [], joined: Number(bio?.joined) || null };
+      roles: Array.isArray(bio?.roles) ? bio.roles.map(String) : [], joined: Number(bio?.joined) || null, country: bio?.country ? String(bio.country) : null };
   }
   ewStats.value = { ...ewStats.value, [k]: v };
 }
@@ -790,7 +790,7 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.ew_name" class="ah-stats ah-ew" aria-label="Their EyeWire stats">
           <template v-if="openEw">
             <div><span>EyeWire</span>{{ openEw.points.toLocaleString() }} points · {{ openEw.cubes.toLocaleString() }} cubes<template v-if="openEw.accuracy != null"> · {{ Math.round(openEw.accuracy * 100) }}% accuracy</template></div>
-            <div v-if="openEw.roles.length || openEw.joined"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined EyeWire {{ new Date(openEw.joined * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</template></div>
+            <div v-if="openEw.roles.length || openEw.joined || openEw.country"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined EyeWire {{ new Date(openEw.joined * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</template><template v-if="openEw.country"><template v-if="openEw.roles.length || openEw.joined"> · </template>{{ openEw.country }}</template></div>
           </template>
           <template v-else-if="ewOf(open.p) === 'none'">No EyeWire player named {{ open.p.ew_name }}.</template>
           <template v-else>Reading EyeWire…</template>
