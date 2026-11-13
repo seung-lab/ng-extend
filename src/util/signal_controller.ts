@@ -347,10 +347,13 @@ let shipCam: V3 | null = null;
 let homing = false;
 /** The next cockpit frame puts the ship right on its spot (a level's start). */
 let shipPark = false;
+/** For the checks (window.pyrSignal.state().ship.dbg): the ship's place and heading in the player's frame, from the last frame with a cockpit spot. */
+let shipDbg: {cam: V3; fwd: V3; eyeDist: number} | null = null;
 /** `a` turned toward `b` by the share `t` of the angle between them, about
  *  the axis the two span; nearly opposite, about `yaw`, so a turnaround is a
  *  turn and not a blend that shrinks through nothing and whips. */
 function turnToward(a: V3, b: V3, t: number, yaw: V3): V3 {
+  if (!(len(b) > 0.5)) return a;
   const ang = Math.acos(clamp(dot(a, b), -1, 1));
   if (ang < 1e-4 || t >= 1) return b;
   let axis = cross(a, b);
@@ -2931,7 +2934,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   // (Ames 2026-11-12: "make sure the ship never flies backwards").
   let going: V3 | null = null;
   if (spot && vc) {
-    shipCam = null; homing = false;
+    shipCam = null; homing = false; shipPark = false;
     // on a visit it turns first, then flies at a steady pace and eases in
     // to land; it used to leap most of the way while still turning (Ames
     // 2026-11-11: "ship is facing wrong direction while flying")
@@ -2983,6 +2986,7 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const want = going && !landed ? going : norm(sub(rest, shipAt));
   if (!flip && !landed && view === 'ship' && shipProp.alpha > 0 && dot(shipFwd, want) < -0.35) flip = {at: performance.now(), dur: 850};
   shipFwd = turnToward(shipFwd, want, Math.min(1, dt * (vc || homing ? 12 : 7)), prevUp ?? cam.up);
+  if (cockpit) { const d = sub(shipAt, cockpit.eye), e = cockpit.eyeDist; shipDbg = {cam: [dot(d, cam.right) / e, dot(d, cam.up) / e, dot(d, cam.toEye) / e], fwd: [dot(shipFwd, cam.right), dot(shipFwd, cam.up), dot(shipFwd, cam.toEye)], eyeDist: e}; }
   const upRef = landed ? cam.toEye : cam.up;
   let up = norm(sub(upRef, mul(shipFwd, dot(upRef, shipFwd))));
   if (prevUp) up = norm(mix(prevUp, up, Math.min(1, dt * 6)));
@@ -4447,7 +4451,7 @@ export function startSignalController() {
 }
 
 (window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS, music: () => music,
-  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, fwd: shipFwd, homing, cam: shipCam, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
+  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, fwd: shipFwd, homing, cam: shipCam, dbg: shipDbg, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
     hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))]),
     spikes: [...cells.values()].filter(c => c.shown).map(c => [c.key, c.spikes]), progress, weights: conns.filter(k => (k.w ?? 1) !== 1).map(k => [k.pre, k.post, Number((k.w ?? 1).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
