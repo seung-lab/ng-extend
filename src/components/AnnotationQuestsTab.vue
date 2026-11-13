@@ -605,12 +605,13 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
+                <!-- Submit shows on the slim bar too (Kim_OZ 2026-11-12: players did not know the row opens it). -->
                 <!-- One "go to it" button, Open (Ames 2026-11-10: "why is there a jump and an open button?"),
                      then Skip (or Release), then Submit last, in green. -->
                 <button v-if="!(slim && isActive(r))" class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button v-if="play.on !== 'quests'" class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
                 <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy || skippingQuest" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
-                <button v-if="!slim" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
+                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
