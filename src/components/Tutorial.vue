@@ -20,6 +20,7 @@ import { steps as steps9, sandboxContinue, sandboxRestart, sandboxNext } from '.
 import { extensionSteps as steps13, extensionContinue, extensionRestart, extensionNext, EXTENSION_TUTORIAL } from '../extension-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps14, CILIA_TUTORIAL, awardCiliaAchievement } from '../tutorial-cilia';
+import { steps as steps15, ANNOTATIONS_TUTORIAL, awardAnnotationsAchievement } from '../tutorial-annotations';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice, pausePracticeTools } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
@@ -42,7 +43,7 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13, 14: steps14 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13, 14: steps14, 15: steps15 };
 // The real lengths, for the landing's "is a tutorial under way" test in
 // store.ts (isUserInActiveTutorial), which cannot import the step lists.
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
@@ -61,6 +62,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 8) return store.tutorialStep8;
     if (store.activeTutorial === 9) return store.tutorialStep9;
     if (store.activeTutorial === 13) return store.tutorialStep13;
+    if (store.activeTutorial === 15) return store.tutorialStep15;
     if (store.activeTutorial === 10) return store.tutorialStep10;
     if (store.activeTutorial === 11) return store.tutorialStep11;
     if (store.activeTutorial === 14) return store.tutorialStep14;
@@ -77,9 +79,15 @@ const activeStep = computed(() => {
             from = index; while (from > 0 && steps.value[from - 1].part === part) from--;
             to = index; while (to < steps.value.length - 1 && steps.value[to + 1].part === part) to++;
         }
+        // Which part of how many, so a player sees how far through the whole
+        // tutorial they are, not just through this part (toknow #474).
+        const parts: string[] = [];
+        for (const s of steps.value) if (s.part && parts[parts.length - 1] !== s.part) parts.push(s.part);
+        const partNo = part ? parts.indexOf(part) + 1 : 0;
         return {
             index: index,
             step: steps.value[index],
+            partOf: partNo ? `Part ${partNo} of ${parts.length}` : '',
             first: index === 0,
             last: index === steps.value.length - 1,
             shownIndex: index - from,
@@ -243,6 +251,7 @@ const next = (_auto?: unknown) => {
             const recorded = recordTutorialDone(tutorialNum);
             // Its Achievement, once the finish is on record (the server checks it).
             if (tutorialNum === CILIA_TUTORIAL) void recorded.then(() => awardCiliaAchievement());
+            if (tutorialNum === ANNOTATIONS_TUTORIAL) void recorded.then(() => awardAnnotationsAchievement());
         }
         // Merge and Cut both finished brings the Cell Library (toolbar_staging.ts).
         tutorialFinished(tutorialNum);
@@ -446,7 +455,7 @@ const exitIntro = () => {
         </div>
     </div>
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
-        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
+        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :partOf="activeStep.partOf" :boxIndex="activeStep.index"
         v-on:next="next"
         v-on:not-now="notNow"
         :class="{ 'nge-tut-under-card': testCardUp }"

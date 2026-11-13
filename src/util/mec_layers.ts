@@ -20,8 +20,10 @@ export const MEC_LAYERS: { name: string; color: string }[] = [
   // Super Quests only (Ames 2026-10-28): a place the player has checked.
   { name: 'Checked ✅', color: '#4dd8f0' },
 ];
-/** The four an ordinary MEC claim opens with. */
-const CLAIM_LAYERS = MEC_LAYERS.slice(0, 4).map(l => l.name);
+/** What an ordinary MEC claim opens with: the AIS only (Ames 2026-11-12: only
+ *  the AIS is marked now, so True End, Can't Fix and Hits Edge go). A layer
+ *  that already holds points stays (addMissing removes only empty ones). */
+const CLAIM_LAYERS = ['AIS 🐬'];
 
 /** "True End" and "True End 🟢" are the same layer: letters only, any case.
  *  So is "Can't Fix 🔴3": neuroglancer numbers a layer added under a name

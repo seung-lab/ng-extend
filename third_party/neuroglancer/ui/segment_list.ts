@@ -1293,7 +1293,9 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       if (!targetFolder) return 'inside';
       const r = heading.getBoundingClientRect();
       const y = (event.clientY - r.top) / r.height;
-      return y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'inside';
+      // Above and below get a little more of the heading: moving a folder is
+      // more common than nesting one (Nseraf #493).
+      return y < 0.35 ? 'before' : y > 0.65 ? 'after' : 'inside';
     };
     const clearZone = () => heading.classList.remove(
         'nge-folder-drop-target', 'nge-folder-drop-before', 'nge-folder-drop-after');
@@ -1358,8 +1360,14 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     // rename), a folder inside it, ungroup. Drag the heading to nest it.
     const folder = () => folders.value.find(f => f.id === mode.folder);
     heading.draggable = true;
+    // Folders could already be put in any order by dragging, but nothing said
+    // so (Nseraf #493, 2026-11-12: "it'd be nice if we could sort folders").
+    heading.title = 'Drag to move this folder: drop on the top or bottom edge of another folder to put it above or below, or on its middle to put it inside.';
     heading.addEventListener('dragstart', (event: DragEvent) => {
       if (name.contentEditable === 'true') { event.preventDefault(); return; }
+      // The side panel cancels every drag that reaches it (side_panel.ts
+      // addBody), which stopped folders moving at all (Ames 2026-11-12).
+      event.stopPropagation();
       event.dataTransfer?.setData(FOLDER_DRAG_TYPE, mode.folder);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     });

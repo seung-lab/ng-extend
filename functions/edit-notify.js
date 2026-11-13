@@ -33,7 +33,7 @@ const MAX_BODY = 6000; // the bell scrolls a long note (Ames 2026-11-10: "we nee
 const TUTORIALS = {
   1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut',
   6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain',
-  9: 'Merger Sandbox', 10: 'Meet the cells of CA3', 11: 'Proofreading Test', 13: 'Extension Sandbox',
+  9: 'Merger Sandbox', 10: 'Meet the cells of CA3', 11: 'Proofreading Test', 13: 'Extension Sandbox', 14: 'Cilia Quest Training',
 };
 const NAMED = {
   'quest.retina_cilia.lead': 'Cilia Quest instructions, the intro',

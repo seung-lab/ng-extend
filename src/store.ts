@@ -1082,6 +1082,9 @@ export interface UserPreferences {
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;
+  /** Hide the Play button at the top left (Ames 2026-11-12: in Settings, not
+   *  an X on the button). Defaults to false: it shows. */
+  hidePlayButton?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
@@ -3691,7 +3694,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * with a numeric suffix if that's taken, so the prompt is usually one click.
    */
   async function suggestUsername(): Promise<string> {
-    const base = (userName.value || userEmail.value.split('@')[0] || 'user')
+    // Never a name made from the email: a sign-in with no name gets an empty
+    // box to fill in (#512).
+    const front = userEmail.value.split('@')[0];
+    if (!userName.value || userName.value === front) return '';
+    const base = userName.value
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')   // spaces and punctuation become separators
       .replace(/^_+|_+$/g, '')       // no leading/trailing separators
@@ -3712,9 +3719,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const invalid = validateUsername(n);
     if (invalid) throw new Error(invalid);
     if (!userId.value) throw new Error('Not signed in.');
+    // No name on the account (it shows the email's front, or an earlier
+    // username): the new username becomes the shown name too (#512).
+    const noName = userName.value === emailFront(userEmail.value) || (!!username.value && userName.value === username.value);
     const { error } = await supabase
       .from('users')
-      .update({ username: n, updated_at: new Date().toISOString() })
+      .update({ username: n, ...(noName ? { display_name: n } : {}), updated_at: new Date().toISOString() })
       .eq('id', userId.value);
     if (error) {
       // 23505 = unique violation, i.e. someone already has it.
@@ -3724,6 +3734,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       throw new Error(error.message);
     }
     username.value = n;
+    if (noName) userName.value = n;
   }
   const tasks = ref<ProofreadingTask[]>([]);
   const activeTaskId = ref<number | null>(null);
@@ -3735,6 +3746,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let feedSubscription: any = null;
 
   // ── User sync ─────────────────────────────────────────────────────────
+  /** What a sign-in with no name shows: the part of the email before the @. */
+  const emailFront = (email: string) => (email || '').split('@')[0];
   /** Upsert user from middleauth identity. Call after login. */
   async function syncUser(email: string, displayName: string) {
     userEmail.value = email;
@@ -3768,6 +3781,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // importing this store (it may not exist yet during a bootstrap failure).
         (window as any).__ngeUserId = existing.id;
         console.info('[backend] syncUser: found existing user', existing.id);
+        // An account with no name signs in as the front of its email. If the
+        // player has picked a username, that is their name on the leaderboard
+        // and everywhere else, not the email (#512, 2026-11-13).
+        if (existing.username && displayName === emailFront(email)) {
+          displayName = existing.username;
+          userName.value = displayName;
+        }
         // Update display name if changed
         await supabase
           .from('users')
@@ -5872,6 +5892,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // retina (Ames 2026-11-06): the server marks it read for every reviewer
     // (access.readGrantedBells), so every admin and device agrees. Asked once
     // per unread request bell, and only when one is here.
+    // A Beta request bell, once the request is dealt with on the Access page
+    // (Ames 2026-11-12): access.readHandledBetaBells marks it read for every
+    // admin. Asked once per unread bell on this page.
+    const askBeta = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔑 Beta access request')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askBeta.length) {
+      for (const n of askBeta) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readHandledBetaBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
+    }
     const askRequest = notifications.value.filter(n => n.target_type === 'user'
       && String(n.title || '').startsWith('🔬 Retina access request from')
       && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
@@ -5948,12 +5980,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
     const m = e.data || {};
     if (m.user !== userId.value || !Array.isArray(m.ids)) return;
+    if (m.unread) { for (const id of m.ids) notificationReads.value.delete(id); return; }
     const set = m.dismissed ? notificationDismissals : notificationReads;
     for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
     if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
   };
   function tellOtherTabs(ids: number[], dismissed = false) {
     if (ids.length) try { readsChannel?.postMessage({ user: userId.value, ids, dismissed }); } catch { /* closed */ }
+  }
+
+  /** Unread again (Ames 2026-11-12, To do board "mark unread"): drops the
+   *  read row, never one that hides a note the player deleted. */
+  async function markNotificationsUnread(ids: number[]) {
+    if (!userId.value || !ids.length) return;
+    for (const id of ids) notificationReads.value.delete(id);
+    try { readsChannel?.postMessage({ user: userId.value, ids, unread: true }); } catch { /* closed */ }
+    const { error } = await supabase.from('notification_reads').delete()
+      .eq('user_id', userId.value).eq('dismissed', false).in('notification_id', ids);
+    if (error) console.warn('[notifications] mark unread failed:', error.message);
   }
 
   async function markNotificationRead(notifId: number) {
@@ -6094,9 +6138,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
           // Only mark it when it was really posted: if chat was offline or the
           // server refused it, leave chat_posted_at null for a later try.
-          if (await chatStore.postAnnouncement(data.title, newNotifId)) {
-            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: new Date().toISOString() } })
-              .catch(() => { /* the cron's copy check is the fallback */ });
+          // Claimed BEFORE posting, as the catch-up below does: marking it
+          // only after the post let the catch-up (run by loadNotifications)
+          // post a second copy in between (Ames 2026-11-12: "Play" showed
+          // twice in chat, 0.7 s apart).
+          let claimed = false;
+          try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: newNotifId })).claimed; }
+          catch (e: any) { console.warn('[admin] claim chat announcement failed:', e?.message); }
+          if (claimed && !(await chatStore.postAnnouncement(data.title, newNotifId))) {
+            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: null } }).catch(() => {});
           }
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
@@ -6809,7 +6859,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, markNotificationsUnread, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead, markReportNotesRead, markReportsNotesRead,
@@ -7214,6 +7264,18 @@ export const useChatStore = defineStore('chat', () => {
       presenceTick.value++;
       if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
     }, 60_000);
+  }
+  /** Be on the online list from sign in, whether or not chat was ever opened.
+   *  The heartbeat used to start only when the chat box connected, so a new
+   *  player on the Starship tour (chat not open yet) or anyone who had closed
+   *  chat was missing from "N online" (Ames 2026-11-12: "we want to show also
+   *  new users - everyone online!"). */
+  function startPresence() {
+    if (heartbeatTimer || !useProofreadingBackendStore().userId) return;
+    void heartbeat().then(() => loadOnline());
+    startPresenceLoops();
+    window.addEventListener('pagehide', leavePresence);
+    document.addEventListener('visibilitychange', beatWhenBack);
   }
   // The leader closed: this tab says so at once instead of up to a minute on.
   presenceLeader.onChange((leader, takeover) => {
@@ -8023,7 +8085,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, startPresence, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };

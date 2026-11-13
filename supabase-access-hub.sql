@@ -38,6 +38,19 @@ CREATE INDEX IF NOT EXISTS access_invites_ew_name ON public.access_invites (ew_n
 ALTER TABLE public.access_invites ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.access_invites FROM anon, authenticated;
 
+-- An EyeWire username typed in by an admin on the Access page (Ames
+-- 2026-11-12: "add eyewire username manually to invite"), often from their
+-- reply to the ask email. It wins over the one on their request, matches
+-- them to an invite, and marks them invited when no invite matches.
+CREATE TABLE IF NOT EXISTS public.access_ew_names (
+  email text PRIMARY KEY CHECK (email = lower(email)),
+  ew_name text NOT NULL CHECK (ew_name = lower(ew_name)),
+  set_by text,
+  set_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.access_ew_names ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.access_ew_names FROM anon, authenticated;
+
 CREATE OR REPLACE VIEW public.access_hub_people AS
 -- The links: the ones made by hand above, and every invite used from another
 -- Google account (an "Invite used" record holds both emails,
@@ -55,7 +68,7 @@ WITH lnk AS (
 req AS (
   SELECT DISTINCT ON (email) * FROM (
     SELECT coalesce(lk.linked_to, r0.email) AS email, r0.gave_email, r0.request_id, r0.request_user_id, r0.request_name, r0.asked_at,
-      r0.from_site, r0.ew_name, r0.ew_rank, r0.found_us, r0.their_note
+      r0.from_site, r0.ew_name, r0.ew_rank, r0.found_us, r0.their_note, r0.ew_email
     FROM (SELECT
       rtrim(lower(coalesce(
         substring(message FROM 'Sign in email: ([^\s]+@[^\s]+)'),
@@ -65,6 +78,8 @@ req AS (
       id AS request_id, user_id AS request_user_id, user_name AS request_name, created_at AS asked_at,
       (coalesce(url, '') || coalesce(title, '')) ~ 'connectome\.quest' AS from_site,
       nullif(trim(substring(message FROM 'EyeWire username: ([^\n]*)')), '') AS ew_name,
+      -- The email on their EyeWire account (Ames 2026-11-12), where invites went.
+      rtrim(lower(substring(message FROM 'EyeWire email: ([^\s]+@[^\s]+)')), '.') AS ew_email,
       nullif(trim(substring(message FROM 'EyeWire rank: ([^\n]*)')), '') AS ew_rank,
       nullif(trim(substring(message FROM 'How they found us: ([^\n]*)')), '') AS found_us,
       nullif(trim(substring(message FROM 'Their note: (.*)$')), '') AS their_note
@@ -143,7 +158,7 @@ SELECT
   coalesce(r.request_name, u.display_name, u.username) AS name,
   u.username,
   r.request_id, r.asked_at, r.from_site, r.gave_email,
-  r.ew_name, r.ew_rank, r.found_us, r.their_note,
+  coalesce(xn.ew_name, r.ew_name, iv.ew_name) AS ew_name, r.ew_rank, r.found_us, r.their_note,
   p.enabled AS pilot_enabled, p.let_in_at, coalesce(p.from_list, false) AS from_list,
   u.created_at AS joined_at, u.tutorial_active,
   t.tutorial_at, coalesce(t.tutorials, 0) AS tutorials,
@@ -153,7 +168,11 @@ SELECT
   coalesce(ha.help_asked, 0) AS help_asked, coalesce(ha.help_answered_for, 0) AS help_answered_for, coalesce(ha.help_asked_30d, 0) AS help_asked_30d,
   coalesce(hg.help_given, 0) AS help_given, coalesce(hg.help_given_30d, 0) AS help_given_30d,
   (ad.email IS NOT NULL) AS is_admin,
-  iv.sent_at AS invited_at, iv.campaign AS invited_for, iv.ew_role AS invited_role, iv.email AS invited_as
+  coalesce(iv.sent_at, xn.set_at) AS invited_at,
+  coalesce(iv.campaign, CASE WHEN xn.email IS NOT NULL THEN 'by_hand' END) AS invited_for,
+  iv.ew_role AS invited_role, iv.email AS invited_as,
+  xn.set_at AS ew_name_set_at,
+  r.ew_email
 FROM who w
 LEFT JOIN adm ad ON ad.email = w.email
 LEFT JOIN req r ON r.email = w.email
@@ -165,13 +184,15 @@ LEFT JOIN cc c ON c.user_id = u.id
 LEFT JOIN ch m ON m.user_id = u.id
 LEFT JOIN ha ON ha.user_id = u.id
 LEFT JOIN hg ON hg.user_id = u.id
+LEFT JOIN public.access_ew_names xn ON xn.email = w.email
 -- The first invite that reached them: this email, the email they gave on
--- the form, an email folded into this one, or their EyeWire username.
+-- the form, their EyeWire email, an email folded into this one, or their
+-- EyeWire username. An invite found by email gives its EyeWire username.
 LEFT JOIN LATERAL (
-  SELECT i.email, i.campaign, i.ew_role, i.sent_at FROM public.access_invites i
-  WHERE i.email = w.email OR i.email = r.gave_email
+  SELECT i.email, i.campaign, i.ew_role, i.sent_at, i.ew_name FROM public.access_invites i
+  WHERE i.email = w.email OR i.email = r.gave_email OR i.email = r.ew_email
     OR i.email IN (SELECT l.email FROM lnk l WHERE l.linked_to = w.email)
-    OR (r.ew_name IS NOT NULL AND i.ew_name = lower(r.ew_name))
+    OR (coalesce(xn.ew_name, r.ew_name) IS NOT NULL AND i.ew_name = lower(coalesce(xn.ew_name, r.ew_name)))
   ORDER BY i.sent_at LIMIT 1
 ) iv ON true;
 REVOKE ALL ON public.access_hub_people FROM anon, authenticated;
@@ -229,3 +250,22 @@ SELECT coalesce(e.dataset, c.dataset, m.dataset) AS dataset,
   coalesce(m.chats, 0) AS chats, coalesce(m.chatters, 0) AS chatters
 FROM e FULL JOIN c ON c.dataset = e.dataset FULL JOIN m ON m.dataset = coalesce(e.dataset, c.dataset);
 REVOKE ALL ON public.access_hub_activity FROM anon, authenticated;
+
+-- Where each player is in each tutorial (Ames 2026-11-12: "show which
+-- tutorial users are on like a flow chart ... what step users are on and
+-- average time spent per step"): one row per player and tutorial, with the
+-- last box they left (and how: next, back, close...) and when they finished
+-- it, if they did. Admins only, through ewCommunityData.
+CREATE OR REPLACE VIEW public.access_hub_tutorials AS
+WITH ev AS (
+  SELECT DISTINCT ON (user_id, tutorial) user_id, tutorial, step AS last_step, left_by AS last_left, created_at AS last_at
+  FROM public.tutorial_step_events
+  ORDER BY user_id, tutorial, created_at DESC
+),
+dn AS (
+  SELECT user_id, tutorial, min(completed_at) AS done_at FROM public.tutorial_completions GROUP BY user_id, tutorial
+)
+SELECT coalesce(ev.user_id, dn.user_id) AS user_id, coalesce(ev.tutorial, dn.tutorial) AS tutorial,
+  ev.last_step, ev.last_left, ev.last_at, dn.done_at
+FROM ev FULL JOIN dn ON dn.user_id = ev.user_id AND dn.tutorial = ev.tutorial;
+REVOKE ALL ON public.access_hub_tutorials FROM anon, authenticated;

@@ -548,25 +548,31 @@ async function beta(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
   if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
   const name = betaName(a.name);
-  const email = betaEmail(a.email);
-  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
-  const ew = eyewireOf(a);
-  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  // The game form asks for their EyeWire email instead of a second email
+  // (Ames 2026-11-12), so the email is their sign in unless they give one.
+  const email = betaEmail(a.email || signIn);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
+  if (ew.email === signIn || ew.email === email) ew.email = null;
+  if (a.agree === false) fail(400, 'Please tick the box to say you agree to the Eyewire II Principles and the Terms of Use.');
+  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
   const same = email === signIn;
   // Invited under another address (Ames 2026-11-04: invites went to the
   // emails on the EyeWire form, many not Google accounts, and Pyr signs in
   // with Google). The admin still lets them in by hand: anyone could type an
   // invited address, so the row says to check it is them first.
-  const invitedAs = !same && await invitedEmail(io.sb, email);
+  const invitedAs = (!same && await invitedEmail(io.sb, email)) ? email
+    : (ew.email && await invitedEmail(io.sb, ew.email)) ? ew.email : '';
   const message = [
     `${name} asks to join the Pyr beta.`,
     same ? '' : `Email they gave: ${email}`,
-    invitedAs ? `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.` : '',
+    invitedAs ? `Invited as: ${invitedAs}, already on Pilot testers. They sign in with another Google account.` : '',
     `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    a.agree === true ? 'They agreed to the community principles.' : '',
     ...ewLines(ew),
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
@@ -574,7 +580,7 @@ async function beta(a, io) {
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
   const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
-    + (invitedAs ? `Already invited as ${mdText(email)}, and signs in with another Google account.\n\n` : '')
+    + (invitedAs ? `Already invited as ${mdText(invitedAs)}, and signs in with another Google account.\n\n` : '')
     + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
     + ewForBell(ew)
     + `\n\n${LET_IN}`
@@ -709,16 +715,24 @@ function eyewireOf(a) {
   if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
   // How did you find us? (Ames 2026-11-06), optional plain text, one line.
   const found = cleanText(a.foundUs, FOUND_US_MAX, 'How you found us');
+  // The email on their EyeWire account (Ames 2026-11-12: "we for sure need
+  // eyewire email"), optional: it is where our invites went, so it matches
+  // them to an invite and to their EyeWire stats.
+  let ewEmail = null;
+  if (a.eyewireEmail) {
+    try { ewEmail = betaEmail(a.eyewireEmail); } catch (e) { fail(400, 'That EyeWire email does not look right.'); }
+  }
   return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null,
+    email: ewEmail,
     found: found ? found.replace(/\s+/g, ' ') : null,
     // Email me Pyr news (Ames 2026-11-12): a box on the request form, unticked
     // to start. Only said when the form sends it, as yes or no.
     news: a.emailOptIn === true ? 'yes' : a.emailOptIn === false ? 'no' : null};
 }
 const FOUND_US_MAX = 200;
-const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
+const ewLines = ew => [ew.email ? `EyeWire email: ${ew.email}` : '', ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
   ew.found ? `How they found us: ${ew.found}` : '', ew.news ? `Pyr news by email: ${ew.news}` : ''];
-const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
+const ewForBell = ew => (ew.email ? `\n\nEyeWire email: ${mdText(ew.email)}` : '') + (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
   + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '') + (ew.news ? `\n\nPyr news by email: ${ew.news}` : '');
 /** A new request goes on the triage board now, not at the next (often late)
  *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
@@ -738,14 +752,14 @@ async function wakeBoard(io) {
 const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // ── "You're in" by email (Ames 2026-11-05: "let's do resend and we can set up
 // connectome.quest"). Letting someone in sends them this, from
-// welcome@connectome.quest, replies to support@eyewire.ai. Once per address:
+// welcome@connectome.quest, replies to support@eyewire.org (Ames 2026-11-12). Once per address:
 // a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
 // Support gets a blind copy of every welcome (Ames 2026-11-06: "copy
 // support@eyewire.org"), and Ames's Gmail (2026-11-10: "add my Gmail"), so
 // the player never sees it.
 const WELCOME_FROM = 'Pyr <welcome@connectome.quest>';
-const WELCOME_REPLY_TO = 'support@eyewire.ai';
-const WELCOME_COPY_TO = ['support@eyewire.org', 'amyleerobinson@gmail.com'];
+const WELCOME_REPLY_TO = 'support@eyewire.org';
+const WELCOME_COPY_TO = ['support@eyewire.org', 'amyleerobinson@gmail.com', 'amysterling@princeton.edu'];
 function welcomeMessage(name, email) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const text = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
@@ -775,19 +789,27 @@ async function welcomeEmail(a, io) {
 //   access.askEmail  admins: {email, name, subject, text, again} sends it.
 //   access.askSent   admins: every send, {email: {at, by}}.
 const ASK_FROM = 'Amy at Pyr <welcome@connectome.quest>';
+// Replies go to support@eyewire.org (Ames 2026-11-12).
+const ASK_REPLY_TO = 'support@eyewire.org';
 const ASK_SUBJECT_MAX = 150;
 const ASK_TEXT_MAX = 4000;
-function askDraft(name) {
+// A request that gave an EyeWire username with no play under it (Ames
+// 2026-11-12: "this username was not found") asks them to check it.
+function askDraft(name, ewName) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const ew = String(ewName || '').trim();
+  const ask = ew
+    ? `We couldn't find any EyeWire play under the username "${ew}". Could you reply with the EyeWire username you played under? If you haven't played EyeWire, we'd love to hear how you found Pyr.`
+    : `Could you reply with your EyeWire username? If you haven't played EyeWire, we'd love to hear how you found Pyr.`;
   return {
     subject: 'Your Pyr beta request',
-    text: `Hi ${first},\n\nThanks for asking to join Pyr! For this beta testing period, we're inviting existing EyeWire players first.\n\nCould you reply with your EyeWire username? If you haven't played EyeWire, we'd love to hear how you found Pyr.\n\nAmy Sterling and the Pyr Team at Princeton`,
+    text: `Hi ${first},\n\nThanks for asking to join Pyr! For this beta testing period, we're inviting existing EyeWire players first.\n\n${ask}\n\nAmy Sterling and the Pyr Team at Princeton`,
   };
 }
 async function askDraftAction(a, io) {
   needAdmin(io.isAdmin);
   betaEmail(a.email);
-  return askDraft(cleanText(a.name, BETA_NAME_MAX, 'The name') || '');
+  return askDraft(cleanText(a.name, BETA_NAME_MAX, 'The name') || '', cleanEwName(a.ewName));
 }
 async function askEmail(a, io) {
   needAdmin(io.isAdmin);
@@ -804,11 +826,119 @@ async function askEmail(a, io) {
   const before = io.askSent && await io.askSent.get(email);
   if (before && !a.again) return {sent: false, reason: 'already sent', at: before.at};
   const copies = WELCOME_COPY_TO.filter(c => c !== email);
-  const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: WELCOME_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), subject, text});
+  const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), subject, text});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
   const at = new Date().toISOString();
   if (io.askSent) await io.askSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || ''});
   return {sent: true, at};
+}
+// How many we emailed an invite (Ames 2026-11-12: "how many ppl we have
+// invited via email ... in stats up top"): rows in access_invites, one per
+// email per campaign, counted once per email.
+//   access.inviteCount  admins: {invited}.
+// And everyone who has signed in to Pyr, admins left out (Ames 2026-11-12:
+// "I want to see all the people we've invited, all the people who have
+// signed in"), including those who signed in and never asked.
+// ── An EyeWire username typed in on the Access page (Ames 2026-11-12: "add
+// eyewire username manually to invite"). Goes in access_ew_names, which the
+// view access_hub_people reads (supabase-access-hub.sql). Admins only.
+//   access.setEwName  admins: {email, ewName}.
+async function setEwName(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const ewName = cleanEwName(a.ewName);
+  if (!ewName) fail(400, 'Type their EyeWire username.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200) || null;
+  await io.sb('access_ew_names?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, ew_name: ewName.toLowerCase(), set_by: by, set_at: new Date().toISOString()})});
+  return {ewName: ewName.toLowerCase()};
+}
+
+// ── An EyeWire player's public profile: when they joined, roles, country
+// (Ames 2026-11-13: "add eyewire join date here"). eyewire.org's bio page
+// sends no CORS header, so the Access page can't read it itself; the
+// stats page it reads directly. Admins only.
+//   access.ewBio  admins: {name} -> {joined, roles, country} or {none: true}.
+async function ewBio(a, io) {
+  needAdmin(io.isAdmin);
+  const name = cleanEwName(a.name);
+  if (!name) fail(400, 'Which EyeWire username?');
+  const get = io.fetch || fetch;
+  let bio = null;
+  try {
+    const r = await get(`https://eyewire.org/1.0/player/${encodeURIComponent(name.toLowerCase())}/bio`);
+    bio = r.ok ? await r.json() : null;
+  } catch (e) { bio = null; }
+  if (!bio || typeof bio !== 'object') return {none: true};
+  return {joined: Number(bio.joined) || null, roles: Array.isArray(bio.roles) ? bio.roles.map(String).slice(0, 20) : [],
+    country: bio.country_name ? String(bio.country_name).slice(0, 80) : null};
+}
+
+// ── A Beta request bell is read once the request is dealt with on the
+// Access page (Ames 2026-11-12: "notif feed is supposed to mark these as
+// read if I've dealt with them in Access"): let in (on Pilot testers),
+// put on Later, removed, or emailed for their EyeWire name. Marked read for
+// every admin, so every admin and device agrees. The bell names the
+// person's emails in its body (escaped for markdown).
+//   access.readHandledBetaBells  admins: {marked, ids} (ids: the caller's).
+const BETA_BELL_LIKE = 'notifications?target_type=eq.user&title=like.' + encodeURIComponent(BETA_BELL + '*')
+  + '&select=id,target_id,body&order=id.desc&limit=2000';
+const EMAIL_IN = /[^\s@<>(),;:]+@[^\s@<>(),;:]+\.[a-z]{2,}/gi;
+function bellEmails(body) {
+  const plain = String(body || '').replace(/\\(.)/g, '$1');
+  return [...new Set((plain.match(EMAIL_IN) || []).map(e => e.toLowerCase().replace(/\.$/, '')))];
+}
+async function readHandledBetaBells(a, io) {
+  needAdmin(io.isAdmin);
+  const bells = (await io.sb(BETA_BELL_LIKE)).filter(b => isUuid(b.target_id));
+  if (!bells.length) return {marked: 0, ids: []};
+  const read = new Set();
+  for (let i = 0; i < bells.length; i += 100) {
+    const chunk = bells.slice(i, i + 100).map(b => b.id).join(',');
+    for (const r of await io.sb(`notification_reads?notification_id=in.(${chunk})&select=notification_id,user_id`)) read.add(`${r.notification_id}:${r.user_id}`);
+  }
+  const unread = bells.filter(b => !read.has(`${b.id}:${b.target_id}`));
+  if (!unread.length) return {marked: 0, ids: []};
+  const [pilots, marks, asked, links] = await Promise.all([
+    io.sb('pilot_members?enabled=eq.true&select=email&limit=20000').catch(() => []),
+    io.marks ? io.marks.all().catch(() => ({})) : {},
+    io.askSent ? io.askSent.all().catch(() => ({})) : {},
+    io.sb('access_email_links?select=email,linked_to&limit=5000').catch(() => []),
+  ]);
+  const done = new Set();
+  for (const p of pilots || []) done.add(String(p.email || '').toLowerCase());
+  for (const [e, m] of Object.entries(marks || {})) if (m && (m.mark === 'removed' || m.mark === 'listed')) done.add(e.toLowerCase());
+  for (const e of Object.keys(asked || {})) done.add(e.toLowerCase());
+  // One person, two emails: dealt with under either.
+  for (const l of links || []) {
+    const x = String(l.email || '').toLowerCase(), y = String(l.linked_to || '').toLowerCase();
+    if (done.has(x)) done.add(y); else if (done.has(y)) done.add(x);
+  }
+  const mark = unread.filter(b => bellEmails(b.body).some(e => done.has(e)));
+  if (mark.length) {
+    await io.sb('notification_reads?on_conflict=notification_id,user_id', {method: 'POST',
+      headers: {Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify(mark.map(b => ({notification_id: b.id, user_id: b.target_id})))});
+  }
+  const mine = io.me && io.me.id;
+  return {marked: mark.length, ids: mark.filter(b => b.target_id === mine).map(b => b.id)};
+}
+
+const TEAM_EMAILS = ['ryan.t.morey@gmail.com'];
+async function inviteCount(a, io) {
+  needAdmin(io.isAdmin);
+  const [rows, users, admins] = await Promise.all([
+    io.sb('access_invites?select=email&limit=20000'),
+    io.sb('users?select=id,middleauth_email&limit=20000'),
+    io.sb('admins?select=user_id,email&limit=1000'),
+  ]);
+  const adminIds = new Set((admins || []).map(r => r.user_id).filter(Boolean));
+  const adminEmails = new Set((admins || []).map(r => String(r.email || '').toLowerCase()).filter(Boolean));
+  // The Princeton team who are not Pyr admins (Ames 2026-11-12, Ryan Morey)
+  // are left out too, as on the Access page.
+  for (const e of TEAM_EMAILS) adminEmails.add(e);
+  const signedIn = (users || []).filter(u => !adminIds.has(u.id) && !adminEmails.has(String(u.middleauth_email || '').toLowerCase())).length;
+  return {invited: new Set((rows || []).map(r => r.email)).size, signedIn};
 }
 async function askSentAll(a, io) {
   needAdmin(io.isAdmin);
@@ -1163,6 +1293,10 @@ async function handle(action, args, io) {
   if (action === 'access.askDraft') return askDraftAction(a, io);
   if (action === 'access.askEmail') return askEmail(a, io);
   if (action === 'access.askSent') return askSentAll(a, io);
+  if (action === 'access.inviteCount') return inviteCount(a, io);
+  if (action === 'access.setEwName') return setEwName(a, io);
+  if (action === 'access.ewBio') return ewBio(a, io);
+  if (action === 'access.readHandledBetaBells') return readHandledBetaBells(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);
   if (action === 'access.noteDelete') return accessNoteDelete(a, io);

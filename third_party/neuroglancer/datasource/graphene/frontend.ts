@@ -1298,6 +1298,38 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     } catch { /* colours stay as they were */ }
   }
 
+  /** nge: the pieces a cut makes never land on near-identical colours (hi529,
+   *  report 465: "a cut land on two extremely similar colors, and had to
+   *  manually change one"). The piece that keeps the cell's colour stays as it
+   *  is; a piece whose colour is close to it, or to another piece, gets a hue
+   *  well away from both. A piece already clearly different is left alone. */
+  private ngeContrastPieces(kept: Uint64, others: Uint64[]) {
+    const rgbOf = (p: number) => [p & 255, (p >>> 8) & 255, (p >>> 16) & 255];
+    const near = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 120;
+    const taken = [rgbOf(kept.low)];
+    const [kr, kg, kb] = taken[0].map(v => v / 255);
+    const max = Math.max(kr, kg, kb), min = Math.min(kr, kg, kb), d = max - min;
+    let hue = d === 0 ? 0 : max === kr ? ((kg - kb) / d + 6) % 6 : max === kg ? (kb - kr) / d + 2 : (kr - kg) / d + 4;
+    hue /= 6;
+    const fromHue = (h: number) => {
+      const s = 0.75, v = 1, i = Math.floor(h * 6), f = h * 6 - i;
+      const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+      const [r, g, b] = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][i % 6];
+      return [r, g, b].map(x => Math.round(x * 255));
+    };
+    for (const root of others) {
+      const own = this.ngeColorOf(root);
+      if (!own) continue;
+      const mine = rgbOf(own.low);
+      if (!taken.some(t => near(t, mine))) { taken.push(mine); continue; }
+      // Opposite the kept colour first, then further steps round the wheel.
+      let pick = fromHue((hue + 0.5) % 1);
+      for (let k = 1; k < 12 && taken.some(t => near(t, pick)); k++) pick = fromHue((hue + 0.5 + k * 0.29) % 1);
+      taken.push(pick);
+      this.ngeKeepColor(new Uint64((pick[0] | (pick[1] << 8) | (pick[2] << 16)) >>> 0, 0), root);
+    }
+  }
+
   async submitMulticut(annotationToNanometers: Float64Array): Promise<boolean> {
     const {state: {multicutState}} = this;
     const {sinks, sources} = multicutState;
@@ -1340,7 +1372,10 @@ class GraphConnection extends SegmentationGraphSourceConnection {
           segmentsState.selectedSegments.delete(segment.rootId);
         }
         if (keptColor && blueSv) {
-          this.graph.getRoot(blueSv).then(r => this.ngeKeepColor(keptColor, r), () => {});
+          this.graph.getRoot(blueSv).then(r => {
+            this.ngeKeepColor(keptColor, r);
+            this.ngeContrastPieces(keptColor, splitRoots.filter(x => !r || !Uint64.equal(x, r)));
+          }, () => {});
         }
         this.meshAddNewSegments(splitRoots);
         segmentsState.selectedSegments.add(splitRoots);

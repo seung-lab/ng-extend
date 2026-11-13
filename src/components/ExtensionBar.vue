@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
+import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -25,6 +26,7 @@ import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
+import PlayButton from "components/PlayButton.vue";
 import AssistantDock from "components/AssistantDock.vue";
 import { runSpotlight } from "../assistant/spotlight";
 import { showDefaultCell } from "../widgets/widget_utils";
@@ -291,6 +293,16 @@ onMounted(() => {
       e.stopImmediatePropagation();
       if (!highlightOff.value) { showHighlight.value = !showHighlight.value; if (showHighlight.value) sprayHighlightIcon(); }
     }
+    // Plain H opens Highlight too (Ames 2026-11-12; it opened neuroglancer's
+    // out of date controls list). Once open, H is held to place a point
+    // (HighlightModePanel), so it does not close it: Shift+H or its × does.
+    if (!typing && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && (e.key === 'h' || e.key === 'H')
+        && !showHighlight.value && !highlightOff.value) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      showHighlight.value = true;
+      sprayHighlightIcon();
+    }
     // Shift+S: Settings, open and closed again (Celia, report 277).
     if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'S' || e.key === 's')) {
       e.preventDefault();
@@ -438,6 +450,9 @@ function maybeOpenLeaderboardOnArrival() {
 // (toolbar icon, Switch Dataset panel, command list). This is the narrow
 // panel: the leaderboard's link, and every way in on a phone.
 const showDatasetStats = ref(false);
+// The two share the right side, so opening one puts the other away.
+watch(showLeaderboard, on => { if (on) showDatasetStats.value = false; });
+watch(showDatasetStats, on => { if (on) { showLeaderboard.value = false; leaderboardPeek.value = false; } });
 /** Its home is the profile's Dataset Stats tab. Phones have no room for
  *  that, so they get the narrow panel. */
 function openDatasetStatsHome() {
@@ -552,6 +567,13 @@ watch(showChat, (v) => {
   try { localStorage.setItem(CHAT_VISIBLE_KEY, v ? '1' : '0'); } catch {}
 });
 const showCellLibrary = ref(false);
+/** The Playing chip shows and hides the box you play in (Ames 2026-11-13):
+ *  open, a click puts it away; closed, a click brings it back on your cell. */
+function onPlayChip() {
+  if (!play.on) { pressPlay(); return; }
+  if (showCellLibrary.value) { showCellLibrary.value = false; return; }
+  void startPlay(play.on);
+}
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
@@ -852,6 +874,9 @@ function handleAssistantAction(e: Event) {
 onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
+// Everyone signed in counts as online, chat open or not: new players on the
+// Starship tour were missing from "N online" (Ames 2026-11-12).
+watch(() => backendStore.userId, (id) => { if (id) chatStore.startPresence(); }, { immediate: true });
 // A reviewer who refreshed mid review goes back into review mode (Celia #195).
 watch(() => backendStore.isAdmin, (admin) => { if (admin) void resumeReview(); }, { immediate: true });
 // Signed in: give the page a moment to settle, then greet with the leaderboard.
@@ -1314,7 +1339,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <user-profile-panel v-if="showProfile" :key="profileKey" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="onProfileHide" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
-  <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable, a click elsewhere puts it away. Phones keep the sheet. -->
+  <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable, a click elsewhere puts it away (except on the bug report, #512). Phones keep the sheet. -->
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
@@ -1327,6 +1352,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <hunt-opening />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
+  <play-button />
   <!-- The Ask dock is now the single command surface: it searches the same
        catalog CommandPalette builds (passed in headless) so navigation runs
        instantly, and only falls through to the model for real questions. -->
@@ -1364,6 +1390,19 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
       <span v-if="currentDatasetIcon" class="nge-dataset-species">{{ currentDatasetIcon }}</span>
       <span v-else class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
       <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
+    </button>
+    <!-- Play (util/play.ts): what is being played, a click to change or stop (Ames 2026-11-10). -->
+    <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="onPlayChip"
+            :title="showCellLibrary ? 'Playing ' + playLabel() + '. Click to hide the box.' : 'Playing ' + playLabel() + '. Click to show your cell again.'">
+      <!-- The play icon says "Playing" (Ames 2026-11-12: less space). -->
+      <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
+      <span>{{ playLabel() }}</span>
+    </button>
+    <!-- The pill now shows and hides the box, so on Retina switching (BC
+         Challenge or Cilia Quests) or stopping has its own small button. -->
+    <button v-if="play.on && offersChoice()" class="nge-play-switch" type="button" @click="choosePlay"
+            title="Change what you play, or stop playing" aria-label="Change what you play, or stop playing">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4h7.5M7.5 2l2 2-2 2M10 8H2.5M4.5 6l-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
@@ -1575,11 +1614,18 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
             <span class="nge-menu-num">3</span><span>Cut</span>
           </div>
         </li>
-        <!-- Advanced Interface after Merge and Cut, then the Merger Sandbox
-             (Ames 2026-10-18: the ideal order). -->
+        <!-- Annotations (Ames 2026-10-23, player report 220): layers, color,
+             stepping, more than one layer, the tools and Size, Find Path. -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 15; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">4</span><span>Annotations</span>
+          </div>
+        </li>
+        <!-- Advanced Interface after Merge, Cut and Annotations (Ames
+             2026-11-12: Annotations straight after Cut). -->
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">4</span><span>Advanced Interface</span>
+            <span class="nge-menu-num">5</span><span>Advanced Interface</span>
           </div>
         </li>
         <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
@@ -1587,7 +1633,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
              2026-10-23), the next step once the tutorials are done. -->
         <li>
           <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">5</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+            <span class="nge-menu-num">6</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
           </div>
         </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
@@ -1595,7 +1641,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '7' }}</span>
             <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
@@ -2047,6 +2093,22 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .nge-dataset-label { padding-right: 2px; }
+/* Play status in the top bar: the Play button's teal green, standing still (Ames 2026-11-12: no pulse). */
+#extensionBar .nge-play-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 14px; margin: 0 10px 0 0;
+  border-radius: 14px; border: 1px solid rgba(62, 236, 190, 0.6); background: rgba(62, 236, 190, 0.1);
+  color: #dcfff4; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 0 10px rgba(62, 236, 190, 0.25); transition: background 0.15s, box-shadow 0.15s;
+}
+#extensionBar .nge-play-chip:hover { background: rgba(62, 236, 190, 0.2); box-shadow: 0 0 16px rgba(62, 236, 190, 0.45); }
+#extensionBar .nge-play-chip svg { color: #3eecbe; }
+#extensionBar .nge-play-chip--quests { border-color: rgba(255, 211, 110, 0.6); background: rgba(255, 211, 110, 0.1); box-shadow: 0 0 10px rgba(255, 211, 110, 0.22); }
+#extensionBar .nge-play-chip--quests svg { color: #ffd36e; }
+#extensionBar .nge-play-switch {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin: 0 10px 0 -6px; padding: 0;
+  border-radius: 13px; border: 1px solid rgba(159, 180, 204, 0.35); background: transparent; color: #9fb4cc; cursor: pointer;
+}
+#extensionBar .nge-play-switch:hover { color: #dcfff4; border-color: rgba(62, 236, 190, 0.6); }
 .nge-dataset-species { font-size: 14px; line-height: 1; }
 #extensionBar .nge-dataset-btn:hover {
   opacity: 1;

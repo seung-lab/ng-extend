@@ -28,9 +28,10 @@ export function notifKind(title: string | null | undefined, isAdmin: boolean): N
   if (!isAdmin) return 'main';
   const t = title || '';
   if (ACCESS_STARTS.some(s => t.startsWith(s))) return 'access';
-  // Admins' edits of in-game windows (functions/edit-notify.js) have a tab of
-  // their own, apart from To do news (Ames 2026-11-12).
-  if (t.startsWith('📋 Edited:')) return 'edits';
+  // Admins' edits of in-game windows (functions/edit-notify.js, "📋 Edited:") sit
+  // in To do and replies with the other 📋 notes, not a tab of their own
+  // (Ames 2026-11-12: "I don't want a whole tab for edits that will usually
+  // stay empty").
   if (ADMIN_STARTS.some(s => t.startsWith(s))) return 'admin';
   // Hunters' reports of what the answers missed (functions/hunts.js), a tab of their own (Ames 2026-10-27).
   if (t.startsWith('🔎 Hunt report')) return 'hunt';
@@ -38,4 +39,20 @@ export function notifKind(title: string | null | undefined, isAdmin: boolean): N
   if (t.startsWith('💡 Hunt suggestion')) return 'hunt';
   if (TRIAGE_STARTS.some(s => t.startsWith(s)) || /tagged you on a report$/.test(t)) return 'triage';
   return 'main';
+}
+
+/**
+ * Inside the Access tab, what an access note asks for (Ames 2026-11-13):
+ * - new: someone new asking to get into Pyr (a beta access request).
+ * - upgrade: a player asking for more, such as editing the Retina or another
+ *   dataset.
+ * - other: the daily and weekly Access notes, shown under All only.
+ */
+export type AccessSort = 'new' | 'upgrade' | 'other';
+const UPGRADE_STARTS = ['🔬 Retina access request', '🔓 Dataset access request'];
+export function accessSort(title: string | null | undefined): AccessSort {
+  const t = title || '';
+  if (t.startsWith('🔑 Beta access request')) return 'new';
+  if (UPGRADE_STARTS.some(s => t.startsWith(s))) return 'upgrade';
+  return 'other';
 }

@@ -153,7 +153,8 @@ test('once only: a second request files nothing, and status says requested', asy
 test('name and email are required and checked; the note is optional and capped', async () => {
   const w = world();
   await assert.rejects(handle('access.beta', {email: GOOD.email}, w.io()), /Your name is empty/);
-  await assert.rejects(handle('access.beta', {name: GOOD.name}, w.io()), /Your email is empty/);
+  // No email typed: their sign in is the email (Ames 2026-11-12); with no sign in either, it is refused.
+  await assert.rejects(handle('access.beta', {name: GOOD.name}, w.io({who: {}})), /Your email is empty/);
   await assert.rejects(handle('access.beta', {...GOOD, name: {toString: () => 'x'}}, w.io()), /must be text/);
   await assert.rejects(handle('access.beta', {...GOOD, note: 'x'.repeat(501)}, w.io()), /too long/);
   await assert.rejects(handle('access.beta', {...GOOD, name: 'x'.repeat(81)}, w.io()), /too long/);
@@ -231,9 +232,9 @@ test('letting someone in emails them once, from connectome.quest', async () => {
   assert.deepEqual(r, { sent: true });
   assert.equal(sent[0].from, 'Pyr <welcome@connectome.quest>');
   assert.deepEqual(sent[0].to, ['ryan@example.org']);
-  assert.equal(sent[0].reply_to, 'support@eyewire.ai');
+  assert.equal(sent[0].reply_to, 'support@eyewire.org');
   // Support gets a blind copy of every welcome (Ames 2026-11-06).
-  assert.deepEqual(sent[0].bcc, ['support@eyewire.org', 'amyleerobinson@gmail.com']);
+  assert.deepEqual(sent[0].bcc, ['support@eyewire.org', 'amyleerobinson@gmail.com', 'amysterling@princeton.edu']);
   assert.match(sent[0].text, /^Hi Ryan,\n\nYou're in!/);
   assert.deepEqual(await handle('access.welcomeEmail', { email: 'ryan@example.org', name: 'Ryan' }, io), { sent: false, reason: 'already sent' });
   assert.equal(sent.length, 1);
@@ -242,5 +243,25 @@ test('letting someone in emails them once, from connectome.quest', async () => {
   // The copy goes no matter which admin lets them in, and never to the admin.
   const other = [];
   await handle('access.welcomeEmail', { email: 'q@y.org' }, { ...io, who: {}, sendEmail: async m => { other.push(m); return { ok: true }; }, welcomeSent: null });
-  assert.deepEqual(other[0].bcc, ['support@eyewire.org', 'amyleerobinson@gmail.com']);
+  assert.deepEqual(other[0].bcc, ['support@eyewire.org', 'amyleerobinson@gmail.com', 'amysterling@princeton.edu']);
+});
+
+// The game form asks for their EyeWire email (Ames 2026-11-12: "we for sure need eyewire email").
+test('the game form: their sign in is the email, and an EyeWire email is checked, kept and matched to an invite', async () => {
+  const w = world();
+  await assert.rejects(handle('access.beta', {name: GOOD.name, eyewireEmail: 'not an email'}, w.io()), /EyeWire email does not look right/);
+  await assert.rejects(handle('access.beta', {name: GOOD.name, agree: false}, w.io()), /tick the box/);
+  const out = await handle('access.beta', {name: GOOD.name, eyewireEmail: 'Invited@Hotmail.example', agree: true, emailOptIn: true}, w.io());
+  assert.deepStrictEqual(out, {invited: false, requested: true, invitedAs: true});
+  const m = w.issues[0].message;
+  assert.match(m, /^Email: signin@example\.org\./m);
+  assert.match(m, /^EyeWire email: invited@hotmail\.example$/m);
+  assert.match(m, /^Invited as: invited@hotmail\.example,/m);
+  assert.match(m, /^They agreed to the community principles\.$/m);
+  assert.match(m, /^Pyr news by email: yes$/m);
+  assert.ok(w.told[0].body.includes(String.raw`EyeWire email: invited\@hotmail\.example`), w.told[0].body);
+  // The same as their sign in: said once.
+  const v = world();
+  await handle('access.beta', {name: GOOD.name, eyewireEmail: 'signin@example.org'}, v.io());
+  assert.doesNotMatch(v.issues[0].message, /EyeWire email/);
 });

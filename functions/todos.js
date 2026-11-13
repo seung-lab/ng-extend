@@ -196,11 +196,13 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     if (next.length !== had.length) await follows.set(cardId, next);
   };
   if (action === 'todo.list') {
-    const [cards, people, followers, helping, seenAt, sections] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
+    const [cards, people, followers, helping, seenAt, sections, closed] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
       meId ? seen.get(meId).catch(() => ({})) : {},
       // null until supabase-admin-todos-hierarchy.sql is run: the board then hides sections and sub cards.
-      db.sections ? db.sections().catch(() => null) : null]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt, sections };
+      db.sections ? db.sections().catch(() => null) : null,
+      db.triageClosed ? db.triageClosed(new Date(Date.now() - 7 * 864e5).toISOString()).catch(() => null) : null]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt, sections,
+      triageWeek: closed ? countTriage(people, closed) : null };
   }
   // I opened a card: its tags of me so far count as seen (Ames 2026-11-06:
   // "if I click on this it shouldn't still show it as an unread task for me").
@@ -422,6 +424,28 @@ function slackIdOf(person) {
   return null;
 }
 
+/**
+ * Triage reports closed this week (Done or Dismiss), in all and by admin
+ * (Ames 2026-11-12: the board's "done this week" counts them too). A report
+ * closed by finishing its card on this board is already counted as the card.
+ * reviewed_by is a Pyr name ("Amy R. Sterling", or her player name "Amy
+ * Sterling") or "slack:<id>" for a decision made in Slack.
+ */
+function countTriage(people, rows) {
+  const norm = s => String(s || '').toLowerCase().replace(/\b[a-z]\.\s*/g, '').replace(/\s+/g, ' ').trim();
+  const out = { total: 0, byPerson: {} };
+  for (const r of rows) {
+    if (/^Done on the To do board/.test(r.result_note || '')) continue;
+    out.total++;
+    const by = String(r.reviewed_by || '').trim();
+    if (!by) continue;
+    const slack = by.startsWith('slack:') ? by.slice(6) : slackIdOf({ name: by });
+    const p = people.find(x => x.name === by || norm(x.name) === norm(by)) || (slack && people.find(x => slackIdOf(x) === slack));
+    if (p) out.byPerson[p.id] = (out.byPerson[p.id] || 0) + 1;
+  }
+  return out;
+}
+
 /** Followers: the bell only, no Slack, so following stays quiet. */
 function makeFollowBell({ sb, site, byName, meId }) {
   return async (ids, card, what, said) => {
@@ -471,6 +495,7 @@ function restDb(sb) {
     remove: id => sb(`admin_todos?id=eq.${id}`, { method: 'DELETE' }),
     children: id => sb(`admin_todos?parent_id=eq.${id}&select=id&limit=50`),
     sections: () => sb('admin_todo_sections?select=*&order=list.asc,rank.asc&limit=200'),
+    triageClosed: since => sb(`feedback_triage?select=reviewed_by,result_note&status=in.(done,dismissed)&reviewed_at=gte.${enc(since)}&limit=2000`),
     section: async id => (await sb(`admin_todo_sections?id=eq.${id}&select=*&limit=1`))[0] || null,
     insertSection: async row => (await sb('admin_todo_sections', { method: 'POST', body: JSON.stringify(row) }))[0],
     patchSection: async (id, row) => (await sb(`admin_todo_sections?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }))[0],
@@ -500,4 +525,4 @@ function restDb(sb) {
   };
 }
 
-module.exports = { todoAction, restDb, slackIdOf, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };
+module.exports = { todoAction, restDb, slackIdOf, countTriage, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };
