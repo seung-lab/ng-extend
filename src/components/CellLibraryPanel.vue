@@ -1228,6 +1228,15 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 // ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
 /** Why Mark complete can't be pressed yet, or '' when it can. */
+const triedWithoutEnding = ref(false);
+const notesOpen = ref(false);
+/** The notes box takes the cursor when it opens. */
+const vFocusNew = { mounted: (el: HTMLElement) => { if (!(el as HTMLTextAreaElement).value) el.focus(); } };
+/** The note under the buttons: the ending is asked for only once Complete was pressed without one. */
+function completeWhy(cell: CellRow): string {
+  const why = completeBlocked(cell);
+  return why === 'Pick how the cell ended first (How did it end?).' && !triedWithoutEnding.value ? '' : why;
+}
 function completeBlocked(cell: CellRow): string {
   const c = completing.value;
   if (!c) return '';
@@ -1274,8 +1283,9 @@ function isCurrentClaim(cell: CellRow): boolean {
   return isMyClaim(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId.value;
 }
 function onRowClick(cell: CellRow, e: MouseEvent) {
-  if (!isCurrentClaim(cell) || slim.value) return;
-  if ((e.target as HTMLElement).closest('button, input, textarea, a, select, .nge-cl-row-name')) return;
+  if (!isCurrentClaim(cell)) return;
+  // The slim bar is one cell: a click anywhere on it, name too, opens or folds Complete (Ames 2026-11-12).
+  if ((e.target as HTMLElement).closest(slim.value ? 'button, input, textarea, a, select' : 'button, input, textarea, a, select, .nge-cl-row-name')) return;
   if (completing.value?.key === cellKey(cell)) completing.value = null; else openComplete(cell);
 }
 /** With the Complete form open, its cell's row goes to the top of the list
@@ -1295,6 +1305,8 @@ function scrollCompleteRowToTop(key: string) {
 function openComplete(cell: CellRow) {
   scrollCompleteRowToTop(cellKey(cell));
   chooseClaim.value = false;
+  triedWithoutEnding.value = false;
+  notesOpen.value = false;
   // No ending picked to start with: the last one carried over, and a player
   // who forgot to change it sent the wrong one (toknow, report 237).
   completing.value = { key: cellKey(cell), link: '', notes: '', status: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
@@ -1385,7 +1397,8 @@ async function runCrosshairCheck(cell: CellRow) {
 
 async function submitComplete(cell: CellRow) {
   const c = completing.value;
-  if (!c || !linkLooksValid(c.link) || statusMissing(cell)) return;
+  if (c && statusMissing(cell)) { triedWithoutEnding.value = true; return; }
+  if (!c || !linkLooksValid(c.link)) return;
   c.submitting = true;
   try {
     // The crosshairs may have moved since the check: check once more.
@@ -4351,7 +4364,7 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-row-left">
               <span class="nge-cl-pip" :class="statusClass(cell.status)"></span>
               <div class="nge-cl-row-info">
-                <div class="nge-cl-row-name" @click="copyId(cell.segId)" :title="'Click to copy ' + cell.segId">
+                <div class="nge-cl-row-name" @click="!slim && copyId(cell.segId)" :title="slim ? undefined : 'Click to copy ' + cell.segId">
                   <span :title="cell.liveSegId ? `Updated after edits. Listed as ${cell.segId}` : undefined">{{ history.getNickname(cell.segId) || cell.liveSegId || cell.segId }}</span>
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
@@ -4515,9 +4528,13 @@ const panelStyle = computed(() => ({
             <div v-if="completing.link && !linkLooksValid(completing.link)" class="nge-cl-complete-msg nge-cl-complete-msg--bad">
               Paste a full https viewer link.
             </div>
-            <label class="nge-cl-complete-label">Notes (optional)</label>
+            <!-- Notes fold away until asked for (Ames 2026-11-12: "click to expand to add notes?"). -->
+            <button v-if="!notesOpen && !completing.notes" type="button" class="nge-cl-add-note" @click="notesOpen = true">+ Add a note for the reviewers</button>
+            <label v-if="notesOpen || completing.notes" class="nge-cl-complete-label">Notes (optional)</label>
             <textarea
+              v-if="notesOpen || completing.notes"
               v-model="completing.notes"
+              v-focus-new
               class="nge-cl-search-input nge-cl-complete-notes"
               rows="2"
               maxlength="1000"
@@ -4533,7 +4550,7 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-complete-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
-                :disabled="!!completeBlocked(cell)"
+                :disabled="!!completeBlocked(cell) && !statusMissing(cell)"
                 :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
               ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : play.on ? 'Complete and next' : 'Mark complete' }}</button>
@@ -4541,7 +4558,7 @@ const panelStyle = computed(() => ({
             </div>
             <!-- Why Mark complete can't be pressed yet, said plainly (a player
                  could not tell why it stayed grey, Ames 2026-11-05). -->
-            <div v-if="completeBlocked(cell) && !completing.submitting && !completing.checking" class="nge-cl-complete-msg nge-cl-complete-why">{{ completeBlocked(cell) }}</div>
+            <div v-if="completeWhy(cell) && !completing.submitting && !completing.checking" class="nge-cl-complete-msg nge-cl-complete-why">{{ completeWhy(cell) }}</div>
           </div>
           </template>
           <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
@@ -5055,7 +5072,7 @@ const panelStyle = computed(() => ({
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row { flex-wrap: wrap; row-gap: 6px; }
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-left { flex: 1 1 170px; }
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-actions { margin-left: auto; }
-.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--current { cursor: pointer; }
+.nge-cl-row--current { cursor: pointer; }
 /* The cell being completed is the list's header while the form is open. */
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--completing {
   position: sticky; top: -4px; z-index: 3;
@@ -5207,6 +5224,8 @@ const panelStyle = computed(() => ({
 /* Skip: a plain button; Complete is the one that stands out. */
 .nge-cl-btn--skip { border-color: rgba(140, 160, 200, 0.3); color: #b4c0d6; }
 .nge-cl-btn--skip:hover:not(:disabled) { background: rgba(140, 160, 200, 0.12); color: #e4e8f2; }
+.nge-cl-add-note { align-self: flex-start; padding: 2px 0; border: 0; background: none; color: #7cc4ff; font: inherit; font-size: 0.82em; cursor: pointer; }
+.nge-cl-add-note:hover { color: #b8e0ff; text-decoration: underline; }
 .nge-cl-complete-label { color: #9ab; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
 .nge-cl-complete-statuses { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-cl-complete-status {

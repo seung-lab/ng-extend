@@ -1373,9 +1373,10 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     </button>
     <!-- Play (util/play.ts): what is being played, a click to change or stop (Ames 2026-11-10). -->
     <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="choosePlay()"
-            title="Playing. Click to change what you play, or stop.">
+            :title="'Playing ' + playLabel() + '. Click to change what you play, or stop.'">
+      <!-- The play icon says "Playing" (Ames 2026-11-12: less space). -->
       <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
-      <span>Playing {{ playLabel() }}</span>
+      <span>{{ playLabel() }}</span>
     </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
