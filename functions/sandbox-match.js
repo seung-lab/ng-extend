@@ -9,10 +9,15 @@
 // pinky_training (as of TRUTH.at) is the true cell, the one that owns it in
 // the Sandbox is the player's.
 //
-// The number is how much of the starting error is fixed, counted in
-// supervoxels:
-//   match = 1 - (missing now + extra now) / (missing at start + extra at start)
-// never below 0. Under it, pieces: a missing piece is a Sandbox segment at the
+// Two numbers (Ames 2026-11-12: "one category for cut and one for merge", by
+// size), each the share of its own starting error that is fixed, counted in
+// supervoxels, never below 0:
+//   merge = 1 - missing now / missing at start
+//   cut   = 1 - extra now / extra at start
+// A cell with nothing extra at the start has nothing to cut (null) until a
+// merge brings in a wrong part, then cut reads 0. One number for both,
+//   match = 1 - (missing now + extra now) / (missing at start + extra at start),
+// is still kept with each score. Beside each, pieces: a missing piece is a Sandbox segment at the
 // task's start that belongs to the true cell (MIN_PIECE supervoxels or more);
 // an extra piece is a part of the start cell that belongs to another true cell.
 // Each piece keeps a few sample supervoxels; a missing piece is found when
@@ -86,6 +91,13 @@ function matchPercent({missingNow, extraNow, missingStart, extraStart}) {
   if (!(start > 0)) return null;
   const share = 1 - (missingNow + extraNow) / start;
   return Math.max(0, Math.min(100, Math.floor(share * 100 + 1e-9)));
+}
+
+/** One category, merge or cut: whole percent of its starting error fixed.
+ *  Nothing wrong at the start: null while it stays so, 0 once something is. */
+function partPercent(now, start) {
+  if (!(start > 0)) return now > 0 ? 0 : null;
+  return Math.max(0, Math.min(100, Math.floor((1 - now / start) * 100 + 1e-9)));
 }
 
 /** A deterministic random, so a key built twice samples the same supervoxels. */
@@ -283,6 +295,8 @@ async function check(io, {taskId, me, isAdmin}) {
     result = {
       taskId: id, scorable: true, root,
       match: matchPercent({missingNow, extraNow, missingStart: key.missing_start, extraStart: key.extra_start}),
+      merge: partPercent(missingNow, key.missing_start),
+      cut: partPercent(extraNow, key.extra_start),
       missing: {left: piecesLeft(key.missing_pieces, rootOf, root, 'missing'), total: key.missing_pieces.length},
       extra: {left: piecesLeft(key.extra_pieces, rootOf, root, 'extra'), total: key.extra_pieces.length},
     };
@@ -304,7 +318,7 @@ async function handle({action, args, me, isAdmin, io}) {
 
 module.exports = {
   handle, check, buildKey, keyFor,
-  toSet, minus, countMinus, matchPercent, groupPieces, piecesLeft, cave,
+  toSet, minus, countMinus, matchPercent, partPercent, groupPieces, piecesLeft, cave,
   _reset() { truthSets.clear(); lastResult.clear(); building.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,
 };

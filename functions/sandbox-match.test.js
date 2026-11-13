@@ -38,6 +38,18 @@ test('match: share of the starting error that is fixed, 0 to 100, rounded down',
   assert.equal(M.matchPercent({missingNow: 0, extraNow: 0, missingStart: 0, extraStart: 0}), null);
 });
 
+test('merge and cut: each its own share, by size; nothing to cut stays null until something is', () => {
+  // Ames's cell 16753: a 322 supervoxel merger, 12 left after her cut.
+  assert.equal(M.partPercent(12, 322), 96);
+  assert.equal(M.partPercent(32650, 32650), 0);
+  assert.equal(M.partPercent(32650 - 11292, 32650), 34);
+  assert.equal(M.partPercent(0, 322), 100);
+  // Worse than the start never reads below 0.
+  assert.equal(M.partPercent(500, 322), 0);
+  assert.equal(M.partPercent(0, 0), null);
+  assert.equal(M.partPercent(40, 0), 0);
+});
+
 test('pieces: grouped by segment, specks left out, biggest first, same samples every time', () => {
   const svs = [...range(1, 60), ...range(61, 100), ...range(101, 220)];
   const roots = [...svs.slice(0, 60).map(() => 'A'), ...svs.slice(60, 100).map(() => 'B'), ...svs.slice(100).map(() => 'C')];
@@ -119,7 +131,7 @@ test('a check builds the key once, then scores each edit', async () => {
   M._reset();
   const w = world();
   const first = await M.check(w.io, {taskId: 1, me: ME});
-  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}});
+  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}});
   const key = w.db.keys[1];
   assert.equal(key.truth_root, w.ID.T);
   assert.equal(key.start_root, w.ID.S0);
@@ -132,6 +144,9 @@ test('a check builds the key once, then scores each edit', async () => {
   w.sandbox.edit({S1: [...range(1, 160), ...range(300, 359)], B: range(161, 200)});
   const merged = await M.check(w.io, {taskId: 1, me: ME});
   assert.equal(merged.match, 37);
+  // Merge and cut each count their own start: 60 of 100 missing merged in.
+  assert.equal(merged.merge, 60);
+  assert.equal(merged.cut, 0);
   assert.deepEqual(merged.missing, {left: 0, total: 1});
   assert.deepEqual(merged.extra, {left: 1, total: 1});
 
@@ -139,6 +154,8 @@ test('a check builds the key once, then scores each edit', async () => {
   w.sandbox.edit({S2: range(1, 160), N2: range(300, 359), B: range(161, 200)});
   const cut = await M.check(w.io, {taskId: 1, me: ME});
   assert.equal(cut.match, 75);
+  assert.equal(cut.merge, 60);
+  assert.equal(cut.cut, 100);
   assert.deepEqual(cut.extra, {left: 0, total: 1});
 
   // The key was kept, not rebuilt; every check was recorded.
