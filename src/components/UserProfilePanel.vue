@@ -14,6 +14,7 @@ import { datasetKey } from '../util/completion_rule';
 import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
+import QuestTimeTable from 'components/QuestTimeTable.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import EffortCurve from 'components/EffortCurve.vue';
@@ -2552,6 +2553,11 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               </div>
             </div>
           </div>
+
+          <!-- Time on Quests and Super Quests (Nseraf, report 525): the
+               player's own active time, so only on their own profile, and
+               only once there is some. -->
+          <QuestTimeTable v-if="!viewingOtherUser" class="nge-profile-section nge-profile-section--questtime" label="Time on Quests" />
 
         </div><!-- end right column -->
 
