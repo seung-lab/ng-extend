@@ -413,14 +413,18 @@ function settleWithin(p: Promise<unknown> | unknown, what: string): Promise<void
 
 onMounted(async () => {
     const startT = performance.now();
-    slowTimer = window.setTimeout(() => { if (!ready.value) slow.value = true; }, 500);
+    // Only while the view or the step's own setup is still loading: placing
+    // the box beside its target can take up to a second too, and the card
+    // flashed behind boxes that had nothing to load (Ames 2026-11-10).
+    let setupDone = false;
+    slowTimer = window.setTimeout(() => { if (!ready.value && !setupDone) slow.value = true; }, 500);
     if (props.step.state) {
-        // Advanced Interface: the annotation layers the player filled keep
+        // Advanced Interface and Annotations: the annotation layers the player filled keep
         // their points when a step loads its own view (Ames 2026-10-18:
         // "when I hit next it deleted my annotations!").
         // Its views also leave the Selection panel shut: it sat where the
         // layer side panel goes.
-        const advanced = tutorialStore.activeTutorial === 2;
+        const advanced = tutorialStore.activeTutorial === 2 || tutorialStore.activeTutorial === 15;
         const keep = advanced ? playerAnnotationLayers() : [];
         if (advanced) setStateRewriter(async (st: any) => {
             if (st && typeof st === 'object') st.selection = { ...(st.selection || {}), visible: false };
@@ -436,6 +440,8 @@ onMounted(async () => {
     if (props.step.onEnter) {
         await settleWithin(props.step.onEnter(), 'step setup');
     }
+    setupDone = true;
+    slow.value = false;
     console.log('updating position', performance.now() - startT);
     updateChipPosition();
     applyHighlight();
@@ -1440,6 +1446,25 @@ async function onHtmlClick(e: MouseEvent) {
 .hasVideo .chip:not(.exitConfirm) .title { margin: 38px 20px 0; }
 
 .chip .html { min-width: 0; max-width: 100%; overflow-wrap: break-word; }
+/* A tall box keeps its title and buttons still and scrolls only its words
+   (toknow 2026-11-11, Cilia Quest Training: "fix title and scroll contents
+   only"). The whole box used to scroll, title and all. */
+.chip:not(.exitConfirm) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    row-gap: 14px;
+    overflow: hidden;
+}
+.chip:not(.exitConfirm) > * { flex: none; }
+.chip:not(.exitConfirm) > .html {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+}
+.chip:not(.exitConfirm) > .html::-webkit-scrollbar { display: none; }
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }
 .chip .html :deep(strong) { color: #ffffff; font-weight: 600; }

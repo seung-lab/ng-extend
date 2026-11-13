@@ -413,9 +413,17 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
+  const accessTitle = String(notif.title || '');
+  // Admins: every access note opens the Access page (Ames 2026-11-12:
+  // "clicking an access notif should open the access dash"), at the person
+  // when the note names their email.
+  if (backend.isAdmin && (kindOf(notif) === 'access' || accessTitle.startsWith('🔑 Invite used'))) {
+    openAccessPage(notif.body);
+    emit('hide');
+    return;
+  }
   // Retina access requests (Ames 2026-10-16): a reviewer's note opens Admin
   // Hub > Access requests; a player's notes or invite open their panel.
-  const accessTitle = String(notif.title || '');
   // A dataset access request opens the same tab, where Dataset requests has
   // Granted (Ames 2026-10-28).
   // The Access update itself opens to its own list of who asked and who was
@@ -495,8 +503,7 @@ async function onDetailBodyClick(e: MouseEvent) {
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
   if (a?.getAttribute('href') === ACCESS_LIST_LINK || a?.getAttribute('href') === BETA_LIST_LINK) {
     e.preventDefault();
-    const tab = a.getAttribute('href') === BETA_LIST_LINK ? 'pilot' : 'access';
-    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab } }));
+    openAccessPage();
     closeDetail();
     emit('hide');
     return;
@@ -886,6 +893,14 @@ const digestStats = computed(() => {
 /** A player's reply names its report: the bell opens that card on the triage board. */
 const TRIAGE_MARK = /\s*#nge-triage-report=([0-9a-f-]{36})\s*$/i;
 const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(TRIAGE_MARK)?.[1] ?? '');
+/** The Access page (?triage=access) in its own tab, at the first email the
+ *  note names, if any. Notes escape what players typed ("joe\@mail\.com"). */
+function openAccessPage(body?: string | null) {
+  const text = String(body || '').replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
+  const email = (text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/) || [])[0];
+  const person = email && !/@(eyewire\.(org|ai)|connectome\.quest)$/i.test(email) ? `&person=${encodeURIComponent(email.toLowerCase())}` : '';
+  window.open(`${window.location.origin}${window.location.pathname}?triage=access${person}`, '_blank', 'noopener');
+}
 function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
 }
@@ -919,6 +934,13 @@ function plainText(text: string): string {
     .replace(/`(.+?)`/g, '$1')
     .replace(/^\s*#+\s*/gm, '')
     .replace(/\[(.+?)\]\((.+?)\)/g, '$1')
+    // The tags a note may carry (an edit note's <strong>, <em>, <del> and <mark>,
+    // functions/edit-notify.js) and its quote marks are for the open note only;
+    // the preview line shows the words (Ames 2026-11-12: "clean up the tags").
+    // A tag a player typed is escaped (\<) and survives as text.
+    .replace(/(^|[^\\])<\/?[a-z][a-z0-9]*\b[^<>]*>/gi, '$1')
+    .replace(/(^|[^\\])<\/?[a-z][a-z0-9]*\b[^<>]*>/gi, '$1')
+    .replace(/^[ \t]*>[ \t]?/gm, '')
     // Escaped characters lose the backslash (the server escapes what a
     // player typed, so emails read "joe\@mail\.com" here otherwise).
     .replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');

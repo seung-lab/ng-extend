@@ -1,7 +1,22 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { todoAction, slackIdOf, cleanFields } = require('./todos');
+const { todoAction, slackIdOf, cleanFields, countTriage } = require('./todos');
+
+test('triage reports closed this week count for whoever closed them', () => {
+  const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };
+  const out = countTriage([AMES, CELIA, MARISSA], [
+    { reviewed_by: 'Amy R. Sterling', result_note: 'Fixed' },
+    { reviewed_by: 'Amy Sterling', result_note: null },
+    { reviewed_by: 'slack:U02FH1DRC' },
+    { reviewed_by: 'Celia D.' },
+    { reviewed_by: 'M Sorek' },
+    { reviewed_by: 'Amy R. Sterling', result_note: 'Done on the To do board, closed by Ames.' },
+    { reviewed_by: 'Someone gone' },
+  ]);
+  assert.equal(out.total, 6, 'a report closed as a card is counted with the cards');
+  assert.deepEqual(out.byPerson, { [AMES.id]: 3, [CELIA.id]: 1, [MARISSA.id]: 1 });
+});
 
 const AMES = { id: '11111111-1111-1111-1111-111111111111', name: 'Amy R. Sterling', email: 'amy@x.org' };
 const CELIA = { id: '22222222-2222-2222-2222-222222222222', name: 'Celia D.', email: 'celia@x.org' };

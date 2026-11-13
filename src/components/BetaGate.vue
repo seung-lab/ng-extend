@@ -199,6 +199,7 @@ onUnmounted(() => window.clearInterval(waitCheck));
           <label class="nge-beta-label" for="nge-beta-note">Anything you'd like us to know? <span>(optional)</span></label>
           <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="2" maxlength="500"></textarea>
           <button class="nge-beta-btn" :disabled="sending" @click="request">{{ sending ? 'Sending...' : 'Request beta access' }}</button>
+          <p class="nge-beta-agree">By asking to join, you agree to the <a href="https://connectome.quest/terms/" target="_blank" rel="noreferrer">Terms of Use and Privacy Notice</a>.</p>
           <p v-if="error" class="nge-beta-error" role="alert">{{ error }}</p>
         </template>
         <div v-else-if="letIn" class="nge-beta-text nge-beta-text--done" role="status">
@@ -227,6 +228,8 @@ onUnmounted(() => window.clearInterval(waitCheck));
         </template>
         <p class="nge-beta-foot">
           Questions? Email <a :href="'mailto:' + SUPPORT">{{ SUPPORT }}</a>
+          <span class="nge-beta-sep" aria-hidden="true">·</span>
+          <a href="https://connectome.quest/terms/" target="_blank" rel="noreferrer">Terms and Privacy</a>
           <span class="nge-beta-sep" aria-hidden="true">·</span>
           <button class="nge-beta-link" @click="signOut">Sign out</button>
         </p>
@@ -344,4 +347,6 @@ onUnmounted(() => window.clearInterval(waitCheck));
 .nge-beta-sep { color: rgba(200, 220, 245, 0.35); }
 .nge-beta-link { padding: 0; background: none; border: 0; font: inherit; color: rgba(200, 220, 245, 0.7); cursor: pointer; }
 .nge-beta-link:hover { color: #fff; text-decoration: underline; }
+.nge-beta-agree { margin: 8px 0 0; font-size: 12px; color: rgba(200, 220, 245, 0.7); }
+.nge-beta-agree a { color: #8fc8ff; }
 </style>

@@ -21,6 +21,10 @@ const props = defineProps<{
   approval?: boolean;
   /** The text's name in the approvers' note, e.g. "Hunt instructions". */
   label?: string;
+  /** Other admins' edits go out at once, and the approvers get a note with the
+   *  text before and after (Ames 2026-11-10, the Play card: "so Celia can make
+   *  changes and notify me if she does"). */
+  notify?: boolean;
 }>();
 const emit = defineEmits<{ (e: 'action', name: string): void }>();
 
@@ -62,8 +66,21 @@ async function save() {
       // functions/edit-notify.js has planApproveNote ready if Ames wants it.
       return;
     }
+    const before = saved.value ? saved.value.body : (isList.value ? (props.original as string[]).map(htmlToText).join('\n') : htmlToText(props.original as string));
     await saveSiteText(props.textKey, draft.value.trim());
     editing.value = false;
+    if (props.notify && !approver.value) {
+      try {
+        const { data } = await supabase.from('admins').select('user_id,email');
+        const ids = ((data as any[]) || []).filter(a => a.user_id && isApprover(a.email)).map(a => String(a.user_id));
+        const quote = (t: string) => t.split(/\r?\n/).filter(l => l.trim()).map(l => `> ${l.trim()}`).join('\n');
+        const what = props.label || 'An in-game text';
+        for (const id of ids) {
+          await backend.createNotification({ title: `✏️ ${backend.userName || 'An admin'} changed a text: ${what}`, target_type: 'user', target_id: id,
+            body: `**Before:**\n${quote(before)}\n\n**Now:**\n${quote(draft.value.trim())}\n\nPlayers see the new text already. You can change it back with Edit, then Restore original.` });
+        }
+      } catch (e) { console.warn('[site texts] could not tell the approvers:', e); }
+    }
   }
   catch (e: any) { error.value = 'Not saved: ' + (e?.message || e); }
   finally { busy.value = false; }

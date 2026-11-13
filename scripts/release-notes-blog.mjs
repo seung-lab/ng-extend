@@ -30,6 +30,8 @@
 export const SLUG_PREFIX = 'whats-new-in-pyr-';
 export const LATEST_URL = 'https://connectome.quest/blog/whats-new/';
 export const AUTHOR = 'Nurro';
+// The feature image every week shares (Ames 2026-11-12), on connectome.quest.
+export const COVER_URL = 'https://connectome.quest/assets/images/blog/whats-new-in-pyr.jpg';
 const DIGEST_TAG = 'Today in Pyr';
 const DAY_MS = 24 * 60 * 60 * 1000;
 // blog_posts.body holds at most 100,000 characters (supabase-blog.sql).
@@ -156,6 +158,7 @@ export function buildWeekPost(week, digests, changelog, { previousSlug = '' } = 
     body,
     status: 'published',
     author_name: AUTHOR,
+    cover_url: COVER_URL,
     // Stable, so the post keeps its place in the blog list: its first day.
     published_at: new Date(Date.parse(days[days.length - 1].digest.send_at)).toISOString(),
   };

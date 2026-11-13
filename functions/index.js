@@ -2352,7 +2352,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-09-celia-tagged-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-12-news-optin-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2443,6 +2443,23 @@ const welcomeSentStore = {
   },
   set: async (email, v) => {
     await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+};
+// Who was asked for their EyeWire name (access-request.js askEmail), from the
+// Access page. One document per address.
+const askSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+  all: async () => {
+    const snap = await db.collection("beta_ask_emails").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { at: v.at, by: v.by || "" }; });
+    return out;
   },
 };
 const betaMarkStore = {
@@ -2542,6 +2559,7 @@ exports.ewAccessRequest = onRequest(
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
         wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
+        askSent: askSentStore,
         sendEmail: async (msg) => {
           try {
             const r = await fetch("https://api.resend.com/emails", {
@@ -2764,6 +2782,13 @@ exports.ewCommunityData = onRequest(
             if(!done.length) throw ewErr(403,"Finish the Cilia Quest tutorial first.");
             continue;
           }
+          // The Annotations tutorial Achievement (code name annotations-tutorial):
+          // the player finished tutorial 15 (Ames 2026-11-10).
+          if(badges.some(b=>b.slug==="annotations-tutorial")) {
+            const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.15&select=tutorial&limit=1");
+            if(!done.length) throw ewErr(403,"Finish the Annotations tutorial first.");
+            continue;
+          }
           if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Mini Michelangelo","Safety Scissors","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
         }
       }
@@ -2920,15 +2945,15 @@ exports.ewSymposiumRsvp = onRequest(
   if(req.method!=="POST") return res.status(405).json({error:"POST only"});
   if(Buffer.byteLength(JSON.stringify(req.body||{}))>8000) return res.status(413).json({error:"That is too long. Please shorten your question."});
   try {
-   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
+   const {planRsvp,SYMPOSIUM_SHEET_ID,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
    const plan=planRsvp(req.body||{});
    if(!(await rateLimit(req,false,"visitor:rsvp")).ok) throw ewErr(429,"Please wait a little while, then try again.");
-   const ref=db.collection("symposium_rsvps").doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
+   const ref=db.collection(plan.collection).doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
    const before=await ref.get();
    if(before.exists) plan.row[NOTE_COLUMN]="Sent again (latest answers)";
    await ref.set({name:plan.row[1],email:plan.email,username:plan.row[3],question:plan.row[4],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
    try {
-    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent("'"+plan.tab+"'!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
       {method:"POST",body:JSON.stringify({values:[plan.row]})});
     await ref.update({sheet:true});
    } catch(e) {
@@ -3293,6 +3318,7 @@ function blogMailIo() {
     notesSubscribers: {
       get: async (email) => { const d = await doc("notes_subscribers", email).get(); return d.exists ? d.data() : null; },
       set: (email, v) => doc("notes_subscribers", email).set(v, { merge: true }),
+      list: async () => (await db.collection("notes_subscribers").where("on", "==", true).get()).docs.map((d) => d.data()),
     },
     subscribers: {
       set: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
@@ -3335,6 +3361,16 @@ exports.ewBlogMail = onRequest(
   { region: "us-central1", secrets: [resendKey, ewServiceKey], cors: [/^https:\/\/(www\.)?connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/], invoker: "public", maxInstances: 5 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
+    // The unsubscribe link in a What's new in Pyr email: a click (GET) shows a
+    // small page; a mail app's one click unsubscribe (POST) just needs a 200.
+    if (req.query && req.query.action === "notes-off") {
+      let text;
+      try { await require("./blog-mail").handle("notes-off", { e: req.query.e, k: req.query.k }, blogMailIo()); text = "You're off the What's new in Pyr list. You won't get it again unless you tick the box on the blog."; }
+      catch (e) { if (!e.status) console.error("[ewBlogMail] notes-off", e.message); text = e.status ? e.message : "That did not go through. Please try again in a moment."; }
+      if (req.method === "POST") return res.status(200).send("ok");
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      return res.status(200).type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>What's new in Pyr</title></head><body style="margin:0;background:#f4f6fa;font:17px/1.6 system-ui,sans-serif;color:#151b27"><main style="max-width:520px;margin:12vh auto;padding:28px;background:#fff;border-radius:16px"><h1 style="margin:0 0 12px;font-size:22px">What's new in Pyr</h1><p style="margin:0 0 18px">${esc(text)}</p><p style="margin:0"><a href="https://connectome.quest/blog/" style="color:#0a7286">Back to the blog</a></p></main></body></html>`);
+    }
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long." });
     const { action, ...args } = req.body || {};

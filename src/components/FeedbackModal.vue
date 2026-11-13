@@ -29,8 +29,12 @@ const ISSUE_URL =
 // No Data problem (Ames 2026-10-19: not needed). Old reports keep theirs, and
 // the server still accepts it.
 const CATEGORIES = ['Bug', 'Idea', 'Other'] as const;
-/** Bug to start with (Ames 2026-10-29: "I like having bug preselected"). */
-const category = ref<typeof CATEGORIES[number]>('Bug');
+/** Nothing chosen to start with: the player picks Bug, Idea or Other
+ *  themselves (Ames 2026-11-12: "remove the default selection for Bug"). */
+const category = ref<typeof CATEGORIES[number] | ''>('');
+const CATEGORY_ICON: Record<string, string> = { Bug: '🐞', Idea: '💡', Other: '✨' };
+/** Set when Submit was pressed with no kind chosen: the chips light up. */
+const needKind = ref(false);
 const message = ref('');
 /** A short title (Celia #178: "a title section for bug or idea submission
  *  would be nice to get a fast overview of what the user is asking for"). */
@@ -192,6 +196,7 @@ async function submit() {
   const details = detailsOpen.value ? message.value.trim() : '';
   // The report itself: their details, or just the short line when that is all.
   const text = details || heading;
+  if (!category.value) { needKind.value = true; error.value = 'Choose Bug, Idea or Other first.'; return; }
   if (!heading || sending.value) {
     if (!heading) error.value = 'Say in a few words what it is.';
     return;
@@ -528,7 +533,12 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="!done" class="nge-fb-body">
-        <div class="nge-fb-title">Submit an issue</div>
+        <span class="nge-fb-frame nge-fb-frame--tl" aria-hidden="true"></span>
+        <span class="nge-fb-frame nge-fb-frame--tr" aria-hidden="true"></span>
+        <span class="nge-fb-frame nge-fb-frame--bl" aria-hidden="true"></span>
+        <span class="nge-fb-frame nge-fb-frame--br" aria-hidden="true"></span>
+        <div class="nge-fb-kicker">Transmission to the Pyr team</div>
+        <div class="nge-fb-title"><span class="nge-fb-title-dot" aria-hidden="true">◆</span>Submit an issue</div>
         <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
         <!-- Behind the live version: the bug may already be fixed (Ames 2026-10-07). -->
         <div v-if="version.newer" class="nge-fb-update" role="status">
@@ -536,13 +546,15 @@ onBeforeUnmount(() => {
           <button type="button" class="nge-fb-update-btn" @click="reloadForUpdate()">Reload now</button>
         </div>
 
-        <div class="nge-fb-chips">
+        <div class="nge-fb-kind-label">What kind?</div>
+        <div class="nge-fb-chips" :class="{ 'nge-fb-chips--need': needKind && !category }" role="radiogroup" aria-label="What kind of report">
           <button
             v-for="c in CATEGORIES" :key="c"
-            class="nge-fb-chip"
-            :class="{ 'nge-fb-chip--active': category === c }"
-            @click="category = c; error = ''"
-          >{{ c }}</button>
+            class="nge-fb-chip nge-fb-kind"
+            :class="[`nge-fb-kind--${c.toLowerCase()}`, { 'nge-fb-chip--active': category === c }]"
+            role="radio" :aria-checked="category === c"
+            @click="category = c; error = ''; needKind = false"
+          ><span class="nge-fb-kind-icon" aria-hidden="true">{{ CATEGORY_ICON[c] }}</span>{{ c }}</button>
         </div>
 
         <input
@@ -687,11 +699,29 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 .nge-fb-exit:hover { color: #ccd; }
+/* ── The form, dressed like the tutorial boxes (Ames 2026-11-12: "stylize this box too") ── */
+.nge-fb-body { position: relative; z-index: 1; }
+.nge-fb-frame { position: absolute; width: 14px; height: 14px; pointer-events: none;
+  border-color: rgba(126, 224, 255, 0.85); filter: drop-shadow(0 0 4px rgba(126, 224, 255, 0.6)); }
+.nge-fb-frame--tl { left: -12px; top: -10px; border-left: 2px solid; border-top: 2px solid; }
+.nge-fb-frame--tr { right: -12px; top: -10px; border-right: 2px solid; border-top: 2px solid; }
+.nge-fb-frame--bl { left: -12px; bottom: -10px; border-left: 2px solid; border-bottom: 2px solid; }
+.nge-fb-frame--br { right: -12px; bottom: -10px; border-right: 2px solid; border-bottom: 2px solid; }
+.nge-fb-kicker {
+  font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.7); margin-bottom: 6px;
+}
 .nge-fb-title {
-  font-size: 1.15em;
-  font-weight: 700;
-  color: #eef;
-  margin-bottom: 4px;
+  display: flex; align-items: center; gap: 9px;
+  font: 700 1.2em 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: #f2f8ff; text-shadow: 0 0 12px rgba(126, 224, 255, 0.35);
+  margin-bottom: 6px;
+}
+.nge-fb-title-dot { color: #7ee0ff; font-size: 0.7em; filter: drop-shadow(0 0 5px rgba(126, 224, 255, 0.8)); }
+.nge-fb-kind-label {
+  font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase;
+  color: #9fb4d8; margin-bottom: 7px;
 }
 .nge-fb-hint {
   font-size: 0.82em;
@@ -720,6 +750,27 @@ onBeforeUnmount(() => {
   border-color: rgba(150, 170, 255, 0.6);
   color: #fff;
 }
+/* Bug, Idea, Other: each its own color once chosen. */
+.nge-fb-kind {
+  --kind: 126, 224, 255;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.86em; font-weight: 600; padding: 6px 14px; border-radius: 8px;
+  color: #c9d6ee; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(160, 190, 230, 0.25);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s, transform 0.15s;
+}
+.nge-fb-kind:hover { background: rgba(var(--kind), 0.1); border-color: rgba(var(--kind), 0.5); color: #fff; }
+.nge-fb-kind--bug { --kind: 255, 140, 120; }
+.nge-fb-kind--idea { --kind: 255, 214, 102; }
+.nge-fb-kind--other { --kind: 186, 150, 255; }
+.nge-fb-kind.nge-fb-chip--active {
+  color: #fff; background: rgba(var(--kind), 0.2); border-color: rgba(var(--kind), 0.9);
+  box-shadow: 0 0 12px rgba(var(--kind), 0.35), inset 0 0 8px rgba(var(--kind), 0.15);
+  transform: translateY(-1px);
+}
+.nge-fb-kind-icon { font-size: 1.05em; line-height: 1; }
+/* Submit pressed with no kind chosen: the chips call for one. */
+.nge-fb-chips--need .nge-fb-kind { border-color: rgba(255, 196, 120, 0.85); animation: nge-fb-need 0.9s ease-in-out 2; }
+@keyframes nge-fb-need { 50% { box-shadow: 0 0 12px rgba(255, 196, 120, 0.55); } }
 .nge-fb-note.nge-fb-headline { box-sizing: border-box; min-height: 0; resize: none; padding: 9px 10px; }
 .nge-fb-more {
   display: block; background: none; border: none; padding: 2px 0; margin: 2px 0 8px;
@@ -744,7 +795,7 @@ onBeforeUnmount(() => {
   resize: vertical;
   min-height: 84px;
 }
-.nge-fb-note:focus { outline: none; border-color: rgba(120, 140, 255, 0.5); }
+.nge-fb-note:focus { outline: none; border-color: rgba(126, 224, 255, 0.6); box-shadow: 0 0 0 3px rgba(126, 224, 255, 0.12), 0 0 14px rgba(126, 224, 255, 0.15); }
 .nge-fb-note::placeholder { color: #667; }
 .nge-fb-err { color: #ff9d9d; font-size: 0.78em; margin-top: 6px; }
 .nge-fb-attach {
@@ -841,16 +892,18 @@ onBeforeUnmount(() => {
   margin-top: 14px;
 }
 .nge-fb-submit {
-  padding: 7px 18px;
-  font-size: 0.84em;
-  font-weight: 600;
-  color: #fff;
-  background: rgba(90, 130, 255, 0.9);
-  border: 1px solid rgba(120, 150, 255, 0.7);
+  padding: 8px 22px;
+  font: 700 0.8em 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: #04121f;
+  background: linear-gradient(135deg, #7ee0ff, #8fa8ff);
+  border: 1px solid rgba(160, 230, 255, 0.9);
   border-radius: 7px;
+  box-shadow: 0 0 14px rgba(126, 224, 255, 0.35);
   cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
 }
-.nge-fb-submit:hover:not(:disabled) { background: rgba(110, 150, 255, 1); }
+.nge-fb-submit:hover:not(:disabled) { box-shadow: 0 0 20px rgba(126, 224, 255, 0.6); transform: translateY(-1px); }
 .nge-fb-submit:disabled { opacity: 0.5; cursor: default; }
 .nge-fb-cancel {
   padding: 7px 16px;

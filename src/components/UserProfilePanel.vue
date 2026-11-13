@@ -4048,8 +4048,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-name {
   color: #ffd08a;
 }
-/* Twine: rotate 90° to look like an infinity symbol */
-.nge-badge--twine { transform: rotate(90deg); }
 
 /* ── "View All" tile in badge grid ── */
 .nge-profile-badge--viewall {

@@ -62,6 +62,8 @@ const people = ref<Person[]>([]);
 const followers = ref<Record<string, string[]>>({});
 /** When I last opened each card, so a tag I have seen leaves My Tasks. */
 const seenAt = ref<Record<string, string>>({});
+/** Triage reports closed (Done or Dismiss) in the last 7 days, from todo.list (Ames 2026-11-12). */
+const triageWeek = ref<{ total: number; byPerson: Record<string, number> } | null>(null);
 /** A card's collaborators, beside its owner (functions/todos.js todo.helpers). */
 const helpers = ref<Record<string, string[]>>({});
 const helpersOf = (c: Card) => (helpers.value[c.id] || []).filter(id => id !== c.owner_id);
@@ -106,6 +108,7 @@ async function load(quiet = false) {
     seenAt.value = data.seen || {};
     helpers.value = data.helpers || {};
     sections.value = Array.isArray(data.sections) ? data.sections : null;
+    triageWeek.value = data.triageWeek && typeof data.triageWeek === 'object' ? data.triageWeek : null;
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
@@ -646,15 +649,22 @@ const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
   // A finished card counts for its owner and every collaborator (Ames 2026-11-09).
-  const byPerson = people.value.map(p => ({ id: p.id, name: firstName(p.name), n: doneWeek.filter(c => c.owner_id === p.id || (helpers.value[c.id] || []).includes(p.id)).length }))
-    .filter(x => x.n).sort((a, b) => b.n - a.n);
+  // Triage reports each one closed this week count too (Ames 2026-11-12).
+  const tw = triageWeek.value;
+  const byPerson = people.value.map(p => {
+    const cardsN = doneWeek.filter(c => c.owner_id === p.id || (helpers.value[c.id] || []).includes(p.id)).length;
+    const reports = tw?.byPerson?.[p.id] || 0;
+    return { id: p.id, name: firstName(p.name), n: cardsN + reports, cards: cardsN, reports };
+  }).filter(x => x.n).sort((a, b) => b.n - a.n);
   const month = Date.now() - 30 * 864e5;
   const spans = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= month && c.created_at)
     .map(c => (Date.parse(c.done_at!) - Date.parse(c.created_at)) / 864e5).filter(d => d >= 0);
   return {
     todo: cards.value.filter(c => c.list === 'todo').length,
     doing: cards.value.filter(c => c.list === 'doing').length,
-    doneWeek: doneWeek.length,
+    doneWeek: doneWeek.length + (tw?.total || 0),
+    doneCards: doneWeek.length,
+    doneReports: tw?.total || 0,
     late: cards.value.filter(c => isOverdue(c)).length,
     avgDays: spans.length ? Math.round(spans.reduce((a, b) => a + b, 0) / spans.length * 10) / 10 : null,
     byPerson,
@@ -1081,7 +1091,7 @@ const ROLES: { key: Role; label: string; head: string }[] = [
   { key: 'item', label: 'Checklist', head: 'Checklist items for you' },
 ];
 const ROLE_WORD: Record<Role, string> = { owner: 'Owner', helper: 'With', tagged: 'Tagged', item: 'Checklist' };
-type Task = { key: string; card: Card; text: string; due: string | null; time?: string | null; item: number | null; at?: string; role?: Role; actId?: number };
+type Task = { key: string; card: Card; text: string; due: string | null; time?: string | null; item: number | null; at?: string; role?: Role; actId?: number; read?: boolean };
 const MYTASKS_KEY = 'nge-todo-mytasks-view';
 const taskView = ref<{ role: Role | 'all'; group: 'due' | 'role' }>((() => {
   try { const v = JSON.parse(localStorage.getItem(MYTASKS_KEY) || 'null'); if (v && v.role && v.group) return v; } catch { /* default */ }
@@ -1234,6 +1244,15 @@ async function markActsRead(acts: Act[]) {
     await supabase.from('notification_reads').upsert(fresh.map(a => ({ notification_id: a.id, user_id: me })), { onConflict: 'notification_id,user_id' });
   } catch { /* read here, at least */ }
 }
+async function markActsUnread(acts: Act[]) {
+  const was = acts.filter(a => a.read);
+  if (!was.length) return;
+  for (const a of was) a.read = false;
+  activity.value = [...activity.value];
+  try { await (backend as any).markNotificationsUnread?.(was.map(a => a.id)); } catch { /* unread here, at least */ }
+}
+/** Read or unread, one click (Ames 2026-11-12: "I also want to be able to mark unread"). */
+function flipAct(a: Act) { if (a.read) void markActsUnread([a]); else void markActsRead([a]); }
 const activityShown = computed(() => activity.value.filter(a => activityFilter.value === 'all' || a.kind === activityFilter.value));
 const activityUnread = computed(() => activity.value.filter(a => !a.read).length);
 const activityGroups = computed(() => {
@@ -1254,8 +1273,10 @@ function openAct(a: Act) {
 watch(openId, id => { if (id) void markActsRead(activity.value.filter(a => a.cardId === id)); });
 watch(myId, id => { if (id) void loadActivity(); }, { immediate: true });
 const ACT_ICON: Record<ActKind, string> = { tagged: '🏷', reply: '↩', given: '🤝', finished: '✓', reminder: '⏰' };
-// Replies in My Tasks: unread replies to me, and new comments by others on
-// cards I own or work on since I last opened them (14 days).
+// Tags and replies in My Tasks (Ames 2026-11-12: "I need to see all tagged
+// comments and replies to my comments"): every tag of me and reply to me in
+// the last 45 days, read ones too, unread first; plus new comments by others
+// on cards I own or work on since I last opened them (14 days).
 const myReplies = computed(() => {
   const me = myId.value;
   if (!me) return [] as Task[];
@@ -1264,11 +1285,12 @@ const myReplies = computed(() => {
   const since = new Date(Date.now() - 14 * 864e5).toISOString();
   const noted = new Set<string>();
   for (const a of activity.value) {
-    if (a.read || a.kind !== 'reply' || !a.cardId) continue;
+    if ((a.kind !== 'reply' && a.kind !== 'tagged') || !a.cardId) continue;
     const c = cards.value.find(x => x.id === a.cardId);
-    if (!c || noted.has(c.id)) continue;
-    noted.add(c.id);
-    out.push({ key: 'reply:' + a.id, card: c, text: `${firstName(a.who)} replied${a.quote ? `: "${plainLine(a.quote).slice(0, 80)}"` : ''}`, due: null, item: -3, at: a.at, actId: a.id });
+    if (!c) continue;
+    if (!a.read) noted.add(c.id);
+    const said = a.quote ? `: "${plainLine(a.quote).slice(0, 80)}"` : '';
+    out.push({ key: 'act:' + a.id, card: c, text: `${firstName(a.who)} ${a.kind === 'reply' ? 'replied' : 'tagged you'}${said}`, due: null, item: -3, at: a.at, actId: a.id, read: a.read });
   }
   for (const c of cards.value) {
     if (c.list === 'done' || noted.has(c.id)) continue;
@@ -1277,10 +1299,22 @@ const myReplies = computed(() => {
     const fresh = (c.comments || []).filter(cm => cm.by !== myName && cm.at > seen && cm.at > since);
     if (!fresh.length) continue;
     const last = fresh[fresh.length - 1];
-    out.push({ key: 'new:' + c.id, card: c, text: `${firstName(last.by)}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ''}: "${plainLine(last.text).slice(0, 80)}"`, due: null, item: -3, at: last.at });
+    out.push({ key: 'new:' + c.id, card: c, text: `${firstName(last.by)}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ''}: "${plainLine(last.text).slice(0, 80)}"`, due: null, item: -3, at: last.at, read: false });
   }
-  return out.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  return out.sort((a, b) => Number(!!a.read) - Number(!!b.read) || (b.at || '').localeCompare(a.at || ''));
 });
+const repliesUnread = computed(() => myReplies.value.filter(t => !t.read).length);
+// Only the unread, until "Load read" pulls in the newest read ones, 10 at a
+// time (Ames 2026-11-12: "not on by default").
+const REPLIES_READ_STEP = 10;
+const repliesRead = ref(0);
+const repliesReadTotal = computed(() => myReplies.value.length - repliesUnread.value);
+const repliesShown = computed(() => myReplies.value.slice(0, repliesUnread.value + repliesRead.value));
+/** The read or unread toggle on a row in My Tasks. */
+function flipTask(t: Task) {
+  if (t.actId) { const a = activity.value.find(x => x.id === t.actId); if (a) flipAct(a); return; }
+  markSeen(t.card); // a new comment row: read means seen
+}
 // Reactions show in My Tasks but are not tasks, so they do not count (Ames 2026-11-09).
 const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.filter(t => t.item !== -2).length, 0));
 function openTask(t: Task) {
@@ -2253,13 +2287,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <div v-else-if="!activityGroups.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing here in the last 45 days.</div>
       <section v-for="g in activityGroups" :key="g.head" class="nge-todo-mytasks-group">
         <h4>{{ g.head }} · {{ g.rows.length }}</h4>
-        <button v-for="a in g.rows" :key="a.id" type="button" class="nge-todo-mytask nge-todo-act" :class="{ 'nge-todo-act--new': !a.read }" @click="openAct(a)">
-          <span class="nge-todo-act-dot" aria-hidden="true"></span>
-          <span class="nge-todo-mytask-kind">{{ ACT_ICON[a.kind] }}</span>
-          <span class="nge-todo-mytask-text"><b v-if="a.who">{{ a.who }}</b> {{ a.what }} <small>on {{ a.cardTitle }}</small>
-            <span v-if="a.quote" class="nge-todo-act-quote">"{{ plainLine(a.quote) }}"</span></span>
-          <span class="nge-todo-mytask-due">{{ ago(a.at) }}</span>
-        </button>
+        <div v-for="a in g.rows" :key="a.id" class="nge-todo-actrow">
+          <button type="button" class="nge-todo-mytask nge-todo-act" :class="{ 'nge-todo-act--new': !a.read }" @click="openAct(a)">
+            <span class="nge-todo-act-dot" aria-hidden="true"></span>
+            <span class="nge-todo-mytask-kind">{{ ACT_ICON[a.kind] }}</span>
+            <span class="nge-todo-mytask-text"><b v-if="a.who">{{ a.who }}</b> {{ a.what }} <small>on {{ a.cardTitle }}</small>
+              <span v-if="a.quote" class="nge-todo-act-quote">"{{ plainLine(a.quote) }}"</span></span>
+            <span class="nge-todo-mytask-due">{{ ago(a.at) }}</span>
+          </button>
+          <button type="button" class="nge-todo-actflip" :title="a.read ? 'Mark unread' : 'Mark read'" :aria-label="a.read ? 'Mark unread' : 'Mark read'" @click="flipAct(a)">{{ a.read ? 'Mark unread' : 'Mark read' }}</button>
+        </div>
       </section>
     </div>
     <div v-if="myTasksOpen && !openCard" class="nge-todo-mytasks-panel">
@@ -2276,12 +2313,22 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </div>
       </div>
       <section v-if="myReplies.length && (taskView.role === 'all' || taskView.role === 'tagged')" class="nge-todo-mytasks-group">
-        <h4 class="nge-todo-mytasks-replies">Replies and new comments · {{ myReplies.length }}</h4>
-        <button v-for="t in myReplies" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
-          <span class="nge-todo-mytask-kind">↩</span>
-          <span class="nge-todo-mytask-text">{{ t.text }}<small> on {{ t.card.title }}</small></span>
-          <span class="nge-todo-mytask-due">{{ ago(t.at || '') }}</span>
-        </button>
+        <h4 class="nge-todo-mytasks-replies">Tags and replies<template v-if="repliesUnread"> · {{ repliesUnread }} new</template></h4>
+        <div v-for="t in repliesShown" :key="t.key" class="nge-todo-actrow">
+          <button type="button" class="nge-todo-mytask nge-todo-act" :class="{ 'nge-todo-act--new': !t.read }" @click="openTask(t)">
+            <span class="nge-todo-act-dot" aria-hidden="true"></span>
+            <span class="nge-todo-mytask-kind">{{ t.key.startsWith('new:') ? '💬' : t.text.includes(' tagged you') ? '🏷' : '↩' }}</span>
+            <span class="nge-todo-mytask-text">{{ t.text }}<small> on {{ t.card.title }}</small></span>
+            <span class="nge-todo-mytask-due">{{ ago(t.at || '') }}</span>
+          </button>
+          <button v-if="t.actId || !t.read" type="button" class="nge-todo-actflip" :title="t.read ? 'Mark unread' : 'Mark read'" :aria-label="t.read ? 'Mark unread' : 'Mark read'" @click="flipTask(t)">{{ t.read ? 'Mark unread' : 'Mark read' }}</button>
+        </div>
+        <div v-if="!repliesUnread && !repliesRead" class="nge-todo-replies-none">Nothing new.</div>
+        <div v-if="repliesReadTotal" class="nge-todo-replies-more">
+          <button v-if="repliesShown.length < myReplies.length" type="button" class="nge-todo-mini" @click="repliesRead += REPLIES_READ_STEP">
+            {{ repliesRead ? 'Load more read' : 'Load read' }} ({{ repliesReadTotal - repliesRead > 0 ? Math.min(REPLIES_READ_STEP, repliesReadTotal - repliesRead) : 0 }})</button>
+          <button v-if="repliesRead" type="button" class="nge-todo-mini" @click="repliesRead = 0">Hide read</button>
+        </div>
       </section>
       <div v-if="!myTasks.length && !myReplies.length" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
       <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
@@ -2300,11 +2347,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <img :src="imgNurroHome" alt="" class="nge-todo-nurro" />
       <div class="nge-todo-stat nge-todo-stat--todo"><b>{{ stats.todo }}</b><span>to do</span></div>
       <div class="nge-todo-stat nge-todo-stat--doing"><b>{{ stats.doing }}</b><span>doing</span></div>
-      <div class="nge-todo-stat nge-todo-stat--done"><b>{{ stats.doneWeek }}</b><span>done this week</span></div>
+      <div class="nge-todo-stat nge-todo-stat--done" :title="`${stats.doneCards} cards and ${stats.doneReports} triage reports (Done or Dismissed) in the last 7 days`"><b>{{ stats.doneWeek }}</b><span>done this week</span></div>
       <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
       <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
       <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
-        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.cards} cards, ${p.reports} triage reports`">{{ p.name }} <b>{{ p.n }}</b></span>
         <span class="nge-todo-stat-word">done this week</span>
       </div>
     </div>
@@ -3183,6 +3230,17 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-act:not(.nge-todo-act--new) { opacity: 0.78; }
 .nge-todo-act-quote { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .nge-todo-mytasks-replies { color: var(--accent); }
+/* Mark read or unread beside a row (Ames 2026-11-12). */
+.nge-todo-actrow { position: relative; margin: 0 0 4px; }
+.nge-todo-actrow > .nge-todo-mytask { margin: 0; }
+/* Over the time, on hover, so every row keeps the full width. */
+.nge-todo-actflip { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 3px 9px; white-space: nowrap; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--card); color: var(--accent); cursor: pointer; font: inherit; font-size: 11.5px; opacity: 0; pointer-events: none; transition: opacity 0.12s; }
+.nge-todo-actrow:hover .nge-todo-actflip, .nge-todo-actflip:focus-visible { opacity: 1; pointer-events: auto; }
+.nge-todo-actflip:hover { border-color: var(--accent); }
+@media (hover: none) { .nge-todo-actflip { position: static; transform: none; opacity: 1; pointer-events: auto; margin: 2px 0 0 auto; display: block; } }
+.nge-todo-replies-more { margin: 2px 0 0; display: flex; gap: 6px; }
+.nge-todo-replies-none { color: var(--dim); font-size: 13px; margin: 0 0 4px; }
 /* Due time and organize by date (Ames 2026-11-12). */
 .nge-todo-time { width: auto; min-width: 104px; }
 .nge-todo-dategroup .nge-todo-section-name { cursor: default; }

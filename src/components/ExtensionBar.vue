@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
+import { play, playLabel, startPlay } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -25,6 +26,7 @@ import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
+import PlayButton from "components/PlayButton.vue";
 import AssistantDock from "components/AssistantDock.vue";
 import { runSpotlight } from "../assistant/spotlight";
 import { showDefaultCell } from "../widgets/widget_utils";
@@ -852,6 +854,9 @@ function handleAssistantAction(e: Event) {
 onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
+// Everyone signed in counts as online, chat open or not: new players on the
+// Starship tour were missing from "N online" (Ames 2026-11-12).
+watch(() => backendStore.userId, (id) => { if (id) chatStore.startPresence(); }, { immediate: true });
 // A reviewer who refreshed mid review goes back into review mode (Celia #195).
 watch(() => backendStore.isAdmin, (admin) => { if (admin) void resumeReview(); }, { immediate: true });
 // Signed in: give the page a moment to settle, then greet with the leaderboard.
@@ -991,8 +996,11 @@ const toolbarActions: Record<string, ToolbarAction> = {
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : backendStore.unreadStaffNotificationCount),
-                 adminBadge: () => backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : 0 },
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadStaffNotificationCount,
+                 // The two counts match the bell's two tabs, Pyr and Admin: triage and hunt
+                 // notes are in the Admin tab, so they count there (Ames 2026-11-12: the bell
+                 // said 12 and 19 while the tabs said Pyr 5, Admin 26).
+                 adminBadge: () => backendStore.showAdminUi ? backendStore.unreadStaffNotificationCount : 0 },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
@@ -1228,7 +1236,7 @@ watch([barAutoHide, barShown], ([on, shown]) => {
 // help requests, chat and the Admin tab are not about you. A click on the dot
 // opens the bell. With no 3D view on screen it sits in the window's top right corner.
 const tuckedNotifCount = computed(() => barTucked.value
-  ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount) : 0);
+  ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadStaffNotificationCount) : 0);
 let notifDot: HTMLButtonElement | null = null;
 let notifDotTimer: ReturnType<typeof setInterval> | null = null;
 function placeNotifDot() {
@@ -1324,6 +1332,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <hunt-opening />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
+  <play-button />
   <!-- The Ask dock is now the single command surface: it searches the same
        catalog CommandPalette builds (passed in headless) so navigation runs
        instantly, and only falls through to the model for real questions. -->
@@ -1361,6 +1370,13 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
       <span v-if="currentDatasetIcon" class="nge-dataset-species">{{ currentDatasetIcon }}</span>
       <span v-else class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
       <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
+    </button>
+    <!-- Play (util/play.ts): what is being played, a click to change or stop (Ames 2026-11-10). -->
+    <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="startPlay(play.on)"
+            :title="'Playing ' + playLabel() + '. Click to go back to your cell.'">
+      <!-- The play icon says "Playing" (Ames 2026-11-12: less space). -->
+      <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
+      <span>{{ playLabel() }}</span>
     </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
@@ -1572,11 +1588,18 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
             <span class="nge-menu-num">3</span><span>Cut</span>
           </div>
         </li>
-        <!-- Advanced Interface after Merge and Cut, then the Merger Sandbox
-             (Ames 2026-10-18: the ideal order). -->
+        <!-- Annotations (Ames 2026-10-23, player report 220): layers, color,
+             stepping, more than one layer, the tools and Size, Find Path. -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 15; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">4</span><span>Annotations</span>
+          </div>
+        </li>
+        <!-- Advanced Interface after Merge, Cut and Annotations (Ames
+             2026-11-12: Annotations straight after Cut). -->
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">4</span><span>Advanced Interface</span>
+            <span class="nge-menu-num">5</span><span>Advanced Interface</span>
           </div>
         </li>
         <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
@@ -1584,7 +1607,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
              2026-10-23), the next step once the tutorials are done. -->
         <li>
           <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">5</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+            <span class="nge-menu-num">6</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
           </div>
         </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
@@ -1592,7 +1615,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '7' }}</span>
             <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
@@ -1648,6 +1671,13 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
           <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
           </div>
+        </li>
+        <!-- Terms of Use and Privacy Notice, interim version on connectome.quest
+             while Princeton reviews it (Ames 2026-11-10). -->
+        <li>
+          <a class="logoutButton button nge-menu-item" target="_blank" rel="noopener" href="https://connectome.quest/terms/" @click="closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">📄</span><span>Terms and Privacy ↗</span>
+          </a>
         </li>
         <!-- Log out, last in the menu (Ames 2026-11-09). -->
         <li v-if="login.sessions.length > 0" class="nge-menu-logout">
@@ -2037,6 +2067,19 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .nge-dataset-label { padding-right: 2px; }
+/* Play status in the top bar: the Play button's teal green, a gentle pulse on the triangle. */
+#extensionBar .nge-play-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 14px; margin: 0 10px 0 0;
+  border-radius: 14px; border: 1px solid rgba(62, 236, 190, 0.6); background: rgba(62, 236, 190, 0.1);
+  color: #dcfff4; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 0 10px rgba(62, 236, 190, 0.25); transition: background 0.15s, box-shadow 0.15s;
+}
+#extensionBar .nge-play-chip:hover { background: rgba(62, 236, 190, 0.2); box-shadow: 0 0 16px rgba(62, 236, 190, 0.45); }
+#extensionBar .nge-play-chip svg { color: #3eecbe; animation: nge-play-chip-pulse 1.6s ease-in-out infinite; }
+#extensionBar .nge-play-chip--quests { border-color: rgba(255, 211, 110, 0.6); background: rgba(255, 211, 110, 0.1); box-shadow: 0 0 10px rgba(255, 211, 110, 0.22); }
+#extensionBar .nge-play-chip--quests svg { color: #ffd36e; }
+@keyframes nge-play-chip-pulse { 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { #extensionBar .nge-play-chip svg { animation: none; } }
 .nge-dataset-species { font-size: 14px; line-height: 1; }
 #extensionBar .nge-dataset-btn:hover {
   opacity: 1;

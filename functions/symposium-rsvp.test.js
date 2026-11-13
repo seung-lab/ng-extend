@@ -42,3 +42,12 @@ test('long answers are cut, control characters dropped', () => {
   assert.equal(p.row[3].length, 40);
   assert.ok(p.row[4].length <= 2000 && !p.row[4].includes('\u0000'));
 });
+
+test('an RSVP names its event; none is the MEC symposium', () => {
+  const mec = planRsvp({ name: 'A', email: 'a@b.co' }, now);
+  assert.equal(mec.event, 'mec'); assert.equal(mec.tab, 'RSVPs'); assert.equal(mec.collection, 'symposium_rsvps');
+  const ret = planRsvp({ event: 'retina', name: 'A', email: 'a@b.co' }, now);
+  assert.equal(ret.tab, 'Retina RSVPs'); assert.equal(ret.collection, 'retina_symposium_rsvps');
+  assert.throws(() => planRsvp({ event: 'toString', name: 'A', email: 'a@b.co' }, now), /did not go through/);
+  assert.throws(() => planRsvp({ event: 'other', name: 'A', email: 'a@b.co' }, now), /did not go through/);
+});
