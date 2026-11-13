@@ -352,6 +352,10 @@ function followTarget(element: Element | null, step: Step) {
     }, 250);
 }
 onUnmounted(() => window.clearInterval(followTimer));
+// The box checks it is on screen twice a second as well: after Back it could
+// open off the left edge (Ames 2026-11-12). clampChip only writes on a change.
+const clampTimer = window.setInterval(() => { if (!dragging.value) clampChip(); }, 500);
+onUnmounted(() => window.clearInterval(clampTimer));
 
 /** Keep the chip on screen. Additive, so it can run again after the chip
  *  grows (a practice status box or countdown appended under the text used
