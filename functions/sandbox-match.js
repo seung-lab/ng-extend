@@ -46,6 +46,17 @@ const SAMPLES = 5;
 const FOUND_SHARE = 0.8;
 const ROOTS_BATCH = 50000;
 const SV = /^\d{1,20}$/;
+/** Where a Sandbox supervoxel is, from its id (pinky_nf_v2's graph info: 8 bits
+ *  of layer, then 10 bits each of chunk x, y, z; chunks of 512 x 512 x 128
+ *  voxels at 8 x 8 x 40 nm from voxel 18096, 15279, 21). The middle of its
+ *  chunk, in nm: within about 2 um across and 2.5 um deep of the supervoxel. */
+const CHUNK = {bits: 10, size: [512, 512, 128], offset: [18096, 15279, 21], nm: [8, 8, 40]};
+function svPointNm(sv) {
+  const id = BigInt(sv);
+  const at = i => Number((id >> BigInt(64 - 8 - CHUNK.bits * (i + 1))) & BigInt((1 << CHUNK.bits) - 1));
+  return [0, 1, 2].map(i => (at(i) * CHUNK.size[i] + CHUNK.size[i] / 2 + CHUNK.offset[i]) * CHUNK.nm[i]);
+}
+const REVIEW_MAX = 30;
 
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 
@@ -311,13 +322,45 @@ async function check(io, {taskId, me, isAdmin}) {
   return result;
 }
 
+/** After Complete (Ames 2026-11-12: "show me what I missed"): the check, plus
+ *  every piece still wrong. A missed piece is the Sandbox segment it is in now
+ *  (drawn on its own); a merger still attached is a point near it (it is part
+ *  of the player's cell, so it has no segment of its own). Biggest first. */
+async function review(io, {taskId, me, isAdmin}) {
+  const result = await check(io, {taskId, me, isAdmin});
+  if (!result.scorable) return result;
+  const key = await keyFor(io, await loadTask(io, Number(taskId)));
+  const cell = result.root;
+  const samples = [...new Set([...key.missing_pieces, ...key.extra_pieces].flatMap(p => p.samples))];
+  const got = samples.length ? await cave(io).roots(SANDBOX, samples) : [];
+  const rootOf = Object.fromEntries(samples.map((sv, i) => [sv, got[i]]));
+  const missed = [];
+  for (const p of key.missing_pieces) {
+    if (piecesLeft([p], rootOf, cell, 'missing') === 0) continue;
+    const outside = p.samples.filter(sv => rootOf[sv] !== cell && rootOf[sv] !== '0');
+    if (!outside.length) continue;
+    const count = {};
+    for (const sv of outside) count[rootOf[sv]] = (count[rootOf[sv]] || 0) + 1;
+    const root = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+    missed.push({root, size: p.size, pointNm: svPointNm(outside.find(sv => rootOf[sv] === root))});
+  }
+  const mergers = [];
+  for (const p of key.extra_pieces) {
+    if (piecesLeft([p], rootOf, cell, 'extra') === 0) continue;
+    const inside = p.samples.find(sv => rootOf[sv] === cell);
+    if (inside) mergers.push({size: p.size, pointNm: svPointNm(inside)});
+  }
+  return {...result, missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
+}
+
 async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.check') return check(io, {taskId: args && args.taskId, me, isAdmin});
+  if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
   fail(400, `unknown action ${action}`);
 }
 
 module.exports = {
-  handle, check, buildKey, keyFor,
+  handle, check, review, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, matchPercent, partPercent, groupPieces, piecesLeft, cave,
   _reset() { truthSets.clear(); lastResult.clear(); building.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,

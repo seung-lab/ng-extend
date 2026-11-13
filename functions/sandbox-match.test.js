@@ -164,6 +164,32 @@ test('a check builds the key once, then scores each edit', async () => {
   assert.equal(w.db.records[2].p_user, ME.id);
 });
 
+test('review: the missed pieces as their own segments, the mergers still attached as points', async () => {
+  M._reset();
+  const w = world();
+  const r = await M.review(w.io, {taskId: 1, me: ME});
+  assert.equal(r.merge, 0);
+  assert.deepEqual(r.missed.map(p => [p.root, p.size]), [[w.ID.A, 60]]);
+  assert.equal(r.mergers.length, 1);
+  assert.equal(r.mergers[0].size, 60);
+  assert.equal(r.mergers[0].pointNm.length, 3);
+  // Merged A and cut the neighbor off: nothing left to show.
+  w.sandbox.edit({S2: range(1, 160), N2: range(300, 359), B: range(161, 200)});
+  const done = await M.review(w.io, {taskId: 1, me: ME});
+  assert.deepEqual([done.missed, done.mergers], [[], []]);
+  // Someone else's cell is not reviewed.
+  await assert.rejects(M.review(w.io, {taskId: 3, me: ME}), {status: 403});
+  // Through the handler too.
+  const viaHandle = await M.handle({action: 'match.review', args: {taskId: 1}, me: ME, io: w.io});
+  assert.deepEqual(viaHandle.missed, []);
+});
+
+test('a supervoxel id gives a point near it: the soma of Sandbox task 16753', () => {
+  // Its claim point is 79379, 40919, 1662 in 4 x 4 x 40 nm voxels.
+  const [x, y, z] = M.svPointNm('75013769294282897');
+  assert.ok(Math.abs(x / 4 - 79379) < 600 && Math.abs(y / 4 - 40919) < 600 && Math.abs(z / 40 - 1662) < 70, [x / 4, y / 4, z / 40].join(','));
+});
+
 test('the same cell checked twice reads its supervoxels once', async () => {
   M._reset();
   const w = world();

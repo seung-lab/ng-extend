@@ -49,7 +49,7 @@ export type SecureAction =
   | 'notification.self' | 'notification.helpReply' | 'help.dropReminder' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin'
   | 'hunt.current' | 'hunt.submit' | 'hunt.list' | 'hunt.read' | 'hunt.save' | 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.award' | 'hunt.rescore'
   | 'hunt.notes' | 'hunt.test' | 'hunt.test_drop' | 'hunt.drop' | 'hunt.start' | 'hunt.duplicate'
-  | 'match.check';
+  | 'match.check' | 'match.review';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */
 export async function secureWrite<T = any>(action: SecureAction, args: Record<string, any> = {}): Promise<T> {

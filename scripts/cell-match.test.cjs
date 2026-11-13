@@ -56,10 +56,11 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   // The match function: answers as the test says, and counts the asks.
   const asks = [];
   let answer = ANSWERS.first;
+  let reviewAnswer = null;
   await context.route(/ewSandboxMatch/, r => {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     asks.push({ action: input.action, taskId: input.taskId, hasToken: !!input.token });
-    return r.fulfill(json({ ok: true, data: answer }));
+    return r.fulfill(json({ ok: true, data: input.action === 'match.review' ? reviewAnswer : answer }));
   });
   await context.route(/supabase\.co/, r => {
     const u = r.request().url();
@@ -70,8 +71,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   context.on('page', p => { if (p !== page) p.close().catch(() => {}); });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
-  const cardText = () => page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? c.innerText.replace(/\s+/g, ' ').trim() : null; });
-  const waitText = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.getElementById('nge-cell-match'); return !!c && new RegExp(src).test(c.innerText.replace(/\s+/g, ' ')); }, re.source, { timeout: ms }).then(() => true, () => false);
+  const cardText = () => page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? c.innerText.replace(/\s+/g, ' ').trim().toLowerCase() : null; });
+  const waitText = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.getElementById('nge-cell-match'); return !!c && new RegExp(src, 'i').test(c.innerText.replace(/\s+/g, ' ')); }, re.source, { timeout: ms }).then(() => true, () => false);
   const edit = (roots) => page.evaluate((r) => window.dispatchEvent(new CustomEvent('nge-graph-edit', { detail: { kind: 'merge', roots: r } })), roots);
   try {
     await page.goto(BASE + '#!' + encodeURIComponent(JSON.stringify(STATE)), { waitUntil: 'load' });
@@ -90,12 +91,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       if (pb && Array.isArray(pb.tasks) && !pb.tasks.some(t => t.id === claim.id)) pb.tasks.push(claim);
     }, CLAIM);
 
-    const shown = await waitText(/Cell match Merge 0%/, 30000);
+    const shown = await waitText(/Missing 0%/, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.length >= 1 && asks[0].action === 'match.check' && asks[0].taskId === 16762 && asks[0].hasToken, asks);
-    check('a Merge row and a Cut row, each with its pieces', /Merge 0% 0 of 28 pieces Cut 0% 0 of 3 pieces/.test(await cardText() || ''), await cardText());
+    check('a Missing row and a Mergers row, each on its own line with its pieces', /missing 0% 0 of 28 pieces found mergers 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    check('small, at the top left', box.x < 40 && box.y < 160 && box.w < 340 && box.h < 110, box);
+    check('small, at the top left', box.x < 40 && box.y < 160 && box.w < 300 && box.h < 170, box);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -135,28 +136,28 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(300);
-    check('an edit dims the card to Checking at once', /Checking/.test(await cardText() || ''), await cardText());
+    check('an edit dims the card to Checking at once', /checking/.test(await cardText() || ''), await cardText());
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(1200);
     check('no ask while the edits keep coming', asks.length === before, asks.length - before);
-    const updated = await waitText(/Merge 39%/, 10000);
+    const updated = await waitText(/39%/, 10000);
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
-    check('the change shows beside the row that moved, and only there', /Merge 39% \+39 11 of 28 pieces Cut 0% 0 of 3/.test(await cardText() || ''), await cardText());
+    check('the change shows beside the row that moved, and only there', /missing \+39 39% 11 of 28 pieces found mergers 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     await shot('cell-match-after-merge.png');
 
     // A worse edit: the number goes down, and says so.
     answer = ANSWERS.worse;
     await edit([ANSWERS.worse.root]);
-    const worse = await waitText(/Merge 36%/, 10000);
-    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /Merge 36% −3 10 of 28 pieces Cut 67% \+67 2 of 3 pieces/.test(await cardText() || ''), await cardText());
+    const worse = await waitText(/36%/, 10000);
+    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /missing −3 36% 10 of 28 pieces found mergers \+67 67% 2 of 3 cut off/.test(await cardText() || ''), await cardText());
     const copy = (await cardText() || '').replace(/−3/, '');
     check('no dashes in the card', !/[\u2013\u2014]|\s-\s/.test(copy), copy);
 
     // A cell with nothing to cut says so.
     answer = ANSWERS.clean;
     await edit([ANSWERS.clean.root]);
-    check('nothing to cut', await waitText(/Merge 50%/, 10000) && /Cut nothing to cut/.test(await cardText() || ''), await cardText());
+    check('none to cut', await waitText(/50%/, 10000) && /mergers none to cut/.test(await cardText() || ''), await cardText());
 
     // The function before Merge and Cut (one number only): no card rather than a wrong one.
     answer = { taskId: 16762, scorable: true, root: '648518346351005000', match: 12, missing: { left: 9, total: 20 }, extra: { left: 0, total: 0 } };
@@ -165,7 +166,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('an older function answer shows no card', (await cardText()) === null, await cardText());
     answer = ANSWERS.clean;
     await edit([ANSWERS.clean.root]);
-    await waitText(/Merge 50%/, 10000);
+    await waitText(/50%/, 10000);
 
     // The Proofreading Test's line card in the same corner: the card moves below it.
     await page.evaluate(() => { const q = document.createElement('div'); q.className = 'nge-tqc'; q.style.cssText = 'position:fixed;top:64px;left:12px;width:300px;height:80px'; document.body.appendChild(q); });
@@ -183,7 +184,51 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     // Back to a score, then the cell leaves the screen: the card goes too.
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
-    await waitText(/Merge 39%/, 10000);
+    await waitText(/39%/, 10000);
+    // Complete and Review: the review takes the HUD, draws what was missed and
+    // waits for the player.
+    reviewAnswer = { ...ANSWERS.merged, merge: 84, cut: 67, missing: { left: 2, total: 28 }, extra: { left: 1, total: 3 },
+      missed: [{ root: '648518346351777001', size: 4214, pointNm: [85000 * 4, 51000 * 4, 1500 * 40] }, { root: '648518346351777002', size: 622, pointNm: [84154 * 4, 50704 * 4, 1430 * 40] }],
+      mergers: [{ size: 322, pointNm: [84254 * 4, 50804 * 4, 1440 * 40] }] };
+    const label = await page.evaluate(() => window.__ngeCellMatch.hasReview(16762));
+    check('the cell offers Complete and Review', label === true, label);
+    const choice1 = page.evaluate(() => window.__ngeCellMatch.showReview(16762, window.__ngeCellMatch.startReview(16762), true));
+    const reviewed = await waitText(/review final/, 10000);
+    check('the review shows the final numbers', reviewed && /missing 84%/.test(await cardText() || '') && /mergers 67%/.test(await cardText() || ''), await cardText());
+    check('what was missed, and the mergers left', /missed 2 pieces show 1 of 2 mergers 1 attached show/.test(await cardText() || ''), await cardText());
+    await page.waitForTimeout(3000);
+    const layers = await page.evaluate(() => {
+      const ls = window.viewer.layerManager.managedLayers;
+      const missed = ls.find(l => l.name === 'Missed pieces'), pins = ls.find(l => l.name === 'Mergers left');
+      let n = -1; try { n = pins.layer.localAnnotations.toJSON().length; } catch (e) {}
+      return { missed: missed ? [...missed.layer.displayState.segmentationGroupState.value.visibleSegments].map(String) : null, pins: n };
+    });
+    check('the missed pieces are drawn, the mergers pinned', layers.missed && layers.missed.length === 2 && layers.missed.includes('648518346351777001') && layers.pins === 1, layers);
+    const pos0 = await page.evaluate(() => Array.from(window.viewer.navigationState.position.value).map(Math.round));
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-btn').click());
+    await page.waitForTimeout(500);
+    const pos1 = await page.evaluate(() => Array.from(window.viewer.navigationState.position.value).map(Math.round));
+    check('Show flies to the first missed piece', pos0[0] !== 85000 && pos1[0] === 85000 && pos1[1] === 51000 && pos1[2] === 1500, { pos0, pos1 });
+    await shot('cell-match-review.png');
+    check('no dashes in the review', !/[–—]|\s-\s/.test(await cardText() || ''), await cardText());
+    await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-btn')].find(b => /next cell/i.test(b.textContent)).click());
+    const c1 = await choice1;
+    const gone = await page.evaluate(() => !window.viewer.layerManager.managedLayers.some(l => l.name === 'Missed pieces' || l.name === 'Mergers left'));
+    check('Next cell: on to the next, the review and its layers gone', c1 === 'next' && gone && (await cardText()) === null, { c1, gone, text: await cardText() });
+    // A clean cell says so; Close stays with it.
+    reviewAnswer = { ...ANSWERS.merged, merge: 100, cut: 100, missing: { left: 0, total: 28 }, extra: { left: 0, total: 3 }, missed: [], mergers: [] };
+    const choice2 = page.evaluate(() => window.__ngeCellMatch.showReview(16762, window.__ngeCellMatch.startReview(16762), false));
+    check('a clean cell says so', await waitText(/nothing missed\. clean cell\./, 10000), await cardText());
+    await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-btn')].find(b => /close/i.test(b.textContent)).click());
+    check('Close stays with the cell', (await choice2) === 'stay', null);
+    // No true cell: the review steps aside and Complete goes on.
+    reviewAnswer = ANSWERS.none;
+    const c3 = await page.evaluate(() => window.__ngeCellMatch.showReview(16762, window.__ngeCellMatch.startReview(16762), true));
+    check('no review without a true cell', c3 === 'next', c3);
+    answer = ANSWERS.merged;
+    await edit([ANSWERS.merged.root]);
+    await waitText(/39%/, 10000);
+
     await page.evaluate(() => {
       const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState);
       ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();

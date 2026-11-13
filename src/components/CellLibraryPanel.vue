@@ -1452,6 +1452,10 @@ async function submitComplete(cell: CellRow) {
       document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segId: c.check.root } }));
     }
     const claimsBefore = myOpenClaims.value;
+    // Sandbox cells the Cell match HUD scores (Ames 2026-11-12): the review is
+    // asked for now, while the cell is still the player's open claim, and
+    // shown once it is complete, before any next cell.
+    const review = cell.taskId && hasReview(cell.taskId) ? startReview(cell.taskId) : null;
     await completeCell(cell, {
       finalSegId: c.check.root,
       coords: c.check.position.join(', '),
@@ -1462,6 +1466,7 @@ async function submitComplete(cell: CellRow) {
       cellType: type || undefined,
     });
     completing.value = null;
+    if (review && cell.taskId && await showReview(cell.taskId, review, !!play.on) === 'stay') return;
     // Straight on to your next claim. With none left, the next cell is
     // claimed and you are taken there: the cell you land on is yours (Ames
     // 2026-11-09: "it should just take you there").
@@ -1548,6 +1553,7 @@ import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import { play, takePlayEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import { hasReview, startReview, showReview } from '../sandbox_match';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 async function triggerCellCelebration(segId?: string) {
@@ -4481,7 +4487,7 @@ const panelStyle = computed(() => ({
                 class="nge-cl-btn nge-cl-btn--complete"
                 :class="{ 'nge-cl-btn--complete-open': completing?.key === cellKey(cell) }"
                 @click="completing?.key === cellKey(cell) ? (completing = null) : openComplete(cell)"
-              >Complete</button>
+              >{{ hasReview(cell.taskId) ? 'Complete and Review' : 'Complete' }}</button>
             </div>
           </div>
 
@@ -4579,7 +4585,7 @@ const panelStyle = computed(() => ({
                 :disabled="!!completeBlocked(cell) && !statusMissing(cell)"
                 :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
-              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : play.on ? 'Complete and next' : 'Mark complete' }}</button>
+              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : hasReview(cell.taskId) ? 'Complete and Review' : play.on ? 'Complete and next' : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
             <!-- Why Mark complete can't be pressed yet, said plainly (a player
