@@ -30,6 +30,39 @@ const note = ref('');
 // Both optional (Ames 2026-10-26: "eyewire username, Eyewire rank").
 const ewName = ref('');
 const ewRank = ref('');
+// The name other players see (Ames 2026-11-13: "invite players to choose a
+// username at the point of requesting beta access"). A sign-in with no name
+// showed the email on the leaderboard (#512). Saved to the account with the
+// request.
+const pyrName = ref('');
+const pyrNameNote = ref('');
+const pyrNameBad = ref(false);
+let pyrNameTimer: ReturnType<typeof setTimeout> | null = null;
+function onPyrName() {
+  error.value = '';
+  pyrNameBad.value = false;
+  pyrNameNote.value = '';
+  if (pyrNameTimer) clearTimeout(pyrNameTimer);
+  const v = pyrName.value.trim();
+  if (!v || v === backend.username) return;
+  const invalid = backend.validateUsername(v);
+  if (invalid) { pyrNameNote.value = invalid; pyrNameBad.value = true; return; }
+  pyrNameTimer = setTimeout(async () => {
+    const free = await backend.isUsernameAvailable(v);
+    if (pyrName.value.trim() !== v) return;
+    pyrNameBad.value = !free;
+    pyrNameNote.value = free ? 'Available' : 'That username is taken.';
+  }, 400);
+}
+async function fillPyrName() {
+  if (pyrName.value) return;
+  if (backend.username) { pyrName.value = backend.username; return; }
+  // A suggestion made from a real name. With no name on the sign-in it would
+  // be made from the email, so the box starts empty instead.
+  const front = (login.sessions[0]?.email || '').split('@')[0];
+  if (!backend.userName || backend.userName === front) return;
+  try { const s = await backend.suggestUsername(); if (!pyrName.value) pyrName.value = s; } catch { /* left empty */ }
+}
 // Optional (Ames 2026-11-06: "how did you find us?").
 const foundUs = ref('');
 const sending = ref(false);
@@ -47,6 +80,7 @@ async function check(userId: string) {
       requested.value = !!s.requested;
       if (!name.value) name.value = backend.userName || login.sessions[0]?.name || '';
       if (!email.value) email.value = login.sessions[0]?.email || '';
+      void fillPyrName();
       show.value = true;
       betaGate.value = 'out';
       setTimeout(() => { if (panelEl.value) runPanelTrace(panelEl.value); }, 80);
@@ -70,6 +104,12 @@ function problem(): string {
   if (!NAME_OK.test(n)) return 'Your name can have letters, spaces, periods, apostrophes and hyphens only.';
   if (!e) return 'Please add your email.';
   if (!EMAIL_OK.test(e)) return 'That email does not look right.';
+  const u = pyrName.value.trim();
+  if (!u) return 'Please choose a username.';
+  if (u !== backend.username) {
+    const invalid = backend.validateUsername(u);
+    if (invalid) return invalid;
+  }
   if (ewName.value.trim() && !EW_NAME_OK.test(ewName.value.trim())) return 'An EyeWire username has letters, numbers, dots, dashes and underscores only.';
   if (ewRank.value.trim() && !EW_RANK_OK.test(ewRank.value.trim())) return 'An EyeWire rank has letters, numbers and spaces only.';
   return '';
@@ -80,6 +120,12 @@ async function request() {
   if (error.value) return;
   sending.value = true;
   try {
+    // The username first: a taken one stops here, before the request is sent.
+    const u = pyrName.value.trim();
+    if (u !== backend.username) {
+      try { await backend.saveUsername(u); }
+      catch (e: any) { pyrNameBad.value = true; pyrNameNote.value = e?.message || 'That username could not be saved.'; throw e; }
+    }
     const r = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.beta', {
       name: name.value.trim(), email: email.value.trim(), note: note.value.trim() || undefined,
       eyewireUsername: ewName.value.trim() || undefined, eyewireRank: ewRank.value.trim() || undefined,
@@ -183,6 +229,10 @@ onUnmounted(() => window.clearInterval(waitCheck));
           <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-email">Your email</label>
           <input id="nge-beta-email" v-model="email" class="nge-beta-field" type="email" maxlength="254" autocomplete="email" @input="error = ''" />
+          <label class="nge-beta-label" for="nge-beta-username">Choose a username <span>(what other players see)</span></label>
+          <input id="nge-beta-username" v-model="pyrName" class="nge-beta-field" type="text" maxlength="20" autocomplete="off" spellcheck="false"
+                 placeholder="3 to 20 letters, numbers or _" @input="onPyrName" />
+          <p v-if="pyrNameNote" class="nge-beta-uname" :class="{ 'nge-beta-uname--bad': pyrNameBad }" role="status">{{ pyrNameNote }}</p>
           <div class="nge-beta-pair">
             <div>
               <label class="nge-beta-label" for="nge-beta-ewname">EyeWire username <span>(optional)</span></label>
@@ -336,6 +386,8 @@ onUnmounted(() => window.clearInterval(waitCheck));
 .nge-beta-invite-done span { color: #7ee0ff; font-weight: 700; margin-right: 4px; }
 @media (max-width: 420px) { .nge-beta-invite-row { flex-direction: column; align-items: stretch; } .nge-beta-btn--small { width: 100%; } }
 .nge-beta-error { margin: 10px 0 0; font-size: 13px; color: #ff9a9a; }
+.nge-beta-uname { margin: -8px 0 12px; font-size: 12px; color: #7fe0a8; }
+.nge-beta-uname--bad { color: #ff9a9a; }
 .nge-beta-foot {
   margin: 20px 0 0; padding-top: 14px;
   border-top: 1px solid rgba(79, 207, 255, 0.15);
