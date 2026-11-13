@@ -96,6 +96,7 @@ function buildStaticReference(): string {
     "- Play is the quick way in: the Play button, 'Start playing' on a dataset card, or 'Play here'. It picks the work for the player, so there is nothing to choose or claim by hand.",
     "- A player who has not finished the training yet is taken to the next tutorial instead, in order: Get Started, Merge, Cut, Annotations, then Advanced Interface. A player with production access skips this.",
     "- After that, Play claims a cell on the dataset the player is on and opens it, with the Cell Library folded down to one slim bar showing that cell. Finish it with Complete (or Submit on a quest) and the next cell is waiting. Skip puts a cell back and moves on.",
+    "- Not done with a cell yet? 'Save and come back' in the Complete form saves the view and keeps the cell claimed. An ordinary claim has no time limit: it stays the player's until they complete or release it. A Super Quest is held for 2 months from when it was claimed.",
     "- On Retina, Play offers a choice: the BC Challenge (bipolar cells to proofread) or Cilia Quests (mark the cilium on a starburst cell).",
     "- While playing, a pill in the top bar says what is being played, such as 'BC Challenge' or 'Cilia Quest'. Clicking it goes back to the cell in hand.",
     "- A player chooses a username when they request beta access (3 to 20 letters, numbers or underscores). It is how they appear in chat and how others tag them with @. If their sign-in has no name, it is also the name on the leaderboard. It can be changed any time in Profile > Settings.",
