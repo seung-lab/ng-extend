@@ -96,7 +96,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('it asked the match function for this cell, signed in', asks.length >= 1 && asks[0].action === 'match.check' && asks[0].taskId === 16762 && asks[0].hasToken, asks);
     check('a Missing row and a Mergers row, each on its own line with its pieces', /missing 0% 0 of 28 pieces found mergers 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    check('small, at the top left', box.x < 40 && box.y < 160 && box.w < 300 && box.h < 170, box);
+    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 320 && box.h < 200, box);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -227,6 +227,40 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('no review without a true cell', c3 === 'next', c3);
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
+    await waitText(/39%/, 10000);
+
+    // Bigger text (Ames: "can the text be less microscopic").
+    const sizes = await page.evaluate(() => ({ pieces: parseFloat(getComputedStyle(document.querySelector('#nge-cell-match .nge-cm-pieces')).fontSize), label: parseFloat(getComputedStyle(document.querySelector('#nge-cell-match .nge-cm-label')).fontSize) }));
+    check('readable text sizes', sizes.pieces >= 13 && sizes.label >= 11, sizes);
+    // Drag and drop by the top line; it stays put; a double click puts it back.
+    const hb = await page.evaluate(() => { const r = document.querySelector('#nge-cell-match .nge-cm-head').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; });
+    // The welcome hero is still over the corner in this headless run; a player has closed it.
+    await page.evaluate(() => document.querySelectorAll('.nge-hero-overlay').forEach(e => { e.style.display = 'none'; }));
+    await page.mouse.move(hb.x, hb.y); await page.mouse.down(); await page.mouse.move(hb.x + 400, hb.y + 250, { steps: 8 }); await page.mouse.up();
+    await page.waitForTimeout(2500);
+    const dragged = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top) }; });
+    check('drag moves the card and it stays there', Math.abs(dragged.left - 412) <= 3 && dragged.top > 250, dragged);
+    await page.mouse.dblclick(dragged.left + 40, dragged.top + 10);
+    await page.waitForTimeout(300);
+    const back = await page.evaluate(() => Math.round(document.getElementById('nge-cell-match').getBoundingClientRect().left));
+    check('double click puts it back', back === 12, back);
+    // The X folds it into a small button; the first time a hint says how to reopen.
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-x').click());
+    await page.waitForTimeout(400);
+    const folded = await page.evaluate(() => ({ card: !!document.getElementById('nge-cell-match'), chip: (document.getElementById('nge-cell-match-open') || {}).textContent, hint: (document.getElementById('nge-cell-match-hint') || {}).textContent }));
+    check('X closes the card, a Cell match button stays', !folded.card && /cell match\s*39%/i.test(folded.chip || ''), folded);
+    check('the first close says Click here to reopen', folded.hint === 'Click here to reopen', folded);
+    await shot('cell-match-closed.png');
+    answer = ANSWERS.merged;
+    await edit([ANSWERS.merged.root]);
+    await page.waitForTimeout(3500);
+    check('closed stays closed through edits', await page.evaluate(() => !document.getElementById('nge-cell-match') && !!document.getElementById('nge-cell-match-open')), null);
+    await page.evaluate(() => document.getElementById('nge-cell-match-open').click());
+    check('the button opens it again', await waitText(/39%/, 10000) && await page.evaluate(() => !document.getElementById('nge-cell-match-open')), await cardText());
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-x').click());
+    await page.waitForTimeout(400);
+    check('the hint shows only the first time', await page.evaluate(() => !document.getElementById('nge-cell-match-hint')), null);
+    await page.evaluate(() => document.getElementById('nge-cell-match-open').click());
     await waitText(/39%/, 10000);
 
     await page.evaluate(() => {
