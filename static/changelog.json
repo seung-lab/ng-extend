@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T04:26:00Z",
+      "title": "H for Highlight, and every mouse control in one list",
+      "items": [
+        "H now opens Highlight. Inside Highlight, hold H and click to place a point as before; Shift+H or the × closes it.",
+        "The keys list (press ?) now has Mouse and Touch sections, so every control is in one place.",
+        "Search the list: type keys zoom, ? scroll, or mouse."
+      ]
+    },
+    {
       "at": "2026-11-13T04:24:00Z",
       "title": "Shorter forms, and basal bodies in empty space",
       "items": [
