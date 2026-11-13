@@ -2169,6 +2169,7 @@ exports.ewSecureWrite = onRequest(
             const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
             try {
               out = await todoAction(action, args, { db: restDb(sb), me, byName, tag,
+                isOwner: ["amylr@princeton.edu", "amyleerobinson@gmail.com"].includes(String(who.email || "").trim().toLowerCase()),
                 follows: todoFollowStore, helpers: todoHelperStore, seen: todoSeenStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
             } catch (e) {
               // Until the SQL is run the table is missing: say so plainly.
@@ -2316,7 +2317,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-09-celia-tagged-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-12-news-optin-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2407,6 +2408,23 @@ const welcomeSentStore = {
   },
   set: async (email, v) => {
     await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+};
+// Who was asked for their EyeWire name (access-request.js askEmail), from the
+// Access page. One document per address.
+const askSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+  all: async () => {
+    const snap = await db.collection("beta_ask_emails").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { at: v.at, by: v.by || "" }; });
+    return out;
   },
 };
 const betaMarkStore = {
@@ -2506,6 +2524,7 @@ exports.ewAccessRequest = onRequest(
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
         wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
+        askSent: askSentStore,
         sendEmail: async (msg) => {
           try {
             const r = await fetch("https://api.resend.com/emails", {
@@ -2728,6 +2747,13 @@ exports.ewCommunityData = onRequest(
             if(!done.length) throw ewErr(403,"Finish the Cilia Quest tutorial first.");
             continue;
           }
+          // The Annotations tutorial Achievement (code name annotations-tutorial):
+          // the player finished tutorial 15 (Ames 2026-11-10).
+          if(badges.some(b=>b.slug==="annotations-tutorial")) {
+            const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.15&select=tutorial&limit=1");
+            if(!done.length) throw ewErr(403,"Finish the Annotations tutorial first.");
+            continue;
+          }
           if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Mini Michelangelo","Safety Scissors","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
         }
       }
@@ -2884,15 +2910,15 @@ exports.ewSymposiumRsvp = onRequest(
   if(req.method!=="POST") return res.status(405).json({error:"POST only"});
   if(Buffer.byteLength(JSON.stringify(req.body||{}))>8000) return res.status(413).json({error:"That is too long. Please shorten your question."});
   try {
-   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
+   const {planRsvp,SYMPOSIUM_SHEET_ID,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
    const plan=planRsvp(req.body||{});
    if(!(await rateLimit(req,false,"visitor:rsvp")).ok) throw ewErr(429,"Please wait a little while, then try again.");
-   const ref=db.collection("symposium_rsvps").doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
+   const ref=db.collection(plan.collection).doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
    const before=await ref.get();
    if(before.exists) plan.row[NOTE_COLUMN]="Sent again (latest answers)";
    await ref.set({name:plan.row[1],email:plan.email,username:plan.row[3],question:plan.row[4],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
    try {
-    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent("'"+plan.tab+"'!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
       {method:"POST",body:JSON.stringify({values:[plan.row]})});
     await ref.update({sheet:true});
    } catch(e) {
@@ -3252,6 +3278,12 @@ function blogMailIo() {
   const doc = (col, id) => db.collection(col).doc(crypto.createHash("sha256").update(String(id)).digest("hex"));
   return {
     resend, cache: blogMailCache,
+    // Who is signed in to Pyr, for the What's new in Pyr box (blog-mail.js notes).
+    verify: ewVerify,
+    notesSubscribers: {
+      get: async (email) => { const d = await doc("notes_subscribers", email).get(); return d.exists ? d.data() : null; },
+      set: (email, v) => doc("notes_subscribers", email).set(v, { merge: true }),
+    },
     subscribers: {
       set: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
       update: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
@@ -3298,6 +3330,7 @@ exports.ewBlogMail = onRequest(
     const { action, ...args } = req.body || {};
     try {
       if (action === "subscribe" && !(await rateLimit(req, false, "visitor:subscribe")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+      if (action === "notes" && typeof args.on === "boolean" && !(await rateLimit(req, false, "visitor:notes")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
       // A test goes only to Ames, but not over and over.
       if (action === "test" && !(await rateLimit({ ip: "blogmail-test" }, false, "visitor:blogmailtest")).ok) return res.status(429).json({ error: "Enough tests for today." });
       // The blog build asks every 15 minutes; one check a minute is plenty.

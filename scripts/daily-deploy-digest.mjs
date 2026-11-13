@@ -43,6 +43,8 @@ import { countCompletions } from './weekly-completions.mjs';
 
 import { sendAccessUpdate } from './access-update.mjs';
 
+import { publishWeek, daySection, american, LATEST_URL, supabaseHelpers } from './release-notes-blog.mjs';
+
 const LIVE_URL = process.env.PYR_LIVE_URL ||
     'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com';
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -353,6 +355,15 @@ function buildBody(entries, sinceMs, nowMs, summary) {
   return parts.join('\n\n');
 }
 
+/** The week's "What's new in Pyr" post on the blog, rebuilt with today in
+ *  it (release-notes-blog.mjs). It never holds back or fails the digest. */
+async function releaseNotes(changelog, now) {
+  try {
+    const result = await publishWeek({ ...supabaseHelpers(SUPABASE_URL, SUPABASE_KEY), changelog, now });
+    console.log(`[release notes] ${result}`);
+  } catch (e) { console.warn('[release notes] failed:', e?.message || e); }
+}
+
 function easternMinutes(d) {
   const [h, m] = d.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' })
       .split(':').map(Number);
@@ -382,7 +393,8 @@ function easternMinutes(d) {
     catch (e) { console.warn('[access update] failed:', e?.message || e); }
   }
 
-  const entries = (await liveChangelog())
+  const changelog = await liveChangelog();
+  const entries = changelog
       .filter(e => e.atMs > sinceMs && e.atMs <= nowMs)
       .sort((a, b) => a.atMs - b.atMs);
   if (entries.length === 0) {
@@ -396,7 +408,10 @@ function easternMinutes(d) {
   // from them (see buildBody).
   const told = entries.some(e => !isMinor(e)) ? entries.filter(e => !isMinor(e)) : entries;
   const summary = told.length ? await writeSummary(told) : null;
-  let body = buildBody(entries, sinceMs, nowMs, summary);
+  let body = american(buildBody(entries, sinceMs, nowMs, summary));
+  // Where to read every update in full (triage #463): the week's release
+  // notes on the blog. Before the players line, which the bell keeps last.
+  body += `\n\n[Every update this week, on the blog](${LATEST_URL})`;
   // The counts are a bonus: a failed count never holds back the note.
   if (SUPABASE_URL && SUPABASE_KEY) {
     try {
@@ -414,6 +429,7 @@ function easternMinutes(d) {
 
   if (dryRun) {
     console.log('[digest] DRY RUN, would send:\n' + JSON.stringify(row, null, 2));
+    console.log('[release notes] DRY RUN, today on the blog:\n' + american(daySection(row, entries)));
     return;
   }
 
@@ -454,10 +470,12 @@ function easternMinutes(d) {
       `select=id&title=eq.${encodeURIComponent(title)}&target_type=eq.all&limit=1`);
   if (existing.length) {
     console.log(`[digest] "${title}" already sent (id ${existing[0].id}); nothing to do.`);
+    await releaseNotes(changelog, now);
     return;
   }
   await supabasePost('notifications', [row]);
   console.log(`[digest] sent "${title}" to everyone${postToChat ? ' and queued the chat line' : ''}.`);
+  await releaseNotes(changelog, now);
 })().catch(err => {
   console.error('[digest] failed:', err);
   process.exit(1);

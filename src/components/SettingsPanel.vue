@@ -88,6 +88,7 @@ const autoImageRegion = computed(() => imageRegionLabel(automaticRegion()));
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftShowRadio = ref(true);
+const draftShowPlay = ref(true);
 const draftPumpkin = ref(true);
 const draftTurkey = ref(true);
 const draftLeaves = ref(true);
@@ -169,6 +170,7 @@ onMounted(() => {
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftShowRadio.value = prefsStore.prefs.hideRadio !== true;
+  draftShowPlay.value = prefsStore.prefs.hidePlayButton !== true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftTurkey.value = prefsStore.prefs.hideTurkey !== true;
   draftLeaves.value = prefsStore.prefs.hideLeaves !== true;
@@ -254,7 +256,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
@@ -725,6 +727,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
               <input type="checkbox" v-model="draftShowRadio" />
               <span class="nge-settings-toggle-label">Show the sound icon (EyeWire Radio)</span>
+            </label>
+            <label class="nge-settings-toggle" title="The Play button at the top left: Pyr teleports you to a cell to work on. Off: no button. You can still play from a dataset card in Switch Dataset.">
+              <input type="checkbox" v-model="draftShowPlay" />
+              <span class="nge-settings-toggle-label">Show the Play button</span>
             </label>
           </div>
 

@@ -1082,6 +1082,9 @@ export interface UserPreferences {
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;
+  /** Hide the Play button at the top left (Ames 2026-11-12: in Settings, not
+   *  an X on the button). Defaults to false: it shows. */
+  hidePlayButton?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
@@ -5686,7 +5689,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
-    notifications.value.filter(n => !notifRead(n) && ['admin', 'access'].includes(notifKind(n.title, isAdmin.value))).length
+    notifications.value.filter(n => !notifRead(n) && ['admin', 'access', 'edits'].includes(notifKind(n.title, isAdmin.value))).length
   );
   /** Unread in the bell's Admin and Triage tabs together: the dot on the
    *  Player view chip, so admin alerts still show while those tabs are hidden. */
@@ -5872,6 +5875,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // retina (Ames 2026-11-06): the server marks it read for every reviewer
     // (access.readGrantedBells), so every admin and device agrees. Asked once
     // per unread request bell, and only when one is here.
+    // A Beta request bell, once the request is dealt with on the Access page
+    // (Ames 2026-11-12): access.readHandledBetaBells marks it read for every
+    // admin. Asked once per unread bell on this page.
+    const askBeta = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔑 Beta access request')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askBeta.length) {
+      for (const n of askBeta) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readHandledBetaBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
+    }
     const askRequest = notifications.value.filter(n => n.target_type === 'user'
       && String(n.title || '').startsWith('🔬 Retina access request from')
       && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
@@ -5948,12 +5963,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
     const m = e.data || {};
     if (m.user !== userId.value || !Array.isArray(m.ids)) return;
+    if (m.unread) { for (const id of m.ids) notificationReads.value.delete(id); return; }
     const set = m.dismissed ? notificationDismissals : notificationReads;
     for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
     if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
   };
   function tellOtherTabs(ids: number[], dismissed = false) {
     if (ids.length) try { readsChannel?.postMessage({ user: userId.value, ids, dismissed }); } catch { /* closed */ }
+  }
+
+  /** Unread again (Ames 2026-11-12, To do board "mark unread"): drops the
+   *  read row, never one that hides a note the player deleted. */
+  async function markNotificationsUnread(ids: number[]) {
+    if (!userId.value || !ids.length) return;
+    for (const id of ids) notificationReads.value.delete(id);
+    try { readsChannel?.postMessage({ user: userId.value, ids, unread: true }); } catch { /* closed */ }
+    const { error } = await supabase.from('notification_reads').delete()
+      .eq('user_id', userId.value).eq('dismissed', false).in('notification_id', ids);
+    if (error) console.warn('[notifications] mark unread failed:', error.message);
   }
 
   async function markNotificationRead(notifId: number) {
@@ -6809,7 +6836,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, markNotificationsUnread, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead, markReportNotesRead, markReportsNotesRead,
@@ -7214,6 +7241,18 @@ export const useChatStore = defineStore('chat', () => {
       presenceTick.value++;
       if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
     }, 60_000);
+  }
+  /** Be on the online list from sign in, whether or not chat was ever opened.
+   *  The heartbeat used to start only when the chat box connected, so a new
+   *  player on the Starship tour (chat not open yet) or anyone who had closed
+   *  chat was missing from "N online" (Ames 2026-11-12: "we want to show also
+   *  new users - everyone online!"). */
+  function startPresence() {
+    if (heartbeatTimer || !useProofreadingBackendStore().userId) return;
+    void heartbeat().then(() => loadOnline());
+    startPresenceLoops();
+    window.addEventListener('pagehide', leavePresence);
+    document.addEventListener('visibilitychange', beatWhenBack);
   }
   // The leader closed: this tab says so at once instead of up to a minute on.
   presenceLeader.onChange((leader, takeover) => {
@@ -8023,7 +8062,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, startPresence, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };

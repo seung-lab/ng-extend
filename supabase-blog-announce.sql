@@ -66,6 +66,9 @@ DECLARE
 BEGIN
   IF NEW.status IS DISTINCT FROM 'published' THEN RETURN NEW; END IF;
   IF NEW.slug IS NULL OR btrim(NEW.slug) = '' OR NEW.title IS NULL THEN RETURN NEW; END IF;
+  -- The weekly "What's new in Pyr" posts are never announced: the day is
+  -- already in Today in Pyr (supabase-release-notes-blog.sql, 2026-11-10).
+  IF NEW.slug LIKE 'whats-new-in-pyr-%' THEN RETURN NEW; END IF;
   heading := 'New on the blog: ' || NEW.title;
   words := public.ew_blog_note_text(NEW.slug, NEW.summary, NEW.body);
 

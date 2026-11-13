@@ -1,7 +1,22 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { todoAction, slackIdOf, cleanFields } = require('./todos');
+const { todoAction, slackIdOf, cleanFields, countTriage } = require('./todos');
+
+test('triage reports closed this week count for whoever closed them', () => {
+  const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };
+  const out = countTriage([AMES, CELIA, MARISSA], [
+    { reviewed_by: 'Amy R. Sterling', result_note: 'Fixed' },
+    { reviewed_by: 'Amy Sterling', result_note: null },
+    { reviewed_by: 'slack:U02FH1DRC' },
+    { reviewed_by: 'Celia D.' },
+    { reviewed_by: 'M Sorek' },
+    { reviewed_by: 'Amy R. Sterling', result_note: 'Done on the To do board, closed by Ames.' },
+    { reviewed_by: 'Someone gone' },
+  ]);
+  assert.equal(out.total, 6, 'a report closed as a card is counted with the cards');
+  assert.deepEqual(out.byPerson, { [AMES.id]: 3, [CELIA.id]: 1, [MARISSA.id]: 1 });
+});
 
 const AMES = { id: '11111111-1111-1111-1111-111111111111', name: 'Amy R. Sterling', email: 'amy@x.org' };
 const CELIA = { id: '22222222-2222-2222-2222-222222222222', name: 'Celia D.', email: 'celia@x.org' };
@@ -251,4 +266,76 @@ test('a reply joins its thread, one level deep, and its writer hears', async () 
   assert.equal(c3.card.comments[2].reply_to, rootAt, 'a reply to a reply stays in the same thread');
   assert.deepEqual(tags.at(-1), { who: ['Celia D.'], what: 'replied to you on' });
   await assert.rejects(todoAction('todo.comment', { id: card.id, text: 'x', replyTo: '1999-01-01T00:00:00Z' }, ctxOf(AMES, 'Amy R. Sterling')), /gone/);
+});
+
+// ── Hierarchy (Ames 2026-11-11): cards inside cards, sections of a column, nested checklist items ──
+function withSections(db) {
+  const secs = new Map(); let k = 0;
+  return Object.assign(db, {
+    children: async id => [...(await db.cards())].filter(c => c.parent_id === id),
+    sections: async () => [...secs.values()],
+    section: async id => secs.get(id) || null,
+    insertSection: async row => { const id = `55555555-5555-4555-8555-${String(++k).padStart(12, '0')}`; const s = { id, ...row }; secs.set(id, s); return s; },
+    patchSection: async (id, row) => { const s = { ...secs.get(id), ...row }; secs.set(id, s); return s; },
+    removeSection: async id => { secs.delete(id); for (const c of await db.cards()) if (c.section_id === id) await db.patch(c.id, { section_id: null }); },
+  });
+}
+test('a card goes inside another, one level deep, never inside itself', async () => {
+  const db = withSections(memDb()), tags = [];
+  const save = (args) => todoAction('todo.save', args, ctx(db, tags));
+  const parent = (await save({ fields: { title: 'Tutorials' } })).card;
+  const kid = (await save({ fields: { title: 'Cut examples', parent_id: parent.id } })).card;
+  assert.equal(kid.parent_id, parent.id);
+  const other = (await save({ fields: { title: 'Other' } })).card;
+  await assert.rejects(save({ id: other.id, fields: { parent_id: kid.id } }), /already inside another card/);
+  await assert.rejects(save({ id: parent.id, fields: { parent_id: other.id } }), /has sub cards of its own/);
+  await assert.rejects(save({ id: other.id, fields: { parent_id: other.id } }), /inside itself/);
+  assert.equal((await save({ id: kid.id, fields: { parent_id: null } })).card.parent_id, null, 'taken back out');
+});
+test('sections: added, renamed, a card in one, and it leaves when the card changes column', async () => {
+  const db = withSections(memDb()), tags = [];
+  const act = (a, args) => todoAction(a, args, ctx(db, tags));
+  const sec = (await act('todo.section', { list: 'todo', name: '  Tutorial  ' })).section;
+  assert.deepEqual([sec.name, sec.list, sec.rank], ['Tutorial', 'todo', 1]);
+  assert.equal((await act('todo.section', { list: 'todo', name: 'Cilia' })).section.rank, 2);
+  assert.equal((await act('todo.section', { id: sec.id, name: 'Tutorials' })).section.name, 'Tutorials');
+  const c = (await act('todo.save', { fields: { title: 'x', section_id: sec.id } })).card;
+  assert.equal(c.section_id, sec.id);
+  await assert.rejects(act('todo.save', { id: c.id, fields: { list: 'doing', section_id: sec.id } }), /another column/);
+  assert.equal((await act('todo.save', { id: c.id, fields: { list: 'doing' } })).card.section_id, null);
+  assert.ok((await act('todo.list', {})).sections.length === 2);
+  await act('todo.section', { id: sec.id, remove: true });
+  assert.equal((await act('todo.list', {})).sections.length, 1);
+  await assert.rejects(act('todo.section', { list: 'todo', name: '   ' }), /needs a name/);
+});
+test('checklist items keep their level, two in at most', async () => {
+  const db = withSections(memDb()), tags = [];
+  const c = (await todoAction('todo.save', { fields: { title: 'x', checklist: [{ text: 'a' }, { text: 'b', level: 1 }, { text: 'c', level: 7 }, { text: 'd', level: 'x' }] } }, ctx(db, tags))).card;
+  assert.deepEqual(c.checklist.map(i => i.level || 0), [0, 1, 2, 0]);
+});
+
+test('only Ames closes a card as not finished, and only she reopens it (Ames 2026-11-12)', async () => {
+  const db = memDb(), tags = [];
+  const as = owner => (a, args) => todoAction(a, args, { ...ctx(db, tags), isOwner: owner });
+  const c = (await as(false)('todo.save', { fields: { title: 'Unfinished thing' } })).card;
+  await assert.rejects(as(false)('todo.save', { id: c.id, fields: { list: 'incomplete' } }), /Only Ames/);
+  await assert.rejects(as(true)('todo.save', { fields: { title: 'x', list: 'incomplete' } }), /Only Ames/);
+  const closed = (await as(true)('todo.save', { id: c.id, fields: { list: 'incomplete' } })).card;
+  assert.equal(closed.list, 'incomplete');
+  assert.ok(closed.done_at, 'when it was closed');
+  await assert.rejects(as(false)('todo.save', { id: c.id, fields: { title: 'renamed' } }), /Only Ames reopens/);
+  const back = (await as(true)('todo.save', { id: c.id, fields: { list: 'todo' } })).card;
+  assert.deepEqual([back.list, back.done_at], ['todo', null]);
+});
+
+test('a due time: kept as HH:MM, checked, and cleared with the day (Ames 2026-11-12)', async () => {
+  const db = memDb(), tags = [];
+  const save = args => todoAction('todo.save', args, ctx(db, tags));
+  const c = (await save({ fields: { title: 'x', due_on: '2026-11-13', due_time: '15:30' } })).card;
+  assert.deepEqual([c.due_on, c.due_time], ['2026-11-13', '15:30']);
+  await assert.rejects(save({ id: c.id, fields: { due_time: '3pm' } }), /like 14:30/);
+  await assert.rejects(save({ id: c.id, fields: { due_time: '24:00' } }), /like 14:30/);
+  assert.equal((await save({ id: c.id, fields: { due_time: null } })).card.due_time, null);
+  await save({ id: c.id, fields: { due_time: '09:05' } });
+  assert.deepEqual(Object.values((({ due_on, due_time }) => ({ due_on, due_time }))((await save({ id: c.id, fields: { due_on: null } })).card)), [null, null]);
 });

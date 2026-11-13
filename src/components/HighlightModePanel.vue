@@ -548,6 +548,10 @@ onMounted(() => {
     const sel = (window as any).viewer.selectedLayer.changed;
     sel.add(onSelectedLayer);
     stopSelectedWatch = () => sel.remove(onSelectedLayer);
+    // A tab picked while Highlight was off wins when it comes back on: the
+    // colour follows the tab, never the tab the old colour (Nseraf #477,
+    // 2026-11-11: "it is back on the tab I left it").
+    onSelectedLayer();
   } catch { /* no viewer yet */ }
   // Opening Highlight closes Find Path, whose Ctrl+click would otherwise take
   // every point (Ames 2026-10-18: "highlight doesn't work"). Merge and Cut

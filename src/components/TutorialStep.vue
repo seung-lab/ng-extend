@@ -413,14 +413,18 @@ function settleWithin(p: Promise<unknown> | unknown, what: string): Promise<void
 
 onMounted(async () => {
     const startT = performance.now();
-    slowTimer = window.setTimeout(() => { if (!ready.value) slow.value = true; }, 500);
+    // Only while the view or the step's own setup is still loading: placing
+    // the box beside its target can take up to a second too, and the card
+    // flashed behind boxes that had nothing to load (Ames 2026-11-10).
+    let setupDone = false;
+    slowTimer = window.setTimeout(() => { if (!ready.value && !setupDone) slow.value = true; }, 500);
     if (props.step.state) {
-        // Advanced Interface: the annotation layers the player filled keep
+        // Advanced Interface and Annotations: the annotation layers the player filled keep
         // their points when a step loads its own view (Ames 2026-10-18:
         // "when I hit next it deleted my annotations!").
         // Its views also leave the Selection panel shut: it sat where the
         // layer side panel goes.
-        const advanced = tutorialStore.activeTutorial === 2;
+        const advanced = tutorialStore.activeTutorial === 2 || tutorialStore.activeTutorial === 15;
         const keep = advanced ? playerAnnotationLayers() : [];
         if (advanced) setStateRewriter(async (st: any) => {
             if (st && typeof st === 'object') st.selection = { ...(st.selection || {}), visible: false };
@@ -436,6 +440,8 @@ onMounted(async () => {
     if (props.step.onEnter) {
         await settleWithin(props.step.onEnter(), 'step setup');
     }
+    setupDone = true;
+    slow.value = false;
     console.log('updating position', performance.now() - startT);
     updateChipPosition();
     applyHighlight();
@@ -549,6 +555,59 @@ watch(() => [props.step.title, props.step.text, props.step.html, props.step.next
     if (html) html = html.replace(/<a\s+(?![^>]*target=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
     computedStep.value = { ...computedStep.value, title, html, nextLabel, image, embed };
 });
+/**
+ * A line in a box that starts with "Tip:" folds into a small tip the player
+ * opens with a click (Ames, 2026-11-12, on Celia's edit of Cilia Quest box
+ * 8: a tip, not another sentence in the box). Works on the code's words and
+ * on admins' edits alike: everything from "Tip:" to the end of its paragraph
+ * moves into the tip.
+ */
+const TIP_AT = /(^|\n)\s*Tip:\s*/;
+function foldTips() {
+  const html = root.value?.querySelector('.chip .html');
+  if (!html || html.querySelector('.nge-box-tip')) return;
+  const walker = document.createTreeWalker(html, NodeFilter.SHOW_TEXT);
+  const starts: Text[] = [];
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+    const parent = n.parentElement;
+    if (!parent || parent.closest('.nge-box-tip, a, button, code')) continue;
+    // "Tip:" at the start of a line: a paragraph's start or after a <br>.
+    const m = TIP_AT.exec(n.data);
+    if (!m) continue;
+    const prev = n.previousSibling;
+    const lineStart = m.index > 0 || !prev || prev.nodeName === 'BR';
+    if (lineStart) starts.push(n);
+  }
+  for (const n of starts) {
+    const m = TIP_AT.exec(n.data)!;
+    const block = (n.parentElement?.closest('p, li') ?? n.parentElement) as HTMLElement;
+    const body = document.createElement('div');
+    body.className = 'nge-box-tip-body';
+    // Split off the tip's own words, then move every node after it in the block.
+    const tipText = n.splitText(m.index);
+    tipText.data = tipText.data.replace(/^\n?\s*Tip:\s*/, '');
+    const prevSib = tipText.previousSibling;
+    if (prevSib && prevSib.nodeName === 'BR') prevSib.remove();
+    let node: ChildNode | null = tipText;
+    // Climb to a direct child of the block, so siblings can be moved.
+    while (node && node.parentNode !== block) node = node.parentNode as ChildNode | null;
+    if (!node) continue;
+    while (node) { const next: ChildNode | null = node.nextSibling; body.appendChild(node); node = next; }
+    const tip = document.createElement('details');
+    tip.className = 'nge-box-tip';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Tip';
+    tip.appendChild(summary);
+    tip.appendChild(body);
+    tip.addEventListener('toggle', () => nextTick(clampChip));
+    // The line break and blank text the tip leaves at the block's end.
+    while (block.lastChild && (block.lastChild.nodeName === 'BR' || (block.lastChild.nodeType === 3 && !block.lastChild.textContent?.trim()))) block.lastChild.remove();
+    block.after(tip);
+    if (!block.textContent?.trim() && block !== html) block.remove();
+  }
+}
+watch(() => shownHtml.value, () => nextTick(foldTips), { immediate: true, flush: 'post' });
+
 watch(ready, (r) => { if (r) nextTick(observeChip); });
 watch(() => computedStep.value, () => nextTick(observeChip));
 
@@ -841,6 +900,9 @@ async function onHtmlClick(e: MouseEvent) {
     padding-bottom: 20px;
     border-radius: 8px;
     display: grid;
+    /* One column no wider than the box: its contents wrap inside it instead
+       of running off the right edge (toknow #472, 2026-11-11). */
+    grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     font-size: 18px;
     font-weight: 300;
@@ -1383,9 +1445,36 @@ async function onHtmlClick(e: MouseEvent) {
 .chip.modal { padding-top: 46px; }
 .hasVideo .chip:not(.exitConfirm) .title { margin: 38px 20px 0; }
 
+.chip .html { min-width: 0; max-width: 100%; overflow-wrap: break-word; }
+/* A tall box keeps its title and buttons still and scrolls only its words
+   (toknow 2026-11-11, Cilia Quest Training: "fix title and scroll contents
+   only"). The whole box used to scroll, title and all. */
+.chip:not(.exitConfirm) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    row-gap: 14px;
+    overflow: hidden;
+}
+.chip:not(.exitConfirm) > * { flex: none; }
+.chip:not(.exitConfirm) > .html {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+}
+.chip:not(.exitConfirm) > .html::-webkit-scrollbar { display: none; }
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }
 .chip .html :deep(strong) { color: #ffffff; font-weight: 600; }
+/* A folded "Tip:" line (foldTips). */
+.chip .html :deep(.nge-box-tip) { margin: 0 0 0.7em; }
+.chip .html :deep(.nge-box-tip > summary) { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8fd0ff; list-style: none; }
+.chip .html :deep(.nge-box-tip > summary::-webkit-details-marker) { display: none; }
+.chip .html :deep(.nge-box-tip > summary::before) { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.15s; }
+.chip .html :deep(.nge-box-tip[open] > summary::before) { transform: rotate(45deg); }
+.chip .html :deep(.nge-box-tip-body) { margin-top: 6px; padding: 6px 10px; border-left: 2px solid rgba(143, 208, 255, 0.4); color: #cfe0f0; font-size: 0.92em; }
 /* Lists in a box (Merge box 7's tips showed with no bullets, tester
    2026-11-10): something upstream resets list markers. */
 .chip .html :deep(ul) { list-style: disc outside !important; padding-left: 1.3em !important; margin: 0 0 0.7em !important; }

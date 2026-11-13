@@ -77,6 +77,7 @@ export const TUTORIAL_REVEALS: { tutorial: number; name: string; icon: string }[
   { tutorial: 9, name: 'Merger Sandbox', icon: 'findPath' },
   { tutorial: 9, name: 'Merger Sandbox', icon: 'highlight' },
   { tutorial: 11, name: 'Proofreading Test', icon: 'highlight' },
+  { tutorial: 15, name: 'Annotations', icon: 'findPath' },
 ];
 
 /** The icons a tutorial step brings in: its own `reveals`, plus the icon its

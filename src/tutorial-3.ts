@@ -76,6 +76,14 @@ const MERGE_HINT_POINTS: Record<string, number[][]> = {
   // Second merge (axon), in the 2D images at z 638 (Ames, 2026-10-13: this
   // box had no points of its own and fell back to the first cell's).
   'a4bd2f76-67e9-4093-adc7-e670230d1577': [[75014, 62609, 638], [75114, 62629, 638]],
+  // Extension Sandbox cells 3 to 8 (Ames, 2026-11-12): the nearest voxel of
+  // the cell, then of its missing branch, to the spot Ames gave.
+  'e00d8987-7a7d-47cc-b100-392d9f88e85c': [[78316, 66500, 870], [78422, 66536, 878]],
+  '72a8858a-756b-4a62-8b81-5857359960ef': [[53430, 57240, 900], [53592, 57178, 884]],
+  'aca4c7fa-33d4-48ac-8b6d-f6a20dbdab3e': [[57402, 62722, 1045], [57398, 62752, 1051]],
+  '5f88242a-ca3f-450d-9208-61c6a0ed713d': [[60448, 46050, 542], [60504, 45994, 551]],
+  '0e67d1ab-0f11-40c9-8898-bc89e38f3560': [[89782, 60232, 699], [89856, 60296, 699]],
+  'c8bf3478-c45b-49e4-9fb1-3dd6f02f1fc3': [[62432, 57598, 545], [62432, 57598, 539]],
 };
 
 /**
@@ -262,6 +270,29 @@ const CUT_HINTS: Record<string, { red: number[][]; blue: number[][] }> = {
     red: [[81668, 49056, 516], [82030, 49104, 529]],
     blue: [[81516, 49232, 525], [81910, 49234, 521]],
   },
+  // Mergers 9 to 13 (Ames, 2026-11-12): the points of the reference cuts,
+  // operations 5006, 5009, 5010, 5025 and 5028. Red on the merger's side,
+  // blue on the good cell's.
+  '2152de4d-25c9-4c61-b0e3-33b69c38ba08': {
+    red: [[114882, 56984, 1345], [115070, 57062, 1354], [115086, 57208, 1353], [115126, 57348, 1357], [115162, 57470, 1361]],
+    blue: [[114910, 57118, 1387], [114926, 57240, 1372], [114958, 57338, 1364], [115096, 57560, 1344], [115134, 57632, 1337], [115128, 57678, 1332]],
+  },
+  'ecfb5c70-5791-4c4f-a806-113b60d5c352': {
+    red: [[81904, 51638, 387], [82076, 51648, 381], [82222, 51648, 382], [82396, 51628, 384]],
+    blue: [[82034, 51642, 357], [82000, 51522, 365], [81942, 51428, 376], [81854, 51294, 396]],
+  },
+  'cf702af3-b811-4020-b51f-96a0ce08f1ee': {
+    red: [[81454, 47832, 506], [81640, 47750, 479], [82088, 47746, 444], [82360, 47808, 433]],
+    blue: [[81158, 47898, 427], [81474, 47766, 434], [82016, 47376, 465], [82412, 47110, 479]],
+  },
+  '818b1d1b-a243-4711-a2a6-444a84dca010': {
+    red: [[65662, 44370, 134], [65702, 44408, 152], [65818, 44534, 168], [65904, 44574, 174]],
+    blue: [[65746, 44594, 145], [65744, 44552, 150], [65766, 44394, 170], [65812, 44384, 173]],
+  },
+  '0e9ca4e1-e3c1-44db-8d95-61f6cd6df4c0': {
+    red: [[104092, 73546, 1994], [104062, 73636, 1991]],
+    blue: [[104130, 73528, 1991], [104094, 73648, 1991]],
+  },
 };
 const RED = '#ff5c5c', BLUE = '#5c8cff';
 
@@ -369,6 +400,13 @@ async function cutHintFor(ex: any): Promise<{ hint: CutHint | null; trusted: boo
   const recorded = CUT_HINTS[ex.id] ?? null;
   if (!anchor && recorded) anchor = centroid([...recorded.red, ...recorded.blue]);
   let out: { hint: CutHint | null; trusted: boolean } = { hint: recorded, trusted: !!recorded };
+  // A cell with the reference cut's own points and no saved view of its own
+  // (Mergers 9 to 13) uses those points, without trying other cells' views.
+  if (recorded && !CUT_HINT_STATES[ex.id]) {
+    out = { hint: recorded, trusted: true };
+    cutHintCache.set(ex.id, out);
+    return out;
+  }
   const urls = [CUT_HINT_STATES[ex.id], ...Object.values(CUT_HINT_STATES).filter(u => u !== CUT_HINT_STATES[ex.id])].filter(Boolean);
   if (anchor) {
     let best: { hint: CutHint; nm: number; note: string } | null = null;
@@ -900,6 +938,23 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
+/**
+ * A tutorial's first edit box, reached again after the edit was made (Back,
+ * or a restart): the cell on screen is already merged (or cut). Put every
+ * held cell back to its start and release it, so the box can claim it fresh.
+ * Returns true when it did. `wantMerged` is the state the edit leaves.
+ */
+export async function freshStartIfDone(wantMerged: boolean, step: number): Promise<boolean> {
+  const merged = await piecesMerged().catch(() => null);
+  if (merged === null || merged !== wantMerged) return false;
+  if (useTutorialStore().getTutorialStep() !== step) return false;
+  practiceStatus('Putting this cell back to its starting state so you can do it again. One moment.', false, true);
+  await endPractice();
+  resetPracticeLog();
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-status').forEach(el => el.remove());
+  return true;
+}
+
 export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); clearHelp(); helpWanted = true; }
 
 function toolIsOn(): boolean {
@@ -1365,16 +1420,23 @@ export function cheatSheet(rows: Array<[string, string]>) {
 /** The top bar icon a box talks about glows while that box is up and the
  *  tool is off (tester, 2026-11-10: "the Merge icon indicated in some way"). */
 function glowTopIcon(id: 'merge' | 'split') {
+  // A ring drawn over the icon, not a class on it: the top bar is redrawn by
+  // Vue often (badge counts), which wiped the class, and re-adding it every
+  // tick restarted the pulse before it got bright (Celia, 2026-11-11: "Merge
+  // icon is still not glowing").
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  let ring = document.querySelector('.nge-tut-glow-ring') as HTMLElement | null;
+  if (!ring) { ring = document.createElement('div'); ring.className = 'nge-tut-glow-ring'; document.body.appendChild(ring); }
   const timer = setInterval(() => {
     const here = store.activeTutorial === tutorial && store.getTutorialStep() === step && !!document.querySelector('.introductionStepAnchor');
     const icon = document.querySelector(`[data-icon-id="${id}"]`) as HTMLElement | null;
-    const on = here && !practiceToolOn();
-    document.querySelectorAll('.nge-tut-glow-icon').forEach(el => { if (!on || el !== icon) el.classList.remove('nge-tut-glow-icon'); });
-    if (on) icon?.classList.add('nge-tut-glow-icon');
-    if (!here) clearInterval(timer);
-  }, 400);
+    const r = icon?.getBoundingClientRect();
+    const on = here && !practiceToolOn() && !!r && r.width > 0;
+    if (on && r) Object.assign(ring!.style, { display: 'block', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    else ring!.style.display = 'none';
+    if (!here) { clearInterval(timer); ring!.remove(); }
+  }, 250);
 }
 
 export const MIDDLE = {
@@ -1473,8 +1535,17 @@ The pink gems show where to click.`,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
+      stopWatching();
       await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: holdsSlot('a') ? [] : [MERGE_SECOND] });
+      // Back here after merging (a player went back to the start, 2026-11-11:
+      // the yellow piece never came back): put the cells back and take them
+      // again, so the merge can be made once more.
+      if (await freshStartIfDone(true, 3)) {
+        await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: [MERGE_SECOND] })
+          ?? await beginPractice('merge_then_cut', 'start', { slot: 'a' });
+      }
+      if (useTutorialStore().getTutorialStep() !== 3) return;
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       // The second cell too, if it is not held (after an idle release the
       // cells are taken again here, and the second merge must not be lost).
       if (!holdsSlot('b')) await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
@@ -1516,9 +1587,10 @@ Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` 
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
 The pink gems show where to click.`,
-    // Low on the 3D side: the view is centred on the join, and the box at
-    // the top sat right over the cell (Ames, 2026-10-25).
-    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.82 },
+    // Lower on the 3D side: the view is centred on the join, and the box at
+    // the top sat right over the cell (Ames, 2026-10-25). Not at the very
+    // bottom, where the merge bar covered it (Celia, 2026-11-11).
+    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.6 },
     width: "420px",
     onEnter: async () => {
       closeSidePanel();

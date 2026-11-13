@@ -9,11 +9,13 @@
  * cilia with annotation points, and submits: the sheet's own status choices,
  * split or merged, a note, and a share link of the view as it is.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { play, startPlay } from '../util/play';
 import { useProofreadingBackendStore } from '../store';
 import { onTextEditAsked } from '../text_edit_links';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
+import CrosshairHelp from './CrosshairHelp.vue';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { mintShortStateLink } from '../util/state_link';
@@ -21,7 +23,7 @@ import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
-import { sendWaitingReviews } from '../quest_review';
+import { sendWaitingReviews, isQuestReview, reviewSegment, reviewLinkIn, replyToReview } from '../quest_review';
 import { startCiliaTutorial } from '../tutorial-cilia';
 import { supabase } from '../supabase';
 import { currentSegLayer } from '../datasets';
@@ -64,7 +66,7 @@ const you = ref('');
 const current = ref('');
 /** The Cell Library's slim bar (toknow, report 288): only the quest cell you
  *  are on (the active one, else the one you last opened, else your first). */
-const props = defineProps<{ slim?: boolean }>();
+const props = defineProps<{ slim?: boolean; playEnter?: number }>();
 
 const myKeys = computed(() => new Set([you.value, backend.userName, backend.username].map(nameKey).filter(Boolean)));
 const isMine = (r: QuestRow) => !!r.annotator && myKeys.value.has(nameKey(r.annotator));
@@ -85,9 +87,56 @@ const atLimit = computed(() => mine.value.length >= QUEST_CLAIM_LIMIT);
 // update (Celia 2026-11-06), as on the leaderboard and profile.
 const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && !r.held).length);
 const mineHeld = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && r.held).length);
+// Needs your update (toknow #483, 2026-11-12: "Players can open and update
+// annotations more conveniently than open cell from the notification msg"):
+// the cells a reviewer sent back sit in their own group at the top, with the
+// review, the reviewer's view and the update form right there. The same reply
+// as the notification's (src/quest_review.ts).
+const needsUpdate = computed(() => rows.value.filter(r => isMine(r) && isDone(r) && r.held));
+/** The newest review notification for this cell, if it has reached the bell. */
+function reviewNote(r: QuestRow): any {
+  const mine = (backend.notifications as any[]).filter(n => isQuestReview(n) && n.target_id === backend.userId && reviewSegment(n.body) === r.segmentId);
+  return mine.sort((a, b) => String(b.send_at).localeCompare(String(a.send_at)))[0] || null;
+}
+function readReview(r: QuestRow) {
+  const n = reviewNote(r);
+  if (n) document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: { id: n.id } }));
+}
+function openReviewerView(r: QuestRow) {
+  const link = reviewLinkIn(reviewNote(r)?.body);
+  current.value = r.segmentId;
+  if (link && !openStartLink(link)) window.open(link, '_blank', 'noopener');
+}
+const updating = ref('');
+const upLink = ref('');
+const upNotes = ref('');
+const upSending = ref(false);
+const upError = ref('');
+const upLinkOk = computed(() => !upLink.value.trim() || /^https:\/\/[^\s"'<>]+$/i.test(upLink.value.trim()));
+function startUpdate(r: QuestRow) {
+  updating.value = updating.value === r.segmentId ? '' : r.segmentId;
+  upLink.value = ''; upNotes.value = ''; upError.value = '';
+}
+async function upUseMyView() {
+  upError.value = '';
+  const link = await Promise.race([mintShortStateLink().catch(() => null), new Promise<null>(res => setTimeout(() => res(null), 8000))]);
+  if (link) upLink.value = link;
+  else upError.value = 'A link to your view could not be made. Use Share in the top bar and paste the link here.';
+}
+async function sendUpdate(r: QuestRow) {
+  if (upSending.value || !upLinkOk.value || !(upLink.value.trim() || upNotes.value.trim())) return;
+  upSending.value = true; upError.value = ''; message.value = '';
+  try {
+    await replyToReview(r.segmentId, upLink.value.trim(), upNotes.value.trim());
+    updating.value = '';
+    message.value = `Your update on ${r.index || label(r)} went to the reviewer. It counts again now.`;
+    await load();
+  } catch (e: any) { upError.value = `Your update was not sent: ${e?.message ?? 'please try again'}`; }
+  finally { upSending.value = false; }
+}
 const available = computed(() => rows.value.filter(r => !r.annotator && !r.status));
 const taken = computed(() => rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)));
-const done = computed(() => rows.value.filter(isDone).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
+const done = computed(() => rows.value.filter(r => isDone(r) && !(r.held && isMine(r))).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
 
 async function load() {
   loading.value = true;
@@ -101,6 +150,7 @@ async function load() {
   }
   catch (e: any) { error.value = e?.message || String(e); }
   finally { loading.value = false; }
+  void playNow();
 }
 onMounted(() => { if (backend.userId) void load().then(maybePlayTraining); });
 /** The first time a new player opens Cilia Quests, Cilia Quest Training
@@ -119,6 +169,50 @@ async function maybePlayTraining() {
   try { localStorage.setItem(TRAINING_KEY, '1'); } catch { return; }
   startTutorial();
 }
+
+// ── Play (util/play.ts) ─────────────────────────────────────────────────────
+// Asked to play: once the sheet is read, open the quest cell you hold, or
+// claim the next open one. Skipped cells go back to the list for others, and
+// are not handed straight back to you.
+let playWanted = false;
+const skippedHere = new Set<string>();
+watch(() => props.playEnter, n => { if (n) { playWanted = true; void playNow(); } }, { immediate: true });
+const nextOpen = () => available.value.find(r => !skippedHere.has(r.segmentId));
+async function playNow() {
+  if (!playWanted || loading.value || !rows.value.length || busy.value) return;
+  playWanted = false;
+  const held = mine.value.find(isActive) ?? mine.value[0];
+  if (held) { await openCell(held); message.value = `${held.index || 'Your cell'} is open. Mark the cilium, then press Submit. The next cell will be waiting.`; landed('Your quest cell', held); return; }
+  const r = nextOpen();
+  if (r) { await take(r); if (mine.value.some(m => m.segmentId === r.segmentId)) landed('Your new quest cell', r); }
+  else message.value = 'No quest cells are open right now. Try mapping instead.';
+}
+/** While Skip hands one cell back and takes the next, the bar says so. */
+const skippingQuest = ref(false);
+async function playSkip(which?: QuestRow) {
+  if (busy.value || skippingQuest.value) return;
+  skippingQuest.value = true;
+  try {
+    const r = which ?? mine.value.find(isActive) ?? mine.value[0];
+    if (r) { skippedHere.add(r.segmentId); await letGo(r); }
+    const rest = mine.value[0];
+    if (rest) { await openCell(rest); landed('Your next quest cell', rest); return; }
+    const next = nextOpen();
+    if (next) { await take(next); if (mine.value.some(m => m.segmentId === next.segmentId)) landed('Your new quest cell', next); }
+    else message.value = 'No more quest cells are open right now.';
+  } finally { skippingQuest.value = false; }
+}
+/** The "Teleport complete" flash over the view (CellLibraryPanel shows it). */
+function landed(title: string, r: QuestRow) {
+  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title, cell: label(r) } }));
+  // Saved as you arrive, so the bar never says "Not saved yet" (Ames 2026-11-12).
+  setTimeout(() => {
+    if (!questWork.savedAt[r.segmentId] && questOnScreen(r.segmentId)) void saveQuestWork(r.segmentId);
+  }, 5000);
+}
+const onPlaySkip = () => { void playSkip(); };
+onMounted(() => document.addEventListener('nge:play-skip-quest', onPlaySkip));
+onUnmounted(() => document.removeEventListener('nge:play-skip-quest', onPlaySkip));
 
 /** "A5, OFF Starburst": the sheet's index and the cell's type, in the players' words. */
 function label(r: QuestRow) {
@@ -353,6 +447,11 @@ async function runCheck(r: QuestRow) {
     check.value = { busy: false, ok: false, other: true, message: `The crosshairs are inside ${at.root}, not this cell. If that's on purpose, say why in Notes (for example, the daughter centriole is in another segment), then Submit.` };
   } catch (e: any) { check.value = { busy: false, ok: false, message: `Could not check the crosshairs: ${e?.message || e}` }; }
 }
+/** Slim bar: the row opens or folds the Submit form (Ames 2026-11-12). */
+function onSlimRowClick(r: QuestRow, e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+  if (open.value === r.segmentId) open.value = ''; else startSubmit(r);
+}
 function startSubmit(r: QuestRow) {
   open.value = r.segmentId;
   form.value = { status: r.status || '', splitMerged: r.splitMerged || '', notes: r.notes || '' };
@@ -394,6 +493,11 @@ async function send(r: QuestRow, e?: Event) {
     if (next) {
       message.value = `${r.index || 'The cell'} is submitted. Thank you. Opening ${label(next)}.`;
       try { await openCell(next); } catch (e) { console.warn('[quests] the next cell did not open:', e); }
+    } else if (play.on === 'quests') {
+      // Playing: the next open cell is claimed and opened (Ames 2026-11-09).
+      const fresh = nextOpen();
+      busy.value = '';
+      if (fresh) { await take(fresh); message.value = `${r.index || 'The cell'} is submitted. Thank you. ${fresh.index || 'The next cell'} is yours now.`; }
     }
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
@@ -403,7 +507,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 </script>
 
 <template>
-  <div class="nge-aq">
+  <div class="nge-aq" :class="{ 'nge-aq--slim': slim }">
     <div v-if="!slim" class="nge-aq-head">
       <div class="nge-aq-titlerow">
         <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
@@ -419,9 +523,13 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
       <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
       <div v-if="backend.userId" class="nge-aq-headrow">
+        <button v-if="!play.on && available.length" class="nge-aq-play" @click="startPlay('quests')"
+                title="Play: claims a quest cell for you and opens it. After Submit, the next one.">
+          <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
+        </button>
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
-        <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Open the review in your notifications and send your update, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
+        <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Send your update from Needs your update below, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
         <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
         <button v-if="backend.showAdminUi" class="nge-aq-btn" :disabled="sendingReviews" @click="sendReviews"
                 title="Admins: send every review marked Send Review in the sheet now. Pyr also does this at 8 am and 4 pm Eastern.">{{ sendingReviews ? 'Sending…' : 'Send waiting reviews now' }}</button>
@@ -433,16 +541,56 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div v-if="error" class="nge-aq-error">{{ error }}</div>
       <div v-if="loading && !rows.length" class="nge-aq-empty">Reading the quest sheet…</div>
       <template v-else-if="rows.length">
+        <!-- Needs your update: cells a reviewer sent back (toknow #483) -->
+        <template v-if="needsUpdate.length">
+          <div class="nge-aq-section nge-aq-section--update">Needs your update <span class="nge-aq-count">{{ needsUpdate.length }}</span></div>
+          <template v-for="r in needsUpdate" :key="r.segmentId">
+            <div class="nge-aq-row nge-aq-row--mine nge-aq-row--update" :class="{ 'nge-aq-row--current': current === r.segmentId }">
+              <div class="nge-aq-row-left">
+                <span class="nge-aq-pip nge-aq-pip--update"></span>
+                <div class="nge-aq-row-info">
+                  <div class="nge-aq-row-name">{{ label(r) }}</div>
+                  <div class="nge-aq-row-held">{{ reviewNote(r) ? 'A reviewer asked for an update.' : 'A review is on its way to your notifications.' }}</div>
+                </div>
+              </div>
+              <div class="nge-aq-row-actions">
+                <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
+                <button v-if="reviewNote(r)" class="nge-aq-btn" @click="readReview(r)" title="Read the reviewer's notes">Review</button>
+                <button v-if="reviewLinkIn(reviewNote(r)?.body)" class="nge-aq-btn" @click="openReviewerView(r)" title="Open the view the reviewer sent, to fix your annotations in it">Reviewer's view</button>
+                <button v-else class="nge-aq-btn" @click="viewDone(r)" title="Open your submitted view, to fix your annotations in it">Open</button>
+                <button v-if="reviewNote(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': updating === r.segmentId }" @click="startUpdate(r)" title="Send the reviewer your updated view and notes">Send update</button>
+              </div>
+            </div>
+            <div v-if="updating === r.segmentId" class="nge-aq-form">
+              <div class="nge-aq-form-title">Your update on {{ r.index || label(r) }}</div>
+              <div class="nge-aq-form-label">Link to your updated view</div>
+              <div class="nge-aq-update-link">
+                <input v-model="upLink" class="nge-aq-notes nge-aq-update-input" placeholder="https://…" @keydown.stop @keyup.stop @keypress.stop />
+                <button class="nge-aq-btn" @click="upUseMyView" title="Use a share link of the view on screen now">Use my view</button>
+              </div>
+              <div v-if="!upLinkOk" class="nge-aq-form-msg nge-aq-form-msg--bad">The link must be a single https link.</div>
+              <div class="nge-aq-form-label">Notes for the reviewer</div>
+              <textarea v-model="upNotes" class="nge-aq-notes" rows="2" maxlength="1000" placeholder="What you changed" @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <div v-if="upError" class="nge-aq-form-msg nge-aq-form-msg--bad">{{ upError }}</div>
+              <div class="nge-aq-form-actions">
+                <button class="nge-aq-btn" @click="updating = ''">Cancel</button>
+                <button class="nge-aq-btn nge-aq-btn--submit" :disabled="upSending || !upLinkOk || !(upLink.trim() || upNotes.trim())" @click="sendUpdate(r)">{{ upSending ? 'Sending…' : 'Send update' }}</button>
+              </div>
+            </div>
+          </template>
+        </template>
         <!-- Yours: taken, not yet submitted -->
-        <div v-if="slim && !mineShown.length" class="nge-aq-empty nge-aq-empty--tight">No quest cell of yours yet. Open the full view to claim one.</div>
+        <div v-if="slim && !mineShown.length" class="nge-aq-empty nge-aq-empty--tight">{{ skippingQuest ? 'Finding your next cell…' : 'No quest cell of yours yet. Open the full view to claim one.' }}</div>
         <template v-if="mineShown.length">
           <div v-if="!slim" class="nge-aq-section">Yours</div>
           <template v-for="r in mineShown" :key="r.segmentId">
-            <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r) }">
+            <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r), 'nge-aq-row--clickable': slim }"
+                 :title="slim ? (open === r.segmentId ? 'Click to fold the form away' : 'Click to submit this quest') : undefined"
+                 @click="slim && onSlimRowClick(r, $event)">
               <div class="nge-aq-row-left">
-                <span class="nge-aq-pip nge-aq-pip--claimed"></span>
+                <span v-if="!slim" class="nge-aq-pip nge-aq-pip--claimed"></span>
                 <div class="nge-aq-row-info">
-                  <div class="nge-aq-row-name" :title="slim ? `Cell ${r.segmentId}` : undefined">{{ label(r) }}<span v-if="isActive(r)" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
+                  <div class="nge-aq-row-name" :title="slim ? `Cell ${r.segmentId}` : undefined">{{ label(r) }}<span v-if="isActive(r) && !slim" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
                   <!-- Slim view: the essentials on one line (toknow, report 387).
                        The cell ID is the name's tooltip; the save line sits with the buttons. -->
                   <div v-if="!slim" class="nge-aq-row-meta nge-aq-cellid" title="This quest's cell, as the segment list shows it">Cell {{ r.segmentId }}</div>
@@ -457,10 +605,12 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
-                <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
-                <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
-                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
-                <button class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
+                <!-- One "go to it" button, Open (Ames 2026-11-10: "why is there a jump and an open button?"),
+                     then Skip (or Release), then Submit last, in green. -->
+                <button v-if="!(slim && isActive(r))" class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
+                <button v-if="play.on !== 'quests'" class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
+                <button v-else class="nge-aq-btn nge-aq-btn--skip" :disabled="!!busy || skippingQuest" @click="playSkip(r)" title="Not this one: it goes back on the list, and Pyr takes you to your next quest cell">Skip</button>
+                <button v-if="!slim" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
@@ -478,7 +628,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
-                <span>{{ check.message }}</span>
+                <span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">
@@ -486,7 +636,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !canSubmit || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !canSubmit || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : play.on === 'quests' ? 'Submit and next' : 'Submit' }}</button>
               </div>
             </div>
           </template>
@@ -565,7 +715,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-form-label">Notes</div>
               <textarea v-model="form.notes" class="nge-aq-notes" rows="2" placeholder="Anything the reviewers should know" @keydown.stop @keyup.stop @keypress.stop></textarea>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': !canSubmit && !check.busy, 'nge-aq-form-msg--ok': canSubmit }">
-                <span>{{ check.message }}</span>
+                <span>{{ check.message }}<CrosshairHelp v-if="!canSubmit && !check.busy" /></span>
                 <button class="nge-aq-recheck" :disabled="check.busy" @click="recount(r)" title="Check the crosshairs and count the annotation points again">Check again</button>
               </div>
               <div class="nge-aq-form-msg" :class="{ 'nge-aq-form-msg--bad': noPoints }">
@@ -653,6 +803,12 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 /* The quest being worked on: Highlight's green, the colour key's (player report 2026-10-14). */
 .nge-aq-row--active { background: rgba(124, 255, 178, 0.09); box-shadow: inset 3px 0 0 #7CFFB2; }
 .nge-aq-row--active:hover { background: rgba(124, 255, 178, 0.13); }
+/* The slim bar is always the cell in hand: no green edge, and the Submit form
+   runs the full width under it, past the fold arrow (Ames 2026-11-12). */
+.nge-aq--slim .nge-aq-row--active { box-shadow: none; background: transparent; }
+.nge-aq--slim .nge-aq-row--active:hover { background: rgba(124, 255, 178, 0.05); }
+.nge-aq--slim .nge-aq-form { margin: 6px 0 4px -40px; }
+.nge-aq-row--clickable { cursor: pointer; }
 .nge-aq-active-pill { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font: 700 11px/18px 'Inter', 'Roboto', sans-serif; letter-spacing: 0.04em; color: #08140e; background: #7CFFB2; vertical-align: 2px; }
 .nge-aq-cellid { font-family: 'JetBrains Mono', 'Consolas', monospace; color: #b4c8de; user-select: text; }
 .nge-aq-saved { display: flex; align-items: baseline; gap: 8px; color: #8fb3cf; }
@@ -669,6 +825,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-row-info { min-width: 0; flex: 1; }
 .nge-aq-row-name { font-size: 15px; font-weight: 600; color: #e4e8f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-held { font-size: 12px; color: #ffd27a; margin-top: 2px; }
+.nge-aq-section--update { color: #ffd27a; }
+.nge-aq-row--update { border-left: 2px solid #ffd27a; }
+.nge-aq-pip--update { background: #ffd27a; }
+.nge-aq-update-link { display: flex; gap: 6px; align-items: center; }
+.nge-aq-update-input { flex: 1; min-width: 0; resize: none; }
 .nge-aq-tally--held b { color: #ffd27a; }
 .nge-aq-row-meta { font-size: 13px; color: #93a0b6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-aq-row-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; align-items: center; }
@@ -696,6 +857,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-btn--submit:hover { background: rgba(68, 170, 255, 0.12); }
 .nge-aq-btn--submit-open { background: rgba(68, 170, 255, 0.16); border-color: rgba(68, 170, 255, 0.55); }
 .nge-aq-btn--release { border-color: rgba(255, 170, 68, 0.2); color: #a86; }
+.nge-aq-btn--skip { border-color: rgba(140, 160, 200, 0.3); color: #b4c0d6; }
+.nge-aq-btn--skip:hover:not(:disabled) { background: rgba(140, 160, 200, 0.12); color: #e4e8f2; }
+/* Submit: green, the thing to do (Ames 2026-11-10). */
+.nge-aq-btn--submit, .nge-aq-btn--submit-open { color: #d6ffe6; border-color: rgba(61, 220, 132, 0.6); background: rgba(61, 220, 132, 0.18); }
+.nge-aq-btn--submit:hover { background: rgba(61, 220, 132, 0.3); }
 .nge-aq-btn--release:hover:not(:disabled) { background: rgba(255, 170, 68, 0.08); }
 .nge-aq-btn--send { border-color: rgba(68, 170, 255, 0.55); color: #fff; background: rgba(68, 170, 255, 0.2); }
 .nge-aq-btn--send:hover:not(:disabled) { background: rgba(68, 170, 255, 0.3); }
@@ -760,4 +926,15 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-empty--tight { padding: 8px 16px 10px; }
 .nge-aq-error { margin: 8px 12px 0; padding: 8px 10px; border-radius: 6px; font-size: 14px; line-height: 1.4; color: #ffb0b0; background: rgba(255, 80, 80, 0.08); border: 1px solid rgba(255, 90, 90, 0.25); }
 .nge-aq-msg { margin: 8px 12px; padding: 8px 10px; border-radius: 6px; font-size: 14px; line-height: 1.4; color: #a6ffd6; background: rgba(0, 220, 120, 0.08); border: 1px solid rgba(0, 220, 120, 0.25); }
+
+/* Play here (util/play.ts) */
+.nge-aq-play {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #ffd36e;
+  background: linear-gradient(135deg, rgba(140, 100, 20, 0.8), rgba(74, 58, 168, 0.8));
+  color: #fff; font: 700 11.5px/1 Inter, system-ui, sans-serif; letter-spacing: 0.05em; text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(255, 211, 110, 0.3);
+}
+.nge-aq-play:hover { box-shadow: 0 0 18px rgba(255, 211, 110, 0.5); }
 </style>

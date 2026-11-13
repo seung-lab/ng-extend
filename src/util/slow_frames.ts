@@ -58,6 +58,27 @@ function describe(el: EventTarget | null): string {
   return `${e.tagName.toLowerCase()}${cls ? '.' + cls : ''}${text ? ` "${text}"` : ''}`;
 }
 
+/** What the tab carries when it froze, for freezes no script is named for
+ *  (Nseraf 2026-11-12, report "Lag spikes when merge/cut": freezes of 5 to
+ *  9 s in Firefox that grew over a long session). How long the tab has been
+ *  open and how much it shows tell a tab that has grown too big from a slow
+ *  step. */
+function context(): string {
+  const mins = Math.round(performance.now() / 60_000);
+  const parts = [`tab open ${mins >= 60 ? `${Math.floor(mins / 60)}h${mins % 60}m` : `${mins}m`}`];
+  try {
+    const layers: any[] = (window as any).viewer?.layerManager?.managedLayers ?? [];
+    let cells = 0, marks = 0;
+    for (const ml of layers) {
+      cells += ml?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments?.size ?? 0;
+      const src = ml?.layer?.localAnnotations;
+      if (src?.annotationMap) marks += src.annotationMap.size ?? 0;
+    }
+    parts.push(`${layers.length} layers`, `${cells} cells shown`, `${marks} marks`);
+  } catch { /* the counts are only a hint */ }
+  return parts.join(', ');
+}
+
 /** Firefox and Safari have no Long Animation Frames (Nseraf plays in
  *  Firefox, report 404: his freezes left no line). A timer that should tick
  *  every 50 ms notices when the page stood still, without saying which
@@ -78,6 +99,6 @@ function startHeartbeat() {
     if (m !== minute) { minute = m; count = 0; }
     if (++count > PER_MINUTE) return;
     const after = lastInputAt && now - lastInputAt < gap + 2000 ? `, after ${lastInput}` : '';
-    console.warn(`[slow] page froze about ${Math.round(gap)}ms${after} (no script names in this browser)`);
+    console.warn(`[slow] page froze about ${Math.round(gap)}ms${after} (no script names in this browser; ${context()})`);
   }, 50);
 }

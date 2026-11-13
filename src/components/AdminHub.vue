@@ -1559,6 +1559,23 @@ async function toggleReplyConsole(notificationId: number | string | undefined) {
   }
 }
 
+/** Open reply on an update already sent (Ames 2026-11-11): the note the
+ *  player has gets its reply box (functions/report-reply.js reply.open). */
+const replyOpening = ref<string | null>(null);
+async function openReplyAfter(row: TriageRow, u: { at?: string; ts: string }) {
+  const key = row.id + (u.at || u.ts);
+  replyOpening.value = key;
+  triageError.value = '';
+  try {
+    await secureWrite('reply.open', { triageId: row.id, at: u.at || u.ts });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not open a reply: ${e?.message ?? String(e)}`;
+  } finally {
+    replyOpening.value = null;
+  }
+}
+
 /** What was sent to the submitter and what they wrote back, oldest first. */
 function reporterThreadFor(row: TriageRow) {
   const log = row.feedback_log || [];
@@ -3828,14 +3845,14 @@ function practiceWhen(iso: string | null) {
             <div v-if="row.impl_summary"><span class="nge-triage-spec-label">Change</span> {{ row.impl_summary }}</div>
             <div v-if="row.preview_url"><span class="nge-triage-spec-label">Preview</span> <a :href="row.preview_url" target="_blank" rel="noopener">{{ row.preview_url }}</a></div>
             <div v-if="row.impl_state === 'testing' || row.impl_state === 'live_testing' || row.impl_state === 'needs_info'"><span class="nge-triage-spec-label">Waiting on</span> the tester in the Slack thread{{ row.impl_state === 'needs_info' ? ', to answer Claude' : '' }}. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
-            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> <template v-for="(pt, pi) in linkParts(f.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
+            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts" class="nge-triage-note-text"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> <template v-for="(pt, pi) in linkParts(f.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
             <div v-if="row.impl_run_url"><a :href="row.impl_run_url" target="_blank" rel="noopener">Claude's run log</a><template v-if="row.impl_attempts"> · attempt {{ row.impl_attempts }}</template></div>
           </div>
           <!-- Notes from admins, with no decision (Celia #178). -->
           <div class="nge-triage-notes" @click.stop>
             <div v-for="(n, i) in row.admin_notes || []" :key="i" class="nge-triage-note nge-triage-admin-note">
               <span class="nge-triage-spec-label">Note</span>
-              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
+              <span class="nge-triage-spec-text nge-triage-note-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
             </div>
             <template v-if="noteOpen[row.id]">
               <textarea v-autogrow v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
@@ -3966,7 +3983,9 @@ function practiceWhen(iso: string | null) {
             <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
                  :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
               <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
-              <div v-if="!u.reply" class="nge-triage-spec-text nge-triage-thread-md"><div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(u.text, true)"></div><a v-if="u.image_url" :href="u.image_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the image you sent"><img :src="u.image_url" alt="Image sent with this reply" loading="lazy" /></a><span v-else-if="u.image_removed" class="nge-triage-reporter-by">Image removed after 7 days. </span><span class="nge-triage-reporter-by">{{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></div>
+              <div v-if="!u.reply" class="nge-triage-spec-text nge-triage-thread-md"><div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(u.text, true)"></div><a v-if="u.image_url" :href="u.image_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the image you sent"><img :src="u.image_url" alt="Image sent with this reply" loading="lazy" /></a><span v-else-if="u.image_removed" class="nge-triage-reporter-by">Image removed after 7 days. </span><span class="nge-triage-reporter-by">{{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span><button v-if="!u.ask" type="button" class="nge-triage-chip nge-triage-open-reply" :disabled="replyOpening === row.id + (u.at || u.ts)"
+                      title="Adds a reply box to the note the player already has, so they can answer it once. Their bell shows it again at the top."
+                      @click="openReplyAfter(row, u)">{{ replyOpening === row.id + (u.at || u.ts) ? 'Opening…' : '💬 Open reply' }}</button></div>
               <span v-else class="nge-triage-spec-text nge-triage-thread-text"><template v-for="(pt, pi) in linkParts(u.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
               <!-- What came with a reply: a screenshot, their view, console messages. -->
               <div v-if="u.reply && (u.screenshot_url || u.view_url || u.console_lines || u.dataset)" class="nge-triage-reply-parts">
@@ -5285,6 +5304,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-card.nge-triage-card--waiting { outline: 1px dashed rgba(160, 140, 255, 0.6); outline-offset: -1px; }
 .nge-triage-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
 .nge-triage-ask-label { font-weight: 600; }
+.nge-triage-open-reply { margin-top: 6px; }
 .nge-triage-copy { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
 .nge-triage-copy input { width: 15px; height: 15px; margin: 0; cursor: pointer; }
 .nge-triage-ask-hint { color: rgba(255,255,255,0.5); flex: 1 1 240px; }
@@ -5333,6 +5353,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   text-transform: uppercase; color: rgba(100, 200, 255, 0.75);
 }
 .nge-triage-spec-text { color: rgba(235, 238, 250, 0.88); min-width: 0; overflow-wrap: anywhere; }
+/* Notes keep the lines and lists they were written with (Ames 2026-11-12: "notes don't have formatting"). */
+.nge-triage-note-text { white-space: pre-line; }
 .nge-triage-actions { display: flex; gap: 8px; }
 
 .nge-admin-badge-grid {

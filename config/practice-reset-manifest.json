@@ -168,5 +168,115 @@
     "baseline_at": "2026-10-24T17:02:00+00:00",
     "root_a": "648518346352077426",
     "root_b": "648518346352077426"
+  },
+  "2152de4d-25c9-4c61-b0e3-33b69c38ba08": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "77477774717430805",
+    "supervoxel_b": "77477774717475143",
+    "baseline_at": "2026-11-11T20:23:00+00:00",
+    "root_a": "648518346352484298",
+    "root_b": "648518346352484298"
+  },
+  "ecfb5c70-5791-4c4f-a806-113b60d5c352": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "75155193306116898",
+    "supervoxel_b": "75155193306011348",
+    "baseline_at": "2026-11-11T20:26:00+00:00",
+    "root_a": "648518346352484042",
+    "root_b": "648518346352484042"
+  },
+  "cf702af3-b811-4020-b51f-96a0ce08f1ee": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "75154918495018909",
+    "supervoxel_b": "75154918495014183",
+    "baseline_at": "2026-11-11T20:43:00+00:00",
+    "root_a": "648518346351955324",
+    "root_b": "648518346351955324"
+  },
+  "818b1d1b-a243-4711-a2a6-444a84dca010": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "74028812295479314",
+    "supervoxel_b": "74028812295457883",
+    "baseline_at": "2026-11-11T20:56:00+00:00",
+    "root_a": "648518346354828966",
+    "root_b": "648518346354828966"
+  },
+  "0e9ca4e1-e3c1-44db-8d95-61f6cd6df4c0": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76704818378685837",
+    "supervoxel_b": "76704818378695643",
+    "baseline_at": "2026-11-11T21:03:00+00:00",
+    "root_a": "648518346355099322",
+    "root_b": "648518346355099322"
+  },
+  "e00d8987-7a7d-47cc-b100-392d9f88e85c": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "74945118134016562",
+    "supervoxel_b": "74945118134033577",
+    "baseline_at": "2026-11-11T21:30:00+00:00",
+    "root_a": "648518346351706736",
+    "root_b": "648518346351955836"
+  },
+  "72a8858a-756b-4a62-8b81-5857359960ef": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73185281054254175",
+    "supervoxel_b": "73185212334715875",
+    "baseline_at": "2026-11-11T21:30:00+00:00",
+    "root_a": "648518346352330555",
+    "root_b": "648518346352663457"
+  },
+  "aca4c7fa-33d4-48ac-8b6d-f6a20dbdab3e": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73467099762184441",
+    "supervoxel_b": "73467099762300937",
+    "baseline_at": "2026-11-11T21:30:00+00:00",
+    "root_a": "648518346352737559",
+    "root_b": "648518346353670586"
+  },
+  "5f88242a-ca3f-450d-9208-61c6a0ed713d": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73677106214800543",
+    "supervoxel_b": "73677106214811381",
+    "baseline_at": "2026-11-11T21:30:00+00:00",
+    "root_a": "648518346352528434",
+    "root_b": "648518346354629030"
+  },
+  "0e67d1ab-0f11-40c9-8898-bc89e38f3560": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "75718693216389714",
+    "supervoxel_b": "75718761935809617",
+    "baseline_at": "2026-11-11T21:30:00+00:00",
+    "root_a": "648518346351593384",
+    "root_b": "648518346357537190"
+  },
+  "c8bf3478-c45b-49e4-9fb1-3dd6f02f1fc3": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73818599617469851",
+    "supervoxel_b": "73818599617448314",
+    "baseline_at": "2026-11-11T21:30:00+00:00",
+    "root_a": "648518346352330811",
+    "root_b": "648518346350685525"
   }
 }

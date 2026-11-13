@@ -97,6 +97,12 @@ test('check: a new post goes once, to the blog segment, only when its page is li
   assert.strictEqual(x.f.calls.filter((c) => /\/send$/.test(c.p)).length, 1);
 });
 
+test('check: the weekly release notes are never emailed', async () => {
+  const notes = { ...POST, id: 'w1', slug: 'whats-new-in-pyr-2026-11-09', title: 'Release notes, week of November 9' };
+  const x = io({ posts: [notes], pages: { 'https://connectome.quest/blog/whats-new-in-pyr-2026-11-09/': `<h1>${notes.title}</h1>` }, io: { live: { since: '2026-11-06T00:00:00Z' } } });
+  assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, []);
+});
+
 test('check: a post another run is sending is left alone', async () => {
   const x = io({ posts: [POST], pages: LIVE_PAGE, io: { live: { since: '2026-11-06T00:00:00Z' } } });
   x.marks.p1 = { state: 'sending', at: new Date().toISOString(), tries: 1 };
@@ -134,4 +140,56 @@ test('excerpt: short posts go whole; long ones stop at a block, never inside cod
   assert.strictEqual(cut, true);
   assert.strictEqual((md.match(/```/g) || []).length % 2, 0, 'a code fence is never cut in half');
   assert.doesNotMatch(md, /## Heading\s*$/, 'never ends on a heading');
+});
+
+// ── What's new in Pyr by email ──
+function notesIo(extra = {}) {
+  const x = io(extra);
+  const store = {};
+  x.notesStore = store;
+  x.verify = async (t) => (t === 'good' ? { email: 'Player@Example.com' } : null);
+  x.notesSubscribers = { get: async (e) => store[e] || null, set: async (e, v) => { store[e] = { ...store[e], ...v }; } };
+  return x;
+}
+
+test('notes: the box signs up the Pyr email, reads back, and clears', async () => {
+  const x = notesIo();
+  await assert.rejects(bm.handle('notes', { token: 'bad' }, x), /sign in/);
+  assert.deepStrictEqual(await bm.handle('notes', { token: 'good' }, x), { on: false, email: 'player@example.com' });
+  assert.deepStrictEqual(await bm.handle('notes', { token: 'good', on: true }, x), { on: true, email: 'player@example.com' });
+  const seg = x.f.segments[bm.NOTES_SEGMENT];
+  assert.ok(x.f.calls.some((c) => c.method === 'POST' && c.p === `/contacts/player%40example.com/segments/${seg}`));
+  assert.strictEqual((await bm.handle('notes', { token: 'good' }, x)).on, true);
+  // An Unsubscribe link clicked in an email shows the box clear.
+  x.f.contacts['player@example.com'].unsubscribed = true;
+  assert.strictEqual((await bm.handle('notes', { token: 'good' }, x)).on, false);
+  await bm.handle('notes', { token: 'good', on: false }, x);
+  assert.ok(x.f.calls.some((c) => c.method === 'DELETE' && c.p === `/contacts/player%40example.com/segments/${seg}`));
+  assert.strictEqual(x.notesStore['player@example.com'].on, false);
+});
+
+const WEEK = { id: 'w9', slug: 'whats-new-in-pyr-2026-11-09', title: 'Notes week of November 9', summary: 'Every update.', published_at: '2026-11-09T21:00:00Z',
+  body: 'Intro.\n\n## Tuesday, November 10\n\nBig day.\n\n**Tool:** Does it.\n\n### All 2 updates\n\n- **A.** One.\n- **B.** Two.\n\n*Players made 5 edits and completed 1 cell.*\n\n## Monday, November 9\n\nSmall day.\n\n### The update\n\n- **C.** Three.\n\n---\n\n[The week before](/blog/whats-new-in-pyr-2026-11-02/)' };
+
+test('notes: the email has each day\'s summary, not the full lists', () => {
+  assert.strictEqual(bm.notesMarkdown(WEEK.body), 'Intro.\n\n## Tuesday, November 10\n\nBig day.\n\n**Tool:** Does it.\n\n## Monday, November 9\n\nSmall day.');
+  const m = bm.postEmail(WEEK, (md) => md);
+  assert.match(m.html, /Read every update on the blog/);
+  assert.match(m.html, /asked for What's new in Pyr each week/);
+});
+
+test('check: a finished week goes once to its own list, never while it is still going', async () => {
+  const pages = { 'https://connectome.quest/blog/whats-new-in-pyr-2026-11-09/': `<h1>${WEEK.title}</h1>` };
+  const x = notesIo({ posts: [WEEK], pages, io: { notesLive: { since: '2026-11-01T00:00:00Z' } } });
+  const realNow = Date.now;
+  try {
+    Date.now = () => Date.parse('2026-11-15T22:00:00Z');   // Sunday: the week is not over
+    assert.deepStrictEqual((await bm.handle('check', {}, x)).notes, undefined);
+    Date.now = () => Date.parse('2026-11-16T15:00:00Z');   // the Monday after
+    assert.deepStrictEqual((await bm.handle('check', {}, x)).notes, [WEEK.slug]);
+    const b = x.f.calls.find((c) => c.p === '/broadcasts');
+    assert.strictEqual(b.body.segment_id, x.f.segments[bm.NOTES_SEGMENT]);
+    assert.deepStrictEqual((await bm.handle('check', {}, x)).notes, undefined, 'never twice');
+  } finally { Date.now = realNow; }
+  assert.strictEqual(bm.NOTES_LIVE, false, 'nothing goes to real subscribers until Ames has seen a test');
 });

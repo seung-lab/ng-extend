@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, focusOnCut, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
+import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, focusOnCut, freshStartIfDone, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -143,6 +143,10 @@ More than one point on each side tells the cut where the whole join is.`,
       closeSidePanel();
       stopWatching();
       await beginPractice('cut', 'start', { slot: 'a', only: holdsSlot('a') ? undefined : CUT_FIRST });
+      // Back here after the cut was made: put the cells back and take the
+      // first again (the merge tutorial does the same).
+      if (await freshStartIfDone(false, 3)) await takeStaged(CUT_FIRST, 'a', 'start', true, 3, true);
+      if (useTutorialStore().getTutorialStep() !== 3) return;
       // Closer in on the join first; the gems below then only re-centre.
       setTimeout(() => { void focusOnCut(); }, 1200);
       // The second cell too, if it is not held (taken again after an idle release).
