@@ -138,15 +138,17 @@ export function judgeEdit(kind: 'merge' | 'split', prev: MatchResult, now: Match
 }
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-const ROW_LABEL: Record<Row, string> = { merge: 'Missing', cut: 'Mergers' };
+// Named for what you do (Ames 2026-11-13: "Missing" and "Mergers" were confusing).
+const ROW_LABEL: Record<Row, string> = { merge: 'Merge', cut: 'Cut' };
+const ROW_SHORT: Record<Row, string> = { merge: 'M', cut: 'C' };
 
 /** Under a row's percent: pieces done of all, or that there is nothing to do. */
 export function rowPieces(r: MatchResult, row: Row): string {
   const pct = row === 'merge' ? r.merge : r.cut;
   const p = row === 'merge' ? r.missing : r.extra;
-  if (pct == null) return row === 'merge' ? 'none missing' : 'none to cut';
-  if (!p || !p.total) return row === 'merge' ? 'real cell cut off' : 'wrong parts merged in';
-  return row === 'merge' ? `${p.total - p.left} of ${plural(p.total, 'piece')} found` : `${p.total - p.left} of ${p.total} cut off`;
+  if (pct == null) return row === 'merge' ? 'nothing to merge' : 'nothing to cut';
+  if (!p || !p.total) return row === 'merge' ? 'part of the cell was cut off' : 'a wrong part was merged in';
+  return row === 'merge' ? `${p.total - p.left} of ${plural(p.total, 'piece')} merged in` : `${p.total - p.left} of ${p.total} cut off`;
 }
 
 /** Cells the HUD scores: their Complete says "Complete and Review" (reactive,
@@ -219,7 +221,7 @@ const CSS = `
 #${CARD_ID}.nge-cm-reviewing .nge-cm-x,#${CARD_ID}.nge-cm-reviewing .nge-cm-tool{display:none}
 #${CARD_ID} .nge-cm-tool{width:22px;height:22px;display:grid;place-items:center;padding:0;border:1px solid transparent;border-radius:2px;
   background:transparent;color:#8fb6dc;cursor:pointer;font:600 12px/1 Inter,sans-serif;letter-spacing:0;text-transform:none}
-#${CARD_ID} .nge-cm-tool:hover,#${CARD_ID} .nge-cm-tool[aria-pressed="true"]{color:#fff;border-color:rgba(127,200,255,.45);background:rgba(127,200,255,.12)}
+#${CARD_ID} .nge-cm-tool:hover,#${CARD_ID} .nge-cm-i[aria-pressed="true"]{color:#fff;border-color:rgba(127,200,255,.45);background:rgba(127,200,255,.12)}
 #${CARD_ID} .nge-cm-tool:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
 #${CARD_ID} .nge-cm-i{font:italic 700 14px/1 Georgia,serif}
 #${CARD_ID} .nge-cm-min-btn svg{transition:transform .2s}
@@ -236,8 +238,12 @@ const CSS = `
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-pieces,
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-info{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-head{margin-bottom:2px}
-#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row{padding:0}
-#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-gauge{margin:4px 0 3px}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row{padding:2px 0;grid-template-columns:16px 1fr;align-items:center}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){width:240px}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-i{margin-left:auto}
+#${CARD_ID} .nge-cm-short{display:none;font:600 11px/1 Orbitron,Inter,sans-serif;color:#8fb6dc}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-short{display:block}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-gauge{grid-column:2;margin:0}
 #${CARD_ID}.nge-cm-idle .nge-cm-pieces{color:#8fb6dc}
 #${CARD_ID} .nge-cm-sub{margin:-2px 0 8px;color:#a9c3e0;font-size:13px;line-height:1.35}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-sub{display:none}
@@ -294,7 +300,7 @@ function ensureStyle() {
 }
 
 const rowHtml = (row: Row) => `<div class="nge-cm-row" data-row="${row}">`
-  + `<span class="nge-cm-label">${ROW_LABEL[row]}</span>`
+  + `<span class="nge-cm-short" aria-hidden="true">${ROW_SHORT[row]}</span><span class="nge-cm-label">${ROW_LABEL[row]}</span>`
   + '<span class="nge-cm-read"><span class="nge-cm-delta"></span><span class="nge-cm-num"></span></span>'
   + '<div class="nge-cm-gauge"><i class="nge-cm-fill"></i></div>'
   + '<span class="nge-cm-pieces"></span></div>';
@@ -318,7 +324,7 @@ function card(): HTMLElement {
     // Ames 2026-11-13: say what the Sandbox is, that real cells have no known
     // answer, and where research datasets are asked for.
     + '<p>You are in the <b>Sandbox</b>, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.</p>'
-    + '<p><b>Missing</b>: the missing parts you have merged back in. <b>Mergers</b>: the wrong parts you have cut off. Both are by size.</p>'
+    + '<p><b>Merge</b>: how much of the missing cell you have merged back in. <b>Cut</b>: how much of the wrong parts you have cut off. Both are by size.</p>'
     + '<p>In real cells there is no known answer. That is up to you and the brain.</p>'
     + '<p>When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the &#127828; menu, top right.</p></div>'
     + rowHtml('merge') + rowHtml('cut') + '<div class="nge-cm-extra"></div>';
@@ -671,7 +677,7 @@ async function saveReviewView(btn: HTMLButtonElement, r: ReviewResult) {
   const pct = (n: number | null | undefined) => (n == null ? 'none' : `${n}%`);
   const id = await deps.saveLink({
     title: `Sandbox review, cell ${r.root ?? ''}`.trim(),
-    note: `Missing ${pct(r.merge)}, Mergers ${pct(r.cut)}. Missed pieces in gold, mergers left pinned.`,
+    note: `Merge ${pct(r.merge)}, Cut ${pct(r.cut)}. Pieces not merged in gold, parts not cut pinned.`,
     url, dataset: 'pinky_nf_v2', position, visibleSegments: shown,
   }).catch(() => null);
   if (!id) {
@@ -813,8 +819,8 @@ export async function showReview(_taskId: number, pending: Promise<ReviewResult 
     clean.textContent = 'Nothing missed. Clean cell.';
     extra.appendChild(clean);
   } else {
-    if (missed.length) line(GOLD, 'Missed', plural(missed.length, 'piece'), 'Pieces of the cell you did not merge in, drawn in gold in the 3D view', missed);
-    if (mergers.length) line(RED, 'Mergers', `${mergers.length} attached`, 'Parts of other cells still merged into yours, each marked with a pin', mergers);
+    if (missed.length) line(GOLD, 'Not merged', plural(missed.length, 'piece'), 'Pieces of the cell you did not merge in, drawn in gold in the 3D view', missed);
+    if (mergers.length) line(RED, 'Not cut', plural(mergers.length, 'part'), 'Parts of other cells still merged into yours, each marked with a pin', mergers);
   }
   const actions = document.createElement('div');
   actions.className = 'nge-cm-actions';
