@@ -649,18 +649,16 @@ async function finish(c: Card, e?: MouseEvent) {
 }
 
 // ── Numbers ──
-/** 7.5 reads "7½". */
-const halfPoints = (n: number) => { const w = Math.floor(n); return n - w ? (w ? `${w}½` : '½') : String(w); };
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
-  // A finished card is a point for its owner and half a point for each
-  // collaborator (Ames 2026-11-12: "If I complete the task I should get more
-  // points, the assist people should get less").
+  // A finished card is 2 points for its owner and 1 for each collaborator
+  // (Ames 2026-11-12: "If I complete the task I should get more points, the
+  // assist people should get less"; 2026-11-13: "No half points").
   const byPerson = people.value.map(p => {
     const owned = doneWeek.filter(c => c.owner_id === p.id).length;
     const helped = doneWeek.filter(c => c.owner_id !== p.id && (helpers.value[c.id] || []).includes(p.id)).length;
-    return { id: p.id, name: firstName(p.name), n: owned + helped / 2, owned, helped };
+    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped, owned, helped };
   }).filter(x => x.n).sort((a, b) => b.n - a.n);
   // Triage reports closed this week are their own count, shown on the board so
   // the GMs see that work too (Ames 2026-11-13: "Triage should be a separate category").
@@ -2364,8 +2362,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
       <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
       <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
-        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (1 point each), ${p.helped} helped on (½ point each)`">{{ p.name }} <b>{{ halfPoints(p.n) }}</b></span>
-        <span class="nge-todo-stat-word">done this week</span>
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each)`">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span class="nge-todo-stat-word">points this week</span>
       </div>
       <div class="nge-todo-stat nge-todo-stat--triage" v-if="stats.triageWeek" title="Triage reports closed with Done or Dismiss in the last 7 days">
         <b>{{ stats.triageWeek }}</b><span>triage reports closed this week</span>
