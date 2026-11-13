@@ -434,15 +434,17 @@ async function letGo(r: QuestRow) {
 const check = ref<{ busy: boolean; ok: boolean; message: string; other?: boolean }>({ busy: false, ok: false, message: '' });
 /** Crosshairs inside another segment are allowed with a reason in Notes
  *  (Jingkai_Li, report 415: the daughter centriole was in another segment,
- *  so the crosshairs on it never passed). Empty space too (Jingkai_Li, report
- *  510: the basal body sat where there is no segment). */
+ *  so the crosshairs on it never passed). Empty space still blocks (Ames
+ *  2026-11-12, as the Cilia Quest blog says: the crosshairs go inside the
+ *  cell; a basal body outside every segment gets the crosshairs in the cell
+ *  nearby and a note). */
 const explained = computed(() => !!check.value.other && !!form.value.notes.trim());
 const canSubmit = computed(() => check.value.ok || explained.value);
 async function runCheck(r: QuestRow) {
   check.value = { busy: true, ok: false, message: 'Checking the crosshairs…' };
   try {
     const at = await cellAtCrosshair();
-    if (!at.root && at.supervoxel === '0') { check.value = { busy: false, ok: false, other: true, message: "The crosshairs are on empty space, not inside a cell. If that's on purpose (for example, the basal body sits where there is no segment), say why in Notes, then Submit." }; return; }
+    if (!at.root && at.supervoxel === '0') { check.value = { busy: false, ok: false, message: 'The crosshairs are on empty space. Place them inside the cell. If what you marked is outside the cell, put the crosshairs in the cell nearby and say so in Notes.' }; return; }
     if (!at.root) { check.value = { busy: false, ok: false, message: at.problem || 'Could not check the crosshairs.' }; return; }
     if (at.root === r.segmentId) { check.value = { busy: false, ok: true, message: 'The crosshairs are inside this cell.' }; return; }
     const hit = await ancestorAmong(at.root, [r.segmentId]);
