@@ -372,6 +372,7 @@ function idle(state: string, note: string, action = false) {
     (box.querySelector('.nge-cm-delta') as HTMLElement).textContent = '';
     (box.querySelector('.nge-cm-fill') as HTMLElement).style.width = '0%';
     (box.querySelector('.nge-cm-pieces') as HTMLElement).textContent = '';
+    box.title = `${ROW_LABEL[row]}: ${note || 'no reading yet'}`;
     box.dataset.pct = ''; box.dataset.pctWas = '';
   }
   // What the card is waiting for, as a line under the title (Ames 2026-11-13:
@@ -554,6 +555,8 @@ function showRow(el: HTMLElement, r: MatchResult, row: Row, fresh: boolean) {
   const delta = box.querySelector('.nge-cm-delta') as HTMLElement;
   const pct = row === 'merge' ? r.merge : r.cut;
   (box.querySelector('.nge-cm-pieces') as HTMLElement).textContent = rowPieces(r, row);
+  // Hover, collapsed or not (Ames 2026-11-13): what the bar says in words.
+  box.title = `${ROW_LABEL[row]}${pct == null ? '' : ` ${pct}%`}: ${rowPieces(r, row)}`;
   (box.querySelector('.nge-cm-fill') as HTMLElement).style.width = `${pct ?? 0}%`;
   num.textContent = pct == null ? '' : `${pct}%`;
   const before = fresh ? NaN : Number(box.dataset.pct);

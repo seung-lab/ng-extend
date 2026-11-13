@@ -327,6 +327,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-min-btn').click());
     await page.waitForTimeout(300);
     const mini = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const vis = s => [...c.querySelectorAll(s)].filter(e => e.offsetParent !== null).length; return { h: c.offsetHeight, gauges: vis('.nge-cm-gauge'), nums: vis('.nge-cm-num'), pieces: vis('.nge-cm-pieces'), title: c.querySelector('.nge-cm-title').offsetParent !== null }; });
+    const tips = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-row')].map(r => r.title));
+    check('hovering a bar says what it means', /^Merge \d+%: \d+ of \d+ pieces merged in$/.test(tips[0]) && /^Cut/.test(tips[1]), tips);
     check('collapse shows the title and two bars only', mini.title && mini.gauges === 2 && mini.nums === 0 && mini.pieces === 0 && mini.h < fullH / 2, { mini, fullH });
     await shot('cell-match-collapsed.png');
     answer = ANSWERS.merged;
