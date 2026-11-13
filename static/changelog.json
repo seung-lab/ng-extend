@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T04:24:00Z",
+      "title": "Shorter forms, and basal bodies in empty space",
+      "items": [
+        "The Complete box is shorter: Check again sits under the crosshairs message, with Complete and Cancel beside it, and the crosshairs text is bigger.",
+        "Cilia Quests: if the basal body sits where there is no segment, you can submit with the crosshairs on empty space by saying why in Notes.",
+        "The Cilia Quest Submit form is tidier: a check mark when the crosshairs are inside, a shorter Notes box you can drag taller, and the share link and point count on two short lines.",
+        "The (i) next to the crosshairs message shows a real 2D view with the crosshairs inside a cell.",
+        "Nurro, your guide, can now explain what the Play button does."
+      ]
+    },
+    {
       "at": "2026-11-13T04:00:00Z",
       "title": "Your big view survives a browser restart",
       "items": [
