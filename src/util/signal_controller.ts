@@ -801,13 +801,13 @@ function ensureStyle() {
 .nge-sig-x:hover { color: #fff; border-color: rgba(126, 210, 255, 0.8); }
 .nge-sig-mute { flex: none; background: none; border: 0; color: #7ecaff; cursor: pointer; font-size: 13px; padding: 0 4px; }
 /* the objective bracket */
-.nge-sig-top { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; margin-top: 8px; }
+.nge-sig-top { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; margin-top: 8px; }
 .nge-sig-obj { position: relative; padding: 4px 0 4px 12px; }
 .nge-sig-obj::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: linear-gradient(180deg, #ffc24a, rgba(255, 194, 74, 0.1)); box-shadow: 0 0 8px rgba(255, 194, 74, 0.6); }
 .nge-sig-obj span { display: block; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; color: #7ecaff; text-transform: uppercase; }
-.nge-sig-obj strong { display: block; font: 700 17px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 12px rgba(126, 210, 255, 0.5); }
+.nge-sig-obj strong { display: block; font: 700 16px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 12px rgba(126, 210, 255, 0.5); text-wrap: balance; }
 .nge-sig-obj em { display: block; font-style: normal; color: #ffd98a; font-size: 12.5px; }
-.nge-sig-stats { display: grid; grid-template-columns: auto auto auto; gap: 2px 14px; text-align: right; font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; color: #7ecaff; text-transform: uppercase; }
+.nge-sig-stats { display: grid; grid-template-columns: auto auto auto; gap: 2px 10px; text-align: right; font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; color: #7ecaff; text-transform: uppercase; }
 .nge-sig-stats b { display: block; font: 700 18px 'Orbitron', 'Inter', sans-serif; color: #fff; letter-spacing: 0.02em; }
 .nge-sig-stats b.warn { color: #ff9a8a; }
 .nge-sig-stats .u, .nge-sig .barlabel .u { text-transform: none; font-size: 0.78em; opacity: 0.75; margin-left: 1px; }
