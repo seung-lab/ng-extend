@@ -38,6 +38,7 @@ import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
+import { freshenClaimView } from '../util/fresh_claim_view';
 import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
@@ -919,10 +920,11 @@ async function switchToClaim(cell: CellRow) {
     if (leftId && leftId !== cell.taskId) freshLayersForClaim();
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
   }
-  else void backend.anchorClaimAt(cell.taskId).catch(() => null);
+  else { void backend.anchorClaimAt(cell.taskId).catch(() => null); void freshenClaimView(cell.taskId, backend); }
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
 }
+
 
 // ── Actions ──────────────────────────────────────────────────────────
 /** A jump replaces what is on screen with the target cell, so first save
@@ -1036,7 +1038,7 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     // claim, so the new claim is on screen and not the last one (report 373).
     const leftOther = !!leftId && leftId !== claimed?.id;
     const opened = openStartLink(cell.startLink);
-    if (opened) { openLight(claimed?.id, cell); jumpedSegId.value = cell.segId; }
+    if (opened) { openLight(claimed?.id, cell); jumpedSegId.value = cell.segId; if (claimed) void freshenClaimView(claimed.id, backend); }
     if (!opened && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
       if (leftOther) freshLayersForClaim();
       jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
