@@ -5383,7 +5383,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
       .filter((r): r is string => !!r))],
   })));
-  startSandboxMatch({ claims: () => sandboxClaims.value, signedIn: () => !!userId.value });
+  startSandboxMatch({ claims: () => sandboxClaims.value, signedIn: () => !!userId.value, saveLink: (l) => useWorkingLinksStore().add(l) });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
   let laterAgainTimer: ReturnType<typeof setTimeout> | null = null;

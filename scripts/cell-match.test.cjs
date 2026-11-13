@@ -243,6 +243,26 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const pos1 = await page.evaluate(() => Array.from(window.viewer.navigationState.position.value).map(Math.round));
     check('Show flies to the first missed piece', pos0[0] !== 85000 && pos1[0] === 85000 && pos1[1] === 51000 && pos1[2] === 1500, { pos0, pos1 });
     await shot('cell-match-review.png');
+    // Save view (Ames 2026-11-13): to My Links, and a tip says where it went.
+    const saved = await page.evaluate(async () => {
+      // The store's My Links save, stood in for: nothing is written.
+      window.__ngeCellMatch.setSaveLink(async (l) => { window.__savedLink = l; return 'test-link'; });
+      window.__openedTab = null;
+      document.addEventListener('nge:open-cell-library', e => { window.__openedTab = (e.detail || {}).tab; }, { once: true });
+      document.querySelector('#nge-cell-match .nge-cm-save').click();
+      await new Promise(r => setTimeout(r, 400));
+      const tip = document.getElementById('nge-cell-match-saved');
+      const l = window.__savedLink || {};
+      return { button: document.querySelector('#nge-cell-match .nge-cm-save').textContent, tip: tip ? tip.innerText : null,
+        title: l.title, note: l.note, hasMissedLayer: /Missed%20pieces|Missed pieces/.test(decodeURIComponent(l.url || '')), dataset: l.dataset };
+    });
+    check('Save view saves this view, missed pieces and all, to My Links', saved.button === 'Saved \u2713' && saved.hasMissedLayer && /^Sandbox review, cell \d+/.test(saved.title || '') && saved.dataset === 'pinky_nf_v2', saved);
+    check('a tip says it is in My Links', /SAVED/.test(saved.tip || '') && /My Links/.test(saved.tip || '') && !/[\u2013\u2014]|\s-\s/.test((saved.tip || '') + (saved.note || '')), saved);
+    await shot('cell-match-saved.png');
+    await page.evaluate(() => document.querySelector('#nge-cell-match-saved .nge-cm-tip-open').click());
+    await page.waitForTimeout(300);
+    const opened = await page.evaluate(() => ({ tab: window.__openedTab, tip: !!document.getElementById('nge-cell-match-saved') }));
+    check('Open My Links opens the Cell Library on My Links', opened.tab === 'links' && !opened.tip, opened);
     check('no dashes in the review', !/[–—]|\s-\s/.test(await cardText() || ''), await cardText());
     await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-btn')].find(b => /next cell/i.test(b.textContent)).click());
     const c1 = await choice1;

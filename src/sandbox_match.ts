@@ -23,7 +23,8 @@ import { makeLayer } from 'neuroglancer/layer';
 import { reactive } from 'vue';
 
 export interface SandboxClaim { id: number; dataset: string; roots: string[] }
-interface Deps { claims: () => SandboxClaim[]; signedIn: () => boolean }
+export interface SavedLinkInput { title: string; note?: string; url: string; dataset?: string; position?: [number, number, number]; visibleSegments?: string[] }
+interface Deps { claims: () => SandboxClaim[]; signedIn: () => boolean; saveLink?: (l: SavedLinkInput) => Promise<string | null> }
 export interface MatchResult {
   taskId: number; scorable: boolean; root?: string; match?: number | null;
   /** Share of the missing parts merged in, and of the extra parts cut off, by
@@ -42,6 +43,7 @@ const DONE_MS = 2500;
 const STYLE_ID = 'nge-cell-match-style';
 const CHIP_ID = 'nge-cell-match-open';
 const HINT_ID = 'nge-cell-match-hint';
+const SAVED_ID = 'nge-cell-match-saved';
 const CLOSED_KEY = 'nge-cell-match-closed';
 const HINTED_KEY = 'nge-cell-match-hinted';
 const MIN_KEY = 'nge-cell-match-min';
@@ -229,21 +231,23 @@ const CSS = `
 #${CHIP_ID}:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CHIP_ID} .nge-cm-dot{width:8px;height:8px;border-radius:50%;background:#59e3a7;box-shadow:0 0 6px #59e3a7}
 #${CHIP_ID} .nge-cm-chipnum{color:#eaf6ff;letter-spacing:.06em}
-#${HINT_ID}{position:fixed;z-index:9000;width:230px;padding:12px 14px;box-sizing:border-box;
+.nge-cm-tip{position:fixed;z-index:9000;width:230px;padding:12px 14px;box-sizing:border-box;
   background:linear-gradient(135deg,rgba(4,6,14,.97),rgba(10,16,32,.96));border:1px solid rgba(74,158,255,.55);border-radius:10px;
   box-shadow:0 8px 28px rgba(0,0,0,.55),0 0 22px rgba(74,158,255,.18);color:#dfe8f6;font:13px/1.5 Inter,'Segoe UI',sans-serif;
   animation:nge-cm-tip-in .28s cubic-bezier(.16,1,.3,1) both}
-#${HINT_ID}::before{content:'';position:absolute;top:-7px;left:22px;width:12px;height:12px;background:rgba(8,12,26,.97);
+.nge-cm-tip::before{content:'';position:absolute;top:-7px;left:22px;width:12px;height:12px;background:rgba(8,12,26,.97);
   border-left:1px solid rgba(74,158,255,.55);border-top:1px solid rgba(74,158,255,.55);transform:rotate(45deg)}
-#${HINT_ID} .nge-cm-tip-kicker{font:600 10px/1 Orbitron,Inter,sans-serif;letter-spacing:.14em;color:#6fb2ff;margin-bottom:6px}
-#${HINT_ID} .nge-cm-tip-ok{margin-top:10px;padding:4px 14px;border-radius:12px;border:1px solid rgba(74,158,255,.5);background:rgba(74,158,255,.16);
+.nge-cm-tip .nge-cm-tip-kicker{font:600 10px/1 Orbitron,Inter,sans-serif;letter-spacing:.14em;color:#6fb2ff;margin-bottom:6px}
+.nge-cm-tip .nge-cm-tip-ok{margin-top:10px;padding:4px 14px;border-radius:12px;border:1px solid rgba(74,158,255,.5);background:rgba(74,158,255,.16);
   color:#eaf2ff;font:600 11px Orbitron,Inter,sans-serif;letter-spacing:.06em;cursor:pointer}
-#${HINT_ID} .nge-cm-tip-ok:hover{background:rgba(74,158,255,.28)}
-#${HINT_ID} .nge-cm-tip-ok:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
+.nge-cm-tip .nge-cm-tip-ok:hover{background:rgba(74,158,255,.28)}
+.nge-cm-tip .nge-cm-tip-ok:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 @keyframes nge-cm-tip-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 #${CHIP_ID}.nge-cm-tip-target{animation:nge-cm-tip-pulse 1.6s ease-in-out infinite}
 @keyframes nge-cm-tip-pulse{0%,100%{box-shadow:0 0 0 0 rgba(74,158,255,.7)}50%{box-shadow:0 0 0 8px rgba(74,158,255,0)}}
-@media (prefers-reduced-motion:reduce){#${HINT_ID},#${CHIP_ID}.nge-cm-tip-target{animation:none}}
+@media (prefers-reduced-motion:reduce){.nge-cm-tip,#${CHIP_ID}.nge-cm-tip-target{animation:none}}
+.nge-cm-tip .nge-cm-tip-row{display:flex;gap:8px;flex-wrap:wrap}
+.nge-cm-tip b{color:#7ee0ff;font-weight:600}
 #${CARD_ID} .nge-cm-delta{font:600 12px/1 Inter,system-ui,sans-serif;opacity:0;transition:opacity .8s}
 #${CARD_ID} .nge-cm-gauge{grid-column:1/-1;position:relative;height:6px;margin:6px 0 5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
 #${CARD_ID} .nge-cm-fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:3px;background:linear-gradient(90deg,#4a9eff,#7ee0ff);box-shadow:0 0 10px rgba(126,224,255,.45);transition:width .6s cubic-bezier(.34,1.56,.64,1)}
@@ -257,6 +261,7 @@ const CSS = `
 #${CARD_ID} .nge-cm-btn:hover{background:rgba(127,200,255,.18)}
 #${CARD_ID} .nge-cm-btn:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
 #${CARD_ID} .nge-cm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+#${CARD_ID} .nge-cm-save{margin-right:auto}
 #${CARD_ID} .nge-cm-go{margin-left:0;padding:8px 14px;border-color:#7fd8ff;background:rgba(127,216,255,.16);color:#fff;box-shadow:0 0 10px rgba(127,216,255,.25)}
 #${CARD_ID} .nge-cm-quiet{margin-left:0;border-color:rgba(127,200,255,.25);background:transparent;color:#8fb6dc}
 #${CARD_ID} .nge-cm-clean{color:#59e3a7;font:600 12px/1.4 Orbitron,Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:2px 0}
@@ -456,7 +461,7 @@ function showHint(b: HTMLElement) {
   // Pyr's tip box (as split_screen_tip.ts): under the button, until Got it.
   const h = document.createElement('div');
   h.id = HINT_ID;
-  h.className = 'ng-extend';
+  h.className = 'ng-extend nge-cm-tip';
   h.setAttribute('role', 'dialog');
   h.setAttribute('aria-label', 'Tip');
   h.innerHTML = '<div class="nge-cm-tip-kicker">TIP</div><div class="nge-cm-tip-text">Click here to reopen</div>'
@@ -608,6 +613,58 @@ function toView(nm: number[]): number[] | null {
     return ['x', 'y', 'z'].map((ax, i) => nm[i] / (scales[names.indexOf(ax)] * 1e9));
   } catch { return null; }
 }
+/** Save view in the review (Ames 2026-11-13): this view, with the missed
+ *  pieces in gold and the pins, goes to My Links in the Cell Library, and a
+ *  tip under the button says where it went. */
+async function saveReviewView(btn: HTMLButtonElement, r: ReviewResult) {
+  if (!deps?.saveLink || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'Saving';
+  const v: any = (window as any).viewer;
+  let url = window.location.href;
+  try { url = `${location.origin}${location.pathname}#!${encodeURIComponent(JSON.stringify(v.state.toJSON()))}`; } catch { /* the address bar's view */ }
+  let position: [number, number, number] | undefined;
+  try { const p = v.navigationState.position.value; position = [Math.round(p[0]), Math.round(p[1]), Math.round(p[2])]; } catch { /* no position */ }
+  const shown: string[] = [];
+  try { for (const id of currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? []) shown.push(String(id)); } catch { /* none */ }
+  const pct = (n: number | null | undefined) => (n == null ? 'none' : `${n}%`);
+  const id = await deps.saveLink({
+    title: `Sandbox review, cell ${r.root ?? ''}`.trim(),
+    note: `Missing ${pct(r.merge)}, Mergers ${pct(r.cut)}. Missed pieces in gold, mergers left pinned.`,
+    url, dataset: 'pinky_nf_v2', position, visibleSegments: shown,
+  }).catch(() => null);
+  if (!id) {
+    btn.disabled = false;
+    btn.textContent = 'Save view';
+    savedTip(btn, false);
+    return;
+  }
+  btn.textContent = 'Saved \u2713';
+  savedTip(btn, true);
+}
+
+function savedTip(btn: HTMLElement, ok: boolean) {
+  document.getElementById(SAVED_ID)?.remove();
+  const h = document.createElement('div');
+  h.id = SAVED_ID;
+  h.className = 'ng-extend nge-cm-tip';
+  h.setAttribute('role', 'status');
+  h.innerHTML = ok
+    ? '<div class="nge-cm-tip-kicker">SAVED</div><div>Find this view in <b>My Links</b>, in the Cell Library.</div>'
+      + '<div class="nge-cm-tip-row"><button type="button" class="nge-cm-tip-ok nge-cm-tip-open">Open My Links</button><button type="button" class="nge-cm-tip-ok nge-cm-tip-close">Got it</button></div>'
+    : '<div class="nge-cm-tip-kicker">NOT SAVED</div><div>The view could not be saved. Try again in a moment.</div>'
+      + '<div class="nge-cm-tip-row"><button type="button" class="nge-cm-tip-ok nge-cm-tip-close">Got it</button></div>';
+  document.body.appendChild(h);
+  const r = btn.getBoundingClientRect();
+  h.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - h.offsetWidth - 8)))}px`;
+  h.style.top = `${Math.round(r.bottom + 12)}px`;
+  h.querySelector('.nge-cm-tip-close')?.addEventListener('click', () => h.remove());
+  h.querySelector('.nge-cm-tip-open')?.addEventListener('click', () => {
+    h.remove();
+    document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'links' } }));
+  });
+}
+
 function flyTo(nm: number[]) {
   const p = toView(nm);
   if (!p) return;
@@ -725,6 +782,7 @@ export async function showReview(_taskId: number, pending: Promise<ReviewResult 
     const end = (choice: 'next' | 'stay') => {
       removeReviewLayers();
       window.clearInterval(pinsTimer);
+      document.getElementById(SAVED_ID)?.remove();
       reviewing = false;
       extra.innerHTML = '';
       (el.querySelector('.nge-cm-title') as HTMLElement).textContent = 'Cell match';
@@ -745,7 +803,13 @@ export async function showReview(_taskId: number, pending: Promise<ReviewResult 
     next.className = 'nge-cm-btn nge-cm-go';
     next.textContent = playing ? 'Next cell' : 'Done';
     next.addEventListener('click', () => end('next'));
-    actions.append(stay, next);
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'nge-cm-btn nge-cm-quiet nge-cm-save';
+    save.textContent = 'Save view';
+    save.title = 'Save this view, with the missed pieces and pins, to My Links in the Cell Library';
+    save.addEventListener('click', () => { void saveReviewView(save, r); });
+    actions.append(save, stay, next);
     next.focus();
   });
 }
@@ -796,4 +860,4 @@ export function startSandboxMatch(d: Deps) {
 }
 
 /** For headless checks. */
-(window as any).__ngeCellMatch = { judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, hasReview, startReview, showReview };
+(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, hasReview, startReview, showReview };
