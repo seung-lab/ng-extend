@@ -105,3 +105,14 @@ test('access.readHandledBetaBells: a Beta request bell is read for every admin o
   assert.deepStrictEqual(r, { marked: 5, ids: [1, 3, 4, 7] });
   await assert.rejects(handle('access.readHandledBetaBells', {}, io({ isAdmin: false }).io));
 });
+
+test('access.ewBio: admins read an EyeWire join date the browser cannot (no CORS on bio)', async () => {
+  const urls = [];
+  const fetch = async (u) => { urls.push(u); return u.includes('/lobus/') ? { ok: true, json: async () => ({ joined: 1362507776, roles: ['scout'], country_name: 'Germany' }) } : { ok: false }; };
+  const t = io({ fetch });
+  assert.deepStrictEqual(await handle('access.ewBio', { name: 'Lobus' }, t.io), { joined: 1362507776, roles: ['scout'], country: 'Germany' });
+  assert.strictEqual(urls[0], 'https://eyewire.org/1.0/player/lobus/bio');
+  assert.deepStrictEqual(await handle('access.ewBio', { name: 'nobody' }, t.io), { none: true });
+  await assert.rejects(handle('access.ewBio', { name: 'bad/../x' }, t.io));
+  await assert.rejects(handle('access.ewBio', { name: 'lobus' }, io({ isAdmin: false, fetch }).io));
+});

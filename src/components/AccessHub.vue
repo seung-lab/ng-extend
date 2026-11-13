@@ -234,7 +234,9 @@ async function readEw(name: string) {
   ewStats.value = { ...ewStats.value, [k]: 'reading' };
   const get = async (what: string) => { try { const r = await fetch(`https://eyewire.org/1.0/player/${encodeURIComponent(k)}/${what}`); return r.ok ? await r.json() : null; } catch { return null; } };
   let v: EwStats | 'none' = 'none';
-  const [st, bio] = await Promise.all([get('stats'), get('bio')]);
+  // The bio page (join date, roles) sends no CORS header, so the server reads it.
+  const bioOf = async () => { try { const b = await secureWrite<any>('access.ewBio', { name: k }); return b && !b.none ? b : null; } catch { return null; } };
+  const [st, bio] = await Promise.all([get('stats'), bioOf()]);
   if (st || bio) {
     const f = st?.forever ?? {};
     const fs = Array.isArray(st?.fscore) && st.fscore.length ? Number(st.fscore[0].fscore) : NaN;
@@ -774,7 +776,7 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.ew_name" class="ah-stats ah-ew" aria-label="Their EyeWire stats">
           <template v-if="openEw">
             <div><span>EyeWire</span>{{ openEw.points.toLocaleString() }} points · {{ openEw.cubes.toLocaleString() }} cubes<template v-if="openEw.accuracy != null"> · {{ Math.round(openEw.accuracy * 100) }}% accuracy</template></div>
-            <div v-if="openEw.roles.length || openEw.joined"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined {{ new Date(openEw.joined * 1000).getFullYear() }}</template></div>
+            <div v-if="openEw.roles.length || openEw.joined"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined EyeWire {{ new Date(openEw.joined * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</template></div>
           </template>
           <template v-else-if="ewOf(open.p) === 'none'">No EyeWire player named {{ open.p.ew_name }}.</template>
           <template v-else>Reading EyeWire…</template>

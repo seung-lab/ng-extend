@@ -854,6 +854,26 @@ async function setEwName(a, io) {
   return {ewName: ewName.toLowerCase()};
 }
 
+// ── An EyeWire player's public profile: when they joined, roles, country
+// (Ames 2026-11-13: "add eyewire join date here"). eyewire.org's bio page
+// sends no CORS header, so the Access page can't read it itself; the
+// stats page it reads directly. Admins only.
+//   access.ewBio  admins: {name} -> {joined, roles, country} or {none: true}.
+async function ewBio(a, io) {
+  needAdmin(io.isAdmin);
+  const name = cleanEwName(a.name);
+  if (!name) fail(400, 'Which EyeWire username?');
+  const get = io.fetch || fetch;
+  let bio = null;
+  try {
+    const r = await get(`https://eyewire.org/1.0/player/${encodeURIComponent(name.toLowerCase())}/bio`);
+    bio = r.ok ? await r.json() : null;
+  } catch (e) { bio = null; }
+  if (!bio || typeof bio !== 'object') return {none: true};
+  return {joined: Number(bio.joined) || null, roles: Array.isArray(bio.roles) ? bio.roles.map(String).slice(0, 20) : [],
+    country: bio.country_name ? String(bio.country_name).slice(0, 80) : null};
+}
+
 // ── A Beta request bell is read once the request is dealt with on the
 // Access page (Ames 2026-11-12: "notif feed is supposed to mark these as
 // read if I've dealt with them in Access"): let in (on Pilot testers),
@@ -1275,6 +1295,7 @@ async function handle(action, args, io) {
   if (action === 'access.askSent') return askSentAll(a, io);
   if (action === 'access.inviteCount') return inviteCount(a, io);
   if (action === 'access.setEwName') return setEwName(a, io);
+  if (action === 'access.ewBio') return ewBio(a, io);
   if (action === 'access.readHandledBetaBells') return readHandledBetaBells(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);

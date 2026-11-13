@@ -118,6 +118,9 @@ Could you reply with your EyeWire username?
 
 Amy Sterling and the Pyr Team at Princeton` }));
       if (a === 'access.askEmail') return r.fulfill(ok({ sent: true, at: new Date().toISOString() }));
+      // The bio page sends no CORS header, so the page asks the server (Ames 2026-11-13).
+      if (a === 'access.ewBio') { const n = String(input.args?.name || input.name || ''); calls.push({ ewBio: n });
+        return r.fulfill(ok(n === 'kmierow' ? { joined: 1399207428, roles: ['scout', 'scythe'], country: 'Germany' } : n === 'domaitk' ? { joined: 1794344311, roles: [] } : { none: true })); }
       if (a === 'canEdit') return r.fulfill(ok({ 'nik@example.org': 'MEC, Retina', 'jo@example.org': 'MEC', 'lou@example.org': 'FlyWire public', 'boss@example.org': 'Retina' }));
       if (a === 'usersSheet') return r.fulfill(ok({ people: 14, url: 'https://docs.google.com/spreadsheets/d/x/edit' }));
       return r.fulfill(ok({}));
@@ -139,7 +142,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     calls.push({ eyewire: name, what });
     if (name === 'kmierow') return r.fulfill(json(what === 'stats'
       ? { username: 'kmierow', forever: { points: '31685747', cubes: '224881', complete: '13389' }, fscore: [{ fscore: 0.9247 }] }
-      : { username: 'kmierow', joined: 1399207428, roles: ['scout', 'scythe'], level: 2 }));
+      : { status: 'no CORS: the browser never sees this' }));
     if (name === 'domaitk') return r.fulfill(json(what === 'stats' ? { username: 'domaitk', forever: { points: '0', cubes: '0' }, fscore: [] } : { username: 'domaitk', joined: 1794344311, roles: [] }));
     return r.fulfill({ status: 404, body: '' });
   });
@@ -254,7 +257,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the panel shows the request', /Ken Mierow/.test(panel) && /ken@example\.org/.test(panel) && /rank Guardian/.test(panel) && /I traced for years/.test(panel), panel.slice(0, 200));
     check('the panel shows their EyeWire email (Ames 2026-11-12)', /EyeWire email kmierow@old\.example/.test(panel), panel.slice(0, 400));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
-    check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined 2014/.test(ew), ew);
+    check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined EyeWire May 4, 2014/.test(ew) && calls.some(c => c.ewBio === 'kmierow'), ew);
     await page.fill('.ah-panel textarea', 'Do we know him?');
     await page.click('.ah-panel button:has-text("Add note")');
     await page.waitForSelector('.ah-note-text');
