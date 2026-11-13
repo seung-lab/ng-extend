@@ -916,7 +916,7 @@ They live in an ANNOTATION LAYER. <strong>CLICK the "+" to add one.</strong>`,
   {
     part: "Part 3 of 4 · Mark what you see",
     text: `
-The Pyr gem tool is already picked. <strong>CTRL+CLICK on the cell</strong> to drop a few gems.
+<strong>CTRL+CLICK on the cell</strong> to drop a few gems.
 
 Hover a gem's row in the panel: the pencil adds a note, the trash removes it. The <strong>Annotations</strong> tutorial in the menu covers colors, lines and more.`,
     position: OVER_3D,
