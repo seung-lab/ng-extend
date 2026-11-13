@@ -4555,7 +4555,7 @@ const panelStyle = computed(() => ({
               Paste a full https viewer link.
             </div>
             <!-- Notes fold away until asked for (Ames 2026-11-12: "click to expand to add notes?"). -->
-            <button v-if="!notesOpen && !completing.notes" type="button" class="nge-cl-add-note" @click="notesOpen = true">+ Add a note for the reviewers</button>
+            <button v-if="!notesOpen && !completing.notes" type="button" class="nge-cl-add-note" @click="notesOpen = true">+ Add a note</button>
             <label v-if="notesOpen || completing.notes" class="nge-cl-complete-label">Notes (optional)</label>
             <textarea
               v-if="notesOpen || completing.notes"
@@ -4567,11 +4567,16 @@ const panelStyle = computed(() => ({
               placeholder="Anything the reviewers should know, e.g. axon cut off at the edge"
               @keydown.stop @keyup.stop @keypress.stop
             ></textarea>
+            <!-- Crosshairs on the left with Check again under it, the two
+                 buttons beside it on the right: a shorter box (Ames 2026-11-12). -->
+            <div class="nge-cl-complete-xhrow">
+            <div class="nge-cl-complete-xhcol">
             <label class="nge-cl-complete-label">Crosshairs</label>
             <div class="nge-cl-complete-msg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
               <template v-if="completing.checking">Checking where the crosshairs are…</template>
               <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}<CrosshairHelp v-if="!completing.ok" /></template>
-              <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
+            </div>
+            <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
               <button
@@ -4581,6 +4586,7 @@ const panelStyle = computed(() => ({
                 @click="submitComplete(cell)"
               ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : play.on ? 'Complete and next' : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
+            </div>
             </div>
             <!-- Why Mark complete can't be pressed yet, said plainly (a player
                  could not tell why it stayed grey, Ames 2026-11-05). -->
@@ -5285,7 +5291,7 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-type { flex: 1 1 0; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-search-input { flex: 1; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-btn { white-space: nowrap; }
-.nge-cl-complete-msg { font-size: 0.8em; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nge-cl-complete-msg { font-size: 14px; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nge-cl-complete-msg--ok { color: #6d9; }
 .nge-cl-complete-msg--bad { color: #f98; }
 .nge-cl-complete-why { color: #ffcf8a; margin-top: 6px; }
@@ -5302,6 +5308,10 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-recheck:hover:not(:disabled) { border-color: rgba(160, 190, 220, 0.6); }
 .nge-cl-complete-notes { resize: vertical; min-height: 2.6em; font-family: inherit; width: 100%; box-sizing: border-box; }
 .nge-cl-complete-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+.nge-cl-complete-xhrow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+.nge-cl-complete-xhcol { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.nge-cl-complete-xhrow .nge-cl-complete-recheck { margin-left: 0; font-size: 13px; padding: 2px 10px; }
+.nge-cl-complete-xhrow .nge-cl-complete-actions { margin-top: 0; margin-left: auto; }
 
 .nge-cl-btn--release {
   border-color: rgba(255, 170, 68, 0.2);
