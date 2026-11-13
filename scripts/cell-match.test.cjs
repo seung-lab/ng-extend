@@ -349,6 +349,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => sessionStorage.setItem('nge_play_on', 'cells'));
     await page.waitForTimeout(3000);
     check('playing: Standby with Open my cell', /your cell is not on screen/.test(await cardText() || '') && (await go()) === 'Open my cell', { text: await cardText(), go: await go() });
+    const sub = await page.evaluate(() => { const s = document.querySelector('#nge-cell-match .nge-cm-sub'); const p = document.querySelector('#nge-cell-match .nge-cm-row[data-row="merge"] .nge-cm-pieces'); return { sub: s && !s.hidden ? s.textContent : null, inRow: p.textContent }; });
+    check('the note is a line under the title, not in the Missing row', sub.sub === 'Your cell is not on screen' && sub.inRow === '', sub);
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-min-btn').click());
+    const subMin = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-sub').offsetParent === null);
+    check('collapsed: the note is hidden', subMin, subMin);
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-min-btn').click());
     const pressed = await page.evaluate(() => { let hit = false; const t = document.querySelector('.nge-play-chip') || document.querySelector('.nge-play-btn'); if (!t) return 'no play control'; t.addEventListener('click', e => { hit = true; e.stopImmediatePropagation(); }, { capture: true, once: true }); document.querySelector('#nge-cell-match .nge-cm-idle-go').click(); return hit; });
     check('Open my cell presses the game Play control', pressed === true, pressed);
     await shot('cell-match-standby.png');

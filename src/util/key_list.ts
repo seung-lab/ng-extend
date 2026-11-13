@@ -64,6 +64,8 @@ export const PYR_KEYS: PyrKey[] = [
   { keys: ['keyh', 'shift+keyh'], label: 'Highlight mode (H opens it, Shift+H also closes it)', group: 'Tools', owner: 'ExtensionBar' },
   { keys: ['keym'], label: 'Quick merge: point at a piece and press M, then the other piece and M', group: 'Editing', owner: 'graphene MergeSegmentsTool', where: 'With Quick merge on in Settings', scoped: true },
   { keys: ['keyh'], label: 'Hold to place a point', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode', scoped: true },
+  { keys: ['keys'], label: 'Highlight To soma: mark the way back to the soma', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode, with a start point placed', scoped: true },
+  { keys: ['keyb'], label: 'Highlight Beyond: mark every branch past the point', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode, with a start point placed', scoped: true },
   { keys: ['shift+keyn'], label: 'Lantern on or off', group: 'Tools', owner: 'ExtensionBar' },
   { keys: ['shift+keyl'], label: 'Cell Library', group: 'Panels', owner: 'ExtensionBar' },
   { keys: ['shift+keys'], label: 'Settings', group: 'Panels', owner: 'ExtensionBar' },

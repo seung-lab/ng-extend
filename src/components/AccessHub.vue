@@ -234,7 +234,9 @@ async function readEw(name: string) {
   ewStats.value = { ...ewStats.value, [k]: 'reading' };
   const get = async (what: string) => { try { const r = await fetch(`https://eyewire.org/1.0/player/${encodeURIComponent(k)}/${what}`); return r.ok ? await r.json() : null; } catch { return null; } };
   let v: EwStats | 'none' = 'none';
-  const [st, bio] = await Promise.all([get('stats'), get('bio')]);
+  // The bio page (join date, roles) sends no CORS header, so the server reads it.
+  const bioOf = async () => { try { const b = await secureWrite<any>('access.ewBio', { name: k }); return b && !b.none ? b : null; } catch { return null; } };
+  const [st, bio] = await Promise.all([get('stats'), bioOf()]);
   if (st || bio) {
     const f = st?.forever ?? {};
     const fs = Array.isArray(st?.fscore) && st.fscore.length ? Number(st.fscore[0].fscore) : NaN;
@@ -628,9 +630,20 @@ const recentError = ref('');
 // their dataset and are added together, as on the community board.
 const theirDatasets = ref<PlayerDataset[]>([]);
 const theirMax = computed(() => Math.max(1, ...theirDatasets.value.map(d => d.edits)));
+// Their CAVE user id, the number on their edits in CAVE and Codex (Celia
+// #528). Pyr saves it the first time they open the game.
+const caveId = ref<number | null>(null);
+const caveCopied = ref(false);
+function copyCaveId() {
+  if (caveId.value == null) return;
+  void navigator.clipboard?.writeText(String(caveId.value)).then(() => { caveCopied.value = true; setTimeout(() => { caveCopied.value = false; }, 1500); });
+}
 watch(() => open.value?.p?.user_id || '', async (uid) => {
-  recent.value = []; theirDatasets.value = []; recentError.value = ''; recentFor.value = '';
+  recent.value = []; theirDatasets.value = []; recentError.value = ''; recentFor.value = ''; caveId.value = null;
   if (!uid) return;
+  void supabase.from('users').select('cave_user_id').eq('id', uid).limit(1).then(({ data }) => {
+    if ((open.value?.p?.user_id || '') === uid) caveId.value = (data?.[0] as { cave_user_id?: number | null } | undefined)?.cave_user_id ?? null;
+  });
   const [r, d] = await Promise.all([
     open.value?.p?.edits ? supabase.from('access_hub_recent_edits').select('at,dataset,operation,success').eq('user_id', uid).order('at', { ascending: false }).limit(10) : Promise.resolve({ data: [], error: null }),
     supabase.from('access_hub_player_datasets').select('dataset,edits,cells,chats,last_edit_at').eq('user_id', uid).limit(100),
@@ -764,6 +777,9 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.gave_email && open.p.gave_email !== open.p.email" class="ah-panel-meta">Gave {{ open.p.gave_email }} on the form</div>
         <div v-if="open.p?.ew_email" class="ah-panel-meta">EyeWire email {{ open.p.ew_email }}</div>
         <div v-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
+        <div v-if="open.p?.user_id" class="ah-panel-meta">CAVE ID <template v-if="caveId != null"><b class="ah-caveid">{{ caveId }}</b>
+          <button type="button" class="ah-linkbtn" title="Copy the CAVE ID" @click="copyCaveId">{{ caveCopied ? 'Copied' : 'Copy' }}</button></template>
+          <template v-else>not saved yet (it is saved when they open the game)</template></div>
         <div v-if="open.p?.ew_name || open.p?.ew_rank" class="ah-panel-meta">EyeWire {{ open.p?.ew_name || '' }}<template v-if="open.p?.ew_rank">, said rank {{ open.p.ew_rank }}</template><template v-if="open.p?.ew_name_set_at">, added by hand</template>
           <button v-if="open.p?.ew_name && !open.p.is_admin && ewEdit !== open.key" type="button" class="ah-linkbtn ah-ewset-change" @click="startEwEdit(open)">Change</button></div>
         <div v-if="open.p && !open.p.is_admin && (ewEdit === open.key || !open.p.ew_name)" class="ah-ewset">
@@ -774,7 +790,7 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.ew_name" class="ah-stats ah-ew" aria-label="Their EyeWire stats">
           <template v-if="openEw">
             <div><span>EyeWire</span>{{ openEw.points.toLocaleString() }} points · {{ openEw.cubes.toLocaleString() }} cubes<template v-if="openEw.accuracy != null"> · {{ Math.round(openEw.accuracy * 100) }}% accuracy</template></div>
-            <div v-if="openEw.roles.length || openEw.joined"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined {{ new Date(openEw.joined * 1000).getFullYear() }}</template></div>
+            <div v-if="openEw.roles.length || openEw.joined"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined EyeWire {{ new Date(openEw.joined * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</template></div>
           </template>
           <template v-else-if="ewOf(open.p) === 'none'">No EyeWire player named {{ open.p.ew_name }}.</template>
           <template v-else>Reading EyeWire…</template>
@@ -1088,6 +1104,7 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 .ah-bar-link:hover { text-decoration: underline; }
 .ah-stats span { display: inline-block; min-width: 7.5em; color: #8fa6c6; }
 .ah-panel-meta { font-size: 13px; color: #a9bbd3; margin: 3px 0; overflow-wrap: anywhere; }
+.ah-caveid { color: #e8f0ff; font-variant-numeric: tabular-nums; user-select: all; margin-right: 4px; }
 .ah-panel blockquote { margin: 8px 0; padding: 6px 10px; border-left: 3px solid rgba(120,170,255,.5); color: #d5e3f7; white-space: pre-wrap; }
 .ah-close { position: absolute; right: 10px; top: 8px; background: none; border: none; color: #a9c4e6; font-size: 22px; cursor: pointer; }
 .ah-panel { position: sticky; }

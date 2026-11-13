@@ -19,6 +19,11 @@ import { htmlToMarkdown, htmlHasFormatting } from '../util/html_to_markdown';
 import { useProofreadingBackendStore } from '../store';
 import { vAutogrow } from '../util/autogrow';
 import imgNurroHome from '../images/nurro-at-home600.png';
+import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import pyrTodoIcon from '../images/pyr-icon-todo.png';
+/** The game, and the Access page, from the board's top bar (Ames 2026-11-13). */
+const gameUrl = `${window.location.origin}${window.location.pathname}`;
+const accessUrl = `${gameUrl}?triage=access`;
 import imgNurroBravo from '../images/bravo-nurro.png';
 import imgNurroWhere from '../images/wheres-nurro.png';
 
@@ -648,23 +653,28 @@ async function finish(c: Card, e?: MouseEvent) {
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
-  // A finished card counts for its owner and every collaborator (Ames 2026-11-09).
-  // Triage reports each one closed this week count too (Ames 2026-11-12).
-  const tw = triageWeek.value;
+  // A finished card is 2 points for its owner and 1 for each collaborator
+  // (Ames 2026-11-12: "If I complete the task I should get more points, the
+  // assist people should get less"; 2026-11-13: "No half points").
   const byPerson = people.value.map(p => {
-    const cardsN = doneWeek.filter(c => c.owner_id === p.id || (helpers.value[c.id] || []).includes(p.id)).length;
-    const reports = tw?.byPerson?.[p.id] || 0;
-    return { id: p.id, name: firstName(p.name), n: cardsN + reports, cards: cardsN, reports };
+    const owned = doneWeek.filter(c => c.owner_id === p.id).length;
+    const helped = doneWeek.filter(c => c.owner_id !== p.id && (helpers.value[c.id] || []).includes(p.id)).length;
+    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped, owned, helped };
   }).filter(x => x.n).sort((a, b) => b.n - a.n);
+  // Triage reports closed this week are their own count, shown on the board so
+  // the GMs see that work too (Ames 2026-11-13: "Triage should be a separate category").
+  const tw = triageWeek.value;
+  const triageBy = people.value.map(p => ({ id: p.id, name: firstName(p.name), n: tw?.byPerson?.[p.id] || 0 }))
+    .filter(x => x.n).sort((a, b) => b.n - a.n);
   const month = Date.now() - 30 * 864e5;
   const spans = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= month && c.created_at)
     .map(c => (Date.parse(c.done_at!) - Date.parse(c.created_at)) / 864e5).filter(d => d >= 0);
   return {
     todo: cards.value.filter(c => c.list === 'todo').length,
     doing: cards.value.filter(c => c.list === 'doing').length,
-    doneWeek: doneWeek.length + (tw?.total || 0),
-    doneCards: doneWeek.length,
-    doneReports: tw?.total || 0,
+    doneWeek: doneWeek.length,
+    triageWeek: tw ? tw.total : null,
+    triageBy,
     late: cards.value.filter(c => isOverdue(c)).length,
     avgDays: spans.length ? Math.round(spans.reduce((a, b) => a + b, 0) / spans.length * 10) / 10 : null,
     byPerson,
@@ -2249,14 +2259,19 @@ async function onPagePaste(e: ClipboardEvent) {
 onMounted(() => document.addEventListener('paste', onPagePaste));
 onUnmounted(() => document.removeEventListener('paste', onPagePaste));
 onUnmounted(() => document.removeEventListener('keydown', onKey));
+// Its own green gem in the browser tab (Celia #529), apart from Triage's gold one.
+let tabIconWas = '';
+onMounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel="icon"]'); if (l) { tabIconWas = l.href; l.href = pyrTodoIcon; } });
+onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel="icon"]'); if (l && tabIconWas) l.href = tabIconWas; });
 </script>
 
 <template>
   <div class="nge-todo" :class="{ 'nge-todo--light': light }">
     <div class="nge-todo-head">
+      <a class="nge-todo-pyr" :href="gameUrl" title="Play Pyr"><img :src="pyrIcon" alt="Pyr" /></a>
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">←<span class="nge-todo-word"> Triage</span></button>
       <span class="nge-todo-heading nge-todo-heading--home" title="Back to the board" @click="openId = null"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
-      <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
+      <span class="nge-todo-sub">Pyr Planning. Type @ to tag in Pyr and Slack.</span>
       <input v-model="search" type="search" class="nge-todo-search" :class="{ 'nge-todo-search--on': searchWords.length }" placeholder="🔍 Search cards" aria-label="Search cards"
              title="Finds cards by title, notes, checklist, comments, links or people, old finished ones too. Type me or @name for someone's cards; owner, with, tagged, checklist, overdue, week, nodate, unowned filter. Esc clears."
              @focus="openId = null; myTasksOpen = false; activityOpen = false; searchFocused = true" @blur="searchFocused = false" @keydown.stop="onSearchKey" @keyup.stop @keypress.stop />
@@ -2267,6 +2282,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': activityOpen }" :disabled="!myId" @click="activityOpen = !activityOpen; myTasksOpen = false; openId = null; if (activityOpen) loadActivity()"
               title="What happened on the board for you: tags, replies, cards given to you, finished cards you follow">🔔<span class="nge-todo-word"> Activity</span><b v-if="activityUnread" class="nge-todo-mytasks-n">{{ activityUnread }}</b></button>
       <button v-if="isOwner" class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': incompleteOpen }" title="Cards you closed as not finished. Only you see this." @click="incompleteOpen = !incompleteOpen; openId = null; connectOpen = false">⊘ Not finished <span v-if="incomplete.length" class="nge-todo-count">{{ incomplete.length }}</span></button>
+      <a class="nge-todo-btn nge-todo-access" :href="accessUrl" title="The Access page: everyone who asked to edit or was let in, step by step">🔑<span class="nge-todo-word"> Access</span></a>
       <button class="nge-todo-btn nge-todo-wide-only" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load()">↻<span class="nge-todo-word">{{ loading ? ' Loading…' : ' Refresh' }}</span></button>
     </div>
@@ -2347,12 +2363,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <img :src="imgNurroHome" alt="" class="nge-todo-nurro" />
       <div class="nge-todo-stat nge-todo-stat--todo"><b>{{ stats.todo }}</b><span>to do</span></div>
       <div class="nge-todo-stat nge-todo-stat--doing"><b>{{ stats.doing }}</b><span>doing</span></div>
-      <div class="nge-todo-stat nge-todo-stat--done" :title="`${stats.doneCards} cards and ${stats.doneReports} triage reports (Done or Dismissed) in the last 7 days`"><b>{{ stats.doneWeek }}</b><span>done this week</span></div>
+      <div class="nge-todo-stat nge-todo-stat--done" title="Cards finished in the last 7 days"><b>{{ stats.doneWeek }}</b><span>done this week</span></div>
       <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
       <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
       <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
-        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.cards} cards, ${p.reports} triage reports`">{{ p.name }} <b>{{ p.n }}</b></span>
-        <span class="nge-todo-stat-word">done this week</span>
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each)`">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span class="nge-todo-stat-word">points this week</span>
+      </div>
+      <div class="nge-todo-stat nge-todo-stat--triage" v-if="stats.triageWeek" title="Triage reports closed with Done or Dismiss in the last 7 days">
+        <b>{{ stats.triageWeek }}</b><span>triage reports closed this week</span>
+        <span v-for="p in stats.triageBy" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }">{{ p.name }} <b>{{ p.n }}</b></span>
       </div>
     </div>
     <Teleport to="body">
@@ -3412,6 +3432,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-stat--doing b { color: var(--teal); }
 .nge-todo-stat--done b { color: var(--gold); }
 .nge-todo-stat--late b { color: var(--pink); }
+.nge-todo-stat--triage { flex-wrap: wrap; }
+.nge-todo-stat--triage > b { color: var(--blue); }
+.nge-todo-stat--triage > span:not(.nge-todo-personstat) { margin-right: 6px; }
 .nge-todo-personstat { color: var(--pc); font-weight: 600; margin-right: 6px; }
 .nge-todo-personstat b { font-size: 14px; color: var(--pc); }
 .nge-todo-stat-word { color: var(--dim); }
@@ -3465,5 +3488,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-panel--focus .nge-todo-comment-by { font-size: 13px; }
 .nge-todo-panel.nge-todo-panel--focus { max-width: 1040px; }
 .nge-todo-heading--home { cursor: pointer; }
+.nge-todo-pyr { display: inline-flex; flex: 0 0 auto; border-radius: 8px; transition: transform 0.12s; }
+.nge-todo-pyr img { width: 30px; height: 30px; object-fit: contain; display: block; }
+.nge-todo-pyr:hover { transform: scale(1.1); }
+.nge-todo-access { text-decoration: none; display: inline-flex; align-items: center; }
 .nge-todo-heading--home:hover { text-decoration: underline; text-underline-offset: 4px; }
 </style>

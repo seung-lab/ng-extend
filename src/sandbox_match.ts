@@ -239,6 +239,8 @@ const CSS = `
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row{padding:0}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-gauge{margin:4px 0 3px}
 #${CARD_ID}.nge-cm-idle .nge-cm-pieces{color:#8fb6dc}
+#${CARD_ID} .nge-cm-sub{margin:-2px 0 8px;color:#a9c3e0;font-size:13px;line-height:1.35}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-sub{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-idle-go{display:none}
 #${CHIP_ID}{position:fixed;top:64px;left:12px;z-index:59;display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;
   border:1px solid rgba(110,190,255,.4);border-radius:3px;background:linear-gradient(180deg,rgba(7,18,36,.9),rgba(3,9,20,.94));
@@ -311,6 +313,7 @@ function card(): HTMLElement {
     + '<button type="button" class="nge-cm-tool nge-cm-i" aria-label="What do these numbers mean?" aria-pressed="false" aria-controls="nge-cell-match-info" title="What do these numbers mean?">i</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the bars"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. A small Cell match button stays to open it again.">×</button></div>'
+    + '<div class="nge-cm-sub" hidden></div>'
     + '<div class="nge-cm-info" id="nge-cell-match-info">'
     // Ames 2026-11-13: say what the Sandbox is, that real cells have no known
     // answer, and where research datasets are asked for.
@@ -362,9 +365,14 @@ function idle(state: string, note: string, action = false) {
     (box.querySelector('.nge-cm-num') as HTMLElement).textContent = '';
     (box.querySelector('.nge-cm-delta') as HTMLElement).textContent = '';
     (box.querySelector('.nge-cm-fill') as HTMLElement).style.width = '0%';
-    (box.querySelector('.nge-cm-pieces') as HTMLElement).textContent = row === 'merge' ? note : '';
+    (box.querySelector('.nge-cm-pieces') as HTMLElement).textContent = '';
     box.dataset.pct = ''; box.dataset.pctWas = '';
   }
+  // What the card is waiting for, as a line under the title (Ames 2026-11-13:
+  // "this should be sub-header, only visible on open mode").
+  const sub = el.querySelector('.nge-cm-sub') as HTMLElement;
+  sub.textContent = note;
+  sub.hidden = !note;
   const extra = el.querySelector('.nge-cm-extra') as HTMLElement;
   const label = isPlaying() ? 'Open my cell' : 'Play';
   let b = extra.querySelector('.nge-cm-idle-go') as HTMLButtonElement | null;
@@ -577,7 +585,10 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   }
   if (isClosed()) { chip(r); return; }
   const el = card();
-  if (el.classList.contains('nge-cm-idle')) (el.querySelector('.nge-cm-extra') as HTMLElement).innerHTML = '';
+  if (el.classList.contains('nge-cm-idle')) {
+    (el.querySelector('.nge-cm-extra') as HTMLElement).innerHTML = '';
+    (el.querySelector('.nge-cm-sub') as HTMLElement).hidden = true;
+  }
   el.classList.remove('nge-cm-idle');
   const state = el.querySelector('.nge-cm-state') as HTMLElement;
   el.classList.toggle('nge-cm-checking', checking);

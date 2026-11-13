@@ -567,12 +567,11 @@ watch(showChat, (v) => {
   try { localStorage.setItem(CHAT_VISIBLE_KEY, v ? '1' : '0'); } catch {}
 });
 const showCellLibrary = ref(false);
-/** The Playing chip (Ames 2026-11-12): back to the cell in hand, in the slim
- *  Cell Library; with that open, a click opens the choice to switch or stop. */
+/** The Playing chip shows and hides the box you play in (Ames 2026-11-13):
+ *  open, a click puts it away; closed, a click brings it back on your cell. */
 function onPlayChip() {
   if (!play.on) { pressPlay(); return; }
-  // The choice only on Retina, and only once your cell is showing.
-  if (showCellLibrary.value && offersChoice()) { choosePlay(); return; }
+  if (showCellLibrary.value) { showCellLibrary.value = false; return; }
   void startPlay(play.on);
 }
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
@@ -1394,10 +1393,16 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     </button>
     <!-- Play (util/play.ts): what is being played, a click to change or stop (Ames 2026-11-10). -->
     <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="onPlayChip"
-            :title="showCellLibrary && offersChoice() ? 'Playing ' + playLabel() + '. Click to change what you play, or stop.' : 'Playing ' + playLabel() + '. Click to go back to your cell.'">
+            :title="showCellLibrary ? 'Playing ' + playLabel() + '. Click to hide the box.' : 'Playing ' + playLabel() + '. Click to show your cell again.'">
       <!-- The play icon says "Playing" (Ames 2026-11-12: less space). -->
       <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
       <span>{{ playLabel() }}</span>
+    </button>
+    <!-- The pill now shows and hides the box, so on Retina switching (BC
+         Challenge or Cilia Quests) or stopping has its own small button. -->
+    <button v-if="play.on && offersChoice()" class="nge-play-switch" type="button" @click="choosePlay"
+            title="Change what you play, or stop playing" aria-label="Change what you play, or stop playing">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4h7.5M7.5 2l2 2-2 2M10 8H2.5M4.5 6l-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
@@ -2099,6 +2104,11 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
 #extensionBar .nge-play-chip svg { color: #3eecbe; }
 #extensionBar .nge-play-chip--quests { border-color: rgba(255, 211, 110, 0.6); background: rgba(255, 211, 110, 0.1); box-shadow: 0 0 10px rgba(255, 211, 110, 0.22); }
 #extensionBar .nge-play-chip--quests svg { color: #ffd36e; }
+#extensionBar .nge-play-switch {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin: 0 10px 0 -6px; padding: 0;
+  border-radius: 13px; border: 1px solid rgba(159, 180, 204, 0.35); background: transparent; color: #9fb4cc; cursor: pointer;
+}
+#extensionBar .nge-play-switch:hover { color: #dcfff4; border-color: rgba(62, 236, 190, 0.6); }
 .nge-dataset-species { font-size: 14px; line-height: 1; }
 #extensionBar .nge-dataset-btn:hover {
   opacity: 1;
