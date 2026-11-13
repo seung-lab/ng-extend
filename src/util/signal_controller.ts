@@ -858,10 +858,13 @@ function ensureStyle() {
 .nge-sig-board li em { font: 500 13px 'Orbitron', 'Inter', sans-serif; font-style: normal; text-align: right; color: #f4f9ff; font-variant-numeric: tabular-nums; }
 .nge-sig-board li em .u { font: 500 10px 'Inter', sans-serif; margin-left: 2px; color: #a9c3de; }
 .nge-sig-board .note { margin: 12px 0 6px; color: #b9d2ec; }
-.nge-sig-board .you { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 7px; border-top: 1px solid rgba(126, 224, 255, 0.2); font-size: 11.5px; color: #a9c3de; }
-.nge-sig-board .you b { color: #ffe7b0; font-weight: 600; }
-.ng-extend.nge-sig-board .you button { margin-left: auto; width: 22px; height: 22px; padding: 0; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 50%; background: rgba(126, 224, 255, 0.06); color: #cfe6ff; cursor: pointer; font-size: 13px; line-height: 1; }
-.ng-extend.nge-sig-board .you button:hover { background: rgba(126, 224, 255, 0.16); color: #fff; }
+.nge-sig-board .you { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(126, 224, 255, 0.2); font-size: 11.5px; color: #a9c3de; }
+.nge-sig-board .you span { margin-right: 2px; }
+.ng-extend.nge-sig-board .you button.w { padding: 3px 8px; border: 1px solid rgba(255, 210, 122, 0.4); border-radius: 6px; background: rgba(255, 210, 122, 0.08); color: #ffe7b0; cursor: pointer; font: 600 11.5px 'Inter', 'Roboto', sans-serif; line-height: 1.2; }
+.ng-extend.nge-sig-board .you button.w:hover, .ng-extend.nge-sig-board .you button.w:focus-visible { border-color: rgba(255, 210, 122, 0.9); background: rgba(255, 210, 122, 0.2); color: #fff; }
+.ng-extend.nge-sig-board .you button.re { margin-left: auto; width: 22px; height: 22px; padding: 0; border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 50%; background: rgba(126, 224, 255, 0.06); color: #cfe6ff; cursor: pointer; font-size: 13px; line-height: 1; }
+.ng-extend.nge-sig-board .you button.re:hover { background: rgba(126, 224, 255, 0.16); color: #fff; }
+.nge-sig-board .hint { margin: 6px 0 0; font-size: 10.5px; color: #7f9fc0; }
 body.nge-mobile .ng-extend.nge-sig-board { left: 6px; right: 6px; top: calc(8px + env(safe-area-inset-top)); width: auto; }
 @media (max-width: 999px) { .ng-extend.nge-sig-board { left: 12px; } }
 .nge-sig-dot { width: 7px; height: 7px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-sig-blink 1.1s infinite; }
@@ -2634,13 +2637,27 @@ function titleCard() {
    browser. A round is timed by the server as well as the game
    (signal_run_begin as the countdown ends, signal_run_finish as the level is
    won), and what the round's input looked like goes with it: whether each
-   shot followed a real press, how the pointer moved, how nearly the gaps
-   between shots repeat. The server flags the rounds no hand played and
-   leaves them off the board (supabase-signal-leaderboard.sql). Until that
-   SQL is applied the calls fail and the game says nothing about ranks. ── */
+   shot followed a real press, whether the pointer pressed in two places
+   with no move between, and the shots themselves (which cell, by mouse,
+   touch or key, and when). The server checks the round against what the
+   circuit allows (no faster than its spikes travel, no more charges than
+   the round could have had), flags the rounds no hand played and leaves
+   them off the board (supabase-signal-leaderboard.sql). A name on the
+   board is always one of the callsigns below: the server keeps the same
+   two lists and shows nothing else, so nothing typed ever reaches the
+   board. Until that SQL is applied the calls fail and the game says
+   nothing about ranks.
+
+   What is not flagged, on purpose: a pointer that never moved (a hand
+   parks it on one cell and clicks: the first version left such a round off
+   the board, 2026-11-13), and gaps between shots that repeat (a steady hand
+   double-clicks to within a few ms). Leaving a real player's round off with
+   no word of why is worse than ranking a script that plays at a hand's
+   speed. ── */
 type LbRpc = (fn: string, args: Record<string, unknown>) => PromiseLike<{data: any; error: any}>;
 let lbRpc: LbRpc = (fn, args) => supabase.rpc(fn, args);
 const LB_CLIENT_KEY = 'pyr.signal.client', LB_NAME_KEY = 'pyr.signal.callsign';
+/** The callsign's words. The server holds the same two lists (signal_callsign in supabase-signal-leaderboard.sql): change them together. */
 const LB_ADJ = ['Swift', 'Golden', 'Bright', 'Cosmic', 'Lucky', 'Quiet', 'Bold', 'Nimble', 'Electric', 'Radiant', 'Clever', 'Stellar', 'Sparkling', 'Daring', 'Gentle', 'Curious'];
 const LB_NOUN = ['Axon', 'Dendrite', 'Synapse', 'Neuron', 'Spike', 'Soma', 'Spark', 'Signal', 'Cortex', 'Photon', 'Comet', 'Nebula', 'Pilot', 'Starling', 'Otter', 'Fox'];
 function lbClient(): string {
@@ -2652,24 +2669,71 @@ function lbClient(): string {
   }
   return id;
 }
-/** This browser's callsign on the board: made up, never typed, so the board needs no moderating. */
+/** A callsign's three parts, if it is one of the game's own. */
+function lbParts(name: string): [string, string, string] | null {
+  const m = /^([A-Z][a-z]+) ([A-Z][a-z]+) ([1-9][0-9])$/.exec(name);
+  return m && LB_ADJ.includes(m[1]) && LB_NOUN.includes(m[2]) ? [m[1], m[2], m[3]] : null;
+}
+/** This browser's callsign on the board: made up from the lists and the player's to change a word at a time, never typed, so the board needs no moderating. */
 function lbCallsign(reroll = false): string {
   let name = '';
   if (!reroll) { try { name = localStorage.getItem(LB_NAME_KEY) || ''; } catch { /* made up again */ } }
-  if (name.length < 2) {
+  if (!lbParts(name)) {
     const pick = (a: string[]) => a[Math.floor(Math.random() * a.length)];
     name = `${pick(LB_ADJ)} ${pick(LB_NOUN)} ${10 + Math.floor(Math.random() * 90)}`;
     try { localStorage.setItem(LB_NAME_KEY, name); } catch { /* not kept */ }
   }
   return name;
 }
+/** The player changes the callsign: the first word or the second (the next on its list), the number, or all of it.
+ *  The rows on screen follow at once; the board is told a moment after the last change. */
+let lbNameTimer = 0;
+/** Callsigns this browser has just given up, and when: the server keeps the board ten seconds, so a board read meanwhile may still carry one. */
+let lbGaveUp: {name: string; at: number}[] = [];
+function lbRename(part: 0 | 1 | 2 | 'all') {
+  const old = lbCallsign(), p = lbParts(old);
+  if (!p) return;
+  lbGaveUp = [...lbGaveUp.filter(o => performance.now() - o.at < 15_000), {name: old, at: performance.now()}];
+  let name: string;
+  if (part === 'all') name = lbCallsign(true);
+  else {
+    if (part === 0) p[0] = LB_ADJ[(LB_ADJ.indexOf(p[0]) + 1) % LB_ADJ.length];
+    else if (part === 1) p[1] = LB_NOUN[(LB_NOUN.indexOf(p[1]) + 1) % LB_NOUN.length];
+    else { let num = p[2]; while (num === p[2]) num = String(10 + Math.floor(Math.random() * 90)); p[2] = num; }
+    name = p.join(' ');
+    try { localStorage.setItem(LB_NAME_KEY, name); } catch { /* not kept */ }
+  }
+  if (boardData) for (const list of [boardData.level, boardData.overall]) for (const r of list ?? []) if (String(r.player) === old) r.player = name;
+  renderBoard();
+  (boardEl?.querySelector(part === 'all' ? '[data-act="reroll"]' : `[data-part="${part}"]`) as HTMLElement | null)?.focus();
+  clearTimeout(lbNameTimer);
+  lbNameTimer = window.setTimeout(() => {
+    try { void Promise.resolve(lbRpc('signal_name', {p_client: lbClient(), p_player: lbCallsign()})).then(() => { /* the board has it */ }, () => { /* told with the next round */ }); } catch { /* told with the next round */ }
+  }, 900);
+}
 /** The round under way: the server's id for it (once it answers), and what its input looked like. */
-interface LbRound { run: Promise<string | null>; shots: number[]; untrusted: number; moves: number; keys: number; touches: number; hiddenMs: number; hiddenAt: number; tampered: boolean; }
+interface LbRound {
+  run: Promise<string | null>; t0: number; shots: number[]; log: string[]; untrusted: number; moves: number; keys: number; touches: number;
+  /** Where the mouse last pressed for a shot, and how many moves the round had seen by then. */
+  press: {x: number; y: number; moves: number} | null;
+  /** Mouse shots in a new place with no move since the last: a hand's pointer cannot. */
+  teleports: number;
+  hiddenMs: number; hiddenAt: number; tampered: boolean;
+}
 let lbRound: LbRound | null = null;
-/** The last press, tap, click or key the browser itself reported, and when. */
-let lbLast: {trusted: boolean; at: number} | null = null;
+/** The last press, tap, click or key the browser itself reported: when, by what (m mouse, t touch or pen, k key), and where. */
+let lbLast: {trusted: boolean; at: number; kind: 'm' | 't' | 'k'; x: number; y: number} | null = null;
+/** What the pointer last was: a click says nothing of it in every browser. */
+let lbPtr: 'm' | 't' = 'm';
 const lbNote = (e: Event) => {
-  lbLast = {trusted: e.isTrusted, at: performance.now()};
+  const pe = e as PointerEvent;
+  let kind: 'm' | 't' | 'k';
+  if (e.type === 'keydown' || (e.type === 'click' && pe.detail === 0)) kind = 'k';   // a click with no press behind it is a key's (Enter on a button), or a screen reader's
+  else {
+    if (pe.pointerType) lbPtr = pe.pointerType === 'mouse' ? 'm' : 't';
+    kind = lbPtr;
+  }
+  lbLast = {trusted: e.isTrusted, at: performance.now(), kind, x: kind === 'k' ? 0 : pe.clientX, y: kind === 'k' ? 0 : pe.clientY};
   if (!lbRound || !e.isTrusted) return;
   if (e.type === 'keydown') lbRound.keys++;
   else if (e.type === 'pointerdown' && (e as PointerEvent).pointerType !== 'mouse') lbRound.touches++;
@@ -2683,14 +2747,28 @@ const lbVis = () => {
 function lbBegin() {
   const call = Promise.resolve(lbRpc('signal_run_begin', {p_level: levelIndex + 1, p_client: lbClient()}))
     .then(({data, error}) => (error || typeof data !== 'string' ? null : data), () => null);
-  lbRound = {run: call, shots: [], untrusted: 0, moves: 0, keys: 0, touches: 0, hiddenMs: 0, hiddenAt: document.hidden ? performance.now() : 0, tampered: false};
+  lbRound = {run: call, t0: performance.now(), shots: [], log: [], untrusted: 0, moves: 0, keys: 0, touches: 0, press: null, teleports: 0,
+    hiddenMs: 0, hiddenAt: document.hidden ? performance.now() : 0, tampered: false};
 }
-/** A shot of the player's: when, and whether a real press came just before it (a script's click reports itself untrusted, or comes from nowhere). */
-function lbShot() {
-  if (!lbRound) return;
-  const t = performance.now();
-  lbRound.shots.push(t);
-  if (!(lbLast && lbLast.trusted && t - lbLast.at < 400)) lbRound.untrusted++;
+/** A shot of the player's: when, at which cell, and what made it. A real
+ *  press comes just before it (a script's click reports itself untrusted,
+ *  or comes from nowhere). A mouse that presses in a new place has moved
+ *  there: the browser reports every move, so a press 24 px from the last
+ *  with no move between was put there by a program driving the browser. */
+function lbShot(key: string, hush: boolean) {
+  const round = lbRound;
+  if (!round) return;
+  const t = performance.now(), last = lbLast;
+  const real = !!last && last.trusted && t - last.at < 400;
+  if (!real) round.untrusted++;
+  const kind = real ? last!.kind : 's';
+  if (real && kind === 'm') {
+    const was = round.press;
+    if (was && was.moves === round.moves && Math.hypot(last!.x - was.x, last!.y - was.y) > 24) round.teleports++;
+    round.press = {x: last!.x, y: last!.y, moves: round.moves};
+  }
+  round.shots.push(t);
+  if (round.log.length < 60) round.log.push(`${key}${hush ? '~' : ''}:${kind}:${Math.max(0, Math.round(t - round.t0))}`);
 }
 async function lbFinish(stars: number) {
   const round = lbRound;
@@ -2700,7 +2778,8 @@ async function lbFinish(stars: number) {
   const gaps = round.shots.slice(1).map((t, i) => t - round.shots[i]);
   // how nearly its gaps repeat: for each gap the nearest other one, and the middle of those (a script's waits repeat to a few ms, a hand's do not)
   const near = gaps.map((g, i) => Math.min(...gaps.filter((_, j) => j !== i).map(o => Math.abs(o - g)))).filter(Number.isFinite).sort((a, b) => a - b);
-  const features = {shots: round.shots.length, untrusted: round.untrusted, moves: round.moves, keys: round.keys, touches: round.touches, tampered: round.tampered,
+  const features = {v: 2, shots: round.shots.length, untrusted: round.untrusted, teleports: round.teleports, moves: round.moves, keys: round.keys, touches: round.touches, tampered: round.tampered,
+    log: round.log.join(' '),
     hidden_ms: Math.round(round.hiddenMs), min_gap_ms: gaps.length ? Math.round(Math.min(...gaps)) : null, repeat_ms: near.length ? Math.round(near[Math.floor(near.length / 2)]) : null,
     view, touch: touch(), w: window.innerWidth, h: window.innerHeight};
   const run = await round.run;
@@ -2742,12 +2821,17 @@ async function loadBoard() {
   try { res = await lbRpc('signal_board', {p_level: at + 1, p_limit: 12}); } catch (e) { res = {data: null, error: e}; }
   if (!boardEl || levelIndex !== at) return;
   if (res.error || !res.data || typeof res.data !== 'object') { boardState = 'off'; boardData = null; }
-  else { boardState = 'ready'; boardData = {...res.data, forLevel: at}; }
+  else {
+    boardState = 'ready'; boardData = {...res.data, forLevel: at};
+    const gone = new Set(lbGaveUp.filter(o => performance.now() - o.at < 15_000).map(o => o.name)), me = lbCallsign();
+    gone.delete(me);
+    if (gone.size) for (const list of [boardData!.level, boardData!.overall]) for (const r of list ?? []) if (gone.has(String(r.player))) r.player = me;
+  }
   renderBoard();
 }
 function renderBoard() {
   if (!boardEl) return;
-  const me = lbCallsign();
+  const me = lbCallsign(), words = lbParts(me) ?? ['', '', ''];
   const rows: any[] = boardState !== 'ready' || !boardData ? [] : boardTab === 'level' ? (boardData.level ?? []) : (boardData.overall ?? []);
   const row = (r: any, i: number) => {
     const mine = String(r.player) === me ? ' class="me"' : '';
@@ -2762,10 +2846,12 @@ function renderBoard() {
   boardEl.innerHTML = `<div class="head"><span>Leaderboard</span><button type="button" class="nge-sig-x" aria-label="Close the leaderboard">${X_SVG}</button></div>
     <div class="tabs"><button type="button" data-tab="level" aria-pressed="${boardTab === 'level'}">Level ${levelIndex + 1}</button><button type="button" data-tab="overall" aria-pressed="${boardTab === 'overall'}">All levels</button></div>
     ${body}
-    <div class="you">You fly as <b>${esc(me)}</b><button type="button" data-act="reroll" title="A new callsign">↻</button></div>`;
+    <div class="you"><span>You fly as</span><button type="button" class="w" data-part="0" title="Another first word">${esc(words[0])}</button><button type="button" class="w" data-part="1" title="Another second word">${esc(words[1])}</button><button type="button" class="w" data-part="2" title="Another number">${esc(words[2])}</button><button type="button" class="re" data-act="reroll" title="A whole new callsign" aria-label="A whole new callsign">↻</button></div>
+    <p class="hint">Your callsign: tap a word or the number to change it.</p>`;
   (boardEl.querySelector('.nge-sig-x') as HTMLButtonElement).onclick = () => toggleBoard(false);
   boardEl.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => { b.onclick = () => { boardTab = b.dataset.tab as 'level' | 'overall'; renderBoard(); }; });
-  (boardEl.querySelector('[data-act="reroll"]') as HTMLButtonElement).onclick = () => { lbCallsign(true); renderBoard(); };
+  boardEl.querySelectorAll<HTMLButtonElement>('[data-part]').forEach(b => { b.onclick = () => lbRename(Number(b.dataset.part) as 0 | 1 | 2); });
+  (boardEl.querySelector('[data-act="reroll"]') as HTMLButtonElement).onclick = () => lbRename('all');
 }
 
 /* ── the levels: the level's name at the foot of the panel opens the list,
@@ -3724,7 +3810,7 @@ function fireAt(key: string, hush: boolean, demo: boolean): boolean {
   if (hush) sfx.hush(); else sfx.spark();
   return true;
 }
-function shoot(key: string) { if (phase !== 'playing') return; lbShot(); fireAt(key, hushMode, false); }
+function shoot(key: string) { if (phase !== 'playing') return; lbShot(key, hushMode); fireAt(key, hushMode, false); }
 function shake(key: string) {
   const el = chipEls.get(key);
   if (!el) return;
