@@ -912,6 +912,9 @@ async function switchToClaim(cell: CellRow) {
   const fromStart = !t?.working_link;
   const openedClaim = openStartLink(t?.working_link || cell.startLink);
   if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
+  // A saved view with the five empty annotation layers (a claim from before
+  // Highlight) opens with Highlight too, as the player chose (Ames 2026-11-12).
+  else if (openedClaim && isRetinaCell(cell) && !cell.quest && !retinaAnnotationLayersByDefault()) startRetinaClaimLight(cell.segId, true);
   if (!openedClaim) {
     if (leftId && leftId !== cell.taskId) freshLayersForClaim();
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
