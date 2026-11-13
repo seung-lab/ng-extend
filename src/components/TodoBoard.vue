@@ -2271,7 +2271,7 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
       <a class="nge-todo-pyr" :href="gameUrl" title="Play Pyr"><img :src="pyrIcon" alt="Pyr" /></a>
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">←<span class="nge-todo-word"> Triage</span></button>
       <span class="nge-todo-heading nge-todo-heading--home" title="Back to the board" @click="openId = null"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
-      <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
+      <span class="nge-todo-sub">Pyr Planning. Type @ to tag in Pyr and Slack.</span>
       <input v-model="search" type="search" class="nge-todo-search" :class="{ 'nge-todo-search--on': searchWords.length }" placeholder="🔍 Search cards" aria-label="Search cards"
              title="Finds cards by title, notes, checklist, comments, links or people, old finished ones too. Type me or @name for someone's cards; owner, with, tagged, checklist, overdue, week, nodate, unowned filter. Esc clears."
              @focus="openId = null; myTasksOpen = false; activityOpen = false; searchFocused = true" @blur="searchFocused = false" @keydown.stop="onSearchKey" @keyup.stop @keypress.stop />
