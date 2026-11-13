@@ -455,8 +455,9 @@ function freeLook(spot: V3, frameNm: number, cam: {right: V3; up: V3; toEye: V3}
   const r = threeDPanel()?.element?.getBoundingClientRect?.(), h = panel?.getBoundingClientRect();
   if (!r || !h || r.width <= 0) return spot;
   if (sideHud()) {
-    const covered = clamp((h.right + 16 - r.left) / r.width, 0, 0.6), aspect = r.width / Math.max(1, r.height);
-    return add(spot, mul(cam.right, covered * frameNm * aspect / 2));
+    // into the open part beside the HUD: the spot shows right of the view's middle, so the look point sits that far to its left
+    const aspect = r.width / Math.max(1, r.height);
+    return sub(spot, mul(cam.right, coveredShare() * frameNm * aspect / 2));
   }
   return sub(spot, mul(cam.up, hudFrac() * frameNm / 2));
 }
@@ -470,7 +471,33 @@ function glideTo(c: CellState, factor = 0.6) {
   if (!finite3(look) || !(scale > 0)) return;
   glide = {look, scale, since: performance.now()};
 }
-function glideHome() { if (homeLook && homeScale > 0 && finite3(homeLook)) glide = {look: homeLook, scale: homeScale, since: performance.now()}; }
+/** The share of the 3D view's width the HUD covers where it stands at the
+ *  left (0 where it lies along the bottom): from the panel's layout box,
+ *  which its entry animation does not shrink. */
+function coveredShare(): number {
+  if (!sideHud() || !panel) return 0;
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  return r && r.width > 0 ? clamp((panel.offsetLeft + panel.offsetWidth + 16 - r.left) / r.width, 0, 0.6) : 0;
+}
+/** The level's look point beside a HUD at the left, for a camera and a zoom
+ *  (1: the level's own frame): the circuit in the middle of the width the
+ *  HUD leaves free, a little above the middle, so the look point sits to
+ *  the circuit's left by half the covered width. (Until 2026-11-13 it sat
+ *  to its right: the circuit stood against the HUD on a wide screen and
+ *  under it on a laptop.) */
+function sideLook(cam: {right: V3; up: V3; toEye: V3}, zoom = 1): V3 {
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  const aspect = r && r.height > 0 ? r.width / r.height : 1.5, frame = viewNm * zoom;
+  return sub(sub(center, mul(cam.right, coveredShare() * frame * aspect / 2)), mul(cam.up, frame * 0.03));
+}
+/** The level's home look point as the camera stands now: beside a HUD at the
+ *  left it is worked out afresh, since a tour's turn or the player may have
+ *  turned the view since the frame was set. */
+function homeLookNow(zoom = 1): V3 | null {
+  const nm = nmPerUnit(), cam = nm && camNow(nm);
+  return cam && sideHud() && !phone() ? sideLook(cam, zoom) : homeLook;
+}
+function glideHome() { const look = homeLookNow(); if (look && homeScale > 0 && finite3(look)) glide = {look, scale: homeScale, since: performance.now()}; }
 /** Where the game last put the camera, and whether the player has moved it
  *  since: then a step's reset leaves the camera alone, and only a step that
  *  moves it on purpose takes it back (Ames 2026-11-12: "I zoomed out so I
@@ -483,11 +510,24 @@ function recordCam() {
   camSet = {look, scale: v.projectionScale.value};
   userCam = false;
 }
+/** When the player last touched the view: a press, a drag, the wheel, a key. */
+let lastInputAt = -Infinity;
+const noteInput = () => { lastInputAt = performance.now(); };
+const noteDrag = (e: PointerEvent) => { if (e.buttons || e.pointerType !== 'mouse') lastInputAt = performance.now(); };
 function watchCam() {
   if (glide || !camSet) return;
   const v = viewerNow(), nm = nmPerUnit(), look = v && nm && lookNow(v, nm);
   if (!v || !nm || !look) return;
-  if (len(sub(look, camSet.look)) > viewNm * 0.01 || Math.abs(v.projectionScale.value - camSet.scale) > camSet.scale * 0.02) userCam = true;
+  if (!(len(sub(look, camSet.look)) > viewNm * 0.01 || Math.abs(v.projectionScale.value - camSet.scale) > camSet.scale * 0.02)) return;
+  // The camera is the player's only if the player moved it. With no hand on
+  // the view it was something else: the dataset's own start view lands a
+  // moment after the level is framed (config/default-settings.json), which
+  // left the level at that view and marked the camera as the player's, so
+  // no step took it home again (seen 2026-11-13). Then it goes straight
+  // back to where the game put it.
+  if (userCam || performance.now() - lastInputAt < 1500) { userCam = true; return; }
+  setLook(v, nm, camSet.look);
+  setZoom(v, camSet.scale);
 }
 /** A slow, even glide to a look point and zoom over so many seconds. */
 function glideSlow(look: V3, scale: number, seconds: number) {
@@ -2010,14 +2050,32 @@ function demoPulse(path: V3[], seconds: number) {
 let orbit = 0;
 /** The finale's turn: an arc that eases in and out and comes to rest (peak in radians a second). */
 let orbitArc: {from: number; until: number; peak: number} | null = null;
+/** What a turn turns about: a point that keeps its place on the screen while
+ *  the view goes round it (a cell body, the circuit's middle). Without one
+ *  the view turns about its look point, and whatever stands beside that
+ *  swings across the screen. */
+let orbitPivot: V3 | null = null;
+/** The pivot's place from the look point along the camera's own axes, and the look point the hold last set. */
+let orbitHold: {off: V3; last: V3} | null = null;
+function stopOrbit() { orbit = 0; orbitArc = null; orbitPivot = null; orbitHold = null; }
 function stepOrbit(dt: number, cam: {right: V3; up: V3; toEye: V3}) {
   if (orbitArc) {
     const q = (performance.now() - orbitArc.from) / (orbitArc.until - orbitArc.from);
-    if (q >= 1) { orbitArc = null; orbit = 0; } else orbit = orbitArc.peak * Math.sin(Math.PI * clamp(q, 0, 1));
+    if (q >= 1) stopOrbit(); else orbit = orbitArc.peak * Math.sin(Math.PI * clamp(q, 0, 1));
   }
-  if (!orbit) return;
-  const nm = nmPerUnit(), o = viewerNow()?.perspectiveNavigationState?.pose?.orientation;
-  if (!nm || !o?.orientation) return;
+  if (!orbit) { orbitHold = null; if (!orbitArc) orbitPivot = null; return; }
+  const v = viewerNow(), nm = nmPerUnit(), o = v?.perspectiveNavigationState?.pose?.orientation;
+  if (!v || !nm || !o?.orientation) return;
+  if (orbitPivot && !glide) {
+    // the pivot keeps its place: the look point is put where the camera's axes, as they stand now, leave the pivot where it was
+    const look = lookNow(v, nm);
+    if (look && orbitHold && len(sub(look, orbitHold.last)) > viewNm * 0.004) { orbitPivot = null; orbitHold = null; }   // the player moved the view: the turn goes on about where they look
+    else if (look) {
+      if (!orbitHold) { const d = sub(orbitPivot, look); orbitHold = {off: [dot(d, cam.right), dot(d, cam.up), dot(d, cam.toEye)], last: look}; }
+      const next = sub(orbitPivot, add(add(mul(cam.right, orbitHold.off[0]), mul(cam.up, orbitHold.off[1])), mul(cam.toEye, orbitHold.off[2])));
+      if (setLook(v, nm, next)) { orbitHold.last = lookNow(v, nm) ?? next; if (camSet && !userCam) camSet.look = orbitHold.last; }
+    }
+  }
   const axis = norm([cam.up[0] / nm[0], cam.up[1] / nm[1], cam.up[2] / nm[2]]);
   const r = quat.setAxisAngle(quat.create(), axis, orbit * dt);
   quat.multiply(o.orientation, r, o.orientation);
@@ -2037,7 +2095,7 @@ function undimAll() {
   for (const k of tourDim) { const c = cells.get(k); if (c?.shown && now >= c.hushedUntil) paint(c, false); }
   tourDim.clear();
 }
-function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); if (!userCam) glideHome(); orbit = 0; undimAll(); lightWhole([]); clearReveals(); hidePartsTint(); }
+function tourReset() { clearTourLabels(); hints = new Set(); endVisit(); if (!userCam) glideHome(); stopOrbit(); undimAll(); lightWhole([]); clearReveals(); hidePartsTint(); }
 let tourSteps: TourStep[] = [];
 const TOURS: Record<number, TourStep[]> = {};
 TOURS[0] = [
@@ -2050,7 +2108,7 @@ TOURS[0] = [
       const t = cells.get('T');
       if (!t) return;
       revealCell('T', 1.6, [1, 0.95, 0.75]);
-      orbit = 0.12;   // the slow turn around it, as around the Gatekeeper (Ames 2026-11-12: "box 1, it is supposed to be spinning")
+      orbit = 0.12; orbitPivot = t.spec.soma;   // the slow turn around it, as around the Gatekeeper (Ames 2026-11-12: "box 1, it is supposed to be spinning"); the cell keeps its place
       const s = toScreen(t.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
       visit = {key: 'T', since: now, lean: s && r && s[0] > r.left + r.width / 2 ? -1 : 1, fired: true};   // the ship goes and lands; no card
       if (view === 'cockpit') glideTo(t, 0.7);
@@ -2158,7 +2216,7 @@ TOURS[1] = [
       lightWhole(['I1']);
       revealCell('I1', 1.6, [0.9, 0.8, 1]);
       glideTo(g, 0.55);
-      orbit = 0.22;
+      orbit = 0.22; orbitPivot = g.spec.soma;
       await sleep(700); if (!alive()) return;
       scan('I1');
       await sleep(2600); if (!alive()) return;
@@ -2458,8 +2516,10 @@ function finale(key: string) {
   }, 420 + i * 200));
   setTimeout(() => {
     if (!alive()) return;
-    if (!userCam && homeLook && homeScale > 0) glideSlow(homeLook, homeScale * 1.14, 7);
+    const home = homeLookNow(1.14);
+    if (!userCam && home && homeScale > 0) glideSlow(home, homeScale * 1.14, 7);
     orbitArc = {from: performance.now(), until: performance.now() + 14_000, peak: 0.088};   // about 45 degrees in all
+    orbitPivot = center;   // the circuit keeps its place as the view goes round it
   }, 600);
   setTimeout(() => { if (alive() && phase === 'playing') showResult(true); }, 900);
 }
@@ -2968,7 +3028,7 @@ function frameLevel() {
   // phone had already left for this one (Ames 2026-11-10: "couldn't tap the
   // right cell").
   v.projectionOrientation.restoreState([0, 0, 0, 1]);
-  needsFrame = true;
+  needsFrame = true; settleStrict = true; settleBox = ''; settleWait = 0;
   glide = null;
   shipAt = add(center, [0, -viewNm * 0.4, 0]);
   shipFwd = norm(sub(center, shipAt));
@@ -2979,6 +3039,23 @@ let viewNm = 260_000;
 /** Set by frameLevel: the next frame with a camera puts the circuit in the
  *  open space above the HUD. */
 let needsFrame = false;
+/** After frameLevel the frame is settled only from a panel that shows what
+ *  was asked for: the first frame after the layout and the orientation
+ *  change still carries the old panel's box and axes, and a frame settled
+ *  from those left the circuit in the middle of the whole view, the HUD
+ *  over part of it (seen 2026-11-13: the old layout's quarter panel, 800 px
+ *  at 800, and the old orientation's up). So: the panel's box the same two
+ *  frames running, and its axes the side view's (x across); after a second
+ *  and a half, whatever it shows. */
+let settleStrict = false, settleBox = '', settleWait = 0;
+function panelFresh(cam: {right: V3; up: V3; toEye: V3}): boolean {
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  const box = r ? `${Math.round(r.left)}:${Math.round(r.top)}:${Math.round(r.width)}:${Math.round(r.height)}` : '';
+  const same = box !== '' && box === settleBox;
+  settleBox = box;
+  if (++settleWait > 90) return true;
+  return same && cam.right[0] > 0.999 && Math.abs(cam.up[1]) > 0.999;
+}
 function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
   const v = viewerNow(), nm = nmPerUnit();
   if (!v || !nm) return;
@@ -3020,12 +3097,7 @@ function settleFrame(cam: {right: V3; up: V3; toEye: V3}) {
   if (sideHud()) {
     // The HUD stands at the left: the circuit centres in the width it leaves
     // free, and a little above the middle.
-    const r = threeDPanel()?.element?.getBoundingClientRect?.();
-    const h = panel?.getBoundingClientRect();
-    const covered = r && h && r.width > 0 ? clamp((h.right + 16 - r.left) / r.width, 0, 0.6) : 0;
-    const aspect = r && r.height > 0 ? r.width / r.height : 1.5;
-    const look = sub(sub(center, mul(cam.right, -covered * viewNm * aspect / 2)), mul(cam.up, viewNm * 0.03));
-    setLook(v, nm, look);
+    setLook(v, nm, sideLook(cam));
     return;
   }
   // The HUD takes the bottom third, so the camera looks a little below the
@@ -3102,10 +3174,11 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: numbe
   // Ames 2026-11-11). The cockpit's nose: low in the middle of the view,
   // three tenths of the way out from the eye.
   const d2 = eyeDist * 0.3, halfH2 = d2 * tanHalf;
-  const nose = add(sub(eye, mul(cam.toEye, d2)), mul(cam.up, -0.92 * halfH2));
+  const nose = add(add(sub(eye, mul(cam.toEye, d2)), mul(cam.up, -0.92 * halfH2)), mul(cam.right, coveredShare() * halfH2 * aspect));   // low in the middle of the open part, where the canopy's middle is
   // zoomed out past the level's own frame, its spot comes in toward the middle: at twice the frame about 0.6 of the way out, at three times under half (Ames 2026-11-12: "the ship can stop like 50% closer while the camera pans out")
   const zoomOut = homeScale > 0 ? clamp(v.projectionScale.value / homeScale, 1, 4) : 1, k = 1 / (1 + (zoomOut - 1) * 0.65);
-  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * k * halfW)), mul(cam.up, sy * k * halfH)), len: Math.min(halfH, halfW) * 0.14, nose, eye, eyeDist};   // 0.22 was "too large" (Ames 2026-11-12)
+  const cx = coveredShare();   // the middle of the open part beside the HUD, in half-widths from the view's middle: where the circuit stands
+  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, (cx + (sx - cx) * k) * halfW)), mul(cam.up, sy * k * halfH)), len: Math.min(halfH, halfW) * 0.14, nose, eye, eyeDist};   // 0.22 was "too large" (Ames 2026-11-12)
 }
 /** Where the ship lands on a visit: on the near side of the cell body (a
  *  soma is some 12 µm across), a touch to the side it came from, so it sits
@@ -3445,7 +3518,7 @@ function scan(key: string) {
   if (phase !== 'brief' && phase !== 'done') return;
   const c = cells.get(key);
   if (!c || !c.shown) return;
-  if (phase === 'done') { orbit = 0; orbitArc = null; }   // the finale's turn stops for a scan
+  if (phase === 'done') stopOrbit();   // the finale's turn stops for a scan
   hideScan();
   // the ship goes to whichever side of the cell has more screen
   const s = toScreen(c.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
@@ -3603,7 +3676,7 @@ function frameSynapses(key: string) {
   let ex = 0, ey = 0;
   for (const q of pts) { const d = sub([q[0], q[1], q[2]], mid); ex = Math.max(ex, Math.abs(dot(d, cam.right))); ey = Math.max(ey, Math.abs(dot(d, cam.up))); }
   const r = threeDPanel()?.element?.getBoundingClientRect?.(), aspect = r && r.height > 0 ? r.width / r.height : 1.6;
-  const frameNm = Math.max(120_000, 2.3 * ey, 2.3 * ex / aspect);
+  const frameNm = Math.max(120_000, 2.3 * ey, 2.3 * ex / (aspect * (1 - coveredShare())));
   glideSlow(freeLook(mid, frameNm, cam), frameNm / Math.min(nm[0], nm[1], nm[2]), 1.4);
 }
 /** For a driver's job line: the sparks it needs on its own to spike its target. */
@@ -3892,7 +3965,11 @@ function placeScan() {
   const onScreen = !!ship && ship[0] > r.left && ship[0] < r.right && ship[1] > r.top + 40 && ship[1] < r.bottom;
   let bx: number, by: number;
   if (scanPin) [bx, by] = scanPin;
-  else { bx = r.right - bw - Math.max(24, r.width * 0.15); by = r.top + Math.max(24, r.height * 0.11); }
+  else {
+    bx = r.right - bw - Math.max(24, r.width * 0.15); by = r.top + Math.max(24, r.height * 0.11);
+    // off its own cell: where its place at the right would cover the cell body, it stands at the left of the open part instead
+    if (s[0] > bx - 70 && s[0] < bx + bw + 70 && s[1] > by - 70 && s[1] < by + bh + 70) bx = (hud && sideHud() ? hud.right : r.left) + 28;
+  }
   bx = clamp(bx, r.left + 10, r.right - bw - 10);
   by = clamp(by, r.top + 10, r.bottom - bh - 16);
   if (!scanPin && hud && bx < hud.right + 10 && bx + bw > hud.left - 10 && by < hud.bottom + 10 && by + bh > hud.top - 10) {
@@ -4360,7 +4437,7 @@ function frameBody(ts: number) {
   }
   const cam = nm && camNow(nm);
   if (cam) {
-    if (needsFrame) { settleFrame(cam); rememberHome(); recordCam(); }
+    if (needsFrame && (!settleStrict || panelFresh(cam))) { settleStrict = false; settleFrame(cam); rememberHome(); recordCam(); }
     if (pendingGlide) { const g = pendingGlide; pendingGlide = null; g(); }
     if (phase === 'playing' || demo) stepModel(dt); else idleStep(dt);
     placeShip(cam, dt);
@@ -4452,7 +4529,8 @@ let fingers = 0;
 let mouseStart: {x: number; y: number; key: string; t: number} | null = null;
 function onPointerDown(e: PointerEvent) {
   if (!active) return;
-  if (phase === 'done' && (orbit || orbitArc || glide) && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) { orbit = 0; orbitArc = null; if (glide) { glide = null; recordCam(); } }   // the finale's slow turn ends where the player takes the view
+  noteInput();
+  if (phase === 'done' && (orbit || orbitArc || glide) && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) { stopOrbit(); if (glide) { glide = null; recordCam(); } }   // the finale's slow turn ends where the player takes the view
   if (e.pointerType !== 'mouse') {
     fingers++;
     tapStart = null;
@@ -4492,6 +4570,7 @@ function onPointerUp(e: PointerEvent) {
 }
 function onKey(e: KeyboardEvent) {
   if (!active) return;
+  noteInput();
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   if (e.key === 'Escape') { e.stopPropagation(); stopSignalController(); return; }
@@ -4520,7 +4599,7 @@ async function startLevel(index: number) {
   if (levelIndex === 0) score = 0;
   shownScore = score;
   // what the last level's finale left: its lit cells, its turn, its title
-  won = false; finaleToken++; orbit = 0; orbitArc = null; litWhole = new Set(); clearReveals(); ringQ.clear(); clearLockup(); hints = new Set();
+  won = false; finaleToken++; stopOrbit(); litWhole = new Set(); clearReveals(); ringQ.clear(); clearLockup(); hints = new Set();
   titleCard();
   resetCells();
   clearTags();
@@ -4581,7 +4660,7 @@ function beginPlay() {
   panel?.classList.remove('nge-sig--intro');   // the box comes back with play
   now = 0; lastFrame = 0;
   beams = []; flashes = []; sparks = []; arrivals = []; queued = [];
-  endVisit(); clearTourLabels(); orbit = 0; undimAll(); lightWhole([]); hidePartsTint();
+  endVisit(); clearTourLabels(); stopOrbit(); undimAll(); lightWhole([]); hidePartsTint();
   // the tour's demonstrations left charge and spikes behind
   for (const c of cells.values()) { c.e = 0; c.i = 0; c.refractoryUntil = -1; c.hushedUntil = -1; c.lastSpike = -1; c.spikes = 0; if (c.gateNext !== null) c.gateNext = 1.2; }
   coached.clear(); lastMissCoach = -Infinity; pendingExcitation.clear(); hints.clear(); lastGo = null; coachHoldUntil = 0;
@@ -4651,6 +4730,8 @@ export async function playSignalController(levelAt = 0) {
     window.addEventListener('click', swallow, true);
     window.addEventListener('dblclick', onDoubleClick, true);
     window.addEventListener('keydown', onKey, true);
+    window.addEventListener('wheel', noteInput, {capture: true, passive: true});
+    window.addEventListener('pointermove', noteDrag, true);
     lastFrame = 0;
     raf = requestAnimationFrame(frame);
     opening = true;
@@ -4674,6 +4755,8 @@ export function stopSignalController() {
   window.removeEventListener('click', swallow, true);
   window.removeEventListener('dblclick', onDoubleClick, true);
   window.removeEventListener('keydown', onKey, true);
+  window.removeEventListener('wheel', noteInput, true);
+  window.removeEventListener('pointermove', noteDrag, true);
   for (const c of cells.values()) if (c.dimmed) paint(c, false);
   stopMusic();
   document.removeEventListener('pointerdown', nudgeMusic, true);
@@ -4688,7 +4771,7 @@ export function stopSignalController() {
   hideCanopy();
   editorEl?.remove(); editorEl = null;
   litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flip = null; flying = false; homing = false; shipCam = null; shipPark = false;
-  demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
+  demo = false; tourToken++; clearTourLabels(); clearPops(); stopOrbit(); tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
   clearLockup(); won = false; finaleToken++; orbitArc = null; titledLevel = -1; opening = false; ringQ.clear();
   glide = null; cockpitNose = null;
