@@ -6,7 +6,8 @@
       "title": "Submit is back, and MEC is just the AIS",
       "items": [
         "The Submit button is back on the collapsed Cell Library bar for Cilia Quests, next to Save and Release.",
-        "MEC cells now open with just the AIS layer, and Marks shows only the AIS. Layers you have already marked stay."
+        "MEC cells now open with just the AIS layer, and Marks shows only the AIS. Layers you have already marked stay.",
+        "The Play pill in the top bar no longer pulses."
       ]
     },
     {

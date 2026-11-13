@@ -2075,7 +2075,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .nge-dataset-label { padding-right: 2px; }
-/* Play status in the top bar: the Play button's teal green, a gentle pulse on the triangle. */
+/* Play status in the top bar: the Play button's teal green, standing still (Ames 2026-11-12: no pulse). */
 #extensionBar .nge-play-chip {
   display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 14px; margin: 0 10px 0 0;
   border-radius: 14px; border: 1px solid rgba(62, 236, 190, 0.6); background: rgba(62, 236, 190, 0.1);
@@ -2083,11 +2083,9 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   box-shadow: 0 0 10px rgba(62, 236, 190, 0.25); transition: background 0.15s, box-shadow 0.15s;
 }
 #extensionBar .nge-play-chip:hover { background: rgba(62, 236, 190, 0.2); box-shadow: 0 0 16px rgba(62, 236, 190, 0.45); }
-#extensionBar .nge-play-chip svg { color: #3eecbe; animation: nge-play-chip-pulse 1.6s ease-in-out infinite; }
+#extensionBar .nge-play-chip svg { color: #3eecbe; }
 #extensionBar .nge-play-chip--quests { border-color: rgba(255, 211, 110, 0.6); background: rgba(255, 211, 110, 0.1); box-shadow: 0 0 10px rgba(255, 211, 110, 0.22); }
 #extensionBar .nge-play-chip--quests svg { color: #ffd36e; }
-@keyframes nge-play-chip-pulse { 50% { opacity: 0.4; } }
-@media (prefers-reduced-motion: reduce) { #extensionBar .nge-play-chip svg { animation: none; } }
 .nge-dataset-species { font-size: 14px; line-height: 1; }
 #extensionBar .nge-dataset-btn:hover {
   opacity: 1;
