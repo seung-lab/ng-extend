@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T22:00:00Z",
+      "title": "Time on Quests",
+      "items": [
+        "Profile, Overview now shows your active time on Quests and Super Quests today, this week, this month and all time.",
+        "Dataset Stats shows the same for the dataset you pick, under Your part.",
+        "Weeks run Monday to Sunday and months start on the 1st, on US Eastern time, like the weekly and monthly awards."
+      ]
+    },
+    {
       "at": "2026-11-13T17:01:29Z",
       "title": "S for To soma",
       "items": [
