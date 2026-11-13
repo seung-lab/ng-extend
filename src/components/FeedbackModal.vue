@@ -533,10 +533,6 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="!done" class="nge-fb-body">
-        <span class="nge-fb-frame nge-fb-frame--tl" aria-hidden="true"></span>
-        <span class="nge-fb-frame nge-fb-frame--tr" aria-hidden="true"></span>
-        <span class="nge-fb-frame nge-fb-frame--bl" aria-hidden="true"></span>
-        <span class="nge-fb-frame nge-fb-frame--br" aria-hidden="true"></span>
         <div class="nge-fb-kicker">Transmission to the Pyr team</div>
         <div class="nge-fb-title"><span class="nge-fb-title-dot" aria-hidden="true">◆</span>Submit an issue</div>
         <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
@@ -701,12 +697,6 @@ onBeforeUnmount(() => {
 .nge-fb-exit:hover { color: #ccd; }
 /* ── The form, dressed like the tutorial boxes (Ames 2026-11-12: "stylize this box too") ── */
 .nge-fb-body { position: relative; z-index: 1; }
-.nge-fb-frame { position: absolute; width: 14px; height: 14px; pointer-events: none;
-  border-color: rgba(126, 224, 255, 0.85); filter: drop-shadow(0 0 4px rgba(126, 224, 255, 0.6)); }
-.nge-fb-frame--tl { left: -12px; top: -10px; border-left: 2px solid; border-top: 2px solid; }
-.nge-fb-frame--tr { right: -12px; top: -10px; border-right: 2px solid; border-top: 2px solid; }
-.nge-fb-frame--bl { left: -12px; bottom: -10px; border-left: 2px solid; border-bottom: 2px solid; }
-.nge-fb-frame--br { right: -12px; bottom: -10px; border-right: 2px solid; border-bottom: 2px solid; }
 .nge-fb-kicker {
   font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
   color: rgba(126, 224, 255, 0.7); margin-bottom: 6px;

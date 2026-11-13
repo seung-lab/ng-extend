@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
-import { notifKind, type NotifKind } from '../util/notif_kinds';
+import { notifKind, accessSort, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore, useCellHistoryStore } from '../store';
 import { isQuestReview, reviewSegment, reviewLinkIn, getReview, replyToReview, type ReviewState } from '../quest_review';
 import { QUEST_DATASET } from '../annotation_quests';
@@ -229,6 +229,15 @@ const triageNotes = computed(() => backend.notifications.filter(n => kindOf(n) =
 const adminNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'admin'));
 const editNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'edits'));
 const accessNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'access'));
+// New (people asking to get in) or Upgrade (players asking for more access),
+// a choice inside the Access tab (Ames 2026-11-13). Remembered.
+type AccessView = 'all' | 'new' | 'upgrade';
+const ACCESS_VIEW_KEY = 'nge-notif-access-view';
+const accessView = ref<AccessView>((() => { try { const v = localStorage.getItem(ACCESS_VIEW_KEY); return v === 'new' || v === 'upgrade' ? v : 'all'; } catch { return 'all'; } })());
+watch(accessView, v => { try { localStorage.setItem(ACCESS_VIEW_KEY, v); } catch { /* private mode */ } });
+const accessNewNotes = computed(() => accessNotes.value.filter(n => accessSort(n.title) === 'new'));
+const accessUpgradeNotes = computed(() => accessNotes.value.filter(n => accessSort(n.title) === 'upgrade'));
+const accessShown = computed(() => accessView.value === 'new' ? accessNewNotes.value : accessView.value === 'upgrade' ? accessUpgradeNotes.value : accessNotes.value);
 const huntNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'hunt'));
 const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
 const mineNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type === 'user'));
@@ -261,7 +270,7 @@ watch(() => backend.showAdminUi, on => { if (!on && isAdminSide(feedTab.value)) 
 // will need a wider notifications tab"). It holds both, with a switch inside
 // it when both have notes; underneath they stay the two lists they were, so
 // Mark read, Delete all and loading more still work on the side you are on.
-const sideNotes = (t: AdminSide) => (t === 'access' ? accessNotes.value : t === 'admin' ? adminNotes.value : t === 'edits' ? editNotes.value : t === 'triage' ? triageNotes.value : huntNotes.value);
+const sideNotes = (t: AdminSide) => (t === 'access' ? accessShown.value : t === 'admin' ? adminNotes.value : t === 'edits' ? editNotes.value : t === 'triage' ? triageNotes.value : huntNotes.value);
 const sideShown = (t: AdminSide) => (t === 'access' ? showAccessTab.value : t === 'admin' ? showAdminTab.value : t === 'edits' ? showEditsTab.value : t === 'triage' ? showTriageTab.value : showHuntTab.value);
 const ADMIN_SIDES: AdminSide[] = ['access', 'admin', 'edits', 'triage', 'hunt'];
 const showAdminGroup = computed(() => ADMIN_SIDES.some(sideShown));
@@ -1232,6 +1241,15 @@ function padRank(rank: number): string {
       </button>
     </div>
 
+    <div v-if="showFeedTabs && feedTab === 'access' && showAccessTab" class="nge-notif-accessview" role="group" aria-label="Show access requests">
+      <button :class="{ on: accessView === 'all' }" :aria-pressed="accessView === 'all'" @click="accessView = 'all'" title="Every access note">All</button>
+      <button :class="{ on: accessView === 'new' }" :aria-pressed="accessView === 'new'" @click="accessView = 'new'" title="New people asking to join Pyr">
+        New<b v-if="unreadIn(accessNewNotes) > 0">{{ unreadIn(accessNewNotes) }}</b>
+      </button>
+      <button :class="{ on: accessView === 'upgrade' }" :aria-pressed="accessView === 'upgrade'" @click="accessView = 'upgrade'" title="Players asking for more access: Retina editing and other datasets">
+        Upgrade<b v-if="unreadIn(accessUpgradeNotes) > 0">{{ unreadIn(accessUpgradeNotes) }}</b>
+      </button>
+    </div>
     <div class="nge-notif-list" v-if="shownNotes.length > 0">
       <div
         v-for="notif in shownNotes"
@@ -1725,6 +1743,22 @@ function padRank(rank: number): string {
   font: 600 8.5px/1 'Orbitron', 'Inter', sans-serif; text-align: center; color: #170a2e; background: #c8a4ff;
 }
 .nge-notif-subtab--triage b { background: #ff8f8f; color: #06121f; }
+
+/* Access tab: All, New or Upgrade (Ames 2026-11-13). */
+.nge-notif-accessview { display: flex; gap: 6px; padding: 8px 10px 2px; flex-shrink: 0; }
+.nge-notif-accessview button {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 11px; border-radius: 999px; cursor: pointer;
+  font: 600 11.5px/1 'Inter', system-ui, sans-serif;
+  color: #9db1cb; background: #0a1326; border: 1px solid rgba(200, 164, 255, 0.25);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.nge-notif-accessview button:hover { color: #d6e4f6; border-color: rgba(200, 164, 255, 0.55); }
+.nge-notif-accessview button.on { color: #fff; background: #2c2150; border-color: #c8a4ff; }
+.nge-notif-accessview b {
+  min-width: 14px; padding: 2px 4px; box-sizing: border-box; border-radius: 3px;
+  font: 600 8.5px/1 'Orbitron', 'Inter', sans-serif; text-align: center; color: #170a2e; background: #c8a4ff;
+}
 
 .nge-notif-confirm {
   display: flex;
