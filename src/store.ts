@@ -3694,7 +3694,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * with a numeric suffix if that's taken, so the prompt is usually one click.
    */
   async function suggestUsername(): Promise<string> {
-    const base = (userName.value || userEmail.value.split('@')[0] || 'user')
+    // Never a name made from the email: a sign-in with no name gets an empty
+    // box to fill in (#512).
+    const front = userEmail.value.split('@')[0];
+    if (!userName.value || userName.value === front) return '';
+    const base = userName.value
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')   // spaces and punctuation become separators
       .replace(/^_+|_+$/g, '')       // no leading/trailing separators
