@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
-import { play, playLabel, choosePlay } from '../util/play';
+import { play, playLabel, choosePlay, startPlay } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -554,6 +554,12 @@ watch(showChat, (v) => {
   try { localStorage.setItem(CHAT_VISIBLE_KEY, v ? '1' : '0'); } catch {}
 });
 const showCellLibrary = ref(false);
+/** The Playing chip (Ames 2026-11-12): back to the cell in hand, in the slim
+ *  Cell Library; with that open, a click opens the choice to switch or stop. */
+function onPlayChip() {
+  if (showCellLibrary.value || !play.on) { choosePlay(); return; }
+  void startPlay(play.on);
+}
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
@@ -1372,8 +1378,8 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
       <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
     </button>
     <!-- Play (util/play.ts): what is being played, a click to change or stop (Ames 2026-11-10). -->
-    <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="choosePlay()"
-            :title="'Playing ' + playLabel() + '. Click to change what you play, or stop.'">
+    <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="onPlayChip"
+            :title="showCellLibrary ? 'Playing ' + playLabel() + '. Click to change what you play, or stop.' : 'Playing ' + playLabel() + '. Click to go back to your cell.'">
       <!-- The play icon says "Playing" (Ames 2026-11-12: less space). -->
       <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
       <span>{{ playLabel() }}</span>
