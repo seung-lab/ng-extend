@@ -17,7 +17,9 @@
  *   - an issue tag that is still open
  *   - a saved Working Link
  *   - any notification or chat message
- *   - a bug report (or its triage card) newer than BUG_REPORT_DAYS
+ *   - any bug report or triage card, however old (Ames 2026-11-13: "Don't
+ *     delete the screenshots attached to bug reports"). They are stored
+ *     compressed, WebP at most 2560 px, a fraction of the PNG.
  * Everything else older than MAX_AGE_DAYS is deleted, and the link on the
  * row that pointed at it is cleared so nothing shows a broken image.
  *
@@ -32,7 +34,6 @@ if (!SUPABASE_URL || !KEY) { console.error('Missing SUPABASE_URL or SUPABASE_SER
 
 const DELETE = process.env.DELETE === '1';
 const MAX_AGE_DAYS = Number(process.env.MAX_AGE_DAYS || 14);
-const BUG_REPORT_DAYS = Number(process.env.BUG_REPORT_DAYS || 30);
 const BUCKET = 'admin-uploads';
 const FOLDER = 'help-screenshots';
 const DAY = 86400000;
@@ -100,9 +101,9 @@ async function main() {
   for (const l of await allRows('working_links', 'select=id,screenshot_url,note')) protect(l, 'saved Working Link');
   for (const n of await allRows('notifications')) protect(n, 'notification');
   for (const m of await allRows('chat_messages', `select=id,text&text=ilike.*${FOLDER}*`)) protect(m, 'chat message');
-  const recent = row => !row.created_at || now - new Date(row.created_at).getTime() < BUG_REPORT_DAYS * DAY;
-  for (const i of await allRows('site_issues')) if (recent(i)) protect(i, `bug report under ${BUG_REPORT_DAYS} days old`);
-  for (const c of await allRows('feedback_triage', 'select=*', { optional: true })) if (recent(c)) protect(c, `triage card under ${BUG_REPORT_DAYS} days old`);
+  // Bug reports keep their screenshots for good.
+  for (const i of await allRows('site_issues')) protect(i, 'bug report');
+  for (const c of await allRows('feedback_triage', 'select=*', { optional: true })) protect(c, 'triage card');
 
   // 3. What goes.
   const doomed = [], kept = {};
