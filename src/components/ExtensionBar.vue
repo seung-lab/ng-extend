@@ -293,6 +293,16 @@ onMounted(() => {
       e.stopImmediatePropagation();
       if (!highlightOff.value) { showHighlight.value = !showHighlight.value; if (showHighlight.value) sprayHighlightIcon(); }
     }
+    // Plain H opens Highlight too (Ames 2026-11-12; it opened neuroglancer's
+    // out of date controls list). Once open, H is held to place a point
+    // (HighlightModePanel), so it does not close it: Shift+H or its × does.
+    if (!typing && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && (e.key === 'h' || e.key === 'H')
+        && !showHighlight.value && !highlightOff.value) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      showHighlight.value = true;
+      sprayHighlightIcon();
+    }
     // Shift+S: Settings, open and closed again (Celia, report 277).
     if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'S' || e.key === 's')) {
       e.preventDefault();

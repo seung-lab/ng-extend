@@ -320,7 +320,7 @@ function buildActions(): PaletteItem[] {
     action: () => document.dispatchEvent(new CustomEvent('nge:toolbar-action', { detail: { id } })),
   });
   toolbarItem('findPath', 'Find Path', 'Draw the route through a cell between two points', '🛤️', ['find path', 'path', 'route', 'trace'], 'F');
-  toolbarItem('highlight', 'Highlight Mode', 'Mark the parts of a cell you have checked', '🖍️', ['highlight', 'checked', 'mark', 'paint'], 'Shift+H');
+  toolbarItem('highlight', 'Highlight Mode', 'Mark the parts of a cell you have checked', '🖍️', ['highlight', 'checked', 'mark', 'paint'], 'H');
   toolbarItem('lantern', 'Lantern', 'Light the cell around where you are and dim the rest', '🏮', ['lantern', 'light', 'dim', 'focus'], 'Shift+N');
   toolbarItem('undelete', 'Undelete', 'Bring back a cell you removed from view', '↩️', ['undelete', 'undo', 'restore', 'bring back'], 'Ctrl+Z');
   toolbarItem('batch', 'Batch Processor', 'Work on many cells at once', '📦', ['batch', 'many cells', 'bulk']);
