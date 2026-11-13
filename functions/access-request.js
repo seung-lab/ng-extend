@@ -840,6 +840,56 @@ async function setEwName(a, io) {
   return {ewName: ewName.toLowerCase()};
 }
 
+// ── A Beta request bell is read once the request is dealt with on the
+// Access page (Ames 2026-11-12: "notif feed is supposed to mark these as
+// read if I've dealt with them in Access"): let in (on Pilot testers),
+// put on Later, removed, or emailed for their EyeWire name. Marked read for
+// every admin, so every admin and device agrees. The bell names the
+// person's emails in its body (escaped for markdown).
+//   access.readHandledBetaBells  admins: {marked, ids} (ids: the caller's).
+const BETA_BELL_LIKE = 'notifications?target_type=eq.user&title=like.' + encodeURIComponent(BETA_BELL + '*')
+  + '&select=id,target_id,body&order=id.desc&limit=2000';
+const EMAIL_IN = /[^\s@<>(),;:]+@[^\s@<>(),;:]+\.[a-z]{2,}/gi;
+function bellEmails(body) {
+  const plain = String(body || '').replace(/\\(.)/g, '$1');
+  return [...new Set((plain.match(EMAIL_IN) || []).map(e => e.toLowerCase().replace(/\.$/, '')))];
+}
+async function readHandledBetaBells(a, io) {
+  needAdmin(io.isAdmin);
+  const bells = (await io.sb(BETA_BELL_LIKE)).filter(b => isUuid(b.target_id));
+  if (!bells.length) return {marked: 0, ids: []};
+  const read = new Set();
+  for (let i = 0; i < bells.length; i += 100) {
+    const chunk = bells.slice(i, i + 100).map(b => b.id).join(',');
+    for (const r of await io.sb(`notification_reads?notification_id=in.(${chunk})&select=notification_id,user_id`)) read.add(`${r.notification_id}:${r.user_id}`);
+  }
+  const unread = bells.filter(b => !read.has(`${b.id}:${b.target_id}`));
+  if (!unread.length) return {marked: 0, ids: []};
+  const [pilots, marks, asked, links] = await Promise.all([
+    io.sb('pilot_members?enabled=eq.true&select=email&limit=20000').catch(() => []),
+    io.marks ? io.marks.all().catch(() => ({})) : {},
+    io.askSent ? io.askSent.all().catch(() => ({})) : {},
+    io.sb('access_email_links?select=email,linked_to&limit=5000').catch(() => []),
+  ]);
+  const done = new Set();
+  for (const p of pilots || []) done.add(String(p.email || '').toLowerCase());
+  for (const [e, m] of Object.entries(marks || {})) if (m && (m.mark === 'removed' || m.mark === 'listed')) done.add(e.toLowerCase());
+  for (const e of Object.keys(asked || {})) done.add(e.toLowerCase());
+  // One person, two emails: dealt with under either.
+  for (const l of links || []) {
+    const x = String(l.email || '').toLowerCase(), y = String(l.linked_to || '').toLowerCase();
+    if (done.has(x)) done.add(y); else if (done.has(y)) done.add(x);
+  }
+  const mark = unread.filter(b => bellEmails(b.body).some(e => done.has(e)));
+  if (mark.length) {
+    await io.sb('notification_reads?on_conflict=notification_id,user_id', {method: 'POST',
+      headers: {Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify(mark.map(b => ({notification_id: b.id, user_id: b.target_id})))});
+  }
+  const mine = io.me && io.me.id;
+  return {marked: mark.length, ids: mark.filter(b => b.target_id === mine).map(b => b.id)};
+}
+
 const TEAM_EMAILS = ['ryan.t.morey@gmail.com'];
 async function inviteCount(a, io) {
   needAdmin(io.isAdmin);
@@ -1211,6 +1261,7 @@ async function handle(action, args, io) {
   if (action === 'access.askSent') return askSentAll(a, io);
   if (action === 'access.inviteCount') return inviteCount(a, io);
   if (action === 'access.setEwName') return setEwName(a, io);
+  if (action === 'access.readHandledBetaBells') return readHandledBetaBells(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);
   if (action === 'access.noteDelete') return accessNoteDelete(a, io);

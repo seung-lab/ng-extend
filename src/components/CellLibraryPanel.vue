@@ -4,6 +4,7 @@ import imgRetinaBipolar from '../images/retina-bipolar-cell.jpg';
 import { datasetAccess } from '../util/dataset_access';
 import { reportWriteFailure } from '../util/error_reporting';
 import EditableText from './EditableText.vue';
+import CrosshairHelp from './CrosshairHelp.vue';
 import { otherTabCount } from '../util/tabs';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam, whenSettled } from '../util/panel_collapse';
@@ -36,7 +37,7 @@ import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLast
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
-import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
+import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
@@ -856,6 +857,28 @@ async function saveClaimView(cell: CellRow) {
   }
 }
 
+/** A claim you arrive on is saved straight away, a few seconds in, so it is
+ *  never "Not saved yet" (Ames 2026-11-12: "should it autosave at the
+ *  beginning?"). Only a claim with no saved view yet: a saved one keeps its
+ *  own until you save again or move on. */
+let firstSaveTimer: ReturnType<typeof setTimeout> | null = null;
+// Started once the panel is set up: the cell list reads things defined further down.
+onMounted(() => watch(() => {
+  const c = datasetScopedCells.value.find(x => x.segId === jumpedSegId.value && isMyClaim(x) && x.status !== 'completed');
+  return c?.taskId ?? null;
+}, (id) => {
+  if (firstSaveTimer) { clearTimeout(firstSaveTimer); firstSaveTimer = null; }
+  if (id == null) return;
+  firstSaveTimer = setTimeout(() => {
+    firstSaveTimer = null;
+    const c = datasetScopedCells.value.find(x => x.taskId === id && x.segId === jumpedSegId.value);
+    if (!c || c.status === 'completed') return;
+    if (backend.tasks.find(x => x.id === id)?.working_link) return;
+    void saveClaimView(c);
+  }, 5000);
+}));
+onBeforeUnmount(() => { if (firstSaveTimer) clearTimeout(firstSaveTimer); });
+
 /** Is any of this cell's IDs showing? */
 function claimInView(cell: CellRow): boolean {
   try {
@@ -889,6 +912,9 @@ async function switchToClaim(cell: CellRow) {
   const fromStart = !t?.working_link;
   const openedClaim = openStartLink(t?.working_link || cell.startLink);
   if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
+  // A saved view with the five empty annotation layers (a claim from before
+  // Highlight) opens with Highlight too, as the player chose (Ames 2026-11-12).
+  else if (openedClaim && isRetinaCell(cell) && !cell.quest && !retinaAnnotationLayersByDefault()) startRetinaClaimLight(cell.segId, true);
   if (!openedClaim) {
     if (leftId && leftId !== cell.taskId) freshLayersForClaim();
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
@@ -1228,6 +1254,15 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 // ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
 /** Why Mark complete can't be pressed yet, or '' when it can. */
+const triedWithoutEnding = ref(false);
+const notesOpen = ref(false);
+/** The notes box takes the cursor when it opens. */
+const vFocusNew = { mounted: (el: HTMLElement) => { if (!(el as HTMLTextAreaElement).value) el.focus(); } };
+/** The note under the buttons: the ending is asked for only once Complete was pressed without one. */
+function completeWhy(cell: CellRow): string {
+  const why = completeBlocked(cell);
+  return why === 'Pick how the cell ended first (How did it end?).' && !triedWithoutEnding.value ? '' : why;
+}
 function completeBlocked(cell: CellRow): string {
   const c = completing.value;
   if (!c) return '';
@@ -1274,8 +1309,9 @@ function isCurrentClaim(cell: CellRow): boolean {
   return isMyClaim(cell) && cell.status !== 'completed' && cell.segId === jumpedSegId.value;
 }
 function onRowClick(cell: CellRow, e: MouseEvent) {
-  if (!isCurrentClaim(cell) || slim.value) return;
-  if ((e.target as HTMLElement).closest('button, input, textarea, a, select, .nge-cl-row-name')) return;
+  if (!isCurrentClaim(cell)) return;
+  // The slim bar is one cell: a click anywhere on it, name too, opens or folds Complete (Ames 2026-11-12).
+  if ((e.target as HTMLElement).closest(slim.value ? 'button, input, textarea, a, select' : 'button, input, textarea, a, select, .nge-cl-row-name')) return;
   if (completing.value?.key === cellKey(cell)) completing.value = null; else openComplete(cell);
 }
 /** With the Complete form open, its cell's row goes to the top of the list
@@ -1295,6 +1331,8 @@ function scrollCompleteRowToTop(key: string) {
 function openComplete(cell: CellRow) {
   scrollCompleteRowToTop(cellKey(cell));
   chooseClaim.value = false;
+  triedWithoutEnding.value = false;
+  notesOpen.value = false;
   // No ending picked to start with: the last one carried over, and a player
   // who forgot to change it sent the wrong one (toknow, report 237).
   completing.value = { key: cellKey(cell), link: '', notes: '', status: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
@@ -1354,13 +1392,25 @@ async function runCrosshairCheck(cell: CellRow) {
     const known = [expected, cell.segId, cell.finalSegId].filter(Boolean) as string[];
     // Edits give the cell a new root id; its edit history still leads back to
     // the claim's Start SegID, so ask CAVE (Amy 2026-09-28).
-    const lineage = known.includes(at.root) ? at.root : await ancestorAmong(at.root, known);
+    let lineage = known.includes(at.root) ? at.root : await ancestorAmong(at.root, known);
+    // Asked the other way: what the claimed cell became. Ames could not
+    // complete a Sandbox cell with the crosshairs in its own soma
+    // (2026-11-10): the history read back from the new id did not reach
+    // the claim, so read it forward from the claim too.
+    if (lineage === null) {
+      for (const k of known) {
+        const ends = await latestDescendants(k);
+        if (ends?.includes(at.root)) { lineage = k; break; }
+      }
+    }
     if (lineage) {
       c.ok = true;
       c.message = lineage === at.root
         ? `The crosshairs are inside this cell (${shortId(at.root)}).`
         : `The crosshairs are inside this cell. It has been edited since the claim, so its ID is now ${shortId(at.root)}; that is recorded as the Final SegID.`;
-    } else if (lineage === undefined && isVisibleRoot(at.root)) {
+    } else if (lineage === undefined && (isVisibleRoot(at.root) || known.some(isVisibleRoot))) {
+      // Could not reach the edit history (a test site, a server hiccup):
+      // the cell Pyr took the player to is on screen, so accept it.
       // Could not reach the edit history: accept the cell on screen.
       c.ok = true;
       c.message = `The crosshairs are inside ${shortId(at.root)}, the cell on screen. It is recorded as the Final SegID.`;
@@ -1373,7 +1423,8 @@ async function runCrosshairCheck(cell: CellRow) {
 
 async function submitComplete(cell: CellRow) {
   const c = completing.value;
-  if (!c || !linkLooksValid(c.link) || statusMissing(cell)) return;
+  if (c && statusMissing(cell)) { triedWithoutEnding.value = true; return; }
+  if (!c || !linkLooksValid(c.link)) return;
   c.submitting = true;
   try {
     // The crosshairs may have moved since the check: check once more.
@@ -1411,9 +1462,15 @@ async function submitComplete(cell: CellRow) {
       cellType: type || undefined,
     });
     completing.value = null;
-    // Straight on to your next claim; with none left, the slim bar offers a
-    // new one (Ames 2026-10-21; it used to open the full library).
-    if (!(await nextClaimAfter(cell, claimsBefore)) && slim.value) { slimSeg.value = null; slimEmpty.value = true; }
+    // Straight on to your next claim. With none left, the next cell is
+    // claimed and you are taken there: the cell you land on is yours (Ames
+    // 2026-11-09: "it should just take you there").
+    if (await nextClaimAfter(cell, claimsBefore)) showStartNote('Your next cell');
+    else {
+      await claimNewCell();
+      if (myOpenClaims.value.length) showStartNote('Your new cell');
+      else if (slim.value) { slimSeg.value = null; slimEmpty.value = true; }
+    }
   } catch (e: any) {
     c.message = e?.message || 'Could not complete this cell.';
     c.ok = false;
@@ -1490,7 +1547,7 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
-import { takeStartPlaying } from '../util/start_playing';
+import { play, takePlayEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 async function triggerCellCelebration(segId?: string) {
@@ -2158,7 +2215,7 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
 function onOpenAsked(e: Event) {
   const tab = (e as CustomEvent).detail?.tab;
   if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
-  startPlayingIfAsked();
+  playIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
@@ -3025,7 +3082,10 @@ onMounted(() => {
   const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); go(); } });
 });
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
-const nextAvailableCell = computed(() => libraryCells.value.find(c => c.status === 'pending') ?? null);
+const nextAvailableCell = computed(() => libraryCells.value.find(c => c.status === 'pending' && !playSkipped.value.has(c.segId)) ?? null);
+/** Cells skipped in Play this visit: back on the Available list for everyone,
+ *  but not handed straight back to the player who skipped them. */
+const playSkipped = ref<Set<string>>(new Set());
 /** A paged list may hold no available cell yet while the server has more. */
 const canClaimNew = computed(() => !!nextAvailableCell.value || (backend.tasksPaged && !backend.taskPages.available.done));
 /** The top available cell, reading more of the paged list when the loaded
@@ -3057,8 +3117,10 @@ async function claimNewCell() {
     }
   } finally { claimingNew.value = false; }
 }
-/** "Start playing" (util/start_playing.ts): once the cells are in, go to the
- *  player's open cell here, or claim the next one, and say what to do. */
+/** A short line on the slim bar: what to do with the cell in hand. */
+/** "Your new cell": a short flash over the view when Pyr lands you on a
+ *  cell (Ames 2026-11-10: "it should maybe have a temporary 'your new cell'
+ *  type UI thing"). It names the cell and goes by itself. */
 const startNote = ref('');
 // Open to edit, from Ames's note for an edit (src/text_edit_links.ts): this dataset's how-to opens.
 let stopTextEdit: (() => void) | null = null;
@@ -3070,22 +3132,83 @@ onMounted(() => {
   });
 });
 onBeforeUnmount(() => stopTextEdit?.());
-function startPlayingIfAsked() {
-  if (!takeStartPlaying()) return;
+const startNoteCell = ref('');
+const startNoteN = ref(0);
+let startNoteTimer: ReturnType<typeof setTimeout> | null = null;
+function showStartNote(text: string, ms = 4200, cellName?: string) {
+  startNote.value = text;
+  const c = currentCell();
+  startNoteCell.value = cellName ?? (c ? (history.getNickname(c.segId) || c.liveSegId || c.segId) : '');
+  startNoteN.value++;
+  if (startNoteTimer) clearTimeout(startNoteTimer);
+  startNoteTimer = setTimeout(() => { startNote.value = ''; startNoteTimer = null; }, ms);
+}
+/** Play (util/play.ts): asked to play, so once the cells are in, show only
+ *  the task in hand (the slim bar). Mapping goes to the player's open cell
+ *  here, or claims the next one. Quests go to the Quests tab, which does the
+ *  same with its own cells (questPlay). */
+const questPlay = ref(0);
+function playIfAsked() {
+  const k = takePlayEnter();
+  if (!k) return;
   const go = async () => {
-    const mine = myOpenClaims.value[0];
-    if (mine) await stepToClaim(mine);
-    else await claimNewCell();
-    if (!myOpenClaims.value.length) return;  // nothing claimed: the reason shows already
-    startNote.value = 'This cell is yours to proofread. Fix what the AI got wrong with Merge and Cut, then press Complete. Stuck? Ask in Chat.';
-    setTimeout(() => { startNote.value = ''; }, 30000);
+    setSlimMode(true);
+    showTabSettings.value = false;
+    showHowTo.value = false;
+    if (k === 'quests') {
+      filter.value = 'quests';
+      slimQuest.value = true;
+      questPlay.value++;
+      await nextTick();
+      clampPanelPos();
+      return;
+    }
+    if (!CELL_TABS.includes(filter.value)) filter.value = 'available';
+    const mine = currentCell() && isMyClaim(currentCell()!) && currentCell()!.status !== 'completed' ? currentCell() : myOpenClaims.value[0];
+    if (mine) {
+      await stepToClaim(mine);
+      await collapseTo(mine);
+    } else await claimNewCell();
+    if (!myOpenClaims.value.length) { await collapseTo(null); return; }  // nothing claimed: the reason shows already
+    showStartNote(mine ? 'Your cell' : 'Your new cell');
     await nextTick();
     clampPanelPos();
   };
   if (!backend.loading) { void nextTick(go); return; }
   const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); void go(); } });
 }
-onMounted(startPlayingIfAsked);
+onMounted(playIfAsked);
+/** Cilia Quest lands you on a cell too: the same flash (AnnotationQuestsTab). */
+const onPlayLanded = (e: Event) => { const d = (e as CustomEvent).detail || {}; showStartNote(d.title || 'Your quest cell', 4200, d.cell || ''); };
+onMounted(() => document.addEventListener('nge:play-landed', onPlayLanded));
+onBeforeUnmount(() => document.removeEventListener('nge:play-landed', onPlayLanded));
+/** "Play here" on the Available and Quests tabs: Play on the dataset on screen. */
+function playHere(k: PlayKind) { void startPlay(k, k === 'cells' ? datasetHere() : undefined); }
+/** Skip: the cell goes back on the Available list and the next one is claimed. */
+const skipping = ref(false);
+async function playSkip(which?: CellRow) {
+  if (skipping.value) return;
+  if (play.on === 'quests') { document.dispatchEvent(new CustomEvent('nge:play-skip-quest')); return; }
+  const cell = which ?? currentCell();
+  if (!cell || !isMyClaim(cell) || cell.status === 'completed') { await claimNewCell(); return; }
+  skipping.value = true;
+  try {
+    const skipped = new Set(playSkipped.value); skipped.add(cell.segId); playSkipped.value = skipped;
+    await releaseCell(cell);
+    if (myOpenClaims.value.some(c => c.segId === cell.segId)) return;  // not released: the reason shows
+    const rest = myOpenClaims.value[0];
+    if (rest) { await stepToClaim(rest); await collapseTo(rest); }
+    else await claimNewCell();
+    if (myOpenClaims.value.length) showStartNote('Your new cell');
+    else await collapseTo(null);
+  } finally { skipping.value = false; }
+}
+/** Stop: keep the task in hand and open the full library again. */
+function playStop() {
+  stopPlay();
+  startNote.value = '';
+  expandAndStay();
+}
 
 /** Your open claims in this dataset, in list order: what "next" steps through. */
 const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
@@ -3258,7 +3381,16 @@ const panelStyle = computed(() => ({
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest }" :style="panelStyle" @mousedown="onSlimMouseDown">
+    <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
+    <Teleport to="body">
+      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" role="status" aria-live="polite" @click="startNote = ''">
+        <span class="nge-cl-newcell-ring" aria-hidden="true"></span>
+        <span class="nge-cl-newcell-kicker">Teleport complete</span>
+        <span class="nge-cl-newcell-title">{{ startNote }}</span>
+        <span v-if="startNoteCell" class="nge-cl-newcell-id">{{ startNoteCell }}</span>
+      </div>
+    </Teleport>
 
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
@@ -3426,6 +3558,7 @@ const panelStyle = computed(() => ({
             @keydown.stop @keyup.stop @keypress.stop
           />
         </div>
+
 
         <!-- ═══ HELP TAB ═══ -->
         <div v-if="filter === 'help'" class="nge-cl-list">
@@ -3803,7 +3936,7 @@ const panelStyle = computed(() => ({
 
         <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
         <div v-else-if="filter === 'quests'" class="nge-cl-list">
-          <annotation-quests-tab v-if="questsHere" :slim="slimQuest" />
+          <annotation-quests-tab v-if="questsHere" :slim="slimQuest" :play-enter="questPlay" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
             <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
             <div v-if="questsLocked" class="nge-cl-quests-elsewhere-text">Unlock Level 1 ({{ questDatasetName }}) to take them.</div>
@@ -4173,6 +4306,13 @@ const panelStyle = computed(() => ({
         <div v-else ref="cellListEl" class="nge-cl-list">
           <!-- Claim error banner -->
           <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
+          <div v-if="filter === 'available' && !slim && !play.on && isLoggedIn && !viewOnlyDataset && availableCount > 0" class="nge-cl-play-here-row">
+            <button class="nge-cl-play-here" @click="playHere('cells')"
+                    title="Play: claims the next cell for you and takes you there. After Complete, the next one.">
+              <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
+            </button>
+            <span class="nge-cl-play-here-hint">Claim a cell and go, then the next one after each Complete.</span>
+          </div>
           <div v-if="chooseClaim" class="nge-cl-limit">
             <div class="nge-cl-limit-head">
               Which of your claims did you finish? Click Complete on it below.
@@ -4219,12 +4359,11 @@ const panelStyle = computed(() => ({
           <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <button v-if="slim && myOpenClaims.length > (slimClaimIndex >= 0 ? 1 : 0)" class="nge-cl-slim-next" :disabled="steppingClaim"
+          <button v-if="false" class="nge-cl-slim-next" :disabled="steppingClaim"
                   :title="slimClaimIndex >= 0 ? `Next claimed cell (this is ${slimClaimIndex + 1} of ${myOpenClaims.length})` : `Go to your claimed cells (${myOpenClaims.length})`"
                   aria-label="Next claimed cell" @click="nextClaim">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div v-if="startNote" class="nge-cl-start-note" @click="startNote = ''" title="Click to hide">{{ startNote }}</div>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
             <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
@@ -4251,7 +4390,7 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-row-left">
               <span class="nge-cl-pip" :class="statusClass(cell.status)"></span>
               <div class="nge-cl-row-info">
-                <div class="nge-cl-row-name" @click="copyId(cell.segId)" :title="'Click to copy ' + cell.segId">
+                <div class="nge-cl-row-name" @click="!slim && copyId(cell.segId)" :title="slim ? undefined : 'Click to copy ' + cell.segId">
                   <span :title="cell.liveSegId ? `Updated after edits. Listed as ${cell.segId}` : undefined">{{ history.getNickname(cell.segId) || cell.liveSegId || cell.segId }}</span>
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
@@ -4321,15 +4460,24 @@ const panelStyle = computed(() => ({
               >+ Annotation layers</button>
 
               <button
-                v-if="isMyClaim(cell)"
+                v-if="isMyClaim(cell) && !(play.on === 'cells' && cell.status !== 'completed')"
                 class="nge-cl-btn nge-cl-btn--release"
                 :disabled="releasing.has(releaseKey(cell))"
                 @click="releaseCell(cell)"
                 title="Release claim"
               ><span v-if="releasing.has(releaseKey(cell))" class="nge-cl-spin" />{{ releasing.has(releaseKey(cell)) ? 'Releasing…' : 'Release' }}</button>
 
+              <!-- Playing: Release is Skip, which hands this cell back and takes you to the next (Ames 2026-11-10). -->
               <button
-                v-if="isMyClaim(cell)"
+                v-if="play.on === 'cells' && isMyClaim(cell) && cell.status !== 'completed'"
+                class="nge-cl-btn nge-cl-btn--skip"
+                :disabled="skipping || releasing.has(releaseKey(cell))"
+                @click="playSkip(cell)"
+                title="Not this one: it goes back on the list for someone else, and Pyr takes you to your next cell"
+              >{{ skipping ? 'Skipping…' : 'Skip' }}</button>
+
+              <button
+                v-if="isMyClaim(cell) && completing?.key !== cellKey(cell)"
                 class="nge-cl-btn nge-cl-btn--complete"
                 :class="{ 'nge-cl-btn--complete-open': completing?.key === cellKey(cell) }"
                 @click="completing?.key === cellKey(cell) ? (completing = null) : openComplete(cell)"
@@ -4344,7 +4492,11 @@ const panelStyle = computed(() => ({
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
-            <div class="nge-cl-complete-title">Complete this cell</div>
+            <div class="nge-cl-complete-title">Complete this cell
+              <button class="nge-cl-complete-x" type="button" title="Fold this away (your cell stays claimed)" aria-label="Fold away" @click="completing = null">
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
             <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="marksStartLine(cell)" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
@@ -4402,9 +4554,13 @@ const panelStyle = computed(() => ({
             <div v-if="completing.link && !linkLooksValid(completing.link)" class="nge-cl-complete-msg nge-cl-complete-msg--bad">
               Paste a full https viewer link.
             </div>
-            <label class="nge-cl-complete-label">Notes (optional)</label>
+            <!-- Notes fold away until asked for (Ames 2026-11-12: "click to expand to add notes?"). -->
+            <button v-if="!notesOpen && !completing.notes" type="button" class="nge-cl-add-note" @click="notesOpen = true">+ Add a note for the reviewers</button>
+            <label v-if="notesOpen || completing.notes" class="nge-cl-complete-label">Notes (optional)</label>
             <textarea
+              v-if="notesOpen || completing.notes"
               v-model="completing.notes"
+              v-focus-new
               class="nge-cl-search-input nge-cl-complete-notes"
               rows="2"
               maxlength="1000"
@@ -4414,21 +4570,21 @@ const panelStyle = computed(() => ({
             <label class="nge-cl-complete-label">Crosshairs</label>
             <div class="nge-cl-complete-msg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
               <template v-if="completing.checking">Checking where the crosshairs are…</template>
-              <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}</template>
+              <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}<CrosshairHelp v-if="!completing.ok" /></template>
               <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
-                :disabled="!!completeBlocked(cell)"
+                :disabled="!!completeBlocked(cell) && !statusMissing(cell)"
                 :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
-              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : 'Mark complete' }}</button>
+              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : play.on ? 'Complete and next' : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
             <!-- Why Mark complete can't be pressed yet, said plainly (a player
                  could not tell why it stayed grey, Ames 2026-11-05). -->
-            <div v-if="completeBlocked(cell) && !completing.submitting && !completing.checking" class="nge-cl-complete-msg nge-cl-complete-why">{{ completeBlocked(cell) }}</div>
+            <div v-if="completeWhy(cell) && !completing.submitting && !completing.checking" class="nge-cl-complete-msg nge-cl-complete-why">{{ completeWhy(cell) }}</div>
           </div>
           </template>
           <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
@@ -4942,7 +5098,7 @@ const panelStyle = computed(() => ({
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row { flex-wrap: wrap; row-gap: 6px; }
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-left { flex: 1 1 170px; }
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row-actions { margin-left: auto; }
-.nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--current { cursor: pointer; }
+.nge-cl-row--current { cursor: pointer; }
 /* The cell being completed is the list's header while the form is open. */
 .nge-cl-panel:not(.nge-cl-panel--slim) .nge-cl-row--completing {
   position: sticky; top: -4px; z-index: 3;
@@ -5085,7 +5241,17 @@ const panelStyle = computed(() => ({
   flex-direction: column;
   gap: 6px;
 }
-.nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; }
+.nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; display: flex !important; align-items: center; width: 100%; }
+/* The fold-away arrow: the heading's own blue, no box (Ames 2026-11-10). */
+.nge-cl-complete-title > button.nge-cl-complete-x { margin: 0 0 0 auto; width: 26px; height: 26px; min-width: 0; padding: 0;
+  display: inline-grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #8cf; cursor: pointer; box-shadow: none; }
+.nge-cl-complete-title > button.nge-cl-complete-x svg { width: 15px; height: 15px; }
+.nge-cl-complete-title > button.nge-cl-complete-x:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
+/* Skip: a plain button; Complete is the one that stands out. */
+.nge-cl-btn--skip { border-color: rgba(140, 160, 200, 0.3); color: #b4c0d6; }
+.nge-cl-btn--skip:hover:not(:disabled) { background: rgba(140, 160, 200, 0.12); color: #e4e8f2; }
+.nge-cl-add-note { align-self: flex-start; padding: 2px 0; border: 0; background: none; color: #7cc4ff; font: inherit; font-size: 0.82em; cursor: pointer; }
+.nge-cl-add-note:hover { color: #b8e0ff; text-decoration: underline; }
 .nge-cl-complete-label { color: #9ab; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
 .nge-cl-complete-statuses { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-cl-complete-status {
@@ -5265,19 +5431,63 @@ const panelStyle = computed(() => ({
 }
 
 /* Claim error banner */
-/* "Start playing": what to do with the cell just claimed. */
-.nge-cl-start-note {
+/* Play (util/play.ts): the bar on the slim view, and Play here on Available. */
+.nge-cl-play-bar {
   flex-basis: 100%;
-  margin: 6px 4px 2px;
-  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 10px 0;
+  padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(95, 216, 255, 0.45);
-  background: rgba(95, 216, 255, 0.1);
-  color: #dff6ff;
-  font-size: 12.5px;
-  line-height: 1.4;
-  cursor: pointer;
+  border: 1px solid rgba(62, 236, 190, 0.45);
+  background: rgba(62, 236, 190, 0.08);
+  font-size: 13px;
 }
+.nge-cl-play-bar--quests { border-color: rgba(255, 211, 110, 0.4); background: rgba(255, 211, 110, 0.07); }
+.nge-cl-play-label { display: inline-flex; align-items: center; gap: 6px; color: #dff6ff; font-weight: 600; letter-spacing: 0.04em; }
+.nge-cl-play-label svg { color: #3eecbe; animation: nge-cl-play-pulse 1.6s ease-in-out infinite; }
+@keyframes nge-cl-play-pulse { 50% { opacity: 0.45; } }
+.nge-cl-play-link { background: none; border: none; padding: 0; color: #8fd4ff; font-size: 12px; cursor: pointer; text-decoration: underline; }
+.nge-cl-play-gap { flex: 1; }
+.nge-cl-play-skip, .nge-cl-play-stop { padding: 3px 10px; font-size: 12px; }
+.nge-cl-play-here-row { display: flex; align-items: center; gap: 10px; margin: 6px 4px 8px; flex-wrap: wrap; }
+.nge-cl-play-here {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(62, 236, 190, 0.7);
+  background: linear-gradient(135deg, rgba(8, 72, 64, 0.94), rgba(10, 48, 66, 0.94));
+  color: #dcfff4; font: 700 12.5px/1 'Orbitron', Inter, system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(62, 236, 190, 0.6);
+  box-shadow: 0 0 12px rgba(62, 236, 190, 0.3);
+}
+.nge-cl-play-here svg { color: #3eecbe; }
+.nge-cl-play-here:hover { box-shadow: 0 0 18px rgba(62, 236, 190, 0.55); }
+.nge-cl-play-here-hint { font-size: 12px; color: #9fb4cc; }
+/* "Your new cell": a hologram flash at the top of the view, then gone. */
+.nge-cl-newcell {
+  position: fixed; top: 96px; left: 50%; z-index: 950; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 34px 14px;
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  background: linear-gradient(160deg, rgba(10, 52, 52, 0.92), rgba(6, 14, 28, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(62, 236, 190, 0.55), inset 0 0 30px rgba(62, 236, 190, 0.12);
+  color: #e6fff8; cursor: pointer; pointer-events: auto;
+  animation: nge-cl-newcell 4200ms cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes nge-cl-newcell {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.6, 0.05); filter: blur(6px) brightness(2.2); }
+  10% { opacity: 1; transform: translateX(-50%) scale(1.04, 1); filter: blur(0) brightness(1.4); }
+  16%, 85% { opacity: 1; transform: translateX(-50%) scale(1); filter: none; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.96); filter: blur(3px); }
+}
+.nge-cl-newcell-ring { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(160, 255, 230, 0.45), transparent); transform: translateX(-100%);
+  animation: nge-cl-newcell-sweep 900ms ease-out 250ms both; }
+@keyframes nge-cl-newcell-sweep { to { transform: translateX(100%); } }
+.nge-cl-newcell-kicker { font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.26em; text-transform: uppercase; color: #3eecbe; }
+.nge-cl-newcell-title { font: 700 24px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; color: #fff; text-shadow: 0 0 14px rgba(62, 236, 190, 0.6); }
+.nge-cl-newcell-id { font: 500 13px 'Inter', sans-serif; color: #9fe8d4; letter-spacing: 0.03em; }
+@media (prefers-reduced-motion: reduce) { .nge-cl-newcell { animation: none; } .nge-cl-newcell-ring { display: none; } }
 .nge-cl-error-banner {
   display: flex;
   align-items: center;
@@ -6514,7 +6724,7 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
 .nge-cl-caret { margin-right: 10px; }
 .nge-cl-panel--slim { max-height: calc(100 * var(--nge-vh, 1vh) - 64px); cursor: grab; }
-.nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
+.nge-cl-panel--slim > :not(.nge-cl-list):not(.nge-cl-play-bar):not(.nge-cl-start-note) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
   /* The expand arrow on the left, where the full panel keeps its shrink
@@ -6557,6 +6767,21 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 .nge-cl-btn.nge-cl-slim-claim:disabled { box-shadow: none; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
+/* The slim bar, easier to read (Ames 2026-11-10: "TINY text"): bigger name
+   and buttons, all one shape; no jump arrow (you are on the cell already);
+   Complete in green, the thing to do. */
+.nge-cl-panel--slim .nge-cl-row-name { font-size: 17px; }
+.nge-cl-panel--slim .nge-cl-row-meta { font-size: 13px; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn { font-size: 14px; padding: 7px 14px; border-radius: 6px; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn--jump { display: none; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn--complete { color: #d6ffe6; border-color: rgba(61, 220, 132, 0.6); background: rgba(61, 220, 132, 0.18); }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-btn--complete:hover { background: rgba(61, 220, 132, 0.3); }
+/* Cilia Quest's slim bar: its row starts after the arrow, not under it, and
+   the arrow is centered when the bar holds one line. */
+.nge-cl-panel--slimquest .nge-cl-list { padding-left: 46px; }
+/* !important: the slim bar's pull-left rule (many :not()s) outranks a plain selector. */
+.nge-cl-panel--slim.nge-cl-panel--slimquest .nge-cl-list > :not(.nge-cl-slim-expand) { margin-left: 0 !important; }
+.nge-cl-panel--slimquest .nge-cl-list:not(:has(.nge-aq-form)) > .nge-cl-slim-expand { top: 50%; transform: translateY(-50%); }
 /* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
 .nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
 .nge-cl-panel--slim .nge-cl-row .nge-cl-pip { display: none; }

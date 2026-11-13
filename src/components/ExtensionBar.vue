@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
+import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -25,6 +26,7 @@ import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
+import PlayButton from "components/PlayButton.vue";
 import AssistantDock from "components/AssistantDock.vue";
 import { runSpotlight } from "../assistant/spotlight";
 import { showDefaultCell } from "../widgets/widget_utils";
@@ -552,6 +554,14 @@ watch(showChat, (v) => {
   try { localStorage.setItem(CHAT_VISIBLE_KEY, v ? '1' : '0'); } catch {}
 });
 const showCellLibrary = ref(false);
+/** The Playing chip (Ames 2026-11-12): back to the cell in hand, in the slim
+ *  Cell Library; with that open, a click opens the choice to switch or stop. */
+function onPlayChip() {
+  if (!play.on) { pressPlay(); return; }
+  // The choice only on Retina, and only once your cell is showing.
+  if (showCellLibrary.value && offersChoice()) { choosePlay(); return; }
+  void startPlay(play.on);
+}
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
@@ -1330,6 +1340,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <hunt-opening />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
+  <play-button />
   <!-- The Ask dock is now the single command surface: it searches the same
        catalog CommandPalette builds (passed in headless) so navigation runs
        instantly, and only falls through to the model for real questions. -->
@@ -1367,6 +1378,13 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
       <span v-if="currentDatasetIcon" class="nge-dataset-species">{{ currentDatasetIcon }}</span>
       <span v-else class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
       <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
+    </button>
+    <!-- Play (util/play.ts): what is being played, a click to change or stop (Ames 2026-11-10). -->
+    <button v-if="play.on" class="nge-play-chip" :class="'nge-play-chip--' + play.on" @click="onPlayChip"
+            :title="showCellLibrary && offersChoice() ? 'Playing ' + playLabel() + '. Click to change what you play, or stop.' : 'Playing ' + playLabel() + '. Click to go back to your cell.'">
+      <!-- The play icon says "Playing" (Ames 2026-11-12: less space). -->
+      <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
+      <span>{{ playLabel() }}</span>
     </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
@@ -2057,6 +2075,17 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .nge-dataset-label { padding-right: 2px; }
+/* Play status in the top bar: the Play button's teal green, standing still (Ames 2026-11-12: no pulse). */
+#extensionBar .nge-play-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 14px; margin: 0 10px 0 0;
+  border-radius: 14px; border: 1px solid rgba(62, 236, 190, 0.6); background: rgba(62, 236, 190, 0.1);
+  color: #dcfff4; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 0 10px rgba(62, 236, 190, 0.25); transition: background 0.15s, box-shadow 0.15s;
+}
+#extensionBar .nge-play-chip:hover { background: rgba(62, 236, 190, 0.2); box-shadow: 0 0 16px rgba(62, 236, 190, 0.45); }
+#extensionBar .nge-play-chip svg { color: #3eecbe; }
+#extensionBar .nge-play-chip--quests { border-color: rgba(255, 211, 110, 0.6); background: rgba(255, 211, 110, 0.1); box-shadow: 0 0 10px rgba(255, 211, 110, 0.22); }
+#extensionBar .nge-play-chip--quests svg { color: #ffd36e; }
 .nge-dataset-species { font-size: 14px; line-height: 1; }
 #extensionBar .nge-dataset-btn:hover {
   opacity: 1;

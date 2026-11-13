@@ -28,9 +28,10 @@ export function notifKind(title: string | null | undefined, isAdmin: boolean): N
   if (!isAdmin) return 'main';
   const t = title || '';
   if (ACCESS_STARTS.some(s => t.startsWith(s))) return 'access';
-  // Admins' edits of in-game windows (functions/edit-notify.js) have a tab of
-  // their own, apart from To do news (Ames 2026-11-12).
-  if (t.startsWith('📋 Edited:')) return 'edits';
+  // Admins' edits of in-game windows (functions/edit-notify.js, "📋 Edited:") sit
+  // in To do and replies with the other 📋 notes, not a tab of their own
+  // (Ames 2026-11-12: "I don't want a whole tab for edits that will usually
+  // stay empty").
   if (ADMIN_STARTS.some(s => t.startsWith(s))) return 'admin';
   // Hunters' reports of what the answers missed (functions/hunts.js), a tab of their own (Ames 2026-10-27).
   if (t.startsWith('🔎 Hunt report')) return 'hunt';
