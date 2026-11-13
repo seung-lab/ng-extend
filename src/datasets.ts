@@ -301,11 +301,11 @@ export const DATASETS: DatasetEntry[] = [
     hidden: true,
     exploreOnly: true,
     thumbnail: thumbMicrons,
-    label: 'MICrONS Signal Controller',
+    label: 'MICrONS Mind Control',
     shortLabel: 'MICrONS',
     abbrev: 'MICrONS',
     species: 'mouse',
-    description: 'A small real circuit from the MICrONS public release (v1300), for the Signal Controller mini game',
+    description: 'A small real circuit from the MICrONS public release (v1300), for the Mind Control mini game',
     layers: [
       {
         type: 'image',

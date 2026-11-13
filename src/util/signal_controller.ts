@@ -1,5 +1,7 @@
 /**
- * Signal Controller (Ames 2026-11-08): a mini game played inside a small
+ * Mind Control (Ames 2026-11-08; named Signal Controller until 2026-11-13,
+ * and the code keeps that name: this file, its classes, the leaderboard's
+ * tables, ?signal in the address): a mini game played inside a small
  * piece of real cortex. The player is the signal controller aboard the
  * Starship, parked over a real MICrONS circuit (static/signal/circuit.json,
  * built by scripts/signal-circuit.py from the public release: 13 proofread
@@ -1411,7 +1413,7 @@ function buildPanel() {
   panel = document.createElement('section');
   panel.className = 'ng-extend nge-sig';
   panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Signal Controller');
+  panel.setAttribute('aria-label', 'Mind Control');
   panel.innerHTML = `<span class="nge-sig-bg"><i class="nge-sig-sweep"></i></span><i class="nge-sig-trace t"></i><i class="nge-sig-trace l"></i><div class="nge-sig-scroll">
     <div class="nge-sig-head"><i class="nge-sig-gem" aria-hidden="true"></i><span class="nge-sig-view-key">View</span><span class="nge-sig-view" data-el="view" role="group" aria-label="View"><button type="button" data-view="ship" aria-pressed="true" title="The ship in the scene: it flies to the cells you scan">Ship</button><button type="button" data-view="cockpit" aria-pressed="false" title="From the ship's cockpit: the canopy, the reticle, the readouts">Cockpit</button></span>
       <button class="nge-sig-edit" type="button" data-el="edit" title="Edit the words on this page">✎</button>
@@ -1419,7 +1421,7 @@ function buildPanel() {
       <button class="nge-sig-fold" type="button" data-el="fold" title="Fold the panel away, or open it again" aria-expanded="true"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="nge-sig-mute" type="button" data-el="mute" title="Sound">♪</button>
       <button class="nge-sig-share" type="button" data-el="share" title="Copy a link to the game">Share</button>
-      <button class="nge-sig-x" type="button" aria-label="Leave the game" data-el="x">${X_SVG}</button></div>
+      <button class="nge-sig-x" type="button" title="Close the game and return to Pyr" aria-label="Close the game and return to Pyr" data-el="x">${X_SVG}</button></div>
     <div class="nge-sig-top"><div class="nge-sig-obj"><span>Objective</span><strong data-el="obj"></strong><em data-el="detail"></em></div>
       <div class="nge-sig-stats"><div>Progress<b data-el="progress">0</b></div><div>Time<b data-el="time">0</b></div><div>Score<b data-el="score">0</b></div></div></div>
     <div class="nge-sig-coach" data-el="coach" aria-live="polite"><i></i><span data-el="coachText"></span></div>
@@ -1477,9 +1479,9 @@ function buildPanel() {
   showSci();
   // Pyr's own Share lives in the top bar, which is away while the game runs
   els.share.onclick = async () => {
-    const link = `${location.origin}${location.pathname}?signal`;
+    const link = `${location.origin}${location.pathname}?mind`;
     els.share.blur();
-    if (touch() && (navigator as any).share) { try { await (navigator as any).share({title: 'Signal Controller', url: link}); return; } catch { /* the copy, then */ } }
+    if (touch() && (navigator as any).share) { try { await (navigator as any).share({title: 'Mind Control', url: link}); return; } catch { /* the copy, then */ } }
     try { await navigator.clipboard.writeText(link); say('Link copied.', 2.2); } catch { say(link, 6); }
   };
   setView(view);
@@ -2620,7 +2622,7 @@ function titleCard() {
   const science = level.science ?? '', cut = science.indexOf(':');
   const principle = cut > 0 && cut < 40 ? science.slice(0, cut) : '';
   const html = first
-    ? `<div class="title">Signal Controller</div><div class="rule"></div><div class="sub">Level ${index + 1} · ${esc(level.title)}</div>`
+    ? `<div class="title">Mind Control</div><div class="rule"></div><div class="sub">Level ${index + 1} · ${esc(level.title)}</div>`
     : `<div class="kick">Level ${index + 1}</div><div class="title">${esc(level.title)}</div><div class="rule"></div>${principle ? `<div class="sub">${esc(principle)}</div>` : ''}`;
   // behind Pyr's sign-in box nobody would see it: it waits for the box to go
   const show = () => {
@@ -5125,11 +5127,17 @@ export function stopSignalController() {
   try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
 
-/** Test sites only: ?signal in the address opens the game once the viewer
- *  is up (and ?signal=3 opens at level 3). */
+/** Who may open the game. Everybody on a test site. On the live site it is
+ *  held back until Ames launches it (admins have it on the palette and in the
+ *  menu meanwhile): set this to true, with a changelog entry and Nurro's
+ *  lines, and the menu entry and the ?mind link open to every player. */
+export const SIGNAL_OPEN = !IS_LIVE_SITE;
+
+/** ?mind in the address (or ?signal, the game's first name) opens the game
+ *  once the viewer is up, and ?mind=3 opens at level 3. */
 export function startSignalController() {
-  if (IS_LIVE_SITE) return;
-  const m = /[?&]signal(?:=(\d+))?\b/.exec(location.search);
+  if (!SIGNAL_OPEN) return;
+  const m = /[?&](?:signal|mind)(?:=(\d+))?\b/.exec(location.search);
   if (!m) return;
   const at = m[1] ? clamp(Number(m[1]) - 1, 0, LEVELS.length - 1) : 0;
   const go = async () => {

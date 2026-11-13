@@ -168,7 +168,7 @@ function resetTutorials() {
       Intro test<span v-if="simulating" class="nge-stt-dot" aria-label="pretend new player is on"></span>
     </button>
     <button class="nge-stt-tab nge-stt-rocket" @click="launchShip" title="Play the new player intro" aria-label="Fly the Starship" v-html="FLIGHT_SVG"></button>
-    <button class="nge-stt-tab nge-stt-rocket" @click="launchSignal" title="Play Signal Controller" aria-label="Play Signal Controller" v-html="SIGNAL_SVG"></button>
+    <button class="nge-stt-tab nge-stt-rocket" @click="launchSignal" title="Play Mind Control" aria-label="Play Mind Control" v-html="SIGNAL_SVG"></button>
   </div>
   <aside v-else class="ng-extend nge-stt" aria-label="Intro test">
     <header class="nge-stt-head">
@@ -177,7 +177,7 @@ function resetTutorials() {
     </header>
     <p class="nge-stt-note">{{ IS_LIVE_SITE ? 'Admins only.' : 'Test site only.' }} The new player intro, as it is built. Pretend to be a brand new player and it plays when the page opens; the rocket flies it again any time. Nothing here is saved to your account, except Reset my tutorials.</p>
     <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchShip"><span class="nge-stt-rocket-ic" v-html="FLIGHT_SVG"></span> Play the intro</button>
-    <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchSignal"><span class="nge-stt-rocket-ic" v-html="SIGNAL_SVG"></span> Play Signal Controller</button>
+    <button class="nge-hud-btn nge-hud-btn--go nge-stt-launch" @click="launchSignal"><span class="nge-stt-rocket-ic" v-html="SIGNAL_SVG"></span> Play Mind Control</button>
     <label class="nge-stt-switch">
       <input id="nge-stt-sim" type="checkbox" :checked="simulating" @change="toggleSim" />
       <span>Pretend I am a new player</span>

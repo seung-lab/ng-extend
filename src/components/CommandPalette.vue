@@ -273,11 +273,11 @@ function buildActions(): PaletteItem[] {
     // The Signal Controller mini game (admins, test sites), 2026-11-08.
     items.push({
       id: 'signal-controller',
-      label: 'Signal Controller (admin test)',
+      label: 'Mind Control (admin test)',
       description: 'Fly the Starship into a real MICrONS circuit and make its cells fire in time',
       category: 'tool',
       icon: '⚡',
-      aliases: ['signal', 'controller', 'circuit', 'spike', 'fire', 'game', 'microns game'],
+      aliases: ['mind', 'mind control', 'control', 'signal', 'controller', 'circuit', 'spike', 'fire', 'game', 'microns game'],
       action: () => playSignalController(),
     });
   }

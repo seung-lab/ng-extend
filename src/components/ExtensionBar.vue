@@ -41,6 +41,7 @@ import PhotoMode from "components/PhotoMode.vue";
 import PyrArcade from "components/PyrArcade.vue";
 import {celebrateSpecialDay} from "../util/special_days";
 import { ARCADE_ENABLED } from "../util/arcade";
+import { playSignalController, SIGNAL_OPEN } from "../util/signal_controller";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
@@ -1592,6 +1593,14 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
+        <!-- Mind Control, the mini game (Ames 2026-11-13: "can we put this game
+             as a link in the Pyr hamburger menu too?"): for everybody on a test
+             site, for admins on the live site until it is launched (SIGNAL_OPEN). -->
+        <li v-if="SIGNAL_OPEN || backendStore.showAdminUi">
+          <div class="logoutButton button nge-menu-item" @click="playSignalController(); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">🧠</span><span>Mind Control</span>
+          </div>
+        </li>
         <li v-if="ARCADE_ENABLED">
           <div class="logoutButton button nge-menu-item" @click="showArcade = true; closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">🕹️</span><span>Pyr Arcade</span>
