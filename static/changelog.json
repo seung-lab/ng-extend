@@ -2,6 +2,20 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-13T04:38:00Z",
+      "title": "Training shows your part",
+      "items": [
+        "Cilia Quest Training: the top of each box now says which part you are on, like Part 2 of 3, so you can see how far through the whole training you are."
+      ]
+    },
+    {
+      "at": "2026-11-13T04:29:00Z",
+      "title": "Crosshairs go inside the cell",
+      "items": [
+        "Cilia Quests: the crosshairs need to be inside the cell again. If what you marked sits outside the cell, put the crosshairs in the cell nearby and say so in Notes."
+      ]
+    },
+    {
       "at": "2026-11-13T04:26:00Z",
       "title": "H for Highlight, and every mouse control in one list",
       "items": [
