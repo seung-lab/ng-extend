@@ -79,9 +79,15 @@ const activeStep = computed(() => {
             from = index; while (from > 0 && steps.value[from - 1].part === part) from--;
             to = index; while (to < steps.value.length - 1 && steps.value[to + 1].part === part) to++;
         }
+        // Which part of how many, so a player sees how far through the whole
+        // tutorial they are, not just through this part (toknow #474).
+        const parts: string[] = [];
+        for (const s of steps.value) if (s.part && parts[parts.length - 1] !== s.part) parts.push(s.part);
+        const partNo = part ? parts.indexOf(part) + 1 : 0;
         return {
             index: index,
             step: steps.value[index],
+            partOf: partNo ? `Part ${partNo} of ${parts.length}` : '',
             first: index === 0,
             last: index === steps.value.length - 1,
             shownIndex: index - from,
@@ -449,7 +455,7 @@ const exitIntro = () => {
         </div>
     </div>
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
-        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
+        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :partOf="activeStep.partOf" :boxIndex="activeStep.index"
         v-on:next="next"
         v-on:not-now="notNow"
         :class="{ 'nge-tut-under-card': testCardUp }"

@@ -47,6 +47,8 @@ const props = defineProps<{
     totalSteps: number,
     /** "Part 1 of 4 · Mark what you see": stepIndex and totalSteps then count within it. */
     partLabel?: string,
+    /** "Part 2 of 3", shown before the part's name. */
+    partOf?: string,
     /** The box's place in its whole tutorial, for its saved rewording (tutorial_edits.ts). */
     boxIndex?: number,
 }>();
@@ -722,7 +724,7 @@ async function onHtmlClick(e: MouseEvent) {
                 <span class="nge-chip-scan" aria-hidden="true"></span>
                 <div class="nge-chip-drag" title="Drag anywhere on this box to move it">
                     <span class="nge-chip-grip" aria-hidden="true">⠿</span>
-                    <span class="nge-chip-readout"><template v-if="partLabel">{{ partLabel }} · </template>{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
+                    <span class="nge-chip-readout"><template v-if="partLabel"><b v-if="partOf" class="nge-chip-partof">{{ partOf }}</b>{{ partLabel }} · </template>{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
                 </div>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <button v-if="backend.showAdminUi && boxIndex != null" type="button" class="nge-tut-pencil" title="Edit the words of this box (admins)" aria-label="Edit this box" @click="editing = true"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.6 12 2.5 13.5 4 10.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
@@ -1376,6 +1378,8 @@ async function onHtmlClick(e: MouseEvent) {
     color: rgba(126, 224, 255, 0.62);
 }
 .nge-chip-grip { font-size: 11px; letter-spacing: 0; opacity: 0.7; }
+.nge-chip-partof { font-weight: 700; color: #9fd3ff; margin-right: 0.6em; }
+.nge-chip-partof::after { content: '·'; margin-left: 0.6em; color: rgba(159, 211, 255, 0.5); }
 .nge-chip-readout {
     font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
     font-variant-numeric: tabular-nums;
