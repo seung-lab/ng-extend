@@ -153,12 +153,33 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const worse = await waitText(/36%/, 10000);
     check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /missing −3 36% 10 of 28 pieces found mergers \+67 67% 2 of 3 cut off/.test(await cardText() || ''), await cardText());
     // A cut: "Cut complete" lights up for a moment, then back to the reading.
-    await edit([ANSWERS.worse.root], 'split');
-    const doneNow = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { state: c.querySelector('.nge-cm-state').textContent, done: c.classList.contains('nge-cm-done') }; });
-    check('a cut says Cut complete for a moment', doneNow.state === 'Cut complete' && doneNow.done, doneNow);
-    await page.waitForTimeout(3500);
-    const doneLater = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { state: c.querySelector('.nge-cm-state').textContent, done: c.classList.contains('nge-cm-done') }; });
-    check('then back to Live', doneLater.state === 'Live' && !doneLater.done, doneLater);
+    // A cut: "Cut complete" at once, plain; then the reading says good or wrong
+    // (Ames 2026-11-13: "I got cut complete ... but it was wrong cut").
+    const state = () => page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { state: c.querySelector('.nge-cm-state').textContent, good: c.classList.contains('nge-cm-done'), bad: c.classList.contains('nge-cm-bad') }; });
+    const goodCut = { ...ANSWERS.worse, root: '648518346351006000', cut: 100, extra: { left: 0, total: 3 } };
+    answer = goodCut;
+    await edit([goodCut.root], 'split');
+    const atOnce = await state();
+    check('a cut says Cut complete at once, not yet judged', atOnce.state === 'Cut complete' && !atOnce.good && !atOnce.bad, atOnce);
+    await waitText(/100%/, 10000);
+    const judged = await state();
+    check('a cut that takes off a merger says Good cut, in green', judged.state === 'Good cut' && judged.good && !judged.bad, judged);
+    const wrongCut = { ...goodCut, root: '648518346351007000', merge: 20, missing: { left: 22, total: 28 } };
+    answer = wrongCut;
+    await edit([wrongCut.root], 'split');
+    await waitText(/20%/, 10000);
+    const wrong = await state();
+    check('a cut that takes off real cell says Wrong cut, in red', wrong.state === 'Wrong cut' && wrong.bad && !wrong.good, wrong);
+    await shot('cell-match-wrong-cut.png');
+    const verdicts = await page.evaluate(() => {
+      const j = window.__ngeCellMatch.judgeEdit;
+      const a = { scorable: true, merge: 40, cut: null, missing: { left: 10, total: 20 }, extra: { left: 0, total: 0 } };
+      return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text];
+    });
+    check('a merge that brings in a wrong part is a Wrong merge; nothing moved is No change', verdicts.join('|') === 'Good merge|Wrong merge|No change', verdicts);
+    await page.waitForTimeout(5000);
+    const later = await state();
+    check('then back to Live', later.state === 'Live' && !later.good && !later.bad, later);
     const copy = (await cardText() || '').replace(/−3/, '');
     check('no dashes in the card', !/[\u2013\u2014]|\s-\s/.test(copy), copy);
 
@@ -255,7 +276,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     // The X folds it into a small button; the first time a hint says how to reopen.
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-x').click());
     await page.waitForTimeout(400);
-    const folded = await page.evaluate(() => ({ card: !!document.getElementById('nge-cell-match'), chip: (document.getElementById('nge-cell-match-open') || {}).textContent, hint: (document.getElementById('nge-cell-match-hint') || {}).textContent }));
+    const folded = await page.evaluate(() => ({ card: !!document.getElementById('nge-cell-match'), chip: (document.getElementById('nge-cell-match-open') || {}).textContent, hint: ((document.querySelector('#nge-cell-match-hint .nge-cm-tip-text') || {}).textContent) }));
     check('X closes the card, a Cell match button stays', !folded.card && /cell match\s*39%/i.test(folded.chip || ''), folded);
     check('the first close says Click here to reopen', folded.hint === 'Click here to reopen', folded);
     await shot('cell-match-closed.png');
@@ -271,12 +292,39 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => document.getElementById('nge-cell-match-open').click());
     await waitText(/39%/, 10000);
 
+    // The info box (Ames 2026-11-13: "Also an info box").
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-i').click());
+    const infoText = await page.evaluate(() => { const i = document.querySelector('#nge-cell-match .nge-cm-info'); return getComputedStyle(i).display !== 'none' ? i.innerText : null; });
+    check('i opens an explanation', /Missing/.test(infoText || '') && /Mergers/.test(infoText || '') && !/[\u2013\u2014]|\s-\s/.test(infoText || ''), infoText);
+    await shot('cell-match-info.png');
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-i').click());
+    // Collapsed: Cell match and the two bars only, and it stays collapsed.
+    const fullH = await page.evaluate(() => document.getElementById('nge-cell-match').offsetHeight);
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-min-btn').click());
+    await page.waitForTimeout(300);
+    const mini = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const vis = s => [...c.querySelectorAll(s)].filter(e => e.offsetParent !== null).length; return { h: c.offsetHeight, gauges: vis('.nge-cm-gauge'), nums: vis('.nge-cm-num'), pieces: vis('.nge-cm-pieces'), title: c.querySelector('.nge-cm-title').offsetParent !== null }; });
+    check('collapse shows the title and two bars only', mini.title && mini.gauges === 2 && mini.nums === 0 && mini.pieces === 0 && mini.h < fullH / 2, { mini, fullH });
+    await shot('cell-match-collapsed.png');
+    answer = ANSWERS.merged;
+    await edit([ANSWERS.merged.root]);
+    await page.waitForTimeout(3500);
+    check('collapsed stays collapsed through edits', await page.evaluate(() => document.getElementById('nge-cell-match').classList.contains('nge-cm-min')), null);
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-min-btn').click());
+    await waitText(/39%/, 10000);
+
     await page.evaluate(() => {
       const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState);
       ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
     });
     await page.waitForTimeout(3000);
     check('off screen, no card', (await cardText()) === null, await cardText());
+    // Playing the Sandbox: the card stays, waiting for the cell.
+    await page.evaluate(() => sessionStorage.setItem('nge_play_on', 'cells'));
+    await page.waitForTimeout(3000);
+    check('while playing the Sandbox the card stays, on standby', /standby/.test(await cardText() || ''), await cardText());
+    await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));
+    await page.waitForTimeout(3000);
+    check('Play off: no card', (await cardText()) === null, await cardText());
     check('no page errors', errors.length === 0, errors);
   } catch (e) { check('the run finished', false, String(e).slice(0, 300)); }
   await browser.close();

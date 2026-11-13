@@ -44,6 +44,17 @@ const CHIP_ID = 'nge-cell-match-open';
 const HINT_ID = 'nge-cell-match-hint';
 const CLOSED_KEY = 'nge-cell-match-closed';
 const HINTED_KEY = 'nge-cell-match-hinted';
+const MIN_KEY = 'nge-cell-match-min';
+/** Play is on, playing cells, on the Sandbox: the card stays up the whole time
+ *  (Ames 2026-11-13: "if I am actively playing on Sandbox have the accuracy box
+ *  there"). Read from Play's own session flag (util/play.ts imports the store,
+ *  which imports this file, so it is not imported here). */
+function playingSandbox(): boolean {
+  if (!deps || !deps.signedIn()) return false;
+  let on: string | null = null;
+  try { on = sessionStorage.getItem('nge_play_on'); } catch { /* private window */ }
+  return on === 'cells' && canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
+}
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private window */ } },
@@ -68,7 +79,46 @@ let reviewing = false;
 /** "Cut complete" / "Merge complete" for a moment after an edit (Ames 2026-11-13). */
 let doneText = '';
 let doneUntil = 0;
+let doneTone: 'plain' | 'good' | 'bad' = 'plain';
 let doneTimer: ReturnType<typeof setTimeout> | null = null;
+/** The edit waiting for its reading, to judge it when the reading comes
+ *  (Ames 2026-11-13: "I got cut complete ... but it was wrong cut"). */
+let editKind: 'merge' | 'split' | null = null;
+const VERDICT_MS = 4500;
+
+/** Says on the card's top line, for a while, how the last edit went. */
+function flash(text: string, tone: 'plain' | 'good' | 'bad', ms: number) {
+  doneText = text;
+  doneTone = tone;
+  doneUntil = Date.now() + ms;
+  const el = document.getElementById(CARD_ID);
+  if (el && !reviewing) {
+    el.classList.toggle('nge-cm-done', tone === 'good');
+    el.classList.toggle('nge-cm-bad', tone === 'bad');
+    (el.querySelector('.nge-cm-state') as HTMLElement).textContent = text;
+  }
+  if (doneTimer) clearTimeout(doneTimer);
+  doneTimer = setTimeout(() => {
+    doneTimer = null;
+    const c = document.getElementById(CARD_ID);
+    if (!c || reviewing || Date.now() < doneUntil) return;
+    c.classList.remove('nge-cm-done', 'nge-cm-bad');
+    (c.querySelector('.nge-cm-state') as HTMLElement).textContent = c.classList.contains('nge-cm-checking') ? 'Checking' : 'Live';
+  }, ms + 50);
+}
+
+/** Good or wrong: a row that went down, or more pieces left than before, is a
+ *  wrong edit; a row that went up, or fewer pieces left, a good one. */
+export function judgeEdit(kind: 'merge' | 'split', prev: MatchResult, now: MatchResult): { text: string; tone: 'plain' | 'good' | 'bad' } {
+  const word = kind === 'split' ? 'cut' : 'merge';
+  const rowMove = (a: number | null | undefined, b: number | null | undefined) =>
+    a == null && b != null ? -1 : a != null && b != null ? Math.sign(b - a) : 0;
+  const leftMove = (a?: { left: number }, b?: { left: number }) => (a && b ? Math.sign(a.left - b.left) : 0);
+  const moves = [rowMove(prev.merge, now.merge), rowMove(prev.cut, now.cut), leftMove(prev.missing, now.missing), leftMove(prev.extra, now.extra)];
+  if (moves.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (moves.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
+  return { text: 'No change', tone: 'plain' };
+}
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 const ROW_LABEL: Record<Row, string> = { merge: 'Missing', cut: 'Mergers' };
@@ -147,11 +197,36 @@ const CSS = `
 #${CARD_ID}.nge-cm-done{border-color:rgba(89,227,167,.75);box-shadow:0 0 26px rgba(89,227,167,.28),inset 0 0 18px rgba(89,227,167,.12);transition:border-color .3s,box-shadow .3s}
 #${CARD_ID}.nge-cm-done .nge-cm-state{color:#59e3a7;text-shadow:0 0 8px rgba(89,227,167,.7)}
 #${CARD_ID}.nge-cm-done .nge-cm-dot{background:#59e3a7;box-shadow:0 0 8px #59e3a7}
+#${CARD_ID}.nge-cm-bad{border-color:rgba(255,107,138,.8);box-shadow:0 0 26px rgba(255,107,138,.3),inset 0 0 18px rgba(255,107,138,.12);transition:border-color .3s,box-shadow .3s}
+#${CARD_ID}.nge-cm-bad .nge-cm-state{color:#ff8fa3;text-shadow:0 0 8px rgba(255,107,138,.7)}
+#${CARD_ID}.nge-cm-bad .nge-cm-dot{background:#ff6b8a;box-shadow:0 0 8px #ff6b8a}
 #${CARD_ID} .nge-cm-x{margin-left:4px;width:22px;height:22px;display:grid;place-items:center;padding:0;border:1px solid transparent;border-radius:2px;
   background:transparent;color:#8fb6dc;font:400 18px/1 Inter,sans-serif;cursor:pointer}
 #${CARD_ID} .nge-cm-x:hover{color:#fff;border-color:rgba(127,200,255,.45);background:rgba(127,200,255,.12)}
 #${CARD_ID} .nge-cm-x:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
-#${CARD_ID}.nge-cm-reviewing .nge-cm-x{display:none}
+#${CARD_ID}.nge-cm-reviewing .nge-cm-x,#${CARD_ID}.nge-cm-reviewing .nge-cm-tool{display:none}
+#${CARD_ID} .nge-cm-tool{width:22px;height:22px;display:grid;place-items:center;padding:0;border:1px solid transparent;border-radius:2px;
+  background:transparent;color:#8fb6dc;cursor:pointer;font:600 12px/1 Inter,sans-serif;letter-spacing:0;text-transform:none}
+#${CARD_ID} .nge-cm-tool:hover,#${CARD_ID} .nge-cm-tool[aria-pressed="true"]{color:#fff;border-color:rgba(127,200,255,.45);background:rgba(127,200,255,.12)}
+#${CARD_ID} .nge-cm-tool:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
+#${CARD_ID} .nge-cm-i{font:italic 700 14px/1 Georgia,serif}
+#${CARD_ID} .nge-cm-min-btn svg{transition:transform .2s}
+#${CARD_ID}.nge-cm-min .nge-cm-min-btn svg{transform:rotate(180deg)}
+#${CARD_ID} .nge-cm-info{display:none;margin:2px 0 8px;padding:9px 10px;border:1px solid rgba(127,200,255,.25);background:rgba(127,200,255,.06);
+  color:#cfe6ff;font-size:13px;line-height:1.45}
+#${CARD_ID} .nge-cm-info p{margin:0 0 6px}
+#${CARD_ID} .nge-cm-info p:last-child{margin:0}
+#${CARD_ID} .nge-cm-info b{color:#7fd8ff;font-weight:600}
+#${CARD_ID}.nge-cm-showinfo .nge-cm-info{display:block}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-state,
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-label,
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-read,
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-pieces,
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-info{display:none}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-head{margin-bottom:2px}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row{padding:0}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-gauge{margin:4px 0 3px}
+#${CARD_ID}.nge-cm-idle .nge-cm-pieces{color:#8fb6dc}
 #${CHIP_ID}{position:fixed;top:64px;left:12px;z-index:59;display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;
   border:1px solid rgba(110,190,255,.4);border-radius:3px;background:linear-gradient(180deg,rgba(7,18,36,.9),rgba(3,9,20,.94));
   box-shadow:0 0 16px rgba(60,150,255,.18);color:#7fc8ff;font:600 12px/1 Orbitron,Inter,sans-serif;letter-spacing:.18em;text-transform:uppercase}
@@ -159,10 +234,21 @@ const CSS = `
 #${CHIP_ID}:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CHIP_ID} .nge-cm-dot{width:8px;height:8px;border-radius:50%;background:#59e3a7;box-shadow:0 0 6px #59e3a7}
 #${CHIP_ID} .nge-cm-chipnum{color:#eaf6ff;letter-spacing:.06em}
-#${HINT_ID}{position:fixed;z-index:60;padding:9px 13px;border-radius:3px;background:#7fd8ff;color:#031226;pointer-events:none;
-  font:600 13px/1.2 Inter,system-ui,sans-serif;box-shadow:0 6px 22px rgba(0,0,0,.45);opacity:0;transition:opacity .4s}
-#${HINT_ID}.nge-cm-on{opacity:1}
-#${HINT_ID}::before{content:'';position:absolute;left:-6px;top:50%;margin-top:-6px;border:6px solid transparent;border-left:0;border-right-color:#7fd8ff}
+#${HINT_ID}{position:fixed;z-index:9000;width:230px;padding:12px 14px;box-sizing:border-box;
+  background:linear-gradient(135deg,rgba(4,6,14,.97),rgba(10,16,32,.96));border:1px solid rgba(74,158,255,.55);border-radius:10px;
+  box-shadow:0 8px 28px rgba(0,0,0,.55),0 0 22px rgba(74,158,255,.18);color:#dfe8f6;font:13px/1.5 Inter,'Segoe UI',sans-serif;
+  animation:nge-cm-tip-in .28s cubic-bezier(.16,1,.3,1) both}
+#${HINT_ID}::before{content:'';position:absolute;top:-7px;left:22px;width:12px;height:12px;background:rgba(8,12,26,.97);
+  border-left:1px solid rgba(74,158,255,.55);border-top:1px solid rgba(74,158,255,.55);transform:rotate(45deg)}
+#${HINT_ID} .nge-cm-tip-kicker{font:600 10px/1 Orbitron,Inter,sans-serif;letter-spacing:.14em;color:#6fb2ff;margin-bottom:6px}
+#${HINT_ID} .nge-cm-tip-ok{margin-top:10px;padding:4px 14px;border-radius:12px;border:1px solid rgba(74,158,255,.5);background:rgba(74,158,255,.16);
+  color:#eaf2ff;font:600 11px Orbitron,Inter,sans-serif;letter-spacing:.06em;cursor:pointer}
+#${HINT_ID} .nge-cm-tip-ok:hover{background:rgba(74,158,255,.28)}
+#${HINT_ID} .nge-cm-tip-ok:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
+@keyframes nge-cm-tip-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+#${CHIP_ID}.nge-cm-tip-target{animation:nge-cm-tip-pulse 1.6s ease-in-out infinite}
+@keyframes nge-cm-tip-pulse{0%,100%{box-shadow:0 0 0 0 rgba(74,158,255,.7)}50%{box-shadow:0 0 0 8px rgba(74,158,255,0)}}
+@media (prefers-reduced-motion:reduce){#${HINT_ID},#${CHIP_ID}.nge-cm-tip-target{animation:none}}
 #${CARD_ID} .nge-cm-delta{font:600 13px/1 Orbitron,Inter,sans-serif;opacity:0;transition:opacity .8s}
 #${CARD_ID} .nge-cm-gauge{grid-column:1/-1;position:relative;height:7px;margin:5px 0 4px;background:rgba(127,190,255,.10);overflow:hidden}
 #${CARD_ID} .nge-cm-fill{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(90deg,#2f7dff,#7fd8ff);box-shadow:0 0 8px rgba(127,216,255,.6);transition:width .7s ease}
@@ -207,13 +293,63 @@ function card(): HTMLElement {
   el.setAttribute('aria-live', 'polite');
   el.title = 'How close your cell is to the finished cell, by size. Missing: how much of what is missing you have merged in. Mergers: how much of what does not belong you have cut off.';
   el.innerHTML = '<div class="nge-cm-head"><span class="nge-cm-dot"></span><span class="nge-cm-title">Cell match</span><span class="nge-cm-state"></span>'
+    + '<button type="button" class="nge-cm-tool nge-cm-i" aria-label="What do these numbers mean?" aria-pressed="false" aria-controls="nge-cell-match-info" title="What do these numbers mean?">i</button>'
+    + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the bars"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. A small Cell match button stays to open it again.">×</button></div>'
+    + '<div class="nge-cm-info" id="nge-cell-match-info">'
+    + '<p>Cell match compares your cell with its finished version, by size. It updates a few seconds after each merge or cut.</p>'
+    + '<p><b>Missing</b>: how much of the cell that was missing at the start you have merged back in. The pieces count the big ones.</p>'
+    + '<p><b>Mergers</b>: how much of what did not belong at the start you have cut off.</p>'
+    + '<p>When you are done, Complete and Review shows any pieces you missed in gold and any mergers left with pins.</p></div>'
     + rowHtml('merge') + rowHtml('cut') + '<div class="nge-cm-extra"></div>';
   el.querySelector('.nge-cm-head')!.setAttribute('title', 'Drag to move. Double click to put it back.');
   makeDraggable(el);
   el.querySelector('.nge-cm-x')!.addEventListener('click', closeCard);
+  const card0 = el;
+  const info = el.querySelector('.nge-cm-i') as HTMLElement;
+  info.addEventListener('click', () => {
+    const on = card0.classList.toggle('nge-cm-showinfo');
+    info.setAttribute('aria-pressed', String(on));
+    if (on && card0.classList.contains('nge-cm-min')) setMin(card0, false);
+  });
+  el.querySelector('.nge-cm-min-btn')!.addEventListener('click', () => setMin(card0, !card0.classList.contains('nge-cm-min')));
+  setMin(el, store.get(MIN_KEY) === '1', true);
   document.body.appendChild(el);
   return el;
+}
+
+/** Collapsed: the title and the two bars only (Ames 2026-11-13). */
+function setMin(el: HTMLElement, min: boolean, quiet = false) {
+  el.classList.toggle('nge-cm-min', min);
+  if (min) { el.classList.remove('nge-cm-showinfo'); el.querySelector('.nge-cm-i')?.setAttribute('aria-pressed', 'false'); }
+  const b = el.querySelector('.nge-cm-min-btn') as HTMLElement | null;
+  if (b) {
+    b.setAttribute('aria-pressed', String(min));
+    b.setAttribute('aria-label', min ? 'Expand' : 'Collapse');
+    b.title = min ? 'Show the numbers' : 'Collapse to the bars';
+  }
+  if (!quiet) store.set(MIN_KEY, min ? '1' : '0');
+}
+
+/** Playing the Sandbox with no reading to show: the card stays, empty, and
+ *  says why. */
+function idle(state: string, note: string) {
+  if (reviewing) return;
+  if (isClosed()) { chip(undefined); return; }
+  const el = card();
+  el.classList.add('nge-cm-idle');
+  el.classList.remove('nge-cm-checking', 'nge-cm-done', 'nge-cm-bad');
+  (el.querySelector('.nge-cm-state') as HTMLElement).textContent = state;
+  for (const row of ['merge', 'cut'] as Row[]) {
+    const box = el.querySelector(`.nge-cm-row[data-row="${row}"]`) as HTMLElement;
+    (box.querySelector('.nge-cm-num') as HTMLElement).textContent = '';
+    (box.querySelector('.nge-cm-delta') as HTMLElement).textContent = '';
+    (box.querySelector('.nge-cm-fill') as HTMLElement).style.width = '0%';
+    (box.querySelector('.nge-cm-pieces') as HTMLElement).textContent = row === 'merge' ? note : '';
+    box.dataset.pct = ''; box.dataset.pctWas = '';
+  }
+  place(el);
+  shownFor = null;
 }
 
 // ── Drag and drop (Ames 2026-11-13) ─────────────────────────────────────────
@@ -321,20 +457,23 @@ function chip(r: MatchResult | undefined): HTMLElement {
 function showHint(b: HTMLElement) {
   if (store.get(HINTED_KEY)) return;
   store.set(HINTED_KEY, '1');
+  // Pyr's tip box (as split_screen_tip.ts): under the button, until Got it.
   const h = document.createElement('div');
   h.id = HINT_ID;
   h.className = 'ng-extend';
-  h.setAttribute('role', 'status');
-  h.textContent = 'Click here to reopen';
+  h.setAttribute('role', 'dialog');
+  h.setAttribute('aria-label', 'Tip');
+  h.innerHTML = '<div class="nge-cm-tip-kicker">TIP</div><div class="nge-cm-tip-text">Click here to reopen</div>'
+    + '<button type="button" class="nge-cm-tip-ok">Got it</button>';
   document.body.appendChild(h);
-  const at = () => {
-    const r = b.getBoundingClientRect();
-    h.style.left = `${Math.round(r.right + 12)}px`;
-    h.style.top = `${Math.round(r.top + r.height / 2 - h.offsetHeight / 2)}px`;
-  };
-  at();
-  requestAnimationFrame(() => h.classList.add('nge-cm-on'));
-  setTimeout(() => { h.classList.remove('nge-cm-on'); setTimeout(() => h.remove(), 500); }, 7000);
+  b.classList.add('nge-cm-tip-target');
+  const r = b.getBoundingClientRect();
+  h.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - h.offsetWidth - 8)))}px`;
+  h.style.top = `${Math.round(r.bottom + 12)}px`;
+  const gone = () => { h.remove(); b.classList.remove('nge-cm-tip-target'); document.removeEventListener('keydown', esc, true); };
+  const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') gone(); };
+  document.addEventListener('keydown', esc, true);
+  h.querySelector('.nge-cm-tip-ok')!.addEventListener('click', gone);
 }
 
 function closeCard() {
@@ -397,15 +536,23 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   // nothing rather than "none missing".
   if (r && r.scorable && r.merge === undefined && r.cut === undefined) { hide(); return; }
   if (!r || !r.scorable) {
-    // Checking a cell not seen before: say nothing until there is a number.
-    if (!checking || !r) { if (!r || !r.scorable) hide(); return; }
+    // Checking a cell not seen before: say nothing until there is a number,
+    // unless Play is on, when the card waits with the player.
+    if (!checking || !r) {
+      if (!playingSandbox()) hide();
+      else if (!r) idle(checking ? 'Checking' : 'Standby', checking ? 'Reading your cell' : 'Open your cell to see its match');
+      else idle('No key', 'No finished cell to compare this one with');
+      return;
+    }
   }
   if (isClosed()) { chip(r); return; }
   const el = card();
+  el.classList.remove('nge-cm-idle');
   const state = el.querySelector('.nge-cm-state') as HTMLElement;
   el.classList.toggle('nge-cm-checking', checking);
   const done = Date.now() < doneUntil;
-  el.classList.toggle('nge-cm-done', done);
+  el.classList.toggle('nge-cm-done', done && doneTone === 'good');
+  el.classList.toggle('nge-cm-bad', done && doneTone === 'bad');
   if (checking) {
     state.textContent = done ? doneText : 'Checking';
   } else {
@@ -424,10 +571,18 @@ async function ask(taskId: number) {
   show(taskId, last.get(taskId), true);
   try {
     const r = await secureWrite<MatchResult>('match.check', { taskId });
+    const prev = last.get(taskId);
     noteResult(taskId, r);
     if (r.root) aliases.delete(taskId);
     if (mine !== asking || onScreen !== taskId) return;
+    const kind = editKind;
+    editKind = null;
+    if (kind && prev && prev.scorable && r.scorable) {
+      const v = judgeEdit(kind, prev, r);
+      doneText = v.text; doneTone = v.tone; doneUntil = Date.now() + VERDICT_MS;
+    }
     show(taskId, r, false);
+    if (kind && prev && prev.scorable && r.scorable) flash(doneText, doneTone, VERDICT_MS);
     console.debug('[cell-match]', taskId, 'missing', r.merge, rowPieces(r, 'merge'), 'mergers', r.cut, rowPieces(r, 'cut'));
   } catch (e: any) {
     console.debug('[cell-match] no check', taskId, e?.message);
@@ -606,9 +761,13 @@ function tick() {
   if (b) place(b);
   if (reviewing) return;
   const id = claimOnScreen();
+  if (id == null) {
+    onScreen = null;
+    if (playingSandbox()) idle('Standby', 'Open your cell to see its match'); else hide();
+    return;
+  }
   if (id === onScreen) return;
   onScreen = id;
-  if (id == null) { hide(); return; }
   const r = last.get(id);
   if (r) show(id, r, false);
   void ask(id);
@@ -626,23 +785,19 @@ export function startSandboxMatch(d: Deps) {
     const roots: string[] = Array.isArray(det.roots) ? det.roots.map(String) : [];
     if (roots.length) aliases.set(id, new Set([...(aliases.get(id) ?? []), ...roots]));
     if (editTimer) clearTimeout(editTimer);
+    // Done at once, but not yet judged: plain until the reading says good or wrong.
+    editKind = det.kind;
     doneText = det.kind === 'split' ? 'Cut complete' : 'Merge complete';
+    doneTone = 'plain';
     doneUntil = Date.now() + DONE_MS;
     show(id, last.get(id), true);
     const shown = document.getElementById(CARD_ID);
     if (shown) ping(shown);
-    if (doneTimer) clearTimeout(doneTimer);
-    doneTimer = setTimeout(() => {
-      doneTimer = null;
-      const el = document.getElementById(CARD_ID);
-      if (!el || reviewing) return;
-      el.classList.remove('nge-cm-done');
-      (el.querySelector('.nge-cm-state') as HTMLElement).textContent = el.classList.contains('nge-cm-checking') ? 'Checking' : 'Live';
-    }, DONE_MS + 50);
+    flash(doneText, 'plain', DONE_MS);
     editTimer = setTimeout(() => { editTimer = null; onScreen = id; void ask(id); }, EDIT_WAIT_MS);
   }) as EventListener);
   setInterval(() => { if (!document.hidden) tick(); }, 2000);
 }
 
 /** For headless checks. */
-(window as any).__ngeCellMatch = { closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, hasReview, startReview, showReview };
+(window as any).__ngeCellMatch = { judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, hasReview, startReview, showReview };
