@@ -1260,13 +1260,14 @@ body.nge-mobile .ng-extend.nge-sig-editor { left: 6px; right: 6px; width: auto; 
 /* three, two, one, go: in the middle of the free part of the view */
 /* the lockup: a title in the middle of the free part of the view (a level's name as it opens, the result as it is won) */
 .ng-extend.nge-sig-lock { position: fixed; z-index: 9465; transform: translate(-50%, -50%); pointer-events: none; text-align: center; white-space: nowrap; padding: 2.2em 5em; font-size: var(--fs, 40px);
-  font-family: 'Orbitron', 'Inter', sans-serif; color: #eaf6ff; background: radial-gradient(closest-side, rgba(3, 9, 22, 0.8), rgba(3, 9, 22, 0.55) 55%, rgba(3, 9, 22, 0)); }
-.nge-sig-lock .kick { font-weight: 600; font-size: 0.28em; letter-spacing: 0.5em; text-indent: 0.5em; text-transform: uppercase; color: #7ecaff; animation: nge-sig-lock-fade 0.7s ease-out both; }
+  font-family: 'Orbitron', 'Inter', sans-serif; color: #eaf6ff; background: radial-gradient(closest-side, rgba(3, 9, 22, 0.86), rgba(3, 9, 22, 0.66) 55%, rgba(3, 9, 22, 0)); }
+.nge-sig-lock .kick, .nge-sig-lock .sub { text-shadow: 0 0 3px #030916, 0 0 8px #030916, 0 0 16px rgba(3, 9, 22, 0.9); }
+.nge-sig-lock .kick { font-weight: 600; font-size: 0.3em; letter-spacing: 0.5em; text-indent: 0.5em; text-transform: uppercase; color: #8fd4ff; animation: nge-sig-lock-fade 0.7s ease-out both; }
 .nge-sig-lock .title { margin-top: 0.22em; font-weight: 700; font-size: 1em; line-height: 1.05; letter-spacing: 0.16em; text-indent: 0.16em; text-transform: uppercase; color: #fff;
   text-shadow: 0 0 0.5em rgba(126, 210, 255, 0.75), 0 0 1.4em rgba(74, 150, 224, 0.5); animation: nge-sig-lock-title 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .nge-sig-lock .rule { height: 1px; width: min(9.5em, 100%); margin: 0.38em auto 0.3em; background: linear-gradient(90deg, transparent, #7ee0ff 30%, #ffd98a 50%, #7ee0ff 70%, transparent); box-shadow: 0 0 10px rgba(126, 224, 255, 0.7);
   animation: nge-sig-lock-rule 0.9s 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-.nge-sig-lock .sub { font-weight: 600; font-size: 0.28em; letter-spacing: 0.34em; text-indent: 0.34em; text-transform: uppercase; color: #b9dcff; animation: nge-sig-lock-fade 0.8s 0.55s ease-out both; }
+.nge-sig-lock .sub { font-weight: 600; font-size: 0.3em; letter-spacing: 0.34em; text-indent: 0.34em; text-transform: uppercase; color: #cfe6ff; animation: nge-sig-lock-fade 0.8s 0.55s ease-out both; }
 .nge-sig-lock .stars { display: flex; justify-content: center; gap: 0.42em; margin-bottom: 0.32em; font-size: 0.8em; line-height: 1; }
 .nge-sig-lock .stars i { font-style: normal; color: rgba(126, 202, 255, 0.4); animation: nge-sig-lock-fade 0.6s 0.35s ease-out both; }
 .nge-sig-lock .stars i.on { color: #ffc24a; text-shadow: 0 0 0.5em rgba(255, 194, 74, 0.9), 0 0 1.2em rgba(255, 170, 60, 0.5); animation: nge-sig-star 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both; animation-delay: calc(0.4s + var(--i, 0) * 0.28s); }
@@ -2007,7 +2008,13 @@ function demoPulse(path: V3[], seconds: number) {
 /** What the tour clears between steps: labels, lit cells, the ship's visit, the camera. */
 /** The tour's slow turn around a cell: radians a second about the view's up. */
 let orbit = 0;
+/** The finale's turn: an arc that eases in and out and comes to rest (peak in radians a second). */
+let orbitArc: {from: number; until: number; peak: number} | null = null;
 function stepOrbit(dt: number, cam: {right: V3; up: V3; toEye: V3}) {
+  if (orbitArc) {
+    const q = (performance.now() - orbitArc.from) / (orbitArc.until - orbitArc.from);
+    if (q >= 1) { orbitArc = null; orbit = 0; } else orbit = orbitArc.peak * Math.sin(Math.PI * clamp(q, 0, 1));
+  }
   if (!orbit) return;
   const nm = nmPerUnit(), o = viewerNow()?.perspectiveNavigationState?.pose?.orientation;
   if (!nm || !o?.orientation) return;
@@ -2388,7 +2395,7 @@ function showResult(wonIt: boolean) {
   clockAt = wonIt ? wonAt : level.timeS;
   // the model stops here: nothing left on the wire to hold a cell violet on the result screen, no charge on a ring, no cell left dim
   arrivals = []; queued = [];
-  for (const c of cells.values()) { if (!c.shown) continue; c.e = 0; c.i = 0; c.hushedUntil = -1; if (c.dimmed) paint(c, false); }
+  for (const c of cells.values()) { if (!c.shown) continue; c.e = 0; c.i = 0; c.hushedUntil = -1; if (c.gateNext !== null) c.gateNext = Infinity; if (c.dimmed) paint(c, false); }
   els.row.style.display = 'none';
   const stars = wonIt ? (chargesUsed <= level.par ? 3 : chargesUsed <= level.par * 1.6 ? 2 : 1) : 0;
   const next = levelIndex + 1 < LEVELS.length;
@@ -2420,11 +2427,10 @@ function showResult(wonIt: boolean) {
 /* ── the finale: the last firing lights the whole circuit. A wide ring of
    light runs out from the gold cell; every other cell of the level comes up
    whole, from its body outward, the nearest first, each with a sparkle and a
-   note; the camera draws back a little and begins a slow turn (a press in
-   the view, or a scan, stops it); and the result is named in the middle of
+   note; the camera draws back a little and turns through a slow arc (a press
+   in the view, or a scan, stops it); and the result is named in the middle of
    the view before the panel takes it over. ── */
 let won = false, wonAt = 0, clockAt = 0, finaleToken = 0;
-const FINALE_ORBIT = 0.07;
 const FINALE_NOTES = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093, 2349];
 function finale(key: string) {
   won = true; wonAt = now;
@@ -2453,7 +2459,7 @@ function finale(key: string) {
   setTimeout(() => {
     if (!alive()) return;
     if (!userCam && homeLook && homeScale > 0) glideSlow(homeLook, homeScale * 1.14, 7);
-    orbit = FINALE_ORBIT;
+    orbitArc = {from: performance.now(), until: performance.now() + 14_000, peak: 0.088};   // about 45 degrees in all
   }, 600);
   setTimeout(() => { if (alive() && phase === 'playing') showResult(true); }, 900);
 }
@@ -2475,7 +2481,7 @@ function placeLockup() {
   if (!lockEl) return;
   const f = freeArea();
   lockEl.style.left = `${f.x}px`; lockEl.style.top = `${f.y}px`;
-  lockEl.style.setProperty('--fs', `${clamp(f.w / 17.5, 15, 46).toFixed(1)}px`);
+  lockEl.style.setProperty('--fs', `${clamp(f.w / 24, 15, 72).toFixed(1)}px`);
 }
 function lockup(html: string, cls: string, holdMs: number) {
   clearLockup();
@@ -3439,7 +3445,7 @@ function scan(key: string) {
   if (phase !== 'brief' && phase !== 'done') return;
   const c = cells.get(key);
   if (!c || !c.shown) return;
-  if (phase === 'done') orbit = 0;   // the finale's turn stops for a scan
+  if (phase === 'done') { orbit = 0; orbitArc = null; }   // the finale's turn stops for a scan
   hideScan();
   // the ship goes to whichever side of the cell has more screen
   const s = toScreen(c.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
@@ -4446,7 +4452,7 @@ let fingers = 0;
 let mouseStart: {x: number; y: number; key: string; t: number} | null = null;
 function onPointerDown(e: PointerEvent) {
   if (!active) return;
-  if (phase === 'done' && (orbit || glide) && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) { orbit = 0; if (glide) { glide = null; recordCam(); } }   // the finale's slow turn ends where the player takes the view
+  if (phase === 'done' && (orbit || orbitArc || glide) && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) { orbit = 0; orbitArc = null; if (glide) { glide = null; recordCam(); } }   // the finale's slow turn ends where the player takes the view
   if (e.pointerType !== 'mouse') {
     fingers++;
     tapStart = null;
@@ -4514,7 +4520,7 @@ async function startLevel(index: number) {
   if (levelIndex === 0) score = 0;
   shownScore = score;
   // what the last level's finale left: its lit cells, its turn, its title
-  won = false; finaleToken++; orbit = 0; litWhole = new Set(); clearReveals(); ringQ.clear(); clearLockup(); hints = new Set();
+  won = false; finaleToken++; orbit = 0; orbitArc = null; litWhole = new Set(); clearReveals(); ringQ.clear(); clearLockup(); hints = new Set();
   titleCard();
   resetCells();
   clearTags();
@@ -4684,7 +4690,7 @@ export function stopSignalController() {
   litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flip = null; flying = false; homing = false; shipCam = null; shipPark = false;
   demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
-  clearLockup(); won = false; finaleToken++; titledLevel = -1; opening = false; ringQ.clear();
+  clearLockup(); won = false; finaleToken++; orbitArc = null; titledLevel = -1; opening = false; ringQ.clear();
   glide = null; cockpitNose = null;
   if (savedDefaultAnnotations !== null) { try { viewerNow().showDefaultAnnotations.value = savedDefaultAnnotations; } catch { /* as it is */ } savedDefaultAnnotations = null; }
   document.body.classList.remove('nge-signal-on');
