@@ -334,6 +334,32 @@ let aimUntil = 0;
 let prevUp: V3 | null = null;
 /** In flight on a visit (far from where it lands), and the barrel roll under way, if any. */
 let flying = false;
+/** At the cockpit the ship is placed in the player's own frame (right, up,
+ *  toward the eye, in shares of the eye's distance from the look point): the
+ *  camera's turns and zooms carry it along with no lag, and only its own
+ *  flight home from a visit moves it on the screen. It used to chase its
+ *  spot through the world, so a turn or a zoom of the camera dragged it off
+ *  its place and it slid back nose wherever it had been pointing, and the
+ *  way home from a visit was a zip faster than it could turn (Ames
+ *  2026-11-12: "make sure the ship never flies backwards"). */
+let shipCam: V3 | null = null;
+/** The flight home (or to a moved spot): it turns first, then flies nose first at a steady pace and eases in. */
+let homing = false;
+/** The next cockpit frame puts the ship right on its spot (a level's start). */
+let shipPark = false;
+/** `a` turned toward `b` by the share `t` of the angle between them, about
+ *  the axis the two span; nearly opposite, about `yaw`, so a turnaround is a
+ *  turn and not a blend that shrinks through nothing and whips. */
+function turnToward(a: V3, b: V3, t: number, yaw: V3): V3 {
+  const ang = Math.acos(clamp(dot(a, b), -1, 1));
+  if (ang < 1e-4 || t >= 1) return b;
+  let axis = cross(a, b);
+  if (len(axis) < 1e-3) axis = sub(yaw, mul(a, dot(yaw, a)));
+  if (len(axis) < 1e-6) axis = Math.abs(a[1]) < 0.9 ? cross(a, [0, 1, 0]) : cross(a, [1, 0, 0]);
+  axis = norm(axis);
+  const th = ang * t;
+  return norm(add(mul(a, Math.cos(th)), mul(cross(axis, a), Math.sin(th))));
+}
 let roll: {at: number; dur: number} | null = null;
 /** A loop over the top when the ship turns right around, leaving a cell for
  *  its spot or for another cell (Ames 2026-11-12: "it could do a flip spin"). */
@@ -2730,6 +2756,7 @@ function frameLevel() {
   glide = null;
   shipAt = add(center, [0, -viewNm * 0.4, 0]);
   shipFwd = norm(sub(center, shipAt));
+  shipCam = null; shipPark = true; homing = false;
 }
 /** The level's frame: how much of the cortex shows top to bottom, in nm. */
 let viewNm = 260_000;
@@ -2822,7 +2849,7 @@ function hudFrac(): number {
 /** The ship's length in nm, set with its spot: a fixed share of the screen,
  *  whatever the level's spread or the zoom. */
 let shipLenNm = SHIP_LENGTH_NM;
-function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: number; nose: V3} | null {
+function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: number; nose: V3; eye: V3; eyeDist: number} | null {
   const v = viewerNow(), nm = nmPerUnit();
   const inv = threeDPanel()?.projectionParameters?.value?.invViewProjectionMat;
   if (!v || !nm || !inv) return null;
@@ -2862,7 +2889,7 @@ function cockpitSpot(cam: {right: V3; up: V3; toEye: V3}): {spot: V3; len: numbe
   const nose = add(sub(eye, mul(cam.toEye, d2)), mul(cam.up, -0.92 * halfH2));
   // zoomed out past the level's own frame, its spot comes in toward the middle: at twice the frame about 0.6 of the way out, at three times under half (Ames 2026-11-12: "the ship can stop like 50% closer while the camera pans out")
   const zoomOut = homeScale > 0 ? clamp(v.projectionScale.value / homeScale, 1, 4) : 1, k = 1 / (1 + (zoomOut - 1) * 0.65);
-  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * k * halfW)), mul(cam.up, sy * k * halfH)), len: Math.min(halfH, halfW) * 0.14, nose};   // 0.22 was "too large" (Ames 2026-11-12)
+  return {spot: add(add(sub(eye, mul(cam.toEye, d)), mul(cam.right, sx * k * halfW)), mul(cam.up, sy * k * halfH)), len: Math.min(halfH, halfW) * 0.14, nose, eye, eyeDist};   // 0.22 was "too large" (Ames 2026-11-12)
 }
 /** Where the ship lands on a visit: on the near side of the cell body (a
  *  soma is some 12 µm across), a touch to the side it came from, so it sits
@@ -2900,40 +2927,62 @@ function placeShip(cam: {right: V3; up: V3; toEye: V3}, dt: number) {
   const wantLen = vc ? VISIT_LEN_NM : cockpit?.len ?? shipLenNm;
   shipLenNm += (wantLen - shipLenNm) * Math.min(1, dt * 4);
   const scale = shipLenNm / shipModelLength;
-  if (spot) {
-    if (vc) {
-      // on a visit it turns first, then flies at a steady pace and eases in
-      // to land; it used to leap most of the way while still turning (Ames
-      // 2026-11-11: "ship is facing wrong direction while flying")
-      // The way is lifted toward the eye, up to three tenths of the view
-      // until it is near, so it flies over the cells and comes down onto the
-      // cell body, never through the branches (Ames 2026-11-11: "make sure
-      // the ship never drives through the neuron").
-      const left = len(sub(spot, shipAt));
-      const goal = add(spot, mul(cam.toEye, Math.min(viewNm * 0.3, left * 0.8)));
-      const dir = sub(goal, shipAt), dist = len(dir);
-      flying = left > viewNm * 0.06;
-      if (dist > 1) {
-        const aligned = dot(shipFwd, mul(dir, 1 / dist));
-        let v = Math.min(dist, Math.min(viewNm * 0.32 * dt, Math.max(left * 3 * dt, viewNm * 0.02 * dt)));
-        if (aligned < 0.8 && dist > viewNm * 0.03) v *= 0.12;
-        shipAt = add(shipAt, mul(dir, v / dist));
-      }
-    } else { shipAt = mix(shipAt, spot, Math.min(1, dt * 5)); flying = false; }
+  // Which way it goes this frame, if it goes anywhere: the nose leads it
+  // (Ames 2026-11-12: "make sure the ship never flies backwards").
+  let going: V3 | null = null;
+  if (spot && vc) {
+    shipCam = null; homing = false;
+    // on a visit it turns first, then flies at a steady pace and eases in
+    // to land; it used to leap most of the way while still turning (Ames
+    // 2026-11-11: "ship is facing wrong direction while flying")
+    // The way is lifted toward the eye, up to three tenths of the view
+    // until it is near, so it flies over the cells and comes down onto the
+    // cell body, never through the branches (Ames 2026-11-11: "make sure
+    // the ship never drives through the neuron").
+    const left = len(sub(spot, shipAt));
+    const goal = add(spot, mul(cam.toEye, Math.min(viewNm * 0.3, left * 0.8)));
+    const dir = sub(goal, shipAt), dist = len(dir);
+    flying = left > viewNm * 0.06;
+    if (dist > 1) {
+      going = mul(dir, 1 / dist);
+      let v = Math.min(dist, Math.min(viewNm * 0.32 * dt, Math.max(left * 3 * dt, viewNm * 0.02 * dt)));
+      if (dot(shipFwd, going) < 0.8 && dist > viewNm * 0.03) v *= 0.05;   // all but still while it turns (0.12 was a creep sideways)
+      shipAt = add(shipAt, mul(going, v));
+    }
+  } else if (spot && cockpit) {
+    // at the cockpit, in the player's frame (see shipCam)
+    const {eye, eyeDist} = cockpit;
+    const toCam = (p: V3): V3 => { const d = sub(p, eye); return [dot(d, cam.right) / eyeDist, dot(d, cam.up) / eyeDist, dot(d, cam.toEye) / eyeDist]; };
+    const spotCam = toCam(spot);
+    if (!shipCam || shipPark) { shipCam = shipPark ? spotCam : toCam(shipAt); shipPark = false; }
+    const way = sub(spotCam, shipCam), left = len(way) * eyeDist;
+    // a long way off (home from a visit, a spot moved far) it flies; near, it shuffles on
+    if (left > viewNm * 0.06) homing = true; else if (left < viewNm * 0.012) homing = false;
+    flying = homing;
+    if (left > 1) {
+      const dir = norm(add(add(mul(cam.right, way[0]), mul(cam.up, way[1])), mul(cam.toEye, way[2])));
+      let v: number;
+      if (homing) {
+        going = dir;
+        v = Math.min(left, Math.min(viewNm * 0.36 * dt, Math.max(left * 4 * dt, viewNm * 0.02 * dt)));
+        if (dot(shipFwd, dir) < 0.8 && left > viewNm * 0.03) v *= 0.05;   // it turns first
+      } else v = left * Math.min(1, dt * 5);
+      shipCam = add(shipCam, mul(way, v / left));
+    }
+    shipAt = add(add(add(eye, mul(cam.right, shipCam[0] * eyeDist)), mul(cam.up, shipCam[1] * eyeDist)), mul(cam.toEye, shipCam[2] * eyeDist));
   }
   // a visit: the scan fires once the ship is there (or after 1.8 s, if the
   // way is long); from the cockpit, once the camera's glide has ended
   const there = !visit ? false : view === 'cockpit' ? !glide : (len(sub(shipAt, spot ?? shipAt)) < viewNm * 0.02 || now - visit.since > 1.8);
   if (visit && vc && !visit.fired && there) fireScan();
-  // on the way it points where it is going; landed, it sits across the cell
-  // body's surface, its belly to the cell (its up is the way to the eye)
+  // the nose: along its way while it flies; landed, across the cell body's
+  // surface, its belly to the cell (its up is the way to the eye); at its
+  // spot, at the circuit, or for a moment at the cell it fired on
   const landed = !!vc && !!spot && len(sub(shipAt, spot)) < viewNm * 0.03;
-  // on the way back to its spot it flies nose first, and faces the circuit once it is there (it used to face the circuit all the way, flying backwards: Ames 2026-11-12)
-  const homeward = !vc && spot ? sub(spot, shipAt) : null;
-  const aimAt = vc ? (landed ? add(shipAt, mul(cam.right, visit!.lean)) : spot!) : homeward && len(homeward) > viewNm * 0.04 ? add(shipAt, homeward) : shipAim && performance.now() < aimUntil ? shipAim : center;
-  const want = norm(sub(aimAt, shipAt));
+  const rest = vc ? add(shipAt, mul(cam.right, visit!.lean)) : shipAim && performance.now() < aimUntil ? shipAim : center;
+  const want = going && !landed ? going : norm(sub(rest, shipAt));
   if (!flip && !landed && view === 'ship' && shipProp.alpha > 0 && dot(shipFwd, want) < -0.35) flip = {at: performance.now(), dur: 850};
-  shipFwd = norm(mix(shipFwd, want, Math.min(1, dt * (vc ? 12 : 7))));
+  shipFwd = turnToward(shipFwd, want, Math.min(1, dt * (vc || homing ? 12 : 7)), prevUp ?? cam.up);
   const upRef = landed ? cam.toEye : cam.up;
   let up = norm(sub(upRef, mul(shipFwd, dot(upRef, shipFwd))));
   if (prevUp) up = norm(mix(prevUp, up, Math.min(1, dt * 6)));
@@ -4371,7 +4420,7 @@ export function stopSignalController() {
   somaProps = []; somaPropOf.clear();
   hideCanopy();
   editorEl?.remove(); editorEl = null;
-  litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flip = null; flying = false;
+  litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flip = null; flying = false; homing = false; shipCam = null; shipPark = false;
   demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
   glide = null; cockpitNose = null;
@@ -4398,7 +4447,7 @@ export function startSignalController() {
 }
 
 (window as any).pyrSignal = {play: playSignalController, stop: stopSignalController, levels: LEVELS, music: () => music,
-  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
+  state: () => ({phase, now, visit, view, demo, tourAt, showing, gliding: !!glide, parts: [...parts.keys()], waves: waves.length, ship: {at: shipAt, fwd: shipFwd, homing, cam: shipCam, len: shipLenNm, nose: toScreen(shipNose())}, pin: scanPin,
     hold: [...cells.values()].filter(c => c.shown).map(c => [c.key, Number(holdOn(c).toFixed(2))]),
     spikes: [...cells.values()].filter(c => c.shown).map(c => [c.key, c.spikes]), progress, weights: conns.filter(k => (k.w ?? 1) !== 1).map(k => [k.pre, k.post, Number((k.w ?? 1).toFixed(2))])}),
   /** Checks only: run the model forward by so many seconds (the next drawn frame shows the result). */
