@@ -599,7 +599,7 @@ const glow: NgeGlow = {positions: new Float32Array(MAX_GLOW * 3), colors: new Fl
 /** Beacons on the cell bodies, drawn through everything so a body is seen
  *  behind the branches in front of it (Ames 2026-11-11: "it's hard to see
  *  the somas"). */
-const MAX_OVER = 128;
+const MAX_OVER = 512;   // the beacons, and each target's charge ring
 const glowOver: NgeGlow = {positions: new Float32Array(MAX_OVER * 3), colors: new Float32Array(MAX_OVER * 4), sizesNm: new Float32Array(MAX_OVER), count: 0, nmRight: [1, 0, 0], through: true};
 
 const thetaOf = (key: string) => level?.theta?.[key] ?? THRESHOLD[key] ?? DEFAULT_THRESHOLD;
@@ -784,7 +784,18 @@ function ensureStyle() {
 .nge-sig .nge-sig-share:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
 .nge-sig-dot { width: 7px; height: 7px; border-radius: 50%; background: #7ecaff; box-shadow: 0 0 8px #7ecaff; animation: nge-sig-blink 1.1s infinite; }
 @keyframes nge-sig-blink { 50% { opacity: 0.25; } }
-.nge-sig-note .lvl { display: block; margin-bottom: 3px; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #7ecaff; }
+.nge-sig .nge-sig-note .lvl { display: block; margin: 0 0 3px; padding: 0; border: 0; background: none; cursor: pointer; font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #7ecaff; }
+.nge-sig .nge-sig-note .lvl::after { content: '›'; display: inline-block; margin-left: 8px; transition: transform 0.2s; }
+.nge-sig .nge-sig-note .lvl[aria-expanded="true"]::after { transform: rotate(90deg); }
+.nge-sig .nge-sig-note .lvl:hover { color: #fff; background: none; }
+.nge-sig-levels { display: grid; gap: 2px; margin: 6px 0 2px; }
+.nge-sig-levels[hidden] { display: none; }
+.nge-sig .nge-sig-levels button { display: grid; grid-template-columns: 20px 1fr auto; align-items: baseline; gap: 8px; margin: 0; padding: 5px 10px 5px 8px; border: 0; border-left: 2px solid transparent; border-radius: 0; background: rgba(126, 202, 255, 0.05); color: #cfe3f7; font: 500 12.5px 'Inter', sans-serif; letter-spacing: 0.01em; text-align: left; text-transform: none; cursor: pointer; }
+.nge-sig .nge-sig-levels button:hover { background: rgba(126, 202, 255, 0.14); color: #fff; }
+.nge-sig .nge-sig-levels button.on { border-left-color: #ffc24a; background: rgba(126, 202, 255, 0.1); color: #fff; }
+.nge-sig-levels b { font: 600 10.5px 'Orbitron', 'Inter', sans-serif; color: #7ecaff; }
+.nge-sig-levels i { font-style: normal; font-size: 12px; letter-spacing: 2px; color: #ffc24a; text-shadow: 0 0 8px rgba(255, 194, 74, 0.5); }
+.nge-sig-levels u { text-decoration: none; color: rgba(126, 202, 255, 0.26); text-shadow: none; }
 .nge-sig-x { flex: none; width: 24px; height: 24px; margin: -2px -6px -2px 6px; display: grid; place-items: center; padding: 0;
   border: 1px solid rgba(126, 210, 255, 0.35); border-radius: 50%; background: rgba(126, 210, 255, 0.06); color: #9fc6ea; cursor: pointer; }
 .nge-sig-x:hover { color: #fff; border-color: rgba(126, 210, 255, 0.8); }
@@ -1247,6 +1258,40 @@ body.nge-mobile .ng-extend.nge-sig-editor { left: 6px; right: 6px; width: auto; 
 .ng-extend.nge-sig-pop--out { animation: nge-sig-pop-out 0.35s ease-in both; }
 @keyframes nge-sig-pop-out { to { opacity: 0; transform: translateY(-4px); } }
 /* three, two, one, go: in the middle of the free part of the view */
+/* the lockup: a title in the middle of the free part of the view (a level's name as it opens, the result as it is won) */
+.ng-extend.nge-sig-lock { position: fixed; z-index: 9465; transform: translate(-50%, -50%); pointer-events: none; text-align: center; white-space: nowrap; padding: 2.2em 5em; font-size: var(--fs, 40px);
+  font-family: 'Orbitron', 'Inter', sans-serif; color: #eaf6ff; background: radial-gradient(closest-side, rgba(3, 9, 22, 0.8), rgba(3, 9, 22, 0.55) 55%, rgba(3, 9, 22, 0)); }
+.nge-sig-lock .kick { font-weight: 600; font-size: 0.28em; letter-spacing: 0.5em; text-indent: 0.5em; text-transform: uppercase; color: #7ecaff; animation: nge-sig-lock-fade 0.7s ease-out both; }
+.nge-sig-lock .title { margin-top: 0.22em; font-weight: 700; font-size: 1em; line-height: 1.05; letter-spacing: 0.16em; text-indent: 0.16em; text-transform: uppercase; color: #fff;
+  text-shadow: 0 0 0.5em rgba(126, 210, 255, 0.75), 0 0 1.4em rgba(74, 150, 224, 0.5); animation: nge-sig-lock-title 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.nge-sig-lock .rule { height: 1px; width: min(9.5em, 100%); margin: 0.38em auto 0.3em; background: linear-gradient(90deg, transparent, #7ee0ff 30%, #ffd98a 50%, #7ee0ff 70%, transparent); box-shadow: 0 0 10px rgba(126, 224, 255, 0.7);
+  animation: nge-sig-lock-rule 0.9s 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.nge-sig-lock .sub { font-weight: 600; font-size: 0.28em; letter-spacing: 0.34em; text-indent: 0.34em; text-transform: uppercase; color: #b9dcff; animation: nge-sig-lock-fade 0.8s 0.55s ease-out both; }
+.nge-sig-lock .stars { display: flex; justify-content: center; gap: 0.42em; margin-bottom: 0.32em; font-size: 0.8em; line-height: 1; }
+.nge-sig-lock .stars i { font-style: normal; color: rgba(126, 202, 255, 0.4); animation: nge-sig-lock-fade 0.6s 0.35s ease-out both; }
+.nge-sig-lock .stars i.on { color: #ffc24a; text-shadow: 0 0 0.5em rgba(255, 194, 74, 0.9), 0 0 1.2em rgba(255, 170, 60, 0.5); animation: nge-sig-star 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both; animation-delay: calc(0.4s + var(--i, 0) * 0.28s); }
+.nge-sig-lock--won .title { color: #fff6df; text-shadow: 0 0 0.5em rgba(255, 200, 100, 0.8), 0 0 1.4em rgba(255, 170, 60, 0.45); }
+.nge-sig-lock--lost .title { font-size: 0.8em; color: #dcecff; }
+.ng-extend.nge-sig-lock--out { animation: nge-sig-lock-out 0.7s ease-in both; }
+@keyframes nge-sig-lock-title { 0% { opacity: 0; letter-spacing: 0.5em; filter: blur(8px); } 100% { opacity: 1; filter: none; } }
+@keyframes nge-sig-lock-rule { from { transform: scaleX(0); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes nge-sig-lock-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes nge-sig-lock-out { to { opacity: 0; filter: blur(6px); transform: translate(-50%, -50%) scale(1.04); } }
+@keyframes nge-sig-star { 0% { opacity: 0; transform: scale(2.4) rotate(-30deg); filter: blur(4px); } 60% { opacity: 1; filter: none; } 100% { opacity: 1; transform: none; } }
+/* the result in the panel: the stars, then the numbers as readouts */
+.nge-sig-result .nge-sig-stars { display: flex; gap: 8px; font-size: 24px; letter-spacing: 0; line-height: 1; }
+.nge-sig-result .nge-sig-stars i { font-style: normal; }
+.nge-sig-result .nge-sig-stars i:not(.on) { color: rgba(126, 202, 255, 0.4); text-shadow: none; }
+.nge-sig-result .nge-sig-readouts { grid-template-columns: repeat(3, auto); justify-content: start; gap: 8px 26px; margin-top: 12px; }
+.nge-sig-result .tip { margin: 10px 0 0; font-size: 12.5px; color: #a9c3de; animation: nge-sig-lock-fade 0.5s 1.5s ease-out both; }
+.nge-sig-result .nge-sig-stars i.on { animation: nge-sig-star 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both; animation-delay: calc(0.4s + var(--i, 0) * 0.28s); }
+.nge-sig-result .nge-sig-readouts li { animation: nge-sig-lock-fade 0.5s ease-out both; }
+.nge-sig-result .nge-sig-readouts li:nth-child(1) { animation-delay: 1.15s; }
+.nge-sig-result .nge-sig-readouts li:nth-child(2) { animation-delay: 1.27s; }
+.nge-sig-result .nge-sig-readouts li:nth-child(3) { animation-delay: 1.39s; }
+.nge-sig-stats b.tick { animation: nge-sig-tick 0.75s ease-out; transform-origin: 100% 60%; }
+@keyframes nge-sig-tick { 0% { color: #ffd98a; text-shadow: 0 0 16px rgba(255, 194, 74, 0.9); transform: scale(1.35); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ng-extend.nge-sig-lock, .nge-sig-lock *, .nge-sig-stats b.tick, .nge-sig-result * { animation: none !important; } }
 .ng-extend.nge-sig-count { position: fixed; z-index: 9460; transform: translate(-50%, -50%); pointer-events: none; font: 700 96px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; color: #e6f7ff; text-shadow: 0 0 30px rgba(126, 224, 255, 0.8), 0 0 60px rgba(74, 150, 224, 0.5); }
 .ng-extend.nge-sig-count.pop { animation: nge-sig-count 0.85s ease-out both; }
 @keyframes nge-sig-count { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); filter: blur(6px); } 25% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: none; } 100% { opacity: 0.15; transform: translate(-50%, -50%) scale(0.9); } }
@@ -1298,7 +1343,7 @@ function buildPanel() {
       <button class="nge-sig-quiet nge-sig-recenter" type="button" data-el="recenter" title="Bring the camera back to the circuit">Recenter</button>
       <div class="nge-sig-msg" data-el="msg"></div></div>
     <div class="nge-sig-sci"><button type="button" class="nge-sig-sci-btn" data-el="sci" aria-expanded="false">The science <i>›</i></button><p class="nge-sig-sci-text" data-el="sciText" hidden></p></div>
-    <div class="nge-sig-note"><span class="lvl" data-el="lvl"></span></div></div>`;
+    <div class="nge-sig-note"><button type="button" class="lvl" data-el="lvl" aria-expanded="false" title="Choose a level"></button><div class="nge-sig-levels" data-el="levels" hidden></div></div></div>`;
   document.body.appendChild(panel);
   footEl?.remove();
   footEl = document.createElement('p');
@@ -1351,6 +1396,7 @@ function buildPanel() {
     try { await navigator.clipboard.writeText(link); say('Link copied.', 2.2); } catch { say(link, 6); }
   };
   setView(view);
+  els.lvl.onclick = () => { toggleLevels(); els.lvl.blur(); };
   els.recenter.onclick = () => { frameLevel(); say('Back at the circuit.', 1.5); };
   for (let k = 0; k < MAX_CHARGES; k++) els.charges.appendChild(document.createElement('i'));
 }
@@ -1768,7 +1814,7 @@ function clearReveals() { reveals = []; hazeTint?.reveal?.clear(); }
 /** A target's firing: a gold burst from its cell body, sparks flying out,
  *  a ring widening, the body lit (Ames 2026-11-11: "the gold cell needs to
  *  glow gold or sparkle from soma when you successfully activate it"). */
-interface Burst { p: V3; dirs: V3[]; at: number; life: number; rgb: V3; sparkle?: boolean; scale?: number; }
+interface Burst { p: V3; dirs: V3[]; at: number; life: number; rgb: V3; sparkle?: boolean; scale?: number; /** a ring widening to so many nm, and nothing else */ ring?: number; }
 let bursts: Burst[] = [];
 /** A sparkle from a cell body as it fires: particles flying out and slowing,
  *  each with its own glint (Ames 2026-11-11: "I want particle sparkle from
@@ -1782,6 +1828,8 @@ function sparkleAt(p: V3, rgb: V3, count = 28, scale = 1) {
   }
   bursts.push({p, dirs, at: performance.now() / 1000, life: 1.1, rgb, sparkle: true, scale});
 }
+/** A wide ring of light running out from a cell, easing as it goes (the finale). */
+function shockAt(p: V3, rgb: V3, reachNm = 170_000, life = 2.4) { bursts.push({p, dirs: [], at: performance.now() / 1000, life, rgb, ring: reachNm}); }
 function burstAt(p: V3, rgb: V3) {
   const dirs: V3[] = [];
   for (let i = 0; i < 36; i++) { const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u); dirs.push([r * Math.cos(th), r * Math.sin(th), u]); }
@@ -2335,33 +2383,192 @@ function showBrief() {
   updateHud();
 }
 
-function showResult(won: boolean) {
+function showResult(wonIt: boolean) {
   phase = 'done';
+  clockAt = wonIt ? wonAt : level.timeS;
+  // the model stops here: nothing left on the wire to hold a cell violet on the result screen, no charge on a ring, no cell left dim
+  arrivals = []; queued = [];
+  for (const c of cells.values()) { if (!c.shown) continue; c.e = 0; c.i = 0; c.hushedUntil = -1; if (c.dimmed) paint(c, false); }
   els.row.style.display = 'none';
-  const stars = won ? (chargesUsed <= level.par ? 3 : chargesUsed <= level.par * 1.6 ? 2 : 1) : 0;
+  const stars = wonIt ? (chargesUsed <= level.par ? 3 : chargesUsed <= level.par * 1.6 ? 2 : 1) : 0;
   const next = levelIndex + 1 < LEVELS.length;
-  els.body.innerHTML = `<div class="nge-sig-card"><div class="nge-sig-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
-    <p>${won ? `Signal delivered in ${chargesUsed} charge${chargesUsed === 1 ? '' : 's'} (par ${level.par}; a spark costs one, a hush two).` : 'Time’s up. The circuit held.'}</p>
-    <div class="nge-sig-row">${won && next ? '<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">Next level ›</span></button>' : ''}
-      ${won ? '<button class="nge-sig-quiet" type="button" data-act="again">Play it again</button>' : '<button class="nge-sig-go" type="button" data-act="again"><span class="nge-sig-plate">Try again ›</span></button>'}
-      ${won && !next ? '<span style="color:#ffd98a">That is every level so far. More circuits are coming.</span>' : ''}</div></div>`;
+  if (wonIt) keepStars(levelIndex, stars);
+  const starRow = [0, 1, 2].map(k => `<i${k < stars ? ' class="on"' : ''} style="--i:${k}">${k < stars ? '★' : '☆'}</i>`).join('');
+  // the result as readouts, like the card's (Ames 2026-11-11, of the old sentence: "charges?")
+  const result = wonIt
+    ? `<div class="nge-sig-stars">${starRow}</div>
+      <ul class="nge-sig-readouts"><li><b>${chargesUsed}</b><span class="k">Charges used</span></li><li><b>${level.par}</b><span class="k">Par</span></li><li><b>${wonAt.toFixed(1)}<span class="u">s</span></b><span class="k">Time</span></li></ul>
+      ${stars < 3 ? `<p class="tip">Three stars: ${level.par} charges or fewer.</p>` : ''}`
+    : '<p>Time’s up. The circuit held.</p>';
+  els.body.innerHTML = `<div class="nge-sig-card nge-sig-result">${result}
+    <div class="nge-sig-row">${wonIt && next ? '<button class="nge-sig-go" type="button" data-act="next"><span class="nge-sig-plate">Next level ›</span></button>' : ''}
+      ${wonIt ? '<button class="nge-sig-quiet" type="button" data-act="again">Play it again</button>' : '<button class="nge-sig-go" type="button" data-act="again"><span class="nge-sig-plate">Try again ›</span></button>'}
+      ${wonIt && !next ? '<span style="color:#ffd98a">That is every level so far. More circuits are coming.</span>' : ''}</div></div>`;
   els.body.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => {
     b.onclick = () => { if (b.dataset.act === 'next') void startLevel(levelIndex + 1); else void startLevel(levelIndex); };
   });
-  if (won) sfx.goal(); else sfx.fail();
+  if (wonIt) {
+    sfx.goal();
+    lockup(`<div class="stars">${starRow}</div><div class="title">Signal delivered</div><div class="rule"></div><div class="sub">Level ${levelIndex + 1} · ${esc(level.title)}</div>`, 'nge-sig-lock--won', 3600);
+    for (let k = 0; k < stars; k++) tone([1319, 1568, 2093][k], 0.4, 'sine', 0.04, undefined, 0.4 + k * 0.28);   // a chime a star, as each lands
+  } else {
+    sfx.fail();
+    lockup('<div class="title">Time’s up</div><div class="rule"></div><div class="sub">The circuit held</div>', 'nge-sig-lock--lost', 2400);
+  }
 }
 
+/* ── the finale: the last firing lights the whole circuit. A wide ring of
+   light runs out from the gold cell; every other cell of the level comes up
+   whole, from its body outward, the nearest first, each with a sparkle and a
+   note; the camera draws back a little and begins a slow turn (a press in
+   the view, or a scan, stops it); and the result is named in the middle of
+   the view before the panel takes it over. ── */
+let won = false, wonAt = 0, clockAt = 0, finaleToken = 0;
+const FINALE_ORBIT = 0.07;
+const FINALE_NOTES = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093, 2349];
+function finale(key: string) {
+  won = true; wonAt = now;
+  const token = ++finaleToken, alive = () => active && token === finaleToken;
+  const t = cells.get(key)!;
+  setCoachText('', 'hit');
+  hints = new Set();   // after the coach line, which lights its own
+  clearPops();
+  setTimeout(() => { if (alive() && view === 'ship' && !roll && !visit) roll = {at: performance.now(), dur: 1100}; }, 500);   // a victory roll, where it is parked
+  shockAt(t.spec.soma, [1, 0.86, 0.45]);
+  for (const k of level.targets) demoWave(k, 'dend', 1.6, false, [1, 0.9, 0.6]);
+  const away = (k: string) => len(sub(cells.get(k)!.spec.soma, t.spec.soma));
+  const others = level.cells.filter(k => !level.targets.includes(k) && cells.get(k)?.shown).sort((a, b) => away(a) - away(b));
+  const lit: string[] = [];
+  others.forEach((k, i) => setTimeout(() => {
+    if (!alive()) return;
+    const c = cells.get(k)!;
+    if (c.dimmed) paint(c, false);
+    lit.push(k);
+    lightWhole(lit);
+    const rgb: V3 = [c.color[0] / 255, c.color[1] / 255, c.color[2] / 255];
+    revealCell(k, 1.7, mix(rgb, [1, 1, 1], 0.5));
+    sparkleAt(c.spec.soma, mix(rgb, [1, 1, 1], 0.35), 18, 1);
+    tone(FINALE_NOTES[i % FINALE_NOTES.length], 0.3, 'sine', 0.028);
+  }, 420 + i * 200));
+  setTimeout(() => {
+    if (!alive()) return;
+    if (!userCam && homeLook && homeScale > 0) glideSlow(homeLook, homeScale * 1.14, 7);
+    orbit = FINALE_ORBIT;
+  }, 600);
+  setTimeout(() => { if (alive() && phase === 'playing') showResult(true); }, 900);
+}
+
+/* ── the lockup: a title in the middle of the part of the view the HUD
+   leaves free. A level's name as it opens, the result as it is won. It
+   takes no clicks and goes on its own. ── */
+let lockEl: HTMLElement | null = null;
+/** The middle and the width of the part of the 3D view the HUD leaves free, on the screen. */
+function freeArea(): {x: number; y: number; w: number} {
+  const r = threeDPanel()?.element?.getBoundingClientRect?.();
+  const box = r && r.width > 0 ? r : {left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight};
+  // the panel's layout box, not its drawn one: it may be mid-animation
+  const left = panel && sideHud() ? Math.max(box.left, panel.offsetLeft + panel.offsetWidth) : box.left;
+  const bottom = panel && !sideHud() ? Math.min(box.bottom, panel.offsetTop) : box.bottom;
+  return {x: (left + box.right) / 2, y: (box.top + bottom) / 2, w: box.right - left};
+}
+function placeLockup() {
+  if (!lockEl) return;
+  const f = freeArea();
+  lockEl.style.left = `${f.x}px`; lockEl.style.top = `${f.y}px`;
+  lockEl.style.setProperty('--fs', `${clamp(f.w / 17.5, 15, 46).toFixed(1)}px`);
+}
+function lockup(html: string, cls: string, holdMs: number) {
+  clearLockup();
+  const el = document.createElement('div');
+  el.className = `ng-extend nge-sig-lock ${cls}`;
+  el.innerHTML = html;
+  document.body.appendChild(el);
+  lockEl = el;
+  placeLockup();
+  setTimeout(() => {
+    if (lockEl !== el) return;
+    el.classList.add('nge-sig-lock--out');
+    setTimeout(() => { el.remove(); if (lockEl === el) lockEl = null; }, 700);
+  }, holdMs);
+}
+function clearLockup() { lockEl?.remove(); lockEl = null; }
+/** The level's name as it opens: the game's own name the first time, then
+ *  each new level's with the principle it teaches (the first words of its
+ *  science line). Not for the same level again. */
+let opening = false, titledLevel = -1;
+function titleCard() {
+  if (titledLevel === levelIndex && !opening) return;
+  titledLevel = levelIndex;
+  const first = opening, index = levelIndex;
+  opening = false;
+  const science = level.science ?? '', cut = science.indexOf(':');
+  const principle = cut > 0 && cut < 40 ? science.slice(0, cut) : '';
+  const html = first
+    ? `<div class="title">Signal Controller</div><div class="rule"></div><div class="sub">Level ${index + 1} · ${esc(level.title)}</div>`
+    : `<div class="kick">Level ${index + 1}</div><div class="title">${esc(level.title)}</div><div class="rule"></div>${principle ? `<div class="sub">${esc(principle)}</div>` : ''}`;
+  // behind Pyr's sign-in box nobody would see it: it waits for the box to go
+  const show = () => {
+    if (!active || levelIndex !== index || phase === 'playing' || phase === 'done') return;
+    if (document.querySelector('.nge-login-blocker')) { setTimeout(show, 300); return; }
+    lockup(html, 'nge-sig-lock--title', first ? 3000 : 2600);
+  };
+  show();
+}
+
+/* ── the levels: the level's name at the foot of the panel opens the list,
+   each with the stars it has earned in this browser; a click opens that
+   level. Every level is open: the game teaches, it does not gate. ── */
+const STARS_KEY = 'pyr.signal.stars';
+function starsOf(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(STARS_KEY) || '{}') || {}; } catch { return {}; }
+}
+function keepStars(index: number, stars: number) {
+  const s = starsOf();
+  if ((s[index] ?? 0) >= stars) return;
+  s[index] = stars;
+  try { localStorage.setItem(STARS_KEY, JSON.stringify(s)); } catch { /* not kept */ }
+}
+function toggleLevels(open?: boolean) {
+  const list = els.levels as HTMLElement | undefined;
+  if (!list) return;
+  const show = open ?? list.hidden;
+  list.hidden = !show;
+  els.lvl.setAttribute('aria-expanded', String(show));
+  if (!show) return;
+  const s = starsOf();
+  list.innerHTML = LEVELS.map((l, k) => {
+    const got = clamp(Math.round(s[k] ?? 0), 0, 3);
+    return `<button type="button" data-level="${k}"${k === levelIndex ? ' class="on"' : ''}><b>${k + 1}</b><span>${esc(l.title)}</span><i aria-label="${got} of 3 stars">${'★'.repeat(got)}<u>${'★'.repeat(3 - got)}</u></i></button>`;
+  }).join('');
+  list.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.onclick = () => { toggleLevels(false); goToLevel(Number(b.dataset.level)); }; });
+}
+/** To another level from wherever the game is: a tour under way is put away first. */
+function goToLevel(index: number) {
+  if (phase === 'loading') return;   // one level opens at a time
+  if (phase === 'brief') { tourToken++; demo = false; tourReset(); }
+  hideScan();
+  clearPops();
+  void startLevel(index);
+}
+/** The score as the HUD shows it, on its way to the score. */
+let shownScore = 0;
 function updateHud() {
   if (!panel) return;
-  els.lvl.textContent = `Level ${levelIndex + 1} · ${level.title}`;
+  { const t = `Level ${levelIndex + 1} · ${level.title}`; if (els.lvl.textContent !== t) els.lvl.textContent = t; }
   { const t = copyOf(`obj.${levelIndex}`, level.objective); if (els.obj.textContent !== t) els.obj.textContent = t; }
   { const t = adapt(copyOf(`detail.${levelIndex}`, level.detail)); if (els.detail.textContent !== t) els.detail.textContent = t; const show = t ? '' : 'none'; if (els.detail.style.display !== show) els.detail.style.display = show; }
   const total = level.goal.count;
-  els.progress.textContent = `${progress} / ${total}`;
-  const left = phase === 'playing' ? Math.max(0, level.timeS - now) : level.timeS;
+  { const t = `${progress} / ${total}`;
+    if (els.progress.textContent !== t) {
+      els.progress.textContent = t;
+      if (progress > 0) { els.progress.classList.remove('tick'); void els.progress.offsetWidth; els.progress.classList.add('tick'); }
+    } }
+  const left = phase === 'playing' ? Math.max(0, level.timeS - now) : phase === 'done' ? Math.max(0, level.timeS - clockAt) : level.timeS;
   els.time.innerHTML = `${Math.ceil(left)}<span class="u">s</span>`;
   els.time.classList.toggle('warn', phase === 'playing' && left < 10);
-  els.score.textContent = String(score);
+  // the score counts up to its new value
+  if (shownScore !== score) shownScore = Math.abs(score - shownScore) < 1.5 ? score : shownScore + (score - shownScore) * 0.16;
+  { const t = String(Math.round(shownScore)); if (els.score.textContent !== t) els.score.textContent = t; }
   const pips = els.charges.querySelectorAll('i');
   pips.forEach((p, k) => { p.className = charges >= k + 1 ? 'on' : charges > k + 0.5 ? 'half' : ''; });
   (els.hush as HTMLButtonElement).disabled = !level.hush;
@@ -2621,7 +2828,7 @@ function placeTags() {
   for (const [key, el] of tagEls) {
     const c = cells.get(key)!;
     const s = c.shown ? toScreen(c.spec.soma) : null;
-    const notYet = phase !== 'playing' && tourDim.has(key);   // the tour has not introduced it (Ames 2026-11-12: "hide the labels of the other cells")
+    const notYet = phase === 'loading' || (phase !== 'playing' && tourDim.has(key));   // the tour has not introduced it (Ames 2026-11-12: "hide the labels of the other cells")
     if (notYet || !s || !r || s[0] < r.left + 20 || s[0] > r.right - 20 || s[1] < r.top + 40 || s[1] > r.bottom - 10 || behindHud(s[0], s[1])) { el.style.display = 'none'; continue; }
     shown.push({key, el, s: [s[0], s[1]]});
   }
@@ -3141,6 +3348,7 @@ function spike(key: string, byBeam = false) {
 function onTargetSpike(key: string) {
   lastTargetSpike[key] = now;
   if (phase !== 'playing') return;   // a firing in the tour's demonstration counts for nothing
+  if (won) return;                   // nor one that lands after the level is won
   const g = level.goal;
   let hit = false;
   if (g.kind === 'fire') hit = key === g.target;
@@ -3168,9 +3376,9 @@ function onTargetSpike(key: string) {
   if (!hit) { score += 25; return; }
   progress++;
   score += 100;
-  say(progress >= g.count ? 'Signal delivered!' : `${progress} of ${g.count}. Keep going.`);
-  if (progress >= g.count) setTimeout(() => { if (active && phase === 'playing') showResult(true); }, 900);
-  else coach('hit');
+  if (progress >= g.count) { finale(key); return; }
+  say(`${progress} of ${g.count}. Keep going.`);
+  coach('hit');
 }
 
 function arrive(a: Arrival) {
@@ -3231,6 +3439,7 @@ function scan(key: string) {
   if (phase !== 'brief' && phase !== 'done') return;
   const c = cells.get(key);
   if (!c || !c.shown) return;
+  if (phase === 'done') orbit = 0;   // the finale's turn stops for a scan
   hideScan();
   // the ship goes to whichever side of the cell has more screen
   const s = toScreen(c.spec.soma), r = threeDPanel()?.element?.getBoundingClientRect?.();
@@ -3769,10 +3978,14 @@ function stepModel(dt: number) {
     if (c.gateNext !== null) { if (now >= c.gateNext) spike(c.key); continue; }
     if (potential(c) >= c.theta && now >= c.refractoryUntil) spike(c.key);
   }
-  if (now >= level.timeS && phase === 'playing') showResult(false);
+  if (now >= level.timeS && phase === 'playing' && !won) showResult(false);
 }
 
 /* ── drawing: everything glows through one buffer ── */
+/** What each target's ring shows of its charge (0 to 1 of the threshold), eased frame to frame. */
+const ringQ = new Map<string, number>();
+let ringLast = 0;
+const RING_N = 72;
 function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   const nm = nmPerUnit();
   if (!nm) return;
@@ -3790,8 +4003,11 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   // clear when/why other cells are making it so I have to have a gap")
   const spin = performance.now() / 1000;
   const VIOLET: V3 = [0.7, 0.45, 1];
+  const ringDt = clamp(spin - ringLast, 0, 0.1);
+  ringLast = spin;
+  const gauge: [V3, [number, number, number, number], number][] = [];
   for (const c of cells.values()) {
-    if (!c.shown || !c.target) continue;
+    if (!c.shown || !c.target || phase === 'loading') continue;
     // the hold, from the moment the pulse is on the wire to it until the
     // inhibition has leaked away (Ames 2026-11-11: "it is not clear when the
     // gatekeeper is inhibiting the target"): the ring turns violet, a second,
@@ -3800,10 +4016,25 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     const held = holdOn(c);
     const ring = mix([1, 0.76, 0.3], VIOLET, held);
     const R = phone() ? viewNm * 0.045 : 14_000;
-    for (let k = 0; k < 14; k++) {
-      const a = spin * 0.9 + k / 14 * Math.PI * 2;
-      const p = add(c.spec.soma, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R)));
-      put(p, [ring[0], ring[1], ring[2], 0.35 + 0.25 * Math.sin(a * 3 + spin * 4)], 2200);
+    // The ring is a gauge of the cell's charge: a fine dotted track, and an
+    // arc that fills clockwise from the top as the charge nears the threshold
+    // and drains as it leaks, so summation is seen on the cell itself, where
+    // the player is looking. Eased, so an arrival sweeps in rather than
+    // jumps; drawn through the branches (the beacons' pass).
+    const want = clamp(potential(c) / c.theta, 0, 1), was = ringQ.get(c.key) ?? 0;
+    const fill = was + (want - was) * Math.min(1, ringDt * (want > was ? 14 : 9));
+    ringQ.set(c.key, fill);
+    const rs = R / 14_000;   // the dots keep their proportion on a phone's ring
+    const hot = mix(ring, [1, 0.97, 0.85], fill * fill * (1 - held));
+    for (let k = 0; k < RING_N; k++) {
+      const f = k / RING_N, a = f * Math.PI * 2;
+      const p = add(c.spec.soma, add(mul(cam.right, Math.sin(a) * R), mul(cam.up, Math.cos(a) * R)));
+      if (f < fill) gauge.push([p, [hot[0], hot[1], hot[2], 0.8], 3000 * rs]);
+      else if (k % 2 === 0) gauge.push([p, [ring[0], ring[1], ring[2], 0.3], 1300 * rs]);
+    }
+    if (fill > 0.015) {   // the arc's head, white-hot
+      const a = fill * Math.PI * 2;
+      gauge.push([add(c.spec.soma, add(mul(cam.right, Math.sin(a) * R), mul(cam.up, Math.cos(a) * R))), [1, 0.97, 0.86, 0.95], 4400 * rs]);
     }
     if (held > 0.05) {
       const R2 = R * (1.9 - 0.3 * held);
@@ -3888,6 +4119,11 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
   bursts = bursts.filter(b => tNow < b.at + b.life);
   for (const b of bursts) {
     const age = tNow - b.at, q = age / b.life, sc = b.scale ?? 1;
+    if (b.ring) {
+      const e = 1 - Math.pow(1 - q, 3), R = 12_000 + (b.ring - 12_000) * e, fade = Math.pow(1 - q, 1.6);
+      for (let k = 0; k < 160; k++) { const a = k / 160 * Math.PI * 2; put(add(b.p, add(mul(cam.right, Math.cos(a) * R), mul(cam.up, Math.sin(a) * R))), [b.rgb[0], b.rgb[1], b.rgb[2], 0.5 * fade], 2400 + 3400 * e); }
+      continue;
+    }
     if (b.sparkle) {
       // particles flying out and slowing, each twinkling at its own beat, the body lit
       b.dirs.forEach((d, i) => {
@@ -4084,6 +4320,13 @@ function writeGlow(cam: {right: V3; up: V3; toEye: V3}) {
     over(c.spec.soma, [col[0], col[1], col[2], 0.2 * k], SOMA_R_NM * 2.6);
     over(c.spec.soma, [col[0] * 0.5 + 0.5, col[1] * 0.5 + 0.5, col[2] * 0.5 + 0.5, 0.22 * k], SOMA_R_NM * 1.2);
   }
+  for (const [p, rgba, size] of gauge) {
+    if (m >= MAX_OVER) break;
+    glowOver.positions[m * 3] = p[0] / nm[0]; glowOver.positions[m * 3 + 1] = p[1] / nm[1]; glowOver.positions[m * 3 + 2] = p[2] / nm[2];
+    glowOver.colors.set(rgba, m * 4);
+    glowOver.sizesNm[m] = size;
+    m++;
+  }
   glowOver.count = m;
   glowOver.nmRight = glow.nmRight;
   setNgeGlow(m ? glowOver : null, GROUP + '-over');
@@ -4127,6 +4370,7 @@ function frameBody(ts: number) {
   placeCanopy();
   placeTourLabels();
   placePops();
+  placeLockup();
   closeSidePanel();
   // Once a second: the level's cells stay on, whatever else happens to the
   // layer's segment list (a stray key, another panel), and the layer stays shown.
@@ -4202,6 +4446,7 @@ let fingers = 0;
 let mouseStart: {x: number; y: number; key: string; t: number} | null = null;
 function onPointerDown(e: PointerEvent) {
   if (!active) return;
+  if (phase === 'done' && (orbit || glide) && (e.target as HTMLElement | null)?.closest?.('.nge-3d-panel')) { orbit = 0; if (glide) { glide = null; recordCam(); } }   // the finale's slow turn ends where the player takes the view
   if (e.pointerType !== 'mouse') {
     fingers++;
     tapStart = null;
@@ -4244,6 +4489,11 @@ function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   if (e.key === 'Escape') { e.stopPropagation(); stopSignalController(); return; }
+  if (e.key === 'Enter' && (phase === 'brief' || phase === 'done') && t?.tagName !== 'BUTTON') {
+    const go = els.body?.querySelector('.nge-sig-go') as HTMLButtonElement | null;
+    if (go) { e.preventDefault(); e.stopPropagation(); go.click(); }
+    return;
+  }
   if (phase !== 'playing') return;
   if (e.key === 'Tab' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setHushMode(!hushMode); return; }
   if (e.key === 'h' || e.key === 'H' || e.key === 'i' || e.key === 'I') { e.preventDefault(); e.stopPropagation(); if (level.hush) setHushMode(true); return; }
@@ -4262,12 +4512,19 @@ async function startLevel(index: number) {
   phase = 'loading';
   now = 0; charges = MAX_CHARGES; chargesUsed = 0; progress = 0; hushMode = false;
   if (levelIndex === 0) score = 0;
+  shownScore = score;
+  // what the last level's finale left: its lit cells, its turn, its title
+  won = false; finaleToken++; orbit = 0; litWhole = new Set(); clearReveals(); ringQ.clear(); clearLockup(); hints = new Set();
+  titleCard();
   resetCells();
   clearTags();
   endVisit();
   for (const k of level.cells) { const c = cells.get(k); if (c) void loadParts(c.spec.root); }   // arbors and synapses, for the tour and the card
   els.spark.setAttribute('aria-pressed', 'true'); els.hush.setAttribute('aria-pressed', 'false');
   els.row.style.display = 'none';
+  panel?.classList.add('nge-sig--intro');   // no stats while it loads, as in the tour that follows
+  toggleLevels(false);
+  if (els.map) els.map.style.display = 'none';   // the last level's map
   els.body.innerHTML = '<div class="nge-sig-card"><p data-el="loading">Loading the cells…</p></div>';
   updateHud();
   const ml = await openCircuit();
@@ -4390,6 +4647,7 @@ export async function playSignalController(levelAt = 0) {
     window.addEventListener('keydown', onKey, true);
     lastFrame = 0;
     raf = requestAnimationFrame(frame);
+    opening = true;
     await startLevel(levelAt);
   } catch (e: any) {
     console.warn('[signal] could not start:', e?.message ?? e);
@@ -4426,6 +4684,7 @@ export function stopSignalController() {
   litWhole = new Set(); scanLit = null; clearReveals(); clearGems(true); roll = null; flip = null; flying = false; homing = false; shipCam = null; shipPark = false;
   demo = false; tourToken++; clearTourLabels(); clearPops(); orbit = 0; tourDim.clear();
   document.querySelector('.nge-sig-count')?.remove();
+  clearLockup(); won = false; finaleToken++; titledLevel = -1; opening = false; ringQ.clear();
   glide = null; cockpitNose = null;
   if (savedDefaultAnnotations !== null) { try { viewerNow().showDefaultAnnotations.value = savedDefaultAnnotations; } catch { /* as it is */ } savedDefaultAnnotations = null; }
   document.body.classList.remove('nge-signal-on');
