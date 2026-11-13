@@ -20,7 +20,7 @@
  * Cell Library takes once its cells are in: go to (or claim) a task now.
  */
 import { reactive } from 'vue';
-import { DATASETS, findDatasetBySegName, currentSegLayerName, canonicalDataset, segLayerName, switchToDataset, type DatasetEntry } from '../datasets';
+import { DATASETS, findDatasetBySegName, findDatasetByCanonical, currentSegLayerName, canonicalDataset, segLayerName, switchToDataset, type DatasetEntry } from '../datasets';
 import { datasetAccess } from './dataset_access';
 import { startDatasetTransition, transitionDone } from './dataset_transition';
 import { skipNextViewRestoreOffer } from './view_autosave';
@@ -87,7 +87,14 @@ const isAdmin = () => { try { return !!useProofreadingBackendStore().isAdmin; } 
 const canClaimOn = (ds: DatasetEntry | undefined) => !!ds && (isAdmin() || datasetAccess(ds.caveDataset) === 'edit');
 const RETINA = () => DATASETS.find(d => d.id === 'stroeh_mouse_retina');
 const SANDBOX = () => DATASETS.find(d => d.id === 'pinky_sandbox');
-export function datasetHere(): DatasetEntry | undefined { return findDatasetBySegName(currentSegLayerName()); }
+/** The dataset on screen, by the same rule as the top bar's "Data:" name
+ *  (datasetAbbrev): the exact layer name, else any name for the same dataset.
+ *  A Sandbox view whose layer has another pinky name said "Data: Sandbox" up
+ *  top while Play went to Retina (Ames 2026-11-12). */
+export function datasetHere(): DatasetEntry | undefined {
+  const name = currentSegLayerName();
+  return findDatasetBySegName(name) ?? (name ? findDatasetByCanonical(canonicalDataset(name)) : undefined);
+}
 const isQuestDataset = (ds: DatasetEntry | undefined) => !!ds && canonicalDataset(segLayerName(ds)) === QUEST_DATASET;
 
 /** Can this player annotate quests? They need edit access on Retina. */
