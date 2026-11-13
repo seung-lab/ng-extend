@@ -96,7 +96,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('it asked the match function for this cell, signed in', asks.length >= 1 && asks[0].action === 'match.check' && asks[0].taskId === 16762 && asks[0].hasToken, asks);
     check('a Missing row and a Mergers row, each on its own line with its pieces', /missing 0% 0 of 28 pieces found mergers 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 320 && box.h < 200, box);
+    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 345 && box.h < 200, box);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -177,6 +177,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text];
     });
     check('a merge that brings in a wrong part is a Wrong merge; nothing moved is No change', verdicts.join('|') === 'Good merge|Wrong merge|No change', verdicts);
+    const heads = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-head'); const t = document.querySelector('#nge-cell-match .nge-cm-title'); const st = document.querySelector('#nge-cell-match .nge-cm-state'); const was = st.textContent; st.textContent = 'Merge complete'; const longest = st.scrollWidth > st.clientWidth; st.textContent = was; return { longestCut: longest, head: Math.round(h.getBoundingClientRect().height), title: Math.round(t.getBoundingClientRect().height), state: st.textContent, cut: st.scrollWidth > st.clientWidth }; });
+    check('the top line stays one line and a long verdict is not cut off', heads.title <= 16 && !heads.cut && !heads.longestCut, heads);
+    const fills = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-fill')].map(f => Math.round(f.getBoundingClientRect().width)));
+    check('the bars fill', fills[0] > 0, fills);
     await page.waitForTimeout(5000);
     const later = await state();
     check('then back to Live', later.state === 'Live' && !later.good && !later.bad, later);

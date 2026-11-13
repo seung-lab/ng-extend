@@ -169,30 +169,25 @@ function claimOnScreen(): number | null {
 // Orbitron, corner brackets, a faint scan grid, tick-marked gauges in blue.
 // Nothing moves on its own; a new reading sweeps once.
 const CSS = `
-#${CARD_ID}{position:fixed;top:64px;left:12px;z-index:59;width:310px;max-width:calc(100vw - 24px);box-sizing:border-box;
-  padding:11px 14px 10px;color:#cfe6ff;font:14px/1.4 Inter,system-ui,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;
-  background:linear-gradient(180deg,rgba(7,18,36,.88),rgba(3,9,20,.92));border:1px solid rgba(110,190,255,.28);border-radius:3px;
-  box-shadow:0 0 22px rgba(60,150,255,.12),inset 0 0 18px rgba(60,150,255,.08);backdrop-filter:blur(5px);overflow:hidden;pointer-events:auto}
-#${CARD_ID}::before{content:'';position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(#7fd8ff,#7fd8ff) 0 0/12px 2px no-repeat,linear-gradient(#7fd8ff,#7fd8ff) 0 0/2px 12px no-repeat,
-  linear-gradient(#7fd8ff,#7fd8ff) 100% 0/12px 2px no-repeat,linear-gradient(#7fd8ff,#7fd8ff) 100% 0/2px 12px no-repeat,
-  linear-gradient(#7fd8ff,#7fd8ff) 0 100%/12px 2px no-repeat,linear-gradient(#7fd8ff,#7fd8ff) 0 100%/2px 12px no-repeat,
-  linear-gradient(#7fd8ff,#7fd8ff) 100% 100%/12px 2px no-repeat,linear-gradient(#7fd8ff,#7fd8ff) 100% 100%/2px 12px no-repeat,
-  repeating-linear-gradient(0deg,rgba(127,216,255,.035) 0 1px,transparent 1px 3px)}
+#${CARD_ID}{position:fixed;top:64px;left:12px;z-index:59;width:340px;max-width:calc(100vw - 24px);box-sizing:border-box;
+  padding:12px 14px 11px;color:#dfe8f6;font:14px/1.4 Inter,system-ui,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;
+  background:linear-gradient(135deg,rgba(4,6,14,.95),rgba(10,16,32,.94));border:1px solid rgba(74,158,255,.45);border-radius:10px;
+  box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 22px rgba(74,158,255,.14);backdrop-filter:blur(6px);overflow:hidden;pointer-events:auto}
 #${CARD_ID}::after{content:'';position:absolute;left:0;right:0;top:-30%;height:30%;pointer-events:none;opacity:0;
   background:linear-gradient(180deg,transparent,rgba(127,216,255,.16),transparent)}
 #${CARD_ID}.nge-cm-ping::after{animation:nge-cm-sweep .9s ease-out 1}
 @keyframes nge-cm-sweep{0%{top:-30%;opacity:1}100%{top:110%;opacity:0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID}.nge-cm-ping::after{animation:none}}
-#${CARD_ID} .nge-cm-head{display:flex;align-items:center;gap:8px;margin:-11px -14px 6px;padding:11px 14px 4px;cursor:grab;touch-action:none;user-select:none;font:600 12px/1 Orbitron,Inter,sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#7fc8ff}
+#${CARD_ID} .nge-cm-head{display:flex;align-items:center;gap:6px;margin:-11px -14px 6px;padding:11px 14px 4px;cursor:grab;touch-action:none;user-select:none;font:600 11.5px/1 Orbitron,Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7fc8ff}
 #${CARD_ID} .nge-cm-dot{width:8px;height:8px;border-radius:50%;background:#59e3a7;box-shadow:0 0 6px #59e3a7}
 #${CARD_ID}.nge-cm-dragging .nge-cm-head{cursor:grabbing}
 #${CARD_ID}.nge-cm-checking .nge-cm-dot{background:#7fc8ff;box-shadow:0 0 6px #7fc8ff}
-#${CARD_ID} .nge-cm-state{margin-left:auto;color:#5f86ad;letter-spacing:.16em}
+#${CARD_ID} .nge-cm-title{white-space:nowrap}
+#${CARD_ID} .nge-cm-state{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 11px/1 Inter,system-ui,sans-serif;color:#7f9fc2;letter-spacing:.04em}
 #${CARD_ID} .nge-cm-row{display:grid;grid-template-columns:1fr auto;align-items:end;column-gap:8px;padding:3px 0 2px}
 #${CARD_ID} .nge-cm-label{font:600 11.5px/1 Orbitron,Inter,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#8fb6dc}
 #${CARD_ID} .nge-cm-read{display:flex;align-items:baseline;gap:6px;justify-self:end}
-#${CARD_ID} .nge-cm-num{font:700 25px/1 Orbitron,Inter,sans-serif;color:#eaf6ff;text-shadow:0 0 10px rgba(127,216,255,.45);transition:opacity .3s}
+#${CARD_ID} .nge-cm-num{font:600 16px/1 Inter,system-ui,sans-serif;color:#eaf2ff;transition:opacity .3s}
 #${CARD_ID}.nge-cm-checking .nge-cm-num{opacity:.5}
 #${CARD_ID}.nge-cm-done{border-color:rgba(89,227,167,.75);box-shadow:0 0 26px rgba(89,227,167,.28),inset 0 0 18px rgba(89,227,167,.12);transition:border-color .3s,box-shadow .3s}
 #${CARD_ID}.nge-cm-done .nge-cm-state{color:#59e3a7;text-shadow:0 0 8px rgba(89,227,167,.7)}
@@ -249,10 +244,9 @@ const CSS = `
 #${CHIP_ID}.nge-cm-tip-target{animation:nge-cm-tip-pulse 1.6s ease-in-out infinite}
 @keyframes nge-cm-tip-pulse{0%,100%{box-shadow:0 0 0 0 rgba(74,158,255,.7)}50%{box-shadow:0 0 0 8px rgba(74,158,255,0)}}
 @media (prefers-reduced-motion:reduce){#${HINT_ID},#${CHIP_ID}.nge-cm-tip-target{animation:none}}
-#${CARD_ID} .nge-cm-delta{font:600 13px/1 Orbitron,Inter,sans-serif;opacity:0;transition:opacity .8s}
-#${CARD_ID} .nge-cm-gauge{grid-column:1/-1;position:relative;height:7px;margin:5px 0 4px;background:rgba(127,190,255,.10);overflow:hidden}
-#${CARD_ID} .nge-cm-fill{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(90deg,#2f7dff,#7fd8ff);box-shadow:0 0 8px rgba(127,216,255,.6);transition:width .7s ease}
-#${CARD_ID} .nge-cm-gauge::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 9px,rgba(3,9,20,.95) 9px 11px)}
+#${CARD_ID} .nge-cm-delta{font:600 12px/1 Inter,system-ui,sans-serif;opacity:0;transition:opacity .8s}
+#${CARD_ID} .nge-cm-gauge{grid-column:1/-1;position:relative;height:6px;margin:6px 0 5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+#${CARD_ID} .nge-cm-fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:3px;background:linear-gradient(90deg,#4a9eff,#7ee0ff);box-shadow:0 0 10px rgba(126,224,255,.45);transition:width .6s cubic-bezier(.34,1.56,.64,1)}
 #${CARD_ID} .nge-cm-pieces{grid-column:1/-1;color:#a9c3e0;font-size:13.5px}
 #${CARD_ID} .nge-cm-sep{height:1px;margin:6px 0;background:linear-gradient(90deg,transparent,rgba(127,190,255,.35),transparent)}
 #${CARD_ID} .nge-cm-line{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:14px}
@@ -297,10 +291,12 @@ function card(): HTMLElement {
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the bars"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. A small Cell match button stays to open it again.">×</button></div>'
     + '<div class="nge-cm-info" id="nge-cell-match-info">'
-    + '<p>Cell match compares your cell with its finished version, by size. It updates a few seconds after each merge or cut.</p>'
-    + '<p><b>Missing</b>: how much of the cell that was missing at the start you have merged back in. The pieces count the big ones.</p>'
-    + '<p><b>Mergers</b>: how much of what did not belong at the start you have cut off.</p>'
-    + '<p>When you are done, Complete and Review shows any pieces you missed in gold and any mergers left with pins.</p></div>'
+    // Ames 2026-11-13: say what the Sandbox is, that real cells have no known
+    // answer, and where research datasets are asked for.
+    + '<p>You are in the <b>Sandbox</b>, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.</p>'
+    + '<p><b>Missing</b>: the missing parts you have merged back in. <b>Mergers</b>: the wrong parts you have cut off. Both are by size.</p>'
+    + '<p>In real cells there is no known answer. That is up to you and the brain.</p>'
+    + '<p>When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the &#127828; menu, top right.</p></div>'
     + rowHtml('merge') + rowHtml('cut') + '<div class="nge-cm-extra"></div>';
   el.querySelector('.nge-cm-head')!.setAttribute('title', 'Drag to move. Double click to put it back.');
   makeDraggable(el);
