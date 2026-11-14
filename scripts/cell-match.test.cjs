@@ -330,6 +330,19 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const infoText = await page.evaluate(() => { const i = document.querySelector('#nge-cell-match .nge-cm-info'); return getComputedStyle(i).display !== 'none' ? i.innerText : null; });
     check('i opens an explanation', /Match score:/.test(infoText || '') && /Merge:/.test(infoText || '') && /Cut:/.test(infoText || '') && !/[\u2013\u2014]|\s-\s/.test(infoText || ''), infoText);
     await shot('cell-match-info.png');
+    // Admins change the i text in the game (Ames 2026-11-14); players never see Edit.
+    check('a player has no Edit button in the info', await page.evaluate(() => !document.querySelector('#nge-cell-match .nge-cm-info .nge-edtext-btn')), null);
+    await page.evaluate(() => { const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend'); pb.isAdmin = true; });
+    await page.waitForTimeout(300);
+    const adminEdit = await page.evaluate(() => { const b = document.querySelector('#nge-cell-match .nge-cm-info .nge-edtext-btn'); if (!b) return null; const label = b.textContent.trim(); b.click(); return label; });
+    await page.waitForTimeout(300);
+    const draftLines = await page.evaluate(() => { const t = document.querySelector('#nge-cell-match .nge-cm-info textarea'); return t ? t.value.split('\n').filter(l => l.trim()).length : 0; });
+    check('an admin gets Edit, and it opens the text one paragraph per line', adminEdit === 'Edit' && draftLines === 5, { adminEdit, draftLines });
+    await shot('cell-match-info-edit.png');
+    await page.evaluate(() => { const c = [...document.querySelectorAll('#nge-cell-match .nge-cm-info .nge-edtext-btn')].find(b => b.textContent.trim() === 'Cancel'); if (c) c.click(); const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend'); pb.isAdmin = false; });
+    await page.waitForTimeout(300);
+    const guideCss = await page.evaluate(() => [...document.querySelectorAll('style')].some(s => s.textContent.includes('#nge-cell-match-guide{position:fixed')));
+    check('the guided walk styles name the walk, not undefined', guideCss, null);
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-i').click());
     // Collapsed: Cell match and the two bars only, and it stays collapsed.
     const fullH = await page.evaluate(() => document.getElementById('nge-cell-match').offsetHeight);

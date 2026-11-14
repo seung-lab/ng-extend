@@ -20,7 +20,9 @@ import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, currentSegLayer } from './datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { makeLayer } from 'neuroglancer/layer';
-import { reactive } from 'vue';
+import { reactive, createApp, type App as VueApp } from 'vue';
+import { getActivePinia } from 'pinia';
+import EditableText from './components/EditableText.vue';
 
 export interface SandboxClaim { id: number; dataset: string; roots: string[] }
 export interface SavedLinkInput { title: string; note?: string; url: string; dataset?: string; position?: [number, number, number]; visibleSegments?: string[] }
@@ -203,6 +205,7 @@ function claimOnScreen(): number | null {
 // A cockpit readout (Ames: "make this box badass like a cockpit HUD"): Pyr's
 // Orbitron, corner brackets, a faint scan grid, tick-marked gauges in blue.
 // Nothing moves on its own; a new reading sweeps once.
+const GUIDE_ID = 'nge-cell-match-guide';
 const CSS = `
 #${CARD_ID}{position:fixed;top:64px;left:12px;z-index:59;width:350px;max-width:calc(100vw - 24px);box-sizing:border-box;
   padding:12px 14px 11px;color:#dfe8f6;font:14px/1.4 Inter,system-ui,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;
@@ -248,6 +251,8 @@ const CSS = `
 #${CARD_ID} .nge-cm-info p{margin:0 0 6px}
 #${CARD_ID} .nge-cm-info p:last-child{margin:0}
 #${CARD_ID} .nge-cm-info b{color:#7fd8ff;font-weight:600}
+#${CARD_ID} .nge-cm-info-text br{display:block;content:"";margin-top:6px}
+#${CARD_ID} .nge-cm-info textarea{cursor:text}
 #${CARD_ID}.nge-cm-showinfo .nge-cm-info{display:block}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-state,
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-label,
@@ -373,6 +378,31 @@ export function progressLine(r: MatchResult): string {
   return parts.join(', ');
 }
 
+// The i text (Ames 2026-11-13: say what the Sandbox is, that real cells have
+// no known answer, and where research datasets are asked for). Admins change
+// it in the game (Ames 2026-11-14: "add Edit button for admin"): a site text,
+// so the server sends Ames her before and after note (functions/edit-notify.js).
+const INFO_KEY = 'sandbox.match_info';
+const INFO_LINES = [
+  'You are in the <b>Sandbox</b>, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.',
+  '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.',
+  '<b>Merge</b>: the missing pieces you have merged back in. <b>Cut</b>: the wrong parts you have cut off.',
+  'In real cells there is no known answer. That is up to you and the brain.',
+  'When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the 🍔 menu, top right.',
+];
+// One line each, a <br> between: the same look saved or not, and one line per
+// paragraph when an admin edits it.
+const INFO_HTML = INFO_LINES.join('<br>' + String.fromCharCode(10));
+let infoApp: VueApp | null = null;
+function mountInfo(host: HTMLElement) {
+  if (infoApp) { try { infoApp.unmount(); } catch (e) { /* gone */ } infoApp = null; }
+  const pinia = getActivePinia();
+  if (!pinia) { host.innerHTML = '<div class="nge-cm-info-text">' + INFO_HTML + '</div>'; return; }
+  infoApp = createApp(EditableText, { textKey: INFO_KEY, original: INFO_HTML, textClass: 'nge-cm-info-text', label: 'Sandbox Match card, the i text' });
+  infoApp.use(pinia);
+  infoApp.mount(host);
+}
+
 function card(): HTMLElement {
   ensureStyle();
   let el = document.getElementById(CARD_ID);
@@ -388,15 +418,9 @@ function card(): HTMLElement {
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the score"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. A small Match button stays to open it again.">×</button></div>'
     + '<div class="nge-cm-sub" hidden></div>'
-    + '<div class="nge-cm-info" id="nge-cell-match-info">'
-    // Ames 2026-11-13: say what the Sandbox is, that real cells have no known
-    // answer, and where research datasets are asked for.
-    + '<p>You are in the <b>Sandbox</b>, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.</p>'
-    + '<p><b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.</p>'
-    + '<p><b>Merge</b>: the missing pieces you have merged back in. <b>Cut</b>: the wrong parts you have cut off.</p>'
-    + '<p>In real cells there is no known answer. That is up to you and the brain.</p>'
-    + '<p>When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the &#127828; menu, top right.</p></div>'
+    + '<div class="nge-cm-info" id="nge-cell-match-info"></div>'
     + scoreHtml + rowHtml('merge') + rowHtml('cut') + '<div class="nge-cm-extra"></div>';
+  mountInfo(el.querySelector('.nge-cm-info') as HTMLElement);
   el.querySelector('.nge-cm-head')!.setAttribute('title', 'Drag to move. Double click to put it back.');
   makeDraggable(el);
   el.querySelector('.nge-cm-x')!.addEventListener('click', closeCard);
@@ -809,7 +833,6 @@ function savedTip(btn: HTMLElement, ok: boolean) {
 
 // ── The way to My Links, shown (Ames 2026-11-13: "animate highlight cell
 // library, click to expand, click to My Links and then show here") ─────────
-const GUIDE_ID = 'nge-cell-match-guide';
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 const visible = (e: Element | null): e is HTMLElement => !!e && (e as HTMLElement).getBoundingClientRect().width > 0;
 async function waitFor(find: () => HTMLElement | null, ms: number): Promise<HTMLElement | null> {
