@@ -17,7 +17,18 @@ async function sb(path,body,method=body?'PATCH':'GET') {
 async function cave(ex,path,body) {
  const base=validateResetExample(ex,manifest);
  const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(20000)});
- if(!r.ok)throw Error('Practice CAVE request failed ('+r.status+') for '+path);return r.json();
+ if(!r.ok){const e=Error('Practice CAVE request failed ('+r.status+') for '+path);e.status=r.status;throw e;}return r.json();
+}
+// Viewer voxel size in nm, for the registered points.
+const POINT_NM={pinky_nf_v2:[4,4,40]};
+// A merge example still joined after every undo the server would make: cut
+// the two registered spots apart, which is its start state.
+async function cutApart(ex) {
+ const nm=POINT_NM[ex.dataset||'pinky_nf_v2'];let pa=[],pb=[];
+ try{pa=JSON.parse(ex.point_a||'');pb=JSON.parse(ex.point_b||'');}catch{}
+ if(!nm||pa.length<3||pb.length<3)throw Error('The server would not undo an edit, and this cell has no registered points to cut it apart at');
+ const at=p=>p.slice(0,3).map((v,i)=>Number(v)*nm[i]);
+ await cave(ex,'/split?int64_as_str=1',{sources:[[ex.supervoxel_a,...at(pa)]],sinks:[[ex.supervoxel_b,...at(pb)]]});
 }
 async function roots(ex) {
  const result=[];
@@ -40,17 +51,19 @@ function checkBaseline(ex,[a,b]) {
 // that finds the same operations as the one before is the end, and the
 // starting state is then checked as it always was.
 async function reset(ex,assertLease=async()=>{}) {
- let before='';
+ let before='';const refused=new Set();
  for(let pass=0;pass<8;pass++) {
-  const active=await resetPass(ex,assertLease);
+  const active=await resetPass(ex,assertLease,refused);
   if(dryRun)return null;
   const now=active.join(',');
   if(!active.length||now===before)break;
   before=now;
  }
- const result=await roots(ex);checkBaseline(ex,result);return result;
+ let result=await roots(ex);
+ if(result[0]===result[1]&&ex.kind!=='cut'&&refused.size){await assertLease();await cutApart(ex);result=await roots(ex);}
+ checkBaseline(ex,result);return result;
 }
-async function resetPass(ex,assertLease) {
+async function resetPass(ex,assertLease,refused=new Set()) {
  const ops=new Map();
  for(const root of new Set(await roots(ex))) {
   // The filtered view can omit recent merges and splits from a root's lineage.
@@ -60,11 +73,18 @@ async function resetPass(ex,assertLease) {
  if(ops.size>10000)throw Error('Unexpectedly large practice history; manual review required');
  const ids=[...ops.keys()],details={};
  for(let i=0;i<ids.length;i+=100)Object.assign(details,await cave(ex,'/operation_details?int64_as_str=1&operation_ids='+encodeURIComponent(JSON.stringify(ids.slice(i,i+100)))));
- const active=remainingOperations([...ops.values()],details);
+ const active=remainingOperations([...ops.values()],details).filter(op=>!refused.has(op.operationId));
  console.log(`[reset] ${ex.id}: ${active.length} active operation(s) after the reviewed baseline (${ops.size-active.length} cancelled history entries)`);
  for(const op of active) {
   if(dryRun)console.log('[reset] would undo '+op.operationId);
-  else { await assertLease(); await cave(ex,'/undo?int64_as_str=1',{operation_id:op.operationId}); }
+  else {
+   await assertLease();
+   // The graph server itself fails on some undos (Extension cell 5, operation
+   // 5127: a 500 every time). That edit is passed over; the cut in reset()
+   // puts a merge example right after.
+   try{await cave(ex,'/undo?int64_as_str=1',{operation_id:op.operationId});}
+   catch(e){if(!(e.status>=500))throw e;console.warn('[reset] server will not undo '+op.operationId+', going on without it');refused.add(op.operationId);}
+  }
  }
  return active.map(op=>op.operationId);
 }
