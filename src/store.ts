@@ -7306,7 +7306,7 @@ export const useChatStore = defineStore('chat', () => {
     if (leader && takeover && channel) void heartbeat().then(() => loadOnline(true));
   });
   onSharedResult<{ user: string; online: typeof online.value }>('chat-online', m => {
-    if (channel && m && m.user === useProofreadingBackendStore().userId) online.value = m.online;
+    if (channel && m && m.user === useProofreadingBackendStore().userId) { online.value = m.online; noteSeen(m.online); }
   });
 
   function sysLine(type: 'join' | 'leave', name: string) {
@@ -7493,6 +7493,7 @@ export const useChatStore = defineStore('chat', () => {
     const cutoff = Date.now() - ONLINE_MS;
     for (const [id, p] of Object.entries(online.value)) if (!next[id] && p.lastSeen >= cutoff && p.fromChat) next[id] = p;
     online.value = next;
+    noteSeen(next);
     if (share) shareResult('chat-online', { user: useProofreadingBackendStore().userId, online: next });
   }
 
@@ -7501,7 +7502,7 @@ export const useChatStore = defineStore('chat', () => {
     if (payload.eventType === 'DELETE') {
       const old = payload.old || {};
       const name = old.name || online.value[old.user_id]?.name;
-      if (old.user_id) delete online.value[old.user_id];
+      if (old.user_id) { delete online.value[old.user_id]; lastSeenBy.set(old.user_id, Date.now()); }
       if (name && old.user_id !== me && mayAnnounce('leave', old.user_id)) sysLine('leave', name);
       return;
     }
@@ -7527,6 +7528,31 @@ export const useChatStore = defineStore('chat', () => {
   const announced = new Map<string, number>();
   const lastSeenBy = new Map<string, number>();
   const BACK_AFTER_MS = 15 * 60_000;
+  /** Heartbeats no longer arrive one by one when the live events table is in
+   *  use (supabase-live-events.sql), so "seen lately" is kept from the online
+   *  list read every minute: a reload still does not announce anyone. */
+  function noteSeen(list: Record<string, { lastSeen: number }>) {
+    for (const [id, p] of Object.entries(list)) if (p.lastSeen > (lastSeenBy.get(id) ?? 0)) lastSeenBy.set(id, p.lastSeen);
+  }
+  /** A row of pyr_live_events, told the way the old row changes were. */
+  function onLiveEvent(payload: any) {
+    const e = payload?.new || {};
+    if (!e.user_id) return;
+    if (e.kind === 'leave') onPresence({ eventType: 'DELETE', old: { user_id: e.user_id, name: e.name } });
+    else if (e.kind === 'join') onPresence({ eventType: 'INSERT', new: { user_id: e.user_id, name: e.name, dataset: e.dataset, last_seen_at: e.at, joined_at: e.at } });
+    else if (e.kind === 'complete') void onCompletion({ new: { user_id: e.user_id, operation: e.operation, success: true, dataset: e.dataset, metadata: e.cell ? { final_segment_id: e.cell } : {} } });
+  }
+  /** Whether supabase-live-events.sql has been run (asked once a page). */
+  let liveEventsAsk: Promise<boolean> | null = null;
+  function liveEventsReady(): Promise<boolean> {
+    liveEventsAsk ??= (async () => {
+      try {
+        const { error } = await supabase.from('pyr_live_events').select('id', { head: true }).limit(1);
+        return !error;
+      } catch { return false; }
+    })();
+    return liveEventsAsk;
+  }
   function mayAnnounce(kind: 'join' | 'leave', userId: string): boolean {
     const key = `${kind}:${userId}`, now = Date.now();
     if (now - (announced.get(key) ?? 0) < ANNOUNCE_EVERY_MS) return false;
@@ -7884,6 +7910,10 @@ export const useChatStore = defineStore('chat', () => {
     // Only database rows written by the verified backend reach the chat UI.
     // Public broadcast events are never treated as authenticated messages.
     let subscribedOnce = false;
+    // Joins, leaves and completions come from one small table written by the
+    // database (perf audit 2026-11-14): every heartbeat and every edit used to
+    // go to every open tab. Until that SQL is run, the old way.
+    const live = await liveEventsReady();
     openChannel = () => {
     const mine = supabase.channel('eyewire-ii-chat-verified');
     channel = mine;
@@ -7945,9 +7975,11 @@ export const useChatStore = defineStore('chat', () => {
     }).on('postgres_changes', {event:'DELETE', schema:'public', table:'chat_reactions'}, payload => {
       const r = payload.old as any;
       if (r?.message_id != null) removeReactionLocal(r.message_id, r.emoji, r.user_id);
-    }).on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
-      .on('postgres_changes', {event:'INSERT', schema:'public', table:'edit_log', filter:'operation=in.(mark_complete,complete_task)'}, onCompletion)
-      .subscribe(status => {
+    });
+    if (live) mine.on('postgres_changes', {event:'INSERT', schema:'public', table:'pyr_live_events'}, onLiveEvent);
+    else mine.on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'edit_log', filter:'operation=in.(mark_complete,complete_task)'}, onCompletion);
+    mine.subscribe(status => {
         if (channel !== mine) return;       // an earlier connection, already replaced
         connected.value = status === 'SUBSCRIBED';
         if (status !== 'SUBSCRIBED') {
