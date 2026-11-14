@@ -131,6 +131,16 @@ function buildFrozenQueryBody(table: string, rootId: string): string {
 const BACKOFF_MS = 2 * 60 * 1000;
 const liveDownUntil = new Map<string, number>();
 const tableDownUntil = new Map<string, number>();
+/** A live query the server keeps turning away (400 and the like, not a server
+ *  error): after a few in a row it is skipped for a while and the snapshot is
+ *  asked straight away (perf audit 2026-11-14: on the Retina both tables
+ *  answered 400 to every live query, so each lookup cost two requests). The
+ *  answers are read just as before; only the request that always failed is
+ *  left out. One success starts the count again. */
+const LIVE_REFUSED_AFTER = 3;
+const LIVE_REFUSED_MS = 5 * 60 * 1000;
+const liveRefusals = new Map<string, number>();
+const liveRefusedUntil = new Map<string, number>();
 /** The same question already on its way is shared, not asked again (Nseraf,
  *  report 404: some 30 identical queries went out at once while the table was
  *  failing, before the first answer could set the back off). At most a few
@@ -222,7 +232,7 @@ async function queryOnce(
   const nowIso = new Date().toISOString();
   const liveWasDown = (liveDownUntil.get(key) ?? 0) > Date.now();
   // Live query — returns rows including post-materialization writes.
-  if ((liveDownUntil.get(key) ?? 0) <= Date.now()) try {
+  if ((liveDownUntil.get(key) ?? 0) <= Date.now() && (liveRefusedUntil.get(key) ?? 0) <= Date.now()) try {
     const res = await fetch(
       `${caveServer}/materialize/api/v3/datastack/${datastack}/query?return_pyarrow=false`,
       {
@@ -231,11 +241,21 @@ async function queryOnce(
         body: buildLiveQueryBody(table, nowIso, rootId),
       });
     if (res.ok) {
+      liveRefusals.delete(key);
       const rows = await res.json();
       console.info(`[lightbulb] live query ${table} (${rootIds.length} cells) → ${rows.length} rows`);
       return {rows: Array.isArray(rows) ? rows : [], unknownIfEmpty: false};
     }
     if (res.status >= 500) liveDownUntil.set(key, Date.now() + BACKOFF_MS);
+    else if (res.status !== 401 && res.status !== 403) {
+      const n = (liveRefusals.get(key) ?? 0) + 1;
+      liveRefusals.set(key, n);
+      if (n >= LIVE_REFUSED_AFTER) {
+        liveRefusals.delete(key);
+        liveRefusedUntil.set(key, Date.now() + LIVE_REFUSED_MS);
+        console.warn(`[lightbulb] live query ${table} refused ${n} times in a row; asking the snapshot only for 5 minutes`);
+      }
+    }
     console.warn(`[lightbulb] live query ${table} ${res.status} — falling back to materialized`);
   } catch (e) {
     // Firefox reports a server error without its CORS headers as a network

@@ -142,12 +142,7 @@ function resolveTagFun(tag: IssueTag, e: MouseEvent) {
  *  then on to the next row, relaying through every row in view (Amy).
  *  Each appearance is a fresh mount, so the orbit starts clean, does its
  *  lap, and hands off to the next row. */
-const orbitSeq = ref(0);
-const orbitTimer = setInterval(() => { orbitSeq.value += 1; }, 2800);
-onBeforeUnmount(() => clearInterval(orbitTimer));
-function orbitOn(idx: number, len: number): boolean {
-  return len > 0 && orbitSeq.value % len === idx;
-}
+useOrbitTick();   // read only by OrbitDot, so the tick redraws the dots, not this panel
 const tagSuccessToast = ref(false);
 let tagToastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -924,8 +919,10 @@ async function switchToClaim(cell: CellRow) {
   const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  const fromStart = !t?.working_link;
-  const openedClaim = openStartLink(t?.working_link || cell.startLink);
+  // A saved view already found not to show the claim is passed over.
+  const saved = t?.working_link && !isBadClaimView(cell.taskId, t.working_link) ? t.working_link : null;
+  const fromStart = !saved;
+  const openedClaim = openStartLink(saved || cell.startLink);
   if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
   // A saved view with the five empty annotation layers (a claim from before
   // Highlight) opens with Highlight too, as the player chose (Ames 2026-11-12).
@@ -937,6 +934,51 @@ async function switchToClaim(cell: CellRow) {
   else void backend.anchorClaimAt(cell.taskId).catch(() => null);
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
+  if (openedClaim && !fromStart) void checkSavedViewShowsClaim(cell);
+}
+
+/** A claim's saved view that does not show the claim: Play landed on an empty
+ *  screen (Ames 2026-11-14, an MEC claim whose view was saved Nov 13, before
+ *  views of another dataset stopped being saved). Once the view has had time
+ *  to load: on another dataset, go back to the claim's own; with the claim not
+ *  showing, add it and fly to its soma. The view's layers stay as they are. */
+async function checkSavedViewShowsClaim(cell: CellRow) {
+  const stillHere = () => jumpedSegId.value === cell.segId && workingTaskId === cell.taskId;
+  for (let i = 0; i < 16; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    if (!stillHere()) return;
+    if (currentSegLayer()?.layer && claimInView(cell)) return;
+  }
+  if (!stillHere()) return;
+  const here = canonicalDataset(currentSegLayerName());
+  const wrongDataset = !!cell.dataset && !!here && here !== canonicalDataset(cell.dataset)
+    && DATASETS.some(ds => canonicalDataset(segLayerName(ds)) === here);
+  console.warn('[cell-library] the saved view of claim', cell.taskId, wrongDataset ? `is of ${here}` : 'does not show it', '- opening the cell');
+  const link = backend.tasks.find(x => x.id === cell.taskId)?.working_link;
+  if (wrongDataset) {
+    // Not this view again: the switch reloads the page, and the claim opens
+    // there from its soma. Its next save replaces the view.
+    if (link) rememberBadClaimView(cell.taskId, link);
+    if (play.on === 'cells') askEnter('cells');
+    rememberAfterSwitch(undefined, 'available');
+    await ensureDataset(cell.dataset);
+    return;
+  }
+  jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+}
+
+/** Saved views found not to show their claim, by task, in this browser.
+ *  Only the exact link: a new save of the claim is opened as usual. */
+const BAD_VIEWS_KEY = 'nge_bad_claim_views';
+function badClaimViews(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(BAD_VIEWS_KEY) || '{}') || {}; } catch { return {}; }
+}
+function isBadClaimView(taskId: number | null | undefined, link: string): boolean {
+  return taskId != null && badClaimViews()[String(taskId)] === link;
+}
+function rememberBadClaimView(taskId: number | null | undefined, link: string) {
+  if (taskId == null) return;
+  try { localStorage.setItem(BAD_VIEWS_KEY, JSON.stringify({ ...badClaimViews(), [String(taskId)]: link })); } catch { /* private window */ }
 }
 
 // ── Actions ──────────────────────────────────────────────────────────
@@ -1568,7 +1610,9 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
-import { play, takePlayEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import OrbitDot from './OrbitDot.vue';
+import { useOrbitTick } from '../util/orbit_tick';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 async function triggerCellCelebration(segId?: string, kind?: 'axon') {
@@ -4085,7 +4129,7 @@ const panelStyle = computed(() => ({
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, laneFilteredTags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
+                <span class="nge-orbit-wrap"><OrbitDot :idx="tagIdx" :len="laneFilteredTags.length" /><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetHeading(tag.dataset) + ' and jump' : 'Jump to location'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
                 <template v-if="confirmDeleteTagId === tag.id">
@@ -4196,7 +4240,7 @@ const panelStyle = computed(() => ({
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, g.tags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
+                <span class="nge-orbit-wrap"><OrbitDot :idx="tagIdx" :len="g.tags.length" /><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location and preview the proposed split'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--split"

@@ -68,7 +68,6 @@ import {runPendingDatasetTour} from './dataset_tour';
 import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useUserPreferencesStore, useVolumesStore} from 'src/store';
-import {useStatsStore} from './store-pyr';
 import {exitGrapheneTool, activeGrapheneToolKind} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
@@ -228,8 +227,10 @@ window.addEventListener('DOMContentLoaded', () => {
     liveNeuroglancerInjection();
   });
 
-  const {loopUpdateLeaderboard} = useStatsStore();
-  loopUpdateLeaderboard();
+  // The old pyrdev.eyewire.org leaderboard loop (useStatsStore) is not
+  // started: nothing shows what it fetched, and every tab asked that server
+  // twice every 20 s, hidden or not (perf audit 2026-11-14). Pyr's
+  // leaderboard is the Supabase one (loadLeaderboard).
 
   // Start the scout tag store now, not on first use: its layer watcher is
   // what strips "⚑ Scout tags" / "⚑ Scout pins" layers that arrive in a saved

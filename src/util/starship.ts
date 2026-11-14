@@ -557,6 +557,9 @@ export function startIdleTurn() {
   const step = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (running) { idleRaf = 0; return; }      // the flight turns it from here
+    // Moved by hand on a laptop: the turn never comes back, so the loop ends
+    // too, rather than run empty every frame for the rest of the visit.
+    if (userTouched) { idleRaf = 0; return; }
     const v = viewerNow();
     if (v && handsOff() && turnAllowed() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / TURN_SECONDS * dt); } catch { /* no view yet */ }
