@@ -962,6 +962,11 @@ function plainText(text: string): string {
  * becomes a comma. Only spaces and tabs are consumed, never newlines, so
  * Markdown line structure survives.
  */
+/** "🗂️ New Triage from Celia D": the name in its own color (Ames 2026-11-14). */
+function triageFrom(title: string | null | undefined): { lead: string; who: string } | null {
+  const m = /^(🗂️?\s*New Triage from )(.+)$/u.exec(String(title || ''));
+  return m ? { lead: m[1], who: m[2] } : null;
+}
 function cleanCopy(text: string): string {
   if (!text) return '';
   return String(text)
@@ -1267,7 +1272,8 @@ function padRank(rank: number): string {
           <div class="nge-notif-card-content">
             <div class="nge-notif-card-header">
               <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
-              <div class="nge-notif-card-title">{{ cleanCopy(notif.title) }}</div>
+              <div v-if="triageFrom(notif.title)" class="nge-notif-card-title">{{ triageFrom(notif.title)!.lead }}<span class="nge-notif-triage-who">{{ triageFrom(notif.title)!.who }}</span></div>
+              <div v-else class="nge-notif-card-title">{{ cleanCopy(notif.title) }}</div>
               <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
               <!-- No admin delete here (Ames 2026-10-06): one stray click in the
                    bell removed a broadcast for every player, for good. Deleting a
@@ -1808,6 +1814,7 @@ function padRank(rank: number): string {
 .nge-notif-card--triage .nge-notif-card-title {
   color: #ff8d8d;
 }
+.nge-notif-triage-who { color: #8cc4ff; }
 /* "Fixed!" cards (title starts with 🎉): a report shipped. Happy mint and gold. */
 .nge-notif-card--fixed {
   border-left: 3px solid #5ee8a8;
