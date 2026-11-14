@@ -3521,6 +3521,7 @@ function cmTell(taskId: number | null, problem?: string) {
     taskId,
     saving: taskId != null && savingView.value === taskId,
     saved: taskId != null && !!savedViewAt.value[taskId],
+    savedText: cell ? savedAtLabel(cell).text : '',
     skipping: skipping.value,
     problem: problem || '',
     completing: mine ? { checking: c!.checking, ok: c!.ok, message: c!.message, minting: c!.minting, submitting: c!.submitting, link: !!c!.link && linkLooksValid(c!.link) } : null,

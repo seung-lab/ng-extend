@@ -201,8 +201,15 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     });
     check('the box shows the cell, the cell icon, Save view, Skip and Complete, and the slim row steps aside', /^Cell 6485183463510\d+$/.test(box1.id) && box1.icon && box1.save && box1.skip && box1.complete && box1.owns && !box1.nudge, box1);
     await shot('cell-match-playbox.png');
-    const sent = await page.evaluate(() => { const got = []; const f = e => got.push(e.detail.action + ':' + e.detail.taskId); document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-saveview').click(); c.querySelector('.nge-cm-complete').click(); document.removeEventListener('nge:cm-cell-action', f); return got; });
-    check('Save view and Complete ask the Cell Library, for this cell', sent.join(',') === 'save:16762,complete-open:16762', sent);
+    const sent = await page.evaluate(() => { const got = []; const f = e => got.push(e.detail.action + ':' + e.detail.taskId); document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-saveview').click(); document.removeEventListener('nge:cm-cell-action', f); return got; });
+    check('Save view asks the Cell Library, for this cell', sent.join(',') === 'save:16762', sent);
+    // Skip asks first (Ames 2026-11-14).
+    const skipAsk = await page.evaluate(() => { const got = []; const f = e => got.push(e.detail.action); document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-skipcell').click(); const asked = !c.querySelector('.nge-cm-skipask').hidden && c.querySelector('.nge-cm-skipask').innerText.replace(/\s+/g, ' '); const before = got.length; c.querySelector('.nge-cm-skipask-no').click(); const closed = c.querySelector('.nge-cm-skipask').hidden; c.querySelector('.nge-cm-skipcell').click(); c.querySelector('.nge-cm-skipask-yes').click(); document.removeEventListener('nge:cm-cell-action', f); return { asked, before, closed, after: got }; });
+    check('Skip asks first: Keep working skips nothing, Skip this cell skips', /skip this cell\? it goes back for someone else, and your edits on it no longer count for you/i.test(skipAsk.asked || '') && skipAsk.before === 0 && skipAsk.closed && skipAsk.after.join(',') === 'skip', skipAsk);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, savedText: 'Saved 2 minutes ago', skipping: false, completing: null } })));
+    const vnote = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-viewnote').innerText);
+    check('the box says when the view was saved, and that it saves by itself', vnote === 'Saved 2 minutes ago. Your view also saves by itself when you move to another cell.', vnote);
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-complete').click());
     const fin1 = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { text: c.querySelector('.nge-cm-finish').innerText.replace(/\s+/g, ' '), go: c.querySelector('.nge-cm-finish-go').disabled, rows: c.querySelector('.nge-cm-row[data-row="merge"]').offsetParent !== null }; });
     check('Complete opens in the box: checking the crosshairs, saving the view, not yet ready', /complete this cell checking the crosshairs… saving your view…/i.test(fin1.text) && fin1.go && !fin1.rows, fin1);
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, skipping: false, completing: { checking: false, ok: true, message: '', minting: false, submitting: false, link: true } } })));
@@ -217,29 +224,33 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     // A minute with no edit: Hint.
     await page.evaluate(() => window.__ngeCellMatch.ageHintClock(16762, 61000));
     await page.waitForTimeout(2600);
-    const nudge = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); return n && !n.hidden ? n.innerText.replace(/\s+/g, ' ') : null; });
-    check('after a minute with no edit, Hint is offered', /stuck\? hint takes you to the next spot to fix\. hint/i.test(nudge || ''), nudge);
+    const nudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.querySelector('.nge-cm-hbtn'); return { h: !!h && h.offsetParent !== null && h.textContent, tip: h && h.title, line: !c.querySelector('.nge-cm-nudge').hidden }; });
+    check('after a minute with no edit, a small H offers a Hint, and nothing else opens', nudge.h === 'H' && nudge.tip === 'Click for a Hint' && !nudge.line, nudge);
     await shot('cell-match-hint.png');
     // Collapsed: no Hint at all (Ames 2026-11-14: "I would be too tempted to click").
-    const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-nudge').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
+    const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
     check('collapsed, Hint is not offered', minNudge === false, minNudge);
     const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
-    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').click());
     await page.waitForTimeout(1500);
     const place = await hintLayers();
+    const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
+    check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
     check('Hint first: only the place on your cell where it starts, no piece shown', /missing a branch that starts near the blue pin\. look for a loose end there\. show me next hint/i.test(place.text) && place.layers.includes('Hint spot') && !place.layers.includes('Hint piece'), place);
     await shot('cell-match-hint-place.png');
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
     await page.waitForTimeout(1500);
     const hinted = await hintLayers();
-    check('Show me: the piece in gold, and what to do', /gold piece belongs to your cell\. merge it in\. next hint/i.test(hinted.text) && hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), hinted);
+    const inMain = await page.evaluate(() => { const ls = window.viewer.layerManager.managedLayers.filter(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState); return ls.some(l => [...l.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).includes('648518346351009999')); });
+    check('Show me: the piece in gold in your own layer (so Ctrl+click merges it), and what to do', /gold piece belongs to your cell\. merge it in\. next hint/i.test(hinted.text) && inMain && !hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), { hinted, inMain });
     check('the two steps were asked in order', hintSteps.join(',') === '1,2', hintSteps);
     check('the lab hears: opened, Hint offered (the hint itself is recorded by the server)', events.includes('opened') && events.includes('hint_offered'), events);
     await shot('cell-match-hint-shown.png');
     await edit([answer.root]);
     await page.waitForTimeout(400);
     const after = await page.evaluate(() => ({ nudge: document.querySelector('#nge-cell-match .nge-cm-nudge').hidden, layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
-    check('an edit puts Hint away and clears its piece', after.nudge && after.layers.length === 0, after);
+    after.inMain = await page.evaluate(() => window.viewer.layerManager.managedLayers.filter(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState).some(l => [...l.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).includes('648518346351009999')));
+    check('an edit puts Hint away and clears its piece', after.nudge && after.layers.length === 0 && !after.inMain, after);
     // Resize by the corner (Ames 2026-11-14), kept.
     const sized = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const cs = getComputedStyle(c); c.style.width = '440px'; c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); return { resize: cs.resize, w: Math.round(c.getBoundingClientRect().width), kept: localStorage.getItem('nge-cell-match-size') }; });
     check('the box resizes from its corner, and keeps the size', sized.resize === 'both' && sized.w === 440 && /"w":440/.test(sized.kept || ''), sized);
@@ -353,7 +364,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const sizes = await page.evaluate(() => ({ pieces: parseFloat(getComputedStyle(document.querySelector('#nge-cell-match .nge-cm-pieces')).fontSize), label: parseFloat(getComputedStyle(document.querySelector('#nge-cell-match .nge-cm-label')).fontSize) }));
     check('readable text sizes', sizes.pieces >= 13 && sizes.label >= 11, sizes);
     // Drag and drop by the top line; it stays put; a double click puts it back.
-    const hb = await page.evaluate(() => { const r = document.querySelector('#nge-cell-match .nge-cm-head').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; });
+    const hb = await page.evaluate(() => { const r = document.querySelector('#nge-cell-match .nge-cm-title').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; });
     // The welcome hero is still over the corner in this headless run; a player has closed it.
     await page.evaluate(() => document.querySelectorAll('.nge-hero-overlay').forEach(e => { e.style.display = 'none'; }));
     await page.mouse.move(hb.x, hb.y); await page.mouse.down(); await page.mouse.move(hb.x + 400, hb.y + 250, { steps: 8 }); await page.mouse.up();

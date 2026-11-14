@@ -21,6 +21,8 @@ import { canonicalDataset, currentDatasetTag, currentSegLayer } from './datasets
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { makeLayer } from 'neuroglancer/layer';
 import { reactive, createApp, type App as VueApp } from 'vue';
+import { setStatedColor } from './widgets/widget_utils';
+import { openSplitView } from './practice';
 import { getActivePinia } from 'pinia';
 import EditableText from './components/EditableText.vue';
 // The Cell Library's own neuron (Ames 2026-11-14: "use the neuron").
@@ -222,7 +224,7 @@ const CSS = `
 #${CARD_ID} .nge-cm-dot{width:8px;height:8px;border-radius:50%;background:#59e3a7;box-shadow:0 0 6px #59e3a7}
 #${CARD_ID}.nge-cm-dragging .nge-cm-head{cursor:grabbing}
 #${CARD_ID}.nge-cm-checking .nge-cm-dot{background:#7fc8ff;box-shadow:0 0 6px #7fc8ff}
-#${CARD_ID} .nge-cm-title{white-space:nowrap;letter-spacing:.08em}
+#${CARD_ID} .nge-cm-title{white-space:nowrap;letter-spacing:.08em;min-width:0;overflow:hidden;text-overflow:ellipsis}
 #${CARD_ID} .nge-cm-pre{color:#6f9cc8}
 #${CARD_ID} .nge-cm-state{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 11px/1 Inter,system-ui,sans-serif;color:#7f9fc2;letter-spacing:.04em}
 #${CARD_ID} .nge-cm-row{display:grid;grid-template-columns:1fr auto;align-items:end;column-gap:8px;padding:3px 0 2px}
@@ -297,8 +299,17 @@ const CSS = `
 #${CARD_ID} .nge-cm-score .nge-cm-gauge{height:7px;margin:7px 0 6px}
 /* The Playing box (Ames 2026-11-14). */
 body.nge-cm-owns .nge-cl-panel--slim{display:none !important}
-#${CARD_ID} .nge-cm-cellbtn{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid rgba(127,190,255,.35);border-radius:6px;background:rgba(127,190,255,.08);color:#bfe6ff}
+/* The cell icon leads the top line (Ames 2026-11-14: "put this cell icon on the left"). */
+#${CARD_ID} .nge-cm-cellbtn{order:-1;margin-right:2px;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid rgba(127,190,255,.35);border-radius:6px;background:rgba(127,190,255,.08);color:#bfe6ff}
 #${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.2);color:#fff}
+/* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
+#${CARD_ID} .nge-cm-hbtn{display:grid;place-items:center;flex:0 0 24px;margin-left:6px;width:24px;height:24px;padding:0;border:1px solid rgba(127,216,255,.6);border-radius:50%;background:rgba(74,158,255,.18);color:#bfeaff;font:700 12px/1 Orbitron,Inter,sans-serif;animation:nge-cm-hglow 2.6s ease-in-out infinite}
+#${CARD_ID} .nge-cm-hbtn[hidden]{display:none}
+#${CARD_ID}:has(.nge-cm-hbtn:not([hidden])) .nge-cm-pre{display:none}
+#${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
+@keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn{animation:none}}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-hbtn,#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
 #${CARD_ID} .nge-cm-nudge{display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
@@ -320,6 +331,15 @@ body.nge-cm-owns .nge-cl-panel--slim{display:none !important}
 #${CARD_ID} .nge-cm-nudge-btns{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
 #${CARD_ID}.nge-cm-finishing .nge-cm-play,#${CARD_ID}.nge-cm-finishing .nge-cm-nudge,#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="cut"]{display:none}
+#${CARD_ID} .nge-cm-viewnote{margin-top:6px;font-size:11.5px;line-height:1.4;color:#8fa6c4}
+#${CARD_ID} .nge-cm-viewnote:empty{display:none}
+#${CARD_ID}.nge-cm-idle .nge-cm-viewnote,#${CARD_ID}.nge-cm-reviewing .nge-cm-viewnote,#${CARD_ID}.nge-cm-finishing .nge-cm-viewnote,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-viewnote{display:none}
+#${CARD_ID} .nge-cm-skipask{margin-top:8px;padding:10px;border:1px solid rgba(255,138,158,.5);border-radius:8px;background:rgba(255,107,138,.08)}
+#${CARD_ID} .nge-cm-skipask[hidden]{display:none}
+#${CARD_ID} .nge-cm-skipask-words{margin:0 0 4px;font-size:13px;line-height:1.45;color:#e6edf7}
+#${CARD_ID} .nge-cm-skipask .nge-cm-finish-actions{border-top:none;padding-top:4px}
+#${CARD_ID} .nge-cm-skipask-yes{margin-left:auto !important;border-color:#ff8a9e !important;background:rgba(255,107,138,.22) !important;color:#fff !important}
+#${CARD_ID}.nge-cm-asking .nge-cm-play,#${CARD_ID}.nge-cm-asking .nge-cm-viewnote{display:none}
 #${CARD_ID} .nge-cm-finish{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:9px;border-top:1px solid rgba(127,190,255,.18)}
 #${CARD_ID} .nge-cm-finish[hidden]{display:none}
 #${CARD_ID} .nge-cm-finish-title{font:600 12px/1 Orbitron,Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#d6e2f5}
@@ -452,13 +472,18 @@ function mountInfo(host: HTMLElement) {
 // takes the player to the next piece to fix. The lab sees when (play events).
 const BULB_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7fd8ff" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/></svg>';
 const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
-  + '<span class="nge-cm-nudge-text">Stuck? Hint takes you to the next spot to fix.</span>'
-  + '<span class="nge-cm-nudge-btns"><button type="button" class="nge-cm-btn nge-cm-hint-btn">Hint</button>'
+  + '<span class="nge-cm-nudge-text"></span>'
+  + '<span class="nge-cm-nudge-btns"><button type="button" class="nge-cm-btn nge-cm-hint-btn" hidden>Show me</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-next-btn" hidden>Next hint</button></span></div>';
 const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save view</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>';
+  + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
+  + '<div class="nge-cm-viewnote"></div>'
+  + '<div class="nge-cm-skipask" hidden role="alertdialog" aria-label="Skip this cell?">'
+  + '<p class="nge-cm-skipask-words"><b>Skip this cell?</b> It goes back for someone else, and your edits on it no longer count for you. Pyr takes you to a new cell.</p>'
+  + '<div class="nge-cm-finish-actions"><button type="button" class="nge-cm-btn nge-cm-skipask-no">Keep working</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-skipask-yes">Skip this cell</button></div></div>';
 const OK_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="#5fe3a1" stroke-width="1.4"/><path d="M4.8 8.2 7 10.3l4.2-4.5" fill="none" stroke="#5fe3a1" stroke-width="1.6"/></svg>';
 const BAD_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="#ff8a9e" stroke-width="1.4"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#ff8a9e" stroke-width="1.6"/></svg>';
 const FINISH_HTML = '<div class="nge-cm-finish" hidden>'
@@ -483,8 +508,9 @@ function card(): HTMLElement {
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
   el.title = 'Your Merge and Cut together, half each. Merge: the missing pieces you have merged in. Cut: the wrong parts you have cut off.';
-  el.innerHTML = '<div class="nge-cm-head"><span class="nge-cm-dot"></span><span class="nge-cm-title">' + TITLE_HTML + '</span>'
-    + '<button type="button" class="nge-cm-tool nge-cm-cellbtn" aria-label="Open the Cell Library" title="Open the Cell Library"><img class="nge-cm-cellimg" src="' + neuronIcon + '" alt="" aria-hidden="true"></button>'
+  el.innerHTML = '<div class="nge-cm-head">' + '<button type="button" class="nge-cm-tool nge-cm-cellbtn" aria-label="Open the Cell Library" title="Open the Cell Library"><img class="nge-cm-cellimg" src="' + neuronIcon + '" alt="" aria-hidden="true"></button>'
+    + '<span class="nge-cm-dot"></span><span class="nge-cm-title">' + TITLE_HTML + '</span>'
+    + '<button type="button" class="nge-cm-tool nge-cm-hbtn" aria-label="Hint" title="Click for a Hint" hidden>H</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-i" aria-label="What do these numbers mean?" aria-pressed="false" aria-controls="nge-cell-match-info" title="What do these numbers mean?">i</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the score"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. A small Match button stays to open it again.">×</button></div>'
@@ -894,10 +920,11 @@ function noteEdit(taskId: number) {
 function resetNudge(el: HTMLElement) {
   const n = el.querySelector('.nge-cm-nudge') as HTMLElement;
   n.hidden = true;
-  (n.querySelector('.nge-cm-nudge-text') as HTMLElement).textContent = 'Stuck? Hint takes you to the next spot to fix.';
+  (n.querySelector('.nge-cm-nudge-text') as HTMLElement).textContent = '';
   const b = n.querySelector('.nge-cm-hint-btn') as HTMLButtonElement;
-  b.textContent = 'Hint'; b.disabled = false; b.hidden = false;
+  b.textContent = 'Show me'; b.disabled = false; b.hidden = true;
   (n.querySelector('.nge-cm-next-btn') as HTMLElement).hidden = true;
+  (el.querySelector('.nge-cm-hbtn') as HTMLElement).hidden = true;
 }
 /** A minute with no edit (Ames 2026-11-14: "introduce hint after like 1 minute"). */
 function maybeOfferHint(taskId: number) {
@@ -908,8 +935,16 @@ function maybeOfferHint(taskId: number) {
   const r = last.get(taskId);
   if (!r || !r.scorable) return;
   c.offered = true;
-  (el.querySelector('.nge-cm-nudge') as HTMLElement).hidden = false;
+  (el.querySelector('.nge-cm-hbtn') as HTMLElement).hidden = false;
   moment(taskId, 'hint_offered');
+}
+/** 2D beside 3D for a hint, unless a 2D view is already open. */
+function ensureSplit() {
+  try {
+    const lay = JSON.stringify((window as any).viewer?.layout?.toJSON?.() ?? '');
+    if (/xy|yz|xz|4panel/.test(lay)) return;
+    openSplitView();
+  } catch { /* the layout stays */ }
 }
 interface HintPiece { kind: 'merge' | 'cut'; root?: string; size: number; pointNm?: number[]; nearNm?: number[] }
 /** Hint in two steps (Ames 2026-11-14: "this is not a hint but giving
@@ -925,7 +960,11 @@ async function pressHint(el: HTMLElement, next = false) {
   const nb = el.querySelector('.nge-cm-next-btn') as HTMLButtonElement;
   const text = el.querySelector('.nge-cm-nudge-text') as HTMLElement;
   const step = c.step;
-  b.disabled = true; nb.disabled = true; b.textContent = 'Finding…';
+  ensureSplit();
+  const line = el.querySelector('.nge-cm-nudge') as HTMLElement;
+  line.hidden = false;
+  if (step === 1) { b.hidden = true; nb.hidden = true; text.textContent = 'Finding the next spot…'; }
+  b.disabled = true; nb.disabled = true; if (step === 2) b.textContent = 'Finding…';
   try {
     const h = await secureWrite<{ left: number; piece: HintPiece | null }>('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) });
     if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; nb.hidden = true; return; }
@@ -935,6 +974,7 @@ async function pressHint(el: HTMLElement, next = false) {
         ? 'Your cell is missing a branch that starts near the blue pin. Look for a loose end there.'
         : 'Something that is not your cell joins it near the blue pin. Look for where it meets.';
       b.textContent = 'Show me';
+      b.hidden = false;
       c.step = 2;
     } else {
       text.textContent = h.piece.kind === 'merge'
@@ -947,7 +987,7 @@ async function pressHint(el: HTMLElement, next = false) {
   } catch (e: any) {
     console.debug('[cell-match] no hint', e?.message);
     text.textContent = 'No hint right now. Try again in a moment.';
-    b.textContent = step === 1 ? 'Hint' : 'Show me';
+    b.textContent = 'Show me';
   } finally { b.disabled = false; nb.disabled = false; }
 }
 let hintPinTimer: number | undefined;
@@ -958,9 +998,23 @@ function showHintPiece(p: HintPiece) {
   const at = p.pointNm ?? p.nearNm;
   if (!at) return;
   flyTo(at);
+  // The piece goes in the player's own segmentation layer, in gold, so a
+  // Ctrl+click on it picks the real segment to merge. In a layer of its own
+  // the click hit that copy and the merge read "Cannot merge segment with
+  // itself" (Ames 2026-11-14).
   if (p.kind === 'merge' && p.root) {
-    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_SEG_LAYER, { type: 'segmentation', source: SANDBOX_SOURCE, segments: [p.root], segmentColors: { [p.root]: GOLD }, objectAlpha: 1 })); }
-    catch (e) { console.debug('[cell-match] hint layer', e); }
+    try {
+      const layer = currentSegLayer()?.layer;
+      const group = layer?.displayState?.segmentationGroupState?.value;
+      const colors = layer?.displayState?.segmentationColorGroupState?.value?.segmentStatedColors;
+      const seg = Uint64.parseString(p.root);
+      if (group) {
+        const was = group.visibleSegments.has(seg);
+        if (colors) setStatedColor(colors, seg, GOLD_PACKED);
+        group.visibleSegments.add(seg);
+        hintShown = { root: p.root, wasVisible: was };
+      }
+    } catch (e) { console.debug('[cell-match] hint piece', e); }
   }
   const point = toView(at);
   if (!point) return;
@@ -969,7 +1023,7 @@ function showHintPiece(p: HintPiece) {
   const color = place1 ? '#7fd8ff' : p.kind === 'merge' ? GOLD : RED;
   const place = () => {
     for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === HINT_PIN_LAYER) v.layerManager.removeManagedLayer(ml);
-    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: 5, annotations: pin })); }
+    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: 1.5, annotations: pin })); }
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
   place();
@@ -1040,6 +1094,11 @@ function onCellState(e: Event) {
   const save = el.querySelector('.nge-cm-saveview') as HTMLButtonElement;
   save.disabled = !!d.saving;
   save.textContent = d.saving ? 'Saving…' : d.saved ? 'Saved ✓' : 'Save view';
+  // Ames 2026-11-14: "doesn't view auto save? shouldn't it say that?" It
+  // saves by itself when you move to another cell; a reload does not.
+  const note = el.querySelector('.nge-cm-viewnote') as HTMLElement;
+  const savedText = d.saved && (!d.savedText || /not saved/i.test(d.savedText)) ? 'Saved just now' : (d.savedText || 'Not saved yet');
+  note.textContent = `${savedText}. Your view also saves by itself when you move to another cell.`;
   const skip = el.querySelector('.nge-cm-skipcell') as HTMLButtonElement;
   skip.disabled = !!d.skipping;
   skip.textContent = d.skipping ? 'Skipping…' : 'Skip';
@@ -1073,10 +1132,19 @@ function keepSize(el: HTMLElement) {
 }
 function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
+  el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => { const c = shownFor != null ? clocks.get(shownFor) : undefined; if (c) c.step = 1; void pressHint(el); });
   el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
   el.querySelector('.nge-cm-next-btn')!.addEventListener('click', () => void pressHint(el, true));
   el.querySelector('.nge-cm-saveview')!.addEventListener('click', () => cellAction('save'));
+  const skipAsk = el.querySelector('.nge-cm-skipask') as HTMLElement;
   el.querySelector('.nge-cm-skipcell')!.addEventListener('click', () => {
+    skipAsk.hidden = false;
+    el.classList.add('nge-cm-asking');
+    (el.querySelector('.nge-cm-skipask-no') as HTMLElement).focus();
+  });
+  el.querySelector('.nge-cm-skipask-no')!.addEventListener('click', () => { skipAsk.hidden = true; el.classList.remove('nge-cm-asking'); });
+  el.querySelector('.nge-cm-skipask-yes')!.addEventListener('click', () => {
+    skipAsk.hidden = true; el.classList.remove('nge-cm-asking');
     if (shownFor != null) moment(shownFor, 'skip');
     removeHintLayers();
     cellAction('skip');
@@ -1242,7 +1310,22 @@ function flyTo(nm: number[]) {
   } catch { /* the view stays put */ }
 }
 
+// neuroglancer packs a colour as 0xBBGGRR: GOLD (#ffd36e).
+const GOLD_PACKED = 0x6ed3ff;
+let hintShown: { root: string; wasVisible: boolean } | null = null;
 function removeHintLayers() {
+  // The gold piece leaves the player's layer again, unless it was there before
+  // (once merged it is part of their cell, under the cell's own id).
+  if (hintShown) {
+    try {
+      const layer = currentSegLayer()?.layer;
+      const seg = Uint64.parseString(hintShown.root);
+      const colors = layer?.displayState?.segmentationColorGroupState?.value?.segmentStatedColors;
+      try { colors?.delete(seg); } catch { /* keeps it */ }
+      if (!hintShown.wasVisible) layer?.displayState?.segmentationGroupState?.value?.visibleSegments.delete(seg);
+    } catch { /* gone */ }
+    hintShown = null;
+  }
   const v = (window as any).viewer;
   for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
     if (ml.name === HINT_SEG_LAYER || ml.name === HINT_PIN_LAYER) { try { v.layerManager.removeManagedLayer(ml); } catch { /* gone */ } }
