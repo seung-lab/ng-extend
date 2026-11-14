@@ -493,9 +493,6 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 });
 
 // ── Cell completion celebration ──
-/** The all-datasets count the last celebration showed, to notice a list that
- *  has not caught up with the cell just completed. */
-let lastCelebratedCount: number | null = null;
 const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean } | null>(null);
 
 /** How much a completed cell shows (Settings): the full congratulations, a
@@ -535,16 +532,22 @@ watch(() => backend.pendingCellCelebration, (pending) => {
     };
     // The list could not be read: fall back to the profile's own total.
     const giveUp = () => { if (stillThis()) cellCelebration.value = { ...cellCelebration.value!, counted: true }; };
-    const before = lastCelebratedCount;
-    celebrationCellCounts(uid).then(async r => {
-      if (!r) { giveUp(); return; }
-      if (before != null && r.all <= before) {
-        await new Promise(res => setTimeout(res, 1500));
-        r = (await celebrationCellCounts(uid)) ?? r;
+    // Wait until the list holds a cell completed just now. It used to look
+    // again only when the count had not grown since the last celebration, so
+    // the first cell of a visit could show one short, and from then on every
+    // cell did: "+1 cell brings your total to 29" while the real count was
+    // 30 (Giedrius, #526). A cell completed again is not new and never shows
+    // up as fresh; after a few looks the numbers are shown as they are.
+    const since = Date.now() - 2 * 60_000;
+    (async () => {
+      let r = await celebrationCellCounts(uid, since);
+      for (let i = 0; r && !r.fresh && i < 4; i++) {
+        await new Promise(res => setTimeout(res, 1000 + i * 500));
+        r = (await celebrationCellCounts(uid, since)) ?? r;
       }
-      lastCelebratedCount = r.all;
+      if (!r) { giveUp(); return; }
       show(r);
-    }).catch(giveUp);
+    })().catch(giveUp);
   } else if (cellCelebration.value) {
     cellCelebration.value = { ...cellCelebration.value, counted: true };
   }

@@ -106,13 +106,13 @@ async function loggedCells(uid: string, tags: string[]): Promise<CompletedCell[]
  * from one list, a dataset can never have more cells than all datasets do.
  * Null when the list can not be read.
  */
-export async function celebrationCellCounts(uid: string): Promise<{ label: string; here: number; all: number } | null> {
+export async function celebrationCellCounts(uid: string, since = 0): Promise<{ label: string; here: number; all: number; fresh: boolean } | null> {
   const ds = findDatasetByCanonical(canonicalDataset(currentDatasetTag()));
   try {
     const { supabase } = await import('../supabase');
-    const rows: { dataset: string }[] = [];
+    const rows: { dataset: string; done_at?: string }[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell')
+      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell,done_at')
         .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + 999);
       if (error || !data) return null;
       rows.push(...(data as any[]));
@@ -120,7 +120,10 @@ export async function celebrationCellCounts(uid: string): Promise<{ label: strin
     }
     const keys = new Set(ds ? datasetTagVariants(ds).map(datasetKey) : []);
     const here = rows.filter(r => keys.has(datasetKey(r.dataset))).length;
-    return { label: ds ? (ds.shortLabel || ds.label) : '', here, all: rows.length };
+    // fresh: the list already holds a cell completed at or after `since`, so
+    // the cell just completed is in these numbers (#526).
+    const fresh = rows.some(r => r.done_at && new Date(r.done_at).getTime() >= since);
+    return { label: ds ? (ds.shortLabel || ds.label) : '', here, all: rows.length, fresh };
   } catch { return null; }
 }
 
