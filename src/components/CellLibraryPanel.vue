@@ -142,12 +142,7 @@ function resolveTagFun(tag: IssueTag, e: MouseEvent) {
  *  then on to the next row, relaying through every row in view (Amy).
  *  Each appearance is a fresh mount, so the orbit starts clean, does its
  *  lap, and hands off to the next row. */
-const orbitSeq = ref(0);
-const orbitTimer = setInterval(() => { orbitSeq.value += 1; }, 2800);
-onBeforeUnmount(() => clearInterval(orbitTimer));
-function orbitOn(idx: number, len: number): boolean {
-  return len > 0 && orbitSeq.value % len === idx;
-}
+useOrbitTick();   // read only by OrbitDot, so the tick redraws the dots, not this panel
 const tagSuccessToast = ref(false);
 let tagToastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1616,6 +1611,8 @@ import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import OrbitDot from './OrbitDot.vue';
+import { useOrbitTick } from '../util/orbit_tick';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 async function triggerCellCelebration(segId?: string, kind?: 'axon') {
@@ -4132,7 +4129,7 @@ const panelStyle = computed(() => ({
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, laneFilteredTags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
+                <span class="nge-orbit-wrap"><OrbitDot :idx="tagIdx" :len="laneFilteredTags.length" /><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetHeading(tag.dataset) + ' and jump' : 'Jump to location'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
                 <template v-if="confirmDeleteTagId === tag.id">
@@ -4243,7 +4240,7 @@ const panelStyle = computed(() => ({
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, g.tags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
+                <span class="nge-orbit-wrap"><OrbitDot :idx="tagIdx" :len="g.tags.length" /><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location and preview the proposed split'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--split"
