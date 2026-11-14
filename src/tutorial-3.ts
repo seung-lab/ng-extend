@@ -1184,13 +1184,15 @@ function friendlyLayerNames() {
   // name: a second one of the same kind keeps its own, so two tabs never
   // carry the same label.
   const used = new Set<string>();
+  // Looked up once, not once per layer (perf audit 2026-11-14: this runs every second).
+  const titles = Array.from(document.querySelectorAll<HTMLElement>('.nge-panel-title-name'));
   for (const ml of layers) {
     const kind = layerKind(ml);
     let name = kind === 'segmentation' ? segName : kind === 'image' ? imgName : '';
     if (name && used.has(name)) name = '';
     if (name) used.add(name);
     // The side panel's title for this layer says the same (layer_side_panel.ts).
-    for (const t of Array.from(document.querySelectorAll<HTMLElement>('.nge-panel-title-name'))) {
+    for (const t of titles) {
       if (t.dataset.layerName === ml.name && t.textContent !== (name || ml.name)) t.textContent = name || ml.name;
     }
     const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
@@ -1210,7 +1212,8 @@ function friendlyLayerNames() {
     } else delete label.dataset.ngeLabel;
   }
 }
-setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
+// Not in a tab nobody sees: the next tick after it comes back puts the names right.
+setInterval(() => { if (document.hidden) return; try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
 
 // Opening split screen redraws the layer tabs, and until the next tick they
 // showed the raw names ("img") for up to a second (Ames 2026-10-23). A
