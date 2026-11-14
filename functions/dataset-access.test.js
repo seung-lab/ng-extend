@@ -201,3 +201,17 @@ test('a grant is said in chat once, on the next visit', async () => {
   assert.ok(asked[0].includes('target_id=eq.u-1') && asked[0].includes('send_at=gte.2026-10-30'));
   assert.equal((await handle('access.grantLines', {}, {sb, me: null})).announced, 0);
 });
+
+test('access.datasetTestBell: the unlock bell, to the admin who asks, titled Test so no chat line is said', async () => {
+  const w = world();
+  await assert.rejects(handle('access.datasetTestBell', {dataset: 'pni_mec', label: 'Medial Entorhinal Cortex'}, w.io()), /Admins only/);
+  assert.deepStrictEqual(await handle('access.datasetTestBell', {dataset: 'pni_mec', label: 'Medial Entorhinal Cortex'}, w.io({isAdmin: true})), {sent: true});
+  const b = w.players[0];
+  assert.strictEqual(b.userId, 'u-player');
+  assert.match(b.title, /^Test: 🔓 You have access to MEC/);
+  assert.match(b.body, /we prioritize proofreading axons first/);
+  assert.match(b.body, /support@eyewire\.org/);
+  assert.match(b.body, /\(#nge-open-dataset=pni_mec\)$/);
+  assert.ok(b.body.length <= 1500, b.body.length);
+  await assert.rejects(handle('access.datasetTestBell', {dataset: 'bad id!'}, w.io({isAdmin: true})), /Unknown dataset/);
+});

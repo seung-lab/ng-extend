@@ -196,6 +196,12 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const cave = await page.waitForSelector('.ah-caveid', { timeout: 3000 }).then(e => e.textContent()).catch(() => '');
     check('the panel shows their CAVE ID (Celia #528)', cave.trim() === '4321', cave);
     const tries = await page.$$eval('.ah-tries li', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    // Ames 2026-11-14: "Let them in & send notification", and a test to my own bell.
+    const dsBtns = await page.$$eval('.ah-ds .ah-actions button', els => els.map(e => e.textContent.trim()));
+    check('the dataset buttons say they send the notification', dsBtns.join('|') === 'Let them in & send notification|I added them by hand, send notification|Not now|Send me a test', dsBtns);
+    await page.click('.ah-ds button:has-text("Send me a test")');
+    await page.waitForTimeout(300);
+    check('Send me a test asks the server for this dataset\'s bell, to me', calls.some(c => c.action === 'access.datasetTestBell' && c.args.dataset === 'pni_mec') && /Test sent to your bell/.test(await page.textContent('.ah-ds .ah-actions')), calls.filter(c => c.action === 'access.datasetTestBell'));
     check('their dataset request shows their Proofreading Test tries, newest first, only theirs', tries.length === 2 && /^Passed \(88%\) · 9 of 10 mistakes fixed · 4 of 4 ends marked · nothing damaged/.test(tries[0]) && /^Did not pass \(41%\).*2 real branches cut off/.test(tries[1]), tries);
     await page.screenshot({ path: path.join(OUT, 'access-hub-tries.png'), fullPage: false });
     await page.click('.ah-close');
