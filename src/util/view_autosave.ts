@@ -14,6 +14,7 @@
 import { supabase } from '../supabase';
 import { currentSegLayerName, findDatasetBySegName } from '../datasets';
 import { getDatasetCaveConfig } from '../config';
+import { getCachedJson } from 'neuroglancer/util/trackable';
 
 const QUIET_MS = 12000;     // save this long after the last change
 const MIN_GAP_MS = 30000;   // and at most this often
@@ -22,6 +23,12 @@ const OFFER_KEY = 'nge-offer-view-restore';
 const SKIP_KEY = 'nge-skip-view-restore';
 
 let lastSaved = '';
+/** The state's change count when it was last looked at here. Nothing changed
+ *  since: no JSON is made at all. A view too big to save is not turned into
+ *  JSON again until it changes (perf audit 2026-11-14: one over the limit was
+ *  serialized after every change for the rest of the visit). */
+let lastSeenGen = -1;
+let lastSeenDataset = '';
 let lastSaveAt = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let userIdOf: () => string | null = () => null;
@@ -32,17 +39,19 @@ async function saveNow(viewer: any) {
   timer = null;
   const dataset = datasetKey();
   if (!userIdOf() || !dataset || !viewer?.state) return;
-  let state: any;
-  try { state = viewer.state.toJSON(); } catch { return; }
+  let state: any, gen = -1;
+  // The same cached JSON the address bar uses (built once per change).
+  try { const c = getCachedJson(viewer.state); state = c.value; gen = c.generation; } catch { return; }
+  if (gen === lastSeenGen && dataset === lastSeenDataset) return;
   const text = JSON.stringify(state);
-  if (text === lastSaved || text.length > MAX_BYTES) return;
+  if (text === lastSaved || text.length > MAX_BYTES) { lastSeenGen = gen; lastSeenDataset = dataset; return; }
   const wait = MIN_GAP_MS - (Date.now() - lastSaveAt);
   if (wait > 0) { timer = setTimeout(() => saveNow(viewer), wait); return; }
   lastSaveAt = Date.now();
   const { error } = await supabase.from('user_views')
     .upsert({ dataset, state }, { onConflict: 'user_id,dataset' });
   if (error) console.warn('[views] autosave failed:', error.message);
-  else lastSaved = text;
+  else { lastSaved = text; lastSeenGen = gen; lastSeenDataset = dataset; }
 }
 
 let viewerRef: any = null;
