@@ -131,7 +131,13 @@ function world() {
     if ((m = p.match(/^sandbox_match_keys\?task_id=eq\.(\d+)/))) return db.keys[m[1]] ? [JSON.parse(JSON.stringify(db.keys[m[1]]))] : [];
     if (p.startsWith('sandbox_match_keys?on_conflict')) { const k = JSON.parse(init.body); db.keys[k.task_id] = k; return null; }
     if (p === 'rpc/sandbox_match_record') { db.records.push(JSON.parse(init.body)); return null; }
-    if ((m = p.match(/^edit_log\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&operation=in\.\(merge,split\)/))) return (db.edits || []).filter(e => e.task_id === +m[1] && e.user_id === decodeURIComponent(m[2]));
+    if ((m = p.match(/^task_assignments\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&/))) return (db.held || []).filter(h => h.task_id === +m[1] && h.user_id === decodeURIComponent(m[2]));
+    // edit_log: this task's own, or (with a claim) untagged ones in its time.
+    if ((m = p.match(/^edit_log\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&dataset=eq\.pinky_nf_v2&operation=in\.\(merge,split\)/))) return (db.edits || []).filter(e => e.task_id === +m[1] && e.user_id === decodeURIComponent(m[2]));
+    if ((m = p.match(/^edit_log\?or=\(task_id\.eq\.(\d+),and\(task_id\.is\.null,timestamp\.gte\.([^,)]+)(?:,timestamp\.lte\.([^)]+))?\)\)&user_id=eq\.([^&]+)&dataset=eq\.pinky_nf_v2&operation=in\.\(merge,split\)/))) {
+      const from = decodeURIComponent(m[2]), to = m[3] ? decodeURIComponent(m[3]) : null, uid = decodeURIComponent(m[4]);
+      return (db.edits || []).filter(e => e.user_id === uid && (e.dataset || 'pinky_nf_v2') === 'pinky_nf_v2' && (e.task_id === +m[1] || (e.task_id == null && e.timestamp >= from && (!to || e.timestamp <= to))));
+    }
     throw new Error('unexpected ' + p);
   };
   return {io: {fetch, sb, caveToken: 'x'}, sandbox, truth, ID, calls, db};
@@ -303,4 +309,22 @@ test('a check counts the player\'s own merges and cuts on this cell', async () =
   const r = await M.check(w.io, {taskId: 1, me: ME});
   assert.equal(r.edits, 2);
   assert.equal(r.startScore, 38);
+});
+
+test('edits with no task count when made while the player held this claim', async () => {
+  // The game tags an edit with its task only right after claiming, so a claim
+  // taken up again logs its edits with none (Ames 2026-11-14: "0 edits").
+  M._reset();
+  const w = world();
+  w.db.held = [{task_id: 1, user_id: ME.id, claimed_at: '2026-11-14T13:00:00+00:00', completed_at: null, released_at: null}];
+  w.db.edits = [
+    {task_id: null, user_id: ME.id, operation: 'split', timestamp: '2026-11-14T13:55:17+00:00'},
+    {task_id: null, user_id: ME.id, operation: 'merge', timestamp: '2026-11-14T13:56:00+00:00'},
+    {task_id: 1, user_id: ME.id, operation: 'merge', timestamp: '2026-11-14T13:57:00+00:00'},
+    {task_id: null, user_id: ME.id, operation: 'merge', timestamp: '2026-11-14T12:00:00+00:00'},
+    {task_id: null, user_id: ME.id, operation: 'merge', timestamp: '2026-11-14T13:58:00+00:00', dataset: 'stroeh_mouse_retina'},
+    {task_id: null, user_id: 'someone else', operation: 'merge', timestamp: '2026-11-14T13:58:00+00:00'},
+  ];
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(r.edits, 3);
 });

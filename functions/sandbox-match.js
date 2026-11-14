@@ -343,8 +343,22 @@ async function check(io, {taskId, me, isAdmin}) {
 }
 
 /** How many merges and cuts this player made on this cell. */
+// Most edits are logged with no task (Ames 2026-11-14, "0 edits" after a good
+// cut): the game sets the task only at the moment of claiming, so an edit on a
+// claim taken up again (a reload, Play into it) has none. So an edit counts if
+// it names this task, or names none and is the player's own Sandbox edit made
+// while they held this claim.
 async function countEdits(io, taskId, userId) {
-  const rows = await io.sb(`edit_log?task_id=eq.${taskId}&user_id=eq.${encodeURIComponent(userId)}&operation=in.(merge,split)&success=eq.true&select=id`);
+  const uid = encodeURIComponent(userId);
+  const held = await io.sb(`task_assignments?task_id=eq.${taskId}&user_id=eq.${uid}&select=claimed_at,completed_at,released_at&order=claimed_at.desc&limit=1`);
+  const a = Array.isArray(held) ? held[0] : null;
+  const q = (t) => encodeURIComponent(t);
+  let match;
+  if (a && a.claimed_at) {
+    const end = a.completed_at || a.released_at;
+    match = `or=(task_id.eq.${taskId},and(task_id.is.null,timestamp.gte.${q(a.claimed_at)}${end ? `,timestamp.lte.${q(end)}` : ''}))`;
+  } else match = `task_id=eq.${taskId}`;
+  const rows = await io.sb(`edit_log?${match}&user_id=eq.${uid}&dataset=eq.pinky_nf_v2&operation=in.(merge,split)&success=eq.true&select=id`);
   return Array.isArray(rows) ? rows.length : null;
 }
 

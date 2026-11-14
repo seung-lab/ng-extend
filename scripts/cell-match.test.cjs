@@ -96,7 +96,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('it asked the match function for this cell, signed in', asks.length >= 1 && asks[0].action === 'match.check' && asks[0].taskId === 16762 && asks[0].hasToken, asks);
     check('Playing: Practice cell, the Match score, then Merge and Cut with their pieces', /^playing: practice cell .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 200, box);
+    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 230, box);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
