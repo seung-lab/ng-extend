@@ -107,7 +107,12 @@ test('only admins list and decide; Granted tells the player and shows on their s
   assert.strictEqual(after[0].mark, 'granted');
   assert.strictEqual(w.players.length, 1);
   assert.strictEqual(w.players[0].userId, 'u-player');
-  assert.match(w.players[0].title, /You have access to Medial Entorhinal Cortex/);
+  // MEC has its own unlock bell (Ames 2026-11-14), still found by grantLines.
+  assert.match(w.players[0].title, /^🔓 You have access to MEC, the brain's map of space$/);
+  assert.match(w.players[0].body, /grid cells/);
+  assert.match(w.players[0].body, /\(#nge-open-dataset=pni_mec\)/);
+  assert.match(w.players[0].image, /mec-welcome\.jpg$/);
+  assert.doesNotMatch(w.players[0].title + w.players[0].body, /—|–|Ames/);
   const status = await handle('access.datasetStatus', {}, w.io());
   assert.strictEqual(status.requests.pni_mec.mark, 'granted');
 });

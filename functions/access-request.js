@@ -1054,6 +1054,21 @@ const DATASET_CATEGORY = 'Dataset access';
 const DATASET_CAVE_GROUPS = {pni_mec: {id: 217, name: 'MEC_Edit'}};
 /** The short name a player knows a dataset by, for the bell. */
 const DATASET_SHORT = {pni_mec: 'MEC'};
+/** A dataset's own unlock bell (Ames 2026-11-14: "custom notifs that are sent
+ *  to players when they unlock access (especially to MEC)"). The title keeps
+ *  the "🔓 You have access to " start and the body keeps the Explore link:
+ *  grantLines finds grants by both. Others get the plain bell. */
+const DATASET_UNLOCK = {
+  pni_mec: {
+    title: '🔓 You have access to MEC, the brain\'s map of space',
+    image: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/datasets/mec-welcome.jpg',
+    body: 'Congratulations, you\'re in! **You can now edit MEC, the medial entorhinal cortex.**\n\n'
+      + 'This is where the mouse brain keeps its map of space. Its **grid cells** fire in a hexagonal pattern as an animal explores, '
+      + 'and their discovery won the 2014 Nobel Prize. Every cell you proofread here helps show how that map is wired.\n\n'
+      + 'The first time you open MEC, a short tour introduces its seven kinds of cell, from the star shaped stellate cells to the microglia.\n\n'
+      + 'Please edit with care: this is a real dataset, and your edits directly change the connectome. Stuck on a cell? Ask in chat.',
+  },
+};
 const DATASET_BELL = '🔓 Dataset access request';
 const DATASET_MARKS = ['granted', 'declined', 'waiting'];
 const DS_ID = /^[a-z0-9_]{2,40}$/;
@@ -1198,9 +1213,10 @@ async function datasetDecide(a, io) {
     try {
       if (a.mark === 'granted') {
         const short = DATASET_SHORT[row.dataset] || label;
-        await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120), image: DATASET_GRANTED,
-          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
-            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.'
+        const own = DATASET_UNLOCK[row.dataset];
+        await io.notifyPlayer({userId: row.user_id, title: (own ? own.title : `🔓 You have access to ${label}`).slice(0, 120), image: own ? own.image : DATASET_GRANTED,
+          body: (own ? own.body : `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
+            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.')
             // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
             + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${row.dataset})` + said});
       } else {
