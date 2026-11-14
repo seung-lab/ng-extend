@@ -3484,6 +3484,52 @@ const panelStyle = computed(() => ({
     ? { height: resizedHeight.value + 'px', maxHeight: 'none' }
     : {}),
 }));
+
+// ── The Sandbox Playing box (src/sandbox_match.ts) ─────────────────────────
+// Ames 2026-11-14: "combine these boxes, especially for newer players": on the
+// Sandbox the Playing box holds Save view, Skip and Complete, and the slim row
+// steps aside. The box asks here, by event, so each action runs exactly as the
+// row's own button does; and it hears back what the row would show.
+const CM_ACTION = 'nge:cm-cell-action';
+const CM_STATE = 'nge:cm-cell-state';
+/** The cell the box is showing: it says so (nge:cm-cell-ask) each time it changes. */
+let cmShown: number | null = null;
+function cmCell(taskId: number): CellRow | undefined {
+  return myOpenClaims.value.find(c => c.taskId === taskId);
+}
+function onCmAction(e: Event) {
+  const d = (e as CustomEvent).detail || {};
+  const taskId = Number(d.taskId);
+  const cell = cmCell(taskId);
+  if (!cell) { cmTell(taskId, 'That cell is not one of your open claims.'); return; }
+  if (d.action === 'save') void saveClaimView(cell);
+  else if (d.action === 'skip') void playSkip(cell);
+  else if (d.action === 'complete-open') openComplete(cell);
+  else if (d.action === 'complete-cancel') { if (completing.value?.key === cellKey(cell)) completing.value = null; }
+  else if (d.action === 'complete-check') { if (completing.value?.key === cellKey(cell)) void runCrosshairCheck(cell); }
+  else if (d.action === 'complete-submit') {
+    if (completing.value?.key !== cellKey(cell)) return;
+    completing.value.notes = String(d.notes || '').slice(0, 2000);
+    void submitComplete(cell);
+  }
+}
+function cmTell(taskId: number | null, problem?: string) {
+  const c = completing.value;
+  const cell = taskId != null ? cmCell(taskId) : undefined;
+  const mine = c && cell && c.key === cellKey(cell);
+  document.dispatchEvent(new CustomEvent(CM_STATE, { detail: {
+    taskId,
+    saving: taskId != null && savingView.value === taskId,
+    saved: taskId != null && !!savedViewAt.value[taskId],
+    skipping: skipping.value,
+    problem: problem || '',
+    completing: mine ? { checking: c!.checking, ok: c!.ok, message: c!.message, minting: c!.minting, submitting: c!.submitting, link: !!c!.link && linkLooksValid(c!.link) } : null,
+  } }));
+}
+watch([completing, savingView, savedViewAt, skipping], () => { if (cmShown != null) cmTell(cmShown); }, { deep: true });
+function onCmAsk(e: Event) { const t = Number((e as CustomEvent).detail?.taskId); cmShown = t > 0 ? t : null; if (cmShown != null) cmTell(cmShown); }
+onMounted(() => { document.addEventListener(CM_ACTION, onCmAction); document.addEventListener('nge:cm-cell-ask', onCmAsk); });
+onBeforeUnmount(() => { document.removeEventListener(CM_ACTION, onCmAction); document.removeEventListener('nge:cm-cell-ask', onCmAsk); });
 </script>
 
 <template>

@@ -393,14 +393,54 @@ async function review(io, {taskId, me, isAdmin}) {
   return {...result, missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
 }
 
+/** Hint (Ames 2026-11-14: "add a hint that jumps me to the next spot"): one
+ *  piece still wrong, the biggest first; the nth hint gives the nth piece, so
+ *  pressing again moves on. A missed piece comes with its segment to show; a
+ *  merger with a point in the player's cell. Each hint is recorded. */
+async function hint(io, {taskId, me, isAdmin, n, idleSecs}) {
+  const r = await review(io, {taskId, me, isAdmin});
+  if (!r.scorable) return {taskId: r.taskId, scorable: false};
+  const all = [
+    ...(r.missed || []).map(p => ({kind: 'merge', root: p.root, size: p.size, pointNm: p.pointNm})),
+    ...(r.mergers || []).map(p => ({kind: 'cut', size: p.size, pointNm: p.pointNm})),
+  ].filter(p => p.pointNm).sort((a, b) => b.size - a.size);
+  const i = all.length ? (Math.max(0, Math.floor(Number(n) || 0)) % all.length) : -1;
+  const piece = i >= 0 ? all[i] : null;
+  await record(io, {taskId: r.taskId, me, kind: 'hint', idleSecs, score: r.score,
+    detail: piece ? {n: i, kind: piece.kind, size: piece.size, left: all.length} : {left: 0}}).catch(() => {});
+  return {taskId: r.taskId, scorable: true, left: all.length, n: i, piece};
+}
+
+const EVENT_KINDS = new Set(['opened', 'hint_offered', 'complete', 'skip']);
+/** A moment on a Sandbox cell (opened, Hint offered, Complete, Skip), for the lab. */
+async function event(io, {taskId, me, isAdmin, kind, idleSecs, score}) {
+  const id = Number(taskId);
+  if (!Number.isInteger(id) || id <= 0) fail(400, 'Which cell?');
+  if (!me) fail(403, 'Sign in first.');
+  if (!EVENT_KINDS.has(kind)) fail(400, 'Unknown moment.');
+  const task = await loadTask(io, id);
+  if (task.assigned_to !== me.id && !isAdmin) fail(403, 'Only on your own claimed cells.');
+  await record(io, {taskId: id, me, kind, idleSecs, score});
+  return {ok: true};
+}
+
+async function record(io, {taskId, me, kind, idleSecs, score, detail}) {
+  const n = (v, max) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(max, Math.round(Number(v)))) : null);
+  await io.sb('sandbox_play_events', {method: 'POST', headers: {Prefer: 'return=minimal'}, body: JSON.stringify({
+    user_id: me.id, task_id: Number(taskId), kind, idle_secs: n(idleSecs, 86400 * 7), score: n(score, 100), detail: detail || {},
+  })});
+}
+
 async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.check') return check(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
+  if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, idleSecs: args && args.idleSecs});
+  if (action === 'match.event') return event(io, {taskId: args && args.taskId, me, isAdmin, kind: args && args.kind, idleSecs: args && args.idleSecs, score: args && args.score});
   fail(400, `unknown action ${action}`);
 }
 
 module.exports = {
-  handle, check, review, buildKey, keyFor, svPointNm,
+  handle, check, review, hint, event, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
   _reset() { truthSets.clear(); lastResult.clear(); building.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,

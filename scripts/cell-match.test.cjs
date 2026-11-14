@@ -55,11 +55,15 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   });
   // The match function: answers as the test says, and counts the asks.
   const asks = [];
+  const events = [];
+  const HINT = { taskId: 16762, scorable: true, left: 2, n: 0, piece: { kind: 'merge', root: '648518346351009999', size: 60, pointNm: [317516, 163676, 66480] } };
   let answer = ANSWERS.first;
   let reviewAnswer = null;
   await context.route(/ewSandboxMatch/, r => {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     asks.push({ action: input.action, taskId: input.taskId, hasToken: !!input.token });
+    if (input.action === 'match.hint') return r.fulfill(json({ ok: true, data: HINT }));
+    if (input.action === 'match.event') { events.push(input.kind); return r.fulfill(json({ ok: true, data: { ok: true } })); }
     return r.fulfill(json({ ok: true, data: input.action === 'match.review' ? reviewAnswer : answer }));
   });
   await context.route(/supabase\.co/, r => {
@@ -93,10 +97,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
 
     const shown = await waitText(/merge 0%/i, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
-    check('it asked the match function for this cell, signed in', asks.length >= 1 && asks[0].action === 'match.check' && asks[0].taskId === 16762 && asks[0].hasToken, asks);
+    check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
     check('Playing: Practice cell, the Match score, then Merge and Cut with their pieces', /^playing: practice cell .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 230, box);
+    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 300, box);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -186,6 +190,44 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(5000);
     const later = await state();
     check('then back to Live', later.state === 'Live' && !later.good && !later.bad, later);
+
+    // The Playing box (Ames 2026-11-14): the cell, its actions, Complete and Hint in one box.
+    const box1 = await page.evaluate(() => {
+      const c = document.getElementById('nge-cell-match');
+      const vis = sel => { const e = c.querySelector(sel); return !!e && e.offsetParent !== null; };
+      return { id: c.querySelector('.nge-cm-cellid').textContent, icon: vis('.nge-cm-cellbtn'), save: vis('.nge-cm-saveview'), skip: vis('.nge-cm-skipcell'), complete: vis('.nge-cm-complete'), owns: document.body.classList.contains('nge-cm-owns'), nudge: vis('.nge-cm-nudge') };
+    });
+    check('the box shows the cell, the cell icon, Save view, Skip and Complete, and the slim row steps aside', /^Cell 6485183463510\d+$/.test(box1.id) && box1.icon && box1.save && box1.skip && box1.complete && box1.owns && !box1.nudge, box1);
+    await shot('cell-match-playbox.png');
+    const sent = await page.evaluate(() => { const got = []; const f = e => got.push(e.detail.action + ':' + e.detail.taskId); document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-saveview').click(); c.querySelector('.nge-cm-complete').click(); document.removeEventListener('nge:cm-cell-action', f); return got; });
+    check('Save view and Complete ask the Cell Library, for this cell', sent.join(',') === 'save:16762,complete-open:16762', sent);
+    const fin1 = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { text: c.querySelector('.nge-cm-finish').innerText.replace(/\s+/g, ' '), go: c.querySelector('.nge-cm-finish-go').disabled, rows: c.querySelector('.nge-cm-row[data-row="merge"]').offsetParent !== null }; });
+    check('Complete opens in the box: checking the crosshairs, saving the view, not yet ready', /complete this cell checking the crosshairs… saving your view…/i.test(fin1.text) && fin1.go && !fin1.rows, fin1);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, skipping: false, completing: { checking: false, ok: true, message: '', minting: false, submitting: false, link: true } } })));
+    const fin2 = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { text: c.querySelector('.nge-cm-finish').innerText.replace(/\s+/g, ' '), go: c.querySelector('.nge-cm-finish-go').disabled, saved: c.querySelector('.nge-cm-saveview').textContent }; });
+    check('crosshairs inside and the view saved: Complete and Review is ready', /crosshairs are inside your cell\. your view is saved with it\./i.test(fin2.text) && !fin2.go && fin2.saved === 'Saved ✓', fin2);
+    await shot('cell-match-finish.png');
+    const submit = await page.evaluate(() => { let got = null; const f = e => { got = e.detail; }; document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-finish-addnote').click(); c.querySelector('.nge-cm-finish-note').value = 'soma is cut off at the edge'; c.querySelector('.nge-cm-finish-go').click(); document.removeEventListener('nge:cm-cell-action', f); return got; });
+    check('Complete and Review sends the note along', !!submit && submit.action === 'complete-submit' && submit.notes === 'soma is cut off at the edge', submit);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, skipping: false, completing: null } })));
+    const fin3 = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { finish: c.querySelector('.nge-cm-finish').hidden, rows: c.querySelector('.nge-cm-row[data-row="merge"]').offsetParent !== null }; });
+    check('Complete closed: back to Merge and Cut', fin3.finish && fin3.rows, fin3);
+    // A minute with no edit: Hint.
+    await page.evaluate(() => window.__ngeCellMatch.ageHintClock(16762, 61000));
+    await page.waitForTimeout(2600);
+    const nudge = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); return n && !n.hidden ? n.innerText.replace(/\s+/g, ' ') : null; });
+    check('after a minute with no edit, Hint is offered', /stuck\? hint takes you to the next spot to fix\. hint/i.test(nudge || ''), nudge);
+    await shot('cell-match-hint.png');
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
+    await page.waitForTimeout(1500);
+    const hinted = await page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
+    check('Hint shows the piece in gold and says what to do', /gold piece belongs to your cell\. merge it in\. next hint/i.test(hinted.text) && hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), hinted);
+    check('the lab hears: opened, Hint offered (the hint itself is recorded by the server)', events.includes('opened') && events.includes('hint_offered'), events);
+    await shot('cell-match-hint-shown.png');
+    await edit([answer.root]);
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => ({ nudge: document.querySelector('#nge-cell-match .nge-cm-nudge').hidden, layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
+    check('an edit puts Hint away and clears its piece', after.nudge && after.layers.length === 0, after);
     const copy = (await cardText() || '').replace(/−3/, '');
     check('no dashes in the card', !/[\u2013\u2014]|\s-\s/.test(copy), copy);
 
@@ -240,7 +282,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     });
     check('the missed pieces are drawn, the cut pinned', layers.missed && layers.missed.length === 2 && layers.missed.includes('648518346351777001') && layers.pins === 1, layers);
     const pos0 = await page.evaluate(() => Array.from(window.viewer.navigationState.position.value).map(Math.round));
-    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-btn').click());
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-extra .nge-cm-btn').click());
     await page.waitForTimeout(500);
     const pos1 = await page.evaluate(() => Array.from(window.viewer.navigationState.position.value).map(Math.round));
     check('Show flies to the first missed piece', pos0[0] !== 85000 && pos1[0] === 85000 && pos1[1] === 51000 && pos1[2] === 1500, { pos0, pos1 });

@@ -293,6 +293,40 @@ const CSS = `
 @keyframes nge-cm-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID}.nge-cm-checking .nge-cm-score .nge-cm-gauge::after{animation:none;left:30%}#${CARD_ID}.nge-cm-checking .nge-cm-state::before{animation:none}}
 #${CARD_ID} .nge-cm-score .nge-cm-gauge{height:7px;margin:7px 0 6px}
+/* The Playing box (Ames 2026-11-14). */
+body.nge-cm-owns .nge-cl-panel--slim{display:none !important}
+#${CARD_ID} .nge-cm-cellbtn{display:grid;place-items:center;width:26px;height:26px;padding:0;border:1px solid rgba(127,190,255,.35);border-radius:6px;background:rgba(127,190,255,.08);color:#bfe6ff}
+#${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.2);color:#fff}
+#${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
+#${CARD_ID} .nge-cm-nudge{display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
+#${CARD_ID} .nge-cm-nudge[hidden]{display:none}
+#${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
+#${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
+#${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
+#${CARD_ID} .nge-cm-play{display:flex;gap:6px;align-items:center;margin-top:8px;padding-top:9px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-play .nge-cm-btn{margin-left:0}
+#${CARD_ID} .nge-cm-btn[hidden]{display:none}
+#${CARD_ID} .nge-cm-play .nge-cm-btn,#${CARD_ID} .nge-cm-finish-actions .nge-cm-btn,#${CARD_ID} .nge-cm-nudge .nge-cm-btn{padding:7px 10px;border-radius:6px;font:600 12.5px/1 Inter,system-ui,sans-serif;letter-spacing:0;text-transform:none;white-space:nowrap}
+#${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-go{margin-left:auto;border-color:#3eecbe;background:rgba(20,110,80,.55);color:#eafff7}
+#${CARD_ID} .nge-cm-play .nge-cm-complete:hover,#${CARD_ID} .nge-cm-finish-go:hover:not(:disabled){background:rgba(24,140,100,.7)}
+#${CARD_ID} .nge-cm-btn:disabled{opacity:.5;cursor:default}
+#${CARD_ID}.nge-cm-idle .nge-cm-play,#${CARD_ID}.nge-cm-idle .nge-cm-cellid,#${CARD_ID}.nge-cm-idle .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-play,#${CARD_ID}.nge-cm-reviewing .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellid{display:none}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-nudge-text{display:none}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
+#${CARD_ID}.nge-cm-finishing .nge-cm-play,#${CARD_ID}.nge-cm-finishing .nge-cm-nudge,#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="cut"]{display:none}
+#${CARD_ID} .nge-cm-finish{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:9px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-finish[hidden]{display:none}
+#${CARD_ID} .nge-cm-finish-title{font:600 12px/1 Orbitron,Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#d6e2f5}
+#${CARD_ID} .nge-cm-finish-line{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.35}
+#${CARD_ID} .nge-cm-finish-mark{flex:0 0 15px;height:15px;margin-top:1px}
+#${CARD_ID} .nge-cm-finish-line.nge-cm-wait .nge-cm-finish-mark{border:1.5px solid rgba(127,216,255,.35);border-top-color:#7fd8ff;border-radius:50%;box-sizing:border-box;animation:nge-cm-spin 1.8s linear infinite}
+#${CARD_ID} .nge-cm-finish-addnote{align-self:flex-start;padding:0;border:none;background:none;color:#7fd8ff;font:500 12.5px/1.4 Inter,system-ui,sans-serif;cursor:pointer}
+#${CARD_ID} .nge-cm-finish-note{width:100%;box-sizing:border-box;resize:vertical;padding:6px 8px;border:1px solid rgba(255,255,255,.2);border-radius:6px;background:rgba(0,0,0,.35);color:#e6edf7;font:12.5px/1.45 Inter,system-ui,sans-serif}
+#${CARD_ID} .nge-cm-finish-left{margin:0;font-size:12.5px;line-height:1.45;color:#a9c3e0}
+#${CARD_ID} .nge-cm-finish-actions{display:flex;gap:6px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
 #${CARD_ID} .nge-cm-row[data-row="merge"]{margin-top:2px;border-top:1px solid rgba(127,190,255,.18);padding-top:7px}
 #${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:58px 1fr auto;align-items:baseline}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:4px 0 7px}
@@ -404,6 +438,36 @@ function mountInfo(host: HTMLElement) {
   infoApp.mount(host);
 }
 
+// ── The Playing box (Ames 2026-11-14) ───────────────────────────────────────
+// "Combine these boxes, especially for newer players": on the Sandbox this box
+// holds the cell (its ID, a cell icon that opens the Cell Library), Save view,
+// Skip and Complete, and the Cell Library's slim row steps aside. The actions
+// run in the Cell Library itself (CellLibraryPanel, nge:cm-cell-action), so
+// they work exactly as its own buttons do. After a minute with no edit, Hint
+// takes the player to the next piece to fix. The lab sees when (play events).
+const CELL_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 8.8V3M9.4 10.2 5 6.5M14.6 10.2 19 6M9.5 14 4.5 17.5M14.6 13.8 18 18.5M12 15.2V21"/></svg>';
+const BULB_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7fd8ff" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/></svg>';
+const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
+  + '<span class="nge-cm-nudge-text">Stuck? Hint takes you to the next spot to fix.</span>'
+  + '<button type="button" class="nge-cm-btn nge-cm-hint-btn">Hint</button></div>';
+const PLAY_HTML = '<div class="nge-cm-play">'
+  + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save view</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>';
+const OK_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="#5fe3a1" stroke-width="1.4"/><path d="M4.8 8.2 7 10.3l4.2-4.5" fill="none" stroke="#5fe3a1" stroke-width="1.6"/></svg>';
+const BAD_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="#ff8a9e" stroke-width="1.4"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#ff8a9e" stroke-width="1.6"/></svg>';
+const FINISH_HTML = '<div class="nge-cm-finish" hidden>'
+  + '<div class="nge-cm-finish-title">Complete this cell</div>'
+  + '<div class="nge-cm-finish-line nge-cm-finish-xh"><span class="nge-cm-finish-mark"></span><span class="nge-cm-finish-words"></span></div>'
+  + '<div class="nge-cm-finish-line nge-cm-finish-view"><span class="nge-cm-finish-mark"></span><span class="nge-cm-finish-words"></span></div>'
+  + '<button type="button" class="nge-cm-finish-addnote">+ Add a note</button>'
+  + '<textarea class="nge-cm-finish-note" rows="3" maxlength="2000" placeholder="Anything about this cell (optional)" hidden></textarea>'
+  + '<p class="nge-cm-finish-left" hidden></p>'
+  + '<div class="nge-cm-finish-actions">'
+  + '<button type="button" class="nge-cm-btn nge-cm-finish-back">Keep working</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-finish-check" hidden>Check again</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-finish-go">Complete and Review</button></div></div>';
+
 function card(): HTMLElement {
   ensureStyle();
   let el = document.getElementById(CARD_ID);
@@ -415,12 +479,14 @@ function card(): HTMLElement {
   el.setAttribute('aria-live', 'polite');
   el.title = 'Your Merge and Cut together, half each. Merge: the missing pieces you have merged in. Cut: the wrong parts you have cut off.';
   el.innerHTML = '<div class="nge-cm-head"><span class="nge-cm-dot"></span><span class="nge-cm-title">' + TITLE_HTML + '</span>'
+    + '<button type="button" class="nge-cm-tool nge-cm-cellbtn" aria-label="Open the Cell Library" title="Open the Cell Library">' + CELL_SVG + '</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-i" aria-label="What do these numbers mean?" aria-pressed="false" aria-controls="nge-cell-match-info" title="What do these numbers mean?">i</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the score"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. A small Match button stays to open it again.">×</button></div>'
     + '<div class="nge-cm-sub" hidden></div>'
+    + '<div class="nge-cm-cellid" hidden></div>'
     + '<div class="nge-cm-info" id="nge-cell-match-info"></div>'
-    + scoreHtml + rowHtml('merge') + rowHtml('cut') + '<div class="nge-cm-extra"></div>';
+    + scoreHtml + NUDGE_HTML + rowHtml('merge') + rowHtml('cut') + PLAY_HTML + FINISH_HTML + '<div class="nge-cm-extra"></div>';
   mountInfo(el.querySelector('.nge-cm-info') as HTMLElement);
   el.querySelector('.nge-cm-head')!.setAttribute('title', 'Drag to move. Double click to put it back.');
   makeDraggable(el);
@@ -433,6 +499,7 @@ function card(): HTMLElement {
     if (on && card0.classList.contains('nge-cm-min')) setMin(card0, false);
   });
   el.querySelector('.nge-cm-min-btn')!.addEventListener('click', () => setMin(card0, !card0.classList.contains('nge-cm-min')));
+  wirePlayBox(el);
   setMin(el, store.get(MIN_KEY) === '1', true);
   document.body.appendChild(el);
   return el;
@@ -497,6 +564,7 @@ function idle(state: string, note: string, action = false) {
   if (b && b.textContent !== label) b.textContent = label;
   place(el);
   shownFor = null;
+  tellShown(null);
 }
 
 // ── Drag and drop (Ames 2026-11-13) ─────────────────────────────────────────
@@ -569,6 +637,7 @@ function hide() {
   document.getElementById(CARD_ID)?.remove();
   removeChip();
   shownFor = null;
+  tellShown(null);
 }
 
 // ── Close and reopen (Ames 2026-11-13) ──────────────────────────────────────
@@ -729,8 +798,13 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
     showRow(el, r!, 'cut', fresh);
     if (!fresh) ping(el);
   }
+  const idLine = el.querySelector('.nge-cm-cellid') as HTMLElement;
+  const rootNow = r?.root || '';
+  idLine.textContent = rootNow ? `Cell ${rootNow}` : '';
+  idLine.hidden = !rootNow;
   place(el);
   shownFor = taskId;
+  tellShown(taskId);
 }
 
 async function ask(taskId: number) {
@@ -758,6 +832,222 @@ async function ask(taskId: number) {
       if (r && r.scorable) show(taskId, r, false); else hide();
     }
   }
+}
+
+// ── The Playing box: actions, Complete, Hint, play moments ─────────────────
+const HINT_AFTER_MS = 60_000;
+const HINT_SEG_LAYER = 'Hint piece';
+const HINT_PIN_LAYER = 'Hint spot';
+interface Clock { opened: number; lastEdit: number; offered: boolean; n: number }
+const clocks = new Map<number, Clock>();
+let finishing = false;
+let toldShown: number | null | undefined;
+
+/** The Cell Library hears which cell the box shows, and says how its buttons stand. */
+function tellShown(taskId: number | null) {
+  if (toldShown === taskId) return;
+  toldShown = taskId;
+  document.dispatchEvent(new CustomEvent('nge:cm-cell-ask', { detail: { taskId: taskId ?? 0 } }));
+  syncOwns();
+}
+/** While the box shows a cell, the Cell Library's slim row steps aside. */
+function syncOwns() {
+  const el = document.getElementById(CARD_ID);
+  const owns = !!el && !el.classList.contains('nge-cm-idle') && shownFor != null;
+  document.body.classList.toggle('nge-cm-owns', owns);
+}
+function cellAction(action: string, extra: Record<string, unknown> = {}) {
+  const taskId = shownFor ?? onScreen;
+  if (taskId == null) return;
+  document.dispatchEvent(new CustomEvent('nge:cm-cell-action', { detail: { action, taskId, ...extra } }));
+}
+function idleSecs(taskId: number): number | null {
+  const c = clocks.get(taskId);
+  return c ? Math.round((Date.now() - Math.max(c.opened, c.lastEdit)) / 1000) : null;
+}
+function moment(taskId: number, kind: 'opened' | 'hint_offered' | 'complete' | 'skip') {
+  const r = last.get(taskId);
+  const score = r && r.scorable ? matchScore(r) : null;
+  void secureWrite('match.event', { taskId, kind, idleSecs: idleSecs(taskId), score }).catch((e: any) => console.debug('[cell-match] no moment', kind, e?.message));
+}
+function noteOpened(taskId: number) {
+  if (clocks.has(taskId)) return;
+  const now = Date.now();
+  clocks.set(taskId, { opened: now, lastEdit: now, offered: false, n: 0 });
+  moment(taskId, 'opened');
+}
+function noteEdit(taskId: number) {
+  const c = clocks.get(taskId);
+  if (c) { c.lastEdit = Date.now(); c.offered = false; }
+  removeHintLayers();
+  const el = document.getElementById(CARD_ID);
+  if (el) resetNudge(el);
+}
+function resetNudge(el: HTMLElement) {
+  const n = el.querySelector('.nge-cm-nudge') as HTMLElement;
+  n.hidden = true;
+  (n.querySelector('.nge-cm-nudge-text') as HTMLElement).textContent = 'Stuck? Hint takes you to the next spot to fix.';
+  const b = n.querySelector('.nge-cm-hint-btn') as HTMLButtonElement;
+  b.textContent = 'Hint'; b.disabled = false;
+}
+/** A minute with no edit (Ames 2026-11-14: "introduce hint after like 1 minute"). */
+function maybeOfferHint(taskId: number) {
+  const c = clocks.get(taskId);
+  const el = document.getElementById(CARD_ID);
+  if (!c || !el || c.offered || reviewing || finishing || shownFor !== taskId) return;
+  if (Date.now() - Math.max(c.opened, c.lastEdit) < HINT_AFTER_MS) return;
+  const r = last.get(taskId);
+  if (!r || !r.scorable) return;
+  c.offered = true;
+  (el.querySelector('.nge-cm-nudge') as HTMLElement).hidden = false;
+  moment(taskId, 'hint_offered');
+}
+interface HintPiece { kind: 'merge' | 'cut'; root?: string; size: number; pointNm: number[] }
+async function pressHint(el: HTMLElement) {
+  const taskId = shownFor;
+  if (taskId == null) return;
+  const c = clocks.get(taskId);
+  const b = el.querySelector('.nge-cm-hint-btn') as HTMLButtonElement;
+  const text = el.querySelector('.nge-cm-nudge-text') as HTMLElement;
+  b.disabled = true; b.textContent = 'Finding…';
+  try {
+    const h = await secureWrite<{ left: number; piece: HintPiece | null }>('match.hint', { taskId, n: c ? c.n : 0, idleSecs: idleSecs(taskId) });
+    if (c) c.n++;
+    if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; return; }
+    showHintPiece(h.piece);
+    text.textContent = h.piece.kind === 'merge'
+      ? 'This gold piece belongs to your cell. Merge it in.'
+      : 'Your cell runs into another cell at the red pin. Cut it off there.';
+    b.textContent = h.left > 1 ? 'Next hint' : 'Show again';
+  } catch (e: any) {
+    console.debug('[cell-match] no hint', e?.message);
+    text.textContent = 'No hint right now. Try again in a moment.';
+    b.textContent = 'Hint';
+  } finally { b.disabled = false; }
+}
+let hintPinTimer: number | undefined;
+function showHintPiece(p: HintPiece) {
+  const v = (window as any).viewer;
+  if (!v?.layerSpecification) return;
+  removeHintLayers();
+  flyTo(p.pointNm);
+  if (p.kind === 'merge' && p.root) {
+    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_SEG_LAYER, { type: 'segmentation', source: SANDBOX_SOURCE, segments: [p.root], segmentColors: { [p.root]: GOLD }, objectAlpha: 1 })); }
+    catch (e) { console.debug('[cell-match] hint layer', e); }
+  }
+  const point = toView(p.pointNm);
+  if (!point) return;
+  const pin = [{ type: 'point', id: 'hint', point, description: p.kind === 'merge' ? 'Merge this piece in' : 'Cut here' }];
+  const color = p.kind === 'merge' ? GOLD : RED;
+  const place = () => {
+    for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === HINT_PIN_LAYER) v.layerManager.removeManagedLayer(ml);
+    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: 5, annotations: pin })); }
+    catch (e) { console.debug('[cell-match] hint pin', e); }
+  };
+  place();
+  // A new annotation layer takes its point only once it knows the view's space (as the review's pins).
+  window.clearInterval(hintPinTimer);
+  let tries = 0;
+  hintPinTimer = window.setInterval(() => {
+    const ml = (v.layerManager?.managedLayers ?? []).find((x: any) => x.name === HINT_PIN_LAYER);
+    let n = -1;
+    try { n = ml?.layer?.localAnnotations ? ml.layer.localAnnotations.toJSON().length : -1; } catch { /* loading */ }
+    if (!ml || n === 1 || ++tries > 10) { window.clearInterval(hintPinTimer); return; }
+    if (tries > 1) place();
+  }, 700);
+}
+
+/** Complete inside the box: the Cell Library runs the checks and the save; the box shows them. */
+function openFinish(el: HTMLElement) {
+  finishing = true;
+  el.classList.add('nge-cm-finishing');
+  const f = el.querySelector('.nge-cm-finish') as HTMLElement;
+  f.hidden = false;
+  (f.querySelector('.nge-cm-finish-note') as HTMLTextAreaElement).value = '';
+  (f.querySelector('.nge-cm-finish-note') as HTMLElement).hidden = true;
+  (f.querySelector('.nge-cm-finish-addnote') as HTMLElement).hidden = false;
+  if (el.classList.contains('nge-cm-min')) setMin(el, false, true);
+  const taskId = shownFor;
+  const r = taskId != null ? last.get(taskId) : undefined;
+  const left = f.querySelector('.nge-cm-finish-left') as HTMLElement;
+  const parts: string[] = [];
+  if (r?.missing && r.missing.left > 0) parts.push(`${plural(r.missing.left, 'piece')} to merge in`);
+  if (r?.extra && r.extra.left > 0) parts.push(`${plural(r.extra.left, 'part')} to cut off`);
+  left.textContent = parts.length ? `You still have ${parts.join(' and ')}. You can finish now, and Review will show you where they are.` : '';
+  left.hidden = !parts.length;
+  renderFinish(el, { checking: true, ok: false, message: '', minting: true, submitting: false, link: false });
+  cellAction('complete-open');
+}
+function closeFinish(el: HTMLElement) {
+  finishing = false;
+  el.classList.remove('nge-cm-finishing');
+  (el.querySelector('.nge-cm-finish') as HTMLElement).hidden = true;
+}
+interface FinishState { checking: boolean; ok: boolean; message: string; minting: boolean; submitting: boolean; link: boolean }
+function finishLine(line: HTMLElement, state: 'wait' | 'ok' | 'bad', words: string) {
+  line.classList.toggle('nge-cm-wait', state === 'wait');
+  (line.querySelector('.nge-cm-finish-mark') as HTMLElement).innerHTML = state === 'ok' ? OK_SVG : state === 'bad' ? BAD_SVG : '';
+  (line.querySelector('.nge-cm-finish-words') as HTMLElement).textContent = words;
+}
+function renderFinish(el: HTMLElement, c: FinishState) {
+  const f = el.querySelector('.nge-cm-finish') as HTMLElement;
+  const xh = f.querySelector('.nge-cm-finish-xh') as HTMLElement;
+  if (c.checking) finishLine(xh, 'wait', 'Checking the crosshairs…');
+  else if (c.ok) finishLine(xh, 'ok', 'The crosshairs are inside your cell.');
+  else finishLine(xh, 'bad', c.message || 'Put the crosshairs inside your cell, then Check again.');
+  const view = f.querySelector('.nge-cm-finish-view') as HTMLElement;
+  if (c.minting) finishLine(view, 'wait', 'Saving your view…');
+  else if (c.link) finishLine(view, 'ok', 'Your view is saved with it.');
+  else finishLine(view, 'bad', 'Your view could not be saved. Try again in a moment.');
+  (f.querySelector('.nge-cm-finish-check') as HTMLElement).hidden = c.checking || c.ok;
+  const go = f.querySelector('.nge-cm-finish-go') as HTMLButtonElement;
+  go.disabled = c.submitting || c.checking || c.minting || !c.ok || !c.link;
+  go.textContent = c.submitting ? 'Saving…' : 'Complete and Review';
+}
+/** What the Cell Library says about the cell on screen. */
+function onCellState(e: Event) {
+  const d = (e as CustomEvent).detail || {};
+  const el = document.getElementById(CARD_ID);
+  if (!el || Number(d.taskId) !== shownFor) return;
+  const save = el.querySelector('.nge-cm-saveview') as HTMLButtonElement;
+  save.disabled = !!d.saving;
+  save.textContent = d.saving ? 'Saving…' : d.saved ? 'Saved ✓' : 'Save view';
+  const skip = el.querySelector('.nge-cm-skipcell') as HTMLButtonElement;
+  skip.disabled = !!d.skipping;
+  skip.textContent = d.skipping ? 'Skipping…' : 'Skip';
+  if (d.completing) { if (!finishing) openFinishShown(el); renderFinish(el, d.completing as FinishState); }
+  else if (finishing) closeFinish(el);
+}
+/** The library opened Complete by itself (its own button): show it here too. */
+function openFinishShown(el: HTMLElement) {
+  finishing = true;
+  el.classList.add('nge-cm-finishing');
+  (el.querySelector('.nge-cm-finish') as HTMLElement).hidden = false;
+}
+function wirePlayBox(el: HTMLElement) {
+  el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
+  el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
+  el.querySelector('.nge-cm-saveview')!.addEventListener('click', () => cellAction('save'));
+  el.querySelector('.nge-cm-skipcell')!.addEventListener('click', () => {
+    if (shownFor != null) moment(shownFor, 'skip');
+    removeHintLayers();
+    cellAction('skip');
+  });
+  el.querySelector('.nge-cm-complete')!.addEventListener('click', () => openFinish(el));
+  el.querySelector('.nge-cm-finish-back')!.addEventListener('click', () => { cellAction('complete-cancel'); closeFinish(el); });
+  el.querySelector('.nge-cm-finish-check')!.addEventListener('click', () => cellAction('complete-check'));
+  el.querySelector('.nge-cm-finish-addnote')!.addEventListener('click', e => {
+    (e.currentTarget as HTMLElement).hidden = true;
+    const t = el.querySelector('.nge-cm-finish-note') as HTMLTextAreaElement;
+    t.hidden = false; t.focus();
+  });
+  // Typing a note must not reach the game's keyboard shortcuts.
+  for (const k of ['keydown', 'keyup', 'keypress']) el.querySelector('.nge-cm-finish-note')!.addEventListener(k, e => e.stopPropagation());
+  el.querySelector('.nge-cm-finish-go')!.addEventListener('click', () => {
+    if (shownFor != null) moment(shownFor, 'complete');
+    removeHintLayers();
+    cellAction('complete-submit', { notes: (el.querySelector('.nge-cm-finish-note') as HTMLTextAreaElement).value.trim() });
+  });
 }
 
 // ── The review after Complete ───────────────────────────────────────────────
@@ -904,6 +1194,12 @@ function flyTo(nm: number[]) {
   } catch { /* the view stays put */ }
 }
 
+function removeHintLayers() {
+  const v = (window as any).viewer;
+  for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
+    if (ml.name === HINT_SEG_LAYER || ml.name === HINT_PIN_LAYER) { try { v.layerManager.removeManagedLayer(ml); } catch { /* gone */ } }
+  }
+}
 function removeReviewLayers() {
   const v = (window as any).viewer;
   for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
@@ -915,6 +1211,7 @@ function addReviewLayers(r: ReviewResult) {
   const v = (window as any).viewer;
   if (!v?.layerSpecification) return;
   removeReviewLayers();
+  removeHintLayers();
   const missed = r.missed ?? [];
   if (missed.length) {
     const colors = Object.fromEntries(missed.map(p => [p.root, GOLD]));
@@ -1054,8 +1351,10 @@ function tick() {
     if (onSandbox()) idle('Standby', standbyNote(), true); else hide();
     return;
   }
+  maybeOfferHint(id);
   if (id === onScreen) return;
   onScreen = id;
+  noteOpened(id);
   const r = last.get(id);
   if (r) show(id, r, false);
   void ask(id);
@@ -1072,6 +1371,7 @@ export function startSandboxMatch(d: Deps) {
     if (id == null) return;
     const roots: string[] = Array.isArray(det.roots) ? det.roots.map(String) : [];
     if (roots.length) aliases.set(id, new Set([...(aliases.get(id) ?? []), ...roots]));
+    noteEdit(id);
     if (editTimer) clearTimeout(editTimer);
     // Done at once, but not yet judged: plain until the reading says good or wrong.
     editKind = det.kind;
@@ -1084,8 +1384,9 @@ export function startSandboxMatch(d: Deps) {
     flash(doneText, 'plain', DONE_MS);
     editTimer = setTimeout(() => { editTimer = null; onScreen = id; void ask(id); }, EDIT_WAIT_MS);
   }) as EventListener);
-  setInterval(() => { if (!document.hidden) tick(); }, 2000);
+  document.addEventListener('nge:cm-cell-state', onCellState);
+  setInterval(() => { if (!document.hidden) { tick(); syncOwns(); } }, 2000);
 }
 
 /** For headless checks. */
-(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview };
+(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } } };

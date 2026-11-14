@@ -131,6 +131,7 @@ function world() {
     if ((m = p.match(/^sandbox_match_keys\?task_id=eq\.(\d+)/))) return db.keys[m[1]] ? [JSON.parse(JSON.stringify(db.keys[m[1]]))] : [];
     if (p.startsWith('sandbox_match_keys?on_conflict')) { const k = JSON.parse(init.body); db.keys[k.task_id] = k; return null; }
     if (p === 'rpc/sandbox_match_record') { db.records.push(JSON.parse(init.body)); return null; }
+    if (p === 'sandbox_play_events') { (db.events = db.events || []).push(JSON.parse(init.body)); return null; }
     if ((m = p.match(/^task_assignments\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&/))) return (db.held || []).filter(h => h.task_id === +m[1] && h.user_id === decodeURIComponent(m[2]));
     // edit_log: this task's own, or (with a claim) untagged ones in its time.
     if ((m = p.match(/^edit_log\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&dataset=eq\.pinky_nf_v2&operation=in\.\(merge,split\)/))) return (db.edits || []).filter(e => e.task_id === +m[1] && e.user_id === decodeURIComponent(m[2]));
@@ -327,4 +328,36 @@ test('edits with no task count when made while the player held this claim', asyn
   ];
   const r = await M.check(w.io, {taskId: 1, me: ME});
   assert.equal(r.edits, 3);
+});
+
+test('hint: the biggest piece still wrong, the next one on the next press, each recorded', async () => {
+  M._reset();
+  const w = world();
+  const first = await M.hint(w.io, {taskId: 1, me: ME, n: 0, idleSecs: 75});
+  assert.equal(first.left, 2);
+  assert.ok(['merge', 'cut'].includes(first.piece.kind));
+  assert.equal(first.piece.pointNm.length, 3);
+  if (first.piece.kind === 'merge') assert.equal(first.piece.root, w.ID.A);
+  const second = await M.hint(w.io, {taskId: 1, me: ME, n: 1});
+  assert.notEqual(second.piece.kind, first.piece.kind);
+  // Past the end it goes round again.
+  assert.equal((await M.hint(w.io, {taskId: 1, me: ME, n: 2})).piece.kind, first.piece.kind);
+  assert.equal(w.db.events.length, 3);
+  assert.deepEqual([w.db.events[0].kind, w.db.events[0].user_id, w.db.events[0].task_id, w.db.events[0].idle_secs], ['hint', ME.id, 1, 75]);
+  // All fixed: no piece.
+  w.sandbox.edit({S2: range(1, 160), N2: range(300, 359), B: range(161, 200)});
+  const none = await M.hint(w.io, {taskId: 1, me: ME, n: 0});
+  assert.deepEqual([none.left, none.piece], [0, null]);
+  // Someone else's cell: no hint.
+  await assert.rejects(M.hint(w.io, {taskId: 3, me: ME}), {status: 403});
+});
+
+test('events: only known moments, only on your own cell', async () => {
+  M._reset();
+  const w = world();
+  await M.handle({action: 'match.event', args: {taskId: 1, kind: 'opened', idleSecs: 0, score: 12}, me: ME, io: w.io});
+  assert.deepEqual([w.db.events[0].kind, w.db.events[0].score], ['opened', 12]);
+  await assert.rejects(M.event(w.io, {taskId: 1, me: ME, kind: 'drop table'}), {status: 400});
+  await assert.rejects(M.event(w.io, {taskId: 3, me: ME, kind: 'skip'}), {status: 403});
+  await assert.rejects(M.event(w.io, {taskId: 1, me: null, kind: 'skip'}), {status: 403});
 });
