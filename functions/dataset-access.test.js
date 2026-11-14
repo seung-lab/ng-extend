@@ -107,7 +107,12 @@ test('only admins list and decide; Granted tells the player and shows on their s
   assert.strictEqual(after[0].mark, 'granted');
   assert.strictEqual(w.players.length, 1);
   assert.strictEqual(w.players[0].userId, 'u-player');
-  assert.match(w.players[0].title, /You have access to Medial Entorhinal Cortex/);
+  // MEC has its own unlock bell (Ames 2026-11-14), still found by grantLines.
+  assert.match(w.players[0].title, /^🔓 You have access to MEC, the brain's map of space$/);
+  assert.match(w.players[0].body, /grid cells/);
+  assert.match(w.players[0].body, /\(#nge-open-dataset=pni_mec\)/);
+  assert.match(w.players[0].image, /mec-welcome\.jpg$/);
+  assert.doesNotMatch(w.players[0].title + w.players[0].body, /—|–|Ames/);
   const status = await handle('access.datasetStatus', {}, w.io());
   assert.strictEqual(status.requests.pni_mec.mark, 'granted');
 });
@@ -195,4 +200,18 @@ test('a grant is said in chat once, on the next visit', async () => {
   assert.equal((await handle('access.grantLines', {}, io)).announced, 0);
   assert.ok(asked[0].includes('target_id=eq.u-1') && asked[0].includes('send_at=gte.2026-10-30'));
   assert.equal((await handle('access.grantLines', {}, {sb, me: null})).announced, 0);
+});
+
+test('access.datasetTestBell: the unlock bell, to the admin who asks, titled Test so no chat line is said', async () => {
+  const w = world();
+  await assert.rejects(handle('access.datasetTestBell', {dataset: 'pni_mec', label: 'Medial Entorhinal Cortex'}, w.io()), /Admins only/);
+  assert.deepStrictEqual(await handle('access.datasetTestBell', {dataset: 'pni_mec', label: 'Medial Entorhinal Cortex'}, w.io({isAdmin: true})), {sent: true});
+  const b = w.players[0];
+  assert.strictEqual(b.userId, 'u-player');
+  assert.match(b.title, /^Test: 🔓 You have access to MEC/);
+  assert.match(b.body, /we prioritize proofreading axons first/);
+  assert.match(b.body, /support@eyewire\.org/);
+  assert.match(b.body, /\(#nge-open-dataset=pni_mec\)$/);
+  assert.ok(b.body.length <= 1500, b.body.length);
+  await assert.rejects(handle('access.datasetTestBell', {dataset: 'bad id!'}, w.io({isAdmin: true})), /Unknown dataset/);
 });

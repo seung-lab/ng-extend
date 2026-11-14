@@ -1054,6 +1054,34 @@ const DATASET_CATEGORY = 'Dataset access';
 const DATASET_CAVE_GROUPS = {pni_mec: {id: 217, name: 'MEC_Edit'}};
 /** The short name a player knows a dataset by, for the bell. */
 const DATASET_SHORT = {pni_mec: 'MEC'};
+/** A dataset's own unlock bell (Ames 2026-11-14: "custom notifs that are sent
+ *  to players when they unlock access (especially to MEC)"). The title keeps
+ *  the "🔓 You have access to " start and the body keeps the Explore link:
+ *  grantLines finds grants by both. Others get the plain bell. */
+const DATASET_UNLOCK = {
+  pni_mec: {
+    title: '🔓 You have access to MEC, the brain\'s map of space',
+    image: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/datasets/mec-welcome.jpg',
+    body: 'Congratulations, you\'re in! **You can now edit MEC, the medial entorhinal cortex.**\n\n'
+      + 'This is one of the regions where the mouse brain keeps its map of space. Its **grid cells** fire in a hexagonal pattern as an animal explores, '
+      + 'and their discovery won the 2014 Nobel Prize. Every cell you proofread here helps show how that map is wired.\n\n'
+      + 'The first time you open MEC, a short tour introduces its seven kinds of cell, from the star shaped stellate cells to the microglia. '
+      + '**In MEC, we prioritize proofreading axons first. Feel free to cut the axon as you proofread, as long as you join it back to the cell before completion.** '
+      + 'Once the axon is mapped fully, you can mark the cell complete.\n\n'
+      + 'Please edit with care: this is a real dataset, and your edits directly change the connectome. '
+      + 'Stuck on a cell? Ask in chat or drop us an email at support@eyewire.org.',
+  },
+};
+/** The bell a player gets when a dataset is unlocked: its own, or the plain one. */
+function unlockBell(dataset, label, said) {
+  const short = DATASET_SHORT[dataset] || label;
+  const own = DATASET_UNLOCK[dataset];
+  return {title: (own ? own.title : `🔓 You have access to ${label}`).slice(0, 120), image: own ? own.image : DATASET_GRANTED,
+    body: (own ? own.body : `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
+      + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.')
+      // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
+      + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${dataset})` + said};
+}
 const DATASET_BELL = '🔓 Dataset access request';
 const DATASET_MARKS = ['granted', 'declined', 'waiting'];
 const DS_ID = /^[a-z0-9_]{2,40}$/;
@@ -1197,12 +1225,7 @@ async function datasetDecide(a, io) {
     const said = note ? '\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
     try {
       if (a.mark === 'granted') {
-        const short = DATASET_SHORT[row.dataset] || label;
-        await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120), image: DATASET_GRANTED,
-          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
-            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.'
-            // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
-            + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${row.dataset})` + said});
+        await io.notifyPlayer({userId: row.user_id, ...unlockBell(row.dataset, label, said)});
       } else {
         await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),
           body: `Not yet, sorry: your request for ${mdText(label)} was looked at, and access was not given this time.` + said});
@@ -1210,6 +1233,21 @@ async function datasetDecide(a, io) {
     } catch (e) { console.warn('[dataset access] player bell failed', e && e.message); }
   }
   return datasetList(a, io);
+}
+
+// ── Send me a test (Ames 2026-11-14: "send me a test as well"): the
+// unlock bell for a dataset, to the admin who asks. The title starts
+// "Test: " so grantLines never takes it for a real grant and says so in chat.
+//   access.datasetTestBell  admins: {dataset, label} -> {sent: true}.
+async function datasetTestBell(a, io) {
+  needAdmin(io.isAdmin);
+  if (!io.me) fail(401, 'Sign in first.');
+  const dataset = String(a.dataset || '');
+  if (!DS_ID.test(dataset)) fail(400, 'Unknown dataset.');
+  const label = cleanText(a.label, 60, 'The dataset name') || DATASET_SHORT[dataset] || dataset;
+  const bell = unlockBell(dataset, label, '');
+  await io.notifyPlayer({userId: io.me.id, ...bell, title: ('Test: ' + bell.title).slice(0, 120)});
+  return {sent: true};
 }
 
 // ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
@@ -1283,6 +1321,7 @@ async function handle(action, args, io) {
   if (action === 'access.dataset') return datasetRequest(a, io);
   if (action === 'access.datasetList') return datasetList(a, io);
   if (action === 'access.datasetDecide') return datasetDecide(a, io);
+  if (action === 'access.datasetTestBell') return datasetTestBell(a, io);
   if (action === 'access.betaStatus') return betaStatus(a, io);
   if (action === 'access.beta') return beta(a, io);
   if (action === 'access.linkInvite') return linkInvite(a, io);

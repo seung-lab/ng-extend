@@ -522,6 +522,13 @@ const askOpen = computed(() => !!ask.value && !!open.value?.p && ask.value.email
 const decide = (c: Card, mark: 'granted' | 'declined', byHand = false) => run(mark, async () => {
   dsRows.value = await decideDatasetRequest(c.ds!.id, mark, dsNote.value, byHand); dsNote.value = '';
 });
+// Send me a test (Ames 2026-11-14): the notification this dataset's grant
+// sends, to my own bell, titled "Test:" so nobody else is told.
+const testSent = ref('');
+const testBell = (c: Card) => run('test', async () => {
+  await secureWrite('access.datasetTestBell', { dataset: c.ds!.dataset, label: c.ds!.label });
+  testSent.value = c.ds!.id;
+});
 const addNote = (c: Card) => run('note', async () => {
   const text = noteDraft.value.trim(); if (!text) throw new Error('Write a note first.');
   notes.value = (await secureWrite<Record<string, Note[]>>('access.note', { key: c.key, text, name: nameOf(c) })) || {}; noteDraft.value = '';
@@ -847,11 +854,12 @@ const opName = (e: RecentEdit) => {
           </div>
           <input v-model="dsNote" class="ah-input" maxlength="500" placeholder="A note for them (optional)" />
           <div class="ah-actions">
-            <button v-if="open.ds.caveGroup" class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="decide(open, 'granted')">{{ busy === 'granted' ? 'Granting…' : `Grant (adds to ${open.ds.caveGroup})` }}</button>
+            <button v-if="open.ds.caveGroup" class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" :title="`Adds them to ${open.ds.caveGroup} in CAVE, then sends them the unlock notification`" @click="decide(open, 'granted')">{{ busy === 'granted' ? 'Letting them in…' : 'Let them in & send notification' }}</button>
             <button class="ah-btn" :class="{ 'ah-btn--yes': !open.ds.caveGroup }" type="button" :disabled="!!busy"
-                    :title="open.ds.caveGroup ? 'You already added them in CAVE yourself: just tell them' : 'Add them to the dataset\'s group in CAVE first, then press this to tell them'"
-                    @click="decide(open, 'granted', true)">{{ open.ds.caveGroup ? 'I added them by hand' : 'Grant' }}</button>
+                    :title="open.ds.caveGroup ? 'You already added them in CAVE yourself: just send the notification' : 'Add them to the dataset\'s group in CAVE first, then press this to send the notification'"
+                    @click="decide(open, 'granted', true)">{{ open.ds.caveGroup ? 'I added them by hand, send notification' : 'Let them in & send notification' }}</button>
             <button class="ah-btn" type="button" :disabled="!!busy" @click="decide(open, 'declined')">Not now</button>
+            <button v-if="open.ds.dataset" class="ah-btn ah-btn--quiet" type="button" :disabled="!!busy" title="Sends the notification they will get to your own bell, marked Test" @click="testBell(open)">{{ busy === 'test' ? 'Sending…' : testSent === open.ds.id ? 'Test sent to your bell' : 'Send me a test' }}</button>
           </div>
         </div>
         <p v-if="actionError" class="ah-error" role="alert">{{ actionError }}</p>
@@ -1005,6 +1013,7 @@ const opName = (e: RecentEdit) => {
 .ah-btn:hover:not(:disabled) { background: rgba(45,70,120,.75); }
 .ah-btn:disabled { opacity: .55; cursor: default; }
 .ah-btn--yes { background: rgba(55,138,221,.85); border-color: rgba(140,190,255,.8); color: #fff; }
+.ah-btn--quiet { background: transparent; border-style: dashed; opacity: .85; }
 .ah-link { color: #9fd3ff; text-decoration: none; }
 .ah-error { color: #ffb3b3; margin: 6px 0; }
 .ah-quiet { color: #7f93b0; font-size: 12.5px; margin: 6px 2px; }
