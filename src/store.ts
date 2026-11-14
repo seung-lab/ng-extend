@@ -25,7 +25,7 @@ import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {isMobileRef} from './util/mobile';
-import {currentDatasetTag, canonicalDataset, currentSegLayer, DATASETS} from './datasets';
+import {currentDatasetTag, canonicalDataset, currentSegLayer, currentSegLayerName, segLayerName, DATASETS} from './datasets';
 import {editsAny} from './util/dataset_access';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
@@ -5515,6 +5515,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Save a view (short link) as this claim's work in progress, so coming
    *  back to the cell restores its annotation layers (Amy 2026-09-28). */
   async function saveWorkingLink(taskId: number, link: string): Promise<boolean> {
+    // Never a view of another dataset (hi529 2026-11-14: an MEC claim saved
+    // a Retina view, so opening it always landed on Retina, where the MEC
+    // claim is not listed and could not be released). Only a dataset Pyr
+    // knows counts as "another": MEC states can name their layer just "seg".
+    const task = tasks.value.find(x => x.id === taskId);
+    const here = canonicalDataset(currentSegLayerName());
+    if (task?.dataset && here && here !== canonicalDataset(task.dataset)
+        && DATASETS.some(ds => canonicalDataset(segLayerName(ds)) === here)) {
+      console.warn('[backend] saveWorkingLink: the view is of', here, 'not', task.dataset, '- not saved');
+      return false;
+    }
     try {
       await taskAction('save_link', { id: taskId, link });
       const t = tasks.value.find(x => x.id === taskId);
