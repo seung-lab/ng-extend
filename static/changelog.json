@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-14T20:10:00Z",
+      "title": "Stop playing on MEC",
+      "items": [
+        "While playing on MEC or the Sandbox, a small square button beside the Play pill in the top bar stops playing. Your cell stays yours and the full Cell Library comes back."
+      ]
+    },
+    {
       "at": "2026-11-14T19:58:00Z",
       "title": "Your cell opens where you claimed it",
       "items": [
