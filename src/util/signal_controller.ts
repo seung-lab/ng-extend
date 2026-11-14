@@ -1344,9 +1344,9 @@ body.nge-mobile .ng-extend.nge-sig-editor { left: 6px; right: 6px; width: auto; 
 @keyframes nge-sig-pop-in { 0% { opacity: 0; transform: translate(-2px, 0) skewX(-8deg); filter: drop-shadow(-3px 0 rgba(255, 70, 70, 0.7)) drop-shadow(3px 0 rgba(70, 150, 255, 0.7)); } 15% { opacity: 1; transform: translate(2px, 0) skewX(6deg); } 30% { transform: translate(-1px, 0) skewX(-3deg); filter: drop-shadow(-2px 0 rgba(255, 70, 70, 0.5)) drop-shadow(2px 0 rgba(70, 150, 255, 0.5)); } 45% { transform: translate(1px, 0); opacity: 0.6; } 60% { transform: none; opacity: 1; filter: drop-shadow(-1px 0 rgba(255, 70, 70, 0.3)) drop-shadow(1px 0 rgba(70, 150, 255, 0.3)); } 100% { transform: none; opacity: 1; filter: none; } }
 .ng-extend.nge-sig-pop--out { animation: nge-sig-pop-out 0.35s ease-in both; }
 @keyframes nge-sig-pop-out { to { opacity: 0; transform: translateY(-4px); } }
-/* three, two, one, go: in the middle of the free part of the view */
-/* the lockup: a title in the middle of the free part of the view (a level's name as it opens, the result as it is won) */
-.ng-extend.nge-sig-lock { position: fixed; z-index: 9465; transform: translate(-50%, -50%); pointer-events: none; text-align: center; white-space: nowrap; padding: 2.2em 5em; font-size: var(--fs, 40px);
+/* three, two, one, go: in the middle of the view */
+/* the lockup: a title in the middle of the view (a level's name as it opens, the result as it is won); it glides if the HUD grows under it */
+.ng-extend.nge-sig-lock { position: fixed; z-index: 9465; transform: translate(-50%, -50%); pointer-events: none; text-align: center; white-space: nowrap; padding: 2.2em 5em; font-size: var(--fs, 40px); transition: left 0.35s ease, top 0.35s ease;
   font-family: 'Orbitron', 'Inter', sans-serif; color: #eaf6ff; background: radial-gradient(closest-side, rgba(3, 9, 22, 0.86), rgba(3, 9, 22, 0.66) 55%, rgba(3, 9, 22, 0)); }
 .nge-sig-lock .kick, .nge-sig-lock .sub { text-shadow: 0 0 3px #030916, 0 0 8px #030916, 0 0 16px rgba(3, 9, 22, 0.9); }
 .nge-sig-lock .kick { font-weight: 600; font-size: 0.3em; letter-spacing: 0.5em; text-indent: 0.5em; text-transform: uppercase; color: #8fd4ff; animation: nge-sig-lock-fade 0.7s ease-out both; }
@@ -1361,6 +1361,7 @@ body.nge-mobile .ng-extend.nge-sig-editor { left: 6px; right: 6px; width: auto; 
 .nge-sig-lock--won .title { color: #fff6df; text-shadow: 0 0 0.5em rgba(255, 200, 100, 0.8), 0 0 1.4em rgba(255, 170, 60, 0.45); }
 .nge-sig-lock--lost .title { font-size: 0.8em; color: #dcecff; }
 .ng-extend.nge-sig-lock--out { animation: nge-sig-lock-out 0.7s ease-in both; }
+.nge-sig-lock--still, .nge-sig-lock--still * { animation: none !important; }
 @keyframes nge-sig-lock-title { 0% { opacity: 0; letter-spacing: 0.5em; filter: blur(8px); } 100% { opacity: 1; filter: none; } }
 @keyframes nge-sig-lock-rule { from { transform: scaleX(0); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes nge-sig-lock-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -2576,24 +2577,55 @@ function finale(key: string) {
   setTimeout(() => { if (alive() && phase === 'playing') showResult(true); }, 900);
 }
 
-/* ── the lockup: a title in the middle of the part of the view the HUD
-   leaves free. A level's name as it opens, the result as it is won. It
-   takes no clicks and goes on its own. ── */
+/* ── the lockup: a title in the middle of the view. A level's name as it
+   opens, the result as it is won. It takes no clicks and goes on its own. ── */
 let lockEl: HTMLElement | null = null;
-/** The middle and the width of the part of the 3D view the HUD leaves free, on the screen. */
-function freeArea(): {x: number; y: number; w: number} {
+/** The lockup's words, as wide and as tall as they come to rest, in ems of its type size: measured once, as it is made. */
+let lockWords: {w: number; h: number} | null = null;
+/** The middle and the width of the part of the 3D view the HUD leaves free, on the screen; and the whole view across, its middle (mid), its left edge and its width (full). */
+function freeArea(): {x: number; y: number; w: number; mid: number; left: number; full: number} {
   const r = threeDPanel()?.element?.getBoundingClientRect?.();
   const box = r && r.width > 0 ? r : {left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight};
   // the panel's layout box, not its drawn one: it may be mid-animation
   const left = panel && sideHud() ? Math.max(box.left, panel.offsetLeft + panel.offsetWidth) : box.left;
   const bottom = panel && !sideHud() ? Math.min(box.bottom, panel.offsetTop) : box.bottom;
-  return {x: (left + box.right) / 2, y: (box.top + bottom) / 2, w: box.right - left};
+  return {x: (left + box.right) / 2, y: (box.top + bottom) / 2, w: box.right - left, mid: (box.left + box.right) / 2, left: box.left, full: box.right - box.left};
+}
+/** Where words w by h px stand, a title or the countdown: in the middle of
+ *  the view (Ames 2026-11-13: "title is off-center": it stood in the middle
+ *  of the part beside the HUD, 232 px right of the screen's middle, while
+ *  the HUD was a small box up in its corner). Two cases:
+ *  - the HUD ends above the words (a level as it opens, on all but a short
+ *    window): nothing stands beside them, and they take the view's middle;
+ *  - the HUD stands beside them (the countdown, the win): on a laptop it is
+ *    a column a third of the screen across, the part beside it is the stage,
+ *    and the words take that part's middle, over the circuit; on a wide
+ *    screen it is a box in the corner (under a fifth of the view across),
+ *    the screen's middle reads as the middle, and the words take it where
+ *    they clear the HUD. */
+function viewMiddle(w: number, h: number): {x: number; y: number} {
+  const f = freeArea();
+  if (!panel || !sideHud()) return f;   // the HUD lies along the foot: the free part is as wide as the view
+  const GAP = 16;
+  const hudRight = panel.offsetLeft + panel.offsetWidth, hudTop = panel.offsetTop, hudBottom = hudTop + panel.offsetHeight;
+  const beside = f.y + h / 2 > hudTop - GAP && f.y - h / 2 < hudBottom + GAP;
+  const corner = hudRight - f.left <= 0.2 * f.full && f.mid - w / 2 >= hudRight + GAP;
+  return {x: !beside || corner ? f.mid : f.x, y: f.y};
 }
 function placeLockup() {
   if (!lockEl) return;
-  const f = freeArea();
-  lockEl.style.left = `${f.x}px`; lockEl.style.top = `${f.y}px`;
-  lockEl.style.setProperty('--fs', `${clamp(f.w / 24, 15, 72).toFixed(1)}px`);
+  const fs = Math.round(clamp(freeArea().w / 24, 15, 72) * 10) / 10;
+  lockEl.style.setProperty('--fs', `${fs}px`);
+  if (!lockWords) {
+    // with its letters at rest: the title comes in from a wider spacing
+    lockEl.classList.add('nge-sig-lock--still');
+    const r = lockEl.getBoundingClientRect(), cs = getComputedStyle(lockEl);
+    lockEl.classList.remove('nge-sig-lock--still');
+    const pad = (a: string, b: string) => (parseFloat(a) || 0) + (parseFloat(b) || 0);
+    lockWords = {w: Math.max(0, r.width - pad(cs.paddingLeft, cs.paddingRight)) / fs, h: Math.max(0, r.height - pad(cs.paddingTop, cs.paddingBottom)) / fs};
+  }
+  const at = viewMiddle(lockWords.w * fs, lockWords.h * fs);
+  lockEl.style.left = `${at.x}px`; lockEl.style.top = `${at.y}px`;
 }
 function lockup(html: string, cls: string, holdMs: number) {
   clearLockup();
@@ -2601,7 +2633,7 @@ function lockup(html: string, cls: string, holdMs: number) {
   el.className = `ng-extend nge-sig-lock ${cls}`;
   el.innerHTML = html;
   document.body.appendChild(el);
-  lockEl = el;
+  lockEl = el; lockWords = null;
   placeLockup();
   setTimeout(() => {
     if (lockEl !== el) return;
@@ -2609,7 +2641,7 @@ function lockup(html: string, cls: string, holdMs: number) {
     setTimeout(() => { el.remove(); if (lockEl === el) lockEl = null; }, 700);
   }, holdMs);
 }
-function clearLockup() { lockEl?.remove(); lockEl = null; }
+function clearLockup() { lockEl?.remove(); lockEl = null; lockWords = null; }
 /** The level's name as it opens: the game's own name the first time, then
  *  each new level's with the principle it teaches (the first words of its
  *  science line). Not for the same level again. */
@@ -5012,10 +5044,9 @@ async function runCountdown() {
   const el = document.createElement('div');
   el.className = 'ng-extend nge-sig-count';
   document.body.appendChild(el);
-  const r = threeDPanel()?.element?.getBoundingClientRect?.(), hud = panel?.getBoundingClientRect();
-  const left = r ? (sideHud() && hud ? hud.right : r.left) : 0, right = r ? r.right : window.innerWidth;
-  const top = r ? r.top : 0, bottom = r ? (!sideHud() && hud ? hud.top : r.bottom) : window.innerHeight;
-  el.style.left = `${(left + right) / 2}px`; el.style.top = `${(top + bottom) / 2}px`;
+  // where the titles stand (viewMiddle); its widest word is Go
+  const size = parseFloat(getComputedStyle(el).fontSize) || 96, at = viewMiddle(size * 2.2, size);
+  el.style.left = `${at.x}px`; el.style.top = `${at.y}px`;
   for (const t of ['3', '2', '1', 'Go']) {
     if (token !== tourToken || !active || phase !== 'countdown') { el.remove(); return; }
     el.textContent = t;
