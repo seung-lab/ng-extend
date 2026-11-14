@@ -164,13 +164,20 @@ export function matchScore(r: MatchResult): number | null {
   return parts.length ? Math.floor(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
 }
 
+/** Remove a layer of ours. If its panel was open, close the panel first:
+ *  with the selected layer gone, Neuroglancer opened the first layer's Source
+ *  tab, "2D EM" (Ames 2026-11-14: "why does this Source tab keep opening?"). */
+function dropLayer(v: any, ml: any) {
+  try { if (v.selectedLayer?.layer === ml) v.selectedLayer.visible = false; } catch { /* no panel */ }
+  v.layerManager.removeManagedLayer(ml);
+}
 /** Under a row's percent: pieces done of all, or that there is nothing to do. */
 export function rowPieces(r: MatchResult, row: Row): string {
   const pct = row === 'merge' ? r.merge : r.cut;
   const p = row === 'merge' ? r.missing : r.extra;
   if (pct == null) return row === 'merge' ? 'nothing to merge' : 'nothing to cut';
-  if (!p || !p.total) return row === 'merge' ? 'part of the cell was cut off' : 'a wrong part was merged in';
-  return row === 'merge' ? `${p.total - p.left} of ${plural(p.total, 'piece')} merged in` : `${p.total - p.left} of ${p.total} cut off`;
+  if (!p || !p.total) return row === 'merge' ? 'part of the cell was cut off' : 'an error was merged in';
+  return row === 'merge' ? `${p.total - p.left} of ${plural(p.total, 'piece')} merged in` : `removed ${p.total - p.left} of ${plural(p.total, 'error')}`;
 }
 
 /** Cells the HUD scores: their Complete says "Complete and Review" (reactive,
@@ -308,7 +315,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID}.nge-cm-idle .nge-cm-cellbtn{border-color:rgba(127,190,255,.35);box-shadow:none}
 #${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.2);color:#fff}
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
-#${CARD_ID} .nge-cm-hbtn{display:grid;place-items:center;flex:0 0 24px;margin-left:6px;width:24px;height:24px;padding:0;border:1px solid rgba(127,216,255,.6);border-radius:50%;background:rgba(74,158,255,.18);color:#bfeaff;font:700 12px/1 Orbitron,Inter,sans-serif;animation:nge-cm-hglow 2.6s ease-in-out infinite}
+#${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important;animation:nge-cm-hglow 2.6s ease-in-out infinite}
 #${CARD_ID} .nge-cm-hbtn[hidden]{display:none}
 #${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
 @keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
@@ -480,8 +487,9 @@ const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
   + '<span class="nge-cm-nudge-btns"><button type="button" class="nge-cm-btn nge-cm-hint-btn" hidden>Show me</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-next-btn" hidden>Next hint</button></span></div>';
 const PLAY_HTML = '<div class="nge-cm-play">'
-  + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save view</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip Cell</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Click for a Hint" hidden>Hint</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
   + '<div class="nge-cm-viewnote"></div>'
   + '<div class="nge-cm-skipask" hidden role="alertdialog" aria-label="Skip this cell?">'
@@ -514,7 +522,6 @@ function card(): HTMLElement {
   el.title = 'Your Merge and Cut together, half each. Merge: the missing pieces you have merged in. Cut: the wrong parts you have cut off.';
   el.innerHTML = '<div class="nge-cm-head">' + '<button type="button" class="nge-cm-tool nge-cm-cellbtn" aria-label="Open the Cell Library" title="Open the Cell Library"><img class="nge-cm-cellimg" src="' + neuronIcon + '" alt="" aria-hidden="true"></button>'
     + '<span class="nge-cm-title">' + TITLE_HTML + '</span>'
-    + '<button type="button" class="nge-cm-tool nge-cm-hbtn" aria-label="Hint" title="Click for a Hint" hidden>H</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-i" aria-label="What do these numbers mean?" aria-pressed="false" aria-controls="nge-cell-match-info" title="What do these numbers mean?">i</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the score"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. Press Play to open it again.">×</button></div>'
@@ -1013,7 +1020,7 @@ function showHintPiece(p: HintPiece) {
   const pin = [{ type: 'point', id: 'hint', point, description: place1 ? 'Look near here' : p.kind === 'merge' ? 'Merge this piece in' : 'Cut here' }];
   const color = place1 ? '#7fd8ff' : p.kind === 'merge' ? GOLD : RED;
   const place = () => {
-    for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === HINT_PIN_LAYER) v.layerManager.removeManagedLayer(ml);
+    for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === HINT_PIN_LAYER) dropLayer(v, ml);
     try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: 1.5, annotations: pin })); }
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
@@ -1094,7 +1101,7 @@ function onCellState(e: Event) {
   heardAt = Date.now();
   const save = el.querySelector('.nge-cm-saveview') as HTMLButtonElement;
   save.disabled = !!d.saving;
-  save.textContent = d.saving ? 'Saving…' : d.saved ? 'Saved ✓' : 'Save view';
+  save.textContent = d.saving ? 'Saving…' : d.saved ? 'Saved ✓' : 'Save';
   // Ames 2026-11-14: "doesn't view auto save? shouldn't it say that?" It
   // saves by itself when you move to another cell; a reload does not.
   const note = el.querySelector('.nge-cm-viewnote') as HTMLElement;
@@ -1102,7 +1109,7 @@ function onCellState(e: Event) {
   note.textContent = `${savedText}. Your view also saves by itself when you move to another cell.`;
   const skip = el.querySelector('.nge-cm-skipcell') as HTMLButtonElement;
   skip.disabled = !!d.skipping;
-  skip.textContent = d.skipping ? 'Skipping…' : 'Skip';
+  skip.textContent = d.skipping ? 'Skipping…' : 'Skip Cell';
   if (d.completing) { if (!finishing) openFinishShown(el); renderFinish(el, d.completing as FinishState); }
   else if (finishing) closeFinish(el);
 }
@@ -1352,13 +1359,13 @@ function removeHintLayers() {
   }
   const v = (window as any).viewer;
   for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
-    if (ml.name === HINT_SEG_LAYER || ml.name === HINT_PIN_LAYER) { try { v.layerManager.removeManagedLayer(ml); } catch { /* gone */ } }
+    if (ml.name === HINT_SEG_LAYER || ml.name === HINT_PIN_LAYER) { try { dropLayer(v, ml); } catch { /* gone */ } }
   }
 }
 function removeReviewLayers() {
   const v = (window as any).viewer;
   for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
-    if (ml.name === MISSED_LAYER || ml.name === MERGERS_LAYER) { try { v.layerManager.removeManagedLayer(ml); } catch { /* gone */ } }
+    if (ml.name === MISSED_LAYER || ml.name === MERGERS_LAYER) { try { dropLayer(v, ml); } catch { /* gone */ } }
   }
 }
 let pinsTimer: number | undefined;
@@ -1378,7 +1385,7 @@ function addReviewLayers(r: ReviewResult) {
   // A new annotation layer takes points only once it knows the view's space:
   // put them back while they are short (as the test review does).
   const place = () => {
-    for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === MERGERS_LAYER) v.layerManager.removeManagedLayer(ml);
+    for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === MERGERS_LAYER) dropLayer(v, ml);
     try { v.layerSpecification.add(makeLayer(v.layerSpecification, MERGERS_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: RED, pointSize: 3, annotations: pins })); }
     catch (e) { console.debug('[cell-match] mergers layer', e); }
   };

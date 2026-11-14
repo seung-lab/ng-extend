@@ -102,7 +102,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const shown = await waitText(/merge 0%/i, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
-    check('Playing: Practice, the Match score, then Merge and Cut with their pieces', /^playing: practice .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
+    check('Playing: Practice, the Match score, then Merge and Cut with their pieces', /^playing: practice .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% removed 0 of 3 errors/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 300, box);
     // Clear of the Play button in the same corner.
@@ -154,14 +154,14 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('no ask while the edits keep coming', asks.length === before, asks.length - before);
     const updated = await waitText(/39%/, 10000);
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
-    check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19 19% 1 edit merge \+39 39% 11 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
+    check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19 19% 1 edit merge \+39 39% 11 of 28 pieces merged in cut 0% removed 0 of 3 errors/.test(await cardText() || ''), await cardText());
     await shot('cell-match-after-merge.png');
 
     // A worse edit: the number goes down, and says so.
     answer = ANSWERS.worse;
     await edit([ANSWERS.worse.root]);
     const worse = await waitText(/36%/, 10000);
-    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /match score [a-z ]*\+32 51% 2 edits merge −3 36% 10 of 28 pieces merged in cut \+67 67% 2 of 3 cut off/.test(await cardText() || ''), await cardText());
+    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /match score [a-z ]*\+32 51% 2 edits merge −3 36% 10 of 28 pieces merged in cut \+67 67% removed 2 of 3 errors/.test(await cardText() || ''), await cardText());
     // A cut: "Cut complete" lights up for a moment, then back to the reading.
     // A cut: "Cut complete" at once, plain; then the reading says good or wrong
     // (Ames 2026-11-13: "I got cut complete ... but it was wrong cut").
@@ -227,7 +227,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => window.__ngeCellMatch.ageHintClock(16762, 61000));
     await page.waitForTimeout(2600);
     const nudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.querySelector('.nge-cm-hbtn'); return { h: !!h && h.offsetParent !== null && h.textContent, tip: h && h.title, line: !c.querySelector('.nge-cm-nudge').hidden }; });
-    check('after a minute with no edit, a small H offers a Hint, and nothing else opens', nudge.h === 'H' && nudge.tip === 'Click for a Hint' && !nudge.line, nudge);
+    check('after a minute with no edit, Hint appears in the button row, and nothing else opens', nudge.h === 'Hint' && nudge.tip === 'Click for a Hint' && !nudge.line, nudge);
     await shot('cell-match-hint.png');
     // Collapsed: no Hint at all (Ames 2026-11-14: "I would be too tempted to click").
     const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
