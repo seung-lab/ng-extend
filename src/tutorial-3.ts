@@ -622,7 +622,12 @@ function offerPlacePoints() {
                         : 'Could not place the points. Press M and Ctrl+click the two pieces yourself.');
     }, 700);
   });
-  chip.insertBefore(b, chip.querySelector('.nge-practice-help'));
+  // Into the help row, left of Help me. Help me lives in that row, not in
+  // the box itself, so inserting before it on the box threw every time and
+  // the practice check failed and retried every 2 s (synapse123, report 536).
+  const row = helpRow(chip);
+  const help = row.querySelector(':scope > .nge-practice-help');
+  row.insertBefore(b, help);
 }
 
 /** Wait for the chip to render, then keep a status line current while

@@ -283,6 +283,8 @@ export function makeSandbox(cfg: SandboxConfig) {
 
   /** Which attempt to take a cell is the current one. */
   let taking = 0;
+  /** The one asked for, when a different one had to be given instead. */
+  const swappedFrom = ref<number | null>(null);
   let skipping = false;
   // Skip is its own small button, in the full box and on the "not yet" box.
   // The main button is Next (Ames, 2026-10-12): it checks the work.
@@ -351,9 +353,12 @@ ${progressBar()}
 
 You have solved every one. Want to go again from the start?${cfg.awardSlug ? ' Your Achievement stays yours.' : ''}`;
         }
+        const swapped = swappedFrom.value;
         return `
 ${progressBar(true)}
-
+${swapped !== null && swapped !== current ? `
+<span class="nge-sbx-swapnote">${W.one.charAt(0).toUpperCase() + W.one.slice(1)} ${swapped + 1} is not free right now (someone else has it, or it is being put back to its start), so here is ${W.one} ${current + 1}. Skip later to try ${W.one} ${swapped + 1} again.</span>
+` : ''}
 ${W.intro(cell())}`;
       },
       position: OVER_3D,
@@ -379,6 +384,11 @@ ${W.intro(cell())}`;
         const order = unsolved.length ? unsolved : everyone;
         const mine = ++taking;
         const store = useTutorialStore();
+        // The one asked for. When it cannot be had, another is given, and
+        // the box says so (synapse123, report 536: skipping back to cell 5
+        // opened cell 7 with no word why; cell 5 was out for repair).
+        const wanted = current;
+        swappedFrom.value = null;
         const take = async () => {
           for (const i of order) {
             const cellRow = await beginPractice(cfg.kind, 'start', { only: CELLS[i].id });
@@ -411,6 +421,7 @@ ${W.intro(cell())}`;
           got = await take();
         }
         if (!got) { practiceStatus(`No ${W.one} came free. Try again in a few minutes.`); return; }
+        if (current !== wanted) swappedFrom.value = wanted;
         // Watch only once the cell is held: with nothing held, the watch
         // would queue for a tutorial's cells.
         watchPractice(cfg.kind !== 'cut', W.hint, '', { advance: true });
