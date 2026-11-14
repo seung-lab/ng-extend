@@ -25,8 +25,25 @@ The fixes are on branch `claude/perf-audit-c0d3ac`, one commit each. Nothing is 
 | 93518d17 | Chat without Realtime: a hidden tab polls once a minute instead of every 8 s | S6 |
 | 7d50fdf3 | Radio dock: no layout measuring every 350 ms in hidden tabs | C10 |
 | f88a0e7d | The old `pyrdev.eyewire.org` leaderboard loop no longer starts. Nothing showed its data | S3 |
+| 88df2ee7 | Invalid-ID check looks only at the IDs just added | C3 |
+| eadc456d | Sandbox Hunt veil: one sweep per burst of changes | C3 |
+| 7cbbac39 | Highlight: lab points are scanned only when a point is added, not on every drag step | C3 |
+| 9bc67fba | View autosave: no JSON made when the view hasn't changed; an oversized view is not serialized again until it changes | C2 |
+| 3888b14a | Unread-notifications dot: rewritten only when the count changes | C7 |
+| ab4a5e55 | Friendly layer names: titles looked up once per pass; no pass in hidden tabs | C7 |
+| 099b9623 | Starship intro: the idle-turn loop ends once the player moves the cell by hand | C8 |
+| 64dd9a04 | **Chat joins, leaves and completion lines come from one small table** (`supabase-live-events.sql`). Needs SQL; uses the old subscriptions until it is run | S1, S2 |
+| 508a08ea | After an edit, only claims of this dataset seen in the last 30 s have their current ID looked up | S5 |
+| 06a96ccf | After a hunt, the awards poll backs off from 5 s to 30 s | S10 |
+| d6f8ee65 | Cell Library: the orbiting JUMP dot ticks in its own small component | C7 |
 
-The edited files were checked with esbuild (they parse). A full type-check and build were **not** run, because this worktree has no `node_modules`. CI will build them on the next deploy.
+Checks run:
+
+- `node scripts/build-prod.js`: 0 errors after each batch.
+- `tsc --noEmit`: no new errors. The ones it reports were there before, in files these commits don't touch. `tsc` does not check `.vue` files.
+- `node --test functions/*.test.js`: 455 pass, including the new `functions/live-events.test.js`.
+
+Nothing here was tried in a browser against the live services. Chat and claims need a signed-in player.
 
 ---
 
@@ -115,8 +132,8 @@ Presence deliveries are counted at 2.7 subscribed tabs per player, as measured t
 
 The published Pro Realtime quotas are 500 concurrent connections and 500 messages a second.
 
-- At 100 players that is about 270 connections and 450+ messages a second from presence alone.
-- About **150–200 players online** would hit the quota. When it does, Realtime starts refusing connections, and chat falls back to polling.
+- **Before S1 and S2:** 100 players meant about 270 connections and 450+ messages a second from presence alone. At Ames's ceiling of **150 online**, about 400 connections (under the quota) and about 1,000 messages a second (twice the quota). Past the quota Realtime starts refusing, and chat falls back to polling.
+- **After S1 and S2** (with step 2 run): presence messages go out only on a join or a leave, so 150 players stay well inside the quota.
 
 ---
 
@@ -124,28 +141,32 @@ The published Pro Realtime quotas are 500 concurrent connections and 500 message
 
 Ranked by how they grow with players.
 
-### S1. Presence is a Realtime row change sent to everyone (N²)
+### S1. Presence is a Realtime row change sent to everyone (N²) (built: 64dd9a04, needs SQL)
 
-- **Where:** `src/store.ts:7924` subscribes to `event:'*'` on `chat_presence`. `store.ts:7262` sends a heartbeat every 60 s from the leader tab **and** from every visible tab. `store.ts:7444` writes it through the `ewCommunityData` gateway.
-- **Cost:** 123 k presence upserts in 11.6 days, about 7 a minute with 6–16 people on. Each one goes to every subscribed tab, and Realtime checks each delivery against row-level security inside the WAL poll, the 74% item above.
-- **Scaling:** N players × 2.7 tabs × N heartbeats a minute. See the table above.
-- **Fix (M):**
-  - Use **Realtime Presence** on the existing chat channel. Each tab calls `channel.track({user, name, dataset})`. Joins and leaves arrive as presence events, with no database row and no RLS check.
-  - Keep the `chat_presence` table for the "N online" count from the server: write it every 5 minutes, not every minute, and drop it from the `supabase_realtime` publication.
-  - Smaller first step (S): listen to `INSERT` only. A join is an insert or a `joined_at` change, and routine heartbeats are UPDATEs. The online list already reloads every minute from `loadOnline`.
+- **Where:** `src/store.ts:7924` subscribed to `event:'*'` on `chat_presence`. `store.ts:7262` sends a heartbeat every 60 s from the leader tab **and** from every visible tab, written through the `ewCommunityData` gateway.
+- **Cost:** 123 k presence upserts in 11.6 days, about 7 a minute with 6–16 people on. Each one went to every subscribed tab, and Realtime checks each delivery against row-level security inside the WAL poll, the 74% item above.
+- **Scaling:** N players × 2.7 tabs × N heartbeats a minute. At Ames's ceiling of 150 online that is about 60,000 a minute, roughly 1,000 a second. That is twice the Pro quota.
+- **Why not Realtime Presence:** joins are written by the server so a join line cannot be forged (`supabase-chat-presence-and-link-screenshots.sql`). Presence messages come from the browser and could be forged, so they don't fit.
+- **Built:** `supabase-live-events.sql` adds a small table, `pyr_live_events`, that only database triggers write. It gets one row per join (using the same rule as now, `joined_at` moving), one per leave, and one per completion. The site listens to that table only, so routine heartbeats and ordinary edits no longer go out at all.
+- **Fallback:** until the SQL is run, the site uses the old subscriptions. It asks once per page whether the table exists.
+- **Reloads still announce no one:** "seen lately" now comes from the online list read every minute and from leave events, not from each heartbeat.
+- **Tested:** in PGlite, in `functions/live-events.test.js`:
+  - the SQL runs twice cleanly;
+  - anon can read the events but cannot write them, delete them, or forge a join;
+  - a routine heartbeat says nothing;
+  - a return after 2 minutes away is a join;
+  - a leave carries the name;
+  - only `mark_complete` and `complete_task` count, and failed ones and op_key repeats don't;
+  - step 2 and the undo run as written.
 
-### S2. Every edit_log row passes through Realtime, for one ticker line
+  Not tested on Supabase itself.
+- **Order:** step 1 → deploy → a day later, step 2. Step 2 stops publishing `chat_presence` and `edit_log`. Before running step 2, check that nothing else, such as the connectome.quest admin pages, listens to those two tables over Realtime.
 
-- **Where:** `src/store.ts:7925` subscribes to `edit_log` INSERTs filtered to `mark_complete` and `complete_task`. `onCompletion` (`7301`) then reads `user_edit_counts` for any name it doesn't know.
-- **Cost:** `edit_log` is in the `supabase_realtime` publication, so **every** edit row is decoded and matched against every tab's filter, even though only completions are wanted. Each completion then reaches every tab.
-- **Scaling:** edits × tabs. At 100 players that is about 300 edit rows a minute × 270 subscriptions.
-- **Fix (M):** have the server broadcast completions instead. A trigger on `edit_log` for those two operations calls `realtime.broadcast_changes` (or `realtime.send`) on a `pyr-completions` topic carrying `{user_id, name, dataset, cell}`. Then remove `edit_log` from the publication:
+### S2. Every edit_log row passes through Realtime, for one ticker line (built with S1)
 
-  ```sql
-  ALTER PUBLICATION supabase_realtime DROP TABLE public.edit_log;
-  ```
-
-  Test this in PGlite first. Ship the client change before the SQL so nobody loses the ticker.
+- **Where:** `src/store.ts:7925` subscribed to `edit_log` INSERTs filtered to `mark_complete` and `complete_task`.
+- **Cost:** `edit_log` is in the `supabase_realtime` publication, so **every** edit row is decoded and matched against every tab's filter, even though only completions are wanted.
+- **Built:** with S1. Completions come through `pyr_live_events`, and step 2 takes `edit_log` out of the publication.
 
 ### S3. A legacy server was polled every 20 s by every tab (fixed: f88a0e7d)
 
@@ -163,16 +184,14 @@ Ranked by how they grow with players.
   - Ask the lab, or run one live query with a CAVE token. A `timestamp` later than the live table's horizon is a common cause.
   - **Querying both tables in parallel** (`getCellStatusFresh` asks them one after the other at `666` and `704`) would halve the wait. That is an S change.
 
-### S5. Every edit looks up the root of every open claim
+### S5. Every edit looked up the root of every open claim (fixed: 508a08ea)
 
-- **Where:** `src/store.ts:5382-5391`. On each `nge-graph-edit`, it clears `descendantsSeen` and, 1.5 s after the burst, runs `refreshLiveRoots()` (`5229`). Then it runs `refreshLaterRoots()` again at 10 s.
-- **Cost:** `refreshLiveRoots` resolves **every** active claim (`myActiveClaims()`, no dataset filter). That is a `root` lookup per claim, plus a `lineage_graph` when the anchor doesn't fit, so about 2 × claims + 1 chunkedgraph requests per edit burst.
-- **Scaling:** with 5 claims and 3 edit bursts a minute, about 15–33 a minute per player and about 3,000 at 100 players. `lineage_graph` is the expensive call on the lab's server.
-- **It is also wrong across datasets:** claims from another dataset are looked up against the current dataset's chunkedgraph.
-- **Fix (S/M):**
-  - Resolve only claims in the current dataset whose cell was on screen in the last 30 s. `refreshLaterRoots` already filters this way with `noteClaimsOnScreen`.
-  - Clear `descendantsSeen` only for the roots the edit touched. The `nge-graph-edit` event can carry them.
-- **Not changed here:** this code fixed AzureJay #344 (active time stopped counting after a split), and it needs a test on a split.
+- **Where:** `src/store.ts:5382-5391`. On each `nge-graph-edit`, 1.5 s after the burst, it ran `refreshLiveRoots()` (`5229`), then `refreshLaterRoots()` again at 10 s.
+- **Cost:** `refreshLiveRoots` resolved **every** active claim (`myActiveClaims()`, no dataset filter). That is a `root` lookup per claim, plus a `lineage_graph` when the anchor doesn't fit, so about 2 × claims + 1 chunkedgraph requests per edit burst, or about 15–33 a minute per player.
+- **It was also wrong across datasets:** claims from another dataset were looked up against the current dataset's chunkedgraph.
+- **Fixed:** after an edit, only claims of the current dataset seen on screen in the last 30 s are looked up. That is the rule `refreshLaterRoots` already used, and it covers the claim whose old ID a cut just removed. The others keep what they had. The Cell Library still refreshes all of them when it asks.
+- **Test before the next deploy:** split and merge on a claimed cell and check that active time keeps counting (AzureJay #344).
+- **Next (S):** clear `descendantsSeen` only for the roots the edit touched.
 
 ### S6. Chat polls every 8 s while Realtime is down (partly fixed: 93518d17)
 
@@ -201,24 +220,10 @@ Ranked by how they grow with players.
 - **When:** every 5 minutes when the stored copy is stale (`ChatPanel.vue:402`), and every 2 minutes while the board is open (`LeaderboardPanel.vue:139`).
 - **Fix (S, SQL + client):** add rank columns to `leaderboard_cache` in `refresh_leaderboard_cache()`, which already runs every minute, and read them in one query.
 
-### S9. The leaderboard refresh runs every minute whether or not anything changed
+### S9. The leaderboard refresh (already fine)
 
-- **Where:** `cron.job` `pyr-leaderboard-cache-refresh`, schedule `* * * * *`: 124 ms each, 10.5% of database time.
-- **Scaling:** this does not grow with players; it grows with the size of `edit_log`.
-- **Fix (S, SQL):** skip the refresh when `max(edit_log.id)` hasn't moved since the last one. Keep the last id in a one-row table.
-
-  ```sql
-  -- Sketch only: test in PGlite (as the cron role, twice, over the current function) first.
-  CREATE TABLE IF NOT EXISTS public.ew_cache_marks (name text PRIMARY KEY, last_id bigint NOT NULL);
-  -- At the top of refresh_leaderboard_cache():
-  --   SELECT max(id) INTO v_max FROM public.edit_log;
-  --   IF v_max = (SELECT last_id FROM public.ew_cache_marks WHERE name = 'leaderboard') THEN RETURN; END IF;
-  --   ... existing refresh ...
-  --   INSERT INTO public.ew_cache_marks VALUES ('leaderboard', v_max)
-  --     ON CONFLICT (name) DO UPDATE SET last_id = excluded.last_id;
-  ```
-
-  The SQL needs the current function body to merge into, so it is a sketch, not a paste-ready script.
+- `refresh_leaderboard_cache()` already returns early when `max(edit_log.id)` hasn't moved and the last refresh is under 10 minutes old (`ew_cache_marks`). The 124 ms average is the refreshes that had new edits to count.
+- It does not grow with players, only with how many edits come in. Nothing to do.
 
 ### S10. Smaller per-edit writes
 
@@ -268,7 +273,7 @@ Ranked by how they grow with players.
 2. Ask Nseraf to set **GPU memory limit** to 1000000000 in Viewer settings. That is saved per player by `util/viewer_perf.ts`, so no deploy is needed. Then ask whether the freezes stop.
 3. If they do, change the default at `store.ts:455`: use 1e9 and 2e9, or about a quarter of `navigator.deviceMemory` where the browser gives it (Firefox does not). A player's own setting still wins. Size S.
 
-### C2. The whole view is turned into JSON on every change, sometimes twice
+### C2. The whole view is turned into JSON on every change, sometimes twice (view autosave fixed: 9bc67fba)
 
 - **Where:**
   - `third_party/neuroglancer/ui/url_hash_binding.ts:76-90`: the address hash, 200 ms after each change.
@@ -280,7 +285,7 @@ Ranked by how they grow with players.
   - Debounce the hash at 1 s with `maxWait` 5 s.
   - In view_autosave, remember "too big", and reuse `getCachedJson(viewer.state)` (the cached text reload_guard already uses) instead of calling `toJSON` again.
 
-### C3. Segment watchers redo the whole list on every change (O(n²) on batches)
+### C3. Segment watchers redo the whole list on every change (3 of 4 fixed: 88df2ee7, eadc456d, 7cbbac39)
 
 Each change to the visible or selected segments walks the whole set. Loading a view, pasting a list, or a merge or cut fires many changes in a row.
 
@@ -292,6 +297,7 @@ Each change to the visible or selected segments walks the whole set. Loading a v
 | `src/util/highlight.ts:107-114` | Walks every annotation in a lab layer on each add or drag step (14 k for Nseraf) | Players with Highlight marks |
 
 - **Fix (S each):** use the changed IDs the signal passes (as `src/util/undelete.ts:93` already does), or merge each burst into one check per task.
+- **Left:** `segment_marks_prompt.ts`. Its rule tells a merge arriving in two steps from a player adding a segment by the order of single changes, so merging them would change what it decides. It only costs much with hundreds of cells selected.
 
 ### C4. MEC mark counts are rebuilt about twice a second
 
@@ -330,7 +336,7 @@ Neuroglancer rewrites the mouse coordinates and status line on every mouse move,
 - **Cost:** a few ms per mouse move, growing with the size of the DOM (chat, segment list).
 - **Fix (M):** observe only the containers that matter (layout controls, `#statusContainer`, the layer panel). Return early on unrelated records. Start tutorial-3's observer only during the tutorial.
 
-### C7. Timers that redraw large components
+### C7. Timers that redraw large components (3 of 5 fixed: 3888b14a, ab4a5e55, d6f8ee65)
 
 | Where | Cost | Fix |
 |---|---|---|
@@ -340,7 +346,7 @@ Neuroglancer rewrites the mouse coordinates and status line on every mouse move,
 | `src/tutorial-3.ts:1208` | Layer renaming every second for everyone: DOM queries, layers × chips | The observer already covers it; slow it to 10 s (S) |
 | `src/util/color_families.ts:106` | Every 700 ms with color families on: walks all visible segments; the `given` set only grows | Hook the visible-segments signal (S) |
 
-### C8. The Starship intro's idle turn changes the view every frame
+### C8. The Starship intro's idle turn changes the view every frame (loop end fixed: 099b9623)
 
 - **Where:** `src/util/starship.ts:550-566`.
 - **While it turns:** every frame changes the view, which sets off about eight state listeners (hash, autosave, reload guard, script API, quests, claim autosave, claim time, image hint) and redraws the 3D view nonstop. That is by design during the intro, but it costs the most on the slowest machines, at a new player's first moment.
@@ -354,7 +360,7 @@ Neuroglancer rewrites the mouse coordinates and status line on every mouse move,
 - **Where:** the build uses neuroglancer's esbuild script without code splitting (`node_modules/neuroglancer/config/esbuild.js:220-248`). `components/ExtensionBar.vue:6-68` imports about 50 panels up front, among them CellLibraryPanel (6.9 k lines), AdminHub (5.6 k), TodoBoard (3.5 k), ChatPanel, the intro tour and hunts.
 - **Live:** `main.bundle.js` is 5.39 MB, 1.96 MB gzipped, served with `cache-control: public, max-age=600`. Startup parse of 350–420 ms shows in M Sorek's lines (`DOMWindow.onDOMContentLoaded`).
 - **Fix:**
-  - Small, in `appengine/`: the file name carries `?v=`, so serve it with a long cache (`max-age=31536000, immutable`) so returning players don't download it again (S).
+  - Small: the file name carries `?v=` (only `index.html` loads it), so it can be served with `expiration: "365d"` so returning players don't download it again (S). **Where:** the deploy step writes its own `app.yaml` from a fixed block in `.github/workflows/on_dev_branch_push.yml` (about line 113), not from `appengine/frontend/app.yaml`. The handler goes in that block, ahead of `- url: /`. It was not changed here because it is the deploy job; it needs Ames's yes.
   - Larger: turn on esbuild `splitting` with ESM output, and load admin, To do, blog and tutorial panels with `defineAsyncComponent` (L).
 
 ### C10. Radio dock measured layout three times a second (fixed for hidden tabs: 7d50fdf3)
@@ -389,10 +395,15 @@ Neuroglancer rewrites the mouse coordinates and status line on every mouse move,
 
 ## Suggested order
 
-1. **Deploy this branch's five commits.** Then ask Nseraf for a Retina report with the new draw line, and to try the 1 GB GPU limit (C1).
-2. **S1 small step:** listen to presence `INSERT` only. A few lines, and it removes most of the N² traffic. Then Realtime Presence.
-3. **S5:** the claim root refresh limited to claims on screen in the current dataset. Test on a split.
-4. **S2:** completions by broadcast, and `edit_log` out of the publication.
-5. **S7:** gateway identity cache.
-6. **C2, C3 and C5:** the client costs that grow with marks and session length.
-7. **C9:** the long cache header, then splitting.
+1. **Run step 1 of `supabase-live-events.sql`, then deploy this branch.** A day later, run step 2.
+2. **Ask Nseraf:**
+   - for a Retina report with the new draw line;
+   - to try the 1 GB GPU limit (C1).
+3. **Check active time after a split** on a claimed cell (S5, AzureJay #344).
+4. **Next code items:**
+   - S7: gateway identity cache.
+   - C5: chat cap. It has to work with chat search.
+   - C6: mutation observers.
+   - C4: MEC counts on change.
+   - C9: cache header, in the deploy workflow.
+   - S8: leaderboard ranks in the cache.
