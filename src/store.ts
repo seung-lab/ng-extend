@@ -7202,11 +7202,21 @@ export const useChatStore = defineStore('chat', () => {
   let rejoinDelay = 5000;
   let openChannel: (() => void) | null = null;
   const POLL_MS = 8000;
+  const HIDDEN_POLL_MS = 60_000;
   function startPolling() {
     if (polling.value) return;
     polling.value = true;
     void loadMissed();
-    pollTimer = setInterval(() => { void loadMissed(); }, POLL_MS);
+    // A tab nobody is looking at asks once a minute, not every 8 s (perf
+    // audit 2026-11-14: during a Realtime outage every open tab of every
+    // player polled, 7.5 requests a minute each). It still asks, so an
+    // @mention can still raise a browser notification.
+    let lastPoll = Date.now();
+    pollTimer = setInterval(() => {
+      if (document.hidden && Date.now() - lastPoll < HIDDEN_POLL_MS) return;
+      lastPoll = Date.now();
+      void loadMissed();
+    }, POLL_MS);
     // Being online, and who else is, never needed the live connection either.
     void heartbeat().then(() => loadOnline());
     startPresenceLoops();
