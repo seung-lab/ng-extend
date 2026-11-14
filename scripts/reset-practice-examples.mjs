@@ -17,7 +17,7 @@ async function sb(path,body,method=body?'PATCH':'GET') {
 async function cave(ex,path,body) {
  const base=validateResetExample(ex,manifest);
  const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(20000)});
- if(!r.ok){const e=Error('Practice CAVE request failed ('+r.status+') for '+path);e.status=r.status;throw e;}return r.json();
+ if(!r.ok){const t=(await r.text().catch(()=>'')).replace(/\s+/g,' ').slice(0,300);const e=Error('Practice CAVE request failed ('+r.status+') for '+path.split('?')[0]+(t?': '+t:''));e.status=r.status;throw e;}return r.json();
 }
 // Viewer voxel size in nm, for the registered points.
 const POINT_NM={pinky_nf_v2:[4,4,40]};
