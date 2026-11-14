@@ -366,7 +366,7 @@ async function countEdits(io, taskId, userId) {
  *  every piece still wrong. A missed piece is the Sandbox segment it is in now
  *  (drawn on its own); a merger still attached is a point near it (it is part
  *  of the player's cell, so it has no segment of its own). Biggest first. */
-async function review(io, {taskId, me, isAdmin}) {
+async function review(io, {taskId, me, isAdmin, withSamples = false}) {
   const result = await check(io, {taskId, me, isAdmin});
   if (!result.scorable) return result;
   const key = await keyFor(io, await loadTask(io, Number(taskId)));
@@ -382,33 +382,78 @@ async function review(io, {taskId, me, isAdmin}) {
     const count = {};
     for (const sv of outside) count[rootOf[sv]] = (count[rootOf[sv]] || 0) + 1;
     const root = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
-    missed.push({root, size: p.size, pointNm: svPointNm(outside.find(sv => rootOf[sv] === root))});
+    missed.push({root, size: p.size, pointNm: svPointNm(outside.find(sv => rootOf[sv] === root)), ...(withSamples ? {samples: outside} : {})});
   }
   const mergers = [];
   for (const p of key.extra_pieces) {
     if (piecesLeft([p], rootOf, cell, 'extra') === 0) continue;
     const inside = p.samples.find(sv => rootOf[sv] === cell);
-    if (inside) mergers.push({size: p.size, pointNm: svPointNm(inside)});
+    if (inside) mergers.push({size: p.size, pointNm: svPointNm(inside), ...(withSamples ? {samples: p.samples.filter(sv => rootOf[sv] === cell)} : {})});
   }
   return {...result, missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
 }
 
-/** Hint (Ames 2026-11-14: "add a hint that jumps me to the next spot"): one
- *  piece still wrong, the biggest first; the nth hint gives the nth piece, so
- *  pressing again moves on. A missed piece comes with its segment to show; a
- *  merger with a point in the player's cell. Each hint is recorded. */
-async function hint(io, {taskId, me, isAdmin, n, idleSecs}) {
-  const r = await review(io, {taskId, me, isAdmin});
+/** The chunk a supervoxel is in: its place to about 4 µm, from its id alone. */
+const chunkOf = (sv) => BigInt(sv) >> BigInt(64 - 8 - 3 * CHUNK.bits);
+/** The chunk of `places` nearest any chunk of `from`, as a point in nm: where
+ *  a piece meets the cell, to the size of a chunk. */
+function nearestChunkNm(from, places) {
+  const mine = new Map();
+  for (const sv of places) { const c = chunkOf(sv); if (!mine.has(c)) mine.set(c, sv); }
+  const theirs = [...new Set([...from].map(chunkOf))];
+  let best = null, bestD = Infinity;
+  for (const [, sv] of mine) {
+    const a = svPointNm(sv);
+    for (const c of theirs) {
+      const b = svPointNm(c << BigInt(64 - 8 - 3 * CHUNK.bits));
+      const d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+      if (d < bestD) { bestD = d; best = a; }
+    }
+  }
+  return best;
+}
+
+/** Hint (Ames 2026-11-14: "add a hint that jumps me to the next spot"; then
+ *  "it should take you to the spot of where the next issue originated, like
+ *  the end of the branch, not immediately reveal the piece... If from there I
+ *  still can't find it, it could then offer the branch"). Pieces still wrong,
+ *  biggest first; the nth hint is about the nth piece. Step 1 gives only the
+ *  place on the player's own cell where the trouble starts (a missing
+ *  branch's end, or where a wrong part joins), to the size of a chunk. Step 2
+ *  shows the piece itself. Each hint is recorded with its step. */
+async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
+  const r = await review(io, {taskId, me, isAdmin, withSamples: true});
   if (!r.scorable) return {taskId: r.taskId, scorable: false};
   const all = [
-    ...(r.missed || []).map(p => ({kind: 'merge', root: p.root, size: p.size, pointNm: p.pointNm})),
-    ...(r.mergers || []).map(p => ({kind: 'cut', size: p.size, pointNm: p.pointNm})),
+    ...(r.missed || []).map(p => ({kind: 'merge', root: p.root, size: p.size, pointNm: p.pointNm, samples: p.samples})),
+    ...(r.mergers || []).map(p => ({kind: 'cut', size: p.size, pointNm: p.pointNm, samples: p.samples})),
   ].filter(p => p.pointNm).sort((a, b) => b.size - a.size);
   const i = all.length ? (Math.max(0, Math.floor(Number(n) || 0)) % all.length) : -1;
-  const piece = i >= 0 ? all[i] : null;
+  const reveal = Number(step) === 2;
+  let piece = null;
+  if (i >= 0) {
+    const p = all[i];
+    if (reveal) piece = {kind: p.kind, size: p.size, pointNm: p.pointNm, ...(p.root ? {root: p.root} : {})};
+    else {
+      // Where it starts, on the player's side: a missing branch meets the cell
+      // they have; a wrong part meets the true cell.
+      const cg = cave(io);
+      let near = null;
+      try {
+        if (p.kind === 'merge') near = nearestChunkNm(p.samples || [], await cg.leaves(SANDBOX, r.root));
+        else {
+          const key = await keyFor(io, await loadTask(io, Number(taskId)));
+          let truth = truthSets.get(key.truth_root);
+          if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
+          near = nearestChunkNm(p.samples || [], truth);
+        }
+      } catch (e) { console.warn('[sandbox-match] hint place', e.message); }
+      piece = {kind: p.kind, size: p.size, nearNm: near || p.pointNm};
+    }
+  }
   await record(io, {taskId: r.taskId, me, kind: 'hint', idleSecs, score: r.score,
-    detail: piece ? {n: i, kind: piece.kind, size: piece.size, left: all.length} : {left: 0}}).catch(() => {});
-  return {taskId: r.taskId, scorable: true, left: all.length, n: i, piece};
+    detail: piece ? {n: i, step: reveal ? 2 : 1, kind: piece.kind, size: piece.size, left: all.length} : {left: 0}}).catch(() => {});
+  return {taskId: r.taskId, scorable: true, left: all.length, n: i, step: reveal ? 2 : 1, piece};
 }
 
 const EVENT_KINDS = new Set(['opened', 'hint_offered', 'complete', 'skip']);
@@ -434,13 +479,13 @@ async function record(io, {taskId, me, kind, idleSecs, score, detail}) {
 async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.check') return check(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
-  if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, idleSecs: args && args.idleSecs});
+  if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, step: args && args.step, idleSecs: args && args.idleSecs});
   if (action === 'match.event') return event(io, {taskId: args && args.taskId, me, isAdmin, kind: args && args.kind, idleSecs: args && args.idleSecs, score: args && args.score});
   fail(400, `unknown action ${action}`);
 }
 
 module.exports = {
-  handle, check, review, hint, event, buildKey, keyFor, svPointNm,
+  handle, check, review, hint, event, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
   _reset() { truthSets.clear(); lastResult.clear(); building.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,

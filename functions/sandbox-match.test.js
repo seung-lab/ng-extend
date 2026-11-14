@@ -330,26 +330,41 @@ test('edits with no task count when made while the player held this claim', asyn
   assert.equal(r.edits, 3);
 });
 
-test('hint: the biggest piece still wrong, the next one on the next press, each recorded', async () => {
+test('hint: first where the trouble starts on your own cell, then the piece; biggest first; each recorded', async () => {
   M._reset();
   const w = world();
-  const first = await M.hint(w.io, {taskId: 1, me: ME, n: 0, idleSecs: 75});
+  const first = await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 1, idleSecs: 75});
   assert.equal(first.left, 2);
-  assert.ok(['merge', 'cut'].includes(first.piece.kind));
-  assert.equal(first.piece.pointNm.length, 3);
-  if (first.piece.kind === 'merge') assert.equal(first.piece.root, w.ID.A);
-  const second = await M.hint(w.io, {taskId: 1, me: ME, n: 1});
+  assert.equal(first.step, 1);
+  // Step 1 names no piece: a place only.
+  assert.equal(first.piece.root, undefined);
+  assert.equal(first.piece.pointNm, undefined);
+  assert.equal(first.piece.nearNm.length, 3);
+  const shown = await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 2});
+  assert.equal(shown.step, 2);
+  assert.equal(shown.piece.kind, first.piece.kind);
+  assert.equal(shown.piece.pointNm.length, 3);
+  if (shown.piece.kind === 'merge') assert.equal(shown.piece.root, w.ID.A);
+  const second = await M.hint(w.io, {taskId: 1, me: ME, n: 1, step: 1});
   assert.notEqual(second.piece.kind, first.piece.kind);
   // Past the end it goes round again.
-  assert.equal((await M.hint(w.io, {taskId: 1, me: ME, n: 2})).piece.kind, first.piece.kind);
-  assert.equal(w.db.events.length, 3);
-  assert.deepEqual([w.db.events[0].kind, w.db.events[0].user_id, w.db.events[0].task_id, w.db.events[0].idle_secs], ['hint', ME.id, 1, 75]);
+  assert.equal((await M.hint(w.io, {taskId: 1, me: ME, n: 2, step: 1})).piece.kind, first.piece.kind);
+  assert.equal(w.db.events.length, 4);
+  assert.deepEqual([w.db.events[0].kind, w.db.events[0].user_id, w.db.events[0].task_id, w.db.events[0].idle_secs, w.db.events[0].detail.step, w.db.events[1].detail.step], ['hint', ME.id, 1, 75, 1, 2]);
   // All fixed: no piece.
   w.sandbox.edit({S2: range(1, 160), N2: range(300, 359), B: range(161, 200)});
   const none = await M.hint(w.io, {taskId: 1, me: ME, n: 0});
   assert.deepEqual([none.left, none.piece], [0, null]);
   // Someone else's cell: no hint.
   await assert.rejects(M.hint(w.io, {taskId: 3, me: ME}), {status: 403});
+});
+
+test('where a piece meets the cell: the nearest chunk of the cell to the piece', () => {
+  // Ids in chunks (x, y, z): the cell in chunks 1..3 along x, the piece in chunk 5.
+  const sv = (x, y, z, n) => ((8n << 56n) | (BigInt(x) << 46n) | (BigInt(y) << 36n) | (BigInt(z) << 26n) | BigInt(n)).toString();
+  const cell = [sv(1, 0, 0, 1), sv(2, 0, 0, 1), sv(3, 0, 0, 1), sv(3, 0, 0, 2)];
+  const piece = [sv(5, 0, 0, 7), sv(6, 0, 0, 7)];
+  assert.deepEqual(M.nearestChunkNm(piece, cell), M.svPointNm(sv(3, 0, 0, 1)));
 });
 
 test('events: only known moments, only on your own cell', async () => {

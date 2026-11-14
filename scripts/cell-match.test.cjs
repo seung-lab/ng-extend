@@ -56,13 +56,15 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   // The match function: answers as the test says, and counts the asks.
   const asks = [];
   const events = [];
+  const hintSteps = [];
+  const HINT_PLACE = { taskId: 16762, scorable: true, left: 2, n: 0, step: 1, piece: { kind: 'merge', size: 60, nearNm: [317000, 163000, 66480] } };
   const HINT = { taskId: 16762, scorable: true, left: 2, n: 0, piece: { kind: 'merge', root: '648518346351009999', size: 60, pointNm: [317516, 163676, 66480] } };
   let answer = ANSWERS.first;
   let reviewAnswer = null;
   await context.route(/ewSandboxMatch/, r => {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     asks.push({ action: input.action, taskId: input.taskId, hasToken: !!input.token });
-    if (input.action === 'match.hint') return r.fulfill(json({ ok: true, data: HINT }));
+    if (input.action === 'match.hint') { hintSteps.push(input.step); return r.fulfill(json({ ok: true, data: input.step === 2 ? HINT : HINT_PLACE })); }
     if (input.action === 'match.event') { events.push(input.kind); return r.fulfill(json({ ok: true, data: { ok: true } })); }
     return r.fulfill(json({ ok: true, data: input.action === 'match.review' ? reviewAnswer : answer }));
   });
@@ -218,16 +220,30 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const nudge = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); return n && !n.hidden ? n.innerText.replace(/\s+/g, ' ') : null; });
     check('after a minute with no edit, Hint is offered', /stuck\? hint takes you to the next spot to fix\. hint/i.test(nudge || ''), nudge);
     await shot('cell-match-hint.png');
+    // Collapsed: no Hint at all (Ames 2026-11-14: "I would be too tempted to click").
+    const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-nudge').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
+    check('collapsed, Hint is not offered', minNudge === false, minNudge);
+    const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
     await page.waitForTimeout(1500);
-    const hinted = await page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
-    check('Hint shows the piece in gold and says what to do', /gold piece belongs to your cell\. merge it in\. next hint/i.test(hinted.text) && hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), hinted);
+    const place = await hintLayers();
+    check('Hint first: only the place on your cell where it starts, no piece shown', /missing a branch that starts near the blue pin\. look for a loose end there\. show me next hint/i.test(place.text) && place.layers.includes('Hint spot') && !place.layers.includes('Hint piece'), place);
+    await shot('cell-match-hint-place.png');
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
+    await page.waitForTimeout(1500);
+    const hinted = await hintLayers();
+    check('Show me: the piece in gold, and what to do', /gold piece belongs to your cell\. merge it in\. next hint/i.test(hinted.text) && hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), hinted);
+    check('the two steps were asked in order', hintSteps.join(',') === '1,2', hintSteps);
     check('the lab hears: opened, Hint offered (the hint itself is recorded by the server)', events.includes('opened') && events.includes('hint_offered'), events);
     await shot('cell-match-hint-shown.png');
     await edit([answer.root]);
     await page.waitForTimeout(400);
     const after = await page.evaluate(() => ({ nudge: document.querySelector('#nge-cell-match .nge-cm-nudge').hidden, layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
     check('an edit puts Hint away and clears its piece', after.nudge && after.layers.length === 0, after);
+    // Resize by the corner (Ames 2026-11-14), kept.
+    const sized = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const cs = getComputedStyle(c); c.style.width = '440px'; c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); return { resize: cs.resize, w: Math.round(c.getBoundingClientRect().width), kept: localStorage.getItem('nge-cell-match-size') }; });
+    check('the box resizes from its corner, and keeps the size', sized.resize === 'both' && sized.w === 440 && /"w":440/.test(sized.kept || ''), sized);
+    await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.style.width = ''; c.style.height = ''; localStorage.removeItem('nge-cell-match-size'); });
     const copy = (await cardText() || '').replace(/−3/, '');
     check('no dashes in the card', !/[\u2013\u2014]|\s-\s/.test(copy), copy);
 
