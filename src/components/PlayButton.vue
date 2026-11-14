@@ -36,11 +36,22 @@ const hidden = computed(() => prefs.prefs.hidePlayButton === true);
 // Cut overlay does for the tutorial.
 const onSandbox = ref(false);
 const tutorialOnScreen = ref(false);
+/** The Sandbox's Playing box was closed with its X: Play opens it again
+ *  (Ames 2026-11-14: new players want the Play button back). */
+const boxClosed = ref(false);
+// The Playing box reads this setting from the page: off, the box stays away.
+watch(hidden, off => {
+  document.body.classList.toggle('nge-play-off', off);
+  document.dispatchEvent(new CustomEvent('nge:play-pref'));
+}, { immediate: true });
 let watchTimer: ReturnType<typeof setInterval> | null = null;
 function readScreen() {
   onSandbox.value = canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
   tutorialOnScreen.value = !!document.querySelector('.introductionStep');
+  boxClosed.value = document.body.classList.contains('nge-cm-closed');
 }
+const showDock = computed(() => signedIn.value && !hidden.value && !tutorialOnScreen.value
+  && (!play.on || (onSandbox.value && boxClosed.value)));
 
 const SUB = 'Pyr teleports you to a neuron.';
 const MAP_LINES = [
@@ -90,6 +101,12 @@ async function go() {
   try { await startPlay(picked.value); } finally { busy.value = false; }
 }
 function onButton() {
+  // The Playing box was closed: open it again, and play if not playing.
+  if (onSandbox.value && boxClosed.value) {
+    (window as any).__ngeCellMatch?.openCard?.();
+    boxClosed.value = false;
+    if (play.on) return;
+  }
   // Playing already: back to the task in hand.
   if (play.on) { void startPlay(play.on); return; }
   pressPlay();
@@ -101,7 +118,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 
 <template>
   <Teleport to="body">
-    <div v-if="signedIn && !play.on && !hidden && !tutorialOnScreen" class="nge-play-dock" :class="{ 'nge-play-dock--big': onSandbox }">
+    <div v-if="showDock" class="nge-play-dock" :class="{ 'nge-play-dock--big': onSandbox }">
     <button class="nge-play-btn" @click="onButton"
             title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
       <svg class="nge-play-icon" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>

@@ -83,6 +83,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   try {
     await page.goto(BASE + '#!' + encodeURIComponent(JSON.stringify(STATE)), { waitUntil: 'load' });
     await page.waitForFunction(() => { const a = document.querySelector('#app'); return !!(a && a.__vue_app__ && window.viewer); }, null, { timeout: 120000 });
+    // The Cell Library answers are faked here: say it is listening.
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-library-ready')));
     await page.evaluate((css) => {
       const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia;
       const login = pinia._s.get('login');
@@ -100,7 +102,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const shown = await waitText(/merge 0%/i, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
-    check('Playing: Practice cell, the Match score, then Merge and Cut with their pieces', /^playing: practice cell .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
+    check('Playing: Practice, the Match score, then Merge and Cut with their pieces', /^playing: practice .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% 0 of 3 cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 300, box);
     // Clear of the Play button in the same corner.
@@ -327,7 +329,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { button: document.querySelector('#nge-cell-match .nge-cm-save').textContent, tip: tip ? tip.innerText : null,
         title: l.title, note: l.note, hasMissedLayer: /Missed%20pieces|Missed pieces/.test(decodeURIComponent(l.url || '')), dataset: l.dataset };
     });
-    check('Save view saves this view, missed pieces and all, to My Links', saved.button === 'Saved \u2713' && saved.hasMissedLayer && /^Sandbox review, cell \d+/.test(saved.title || '') && saved.dataset === 'pinky_nf_v2', saved);
+    check('Save view saves this view, missed pieces and all, to My Links', saved.button === 'Saved \u2713' && saved.hasMissedLayer && saved.title === 'My 1st practice cell' && saved.dataset === 'pinky_nf_v2', saved);
     check('a tip says it is in My Links', /SAVED/.test(saved.tip || '') && /My Links/.test(saved.tip || '') && !/[\u2013\u2014]|\s-\s/.test((saved.tip || '') + (saved.note || '')), saved);
     await shot('cell-match-saved.png');
     // Open My Links walks the way there (Ames 2026-11-13): Cell Library, then
@@ -375,24 +377,26 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(300);
     const back = await page.evaluate(() => Math.round(document.getElementById('nge-cell-match').getBoundingClientRect().left));
     check('double click puts it back', back === 12, back);
-    // The X folds it into a small button; the first time a hint says how to reopen.
-    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-x').click());
-    await page.waitForTimeout(400);
-    const folded = await page.evaluate(() => ({ card: !!document.getElementById('nge-cell-match'), chip: (document.getElementById('nge-cell-match-open') || {}).textContent, hint: ((document.querySelector('#nge-cell-match-hint .nge-cm-tip-text') || {}).textContent) }));
-    check('X closes the card, a Match button stays with the score', !folded.card && /match\s*19%/i.test(folded.chip || ''), folded);
-    check('the first close says Click here to reopen', folded.hint === 'Click here to reopen', folded);
+    // The X closes the box and Pyr's Play button comes back to open it
+    // (Ames 2026-11-14: "it's not clear how to get back bc the play button is gone").
+    await page.evaluate(() => { document.querySelector('.introductionStep')?.remove(); document.querySelector('#nge-cell-match .nge-cm-x').click(); });
+    await page.waitForTimeout(1000);
+    const folded = await page.evaluate(() => { const p = document.querySelector('.nge-play-btn'); return { card: !!document.getElementById('nge-cell-match'), chip: !!document.getElementById('nge-cell-match-open'), play: !!p && p.getBoundingClientRect().width > 0 && p.textContent.trim(), row: !document.body.classList.contains('nge-cm-owns') }; });
+    check('X closes the box: no Match button, the Play button is back, the Cell Library row returns', !folded.card && !folded.chip && folded.play === 'Play' && folded.row, folded);
     await shot('cell-match-closed.png');
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(3500);
-    check('closed stays closed through edits', await page.evaluate(() => !document.getElementById('nge-cell-match') && !!document.getElementById('nge-cell-match-open')), null);
-    await page.evaluate(() => document.getElementById('nge-cell-match-open').click());
-    check('the button opens it again', await waitText(/39%/, 10000) && await page.evaluate(() => !document.getElementById('nge-cell-match-open')), await cardText());
-    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-x').click());
-    await page.waitForTimeout(400);
-    check('the hint shows only the first time', await page.evaluate(() => !document.getElementById('nge-cell-match-hint')), null);
-    await page.evaluate(() => document.getElementById('nge-cell-match-open').click());
-    await waitText(/39%/, 10000);
+    check('closed stays closed through edits', await page.evaluate(() => !document.getElementById('nge-cell-match') && !!document.querySelector('.nge-play-btn')), null);
+    await page.evaluate(() => document.querySelector('.nge-play-btn').click());
+    check('Play opens it again', await waitText(/39%/, 10000), await cardText());
+    await page.waitForTimeout(900);
+    // Play button off in Settings: no box at all, the Cell Library as before.
+    await page.evaluate(() => { const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia; pinia._s.get('userPrefs').prefs.hidePlayButton = true; });
+    await page.waitForTimeout(600);
+    check('Play button off: no box, Cell Library only', await page.evaluate(() => !document.getElementById('nge-cell-match') && !document.body.classList.contains('nge-cm-owns')), null);
+    await page.evaluate(() => { const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia; pinia._s.get('userPrefs').prefs.hidePlayButton = false; });
+    check('Play button on again: the box is back', await waitText(/39%/, 10000), await cardText());
 
     // The info box (Ames 2026-11-13: "Also an info box").
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-i').click());
@@ -421,7 +425,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const tips = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-row')].map(r => r.title));
     check('hovering says what each line means', /^Match score 19%: your Merge and Cut together, half each$/.test(tips[0]) && /^Merge \d+%: \d+ of \d+ pieces merged in$/.test(tips[1]) && /^Cut/.test(tips[2]), tips);
     const miniText = await page.evaluate(() => document.getElementById('nge-cell-match').innerText.replace(/\s+/g, ' ').trim());
-    check('collapse shows Practice cell and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^practice cell/i.test(miniText) && /19%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
+    check('collapse shows Practice and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^practice/i.test(miniText) && /19%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
     await shot('cell-match-collapsed.png');
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);

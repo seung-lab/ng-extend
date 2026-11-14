@@ -376,3 +376,19 @@ test('events: only known moments, only on your own cell', async () => {
   await assert.rejects(M.event(w.io, {taskId: 3, me: ME, kind: 'skip'}), {status: 403});
   await assert.rejects(M.event(w.io, {taskId: 1, me: null, kind: 'skip'}), {status: 403});
 });
+
+test('where a piece meets the cell, to the voxel: a cell voxel touching the piece', () => {
+  const C = require('./sandbox-contact');
+  // 10 x 10 x 3: the cell fills x < 5, the piece x >= 6, touching only at y = 7.
+  const dims = [10, 10, 3], vol = new Uint8Array(300);
+  for (let z = 0; z < 3; z++) for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) {
+    const i = (z * 10 + y) * 10 + x;
+    if (x < 5) vol[i] = 1; else if (x >= 6) vol[i] = 2;
+    if (y === 7 && x === 5) vol[i] = 1;
+  }
+  assert.deepEqual(C.meetingVoxel(vol, dims), [5, 7, 1]);
+  // Apart: the cell voxel nearest the piece.
+  const apart = new Uint8Array(300);
+  apart[(1 * 10 + 2) * 10 + 1] = 1; apart[(1 * 10 + 2) * 10 + 0] = 1; apart[(1 * 10 + 2) * 10 + 8] = 2;
+  assert.deepEqual(C.meetingVoxel(apart, dims), [1, 2, 1]);
+});

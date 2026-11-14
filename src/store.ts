@@ -5383,7 +5383,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
       .filter((r): r is string => !!r))],
   })));
-  startSandboxMatch({ claims: () => sandboxClaims.value, signedIn: () => !!userId.value, saveLink: (l) => useWorkingLinksStore().add(l) });
+  startSandboxMatch({ claims: () => sandboxClaims.value, signedIn: () => !!userId.value, saveLink: (l) => useWorkingLinksStore().add(l),
+    myLinkTitles: () => useWorkingLinksStore().links.filter(l => l.userId === userId.value).map(l => l.title) });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
   let laterAgainTimer: ReturnType<typeof setTimeout> | null = null;
@@ -5526,7 +5527,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     try {
       await taskAction('save_link', { id: taskId, link });
       const t = tasks.value.find(x => x.id === taskId);
-      if (t) t.working_link = link;
+      // The server stamps updated_at on a save; keep the local copy in step so
+      // "Saved 2h ago" says "just now" (Ames 2026-11-14).
+      if (t) { t.working_link = link; t.updated_at = new Date().toISOString(); }
       noteClaimSave(taskId);
       return true;
     } catch (e: any) {

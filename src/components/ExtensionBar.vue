@@ -998,7 +998,16 @@ const toolbarActions: Record<string, ToolbarAction> = {
   leaderboard: { action: () => { showLeaderboard.value = true; } },
   datasetStats: { action: () => { if (showDatasetStats.value) showDatasetStats.value = false; else openDatasetStatsHome(); } },
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
-  cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
+  cells:       { action: () => {
+    // Open but out of sight (its slim row steps aside for the Sandbox Playing
+    // box): show it in full, never close it (Ames 2026-11-14: the button lit
+    // up and "nothing happens").
+    if (showCellLibrary.value && document.body.classList.contains('nge-cm-owns') && document.querySelector('.nge-cl-panel--slim')) {
+      document.dispatchEvent(new CustomEvent('nge:cl-expand'));
+      return;
+    }
+    cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value;
+  } },
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   // Toolbar camera (Amy): the same Save screenshot dialog the palette opens.
   screenshot:  { action: () => { showScreenshotDialog.value = true; } },

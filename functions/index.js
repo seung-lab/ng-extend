@@ -2272,7 +2272,7 @@ exports.ewProofreadingTest = onRequest(
 // because it binds the CAVE token and keeps answer keys (not ewSecureWrite,
 // which other checkouts redeploy):
 //   firebase deploy --only functions:ewSandboxMatch --project eyewire-ii-e4d52
-const EW_MATCH_CODE_VERSION = "2026-11-14-sandbox-match-8-hint-steps";
+const EW_MATCH_CODE_VERSION = "2026-11-14-sandbox-match-9-hint-voxel";
 exports.ewSandboxMatch = onRequest(
   // A cell's supervoxels are ~6 MB; a few at a time per instance. 120 s: the
   // first check of a cell builds its key (up to ~20 s on the largest cells).

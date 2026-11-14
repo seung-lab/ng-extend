@@ -63,6 +63,7 @@ function svPointNm(sv) {
 }
 const REVIEW_MAX = 30;
 
+const contact = require('./sandbox-contact');
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 
 // ── Sets of supervoxels: sorted BigUint64Arrays ────────────────────────────
@@ -433,23 +434,24 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
   let piece = null;
   if (i >= 0) {
     const p = all[i];
-    if (reveal) piece = {kind: p.kind, size: p.size, pointNm: p.pointNm, ...(p.root ? {root: p.root} : {})};
-    else {
-      // Where it starts, on the player's side: a missing branch meets the cell
-      // they have; a wrong part meets the true cell.
+    // Where it meets the player's cell, to the voxel (Ames 2026-11-14: the
+    // pin sat "in empty space on the wrong cell"). A missing branch meets
+    // the cell the player has; a wrong part meets the true part of the cell.
+    let at = null;
+    try {
       const cg = cave(io);
-      let near = null;
-      try {
-        if (p.kind === 'merge') near = nearestChunkNm(p.samples || [], await cg.leaves(SANDBOX, r.root));
-        else {
-          const key = await keyFor(io, await loadTask(io, Number(taskId)));
-          let truth = truthSets.get(key.truth_root);
-          if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
-          near = nearestChunkNm(p.samples || [], truth);
-        }
-      } catch (e) { console.warn('[sandbox-match] hint place', e.message); }
-      piece = {kind: p.kind, size: p.size, nearNm: near || p.pointNm};
-    }
+      const key = await keyFor(io, await loadTask(io, Number(taskId)));
+      let truth = truthSets.get(key.truth_root);
+      if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
+      const cell = await cg.leaves(SANDBOX, r.root);
+      if (p.kind === 'merge') at = await contact.meetingNm({fetchImpl: io.fetch, cell, piece: minus(truth, cell), near: p.samples || []});
+      else {
+        const wrong = minus(cell, truth);
+        at = await contact.meetingNm({fetchImpl: io.fetch, cell: minus(cell, wrong), piece: wrong, near: p.samples || []});
+      }
+    } catch (e) { console.warn('[sandbox-match] hint place', e.message); }
+    if (reveal) piece = {kind: p.kind, size: p.size, pointNm: at || p.pointNm, ...(p.root ? {root: p.root} : {})};
+    else piece = {kind: p.kind, size: p.size, nearNm: at || p.pointNm};
   }
   await record(io, {taskId: r.taskId, me, kind: 'hint', idleSecs, score: r.score,
     detail: piece ? {n: i, step: reveal ? 2 : 1, kind: piece.kind, size: piece.size, left: all.length} : {left: 0}}).catch(() => {});

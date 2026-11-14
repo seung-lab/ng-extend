@@ -2274,6 +2274,8 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
 /** Asked for a tab while already open (the Switch Dataset window's chips on
  *  the dataset on screen): go to it. */
 function onOpenAsked(e: Event) {
+  // Opened out of sight by the Sandbox Playing box, to run its buttons.
+  if ((e as CustomEvent).detail?.quiet) return;
   const tab = (e as CustomEvent).detail?.tab;
   if (tab && ALL_CL_TABS.some(t => t.key === tab)) {
     filter.value = tab;
@@ -3090,6 +3092,9 @@ const slimCell = computed<CellRow | null>(() => {
  *  last claim just completed. It offers "Claim a new cell" (Ames 2026-10-21,
  *  report 191: "slim view on" with nothing to shrink to left the panel full). */
 const slimEmpty = ref(false);
+// Opened by the Sandbox Playing box to run its Save view, Skip or Complete:
+// open slim, which the box hides, so nothing pops up over the view.
+if ((window as any).__ngeCmQuietLibrary) { (window as any).__ngeCmQuietLibrary = false; slimEmpty.value = true; }
 /** Slim on the Quests tab: the bar shows the quest cell you are on (toknow,
  *  report 288: "show current Quest cell in slim Cell Library when I select
  *  Quests tab"). */
@@ -3500,6 +3505,8 @@ function cmCell(taskId: number): CellRow | undefined {
 function onCmAction(e: Event) {
   const d = (e as CustomEvent).detail || {};
   const taskId = Number(d.taskId);
+  // The box asking about a cell is showing it, whatever this panel heard before.
+  if (taskId > 0) cmShown = taskId;
   const cell = cmCell(taskId);
   if (!cell) { cmTell(taskId, 'That cell is not one of your open claims.'); return; }
   if (d.action === 'save') void saveClaimView(cell);
@@ -3529,8 +3536,21 @@ function cmTell(taskId: number | null, problem?: string) {
 }
 watch([completing, savingView, savedViewAt, skipping], () => { if (cmShown != null) cmTell(cmShown); }, { deep: true });
 function onCmAsk(e: Event) { const t = Number((e as CustomEvent).detail?.taskId); cmShown = t > 0 ? t : null; if (cmShown != null) cmTell(cmShown); }
-onMounted(() => { document.addEventListener(CM_ACTION, onCmAction); document.addEventListener('nge:cm-cell-ask', onCmAsk); });
-onBeforeUnmount(() => { document.removeEventListener(CM_ACTION, onCmAction); document.removeEventListener('nge:cm-cell-ask', onCmAsk); });
+onMounted(() => {
+  document.addEventListener(CM_ACTION, onCmAction);
+  document.addEventListener('nge:cm-cell-ask', onCmAsk);
+  // Mounted after the box said which cell it shows: ask it to say again.
+  document.dispatchEvent(new CustomEvent('nge:cm-library-ready'));
+  document.addEventListener('nge:cl-expand', onExpandAsked);
+});
+/** Asked to show while slim (the top bar button, the box's cell icon): full. */
+function onExpandAsked() { expandFull(); }
+onBeforeUnmount(() => document.removeEventListener('nge:cl-expand', onExpandAsked));
+onBeforeUnmount(() => {
+  document.removeEventListener(CM_ACTION, onCmAction);
+  document.removeEventListener('nge:cm-cell-ask', onCmAsk);
+  document.dispatchEvent(new CustomEvent('nge:cm-library-gone'));
+});
 </script>
 
 <template>
