@@ -20,6 +20,11 @@ interface Down { x: number; y: number; at: number; }
 
 function annotationUnderMouse(viewer: any): { managed: any; state: any; id: string } | null {
   const mouse = viewer?.mouseState;
+  // What is under the mouse is read from the last frame drawn for picking,
+  // and on a slow tab that can be behind the mouse (Nseraf 2026-11-10, report
+  // "left click select annotation buggy": sometimes a click did not select).
+  // Read it again at the mouse's position now.
+  try { mouse?.updateUnconditionally?.(); } catch { /* keep what it has */ }
   const id = mouse?.pickedAnnotationId;
   const state = mouse?.pickedAnnotationLayer;
   if (!mouse?.active || id === undefined || id === null || !state) return null;
@@ -38,16 +43,29 @@ export function startAnnotationClickSelect(viewer: any) {
     down = null;
     if (e.button !== 0 || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
     if (!(e.target as HTMLElement | null)?.closest?.('.neuroglancer-rendered-data-panel')) return;
-    down = { x: e.clientX, y: e.clientY, at: performance.now() };
+    // The event's own time, not the time it is handled: a page busy for a
+    // moment (a big MEC view in Firefox) made a quick click look slow.
+    down = { x: e.clientX, y: e.clientY, at: e.timeStamp };
   }, true);
   window.addEventListener('mouseup', (e: MouseEvent) => {
     const d = down;
     down = null;
     if (!d || e.button !== 0) return;
-    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > MAX_MOVE_PX || performance.now() - d.at > MAX_MS) return;
-    let hit: ReturnType<typeof annotationUnderMouse> = null;
-    try { hit = annotationUnderMouse(viewer); } catch { /* nothing under the mouse */ }
-    if (!hit) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > MAX_MOVE_PX || e.timeStamp - d.at > MAX_MS) return;
+    // Nothing found yet may only mean the picking frame is not drawn: look
+    // again for a few frames while the mouse stays where it was clicked.
+    let tries = 0;
+    const look = () => {
+      let hit: ReturnType<typeof annotationUnderMouse> = null;
+      try { hit = annotationUnderMouse(viewer); } catch { /* nothing under the mouse */ }
+      if (hit) { select(hit); return; }
+      const m = viewer?.mouseState;
+      const moved = m?.pageX !== undefined && Math.hypot(m.pageX - e.pageX, m.pageY - e.pageY) > MAX_MOVE_PX;
+      if (++tries < 6 && !moved && down === null) requestAnimationFrame(look);
+    };
+    look();
+  }, true);
+  const select = (hit: { managed: any; state: any; id: string }) => {
     const { managed, state, id } = hit;
     try {
       // Bring the layer's list forward if another layer's panel is showing.
@@ -63,5 +81,5 @@ export function startAnnotationClickSelect(viewer: any) {
     } catch (err) {
       console.warn('[annotation click] could not select', err);
     }
-  }, true);
+  };
 }

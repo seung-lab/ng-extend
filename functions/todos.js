@@ -33,6 +33,10 @@
  * "closeReport" with a move to Done closes the report too.
  */
 const LISTS = ['todo', 'doing', 'done'];
+// Closed as not finished (Ames 2026-11-12: "Delete - mark incomplete (I want
+// to keep track of tasks my team did not finish)"): off the board, never
+// counted as done, kept for Ames. Only she moves a card in or out of it.
+const INCOMPLETE = 'incomplete';
 const SIZES = ['S', 'M', 'L'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CHECK_MAX = 60;
@@ -41,7 +45,7 @@ const IMAGES_MAX = 10;
 /** Images added on the board: our own storage, the todo-images folder. */
 const TODO_IMAGES = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/todo-images/';
 /** Test site, live, pull request or branch, doc, anything else. */
-const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'other'];
+const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'file', 'other'];
 const COMMENT_MAX = 2000;
 const COMMENTS_MAX = 200;
 
@@ -70,7 +74,7 @@ function cleanFields(f, isNew) {
     out.title = t;
   }
   if ('notes' in f) out.notes = text(f.notes, 8000, 'The notes');
-  if ('list' in f) { if (!LISTS.includes(f.list)) fail(400, 'Bad list.'); out.list = f.list; }
+  if ('list' in f) { if (!LISTS.includes(f.list) && f.list !== INCOMPLETE) fail(400, 'Bad list.'); out.list = f.list; }
   if ('rank' in f) { if (!Number.isFinite(f.rank)) fail(400, 'Bad rank.'); out.rank = f.rank; }
   if ('size' in f) { if (f.size !== null && !SIZES.includes(f.size)) fail(400, 'Bad size.'); out.size = f.size; }
   if ('owner_id' in f) out.owner_id = f.owner_id === null ? null : uuid(f.owner_id, 'owner');
@@ -83,6 +87,9 @@ function cleanFields(f, isNew) {
         item.due = String(c.due);
       }
       if (c && c.owner_id) item.owner_id = uuid(c.owner_id, 'item owner');
+      // An item under the one above it (Ames 2026-11-11), two levels in at most.
+      const level = Number(c && c.level);
+      if (Number.isInteger(level) && level > 0) item.level = Math.min(2, level);
       return item;
     }).filter(c => c.text);
   }
@@ -92,13 +99,20 @@ function cleanFields(f, isNew) {
     if (f.due_on !== null && f.due_on !== '' && !/^\d{4}-\d\d-\d\d$/.test(String(f.due_on))) fail(400, 'A due date is a day, like 2026-10-31.');
     out.due_on = f.due_on || null;
   }
+  // A time on the due day (Ames 2026-11-12: "add time"), "HH:MM" on a 24 hour
+  // clock, read in the viewer's own time zone. No day, no time.
+  if ('due_time' in f) {
+    if (f.due_time !== null && f.due_time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(f.due_time))) fail(400, 'A due time is like 14:30.');
+    out.due_time = f.due_time || null;
+  }
+  if ('due_on' in out && !out.due_on) out.due_time = null;
   if ('links' in f) {
     if (!Array.isArray(f.links) || f.links.length > LINKS_MAX) fail(400, `At most ${LINKS_MAX} links.`);
     out.links = f.links.map(l => {
       const url = String((l && l.url) || '').trim();
       if (!/^https:\/\/[^\s"'<>]+$/.test(url) || url.length > 500) fail(400, 'A link must be one https address.');
       const kind = LINK_KINDS.includes(l.kind) ? l.kind : 'other';
-      return { kind, url, label: text((l && l.label) || '', 40, 'A link name').trim() };
+      return { kind, url, label: text((l && l.label) || '', 80, 'A link name').trim() };
     });
   }
   if ('images' in f) {
@@ -109,6 +123,10 @@ function cleanFields(f, isNew) {
       return url;
     });
   }
+  // Hierarchy (Ames 2026-11-11, supabase-admin-todos-hierarchy.sql): the card
+  // this one sits under, and the section of its column it sits in.
+  if ('parent_id' in f) out.parent_id = f.parent_id === null ? null : uuid(f.parent_id, 'parent card');
+  if ('section_id' in f) out.section_id = f.section_id === null ? null : uuid(f.section_id, 'section');
   if (isNew && f.triage_id) out.triage_id = uuid(f.triage_id, 'report');
   return out;
 }
@@ -122,7 +140,7 @@ function tagged(people, ids) {
 
 /** What changed, in words, for a follower's bell. Only a move in the list says nothing. */
 function changeWords(fields, before) {
-  if ('list' in fields && fields.list !== before.list) return fields.list === 'done' ? 'finished' : `moved to ${fields.list === 'doing' ? 'Doing' : 'To do'}`;
+  if ('list' in fields && fields.list !== before.list) return fields.list === 'done' ? 'finished' : fields.list === INCOMPLETE ? '' : `moved to ${fields.list === 'doing' ? 'Doing' : 'To do'}`;
   if ('checklist' in fields) {
     const was = before.checklist || [], now = fields.checklist;
     const ticked = now.filter((c, i) => c.done && !(was[i] && was[i].done) && was[i] && was[i].text === c.text);
@@ -131,15 +149,36 @@ function changeWords(fields, before) {
     return 'updated the checklist on';
   }
   if ('owner_id' in fields) return 'changed who owns';
-  if ('due_on' in fields) return 'changed the due day of';
+  if ('due_on' in fields || 'due_time' in fields) return 'changed the due day of';
   if (['title', 'notes', 'status', 'links', 'images'].some(k => k in fields)) return 'updated';
   return '';
+}
+/**
+ * A card sits under one parent, one level deep: a sub card has no sub cards
+ * of its own, so no card is ever inside itself. Its section is one of its
+ * column's.
+ */
+async function checkHierarchy(db, id, fields) {
+  if (fields.parent_id) {
+    if (fields.parent_id === id) fail(400, 'A card can not sit inside itself.');
+    const parent = await db.card(fields.parent_id);
+    if (!parent) fail(404, 'That parent card is gone. Refresh the board.');
+    if (parent.parent_id) fail(400, 'That card is already inside another card. Pick its parent instead.');
+    if (id && (await db.children(id)).length) fail(400, 'This card has sub cards of its own, so it can not go inside another card.');
+  }
+  if (fields.section_id) {
+    const sec = await db.section(fields.section_id);
+    if (!sec) fail(404, 'That section is gone. Refresh the board.');
+    const list = fields.list || (id ? ((await db.card(id)) || {}).list : 'todo');
+    if (sec.list !== list) fail(400, 'That section is in another column.');
+  }
 }
 const noFollows = { all: async () => ({}), get: async () => [], set: async () => {} };
 const noSeen = { get: async () => ({}), mark: async () => {} };
 const HELPERS_MAX = 6;
+const REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'];
 
-async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, helpers = noFollows, seen = noSeen, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
+async function todoAction(action, args, {db, me, byName, tag, isOwner = false, follows = noFollows, helpers = noFollows, seen = noSeen, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
   const meId = me && me.id;
   /** Followers hear, but never the one who did it, nor anyone already told. */
@@ -157,9 +196,13 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (next.length !== had.length) await follows.set(cardId, next);
   };
   if (action === 'todo.list') {
-    const [cards, people, followers, helping, seenAt] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
-      meId ? seen.get(meId).catch(() => ({})) : {}]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt };
+    const [cards, people, followers, helping, seenAt, sections, closed] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
+      meId ? seen.get(meId).catch(() => ({})) : {},
+      // null until supabase-admin-todos-hierarchy.sql is run: the board then hides sections and sub cards.
+      db.sections ? db.sections().catch(() => null) : null,
+      db.triageClosed ? db.triageClosed(new Date(Date.now() - 7 * 864e5).toISOString()).catch(() => null) : null]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt, sections,
+      triageWeek: closed ? countTriage(people, closed) : null };
   }
   // I opened a card: its tags of me so far count as seen (Ames 2026-11-06:
   // "if I click on this it shouldn't still show it as an unread task for me").
@@ -168,6 +211,25 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     if (!meId) fail(403, 'No Pyr profile.');
     await seen.mark(meId, id, now);
     return { id, at: now };
+  }
+  // Emoji reactions on a comment (Ames 2026-11-09: "can we have emoji reactions
+  // like thumbs up"). The same emoji again takes yours away. The comment's
+  // writer sees it under My Tasks (TodoBoard.vue), not as a bell.
+  if (action === 'todo.react') {
+    const id = uuid(args.id, 'card');
+    const emoji = String(args.emoji || '');
+    if (!REACTIONS.includes(emoji)) fail(400, 'Pick one of the reactions.');
+    const before = await db.card(id);
+    if (!before) fail(404, 'That card is gone. Refresh the board.');
+    const i = Number(args.index);
+    const list = [...(before.comments || [])];
+    const old = Number.isInteger(i) ? list[i] : null;
+    if (!old || (args.at && old.at !== args.at)) fail(404, 'That comment moved. Refresh the board.');
+    const had = Array.isArray(old.reactions) ? old.reactions : [];
+    const mine = had.some(r => r.by === byName && r.emoji === emoji);
+    const next = mine ? had.filter(r => !(r.by === byName && r.emoji === emoji)) : [...had, { emoji, by: byName, at: now }].slice(-60);
+    list[i] = { ...old, reactions: next };
+    return { card: await db.patch(id, { comments: list }) };
   }
   if (action === 'todo.commentEdit') {
     const id = uuid(args.id, 'card');
@@ -211,9 +273,32 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
     return { id, followers: next };
   }
 
+  // Sections of a column (Ames 2026-11-11): named, folding groups of cards.
+  // {list, name} adds one at the bottom; {id, name} renames; {id, rank} moves;
+  // {id, remove: true} takes it away and its cards stay, outside any section.
+  if (action === 'todo.section') {
+    if (args.id) {
+      const id = uuid(args.id, 'section');
+      const had = await db.section(id);
+      if (!had) fail(404, 'That section is gone. Refresh the board.');
+      if (args.remove) { await db.removeSection(id); return { removed: id }; }
+      const row = {};
+      if ('name' in args) { const n = text(args.name, 60, 'A section name').replace(/\s+/g, ' ').trim(); if (!n) fail(400, 'A section needs a name.'); row.name = n; }
+      if ('rank' in args) { if (!Number.isFinite(args.rank)) fail(400, 'Bad rank.'); row.rank = args.rank; }
+      return { section: await db.patchSection(id, row) };
+    }
+    if (!LISTS.includes(args.list)) fail(400, 'Bad list.');
+    const n = text(args.name, 60, 'A section name').replace(/\s+/g, ' ').trim();
+    if (!n) fail(400, 'A section needs a name.');
+    const top = Math.max(0, ...((await db.sections()) || []).filter(x => x.list === args.list).map(x => Number(x.rank) || 0));
+    return { section: await db.insertSection({ list: args.list, name: n, rank: top + 1, created_by: byName }) };
+  }
+
   if (action === 'todo.save') {
     const isNew = !args.id;
     const fields = cleanFields(args.fields || {}, isNew);
+    if (fields.list === INCOMPLETE && (isNew || !isOwner)) fail(403, 'Only Ames closes a card as not finished.');
+    await checkHierarchy(db, isNew ? null : uuid(args.id, 'card'), fields);
     let card;
     if (isNew && fields.triage_id) {
       // A report already on the board keeps its one card: it comes back to To do.
@@ -238,13 +323,26 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
       const id = uuid(args.id, 'card');
       const before = await db.card(id);
       if (!before) fail(404, 'That card is gone. Refresh the board.');
+      if (before.list === INCOMPLETE && !isOwner) fail(403, 'Only Ames reopens a card closed as not finished.');
       if ('list' in fields && fields.list !== before.list) {
-        fields.done_at = fields.list === 'done' ? now : null;
+        // done_at is when it closed: finished, or closed as not finished.
+        fields.done_at = fields.list === 'done' || fields.list === INCOMPLETE ? now : null;
+        // A section belongs to one column: moved without one, it leaves it.
+        if (!('section_id' in fields) && before.section_id) fields.section_id = null;
         // Moved without a place: the bottom of its new list.
         if (!('rank' in fields)) fields.rank = (await db.maxRank(fields.list)) + 1;
       }
       card = await db.patch(id, { ...fields, updated_at: now });
       if (fields.list === 'done' && args.closeReport && before.triage_id) await db.closeReport(before.triage_id, byName);
+      // Everyone on a finished card gets the credit (Ames 2026-11-09: "both get
+      // it", "all collaborators"): whoever presses Done, if not the owner, joins
+      // its collaborators, so the board and Arcane Fixes count them too.
+      if (fields.list === 'done' && before.list !== 'done' && meId && meId !== card.owner_id) {
+        try {
+          const had = await helpers.get(id);
+          if (!had.includes(meId) && had.length < HELPERS_MAX) await helpers.set(id, [...had, meId]);
+        } catch (e) { console.warn('[todo] finisher not added:', e.message); }
+      }
       // Given the card: they hear about it, unless they gave it to themselves.
       if (fields.owner_id && fields.owner_id !== before.owner_id && fields.owner_id !== (me && me.id)) {
         const people = await db.people();
@@ -326,11 +424,33 @@ function slackIdOf(person) {
   return null;
 }
 
+/**
+ * Triage reports closed this week (Done or Dismiss), in all and by admin
+ * (Ames 2026-11-12: the board's "done this week" counts them too). A report
+ * closed by finishing its card on this board is already counted as the card.
+ * reviewed_by is a Pyr name ("Amy R. Sterling", or her player name "Amy
+ * Sterling") or "slack:<id>" for a decision made in Slack.
+ */
+function countTriage(people, rows) {
+  const norm = s => String(s || '').toLowerCase().replace(/\b[a-z]\.\s*/g, '').replace(/\s+/g, ' ').trim();
+  const out = { total: 0, byPerson: {} };
+  for (const r of rows) {
+    if (/^Done on the To do board/.test(r.result_note || '')) continue;
+    out.total++;
+    const by = String(r.reviewed_by || '').trim();
+    if (!by) continue;
+    const slack = by.startsWith('slack:') ? by.slice(6) : slackIdOf({ name: by });
+    const p = people.find(x => x.name === by || norm(x.name) === norm(by)) || (slack && people.find(x => slackIdOf(x) === slack));
+    if (p) out.byPerson[p.id] = (out.byPerson[p.id] || 0) + 1;
+  }
+  return out;
+}
+
 /** Followers: the bell only, no Slack, so following stays quiet. */
 function makeFollowBell({ sb, site, byName, meId }) {
   return async (ids, card, what, said) => {
     const link = `${site}/?triage=board&todo=${card.id}`;
-    const quote = String(said || '').replace(/\s+/g, ' ').slice(0, 200);
+    const quote = String(said || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200);
     const rows = ids.map(id => ({ title: `📋 ${byName} ${what} a To do you follow`.slice(0, 120),
       body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
       target_type: 'user', target_id: id, send_at: new Date().toISOString(), created_by: meId || null }));
@@ -344,7 +464,7 @@ function makeFollowBell({ sb, site, byName, meId }) {
 function makeTagger({ sb, slackPost, slackToken, channel, site, byName, meId }) {
   return async (people, card, what, said) => {
     const link = `${site}/?triage=board&todo=${card.id}`;
-    const quote = String(said || '').replace(/\s+/g, ' ').slice(0, 200);
+    const quote = String(said || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200);
     const rows = people.map(p => ({ title: `📋 ${byName} ${what} a To do`.slice(0, 120),
       body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
       target_type: 'user', target_id: p.id, send_at: new Date().toISOString(), created_by: meId || null }));
@@ -373,6 +493,13 @@ function restDb(sb) {
     insert: async row => (await sb('admin_todos', { method: 'POST', body: JSON.stringify(row) }))[0],
     patch: async (id, row) => (await sb(`admin_todos?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }))[0],
     remove: id => sb(`admin_todos?id=eq.${id}`, { method: 'DELETE' }),
+    children: id => sb(`admin_todos?parent_id=eq.${id}&select=id&limit=50`),
+    sections: () => sb('admin_todo_sections?select=*&order=list.asc,rank.asc&limit=200'),
+    triageClosed: since => sb(`feedback_triage?select=reviewed_by,result_note&status=in.(done,dismissed)&reviewed_at=gte.${enc(since)}&limit=2000`),
+    section: async id => (await sb(`admin_todo_sections?id=eq.${id}&select=*&limit=1`))[0] || null,
+    insertSection: async row => (await sb('admin_todo_sections', { method: 'POST', body: JSON.stringify(row) }))[0],
+    patchSection: async (id, row) => (await sb(`admin_todo_sections?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }))[0],
+    removeSection: id => sb(`admin_todo_sections?id=eq.${id}`, { method: 'DELETE' }),
     activeKey: async userId => (await sb(`admin_todo_keys?user_id=eq.${userId}&revoked_at=is.null&select=created_at,last_used_at&order=created_at.desc&limit=1`))[0] || null,
     revokeKeys: userId => sb(`admin_todo_keys?user_id=eq.${userId}&revoked_at=is.null`, { method: 'PATCH', body: JSON.stringify({ revoked_at: new Date().toISOString() }) }),
     addKey: (userId, hash) => sb('admin_todo_keys', { method: 'POST', body: JSON.stringify({ user_id: userId, key_hash: hash }) }),
@@ -398,4 +525,4 @@ function restDb(sb) {
   };
 }
 
-module.exports = { todoAction, restDb, slackIdOf, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };
+module.exports = { todoAction, restDb, slackIdOf, countTriage, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };

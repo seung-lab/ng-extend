@@ -193,8 +193,57 @@ async function consoleOf(args, {sb, isAdmin}) {
   return {console_log: row ? row.console_log : null};
 }
 
+/**
+ * Open reply on an update already sent (Ames 2026-11-11: "toggle on open
+ * reply after I sent"). The note the player already has gets its reply box:
+ * the same notification, found by the card's log entry, tied to this card.
+ * Its send time moves to now so a game that is open picks it up. The log
+ * entry is marked asked, so the board shows "asked for a reply".
+ */
+async function openAfter(args, {sb, isAdmin}) {
+  if (!isAdmin) fail(403, 'Admins only');
+  const triageId = String(args.triageId || '');
+  if (!UUID.test(triageId)) fail(400, 'bad id');
+  const at = String(args.at || '');
+  if (!at || at.length > 40) fail(400, 'Which update?');
+  const card = (await sb(`feedback_triage?id=eq.${triageId}&select=feedback_log&limit=1`))[0];
+  if (!card) fail(404, 'That report is no longer on the board.');
+  const log = Array.isArray(card.feedback_log) ? [...card.feedback_log] : [];
+  const i = log.findIndex(e => e && e.role === 'reporter_update' && e.sent !== false && (e.at === at || e.ts === at));
+  if (i < 0) fail(404, 'That update is not on the card any more. Refresh the board.');
+  const entry = log[i];
+  if (entry.ask) return {notification_id: entry.notification_id || null, already: true};
+  const userId = await submitterOf(sb, triageId);
+  if (!userId) fail(409, 'This report has no signed-in submitter, so there is nobody to reply.');
+  const sentAt = Date.parse(entry.at || '') || Date.parse(entry.ts || '') || Number(entry.ts) * 1000 || 0;
+  const near = ms => new Date(ms).toISOString();
+  let notes;
+  try {
+    notes = await sb(`notifications?select=id,body,send_at,reply_triage_id&target_type=eq.user&target_id=eq.${userId}`
+      + `&title=eq.${encodeURIComponent(ASK_TITLE)}&reply_triage_id=is.null`
+      + (sentAt ? `&send_at=gte.${encodeURIComponent(near(sentAt - 15 * 60e3))}&send_at=lte.${encodeURIComponent(near(sentAt + 15 * 60e3))}` : '')
+      + `&order=send_at.desc&limit=20`);
+  } catch (e) { if (missingColumn(e)) fail(409, NOT_INSTALLED); throw e; }
+  const text = String(entry.text || '').trim();
+  const note = notes.find(n => String(n.body || '').trim() === text) || (notes.length === 1 ? notes[0] : null);
+  if (!note) fail(404, 'Could not find that note in the player\'s bell, so the reply box was not added. Send it again with Ask for a reply on.');
+  const patched = await sb(`notifications?id=eq.${note.id}&reply_triage_id=is.null`,
+    {method: 'PATCH', body: JSON.stringify({reply_triage_id: triageId, send_at: new Date().toISOString()})});
+  if (!patched.length) fail(409, 'That note already has a reply box.');
+  // Re-read the log right before writing, so a write in between is kept.
+  const fresh = (await sb(`feedback_triage?id=eq.${triageId}&select=feedback_log&limit=1`))[0];
+  const now = Array.isArray(fresh && fresh.feedback_log) ? [...fresh.feedback_log] : log;
+  const j = now.findIndex(e => e && e.role === 'reporter_update' && (e.at === at || e.ts === at));
+  if (j >= 0) {
+    now[j] = {...now[j], ask: true, notification_id: note.id, reply_opened_at: new Date().toISOString()};
+    await sb(`feedback_triage?id=eq.${triageId}`, {method: 'PATCH', body: JSON.stringify({feedback_log: now})});
+  }
+  return {notification_id: note.id};
+}
+
 async function handle(action, args, io) {
   if (action === 'reply.ask') return ask(args || {}, io);
+  if (action === 'reply.open') return openAfter(args || {}, io);
   if (action === 'reply.send') return send(args || {}, io);
   if (action === 'reply.console') return consoleOf(args || {}, io);
   fail(400, `unknown action ${action}`);

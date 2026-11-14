@@ -46,6 +46,10 @@ export interface NgeMeshTint {
    *  revealNm is nm per global unit, for the distance. */
   reveal?: Map<string, [number, number, number, number]>;
   revealNm?: [number, number, number];
+  /** Only this object (its getObjectKey) takes the tint; other cells in the
+   *  same layer pass through it untouched (the intro: a partner's axon
+   *  crossing a coloured dendrite stays its own colour, Ames 2026-11-08). */
+  only?: string;
 }
 
 let current: NgeMeshTint|null = null;
@@ -130,3 +134,11 @@ export function bindNgeMeshTintFine(gl: GL, unit: number): boolean {
   }
   return true;
 }
+
+/** Grow-in (the new player intro, Ames 2026-11-08: the cell "is supposed to
+ *  load from soma outward"): one object is drawn only within radiusNm of a
+ *  centre (global coordinates), with a bright rim at the growing edge. */
+export interface NgeReveal { only: string; center: [number, number, number]; radiusNm: number; edgeNm: number; }
+let reveal: NgeReveal|null = null;
+export function setNgeReveal(r: NgeReveal|null) { reveal = r; }
+export function getNgeReveal(): NgeReveal|null { return reveal; }

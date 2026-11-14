@@ -29,8 +29,12 @@ const ISSUE_URL =
 // No Data problem (Ames 2026-10-19: not needed). Old reports keep theirs, and
 // the server still accepts it.
 const CATEGORIES = ['Bug', 'Idea', 'Other'] as const;
-/** Bug to start with (Ames 2026-10-29: "I like having bug preselected"). */
-const category = ref<typeof CATEGORIES[number]>('Bug');
+/** Nothing chosen to start with: the player picks Bug, Idea or Other
+ *  themselves (Ames 2026-11-12: "remove the default selection for Bug"). */
+const category = ref<typeof CATEGORIES[number] | ''>('');
+const CATEGORY_ICON: Record<string, string> = { Bug: '🐞', Idea: '💡', Other: '✨' };
+/** Set when Submit was pressed with no kind chosen: the chips light up. */
+const needKind = ref(false);
 const message = ref('');
 /** A short title (Celia #178: "a title section for bug or idea submission
  *  would be nice to get a fast overview of what the user is asking for"). */
@@ -81,6 +85,71 @@ const stepsDone = computed(() => Math.max(0, sendSteps.value.map(x => x.key).ind
 const neuronSeed = ref(1);
 const sentWith = ref<{ k: string; v: string }[]>([]);
 
+// ── An unsent report is kept (Celia #446: "very easy to click out of Bug
+// Report and it doesn't save your entry") ──
+// What you wrote is saved in this browser as you type and comes back the next
+// time the form opens, until it is sent or you press Clear. A click outside
+// the box no longer closes it once something is written: × or Cancel does.
+const DRAFT_KEY = 'nge-feedback-draft';
+try {
+  const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+  if (d && typeof d === 'object') {
+    if (typeof d.title === 'string') title.value = d.title.slice(0, TITLE_MAX);
+    if (typeof d.message === 'string') message.value = d.message.slice(0, DETAILS_LONG);
+    if ((CATEGORIES as readonly string[]).includes(d.category)) category.value = d.category;
+    if (d.message) { detailsOpen.value = true; detailsLong.value = d.message.length > DETAILS_SHORT; }
+  }
+} catch { /* no draft */ }
+const hasDraft = computed(() => !!(title.value.trim() || message.value.trim()));
+watch([title, message, category], () => {
+  try {
+    if (hasDraft.value) localStorage.setItem(DRAFT_KEY, JSON.stringify({ title: title.value, message: message.value, category: category.value }));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch { /* storage blocked */ }
+});
+function clearDraft() {
+  title.value = ''; message.value = ''; detailsOpen.value = false; detailsLong.value = false;
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
+}
+// ── Formatting in the details (Celia #446.4) ──
+// Bold, italics, bullets and numbers, written as the same marks the triage
+// reply uses ("**bold**", "- item", "1. item"), shown formatted in Triage.
+const noteEl = ref<HTMLTextAreaElement | null>(null);
+function putText(text: string, selFrom?: number, selTo?: number) {
+  const el = noteEl.value;
+  if (!el) return;
+  const a = el.selectionStart, b = el.selectionEnd;
+  el.focus();
+  el.setRangeText(text, a, b, 'end');
+  if (selFrom !== undefined && selTo !== undefined) el.setSelectionRange(a + selFrom, a + selTo);
+  message.value = el.value.slice(0, detailsMax.value);
+}
+function fmtWrap(mark: string, placeholder: string) {
+  const el = noteEl.value;
+  if (!el) return;
+  const inner = el.value.slice(el.selectionStart, el.selectionEnd) || placeholder;
+  putText(`${mark}${inner}${mark}`, mark.length, mark.length + inner.length);
+}
+function fmtLines(numbered: boolean) {
+  const el = noteEl.value;
+  if (!el) return;
+  const v = el.value;
+  const a = v.lastIndexOf('\n', el.selectionStart - 1) + 1;
+  let b = v.indexOf('\n', el.selectionEnd);
+  if (b < 0) b = v.length;
+  let n = 0;
+  const lines = (v.slice(a, b) || 'List item').split('\n')
+    .map(l => (l.trim() ? (numbered ? `${++n}. ` : '- ') + l.replace(/^\s*([-*•·]\s+|\d{1,3}[.)]\s+)/, '') : l));
+  el.setSelectionRange(a, b);
+  putText(lines.join('\n'));
+}
+function onNoteKey(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === 'b' || e.key === 'B') { e.preventDefault(); fmtWrap('**', 'bold'); }
+  else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); fmtWrap('*', 'italics'); }
+}
+function outsideClick() { if (done.value || !hasDraft.value) emit('hide'); }
+
 // Screenshot attachment. Reuses the help request flow unchanged:
 // ScreenshotDialog in `attach` mode captures the viewer, lets the user
 // annotate it with the pen, uploads the PNG to Supabase Storage
@@ -91,9 +160,25 @@ const showScreenshotDialog = ref(false);
 function onScreenshotAttached(payload: { url: string }) {
   screenshotUrl.value = payload.url;
   error.value = '';
+  if (settingUp.value) endSetup();
 }
 function clearScreenshot() {
   screenshotUrl.value = '';
+}
+// ── Set up the screen first (Celia #446, Ames 2026-11-09) ──
+// The form steps out of the way and a small bar waits at the top of the
+// screen. Open whatever the picture should show (Profile, Settings, the Admin
+// Hub...), then press Take screenshot: the picture is the whole screen, and
+// the form comes back with it attached. Back returns without one.
+const settingUp = ref(false);
+const shotWhole = ref(false);
+function startSetup() { settingUp.value = true; }
+function takeSetupShot() { shotWhole.value = true; showScreenshotDialog.value = true; }
+function endSetup() { settingUp.value = false; shotWhole.value = false; }
+// A cancelled picture leaves the bar up, to try again or go Back.
+function onShotClosed() {
+  showScreenshotDialog.value = false;
+  shotWhole.value = false;
 }
 
 function currentDataset(): string {
@@ -111,6 +196,7 @@ async function submit() {
   const details = detailsOpen.value ? message.value.trim() : '';
   // The report itself: their details, or just the short line when that is all.
   const text = details || heading;
+  if (!category.value) { needKind.value = true; error.value = 'Choose Bug, Idea or Other first.'; return; }
   if (!heading || sending.value) {
     if (!heading) error.value = 'Say in a few words what it is.';
     return;
@@ -126,7 +212,9 @@ async function submit() {
     // server down), send the bare page URL plus the position so the report
     // still locates the spot without a broken link.
     stage.value = attachView.value ? 'view' : 'send';
-    const shortLink = attachView.value ? await mintShortStateLink() : null;
+    // A view that can't be saved (a layer half loaded: "this.layer is null",
+    // toknow 2026-11-08) must not stop the report: send the position instead.
+    const shortLink = attachView.value ? await mintShortStateLink().catch((e: any) => { console.warn('[feedback] view not attached:', e); return null; }) : null;
     stage.value = 'send';
     let pageUrl = shortLink;
     if (!pageUrl) {
@@ -226,6 +314,7 @@ async function submit() {
       // Saved nowhere: tell the player why instead of pretending.
       if (relayFailure) throw new Error(relayFailure);
     }
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
     sentWith.value = [
       { k: 'Type', v: category.value },
       { k: 'View', v: shortLink ? 'attached' : 'position only' },
@@ -405,7 +494,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" @hide="emit('hide')">
+  <Teleport to="body">
+    <div v-if="settingUp" class="nge-fb-setup-bar" role="toolbar" aria-label="Screenshot setup">
+      <span class="nge-fb-setup-text">Set up the screen, then</span>
+      <button class="nge-fb-setup-go" type="button" @click="takeSetupShot">📸 Take screenshot</button>
+      <button class="nge-fb-setup-back" type="button" @click="endSetup">Back to report</button>
+    </div>
+  </Teleport>
+  <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" :class="{ 'nge-fb-hidden': settingUp }" @hide="outsideClick">
     <div class="nge-fb-shell">
       <canvas ref="fxCanvas" class="nge-fb-fx" aria-hidden="true"></canvas>
       <button class="nge-fb-exit" @click="emit('hide')">×</button>
@@ -418,7 +514,9 @@ onBeforeUnmount(() => {
         <ScreenshotDialog
           :show="showScreenshotDialog"
           mode="attach"
-          @close="showScreenshotDialog = false"
+          :whole-screen-now="shotWhole"
+          hide-opener=".nge-fb-setup-bar"
+          @close="onShotClosed"
           @attached="onScreenshotAttached"
         />
       </Teleport>
@@ -435,7 +533,8 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="!done" class="nge-fb-body">
-        <div class="nge-fb-title">Submit an issue</div>
+        <div class="nge-fb-kicker">Transmission to the Pyr team</div>
+        <div class="nge-fb-title"><span class="nge-fb-title-dot" aria-hidden="true">◆</span>Submit an issue</div>
         <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
         <!-- Behind the live version: the bug may already be fixed (Ames 2026-10-07). -->
         <div v-if="version.newer" class="nge-fb-update" role="status">
@@ -443,13 +542,15 @@ onBeforeUnmount(() => {
           <button type="button" class="nge-fb-update-btn" @click="reloadForUpdate()">Reload now</button>
         </div>
 
-        <div class="nge-fb-chips">
+        <div class="nge-fb-kind-label">What kind?</div>
+        <div class="nge-fb-chips" :class="{ 'nge-fb-chips--need': needKind && !category }" role="radiogroup" aria-label="What kind of report">
           <button
             v-for="c in CATEGORIES" :key="c"
-            class="nge-fb-chip"
-            :class="{ 'nge-fb-chip--active': category === c }"
-            @click="category = c; error = ''"
-          >{{ c }}</button>
+            class="nge-fb-chip nge-fb-kind"
+            :class="[`nge-fb-kind--${c.toLowerCase()}`, { 'nge-fb-chip--active': category === c }]"
+            role="radio" :aria-checked="category === c"
+            @click="category = c; error = ''; needKind = false"
+          ><span class="nge-fb-kind-icon" aria-hidden="true">{{ CATEGORY_ICON[c] }}</span>{{ c }}</button>
         </div>
 
         <input
@@ -462,15 +563,22 @@ onBeforeUnmount(() => {
           @input="error = ''"
         />
         <button v-if="!detailsOpen" type="button" class="nge-fb-more" @click="detailsOpen = true">+ Add details (optional)</button>
+        <div v-if="detailsOpen" class="nge-fb-fmt" role="toolbar" aria-label="Formatting">
+          <button type="button" title="Bold (Ctrl+B)" @mousedown.prevent @click="fmtWrap('**', 'bold')"><b>B</b></button>
+          <button type="button" title="Italics (Ctrl+I)" @mousedown.prevent @click="fmtWrap('*', 'italics')"><i>I</i></button>
+          <button type="button" title="Bulleted list: each selected line becomes a bullet" @mousedown.prevent @click="fmtLines(false)">• List</button>
+          <button type="button" title="Numbered list: each selected line gets a number" @mousedown.prevent @click="fmtLines(true)">1. List</button>
+        </div>
         <textarea
-          v-else
+          v-if="detailsOpen"
+          ref="noteEl"
           v-model="message"
           class="nge-fb-note"
           rows="3"
           placeholder="Anything else that helps, like what you expected."
           aria-label="Details"
           :maxlength="detailsMax"
-          @keydown.stop @keyup.stop @keypress.stop
+          @keydown.stop="onNoteKey" @keyup.stop @keypress.stop
           @input="error = ''"
         ></textarea>
         <div v-if="detailsOpen" class="nge-fb-count" :class="{ 'nge-fb-count--full': message.length >= detailsMax }">
@@ -505,6 +613,9 @@ onBeforeUnmount(() => {
             </svg>
             <span>Screenshot</span>
           </button>
+          <button v-if="!screenshotUrl" class="nge-fb-setup-link" type="button" :disabled="sending"
+                  title="Close this for a moment, open what the picture should show (Profile, Settings...), then take it"
+                  @click="startSetup">or set up the screen first</button>
           <div v-else class="nge-fb-shot-preview">
             <a :href="screenshotUrl" target="_blank" rel="noopener" title="Open full size">
               <img :src="screenshotUrl" alt="Attached screenshot" />
@@ -520,7 +631,8 @@ onBeforeUnmount(() => {
           <button class="nge-fb-submit" :disabled="sending" @click="submit">
             {{ sending ? 'Sending…' : 'Submit' }}
           </button>
-          <button class="nge-fb-cancel" @click="emit('hide')">Cancel</button>
+          <button class="nge-fb-cancel" @click="emit('hide')" :title="hasDraft ? 'Close. What you wrote is kept for next time.' : undefined">Cancel</button>
+          <button v-if="hasDraft && !sending" class="nge-fb-cancel nge-fb-clear" @click="clearDraft" title="Empty the form">Clear</button>
         </div>
       </div>
 
@@ -583,11 +695,23 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 .nge-fb-exit:hover { color: #ccd; }
+/* ── The form, dressed like the tutorial boxes (Ames 2026-11-12: "stylize this box too") ── */
+.nge-fb-body { position: relative; z-index: 1; }
+.nge-fb-kicker {
+  font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.7); margin-bottom: 6px;
+}
 .nge-fb-title {
-  font-size: 1.15em;
-  font-weight: 700;
-  color: #eef;
-  margin-bottom: 4px;
+  display: flex; align-items: center; gap: 9px;
+  font: 700 1.2em 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: #f2f8ff; text-shadow: 0 0 12px rgba(126, 224, 255, 0.35);
+  margin-bottom: 6px;
+}
+.nge-fb-title-dot { color: #7ee0ff; font-size: 0.7em; filter: drop-shadow(0 0 5px rgba(126, 224, 255, 0.8)); }
+.nge-fb-kind-label {
+  font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase;
+  color: #9fb4d8; margin-bottom: 7px;
 }
 .nge-fb-hint {
   font-size: 0.82em;
@@ -616,6 +740,27 @@ onBeforeUnmount(() => {
   border-color: rgba(150, 170, 255, 0.6);
   color: #fff;
 }
+/* Bug, Idea, Other: each its own color once chosen. */
+.nge-fb-kind {
+  --kind: 126, 224, 255;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.86em; font-weight: 600; padding: 6px 14px; border-radius: 8px;
+  color: #c9d6ee; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(160, 190, 230, 0.25);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s, transform 0.15s;
+}
+.nge-fb-kind:hover { background: rgba(var(--kind), 0.1); border-color: rgba(var(--kind), 0.5); color: #fff; }
+.nge-fb-kind--bug { --kind: 255, 140, 120; }
+.nge-fb-kind--idea { --kind: 255, 214, 102; }
+.nge-fb-kind--other { --kind: 186, 150, 255; }
+.nge-fb-kind.nge-fb-chip--active {
+  color: #fff; background: rgba(var(--kind), 0.2); border-color: rgba(var(--kind), 0.9);
+  box-shadow: 0 0 12px rgba(var(--kind), 0.35), inset 0 0 8px rgba(var(--kind), 0.15);
+  transform: translateY(-1px);
+}
+.nge-fb-kind-icon { font-size: 1.05em; line-height: 1; }
+/* Submit pressed with no kind chosen: the chips call for one. */
+.nge-fb-chips--need .nge-fb-kind { border-color: rgba(255, 196, 120, 0.85); animation: nge-fb-need 0.9s ease-in-out 2; }
+@keyframes nge-fb-need { 50% { box-shadow: 0 0 12px rgba(255, 196, 120, 0.55); } }
 .nge-fb-note.nge-fb-headline { box-sizing: border-box; min-height: 0; resize: none; padding: 9px 10px; }
 .nge-fb-more {
   display: block; background: none; border: none; padding: 2px 0; margin: 2px 0 8px;
@@ -640,7 +785,7 @@ onBeforeUnmount(() => {
   resize: vertical;
   min-height: 84px;
 }
-.nge-fb-note:focus { outline: none; border-color: rgba(120, 140, 255, 0.5); }
+.nge-fb-note:focus { outline: none; border-color: rgba(126, 224, 255, 0.6); box-shadow: 0 0 0 3px rgba(126, 224, 255, 0.12), 0 0 14px rgba(126, 224, 255, 0.15); }
 .nge-fb-note::placeholder { color: #667; }
 .nge-fb-err { color: #ff9d9d; font-size: 0.78em; margin-top: 6px; }
 .nge-fb-attach {
@@ -666,6 +811,37 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 .nge-fb-shot-btn:disabled { opacity: 0.5; cursor: default; }
+.nge-fb-fmt { display: flex; gap: 4px; margin: 6px 0 4px; }
+.nge-fb-fmt button {
+  padding: 2px 9px; font-size: 12px; line-height: 1.6; cursor: pointer; border-radius: 6px;
+  color: #b9c6e6; background: rgba(120, 140, 255, 0.08); border: 1px solid rgba(120, 140, 255, 0.25);
+}
+.nge-fb-fmt button:hover { color: #e6ecff; background: rgba(120, 140, 255, 0.18); }
+.nge-fb-setup-link {
+  margin-left: 10px; padding: 0; border: none; background: none; cursor: pointer;
+  font-size: 0.8em; color: #8fa0c8; text-decoration: underline; text-underline-offset: 3px;
+}
+.nge-fb-setup-link:hover:not(:disabled) { color: #c8d4ff; }
+/* While the screen is set up, the form (and its dim backdrop) steps aside. */
+.nge-feedback-modal.nge-fb-hidden { display: none; }
+.nge-fb-setup-bar {
+  position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 2147483000;
+  display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px;
+  background: rgba(8, 14, 28, 0.94); border: 1px solid rgba(120, 150, 255, 0.45); border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(90, 130, 255, 0.25);
+  font: 13px 'Inter', sans-serif; color: #c8d4f0; animation: nge-fb-setup-in 0.25s ease-out;
+}
+@keyframes nge-fb-setup-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+.nge-fb-setup-go {
+  padding: 6px 14px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(90, 130, 255, 0.95); color: #fff; font-weight: 600; font-size: 13px;
+}
+.nge-fb-setup-go:hover { background: rgba(110, 150, 255, 1); }
+.nge-fb-setup-back {
+  padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 12px;
+  background: none; color: #99a6c4; border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.nge-fb-setup-back:hover { color: #dde4f5; border-color: rgba(255, 255, 255, 0.3); }
 .nge-fb-shot-preview {
   position: relative;
   display: inline-block;
@@ -706,16 +882,18 @@ onBeforeUnmount(() => {
   margin-top: 14px;
 }
 .nge-fb-submit {
-  padding: 7px 18px;
-  font-size: 0.84em;
-  font-weight: 600;
-  color: #fff;
-  background: rgba(90, 130, 255, 0.9);
-  border: 1px solid rgba(120, 150, 255, 0.7);
+  padding: 8px 22px;
+  font: 700 0.8em 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: #04121f;
+  background: linear-gradient(135deg, #7ee0ff, #8fa8ff);
+  border: 1px solid rgba(160, 230, 255, 0.9);
   border-radius: 7px;
+  box-shadow: 0 0 14px rgba(126, 224, 255, 0.35);
   cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
 }
-.nge-fb-submit:hover:not(:disabled) { background: rgba(110, 150, 255, 1); }
+.nge-fb-submit:hover:not(:disabled) { box-shadow: 0 0 20px rgba(126, 224, 255, 0.6); transform: translateY(-1px); }
 .nge-fb-submit:disabled { opacity: 0.5; cursor: default; }
 .nge-fb-cancel {
   padding: 7px 16px;
@@ -727,6 +905,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-cancel:hover { color: #ccd; border-color: rgba(255, 255, 255, 0.25); }
+.nge-fb-clear { margin-left: auto; border-color: transparent; }
 /* ── Sending: a neuron that grows as the report goes, and the real steps ── */
 .nge-fb-sending {
   display: flex; flex-direction: column; align-items: center;

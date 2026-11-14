@@ -255,3 +255,15 @@ test('tutorial step timings: players add their own, admins read', () => {
   assert.equal(plan('tutorial_step_stats', 'GET', 'select=*', undefined, {...user, isAdmin: true}).table, 'tutorial_step_stats');
   assert.throws(() => plan('tutorial_step_stats', 'POST', '', {n: 1}), /verified action/);
 });
+test('the Access page views are for admins only, and a player\'s latest edits are read one player at a time', () => {
+  const admin = { ...user, isAdmin: true };
+  for (const t of ['access_hub_people', 'access_hub_activity', 'access_hub_recent_edits', 'access_hub_player_datasets', 'access_hub_tutorials']) {
+    assert.throws(() => plan(t, 'GET', 'select=*'), /Admins only/);
+    assert.throws(() => plan(t, 'GET', 'select=*', undefined, anon), /Admins only|Sign in/);
+  }
+  const p = plan('access_hub_recent_edits', 'GET', `select=at,dataset,operation,success&user_id=eq.${b}&order=at.desc&limit=10`, undefined, admin);
+  assert.equal(p.query.get('user_id'), `eq.${b}`);
+  assert.throws(() => plan('access_hub_recent_edits', 'GET', 'select=metadata', undefined, admin), /Unsupported projection/);
+  assert.throws(() => plan('access_hub_people', 'GET', 'select=last_chat_at', undefined, admin), /Unsupported projection/);
+  assert.throws(() => plan('access_hub_people', 'GET', 'select=email&limit=5000', undefined, admin), /Invalid limit/);
+});

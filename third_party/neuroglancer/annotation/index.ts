@@ -1120,8 +1120,28 @@ export class AnnotationSource extends RefCounted implements AnnotationSourceSign
 
   protected ensureUpdated() {}
 
+  // nge: the whole view is written out after every camera move, and each
+  // time every annotation was written out again: with 14,000 marks in view
+  // (Nseraf, 2026-11) that was most of the work. They are written out again
+  // only when one of them changed.
+  private ngeJson: any[]|undefined;
+  private ngeJsonKey = '';
+
   toJSON() {
     this.ensureUpdated();
+    const key = `${this.changed.count}|${this.pending.size}|${this.rank}`;
+    if (this.ngeJson !== undefined && this.ngeJsonKey === key && this.ngeJsonProps === this.properties) {
+      return this.ngeJson;
+    }
+    const result = this.ngeToJson();
+    this.ngeJson = result;
+    this.ngeJsonKey = key;
+    this.ngeJsonProps = this.properties;
+    return result;
+  }
+  private ngeJsonProps: unknown;
+
+  private ngeToJson() {
     const result: any[] = [];
     const {pending} = this;
     for (const annotation of this) {

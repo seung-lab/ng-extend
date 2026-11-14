@@ -62,7 +62,7 @@ async function decide(r: DatasetRequestRow, mark: 'granted' | 'declined' | 'wait
   finally { busy.value = ''; }
 }
 function openProfile(r: DatasetRequestRow) {
-  if (r.userId) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: r.userId } }));
+  if (r.userId) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: r.userId, back: 'access' } }));
 }
 const when = (iso: string | null) => {
   if (!iso) return '';

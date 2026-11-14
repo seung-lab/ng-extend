@@ -1,14 +1,10 @@
 import { Step, useTutorialStore } from "./store-pyr";
 import { ngePointScale } from "neuroglancer/annotation/point";
-import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
-import { responseJson } from "neuroglancer/util/http_request";
-import { cancellableFetchSpecialOk, parseSpecialUrl } from "neuroglancer/util/special_protocol_request";
 // The saved views name this neuron by its OLD root ids on purpose: they
 // still show it as it was before the continuation was merged in (March
 // 2026) and edited since. Swapping in its current id showed that merge
 // (Ames, 2026-09-30), so the ids stay as they are.
 import imgMainBanner from './images/main-banner-vF.jpg';
-import imgSegmentation from './images/segmentation-tutorial.jpg';
 import imgSynapseWide from './images/synapse-wide.png';
 import imgSandboxExplosion from './images/sandbox-explosion.jpg';
 import imgInspectorNurro from './images/inspector-nurro-2.png';
@@ -61,48 +57,6 @@ function bigPoints() {
 }
 bigPoints.before = 1;
 
-/**
- * Leave one annotation on screen: the one the lesson is about. The saved
- * views carry two (reviewer, 2026-10-06), and two yellow dots read as two
- * things to find. `targetState` is the view that zooms in on the right one;
- * the annotation nearest its centre is kept and the rest are removed from
- * this session's copy of the view (the saved view is not changed).
- */
-async function keepOneAnnotation(targetState: string) {
-  try {
-    const { url, credentialsProvider } = parseSpecialUrl(targetState, defaultCredentialsManager);
-    const state: any = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
-    const c: number[] = (state?.position ?? state?.navigation?.pose?.position?.voxelCoordinates ?? []).map(Number);
-    if (c.length < 3) return;
-    await new Promise(r => setTimeout(r, 1500)); // the step's own view has to finish loading
-    const found: Array<{ src: any; id: string; d: number }> = [];
-    for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
-      if ((ml.layer?.constructor as any)?.type !== 'annotation') continue;
-      const src = ml.layer.localAnnotations;
-      if (!src) continue;
-      for (const a of src) {
-        const p = (a as any).point;
-        if (!p || p.length < 3) {
-          // Not a point (an ellipsoid drew a flat yellow blob over the
-          // branch end, Ames 2026-10-24): it goes.
-          const ref = src.getReference((a as any).id);
-          try { src.delete(ref); } finally { ref.dispose(); }
-          continue;
-        }
-        found.push({ src, id: (a as any).id, d: Math.hypot((p[0] - c[0]) * 4, (p[1] - c[1]) * 4, (p[2] - c[2]) * 40) });
-      }
-    }
-    if (found.length < 2) return;
-    found.sort((x, y) => x.d - y.d);
-    for (const f of found.slice(1)) {
-      const ref = f.src.getReference(f.id);
-      try { f.src.delete(ref); } finally { ref.dispose(); }
-    }
-  } catch (e) {
-    console.warn('[tutorial] could not thin the annotations:', e);
-  }
-}
-const STATE_AT_ANNOTATION = 'middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760';
 
 /**
  * A small mouse with one part lit, like the Eyewire 1 instructions (Ames,
@@ -119,36 +73,19 @@ function mouse(part: 'left' | 'right' | 'wheel'): string {
     + `<line x1="4" y1="22" x2="36" y2="22" stroke="${line}" stroke-width="1.4"/><line x1="20" y1="4" x2="20" y2="22" stroke="${line}" stroke-width="1.4"/>${wheel}</svg></span>`;
 }
 
-/** Remove annotation points from this session's copy of the view (the saved
- *  view is not changed). Used where a view carries points the step does not
- *  need: two near-identical ones read as one doubled dot. */
-async function dropPoints(match: (p: number[]) => boolean) {
-  await new Promise(r => setTimeout(r, 1500)); // the step's own view has to finish loading
-  try {
-    for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
-      if ((ml.layer?.constructor as any)?.type !== 'annotation') continue;
-      const src = ml.layer.localAnnotations;
-      if (!src) continue;
-      const gone: string[] = [];
-      for (const a of src) { const pt = (a as any).point; if (pt && pt.length >= 3 && match([...pt].map(Number))) gone.push((a as any).id); }
-      for (const id of gone) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }
-    }
-  } catch (e) { console.warn('[tutorial] could not drop the extra points:', e); }
-}
-/** The pair of points at the end of the cut branch (z 545 and 546): on the
- *  steps about the continuation they doubled up on screen (Ames, 2026-10-24). */
-const AT_DEFECT_END = (p: number[]) => Math.abs(p[2] - 545.5) < 1.6 && Math.abs(p[0] - 65634) < 40 && Math.abs(p[1] - 49706) < 40;
-
 /** The 2D EM tab pulses while a step asks for it (Ames, 2026-10-24: "2D EM
- *  tab at the top" meant nothing until you could see it). */
+ *  tab at the top" meant nothing until you could see it). Clicking it opens
+ *  and closes the 2D images, unless classic layer tabs are on (Ames,
+ *  2026-11-12). */
 let tabPulse: ReturnType<typeof setInterval> | null = null;
 function tut1Style() {
   if (!document.getElementById('nge-tut1-style')) {
     const st = document.createElement('style');
     st.id = 'nge-tut1-style';
     st.textContent = `
-      .nge-tut-pulse-tab { animation: nge-tut-tab 1.2s ease-in-out infinite !important; border-radius: 4px; }
-      @keyframes nge-tut-tab { 0%, 100% { box-shadow: 0 0 0 0 rgba(126, 224, 255, 0); } 50% { box-shadow: 0 0 0 3px rgba(126, 224, 255, 0.85), 0 0 14px rgba(126, 224, 255, 0.6); } }
+      .neuroglancer-layer-item.nge-tut-pulse-tab { animation: nge-tut-tab 1.2s ease-in-out infinite !important; border-color: rgba(126, 224, 255, 0.9) !important; }
+      @keyframes nge-tut-tab { 0%, 100% { box-shadow: inset 0 0 0 1px rgba(126, 224, 255, 0.35); } 50% { box-shadow: inset 0 0 0 2px rgba(126, 224, 255, 0.95), inset 0 0 10px rgba(126, 224, 255, 0.55); } }
+      .nge-tut-pulse-next { animation: nge-tut-tab 1.2s ease-in-out infinite !important; }
       .nge-tut-mouse { float: left; margin: 2px 12px 4px 0; line-height: 0; }`;
     document.head.appendChild(st);
   }
@@ -161,7 +98,7 @@ function pulse2DTab() {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   if (tabPulse) clearInterval(tabPulse);
   tabPulse = setInterval(() => {
-    const tab = [...document.querySelectorAll('.neuroglancer-layer-item')].find(el => /2D EM|\bimg\b/i.test((el as HTMLElement).querySelector('[data-nge-label]')?.getAttribute('data-nge-label') ?? (el as HTMLElement).textContent ?? '')) as HTMLElement | undefined;
+    const tab = [...document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')].find(el => /2D EM|\bimg\b/i.test((el as HTMLElement).querySelector('[data-nge-label]')?.getAttribute('data-nge-label') ?? (el as HTMLElement).textContent ?? '')) as HTMLElement | undefined;
     const here = store.activeTutorial === tutorial && store.getTutorialStep() === step;
     document.querySelectorAll('.nge-tut-pulse-tab').forEach(el => { if (!here || el !== tab) el.classList.remove('nge-tut-pulse-tab'); });
     if (!here) { clearInterval(tabPulse!); tabPulse = null; return; }
@@ -265,27 +202,33 @@ function advanceWhenSegmentAdded() {
   }, 2500);
 }
 
-/** Move on once the view goes from 3D only to split screen, whichever way:
- *  SPACE, or a click on the 2D EM tab (Ames 2026-10-22: the tab now shows
- *  and hides the 2D view). SPACE already moves on by itself (spaceAdvances). */
-function advanceWhenSplit() {
+/** Once the view goes from 3D only to split screen (SPACE or the 2D EM tab),
+ *  the Next button glows. The box no longer moves on by itself: a tester
+ *  pressed SPACE before reading the rest of the box (2026-11-10), so the
+ *  player clicks Next when ready. */
+function glowNextWhenSplit() {
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
   const layout = () => { try { const j = getViewer()?.layout?.toJSON?.(); return typeof j === 'string' ? j : (j?.type ?? ''); } catch { return ''; } };
   // Let the step's own view load first (it opens in 3D only).
   setTimeout(() => {
-    let was = layout();
     const timer = setInterval(() => {
-      if (!here()) { clearInterval(timer); return; }
+      const next = document.querySelector('.introductionStepAnchor .chip button.next') as HTMLElement | null;
+      if (!here()) { clearInterval(timer); document.querySelectorAll('.nge-tut-pulse-next').forEach(el => el.classList.remove('nge-tut-pulse-next')); return; }
       const now = layout();
-      if (was === '3d' && now !== '3d' && now) {
-        clearInterval(timer);
-        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 600);
-      }
-      was = now;
+      next?.classList.toggle('nge-tut-pulse-next', !!now && now !== '3d');
     }, 300);
   }, 2000);
+}
+
+/** The 2D boxes: one yellow point, not the saved view's two, and the EM in
+ *  its normal plane. The saved views carry no cross section orientation, so a
+ *  plane the player rotated earlier stayed rotated (tester, 2026-11-10). */
+function flat2D() {
+  const reset = () => { try { getViewer()?.navigationState?.pose?.orientation?.restoreState([0, 0, 0, 1]); } catch { /* no viewer */ } };
+  setTimeout(reset, 800);
+  setTimeout(reset, 2000);
 }
 
 /** Close the viewer's side panels through neuroglancer's own state, so they
@@ -322,7 +265,12 @@ const OVER_3D = {
 // Step 16 view, from Ames (2026-09-29): the cell with the dendrite the
 // defect disconnected, and no purple branch yet. Inline, not a state-server
 // link, so it needs no fetch.
-const STATE_DEFECT_VIEW = {
+/** The views of the two continuation boxes, with one hint point each: the
+ *  saved views carry four (the pair at the branch end and two on the
+ *  continuation). Removing the extras after the view loaded made the points
+ *  flash and vanish (tester, 2026-11-10), so the views are kept here already
+ *  thinned. From nglstate 5250067188416512 and 5114308439572480. */
+const STATE_FIND_CONTINUATION = {
   "dimensions": {
     "x": [
       4e-09,
@@ -338,9 +286,563 @@ const STATE_DEFECT_VIEW = {
     ]
   },
   "position": [
+    65655.1640625,
+    49711.57421875,
+    546.5
+  ],
+  "crossSectionScale": 3.00494269795261,
+  "projectionOrientation": [
+    0.020236538723111153,
+    0.04917896166443825,
+    -0.034699928015470505,
+    -0.9979819059371948
+  ],
+  "projectionScale": 48392.3499808023,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "annotationColor": "#3b4468",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "annotationColor": "#2e3347",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024",
+        "!648518346356484078"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    },
+    {
+      "type": "annotation",
+      "source": {
+        "url": "local://annotations",
+        "transform": {
+          "outputDimensions": {
+            "x": [
+              4e-09,
+              "m"
+            ],
+            "y": [
+              4e-09,
+              "m"
+            ],
+            "z": [
+              4e-08,
+              "m"
+            ]
+          }
+        }
+      },
+      "tool": "annotatePoint",
+      "tab": "annotations",
+      "annotations": [
+        {
+          "point": [
+            65504.91796875,
+            49734.11328125,
+            542.4999389648438
+          ],
+          "type": "point",
+          "id": "24ba784b3827ae9c137331a47d6f8060f47340d9"
+        }
+      ],
+      "name": "annotation"
+    }
+  ],
+  "showAxisLines": false,
+  "showSlices": false,
+  "layout": "xy-3d"
+};
+const STATE_CONTINUATION_FOUND = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  "position": [
+    65655.1640625,
+    49711.57421875,
+    542.5
+  ],
+  "crossSectionScale": 3.00494269795261,
+  "projectionOrientation": [
+    -0.17005832493305206,
+    -0.11194231361150742,
+    0.022898564115166664,
+    -0.978787362575531
+  ],
+  "projectionScale": 48392.3499808023,
+  "projectionDepth": -30.326532985631673,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "annotationColor": "#3b4468",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "annotationColor": "#2e3347",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024",
+        "648518346356484078"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    },
+    {
+      "type": "annotation",
+      "source": {
+        "url": "local://annotations",
+        "transform": {
+          "outputDimensions": {
+            "x": [
+              4e-09,
+              "m"
+            ],
+            "y": [
+              4e-09,
+              "m"
+            ],
+            "z": [
+              4e-08,
+              "m"
+            ]
+          }
+        }
+      },
+      "tool": "annotatePoint",
+      "tab": "annotations",
+      "annotations": [
+        {
+          "point": [
+            65509.42578125,
+            49675.51953125,
+            542.4999389648438
+          ],
+          "type": "point",
+          "id": "a3fda3388fb7d57639b51574428e669e1e3fed66"
+        }
+      ],
+      "name": "annotation"
+    }
+  ],
+  "showAxisLines": false,
+  "showSlices": false,
+  "layout": "xy-3d"
+};
+
+/** The branch end views, likewise kept thinned (Celia, 2026-11-11: on
+ *  boxes 11 to 14 a second point showed for a second and then went). */
+/** nglstate 5527767895506944, thinned to the one point nearest the branch end (see above). */
+const STATE_FIND_END: any = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  "position": [
+    76858.71875,
+    55792.1796875,
+    613.9370727539062
+  ],
+  "crossSectionScale": 13.46721884640639,
+  "projectionOrientation": [
+    -0.17505000531673431,
+    0.8246674537658691,
+    0.2899130582809448,
+    -0.45302480459213257
+  ],
+  "projectionScale": 10797.792801175267,
+  "projectionDepth": -30.326532985631673,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "annotationColor": "#3b4468",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "annotationColor": "#2e3347",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    },
+    {
+      "type": "annotation",
+      "source": {
+        "url": "local://annotations",
+        "transform": {
+          "outputDimensions": {
+            "x": [
+              4e-09,
+              "m"
+            ],
+            "y": [
+              4e-09,
+              "m"
+            ],
+            "z": [
+              4e-08,
+              "m"
+            ]
+          }
+        }
+      },
+      "tool": "annotateSphere",
+      "tab": "annotations",
+      "annotations": [
+        {
+          "point": [
+            65662.0703125,
+            49718.19921875,
+            545.9035034179688
+          ],
+          "type": "point",
+          "id": "8a33ad3d0d1c84d0c30c2694691f32a4cba95c66"
+        }
+      ],
+      "name": "annotation"
+    }
+  ],
+  "showSlices": false,
+  "selectedLayer": {
+    "visible": false,
+    "layer": "annotation"
+  },
+  "layout": "3d",
+  "selection": {
+    "layers": {
+      "annotation": {
+        "annotationId": "4ba4f56ae58a0768a5c5e5c4bea96ac4ca96ceaa",
+        "annotationSource": 0,
+        "annotationSubsource": "default"
+      }
+    },
+    "visible": false
+  }
+};
+
+/** nglstate 6606861248757760, thinned to the one point nearest the branch end (see above). */
+const STATE_AT_END: any = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  "position": [
+    65655.1640625,
+    49711.57421875,
+    548.5
+  ],
+  "crossSectionScale": 3.00494269795261,
+  "projectionOrientation": [
+    -0.027476072311401367,
+    -0.10844764858484268,
+    0.0039702183566987514,
+    -0.993714451789856
+  ],
+  "projectionScale": 3972.2859815813863,
+  "projectionDepth": -30.326532985631673,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "annotationColor": "#3b4468",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "annotationColor": "#2e3347",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024",
+        "!648518346356484078"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    },
+    {
+      "type": "annotation",
+      "source": {
+        "url": "local://annotations",
+        "transform": {
+          "outputDimensions": {
+            "x": [
+              4e-09,
+              "m"
+            ],
+            "y": [
+              4e-09,
+              "m"
+            ],
+            "z": [
+              4e-08,
+              "m"
+            ]
+          }
+        }
+      },
+      "tool": "annotatePoint",
+      "tab": "annotations",
+      "annotations": [
+        {
+          "point": [
+            65640.2265625,
+            49689.1328125,
+            545.5510864257812
+          ],
+          "type": "point",
+          "id": "fa87eb6265a481ed367c0f3f8638833f2dd37f88"
+        }
+      ],
+      "name": "annotation"
+    }
+  ],
+  "showAxisLines": false,
+  "showSlices": false,
+  "selectedLayer": {
+    "visible": false,
+    "layer": "annotation"
+  },
+  "layout": "3d",
+  "selection": {
+    "layers": {
+      "annotation": {
+        "annotationId": "927b5ab63634847a299b88539588e6318335e283",
+        "annotationSource": 0,
+        "annotationSubsource": "default"
+      }
+    },
+    "visible": false
+  }
+};
+
+/** nglstate 5220308702199808, thinned to the one point nearest the branch end (see above). */
+const STATE_EM_SECTION: any = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  "position": [
+    65655.1640625,
+    49711.57421875,
+    548.5
+  ],
+  "crossSectionScale": 3.00494269795261,
+  "projectionOrientation": [
+    -0.17005832493305206,
+    -0.11194231361150742,
+    0.022898564115166664,
+    -0.978787362575531
+  ],
+  "projectionScale": 48392.3499808023,
+  "projectionDepth": -30.326532985631673,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "annotationColor": "#3b4468",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "annotationColor": "#2e3347",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024",
+        "!648518346356484078"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    },
+    {
+      "type": "annotation",
+      "source": {
+        "url": "local://annotations",
+        "transform": {
+          "outputDimensions": {
+            "x": [
+              4e-09,
+              "m"
+            ],
+            "y": [
+              4e-09,
+              "m"
+            ],
+            "z": [
+              4e-08,
+              "m"
+            ]
+          }
+        }
+      },
+      "tool": "annotatePoint",
+      "tab": "annotations",
+      "annotations": [
+        {
+          "point": [
+            65640.2265625,
+            49689.1328125,
+            545.5510864257812
+          ],
+          "type": "point",
+          "id": "fa87eb6265a481ed367c0f3f8638833f2dd37f88"
+        }
+      ],
+      "name": "annotation"
+    }
+  ],
+  "showAxisLines": false,
+  "selectedLayer": {
+    "visible": false,
+    "layer": "annotation"
+  },
+  "layout": "xy-3d",
+  "selection": {
+    "layers": {
+      "annotation": {
+        "annotationId": "927b5ab63634847a299b88539588e6318335e283",
+        "annotationSource": 0,
+        "annotationSubsource": "default"
+      }
+    },
+    "visible": false
+  }
+};
+
+const STATE_DEFECT_VIEW = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  // z 425 is the slice with the black spill; 426 (where this sat) is clean
+  // EM, so the 2D showed no defect (toknow #440).
+  "position": [
     77603.1875,
     59828.70703125,
-    426.684326171875
+    425.5
   ],
   "crossSectionScale": 13.46721884640639,
   "projectionOrientation": [
@@ -419,10 +921,10 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
     text: `
 A connectomics dataset starts with a brain! It is imaged at nanoscale and reconstructed in 3D using a mix of AI and human insight.
 
-The map of every neuron and its connections is called a connectome. Learn more with <a href="https://connectome.quest/atlas/" target="_blank" rel="noopener">Connectome 101</a>.`,
+The map of every neuron and its connections is called a connectome.`,
     position: MIDDLE,
-    image:
-      imgSegmentation,
+    // a block of real EM, its slices, then the whole neuron (static/mini-volume)
+    embed: 'mini-volume/index.html?embed',
     width: "500px"
   },
   //4
@@ -522,9 +1024,8 @@ Don't worry if you can't find it - the Next button will take you there.`,
     position: OVER_3D,
     image:
       imgInspectorNurro,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
-    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); keepOneAnnotation(STATE_AT_ANNOTATION); },
+    state: STATE_FIND_END,
+    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); },
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
@@ -535,29 +1036,26 @@ It missed a branch. Let's see if we can find it.`,
     position: OVER_3D,
     image:
       imgNurroSuccessTiny,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
+    state: STATE_AT_END,
     width: "200px",
-    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); keepOneAnnotation(STATE_AT_ANNOTATION); },
+    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); },
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
   {
     text: `Press **SPACE** to bring up a split screen view: the electron microscope images these neurons were reconstructed from.
 
-You can also click the **2D EM** tab, glowing at the top left.`,
+You can also click the **2D EM** tab, glowing at the top left. Then click **Next**.`,
     position: OVER_3D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
-    spaceAdvances: true,
-    onEnter: () => { advanceWhenSplit(); pulse2DTab(); },
+    state: STATE_AT_END,
+    onEnter: () => { glowNextWhenSplit(); pulse2DTab(); },
   },
   //12 - over 2D - EM cross section view
   {
     text: `This is an electron microscope (EM) image of the brain. A stack of such images creates a 3D volume. The neuron branch is visible in the cross section.`,
     position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    state: STATE_EM_SECTION,
+    onEnter: flat2D,
   },
   // (The "if you end up in 4 panel view" tip lived here. The app no longer
   // offers a 4 panel view, see no_four_panel.ts, so the step is gone.)
@@ -567,22 +1065,22 @@ You can also click the **2D EM** tab, glowing at the top left.`,
 
 Don't worry if you lose the neuron. The Next button in this section resets this view.`,
     position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    state: STATE_EM_SECTION,
+    onEnter: flat2D,
   },
   //14 - 2D control + scroll gif
   {
     text: `${mouse('wheel')}Hold your cursor over the black and white EM and press **CTRL + SCROLL** to zoom in and out.`,
     position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    state: STATE_EM_SECTION,
+    onEnter: flat2D,
   },
   //15 - 2D right click center gif
   {
     text: `${mouse('right')}**RIGHT-CLICK** to recenter.`,
     position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    state: STATE_EM_SECTION,
+    onEnter: flat2D,
   },
 
   //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
@@ -605,11 +1103,9 @@ This is a tutorial so we dropped a hint. Hit the comma key a few times until you
 
 Hit next to reveal the answer.`,
     position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5250067188416512",
-    // Normal size points (3x read as excessive here) and not the pair at the
-    // branch end, which showed as one doubled dot (Ames, 2026-10-24).
-    onEnter: () => { advanceWhenSegmentAdded(); void dropPoints(AT_DEFECT_END); },
+    // One hint point, at normal size (3x read as excessive here).
+    state: STATE_FIND_CONTINUATION,
+    onEnter: () => { advanceWhenSegmentAdded(); },
   },
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
@@ -621,9 +1117,7 @@ Hit next to reveal the answer.`,
     },
     floatingImage:
       imgBravoNurro,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
-    onEnter: () => { void dropPoints(AT_DEFECT_END); },
+    state: STATE_CONTINUATION_FOUND,
   },
   {
     text: `Check out this top right menu for guides, tutorials, and more resources.`,
@@ -705,6 +1199,8 @@ Thanks for being a part of the neuroscience community. For Science!`,
     // starts by itself (toolbar_staging getStartedFinished). Ames 2026-10-21:
     // "there should be a button to start Merge".
     nextLabel: 'Start Merge',
+    // Finishes Get Started without starting Merge (toknow #442).
+    notNowLabel: 'Not now',
     position: MIDDLE,
     image:
       imgTutorialFinal,

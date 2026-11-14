@@ -1981,7 +1981,29 @@ exports.ewSecureWrite = onRequest(
           const fields = ewPick(args.fields, EW_TRIAGE_FIELDS);
           if ("todo_rank" in fields) ewTodoRank(fields.todo_rank);
           if ("todo_size" in fields) ewTodoSize(fields.todo_size);
+          // Another admin's reply to a player: a copy to Ames (functions/reply-watch.js).
+          const watch = require("./reply-watch");
+          let replyBefore = null;
+          if ("feedback_log" in fields && !watch.isOwnerEmail(who && who.email)) {
+            try { replyBefore = (await sb(`feedback_triage?id=eq.${args.id}&select=feedback_log,source_excerpt`))[0] || null; }
+            catch (e) { console.warn("[reply-watch] before", e.message); }
+          }
           out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(fields) }))[0];
+          if (replyBefore) {
+            try {
+              const fresh = watch.newReplies(replyBefore.feedback_log, fields.feedback_log);
+              if (fresh.length) {
+                const owners = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(watch.OWNER_EMAILS.map((e) => `"${e}"`).join(",")) + ")");
+                const link = `${EW_LIVE_SITE}/?triage=board&report=${args.id}`;
+                const rows = [];
+                for (const e of fresh) for (const o of owners) {
+                  rows.push({ ...watch.copyNote({ by: e.by || (me && (me.display_name || me.username)), text: e.text, about: replyBefore.source_excerpt, link, imageUrl: e.image_url }),
+                    target_type: "user", target_id: o.id, send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+                }
+                if (rows.length) await sb("notifications", { method: "POST", body: JSON.stringify(rows) });
+              }
+            } catch (e) { console.warn("[reply-watch] copy", e.message); }
+          }
           // Moving or sizing a To do card changes nothing the bridge mirrors.
           const onlyTodo = Object.keys(fields).every(k => k === "todo_rank" || k === "todo_size");
           // An Admin Hub decision: the bridge mirrors it to Slack and starts
@@ -2147,6 +2169,7 @@ exports.ewSecureWrite = onRequest(
             const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
             try {
               out = await todoAction(action, args, { db: restDb(sb), me, byName, tag,
+                isOwner: ["amylr@princeton.edu", "amyleerobinson@gmail.com"].includes(String(who.email || "").trim().toLowerCase()),
                 follows: todoFollowStore, helpers: todoHelperStore, seen: todoSeenStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
             } catch (e) {
               // Until the SQL is run the table is missing: say so plainly.
@@ -2294,12 +2317,13 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-06-found-us-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-12-news-optin-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
-// Marissa stays tagged on access requests (Ames 2026-10-27); Amy and Celia no longer (Ames 2026-11-04).
-const ACCESS_SLACK_MENTIONS = ["U033TSX9A"]; // sorek.m
+// Marissa stays tagged on access requests (Ames 2026-10-27); Amy no longer (Ames
+// 2026-11-04). Celia again (Ames 2026-11-09: "Also @ her on access requests").
+const ACCESS_SLACK_MENTIONS = ["U033TSX9A", "U033NHWDE"]; // sorek.m, Celia
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 // Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
 const ACCESS_CAVE_GROUP = 203;
@@ -2386,6 +2410,23 @@ const welcomeSentStore = {
     await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
   },
 };
+// Who was asked for their EyeWire name (access-request.js askEmail), from the
+// Access page. One document per address.
+const askSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_ask_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+  all: async () => {
+    const snap = await db.collection("beta_ask_emails").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { at: v.at, by: v.by || "" }; });
+    return out;
+  },
+};
 const betaMarkStore = {
   all: async () => {
     const snap = await db.collection("beta_request_marks").get();
@@ -2396,6 +2437,22 @@ const betaMarkStore = {
   set: async (email, v) => {
     const ref = db.collection("beta_request_marks").doc(crypto.createHash("sha256").update(email).digest("hex"));
     if (!v) await ref.delete(); else await ref.set({ email, ...v });
+  },
+};
+// The team's notes on a person, for the Access page (access-request.js,
+// access.notes, Celia 2026-11-09). One document per note.
+const accessNoteStore = {
+  all: async () => {
+    const snap = await db.collection("access_request_notes").orderBy("at").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.key) (out[v.key] = out[v.key] || []).push({ id: d.id, text: v.text, by: v.by || "", at: v.at }); });
+    return out;
+  },
+  add: async (key, v) => { await db.collection("access_request_notes").add({ key, ...v }); },
+  remove: async (key, id) => {
+    const ref = db.collection("access_request_notes").doc(id);
+    const d = await ref.get();
+    if (d.exists && d.data().key === key) await ref.delete();
   },
 };
 // Dataset access requests, Granted or Not now (access-request.js,
@@ -2465,8 +2522,9 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
-        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
+        wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
+        askSent: askSentStore,
         sendEmail: async (msg) => {
           try {
             const r = await fetch("https://api.resend.com/emails", {
@@ -2500,6 +2558,15 @@ exports.ewAccessRequest = onRequest(
         // Beta access requests reach every admin (Ames 2026-10-24).
         notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
+        // Tags in an Access page note (access-request.js tagFromNote).
+        people: () => require("./todos").restDb(sb).people(),
+        notifyPeople: ({ ids, title, body }) => note(ids, title, body),
+        slackPing: async (people, text, by) => {
+          const { slackIdOf } = require("./todos");
+          const pings = people.map(p => { const s = slackIdOf(p); return s ? `<@${s}>` : `@${p.name}`; }).join(" ");
+          const r = await slackPost(slackBotToken.value().trim(), "chat.postMessage", { channel: REVIEW_CHANNEL_ID, text: `💬 ${pings} ${by} ${text}`, unfurl_links: false }).catch(e => ({ ok: false, error: e.message }));
+          if (!r.ok) console.warn("[access note] slack failed:", r.error);
+        },
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
         // A player's CAVE access, read with the admin token: the datasets they
         // can edit or view, and their groups (Ames 2026-10-29: "we need to see
@@ -2673,6 +2740,20 @@ exports.ewCommunityData = onRequest(
             if(new Set(done.map(r=>r.item).filter(Boolean)).size<5) throw ewErr(403,"Cut every merger in the Merger Sandbox first.");
             continue;
           }
+          // The Cilia Quest tutorial Achievement (code name cilia-tutorial):
+          // the player finished tutorial 14 (Ames 2026-11-10).
+          if(badges.some(b=>b.slug==="cilia-tutorial")) {
+            const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.14&select=tutorial&limit=1");
+            if(!done.length) throw ewErr(403,"Finish the Cilia Quest tutorial first.");
+            continue;
+          }
+          // The Annotations tutorial Achievement (code name annotations-tutorial):
+          // the player finished tutorial 15 (Ames 2026-11-10).
+          if(badges.some(b=>b.slug==="annotations-tutorial")) {
+            const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.15&select=tutorial&limit=1");
+            if(!done.length) throw ewErr(403,"Finish the Annotations tutorial first.");
+            continue;
+          }
           if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Mini Michelangelo","Safety Scissors","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
         }
       }
@@ -2725,8 +2806,11 @@ exports.ewCommunityData = onRequest(
         try {
           const keys = require("./edit-notify").editedKeys(plan.method, plan.query, plan.body).slice(0, 5);
           editsBefore = {};
+          const {liveKeyOf, isDraft} = require("./edit-notify");
           for (const k of keys) {
-            const rows = await sb("site_texts?key=eq."+encodeURIComponent(k)+"&select=body&limit=1");
+            // A suggestion's note shows the text players see now, so read that key for a draft.
+            const read = isDraft(k) ? liveKeyOf(k) : k;
+            const rows = read ? await sb("site_texts?key=eq."+encodeURIComponent(read)+"&select=body&limit=1") : [];
             editsBefore[k] = rows.length ? String(rows[0].body ?? "") : null;
           }
         } catch (e) { editsBefore = null; console.warn("[edit-notify] before", e.message); }
@@ -2743,18 +2827,33 @@ exports.ewCommunityData = onRequest(
       // The edit went through: tell Ames, before and after (Ames 2026-11-06).
       if (upstream.ok && editsBefore) {
         try {
-          const {planEditNote, OWNER_EMAILS} = require("./edit-notify");
+          const {planEditNote, isDraft, OWNER_EMAILS} = require("./edit-notify");
           const rowsAfter = plan.method === "DELETE" ? [] : (Array.isArray(plan.body) ? plan.body : [plan.body]);
-          const notes = Object.keys(editsBefore).map((k) => {
+          const editor = { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" };
+          const notes = [];
+          for (const k of Object.keys(editsBefore)) {
             const row = rowsAfter.find((r) => r && r.key === k);
             const after = plan.method === "DELETE" ? null : row ? String(row.body ?? "") : (plan.body && typeof plan.body.body === "string" ? plan.body.body : null);
-            return planEditNote({ key: k, before: editsBefore[k], after, editor: { email: who && who.email, name: (me && (me.display_name || me.username)) || "An admin" } });
-          }).filter(Boolean);
+            // A suggestion waiting for approval sends no note here (planApproveNote is ready, not switched on; Ames 2026-11-10).
+            if (isDraft(k)) continue;
+            if (!planEditNote({ key: k, before: editsBefore[k], after, editor })) continue;
+            // Kept so the note's "Put back the old text" can undo exactly this edit (supabase-site-text-edits.sql).
+            let editId = null;
+            try {
+              const saved = await sb("site_text_edits", { method: "POST", headers: { Prefer: "return=representation" },
+                body: JSON.stringify({ key: k, old_body: editsBefore[k], new_body: after, editor_name: editor.name, editor_email: editor.email || null }) });
+              editId = Number(saved && saved[0] && saved[0].id) || null;
+            } catch (e) { console.warn("[edit-notify] history", e.message); }
+            notes.push(planEditNote({ key: k, before: editsBefore[k], after, editor, editId }));
+          }
           if (notes.length) {
             const owners = await sb("users?select=id&middleauth_email=in.("+encodeURIComponent(OWNER_EMAILS.map((e) => `"${e}"`).join(","))+")");
             const out = [];
+            // Celia's or Marissa's edits carry Nurro doing geometry (Ames 2026-11-09).
+            const watched = require("./reply-watch");
+            const byThem = watched.isCeliaOrMarissa(me && (me.display_name || me.username));
             for (const n of notes) for (const o of owners) out.push({ title: n.title, body: n.body, target_type: "user", target_id: o.id,
-              ...(n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
+              ...(byThem ? { image_url: watched.WATCH_PICTURE, thumbnail_url: watched.WATCH_PICTURE } : n.image ? { image_url: n.image, thumbnail_url: n.image } : {}), send_at: new Date().toISOString(), created_by: (me && me.id) || null });
             if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
           }
         } catch (e) { console.warn("[edit-notify] note", e.message); }
@@ -2792,7 +2891,7 @@ exports.ewSecureUpload = onRequest(
    // authors and admins get the admin write allowance, others keep 8 a minute.
    const roomy=isAdmin||isBlogAuthor;
    if(!(await rateLimit({ip:who.email},false,roomy?"write:upload":"upload",roomy)).ok)throw ewErr(429,"Please wait before uploading another image.");
-   const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/admin-uploads/"+upload.path;
+   const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/"+(upload.bucket||"admin-uploads")+"/"+upload.path;
    const r=await fetch(url,{method:"POST",headers:{apikey:key,...(key.startsWith("sb_")?{}:{Authorization:"Bearer "+key}),"Content-Type":upload.contentType,"x-upsert":"false"},body:upload.bytes,redirect:"error",signal:AbortSignal.timeout(30000)});
    if(!r.ok)throw ewErr(502,"Image storage is temporarily unavailable.");
    return res.json({url:url.replace("/object/","/object/public/")});
@@ -2811,15 +2910,15 @@ exports.ewSymposiumRsvp = onRequest(
   if(req.method!=="POST") return res.status(405).json({error:"POST only"});
   if(Buffer.byteLength(JSON.stringify(req.body||{}))>8000) return res.status(413).json({error:"That is too long. Please shorten your question."});
   try {
-   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
+   const {planRsvp,SYMPOSIUM_SHEET_ID,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
    const plan=planRsvp(req.body||{});
    if(!(await rateLimit(req,false,"visitor:rsvp")).ok) throw ewErr(429,"Please wait a little while, then try again.");
-   const ref=db.collection("symposium_rsvps").doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
+   const ref=db.collection(plan.collection).doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
    const before=await ref.get();
    if(before.exists) plan.row[NOTE_COLUMN]="Sent again (latest answers)";
    await ref.set({name:plan.row[1],email:plan.email,username:plan.row[3],question:plan.row[4],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
    try {
-    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent("'"+plan.tab+"'!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
       {method:"POST",body:JSON.stringify({values:[plan.row]})});
     await ref.update({sheet:true});
    } catch(e) {
@@ -3055,8 +3154,18 @@ exports.ewMentor = onRequest(
 //   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck,functions:ewQuestReviewDigest --project eyewire-ii-e4d52
 const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
 const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
+// One player's CAVE permissions, read with Ames's admin token, for the Pyr
+// users sheet's Can edit column (Celia 2026-11-10). null when CAVE can't say.
+const ewCavePerms = async (caveId) => {
+  if (!/^\d{1,12}$/.test(String(caveId))) return null;
+  try {
+    const r = await fetch(`https://global.daf-apis.com/auth/api/v1/user/${caveId}/permissions`, {
+      headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+    return r.ok ? r.json() : null;
+  } catch (e) { return null; }
+};
 exports.ewQuestReview = onRequest(
-  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 120 },
+  { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 300 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -3070,18 +3179,30 @@ exports.ewQuestReview = onRequest(
         const out = await review.check({ api, sb: null, dryRun: true, only: "0" }).catch(e => { throw ewErr(e.status || 503, e.message); });
         return res.json({ ok: true, waiting: out.checked });
       }
-      if (!["check", "get", "reply", "digest"].includes(action)) throw ewErr(400, `unknown action ${action}`);
+      if (!["check", "get", "reply", "digest", "usersSheet", "canEdit"].includes(action)) throw ewErr(400, `unknown action ${action}`);
       const who = await ewVerify(token);
       if (!who) throw ewErr(401, "Sign in to Pyr again, then retry.");
       const sb = ewSb(ewServiceKey.value().trim());
       const { me, isAdmin } = await pilotContext(sb, who);
       if (!me) throw ewErr(403, "Create your Pyr profile first.");
-      if (!(await rateLimit({ ip: who.email }, true, action === "get" ? "read:quests" : "write:sheets")).ok) throw ewErr(429, "Please wait a moment, then try again.");
+      if (!(await rateLimit({ ip: who.email }, true, action === "get" || action === "canEdit" ? "read:quests" : "write:sheets")).ok) throw ewErr(429, "Please wait a moment, then try again.");
       if (action === "check") {
         if (!isAdmin) throw ewErr(403, "Admins only");
         const out = await review.check({ api, sb, only: args.segmentId ? String(args.segmentId) : "", dryRun: !!args.dryRun });
         console.info("[ewQuestReview] check by", who.email, JSON.stringify(out.results.map(r => ({ row: r.row, sent: r.sent, why: r.why }))));
         return res.json({ ok: true, ...out });
+      }
+      // Our own Pyr users sheet, now (the Access page's button; it also runs every hour).
+      if (action === "usersSheet") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        const out = await require("./users-sheet").syncUsersSheet({ api, sb, marks: betaMarkStore, cavePerms: ewCavePerms });
+        console.info("[ewQuestReview] users sheet by", who.email, out.people);
+        return res.json({ ok: true, data: out });
+      }
+      // Who can edit which dataset, from the sheet's Can edit column (the Access page).
+      if (action === "canEdit") {
+        if (!isAdmin) throw ewErr(403, "Admins only");
+        return res.json({ ok: true, data: await require("./users-sheet").readCanEdit({ api }) });
       }
       if (action === "digest") {
         if (!isAdmin) throw ewErr(403, "Admins only");
@@ -3100,6 +3221,14 @@ exports.ewQuestReview = onRequest(
 // 8 am to 9 pm Eastern, nothing overnight. Each run is one
 // read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+// Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
+exports.ewUsersSheet = onSchedule(
+  { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 300, retryCount: 0 },
+  async () => {
+    const out = await require("./users-sheet").syncUsersSheet({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()), marks: betaMarkStore, cavePerms: ewCavePerms });
+    console.info("[ewUsersSheet]", out.people, "people");
+  }
+);
 exports.ewQuestReviewCheck = onSchedule(
   { schedule: "0 8-21 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
   async () => {
@@ -3149,6 +3278,13 @@ function blogMailIo() {
   const doc = (col, id) => db.collection(col).doc(crypto.createHash("sha256").update(String(id)).digest("hex"));
   return {
     resend, cache: blogMailCache,
+    // Who is signed in to Pyr, for the What's new in Pyr box (blog-mail.js notes).
+    verify: ewVerify,
+    notesSubscribers: {
+      get: async (email) => { const d = await doc("notes_subscribers", email).get(); return d.exists ? d.data() : null; },
+      set: (email, v) => doc("notes_subscribers", email).set(v, { merge: true }),
+      list: async () => (await db.collection("notes_subscribers").where("on", "==", true).get()).docs.map((d) => d.data()),
+    },
     subscribers: {
       set: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
       update: (email, v) => doc("blog_subscribers", email).set(v, { merge: true }),
@@ -3190,11 +3326,22 @@ exports.ewBlogMail = onRequest(
   { region: "us-central1", secrets: [resendKey, ewServiceKey], cors: [/^https:\/\/(www\.)?connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/], invoker: "public", maxInstances: 5 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
+    // The unsubscribe link in a What's new in Pyr email: a click (GET) shows a
+    // small page; a mail app's one click unsubscribe (POST) just needs a 200.
+    if (req.query && req.query.action === "notes-off") {
+      let text;
+      try { await require("./blog-mail").handle("notes-off", { e: req.query.e, k: req.query.k }, blogMailIo()); text = "You're off the What's new in Pyr list. You won't get it again unless you tick the box on the blog."; }
+      catch (e) { if (!e.status) console.error("[ewBlogMail] notes-off", e.message); text = e.status ? e.message : "That did not go through. Please try again in a moment."; }
+      if (req.method === "POST") return res.status(200).send("ok");
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      return res.status(200).type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>What's new in Pyr</title></head><body style="margin:0;background:#f4f6fa;font:17px/1.6 system-ui,sans-serif;color:#151b27"><main style="max-width:520px;margin:12vh auto;padding:28px;background:#fff;border-radius:16px"><h1 style="margin:0 0 12px;font-size:22px">What's new in Pyr</h1><p style="margin:0 0 18px">${esc(text)}</p><p style="margin:0"><a href="https://connectome.quest/blog/" style="color:#0a7286">Back to the blog</a></p></main></body></html>`);
+    }
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long." });
     const { action, ...args } = req.body || {};
     try {
       if (action === "subscribe" && !(await rateLimit(req, false, "visitor:subscribe")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+      if (action === "notes" && typeof args.on === "boolean" && !(await rateLimit(req, false, "visitor:notes")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
       // A test goes only to Ames, but not over and over.
       if (action === "test" && !(await rateLimit({ ip: "blogmail-test" }, false, "visitor:blogmailtest")).ok) return res.status(429).json({ error: "Enough tests for today." });
       // The blog build asks every 15 minutes; one check a minute is plenty.

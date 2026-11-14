@@ -676,6 +676,10 @@ function serverLabel(url: string): string {
             <span class="nge-login-btn-glow"></span>
           </button>
           <button class="nge-login-skip" @click="dismiss">BYPASS ›</button>
+          <p class="nge-login-terms">
+            By signing in, you agree to the
+            <a href="https://connectome.quest/terms/" target="_blank" rel="noreferrer">Terms of Use and Privacy Notice</a>.
+          </p>
 
           <!-- Bottom data stream decoration -->
           <div class="nge-holo-datastream">
@@ -1164,6 +1168,17 @@ function serverLabel(url: string): string {
 .nge-login-skip:hover {
   color: rgba(0, 200, 255, 0.5);
 }
+
+/* Terms line under the buttons (Ames 2026-11-10). */
+.nge-login-terms {
+  position: relative;
+  z-index: 2;
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(160, 190, 220, 0.7);
+}
+.nge-login-terms a { color: rgba(110, 200, 255, 0.9); }
 
 /* ── Bottom data stream text ── */
 .nge-holo-datastream {

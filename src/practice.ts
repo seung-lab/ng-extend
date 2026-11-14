@@ -601,7 +601,7 @@ export function currentPractice() {
   return session;
 }
 
-function pausePracticeTools() {
+export function pausePracticeTools() {
   const viewer = getViewer();
   viewer?.globalToolBinder?.activeTool_?.cancel?.();
   viewer?.toolBinder?.activeTool_?.cancel?.();
@@ -786,7 +786,11 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
     // when it is not, the claim falls back to whatever is free.
     if (opts.only) {
       const mine = ((data ?? []) as any[]).find(r => r.id === opts.only);
-      if (!mine || mine.status !== 'ready') { session.phase = 'busy'; return null; }
+      if (!mine || mine.status !== 'ready') {
+        // A hidden second claim must not mark busy over the cell on screen.
+        session.phase = (show || !session.example) ? 'busy' : (kind === 'cut' ? 'cut' : 'merge');
+        return null;
+      }
       for (const r of (data ?? []) as any[]) if (r.id !== opts.only && !exclude.includes(r.id)) exclude.push(r.id);
     }
     const want = opts.prefer && !exclude.includes(opts.prefer)
@@ -1076,7 +1080,7 @@ const LEFTOVER: Record<string, { pair: [string, string]; message: string; red: n
   // fourteen that left half do not.
   '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': {
     pair: ['75155055934384400', '75155055934269534'],
-    message: 'Good cut, but you cut off only half of the merger. The rest of the axon is still on the dendrite. Go back and get it: the gems show where.',
+    message: 'Good cut, but you cut off only half of the merger. The rest of the axon is still on the dendrite.',
     red: [[82030, 49104, 529]],
     blue: [[81910, 49234, 521]],
   },
@@ -1084,7 +1088,7 @@ const LEFTOVER: Record<string, { pair: [string, string]; message: string; red: n
   // and (86358, 59125, 806).
   '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': {
     pair: ['75437218239981902', '75437149587202747'],
-    message: 'Good cut, but you cut off only half of the merger. Part of the axon is still on the dendrite. Go back and get the rest: the gems show where.',
+    message: 'Good cut, but you cut off only half of the merger. Part of the axon is still on the dendrite.',
     red: [[86385, 59535, 793]],
     blue: [[86436, 59597, 806]],
   },

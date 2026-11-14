@@ -7,6 +7,7 @@
  */
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
+import ConfirmDialog from './ConfirmDialog.vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
 import { claimTouchTaps } from '../util/touch_tap';
@@ -165,6 +166,7 @@ async function setSlim(v: boolean) {
     const ghost = el ? snapshotPanel(el) : null;
     adding.value = false;
     slim.value = true;
+    pos.value = keptFor(true) ?? pos.value;
     await nextTick();
     clampPos();
     if (ghost && el) morphIntoSlim(ghost, el, Array.from(el.querySelectorAll('.nge-hl-slim > *')));
@@ -173,6 +175,7 @@ async function setSlim(v: boolean) {
   // Hidden until the beam draws it, so the full box never flashes in first.
   if (el && !reduce) el.style.clipPath = 'inset(0 0 100% 0)';
   slim.value = false;
+  pos.value = keptFor(false) ?? pos.value;
   await nextTick();
   clampPos();
   if (el) revealWithBeam(el);
@@ -188,10 +191,19 @@ const slimStep = computed(() => {
 });
 
 // ── Drag the box by its header; it remembers where it was put ─────────────
+// The slim strip and the full box each keep their own place (Nseraf, report
+// 515): opening the box pushed it up to fit the screen, and slimming it again
+// left the strip there. Fitting the screen moves what is shown, never the
+// place kept.
+type Pos = { x: number; y: number };
 const POS_KEY = 'nge_highlight_panel_pos';
-const pos = ref<{ x: number; y: number } | null>((() => {
-  try { const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); return p && isFinite(p.x) && isFinite(p.y) ? p : null; } catch { return null; }
-})());
+const POS_SLIM_KEY = 'nge_highlight_panel_pos_slim';
+const readPos = (key: string): Pos | null => {
+  try { const p = JSON.parse(localStorage.getItem(key) || 'null'); return p && isFinite(p.x) && isFinite(p.y) ? p : null; } catch { return null; }
+};
+const kept: { full: Pos | null; slim: Pos | null } = { full: readPos(POS_KEY), slim: readPos(POS_SLIM_KEY) };
+const keptFor = (isSlim: boolean) => (isSlim ? kept.slim ?? kept.full : kept.full ?? kept.slim);
+const pos = ref<Pos | null>(keptFor(slim.value));
 const dragging = ref(false);
 const posStyle = computed(() => (pos.value ? { left: pos.value.x + 'px', top: pos.value.y + 'px', bottom: 'auto' } : {}));
 function clampPos() {
@@ -214,7 +226,10 @@ function startDrag(e: MouseEvent) {
     dragging.value = false;
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
-    try { if (pos.value) localStorage.setItem(POS_KEY, JSON.stringify(pos.value)); } catch { /* private mode */ }
+    if (!pos.value) return;
+    const p = { ...pos.value };
+    if (slim.value) kept.slim = p; else kept.full = p;
+    try { localStorage.setItem(slim.value ? POS_SLIM_KEY : POS_KEY, JSON.stringify(p)); } catch { /* private mode */ }
   };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
@@ -446,6 +461,12 @@ function onKeyDown(e: KeyboardEvent) {
     hHeld.value = true;
   } else if (e.key === 'Escape' && first.value) {
     cancelPick();
+  } else if ((e.key === 's' || e.key === 'S' || e.key === 'b' || e.key === 'B') && first.value && !busy.value && !branchWay.value && !labOn.value) {
+    // S for To soma, B for Beyond, while their buttons show (Ames 2026-11-13).
+    // Only then: S and B keep their usual jobs the rest of the time.
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    void markBranch(e.key.toLowerCase() === 's' ? 'toward' : 'away');
   }
 }
 function onKeyUp(e: KeyboardEvent) {
@@ -495,10 +516,17 @@ function undo() {
   say(undoHighlight() ? 'Removed the last mark.' : 'Nothing to undo.');
   refresh();
 }
+// Clear all asks first, in Pyr's own red confirm box with Cancel picked
+// (Ames 2026-11-13: "should have an are you sure warning"). The browser's
+// own box was easy to click through.
+const clearAsk = ref(0);
 function clearAll() {
   const n = listHighlights().filter(m => !m.style.lab).length;
   if (!n) { say(markCount.value ? 'Clear all leaves the lab marks. Undo or the annotation list removes one.' : 'Nothing to clear.'); return; }
-  if (!window.confirm(`Remove all ${n} highlight marks from this view? The lab marks stay.`)) return;
+  clearAsk.value = n;
+}
+function clearAllYes() {
+  clearAsk.value = 0;
   clearHighlights();
   first.value = null;
   clearStartMarker();
@@ -548,6 +576,10 @@ onMounted(() => {
     const sel = (window as any).viewer.selectedLayer.changed;
     sel.add(onSelectedLayer);
     stopSelectedWatch = () => sel.remove(onSelectedLayer);
+    // A tab picked while Highlight was off wins when it comes back on: the
+    // colour follows the tab, never the tab the old colour (Nseraf #477,
+    // 2026-11-11: "it is back on the tab I left it").
+    onSelectedLayer();
   } catch { /* no viewer yet */ }
   // Opening Highlight closes Find Path, whose Ctrl+click would otherwise take
   // every point (Ames 2026-10-18: "highlight doesn't work"). Merge and Cut
@@ -607,8 +639,8 @@ onBeforeUnmount(() => {
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--sm" type="button" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop</button>
         <template v-if="first && !busy && !branchWay && !labOn">
-          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
-          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
+          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark the way from this point back to the soma. (S)" @click="markBranch('toward')">To soma</button>
+          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too. (B)" @click="markBranch('away')">Beyond</button>
         </template>
         <span class="nge-hl-slim-step" :class="{ 'nge-hl-bad': messageBad }" :title="slimStep">{{ busy ? 'Tracing' : slimStep }}</span>
         <button class="nge-hl-btn nge-hl-btn--sm" type="button" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
@@ -707,7 +739,11 @@ onBeforeUnmount(() => {
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
         <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
-        <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
+        <button class="nge-hl-btn nge-hl-btn--danger" :disabled="busy || !markCount" @click="clearAll"
+                title="Remove every highlight mark in this view. Asks first. Your segments and lab marks stay.">Clear all</button>
+        <ConfirmDialog v-if="clearAsk" title="Clear all highlights?" enter-yes
+          text="Are you sure you want to clear all highlights in this view? This cannot be undone."
+          yes="OK" @yes="clearAllYes" @no="clearAsk = 0" />
       </div>
       <label class="nge-hl-width" title="How far out from the middle of the branch the color reaches. Wider covers thick branches and their spines; narrower keeps the color off neighboring branches.">
         <span>Color reach</span>
@@ -759,8 +795,8 @@ onBeforeUnmount(() => {
            beyond the point (Krzysztof Kruk's idea, 2026-10-09). -->
       <div v-if="first && !busy && !branchWay && !labOn" class="nge-hl-branch">
         <span class="nge-hl-branch-label">From here</span>
-        <button class="nge-hl-btn" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
-        <button class="nge-hl-btn" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
+        <button class="nge-hl-btn" type="button" title="Mark the way from this point back to the soma. (S)" @click="markBranch('toward')">To soma</button>
+        <button class="nge-hl-btn" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too. (B)" @click="markBranch('away')">Beyond</button>
       </div>
       <!-- The soma is not on record: one clear ask, lit as it arrives so the
            eye goes to it (Ames 2026-10-10). -->
@@ -924,6 +960,9 @@ onBeforeUnmount(() => {
   color: #cfe6ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.3);
 }
 .nge-hl-btn:hover:not(:disabled) { background: rgba(74, 158, 255, 0.2); }
+/* Clear all: gray, apart from Undo, and red on hover. */
+.nge-hl-btn--danger { color: rgba(220, 228, 240, 0.7); background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.16); }
+.nge-hl-btn--danger:hover:not(:disabled) { color: #ffb3bd; background: rgba(255, 93, 115, 0.12); border-color: rgba(255, 93, 115, 0.5); }
 .nge-hl-btn:disabled { opacity: 0.4; cursor: default; }
 .nge-hl-btn--main { flex: 1; color: #06140c; background: #7cffb2; border-color: #7cffb2; }
 .nge-hl-btn--main:hover:not(:disabled) { background: #a5ffca; }

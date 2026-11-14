@@ -33,6 +33,9 @@ const props = withDefaults(defineProps<{
    *  opened from (the Cell Library's help form). A picture for a helper
    *  should show the view, not the form it was sent from (Celia 2026-10-07). */
   hideOpener?: string;
+  /** Take the whole screen this time, whatever was last chosen (the bug
+   *  report's "Set up the screen first", Celia #446). */
+  wholeScreenNow?: boolean;
 }>(), { mode: 'download' });
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -158,12 +161,17 @@ function showCaptureSign(): () => void {
  *  Capture screen goes straight to the browser's own capture. */
 let drawFailed = false;
 
+/** A screen the player set up on purpose (Submit an issue, "or set up the
+ *  screen first") keeps the window they opened, Settings or a profile: only
+ *  the report form steps aside (Ames 2026-11-12: "is not capturing overlay").
+ *  Otherwise every pop-up and its backdrop steps aside, as before. */
+const capturingClass = () => (props.wholeScreenNow ? 'nge-shot-capturing-setup' : 'nge-shot-capturing');
 async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   if (!drawFailed) {
   // First choice: the app draws the page itself, so the browser has nothing
   // to ask (Ames 2026-10-01: "avoid the chrome permission every time").
   dialogHidden.value = true;
-  document.body.classList.add('nge-shot-capturing');
+  document.body.classList.add(capturingClass());
   hideOpener();
   const hideSign = showCaptureSign();
   try {
@@ -175,7 +183,7 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   } finally {
     hideSign();
     dialogHidden.value = false;
-    document.body.classList.remove('nge-shot-capturing');
+    document.body.classList.remove('nge-shot-capturing', 'nge-shot-capturing-setup');
     showOpener();
   }
   }
@@ -193,7 +201,7 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   // report form over a blurred viewer. Every other window on screen (Cell
   // Library, chat, layer panels) stays in the shot (Ames 2026-09-28).
   dialogHidden.value = true;
-  document.body.classList.add('nge-shot-capturing');
+  document.body.classList.add(capturingClass());
   hideOpener();
   await new Promise(r => setTimeout(r, 120));
   let stream: MediaStream | null = null;
@@ -217,7 +225,7 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   } finally {
     stream?.getTracks().forEach(t => t.stop());
     dialogHidden.value = false;
-    document.body.classList.remove('nge-shot-capturing');
+    document.body.classList.remove('nge-shot-capturing', 'nge-shot-capturing-setup');
     showOpener();
   }
 }
@@ -853,6 +861,7 @@ async function refreshSource() {
 
 watch(() => props.show, async (open) => {
   if (open) {
+    if (props.wholeScreenNow) wholeScreen.value = true;
     // Stay out of sight until the whole-screen picture is taken (no flash).
     if (wholeScreen.value) dialogHidden.value = true;
     await nextTick();
@@ -1943,7 +1952,10 @@ async function download() {
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
 }
 body.nge-shot-capturing .nge-overlay-blocker,
-body.nge-shot-capturing .nge-shotdlg-overlay {
+body.nge-shot-capturing .nge-shotdlg-overlay,
+body.nge-shot-capturing-setup .nge-overlay-blocker:has(#nge-feedback-modal),
+body.nge-shot-capturing-setup .nge-overlay-blocker.nge-feedback-modal,
+body.nge-shot-capturing-setup .nge-shotdlg-overlay {
   visibility: hidden !important;
   backdrop-filter: none !important;
 }

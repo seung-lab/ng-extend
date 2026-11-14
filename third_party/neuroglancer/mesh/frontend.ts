@@ -15,7 +15,7 @@
  */
 
 import {NgeShell} from 'neuroglancer/mesh/nge_hover';
-import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine} from 'neuroglancer/mesh/nge_tint';
+import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine, getNgeReveal} from 'neuroglancer/mesh/nge_tint';
 import {bindNgeLanternMask, ngeLanternLights, getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
 import {getNgeMeshEdge} from 'neuroglancer/mesh/nge_edge';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
@@ -165,6 +165,14 @@ highp vec3 getVertexPosition() {
 // EyeWire II Highlight mode: meshes near a marked path take its colour
 // (mesh/nge_tint.ts).
 const ngeTintSamplerSymbol = Symbol('ngeMeshTint');
+/** The one object the tint is limited to, while a model draws (see NgeMeshTint.only). */
+let ngeTintOnly: string | null = null;
+let ngeRevealNow: {only: string; center: number[]; radiusNm: number; edgeNm: number} | null = null;
+function ngeRevealFor(gl: GL, shader: ShaderProgram, key: string) {
+  if (!ngeRevealNow) return;
+  const on = key === ngeRevealNow.only;
+  gl.uniform4f(shader.uniform('uNgeReveal'), on ? ngeRevealNow.radiusNm : 0, on ? 1 : 0, ngeRevealNow.edgeNm, 0);
+}
 const ngeTintMat = mat4.create();
 const ngeFineSamplerSymbol = Symbol('ngeMeshTintFine');
 const ngeFineMat = mat4.create();
@@ -464,6 +472,10 @@ export class MeshShaderManager {
 
   beginModel(
       gl: GL, shader: ShaderProgram, renderContext: PerspectiveViewRenderContext, modelMat: mat4) {
+    ngeTintOnly = null;
+    ngeRevealNow = getNgeReveal();
+    gl.uniform4f(shader.uniform('uNgeReveal'), 0, 0, 0, 0);
+    if (ngeRevealNow) gl.uniform3f(shader.uniform('uNgeRevealCenter'), ngeRevealNow.center[0], ngeRevealNow.center[1], ngeRevealNow.center[2]);
     const {projectionParameters} = renderContext;
     gl.uniformMatrix4fv(
         shader.uniform('uModelViewProjection'), false,
@@ -483,12 +495,14 @@ export class MeshShaderManager {
           shader.uniform('uNgeTintMatrix'), false,
           mat4.multiply(ngeTintMat, tint.gridFromGlobal, modelMat));
       gl.uniform1f(shader.uniform('uNgeTintOn'), 1);
+      ngeTintOnly = tint.only ?? null;
       const glow = tint.glow;
       gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
       const dim = tint.dim;
       gl.uniform4f(shader.uniform('uNgeTintDim'), dim?.[0] ?? 0, dim?.[1] ?? 0, dim?.[2] ?? 0, dim ? (tint.dimLevel ?? 0.32) : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
+      ngeTintOnly = null;
     }
     // No cell is skipped, and none has a mark of its own, until its own draw says so (setTintSkip).
     gl.uniform1f(shader.uniform('uNgeTintSkip'), 0);
@@ -610,6 +624,9 @@ export class MeshShaderManager {
         // Lit from the cell body (xyz, global units) out to a radius (w, nm; 0 for none), and nm per unit.
         builder.addUniform('highp vec4', 'uNgeTintReveal');
         builder.addUniform('highp vec3', 'uNgeTintRevealNm');
+        builder.addUniform('highp vec4', 'uNgeReveal');
+        builder.addUniform('highp vec3', 'uNgeRevealCenter');
+        builder.addVarying('highp float', 'vNgeRevealD');
         builder.addUniform('highp float', 'uNgeGlow');
         builder.addUniform('highp vec4', 'uNgeShell');
         builder.addUniform('highp vec4', 'uNgeShellColor');
@@ -865,8 +882,18 @@ if (uNgeCrumble.x > 0.0) {
   if (fract(crumbleH * 29.3) < 0.65 + 0.3 * crumbleT) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 }
 `;
+        vertexMain += `
+// Grow-in: hidden beyond the radius, a bright rim at the growing edge.
+vNgeRevealD = -1.0;
+if (uNgeReveal.y > 0.5) {
+  vNgeRevealD = length(((uNgeModel * vec4(vertexPosition, 1.0)).xyz - uNgeRevealCenter) * uNgePulseScale) - uNgeReveal.x;
+  highp float revealEdge = 1.0 - clamp(-vNgeRevealD / max(uNgeReveal.z, 1.0), 0.0, 1.0);
+  vColor.rgb = mix(vColor.rgb, vec3(0.75, 0.95, 1.0), revealEdge * 0.85);
+}
+`;
         builder.setVertexMain(vertexMain);
         builder.setFragmentMain(`
+if (vNgeRevealD > 0.0) discard;
 if (uNgeCrumble.x > 0.0 && (uNgeCrumble.x >= 1.0 || length(gl_PointCoord - 0.5) > 0.5)) discard;
 if (vNgeHolo.w > 0.5) {
   if (vNgeHolo.z > 0.5) {
@@ -1009,6 +1036,8 @@ export class MeshLayer extends
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
             meshShaderManager.setTintSkip(gl, shader, objectId);
+            if (ngeTintOnly !== null) gl.uniform1f(shader.uniform('uNgeTintOn'), key === ngeTintOnly ? 1 : 0);
+            ngeRevealFor(gl, shader, key);
             const pulsing = ngePulseFor(gl, shader, key, hovered);
             meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
             // Back to no pulse for the next cell.
@@ -1269,6 +1298,8 @@ export class MultiscaleMeshLayer extends
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
             meshShaderManager.setTintSkip(gl, shader, objectId);
+            if (ngeTintOnly !== null) gl.uniform1f(shader.uniform('uNgeTintOn'), key === ngeTintOnly ? 1 : 0);
+            ngeRevealFor(gl, shader, key);
             const pulsing = ngePulseFor(gl, shader, key, hovered);
             meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
             // Back to no pulse for the next cell.

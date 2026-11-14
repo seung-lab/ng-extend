@@ -39,6 +39,21 @@ export interface ScriptApiDeps {
 
 const viewer = (): any => (window as any).viewer;
 
+/** A stamp that changes whenever the cell list might have: the layer, and its
+ *  selected and visible sets' change counts. Reading the cells means writing
+ *  out the whole layer, hidden cells and folders included, which for a player
+ *  with hundreds of cells cost a few ms up to 7 times a second while the view
+ *  moved (Nseraf, Ames 2026-11-09). '' when it can't tell: read the cells. */
+function cellsStamp(): string {
+  const ml = currentSegLayer();
+  if (!ml) return '';
+  try {
+    const g = ml.layer?.displayState?.segmentationGroupState?.value;
+    const a = g?.selectedSegments?.changed?.count, b = g?.visibleSegments?.changed?.count;
+    return typeof a === 'number' && typeof b === 'number' ? `${ml.name}|${a}|${b}` : '';
+  } catch { return ''; }
+}
+
 function selectedCells(): string[] {
   const ml = currentSegLayer();
   if (!ml) return [];
@@ -244,6 +259,7 @@ export function installScriptApi(v: any, deps: ScriptApiDeps) {
 
   // cellschange and datasetchange and viewchange come from the view itself.
   let lastCells = selectedCells();
+  let lastStamp = cellsStamp();
   let lastDataset = datasetInfo().id;
   let timer: ReturnType<typeof setTimeout> | null = null;
   v.state.changed.add(() => {
@@ -252,7 +268,9 @@ export function installScriptApi(v: any, deps: ScriptApiDeps) {
       timer = null;
       const ds = datasetInfo();
       if (ds.id !== lastDataset) { lastDataset = ds.id; emitScriptEvent('datasetchange', { dataset: ds }); }
-      const now = selectedCells();
+      const stamp = cellsStamp();
+      const now = stamp && stamp === lastStamp ? lastCells : selectedCells();
+      lastStamp = stamp;
       if (now.length !== lastCells.length || now.some((id, i) => id !== lastCells[i])) {
         const before = new Set(lastCells), after = new Set(now);
         emitScriptEvent('cellschange', {

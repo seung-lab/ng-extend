@@ -62,12 +62,29 @@ const isReload = () => {
   try { return (performance.getEntriesByType('navigation')[0] as any)?.type === 'reload'; } catch { return false; }
 };
 
-/** Before neuroglancer reads the address at startup: on a reload of a tab
- *  whose view was kept in the database, set the stale address aside.
+/** Which address the tab had when its view was kept. Coming back to that
+ *  same address (not only a reload: Firefox restarting for an update, session
+ *  restore, a reopened tab) is the same work, so the kept view is used
+ *  (Nseraf 2026-11-11, report "MEC interneuron": after Firefox restarted, the
+ *  address was the bare "#" the guard leaves behind and everything was gone).
+ *  A different address is a link opened on purpose and is used as it is. */
+const ADDRESS_KEY = 'nge-view-in-db-address';
+function addressPrint(hash: string): string {
+  const h = hash || '#';
+  return `${h.length}:${h.slice(0, 120)}:${h.slice(-120)}`;
+}
+const isBlank = (hash: string) => !hash || hash === '#' || hash === '#!';
+
+/** Before neuroglancer reads the address at startup: when this tab's view
+ *  was kept in the database and the tab is back at the address it had then
+ *  (or reloaded, or left with no view at all), set the address aside.
  *  Returns the address set aside, or null when the address is to be used. */
 export function setAsideStaleAddress(): string | null {
   try {
-    if (sessionStorage.getItem(STALE_KEY) !== '1' || !isReload()) return null;
+    if (sessionStorage.getItem(STALE_KEY) !== '1') return null;
+    const kept = sessionStorage.getItem(ADDRESS_KEY);
+    const sameAddress = kept !== null && kept === addressPrint(location.hash);
+    if (!isReload() && !sameAddress && !isBlank(location.hash)) return null;
     const hash = location.hash;
     history.replaceState(history.state, '', location.pathname + location.search + '#');
     return hash || '#';
@@ -97,10 +114,13 @@ export function startReloadGuard(viewer: any, setAside: string | null, readAddre
         // The text neuroglancer just made for the address, when it has it:
         // making it again froze the view for a second (report 383).
         const text = (window as any).__ngeStaleJson || JSON.stringify(viewer.state.toJSON());
-        void put(tabId(), text).then(() => { try { sessionStorage.setItem(STALE_KEY, '1'); } catch { /* private mode */ } })
+        void put(tabId(), text).then(() => {
+          try { sessionStorage.setItem(STALE_KEY, '1'); sessionStorage.setItem(ADDRESS_KEY, addressPrint(location.hash)); } catch { /* private mode */ }
+        })
           .catch(e => console.warn('[reload guard] could not keep the view:', e));
       } else if (sessionStorage.getItem(STALE_KEY) === '1') {
         sessionStorage.removeItem(STALE_KEY);
+        sessionStorage.removeItem(ADDRESS_KEY);
         void put(tabId(), undefined).catch(() => {});
       }
     } catch { /* not kept this time */ }

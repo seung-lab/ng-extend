@@ -4,11 +4,11 @@
  * or one paragraph. Everyone sees the saved text, or the code's own when none
  * is saved. Admins also get a small Edit button (Celia 2026-10-20).
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 import { siteTexts, loadSiteTexts, saveSiteText, resetSiteText, textToHtml, textToSteps, htmlToText } from '../site_texts';
 import { isApprover } from '../tutorial_edits';
-import { supabase } from '../supabase';
+import { takePendingEdit } from '../text_edit_links';
 
 const props = defineProps<{
   textKey: string;
@@ -21,11 +21,14 @@ const props = defineProps<{
   approval?: boolean;
   /** The text's name in the approvers' note, e.g. "Hunt instructions". */
   label?: string;
+  /** Other admins' edits go out at once, and the approvers get a note with the
+   *  text before and after (Ames 2026-11-10, the Play card: "so Celia can make
+   *  changes and notify me if she does"). */
+  notify?: boolean;
 }>();
 const emit = defineEmits<{ (e: 'action', name: string): void }>();
 
 const backend = useProofreadingBackendStore();
-onMounted(() => { void loadSiteTexts(); });
 
 const isList = computed(() => Array.isArray(props.original));
 const saved = computed(() => siteTexts[props.textKey]);
@@ -59,21 +62,25 @@ async function save() {
       await saveSiteText(draftKey.value, draft.value.trim());
       editing.value = false;
       sentNote.value = 'Sent for approval. Players see it once it is approved.';
+      // No note is sent for a suggestion: the old lookup here never found the approvers (admins.user_id is empty).
+      // functions/edit-notify.js has planApproveNote ready if Ames wants it.
+      return;
+    }
+    const before = saved.value ? saved.value.body : (isList.value ? (props.original as string[]).map(htmlToText).join('\n') : htmlToText(props.original as string));
+    await saveSiteText(props.textKey, draft.value.trim());
+    editing.value = false;
+    if (props.notify && !approver.value) {
       try {
         const { data } = await supabase.from('admins').select('user_id,email');
         const ids = ((data as any[]) || []).filter(a => a.user_id && isApprover(a.email)).map(a => String(a.user_id));
-        const now = saved.value ? saved.value.body : (isList.value ? (props.original as string[]).map(htmlToText).join('\n') : htmlToText(props.original as string));
         const quote = (t: string) => t.split(/\r?\n/).filter(l => l.trim()).map(l => `> ${l.trim()}`).join('\n');
         const what = props.label || 'An in-game text';
         for (const id of ids) {
-          await backend.createNotification({ title: `📋 Text edit to approve: ${what}`, target_type: 'user', target_id: id,
-            body: `**Now:**\n${quote(now)}\n\n**Suggested by ${backend.userName || 'an admin'}:**\n${quote(draft.value.trim())}\n\nOpen it in the game (${what}) to approve or turn it down.` });
+          await backend.createNotification({ title: `✏️ ${backend.userName || 'An admin'} changed a text: ${what}`, target_type: 'user', target_id: id,
+            body: `**Before:**\n${quote(before)}\n\n**Now:**\n${quote(draft.value.trim())}\n\nPlayers see the new text already. You can change it back with Edit, then Restore original.` });
         }
       } catch (e) { console.warn('[site texts] could not tell the approvers:', e); }
-      return;
     }
-    await saveSiteText(props.textKey, draft.value.trim());
-    editing.value = false;
   }
   catch (e: any) { error.value = 'Not saved: ' + (e?.message || e); }
   finally { busy.value = false; }
@@ -98,6 +105,20 @@ async function restore() {
   catch (e: any) { error.value = 'Not restored: ' + (e?.message || e); }
   finally { busy.value = false; }
 }
+// Open to edit, from Ames's note for an edit (src/text_edit_links.ts).
+const root = ref<HTMLElement | null>(null);
+function openFromNote() {
+  if (!backend.showAdminUi) return;
+  if (!editing.value) startEdit();
+  void nextTick(() => root.value?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+}
+function onEditAsked(e: Event) { if ((e as CustomEvent).detail?.key === props.textKey) openFromNote(); }
+onMounted(() => {
+  void loadSiteTexts();
+  document.addEventListener('nge:edit-text', onEditAsked);
+  if (takePendingEdit(props.textKey)) openFromNote();
+});
+onUnmounted(() => document.removeEventListener('nge:edit-text', onEditAsked));
 const savedNote = computed(() => {
   const s = saved.value;
   if (!s) return '';
@@ -114,7 +135,7 @@ function onClick(e: MouseEvent) {
 </script>
 
 <template>
-  <div class="nge-edtext" @click="onClick">
+  <div ref="root" class="nge-edtext" @click="onClick">
     <template v-if="!editing">
       <ol v-if="isList" :class="listClass"><li v-for="(s, i) in steps" :key="i" v-html="s"></li></ol>
       <div v-else :class="textClass" v-html="paragraph"></div>

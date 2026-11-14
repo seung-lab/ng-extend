@@ -13,15 +13,37 @@
 //              Each post goes once, only after its page is live, and only
 //              posts published after LIVE_SINCE. Nothing goes while LIVE is false.
 //   test       {slug}  the same email, sent only to the Test segment (Ames).
+//   notes      {token, on?}  the What's new in Pyr box on the blog.
+//   notes-off  {e, k}  the unsubscribe link in a What's new in Pyr email.
 //
 // Nothing here talks to the network itself: index.js passes in resend(),
 // posts(), page(), renderer() and the Firestore stores, so the tests can too.
+
+const crypto = require('crypto');
 
 const SITE = 'https://connectome.quest';
 const FROM = 'Map the Brain <blog@connectome.quest>';
 const REPLY_TO = 'support@eyewire.ai';
 const SEGMENT = 'connectome.quest blog';
 const TEST_SEGMENT = 'connectome.quest blog test';
+// "What's new in Pyr" by email (Ames 2026-11-11): a box on each release notes
+// page; ticking it signs the player up with their Pyr email (the sign in tells
+// the server who they are, so nobody types an address). One email a week, the
+// Monday after the week ends: each day's summary, with every update on the blog.
+// The list lives in Pyr (Firestore notes_subscribers), not in Resend: the
+// Resend plan holds only 3 segments (Ames 2026-11-12). Each email is sent to
+// one person, with an unsubscribe link of its own back to this function.
+const ENDPOINT = 'https://us-central1-eyewire-ii-e4d52.cloudfunctions.net/ewBlogMail';
+const notesOffUrl = (s) => `${ENDPOINT}?action=notes-off&e=${encodeURIComponent(s.email)}&k=${encodeURIComponent(s.key)}`;
+// Resend takes at most 100 emails in one batch call.
+const BATCH = 100;
+// Like LIVE: nothing goes to real subscribers until Ames has seen a test.
+const NOTES_LIVE = false;
+// Weeks due before this never go (set when NOTES_LIVE turns on).
+const NOTES_LIVE_SINCE = '2099-01-01T00:00:00Z';
+// A finished week goes out from this long after its Monday (the next Monday,
+// 14:00 UTC, after Sunday's Today in Pyr has been added to it).
+const NOTES_SEND_AFTER_MS = (7 * 24 + 14) * 60 * 60 * 1000;
 // Who the Test segment holds (Ames 2026-11-05: a test only to her).
 const TEST_EMAILS = ['amyleerobinson@gmail.com'];
 // Real subscribers get nothing until Ames has seen a test and said go.
@@ -30,6 +52,8 @@ const LIVE = false;
 // switching on does not send the old posts.
 const LIVE_SINCE = '2099-01-01T00:00:00Z';
 // Long posts: the opening, up to about this many words, then "Read the rest".
+// scripts/release-notes-blog.mjs SLUG_PREFIX.
+const RELEASE_NOTES = /^whats-new-in-pyr-/;
 const EXCERPT_WORDS = 320;
 const WHOLE_POST_WORDS = 600;
 
@@ -183,7 +207,8 @@ function postEmail(post, render) {
   const url = postUrl(post.slug);
   const title = String(post.title || '').trim();
   const summary = String(post.summary || '').trim();
-  const { md, cut } = excerpt(post.body);
+  const notes = RELEASE_NOTES.test(String(post.slug || ''));
+  const { md, cut } = notes ? { md: notesMarkdown(post.body), cut: false } : excerpt(post.body);
   const body = emailBody(render(md));
   const cover = /^https:\/\//.test(post.cover_url || '')
     ? `<tr><td style="padding:0"><a href="${esc(url)}"><img src="${esc(post.cover_url)}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0" /></a></td></tr>` : '';
@@ -203,10 +228,10 @@ function postEmail(post, render) {
 ${meta ? `<p style="margin:0 0 22px;font:14px/1.4 ${FONT};color:${C.soft}">${meta}</p>` : ''}
 ${body}
 ${cut ? `<p style="${S.p};color:${C.soft}">The post goes on from here.</p>` : ''}
-<p style="margin:28px 0 24px;text-align:center"><a href="${esc(url)}" style="${S.button}">Read it on the blog</a></p>
+<p style="margin:28px 0 24px;text-align:center"><a href="${esc(url)}" style="${S.button}">${notes ? 'Read every update on the blog' : 'Read it on the blog'}</a></p>
 </td></tr></table></td></tr>
 <tr><td style="padding:20px 8px 8px;text-align:center;font:13px/1.6 ${FONT};color:${C.soft}">
-You're getting this because you signed up at <a href="${SITE}/" style="color:${C.soft}">connectome.quest</a>.<br />
+${notes ? `You're getting this because you asked for What's new in Pyr each week, at <a href="${SITE}/blog/whats-new/" style="color:${C.soft}">connectome.quest</a>.` : `You're getting this because you signed up at <a href="${SITE}/" style="color:${C.soft}">connectome.quest</a>.`}<br />
 <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:${C.soft}">Unsubscribe</a> any time, in one click.<br />
 Seung Lab, Princeton University</td></tr>
 </table></td></tr></table></body></html>`;
@@ -239,9 +264,13 @@ async function broadcast(io, post, segName, label) {
 async function check(a, io) {
   // io.live: the tests only. The deployed function uses the constants.
   const live = io.live || (LIVE ? { since: LIVE_SINCE } : null);
-  if (!live) return { live: false, sent: [] };
+  const notesSent = await sendNotes(io, io.notesLive || (NOTES_LIVE ? { since: NOTES_LIVE_SINCE } : null));
+  const more = notesSent.length ? { notes: notesSent } : {};
+  if (!live) return { live: false, sent: [], ...more };
   const since = Date.parse(live.since);
-  const posts = (await io.posts()).filter((p) => p.slug && p.title && Date.parse(p.published_at) > since);
+  // The weekly "What's new in Pyr" release notes are never emailed (Ames
+  // 2026-11-10): they change every day, and the bell already has the day.
+  const posts = (await io.posts()).filter((p) => p.slug && p.title && !RELEASE_NOTES.test(p.slug) && Date.parse(p.published_at) > since);
   const sent = [];
   // Oldest first, and at most two a run: a burst of posts goes out over runs.
   for (const post of posts.sort((x, y) => String(x.published_at).localeCompare(String(y.published_at)))) {
@@ -262,7 +291,7 @@ async function check(a, io) {
       throw e;
     }
   }
-  return { live: true, sent };
+  return { live: true, sent, ...more };
 }
 
 async function test(a, io) {
@@ -277,11 +306,104 @@ async function test(a, io) {
   return { ok: true, broadcast: await broadcast(io, post, TEST_SEGMENT, 'TEST') };
 }
 
+// ── What's new in Pyr by email ────────────────────────────────────────────
+/** A week's page for email: each day's summary and highlights, without the
+ *  full list of updates or the players line (the button leads to those). */
+function notesMarkdown(body) {
+  const out = [];
+  let skipping = false;
+  for (const block of String(body || '').replace(/\r\n?/g, '\n').split(/\n{2,}/)) {
+    if (/^## /.test(block)) skipping = false;
+    if (/^### /.test(block)) { skipping = true; continue; }
+    if (skipping || /^\*Players made /.test(block) || /^---$/.test(block) || /^\[The week before\]/.test(block)) continue;
+    out.push(block);
+  }
+  return out.join('\n\n');
+}
+
+/** Who is signed in to Pyr on this page, from their sign in token. */
+async function notesEmail(a, io) {
+  const who = typeof a.token === 'string' && a.token ? await io.verify(a.token) : null;
+  if (!who || !who.email) fail(401, 'Please sign in with your Pyr account.');
+  return cleanEmail(who.email);
+}
+
+/** The box: {token} reads it, {token, on} ticks or clears it. */
+async function notes(a, io) {
+  const email = await notesEmail(a, io);
+  const mine = await io.notesSubscribers.get(email);
+  if (typeof a.on !== 'boolean') return { on: !!(mine && mine.on), email };
+  // The key in this person's unsubscribe link: made once, kept.
+  const key = (mine && mine.key) || crypto.randomBytes(18).toString('base64url');
+  await io.notesSubscribers.set(email, { email, on: a.on, key, at: new Date().toISOString() });
+  return { on: a.on, email };
+}
+
+/** The unsubscribe link in a What's new in Pyr email: {e, k}. */
+async function notesOff(a, io) {
+  const email = cleanEmail(a.e);
+  const mine = email ? await io.notesSubscribers.get(email) : null;
+  if (!mine || !mine.key || typeof a.k !== 'string' || a.k !== mine.key) fail(400, 'That unsubscribe link does not work. Untick the box on connectome.quest/blog instead.');
+  if (mine.on) await io.notesSubscribers.set(email, { on: false, at: new Date().toISOString(), via: 'email link' });
+  return { on: false, email };
+}
+
+/** The finished weeks that have not gone out yet, oldest first, one a run. */
+async function sendNotes(io, live) {
+  if (!live) return [];
+  const since = Date.parse(live.since);
+  const now = Date.now();
+  const due = (await io.posts())
+    .filter((p) => RELEASE_NOTES.test(String(p.slug || '')))
+    .filter((p) => {
+      const monday = Date.parse(String(p.slug).slice('whats-new-in-pyr-'.length) + 'T00:00:00Z');
+      return Number.isFinite(monday) && monday + NOTES_SEND_AFTER_MS <= now && monday + NOTES_SEND_AFTER_MS > since;
+    })
+    .sort((x, y) => String(x.slug).localeCompare(String(y.slug)));
+  for (const post of due) {
+    const id = `notes:${post.slug}`;
+    const mark = await io.sentPosts.get(id);
+    if (mark && (mark.state === 'sent' || (mark.tries || 0) >= 3)) continue;
+    if (mark && mark.state === 'sending' && now - Date.parse(mark.at) < 30 * 60000) continue;
+    if (!(await pageIsLive(io, post))) continue;
+    // Who is on the list now. A send that stopped part way goes on from where
+    // it stopped, to the people it had not reached (if they are still on).
+    const current = new Map((await io.notesSubscribers.list()).filter((s) => s && s.on && s.email && s.key).map((s) => [s.email, s]));
+    const to = (mark && Array.isArray(mark.to)) ? mark.to : [...current.keys()].sort();
+    let done = (mark && mark.done) || 0;
+    if (!(await io.sentPosts.claim(id, { slug: post.slug, title: post.title, state: 'sending', at: new Date().toISOString(), tries: ((mark && mark.tries) || 0) + 1, to, done }, mark))) continue;
+    try {
+      const msg = postEmail(post, await io.renderer());
+      for (; done < to.length; done = Math.min(done + BATCH, to.length)) {
+        const batch = to.slice(done, done + BATCH).map((e) => current.get(e)).filter(Boolean).map((s) => {
+          const off = notesOffUrl(s);
+          return {
+            from: FROM, reply_to: REPLY_TO, to: [s.email], subject: msg.subject,
+            html: msg.html.split('{{{RESEND_UNSUBSCRIBE_URL}}}').join(esc(off)),
+            text: msg.text.split('{{{RESEND_UNSUBSCRIBE_URL}}}').join(off),
+            headers: { 'List-Unsubscribe': `<${off}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+          };
+        });
+        if (batch.length) await io.resend('/emails/batch', { method: 'POST', body: batch });
+        await io.sentPosts.set(id, { done: Math.min(done + BATCH, to.length) });
+      }
+      await io.sentPosts.set(id, { state: 'sent', done: to.length, sentAt: new Date().toISOString() });
+      return [post.slug];
+    } catch (e) {
+      await io.sentPosts.set(id, { state: 'failed', error: String(e && e.message).slice(0, 300) });
+      throw e;
+    }
+  }
+  return [];
+}
+
 async function handle(action, a, io) {
+  if (action === 'notes') return notes(a || {}, io);
+  if (action === 'notes-off') return notesOff(a || {}, io);
   if (action === 'subscribe') return subscribe(a || {}, io);
   if (action === 'check') return check(a || {}, io);
   if (action === 'test') return test(a || {}, io);
   fail(400, 'Unknown action.');
 }
 
-module.exports = { handle, postEmail, emailBody, excerpt, cleanEmail, LIVE, LIVE_SINCE, SEGMENT, TEST_SEGMENT };
+module.exports = { handle, notesMarkdown, NOTES_LIVE, notesOffUrl, postEmail, emailBody, excerpt, cleanEmail, LIVE, LIVE_SINCE, SEGMENT, TEST_SEGMENT };

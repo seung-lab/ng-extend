@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
-import { notifKind, type NotifKind } from '../util/notif_kinds';
+import { notifKind, accessSort, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore, useCellHistoryStore } from '../store';
 import { isQuestReview, reviewSegment, reviewLinkIn, getReview, replyToReview, type ReviewState } from '../quest_review';
 import { QUEST_DATASET } from '../annotation_quests';
@@ -35,6 +35,7 @@ import silverYearTrophy from '../../static/images/champions/silver-year-trophy.p
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
 import { isAwardTitle } from '../util/award_title';
+import { openTextForEdit, revertTextEdit } from '../text_edit_links';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
@@ -218,15 +219,25 @@ const confirmDeleteAll = ref(false);
 // Hunt reports (Ames 2026-10-27: "a special category of hunt submission
 // notifications"), a third side of the Admin tab: clicking one opens the
 // reports queue, the oldest first (HuntReportCard).
-type FeedTab = 'mine' | 'updates' | 'access' | 'admin' | 'triage' | 'hunt';
-type AdminSide = 'access' | 'admin' | 'triage' | 'hunt';
+type FeedTab = 'mine' | 'updates' | 'access' | 'admin' | 'edits' | 'triage' | 'hunt';
+type AdminSide = 'access' | 'admin' | 'edits' | 'triage' | 'hunt';
 const TAB_KEY = 'nge-notif-tab';
-const feedTab = ref<FeedTab>((() => { try { const t = localStorage.getItem(TAB_KEY); return (['mine', 'updates', 'access', 'admin', 'triage', 'hunt'] as string[]).includes(t || '') ? t as FeedTab : 'mine'; } catch { return 'mine'; } })());
+const feedTab = ref<FeedTab>((() => { try { const t = localStorage.getItem(TAB_KEY); return (['mine', 'updates', 'access', 'admin', 'edits', 'triage', 'hunt'] as string[]).includes(t || '') ? t as FeedTab : 'mine'; } catch { return 'mine'; } })());
 watch(feedTab, t => { try { localStorage.setItem(TAB_KEY, t); } catch { /* private mode */ } });
 const kindOf = (n: { title?: string | null }) => notifKind(n.title, backend.isAdmin);
 const triageNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'triage'));
 const adminNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'admin'));
+const editNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'edits'));
 const accessNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'access'));
+// New (people asking to get in) or Upgrade (players asking for more access),
+// a choice inside the Access tab (Ames 2026-11-13). Remembered.
+type AccessView = 'all' | 'new' | 'upgrade';
+const ACCESS_VIEW_KEY = 'nge-notif-access-view';
+const accessView = ref<AccessView>((() => { try { const v = localStorage.getItem(ACCESS_VIEW_KEY); return v === 'new' || v === 'upgrade' ? v : 'all'; } catch { return 'all'; } })());
+watch(accessView, v => { try { localStorage.setItem(ACCESS_VIEW_KEY, v); } catch { /* private mode */ } });
+const accessNewNotes = computed(() => accessNotes.value.filter(n => accessSort(n.title) === 'new'));
+const accessUpgradeNotes = computed(() => accessNotes.value.filter(n => accessSort(n.title) === 'upgrade'));
+const accessShown = computed(() => accessView.value === 'new' ? accessNewNotes.value : accessView.value === 'upgrade' ? accessUpgradeNotes.value : accessNotes.value);
 const huntNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'hunt'));
 const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
 const mineNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type === 'user'));
@@ -250,21 +261,22 @@ const showTriageTab = computed(() => backend.showAdminUi && triageNotes.value.le
 // (Ames 2026-10-27: "Hunt Reports don't need to be there always, only during
 // a Hunt or Hunt Prep").
 const huntOn = computed(() => !!huntState.test || huntState.hunts.some(h => phaseNow(h) !== 'ended'));
+const showEditsTab = computed(() => backend.showAdminUi && editNotes.value.length > 0);
 const showHuntTab = computed(() => backend.showAdminUi && huntOn.value && huntNotes.value.length > 0);
 watch(huntOn, on => { backend.huntReportsShown = on; }, { immediate: true });
-const isAdminSide = (t: FeedTab): t is AdminSide => t === 'access' || t === 'admin' || t === 'triage' || t === 'hunt';
+const isAdminSide = (t: FeedTab): t is AdminSide => t === 'access' || t === 'admin' || t === 'edits' || t === 'triage' || t === 'hunt';
 watch(() => backend.showAdminUi, on => { if (!on && isAdminSide(feedTab.value)) feedTab.value = 'mine'; }, { immediate: true });
 // Admin and Triage share one tab, so four tabs fit (Ames 2026-10-25: "admins
 // will need a wider notifications tab"). It holds both, with a switch inside
 // it when both have notes; underneath they stay the two lists they were, so
 // Mark read, Delete all and loading more still work on the side you are on.
-const sideNotes = (t: AdminSide) => (t === 'access' ? accessNotes.value : t === 'admin' ? adminNotes.value : t === 'triage' ? triageNotes.value : huntNotes.value);
-const sideShown = (t: AdminSide) => (t === 'access' ? showAccessTab.value : t === 'admin' ? showAdminTab.value : t === 'triage' ? showTriageTab.value : showHuntTab.value);
-const ADMIN_SIDES: AdminSide[] = ['access', 'admin', 'triage', 'hunt'];
+const sideNotes = (t: AdminSide) => (t === 'access' ? accessShown.value : t === 'admin' ? adminNotes.value : t === 'edits' ? editNotes.value : t === 'triage' ? triageNotes.value : huntNotes.value);
+const sideShown = (t: AdminSide) => (t === 'access' ? showAccessTab.value : t === 'admin' ? showAdminTab.value : t === 'edits' ? showEditsTab.value : t === 'triage' ? showTriageTab.value : showHuntTab.value);
+const ADMIN_SIDES: AdminSide[] = ['access', 'admin', 'edits', 'triage', 'hunt'];
 const showAdminGroup = computed(() => ADMIN_SIDES.some(sideShown));
 const onAdminGroup = computed(() => isAdminSide(feedTab.value));
 const showAdminSwitch = computed(() => onAdminGroup.value && ADMIN_SIDES.filter(sideShown).length > 1);
-const adminGroupUnread = computed(() => unreadIn(accessNotes.value) + unreadIn(adminNotes.value) + unreadIn(triageNotes.value) + (huntOn.value ? unreadIn(huntNotes.value) : 0));
+const adminGroupUnread = computed(() => unreadIn(accessNotes.value) + unreadIn(adminNotes.value) + unreadIn(editNotes.value) + unreadIn(triageNotes.value) + (huntOn.value ? unreadIn(huntNotes.value) : 0));
 let lastAdminSide: AdminSide = isAdminSide(feedTab.value) ? feedTab.value : 'admin';
 watch(feedTab, t => { if (isAdminSide(t)) lastAdminSide = t; });
 /** The Admin tab opens on the side with the newest unread note, else the side
@@ -287,6 +299,7 @@ watch(() => props.visible, open => {
   const tabs: [FeedTab, any[]][] = splitMain.value ? [['mine', mineNotes.value], ['updates', updateNotes.value]] : [['mine', mainNotes.value]];
   if (showAccessTab.value) tabs.push(['access', accessNotes.value]);
   if (showAdminTab.value) tabs.push(['admin', adminNotes.value]);
+  if (showEditsTab.value) tabs.push(['edits', editNotes.value]);
   if (showTriageTab.value) tabs.push(['triage', triageNotes.value]);
   if (showHuntTab.value) tabs.push(['hunt', huntNotes.value]);
   let best: FeedTab | null = null, bestAt = '';
@@ -409,9 +422,17 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
+  const accessTitle = String(notif.title || '');
+  // Admins: every access note opens the Access page (Ames 2026-11-12:
+  // "clicking an access notif should open the access dash"), at the person
+  // when the note names their email.
+  if (backend.isAdmin && (kindOf(notif) === 'access' || accessTitle.startsWith('🔑 Invite used'))) {
+    openAccessPage(notif.body);
+    emit('hide');
+    return;
+  }
   // Retina access requests (Ames 2026-10-16): a reviewer's note opens Admin
   // Hub > Access requests; a player's notes or invite open their panel.
-  const accessTitle = String(notif.title || '');
   // A dataset access request opens the same tab, where Dataset requests has
   // Granted (Ames 2026-10-28).
   // The Access update itself opens to its own list of who asked and who was
@@ -489,11 +510,28 @@ async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
   // A tutorial edit to approve: its before and after show here, and this
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
-  if (a?.getAttribute('href') === ACCESS_LIST_LINK) {
+  if (a?.getAttribute('href') === ACCESS_LIST_LINK || a?.getAttribute('href') === BETA_LIST_LINK) {
     e.preventDefault();
-    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
+    openAccessPage();
     closeDetail();
     emit('hide');
+    return;
+  }
+  // An admin's edit of an in-game text (functions/edit-notify.js): put the old text back, or open it to edit.
+  const rv = a?.getAttribute('href')?.match(/^#nge-text-revert=(\d{1,12})$/);
+  if (rv) {
+    e.preventDefault();
+    helpSolvedNote.value = 'Checking that edit...';
+    const r = await revertTextEdit(Number(rv[1]));
+    helpSolvedNote.value = r.message;
+    return;
+  }
+  const op = a?.getAttribute('href')?.match(/^#nge-text-open=([a-z0-9_.-]{1,64})$/);
+  if (op) {
+    e.preventDefault();
+    closeDetail();
+    emit('hide');
+    openTextForEdit(op[1]);
     return;
   }
   if (a?.getAttribute('href') === '#nge-tutorial-edits') {
@@ -864,17 +902,29 @@ const digestStats = computed(() => {
 /** A player's reply names its report: the bell opens that card on the triage board. */
 const TRIAGE_MARK = /\s*#nge-triage-report=([0-9a-f-]{36})\s*$/i;
 const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(TRIAGE_MARK)?.[1] ?? '');
+/** The Access page (?triage=access) in its own tab, at the first email the
+ *  note names, if any. Notes escape what players typed ("joe\@mail\.com"). */
+function openAccessPage(body?: string | null) {
+  const text = String(body || '').replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
+  const email = (text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/) || [])[0];
+  const person = email && !/@(eyewire\.(org|ai)|connectome\.quest)$/i.test(email) ? `&person=${encodeURIComponent(email.toLowerCase())}` : '';
+  window.open(`${window.location.origin}${window.location.pathname}?triage=access${person}`, '_blank', 'noopener');
+}
 function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
 }
 const ACCESS_LIST_LINK = '#nge-access-requests';
+// And to the Beta requests (Celia 2026-11-09: she wants both).
+const BETA_LIST_LINK = '#nge-beta-requests';
 const detailBody = computed(() => {
   let body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
   // The daily and weekly Access notes end with the way to the full list.
   if (String(openNotif.value?.title ?? '').startsWith('🔑 Access') && !body.includes(ACCESS_LIST_LINK)) {
     body += `
 
-[Open all access requests](${ACCESS_LIST_LINK})`;
+[Open dataset access requests](${ACCESS_LIST_LINK})
+
+[Open Beta requests](${BETA_LIST_LINK})`;
   }
   return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
 });
@@ -893,6 +943,13 @@ function plainText(text: string): string {
     .replace(/`(.+?)`/g, '$1')
     .replace(/^\s*#+\s*/gm, '')
     .replace(/\[(.+?)\]\((.+?)\)/g, '$1')
+    // The tags a note may carry (an edit note's <strong>, <em>, <del> and <mark>,
+    // functions/edit-notify.js) and its quote marks are for the open note only;
+    // the preview line shows the words (Ames 2026-11-12: "clean up the tags").
+    // A tag a player typed is escaped (\<) and survives as text.
+    .replace(/(^|[^\\])<\/?[a-z][a-z0-9]*\b[^<>]*>/gi, '$1')
+    .replace(/(^|[^\\])<\/?[a-z][a-z0-9]*\b[^<>]*>/gi, '$1')
+    .replace(/^[ \t]*>[ \t]?/gm, '')
     // Escaped characters lose the backslash (the server escapes what a
     // player typed, so emails read "joe\@mail\.com" here otherwise).
     .replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
@@ -1114,7 +1171,7 @@ function padRank(rank: number): string {
           v-if="showFeedTabs ? unreadIn(isAdminSide(feedTab) ? sideNotes(feedTab) : mainNotes) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
           @click="markAllRead()"
-        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && (feedTab === 'admin' || feedTab === 'access') ? 'Mark admin read' : showFeedTabs && feedTab === 'hunt' ? 'Mark reports read' : 'Mark all read' }}</button>
+        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && (feedTab === 'admin' || feedTab === 'access' || feedTab === 'edits') ? 'Mark admin read' : showFeedTabs && feedTab === 'hunt' ? 'Mark reports read' : 'Mark all read' }}</button>
         <!-- Separate from "mark all read" on purpose: read state controls the
              unread pip, this clears the feed. Only hides them for THIS user —
              the underlying notification rows are untouched. -->
@@ -1170,6 +1227,10 @@ function padRank(rank: number): string {
               title="To do board tags, players' answers to replies you asked for, and proofreading tests">
         To do and replies<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
       </button>
+      <button v-if="showEditsTab" class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'edits' }" role="tab" :aria-selected="feedTab === 'edits'" @click="feedTab = 'edits'"
+              title="Admins' edits of in-game windows, before and after">
+        Edits<b v-if="unreadIn(editNotes) > 0">{{ unreadIn(editNotes) }}</b>
+      </button>
       <button v-if="showTriageTab" class="nge-notif-subtab nge-notif-subtab--triage" :class="{ 'nge-notif-subtab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'"
               title="Triage: bug reports and ideas from players, and what the triage loop did with them">
         Triage<b v-if="unreadIn(triageNotes) > 0">{{ unreadIn(triageNotes) }}</b>
@@ -1180,6 +1241,15 @@ function padRank(rank: number): string {
       </button>
     </div>
 
+    <div v-if="showFeedTabs && feedTab === 'access' && showAccessTab" class="nge-notif-accessview" role="group" aria-label="Show access requests">
+      <button :class="{ on: accessView === 'all' }" :aria-pressed="accessView === 'all'" @click="accessView = 'all'" title="Every access note">All</button>
+      <button :class="{ on: accessView === 'new' }" :aria-pressed="accessView === 'new'" @click="accessView = 'new'" title="New people asking to join Pyr">
+        New<b v-if="unreadIn(accessNewNotes) > 0">{{ unreadIn(accessNewNotes) }}</b>
+      </button>
+      <button :class="{ on: accessView === 'upgrade' }" :aria-pressed="accessView === 'upgrade'" @click="accessView = 'upgrade'" title="Players asking for more access: Retina editing and other datasets">
+        Upgrade<b v-if="unreadIn(accessUpgradeNotes) > 0">{{ unreadIn(accessUpgradeNotes) }}</b>
+      </button>
+    </div>
     <div class="nge-notif-list" v-if="shownNotes.length > 0">
       <div
         v-for="notif in shownNotes"
@@ -1673,6 +1743,22 @@ function padRank(rank: number): string {
   font: 600 8.5px/1 'Orbitron', 'Inter', sans-serif; text-align: center; color: #170a2e; background: #c8a4ff;
 }
 .nge-notif-subtab--triage b { background: #ff8f8f; color: #06121f; }
+
+/* Access tab: All, New or Upgrade (Ames 2026-11-13). */
+.nge-notif-accessview { display: flex; gap: 6px; padding: 8px 10px 2px; flex-shrink: 0; }
+.nge-notif-accessview button {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 11px; border-radius: 999px; cursor: pointer;
+  font: 600 11.5px/1 'Inter', system-ui, sans-serif;
+  color: #9db1cb; background: #0a1326; border: 1px solid rgba(200, 164, 255, 0.25);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.nge-notif-accessview button:hover { color: #d6e4f6; border-color: rgba(200, 164, 255, 0.55); }
+.nge-notif-accessview button.on { color: #fff; background: #2c2150; border-color: #c8a4ff; }
+.nge-notif-accessview b {
+  min-width: 14px; padding: 2px 4px; box-sizing: border-box; border-radius: 3px;
+  font: 600 8.5px/1 'Orbitron', 'Inter', sans-serif; text-align: center; color: #170a2e; background: #c8a4ff;
+}
 
 .nge-notif-confirm {
   display: flex;
@@ -2224,6 +2310,9 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-scroll {
   position: relative;
   z-index: 1;
+  /* Shrinks inside the window so a long note scrolls (Ames 2026-11-10: "we need scroll if needed"). */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 26px 26px;
   scrollbar-width: thin;
@@ -2292,6 +2381,14 @@ span.nge-notif-reply-part { cursor: default; }
   border-left: 2px solid rgb(var(--nd-cyan) / 0.6);
   background: rgb(var(--nd-accent) / 0.06);
   color: #d6e2f0;
+}
+/* An edit note's changed words (functions/edit-notify.js, Ames 2026-11-10:
+   "highlight the difference"): added words lit, removed words struck. */
+.nge-notif-detail-body :deep(mark) {
+  color: #fff; background: rgba(90, 170, 255, 0.3); border-radius: 3px; padding: 0 2px;
+}
+.nge-notif-detail-body :deep(blockquote del) {
+  color: rgba(214, 226, 240, 0.55); text-decoration-color: rgba(150, 190, 255, 0.9); text-decoration-thickness: 1.5px;
 }
 .nge-notif-detail-body :deep(code) {
   font-size: 0.9em;

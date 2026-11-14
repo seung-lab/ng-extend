@@ -279,6 +279,15 @@ export class VirtualList extends RefCounted {
   private debouncedRemeasure =
       this.registerCancellable(animationFrameDebounce(() => this.remeasure()));
 
+  // nge: while the reader scrolls with the wheel, a redraw leaves the scroll
+  // where the reader has it. Setting it, even to where it was a moment ago,
+  // can stop the browser's smooth wheel scroll; redraws coming every frame
+  // (rows hovered, glowing, measured again) held the annotation list still
+  // until the tab was changed (Nseraf #328, #458). A jump asked for (to a
+  // row, to the top) still moves it.
+  private lastWheelAt = 0;
+  private jumpAsked = false;
+
   // nge: set for a list whose rows do not depend on where they are in it.
   private keepRowsOnSplice = false;
   private keptRows = false;
@@ -326,6 +335,7 @@ export class VirtualList extends RefCounted {
     topItems.style.minWidth = '100%';
     bottomItems.style.height = '0';
     bottomItems.style.position = 'relative';
+    element.addEventListener('wheel', () => { this.lastWheelAt = Date.now(); }, {passive: true});
     element.addEventListener('scroll', () => {
       const scrollOffset = element.scrollTop;
       this.state.anchorClientOffset = this.renderParams.anchorOffset - scrollOffset;
@@ -477,7 +487,20 @@ export class VirtualList extends RefCounted {
     body.style.height = `${totalHeight}px`;
     topItems.style.top = `${renderParams.anchorOffset - topSize}px`;
     bottomItems.style.top = `${renderParams.anchorOffset}px`;
-    element.scrollTop = renderParams.scrollOffset;
+    const jump = this.jumpAsked;
+    this.jumpAsked = false;
+    if (!jump && Date.now() - this.lastWheelAt < 600) {
+      // The reader is scrolling: keep their scroll. Rows are placed by
+      // offset, so they are right wherever the scroll is.
+      const live = element.scrollTop;
+      if (Math.abs(live - renderParams.scrollOffset) >= 1) {
+        renderParams.scrollOffset = live;
+        state.anchorClientOffset = renderParams.anchorOffset - live;
+        this.debouncedUpdateView();
+      }
+    } else if (Math.abs(element.scrollTop - renderParams.scrollOffset) >= 1) {
+      element.scrollTop = renderParams.scrollOffset;
+    }
   }
 
   getItemElement(index: number): HTMLElement|undefined {
@@ -497,6 +520,7 @@ export class VirtualList extends RefCounted {
   scrollToTop() {
     this.state.anchorIndex = 0;
     this.state.anchorClientOffset = 0;
+    this.jumpAsked = true;
     this.debouncedUpdateView();
   }
 
@@ -514,6 +538,7 @@ export class VirtualList extends RefCounted {
     } else {
       return;
     }
+    this.jumpAsked = true;
     this.debouncedUpdateView();
   }
 

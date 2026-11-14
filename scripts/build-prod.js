@@ -223,6 +223,13 @@ for (const file of fs.readdirSync(STATIC_DIR)) {
     console.log(`Copied ${file} to ${DIST_MIN}`);
   }
 }
+// Pictures that notifications point at by address, so they need a fixed one:
+// static/notes/x.jpg is served at /notes/x.jpg.
+const NOTES_DIR = path.join(STATIC_DIR, 'notes');
+if (fs.existsSync(NOTES_DIR)) {
+  fs.mkdirSync(path.join(DIST_MIN, 'notes'), { recursive: true });
+  for (const file of fs.readdirSync(NOTES_DIR)) fs.copyFileSync(path.join(NOTES_DIR, file), path.join(DIST_MIN, 'notes', file));
+}
 
 // ── Copy the Hunt's medals (the art of its gold, silver and bronze
 // Achievements: functions/hunts.js points special_badges at <site>/hunt/). ──
@@ -264,7 +271,7 @@ if (fs.existsSync(INTRO_DIR)) {
   const dest = path.join(DIST_MIN, 'intro');
   fs.mkdirSync(dest, { recursive: true });
   for (const file of fs.readdirSync(INTRO_DIR)) {
-    if (/\.(glb|json)$/.test(file)) fs.copyFileSync(path.join(INTRO_DIR, file), path.join(dest, file));
+    if (/\.(glb|json|png)$/.test(file)) fs.copyFileSync(path.join(INTRO_DIR, file), path.join(dest, file));
   }
   console.log(`Copied the Starship to ${dest}`);
 }
@@ -280,6 +287,15 @@ if (fs.existsSync(SIGNAL_DIR)) {
     if (/\.(json|mp3)$/.test(file)) fs.copyFileSync(path.join(SIGNAL_DIR, file), path.join(dest, file));
   }
   console.log(`Copied the Signal Controller circuit and score to ${dest}`);
+}
+// ── Copy the mini volume (Get Started page 2 shows it in a frame: a block of
+// EM, its slices, then the neuron). A page with its own data files.
+const MINI_VOLUME_DIR = path.join(STATIC_DIR, 'mini-volume');
+if (fs.existsSync(MINI_VOLUME_DIR)) {
+  const dest = path.join(DIST_MIN, 'mini-volume');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(MINI_VOLUME_DIR)) fs.copyFileSync(path.join(MINI_VOLUME_DIR, file), path.join(dest, file));
+  console.log(`Copied the mini volume to ${dest}`);
 }
 const SFX_DIR = path.join(STATIC_DIR, 'sfx');
 if (fs.existsSync(SFX_DIR)) {

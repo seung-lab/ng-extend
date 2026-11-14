@@ -31,7 +31,7 @@ type CustomBinding = {
 }
 
 type CustomBindings = {
-  [key: string]: CustomBinding|string
+  [key: string]: CustomBinding|string|false
 };
 
 declare const CUSTOM_BINDINGS: CustomBindings|undefined;
@@ -84,7 +84,12 @@ export function setupDefaultViewer() {
 
   if (hasCustomBindings) {
     for (const [key, val] of Object.entries(CUSTOM_BINDINGS!)) {
-      if (typeof val === 'string') {
+      if (val === false) {
+        // nge: false turns the key off (X; H, which opened neuroglancer's
+        // out of date controls list and is now Highlight, Ames 2026-11-12).
+        // It was bound to "tool-undefined" and listed that way.
+        viewer.inputEventBindings.global.delete(key);
+      } else if (typeof val === 'string') {
         viewer.inputEventBindings.global.set(key, val);
       } else {
         viewer.inputEventBindings.global.set(key, `tool-${val.tool}`);

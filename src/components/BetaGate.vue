@@ -10,7 +10,7 @@
  * Fails open: if the server cannot be asked, nothing shows. The server still
  * refuses every write from a player who is not on the list.
  */
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useLoginStore, useProofreadingBackendStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { runPanelTrace } from '../util/holo_trace';
@@ -25,13 +25,63 @@ const requested = ref(false);
 // Name and email (Ames 2026-10-24: "It should just ask for their name and
 // email", "and we can have an optional note"), filled in from the sign in.
 const name = ref('');
-const email = ref('');
 const note = ref('');
 // Both optional (Ames 2026-10-26: "eyewire username, Eyewire rank").
 const ewName = ref('');
 const ewRank = ref('');
+// The name other players see (Ames 2026-11-13: "invite players to choose a
+// username at the point of requesting beta access"). A sign-in with no name
+// showed the email on the leaderboard (#512). Saved to the account with the
+// request.
+// With an EyeWire username typed in, a box (on to start) uses it in Pyr too;
+// unticked, they choose another (Ames 2026-11-13).
+const pyrName = ref('');
+const useEwName = ref(true);
+const usingEw = computed(() => useEwName.value && !!ewName.value.trim());
+const chosenName = computed(() => (usingEw.value ? ewName.value : pyrName.value).trim());
+const pyrNameNote = ref('');
+const pyrNameBad = ref(false);
+let pyrNameTimer: ReturnType<typeof setTimeout> | null = null;
+function onPyrName() {
+  error.value = '';
+  pyrNameBad.value = false;
+  pyrNameNote.value = '';
+  if (pyrNameTimer) clearTimeout(pyrNameTimer);
+  const v = chosenName.value;
+  if (!v || v === backend.username) return;
+  const invalid = backend.validateUsername(v);
+  if (invalid) {
+    pyrNameNote.value = usingEw.value
+      ? 'A Pyr username has 3 to 20 letters, numbers or underscores. Untick the box to choose another.'
+      : invalid;
+    pyrNameBad.value = true;
+    return;
+  }
+  pyrNameTimer = setTimeout(async () => {
+    const free = await backend.isUsernameAvailable(v);
+    if (chosenName.value !== v) return;
+    pyrNameBad.value = !free;
+    pyrNameNote.value = free ? 'Available' : (usingEw.value ? 'That username is taken in Pyr. Untick the box to choose another.' : 'That username is taken.');
+  }, 400);
+}
+async function fillPyrName() {
+  if (pyrName.value) return;
+  if (backend.username) { pyrName.value = backend.username; return; }
+  // A suggestion made from a real name. With no name on the sign-in it would
+  // be made from the email, so the box starts empty instead.
+  const front = (login.sessions[0]?.email || '').split('@')[0];
+  if (!backend.userName || backend.userName === front) return;
+  try { const s = await backend.suggestUsername(); if (!pyrName.value) pyrName.value = s; } catch { /* left empty */ }
+}
 // Optional (Ames 2026-11-06: "how did you find us?").
 const foundUs = ref('');
+// Ames 2026-11-12: "we for sure need eyewire email", optional (where our
+// invites went; their sign in is their email). The Principles and Terms box
+// and the news box match the connectome.quest form.
+const ewEmail = ref('');
+const agree = ref(false);
+const agreeFlag = ref(false);
+const news = ref(false);
 const sending = ref(false);
 const error = ref('');
 const panelEl = ref<HTMLElement | null>(null);
@@ -46,7 +96,7 @@ async function check(userId: string) {
     if (s && s.invited === false) {
       requested.value = !!s.requested;
       if (!name.value) name.value = backend.userName || login.sessions[0]?.name || '';
-      if (!email.value) email.value = login.sessions[0]?.email || '';
+      void fillPyrName();
       show.value = true;
       betaGate.value = 'out';
       setTimeout(() => { if (panelEl.value) runPanelTrace(panelEl.value); }, 80);
@@ -65,13 +115,19 @@ const EMAIL_OK = /^[^\s@<>()\[\],;:"]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.
 const EW_NAME_OK = /^[A-Za-z0-9_.\- ]+$/;
 const EW_RANK_OK = /^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u;
 function problem(): string {
-  const n = name.value.trim(), e = email.value.trim();
+  const n = name.value.trim(), e = ewEmail.value.trim();
   if (!n) return 'Please add your name.';
   if (!NAME_OK.test(n)) return 'Your name can have letters, spaces, periods, apostrophes and hyphens only.';
-  if (!e) return 'Please add your email.';
-  if (!EMAIL_OK.test(e)) return 'That email does not look right.';
+  if (e && !EMAIL_OK.test(e)) return 'That EyeWire email does not look right.';
+  const u = chosenName.value;
+  if (!u) return 'Please choose a username.';
+  if (u !== backend.username) {
+    const invalid = backend.validateUsername(u);
+    if (invalid) return usingEw.value ? 'Your EyeWire username will not work as a Pyr username. Untick the box to choose another.' : invalid;
+  }
   if (ewName.value.trim() && !EW_NAME_OK.test(ewName.value.trim())) return 'An EyeWire username has letters, numbers, dots, dashes and underscores only.';
   if (ewRank.value.trim() && !EW_RANK_OK.test(ewRank.value.trim())) return 'An EyeWire rank has letters, numbers and spaces only.';
+  if (!agree.value) { agreeFlag.value = true; return 'Please tick the box to say you agree to the Eyewire II Principles and the Terms of Use.'; }
   return '';
 }
 async function request() {
@@ -80,10 +136,17 @@ async function request() {
   if (error.value) return;
   sending.value = true;
   try {
+    // The username first: a taken one stops here, before the request is sent.
+    const u = chosenName.value;
+    if (u !== backend.username) {
+      try { await backend.saveUsername(u); }
+      catch (e: any) { pyrNameBad.value = true; pyrNameNote.value = e?.message || 'That username could not be saved.'; throw e; }
+    }
     const r = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.beta', {
-      name: name.value.trim(), email: email.value.trim(), note: note.value.trim() || undefined,
+      name: name.value.trim(), note: note.value.trim() || undefined,
+      eyewireEmail: ewEmail.value.trim() || undefined,
       eyewireUsername: ewName.value.trim() || undefined, eyewireRank: ewRank.value.trim() || undefined,
-      foundUs: foundUs.value.trim() || undefined });
+      foundUs: foundUs.value.trim() || undefined, agree: true, emailOptIn: news.value });
     if (r?.invited) { show.value = false; betaGate.value = 'in'; return; }
     requested.value = true;
   } catch (e: any) {
@@ -181,23 +244,42 @@ onUnmounted(() => window.clearInterval(waitCheck));
           <p class="nge-beta-text">No invite yet? Pyr is in a closed beta while we get it ready. Ask to join and we'll add you as soon as we can.</p>
           <label class="nge-beta-label" for="nge-beta-name">Your name</label>
           <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
-          <label class="nge-beta-label" for="nge-beta-email">Your email</label>
-          <input id="nge-beta-email" v-model="email" class="nge-beta-field" type="email" maxlength="254" autocomplete="email" @input="error = ''" />
+          <label class="nge-beta-label" for="nge-beta-ewemail">Your EyeWire email <span>(if you play EyeWire)</span></label>
+          <input id="nge-beta-ewemail" v-model="ewEmail" class="nge-beta-field" type="email" maxlength="254" autocomplete="off"
+                 placeholder="The email on your EyeWire account" @input="error = ''" />
           <div class="nge-beta-pair">
             <div>
               <label class="nge-beta-label" for="nge-beta-ewname">EyeWire username <span>(optional)</span></label>
-              <input id="nge-beta-ewname" v-model="ewName" class="nge-beta-field" type="text" maxlength="60" autocomplete="off" spellcheck="false" @input="error = ''" />
+              <input id="nge-beta-ewname" v-model="ewName" class="nge-beta-field" type="text" maxlength="60" autocomplete="off" spellcheck="false" @input="onPyrName" />
             </div>
             <div>
               <label class="nge-beta-label" for="nge-beta-ewrank">EyeWire rank <span>(optional)</span></label>
               <input id="nge-beta-ewrank" v-model="ewRank" class="nge-beta-field" type="text" maxlength="40" autocomplete="off" @input="error = ''" />
             </div>
           </div>
+          <label v-if="ewName.trim()" class="nge-beta-check">
+            <input v-model="useEwName" type="checkbox" @change="onPyrName" />
+            Use my EyeWire username in Pyr
+          </label>
+          <template v-if="!usingEw">
+            <label class="nge-beta-label" for="nge-beta-username">Choose a username</label>
+            <input id="nge-beta-username" v-model="pyrName" class="nge-beta-field" type="text" maxlength="20" autocomplete="off" spellcheck="false"
+                   placeholder="3 to 20 letters, numbers or _" @input="onPyrName" />
+          </template>
+          <p v-if="pyrNameNote" class="nge-beta-uname" :class="{ 'nge-beta-uname--bad': pyrNameBad }" role="status">{{ pyrNameNote }}</p>
           <label class="nge-beta-label" for="nge-beta-found">How did you find us? <span>(optional)</span></label>
           <input id="nge-beta-found" v-model="foundUs" class="nge-beta-field" type="text" maxlength="200" autocomplete="off"
                  placeholder="For example: the EyeWire forum, a friend, a class" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-note">Anything you'd like us to know? <span>(optional)</span></label>
           <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="2" maxlength="500"></textarea>
+          <label class="nge-beta-check-row" :class="{ 'nge-beta-check-row--flag': agreeFlag }">
+            <input v-model="agree" type="checkbox" @change="error = ''; agreeFlag = false" />
+            <span>I've read and agree to the <a href="https://eyewire.ai/principles" target="_blank" rel="noreferrer">Eyewire II Principles</a> and the <a href="https://connectome.quest/terms/" target="_blank" rel="noreferrer">Terms of Use and Privacy Notice</a>.</span>
+          </label>
+          <label class="nge-beta-check-row">
+            <input v-model="news" type="checkbox" />
+            <span>Email me Pyr news, like new datasets and events. <em>(optional, stop any time)</em></span>
+          </label>
           <button class="nge-beta-btn" :disabled="sending" @click="request">{{ sending ? 'Sending...' : 'Request beta access' }}</button>
           <p v-if="error" class="nge-beta-error" role="alert">{{ error }}</p>
         </template>
@@ -227,6 +309,8 @@ onUnmounted(() => window.clearInterval(waitCheck));
         </template>
         <p class="nge-beta-foot">
           Questions? Email <a :href="'mailto:' + SUPPORT">{{ SUPPORT }}</a>
+          <span class="nge-beta-sep" aria-hidden="true">·</span>
+          <a href="https://connectome.quest/terms/" target="_blank" rel="noreferrer">Terms and Privacy</a>
           <span class="nge-beta-sep" aria-hidden="true">·</span>
           <button class="nge-beta-link" @click="signOut">Sign out</button>
         </p>
@@ -333,6 +417,10 @@ onUnmounted(() => window.clearInterval(waitCheck));
 .nge-beta-invite-done span { color: #7ee0ff; font-weight: 700; margin-right: 4px; }
 @media (max-width: 420px) { .nge-beta-invite-row { flex-direction: column; align-items: stretch; } .nge-beta-btn--small { width: 100%; } }
 .nge-beta-error { margin: 10px 0 0; font-size: 13px; color: #ff9a9a; }
+.nge-beta-uname { margin: -8px 0 12px; font-size: 12px; color: #7fe0a8; }
+.nge-beta-uname--bad { color: #ff9a9a; }
+.nge-beta-check { display: flex; align-items: center; gap: 8px; margin: -4px 0 12px; font-size: 13px; color: rgba(200, 220, 245, 0.85); cursor: pointer; }
+.nge-beta-check input { accent-color: #4fcfff; }
 .nge-beta-foot {
   margin: 20px 0 0; padding-top: 14px;
   border-top: 1px solid rgba(79, 207, 255, 0.15);
@@ -344,4 +432,9 @@ onUnmounted(() => window.clearInterval(waitCheck));
 .nge-beta-sep { color: rgba(200, 220, 245, 0.35); }
 .nge-beta-link { padding: 0; background: none; border: 0; font: inherit; color: rgba(200, 220, 245, 0.7); cursor: pointer; }
 .nge-beta-link:hover { color: #fff; text-decoration: underline; }
+.nge-beta-check-row { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 10px; font-size: 12px; line-height: 1.4; color: rgba(200, 220, 245, 0.8); cursor: pointer; }
+.nge-beta-check-row input { margin: 2px 0 0; flex: none; accent-color: #5aa8ff; }
+.nge-beta-check-row a { color: #8fc8ff; }
+.nge-beta-check-row em { font-style: normal; color: rgba(200, 220, 245, 0.55); }
+.nge-beta-check-row--flag { color: #ffd27a; outline: 1px solid rgba(255, 210, 122, 0.6); outline-offset: 3px; border-radius: 4px; }
 </style>

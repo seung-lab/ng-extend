@@ -16,8 +16,8 @@ import { MEC_CELL_TYPES_STATE } from './data/mec_cell_types_state';
  *  doc, 2026-09-29). Shown in the Cell Library under "instructions". */
 const RETINA_HOWTO: string[] = [
   'New here? Watch <a href="https://youtu.be/QNMfmlJIfWs" target="_blank" rel="noopener">Claiming and Completing a cell in Eyewire II</a>, a short video of the steps below.',
-  'Click <b>Available</b> and jump around until you find a cell you want.',
-  '<b>Claim</b> it. You can hold up to 8 cells at a time. Claiming loads that cell\'s annotation layers; the jump arrow on its own does not.',
+  'Click <b>BC Challenge</b> and jump around until you find a cell you want. These are all bipolar cells (BCs).',
+  '<b>Claim</b> it. You can hold up to 10 cells at a time. Claiming opens the cell with a Checked Highlight layer to mark with; press <b>+ Annotation layers</b> on its row if you prefer annotations.',
   'Start mapping! Add the annotations described in <a href="https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=508214135#gid=508214135" target="_blank" rel="noopener">the annotation guide</a>.',
   'When the cell is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID in the side panel. That records it in the spreadsheet and in our database.',
   'Questions or problems? Use the <b>(!)</b> button in the top bar.',
@@ -105,6 +105,11 @@ export interface DatasetCaveConfig {
   /** Where an admin's in-game edit of howToSteps is kept (src/site_texts.ts).
    *  Datasets that share their steps share the key. */
   howToKey?: string;
+  /** The Cell Library's name for its Available tab here (Retina: "BC Challenge",
+   *  every cell left to map is a bipolar cell, Ames 2026-11-09). */
+  availableLabel?: string;
+  /** Title of the how-to box (default "How to map a cell"). */
+  howToTitle?: string;
   /** A view with one example of each cell type, opened from the Cell
    *  Library header (MEC). A full neuroglancer state. */
   cellTypesState?: Record<string, any>;
@@ -139,6 +144,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
     howToKey:         'howto.retina',
+    availableLabel:   'BC Challenge',
+    howToTitle:       'How to map a bipolar cell',
     labSheetRpc:      'ew_retina_lab_sheet_match',
     labSheetTable:    'ew_retina_lab_sheet',
   },
@@ -162,6 +169,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
     howToKey:         'howto.retina',
+    availableLabel:   'BC Challenge',
+    howToTitle:       'How to map a bipolar cell',
     labSheetRpc:      'ew_retina_lab_sheet_match',
     labSheetTable:    'ew_retina_lab_sheet',
   },

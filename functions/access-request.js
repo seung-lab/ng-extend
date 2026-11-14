@@ -274,8 +274,11 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
 // ── Reviewers ───────────────────────────────────────────────────────────
 function needAdmin(isAdmin) { if (!isAdmin) fail(403, 'Admins only'); }
 
-async function list(args, {sb, isAdmin}) {
+async function list(args, io) {
+  const {sb, isAdmin} = io;
   needAdmin(isAdmin);
+  // Request bells of players who have the retina now go read (Ames 2026-11-06).
+  try { await readRequestBells(io); } catch (e) { console.warn('[access] request bells not swept:', e && e.message); }
   const status = String(args.status || 'open');
   const filter = status === 'all' ? '' : status === 'open' ? '&status=in.(submitted,redo)' : status === 'invited' ? '&status=eq.invited' : '&status=eq.submitted';
   let requests;
@@ -386,7 +389,97 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
     try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
   }
+  // The reviewers' bells for this player's tries are answered now (Ames 2026-11-06).
+  if (outcome === 'invited') {
+    try { await readRequestBells({sb}, {players: [request.user_id], granted: [request.user_id]}); }
+    catch (e) { console.warn('[access] request bells not marked read:', e && e.message); }
+  }
   return {...done[0], redos, pilot_added: pilotAdded, cave_granted: caveGranted};
+}
+
+// ── Request bells read once the player has the retina (Ames 2026-11-06) ──
+// "If that player has ALREADY been granted Retina access, that notification
+// should be marked read for admins." Every reviewer's bell for every try
+// (try 1, try 2) is marked read on the server, in notification_reads, so
+// every admin and every device agrees. A player has the retina when their
+// request was granted here, or when CAVE says they edit it (a request
+// deleted with Start over, or access given in CAVE by hand). Run on Grant,
+// when the Access requests list opens, and from an admin's bell while it
+// holds an unread request bell (access.readGrantedBells).
+const REQUEST_BELL = '🔬 Retina access request from ';
+const RETINA_CAVE = 'stroeh-mouse-retina';
+const RETINA_CHECK_MS = 10 * 60 * 1000;
+const RETINA_CHECK_MAX = 20;
+const retinaSeen = new Map();
+const isUuid = v => /^[0-9a-f-]{36}$/i.test(String(v || ''));
+const bellsQuery = extra => 'notifications?target_type=eq.user&title=like.' + encodeURIComponent(REQUEST_BELL + '*')
+  + extra + '&select=id,target_id,created_by&order=id.desc&limit=1000';
+
+/** The players among these who can edit the retina. */
+async function retinaGranted(io, players) {
+  const yes = new Set();
+  if (!players.length) return yes;
+  const invited = await io.sb(`access_requests?user_id=in.(${players.join(',')})&status=eq.invited&select=user_id`);
+  for (const r of invited) yes.add(String(r.user_id));
+  const ask = players.filter(p => !yes.has(p));
+  if (!ask.length || !io.caveAccessOf) return yes;
+  const now = Date.now();
+  const unknown = [];
+  for (const p of ask) {
+    const hit = retinaSeen.get(p);
+    if (hit && now - hit.at < RETINA_CHECK_MS) { if (hit.edit) yes.add(p); }
+    else unknown.push(p);
+  }
+  if (!unknown.length) return yes;
+  const users = await io.sb(`users?id=in.(${unknown.slice(0, RETINA_CHECK_MAX).join(',')})&select=id,cave_user_id`);
+  for (const u of users) {
+    const caveId = Number(u.cave_user_id);
+    if (!Number.isSafeInteger(caveId) || caveId <= 0) continue;
+    const cave = await io.caveAccessOf(caveId);
+    if (!cave) continue; // CAVE could not say: ask again next time
+    const edit = (cave.edit || []).includes(RETINA_CAVE);
+    retinaSeen.set(String(u.id), {at: now, edit});
+    if (edit) yes.add(String(u.id));
+  }
+  return yes;
+}
+
+/** Mark read every unread request bell of a player who has the retina.
+ *  players: only these players' bells; granted: known to have it already. */
+async function readRequestBells(io, {players = null, granted = null} = {}) {
+  const ids = players ? players.filter(isUuid) : null;
+  if (ids && !ids.length) return {marked: 0, bells: []};
+  const bells = (await io.sb(bellsQuery(ids ? `&created_by=in.(${ids.join(',')})` : '')))
+    .filter(b => isUuid(b.target_id) && isUuid(b.created_by));
+  if (!bells.length) return {marked: 0, bells: []};
+  const read = new Set();
+  for (let i = 0; i < bells.length; i += 100) {
+    const chunk = bells.slice(i, i + 100).map(b => b.id).join(',');
+    for (const r of await io.sb(`notification_reads?notification_id=in.(${chunk})&select=notification_id,user_id`)) read.add(`${r.notification_id}:${r.user_id}`);
+  }
+  const unread = bells.filter(b => !read.has(`${b.id}:${b.target_id}`));
+  if (!unread.length) return {marked: 0, bells: []};
+  const who = [...new Set(unread.map(b => String(b.created_by)))];
+  const yes = granted ? new Set(granted.map(String)) : await retinaGranted(io, who);
+  const mark = unread.filter(b => yes.has(String(b.created_by)));
+  if (mark.length) {
+    await io.sb('notification_reads?on_conflict=notification_id,user_id', {method: 'POST',
+      headers: {Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify(mark.map(b => ({notification_id: b.id, user_id: b.target_id})))});
+  }
+  return {marked: mark.length, bells: mark.map(b => ({id: b.id, user_id: b.target_id}))};
+}
+
+/** access.readGrantedBells: an admin, or a reviewer who gets the bells. */
+async function readGrantedBells(args, io) {
+  needMe(io.me);
+  if (!io.isAdmin) {
+    const mineToo = await io.sb(bellsQuery(`&target_id=eq.${io.me.id}`).replace('limit=1000', 'limit=1'));
+    if (!mineToo.length) fail(403, 'Admins only');
+  }
+  const r = await readRequestBells(io);
+  // The caller's own, so their bell can drop them without a reload.
+  return {marked: r.marked, ids: r.bells.filter(b => b.user_id === io.me.id).map(b => b.id)};
 }
 
 // ── Beta access (Ames 2026-10-24) ────────────────────────────────────────
@@ -455,25 +548,31 @@ async function beta(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
   if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
   const name = betaName(a.name);
-  const email = betaEmail(a.email);
-  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
-  const ew = eyewireOf(a);
-  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  // The game form asks for their EyeWire email instead of a second email
+  // (Ames 2026-11-12), so the email is their sign in unless they give one.
+  const email = betaEmail(a.email || signIn);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
+  if (ew.email === signIn || ew.email === email) ew.email = null;
+  if (a.agree === false) fail(400, 'Please tick the box to say you agree to the Eyewire II Principles and the Terms of Use.');
+  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
   const same = email === signIn;
   // Invited under another address (Ames 2026-11-04: invites went to the
   // emails on the EyeWire form, many not Google accounts, and Pyr signs in
   // with Google). The admin still lets them in by hand: anyone could type an
   // invited address, so the row says to check it is them first.
-  const invitedAs = !same && await invitedEmail(io.sb, email);
+  const invitedAs = (!same && await invitedEmail(io.sb, email)) ? email
+    : (ew.email && await invitedEmail(io.sb, ew.email)) ? ew.email : '';
   const message = [
     `${name} asks to join the Pyr beta.`,
     same ? '' : `Email they gave: ${email}`,
-    invitedAs ? `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.` : '',
+    invitedAs ? `Invited as: ${invitedAs}, already on Pilot testers. They sign in with another Google account.` : '',
     `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    a.agree === true ? 'They agreed to the community principles.' : '',
     ...ewLines(ew),
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
@@ -481,7 +580,7 @@ async function beta(a, io) {
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
   const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
-    + (invitedAs ? `Already invited as ${mdText(email)}, and signs in with another Google account.\n\n` : '')
+    + (invitedAs ? `Already invited as ${mdText(invitedAs)}, and signs in with another Google account.\n\n` : '')
     + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
     + ewForBell(ew)
     + `\n\n${LET_IN}`
@@ -616,14 +715,25 @@ function eyewireOf(a) {
   if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
   // How did you find us? (Ames 2026-11-06), optional plain text, one line.
   const found = cleanText(a.foundUs, FOUND_US_MAX, 'How you found us');
+  // The email on their EyeWire account (Ames 2026-11-12: "we for sure need
+  // eyewire email"), optional: it is where our invites went, so it matches
+  // them to an invite and to their EyeWire stats.
+  let ewEmail = null;
+  if (a.eyewireEmail) {
+    try { ewEmail = betaEmail(a.eyewireEmail); } catch (e) { fail(400, 'That EyeWire email does not look right.'); }
+  }
   return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null,
-    found: found ? found.replace(/\s+/g, ' ') : null};
+    email: ewEmail,
+    found: found ? found.replace(/\s+/g, ' ') : null,
+    // Email me Pyr news (Ames 2026-11-12): a box on the request form, unticked
+    // to start. Only said when the form sends it, as yes or no.
+    news: a.emailOptIn === true ? 'yes' : a.emailOptIn === false ? 'no' : null};
 }
 const FOUND_US_MAX = 200;
-const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
-  ew.found ? `How they found us: ${ew.found}` : ''];
-const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
-  + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '');
+const ewLines = ew => [ew.email ? `EyeWire email: ${ew.email}` : '', ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
+  ew.found ? `How they found us: ${ew.found}` : '', ew.news ? `Pyr news by email: ${ew.news}` : ''];
+const ewForBell = ew => (ew.email ? `\n\nEyeWire email: ${mdText(ew.email)}` : '') + (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
+  + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '') + (ew.news ? `\n\nPyr news by email: ${ew.news}` : '');
 /** A new request goes on the triage board now, not at the next (often late)
  *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
 async function wakeBoard(io) {
@@ -637,20 +747,24 @@ async function wakeBoard(io) {
 // store is passed in (Firestore in index.js), so this needs no new table.
 //   access.betaMarks  admins: every mark, by email.
 //   access.betaMark   admins: {email, mark: 'listed' | 'removed' | 'waiting'}.
+//   (On the Access page, listed shows as Later: off the Asked list, kept
+//   for later, Ames 2026-11-10.)
 const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // ── "You're in" by email (Ames 2026-11-05: "let's do resend and we can set up
 // connectome.quest"). Letting someone in sends them this, from
-// welcome@connectome.quest, replies to support@eyewire.ai. Once per address:
+// welcome@connectome.quest, replies to support@eyewire.org (Ames 2026-11-12). Once per address:
 // a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
 // Support gets a blind copy of every welcome (Ames 2026-11-06: "copy
-// support@eyewire.org"), so the player never sees it.
+// support@eyewire.org"), and Ames's Gmail (2026-11-10: "add my Gmail"), so
+// the player never sees it.
 const WELCOME_FROM = 'Pyr <welcome@connectome.quest>';
-const WELCOME_REPLY_TO = 'support@eyewire.ai';
-const WELCOME_COPY_TO = 'support@eyewire.org';
+const WELCOME_REPLY_TO = 'support@eyewire.org';
+const WELCOME_COPY_TO = ['support@eyewire.org', 'amyleerobinson@gmail.com', 'amysterling@princeton.edu'];
 function welcomeMessage(name, email) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const text = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
-  const bcc = email !== WELCOME_COPY_TO ? { bcc: [WELCOME_COPY_TO] } : {};
+  const copies = WELCOME_COPY_TO.filter(c => c !== email);
+  const bcc = copies.length ? { bcc: copies } : {};
   return { from: WELCOME_FROM, to: [email], reply_to: WELCOME_REPLY_TO, ...bcc, subject: "You're in: Pyr early access", text };
 }
 async function welcomeEmail(a, io) {
@@ -664,6 +778,187 @@ async function welcomeEmail(a, io) {
   if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
   return {sent: true};
 }
+// ── Asking for their EyeWire name (Ames 2026-11-12: "an email that we can
+// send automatically via a button on this page (that also has an edit
+// button)"). The beta takes EyeWire players first, so a request with no
+// EyeWire username gets this. The page shows the draft; an admin may edit it
+// and sends it. Replies go to support. Each send is kept (io.askSent,
+// Firestore in index.js) so the card reads "Asked" and nobody gets it twice
+// unless an admin presses Ask again.
+//   access.askDraft  admins: {email, name} the draft, {subject, text}.
+//   access.askEmail  admins: {email, name, subject, text, again} sends it.
+//   access.askSent   admins: every send, {email: {at, by}}.
+const ASK_FROM = 'Amy at Pyr <welcome@connectome.quest>';
+// Replies go to support@eyewire.org (Ames 2026-11-12).
+const ASK_REPLY_TO = 'support@eyewire.org';
+const ASK_SUBJECT_MAX = 150;
+const ASK_TEXT_MAX = 4000;
+// A request that gave an EyeWire username with no play under it (Ames
+// 2026-11-12: "this username was not found") asks them to check it.
+function askDraft(name, ewName) {
+  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const ew = String(ewName || '').trim();
+  const ask = ew
+    ? `We couldn't find any EyeWire play under the username "${ew}". Could you reply with the EyeWire username you played under? If you haven't played EyeWire, we'd love to hear how you found Pyr.`
+    : `Could you reply with your EyeWire username? If you haven't played EyeWire, we'd love to hear how you found Pyr.`;
+  return {
+    subject: 'Your Pyr beta request',
+    text: `Hi ${first},\n\nThanks for asking to join Pyr! For this beta testing period, we're inviting existing EyeWire players first.\n\n${ask}\n\nAmy Sterling and the Pyr Team at Princeton`,
+  };
+}
+async function askDraftAction(a, io) {
+  needAdmin(io.isAdmin);
+  betaEmail(a.email);
+  return askDraft(cleanText(a.name, BETA_NAME_MAX, 'The name') || '', cleanEwName(a.ewName));
+}
+async function askEmail(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const name = cleanText(a.name, BETA_NAME_MAX, 'The name') || '';
+  const draft = askDraft(name);
+  const subject = String(a.subject == null ? draft.subject : a.subject).replace(/\s+/g, ' ').trim();
+  const text = String(a.text == null ? draft.text : a.text).replace(/\r\n/g, '\n').trim();
+  if (!subject) fail(400, 'The email needs a subject.');
+  if (subject.length > ASK_SUBJECT_MAX) fail(400, `Keep the subject under ${ASK_SUBJECT_MAX} characters.`);
+  if (!text) fail(400, 'The email is empty.');
+  if (text.length > ASK_TEXT_MAX) fail(400, `Keep the email under ${ASK_TEXT_MAX} characters.`);
+  if (!io.sendEmail) return {sent: false, reason: 'not set up'};
+  const before = io.askSent && await io.askSent.get(email);
+  if (before && !a.again) return {sent: false, reason: 'already sent', at: before.at};
+  const copies = WELCOME_COPY_TO.filter(c => c !== email);
+  const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), subject, text});
+  if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
+  const at = new Date().toISOString();
+  if (io.askSent) await io.askSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || ''});
+  return {sent: true, at};
+}
+// How many we emailed an invite (Ames 2026-11-12: "how many ppl we have
+// invited via email ... in stats up top"): rows in access_invites, one per
+// email per campaign, counted once per email.
+//   access.inviteCount  admins: {invited}.
+// And everyone who has signed in to Pyr, admins left out (Ames 2026-11-12:
+// "I want to see all the people we've invited, all the people who have
+// signed in"), including those who signed in and never asked.
+// ── An EyeWire username typed in on the Access page (Ames 2026-11-12: "add
+// eyewire username manually to invite"). Goes in access_ew_names, which the
+// view access_hub_people reads (supabase-access-hub.sql). Admins only.
+//   access.setEwName  admins: {email, ewName}.
+async function setEwName(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const ewName = cleanEwName(a.ewName);
+  if (!ewName) fail(400, 'Type their EyeWire username.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200) || null;
+  await io.sb('access_ew_names?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, ew_name: ewName.toLowerCase(), set_by: by, set_at: new Date().toISOString()})});
+  return {ewName: ewName.toLowerCase()};
+}
+
+// ── An EyeWire player's public profile: when they joined, roles, country
+// (Ames 2026-11-13: "add eyewire join date here"). eyewire.org's bio page
+// sends no CORS header, so the Access page can't read it itself; the
+// stats page it reads directly. Admins only.
+//   access.ewBio  admins: {name} -> {joined, roles, country} or {none: true}.
+async function ewBio(a, io) {
+  needAdmin(io.isAdmin);
+  const name = cleanEwName(a.name);
+  if (!name) fail(400, 'Which EyeWire username?');
+  const get = io.fetch || fetch;
+  let bio = null;
+  try {
+    const r = await get(`https://eyewire.org/1.0/player/${encodeURIComponent(name.toLowerCase())}/bio`);
+    bio = r.ok ? await r.json() : null;
+  } catch (e) { bio = null; }
+  if (!bio || typeof bio !== 'object') return {none: true};
+  return {joined: Number(bio.joined) || null, roles: Array.isArray(bio.roles) ? bio.roles.map(String).slice(0, 20) : [],
+    country: bio.country_name ? String(bio.country_name).slice(0, 80) : null};
+}
+
+// ── A Beta request bell is read once the request is dealt with on the
+// Access page (Ames 2026-11-12: "notif feed is supposed to mark these as
+// read if I've dealt with them in Access"): let in (on Pilot testers),
+// put on Later, removed, or emailed for their EyeWire name. Marked read for
+// every admin, so every admin and device agrees. The bell names the
+// person's emails in its body (escaped for markdown).
+//   access.readHandledBetaBells  admins: {marked, ids} (ids: the caller's).
+const BETA_BELL_LIKE = 'notifications?target_type=eq.user&title=like.' + encodeURIComponent(BETA_BELL + '*')
+  + '&select=id,target_id,body&order=id.desc&limit=2000';
+const EMAIL_IN = /[^\s@<>(),;:]+@[^\s@<>(),;:]+\.[a-z]{2,}/gi;
+function bellEmails(body) {
+  const plain = String(body || '').replace(/\\(.)/g, '$1');
+  return [...new Set((plain.match(EMAIL_IN) || []).map(e => e.toLowerCase().replace(/\.$/, '')))];
+}
+async function readHandledBetaBells(a, io) {
+  needAdmin(io.isAdmin);
+  const bells = (await io.sb(BETA_BELL_LIKE)).filter(b => isUuid(b.target_id));
+  if (!bells.length) return {marked: 0, ids: []};
+  const read = new Set();
+  for (let i = 0; i < bells.length; i += 100) {
+    const chunk = bells.slice(i, i + 100).map(b => b.id).join(',');
+    for (const r of await io.sb(`notification_reads?notification_id=in.(${chunk})&select=notification_id,user_id`)) read.add(`${r.notification_id}:${r.user_id}`);
+  }
+  const unread = bells.filter(b => !read.has(`${b.id}:${b.target_id}`));
+  if (!unread.length) return {marked: 0, ids: []};
+  const [pilots, marks, asked, links] = await Promise.all([
+    io.sb('pilot_members?enabled=eq.true&select=email&limit=20000').catch(() => []),
+    io.marks ? io.marks.all().catch(() => ({})) : {},
+    io.askSent ? io.askSent.all().catch(() => ({})) : {},
+    io.sb('access_email_links?select=email,linked_to&limit=5000').catch(() => []),
+  ]);
+  const done = new Set();
+  for (const p of pilots || []) done.add(String(p.email || '').toLowerCase());
+  for (const [e, m] of Object.entries(marks || {})) if (m && (m.mark === 'removed' || m.mark === 'listed')) done.add(e.toLowerCase());
+  for (const e of Object.keys(asked || {})) done.add(e.toLowerCase());
+  // One person, two emails: dealt with under either.
+  for (const l of links || []) {
+    const x = String(l.email || '').toLowerCase(), y = String(l.linked_to || '').toLowerCase();
+    if (done.has(x)) done.add(y); else if (done.has(y)) done.add(x);
+  }
+  const mark = unread.filter(b => bellEmails(b.body).some(e => done.has(e)));
+  if (mark.length) {
+    await io.sb('notification_reads?on_conflict=notification_id,user_id', {method: 'POST',
+      headers: {Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify(mark.map(b => ({notification_id: b.id, user_id: b.target_id})))});
+  }
+  const mine = io.me && io.me.id;
+  return {marked: mark.length, ids: mark.filter(b => b.target_id === mine).map(b => b.id)};
+}
+
+const TEAM_EMAILS = ['ryan.t.morey@gmail.com'];
+async function inviteCount(a, io) {
+  needAdmin(io.isAdmin);
+  const [rows, users, admins] = await Promise.all([
+    io.sb('access_invites?select=email&limit=20000'),
+    io.sb('users?select=id,middleauth_email&limit=20000'),
+    io.sb('admins?select=user_id,email&limit=1000'),
+  ]);
+  const adminIds = new Set((admins || []).map(r => r.user_id).filter(Boolean));
+  const adminEmails = new Set((admins || []).map(r => String(r.email || '').toLowerCase()).filter(Boolean));
+  // The Princeton team who are not Pyr admins (Ames 2026-11-12, Ryan Morey)
+  // are left out too, as on the Access page.
+  for (const e of TEAM_EMAILS) adminEmails.add(e);
+  const signedIn = (users || []).filter(u => !adminIds.has(u.id) && !adminEmails.has(String(u.middleauth_email || '').toLowerCase())).length;
+  return {invited: new Set((rows || []).map(r => r.email)).size, signedIn};
+}
+async function askSentAll(a, io) {
+  needAdmin(io.isAdmin);
+  return io.askSent ? io.askSent.all() : {};
+}
+// ── One person, two emails, joined by hand (Ames 2026-11-10: "some
+// duplicates ... same person"). The Access page suggests pairs; an admin
+// presses Same person. The row goes in access_email_links, which the view
+// access_hub_people folds (supabase-access-hub.sql): the email folds into
+// \`to\`. Admins only.
+//   access.linkEmails  admins: {email, to}.
+async function linkEmails(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email), to = betaEmail(a.to);
+  if (email === to) fail(400, 'Those are the same email.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200);
+  await io.sb('access_email_links?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, linked_to: to, note: `Same person, on the Access page${by ? ' by ' + by : ''}`})});
+  return {linked: true};
+}
 async function betaMarks(a, io) {
   needAdmin(io.isAdmin);
   return io.marks.all();
@@ -674,6 +969,68 @@ async function betaMark(a, io) {
   if (!BETA_MARKS.includes(a.mark)) fail(400, 'Unknown mark.');
   await io.marks.set(email, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
   return io.marks.all();
+}
+
+// ── The team's notes on a person (Celia 2026-11-09: "a place to leave notes
+// on requests from people we don't know, or ones still being discussed").
+// Shown on the Access page (triage hub). Keyed by the person's email, or
+// "user:<id>" when there is none. Admins only; in io.notes (Firestore in
+// index.js), so this needs no new table.
+//   access.notes       admins: every note, {key: [{id, text, by, at}]}.
+//   access.note        admins: {key, text} adds one.
+//   access.noteDelete  admins: {key, id} takes one away.
+const ACCESS_NOTE_MAX = 1000;
+const { tagIdsIn } = require('./todo-connector');
+const NOTE_KEY = /^(?:[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+|user:[0-9a-f-]{36})$/i;
+function noteKey(k) {
+  const key = String(k || '').trim().toLowerCase();
+  if (!NOTE_KEY.test(key) || key.length > BETA_EMAIL_MAX) fail(400, 'Unknown person.');
+  return key;
+}
+async function accessNotes(a, io) {
+  needAdmin(io.isAdmin);
+  return io.notes.all();
+}
+async function accessNote(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const text = cleanText(a.text, ACCESS_NOTE_MAX, 'The note', true);
+  if (!text) fail(400, 'Write a note first.');
+  const by = (io.me && (io.me.display_name || io.me.username)) || (io.who && io.who.email) || 'An admin';
+  await io.notes.add(key, {text, by, byEmail: (io.who && io.who.email) || '', at: new Date().toISOString()});
+  // The note is saved whatever happens to the tags.
+  try { await tagFromNote(key, text, by, a.name, io); } catch (e) { console.warn('[access note] tag failed', e && e.message); }
+  return io.notes.all();
+}
+// "@Celia" or "@Marissa" in a note tags that admin (Ames 2026-11-10: "if I
+// leave a note here can it tag celia / Marissa?"), as notes on the triage
+// board do (triage-notes.js): a bell in Pyr and a ping in Slack, each with a
+// link that opens this person on the Access page.
+const ACCESS_PAGE = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/?triage=access';
+async function tagFromNote(key, text, by, name, io) {
+  if (!io.people || !io.notifyPeople) return 0;
+  const people = await io.people();
+  const ids = tagIdsIn(text, people).filter(id => id !== (io.me && io.me.id));
+  if (!ids.length) return 0;
+  const who = people.filter(p => ids.includes(p.id));
+  const label = String(name || '').replace(/[\r\n]+/g, ' ').trim().slice(0, BETA_NAME_MAX);
+  const about = label ? `${label}${key.startsWith('user:') ? '' : ` (${key})`}` : (key.startsWith('user:') ? 'a player' : key);
+  const link = `${ACCESS_PAGE}&person=${encodeURIComponent(key)}`;
+  await io.notifyPeople({ids, title: `💬 ${by} tagged you on the Access page`.slice(0, 120),
+    body: `About ${mdText(about)}:\n\n${mdText(text.slice(0, 600))}\n\n${link}`});
+  if (io.slackPing) {
+    const quote = text.replace(/\s+/g, ' ').slice(0, 300);
+    await io.slackPing(who, `left a note on the Access page about ${about}:\n> ${quote}\n<${link}|Open it on the Access page>`, by);
+  }
+  return ids.length;
+}
+async function accessNoteDelete(a, io) {
+  needAdmin(io.isAdmin);
+  const key = noteKey(a.key);
+  const id = String(a.id || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) fail(400, 'Unknown note.');
+  await io.notes.remove(key, id);
+  return io.notes.all();
 }
 
 // ── Access to one dataset (Ames 2026-10-28) ──────────────────────────────
@@ -931,7 +1288,18 @@ async function handle(action, args, io) {
   if (action === 'access.linkInvite') return linkInvite(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
+  if (action === 'access.linkEmails') return linkEmails(a, io);
   if (action === 'access.welcomeEmail') return welcomeEmail(a, io);
+  if (action === 'access.askDraft') return askDraftAction(a, io);
+  if (action === 'access.askEmail') return askEmail(a, io);
+  if (action === 'access.askSent') return askSentAll(a, io);
+  if (action === 'access.inviteCount') return inviteCount(a, io);
+  if (action === 'access.setEwName') return setEwName(a, io);
+  if (action === 'access.ewBio') return ewBio(a, io);
+  if (action === 'access.readHandledBetaBells') return readHandledBetaBells(a, io);
+  if (action === 'access.notes') return accessNotes(a, io);
+  if (action === 'access.note') return accessNote(a, io);
+  if (action === 'access.noteDelete') return accessNoteDelete(a, io);
   if (action === 'access.principlesStatus') return principlesStatus(a, io);
   if (action === 'access.principlesAgree') return principlesAgree(a, io);
   if (action === 'access.mine') return mine(a, io);
@@ -942,6 +1310,7 @@ async function handle(action, args, io) {
   if (action === 'access.list') return list(a, io);
   if (action === 'access.review') return review(a, io);
   if (action === 'access.decide') return decide(a, io);
+  if (action === 'access.readGrantedBells') return readGrantedBells(a, io);
   if (action === 'access.reset') return reset(a, io);
   fail(400, `unknown action ${action}`);
 }

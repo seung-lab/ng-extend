@@ -11,16 +11,17 @@
  * the edit was made. A box shows an edit only while the code still has that
  * wording, so a box rewritten or moved in code never shows a stale edit.
  *
- * The approvers' own edits go straight to players (Ames: "my own edits skip
- * review"); anyone else's wait in Admin Hub > Tutorial edits, and the
- * approvers get a notification. Only the title and words change: where a box
+ * Every admin's edit goes straight to players (Ames 2026-11-10: "I like their
+ * edits being live instantly but I still am always notified of changes"):
+ * the server sends Ames a before and after note of every other admin's edit
+ * (functions/edit-notify.js). Suggestions saved before that change still wait
+ * in Admin Hub > Tutorial edits. Only the title and words change: where a box
  * points, its view and when it shows stay in code.
  */
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import type { Step } from './store-pyr';
 import { siteTexts, loadSiteTexts, saveSiteText, resetSiteText } from './site_texts';
-import { supabase } from './supabase';
 
 /** Pyr accounts whose tutorial edits need no approval, and who approve. */
 export const TUTORIAL_APPROVER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@gmail.com'];
@@ -28,7 +29,8 @@ export const TUTORIAL_APPROVER_EMAILS = ['amylr@princeton.edu', 'amyleerobinson@
 export const TUTORIAL_NAMES: Record<number, string> = {
   1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut',
   6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain',
-  9: 'Merger Sandbox', 10: 'Meet the cells of CA3', 11: 'Proofreading Test', 13: 'Extension Sandbox',
+  9: 'Merger Sandbox', 10: 'Meet the cells of CA3', 11: 'Proofreading Test', 13: 'Extension Sandbox', 14: 'Cilia Quest Training',
+  15: 'Annotations',
 };
 
 export interface Wording { title: string; words: string }
@@ -77,46 +79,52 @@ export function draftEdit(tutorial: number, box: number): TutorialEdit | null {
   return parse(draftKey(tutorial, box));
 }
 
+/**
+ * The looks a box's words may keep in a style attribute. The tutorials color
+ * words with style="color:..." (and lay a few out), so dropping every style
+ * stripped the colors from any box an admin saved (Celia #481, 2026-11-12:
+ * "it is removing any color that was previously added"). Only these
+ * properties stay, and never a value that loads anything.
+ */
+const KEPT_STYLE = /^(color|background-color|border-color|border|border-radius|font-weight|font-style|font-size|text-align|text-decoration|display|align-items|justify-content|vertical-align|line-height|width|height|margin(-(top|right|bottom|left))?|padding(-(top|right|bottom|left))?|cursor)$/;
+export function keepSafeStyle(style: string): string {
+  return style.split(';').map(d => d.trim()).filter(d => {
+    const i = d.indexOf(':');
+    if (i < 1) return false;
+    const prop = d.slice(0, i).trim().toLowerCase(), value = d.slice(i + 1).trim().toLowerCase();
+    return KEPT_STYLE.test(prop) && !!value && !/url\(|expression|javascript:|@import|\\/.test(value);
+  }).join(';');
+}
+let cleaningWords = false;
+DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
+  if (!cleaningWords || data.attrName !== 'style') return;
+  const kept = keepSafeStyle(data.attrValue || '');
+  if (kept) data.attrValue = kept; else data.keepAttr = false;
+});
+
 /** Words as the box shows them: links open a new tab; edited words are cleaned. */
 export function wordsToHtml(words: string, kind: 'text' | 'html'): string {
   const html = kind === 'text' ? (marked.parse(words, { async: false }) as string) : words;
-  const clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form', 'input', 'iframe'], FORBID_ATTR: ['style'] });
+  cleaningWords = true;
+  let clean: string;
+  try { clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form', 'input', 'iframe'] }); }
+  finally { cleaningWords = false; }
   return clean.replace(/<a\s+(?![^>]*\btarget=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
 }
 
 export { loadSiteTexts };
 
-/** The notification's text: the box now and as suggested (Ames 2026-10-26:
- *  "add the before and after"), each quoted and kept short. */
-function beforeAfter(now: Wording, next: Wording, kind: 'text' | 'html'): string {
-  const plain = (w: string) => (kind === 'html' ? w.replace(/<[^>]+>/g, ' ') : w).replace(/[ \t]+/g, ' ').trim();
-  const clip = (w: string) => { const p = plain(w); return p.length > 600 ? p.slice(0, 600).trimEnd() + '…' : p; };
-  const quote = (w: string) => clip(w).split(/\r?\n/).map(l => '> ' + l).join('\n');
-  return `**Now:** ${now.title || '(no title)'}\n${quote(now.words)}\n\n**Suggested:** ${next.title || '(no title)'}\n${quote(next.words)}\n\n[Open Tutorial edits](#nge-tutorial-edits) to approve or turn it down.`;
-}
-
 /**
- * Save an edit of a box. An approver's goes to players at once; anyone else's
- * is a suggestion, and the approvers are told. Returns which it was.
+ * Save an edit of a box. It goes to players at once, whoever made it.
  */
-export async function saveTutorialEdit(tutorial: number, box: number, step: Step, next: Wording, myEmail: string | null | undefined,
-  notify: (approverUserIds: string[], title: string, body: string) => Promise<void>): Promise<'live' | 'draft'> {
+export async function saveTutorialEdit(tutorial: number, box: number, step: Step, next: Wording, myEmail: string | null | undefined): Promise<'live'> {
   const code = codeWording(step);
   const body = JSON.stringify({ title: next.title, words: next.words, from: { title: code.title, words: code.words }, kind: code.kind });
   if (body.length > 20000) throw new Error('That is too long for one box.');
-  if (isApprover(myEmail)) {
-    await saveSiteText(liveKey(tutorial, box), body);
-    if (siteTexts[draftKey(tutorial, box)]) await resetSiteText(draftKey(tutorial, box));
-    return 'live';
-  }
-  await saveSiteText(draftKey(tutorial, box), body);
-  try {
-    const { data } = await supabase.from('admins').select('user_id,email');
-    const ids = ((data as any[]) || []).filter(a => a.user_id && isApprover(a.email)).map(a => String(a.user_id));
-    const name = TUTORIAL_NAMES[tutorial] ?? `Tutorial ${tutorial}`;
-    if (ids.length) await notify(ids, `📋 Tutorial edit to approve: ${name}, box ${box + 1}`, beforeAfter(code, next, code.kind));
-  } catch (e) { console.warn('[tutorial edits] could not tell the approvers:', e); }
-  return 'draft';
+  // Live for every admin; Ames's note comes from the server (functions/edit-notify.js).
+  await saveSiteText(liveKey(tutorial, box), body);
+  if (isApprover(myEmail) && siteTexts[draftKey(tutorial, box)]) await resetSiteText(draftKey(tutorial, box));
+  return 'live';
 }
 
 /** Approve a suggestion: it becomes what players see. */

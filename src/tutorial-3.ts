@@ -76,6 +76,14 @@ const MERGE_HINT_POINTS: Record<string, number[][]> = {
   // Second merge (axon), in the 2D images at z 638 (Ames, 2026-10-13: this
   // box had no points of its own and fell back to the first cell's).
   'a4bd2f76-67e9-4093-adc7-e670230d1577': [[75014, 62609, 638], [75114, 62629, 638]],
+  // Extension Sandbox cells 3 to 8 (Ames, 2026-11-12): the nearest voxel of
+  // the cell, then of its missing branch, to the spot Ames gave.
+  'e00d8987-7a7d-47cc-b100-392d9f88e85c': [[78316, 66500, 870], [78422, 66536, 878]],
+  '72a8858a-756b-4a62-8b81-5857359960ef': [[53430, 57240, 900], [53592, 57178, 884]],
+  'aca4c7fa-33d4-48ac-8b6d-f6a20dbdab3e': [[57402, 62722, 1045], [57398, 62752, 1051]],
+  '5f88242a-ca3f-450d-9208-61c6a0ed713d': [[60448, 46050, 542], [60504, 45994, 551]],
+  '0e67d1ab-0f11-40c9-8898-bc89e38f3560': [[89782, 60232, 699], [89856, 60296, 699]],
+  'c8bf3478-c45b-49e4-9fb1-3dd6f02f1fc3': [[62432, 57598, 545], [62432, 57598, 539]],
 };
 
 /**
@@ -213,6 +221,7 @@ export function practiceStatus(text: string, done = false, quiet = false) {
   help.style.display = (done || !helpWanted) ? 'none' : '';
   const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;
   if (stuck && done) stuck.remove();
+  if (done) chip.querySelector('.nge-practice-helpnote')?.remove();
   const place = chip.querySelector('.nge-practice-place') as HTMLElement | null;
   if (place) place.style.display = done ? 'none' : '';
   // The chip just grew; keep it on screen.
@@ -237,7 +246,8 @@ function helpRow(chip: Element): HTMLElement {
  *  keeps its extra parts, so "Still need help?" stayed up on the next try
  *  of a merger without Help me being pressed (Ames, 2026-10-11). */
 function clearHelp() {
-  document.querySelectorAll('.introductionStepAnchor .nge-practice-more, .introductionStepAnchor .nge-practice-stuck').forEach(el => el.remove());
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-more, .introductionStepAnchor .nge-practice-stuck, .introductionStepAnchor .nge-practice-helpnote').forEach(el => el.remove());
+  syncHelpLabel();
 }
 
 function notePanel(cls: string, html: string): HTMLElement {
@@ -259,6 +269,29 @@ const CUT_HINTS: Record<string, { red: number[][]; blue: number[][] }> = {
   '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': {
     red: [[81668, 49056, 516], [82030, 49104, 529]],
     blue: [[81516, 49232, 525], [81910, 49234, 521]],
+  },
+  // Mergers 9 to 13 (Ames, 2026-11-12): the points of the reference cuts,
+  // operations 5006, 5009, 5010, 5025 and 5028. Red on the merger's side,
+  // blue on the good cell's.
+  '2152de4d-25c9-4c61-b0e3-33b69c38ba08': {
+    red: [[114882, 56984, 1345], [115070, 57062, 1354], [115086, 57208, 1353], [115126, 57348, 1357], [115162, 57470, 1361]],
+    blue: [[114910, 57118, 1387], [114926, 57240, 1372], [114958, 57338, 1364], [115096, 57560, 1344], [115134, 57632, 1337], [115128, 57678, 1332]],
+  },
+  'ecfb5c70-5791-4c4f-a806-113b60d5c352': {
+    red: [[81904, 51638, 387], [82076, 51648, 381], [82222, 51648, 382], [82396, 51628, 384]],
+    blue: [[82034, 51642, 357], [82000, 51522, 365], [81942, 51428, 376], [81854, 51294, 396]],
+  },
+  'cf702af3-b811-4020-b51f-96a0ce08f1ee': {
+    red: [[81454, 47832, 506], [81640, 47750, 479], [82088, 47746, 444], [82360, 47808, 433]],
+    blue: [[81158, 47898, 427], [81474, 47766, 434], [82016, 47376, 465], [82412, 47110, 479]],
+  },
+  '818b1d1b-a243-4711-a2a6-444a84dca010': {
+    red: [[65662, 44370, 134], [65702, 44408, 152], [65818, 44534, 168], [65904, 44574, 174]],
+    blue: [[65746, 44594, 145], [65744, 44552, 150], [65766, 44394, 170], [65812, 44384, 173]],
+  },
+  '0e9ca4e1-e3c1-44db-8d95-61f6cd6df4c0': {
+    red: [[104092, 73546, 1994], [104062, 73636, 1991]],
+    blue: [[104130, 73528, 1991], [104094, 73648, 1991]],
   },
 };
 const RED = '#ff5c5c', BLUE = '#5c8cff';
@@ -367,6 +400,13 @@ async function cutHintFor(ex: any): Promise<{ hint: CutHint | null; trusted: boo
   const recorded = CUT_HINTS[ex.id] ?? null;
   if (!anchor && recorded) anchor = centroid([...recorded.red, ...recorded.blue]);
   let out: { hint: CutHint | null; trusted: boolean } = { hint: recorded, trusted: !!recorded };
+  // A cell with the reference cut's own points and no saved view of its own
+  // (Mergers 9 to 13) uses those points, without trying other cells' views.
+  if (recorded && !CUT_HINT_STATES[ex.id]) {
+    out = { hint: recorded, trusted: true };
+    cutHintCache.set(ex.id, out);
+    return out;
+  }
   const urls = [CUT_HINT_STATES[ex.id], ...Object.values(CUT_HINT_STATES).filter(u => u !== CUT_HINT_STATES[ex.id])].filter(Boolean);
   if (anchor) {
     let best: { hint: CutHint; nm: number; note: string } | null = null;
@@ -412,6 +452,21 @@ function withoutStrays(h: CutHint): CutHint {
 }
 
 const zoomedForCut = new Set<string>();
+/** Bring the view in close on the cut, without showing the gems (tester,
+ *  2026-11-10: boxes 2 to 4 of the Cut tutorial were too far out). Each box
+ *  reloads the cell's view, so the zoom is applied to that fresh view; Help
+ *  me presses after this only re-centre. */
+export async function focusOnCut(threeD = 0.25): Promise<void> {
+  const ex = currentPractice().example;
+  if (!ex) return;
+  const { hint, trusted } = await cutHintFor(ex);
+  if (!hint || !trusted) return;
+  const h = withoutStrays(hint);
+  const pts = [...h.red, ...h.blue];
+  if (!pts.length) return;
+  zoomedForCut.add(ex.id);
+  focusOn(pts, threeD, 1);
+}
 /** The red and blue hint points for the cell on screen. Exported so the
  *  first cut can start with them showing. */
 export async function showWhereToCut(perColour = 4): Promise<boolean> {
@@ -451,13 +506,50 @@ export async function showWhereToCut(perColour = 4): Promise<boolean> {
  * is what a stuck learner wants. Other ways out sit one step further, behind
  * "Still need help?". With nothing to point at, it opens those straight away.
  */
+/** The Help me button says what it will do: "Hide help" while help is
+ *  open, so a second "Help me" never closes it (Ames, 2026-11-10: pressing
+ *  Help me to close the help was confusing). */
+function syncHelpLabel() {
+  const chip = chipBody();
+  const btn = chip?.querySelector('.nge-practice-help') as HTMLElement | null;
+  if (!chip || !btn) return;
+  const open = !!chip.querySelector('.nge-practice-stuck, .nge-practice-more, .nge-practice-helpnote');
+  btn.textContent = open ? 'Hide help' : 'Help me';
+  btn.title = open ? 'Close the help' : 'Show me where to click';
+}
+
+/** What Help me says, on its own line above the buttons. It used to go in
+ *  the status line, which the step's "Waiting for..." loop rewrote half a
+ *  second later (tester, 2026-11-10: the help text flashed and vanished). */
+function helpNote(chip: Element, text: string) {
+  chip.querySelector('.nge-practice-helpnote')?.remove();
+  const note = document.createElement('p');
+  note.className = 'nge-hud-note nge-practice-helpnote';
+  note.textContent = text;
+  chip.insertBefore(note, helpRow(chip));
+}
+
+/** Turn the box on screen into a new one: its own title and words hidden,
+ *  a new title on top, the status line and help buttons kept. The next box
+ *  is a fresh component, so nothing has to be undone. */
+function takeOverBox(title: string) {
+  const chip = chipBody();
+  if (!chip || chip.querySelector('.nge-box-retitle')) return;
+  const t = document.createElement('div');
+  t.className = 'nge-box-retitle';
+  t.textContent = title;
+  chip.insertBefore(t, chip.firstChild);
+  document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+
 async function helpMe() {
   const chip = chipBody();
   if (!chip) return;
-  // A second press closes whatever the first opened.
-  const open = chip.querySelector('.nge-practice-stuck, .nge-practice-more');
+  // While help is open the button reads "Hide help" and closes it.
+  const open = chip.querySelector('.nge-practice-stuck, .nge-practice-more, .nge-practice-helpnote');
   if (open) {
-    chip.querySelectorAll('.nge-practice-stuck, .nge-practice-more').forEach(el => el.remove());
+    chip.querySelectorAll('.nge-practice-stuck, .nge-practice-more, .nge-practice-helpnote').forEach(el => el.remove());
+    syncHelpLabel();
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
     return;
   }
@@ -466,15 +558,16 @@ async function helpMe() {
   if (ex?.kind === 'cut') {
     ensureTool('multicut');
     shown = await showWhereToCut();
-    if (shown) practiceStatus('The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch color, then Submit cut.');
+    if (shown) helpNote(chip, 'The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch color, then Submit cut.');
   } else if (ex?.kind === 'merge_then_cut') {
     ensureTool('merge');
     shown = await showWhereToClick();
-    if (shown) practiceStatus('The pink gems mark the two spots. Ctrl+click one piece by its gem, then the other, then Submit merge.');
+    if (shown) helpNote(chip, 'The pink gems mark the two spots. Ctrl+click one piece by its gem, then the other, then Submit merge.');
   }
-  if (!shown) { openStuckPanel(); return; }
-  const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); });
+  if (!shown) { openStuckPanel(); syncHelpLabel(); return; }
+  const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); syncHelpLabel(); });
   helpRow(chip).appendChild(more);
+  syncHelpLabel();
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }
 
@@ -507,7 +600,7 @@ function openStuckPanel() {
   close.textContent = '\u00d7';
   close.title = 'Close';
   close.setAttribute('aria-label', 'Close help');
-  close.addEventListener('click', () => { panel.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); });
+  close.addEventListener('click', () => { panel.remove(); syncHelpLabel(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); });
   panel.style.position = 'relative';
   panel.appendChild(close);
   chip.appendChild(panel);
@@ -720,8 +813,13 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       if (token === practiceWatch) setTimeout(tick, 2000);
     }
   };
+  // The tutorial this watch belongs to. Another one open means it is over:
+  // it kept writing "Merge mode is off" and Help me into the Cilia Quest
+  // tutorial's boxes (Ames, 2026-11-10).
+  const ownTutorial = useTutorialStore().activeTutorial;
   const look = async () => {
     if (token !== practiceWatch) return;
+    if (useTutorialStore().activeTutorial !== ownTutorial) { if (token === practiceWatch) stopWatching(); return; }
     const p = currentPractice();
     // Keep looking: the step may get its cell a moment later.
     if (p.phase === 'unavailable') { practiceStatus('Practice needs an invited account and a current session. Sign in, or press back then next to try again. You can read along while waiting.'); setTimeout(tick, 2000); return; }
@@ -743,7 +841,10 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
         const left = await practiceLeftover();
         if (token !== practiceWatch) return;
         if (left) {
-          practiceStatus(left.message);
+          // The box becomes a new one: its title and instructions were about
+          // the points just placed (tester, 2026-11-10).
+          takeOverBox('Almost there');
+          practiceStatus(left.message + ' Cut again by the new gems: Ctrl+click by the red gem, press G, Ctrl+click by the blue gem, then Submit cut or Enter.');
           if (leftoverShown !== token) {
             leftoverShown = token;
             showGemMarkers([
@@ -835,6 +936,23 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     setTimeout(tick, failed ? 1500 : wantMerged ? 3000 : 800);
   };
   setTimeout(tick, 600);
+}
+
+/**
+ * A tutorial's first edit box, reached again after the edit was made (Back,
+ * or a restart): the cell on screen is already merged (or cut). Put every
+ * held cell back to its start and release it, so the box can claim it fresh.
+ * Returns true when it did. `wantMerged` is the state the edit leaves.
+ */
+export async function freshStartIfDone(wantMerged: boolean, step: number): Promise<boolean> {
+  const merged = await piecesMerged().catch(() => null);
+  if (merged === null || merged !== wantMerged) return false;
+  if (useTutorialStore().getTutorialStep() !== step) return false;
+  practiceStatus('Putting this cell back to its starting state so you can do it again. One moment.', false, true);
+  await endPractice();
+  resetPracticeLog();
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-status').forEach(el => el.remove());
+  return true;
 }
 
 export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); clearHelp(); helpWanted = true; }
@@ -1299,6 +1417,28 @@ export function cheatSheet(rows: Array<[string, string]>) {
     + `<p class="nge-hud-fine"><a href="${CHEAT_SHEET_URL}" target="_blank" rel="noopener">Open the cheat sheet in a new tab ↗</a></p>`;
 }
 
+/** The top bar icon a box talks about glows while that box is up and the
+ *  tool is off (tester, 2026-11-10: "the Merge icon indicated in some way"). */
+function glowTopIcon(id: 'merge' | 'split') {
+  // A ring drawn over the icon, not a class on it: the top bar is redrawn by
+  // Vue often (badge counts), which wiped the class, and re-adding it every
+  // tick restarted the pulse before it got bright (Celia, 2026-11-11: "Merge
+  // icon is still not glowing").
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  let ring = document.querySelector('.nge-tut-glow-ring') as HTMLElement | null;
+  if (!ring) { ring = document.createElement('div'); ring.className = 'nge-tut-glow-ring'; document.body.appendChild(ring); }
+  const timer = setInterval(() => {
+    const here = store.activeTutorial === tutorial && store.getTutorialStep() === step && !!document.querySelector('.introductionStepAnchor');
+    const icon = document.querySelector(`[data-icon-id="${id}"]`) as HTMLElement | null;
+    const r = icon?.getBoundingClientRect();
+    const on = here && !practiceToolOn() && !!r && r.width > 0;
+    if (on && r) Object.assign(ring!.style, { display: 'block', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    else ring!.style.display = 'none';
+    if (!here) { clearInterval(timer); ring!.remove(); }
+  }, 250);
+}
+
 export const MIDDLE = {
   element: "body",
   x: 0.5,
@@ -1350,11 +1490,14 @@ This is an example. The yellow branch belongs to the purple cell, but the AI lef
     text: `
 Press the **M** key to start the merge tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
-You can also click the green Merge icon in the top bar. Once it's on, the merge tool appears at the bottom of the viewer.`,
-    position: OVER_3D,
+You can also click the green Merge icon in the top bar, glowing now. Once it's on, the merge tool appears at the bottom of the viewer.`,
+    // Lower than the other boxes: at the top it covered the top bar and the
+    // Merge icon it talks about (tester, 2026-11-10).
+    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.4 },
     width: "450px",
     onEnter: async () => {
       closeSidePanel();
+      glowTopIcon('merge');
       watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.', 'Merge mode is off. Press M again to re-enter merge mode.');
       // Point at the segmentation layer chip without being asked (Amy).
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
@@ -1392,15 +1535,25 @@ The pink gems show where to click.`,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
+      stopWatching();
       await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: holdsSlot('a') ? [] : [MERGE_SECOND] });
+      // Back here after merging (a player went back to the start, 2026-11-11:
+      // the yellow piece never came back): put the cells back and take them
+      // again, so the merge can be made once more.
+      if (await freshStartIfDone(true, 3)) {
+        await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: [MERGE_SECOND] })
+          ?? await beginPractice('merge_then_cut', 'start', { slot: 'a' });
+      }
+      if (useTutorialStore().getTutorialStep() !== 3) return;
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       // The second cell too, if it is not held (after an idle release the
       // cells are taken again here, and the second merge must not be lost).
       if (!holdsSlot('b')) await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
       // The first merge starts with the two click spots marked (Ames: "we
       // want them to control click on each piece, easy peasy"), and the view
       // brought in close on them.
-      setTimeout(() => { showWhereToClick({ threeD: 0.3, twoD: 1 }); }, 1400);
+      // Closer still (tester, 2026-11-10: "would zoom in a bit more here").
+      setTimeout(() => { showWhereToClick({ threeD: 0.15, twoD: 1 }); }, 1400);
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
       setTimeout(() => ensureTool('merge'), 400);
@@ -1434,9 +1587,10 @@ Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` 
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
 The pink gems show where to click.`,
-    // Low on the 3D side: the view is centred on the join, and the box at
-    // the top sat right over the cell (Ames, 2026-10-25).
-    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.82 },
+    // Lower on the 3D side: the view is centred on the join, and the box at
+    // the top sat right over the cell (Ames, 2026-10-25). Not at the very
+    // bottom, where the merge bar covered it (Celia, 2026-11-11).
+    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.6 },
     width: "420px",
     onEnter: async () => {
       closeSidePanel();

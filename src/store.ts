@@ -1082,6 +1082,9 @@ export interface UserPreferences {
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;
+  /** Hide the Play button at the top left (Ames 2026-11-12: in Settings, not
+   *  an X on the button). Defaults to false: it shows. */
+  hidePlayButton?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
@@ -1099,6 +1102,16 @@ export interface UserPreferences {
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
+  /** A Retina claim opens with the annotation layers (Soma, True End, Can't Fix,
+   *  Hits Edge, Notes). Off by default: it opens with one Checked Highlight
+   *  layer, and a button adds them (Ames 2026-11-07). */
+  retinaAnnotationLayers?: boolean;
+  /** Classic layer tab buttons: neuroglancer's x that hides a layer to the
+   *  side panel, and its bin that deletes it. Off by default: one x, which
+   *  closes (deletes) the layer, and Ctrl+Z brings it back (Ames 2026-11-07). */
+  layerHideButton?: boolean;
+  /** The one time Retina question (RetinaModePrompt.vue) has been answered. */
+  retinaModeAsked?: boolean;
   /** Highlight mode's colours: the three built in ones (recoloured or not)
    *  and any the player added. Unset = the defaults. */
   highlightStyles?: { key: string; label: string; color: string }[];
@@ -1144,6 +1157,9 @@ export interface UserPreferences {
   /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
    *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
   cursorXL?: boolean;
+  /** The 3D view turns slowly on its own (the new player intro's turn, Ames
+   *  2026-11-08: "add a way to turn off cell rotation"). On unless false. */
+  autoTurn?: boolean;
   /** Large text: Pyr's windows and the layer side panel drawn a fifth bigger
    *  (body.nge-large-text, src/large_text.css; Ames 2026-10-25, for older
    *  players). Defaults to false. */
@@ -1165,6 +1181,9 @@ export interface UserPreferences {
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
 
 /** Settings: "Jumping to a cell adds it to my view" (off = replace). */
+export function retinaAnnotationLayersByDefault(): boolean {
+  try { return useUserPreferencesStore().prefs.retinaAnnotationLayers === true; } catch { return false; }
+}
 export function jumpAddsToView(): boolean {
   try { return useUserPreferencesStore().prefs.jumpAddsToView === true; } catch { return false; }
 }
@@ -1202,7 +1221,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -3675,7 +3694,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * with a numeric suffix if that's taken, so the prompt is usually one click.
    */
   async function suggestUsername(): Promise<string> {
-    const base = (userName.value || userEmail.value.split('@')[0] || 'user')
+    // Never a name made from the email: a sign-in with no name gets an empty
+    // box to fill in (#512).
+    const front = userEmail.value.split('@')[0];
+    if (!userName.value || userName.value === front) return '';
+    const base = userName.value
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')   // spaces and punctuation become separators
       .replace(/^_+|_+$/g, '')       // no leading/trailing separators
@@ -3696,9 +3719,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const invalid = validateUsername(n);
     if (invalid) throw new Error(invalid);
     if (!userId.value) throw new Error('Not signed in.');
+    // No name on the account (it shows the email's front, or an earlier
+    // username): the new username becomes the shown name too (#512).
+    const noName = userName.value === emailFront(userEmail.value) || (!!username.value && userName.value === username.value);
     const { error } = await supabase
       .from('users')
-      .update({ username: n, updated_at: new Date().toISOString() })
+      .update({ username: n, ...(noName ? { display_name: n } : {}), updated_at: new Date().toISOString() })
       .eq('id', userId.value);
     if (error) {
       // 23505 = unique violation, i.e. someone already has it.
@@ -3708,6 +3734,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       throw new Error(error.message);
     }
     username.value = n;
+    if (noName) userName.value = n;
   }
   const tasks = ref<ProofreadingTask[]>([]);
   const activeTaskId = ref<number | null>(null);
@@ -3719,6 +3746,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let feedSubscription: any = null;
 
   // ── User sync ─────────────────────────────────────────────────────────
+  /** What a sign-in with no name shows: the part of the email before the @. */
+  const emailFront = (email: string) => (email || '').split('@')[0];
   /** Upsert user from middleauth identity. Call after login. */
   async function syncUser(email: string, displayName: string) {
     userEmail.value = email;
@@ -3752,6 +3781,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // importing this store (it may not exist yet during a bootstrap failure).
         (window as any).__ngeUserId = existing.id;
         console.info('[backend] syncUser: found existing user', existing.id);
+        // An account with no name signs in as the front of its email. If the
+        // player has picked a username, that is their name on the leaderboard
+        // and everywhere else, not the email (#512, 2026-11-13).
+        if (existing.username && displayName === emailFront(email)) {
+          displayName = existing.username;
+          userName.value = displayName;
+        }
         // Update display name if changed
         await supabase
           .from('users')
@@ -5670,7 +5706,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
-    notifications.value.filter(n => !notifRead(n) && ['admin', 'access'].includes(notifKind(n.title, isAdmin.value))).length
+    notifications.value.filter(n => !notifRead(n) && ['admin', 'access', 'edits'].includes(notifKind(n.title, isAdmin.value))).length
   );
   /** Unread in the bell's Admin and Triage tabs together: the dot on the
    *  Player view chip, so admin alerts still show while those tabs are hidden. */
@@ -5705,6 +5741,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadNotifications();
   }
   let grantLinesAsked = false;
+  // Retina request bells this tab has asked the server about (Ames 2026-11-06).
+  const requestBellsAsked = new Set<number>();
   /** What the leader tab read on its minute check, for the other tabs
    *  (util/tabs.ts). reads and dismissed come with a full check only. */
   interface SharedNotifs { user: string; at: string; rows: any[]; groupIds: string[]; reads?: number[]; dismissed?: number[] }
@@ -5849,6 +5887,32 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       notifications.value = notifications.value.filter(
         n => !notificationDismissals.value.has(n.id));
     }
+
+    // A Retina access request bell is answered once the player has the
+    // retina (Ames 2026-11-06): the server marks it read for every reviewer
+    // (access.readGrantedBells), so every admin and device agrees. Asked once
+    // per unread request bell, and only when one is here.
+    // A Beta request bell, once the request is dealt with on the Access page
+    // (Ames 2026-11-12): access.readHandledBetaBells marks it read for every
+    // admin. Asked once per unread bell on this page.
+    const askBeta = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔑 Beta access request')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askBeta.length) {
+      for (const n of askBeta) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readHandledBetaBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
+    }
+    const askRequest = notifications.value.filter(n => n.target_type === 'user'
+      && String(n.title || '').startsWith('🔬 Retina access request from')
+      && !notificationReads.value.has(n.id) && !requestBellsAsked.has(n.id));
+    if (askRequest.length) {
+      for (const n of askRequest) requestBellsAsked.add(n.id);
+      void secureWrite<{ marked: number; ids: number[] }>('access.readGrantedBells').then(r => {
+        if (r && Array.isArray(r.ids) && r.ids.length) notificationReads.value = new Set([...notificationReads.value, ...r.ids]);
+      }).catch(() => { /* asked again on the next visit */ });
+    }
   }
 
   /**
@@ -5916,12 +5980,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
     const m = e.data || {};
     if (m.user !== userId.value || !Array.isArray(m.ids)) return;
+    if (m.unread) { for (const id of m.ids) notificationReads.value.delete(id); return; }
     const set = m.dismissed ? notificationDismissals : notificationReads;
     for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
     if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
   };
   function tellOtherTabs(ids: number[], dismissed = false) {
     if (ids.length) try { readsChannel?.postMessage({ user: userId.value, ids, dismissed }); } catch { /* closed */ }
+  }
+
+  /** Unread again (Ames 2026-11-12, To do board "mark unread"): drops the
+   *  read row, never one that hides a note the player deleted. */
+  async function markNotificationsUnread(ids: number[]) {
+    if (!userId.value || !ids.length) return;
+    for (const id of ids) notificationReads.value.delete(id);
+    try { readsChannel?.postMessage({ user: userId.value, ids, unread: true }); } catch { /* closed */ }
+    const { error } = await supabase.from('notification_reads').delete()
+      .eq('user_id', userId.value).eq('dismissed', false).in('notification_id', ids);
+    if (error) console.warn('[notifications] mark unread failed:', error.message);
   }
 
   async function markNotificationRead(notifId: number) {
@@ -6062,9 +6138,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
           // Only mark it when it was really posted: if chat was offline or the
           // server refused it, leave chat_posted_at null for a later try.
-          if (await chatStore.postAnnouncement(data.title, newNotifId)) {
-            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: new Date().toISOString() } })
-              .catch(() => { /* the cron's copy check is the fallback */ });
+          // Claimed BEFORE posting, as the catch-up below does: marking it
+          // only after the post let the catch-up (run by loadNotifications)
+          // post a second copy in between (Ames 2026-11-12: "Play" showed
+          // twice in chat, 0.7 s apart).
+          let claimed = false;
+          try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: newNotifId })).claimed; }
+          catch (e: any) { console.warn('[admin] claim chat announcement failed:', e?.message); }
+          if (claimed && !(await chatStore.postAnnouncement(data.title, newNotifId))) {
+            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: null } }).catch(() => {});
           }
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
@@ -6777,7 +6859,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, markNotificationsUnread, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead, markReportNotesRead, markReportsNotesRead,
@@ -7140,16 +7222,22 @@ export const useChatStore = defineStore('chat', () => {
   // (supabase-chat-presence-and-link-screenshots.sql). So a join notice can't
   // be forged, unlike the old open broadcast the security fix removed.
   // A hidden tab's heartbeat can come up to about 2 minutes apart.
-  const ONLINE_MS = 150_000;
+  // Online = seen in the last 5 minutes (Ames 2026-11-10: "count ppl online at
+  // 5 min intervals"), so a slow or background tab does not drop off the list.
+  const ONLINE_MS = 5 * 60_000;
   const HEARTBEAT_MS = 60_000;
-  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string }>>({});
+  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string; fromChat?: boolean }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
   const presenceTick = ref(0);
-  const onlineCount = computed(() => {
+  /** Who is online now. The count and the list both read this, so they
+   *  always agree (Ames 2026-11-10: "says 5 but there are 4 in list"; the
+   *  list used a shorter cutoff than the count). */
+  const onlinePeople = computed(() => {
     void presenceTick.value; // re-evaluate on the tick; Date.now() is not reactive
     const cutoff = Date.now() - ONLINE_MS;
-    return Object.values(online.value).filter(p => p.lastSeen >= cutoff).length;
+    return Object.entries(online.value).filter(([, p]) => p.lastSeen >= cutoff).map(([id, p]) => ({ id, ...p }));
   });
+  const onlineCount = computed(() => onlinePeople.value.length);
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let staleTimer: ReturnType<typeof setInterval> | null = null;
   // One tab per browser says the player is here and reads who else is
@@ -7167,11 +7255,27 @@ export const useChatStore = defineStore('chat', () => {
       });
     }
     if (useProofreadingBackendStore().userId) presenceLeader.join();
-    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader()) void heartbeat(); }, HEARTBEAT_MS);
+    // The leader beats for the browser, and so does any tab being looked at:
+    // a leader tab left asleep in the background otherwise went quiet and
+    // took the player off the list while they chatted in another tab
+    // (Ames 2026-11-10: Nseraf answered in chat but was not shown online).
+    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader() || !document.hidden) void heartbeat(); }, HEARTBEAT_MS);
     if (!staleTimer) staleTimer = setInterval(() => {
       presenceTick.value++;
       if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
     }, 60_000);
+  }
+  /** Be on the online list from sign in, whether or not chat was ever opened.
+   *  The heartbeat used to start only when the chat box connected, so a new
+   *  player on the Starship tour (chat not open yet) or anyone who had closed
+   *  chat was missing from "N online" (Ames 2026-11-12: "we want to show also
+   *  new users - everyone online!"). */
+  function startPresence() {
+    if (heartbeatTimer || !useProofreadingBackendStore().userId) return;
+    void heartbeat().then(() => loadOnline());
+    startPresenceLoops();
+    window.addEventListener('pagehide', leavePresence);
+    document.addEventListener('visibilitychange', beatWhenBack);
   }
   // The leader closed: this tab says so at once instead of up to a minute on.
   presenceLeader.onChange((leader, takeover) => {
@@ -7358,8 +7462,12 @@ export const useChatStore = defineStore('chat', () => {
       ({ data, error } = await supabase.from('chat_presence').select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500));
     }
     if (error || !data) return;
-    const next: Record<string, { name: string; lastSeen: number; dataset?: string }> = {};
+    const next: Record<string, { name: string; lastSeen: number; dataset?: string; fromChat?: boolean }> = {};
     for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime(), ...(r.dataset ? { dataset: r.dataset } : {}) };
+    // Someone who wrote in chat a moment ago stays listed even if their
+    // heartbeat is late (see the chat_messages listener).
+    const cutoff = Date.now() - ONLINE_MS;
+    for (const [id, p] of Object.entries(online.value)) if (!next[id] && p.lastSeen >= cutoff && p.fromChat) next[id] = p;
     online.value = next;
     if (share) shareResult('chat-online', { user: useProofreadingBackendStore().userId, online: next });
   }
@@ -7761,6 +7869,11 @@ export const useChatStore = defineStore('chat', () => {
       if (!row.user_id && !(row.rank === 'bot' && row.name === NURRO_NAME)) return;
       notePinRow(row);
       const date = new Date(row.created_at);
+      // Whoever just wrote is here, whatever their heartbeat says.
+      if (row.user_id && row.name && row.rank !== 'bot') {
+        const was = online.value[row.user_id];
+        online.value[row.user_id] = { ...was, name: row.name, lastSeen: Math.max(was?.lastSeen ?? 0, date.getTime()), fromChat: true };
+      }
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text,row.dataset), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null, replyTo:row.reply_to ?? null});
@@ -7865,6 +7978,7 @@ export const useChatStore = defineStore('chat', () => {
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
     const row: Record<string, any> = { name, rank, text, dataset: currentDatasetName(), notification_id: notificationId };
+    void heartbeat(); // writing in chat means you are here
     const post = (r: Record<string, any>) => supabase.from('chat_messages').insert(r);
     // With no live connection the message will not come back by itself: fetch it.
     const shown = () => { if (polling.value) void loadMissed(); };
@@ -7971,7 +8085,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, startPresence, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };

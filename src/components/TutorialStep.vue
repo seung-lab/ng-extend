@@ -47,6 +47,8 @@ const props = defineProps<{
     totalSteps: number,
     /** "Part 1 of 4 · Mark what you see": stepIndex and totalSteps then count within it. */
     partLabel?: string,
+    /** "Part 2 of 3", shown before the part's name. */
+    partOf?: string,
     /** The box's place in its whole tutorial, for its saved rewording (tutorial_edits.ts). */
     boxIndex?: number,
 }>();
@@ -63,6 +65,7 @@ const editing = ref(false);
 
 const emit = defineEmits<{
     next: [],
+    notNow: [],
     back: [],
     exitIntro: [],
 }>();
@@ -96,6 +99,7 @@ interface ComputedStep {
     html?: string,
     video?: string,
     image?: string,
+    embed?: string,
     left: string,
     top: string,
     cssClass?: string,
@@ -289,6 +293,7 @@ async function updateChipPosition() {
         titleIcon: step.titleIcon,
         video: step.video,
         image: step.image,
+        embed: step.embed,
         html,
         left,
         top,
@@ -370,6 +375,11 @@ function clampChip() {
 function onReclamp() { nextTick(clampChip); }
 
 const ready = ref(false);
+/** The box is taking a while (its view is loading a cell): a small card
+ *  says so instead of an empty screen (Ames, 2026-11-10). */
+const slow = ref(false);
+let slowTimer = 0;
+onUnmounted(() => window.clearTimeout(slowTimer));
 
 // Element currently wearing the .nge-tour-target highlight class so we can
 // remove it when the step changes or unmounts.
@@ -405,13 +415,18 @@ function settleWithin(p: Promise<unknown> | unknown, what: string): Promise<void
 
 onMounted(async () => {
     const startT = performance.now();
+    // Only while the view or the step's own setup is still loading: placing
+    // the box beside its target can take up to a second too, and the card
+    // flashed behind boxes that had nothing to load (Ames 2026-11-10).
+    let setupDone = false;
+    slowTimer = window.setTimeout(() => { if (!ready.value && !setupDone) slow.value = true; }, 500);
     if (props.step.state) {
-        // Advanced Interface: the annotation layers the player filled keep
+        // Advanced Interface and Annotations: the annotation layers the player filled keep
         // their points when a step loads its own view (Ames 2026-10-18:
         // "when I hit next it deleted my annotations!").
         // Its views also leave the Selection panel shut: it sat where the
         // layer side panel goes.
-        const advanced = tutorialStore.activeTutorial === 2;
+        const advanced = tutorialStore.activeTutorial === 2 || tutorialStore.activeTutorial === 15;
         const keep = advanced ? playerAnnotationLayers() : [];
         if (advanced) setStateRewriter(async (st: any) => {
             if (st && typeof st === 'object') st.selection = { ...(st.selection || {}), visible: false };
@@ -427,6 +442,8 @@ onMounted(async () => {
     if (props.step.onEnter) {
         await settleWithin(props.step.onEnter(), 'step setup');
     }
+    setupDone = true;
+    slow.value = false;
     console.log('updating position', performance.now() - startT);
     updateChipPosition();
     applyHighlight();
@@ -444,7 +461,8 @@ function viewerToolActive(): boolean {
     try {
         if (viewer?.globalToolBinder?.activeTool_ || viewer?.toolBinder?.activeTool_) return true;
     } catch (_) { /* fall through to the DOM check */ }
-    return !!document.querySelector('.neuroglancer-tool-status');
+    // A polyline being drawn (the Cilia Quest centerline): Enter finishes it.
+    return !!document.querySelector('.neuroglancer-tool-status, .nge-polyline-hint');
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -532,13 +550,66 @@ function observeChip() {
 // it stands. The box used to keep what it said when it opened, so a score
 // that came back still read "one moment" (Ames 2026-10-29: "I submitted but
 // no score?").
-watch(() => [props.step.title, props.step.text, props.step.html, props.step.nextLabel, props.step.image] as const, async ([title, text, html0, nextLabel, image]) => {
+watch(() => [props.step.title, props.step.text, props.step.html, props.step.nextLabel, props.step.image, props.step.embed] as const, async ([title, text, html0, nextLabel, image, embed]) => {
     if (!computedStep.value.title && !computedStep.value.html) return; // not placed yet: updateChipPosition fills it
     let html = html0;
     if (text) html = await marked.parse(text);
     if (html) html = html.replace(/<a\s+(?![^>]*target=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
-    computedStep.value = { ...computedStep.value, title, html, nextLabel, image };
+    computedStep.value = { ...computedStep.value, title, html, nextLabel, image, embed };
 });
+/**
+ * A line in a box that starts with "Tip:" folds into a small tip the player
+ * opens with a click (Ames, 2026-11-12, on Celia's edit of Cilia Quest box
+ * 8: a tip, not another sentence in the box). Works on the code's words and
+ * on admins' edits alike: everything from "Tip:" to the end of its paragraph
+ * moves into the tip.
+ */
+const TIP_AT = /(^|\n)\s*Tip:\s*/;
+function foldTips() {
+  const html = root.value?.querySelector('.chip .html');
+  if (!html || html.querySelector('.nge-box-tip')) return;
+  const walker = document.createTreeWalker(html, NodeFilter.SHOW_TEXT);
+  const starts: Text[] = [];
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+    const parent = n.parentElement;
+    if (!parent || parent.closest('.nge-box-tip, a, button, code')) continue;
+    // "Tip:" at the start of a line: a paragraph's start or after a <br>.
+    const m = TIP_AT.exec(n.data);
+    if (!m) continue;
+    const prev = n.previousSibling;
+    const lineStart = m.index > 0 || !prev || prev.nodeName === 'BR';
+    if (lineStart) starts.push(n);
+  }
+  for (const n of starts) {
+    const m = TIP_AT.exec(n.data)!;
+    const block = (n.parentElement?.closest('p, li') ?? n.parentElement) as HTMLElement;
+    const body = document.createElement('div');
+    body.className = 'nge-box-tip-body';
+    // Split off the tip's own words, then move every node after it in the block.
+    const tipText = n.splitText(m.index);
+    tipText.data = tipText.data.replace(/^\n?\s*Tip:\s*/, '');
+    const prevSib = tipText.previousSibling;
+    if (prevSib && prevSib.nodeName === 'BR') prevSib.remove();
+    let node: ChildNode | null = tipText;
+    // Climb to a direct child of the block, so siblings can be moved.
+    while (node && node.parentNode !== block) node = node.parentNode as ChildNode | null;
+    if (!node) continue;
+    while (node) { const next: ChildNode | null = node.nextSibling; body.appendChild(node); node = next; }
+    const tip = document.createElement('details');
+    tip.className = 'nge-box-tip';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Tip';
+    tip.appendChild(summary);
+    tip.appendChild(body);
+    tip.addEventListener('toggle', () => nextTick(clampChip));
+    // The line break and blank text the tip leaves at the block's end.
+    while (block.lastChild && (block.lastChild.nodeName === 'BR' || (block.lastChild.nodeType === 3 && !block.lastChild.textContent?.trim()))) block.lastChild.remove();
+    block.after(tip);
+    if (!block.textContent?.trim() && block !== html) block.remove();
+  }
+}
+watch(() => shownHtml.value, () => nextTick(foldTips), { immediate: true, flush: 'post' });
+
 watch(ready, (r) => { if (r) nextTick(observeChip); });
 watch(() => computedStep.value, () => nextTick(observeChip));
 
@@ -632,6 +703,7 @@ async function onHtmlClick(e: MouseEvent) {
 </script>
 
 <template>
+    <div v-if="!ready && slow" class="nge-tut-loading" role="status"><span class="nge-tut-loading__dot"></span>Loading the next view…</div>
     <div v-if="ready" ref="root" class="introductionStep" :class="{ hasVideo: computedStep.video !== undefined }">
         <div v-if="computedStep.modal" class="nge-overlay-blocker" @mousedown.stop.prevent></div>
         <!-- Hidden until it has a position: while the step's target was
@@ -652,7 +724,7 @@ async function onHtmlClick(e: MouseEvent) {
                 <span class="nge-chip-scan" aria-hidden="true"></span>
                 <div class="nge-chip-drag" title="Drag anywhere on this box to move it">
                     <span class="nge-chip-grip" aria-hidden="true">⠿</span>
-                    <span class="nge-chip-readout"><template v-if="partLabel">{{ partLabel }} · </template>{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
+                    <span class="nge-chip-readout"><template v-if="partLabel"><b v-if="partOf" class="nge-chip-partof">{{ partOf }}</b>{{ partLabel }} · </template>{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
                 </div>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <button v-if="backend.showAdminUi && boxIndex != null" type="button" class="nge-tut-pencil" title="Edit the words of this box (admins)" aria-label="Edit this box" @click="editing = true"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.6 12 2.5 13.5 4 10.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
@@ -666,11 +738,13 @@ async function onHtmlClick(e: MouseEvent) {
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
+                <iframe class="embed" v-if="computedStep.embed" :src="computedStep.embed" title="Animation" loading="eager"></iframe>
                 <div class="html" v-if="shownHtml" v-html="shownHtml" @click="onHtmlClick" @mouseover="onHtmlOver"></div>
                 <div class="nge-chip-foot">
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
                         <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
+                        <button v-if="computedStep.last && step.notNowLabel" @click="$emit('notNow')" class="nge-not-now">{{ step.notNowLabel }}</button>
                         <button v-if="computedStep.last" @click="if (!step.noConfetti) launchConfetti(); $emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'done' }}</button>
                         <button v-else @click="$emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'next' }}</button>
                     </div>
@@ -698,6 +772,18 @@ async function onHtmlClick(e: MouseEvent) {
 </template>
 
 <style scoped>
+.nge-tut-loading {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1000;
+    display: flex; align-items: center; gap: 10px; padding: 12px 18px;
+    background: rgba(10, 16, 28, 0.92); border: 1px solid rgba(120, 200, 255, 0.35); border-radius: 10px;
+    color: #cfe6ff; font-size: 14px; pointer-events: none;
+}
+.nge-tut-loading__dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(120, 200, 255, 0.3); border-top-color: #7cc8ff;
+    animation: nge-tut-spin 0.8s linear infinite;
+}
+@keyframes nge-tut-spin { to { transform: rotate(360deg); } }
 .nge-chip-drag {
     position: absolute;
     top: 6px;
@@ -816,6 +902,9 @@ async function onHtmlClick(e: MouseEvent) {
     padding-bottom: 20px;
     border-radius: 8px;
     display: grid;
+    /* One column no wider than the box: its contents wrap inside it instead
+       of running off the right edge (toknow #472, 2026-11-11). */
+    grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     font-size: 18px;
     font-weight: 300;
@@ -1001,6 +1090,14 @@ async function onHtmlClick(e: MouseEvent) {
     vertical-align: middle;
 }
 
+.chip .embed {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    max-height: max(140px, calc(100vh - 450px));
+    border: 0;
+    background: #04060B;
+}
 .chip video,
 .chip .image {
     width: 100%;
@@ -1281,6 +1378,8 @@ async function onHtmlClick(e: MouseEvent) {
     color: rgba(126, 224, 255, 0.62);
 }
 .nge-chip-grip { font-size: 11px; letter-spacing: 0; opacity: 0.7; }
+.nge-chip-partof { font-weight: 700; color: #9fd3ff; margin-right: 0.6em; }
+.nge-chip-partof::after { content: '·'; margin-left: 0.6em; color: rgba(159, 211, 255, 0.5); }
 .nge-chip-readout {
     font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
     font-variant-numeric: tabular-nums;
@@ -1350,9 +1449,42 @@ async function onHtmlClick(e: MouseEvent) {
 .chip.modal { padding-top: 46px; }
 .hasVideo .chip:not(.exitConfirm) .title { margin: 38px 20px 0; }
 
+.chip .html { min-width: 0; max-width: 100%; overflow-wrap: break-word; }
+/* A tall box keeps its title and buttons still and scrolls only its words
+   (toknow 2026-11-11, Cilia Quest Training: "fix title and scroll contents
+   only"). The whole box used to scroll, title and all. */
+.chip:not(.exitConfirm) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    row-gap: 14px;
+    overflow: hidden;
+}
+.chip:not(.exitConfirm) > * { flex: none; }
+.chip:not(.exitConfirm) > .html {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+}
+.chip:not(.exitConfirm) > .html::-webkit-scrollbar { display: none; }
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }
 .chip .html :deep(strong) { color: #ffffff; font-weight: 600; }
+/* A folded "Tip:" line (foldTips). */
+.chip .html :deep(.nge-box-tip) { margin: 0 0 0.7em; }
+.chip .html :deep(.nge-box-tip > summary) { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8fd0ff; list-style: none; }
+.chip .html :deep(.nge-box-tip > summary::-webkit-details-marker) { display: none; }
+.chip .html :deep(.nge-box-tip > summary::before) { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.15s; }
+.chip .html :deep(.nge-box-tip[open] > summary::before) { transform: rotate(45deg); }
+.chip .html :deep(.nge-box-tip-body) { margin-top: 6px; padding: 6px 10px; border-left: 2px solid rgba(143, 208, 255, 0.4); color: #cfe0f0; font-size: 0.92em; }
+/* Lists in a box (Merge box 7's tips showed with no bullets, tester
+   2026-11-10): something upstream resets list markers. */
+.chip .html :deep(ul) { list-style: disc outside !important; padding-left: 1.3em !important; margin: 0 0 0.7em !important; }
+.chip .html :deep(ol) { list-style: decimal outside !important; padding-left: 1.4em !important; margin: 0 0 0.7em !important; }
+.chip .html :deep(li) { display: list-item !important; margin: 0 0 0.35em; }
+.chip .html :deep(li::marker) { color: rgba(159, 211, 255, 0.85); }
 
 /* Footer: Back on the left, the action on the right, segmented rail below. */
 .ng-extend .chip .nge-chip-foot { background: rgb(6, 10, 19); padding-top: 8px; }
@@ -1414,6 +1546,18 @@ async function onHtmlClick(e: MouseEvent) {
     opacity: 0.6;
     transition: opacity 0.2s;
 }
+.ng-extend .chip button.nge-not-now {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    padding: 7px 4px;
+    color: rgba(196, 228, 255, 0.85);
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+.ng-extend .chip button.nge-not-now:hover { background: none; opacity: 1; }
+.ng-extend .chip button.nge-not-now + button.next { margin-left: 16px; }
 .ng-extend .chip button.back::before { content: '\2039'; margin-right: 8px; font-size: 15px; line-height: 0.8; letter-spacing: 0; }
 .ng-extend .chip button.back:hover { background: none; opacity: 1; }
 .ng-extend .chip .nge-chip-rail {

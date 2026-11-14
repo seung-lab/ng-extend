@@ -251,10 +251,11 @@ function buildActions(): PaletteItem[] {
   // The new player intro's Starship, admins only while it is built (Ames 2026-11-07).
   let adminUi = false;
   try { adminUi = useProofreadingBackendStore().showAdminUi; } catch { /* no store yet */ }
-  if (adminUi) {
+  // everyone on a test site (Ames 2026-11-08: invited players are looking)
+  if (adminUi || !location.hostname.startsWith('eyewire-ii-community-dot-')) {
     items.push({
       id: 'starship-flight',
-      label: 'New player intro (admin test)',
+      label: 'New player intro (test)',
       description: 'The new player intro ship flies through the Sandbox cell and lands on its soma',
       category: 'tool',
       icon: '🚀',
@@ -263,8 +264,8 @@ function buildActions(): PaletteItem[] {
     });
     items.push({
       id: 'starship-clear',
-      label: 'Starship: take it away',
-      description: 'Remove the landed Starship from the Sandbox cell',
+      label: 'Axon Runner: take it away',
+      description: 'Remove the landed Axon Runner from the Sandbox cell',
       category: 'tool',
       icon: '🚀',
       aliases: ['starship', 'ship', 'clear ship', 'remove ship'],
@@ -330,7 +331,7 @@ function buildActions(): PaletteItem[] {
     action: () => document.dispatchEvent(new CustomEvent('nge:toolbar-action', { detail: { id } })),
   });
   toolbarItem('findPath', 'Find Path', 'Draw the route through a cell between two points', '🛤️', ['find path', 'path', 'route', 'trace'], 'F');
-  toolbarItem('highlight', 'Highlight Mode', 'Mark the parts of a cell you have checked', '🖍️', ['highlight', 'checked', 'mark', 'paint'], 'Shift+H');
+  toolbarItem('highlight', 'Highlight Mode', 'Mark the parts of a cell you have checked', '🖍️', ['highlight', 'checked', 'mark', 'paint'], 'H');
   toolbarItem('lantern', 'Lantern', 'Light the cell around where you are and dim the rest', '🏮', ['lantern', 'light', 'dim', 'focus'], 'Shift+N');
   toolbarItem('undelete', 'Undelete', 'Bring back a cell you removed from view', '↩️', ['undelete', 'undo', 'restore', 'bring back'], 'Ctrl+Z');
   toolbarItem('batch', 'Batch Processor', 'Work on many cells at once', '📦', ['batch', 'many cells', 'bulk']);
@@ -494,7 +495,8 @@ function buildActions(): PaletteItem[] {
         icon: '⌨️',
         shortcut: row.keys.length === 2 ? row.keys.join(' or ') : row.keys.join(' '),
         aliases: ['key', 'keys', 'shortcut', row.group.toLowerCase(), ...row.keys.map(k => k.toLowerCase())],
-        action: runs ? runs.action : () => { close(); pressKey(row.strokes[0], row.where); },
+        // A mouse or touch control is only read: there is no key to press.
+        action: row.mouse ? () => {} : runs ? runs.action : () => { close(); pressKey(row.strokes[0], row.where); },
       });
     }
   } catch (e) {

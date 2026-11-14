@@ -172,3 +172,17 @@ test('in the game too: how they found us', async () => {
     {...io, me: {id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000011'}, who: {email: 'sam@example.org'}});
   assert.match(state.site_issues[0].message, /How they found us: A friend/);
 });
+
+// ── Email me Pyr news (Ames 2026-11-12) ─────────────────────────────────
+test('news by email: yes or no on the report when the form sends it, nothing otherwise', async () => {
+  const {state, io} = world();
+  await visitorBeta(visitor({emailOptIn: true}), io);
+  assert.match(state.site_issues[0].message, /Pyr news by email: yes/);
+  assert.ok(state.bells[0].body.includes('Pyr news by email: yes'), state.bells[0].body);
+  const {state: s2, io: io2} = world();
+  await visitorBeta(visitor({emailOptIn: false}), io2);
+  assert.match(s2.site_issues[0].message, /Pyr news by email: no/);
+  const {state: s3, io: io3} = world();
+  await visitorBeta(visitor({emailOptIn: 'yes'}), io3);
+  assert.ok(!/Pyr news/.test(s3.site_issues[0].message), 'only a real true or false counts');
+});

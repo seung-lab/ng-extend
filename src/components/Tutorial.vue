@@ -19,9 +19,12 @@ import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9, sandboxContinue, sandboxRestart, sandboxNext } from '../merger-sandbox';
 import { extensionSteps as steps13, extensionContinue, extensionRestart, extensionNext, EXTENSION_TUTORIAL } from '../extension-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
+import { steps as steps14, CILIA_TUTORIAL, awardCiliaAchievement } from '../tutorial-cilia';
+import { steps as steps15, ANNOTATIONS_TUTORIAL, awardAnnotationsAchievement } from '../tutorial-annotations';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
-import { endPractice } from '../practice';
+import { endPractice, pausePracticeTools } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
+import { startTutorialBoxJump } from '../tutorial_box_jump';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
@@ -40,12 +43,13 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13, 14: steps14, 15: steps15 };
 // The real lengths, for the landing's "is a tutorial under way" test in
 // store.ts (isUserInActiveTutorial), which cannot import the step lists.
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
 // Time on each box, for Admin Hub > Tutorial times (src/tutorial_timing.ts).
 startTutorialTiming();
+startTutorialBoxJump();
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
@@ -58,8 +62,10 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 8) return store.tutorialStep8;
     if (store.activeTutorial === 9) return store.tutorialStep9;
     if (store.activeTutorial === 13) return store.tutorialStep13;
+    if (store.activeTutorial === 15) return store.tutorialStep15;
     if (store.activeTutorial === 10) return store.tutorialStep10;
     if (store.activeTutorial === 11) return store.tutorialStep11;
+    if (store.activeTutorial === 14) return store.tutorialStep14;
     return store.tutorialStep4;
 });
 
@@ -73,9 +79,15 @@ const activeStep = computed(() => {
             from = index; while (from > 0 && steps.value[from - 1].part === part) from--;
             to = index; while (to < steps.value.length - 1 && steps.value[to + 1].part === part) to++;
         }
+        // Which part of how many, so a player sees how far through the whole
+        // tutorial they are, not just through this part (toknow #474).
+        const parts: string[] = [];
+        for (const s of steps.value) if (s.part && parts[parts.length - 1] !== s.part) parts.push(s.part);
+        const partNo = part ? parts.indexOf(part) + 1 : 0;
         return {
             index: index,
             step: steps.value[index],
+            partOf: partNo ? `Part ${partNo} of ${parts.length}` : '',
             first: index === 0,
             last: index === steps.value.length - 1,
             shownIndex: index - from,
@@ -199,6 +211,10 @@ function stepFrom(i: number, dir: 1 | -1): number {
 // window.__ngeStepPending): the first Next pressed without it says "try it
 // first", the second skips (Ames 2026-10-19: "can it detect if I didn't do it?").
 let nudged = -1;
+// "Not now" on a last box: finish the tutorial as usual, but don't start the
+// next one (toknow #442).
+let skipFollowOn = false;
+const notNow = () => { skipFollowOn = true; try { next(true); } finally { skipFollowOn = false; } };
 const next = (_auto?: unknown) => {
     const w = window as any;
     if (_auto !== true && w.__ngeStepPending && nudged !== store.getTutorialStep()) {
@@ -231,7 +247,12 @@ const next = (_auto?: unknown) => {
         console.info(`[tutorial] finished tutorial ${tutorialNum}; step is now ${store.getTutorialStep()} of ${steps.value.length}`);
         // The sandbox records each merger as it is cut, not the box closing.
         // The sandbox and the test record themselves (the test on the server).
-        if (tutorialNum !== 9 && tutorialNum !== EXTENSION_TUTORIAL && tutorialNum !== TEST_TUTORIAL) recordTutorialDone(tutorialNum);
+        if (tutorialNum !== 9 && tutorialNum !== EXTENSION_TUTORIAL && tutorialNum !== TEST_TUTORIAL) {
+            const recorded = recordTutorialDone(tutorialNum);
+            // Its Achievement, once the finish is on record (the server checks it).
+            if (tutorialNum === CILIA_TUTORIAL) void recorded.then(() => awardCiliaAchievement());
+            if (tutorialNum === ANNOTATIONS_TUTORIAL) void recorded.then(() => awardAnnotationsAchievement());
+        }
         // Merge and Cut both finished brings the Cell Library (toolbar_staging.ts).
         tutorialFinished(tutorialNum);
         // Say so if anything puts a box back in the next few seconds.
@@ -254,24 +275,41 @@ const next = (_auto?: unknown) => {
         if (tutorialNum === 6 || tutorialNum === 7) {
             document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'available' } }));
         }
+        // The Cilia Quest tutorial ends on "Open Cilia Quests" (its "Not now" only closes it).
+        if (tutorialNum === CILIA_TUTORIAL && !skipFollowOn) {
+            document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+        }
         if (tutorialNum === 1) {
             document.dispatchEvent(new CustomEvent('nge:prompt-username'));
             // Then its top bar icons arrive and Merge starts by itself.
             const doneStep = store.getTutorialStep();
-            getStartedFinished(() => store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
+            const startMerge = !skipFollowOn;
+            getStartedFinished(() => startMerge && store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
         }
     }
 };
 // Switching to another tutorial from the book menu also hands the cell back.
 const PRACTICE_TUTORIALS = [3, 5, 9, 13];
 watch(() => store.activeTutorial, (now, before) => {
-  if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) endPractice();
+  // The watch and the merge or cut tool go too: left running, they wrote
+  // "Waiting for your merge" and Help me into the next tutorial's box and
+  // kept merge mode on (Ames, 2026-11-10, Merge then Cilia Quest).
+  if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) {
+    stopWatching();
+    pausePracticeTools();
+    document.querySelectorAll('.introductionStepAnchor .nge-practice-status, .introductionStepAnchor .nge-practice-helprow').forEach(el => el.remove());
+    endPractice();
+  }
   // Leaving the test hands its cell back, unscored.
   if (before === TEST_TUTORIAL && now !== TEST_TUTORIAL) abandonTest();
 });
 // A practice step advances by itself when the edit lands (Amy: straight
 // to the success box).
 // Never on the last box: finishing a tutorial is the learner's own click.
+// One guide on screen at a time (toknow #441): the Starship tour closes an
+// open tutorial box as it starts, and a tutorial box showing ends that tour.
+document.addEventListener('nge:tutorial-close', () => { if (activeStep.value) exitIntro(); });
+watch(() => !!activeStep.value, on => { if (on) document.dispatchEvent(new CustomEvent('nge:tutorial-shown')); });
 document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(true); });
 const back = () => { (window as any).__ngeStepPending = false; store.setTutorialStep(Math.max(0, stepFrom(store.getTutorialStep() - 1, -1))); };
 // ── Resuming on page load (Nseraf 2026-09-29) ──
@@ -331,6 +369,9 @@ const needsResumePrompt = computed(() => !resumeDecided.value && !!activeStep.va
 // card) came up on every one (util/test_host.ts). There, nothing shows until
 // a tutorial is started from the menu.
 const startedHere = ref(false);
+// An admin's box link (?tutorialBox, tutorial_box_jump.ts) asked for this box:
+// show it now, with no "partway through" question and no test site quiet.
+document.addEventListener('nge:tutorial-box', () => { startedHere.value = true; resumeDecided.value = true; });
 if (QUIET_TEST_HOST) {
     const started = () => { startedHere.value = true; resumeDecided.value = true; };
     document.addEventListener('nge:tutorial-start', started);
@@ -414,8 +455,9 @@ const exitIntro = () => {
         </div>
     </div>
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
-        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
+        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :partOf="activeStep.partOf" :boxIndex="activeStep.index"
         v-on:next="next"
+        v-on:not-now="notNow"
         :class="{ 'nge-tut-under-card': testCardUp }"
         v-on:back="back" v-on:exitIntro="exitIntro" />
     </template>
