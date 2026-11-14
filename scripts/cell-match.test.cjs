@@ -380,8 +380,14 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const subMin = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-sub').offsetParent === null);
     check('collapsed: the note is hidden', subMin, subMin);
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-min-btn').click());
+    // The Play button stays away while a tutorial is on screen (Ames 2026-11-14): close the one the Sandbox opened.
+    await page.evaluate(() => document.querySelectorAll('.introductionStep, .introductionStepAnchor').forEach(e => e.remove()));
+    await page.waitForTimeout(800);
     const pressed = await page.evaluate(() => { let hit = false; const t = document.querySelector('.nge-play-chip') || document.querySelector('.nge-play-btn'); if (!t) return 'no play control'; t.addEventListener('click', e => { hit = true; e.stopImmediatePropagation(); }, { capture: true, once: true }); document.querySelector('#nge-cell-match .nge-cm-idle-go').click(); return hit; });
     check('Open my cell presses the game Play control', pressed === true, pressed);
+    const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
+    check('on the Sandbox the Play button is big', playBox === null || playBox >= 56, playBox);
+    await shot('play-big.png');
     await shot('cell-match-standby.png');
     await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));
     await page.waitForTimeout(3000);

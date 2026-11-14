@@ -700,7 +700,8 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
     // unless Play is on, when the card waits with the player.
     if (!checking || !r) {
       if (!onSandbox()) hide();
-      else if (!r) idle(checking ? 'Checking' : 'Standby', checking ? 'Reading your cell' : standbyNote(), !checking);
+      // The first reading is quiet: no light, no ring (Ames 2026-11-14: "I haven't even made an edit, this animation is a bit much"). They are for checking an edit.
+      else if (!r) idle(checking ? '' : 'Standby', checking ? 'Getting your cell ready' : standbyNote(), !checking);
       else idle('No key', 'No finished cell to compare this one with');
       return;
     }
