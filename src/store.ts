@@ -5228,8 +5228,19 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const known = liveRoots.value[t.id];
     return known && ends.includes(known) ? known : null;  // several pieces, no anchor yet
   }
-  async function refreshLiveRoots(): Promise<void> {
-    const mine = myActiveClaims();
+  /** `afterEdit`: only the claims an edit can have touched, those of this
+   *  dataset on screen in the last half minute (as refreshLaterRoots). Each
+   *  edit used to look up every open claim, in every dataset, against this
+   *  dataset's graph server: 2 x claims requests per edit (perf audit
+   *  2026-11-14). The others keep what they had. The Cell Library still asks
+   *  for all of them. */
+  async function refreshLiveRoots(afterEdit = false): Promise<void> {
+    let mine = myActiveClaims();
+    if (afterEdit) {
+      const ds = canonicalDataset(currentDatasetTag()), now = Date.now();
+      noteClaimsOnScreen();
+      mine = mine.filter(t => canonicalDataset(t.dataset || '') === ds && now - (claimSeenAt.get(t.id) ?? 0) < 30_000);
+    }
     if (!mine.length) return;
     // A claim still without an anchor gets one whenever its soma happens to
     // be loaded (one look, no waiting); one kept only in this browser is
@@ -5387,7 +5398,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     descendantsSeen.clear();
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
-    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
+    liveRootTimer = setTimeout(() => { refreshLiveRoots(true).catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
     // Once more a little later, in case the server's history was not ready.
     if (laterAgainTimer) clearTimeout(laterAgainTimer);
     laterAgainTimer = setTimeout(() => { descendantsSeen.clear(); refreshLaterRoots().catch(() => {}); }, 10_000);
