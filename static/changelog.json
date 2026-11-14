@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-14T14:55:00Z",
+      "title": "Less lag after removing a segment",
+      "items": [
+        "With thousands of annotation points open, removing a segment no longer freezes the page for seconds while Pyr checks which marks were on it."
+      ]
+    },
+    {
       "at": "2026-11-14T14:37:00Z",
       "title": "Your cell count, and a steadier MICrONS tour",
       "items": [
