@@ -179,6 +179,7 @@ export function loadHunts(): Promise<void> {
 
 function serverNow(): number { return Date.now() + huntState.offset; }
 
+let awaitingTries = 0;
 /** Ask again a moment after the next start or end, so the panel turns over on time. */
 function scheduleRefresh() {
   if (refreshTimer) clearTimeout(refreshTimer);
@@ -190,7 +191,12 @@ function scheduleRefresh() {
   // ceremony said "The awards are being given…" and stayed that way).
   const awaiting = huntState.hunts.some(h => (h.phase === 'ended' && !h.awarded) || (h.phase === 'live' && Date.parse(h.end_at) <= t))
     && huntState.hunts.some(h => t - Date.parse(h.end_at) < 10 * 60_000);   // at most ten minutes after an end
-  const wait = awaiting ? 5000 + Math.random() * 2000 : next ? Math.min(next - t + 500 + Math.random() * 1500, 2 * 3600_000) : 2 * 3600_000;
+  // Waiting for the awards: 5 s at first, then a little longer each time, up
+  // to 30 s (perf audit 2026-11-14: every player's tab asked every 5 to 7 s
+  // for up to ten minutes after a hunt).
+  awaitingTries = awaiting ? awaitingTries + 1 : 0;
+  const wait = awaiting ? Math.min(30_000, 5000 * Math.pow(1.3, awaitingTries - 1)) + Math.random() * 2000
+    : next ? Math.min(next - t + 500 + Math.random() * 1500, 2 * 3600_000) : 2 * 3600_000;
   refreshTimer = setTimeout(() => { void loadHunts(); }, wait);
 }
 
