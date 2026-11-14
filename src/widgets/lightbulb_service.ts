@@ -1305,12 +1305,17 @@ if (typeof window !== 'undefined' && (window as any).ngeOutboxTest) {
  * you add a CAVE label for axon complete?"). Not a proofread mark: an
  * "axon complete" tag in the dataset's cell status table, beside the
  * "complete" ones. Where the dataset's CAVE tables take no writes yet
- * (annotationLog: MEC since 2026-09-28) Pyr's edit log is the record, as for
- * a completion, with the label in it, until the table can be written.
- * True when it was recorded one way or the other.
+ * (annotationLog: MEC since 2026-09-28) Pyr's edit log is the record: the
+ * completion row itself says Axon complete (complete_task with
+ * metadata.completion 'axon', store.ts completeTask), which is also what
+ * counts it as an axon (ew_cell_completions.kind). A separate
+ * 'mark_axon_complete' row used to be sent here, but the server only takes
+ * the operations it knows (functions/activity-policy.js) and refused it, so
+ * it never reached the log (found 2026-11-14).
+ * True when CAVE took the label, or when the completion row is the record.
  */
 export const labelAxonComplete = clearsStatuses(labelAxonCompleteNow);
-async function labelAxonCompleteNow(caveServer: string, rootId: string, pt?: [number, number, number]): Promise<boolean> {
+async function labelAxonCompleteNow(caveServer: string, _rootId: string, pt?: [number, number, number]): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const pos = pt ?? getViewerPosition();
   let inCave = false;
@@ -1323,13 +1328,5 @@ async function labelAxonCompleteNow(caveServer: string, rootId: string, pt?: [nu
     inCave = !!res?.ok;
     if (!inCave) reportWriteFailure('cave_write', `axon complete label ${res ? res.status : 'network error'} on ${dsCfg.cellStatusTable}`, '');
   }
-  try {
-    const backend = useProofreadingBackendStore();
-    if (backend.userId) {
-      await backend.logEdit({ operation: 'mark_axon_complete', segment_after: rootId, coordinates: `${pos[0]}, ${pos[1]}, ${pos[2]}`,
-        metadata: { root_id: rootId, label: 'axon complete', in_cave: inCave } });
-      return true;
-    }
-  } catch (e) { console.warn('[lightbulb] axon complete: edit log failed', e); }
-  return inCave;
+  return inCave || !!dsCfg.annotationLog;
 }

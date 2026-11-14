@@ -36,6 +36,7 @@ import { onTextEditAsked } from '../text_edit_links';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
+import { myAxonTaskIds } from '../util/dataset_contribution';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
@@ -1506,9 +1507,13 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // The view it was finished in stays with the claim, for anyone jumping to
   // the completed cell (report 308). The server only takes it on an open claim.
   if (done.link) await backend.saveWorkingLink(cell.taskId, done.link).catch(() => false);
-  await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  // Axon complete is recorded as such, so it is counted as an axon
+  // (ew_cell_completions.kind) and still as a completed cell (Ames 2026-11-14).
+  await backend.completeTask(cell.taskId, done.finalSegId, done.coords, done.status === AXON_COMPLETE ? 'axon' : undefined);
   endedClaims.add(cell.taskId);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
+  // The list's "axon complete" label at once, before the log catches up.
+  { const next = new Set(myAxonTasks.value); if (done.status === AXON_COMPLETE) next.add(cell.taskId); else next.delete(cell.taskId); myAxonTasks.value = next; }
   // Axon complete: labelled as such, not marked proofread (lightbulb_service).
   if (done.status === AXON_COMPLETE) {
     const nums = (done.coords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));
@@ -1525,8 +1530,10 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // Notify UI that status changed (claim is already cleared by completeTask)
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   void backend.loadTasks();  // incremental, in the background
-  // Celebration!
+  // Celebration! Axon complete counts as a completed cell, so it gets its
+  // own (Ames 2026-11-14). Can't Complete stays quiet.
   if (proofread) triggerCellCelebration(done.finalSegId);
+  else if (done.status === AXON_COMPLETE) triggerCellCelebration(done.finalSegId, 'axon');
 }
 
 async function writeCaveCompletion(cell: CellRow, done: { finalSegId: string; coords: string }): Promise<boolean> {
@@ -1564,7 +1571,7 @@ import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import { play, takePlayEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
-async function triggerCellCelebration(segId?: string) {
+async function triggerCellCelebration(segId?: string, kind?: 'axon') {
   await backend.loadUserStats(); // refresh from DB for accurate count
   const statsStore = useUserStatsStore();
   const total = statsStore.stats.cellsSubmitted;
@@ -1573,6 +1580,7 @@ async function triggerCellCelebration(segId?: string) {
     totalCells: total,
     imageUrl: nurro,
     segId,
+    ...(kind ? { kind } : {}),
   };
 }
 
@@ -1620,6 +1628,38 @@ function showSheetError(error: Error) {
   claimError.value = error.message;
   console.warn('[cellLibrary] Sheet sync:', error.message);
   reportWriteFailure('sheet_sync', error.message || 'sheet write failed');
+}
+
+// ── Axon complete (MEC, Ames 2026-11-14) ─────────────────────────────
+// A completed MEC cell finished as Axon complete reads "axon complete" in the
+// list: yours from your own completion log (an upgrade to the whole cell
+// takes it off), anyone's from the sheet's Status column.
+const myAxonTasks = ref<Set<number>>(new Set());
+async function refreshMyAxonTasks() {
+  if (!backend.userId) { myAxonTasks.value = new Set(); return; }
+  myAxonTasks.value = await myAxonTaskIds(backend.userId).catch(() => new Set<number>());
+}
+const sheetAxonSegs = computed(() => new Set(queue.items
+  .filter(i => (i.sheetStatus || '').trim().toLowerCase() === AXON_COMPLETE.toLowerCase()).map(i => i.segId)));
+function isAxonComplete(cell: CellRow): boolean {
+  if (cell.status !== 'completed' || canonicalDataset(cell.dataset) !== 'pni_mec') return false;
+  if (cell.taskId != null && cell.assignedTo === backend.userId) return myAxonTasks.value.has(cell.taskId);
+  return sheetAxonSegs.value.has(cell.segId);
+}
+onMounted(() => {
+  void refreshMyAxonTasks();
+  document.addEventListener('nge:seg-status-changed', onAxonStatusChanged);
+});
+let axonRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+onBeforeUnmount(() => {
+  document.removeEventListener('nge:seg-status-changed', onAxonStatusChanged);
+  if (axonRefreshTimer) clearTimeout(axonRefreshTimer);
+});
+// The log takes a moment to hold the completion just made, and its read is
+// kept for a minute: look once, after that (one timer, however many events).
+function onAxonStatusChanged() {
+  if (axonRefreshTimer) clearTimeout(axonRefreshTimer);
+  axonRefreshTimer = setTimeout(() => { axonRefreshTimer = null; void refreshMyAxonTasks(); }, 65_000);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -4423,7 +4463,8 @@ const panelStyle = computed(() => ({
                 </div>
                 <div class="nge-cl-row-meta">
                   <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
-                  <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
+                  <span class="nge-cl-badge" :class="statusClass(cell.status)"
+                        :title="isAxonComplete(cell) ? 'Axon complete: the axon is proofread to every end. The whole cell can still be completed.' : undefined">{{ isAxonComplete(cell) ? 'axon complete' : statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>

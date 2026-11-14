@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-14T19:36:00Z",
+      "title": "MEC: Axon complete and Cell complete, counted apart",
+      "items": [
+        "On MEC, finishing a cell as Axon complete is now recorded as an axon, and Complete as the whole cell. Both still count as one completed cell.",
+        "Your MEC card in Profile > Datasets and the Now entering card show how many were whole cells and how many were axons.",
+        "Finishing a cell as Axon complete now gets its own celebration, and the Cell Library labels the cell axon complete.",
+        "An axon-complete cell can be finished as the whole cell later with Mark as Proofread. It stays one cell and becomes a whole cell, in your counts and in the sheet."
+      ]
+    },
+    {
       "at": "2026-11-14T18:11:12Z",
       "title": "Extension Sandbox fixes",
       "items": [
