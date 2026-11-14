@@ -493,7 +493,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 });
 
 // ── Cell completion celebration ──
-const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean } | null>(null);
+const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; kind?: 'axon'; datasetAxons?: number } | null>(null);
 
 /** How much a completed cell shows (Settings): the full congratulations, a
  *  small note at the top, or nothing. Read when a cell is completed, so a
@@ -525,10 +525,10 @@ watch(() => backend.pendingCellCelebration, (pending) => {
   if (backend.userId && !(pending.batchCount && pending.batchCount > 1)) {
     const uid = backend.userId;
     const stillThis = () => cellCelebration.value && cellCelebration.value.imageUrl === shown.imageUrl && cellCelebration.value.segId === shown.segId;
-    const show = (r: { label: string; here: number; all: number }) => {
+    const show = (r: { label: string; here: number; all: number; axonsHere?: number }) => {
       if (!stillThis()) return;
       cellCelebration.value = { ...cellCelebration.value!, totalCells: r.all, counted: true,
-        ...(r.label && r.here > 0 ? { datasetLabel: r.label, datasetCells: r.here } : {}) };
+        ...(r.label && r.here > 0 ? { datasetLabel: r.label, datasetCells: r.here, datasetAxons: r.axonsHere ?? 0 } : {}) };
     };
     // The list could not be read: fall back to the profile's own total.
     const giveUp = () => { if (stillThis()) cellCelebration.value = { ...cellCelebration.value!, counted: true }; };
@@ -709,7 +709,7 @@ function playBatchChime() {
     <Transition name="nge-cell-chip">
       <button v-if="cellCelebration && cellMessageMode === 'small'" type="button" class="nge-cell-chip" title="Click to dismiss" @click="dismissCellCelebration">
         <span class="nge-cell-chip-check" aria-hidden="true">✓</span>
-        <span class="nge-cell-chip-title">{{ cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
+        <span class="nge-cell-chip-title">{{ cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : cellCelebration.kind === 'axon' ? 'Axon complete' : 'Cell complete' }}</span>
         <span v-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
         <template v-else-if="cellCelebration.counted">
           <span v-if="cellCelebration.datasetLabel" class="nge-cell-chip-count">{{ cellCelebration.datasetLabel }} <b>{{ cellCelebration.datasetCells }}</b></span>
@@ -724,13 +724,15 @@ function playBatchChime() {
         <div class="nge-cell-card">
           <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
           <div class="nge-cell-text">
-            <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
+            <div class="nge-cell-congrats">{{ cellCelebration.kind === 'axon' ? 'Congratulations, Axon Complete!' : 'Congratulations, Cell Complete!' }}</div>
             <div class="nge-cell-thanks">Thank you for helping to map the brain. For science!</div>
             <!-- No number until both are counted, so a stale one never flashes first. -->
             <template v-if="cellCelebration.counted">
             <div v-if="cellCelebration.datasetLabel" class="nge-cell-stats">+1 cell brings your {{ cellCelebration.datasetLabel }} total to <strong>{{ cellCelebration.datasetCells }}</strong></div>
             <!-- A second line only when there is more to say: with every cell on
                  one dataset it would repeat the number above. -->
+            <!-- MEC: Axon complete and the whole cell both count; the split, once there are axons (Ames 2026-11-14). -->
+            <div v-if="cellCelebration.datasetLabel && cellCelebration.datasetAxons" class="nge-cell-stats nge-cell-stats--all">{{ (cellCelebration.datasetCells ?? 0) - cellCelebration.datasetAxons }} whole {{ (cellCelebration.datasetCells ?? 0) - cellCelebration.datasetAxons === 1 ? 'cell' : 'cells' }} and {{ cellCelebration.datasetAxons }} {{ cellCelebration.datasetAxons === 1 ? 'axon' : 'axons' }} on {{ cellCelebration.datasetLabel }}</div>
             <div v-if="cellCelebration.datasetLabel && cellCelebration.totalCells > (cellCelebration.datasetCells ?? 0)" class="nge-cell-stats nge-cell-stats--all">{{ cellCelebration.totalCells }} cells across all datasets</div>
             <div v-else-if="!cellCelebration.datasetLabel" class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
             </template>

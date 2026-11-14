@@ -332,3 +332,14 @@ test('quests: a new player\'s first ten submits are marked New Player, only into
  // A sheet without the column still takes the submit.
  assert.doesNotThrow(()=>planQuestUpdate([QH,qrow()],'s',quest,input,qme,'11/6/2026',{newPlayer:true}));
 });
+test('MEC: Complete replaces Axon complete (the upgrade), never the other way, and only on MEC',()=>{
+ const header=['Segment ID','Proofreader','Status','Date Ended'];
+ const statusAfter=(dataset,status,was)=>{
+  const plan=planSheetUpdate([header,['123','Someone',was,'']],'Cells','123',sheetValues({...input,dataset,status},me,{...task,dataset},'11/14/2026'));
+  return Object.fromEntries([...plan.data,...plan.userEnteredData].map(x=>[x.range.split('!')[1],x.values[0][0]])).C2;
+ };
+ assert.equal(statusAfter('pni_mec','Complete','Axon complete'),'Complete');
+ assert.equal(statusAfter('pni_mec',undefined,'Axon complete'),'Complete');
+ assert.equal(statusAfter('pni_mec','Axon complete','Complete'),undefined);
+ assert.equal(statusAfter('pni_mec','Axon complete','WIP'),'Axon complete');
+});

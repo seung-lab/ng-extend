@@ -25,7 +25,7 @@ import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {isMobileRef} from './util/mobile';
-import {currentDatasetTag, canonicalDataset, currentSegLayer, DATASETS} from './datasets';
+import {currentDatasetTag, canonicalDataset, currentSegLayer, currentSegLayerName, segLayerName, DATASETS} from './datasets';
 import {editsAny} from './util/dataset_access';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
@@ -4248,8 +4248,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
-  /** Mark a task as completed with final segment/soma data. */
-  async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string) {
+  /** Mark a task as completed with final segment/soma data. `completion`
+   *  'axon': an MEC Axon complete, recorded on the log row so it is counted
+   *  as an axon (ew_cell_completions.kind, Ames 2026-11-14). */
+  async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string, completion?: 'axon') {
     if (!userId.value) return;
     try {
       await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
@@ -4259,7 +4261,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       await logEdit({
         operation: 'complete_task',
         task_id: taskId,
-        metadata: { final_segment_id: finalSegId, soma_coords: somaCoords },
+        metadata: { final_segment_id: finalSegId, soma_coords: somaCoords, ...(completion ? { completion } : {}) },
       });
 
       // Find segment_id for the feed
@@ -5515,6 +5517,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Save a view (short link) as this claim's work in progress, so coming
    *  back to the cell restores its annotation layers (Amy 2026-09-28). */
   async function saveWorkingLink(taskId: number, link: string): Promise<boolean> {
+    // Never a view of another dataset (hi529 2026-11-14: an MEC claim saved
+    // a Retina view, so opening it always landed on Retina, where the MEC
+    // claim is not listed and could not be released). Only a dataset Pyr
+    // knows counts as "another": MEC states can name their layer just "seg".
+    const task = tasks.value.find(x => x.id === taskId);
+    const here = canonicalDataset(currentSegLayerName());
+    if (task?.dataset && here && here !== canonicalDataset(task.dataset)
+        && DATASETS.some(ds => canonicalDataset(segLayerName(ds)) === here)) {
+      console.warn('[backend] saveWorkingLink: the view is of', here, 'not', task.dataset, '- not saved');
+      return false;
+    }
     try {
       await taskAction('save_link', { id: taskId, link });
       const t = tasks.value.find(x => x.id === taskId);
@@ -5683,7 +5696,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   /** Trigger badge celebration from notification click — AchievementToast watches this */
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
-  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string } | null>(null);
+  /** kind 'axon': an MEC cell completed as Axon complete (its own wording). */
+  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; kind?: 'axon' } | null>(null);
 
   /** Read, or a Pyr Update (sent to everyone) more than 5 days old: those
    *  count as read, so the daily updates do not pile up as unread (Ames

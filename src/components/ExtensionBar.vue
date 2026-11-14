@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
-import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice } from '../util/play';
+import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice, stopPlay } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -1403,6 +1403,12 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     <button v-if="play.on && offersChoice()" class="nge-play-switch" type="button" @click="choosePlay"
             title="Change what you play, or stop playing" aria-label="Change what you play, or stop playing">
       <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4h7.5M7.5 2l2 2-2 2M10 8H2.5M4.5 6l-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <!-- Everywhere else (MEC, the Sandbox) there is nothing to switch to, so
+         the small button stops playing (Ames 2026-11-14: no way out on MEC). -->
+    <button v-else-if="play.on" class="nge-play-switch" type="button" @click="stopPlay"
+            title="Stop playing" aria-label="Stop playing">
+      <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
     </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">

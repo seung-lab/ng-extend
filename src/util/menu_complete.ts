@@ -21,7 +21,7 @@ import { currentDatasetTag, currentSegLayer } from '../datasets';
 import { removeHighlightsOfCells } from './highlight';
 import { ancestorAmong, getRootFromSupervoxel } from '../widgets/pcg_service';
 import { mintShortStateLink } from './state_link';
-import { syncCellToSheet } from '../sheet_sync';
+import { syncCellToSheet, completeStatusesFor, AXON_COMPLETE } from '../sheet_sync';
 
 export interface MenuCompletionPlan {
   /** Set when the completion must not go ahead; shown to the player. */
@@ -259,7 +259,14 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan, opts: Finis
       task = backend.tasks.find(t => t.segment_id === row.segId);
       if (!task) throw new Error('Saved, but the Cell Library claim could not be found.');
     }
-    await backend.completeTask(task.id, plan.segId, here().join(', '));
+    await backend.completeTask(task.id, plan.segId, here().join(', '), opts.status === AXON_COMPLETE ? 'axon' : undefined);
+  } else if (opts.status !== AXON_COMPLETE && completeStatusesFor(plan.dataset).some(s => s.value === AXON_COMPLETE)) {
+    // The player's own MEC cell, finished before (as Axon complete), now
+    // completed as the whole cell: the upgrade (Ames 2026-11-14). Logged
+    // against its claim so it stays the same cell even under a new root id
+    // (MEC has no lineage check), and becomes a whole cell, counted once.
+    await backend.logEdit({ operation: 'complete_task', task_id: task.id, dataset: plan.dataset,
+      metadata: { final_segment_id: plan.segId, upgrade: 'cell' } });
   }
 
   const link = opts.link !== undefined ? opts.link : await mintShortStateLink();
