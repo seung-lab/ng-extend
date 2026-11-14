@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-14T14:37:00Z",
+      "title": "Your cell count, and a steadier MICrONS tour",
+      "items": [
+        "The message after you complete a cell now counts the cell you just finished, so its total matches your real count.",
+        "In the MICrONS part of the Starship tour, scrolling and dragging now zoom and turn around the cell, not a point behind the text box.",
+        "The tour starts closer in on a cell and its partner, the scan box no longer covers the text box, and a double-click no longer hides the tour's cells."
+      ]
+    },
+    {
       "at": "2026-11-13T22:08:00Z",
       "title": "The Starship stays in view",
       "items": [
