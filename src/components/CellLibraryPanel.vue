@@ -3272,9 +3272,12 @@ async function playSkip(which?: CellRow) {
 /** Stop: keep the task in hand and open the full library again. */
 function playStop() {
   stopPlay();
-  startNote.value = '';
-  expandAndStay();
 }
+/** Play stopped from anywhere (the top bar's stop button, the choice card):
+ *  the full library comes back, with the cell in hand still claimed. */
+const onPlayStopped = () => { startNote.value = ''; if (slim.value) expandAndStay(); };
+onMounted(() => document.addEventListener('nge:play-stopped', onPlayStopped));
+onBeforeUnmount(() => document.removeEventListener('nge:play-stopped', onPlayStopped));
 
 /** Your open claims in this dataset, in list order: what "next" steps through. */
 const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
