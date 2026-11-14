@@ -19,6 +19,9 @@ import { caveMirrorCells, editHours, helpRequestDatasets } from './player_summar
 
 export interface DatasetContribution {
   edits: number; completions: number; helpRequests: number;
+  /** Of `completions`, the MEC cells completed as Axon complete (Ames
+   *  2026-11-14: both count as a completed cell, the split is shown). */
+  axons: number;
   /** Cells the dataset's own records credit to this player that were not
    *  completed in the game (BANC, FlyWire...). Shown on the dataset card as
    *  its own number and counted nowhere else: not in cells completed, the
@@ -96,6 +99,19 @@ async function loggedCells(uid: string, tags: string[]): Promise<CompletedCell[]
   } catch { return null; }
 }
 
+/** The player's own Cell Library claims (task ids) completed as Axon complete
+ *  and not since completed as the whole cell (Ames 2026-11-14), from the same
+ *  log and rule as the counts. Empty when the log cannot be read. */
+export async function myAxonTaskIds(uid: string): Promise<Set<number>> {
+  const cells = await loggedCells(uid, ['pni_mec']);
+  const out = new Set<number>();
+  for (const c of cells ?? []) {
+    const m = c.kind === 'axon' ? /^task:(\d+)$/.exec(c.cell) : null;
+    if (m) out.add(Number(m[1]));
+  }
+  return out;
+}
+
 /**
  * Both numbers of the completion celebration from ONE place: the database's
  * own list of a player's completed cells (ew_cell_completions, the rule the
@@ -106,24 +122,33 @@ async function loggedCells(uid: string, tags: string[]): Promise<CompletedCell[]
  * from one list, a dataset can never have more cells than all datasets do.
  * Null when the list can not be read.
  */
-export async function celebrationCellCounts(uid: string, since = 0): Promise<{ label: string; here: number; all: number; fresh: boolean } | null> {
+export async function celebrationCellCounts(uid: string, since = 0): Promise<{ label: string; here: number; all: number; fresh: boolean; axonsHere: number } | null> {
   const ds = findDatasetByCanonical(canonicalDataset(currentDatasetTag()));
   try {
     const { supabase } = await import('../supabase');
-    const rows: { dataset: string; done_at?: string }[] = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell,done_at')
-        .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + 999);
-      if (error || !data) return null;
-      rows.push(...(data as any[]));
-      if (data.length < 1000) break;
-    }
+    const read = async (cols: string) => {
+      const rows: { dataset: string; done_at?: string; kind?: string }[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase.from('ew_cell_completions').select(cols)
+          .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + 999);
+        if (error || !data) return null;
+        rows.push(...(data as any[]));
+        if (data.length < 1000) break;
+      }
+      return rows;
+    };
+    // kind (Axon complete or the whole cell, supabase-mec-axon-complete.sql):
+    // read without it while the database does not have the column yet.
+    const rows = (await read('dataset,cell,done_at,kind')) ?? (await read('dataset,cell,done_at'));
+    if (!rows) return null;
     const keys = new Set(ds ? datasetTagVariants(ds).map(datasetKey) : []);
-    const here = rows.filter(r => keys.has(datasetKey(r.dataset))).length;
+    const mine = rows.filter(r => keys.has(datasetKey(r.dataset)));
+    const here = mine.length;
+    const axonsHere = mine.filter(r => r.kind === 'axon').length;
     // fresh: the list already holds a cell completed at or after `since`, so
     // the cell just completed is in these numbers (#526).
     const fresh = rows.some(r => r.done_at && new Date(r.done_at).getTime() >= since);
-    return { label: ds ? (ds.shortLabel || ds.label) : '', here, all: rows.length, fresh };
+    return { label: ds ? (ds.shortLabel || ds.label) : '', here, all: rows.length, fresh, axonsHere };
   } catch { return null; }
 }
 
@@ -174,5 +199,6 @@ export async function loadContribution(ds: DatasetEntry, uid: string): Promise<D
   ]);
   // A cell completed in the game is already in cells completed: not twice.
   for (const c of logged ?? []) for (const r of c.roots) mirror.delete(r);
-  return { edits, completions: logged?.length ?? 0, helpRequests, outside: mirror.size };
+  const axons = (logged ?? []).filter(c => c.kind === 'axon').length;
+  return { edits, completions: logged?.length ?? 0, axons, helpRequests, outside: mirror.size };
 }
