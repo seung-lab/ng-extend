@@ -1259,6 +1259,7 @@ const tuckedNotifCount = computed(() => barTucked.value
   ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadStaffNotificationCount) : 0);
 let notifDot: HTMLButtonElement | null = null;
 let notifDotTimer: ReturnType<typeof setInterval> | null = null;
+let notifDotHtml = '';
 function placeNotifDot() {
   const n = tuckedNotifCount.value;
   if (!n) { notifDot?.remove(); return; }
@@ -1271,8 +1272,16 @@ function placeNotifDot() {
     for (const t of ['pointerdown', 'mousedown', 'wheel']) notifDot.addEventListener(t, e => e.stopPropagation());
   }
   const bell = toolbarDefs.value.find(d => d.id === 'notif')?.svg ?? '';
-  notifDot.innerHTML = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
-  notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
+  // Only rewritten when it says something new: this runs every second.
+  const html = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
+  if (notifDotHtml !== html) {
+    notifDotHtml = html;
+    notifDot.innerHTML = html;
+    notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
+  }
+  // Already in a 3D panel that is still shown: nothing to look for.
+  const at = notifDot.parentElement;
+  if (at && at.classList.contains('nge-3d-panel') && at.isConnected && at.offsetWidth > 0) return;
   // The 3D view is rebuilt when the layout changes, so look for it each time.
   const panel = [...document.querySelectorAll<HTMLElement>('.nge-3d-panel')].find(p => p.offsetWidth > 0);
   const home = panel ?? document.body;
