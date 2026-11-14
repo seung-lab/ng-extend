@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-14T20:58:00Z",
+      "title": "Your cell is never an empty screen",
+      "items": [
+        "When the view saved with your cell does not show it, Play now opens your cell at its cell body instead of leaving you on an empty screen."
+      ]
+    },
+    {
       "at": "2026-11-14T20:18:00Z",
       "title": "Practice cells repair",
       "items": [

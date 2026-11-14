@@ -69,7 +69,7 @@ export function stopPlay() {
 }
 
 /** Ask the Cell Library to go to (or claim) a task of this kind. */
-function askEnter(k: PlayKind) {
+export function askEnter(k: PlayKind) {
   try { sessionStorage.setItem(ENTER_KEY, JSON.stringify({ kind: k, at: Date.now() })); } catch { /* the library just opens */ }
 }
 /** The Cell Library takes the note once: the kind to enter, or null. */
