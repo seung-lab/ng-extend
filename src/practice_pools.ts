@@ -60,7 +60,7 @@ export const SANDBOX_TOTAL = SANDBOX_CELLS.length;
  *   to be a fair exercise (Ames, 2026-10-12). Hint view
  *   nglstate 5102292558675968, should it come back.
  */
-const RETIRED_SANDBOX_IDS = [
+export const RETIRED_SANDBOX_IDS = [
   '844165a8-5b97-40b0-afba-42125d343dcf',
   // f11ad22b (Celia's "Merger sandbox 5"), retired 2026-10-28: two joins (a
   // thin axon and the join the check spots measure), and one check spot on
