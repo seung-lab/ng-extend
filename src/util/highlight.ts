@@ -103,8 +103,16 @@ function watchHandPoints(src: any) {
   watchedSources.add(src);
   const known = new Set<string>();
   for (const ann of src) known.add(String(ann.id));
+  // Only a change that adds a point needs the walk: a drag or a move fires
+  // this many times a second, and with 13,000 marks each walk was felt (perf
+  // audit 2026-11-14).
+  const sizeOf = () => { const n = src.annotationMap?.size; return typeof n === 'number' ? n : -1; };
+  let lastSize = sizeOf();
   try {
     src.changed.add(() => {
+      const n = sizeOf();
+      if (n >= 0 && n <= lastSize) { lastSize = n; return; }
+      lastSize = n;
       for (const ann of src) {
         const id = String(ann.id);
         if (known.has(id)) continue;
