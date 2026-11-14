@@ -3257,6 +3257,21 @@ exports.ewQuestReview = onRequest(
 // read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 // Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
+// ── Sandbox cells back in play (Ames 2026-11-14) ───────────────────────────
+// A completed Sandbox cell is put back as it was handed out (its edits since
+// then undone, checked supervoxel by supervoxel) and served again as a new
+// pending task; the completed task stays with its player. Rules in
+// sandbox-reset.js; table in supabase-sandbox-cell-resets.sql.
+//   firebase deploy --only functions:ewSandboxReset --project eyewire-ii-e4d52
+exports.ewSandboxReset = onSchedule(
+  { schedule: "every 10 minutes", region: "us-central1", secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 540, memory: "512MiB", maxInstances: 1 },
+  async () => {
+    const { run } = require("./sandbox-reset");
+    const sb = ewSb(ewServiceKey.value().trim());
+    await run({ fetch, caveToken: ewCaveToken.value().trim(), sb }, { limit: 4 });
+  }
+);
+
 exports.ewUsersSheet = onSchedule(
   { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 300, retryCount: 0 },
   async () => {
