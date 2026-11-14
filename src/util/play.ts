@@ -21,7 +21,7 @@
  */
 import { reactive } from 'vue';
 import { DATASETS, findDatasetBySegName, currentSegLayerName, canonicalDataset, segLayerName, switchToDataset, type DatasetEntry } from '../datasets';
-import { datasetAccess } from './dataset_access';
+import { datasetAccess, loadDatasetPermissions, refreshDatasetPermissions } from './dataset_access';
 import { startDatasetTransition, transitionDone } from './dataset_transition';
 import { skipNextViewRestoreOffer } from './view_autosave';
 import { QUEST_DATASET } from '../annotation_quests';
@@ -98,10 +98,23 @@ export function canQuest(): boolean { return canClaimOn(RETINA()); }
  *  cells, else the Sandbox before edit access. */
 export function mappingDataset(): DatasetEntry | undefined {
   const here = datasetHere();
-  if (here?.cellTasks && here.section !== 'viewonly' && canClaimOn(here)) return here;
+  // Before CAVE has answered, the cell dataset on screen is where to play:
+  // "unknown" never locks anything (hi529 2026-11-14, just let into MEC, was
+  // sent to Retina by Play while the answer was on its way).
+  if (here?.cellTasks && here.section !== 'viewonly' && (canClaimOn(here) || datasetAccess(here.caveDataset) === 'unknown')) return here;
   const retina = RETINA();
   if (canClaimOn(retina)) return retina;
   return SANDBOX();
+}
+
+/** Hear from CAVE (at most 4 s each) before Play picks the dataset, and ask
+ *  again when the cell dataset on screen is not editable by what this page
+ *  heard: access may have been granted since (an MEC invite). */
+async function settleAccess() {
+  const wait = (p: Promise<void>) => Promise.race([p, new Promise<void>(r => setTimeout(r, 4000))]);
+  await wait(loadDatasetPermissions());
+  const here = datasetHere();
+  if (here?.cellTasks && here.section !== 'viewonly' && !canClaimOn(here)) await wait(refreshDatasetPermissions());
 }
 
 /** "Bipolar cells on Retina", "cells in the Sandbox", for the choice card. */
@@ -120,6 +133,7 @@ export function mappingWhere(): string {
  */
 export async function startPlay(k: PlayKind, on?: DatasetEntry, justOpen = false): Promise<boolean> {
   play.choosing = false;
+  if (!on && k === 'cells') await settleAccess();
   const target = on ?? (k === 'quests' ? RETINA() : mappingDataset());
   if (!target) return false;
   if (k === 'quests' && !canQuest()) return false;
