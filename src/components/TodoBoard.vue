@@ -1072,11 +1072,34 @@ async function saveNotes(c: Card) {
   if (editNotes.value === c.notes) return;
   await save(c, { notes: editNotes.value }, { tagIds: newTags(c.notes, editNotes.value) });
 }
+/** How far in the next new item goes (Ames 2026-11-14: Tab in the box moves it in). */
+const newItemLevel = ref(0);
+const newItemMost = (c: Card) => (c.checklist.length ? Math.min(2, (c.checklist[c.checklist.length - 1].level || 0) + 1) : 0);
 async function addItem(c: Card) {
   const t = newItem.value.trim();
   if (!t) return;
   newItem.value = '';
-  await save(c, { checklist: [...c.checklist, { text: t, done: false }] }, { tagIds: tagsIn(t) });
+  const level = Math.min(newItemLevel.value, newItemMost(c));
+  await save(c, { checklist: [...c.checklist, level ? { text: t, done: false, level } : { text: t, done: false }] }, { tagIds: tagsIn(t) });
+}
+/** Tab and Shift+Tab in a checklist box: in and out, unless Tab just picked an @ name. */
+function onNewItemKey(c: Card, e: KeyboardEvent) {
+  onMentionKey(e);
+  if (e.defaultPrevented || e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+  e.preventDefault();
+  newItemLevel.value = Math.max(0, Math.min(newItemMost(c), Math.min(newItemLevel.value, newItemMost(c)) + (e.shiftKey ? -1 : 1)));
+}
+function onItemEditKey(c: Card, i: number, e: KeyboardEvent) {
+  onMentionKey(e);
+  if (e.defaultPrevented || e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+  e.preventDefault();
+  const it = c.checklist[i];
+  if (!it) return;
+  const most = i > 0 ? Math.min(2, (c.checklist[i - 1].level || 0) + 1) : 0;
+  const level = Math.max(0, Math.min(most, (it.level || 0) + (e.shiftKey ? -1 : 1)));
+  const t = itemDraft.value.trim();
+  // The words typed so far are kept, and the box stays open.
+  if (level !== (it.level || 0) || (t && t !== it.text)) void setItem(c, i, { level, ...(t ? { text: t } : {}) });
 }
 const setItem = (c: Card, i: number, patch: Partial<Item>) => save(c, { checklist: c.checklist.map((x, k) => {
   if (k !== i) return x;
@@ -2821,12 +2844,11 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done, 'nge-todo-check--now': justTicked === openCard.id + ':' + i }" :style="it.level ? { marginLeft: it.level * 24 + 'px' } : undefined">
             <label><input type="checkbox" class="nge-todo-tick" :checked="it.done" @change="checkItem(openCard, i, $event)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <input v-if="itemEdit === openCard.id + ':' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
                      @click.prevent @keydown.enter.prevent="saveItemText(openCard, i)" @keydown.esc="itemEdit = null" @blur="saveItemText(openCard, i)"
-                     @keydown.tab.exact.prevent="itemLevel(openCard, i, 1)" @keydown.shift.tab.prevent="itemLevel(openCard, i, -1)"
-                     @input="onMentionInput($event, v => itemDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+                     @input="onMentionInput($event, v => itemDraft = v)" @keydown="onItemEditKey(openCard, i, $event)" @keyup.stop @keypress.stop />
               <span v-else class="nge-todo-check-text"><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
             <button class="nge-todo-mini" title="Change this item" aria-label="Edit" @click="beginItemEdit(openCard.id + ':' + i, it.text)">✎</button>
-            <button v-if="i > 0 && (it.level || 0) < Math.min(2, (openCard.checklist[i - 1].level || 0) + 1)" class="nge-todo-mini nge-todo-item-lvl" title="Move in, under the item above (Tab while editing)" aria-label="Move in" @click="itemLevel(openCard, i, 1)">⇥</button>
-            <button v-if="it.level" class="nge-todo-mini nge-todo-item-lvl" title="Move back out (Shift+Tab while editing)" aria-label="Move out" @click="itemLevel(openCard, i, -1)">⇤</button>
+            <button v-if="i > 0 && (it.level || 0) < Math.min(2, (openCard.checklist[i - 1].level || 0) + 1)" class="nge-todo-mini nge-todo-item-lvl" title="Move in, under the item above (or press Tab while typing in it)" aria-label="Move in" @click="itemLevel(openCard, i, 1)">⇥</button>
+            <button v-if="it.level" class="nge-todo-mini nge-todo-item-lvl" title="Move back out (or Shift+Tab while typing in it)" aria-label="Move out" @click="itemLevel(openCard, i, -1)">⇤</button>
             <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
                     @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
               <option value="">{{ itemOwner(it) && !it.owner_id ? '@ in the text' : 'Nobody' }}</option>
@@ -2839,8 +2861,9 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           </li>
         </ul>
         <form class="nge-todo-row" @submit.prevent="addItem(openCard)">
-          <input v-model="newItem" class="nge-todo-input nge-todo-grow" maxlength="300" placeholder="Add an item" aria-label="New checklist item"
-                 @input="onMentionInput($event, v => newItem = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+          <input v-model="newItem" class="nge-todo-input nge-todo-grow" maxlength="300" placeholder="Add an item (Tab moves it in)" aria-label="New checklist item"
+                 :style="Math.min(newItemLevel, newItemMost(openCard)) ? { marginLeft: Math.min(newItemLevel, newItemMost(openCard)) * 24 + 'px' } : undefined"
+                 @input="onMentionInput($event, v => newItem = v)" @keydown="onNewItemKey(openCard, $event)" @keyup.stop @keypress.stop />
           <button type="submit" class="nge-todo-btn" :disabled="!newItem.trim()">Add</button>
         </form>
 
