@@ -91,6 +91,11 @@ function buildStaticReference(): string {
     "- Someone stuck in the Merger Sandbox needs cutting advice. Do not send them to the Cell Library, Find Path or the merge tool, and do not offer the merge tutorial.",
     "- Practice cells are a spare copy. Edits there never touch real data and are undone for the next person.",
     "",
+    // The short address (report 541, Ames 2026-11-15).
+    "## The page address and sharing views",
+    "- The page address is a short code (it ends in #!pyr: and a few letters). The view itself is kept in the player's own browser, so reloading, reopening a closed tab, or restarting the browser brings the view back.",
+    "- The address only works in the same browser on the same computer. To send a view to someone, use the Share button in the top bar: it copies a short link that works anywhere. Copying the address bar does not share the view.",
+    "",
     // Nurro could not say what Start playing does (Ames 2026-11-12).
     "## Play (the Start playing button)",
     "- Play is the quick way in: the Play button, 'Start playing' on a dataset card, or 'Play here'. It picks the work for the player, so there is nothing to choose or claim by hand.",

@@ -40,6 +40,7 @@ import { myAxonTaskIds } from '../util/dataset_contribution';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
+import { fullViewUrl } from '../util/local_view';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
@@ -1876,7 +1877,7 @@ const jumpConfirmCopied = ref(false);
 
 function copyJumpConfirmUrl() {
   try {
-    navigator.clipboard.writeText(window.location.href);
+    navigator.clipboard.writeText(fullViewUrl());
     jumpConfirmCopied.value = true;
     setTimeout(() => { jumpConfirmCopied.value = false; }, 1500);
   } catch {}
@@ -1922,7 +1923,8 @@ async function saveCurrentAsLink() {
     alert('Log in to save working links.');
     return;
   }
-  const url = window.location.href;
+  // The address is only a code for this browser (util/local_view.ts).
+  const url = fullViewUrl();
   const pos = getViewerPosition();
   const ds = activeDataset.value || getCurrentDatasetName();
   await linksStore.add({
@@ -1958,7 +1960,7 @@ function jumpConfirmTargetServerHasAuth(): boolean {
 }
 
 function getCurrentUrl(): string {
-  try { return window.location.href; } catch { return ''; }
+  try { return fullViewUrl(); } catch { return ''; }
 }
 
 function selectInputContents(e: Event) {
@@ -2697,10 +2699,11 @@ function openResponseUrl(url: string) {
 }
 
 /** Copy current neuroglancer viewer state URL to the response URL field. */
-function copyCurrentState() {
+async function copyCurrentState() {
+  // A short link others can open: the address is only a code for a view
+  // kept in this browser (util/local_view.ts).
   try {
-    // The current URL with fragment contains the full viewer state
-    responseUrl.value = window.location.href;
+    responseUrl.value = (await mintShortStateLink().catch(() => null)) || fullViewUrl();
   } catch {
     responseUrl.value = '';
   }
@@ -2767,7 +2770,8 @@ async function submitNewLink() {
     alert('Log in to save working links.');
     return;
   }
-  const url = window.location.href;
+  // The address is only a code for this browser (util/local_view.ts).
+  const url = fullViewUrl();
   const pos = getViewerPosition();
   const id = await linksStore.add({
     title: newLinkTitle.value.trim() || `${getCurrentDatasetName() || 'View'} · ${new Date().toLocaleString()}`,

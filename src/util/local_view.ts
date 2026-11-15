@@ -1,0 +1,217 @@
+/**
+ * The page address holds a short code, not the whole view (hi529, report 541;
+ * many players found the address "heavy").
+ *
+ * Neuroglancer keeps the entire view in the address and rewrites it as the
+ * view changes. Pyr's views carry thousands of marks and segments, so each
+ * copy could be close to a megabyte, and Firefox keeps every address a page
+ * sets: one player's history filled with 12 GB of them.
+ *
+ * Now the address reads "#!pyr:<code>". The view itself is kept in this
+ * browser's own database under that code (IndexedDB, no size limit), written
+ * once the view is still for a moment and at least every 5 s while it keeps
+ * changing, and again when the page is left. A reload, a reopened tab and
+ * Firefox's session restore all bring it back from there. The same address
+ * pasted into another tab of this browser works too. Sharing goes through
+ * Share or Copy view link (state_link.ts), which makes a short link that
+ * works anywhere.
+ *
+ * Links people open (a state server link, or an old "#!{...}" view) are read
+ * as before; the address becomes a code once the view has loaded.
+ */
+
+const DB = 'nge-local-views';
+const STORE = 'views';
+const INDEX_KEY = 'nge-local-view-index';
+const TAB_KEY = 'nge-view-code';
+const BACKUP_KEY = 'nge-view-backup';
+export const LOCAL_PREFIX = '#!pyr:';
+const KEEP_DAYS = 30;
+const KEEP_MAX = 60;
+
+export function isLocalViewHash(hash: string = location.hash): boolean {
+  return (hash || '').startsWith(LOCAL_PREFIX);
+}
+function codeOf(hash: string): string {
+  return isLocalViewHash(hash) ? hash.slice(LOCAL_PREFIX.length) : '';
+}
+
+/** Which codes this browser holds, and when each was written. Kept in
+ *  localStorage so startup can tell, before anything else reads the address,
+ *  whether a code can be brought back here. */
+function readIndex(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(INDEX_KEY) || '{}') || {}; } catch { return {}; }
+}
+function writeIndex(ix: Record<string, number>) {
+  try { localStorage.setItem(INDEX_KEY, JSON.stringify(ix)); } catch { /* private mode */ }
+}
+
+function newCode(): string {
+  const a = new Uint8Array(6);
+  crypto.getRandomValues(a);
+  return Array.from(a, b => (b % 36).toString(36)).join('');
+}
+
+/** This tab's code. A duplicated tab copies sessionStorage, so a tab that
+ *  finds another open tab already writing its code takes a new one. */
+let myCode: string | null = null;
+export function myViewCode(): string {
+  if (myCode) return myCode;
+  try { myCode = sessionStorage.getItem(TAB_KEY); } catch { /* */ }
+  if (!myCode) myCode = newCode();
+  try { sessionStorage.setItem(TAB_KEY, myCode); } catch { /* */ }
+  return myCode;
+}
+let channel: BroadcastChannel | null = null;
+function watchOtherTabs() {
+  if (channel || typeof BroadcastChannel === 'undefined') return;
+  try {
+    channel = new BroadcastChannel('nge-view-codes');
+    channel.onmessage = e => {
+      const m = e.data || {};
+      // Another tab starting up with my code: tell it so.
+      if (m.ask && m.ask === myViewCode() && m.nonce !== askNonce) channel!.postMessage({taken: m.ask, to: m.nonce});
+      // An open tab already has my code: this one (the duplicate) moves on.
+      if (m.taken && m.taken === myViewCode() && m.to === askNonce) {
+        myCode = newCode();
+        lastJson = '';
+        try { sessionStorage.setItem(TAB_KEY, myCode); } catch { /* */ }
+      }
+    };
+    channel.postMessage({ask: myViewCode(), nonce: askNonce});
+  } catch { /* old browser: duplicated tabs share a code */ }
+}
+const askNonce = Math.random().toString(36).slice(2);
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+let dbPromise: Promise<IDBDatabase> | null = null;
+function db() { return dbPromise ??= openDb(); }
+
+async function idbPut(code: string, value: {json: string, t: number} | undefined) {
+  const d = await db();
+  await new Promise<void>((resolve, reject) => {
+    const tx = d.transaction(STORE, 'readwrite');
+    if (value === undefined) tx.objectStore(STORE).delete(code); else tx.objectStore(STORE).put(value, code);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(code: string): Promise<{json: string, t: number} | undefined> {
+  const d = await db();
+  return new Promise((resolve, reject) => {
+    const req = d.transaction(STORE, 'readonly').objectStore(STORE).get(code);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** Old codes go: a month unused, or beyond the newest 60. */
+function prune() {
+  const ix = readIndex();
+  const cutoff = Date.now() - KEEP_DAYS * 86400_000;
+  const codes = Object.keys(ix).sort((a, b) => ix[b] - ix[a]);
+  const drop = codes.filter((c, i) => c !== myCode && (ix[c] < cutoff || i >= KEEP_MAX));
+  if (!drop.length) return;
+  for (const c of drop) delete ix[c];
+  writeIndex(ix);
+  for (const c of drop) void idbPut(c, undefined).catch(() => {});
+}
+
+/** Keep the view under this tab's code. Returns the code for the address. */
+let lastJson = '';
+export function saveLocalView(json: string): string {
+  const code = myViewCode();
+  if (json === lastJson) return code;
+  lastJson = json;
+  const t = Date.now();
+  const ix = readIndex();
+  ix[code] = t;
+  writeIndex(ix);
+  void idbPut(code, {json, t}).catch(e => console.warn('[view] could not keep the view in this browser:', e));
+  return code;
+}
+
+/** Leaving the page (a reload among it): the database write may not finish
+ *  in time, so the view also goes to this tab's sessionStorage, which is
+ *  written at once. Only views that fit (a few MB). */
+export function backupForReload(json: string) {
+  try { sessionStorage.setItem(BACKUP_KEY, JSON.stringify({code: myViewCode(), t: Date.now(), json})); } catch { /* too big: the database copy stands */ }
+}
+
+/** The kept view for a code: the newer of this tab's backup and the database. */
+export async function loadLocalView(code: string): Promise<string | null> {
+  let backup: {code: string, t: number, json: string} | null = null;
+  try { backup = JSON.parse(sessionStorage.getItem(BACKUP_KEY) || 'null'); } catch { /* */ }
+  if (backup && backup.code !== code) backup = null;
+  let stored: {json: string, t: number} | undefined;
+  try { stored = await idbGet(code); } catch (e) { console.warn('[view] could not read the kept view:', e); }
+  const best = backup && (!stored || backup.t >= stored.t) ? backup.json : stored?.json;
+  return best ?? null;
+}
+
+/**
+ * The address as the page opened it, with one change: a code this browser
+ * does not hold (pasted from another computer) is treated as no view at all,
+ * so the usual starting view loads. Decided once, before neuroglancer or the
+ * store read the address.
+ */
+let boot: string | null = null;
+export function bootHash(): string {
+  if (boot !== null) return boot;
+  boot = location.hash;
+  const code = codeOf(boot);
+  if (code) {
+    let backup = false;
+    try { backup = JSON.parse(sessionStorage.getItem(BACKUP_KEY) || 'null')?.code === code; } catch { /* */ }
+    if (!readIndex()[code] && !backup) {
+      console.info('[view] this address names a view kept in another browser; opening the starting view');
+      (window as any).__ngeLocalViewMissing = true;
+      try { history.replaceState(history.state, '', location.pathname + location.search + '#'); } catch { /* */ }
+      boot = '';
+    }
+  }
+  return boot;
+}
+
+/** True when the address at load carried a view of the player's own with a
+ *  layout in it (a kept code always does). */
+export function bootHashHasLayout(): boolean {
+  const h = bootHash();
+  return h.includes('layout') || isLocalViewHash(h);
+}
+
+/** A link with the whole view in it, as the address used to be: for working
+ *  links and other records that are opened in this same app later. Not for
+ *  sending to people: use mintShortStateLink (state_link.ts). */
+export function fullViewUrl(): string {
+  const base = location.origin + location.pathname + location.search;
+  try {
+    const viewer: any = (window as any).viewer;
+    const json = JSON.stringify(viewer.state.toJSON());
+    return base + '#!' + encodeURIComponent(json);
+  } catch {
+    return isLocalViewHash() ? base + '#' : location.href;
+  }
+}
+
+/** Set up once at startup: the hooks neuroglancer's address binding calls
+ *  (third_party/neuroglancer/ui/url_hash_binding.ts). */
+export function installLocalView() {
+  bootHash();
+  watchOtherTabs();
+  try { prune(); } catch { /* */ }
+  (window as any).__ngeLocalView = {
+    prefix: LOCAL_PREFIX,
+    save: saveLocalView,
+    backup: backupForReload,
+    load: loadLocalView,
+    code: myViewCode,
+  };
+}

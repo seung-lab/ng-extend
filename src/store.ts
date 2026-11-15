@@ -31,6 +31,7 @@ import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
 import {isStreakMilestone, nextStreakMilestone, streakLine} from './util/streak_milestones';
 import {emitScriptEvent} from './script_api';
+import {bootHash, bootHashHasLayout, isLocalViewHash} from './util/local_view';
 import {ancestorAmong, getRootsFromSupervoxels, getRootFromSupervoxel, latestDescendants} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
@@ -507,7 +508,7 @@ export const useLayersStore = defineStore('layers', () => {
       // fullscreen 3D, including curated dataset states that arrive later
       // as #!url pointers (their remote fetch resolves after the hash has
       // been rewritten, so the hash cannot be consulted at restore time).
-      const bootHadExplicitLayout = window.location.hash.includes('layout');
+      const bootHadExplicitLayout = bootHashHasLayout();
       if (!bootHadExplicitLayout) {
         viewer.layout.restoreState('3d');
       }
@@ -523,7 +524,7 @@ export const useLayersStore = defineStore('layers', () => {
         }
         origRestore(obj);
       };
-    } else if (!BOOT_HASH.includes('layout')) {
+    } else if (!bootHashHasLayout()) {
       // The hash was already restored in setupViewer, so a refresh keeps the
       // layout the page was on instead of resetting to split 2D/3D.
       viewer.layout.restoreState('xy-3d');
@@ -6913,7 +6914,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
 /** The address at page load, read before neuroglancer rewrites it with the
  *  restored state (store.ts is imported before the viewer is made). */
-const BOOT_HASH = window.location.hash;
+// The address as the page opened it (a code for a view kept in another
+// browser counts as none: util/local_view.ts).
+const BOOT_HASH = bootHash();
 
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
@@ -6952,7 +6955,9 @@ export const useVolumesStore = defineStore('volumes', () => {
         // A state link in the address (#!https://...) is fetched after this
         // list arrives, so layers are still empty here on a refresh. Wait for
         // it, or the curated redirect below replaced the player's view.
-        if (layersEmpty() && /^#!([a-z][a-z\d+-.]*):\/\//.test(BOOT_HASH)) {
+        // A code for a view kept in this browser (util/local_view.ts) loads
+        // after this too.
+        if (layersEmpty() && (/^#!([a-z][a-z\d+-.]*):\/\//.test(BOOT_HASH) || isLocalViewHash(BOOT_HASH))) {
           await new Promise<void>(resolve => {
             const done = () => { clearTimeout(timer); stop(); resolve(); };
             const timer = setTimeout(done, 20000);

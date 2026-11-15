@@ -12,6 +12,7 @@
  * A link someone opened on purpose (a shared view) is never interrupted.
  */
 import { supabase } from '../supabase';
+import { bootHash } from './local_view';
 import { currentSegLayerName, findDatasetBySegName } from '../datasets';
 import { getDatasetCaveConfig } from '../config';
 import { getCachedJson } from 'neuroglancer/util/trackable';
@@ -168,7 +169,7 @@ const CSS = `
 export function startViewAutosave(viewer: any, userId: () => string | null) {
   userIdOf = userId;
   viewerRef = viewer;
-  const hashAtLoad = window.location.hash;
+  const hashAtLoad = bootHash();
   let switched = false;
   try { switched = sessionStorage.getItem(OFFER_KEY) === '1'; sessionStorage.removeItem(OFFER_KEY); } catch { /* */ }
   const style = document.createElement('style');

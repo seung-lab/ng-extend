@@ -45,6 +45,8 @@ import PyrArcade from "components/PyrArcade.vue";
 import {celebrateSpecialDay} from "../util/special_days";
 import { ARCADE_ENABLED } from "../util/arcade";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
+import { mintShortStateLink } from "../util/state_link";
+import { fullViewUrl } from "../util/local_view";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
@@ -202,25 +204,36 @@ function shareActionPhoto() {
   dismissShareToast();
   showPhotoMode.value = true;
 }
-function shareActionEmail() {
+/** A link to this view that works anywhere: the page address is only a code
+ *  for a view kept in this browser (util/local_view.ts). */
+async function viewShareUrl(): Promise<string> {
+  return (await mintShortStateLink().catch(() => null)) || fullViewUrl();
+}
+/** The share window opens at once (a window opened after waiting is blocked
+ *  as a popup), then goes to the link when it is ready. */
+async function openShareWindow(make: (link: string) => string) {
+  const w = window.open('about:blank', '_blank', 'width=600,height=520');
+  const link = await viewShareUrl();
+  if (w) { try { w.opener = null; } catch { /* */ } w.location.href = make(link); }
+  else window.open(make(link), '_blank', 'noopener,width=600,height=520');
+}
+async function shareActionEmail() {
   dismissShareToast();
   const subject = 'Check out this neuron in EyeWire II';
-  const body = `${window.location.href}\n`;
+  const body = `${await viewShareUrl()}\n`;
   window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 function shareActionX() {
   dismissShareToast();
   const text = 'Check out this neuron in EyeWire II';
-  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`;
-  window.open(url, '_blank', 'noopener,width=600,height=520');
+  void openShareWindow(link => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`);
 }
 function shareActionFacebook() {
   dismissShareToast();
   // quote= prefills the post text; the link preview comes from the page's
   // Open Graph tags (index.html).
   const quote = 'Check out this neuron in EyeWire II';
-  const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}&quote=${encodeURIComponent(quote)}`;
-  window.open(url, '_blank', 'noopener,width=600,height=520');
+  void openShareWindow(link => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}&quote=${encodeURIComponent(quote)}`);
 }
 
 onMounted(() => {
