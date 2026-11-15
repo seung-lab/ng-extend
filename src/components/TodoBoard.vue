@@ -658,6 +658,9 @@ function focusWheel(e: WheelEvent) {
   panel.scrollBy({ top: e.deltaY * unit, left: 0 });
   e.preventDefault();
 }
+/** The card list beside an open card folds away (Ames 2026-11-14), and stays so. */
+const stripHidden = ref((() => { try { return localStorage.getItem('nge-todo-strip-hidden') === '1'; } catch { return false; } })());
+function setStripHidden(on: boolean) { stripHidden.value = on; try { localStorage.setItem('nge-todo-strip-hidden', on ? '1' : '0'); } catch { /* this visit only */ } }
 // ── Numbers ──
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
@@ -2668,7 +2671,9 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
            and the work there?"): the open card takes the middle of the
            screen, and the lists shrink to a strip of titles on the left, so
            another card is still one click away. Esc or Board goes back. -->
-      <nav v-if="openCard" class="nge-todo-strip" aria-label="All cards">
+      <button v-if="openCard && stripHidden" type="button" class="nge-todo-strip-open" title="Show all cards" aria-label="Show all cards" @click="setStripHidden(false)">⟩</button>
+      <nav v-if="openCard && !stripHidden" class="nge-todo-strip" aria-label="All cards">
+        <button type="button" class="nge-todo-mini nge-todo-strip-hide" title="Hide this list, for more room" @click="setStripHidden(true)">⟨ Hide</button>
         <section v-for="col in columns" :key="col.key" class="nge-todo-strip-list">
           <div class="nge-todo-strip-head nge-todo-heading--home" title="Back to the board" @click="openId = null">{{ col.title }} <span class="nge-todo-count">{{ col.rows.length }}</span></div>
           <button v-for="c in col.rows" :key="c.id" type="button" class="nge-todo-strip-card" :class="{ 'nge-todo-strip-card--on': c.id === openId }"
@@ -3109,6 +3114,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-fold, .nge-todo-sort { font-size: 12px; }
 .nge-todo-sort { margin-left: auto; }
 /* Focus view: a strip of titles, and the open card in the middle. */
+.nge-todo-strip-hide { align-self: flex-start; }
+.nge-todo-strip-open { flex: 0 0 26px; align-self: stretch; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--accent); cursor: pointer; font-size: 15px; padding: 0; }
+.nge-todo-strip-open:hover { border-color: var(--accent); }
 .nge-todo-strip {
   flex: 0 0 clamp(200px, calc(15 * var(--nge-vw, 1vw)), 280px); min-height: 0; overflow-y: auto; scrollbar-width: thin;
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
