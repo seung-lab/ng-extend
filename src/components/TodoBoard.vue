@@ -649,6 +649,15 @@ async function finish(c: Card, e?: MouseEvent) {
   await moveTo(c, 'done');
 }
 
+/** The wheel over the space beside an open card scrolls the card (Ames
+ *  2026-11-14: "scroll outside the card doesn't scroll the page"). */
+function focusWheel(e: WheelEvent) {
+  const panel = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.nge-todo-panel--focus');
+  if (!panel || panel.contains(e.target as Node) || e.ctrlKey) return;
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? panel.clientHeight : 1;
+  panel.scrollBy({ top: e.deltaY * unit, left: 0 });
+  e.preventDefault();
+}
 // ── Numbers ──
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
@@ -2652,7 +2661,7 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           <div v-if="!col.rows.length" class="nge-todo-strip-empty">{{ col.empty }}</div>
         </section>
       </nav>
-      <div v-if="openCard" class="nge-todo-focus">
+      <div v-if="openCard" class="nge-todo-focus" @wheel="focusWheel">
       <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card" :style="openWidth(openCard)">
         <div class="nge-todo-panel-top">
           <button type="button" class="nge-todo-btn" title="Back to the board (Esc)" @click="openId = null">←<span class="nge-todo-word"> Board</span></button>

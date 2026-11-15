@@ -1272,7 +1272,7 @@ function padRank(rank: number): string {
           <div class="nge-notif-card-content">
             <div class="nge-notif-card-header">
               <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
-              <div v-if="triageFrom(notif.title)" class="nge-notif-card-title">{{ triageFrom(notif.title)!.lead }}<span class="nge-notif-triage-who">{{ triageFrom(notif.title)!.who }}</span></div>
+              <div v-if="triageFrom(notif.title)" class="nge-notif-card-title">{{ triageFrom(notif.title)?.lead }}<span class="nge-notif-triage-who">{{ triageFrom(notif.title)?.who }}</span></div>
               <div v-else class="nge-notif-card-title">{{ cleanCopy(notif.title) }}</div>
               <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
               <!-- No admin delete here (Ames 2026-10-06): one stray click in the
