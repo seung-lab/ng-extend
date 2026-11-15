@@ -22,6 +22,9 @@
  *                 hear they were added, and follow the card.
  *   todo.follow   follow or stop following a card (Ames 2026-11-02, from
  *                 Asana): followers hear in the bell when it changes
+ *   todo.noteComment  a comment in the margin of the notes, on some of their
+ *                 words, with replies and Resolve (Ames 2026-11-15, like a
+ *                 Google Doc; supabase-admin-todos-note-comments.sql)
  *
  * Checklist items can have their own owner and due day (subtasks, the same
  * ask). Followers live apart from the card (deps.follows, Firestore in
@@ -48,6 +51,7 @@ const TODO_IMAGES = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/
 const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'file', 'other'];
 const COMMENT_MAX = 2000;
 const COMMENTS_MAX = 200;
+const NOTE_THREADS_MAX = 100;
 
 const crypto = require('crypto');
 const CONNECTOR_BASE = 'https://us-central1-eyewire-ii-e4d52.cloudfunctions.net/ewTodoConnector';
@@ -411,6 +415,74 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     }
     await follow(id, [meId]).catch(() => {});
     await tellFollowers(card, 'commented on', body, who.map(p => p.id)).catch(e => console.warn('[todo] followers not told:', e.message));
+    return { card };
+  }
+
+  // Comments in the margin of the notes (Ames 2026-11-15: "like a google doc
+  // with comments", "we have a lot of room in margins"). A thread is on some
+  // words of the notes: {quote, before, after} finds them again after the notes
+  // change. {id, quote, before, after, text} starts one; {id, thread, text}
+  // replies; {id, thread, resolved} resolves or reopens; {id, thread, remove}
+  // takes away a thread its writer started. Tags and the thread's people hear,
+  // as with comments.
+  if (action === 'todo.noteComment') {
+    const id = uuid(args.id, 'card');
+    const before = await db.card(id);
+    if (!before) fail(404, 'That card is gone. Refresh the board.');
+    if (!Array.isArray(before.note_comments)) fail(503, 'Comments in the notes are not switched on yet (supabase-admin-todos-note-comments.sql).');
+    const threads = [...before.note_comments];
+    const tellTagged = async (card, body) => {
+      const people = (Array.isArray(args.tagIds) && args.tagIds.length) ? await db.people() : [];
+      const who = tagged(people, args.tagIds).filter(p => p.id !== meId);
+      if (who.length) await tag(who, card, 'tagged you on', body);
+      return who;
+    };
+    if (!args.thread) {
+      const quote = text(args.quote, 500, 'The words you picked').trim();
+      if (!quote) fail(400, 'Select some words in the notes first.');
+      const body = text(args.text, COMMENT_MAX, 'The comment').trim();
+      if (!body) fail(400, 'Write something first.');
+      if (threads.length >= NOTE_THREADS_MAX) fail(400, `At most ${NOTE_THREADS_MAX} comments in one card's notes. Remove some first.`);
+      const t = { id: crypto.randomBytes(6).toString('hex'), quote,
+        before: text(args.before || '', 200, 'The words before').slice(-40), after: text(args.after || '', 200, 'The words after').slice(0, 40),
+        by: byName, by_id: meId || null, at: now, text: body, replies: [], resolved: false };
+      const card = await db.patch(id, { note_comments: [...threads, t], updated_at: now });
+      await tellTagged(card, body);
+      await follow(id, [meId]).catch(() => {});
+      return { card };
+    }
+    const k = threads.findIndex(t => t && t.id === String(args.thread));
+    if (k < 0) fail(404, 'That comment is gone. Refresh the board.');
+    const t = { ...threads[k] };
+    if (args.remove) {
+      if (t.by !== byName) fail(403, 'Only the person who started a comment can remove it.');
+      threads.splice(k, 1);
+      return { card: await db.patch(id, { note_comments: threads }) };
+    }
+    if ('resolved' in args) {
+      t.resolved = !!args.resolved;
+      if (t.resolved) { t.resolved_by = byName; t.resolved_at = now; } else { delete t.resolved_by; delete t.resolved_at; }
+      threads[k] = t;
+      return { card: await db.patch(id, { note_comments: threads }) };
+    }
+    const body = text(args.text, COMMENT_MAX, 'The reply').trim();
+    if (!body) fail(400, 'Write something first.');
+    const replies = Array.isArray(t.replies) ? t.replies : [];
+    if (replies.length >= 100) fail(400, 'This thread is full. Start a new comment.');
+    t.replies = [...replies, { by: byName, at: now, text: body }];
+    // A reply opens a resolved thread again, as in a Google Doc.
+    if (t.resolved) { t.resolved = false; delete t.resolved_by; delete t.resolved_at; }
+    threads[k] = t;
+    const card = await db.patch(id, { note_comments: threads, updated_at: now });
+    const who = await tellTagged(card, body);
+    // Everyone already in the thread hears a reply, once each.
+    const inThread = new Set([t.by, ...replies.map(r => r.by)].filter(n => n && n !== byName));
+    if (inThread.size) {
+      const people = await db.people();
+      const told = people.filter(p => inThread.has(p.name) && p.id !== meId && !who.some(w => w.id === p.id));
+      if (told.length) await tag(told, card, 'replied to you on', body);
+    }
+    await follow(id, [meId]).catch(() => {});
     return { card };
   }
 

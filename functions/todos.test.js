@@ -289,6 +289,36 @@ test('a reply joins its thread, one level deep, and its writer hears', async () 
   await assert.rejects(todoAction('todo.comment', { id: card.id, text: 'x', replyTo: '1999-01-01T00:00:00Z' }, ctxOf(AMES, 'Amy R. Sterling')), /gone/);
 });
 
+test('a comment in the margin of the notes: start, reply, resolve, remove', async () => {
+  const db = memDb(), tags = [];
+  const ctxOf = (who, name) => ({ db, byName: name, me: { id: who.id }, tag: async (w, card, what, said) => tags.push({ who: w.map(p => p.name), what, said }) });
+  const { card } = await todoAction('todo.save', { fields: { title: 'Doc', notes: 'The quick brown fox jumps' } }, ctxOf(AMES, 'Amy R. Sterling'));
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, quote: 'brown', text: 'x' }, ctxOf(AMES, 'Amy R. Sterling')), /not switched on/);
+  await db.patch(card.id, { note_comments: [] });
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, quote: '  ', text: 'x' }, ctxOf(AMES, 'Amy R. Sterling')), /Select some words/);
+  const a = await todoAction('todo.noteComment', { id: card.id, quote: 'brown fox', before: 'The quick ', after: ' jumps', text: 'Which fox? @Celia D.', tagIds: [CELIA.id] }, ctxOf(AMES, 'Amy R. Sterling'));
+  const t = a.card.note_comments[0];
+  assert.equal(t.quote, 'brown fox');
+  assert.equal(t.before, 'The quick ');
+  assert.equal(t.by, 'Amy R. Sterling');
+  assert.equal(t.resolved, false);
+  assert.deepEqual(tags.at(-1), { who: ['Celia D.'], what: 'tagged you on', said: 'Which fox? @Celia D.' });
+  const b = await todoAction('todo.noteComment', { id: card.id, thread: t.id, text: 'The red one' }, ctxOf(CELIA, 'Celia D.'));
+  assert.equal(b.card.note_comments[0].replies[0].text, 'The red one');
+  assert.deepEqual(tags.at(-1).who, ['Amy R. Sterling'], 'the thread writer hears a reply');
+  const c = await todoAction('todo.noteComment', { id: card.id, thread: t.id, resolved: true }, ctxOf(CELIA, 'Celia D.'));
+  assert.equal(c.card.note_comments[0].resolved, true);
+  assert.equal(c.card.note_comments[0].resolved_by, 'Celia D.');
+  const d = await todoAction('todo.noteComment', { id: card.id, thread: t.id, text: 'Not yet' }, ctxOf(AMES, 'Amy R. Sterling'));
+  assert.equal(d.card.note_comments[0].resolved, false, 'a reply opens it again');
+  assert.equal(d.card.note_comments[0].resolved_by, undefined);
+  assert.deepEqual(tags.at(-1).who, ['Celia D.'], 'the replier before hears too');
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, thread: t.id, remove: true }, ctxOf(CELIA, 'Celia D.')), /Only the person/);
+  const e = await todoAction('todo.noteComment', { id: card.id, thread: t.id, remove: true }, ctxOf(AMES, 'Amy R. Sterling'));
+  assert.deepEqual(e.card.note_comments, []);
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, thread: t.id, text: 'x' }, ctxOf(AMES, 'Amy R. Sterling')), /gone/);
+});
+
 // ── Hierarchy (Ames 2026-11-11): cards inside cards, sections of a column, nested checklist items ──
 function withSections(db) {
   const secs = new Map(); let k = 0;
