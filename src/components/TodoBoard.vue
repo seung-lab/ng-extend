@@ -50,7 +50,7 @@ interface Card {
 interface Section { id: string; list: ListKey; name: string; rank: number }
 interface Person { id: string; name: string }
 /** A checklist item; owner and due day make it a subtask (Ames 2026-11-02, from Asana). */
-interface Item { text: string; done: boolean; due?: string; owner_id?: string; level?: number }
+interface Item { text: string; done: boolean; due?: string; owner_id?: string; level?: number; done_by?: string; done_at?: string }
 
 const LISTS: { key: ListKey; title: string; hint: string; empty: string }[] = [
   { key: 'todo', title: 'To do', hint: 'What we mean to do', empty: 'Nothing waiting.' },
@@ -289,6 +289,16 @@ const columns = computed(() => LISTS.map(l => {
   const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c)) && matches(c)).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
   const rows = l.key === 'done' && !showAllDone.value && !searchWords.value.length ? all.filter(c => !doneOld(c)) : all;
   const items: BoardRow[] = [];
+  if (recentOn.value[l.key]) {
+    const at = new Map(rows.map(c => [c.id, recentAt(c)]));
+    const sorted = [...rows].sort((a, b) => (at.get(b.id) || '').localeCompare(at.get(a.id) || ''));
+    // Only mine: cards I never touched go to the end, after a heading.
+    const touched = recentMine.value ? sorted.filter(c => at.get(c.id)) : sorted;
+    for (const c of touched) items.push({ kind: 'card', c, depth: 0 });
+    const rest = sorted.filter(c => !touched.includes(c));
+    if (rest.length) { items.push({ kind: 'date', label: 'Not touched by you', n: rest.length }); for (const c of rest) items.push({ kind: 'card', c, depth: 0 }); }
+    return { ...l, rows, items, hidden: all.length - rows.length };
+  }
   if (byDate.value[l.key]) {
     // By date: every card under its date heading, sub cards too, sections set aside.
     for (const grp of dateGroups(l.key, rows)) {
@@ -649,7 +659,26 @@ async function finish(c: Card, e?: MouseEvent) {
   await moveTo(c, 'done');
 }
 
+/** The wheel over the space beside an open card scrolls the card (Ames
+ *  2026-11-14: "scroll outside the card doesn't scroll the page"). */
+function focusWheel(e: WheelEvent) {
+  const panel = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.nge-todo-panel--focus');
+  if (!panel || panel.contains(e.target as Node) || e.ctrlKey) return;
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? panel.clientHeight : 1;
+  panel.scrollBy({ top: e.deltaY * unit, left: 0 });
+  e.preventDefault();
+}
+/** The card list beside an open card folds away (Ames 2026-11-14), and stays so. */
+const stripHidden = ref((() => { try { return localStorage.getItem('nge-todo-strip-hidden') === '1'; } catch { return false; } })());
+function setStripHidden(on: boolean) { stripHidden.value = on; try { localStorage.setItem('nge-todo-strip-hidden', on ? '1' : '0'); } catch { /* this visit only */ } }
 // ── Numbers ──
+/** How many items sit under this one (further in, before the next at its level). */
+function subItemCount(list: Item[], i: number): number {
+  const lv = list[i]?.level || 0;
+  let n = 0;
+  for (let k = i + 1; k < list.length && (list[k].level || 0) > lv; k++) n++;
+  return n;
+}
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
@@ -659,7 +688,17 @@ const stats = computed(() => {
   const byPerson = people.value.map(p => {
     const owned = doneWeek.filter(c => c.owner_id === p.id).length;
     const helped = doneWeek.filter(c => c.owner_id !== p.id && (helpers.value[c.id] || []).includes(p.id)).length;
-    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped, owned, helped };
+    // Checklist items each one ticked this week (Ames 2026-11-14): a point
+    // each, and a point more for every sub item under it.
+    let ticked = 0, items = 0;
+    for (const c of cards.value) {
+      c.checklist.forEach((it, i) => {
+        if (!it.done || it.done_by !== p.id || !it.done_at || Date.parse(it.done_at) < week) return;
+        items++;
+        ticked += 1 + subItemCount(c.checklist, i);
+      });
+    }
+    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped + ticked, owned, helped, items, ticked };
   }).filter(x => x.n).sort((a, b) => b.n - a.n);
   // Triage reports closed this week are their own count, shown on the board so
   // the GMs see that work too (Ames 2026-11-13: "Triage should be a separate category").
@@ -1063,11 +1102,34 @@ async function saveNotes(c: Card) {
   if (editNotes.value === c.notes) return;
   await save(c, { notes: editNotes.value }, { tagIds: newTags(c.notes, editNotes.value) });
 }
+/** How far in the next new item goes (Ames 2026-11-14: Tab in the box moves it in). */
+const newItemLevel = ref(0);
+const newItemMost = (c: Card) => (c.checklist.length ? Math.min(2, (c.checklist[c.checklist.length - 1].level || 0) + 1) : 0);
 async function addItem(c: Card) {
   const t = newItem.value.trim();
   if (!t) return;
   newItem.value = '';
-  await save(c, { checklist: [...c.checklist, { text: t, done: false }] }, { tagIds: tagsIn(t) });
+  const level = Math.min(newItemLevel.value, newItemMost(c));
+  await save(c, { checklist: [...c.checklist, level ? { text: t, done: false, level } : { text: t, done: false }] }, { tagIds: tagsIn(t) });
+}
+/** Tab and Shift+Tab in a checklist box: in and out, unless Tab just picked an @ name. */
+function onNewItemKey(c: Card, e: KeyboardEvent) {
+  onMentionKey(e);
+  if (e.defaultPrevented || e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+  e.preventDefault();
+  newItemLevel.value = Math.max(0, Math.min(newItemMost(c), Math.min(newItemLevel.value, newItemMost(c)) + (e.shiftKey ? -1 : 1)));
+}
+function onItemEditKey(c: Card, i: number, e: KeyboardEvent) {
+  onMentionKey(e);
+  if (e.defaultPrevented || e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+  e.preventDefault();
+  const it = c.checklist[i];
+  if (!it) return;
+  const most = i > 0 ? Math.min(2, (c.checklist[i - 1].level || 0) + 1) : 0;
+  const level = Math.max(0, Math.min(most, (it.level || 0) + (e.shiftKey ? -1 : 1)));
+  const t = itemDraft.value.trim();
+  // The words typed so far are kept, and the box stays open.
+  if (level !== (it.level || 0) || (t && t !== it.text)) void setItem(c, i, { level, ...(t ? { text: t } : {}) });
 }
 const setItem = (c: Card, i: number, patch: Partial<Item>) => save(c, { checklist: c.checklist.map((x, k) => {
   if (k !== i) return x;
@@ -1687,6 +1749,34 @@ function toggleByDate(key: string) {
 }
 function toggleTodoSort() {
   toggleByDate('todo');
+}
+// Most recent first (Ames 2026-11-14), a third way after My order and By
+// date. "Only mine" goes by when I last opened, commented on or made each
+// card; otherwise by the last thing anyone did on it.
+const RECENT_KEY = 'nge-todo-recent';
+const recentOn = ref<Record<string, boolean>>((() => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '{}') || {}; } catch { return {}; } })());
+const recentMine = ref((() => { try { return localStorage.getItem(RECENT_KEY + '-mine') === '1'; } catch { return false; } })());
+function cycleSort(key: string) {
+  // My order, then By date, then Recent, then back.
+  if (recentOn.value[key]) recentOn.value = { ...recentOn.value, [key]: false };
+  else if (byDate.value[key]) { toggleByDate(key); recentOn.value = { ...recentOn.value, [key]: true }; }
+  else toggleByDate(key);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(recentOn.value)); } catch { /* not remembered */ }
+}
+function setRecentMine(on: boolean) { recentMine.value = on; try { localStorage.setItem(RECENT_KEY + '-mine', on ? '1' : '0'); } catch { /* this visit only */ } }
+function recentAt(c: Card): string {
+  const mine = recentMine.value;
+  const myName = people.value.find(p => p.id === myId.value)?.name || '';
+  const times: string[] = [];
+  if (mine) {
+    times.push(seenAt.value[c.id] || '');
+    for (const cm of c.comments || []) if (cm.by === myName) times.push(cm.at || '');
+    if (myName && c.created_by === myName) times.push(c.created_at || '');
+  } else {
+    times.push(c.updated_at || '', c.created_at || '');
+    for (const cm of c.comments || []) times.push(cm.at || '');
+  }
+  return times.reduce((a, b) => (b > a ? b : a), '');
 }
 // Any list folds to a narrow strip (Ames 2026-10-21: "a way to collapse
 // Done"; 2026-10-23: "why can't I collapse To Do").
@@ -2367,7 +2457,7 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
       <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
       <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
       <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
-        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each)`">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each), ${p.items} checklist items ticked (${p.ticked} points: 1 each, plus 1 for each sub item under one)`">{{ p.name }} <b>{{ p.n }}</b></span>
         <span class="nge-todo-stat-word">points this week</span>
       </div>
       <div class="nge-todo-stat nge-todo-stat--triage" v-if="stats.triageWeek" title="Triage reports closed with Done or Dismiss in the last 7 days">
@@ -2407,9 +2497,11 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
               <template v-for="(x, i) in sizeSummary" :key="x.s">{{ i ? ' · ' : '' }}{{ x.n }} {{ x.s }}</template>
             </span>
             <span class="nge-todo-list-hint">{{ col.hint }}</span>
-            <button type="button" class="nge-todo-mini nge-todo-sort" :class="{ 'nge-todo-sort--on': byDate[col.key] }"
-                    :title="byDate[col.key] ? 'Showing by date. Click for your own order.' : col.key === 'done' ? 'Showing your own order. Click to organize by the day each was finished.' : 'Showing your own order. Click to organize by due day.'"
-                    @click.stop="toggleByDate(col.key)">{{ byDate[col.key] ? '📅 By date' : '⇅ My order' }}</button>
+            <label v-if="recentOn[col.key]" class="nge-todo-recent-mine" title="Checked: most recent by what you did (opened, commented, made). Unchecked: by what anyone did." @click.stop>
+              <input type="checkbox" :checked="recentMine" @change="setRecentMine($event.target.checked)" /> Mine</label>
+            <button type="button" class="nge-todo-mini nge-todo-sort" :class="{ 'nge-todo-sort--on': byDate[col.key] || recentOn[col.key] }"
+                    :title="recentOn[col.key] ? 'Showing most recent first. Click for your own order.' : byDate[col.key] ? 'Showing by date. Click for most recent first.' : col.key === 'done' ? 'Showing your own order. Click to organize by the day each was finished.' : 'Showing your own order. Click to organize by due day.'"
+                    @click.stop="cycleSort(col.key)">{{ recentOn[col.key] ? '🕘 Recent' : byDate[col.key] ? '📅 By date' : '⇅ My order' }}</button>
           </header>
 
           <form v-if="col.key === 'todo'" class="nge-todo-quick" @submit.prevent="quickAdd">
@@ -2636,7 +2728,9 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
            and the work there?"): the open card takes the middle of the
            screen, and the lists shrink to a strip of titles on the left, so
            another card is still one click away. Esc or Board goes back. -->
-      <nav v-if="openCard" class="nge-todo-strip" aria-label="All cards">
+      <button v-if="openCard && stripHidden" type="button" class="nge-todo-strip-open" title="Show all cards" aria-label="Show all cards" @click="setStripHidden(false)">⟩</button>
+      <nav v-if="openCard && !stripHidden" class="nge-todo-strip" aria-label="All cards">
+        <button type="button" class="nge-todo-mini nge-todo-strip-hide" title="Hide this list, for more room" @click="setStripHidden(true)">⟨ Hide</button>
         <section v-for="col in columns" :key="col.key" class="nge-todo-strip-list">
           <div class="nge-todo-strip-head nge-todo-heading--home" title="Back to the board" @click="openId = null">{{ col.title }} <span class="nge-todo-count">{{ col.rows.length }}</span></div>
           <button v-for="c in col.rows" :key="c.id" type="button" class="nge-todo-strip-card" :class="{ 'nge-todo-strip-card--on': c.id === openId }"
@@ -2652,7 +2746,7 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           <div v-if="!col.rows.length" class="nge-todo-strip-empty">{{ col.empty }}</div>
         </section>
       </nav>
-      <div v-if="openCard" class="nge-todo-focus">
+      <div v-if="openCard" class="nge-todo-focus" @wheel="focusWheel">
       <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card" :style="openWidth(openCard)">
         <div class="nge-todo-panel-top">
           <button type="button" class="nge-todo-btn" title="Back to the board (Esc)" @click="openId = null">←<span class="nge-todo-word"> Board</span></button>
@@ -2812,12 +2906,11 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done, 'nge-todo-check--now': justTicked === openCard.id + ':' + i }" :style="it.level ? { marginLeft: it.level * 24 + 'px' } : undefined">
             <label><input type="checkbox" class="nge-todo-tick" :checked="it.done" @change="checkItem(openCard, i, $event)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <input v-if="itemEdit === openCard.id + ':' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
                      @click.prevent @keydown.enter.prevent="saveItemText(openCard, i)" @keydown.esc="itemEdit = null" @blur="saveItemText(openCard, i)"
-                     @keydown.tab.exact.prevent="itemLevel(openCard, i, 1)" @keydown.shift.tab.prevent="itemLevel(openCard, i, -1)"
-                     @input="onMentionInput($event, v => itemDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+                     @input="onMentionInput($event, v => itemDraft = v)" @keydown="onItemEditKey(openCard, i, $event)" @keyup.stop @keypress.stop />
               <span v-else class="nge-todo-check-text"><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
             <button class="nge-todo-mini" title="Change this item" aria-label="Edit" @click="beginItemEdit(openCard.id + ':' + i, it.text)">✎</button>
-            <button v-if="i > 0 && (it.level || 0) < Math.min(2, (openCard.checklist[i - 1].level || 0) + 1)" class="nge-todo-mini nge-todo-item-lvl" title="Move in, under the item above (Tab while editing)" aria-label="Move in" @click="itemLevel(openCard, i, 1)">⇥</button>
-            <button v-if="it.level" class="nge-todo-mini nge-todo-item-lvl" title="Move back out (Shift+Tab while editing)" aria-label="Move out" @click="itemLevel(openCard, i, -1)">⇤</button>
+            <button v-if="i > 0 && (it.level || 0) < Math.min(2, (openCard.checklist[i - 1].level || 0) + 1)" class="nge-todo-mini nge-todo-item-lvl" title="Move in, under the item above (or press Tab while typing in it)" aria-label="Move in" @click="itemLevel(openCard, i, 1)">⇥</button>
+            <button v-if="it.level" class="nge-todo-mini nge-todo-item-lvl" title="Move back out (or Shift+Tab while typing in it)" aria-label="Move out" @click="itemLevel(openCard, i, -1)">⇤</button>
             <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
                     @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
               <option value="">{{ itemOwner(it) && !it.owner_id ? '@ in the text' : 'Nobody' }}</option>
@@ -2830,8 +2923,9 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           </li>
         </ul>
         <form class="nge-todo-row" @submit.prevent="addItem(openCard)">
-          <input v-model="newItem" class="nge-todo-input nge-todo-grow" maxlength="300" placeholder="Add an item" aria-label="New checklist item"
-                 @input="onMentionInput($event, v => newItem = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+          <input v-model="newItem" class="nge-todo-input nge-todo-grow" maxlength="300" placeholder="Add an item (Tab moves it in)" aria-label="New checklist item"
+                 :style="Math.min(newItemLevel, newItemMost(openCard)) ? { marginLeft: Math.min(newItemLevel, newItemMost(openCard)) * 24 + 'px' } : undefined"
+                 @input="onMentionInput($event, v => newItem = v)" @keydown="onNewItemKey(openCard, $event)" @keyup.stop @keypress.stop />
           <button type="submit" class="nge-todo-btn" :disabled="!newItem.trim()">Add</button>
         </form>
 
@@ -3077,6 +3171,11 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-fold, .nge-todo-sort { font-size: 12px; }
 .nge-todo-sort { margin-left: auto; }
 /* Focus view: a strip of titles, and the open card in the middle. */
+.nge-todo-strip-hide { align-self: flex-start; }
+.nge-todo-recent-mine { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--dim); cursor: pointer; white-space: nowrap; }
+.nge-todo-recent-mine input { margin: 0; accent-color: var(--accent); }
+.nge-todo-strip-open { flex: 0 0 26px; align-self: stretch; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--accent); cursor: pointer; font-size: 15px; padding: 0; }
+.nge-todo-strip-open:hover { border-color: var(--accent); }
 .nge-todo-strip {
   flex: 0 0 clamp(200px, calc(15 * var(--nge-vw, 1vw)), 280px); min-height: 0; overflow-y: auto; scrollbar-width: thin;
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
