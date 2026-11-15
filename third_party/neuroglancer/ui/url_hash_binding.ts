@@ -77,7 +77,8 @@ export class UrlHashBinding extends RefCounted {
     super();
     const {updateDelayMilliseconds = 200, defaultFragment = '{}'} = options;
     this.registerEventListener(window, 'hashchange', () => this.updateFromUrlHash());
-    const throttledSetUrlHash = debounce(() => this.setUrlHash(), updateDelayMilliseconds);
+    // nge: a view that keeps changing is still written at least every 5 s.
+    const throttledSetUrlHash = debounce(() => this.setUrlHash(), updateDelayMilliseconds, {maxWait: Math.max(updateDelayMilliseconds, 5000)});
     this.registerDisposer(root.changed.add(throttledSetUrlHash));
     this.registerDisposer(() => throttledSetUrlHash.cancel());
     this.defaultFragment = defaultFragment;
