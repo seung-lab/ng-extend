@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-15T05:26:00Z",
+      "title": "Lighter on your browser history",
+      "items": [
+        "Pyr no longer fills your browser history with copies of the view while you work, which could make the history very large in Firefox.",
+        "Extension Sandbox: a cell that could not be put back to its start is retired, and the cells are now numbered 1 to 8."
+      ]
+    },
+    {
       "at": "2026-11-15T01:42:00Z",
       "title": "Time on Quests: MEC Quests",
       "items": [

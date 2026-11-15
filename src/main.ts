@@ -429,6 +429,10 @@ function setupViewer() {
 
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
+        // The address is written once the view has been still for 1.5 s, not
+        // five times a second while it moves: Firefox keeps every address a
+        // page sets, and those copies filled hi529's history (report 541).
+        updateDelayMilliseconds: 1500,
         defaultFragment: typeof NEUROGLANCER_DEFAULT_STATE_FRAGMENT !== 'undefined' ?
             NEUROGLANCER_DEFAULT_STATE_FRAGMENT :
             undefined

@@ -46,8 +46,12 @@ export interface UrlHashBindingOptions {
  * An instance of this class manages a binding between a Trackable value and the URL hash state.
  * The binding is initialized in the constructor, and is removed when dispose is called.
  */
-/** nge: the longest view written to the page address (characters). */
-const NGE_MAX_HASH_CHARS = 900_000;
+/** nge: the longest view written to the page address (characters). Firefox
+ *  keeps every address a page sets in its history files, so big views written
+ *  there after every change filled one player's history with 12 GB of copies
+ *  (hi529, report 541). A bigger view is kept by Pyr instead, in this
+ *  browser's own database (src/util/reload_guard.ts). */
+const NGE_MAX_HASH_CHARS = 100_000;
 
 export class UrlHashBinding extends RefCounted {
   /**

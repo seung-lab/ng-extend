@@ -352,7 +352,9 @@ export function getSelectedSupervoxelId(): string | null {
  *  Callers already treat a failed lookup as "can't say". */
 const LINEAGE_BACKOFF_MS = 60_000;
 let lineageDownUntil = 0;
-const lineageFailed = (status: number) => { if (status >= 500) lineageDownUntil = Date.now() + LINEAGE_BACKOFF_MS; };
+// "Not signed in" or "no access" (401, 403) will not change in the next
+// second either: hi529's report 541 shows 49 refusals in three seconds.
+const lineageFailed = (status: number) => { if (status >= 500 || status === 401 || status === 403) lineageDownUntil = Date.now() + LINEAGE_BACKOFF_MS; };
 
 /**
  * Every ID in `root`'s edit history: itself and each past root that led to
