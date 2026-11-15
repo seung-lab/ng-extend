@@ -289,6 +289,16 @@ const columns = computed(() => LISTS.map(l => {
   const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c)) && matches(c)).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
   const rows = l.key === 'done' && !showAllDone.value && !searchWords.value.length ? all.filter(c => !doneOld(c)) : all;
   const items: BoardRow[] = [];
+  if (recentOn.value[l.key]) {
+    const at = new Map(rows.map(c => [c.id, recentAt(c)]));
+    const sorted = [...rows].sort((a, b) => (at.get(b.id) || '').localeCompare(at.get(a.id) || ''));
+    // Only mine: cards I never touched go to the end, after a heading.
+    const touched = recentMine.value ? sorted.filter(c => at.get(c.id)) : sorted;
+    for (const c of touched) items.push({ kind: 'card', c, depth: 0 });
+    const rest = sorted.filter(c => !touched.includes(c));
+    if (rest.length) { items.push({ kind: 'date', label: 'Not touched by you', n: rest.length }); for (const c of rest) items.push({ kind: 'card', c, depth: 0 }); }
+    return { ...l, rows, items, hidden: all.length - rows.length };
+  }
   if (byDate.value[l.key]) {
     // By date: every card under its date heading, sub cards too, sections set aside.
     for (const grp of dateGroups(l.key, rows)) {
@@ -1723,6 +1733,34 @@ function toggleByDate(key: string) {
 function toggleTodoSort() {
   toggleByDate('todo');
 }
+// Most recent first (Ames 2026-11-14), a third way after My order and By
+// date. "Only mine" goes by when I last opened, commented on or made each
+// card; otherwise by the last thing anyone did on it.
+const RECENT_KEY = 'nge-todo-recent';
+const recentOn = ref<Record<string, boolean>>((() => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '{}') || {}; } catch { return {}; } })());
+const recentMine = ref((() => { try { return localStorage.getItem(RECENT_KEY + '-mine') === '1'; } catch { return false; } })());
+function cycleSort(key: string) {
+  // My order, then By date, then Recent, then back.
+  if (recentOn.value[key]) recentOn.value = { ...recentOn.value, [key]: false };
+  else if (byDate.value[key]) { toggleByDate(key); recentOn.value = { ...recentOn.value, [key]: true }; }
+  else toggleByDate(key);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(recentOn.value)); } catch { /* not remembered */ }
+}
+function setRecentMine(on: boolean) { recentMine.value = on; try { localStorage.setItem(RECENT_KEY + '-mine', on ? '1' : '0'); } catch { /* this visit only */ } }
+function recentAt(c: Card): string {
+  const mine = recentMine.value;
+  const myName = people.value.find(p => p.id === myId.value)?.name || '';
+  const times: string[] = [];
+  if (mine) {
+    times.push(seenAt.value[c.id] || '');
+    for (const cm of c.comments || []) if (cm.by === myName) times.push(cm.at || '');
+    if (myName && c.created_by === myName) times.push(c.created_at || '');
+  } else {
+    times.push(c.updated_at || '', c.created_at || '');
+    for (const cm of c.comments || []) times.push(cm.at || '');
+  }
+  return times.reduce((a, b) => (b > a ? b : a), '');
+}
 // Any list folds to a narrow strip (Ames 2026-10-21: "a way to collapse
 // Done"; 2026-10-23: "why can't I collapse To Do").
 const FOLD_KEY = 'nge_todo_done_folded_v1';
@@ -2442,9 +2480,11 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
               <template v-for="(x, i) in sizeSummary" :key="x.s">{{ i ? ' · ' : '' }}{{ x.n }} {{ x.s }}</template>
             </span>
             <span class="nge-todo-list-hint">{{ col.hint }}</span>
-            <button type="button" class="nge-todo-mini nge-todo-sort" :class="{ 'nge-todo-sort--on': byDate[col.key] }"
-                    :title="byDate[col.key] ? 'Showing by date. Click for your own order.' : col.key === 'done' ? 'Showing your own order. Click to organize by the day each was finished.' : 'Showing your own order. Click to organize by due day.'"
-                    @click.stop="toggleByDate(col.key)">{{ byDate[col.key] ? '📅 By date' : '⇅ My order' }}</button>
+            <label v-if="recentOn[col.key]" class="nge-todo-recent-mine" title="Checked: most recent by what you did (opened, commented, made). Unchecked: by what anyone did." @click.stop>
+              <input type="checkbox" :checked="recentMine" @change="setRecentMine($event.target.checked)" /> Mine</label>
+            <button type="button" class="nge-todo-mini nge-todo-sort" :class="{ 'nge-todo-sort--on': byDate[col.key] || recentOn[col.key] }"
+                    :title="recentOn[col.key] ? 'Showing most recent first. Click for your own order.' : byDate[col.key] ? 'Showing by date. Click for most recent first.' : col.key === 'done' ? 'Showing your own order. Click to organize by the day each was finished.' : 'Showing your own order. Click to organize by due day.'"
+                    @click.stop="cycleSort(col.key)">{{ recentOn[col.key] ? '🕘 Recent' : byDate[col.key] ? '📅 By date' : '⇅ My order' }}</button>
           </header>
 
           <form v-if="col.key === 'todo'" class="nge-todo-quick" @submit.prevent="quickAdd">
@@ -3115,6 +3155,8 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-sort { margin-left: auto; }
 /* Focus view: a strip of titles, and the open card in the middle. */
 .nge-todo-strip-hide { align-self: flex-start; }
+.nge-todo-recent-mine { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--dim); cursor: pointer; white-space: nowrap; }
+.nge-todo-recent-mine input { margin: 0; accent-color: var(--accent); }
 .nge-todo-strip-open { flex: 0 0 26px; align-self: stretch; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--accent); cursor: pointer; font-size: 15px; padding: 0; }
 .nge-todo-strip-open:hover { border-color: var(--accent); }
 .nge-todo-strip {
