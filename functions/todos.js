@@ -66,6 +66,30 @@ const text = (v, max, what) => {
 };
 
 /** Only the fields a card may have, each checked. */
+/**
+ * Who ticked each checklist item, and when (Ames 2026-11-14: checklist items
+ * earn points). The browser never sets these: an item ticked now gets this
+ * person and time, one already ticked keeps its own, an unticked one loses
+ * them. Items are matched to the old list by their words, then by place.
+ */
+function stampChecklist(before, after, meId, now) {
+  const old = Array.isArray(before) ? before : [];
+  const used = new Set();
+  return after.map((it, i) => {
+    let k = old.findIndex((o, j) => !used.has(j) && o && o.text === it.text);
+    if (k < 0 && old[i] && !used.has(i)) k = i;
+    if (k >= 0) used.add(k);
+    const was = k >= 0 ? old[k] : null;
+    const out = { ...it };
+    delete out.done_by; delete out.done_at;
+    if (!it.done) return out;
+    if (was && was.done && was.done_at) { out.done_at = was.done_at; if (was.done_by) out.done_by = was.done_by; return out; }
+    out.done_at = now;
+    if (meId) out.done_by = meId;
+    return out;
+  });
+}
+
 function cleanFields(f, isNew) {
   const out = {};
   if ('title' in f || isNew) {
@@ -311,6 +335,7 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     if (isNew) {
       if (!('list' in fields)) fields.list = 'todo';
       if (!('rank' in fields)) fields.rank = (await db.maxRank(fields.list)) + 1;
+      if (fields.checklist) fields.checklist = stampChecklist([], fields.checklist, meId, now);
       card = await db.insert({ ...fields, created_by: byName, updated_at: now, done_at: fields.list === 'done' ? now : null });
       await follow(card.id, [meId, fields.owner_id]).catch(() => {});
       if (fields.triage_id) await db.reportToTodo(fields.triage_id, byName);
@@ -324,6 +349,7 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
       const before = await db.card(id);
       if (!before) fail(404, 'That card is gone. Refresh the board.');
       if (before.list === INCOMPLETE && !isOwner) fail(403, 'Only Ames reopens a card closed as not finished.');
+      if (fields.checklist) fields.checklist = stampChecklist(before.checklist, fields.checklist, meId, now);
       if ('list' in fields && fields.list !== before.list) {
         // done_at is when it closed: finished, or closed as not finished.
         fields.done_at = fields.list === 'done' || fields.list === INCOMPLETE ? now : null;
@@ -525,4 +551,4 @@ function restDb(sb) {
   };
 }
 
-module.exports = { todoAction, restDb, slackIdOf, countTriage, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };
+module.exports = { todoAction, restDb, slackIdOf, countTriage, stampChecklist, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };

@@ -1,7 +1,28 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { todoAction, slackIdOf, cleanFields, countTriage } = require('./todos');
+const { todoAction, slackIdOf, cleanFields, countTriage, stampChecklist } = require('./todos');
+
+test('a ticked checklist item records who ticked it and when; old ticks keep theirs', () => {
+  const before = [
+    { text: 'A', done: true, done_by: 'u1', done_at: '2026-11-01T00:00:00Z' },
+    { text: 'B', done: false },
+    { text: 'C', done: true, done_by: 'u1', done_at: '2026-11-02T00:00:00Z' },
+  ];
+  const after = [
+    { text: 'B', done: true, done_by: 'forged', done_at: '1999-01-01' },
+    { text: 'A', done: true },
+    { text: 'C', done: false },
+    { text: 'D', done: true },
+  ];
+  const out = stampChecklist(before, after, 'u2', '2026-11-14T10:00:00Z');
+  assert.deepEqual(out, [
+    { text: 'B', done: true, done_by: 'u2', done_at: '2026-11-14T10:00:00Z' },
+    { text: 'A', done: true, done_by: 'u1', done_at: '2026-11-01T00:00:00Z' },
+    { text: 'C', done: false },
+    { text: 'D', done: true, done_by: 'u2', done_at: '2026-11-14T10:00:00Z' },
+  ]);
+});
 
 test('triage reports closed this week count for whoever closed them', () => {
   const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };

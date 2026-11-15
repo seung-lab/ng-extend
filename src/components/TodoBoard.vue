@@ -50,7 +50,7 @@ interface Card {
 interface Section { id: string; list: ListKey; name: string; rank: number }
 interface Person { id: string; name: string }
 /** A checklist item; owner and due day make it a subtask (Ames 2026-11-02, from Asana). */
-interface Item { text: string; done: boolean; due?: string; owner_id?: string; level?: number }
+interface Item { text: string; done: boolean; due?: string; owner_id?: string; level?: number; done_by?: string; done_at?: string }
 
 const LISTS: { key: ListKey; title: string; hint: string; empty: string }[] = [
   { key: 'todo', title: 'To do', hint: 'What we mean to do', empty: 'Nothing waiting.' },
@@ -672,6 +672,13 @@ function focusWheel(e: WheelEvent) {
 const stripHidden = ref((() => { try { return localStorage.getItem('nge-todo-strip-hidden') === '1'; } catch { return false; } })());
 function setStripHidden(on: boolean) { stripHidden.value = on; try { localStorage.setItem('nge-todo-strip-hidden', on ? '1' : '0'); } catch { /* this visit only */ } }
 // ── Numbers ──
+/** How many items sit under this one (further in, before the next at its level). */
+function subItemCount(list: Item[], i: number): number {
+  const lv = list[i]?.level || 0;
+  let n = 0;
+  for (let k = i + 1; k < list.length && (list[k].level || 0) > lv; k++) n++;
+  return n;
+}
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
@@ -681,7 +688,17 @@ const stats = computed(() => {
   const byPerson = people.value.map(p => {
     const owned = doneWeek.filter(c => c.owner_id === p.id).length;
     const helped = doneWeek.filter(c => c.owner_id !== p.id && (helpers.value[c.id] || []).includes(p.id)).length;
-    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped, owned, helped };
+    // Checklist items each one ticked this week (Ames 2026-11-14): a point
+    // each, and a point more for every sub item under it.
+    let ticked = 0, items = 0;
+    for (const c of cards.value) {
+      c.checklist.forEach((it, i) => {
+        if (!it.done || it.done_by !== p.id || !it.done_at || Date.parse(it.done_at) < week) return;
+        items++;
+        ticked += 1 + subItemCount(c.checklist, i);
+      });
+    }
+    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped + ticked, owned, helped, items, ticked };
   }).filter(x => x.n).sort((a, b) => b.n - a.n);
   // Triage reports closed this week are their own count, shown on the board so
   // the GMs see that work too (Ames 2026-11-13: "Triage should be a separate category").
@@ -2440,7 +2457,7 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
       <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
       <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
       <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
-        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each)`">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each), ${p.items} checklist items ticked (${p.ticked} points: 1 each, plus 1 for each sub item under one)`">{{ p.name }} <b>{{ p.n }}</b></span>
         <span class="nge-todo-stat-word">points this week</span>
       </div>
       <div class="nge-todo-stat nge-todo-stat--triage" v-if="stats.triageWeek" title="Triage reports closed with Done or Dismiss in the last 7 days">
