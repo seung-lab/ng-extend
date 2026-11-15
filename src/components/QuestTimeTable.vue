@@ -31,7 +31,7 @@ const PERIODS: { key: keyof QuestTimeSplit; label: string; title: string }[] = [
   { key: 'all', label: 'All time', title: 'Every second Pyr has counted on your Quests' },
 ];
 const cols = computed(() => [
-  { key: 'quest', name: 'Quests', t: split.value.quest },
+  { key: 'quest', name: 'MEC Quests', t: split.value.quest },
   { key: 'super', name: 'Super Quests', t: split.value.superQuest },
 ].filter(c => c.t.all >= 60));
 </script>
