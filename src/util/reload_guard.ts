@@ -125,6 +125,14 @@ export function startReloadGuard(viewer: any, setAside: string | null, readAddre
       }
     } catch { /* not kept this time */ }
   };
-  viewer.state.changed.add(() => { if (timer) clearTimeout(timer); timer = setTimeout(keep, QUIET_MS); });
-  window.addEventListener('pagehide', () => { if (timer) { clearTimeout(timer); keep(); } });
+  // Kept once the view is still, and at least every 5 s while it keeps
+  // changing, so a reload mid-work never brings back something old.
+  let firstChange = 0;
+  viewer.state.changed.add(() => {
+    if (timer) clearTimeout(timer);
+    if (!firstChange) firstChange = Date.now();
+    const wait = Math.max(0, Math.min(QUIET_MS, firstChange + 5000 - Date.now()));
+    timer = setTimeout(() => { firstChange = 0; keep(); }, wait);
+  });
+  window.addEventListener('pagehide', () => { if (timer) { clearTimeout(timer); firstChange = 0; keep(); } });
 }

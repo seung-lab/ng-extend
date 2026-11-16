@@ -14,6 +14,7 @@ import { datasetKey } from '../util/completion_rule';
 import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
+import QuestTimeTable from 'components/QuestTimeTable.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import EffortCurve from 'components/EffortCurve.vue';
@@ -424,7 +425,7 @@ const adminInitialSubTab = ref<string | undefined>(undefined);
 // ── Datasets tab: per-dataset contributions + switcher ───────────────────────
 // One card per known dataset with this user's contribution counts, doubling as
 // the dataset switcher (same switchToDataset the top-bar selector uses).
-interface DatasetContribution { edits: number; completions: number; helpRequests: number; outside?: number; }
+interface DatasetContribution { edits: number; completions: number; axons?: number; helpRequests: number; outside?: number; }
 const datasetStats = ref<Record<string, DatasetContribution>>({});
 const datasetStatsLoading = ref(false);
 const activeDatasetCanon = ref('');
@@ -2553,6 +2554,11 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
           </div>
 
+          <!-- Time on Quests and Super Quests (Nseraf, report 525): the
+               player's own active time, so only on their own profile, and
+               only once there is some. -->
+          <QuestTimeTable v-if="!viewingOtherUser" class="nge-profile-section nge-profile-section--questtime" label="Time on Quests" />
+
         </div><!-- end right column -->
 
       </div><!-- end .nge-profile-body (Overview) -->
@@ -3003,6 +3009,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <template v-if="datasetContribution(ds)">
                 <span v-if="showsAllStats(ds) || datasetContribution(ds)?.edits" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.edits ?? 0).toLocaleString() }}</b> edits</span>
                 <span v-if="showsAllStats(ds) || datasetContribution(ds)?.completions || !datasetContribution(ds)?.outside" class="nge-ds-tab-stat" :class="{ 'nge-ds-tab-stat--cells': datasetContribution(ds)?.completions }"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells completed</span>
+                <!-- MEC: of those, how many were Axon complete and how many the whole cell (Ames 2026-11-14). -->
+                <span v-if="datasetContribution(ds)?.axons" class="nge-ds-tab-stat"
+                      title="Axon complete: the axon is proofread to every end. Cell complete: the whole cell, axon and dendrites. Both count as a completed cell."><b>{{ ((datasetContribution(ds)?.completions ?? 0) - (datasetContribution(ds)?.axons ?? 0)).toLocaleString() }}</b> whole · <b>{{ (datasetContribution(ds)?.axons ?? 0).toLocaleString() }}</b> axon{{ datasetContribution(ds)?.axons === 1 ? '' : 's' }}</span>
                 <!-- Work the dataset's own records credit to this player, done in other
                      tools. Shown here only: it counts toward nothing (Ames 2026-10-07). -->
                 <span v-if="datasetContribution(ds)?.outside" class="nge-ds-tab-stat nge-ds-tab-stat--cells"

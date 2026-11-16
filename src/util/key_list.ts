@@ -66,7 +66,7 @@ export const PYR_KEYS: PyrKey[] = [
   { keys: ['keyh'], label: 'Hold to place a point', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode', scoped: true },
   { keys: ['keys'], label: 'Highlight To soma: mark the way back to the soma', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode, with a start point placed', scoped: true },
   { keys: ['keyb'], label: 'Highlight Beyond: mark every branch past the point', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode, with a start point placed', scoped: true },
-  { keys: ['shift+keyn'], label: 'Lantern on or off', group: 'Tools', owner: 'ExtensionBar' },
+  { keys: ['mod+keyl'], label: 'Lantern on or off', group: 'Tools', owner: 'ExtensionBar' },
   { keys: ['shift+keyl'], label: 'Cell Library', group: 'Panels', owner: 'ExtensionBar' },
   { keys: ['shift+keys'], label: 'Settings', group: 'Panels', owner: 'ExtensionBar' },
   { keys: ['backslash'], label: 'Show or hide the top bar', group: 'Panels', owner: 'ExtensionBar', where: 'With Magic Top Bar on in Settings' },

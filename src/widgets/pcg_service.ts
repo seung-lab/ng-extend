@@ -352,7 +352,13 @@ export function getSelectedSupervoxelId(): string | null {
  *  Callers already treat a failed lookup as "can't say". */
 const LINEAGE_BACKOFF_MS = 60_000;
 let lineageDownUntil = 0;
-const lineageFailed = (status: number) => { if (status >= 500) lineageDownUntil = Date.now() + LINEAGE_BACKOFF_MS; };
+// "Not signed in" or "no access" (401, 403): hi529's report 541 shows 49
+// refusals in three seconds. Left alone for 15 s only, as a sign in can fix
+// it, and checks like Cell Complete lean on this lookup.
+const lineageFailed = (status: number) => {
+  if (status >= 500) lineageDownUntil = Date.now() + LINEAGE_BACKOFF_MS;
+  else if (status === 401 || status === 403) lineageDownUntil = Math.max(lineageDownUntil, Date.now() + 15_000);
+};
 
 /**
  * Every ID in `root`'s edit history: itself and each past root that led to

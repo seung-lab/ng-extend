@@ -226,7 +226,7 @@ function markNotSame(a: string, b: string) {
 
 // ── EyeWire stats, read from eyewire.org's public player pages (open to any
 // page, no sign in): points, cubes, accuracy, roles and when they joined.
-interface EwStats { points: number; cubes: number; accuracy: number | null; roles: string[]; joined: number | null }
+interface EwStats { points: number; cubes: number; accuracy: number | null; roles: string[]; joined: number | null; country: string | null }
 const ewStats = ref<Record<string, EwStats | 'none' | 'reading'>>({});
 async function readEw(name: string) {
   const k = lc(name).trim();
@@ -241,7 +241,7 @@ async function readEw(name: string) {
     const f = st?.forever ?? {};
     const fs = Array.isArray(st?.fscore) && st.fscore.length ? Number(st.fscore[0].fscore) : NaN;
     v = { points: Number(f.points) || 0, cubes: Number(f.cubes) || 0, accuracy: Number.isFinite(fs) ? fs : null,
-      roles: Array.isArray(bio?.roles) ? bio.roles.map(String) : [], joined: Number(bio?.joined) || null };
+      roles: Array.isArray(bio?.roles) ? bio.roles.map(String) : [], joined: Number(bio?.joined) || null, country: bio?.country ? String(bio.country) : null };
   }
   ewStats.value = { ...ewStats.value, [k]: v };
 }
@@ -519,8 +519,31 @@ const sendAsk = (c: Card) => run('ask', async () => {
   ask.value = null;
 });
 const askOpen = computed(() => !!ask.value && !!open.value?.p && ask.value.email === open.value.p.email);
+// The grant email (Ames 2026-11-14): goes with the notification when
+// "Email them too" is ticked. See the email shows it first.
+const dsEmailToo = ref(true);
+const dsEmailShown = ref<{ to: string; subject: string; text: string } | null>(null);
+const dsEmailed = ref<Record<string, string>>({});
 const decide = (c: Card, mark: 'granted' | 'declined', byHand = false) => run(mark, async () => {
-  dsRows.value = await decideDatasetRequest(c.ds!.id, mark, dsNote.value, byHand); dsNote.value = '';
+  const note = dsNote.value;
+  dsRows.value = await decideDatasetRequest(c.ds!.id, mark, note, byHand); dsNote.value = ''; dsEmailShown.value = null;
+  if (mark !== 'granted' || !dsEmailToo.value) return;
+  const id = c.ds!.id;
+  try {
+    const r = await secureWrite<{ to: string }>('access.grantEmail', { datasetId: id, note });
+    dsEmailed.value = { ...dsEmailed.value, [id]: `Email sent to ${r.to}.` };
+  } catch (e: any) { dsEmailed.value = { ...dsEmailed.value, [id]: e?.message || 'The email did not go. They are still let in.' }; }
+});
+const showDsEmail = (c: Card) => run('preview', async () => {
+  if (dsEmailShown.value) { dsEmailShown.value = null; return; }
+  dsEmailShown.value = await secureWrite<{ to: string; subject: string; text: string }>('access.grantEmail', { datasetId: c.ds!.id, note: dsNote.value, preview: true });
+});
+// Send me a test (Ames 2026-11-14): the notification this dataset's grant
+// sends, to my own bell, titled "Test:" so nobody else is told.
+const testSent = ref('');
+const testBell = (c: Card) => run('test', async () => {
+  await secureWrite('access.datasetTestBell', { dataset: c.ds!.dataset, label: c.ds!.label });
+  testSent.value = c.ds!.id;
 });
 const addNote = (c: Card) => run('note', async () => {
   const text = noteDraft.value.trim(); if (!text) throw new Error('Write a note first.');
@@ -790,7 +813,7 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.ew_name" class="ah-stats ah-ew" aria-label="Their EyeWire stats">
           <template v-if="openEw">
             <div><span>EyeWire</span>{{ openEw.points.toLocaleString() }} points · {{ openEw.cubes.toLocaleString() }} cubes<template v-if="openEw.accuracy != null"> · {{ Math.round(openEw.accuracy * 100) }}% accuracy</template></div>
-            <div v-if="openEw.roles.length || openEw.joined"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined EyeWire {{ new Date(openEw.joined * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</template></div>
+            <div v-if="openEw.roles.length || openEw.joined || openEw.country"><span>Player</span><template v-if="openEw.roles.length">{{ openEw.roles.map(cap).join(', ') }} · </template><template v-if="openEw.joined">joined EyeWire {{ new Date(openEw.joined * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</template><template v-if="openEw.country"><template v-if="openEw.roles.length || openEw.joined"> · </template>{{ openEw.country }}</template></div>
           </template>
           <template v-else-if="ewOf(open.p) === 'none'">No EyeWire player named {{ open.p.ew_name }}.</template>
           <template v-else>Reading EyeWire…</template>
@@ -846,13 +869,24 @@ const opName = (e: RecentEdit) => {
             <div v-if="triesOf(open).length" class="ah-quiet">Their cell, as they left it: Admin Hub, Test tries.</div>
           </div>
           <input v-model="dsNote" class="ah-input" maxlength="500" placeholder="A note for them (optional)" />
-          <div class="ah-actions">
-            <button v-if="open.ds.caveGroup" class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="decide(open, 'granted')">{{ busy === 'granted' ? 'Granting…' : `Grant (adds to ${open.ds.caveGroup})` }}</button>
-            <button class="ah-btn" :class="{ 'ah-btn--yes': !open.ds.caveGroup }" type="button" :disabled="!!busy"
-                    :title="open.ds.caveGroup ? 'You already added them in CAVE yourself: just tell them' : 'Add them to the dataset\'s group in CAVE first, then press this to tell them'"
-                    @click="decide(open, 'granted', true)">{{ open.ds.caveGroup ? 'I added them by hand' : 'Grant' }}</button>
-            <button class="ah-btn" type="button" :disabled="!!busy" @click="decide(open, 'declined')">Not now</button>
+          <div class="ah-ds-email">
+            <label><input v-model="dsEmailToo" type="checkbox" /> Email them too</label>
+            <button class="ah-btn ah-btn--quiet" type="button" :disabled="!!busy" @click="showDsEmail(open)">{{ busy === 'preview' ? 'Loading…' : dsEmailShown ? 'Hide the email' : 'See the email' }}</button>
           </div>
+          <div v-if="dsEmailShown" class="ah-ask">
+            <div class="ah-panel-meta">To {{ dsEmailShown.to || 'nobody: Pyr has no email for them' }}, from Amy at Pyr, replies to support@eyewire.org</div>
+            <div class="ah-ask-subject ah-ask-subject--read">{{ dsEmailShown.subject }}</div>
+            <div class="ah-ask-text ah-ask-text--read">{{ dsEmailShown.text }}</div>
+          </div>
+          <div class="ah-actions">
+            <button v-if="open.ds.caveGroup" class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" :title="`Adds them to ${open.ds.caveGroup} in CAVE, then sends them the unlock notification`" @click="decide(open, 'granted')">{{ busy === 'granted' ? 'Letting them in…' : 'Let them in & send notification' }}</button>
+            <button class="ah-btn" :class="{ 'ah-btn--yes': !open.ds.caveGroup }" type="button" :disabled="!!busy"
+                    :title="open.ds.caveGroup ? 'You already added them in CAVE yourself: just send the notification' : 'Add them to the dataset\'s group in CAVE first, then press this to send the notification'"
+                    @click="decide(open, 'granted', true)">{{ open.ds.caveGroup ? 'I added them by hand, send notification' : 'Let them in & send notification' }}</button>
+            <button class="ah-btn" type="button" :disabled="!!busy" @click="decide(open, 'declined')">Not now</button>
+            <button v-if="open.ds.dataset" class="ah-btn ah-btn--quiet" type="button" :disabled="!!busy" title="Sends the notification they will get to your own bell, marked Test" @click="testBell(open)">{{ busy === 'test' ? 'Sending…' : testSent === open.ds.id ? 'Test sent to your bell' : 'Send me a test' }}</button>
+          </div>
+          <div v-if="dsEmailed[open.ds.id]" class="ah-panel-meta" role="status">{{ dsEmailed[open.ds.id] }}</div>
         </div>
         <p v-if="actionError" class="ah-error" role="alert">{{ actionError }}</p>
 
@@ -1005,6 +1039,9 @@ const opName = (e: RecentEdit) => {
 .ah-btn:hover:not(:disabled) { background: rgba(45,70,120,.75); }
 .ah-btn:disabled { opacity: .55; cursor: default; }
 .ah-btn--yes { background: rgba(55,138,221,.85); border-color: rgba(140,190,255,.8); color: #fff; }
+.ah-btn--quiet { background: transparent; border-style: dashed; opacity: .85; }
+.ah-ds-email { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0; color: #c9d6ea; font-size: 13px; }
+.ah-ds-email label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .ah-link { color: #9fd3ff; text-decoration: none; }
 .ah-error { color: #ffb3b3; margin: 6px 0; }
 .ah-quiet { color: #7f93b0; font-size: 12.5px; margin: 6px 2px; }

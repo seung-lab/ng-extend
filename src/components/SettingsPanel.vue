@@ -2,9 +2,10 @@
 import { pumpkinSeason } from '../util/pumpkin';
 import { turkeySeason } from '../util/turkey';
 import { leavesSeason } from '../util/leaves';
+import { isMac } from '../util/platform';
 import {ref, onMounted, onUnmounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
-import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
+import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession, datasetSwitchOpens, type DatasetSwitchOpens} from '../store';
 import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
@@ -105,6 +106,8 @@ const draftJumpAdds = ref(false);
 const draftRetinaAnnot = ref(false);
 const draftLayerHide = ref(false);
 const draftQuickMerge = ref(false);
+const isMacKeys = isMac();
+const draftNewLayerKey = ref<'shift' | 'n' | 'alt' | 'off'>('shift');
 const draftOfferRestore = ref(true);
 const draftAnnotationGems = ref(true);
 const draftAnnotationSetupTabs = ref(false);
@@ -113,7 +116,7 @@ const draftHelpMuted = ref(false);
 const saved      = ref(false);
 
 // ── Switching datasets ─────────────────────────────────────────────────────
-const draftBareSwitch = ref(false);
+const draftSwitchOpens = ref<DatasetSwitchOpens>('resume');
 /** Optional datasets shown in the dataset selector (same choice as the
  *  profile's Datasets tab). */
 const draftExtra = ref<string[]>([]);
@@ -187,12 +190,13 @@ onMounted(() => {
   draftRetinaAnnot.value = prefsStore.prefs.retinaAnnotationLayers === true;
   draftLayerHide.value = prefsStore.prefs.layerHideButton === true;
   draftQuickMerge.value = prefsStore.prefs.quickMergeKey === true;
+  draftNewLayerKey.value = prefsStore.prefs.newLayerKey || 'shift';
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
   draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
   draftSegSetupTabs.value = prefsStore.prefs.showSegSetupTabs === true;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
-  draftBareSwitch.value = !!prefsStore.prefs.datasetBareSwitch;
+  draftSwitchOpens.value = datasetSwitchOpens(prefsStore.prefs);
   draftExtra.value = [...(prefsStore.prefs.extraDatasets || [])];
   draftStartViews.value = { ...(prefsStore.prefs.datasetStartViews || {}) };
   pickStartViewDataset();
@@ -256,8 +260,8 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
-    datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, newLayerKey: draftNewLayerKey.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    datasetSwitchOpens: draftSwitchOpens.value, datasetBareSwitch: draftSwitchOpens.value === 'bare', datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
   });
@@ -572,16 +576,20 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--datasets" :class="{ 'nge-set-folded': isFolded('datasets') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('datasets')" title="Fold or unfold this box" @click.prevent="toggleFold('datasets')" @keydown.enter.prevent="toggleFold('datasets')" @keydown.space.prevent="toggleFold('datasets')">Switching datasets<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftBareSwitch" />
-              <span class="nge-settings-toggle-label">Open datasets without the starter cells (loads faster)</span>
+            <label class="nge-settings-toggle nge-settings-pick" title="Where you left off: the last view you had there, from this browser or your account, whichever is newer. Opening a cell from chat, the Cell Library or a quest still goes straight to that cell.">
+              <span class="nge-settings-toggle-label">Switching to a dataset opens</span>
+              <select v-model="draftSwitchOpens" class="nge-sv-select">
+                <option value="resume">Where I left off</option>
+                <option value="start">Its starting view</option>
+                <option value="bare">The dataset without starter cells (loads faster)</option>
+              </select>
             </label>
             <p class="nge-settings-hint nge-sv-hint">Show in the dataset selector: extra datasets to explore. There is nothing to proofread or claim in them.</p>
           <label v-for="ds in OPTIONAL_DATASETS" :key="ds.id" class="nge-settings-toggle nge-sv-extra">
             <input type="checkbox" :checked="draftExtra.includes(ds.id)" @change="toggleDraftExtra(ds.id, $event)" />
             <span class="nge-settings-toggle-label">{{ ds.label }}</span>
           </label>
-          <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
+          <p class="nge-settings-hint nge-sv-hint">Your own starting view: pick a dataset and paste a share link made in it. It takes the place of that dataset's starting view.</p>
             <div class="nge-sv-row">
               <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
                 <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
@@ -741,11 +749,19 @@ const props = defineProps<{ embedded?: boolean }>();
                and then press M"). Off by default while it is tried. -->
           <div class="nge-settings-section nge-set-card--editing" :class="{ 'nge-set-folded': isFolded('editing') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('editing')" title="Fold or unfold this box" @click.prevent="toggleFold('editing')" @keydown.enter.prevent="toggleFold('editing')" @keydown.space.prevent="toggleFold('editing')">Merging<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
-            <p class="nge-settings-hint">How the M key merges.</p>
+            <p class="nge-settings-hint">How the M key merges, and which key adds a layer.</p>
             <label class="nge-settings-toggle" title="Point at one piece and press M, then point at the other piece and press M: the two are merged where you pointed. Works in 2D and 3D. M on empty space sends any merges waiting, or closes merge. Off: M only opens and closes merge.">
               <input type="checkbox" v-model="draftQuickMerge" />
               <span class="nge-settings-toggle-label">Quick merge: point at two pieces and press M on each</span>
             </label>
+            <!-- Nseraf, report 516: N sits next to M and kept adding layers. -->
+            <label class="nge-settings-hint" for="nge-new-layer-key" style="display:block;margin-top:10px">The key that adds a new layer.</label>
+            <select id="nge-new-layer-key" v-model="draftNewLayerKey" class="nge-sv-select" title="Ctrl+N opens a new browser window, so it cannot be used here.">
+              <option value="shift">Shift+N</option>
+              <option value="n">N</option>
+              <option value="alt">{{ isMacKeys ? 'Option+N' : 'Alt+N' }}</option>
+              <option value="off">No key (use the + by the layer tabs)</option>
+            </select>
           </div>
 
           <div class="nge-settings-section nge-set-card--jump" :class="{ 'nge-set-folded': isFolded('jump') }">

@@ -14,6 +14,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import RollUp from 'components/RollUp.vue';
 import GrowingCell from 'components/GrowingCell.vue';
+import QuestTimeTable from 'components/QuestTimeTable.vue';
 import { canonicalDataset, currentDatasetTag, type DatasetEntry } from '../datasets';
 import { datasetKey } from '../util/completion_rule';
 import { datasetsWithStats, loadDatasetStats, statsKey, weeklySeries, type DatasetStats } from '../util/dataset_stats';
@@ -44,6 +45,8 @@ let ticket = 0;
 const who = computed<{ id: string | null; names: string[] } | null>(() => (props.person === undefined
   ? { id: backend.userId, names: [backend.userName, backend.username] }
   : props.person));
+/** The strip is the signed-in player's own (the time on Quests is only theirs). */
+const ownPart = computed(() => !!backend.userId && (props.person === undefined || props.person?.id === backend.userId));
 /** "Your part", or "Ames's part" in her profile. */
 const partTitle = computed(() => (props.person ? `${props.person.label}'s part` : 'Your part'));
 
@@ -400,6 +403,9 @@ onUnmounted(() => {
             </div>
             <div v-if="hasList" class="nge-dsp-foot">Cells are the ones under {{ props.person ? 'their' : 'your' }} name in the cell list.</div>
             <div v-else-if="outsideCells" class="nge-dsp-foot">Cells are the ones {{ props.person ? 'they' : 'you' }} completed in the game. The number above is from the dataset's own records and counts work done outside it.</div>
+            <!-- Time on this dataset's Quests and Super Quests (Nseraf, report
+                 525): the reader's own, so not in someone else's profile. -->
+            <QuestTimeTable v-if="ownPart && active" class="nge-dsp-questtime" :dataset="statsKey(active)" label="Time on Quests here" />
           </section>
         </template>
       </div>
@@ -620,6 +626,7 @@ onUnmounted(() => {
 .nge-dsp-mine-num { color: #ffd08a; font-weight: 700; font-variant-numeric: tabular-nums; }
 .nge-dsp-mine-share { color: #9fb0c6; font-size: 0.92em; }
 .nge-dsp-mine-na { color: #9aa9bd; }
+.nge-dsp-questtime { margin: 12px 0 4px; padding-top: 10px; border-top: 1px solid rgba(255, 195, 110, 0.14); }
 
 .nge-dsp-readat {
   flex-shrink: 0; padding: 7px 18px 9px; text-align: right; font-size: 11px; color: #8a97ad;

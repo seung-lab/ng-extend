@@ -45,12 +45,18 @@ interface Card {
   due_time?: string | null;
   // Hierarchy (supabase-admin-todos-hierarchy.sql, Ames 2026-11-11).
   parent_id?: string | null; section_id?: string | null;
+  /** Comments in the margin of the notes (supabase-admin-todos-note-comments.sql, Ames 2026-11-15). */
+  note_comments?: NoteThread[];
+}
+interface NoteThread {
+  id: string; quote: string; before?: string; after?: string; by: string; at: string; text: string;
+  replies?: { by: string; at: string; text: string }[]; resolved?: boolean; resolved_by?: string; resolved_at?: string;
 }
 /** A named, folding group of cards in a column (functions/todos.js todo.section). */
 interface Section { id: string; list: ListKey; name: string; rank: number }
 interface Person { id: string; name: string }
 /** A checklist item; owner and due day make it a subtask (Ames 2026-11-02, from Asana). */
-interface Item { text: string; done: boolean; due?: string; owner_id?: string; level?: number }
+interface Item { text: string; done: boolean; due?: string; owner_id?: string; level?: number; done_by?: string; done_at?: string }
 
 const LISTS: { key: ListKey; title: string; hint: string; empty: string }[] = [
   { key: 'todo', title: 'To do', hint: 'What we mean to do', empty: 'Nothing waiting.' },
@@ -117,7 +123,14 @@ async function load(quiet = false) {
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
-      if (c) openUp(c);
+      const ptr = saidPtr(window.location.search);
+      if (c && ptr) openSaid(c, '', '', '', ptr); else if (c) openUp(c);
+      // The comment a bell pointed at is a one time jump: a refresh just opens the card.
+      if (ptr) try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete('c'); u.searchParams.delete('nc');
+        window.history.replaceState(window.history.state, '', u.toString());
+      } catch { /* the address just stays */ }
     }
     if (openId.value && !cards.value.some(c => c.id === openId.value)) openId.value = null;
   } catch (e: any) {
@@ -137,6 +150,8 @@ watch(openId, id => {
     const u = new URL(window.location.href);
     if (!u.searchParams.has('todo')) return;
     u.searchParams.set('todo', id || '');
+    // The comment a bell pointed at is a one time jump, not part of the address.
+    u.searchParams.delete('c'); u.searchParams.delete('nc');
     window.history.replaceState(window.history.state, '', u.toString().replace(/([?&]todo)=(&|$)/, '$1$2'));
   } catch { /* the address just stays */ }
 });
@@ -147,7 +162,8 @@ watch(openId, id => {
 function busyHere() {
   const el = document.activeElement as HTMLElement | null;
   return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) || !!el?.isContentEditable
-    || !!resizingId.value || !!dragId.value || !!itemEdit.value || commentEdit.value !== null || notesEditing.value || !!adding.value || busy.value;
+    || !!resizingId.value || !!dragId.value || !!itemEdit.value || commentEdit.value !== null || notesEditing.value || !!adding.value || busy.value
+    || !!ncmDraft.value || Object.values(ncmReplyText.value).some(v => v.trim());
 }
 const autoRefresh = window.setInterval(() => {
   if (document.visibilityState !== 'visible' || loading.value || busyHere()) return;
@@ -168,6 +184,7 @@ function cardText(c: Card): string {
     ...(helpers.value[c.id] || []).map(nameOf),
     ...c.checklist.map(i => i.text),
     ...(c.comments || []).flatMap(m => [m.by, m.text]),
+    noteTalk(c),
     ...(c.links || []).flatMap(k => [k.label || '', k.url || '']),
   ].join('\n').toLowerCase();
 }
@@ -195,7 +212,7 @@ function personWord(w: string): string | null {
   const q = w.slice(1);
   return people.value.find(p => namesOf(p).some(n => n.toLowerCase().startsWith(q)))?.id || null;
 }
-const isTaggedOn = (c: Card, id: string) => tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
+const isTaggedOn = (c: Card, id: string) => tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')} ${noteTalk(c)}`).includes(id);
 const hasItemFor = (c: Card, id: string) => c.checklist.some(it => !it.done && (it.owner_id === id || (!it.owner_id && tagsIn(it.text).includes(id))));
 const involves = (c: Card, id: string) => c.owner_id === id || (helpers.value[c.id] || []).includes(id) || isTaggedOn(c, id) || c.checklist.some(it => it.owner_id === id || tagsIn(it.text).includes(id));
 function searchFilter(c: Card, w: string, who: string | null): boolean {
@@ -289,6 +306,16 @@ const columns = computed(() => LISTS.map(l => {
   const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c)) && matches(c)).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
   const rows = l.key === 'done' && !showAllDone.value && !searchWords.value.length ? all.filter(c => !doneOld(c)) : all;
   const items: BoardRow[] = [];
+  if (recentOn.value[l.key]) {
+    const at = new Map(rows.map(c => [c.id, recentAt(c)]));
+    const sorted = [...rows].sort((a, b) => (at.get(b.id) || '').localeCompare(at.get(a.id) || ''));
+    // Only mine: cards I never touched go to the end, after a heading.
+    const touched = recentMine.value ? sorted.filter(c => at.get(c.id)) : sorted;
+    for (const c of touched) items.push({ kind: 'card', c, depth: 0 });
+    const rest = sorted.filter(c => !touched.includes(c));
+    if (rest.length) { items.push({ kind: 'date', label: 'Not touched by you', n: rest.length }); for (const c of rest) items.push({ kind: 'card', c, depth: 0 }); }
+    return { ...l, rows, items, hidden: all.length - rows.length };
+  }
   if (byDate.value[l.key]) {
     // By date: every card under its date heading, sub cards too, sections set aside.
     for (const grp of dateGroups(l.key, rows)) {
@@ -495,7 +522,7 @@ function isMine(c: Card): boolean {
   if (c.owner_id === id) return true;
   if ((helpers.value[c.id] || []).includes(id)) return true;
   if (c.checklist.some(it => it.owner_id === id || tagsIn(it.text).includes(id))) return true;
-  return tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
+  return tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')} ${noteTalk(c)}`).includes(id);
 }
 const MINE_KEY = 'nge-todo-mine';
 const mineOnly = ref((() => { try { return localStorage.getItem(MINE_KEY) === '1'; } catch { return false; } })());
@@ -649,7 +676,26 @@ async function finish(c: Card, e?: MouseEvent) {
   await moveTo(c, 'done');
 }
 
+/** The wheel over the space beside an open card scrolls the card (Ames
+ *  2026-11-14: "scroll outside the card doesn't scroll the page"). */
+function focusWheel(e: WheelEvent) {
+  const panel = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.nge-todo-panel--focus');
+  if (!panel || panel.contains(e.target as Node) || e.ctrlKey) return;
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? panel.clientHeight : 1;
+  panel.scrollBy({ top: e.deltaY * unit, left: 0 });
+  e.preventDefault();
+}
+/** The card list beside an open card folds away (Ames 2026-11-14), and stays so. */
+const stripHidden = ref((() => { try { return localStorage.getItem('nge-todo-strip-hidden') === '1'; } catch { return false; } })());
+function setStripHidden(on: boolean) { stripHidden.value = on; try { localStorage.setItem('nge-todo-strip-hidden', on ? '1' : '0'); } catch { /* this visit only */ } }
 // ── Numbers ──
+/** How many items sit under this one (further in, before the next at its level). */
+function subItemCount(list: Item[], i: number): number {
+  const lv = list[i]?.level || 0;
+  let n = 0;
+  for (let k = i + 1; k < list.length && (list[k].level || 0) > lv; k++) n++;
+  return n;
+}
 const stats = computed(() => {
   const week = Date.now() - 7 * 864e5;
   const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
@@ -659,7 +705,17 @@ const stats = computed(() => {
   const byPerson = people.value.map(p => {
     const owned = doneWeek.filter(c => c.owner_id === p.id).length;
     const helped = doneWeek.filter(c => c.owner_id !== p.id && (helpers.value[c.id] || []).includes(p.id)).length;
-    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped, owned, helped };
+    // Checklist items each one ticked this week (Ames 2026-11-14): a point
+    // each, and a point more for every sub item under it.
+    let ticked = 0, items = 0;
+    for (const c of cards.value) {
+      c.checklist.forEach((it, i) => {
+        if (!it.done || it.done_by !== p.id || !it.done_at || Date.parse(it.done_at) < week) return;
+        items++;
+        ticked += 1 + subItemCount(c.checklist, i);
+      });
+    }
+    return { id: p.id, name: firstName(p.name), n: owned * 2 + helped + ticked, owned, helped, items, ticked };
   }).filter(x => x.n).sort((a, b) => b.n - a.n);
   // Triage reports closed this week are their own count, shown on the board so
   // the GMs see that work too (Ames 2026-11-13: "Triage should be a separate category").
@@ -1034,6 +1090,68 @@ function openAt(c: Card, part: 'comments') {
   openUp(c);
   if (part === 'comments') setTimeout(toComments, 60);
 }
+// Go to the very comment a tag or reply was about (Ames 2026-11-16: a reply
+// in My Tasks "didn't take me to the exact reply"). The bell carries the
+// comment's first 200 characters, squashed to one line as the server writes
+// them (functions/todos.js makeTagger), so match on that, by that person,
+// nearest in time.
+const bellLine = (t: string) => String(t || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200).trim();
+// Newer bells name the comment in their link (functions/todos.js todoLink):
+// c = its time, nc = a margin thread.
+type SaidPtr = { c?: string; nc?: string };
+function saidPtr(link: string): SaidPtr | undefined {
+  const get = (k: string) => { const m = link.match(new RegExp('[?&]' + k + '=([^&\\s]+)')); try { return m ? decodeURIComponent(m[1]) : undefined; } catch { return undefined; } };
+  const c = get('c'), nc = get('nc');
+  return c || nc ? { c, nc } : undefined;
+}
+function findSaid(c: Card, who: string, quote: string, at: string, ptr?: SaidPtr): { comment?: number; thread?: string } | null {
+  if (ptr?.c) { const i = (c.comments || []).findIndex(cm => cm.at === ptr.c); if (i >= 0) return { comment: i }; }
+  if (ptr?.nc && (c.note_comments || []).some(t => t.id === ptr.nc)) return { thread: ptr.nc };
+  const q = bellLine(quote), t0 = Date.parse(at) || 0;
+  const same = (text: string) => { const x = bellLine(text); return !!q && (x === q || x.startsWith(q) || q.startsWith(x) && x.length > 20); };
+  const byWho = (by: string) => !who || by === who || firstName(by) === firstName(who);
+  type Hit = { comment?: number; thread?: string; score: number };
+  const hits: Hit[] = [];
+  // The words first, then the person, then the nearest time. Failing the words
+  // (edited since), the same person within two minutes will do.
+  const score = (by: string, when: string, text: string) => {
+    const dt = Math.abs((Date.parse(when) || 0) - t0), w = same(text), p = byWho(by);
+    return !w && !(p && dt < 120e3) ? Infinity : (w ? 0 : 2e12) + (p ? 0 : 1e12) + dt;
+  };
+  (c.comments || []).forEach((cm, i) => hits.push({ comment: i, score: score(cm.by, cm.at, cm.text) }));
+  for (const th of c.note_comments || []) {
+    hits.push({ thread: th.id, score: score(th.by, th.at, th.text) });
+    for (const r of th.replies || []) hits.push({ thread: th.id, score: score(r.by, r.at, r.text) });
+  }
+  hits.sort((a, b) => a.score - b.score);
+  const best = hits[0];
+  if (!best || best.score === Infinity) return null;
+  return best.comment != null ? { comment: best.comment } : { thread: best.thread };
+}
+function openSaid(c: Card, who: string, quote: string, at: string, ptr?: SaidPtr) {
+  const hit = findSaid(c, who, quote, at, ptr);
+  if (!hit) { openAt(c, 'comments'); return; }
+  openUp(c);
+  // After opening has cleared the margin, so it stays open.
+  const pick = () => {
+    if (!hit.thread) return;
+    const th = (c.note_comments || []).find(x => x.id === hit.thread);
+    if (th?.resolved) ncmShowResolved.value = true;
+    ncmActive.value = hit.thread;
+  };
+  const sel = hit.thread ? `.nge-todo-ncm-thread[data-thread="${hit.thread}"]` : `.nge-todo-comment[data-cm="${hit.comment}"]`;
+  let tries = 0;
+  const go = () => {
+    const el = document.querySelector(sel) as HTMLElement | null;
+    if (!el) { if (++tries < 20) setTimeout(go, 50); else toComments(); return; }
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.remove('nge-todo-said--flash');
+    void el.offsetWidth;
+    el.classList.add('nge-todo-said--flash');
+    setTimeout(() => el.classList.remove('nge-todo-said--flash'), 2600);
+  };
+  setTimeout(() => { pick(); void nextTick(go); }, 80);
+}
 /** A comment as one plain line for the card's face. */
 const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼')
   // Headings and bullets read as words on one line ("Update: one, two"), not as their marks.
@@ -1063,11 +1181,34 @@ async function saveNotes(c: Card) {
   if (editNotes.value === c.notes) return;
   await save(c, { notes: editNotes.value }, { tagIds: newTags(c.notes, editNotes.value) });
 }
+/** How far in the next new item goes (Ames 2026-11-14: Tab in the box moves it in). */
+const newItemLevel = ref(0);
+const newItemMost = (c: Card) => (c.checklist.length ? Math.min(2, (c.checklist[c.checklist.length - 1].level || 0) + 1) : 0);
 async function addItem(c: Card) {
   const t = newItem.value.trim();
   if (!t) return;
   newItem.value = '';
-  await save(c, { checklist: [...c.checklist, { text: t, done: false }] }, { tagIds: tagsIn(t) });
+  const level = Math.min(newItemLevel.value, newItemMost(c));
+  await save(c, { checklist: [...c.checklist, level ? { text: t, done: false, level } : { text: t, done: false }] }, { tagIds: tagsIn(t) });
+}
+/** Tab and Shift+Tab in a checklist box: in and out, unless Tab just picked an @ name. */
+function onNewItemKey(c: Card, e: KeyboardEvent) {
+  onMentionKey(e);
+  if (e.defaultPrevented || e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+  e.preventDefault();
+  newItemLevel.value = Math.max(0, Math.min(newItemMost(c), Math.min(newItemLevel.value, newItemMost(c)) + (e.shiftKey ? -1 : 1)));
+}
+function onItemEditKey(c: Card, i: number, e: KeyboardEvent) {
+  onMentionKey(e);
+  if (e.defaultPrevented || e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+  e.preventDefault();
+  const it = c.checklist[i];
+  if (!it) return;
+  const most = i > 0 ? Math.min(2, (c.checklist[i - 1].level || 0) + 1) : 0;
+  const level = Math.max(0, Math.min(most, (it.level || 0) + (e.shiftKey ? -1 : 1)));
+  const t = itemDraft.value.trim();
+  // The words typed so far are kept, and the box stays open.
+  if (level !== (it.level || 0) || (t && t !== it.text)) void setItem(c, i, { level, ...(t ? { text: t } : {}) });
 }
 const setItem = (c: Card, i: number, patch: Partial<Item>) => save(c, { checklist: c.checklist.map((x, k) => {
   if (k !== i) return x;
@@ -1187,7 +1328,7 @@ function withTagsAndReactions(groups: { head: string; rows: Task[]; late?: boole
 // follow, reminders), read from the same notifications as the bell: reading
 // one here reads it there too. ──
 type ActKind = 'tagged' | 'reply' | 'given' | 'finished' | 'reminder';
-interface Act { id: number; kind: ActKind; who: string; what: string; quote: string; cardId: string | null; cardTitle: string; at: string; read: boolean }
+interface Act { id: number; kind: ActKind; who: string; what: string; quote: string; cardId: string | null; cardTitle: string; at: string; read: boolean; ptr?: SaidPtr }
 const ACT_FILTERS: { key: ActKind | 'all'; label: string }[] = [
   { key: 'all', label: 'All' }, { key: 'tagged', label: 'Tagged' }, { key: 'reply', label: 'Replies' },
   { key: 'given', label: 'Given to me' }, { key: 'finished', label: 'Finished' }, { key: 'reminder', label: 'Reminders' },
@@ -1216,7 +1357,7 @@ function readAct(n: any, reads: Set<number>): Act | null {
   } else if (title.startsWith('📋 ') && !title.startsWith('📋 Edited:')) {
     what = title.replace(/^📋 /, '');
   } else return null;
-  return { id: Number(n.id), kind, who, what, quote, cardId, cardTitle, at: String(n.send_at || ''), read: reads.has(Number(n.id)) };
+  return { id: Number(n.id), kind, who, what, quote, cardId, cardTitle, at: String(n.send_at || ''), read: reads.has(Number(n.id)), ptr: saidPtr(body) };
 }
 async function loadActivity() {
   const me = myId.value;
@@ -1277,7 +1418,7 @@ function openAct(a: Act) {
   if (!c) { error.value = 'That card is not on the board any more.'; return; }
   activityOpen.value = false;
   myTasksOpen.value = false;
-  if (a.kind === 'reply' || a.kind === 'tagged') openAt(c, 'comments'); else openUp(c);
+  if (a.kind === 'reply' || a.kind === 'tagged') openSaid(c, a.who, a.quote, a.at, a.ptr); else openUp(c);
 }
 // Opening a card reads its notes here too, as it does its tags.
 watch(openId, id => { if (id) void markActsRead(activity.value.filter(a => a.cardId === id)); });
@@ -1329,7 +1470,8 @@ function flipTask(t: Task) {
 const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.filter(t => t.item !== -2).length, 0));
 function openTask(t: Task) {
   myTasksOpen.value = false;
-  if (t.actId) { const a = activity.value.find(x => x.id === t.actId); if (a) void markActsRead([a]); }
+  const a = t.actId ? activity.value.find(x => x.id === t.actId) : null;
+  if (a) { void markActsRead([a]); openSaid(t.card, a.who, a.quote, a.at, a.ptr); return; }
   if (t.item === -1 || t.item === -2 || t.item === -3) openAt(t.card, 'comments'); else openUp(t.card);
 }
 // ── Reactions on comments ──
@@ -1688,6 +1830,34 @@ function toggleByDate(key: string) {
 function toggleTodoSort() {
   toggleByDate('todo');
 }
+// Most recent first (Ames 2026-11-14), a third way after My order and By
+// date. "Only mine" goes by when I last opened, commented on or made each
+// card; otherwise by the last thing anyone did on it.
+const RECENT_KEY = 'nge-todo-recent';
+const recentOn = ref<Record<string, boolean>>((() => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '{}') || {}; } catch { return {}; } })());
+const recentMine = ref((() => { try { return localStorage.getItem(RECENT_KEY + '-mine') === '1'; } catch { return false; } })());
+function cycleSort(key: string) {
+  // My order, then By date, then Recent, then back.
+  if (recentOn.value[key]) recentOn.value = { ...recentOn.value, [key]: false };
+  else if (byDate.value[key]) { toggleByDate(key); recentOn.value = { ...recentOn.value, [key]: true }; }
+  else toggleByDate(key);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(recentOn.value)); } catch { /* not remembered */ }
+}
+function setRecentMine(on: boolean) { recentMine.value = on; try { localStorage.setItem(RECENT_KEY + '-mine', on ? '1' : '0'); } catch { /* this visit only */ } }
+function recentAt(c: Card): string {
+  const mine = recentMine.value;
+  const myName = people.value.find(p => p.id === myId.value)?.name || '';
+  const times: string[] = [];
+  if (mine) {
+    times.push(seenAt.value[c.id] || '');
+    for (const cm of c.comments || []) if (cm.by === myName) times.push(cm.at || '');
+    if (myName && c.created_by === myName) times.push(c.created_at || '');
+  } else {
+    times.push(c.updated_at || '', c.created_at || '');
+    for (const cm of c.comments || []) times.push(cm.at || '');
+  }
+  return times.reduce((a, b) => (b > a ? b : a), '');
+}
 // Any list folds to a narrow strip (Ames 2026-10-21: "a way to collapse
 // Done"; 2026-10-23: "why can't I collapse To Do").
 const FOLD_KEY = 'nge_todo_done_folded_v1';
@@ -2008,6 +2178,245 @@ function notesHtml(text: string) {
   }
   return t.innerHTML;
 }
+
+// ── Comments in the margin of the notes (Ames 2026-11-15: "make the note
+// function like a google doc with comments", "we have a lot of room in
+// margins"). Select words in the notes, then 💬 Comment: the words get a
+// yellow highlight and the thread sits in the right margin, level with them,
+// with replies, @ tags and Resolve. Server: todos.js todo.noteComment
+// (supabase-admin-todos-note-comments.sql; without it the board shows none).
+const NCM_CONTEXT = 40;
+/** Where a thread's words are in the notes' text, or -1 once they changed.
+ *  The same words in several places: the one whose neighbors match best. */
+function findQuote(full: string, t: { quote: string; before?: string; after?: string }): number {
+  const q = t.quote;
+  if (!q) return -1;
+  const tb = t.before || '', ta = t.after || '';
+  let best = -1, bestScore = -1;
+  for (let i = full.indexOf(q); i >= 0; i = full.indexOf(q, i + 1)) {
+    const b = full.slice(Math.max(0, i - NCM_CONTEXT), i), a = full.slice(i + q.length, i + q.length + NCM_CONTEXT);
+    let s = 0;
+    while (s < tb.length && s < b.length && tb[tb.length - 1 - s] === b[b.length - 1 - s]) s++;
+    let s2 = 0;
+    while (s2 < ta.length && s2 < a.length && ta[s2] === a[s2]) s2++;
+    if (s + s2 > bestScore) { bestScore = s + s2; best = i; }
+  }
+  return best;
+}
+/** The text from s to e, inside root, wrapped in marks for one thread. */
+function wrapQuote(root: Node, s: number, e: number, id: string) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  let pos = 0;
+  for (const node of nodes) {
+    const from = pos, to = pos + node.data.length;
+    pos = to;
+    if (to <= s || from >= e || !node.data.trim()) continue;
+    const a = Math.max(s, from) - from, b = Math.min(e, to) - from;
+    let mid = node;
+    if (a > 0) mid = mid.splitText(a);
+    if (b - a < mid.data.length) mid.splitText(b - a);
+    const m = document.createElement('mark');
+    m.className = 'nge-todo-ncm';
+    m.dataset.ncm = id;
+    mid.replaceWith(m);
+    m.appendChild(mid);
+  }
+}
+const ncmShowResolved = ref(false);
+const ncmActive = ref<string | null>(null);
+type NcmSpot = { cardId: string; quote: string; before: string; after: string; top: number; bottom: number; left: number };
+const ncmPick = ref<NcmSpot | null>(null);
+const ncmDraft = ref<(NcmSpot & { text: string }) | null>(null);
+const ncmReplyText = ref<Record<string, string>>({});
+const ncmBusy = ref(false);
+const notesView = ref<HTMLElement | null>(null);
+const noteWrap = ref<HTMLElement | null>(null);
+const ncmDraftEl = ref<HTMLTextAreaElement | null>(null);
+const ncmTop = ref<Record<string, number>>({});
+const focusEl = ref<HTMLElement | null>(null);
+const focusW = ref(0);
+/** Switched on where the card has the column (the SQL has been run). */
+const ncmOn = computed(() => !!openCard.value && Array.isArray(openCard.value.note_comments));
+/** Wide enough for a margin beside the notes; otherwise the threads sit under them. */
+const ncmWide = computed(() => ncmOn.value && !isPhone.value && !!openCard.value?.notes && focusW.value >= 1000);
+const ncmDraftHere = computed(() => !!ncmDraft.value && ncmDraft.value.cardId === openCard.value?.id);
+const ncmOpen = computed(() => (openCard.value?.note_comments || []).filter(t => !t.resolved));
+const ncmResolved = computed(() => (openCard.value?.note_comments || []).filter(t => t.resolved));
+/** The notes with their commented words marked, and the threads whose words are gone. */
+const notesMarked = computed(() => {
+  const c = openCard.value;
+  const lost = new Set<string>();
+  if (!c || !c.notes) return { html: '', lost };
+  const html = commentHtml(c.notes);
+  const d = ncmDraftHere.value ? ncmDraft.value : null;
+  const list: { id: string; quote: string; before?: string; after?: string }[] = [...ncmOpen.value];
+  if (d) list.push({ id: 'draft', quote: d.quote, before: d.before, after: d.after });
+  if (!list.length) return { html, lost };
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  for (const t of list) {
+    const at = findQuote(tpl.content.textContent || '', t);
+    if (at < 0) { lost.add(t.id); continue; }
+    wrapQuote(tpl.content, at, at + t.quote.length, t.id);
+  }
+  return { html: tpl.innerHTML, lost };
+});
+/** Words picked in the notes: the 💬 Comment button shows beside them. */
+function ncmSelect(c: Card) {
+  if (!ncmOn.value) return;
+  window.setTimeout(() => {   // the selection settles after the mouse is up
+    const view = notesView.value, wrap = noteWrap.value, sel = window.getSelection();
+    if (!view || !wrap || !sel || sel.isCollapsed || !sel.rangeCount) { ncmPick.value = null; return; }
+    const r = sel.getRangeAt(0);
+    if (!view.contains(r.startContainer) || !view.contains(r.endContainer)) { ncmPick.value = null; return; }
+    const pre = document.createRange();
+    pre.selectNodeContents(view);
+    pre.setEnd(r.startContainer, r.startOffset);
+    const full = view.textContent || '';
+    let s = pre.toString().length, e = s + r.toString().length;
+    while (s < e && /\s/.test(full[s])) s++;
+    while (e > s && /\s/.test(full[e - 1])) e--;
+    if (e <= s) { ncmPick.value = null; return; }
+    e = Math.min(e, s + 500);
+    const rect = r.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+    ncmPick.value = { cardId: c.id, quote: full.slice(s, e), before: full.slice(Math.max(0, s - NCM_CONTEXT), s), after: full.slice(e, e + NCM_CONTEXT),
+      top: rect.top - wr.top, bottom: rect.bottom - wr.top, left: Math.max(0, Math.min(rect.left - wr.left, wr.width - 130)) };
+  }, 0);
+}
+function ncmSelGone() {
+  if (!ncmPick.value) return;
+  const s = window.getSelection();
+  if (!s || s.isCollapsed) ncmPick.value = null;
+}
+onMounted(() => document.addEventListener('selectionchange', ncmSelGone));
+onUnmounted(() => document.removeEventListener('selectionchange', ncmSelGone));
+function ncmStart() {
+  const p = ncmPick.value;
+  if (!p) return;
+  ncmDraft.value = { ...p, text: '' };
+  ncmPick.value = null;
+  ncmActive.value = 'draft';
+  window.getSelection()?.removeAllRanges();
+  void nextTick(() => ncmDraftEl.value?.focus({ preventScroll: true }));
+}
+/** A highlight clicked: its thread comes forward. */
+function ncmClickMark(e: MouseEvent) {
+  const m = (e.target as HTMLElement | null)?.closest?.('mark[data-ncm]') as HTMLElement | null;
+  if (m?.dataset.ncm) ncmActive.value = m.dataset.ncm;
+}
+function ncmKey(e: KeyboardEvent, send: () => void, cancel: () => void) {
+  onMentionKey(e);
+  if (e.defaultPrevented) return;
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
+  else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+}
+async function ncmWrite(c: Card, args: Record<string, any>) {
+  if (ncmBusy.value) return false;
+  ncmBusy.value = true;
+  try {
+    const { card } = await secureWrite<any>('todo.noteComment', { id: c.id, ...args });
+    if (card) put(card);
+    return true;
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+    return false;
+  } finally {
+    ncmBusy.value = false;
+  }
+}
+async function ncmSend(c: Card) {
+  const d = ncmDraft.value, t = d?.text.trim();
+  if (!d || !t) return;
+  const had = new Set((c.note_comments || []).map(x => x.id));
+  if (!await ncmWrite(c, { quote: d.quote, before: d.before, after: d.after, text: t, tagIds: tagsIn(t) })) return;
+  ncmDraft.value = null;
+  ncmActive.value = (cards.value.find(x => x.id === c.id)?.note_comments || []).find(x => !had.has(x.id))?.id || null;
+}
+function ncmReplyInput(t: NoteThread, e: Event) {
+  const set = (v: string) => { ncmReplyText.value[t.id] = v; };
+  set((e.target as HTMLTextAreaElement).value);
+  onMentionInput(e, set);
+  ncmSoon();
+}
+async function ncmReply(c: Card, t: NoteThread) {
+  const body = (ncmReplyText.value[t.id] || '').trim();
+  if (!body) return;
+  if (await ncmWrite(c, { thread: t.id, text: body, tagIds: tagsIn(body) })) ncmReplyText.value[t.id] = '';
+}
+async function ncmResolve(c: Card, t: NoteThread, on: boolean) {
+  if (await ncmWrite(c, { thread: t.id, resolved: on }) && on && ncmActive.value === t.id) ncmActive.value = null;
+}
+async function ncmRemove(c: Card, t: NoteThread) {
+  if (!window.confirm('Remove this comment and its replies? Resolve keeps it instead.')) return;
+  await ncmWrite(c, { thread: t.id, remove: true });
+}
+const ncmShown = computed(() => [...ncmOpen.value, ...(ncmShowResolved.value ? ncmResolved.value : [])]);
+/** Margin order: threads beside their words, then ones whose words changed,
+ *  then Show resolved, then the resolved ones. */
+const ncmRank = (t: NoteThread) => t.resolved ? 3 : notesMarked.value.lost.has(t.id) ? 1 : 0;
+const ncmPos = (id: string, rank = 0) => ncmWide.value ? { top: (ncmTop.value[id] ?? 0) + 'px' } : { order: String(rank) };
+/** Each thread level with its words, pushed down so none overlap; the one in
+ *  use sits right beside its words and the others make room above and below. */
+let threadRO: ResizeObserver | null = null;
+function layoutMargin() {
+  const wrap = noteWrap.value, view = notesView.value;
+  if (!wrap || !view || !ncmWide.value) return;
+  const base = wrap.getBoundingClientRect().top;
+  const els = [...wrap.querySelectorAll<HTMLElement>('.nge-todo-margin [data-thread]')];
+  // A thread that grows or shrinks (a reply box, the margin's width) lays them out again.
+  threadRO ??= new ResizeObserver(() => layoutMargin());
+  for (const el of els) threadRO.observe(el);
+  const items = els.map(el => {
+    const id = el.dataset.thread || '';
+    const mark = view.querySelector<HTMLElement>(`mark[data-ncm="${id}"]`);
+    return { id, h: el.offsetHeight, rank: Number(el.dataset.rank) || 0, y: mark ? mark.getBoundingClientRect().top - base : Infinity };
+  });
+  items.sort((a, b) => a.rank - b.rank || (a.y === b.y ? 0 : a.y - b.y));
+  const GAP = 10, out: Record<string, number> = {};
+  let y = 0;
+  for (const it of items) { const top = Math.max(it.y === Infinity ? y : it.y, y); out[it.id] = top; y = top + it.h + GAP; }
+  const k = items.findIndex(it => it.id === ncmActive.value && it.y !== Infinity);
+  if (k >= 0 && out[items[k].id] > items[k].y) {
+    out[items[k].id] = items[k].y;
+    for (let i = k - 1; i >= 0; i--) out[items[i].id] = Math.min(out[items[i].id], out[items[i + 1].id] - items[i].h - GAP);
+    for (let i = k + 1; i < items.length; i++) out[items[i].id] = Math.max(items[i].y === Infinity ? 0 : items[i].y, out[items[i - 1].id] + items[i - 1].h + GAP);
+  }
+  ncmTop.value = out;
+}
+function ncmPaint() {
+  const v = notesView.value;
+  if (v) for (const m of v.querySelectorAll<HTMLElement>('mark[data-ncm]')) m.classList.toggle('nge-todo-ncm--on', m.dataset.ncm === ncmActive.value);
+  layoutMargin();
+}
+const ncmSoon = () => void nextTick(ncmPaint);
+watch([() => notesMarked.value.html, ncmActive, ncmWide, ncmShowResolved, () => openCard.value?.note_comments, ncmDraftHere], ncmSoon);
+watch(openId, () => { ncmPick.value = null; ncmActive.value = null; });
+let focusRO: ResizeObserver | null = null, wrapRO: ResizeObserver | null = null;
+watch(focusEl, el => {
+  focusRO?.disconnect();
+  if (!el) return;
+  focusW.value = el.clientWidth;
+  focusRO = new ResizeObserver(() => { focusW.value = el.clientWidth; });
+  focusRO.observe(el);
+});
+watch(noteWrap, el => {
+  wrapRO?.disconnect();
+  if (!el) return;
+  wrapRO = new ResizeObserver(ncmSoon);
+  wrapRO.observe(el);
+  ncmSoon();
+});
+onUnmounted(() => { focusRO?.disconnect(); wrapRO?.disconnect(); threadRO?.disconnect(); });
+/** The open card's width, and the margin beside it when it has one. */
+function panelStyle(c: Card) {
+  const s: Record<string, string> = { ...(openWidth(c) as Record<string, string>) };
+  if (ncmWide.value && s.maxWidth) s.maxWidth = (parseInt(s.maxWidth, 10) + 320) + 'px';
+  return s;
+}
+/** All the words in a card's margin comments, for search and tags. */
+const noteTalk = (c: Card) => (c.note_comments || []).flatMap(t => [t.text, ...(t.replies || []).map(r => r.text)]).join(' ');
 
 // Images on a card: added with the button, pasted, or dropped on the notes.
 // admin-uploads/todo-images/: deleted 7 days after the card is Done, by
@@ -2367,7 +2776,7 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
       <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
       <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
       <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
-        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each)`">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }" :title="`${p.owned} cards finished as owner (2 points each), ${p.helped} helped on (1 point each), ${p.items} checklist items ticked (${p.ticked} points: 1 each, plus 1 for each sub item under one)`">{{ p.name }} <b>{{ p.n }}</b></span>
         <span class="nge-todo-stat-word">points this week</span>
       </div>
       <div class="nge-todo-stat nge-todo-stat--triage" v-if="stats.triageWeek" title="Triage reports closed with Done or Dismiss in the last 7 days">
@@ -2407,9 +2816,11 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
               <template v-for="(x, i) in sizeSummary" :key="x.s">{{ i ? ' · ' : '' }}{{ x.n }} {{ x.s }}</template>
             </span>
             <span class="nge-todo-list-hint">{{ col.hint }}</span>
-            <button type="button" class="nge-todo-mini nge-todo-sort" :class="{ 'nge-todo-sort--on': byDate[col.key] }"
-                    :title="byDate[col.key] ? 'Showing by date. Click for your own order.' : col.key === 'done' ? 'Showing your own order. Click to organize by the day each was finished.' : 'Showing your own order. Click to organize by due day.'"
-                    @click.stop="toggleByDate(col.key)">{{ byDate[col.key] ? '📅 By date' : '⇅ My order' }}</button>
+            <label v-if="recentOn[col.key]" class="nge-todo-recent-mine" title="Checked: most recent by what you did (opened, commented, made). Unchecked: by what anyone did." @click.stop>
+              <input type="checkbox" :checked="recentMine" @change="setRecentMine($event.target.checked)" /> Mine</label>
+            <button type="button" class="nge-todo-mini nge-todo-sort" :class="{ 'nge-todo-sort--on': byDate[col.key] || recentOn[col.key] }"
+                    :title="recentOn[col.key] ? 'Showing most recent first. Click for your own order.' : byDate[col.key] ? 'Showing by date. Click for most recent first.' : col.key === 'done' ? 'Showing your own order. Click to organize by the day each was finished.' : 'Showing your own order. Click to organize by due day.'"
+                    @click.stop="cycleSort(col.key)">{{ recentOn[col.key] ? '🕘 Recent' : byDate[col.key] ? '📅 By date' : '⇅ My order' }}</button>
           </header>
 
           <form v-if="col.key === 'todo'" class="nge-todo-quick" @submit.prevent="quickAdd">
@@ -2636,7 +3047,9 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
            and the work there?"): the open card takes the middle of the
            screen, and the lists shrink to a strip of titles on the left, so
            another card is still one click away. Esc or Board goes back. -->
-      <nav v-if="openCard" class="nge-todo-strip" aria-label="All cards">
+      <button v-if="openCard && stripHidden" type="button" class="nge-todo-strip-open" title="Show all cards" aria-label="Show all cards" @click="setStripHidden(false)">⟩</button>
+      <nav v-if="openCard && !stripHidden" class="nge-todo-strip" aria-label="All cards">
+        <button type="button" class="nge-todo-mini nge-todo-strip-hide" title="Hide this list, for more room" @click="setStripHidden(true)">⟨ Hide</button>
         <section v-for="col in columns" :key="col.key" class="nge-todo-strip-list">
           <div class="nge-todo-strip-head nge-todo-heading--home" title="Back to the board" @click="openId = null">{{ col.title }} <span class="nge-todo-count">{{ col.rows.length }}</span></div>
           <button v-for="c in col.rows" :key="c.id" type="button" class="nge-todo-strip-card" :class="{ 'nge-todo-strip-card--on': c.id === openId }"
@@ -2652,8 +3065,8 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           <div v-if="!col.rows.length" class="nge-todo-strip-empty">{{ col.empty }}</div>
         </section>
       </nav>
-      <div v-if="openCard" class="nge-todo-focus">
-      <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card" :style="openWidth(openCard)">
+      <div v-if="openCard" ref="focusEl" class="nge-todo-focus" @wheel="focusWheel">
+      <aside class="nge-todo-panel nge-todo-panel--focus" :class="{ 'nge-todo-panel--margin': ncmWide }" :key="openCard.id" aria-label="Card" :style="panelStyle(openCard)">
         <div class="nge-todo-panel-top">
           <button type="button" class="nge-todo-btn" title="Back to the board (Esc)" @click="openId = null">←<span class="nge-todo-word"> Board</span></button>
           <button type="button" class="nge-todo-btn nge-todo-cardlink" :title="cardLink(openCard)" @click="copyCardLink(openCard)">{{ linkCopied === openCard.id ? '✓' : '🔗' }}<span class="nge-todo-word">{{ linkCopied === openCard.id ? ' Link copied' : ' Copy link to this card' }}</span></button>
@@ -2768,7 +3181,8 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
         <input ref="filePicker" type="file" multiple hidden @change="onFilePicked" />
 
         <div class="nge-todo-label nge-todo-label-row">Notes
-          <button v-if="!notesEditing && openCard.notes" type="button" class="nge-todo-mini" @click="notesEditing = true">✎ Edit</button></div>
+          <button v-if="!notesEditing && openCard.notes" type="button" class="nge-todo-mini" @click="notesEditing = true">✎ Edit</button>
+          <span v-if="ncmOn && openCard.notes && !notesEditing && !ncmOpen.length && !ncmDraftHere" class="nge-todo-ncm-hint">Select words to comment on them</span></div>
         <template v-if="notesEditing">
           <div class="nge-todo-fmtbar" role="toolbar" aria-label="Formatting">
             <button type="button" title="Bold (Ctrl+B)" @mousedown.prevent @click="richCmd('bold')"><b>B</b></button>
@@ -2790,7 +3204,54 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           </div>
         </template>
         <button v-else-if="!openCard.notes" class="nge-todo-btn nge-todo-add-btn" @click="notesEditing = true">＋ Add notes</button>
-        <div v-else class="nge-todo-notes nge-todo-md" v-html="commentHtml(openCard.notes)"></div>
+        <div v-else ref="noteWrap" class="nge-todo-notewrap" :class="{ 'nge-todo-notewrap--wide': ncmWide }">
+          <div ref="notesView" class="nge-todo-notes nge-todo-md" v-html="ncmOn ? notesMarked.html : commentHtml(openCard.notes)"
+               @mouseup="ncmSelect(openCard)" @click="ncmClickMark" @load.capture="ncmSoon"></div>
+          <button v-if="ncmPick && ncmPick.cardId === openCard.id" type="button" class="nge-todo-ncm-add"
+                  :style="ncmWide ? { top: ncmPick.top + 'px' } : { top: ncmPick.bottom + 6 + 'px', left: ncmPick.left + 'px' }"
+                  title="Comment on these words" @mousedown.prevent @click="ncmStart">💬 Comment</button>
+          <div v-if="ncmOn && (ncmOpen.length || ncmResolved.length || ncmDraftHere)" class="nge-todo-margin" aria-label="Comments on the notes">
+            <div v-if="ncmDraftHere && ncmDraft" class="nge-todo-ncm-thread nge-todo-ncm-thread--active" data-thread="draft" :style="ncmPos('draft')">
+              <div v-if="notesMarked.lost.has('draft')" class="nge-todo-ncm-quote">On "{{ ncmDraft.quote }}"</div>
+              <textarea ref="ncmDraftEl" v-autogrow v-model="ncmDraft.text" class="nge-todo-input nge-todo-ncm-box" rows="2" maxlength="2000"
+                        placeholder="Comment. Type @ to tag someone. Ctrl+Enter sends." aria-label="Comment on the picked words"
+                        @input="onMentionInput($event, v => { if (ncmDraft) ncmDraft.text = v; }); ncmSoon()"
+                        @keydown="ncmKey($event, () => ncmSend(openCard), () => { ncmDraft = null; })" @keyup.stop @keypress.stop></textarea>
+              <div class="nge-todo-row">
+                <button type="button" class="nge-todo-btn nge-todo-btn--primary" :disabled="ncmBusy || !ncmDraft.text.trim()" @click="ncmSend(openCard)">Comment</button>
+                <button type="button" class="nge-todo-btn" @click="ncmDraft = null">Cancel</button>
+              </div>
+            </div>
+              <div v-for="t in ncmShown" :key="t.id" class="nge-todo-ncm-thread" :data-thread="t.id" :data-rank="ncmRank(t)" :style="ncmPos(t.id, ncmRank(t))"
+                   :class="{ 'nge-todo-ncm-thread--active': ncmActive === t.id, 'nge-todo-ncm-thread--resolved': t.resolved }" @click="ncmActive = t.id">
+                <div class="nge-todo-ncm-by"><b>{{ t.by }}</b> <span>{{ ago(t.at) }}</span>
+                  <span class="nge-todo-ncm-tools">
+                    <button v-if="!t.resolved" type="button" class="nge-todo-mini" title="Resolve: the highlight goes, and the thread is kept under Show resolved" @click.stop="ncmResolve(openCard, t, true)">✓ Resolve</button>
+                    <button v-else type="button" class="nge-todo-mini" title="Open it again, with its highlight" @click.stop="ncmResolve(openCard, t, false)">Reopen</button>
+                    <button v-if="isMyComment(t)" type="button" class="nge-todo-mini" title="Remove this comment and its replies" aria-label="Remove" @click.stop="ncmRemove(openCard, t)">×</button>
+                  </span></div>
+                <div v-if="t.resolved || notesMarked.lost.has(t.id)" class="nge-todo-ncm-quote">{{ !t.resolved ? 'Its words changed. It was on ' : 'On ' }}"{{ t.quote }}"</div>
+                <div v-if="t.resolved" class="nge-todo-ncm-quote">Resolved by {{ t.resolved_by }}, {{ ago(t.resolved_at || '') }}</div>
+                <div class="nge-todo-notes nge-todo-md" v-html="commentHtml(t.text)"></div>
+                <div v-for="(r, k) in t.replies || []" :key="k" class="nge-todo-ncm-reply">
+                  <div class="nge-todo-ncm-by"><b>{{ r.by }}</b> <span>{{ ago(r.at) }}</span></div>
+                  <div class="nge-todo-notes nge-todo-md" v-html="commentHtml(r.text)"></div>
+                </div>
+                <template v-if="ncmActive === t.id">
+                  <textarea v-autogrow class="nge-todo-input nge-todo-ncm-box" rows="1" maxlength="2000" placeholder="Reply. Type @ to tag someone." aria-label="Reply"
+                            :value="ncmReplyText[t.id] || ''" @click.stop
+                            @input="ncmReplyInput(t, $event)"
+                            @keydown="ncmKey($event, () => ncmReply(openCard, t), () => { ncmReplyText[t.id] = ''; ncmActive = null; })" @keyup.stop @keypress.stop></textarea>
+                  <div v-if="(ncmReplyText[t.id] || '').trim()" class="nge-todo-row">
+                    <button type="button" class="nge-todo-btn nge-todo-btn--primary" :disabled="ncmBusy" @click.stop="ncmReply(openCard, t)">Reply</button>
+                    <button type="button" class="nge-todo-btn" @click.stop="ncmReplyText[t.id] = ''">Cancel</button>
+                  </div>
+                </template>
+              </div>
+              <button v-if="ncmResolved.length" type="button" class="nge-todo-mini nge-todo-ncm-foot" data-thread="__foot" data-rank="2" :style="ncmPos('__foot', 2)"
+                      @click="ncmShowResolved = !ncmShowResolved">{{ ncmShowResolved ? 'Hide resolved' : `Show resolved (${ncmResolved.length})` }}</button>
+          </div>
+        </div>
 
         <template v-if="(openCard.images || []).length || imageBusy">
           <div class="nge-todo-label">Images</div>
@@ -2812,12 +3273,11 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done, 'nge-todo-check--now': justTicked === openCard.id + ':' + i }" :style="it.level ? { marginLeft: it.level * 24 + 'px' } : undefined">
             <label><input type="checkbox" class="nge-todo-tick" :checked="it.done" @change="checkItem(openCard, i, $event)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <input v-if="itemEdit === openCard.id + ':' + i" v-model="itemDraft" class="nge-todo-input nge-todo-item-edit" maxlength="300" aria-label="Checklist item"
                      @click.prevent @keydown.enter.prevent="saveItemText(openCard, i)" @keydown.esc="itemEdit = null" @blur="saveItemText(openCard, i)"
-                     @keydown.tab.exact.prevent="itemLevel(openCard, i, 1)" @keydown.shift.tab.prevent="itemLevel(openCard, i, -1)"
-                     @input="onMentionInput($event, v => itemDraft = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+                     @input="onMentionInput($event, v => itemDraft = v)" @keydown="onItemEditKey(openCard, i, $event)" @keyup.stop @keypress.stop />
               <span v-else class="nge-todo-check-text"><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
             <button class="nge-todo-mini" title="Change this item" aria-label="Edit" @click="beginItemEdit(openCard.id + ':' + i, it.text)">✎</button>
-            <button v-if="i > 0 && (it.level || 0) < Math.min(2, (openCard.checklist[i - 1].level || 0) + 1)" class="nge-todo-mini nge-todo-item-lvl" title="Move in, under the item above (Tab while editing)" aria-label="Move in" @click="itemLevel(openCard, i, 1)">⇥</button>
-            <button v-if="it.level" class="nge-todo-mini nge-todo-item-lvl" title="Move back out (Shift+Tab while editing)" aria-label="Move out" @click="itemLevel(openCard, i, -1)">⇤</button>
+            <button v-if="i > 0 && (it.level || 0) < Math.min(2, (openCard.checklist[i - 1].level || 0) + 1)" class="nge-todo-mini nge-todo-item-lvl" title="Move in, under the item above (or press Tab while typing in it)" aria-label="Move in" @click="itemLevel(openCard, i, 1)">⇥</button>
+            <button v-if="it.level" class="nge-todo-mini nge-todo-item-lvl" title="Move back out (or Shift+Tab while typing in it)" aria-label="Move out" @click="itemLevel(openCard, i, -1)">⇤</button>
             <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
                     @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
               <option value="">{{ itemOwner(it) && !it.owner_id ? '@ in the text' : 'Nobody' }}</option>
@@ -2830,13 +3290,14 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
           </li>
         </ul>
         <form class="nge-todo-row" @submit.prevent="addItem(openCard)">
-          <input v-model="newItem" class="nge-todo-input nge-todo-grow" maxlength="300" placeholder="Add an item" aria-label="New checklist item"
-                 @input="onMentionInput($event, v => newItem = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+          <input v-model="newItem" class="nge-todo-input nge-todo-grow" maxlength="300" placeholder="Add an item (Tab moves it in)" aria-label="New checklist item"
+                 :style="Math.min(newItemLevel, newItemMost(openCard)) ? { marginLeft: Math.min(newItemLevel, newItemMost(openCard)) * 24 + 'px' } : undefined"
+                 @input="onMentionInput($event, v => newItem = v)" @keydown="onNewItemKey(openCard, $event)" @keyup.stop @keypress.stop />
           <button type="submit" class="nge-todo-btn" :disabled="!newItem.trim()">Add</button>
         </form>
 
         <div ref="commentsHead" class="nge-todo-label">Comments</div>
-        <div v-for="{ cm, i, depth, rootAt, last } in commentRows(openCard)" :key="i" class="nge-todo-comment" :class="{ 'nge-todo-comment--reply': depth }">
+        <div v-for="{ cm, i, depth, rootAt, last } in commentRows(openCard)" :key="i" :data-cm="i" class="nge-todo-comment" :class="{ 'nge-todo-comment--reply': depth }">
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}<template v-if="cm.edited_at"> · edited <button type="button" class="nge-todo-linkish" @click="toggleOriginal(openCard.id, i)">{{ shownOriginal[openCard.id + ':' + i] ? 'Hide original' : 'Show original' }}</button></template>
             <button type="button" class="nge-todo-linkish nge-todo-comment-reply" @click="startReply(rootAt)">↩ Reply</button>
             <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text; rxLoad('edit', cm.text, true)">✎ Edit</button></div>
@@ -3077,6 +3538,11 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-fold, .nge-todo-sort { font-size: 12px; }
 .nge-todo-sort { margin-left: auto; }
 /* Focus view: a strip of titles, and the open card in the middle. */
+.nge-todo-strip-hide { align-self: flex-start; }
+.nge-todo-recent-mine { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--dim); cursor: pointer; white-space: nowrap; }
+.nge-todo-recent-mine input { margin: 0; accent-color: var(--accent); }
+.nge-todo-strip-open { flex: 0 0 26px; align-self: stretch; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--accent); cursor: pointer; font-size: 15px; padding: 0; }
+.nge-todo-strip-open:hover { border-color: var(--accent); }
 .nge-todo-strip {
   flex: 0 0 clamp(200px, calc(15 * var(--nge-vw, 1vw)), 280px); min-height: 0; overflow-y: auto; scrollbar-width: thin;
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
@@ -3198,6 +3664,39 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-notes--edit:hover { background: var(--card-hi); }
 .nge-todo-link { font-size: 12.5px; }
 .nge-todo-tag { color: var(--accent); font-weight: 700; }
+/* Comments in the margin of the notes (Ames 2026-11-15, like a Google Doc). */
+.nge-todo-notewrap { position: relative; }
+.nge-todo-panel.nge-todo-panel--focus.nge-todo-panel--margin { max-width: 1360px; padding-right: 342px; }
+mark.nge-todo-ncm { background: rgba(245, 197, 66, 0.26); color: inherit; border-bottom: 2px solid rgba(245, 197, 66, 0.7); border-radius: 2px; cursor: pointer; padding: 0; }
+mark.nge-todo-ncm.nge-todo-ncm--on { background: rgba(245, 197, 66, 0.5); }
+.nge-todo--light mark.nge-todo-ncm { background: #fcefb4; border-bottom-color: #e2b520; }
+.nge-todo--light mark.nge-todo-ncm.nge-todo-ncm--on { background: #f7dc6a; }
+.nge-todo-ncm-hint { font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--dim); }
+.nge-todo-ncm-add {
+  position: absolute; z-index: 3; border: 1px solid var(--accent); border-radius: 999px; background: var(--card-hi); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; padding: 4px 12px; cursor: pointer; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35); white-space: nowrap;
+}
+.nge-todo-ncm-add:hover { background: var(--accent-strong); color: #fff; }
+.nge-todo-notewrap--wide .nge-todo-ncm-add { left: calc(100% + 26px); }
+.nge-todo-margin { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.nge-todo-notewrap--wide .nge-todo-margin { position: absolute; left: calc(100% + 26px); top: 0; width: 296px; margin: 0; display: block; }
+.nge-todo-notewrap--wide .nge-todo-ncm-thread, .nge-todo-notewrap--wide .nge-todo-ncm-foot { position: absolute; left: 0; transition: top 0.15s ease; }
+.nge-todo-notewrap--wide .nge-todo-ncm-thread { right: 0; }
+.nge-todo-ncm-thread {
+  display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); cursor: pointer;
+}
+.nge-todo-ncm-thread--active { border-color: var(--accent); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); cursor: default; }
+.nge-todo-ncm-thread--resolved { opacity: 0.72; }
+.nge-todo-panel--focus .nge-todo-ncm-thread .nge-todo-notes { font-size: 13.5px; line-height: 1.45; }
+.nge-todo-panel--focus .nge-todo-ncm-thread .nge-todo-input { font-size: 13.5px; }
+.nge-todo-ncm-by { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; flex-wrap: wrap; }
+.nge-todo-ncm-by > span:not(.nge-todo-ncm-tools) { color: var(--dim); font-size: 11.5px; }
+.nge-todo-ncm-tools { margin-left: auto; display: flex; gap: 2px; }
+.nge-todo-ncm-quote { font-size: 11.5px; color: var(--dim); border-left: 3px solid rgba(245, 197, 66, 0.7); padding-left: 6px; overflow-wrap: anywhere; }
+.nge-todo-ncm-reply { border-top: 1px solid var(--line); padding-top: 5px; display: flex; flex-direction: column; gap: 3px; }
+.nge-todo-ncm-box { width: 100%; box-sizing: border-box; resize: none; }
+.nge-todo-ncm-foot { align-self: flex-start; }
 .nge-todo-check { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 /* Hierarchy (Ames 2026-11-11): sections, sub cards, nested checklist items. */
 .nge-todo-section { display: flex; align-items: center; gap: 6px; margin: 10px 0 2px; padding: 4px 6px; border-bottom: 1px solid var(--line); font-weight: 700; font-size: 13px; letter-spacing: 0.02em; border-radius: 6px 6px 0 0; }
@@ -3304,6 +3803,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-mini { background: none; border: none; color: var(--dim); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
 .nge-todo-mini:hover { color: var(--accent); }
 .nge-todo-comment { border-left: 2px solid var(--line); padding-left: 8px; }
+/* The comment a tag or reply in My Tasks or Activity was about, lit for a moment. */
+@keyframes nge-todo-said { 0%, 55% { background: rgba(79, 140, 255, 0.22); box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.55); } 100% { background: transparent; box-shadow: 0 0 0 2px transparent; } }
+.nge-todo-said--flash { animation: nge-todo-said 2.6s ease-out; border-radius: 6px; }
 .nge-todo-comment-by { font-size: 11.5px; color: var(--dim); }
 .nge-todo-foot { margin-top: auto; padding-top: 10px; font-size: 11.5px; color: var(--dim); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .nge-todo-delete { color: #ff9b9b; border-color: rgba(255, 120, 120, 0.35); }

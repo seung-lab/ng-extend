@@ -103,8 +103,16 @@ function watchHandPoints(src: any) {
   watchedSources.add(src);
   const known = new Set<string>();
   for (const ann of src) known.add(String(ann.id));
+  // Only a change that adds a point needs the walk: a drag or a move fires
+  // this many times a second, and with 13,000 marks each walk was felt (perf
+  // audit 2026-11-14).
+  const sizeOf = () => { const n = src.annotationMap?.size; return typeof n === 'number' ? n : -1; };
+  let lastSize = sizeOf();
   try {
     src.changed.add(() => {
+      const n = sizeOf();
+      if (n >= 0 && n <= lastSize) { lastSize = n; return; }
+      lastSize = n;
       for (const ann of src) {
         const id = String(ann.id);
         if (known.has(id)) continue;
@@ -945,9 +953,12 @@ export async function marksNowOn(roots: string[], stillShown: string[] = [], add
   const madeBefore = (t: number) => addedAt > 0 && t < addedAt;
   for (const m of listHighlights()) {
     if (madeBefore(parseInt(m.mark.slice(ID_PREFIX.length), 36) || 0)) continue;
+    // The mark's first point by its id. It was found by walking every point in
+    // the layer for every mark: with 13,000 points that froze the page for
+    // seconds each time a segment was removed (Nseraf, reports 537 and 538).
     const src = managedLayer(m.style.layer)?.layer?.localAnnotations;
-    let at: number[] | null = null;
-    for (const ann of src ?? []) if (String(ann.id).startsWith(m.mark + '_')) { at = startOf(ann); break; }
+    const first = m.ids[0] ? src?.annotationMap?.get?.(m.ids[0]) : undefined;
+    const at: number[] | null = first ? startOf(first) : null;
     items.push({ label: m.style.label, style: m.style, ids: m.ids, at, cell: cellOfMark(m) });
   }
   for (const { src, style } of highlightLayers()) {

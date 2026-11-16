@@ -36,10 +36,12 @@ import { onTextEditAsked } from '../text_edit_links';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
+import { myAxonTaskIds } from '../util/dataset_contribution';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
 import { freshenClaimView } from '../util/fresh_claim_view';
 import { mintShortStateLink, readStateLink, stateSegTable } from '../util/state_link';
+import { fullViewUrl } from '../util/local_view';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
@@ -142,12 +144,7 @@ function resolveTagFun(tag: IssueTag, e: MouseEvent) {
  *  then on to the next row, relaying through every row in view (Amy).
  *  Each appearance is a fresh mount, so the orbit starts clean, does its
  *  lap, and hands off to the next row. */
-const orbitSeq = ref(0);
-const orbitTimer = setInterval(() => { orbitSeq.value += 1; }, 2800);
-onBeforeUnmount(() => clearInterval(orbitTimer));
-function orbitOn(idx: number, len: number): boolean {
-  return len > 0 && orbitSeq.value % len === idx;
-}
+useOrbitTick();   // read only by OrbitDot, so the tick redraws the dots, not this panel
 const tagSuccessToast = ref(false);
 let tagToastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -943,8 +940,9 @@ async function switchToClaim(cell: CellRow) {
   const t = backend.tasks.find(x => x.id === cell.taskId);
   // A saved view of another dataset is not this cell's: it took Play on the
   // Sandbox to Retina (Ames 2026-11-13: "when I click Play Sandbox Practice it
-  // takes me to retina"). It is passed over and the cell opened instead.
-  const saved = t?.working_link && await viewIsOnDataset(t.working_link, cell.dataset) ? t.working_link : null;
+  // takes me to retina"). It is passed over and the cell opened instead, as is
+  // a saved view already found not to show the claim.
+  const saved = t?.working_link && !isBadClaimView(cell.taskId, t.working_link) && await viewIsOnDataset(t.working_link, cell.dataset) ? t.working_link : null;
   const fromStart = !saved;
   const openedClaim = openStartLink(saved || cell.startLink);
   if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
@@ -958,6 +956,51 @@ async function switchToClaim(cell: CellRow) {
   else { void backend.anchorClaimAt(cell.taskId).catch(() => null); void freshenClaimView(cell.taskId, backend); }
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
+  if (openedClaim && !fromStart) void checkSavedViewShowsClaim(cell);
+}
+
+/** A claim's saved view that does not show the claim: Play landed on an empty
+ *  screen (Ames 2026-11-14, an MEC claim whose view was saved Nov 13, before
+ *  views of another dataset stopped being saved). Once the view has had time
+ *  to load: on another dataset, go back to the claim's own; with the claim not
+ *  showing, add it and fly to its soma. The view's layers stay as they are. */
+async function checkSavedViewShowsClaim(cell: CellRow) {
+  const stillHere = () => jumpedSegId.value === cell.segId && workingTaskId === cell.taskId;
+  for (let i = 0; i < 16; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    if (!stillHere()) return;
+    if (currentSegLayer()?.layer && claimInView(cell)) return;
+  }
+  if (!stillHere()) return;
+  const here = canonicalDataset(currentSegLayerName());
+  const wrongDataset = !!cell.dataset && !!here && here !== canonicalDataset(cell.dataset)
+    && DATASETS.some(ds => canonicalDataset(segLayerName(ds)) === here);
+  console.warn('[cell-library] the saved view of claim', cell.taskId, wrongDataset ? `is of ${here}` : 'does not show it', '- opening the cell');
+  const link = backend.tasks.find(x => x.id === cell.taskId)?.working_link;
+  if (wrongDataset) {
+    // Not this view again: the switch reloads the page, and the claim opens
+    // there from its soma. Its next save replaces the view.
+    if (link) rememberBadClaimView(cell.taskId, link);
+    if (play.on === 'cells') askEnter('cells');
+    rememberAfterSwitch(undefined, 'available');
+    await ensureDataset(cell.dataset);
+    return;
+  }
+  jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+}
+
+/** Saved views found not to show their claim, by task, in this browser.
+ *  Only the exact link: a new save of the claim is opened as usual. */
+const BAD_VIEWS_KEY = 'nge_bad_claim_views';
+function badClaimViews(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(BAD_VIEWS_KEY) || '{}') || {}; } catch { return {}; }
+}
+function isBadClaimView(taskId: number | null | undefined, link: string): boolean {
+  return taskId != null && badClaimViews()[String(taskId)] === link;
+}
+function rememberBadClaimView(taskId: number | null | undefined, link: string) {
+  if (taskId == null) return;
+  try { localStorage.setItem(BAD_VIEWS_KEY, JSON.stringify({ ...badClaimViews(), [String(taskId)]: link })); } catch { /* private window */ }
 }
 
 
@@ -1547,9 +1590,13 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // The view it was finished in stays with the claim, for anyone jumping to
   // the completed cell (report 308). The server only takes it on an open claim.
   if (done.link) await backend.saveWorkingLink(cell.taskId, done.link).catch(() => false);
-  await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  // Axon complete is recorded as such, so it is counted as an axon
+  // (ew_cell_completions.kind) and still as a completed cell (Ames 2026-11-14).
+  await backend.completeTask(cell.taskId, done.finalSegId, done.coords, done.status === AXON_COMPLETE ? 'axon' : undefined);
   endedClaims.add(cell.taskId);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
+  // The list's "axon complete" label at once, before the log catches up.
+  { const next = new Set(myAxonTasks.value); if (done.status === AXON_COMPLETE) next.add(cell.taskId); else next.delete(cell.taskId); myAxonTasks.value = next; }
   // Axon complete: labelled as such, not marked proofread (lightbulb_service).
   if (done.status === AXON_COMPLETE) {
     const nums = (done.coords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));
@@ -1566,8 +1613,10 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // Notify UI that status changed (claim is already cleared by completeTask)
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   void backend.loadTasks();  // incremental, in the background
-  // Celebration!
+  // Celebration! Axon complete counts as a completed cell, so it gets its
+  // own (Ames 2026-11-14). Can't Complete stays quiet.
   if (proofread) triggerCellCelebration(done.finalSegId);
+  else if (done.status === AXON_COMPLETE) triggerCellCelebration(done.finalSegId, 'axon');
 }
 
 async function writeCaveCompletion(cell: CellRow, done: { finalSegId: string; coords: string }): Promise<boolean> {
@@ -1602,11 +1651,13 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
-import { play, takePlayEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
 import { hasReview, startReview, showReview } from '../sandbox_match';
+import OrbitDot from './OrbitDot.vue';
+import { useOrbitTick } from '../util/orbit_tick';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
-async function triggerCellCelebration(segId?: string) {
+async function triggerCellCelebration(segId?: string, kind?: 'axon') {
   await backend.loadUserStats(); // refresh from DB for accurate count
   const statsStore = useUserStatsStore();
   const total = statsStore.stats.cellsSubmitted;
@@ -1615,6 +1666,7 @@ async function triggerCellCelebration(segId?: string) {
     totalCells: total,
     imageUrl: nurro,
     segId,
+    ...(kind ? { kind } : {}),
   };
 }
 
@@ -1662,6 +1714,38 @@ function showSheetError(error: Error) {
   claimError.value = error.message;
   console.warn('[cellLibrary] Sheet sync:', error.message);
   reportWriteFailure('sheet_sync', error.message || 'sheet write failed');
+}
+
+// ── Axon complete (MEC, Ames 2026-11-14) ─────────────────────────────
+// A completed MEC cell finished as Axon complete reads "axon complete" in the
+// list: yours from your own completion log (an upgrade to the whole cell
+// takes it off), anyone's from the sheet's Status column.
+const myAxonTasks = ref<Set<number>>(new Set());
+async function refreshMyAxonTasks() {
+  if (!backend.userId) { myAxonTasks.value = new Set(); return; }
+  myAxonTasks.value = await myAxonTaskIds(backend.userId).catch(() => new Set<number>());
+}
+const sheetAxonSegs = computed(() => new Set(queue.items
+  .filter(i => (i.sheetStatus || '').trim().toLowerCase() === AXON_COMPLETE.toLowerCase()).map(i => i.segId)));
+function isAxonComplete(cell: CellRow): boolean {
+  if (cell.status !== 'completed' || canonicalDataset(cell.dataset) !== 'pni_mec') return false;
+  if (cell.taskId != null && cell.assignedTo === backend.userId) return myAxonTasks.value.has(cell.taskId);
+  return sheetAxonSegs.value.has(cell.segId);
+}
+onMounted(() => {
+  void refreshMyAxonTasks();
+  document.addEventListener('nge:seg-status-changed', onAxonStatusChanged);
+});
+let axonRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+onBeforeUnmount(() => {
+  document.removeEventListener('nge:seg-status-changed', onAxonStatusChanged);
+  if (axonRefreshTimer) clearTimeout(axonRefreshTimer);
+});
+// The log takes a moment to hold the completion just made, and its read is
+// kept for a minute: look once, after that (one timer, however many events).
+function onAxonStatusChanged() {
+  if (axonRefreshTimer) clearTimeout(axonRefreshTimer);
+  axonRefreshTimer = setTimeout(() => { axonRefreshTimer = null; void refreshMyAxonTasks(); }, 65_000);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -1834,7 +1918,7 @@ const jumpConfirmCopied = ref(false);
 
 function copyJumpConfirmUrl() {
   try {
-    navigator.clipboard.writeText(window.location.href);
+    navigator.clipboard.writeText(fullViewUrl());
     jumpConfirmCopied.value = true;
     setTimeout(() => { jumpConfirmCopied.value = false; }, 1500);
   } catch {}
@@ -1880,7 +1964,8 @@ async function saveCurrentAsLink() {
     alert('Log in to save working links.');
     return;
   }
-  const url = window.location.href;
+  // The address is only a code for this browser (util/local_view.ts).
+  const url = fullViewUrl();
   const pos = getViewerPosition();
   const ds = activeDataset.value || getCurrentDatasetName();
   await linksStore.add({
@@ -1916,7 +2001,7 @@ function jumpConfirmTargetServerHasAuth(): boolean {
 }
 
 function getCurrentUrl(): string {
-  try { return window.location.href; } catch { return ''; }
+  try { return fullViewUrl(); } catch { return ''; }
 }
 
 function selectInputContents(e: Event) {
@@ -2662,10 +2747,11 @@ function openResponseUrl(url: string) {
 }
 
 /** Copy current neuroglancer viewer state URL to the response URL field. */
-function copyCurrentState() {
+async function copyCurrentState() {
+  // A short link others can open: the address is only a code for a view
+  // kept in this browser (util/local_view.ts).
   try {
-    // The current URL with fragment contains the full viewer state
-    responseUrl.value = window.location.href;
+    responseUrl.value = (await mintShortStateLink().catch(() => null)) || fullViewUrl();
   } catch {
     responseUrl.value = '';
   }
@@ -2732,7 +2818,8 @@ async function submitNewLink() {
     alert('Log in to save working links.');
     return;
   }
-  const url = window.location.href;
+  // The address is only a code for this browser (util/local_view.ts).
+  const url = fullViewUrl();
   const pos = getViewerPosition();
   const id = await linksStore.add({
     title: newLinkTitle.value.trim() || `${getCurrentDatasetName() || 'View'} · ${new Date().toLocaleString()}`,
@@ -3318,9 +3405,12 @@ async function playSkip(which?: CellRow) {
 /** Stop: keep the task in hand and open the full library again. */
 function playStop() {
   stopPlay();
-  startNote.value = '';
-  expandAndStay();
 }
+/** Play stopped from anywhere (the top bar's stop button, the choice card):
+ *  the full library comes back, with the cell in hand still claimed. */
+const onPlayStopped = () => { startNote.value = ''; if (slim.value) expandAndStay(); };
+onMounted(() => document.addEventListener('nge:play-stopped', onPlayStopped));
+onBeforeUnmount(() => document.removeEventListener('nge:play-stopped', onPlayStopped));
 
 /** Your open claims in this dataset, in list order: what "next" steps through. */
 const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
@@ -4190,7 +4280,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, laneFilteredTags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
+                <span class="nge-orbit-wrap"><OrbitDot :idx="tagIdx" :len="laneFilteredTags.length" /><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetHeading(tag.dataset) + ' and jump' : 'Jump to location'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
                 <template v-if="confirmDeleteTagId === tag.id">
@@ -4301,7 +4391,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, g.tags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
+                <span class="nge-orbit-wrap"><OrbitDot :idx="tagIdx" :len="g.tags.length" /><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location and preview the proposed split'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--split"
@@ -4571,7 +4661,8 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="nge-cl-row-meta">
                   <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
-                  <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
+                  <span class="nge-cl-badge" :class="statusClass(cell.status)"
+                        :title="isAxonComplete(cell) ? 'Axon complete: the axon is proofread to every end. The whole cell can still be completed.' : undefined">{{ isAxonComplete(cell) ? 'axon complete' : statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>

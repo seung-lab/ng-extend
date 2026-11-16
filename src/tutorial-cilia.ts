@@ -149,6 +149,8 @@ function pointAt(color: string, label: string) {
     if (!document.getElementById('nge-cq-pointer') || now !== at) { panel.removeEventListener('pointerdown', drag); clearPointer(); }
   }, 400);
 }
+/** The base of the example's cilium, where its line starts (Celia's coordinates). */
+const CILIUM_BASE = [17397, 26082, 751];
 const POINT = {
   basal: () => { selectLayer(LAYER.basal); goTo(DEMO.basalBody, 0.3); setTimeout(() => pointAt(COLORS.basal, 'Basal body'), 300); },
   daughter: () => { selectLayer(LAYER.daughter); goTo(DEMO.daughterCentriole, 0.3); setTimeout(() => pointAt(COLORS.daughter, 'Daughter centriole'), 300); },
@@ -509,11 +511,13 @@ Click a name to go to its mark. The 2D view on the left is where you work. Let's
     width: BOX_W,
     // Short: the long version covered most of a laptop screen, and the key
     // caps shouted (Ames, 2026-11-12).
-    html: `<p>The ${CL} layer is selected. Hold <strong>CTRL</strong> and click along the middle of the cilium, base to tip, then press <strong>ENTER</strong>. <strong>BACKSPACE</strong> undoes a point, <strong>ESC</strong> cancels.</p>
+    html: `<p>The ${CL} layer is selected, and the crosshairs are on the base of the cilium, where you start. Hold <strong>CTRL</strong> and click along the middle of the cilium, base to tip, then press <strong>ENTER</strong>. <strong>BACKSPACE</strong> undoes a point, <strong>ESC</strong> cancels.</p>
 
 <p>Scroll through the slices as you go. If CTRL+click drops single dots, click the lit zigzag button in the layer panel first.</p>
 <div data-nge-cq-feedback></div>`,
-    onEnter() { removeAnswerLayer(); selectLayer(LAYER.centerline); watchMark('centerline'); },
+    // Start at the base of the cilium, where the lab begins the line (Celia,
+    // 2026-11-16), not wherever the overview left the view.
+    onEnter() { removeAnswerLayer(); selectLayer(LAYER.centerline); goTo(CILIUM_BASE, 0.4); setTimeout(() => pointAt(COLORS.centerline, 'Start here'), 300); watchMark('centerline'); },
   },
   {
     part: 'Your turn',

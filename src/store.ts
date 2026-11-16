@@ -26,12 +26,13 @@ import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {isMobileRef} from './util/mobile';
-import {currentDatasetTag, canonicalDataset, currentSegLayer, DATASETS} from './datasets';
+import {currentDatasetTag, canonicalDataset, currentSegLayer, currentSegLayerName, segLayerName, DATASETS, findDatasetBySegName} from './datasets';
 import {editsAny} from './util/dataset_access';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
 import {isStreakMilestone, nextStreakMilestone, streakLine} from './util/streak_milestones';
 import {emitScriptEvent} from './script_api';
+import {bootHash, bootHashHasLayout, isLocalViewHash} from './util/local_view';
 import {ancestorAmong, getRootsFromSupervoxels, getRootFromSupervoxel, latestDescendants} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
@@ -508,7 +509,7 @@ export const useLayersStore = defineStore('layers', () => {
       // fullscreen 3D, including curated dataset states that arrive later
       // as #!url pointers (their remote fetch resolves after the hash has
       // been rewritten, so the hash cannot be consulted at restore time).
-      const bootHadExplicitLayout = window.location.hash.includes('layout');
+      const bootHadExplicitLayout = bootHashHasLayout();
       if (!bootHadExplicitLayout) {
         viewer.layout.restoreState('3d');
       }
@@ -524,7 +525,7 @@ export const useLayersStore = defineStore('layers', () => {
         }
         origRestore(obj);
       };
-    } else if (!BOOT_HASH.includes('layout')) {
+    } else if (!bootHashHasLayout()) {
       // The hash was already restored in setupViewer, so a refresh keeps the
       // layout the page was on instead of resetting to split 2D/3D.
       viewer.layout.restoreState('xy-3d');
@@ -568,7 +569,7 @@ export const useLayersStore = defineStore('layers', () => {
    *  follows is not lost to a reload (Ames 2026-10-14: "if I jump via chat
    *  it doesn't need to load the default segments, just the segment I
    *  jumped to, true of any and all jumps"). */
-  async function selectLayers(layers: any[], opts: {keepHash?: boolean; forJump?: boolean} = {}) {
+  async function selectLayers(layers: any[], opts: {keepHash?: boolean; forJump?: boolean; startingView?: boolean} = {}) {
     if (!viewer) return;
 
     // Detect the target dataset (by segmentation layer name) BEFORE restoring,
@@ -584,8 +585,29 @@ export const useLayersStore = defineStore('layers', () => {
     // Settings > Switching datasets: the player's own start view wins, then
     // "without starter cells" skips the curated view, else the curated view.
     const startPrefs = useUserPreferencesStore().prefs;
+    const switchOpens = datasetSwitchOpens(startPrefs);
+    // Settings > Switching datasets > "Where I left off" (the default; Ben
+    // Noble, report 542): the newest of this browser's last view of the
+    // dataset and the one saved to the account comes back, by the same road
+    // as a reload. Not on the way to a cell, not while a tutorial runs (it
+    // sets the Sandbox's view itself), and not when the address already
+    // holds a view.
+    if (switchOpens === 'resume' && targetSegName && !opts.forJump && !opts.keepHash && !opts.startingView
+        && !skipStateUrl && !(findDatasetBySegName(targetSegName)?.section === 'sandbox' && isUserInActiveTutorial())) {
+      const lv = await import('./util/local_view');
+      const va = await import('./util/view_autosave');
+      await lv.keepDatasetViewNow();
+      const [local, account] = await Promise.all([lv.lastLocalViewOf(targetSegName), va.accountViewOf(targetSegName)]);
+      const best = local && (!account || local.t >= account.t) ? local : account;
+      if (best?.json && best.json.includes('"layers"')) {
+        console.info(`[layers] Picking up where you left off in ${targetSegName}`);
+        va.noteResumedView(targetSegName);
+        await lv.openViewHere(best.json);
+        return;
+      }
+    }
     const ownHash = targetSegName && !opts.forJump ? startViewHash(startPrefs.datasetStartViews?.[targetSegName]) : '';
-    const bareSwitch = !!startPrefs.datasetBareSwitch || !!opts.forJump;
+    const bareSwitch = switchOpens === 'bare' || !!opts.forJump;
     const curatedUrl = ownHash ? window.location.origin + window.location.pathname + ownHash
       : bareSwitch ? '' : (dsCfgEarly?.defaultStateUrl || '');
     if (curatedUrl && !skipStateUrl && !opts.keepHash) {
@@ -1080,6 +1102,12 @@ export interface UserPreferences {
    *  (opening merge if needed); the second M on another piece sends that
    *  merge. Defaults to false: M only opens and closes merge (Ames 2026-11-04). */
   quickMergeKey?: boolean;
+  /** The key that adds a new layer (Nseraf, report 516: plain N is next to M
+   *  and kept adding layers by mistake). 'shift' for Shift+N (the default,
+   *  Ames 2026-11-16; the Lantern moved to Ctrl+L for it), 'n' for plain N
+   *  as neuroglancer had it, 'alt' for Alt+N (Option+N on a Mac), or 'off'.
+   *  Ctrl+N opens a browser window before the page sees it. */
+  newLayerKey?: 'shift' | 'n' | 'alt' | 'off';
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;
@@ -1134,8 +1162,12 @@ export interface UserPreferences {
   showSegSetupTabs?: boolean;
   /** Optional datasets this player turned on (DatasetEntry.id, e.g. 'h01'). */
   extraDatasets?: string[];
-  /** Switch datasets without the curated view or starter cells (faster). */
+  /** Switch datasets without the curated view or starter cells (faster).
+   *  Kept in step with datasetSwitchOpens === 'bare'. */
   datasetBareSwitch?: boolean;
+  /** What a switch to a dataset opens: where the player left off there (the
+   *  default), its starting view, or the dataset without starter cells. */
+  datasetSwitchOpens?: DatasetSwitchOpens;
   /** Segmentation layer name -> the player's own share link to open there. */
   datasetStartViews?: Record<string, string>;
   /** Mute help requests: hide the pending count on the Second Opinion toolbar
@@ -1177,6 +1209,15 @@ export interface UserPreferences {
   /** Top bar staging for new players (src/util/toolbar_staging.ts): whether
    *  this account is staged, and which icons have arrived. Absent: not decided. */
   toolbarStage?: { staged: boolean; revealed: string[]; visitDays: string[]; done: string[] };
+}
+
+export type DatasetSwitchOpens = 'resume' | 'start' | 'bare';
+/** Settings > Switching datasets. Before the choice existed there was only
+ *  the "without starter cells" box. */
+export function datasetSwitchOpens(p: {datasetSwitchOpens?: DatasetSwitchOpens, datasetBareSwitch?: boolean}): DatasetSwitchOpens {
+  const v = p.datasetSwitchOpens;
+  if (v === 'resume' || v === 'start' || v === 'bare') return v;
+  return p.datasetBareSwitch ? 'bare' : 'resume';
 }
 
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
@@ -1222,7 +1263,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetSwitchOpens', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -4249,8 +4290,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
-  /** Mark a task as completed with final segment/soma data. */
-  async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string) {
+  /** Mark a task as completed with final segment/soma data. `completion`
+   *  'axon': an MEC Axon complete, recorded on the log row so it is counted
+   *  as an axon (ew_cell_completions.kind, Ames 2026-11-14). */
+  async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string, completion?: 'axon') {
     if (!userId.value) return;
     try {
       await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
@@ -4260,7 +4303,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       await logEdit({
         operation: 'complete_task',
         task_id: taskId,
-        metadata: { final_segment_id: finalSegId, soma_coords: somaCoords },
+        metadata: { final_segment_id: finalSegId, soma_coords: somaCoords, ...(completion ? { completion } : {}) },
       });
 
       // Find segment_id for the feed
@@ -5227,8 +5270,19 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const known = liveRoots.value[t.id];
     return known && ends.includes(known) ? known : null;  // several pieces, no anchor yet
   }
-  async function refreshLiveRoots(): Promise<void> {
-    const mine = myActiveClaims();
+  /** `afterEdit`: only the claims an edit can have touched, those of this
+   *  dataset on screen in the last half minute (as refreshLaterRoots). Each
+   *  edit used to look up every open claim, in every dataset, against this
+   *  dataset's graph server: 2 x claims requests per edit (perf audit
+   *  2026-11-14). The others keep what they had. The Cell Library still asks
+   *  for all of them. */
+  async function refreshLiveRoots(afterEdit = false): Promise<void> {
+    let mine = myActiveClaims();
+    if (afterEdit) {
+      const ds = canonicalDataset(currentDatasetTag()), now = Date.now();
+      noteClaimsOnScreen();
+      mine = mine.filter(t => canonicalDataset(t.dataset || '') === ds && now - (claimSeenAt.get(t.id) ?? 0) < 30_000);
+    }
     if (!mine.length) return;
     // A claim still without an anchor gets one whenever its soma happens to
     // be loaded (one look, no waiting); one kept only in this browser is
@@ -5394,7 +5448,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     descendantsSeen.clear();
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
-    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
+    liveRootTimer = setTimeout(() => { refreshLiveRoots(true).catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
     // Once more a little later, in case the server's history was not ready.
     if (laterAgainTimer) clearTimeout(laterAgainTimer);
     laterAgainTimer = setTimeout(() => { descendantsSeen.clear(); refreshLaterRoots().catch(() => {}); }, 10_000);
@@ -5524,6 +5578,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Save a view (short link) as this claim's work in progress, so coming
    *  back to the cell restores its annotation layers (Amy 2026-09-28). */
   async function saveWorkingLink(taskId: number, link: string): Promise<boolean> {
+    // Never a view of another dataset (hi529 2026-11-14: an MEC claim saved
+    // a Retina view, so opening it always landed on Retina, where the MEC
+    // claim is not listed and could not be released). Only a dataset Pyr
+    // knows counts as "another": MEC states can name their layer just "seg".
+    const task = tasks.value.find(x => x.id === taskId);
+    const here = canonicalDataset(currentSegLayerName());
+    if (task?.dataset && here && here !== canonicalDataset(task.dataset)
+        && DATASETS.some(ds => canonicalDataset(segLayerName(ds)) === here)) {
+      console.warn('[backend] saveWorkingLink: the view is of', here, 'not', task.dataset, '- not saved');
+      return false;
+    }
     try {
       await taskAction('save_link', { id: taskId, link });
       const t = tasks.value.find(x => x.id === taskId);
@@ -5694,7 +5759,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   /** Trigger badge celebration from notification click — AchievementToast watches this */
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
-  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string } | null>(null);
+  /** kind 'axon': an MEC cell completed as Axon complete (its own wording). */
+  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; kind?: 'axon' } | null>(null);
 
   /** Read, or a Pyr Update (sent to everyone) more than 5 days old: those
    *  count as read, so the daily updates do not pile up as unread (Ames
@@ -5861,7 +5927,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const groupIds = notifGroupIds;
     // Settings, "Show Today in Pyr" off: the daily update stays out of the bell.
     const hideDigest = prefsStore.prefs.showDailyDigest === false;
-    const mine = (n: Notification) => !notificationDismissals.value.has(n.id)
+    // A reply on the To do board stays out of the bell (Ames 2026-11-16: "I
+    // don't want an in-game bell for every reply"). It still shows in the
+    // board's My Tasks and Activity, and in Slack. Tags still ring.
+    const todoReply = (n: Notification) => /^📋 .+ replied to you on a To do$/u.test(String(n.title || ''));
+    const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && !todoReply(n)
       && !(hideDigest && n.target_type !== 'user' && String(n.title || '').startsWith('Today in Pyr')) && (
       n.target_type === 'all'
       || (n.target_type === 'user' && n.target_id === userId.value)
@@ -6899,7 +6969,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
 /** The address at page load, read before neuroglancer rewrites it with the
  *  restored state (store.ts is imported before the viewer is made). */
-const BOOT_HASH = window.location.hash;
+// The address as the page opened it (a code for a view kept in another
+// browser counts as none: util/local_view.ts).
+const BOOT_HASH = bootHash();
 
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
@@ -6938,7 +7010,9 @@ export const useVolumesStore = defineStore('volumes', () => {
         // A state link in the address (#!https://...) is fetched after this
         // list arrives, so layers are still empty here on a refresh. Wait for
         // it, or the curated redirect below replaced the player's view.
-        if (layersEmpty() && /^#!([a-z][a-z\d+-.]*):\/\//.test(BOOT_HASH)) {
+        // A code for a view kept in this browser (util/local_view.ts) loads
+        // after this too.
+        if (layersEmpty() && (/^#!([a-z][a-z\d+-.]*):\/\//.test(BOOT_HASH) || isLocalViewHash(BOOT_HASH))) {
           await new Promise<void>(resolve => {
             const done = () => { clearTimeout(timer); stop(); resolve(); };
             const timer = setTimeout(done, 20000);
@@ -7199,11 +7273,21 @@ export const useChatStore = defineStore('chat', () => {
   let rejoinDelay = 5000;
   let openChannel: (() => void) | null = null;
   const POLL_MS = 8000;
+  const HIDDEN_POLL_MS = 60_000;
   function startPolling() {
     if (polling.value) return;
     polling.value = true;
     void loadMissed();
-    pollTimer = setInterval(() => { void loadMissed(); }, POLL_MS);
+    // A tab nobody is looking at asks once a minute, not every 8 s (perf
+    // audit 2026-11-14: during a Realtime outage every open tab of every
+    // player polled, 7.5 requests a minute each). It still asks, so an
+    // @mention can still raise a browser notification.
+    let lastPoll = Date.now();
+    pollTimer = setInterval(() => {
+      if (document.hidden && Date.now() - lastPoll < HIDDEN_POLL_MS) return;
+      lastPoll = Date.now();
+      void loadMissed();
+    }, POLL_MS);
     // Being online, and who else is, never needed the live connection either.
     void heartbeat().then(() => loadOnline());
     startPresenceLoops();
@@ -7293,7 +7377,7 @@ export const useChatStore = defineStore('chat', () => {
     if (leader && takeover && channel) void heartbeat().then(() => loadOnline(true));
   });
   onSharedResult<{ user: string; online: typeof online.value }>('chat-online', m => {
-    if (channel && m && m.user === useProofreadingBackendStore().userId) online.value = m.online;
+    if (channel && m && m.user === useProofreadingBackendStore().userId) { online.value = m.online; noteSeen(m.online); }
   });
 
   function sysLine(type: 'join' | 'leave', name: string) {
@@ -7480,6 +7564,7 @@ export const useChatStore = defineStore('chat', () => {
     const cutoff = Date.now() - ONLINE_MS;
     for (const [id, p] of Object.entries(online.value)) if (!next[id] && p.lastSeen >= cutoff && p.fromChat) next[id] = p;
     online.value = next;
+    noteSeen(next);
     if (share) shareResult('chat-online', { user: useProofreadingBackendStore().userId, online: next });
   }
 
@@ -7488,7 +7573,7 @@ export const useChatStore = defineStore('chat', () => {
     if (payload.eventType === 'DELETE') {
       const old = payload.old || {};
       const name = old.name || online.value[old.user_id]?.name;
-      if (old.user_id) delete online.value[old.user_id];
+      if (old.user_id) { delete online.value[old.user_id]; lastSeenBy.set(old.user_id, Date.now()); }
       if (name && old.user_id !== me && mayAnnounce('leave', old.user_id)) sysLine('leave', name);
       return;
     }
@@ -7514,6 +7599,31 @@ export const useChatStore = defineStore('chat', () => {
   const announced = new Map<string, number>();
   const lastSeenBy = new Map<string, number>();
   const BACK_AFTER_MS = 15 * 60_000;
+  /** Heartbeats no longer arrive one by one when the live events table is in
+   *  use (supabase-live-events.sql), so "seen lately" is kept from the online
+   *  list read every minute: a reload still does not announce anyone. */
+  function noteSeen(list: Record<string, { lastSeen: number }>) {
+    for (const [id, p] of Object.entries(list)) if (p.lastSeen > (lastSeenBy.get(id) ?? 0)) lastSeenBy.set(id, p.lastSeen);
+  }
+  /** A row of pyr_live_events, told the way the old row changes were. */
+  function onLiveEvent(payload: any) {
+    const e = payload?.new || {};
+    if (!e.user_id) return;
+    if (e.kind === 'leave') onPresence({ eventType: 'DELETE', old: { user_id: e.user_id, name: e.name } });
+    else if (e.kind === 'join') onPresence({ eventType: 'INSERT', new: { user_id: e.user_id, name: e.name, dataset: e.dataset, last_seen_at: e.at, joined_at: e.at } });
+    else if (e.kind === 'complete') void onCompletion({ new: { user_id: e.user_id, operation: e.operation, success: true, dataset: e.dataset, metadata: e.cell ? { final_segment_id: e.cell } : {} } });
+  }
+  /** Whether supabase-live-events.sql has been run (asked once a page). */
+  let liveEventsAsk: Promise<boolean> | null = null;
+  function liveEventsReady(): Promise<boolean> {
+    liveEventsAsk ??= (async () => {
+      try {
+        const { error } = await supabase.from('pyr_live_events').select('id', { head: true }).limit(1);
+        return !error;
+      } catch { return false; }
+    })();
+    return liveEventsAsk;
+  }
   function mayAnnounce(kind: 'join' | 'leave', userId: string): boolean {
     const key = `${kind}:${userId}`, now = Date.now();
     if (now - (announced.get(key) ?? 0) < ANNOUNCE_EVERY_MS) return false;
@@ -7871,6 +7981,10 @@ export const useChatStore = defineStore('chat', () => {
     // Only database rows written by the verified backend reach the chat UI.
     // Public broadcast events are never treated as authenticated messages.
     let subscribedOnce = false;
+    // Joins, leaves and completions come from one small table written by the
+    // database (perf audit 2026-11-14): every heartbeat and every edit used to
+    // go to every open tab. Until that SQL is run, the old way.
+    const live = await liveEventsReady();
     openChannel = () => {
     const mine = supabase.channel('eyewire-ii-chat-verified');
     channel = mine;
@@ -7932,9 +8046,11 @@ export const useChatStore = defineStore('chat', () => {
     }).on('postgres_changes', {event:'DELETE', schema:'public', table:'chat_reactions'}, payload => {
       const r = payload.old as any;
       if (r?.message_id != null) removeReactionLocal(r.message_id, r.emoji, r.user_id);
-    }).on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
-      .on('postgres_changes', {event:'INSERT', schema:'public', table:'edit_log', filter:'operation=in.(mark_complete,complete_task)'}, onCompletion)
-      .subscribe(status => {
+    });
+    if (live) mine.on('postgres_changes', {event:'INSERT', schema:'public', table:'pyr_live_events'}, onLiveEvent);
+    else mine.on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'edit_log', filter:'operation=in.(mark_complete,complete_task)'}, onCompletion);
+    mine.subscribe(status => {
         if (channel !== mine) return;       // an earlier connection, already replaced
         connected.value = status === 'SUBSCRIBED';
         if (status !== 'SUBSCRIBED') {

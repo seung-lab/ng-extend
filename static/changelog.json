@@ -2,6 +2,144 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-16T16:03:00Z",
+      "title": "A short page address",
+      "items": [
+        "The page address is now a short code instead of your whole view, so it no longer weighs down your browser or its history.",
+        "Your view is kept in your own browser, so a reload, a reopened tab or a browser restart still brings it back.",
+        "To send a view to someone, use the Share button: it copies a short link that works anywhere.",
+        "Switching to a dataset picks up where you left off there. To open a dataset fresh instead, pick what a switch opens in Settings > Switching datasets."
+      ]
+    },
+    {
+      "at": "2026-11-16T14:58:00Z",
+      "title": "New keys and steadier panels",
+      "items": [
+        "A new layer is now Shift+N instead of N, so it is no longer pressed by mistake next to M. Settings, Merging lets you choose N, Alt+N or no key.",
+        "The Lantern moves to Ctrl+L (Cmd+L on a Mac).",
+        "The segment list keeps its place when you switch tabs or layers and come back.",
+        "The cut bar, the chat and the TODO, PROOFREAD, TYPED, DONE bar no longer jump up for a moment while a cut is sent."
+      ]
+    },
+    {
+      "at": "2026-11-16T14:25:00Z",
+      "title": "Start at the base of the cilium",
+      "items": [
+        "Cilia Quest Training: when you trace the cilium, the view now starts right at its base, where the line begins, with a Start here marker."
+      ]
+    },
+    {
+      "at": "2026-11-15T05:26:00Z",
+      "title": "Lighter on your browser history",
+      "items": [
+        "Pyr no longer fills your browser history with copies of the view while you work, which could make the history very large in Firefox.",
+        "Extension Sandbox: a cell that could not be put back to its start is retired, and the cells are now numbered 1 to 8."
+      ]
+    },
+    {
+      "at": "2026-11-15T01:42:00Z",
+      "title": "Time on Quests: MEC Quests",
+      "items": [
+        "In Time on Quests on your profile and in Dataset Stats, the first column is now called MEC Quests, so it is easy to tell apart from Cilia Quests. Cilia Quests are not timed; how many you finished is under Scout Report, Quests."
+      ]
+    },
+    {
+      "at": "2026-11-14T21:30:00Z",
+      "title": "A lighter Pyr when many people play at once",
+      "items": [
+        "Joining, leaving and finished cells now reach chat as one small message each, instead of every open tab hearing every player's check-in each minute. Chat stays quick as more people come online.",
+        "Pyr asks the lab's servers less after each edit: only the claims on your screen are looked up, and a cell's status is no longer asked about twice on the Retina.",
+        "Tabs in the background do less: chat checks less often there, and the radio and layer names wait until you come back.",
+        "Pasting a long list of cells, placing marks on a big MEC cell, and leaving the Cell Library open all do less work, so the page stays smoother.",
+        "If the page ever freezes, the report you send now says whether drawing the view was the slow part, so freezes are easier to track down."
+      ]
+    },
+    {
+      "at": "2026-11-14T21:01:00Z",
+      "title": "Your cell is never an empty screen",
+      "items": [
+        "When the view saved with your cell does not show it, Play now opens your cell at its cell body instead of leaving you on an empty screen."
+      ]
+    },
+    {
+      "at": "2026-11-14T20:18:00Z",
+      "title": "Practice cells repair",
+      "items": [
+        "Practice cells that got stuck can be put back to their start again, so a missing Extension Sandbox cell returns to the rotation."
+      ]
+    },
+    {
+      "at": "2026-11-14T20:10:00Z",
+      "title": "Stop playing on MEC",
+      "items": [
+        "While playing on MEC or the Sandbox, a small square button beside the Play pill in the top bar stops playing. Your cell stays yours and the full Cell Library comes back."
+      ]
+    },
+    {
+      "at": "2026-11-14T19:58:00Z",
+      "title": "Your cell opens where you claimed it",
+      "items": [
+        "A cell you claim now always remembers its own dataset, so opening it can no longer take you to a different one, such as Retina instead of MEC."
+      ]
+    },
+    {
+      "at": "2026-11-14T19:36:00Z",
+      "title": "MEC: Axon complete and Cell complete, counted apart",
+      "items": [
+        "On MEC, finishing a cell as Axon complete is now recorded as an axon, and Complete as the whole cell. Both still count as one completed cell.",
+        "Your MEC card in Profile > Datasets and the Now entering card show how many were whole cells and how many were axons.",
+        "Finishing a cell as Axon complete now gets its own celebration, and the Cell Library labels the cell axon complete.",
+        "An axon-complete cell can be finished as the whole cell later with Mark as Proofread. It stays one cell and becomes a whole cell, in your counts and in the sheet."
+      ]
+    },
+    {
+      "at": "2026-11-14T18:11:12Z",
+      "title": "Extension Sandbox fixes",
+      "items": [
+        "In the Extension Sandbox, the \"Place the merge points for me\" button shows up again.",
+        "When the cell you go back to is not free, the box now says so and tells you which cell you have instead."
+      ]
+    },
+    {
+      "at": "2026-11-14T18:10:00Z",
+      "title": "Play stays on MEC",
+      "items": [
+        "Play on MEC now waits to hear that you have access before picking your cell, so a player just let into MEC is no longer sent to a Retina cell instead."
+      ]
+    },
+    {
+      "at": "2026-11-14T14:55:00Z",
+      "title": "Less lag after removing a segment",
+      "items": [
+        "With thousands of annotation points open, removing a segment no longer freezes the page for seconds while Pyr checks which marks were on it."
+      ]
+    },
+    {
+      "at": "2026-11-14T14:37:00Z",
+      "title": "Your cell count, and a steadier MICrONS tour",
+      "items": [
+        "The message after you complete a cell now counts the cell you just finished, so its total matches your real count.",
+        "In the MICrONS part of the Starship tour, scrolling and dragging now zoom and turn around the cell, not a point behind the text box.",
+        "The tour starts closer in on a cell and its partner, the scan box no longer covers the text box, and a double-click no longer hides the tour's cells."
+      ]
+    },
+    {
+      "at": "2026-11-13T22:08:00Z",
+      "title": "The Starship stays in view",
+      "items": [
+        "On shorter screens the camera now eases back during the Starship tour, so the whole ship stays in view instead of being cut off at the top."
+      ]
+    },
+    {
+      "at": "2026-11-13T22:00:00Z",
+      "title": "Time on Quests",
+      "items": [
+        "Profile, Overview now shows your active time on Quests and Super Quests today, this week, this month and all time.",
+        "Dataset Stats shows the same for the dataset you pick, under Your part.",
+        "Weeks run Monday to Sunday and months start on the 1st, on US Eastern time, like the weekly and monthly awards."
+      ]
+    },
+    {
       "at": "2026-11-13T17:01:29Z",
       "title": "S for To soma",
       "items": [

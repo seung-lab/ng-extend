@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
-import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice } from '../util/play';
+import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice, stopPlay } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -45,6 +45,8 @@ import PyrArcade from "components/PyrArcade.vue";
 import {celebrateSpecialDay} from "../util/special_days";
 import { ARCADE_ENABLED } from "../util/arcade";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
+import { mintShortStateLink } from "../util/state_link";
+import { fullViewUrl } from "../util/local_view";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
@@ -202,25 +204,36 @@ function shareActionPhoto() {
   dismissShareToast();
   showPhotoMode.value = true;
 }
-function shareActionEmail() {
+/** A link to this view that works anywhere: the page address is only a code
+ *  for a view kept in this browser (util/local_view.ts). */
+async function viewShareUrl(): Promise<string> {
+  return (await mintShortStateLink().catch(() => null)) || fullViewUrl();
+}
+/** The share window opens at once (a window opened after waiting is blocked
+ *  as a popup), then goes to the link when it is ready. */
+async function openShareWindow(make: (link: string) => string) {
+  const w = window.open('about:blank', '_blank', 'width=600,height=520');
+  const link = await viewShareUrl();
+  if (w) { try { w.opener = null; } catch { /* */ } w.location.href = make(link); }
+  else window.open(make(link), '_blank', 'noopener,width=600,height=520');
+}
+async function shareActionEmail() {
   dismissShareToast();
   const subject = 'Check out this neuron in EyeWire II';
-  const body = `${window.location.href}\n`;
+  const body = `${await viewShareUrl()}\n`;
   window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 function shareActionX() {
   dismissShareToast();
   const text = 'Check out this neuron in EyeWire II';
-  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`;
-  window.open(url, '_blank', 'noopener,width=600,height=520');
+  void openShareWindow(link => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`);
 }
 function shareActionFacebook() {
   dismissShareToast();
   // quote= prefills the post text; the link preview comes from the page's
   // Open Graph tags (index.html).
   const quote = 'Check out this neuron in EyeWire II';
-  const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}&quote=${encodeURIComponent(quote)}`;
-  window.open(url, '_blank', 'noopener,width=600,height=520');
+  void openShareWindow(link => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}&quote=${encodeURIComponent(quote)}`);
 }
 
 onMounted(() => {
@@ -275,8 +288,10 @@ onMounted(() => {
       if (!showCellLibrary.value) cellLibraryInitialTab.value = undefined;
       showCellLibrary.value = !showCellLibrary.value;
     }
-    // Shift+N: the Lantern, on and off.
-    if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'N' || e.key === 'n')) {
+    // Ctrl+L (Cmd+L on a Mac): the Lantern, on and off (Ames 2026-11-16).
+    // It had Shift+N, which now adds a new layer. The browser's own Ctrl+L
+    // (to the address bar) gives way while the page has the keyboard.
+    if (!typing && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.code === 'KeyL' || e.key === 'l' || e.key === 'L')) {
       e.preventDefault();
       e.stopImmediatePropagation();
       toggleLantern();
@@ -1268,6 +1283,7 @@ const tuckedNotifCount = computed(() => barTucked.value
   ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadStaffNotificationCount) : 0);
 let notifDot: HTMLButtonElement | null = null;
 let notifDotTimer: ReturnType<typeof setInterval> | null = null;
+let notifDotHtml = '';
 function placeNotifDot() {
   const n = tuckedNotifCount.value;
   if (!n) { notifDot?.remove(); return; }
@@ -1280,8 +1296,16 @@ function placeNotifDot() {
     for (const t of ['pointerdown', 'mousedown', 'wheel']) notifDot.addEventListener(t, e => e.stopPropagation());
   }
   const bell = toolbarDefs.value.find(d => d.id === 'notif')?.svg ?? '';
-  notifDot.innerHTML = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
-  notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
+  // Only rewritten when it says something new: this runs every second.
+  const html = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
+  if (notifDotHtml !== html) {
+    notifDotHtml = html;
+    notifDot.innerHTML = html;
+    notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
+  }
+  // Already in a 3D panel that is still shown: nothing to look for.
+  const at = notifDot.parentElement;
+  if (at && at.classList.contains('nge-3d-panel') && at.isConnected && at.offsetWidth > 0) return;
   // The 3D view is rebuilt when the layout changes, so look for it each time.
   const panel = [...document.querySelectorAll<HTMLElement>('.nge-3d-panel')].find(p => p.offsetWidth > 0);
   const home = panel ?? document.body;
@@ -1412,6 +1436,12 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     <button v-if="play.on && offersChoice()" class="nge-play-switch" type="button" @click="choosePlay"
             title="Change what you play, or stop playing" aria-label="Change what you play, or stop playing">
       <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4h7.5M7.5 2l2 2-2 2M10 8H2.5M4.5 6l-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <!-- Everywhere else (MEC, the Sandbox) there is nothing to switch to, so
+         the small button stops playing (Ames 2026-11-14: no way out on MEC). -->
+    <button v-else-if="play.on" class="nge-play-switch" type="button" @click="stopPlay"
+            title="Stop playing" aria-label="Stop playing">
+      <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
     </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">

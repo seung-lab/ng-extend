@@ -8,6 +8,7 @@
  */
 import { ref, computed, onMounted, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
+import { secureWrite } from '../secure_write';
 import DatasetRequestsList from 'components/DatasetRequestsList.vue';
 import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing, resetAccess,
   type AccessRequest, type AccessItem, type AccessFilter } from '../access_request';
@@ -86,10 +87,23 @@ async function setVerdict(r: AccessRequest, it: AccessItem, verdict: 'good' | 'r
 
 /** Requests whose grant needs the reviewer's own CAVE step (no CAVE id kept). */
 const needsHand = ref<Record<number, boolean>>({});
+// The grant email (Ames 2026-11-14): goes with the notification when
+// "Email them too" is ticked. See the email shows it first.
+const emailToo = ref<Record<number, boolean>>({});
+const emailShown = ref<Record<number, { to: string; subject: string; text: string } | null>>({});
+function setEmailToo(r: AccessRequest, e: Event) { emailToo.value[r.id] = (e.target as HTMLInputElement).checked; }
+async function showEmail(r: AccessRequest) {
+  if (emailShown.value[r.id]) { emailShown.value[r.id] = null; return; }
+  busy.value = `e${r.id}`; error.value = '';
+  try { emailShown.value[r.id] = await secureWrite<{ to: string; subject: string; text: string }>('access.grantEmail', { requestId: r.id, note: notes.value[r.id] || '', preview: true }); }
+  catch (e: any) { error.value = e?.message || 'The email could not be shown.'; }
+  finally { busy.value = ''; }
+}
 async function decide(r: AccessRequest, outcome: 'redo' | 'invited', byHand = false) {
   busy.value = `d${r.id}`; error.value = '';
+  const note = notes.value[r.id] || '';
   try {
-    const out = await decideAccess(r.id, outcome, notes.value[r.id] || '', byHand);
+    const out = await decideAccess(r.id, outcome, note, byHand);
     Object.assign(r, out);
     delete notes.value[r.id];
     done.value[r.id] = outcome === 'invited'
@@ -97,6 +111,11 @@ async function decide(r: AccessRequest, outcome: 'redo' | 'invited', byHand = fa
         ? `Access granted: ${r.player_name || r.email} is in Eyewire_2_Edit, on the pilot testers, and was told.`
         : `Access granted by hand: ${r.player_name || r.email} is on the pilot testers and was told.`)
       : `Sent. ${r.player_name} will redo ${out.redos === 1 ? 'one example' : `${out.redos} examples`}.`;
+    emailShown.value[r.id] = null;
+    if (outcome === 'invited' && emailToo.value[r.id] !== false) {
+      try { const m = await secureWrite<{ to: string }>('access.grantEmail', { requestId: r.id, note }); done.value[r.id] += ` Email sent to ${m.to}.`; }
+      catch (e: any) { done.value[r.id] += ` ${e?.message || 'The email did not go.'}`; }
+    }
   } catch (e: any) {
     error.value = e?.message || 'That was not sent.';
     if (/no CAVE id/.test(error.value)) needsHand.value[r.id] = true;
@@ -191,6 +210,15 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
             <textarea v-model="notes[r.id]" rows="3" maxlength="4000"></textarea>
           </label>
           <p class="nge-accr-cave">Grant edit access adds <b>{{ r.email }}</b> to Eyewire_2_Edit in CAVE, then tells them. If CAVE says no, nothing is sent.</p>
+          <div class="nge-accr-email">
+            <label><input type="checkbox" :checked="emailToo[r.id] !== false" @change="setEmailToo(r, $event)" /> Email them too</label>
+            <button class="nge-accr-btn" :disabled="busy === `e${r.id}`" @click="showEmail(r)">{{ emailShown[r.id] ? 'Hide the email' : 'See the email' }}</button>
+          </div>
+          <div v-if="emailShown[r.id]" class="nge-accr-email-draft">
+            <div>To {{ emailShown[r.id]?.to }}, from Amy at Pyr, replies to support@eyewire.org</div>
+            <div><b>{{ emailShown[r.id]?.subject }}</b></div>
+            <pre>{{ emailShown[r.id]?.text }}</pre>
+          </div>
           <div class="nge-accr-decide-btns">
             <button class="nge-accr-btn" :disabled="busy === `d${r.id}`" @click="decide(r, 'redo')">Ask for redos ({{ counts(r).redo }})</button>
             <button class="nge-accr-btn nge-accr-btn--invite" :disabled="busy === `d${r.id}`" @click="decide(r, 'invited')">Grant edit access</button>
@@ -262,5 +290,9 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
 .nge-accr-earlier { margin-top: 4px; padding-left: 10px; border-left: 2px solid #2f4155; border-radius: 0; }
 .nge-accr-earlier-row { margin: 4px 0; color: #b6c4d4; font-size: 0.9rem; }
 .nge-accr-cave { margin: 8px 0 0; color: #f5d142; }
+.nge-accr-email { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.nge-accr-email label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.nge-accr-email-draft { margin: 6px 0 10px; padding: 8px 10px; border: 1px dashed rgba(255,255,255,.25); border-radius: 6px; font-size: 13px; }
+.nge-accr-email-draft pre { white-space: pre-wrap; font: inherit; margin: 6px 0 0; }
 .nge-accr-delete { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 12px; color: #b6c4d4; }
 </style>

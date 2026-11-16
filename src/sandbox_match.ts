@@ -16,6 +16,7 @@
  * which compares the player's cell with the true cell in pinky_training; the
  * answer key never reaches the browser, only what is still wrong after Complete.
  */
+import { fullViewUrl } from './util/local_view';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, currentSegLayer } from './datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -1201,8 +1202,9 @@ async function saveReviewView(btn: HTMLButtonElement, r: ReviewResult) {
   btn.disabled = true;
   btn.textContent = 'Saving';
   const v: any = (window as any).viewer;
-  let url = window.location.href;
-  try { url = `${location.origin}${location.pathname}#!${encodeURIComponent(JSON.stringify(v.state.toJSON()))}`; } catch { /* the address bar's view */ }
+  // The whole view, never the page address: that is only a code for a view
+  // kept in this browser (util/local_view.ts).
+  const url = fullViewUrl();
   let position: [number, number, number] | undefined;
   try { const p = v.navigationState.position.value; position = [Math.round(p[0]), Math.round(p[1]), Math.round(p[2])]; } catch { /* no position */ }
   const shown: string[] = [];

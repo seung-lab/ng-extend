@@ -60,7 +60,7 @@ export const SANDBOX_TOTAL = SANDBOX_CELLS.length;
  *   to be a fair exercise (Ames, 2026-10-12). Hint view
  *   nglstate 5102292558675968, should it come back.
  */
-const RETIRED_SANDBOX_IDS = [
+export const RETIRED_SANDBOX_IDS = [
   '844165a8-5b97-40b0-afba-42125d343dcf',
   // f11ad22b (Celia's "Merger sandbox 5"), retired 2026-10-28: two joins (a
   // thin axon and the join the check spots measure), and one check spot on
@@ -68,6 +68,13 @@ const RETIRED_SANDBOX_IDS = [
   // (Andrearwen: one of seven cuts at the join accepted). Hint view
   // nglstate 5666160561356800, start view 5699422331600896.
   'f11ad22b-8043-4223-9b7e-264eb5d6d0a3',
+  // aca4c7fa (Extension Sandbox "Cell 5", Ames, 2026-11-12), retired
+  // 2026-11-14: the graph server crashes on any edit at its join (undo of
+  // operation 5127 and a split there both fail inside pychunkedgraph,
+  // edits.py, "int() argument must be ... not 'NoneType'"), so it can never
+  // be put back to its start (report 536). Hint view
+  // nglstate 5813860661460992.
+  'aca4c7fa-33d4-48ac-8b6d-f6a20dbdab3e',
 ];
 
 /**
@@ -88,15 +95,14 @@ export const EXTENSION_CELLS: SandboxCell[] = [
   // MERGE_HINT_POINTS in tutorial-3.ts (and point_a / point_b on the rows).
   { id: 'e00d8987-7a7d-47cc-b100-392d9f88e85c', title: 'Cell 3', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6369809629446144', pieces: 1 },
   { id: '72a8858a-756b-4a62-8b81-5857359960ef', title: 'Cell 4', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5515217693835264', pieces: 1 },
-  { id: 'aca4c7fa-33d4-48ac-8b6d-f6a20dbdab3e', title: 'Cell 5', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5813860661460992', pieces: 1 },
-  { id: '5f88242a-ca3f-450d-9208-61c6a0ed713d', title: 'Cell 6', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6027189204025344', pieces: 1 },
-  { id: '0e67d1ab-0f11-40c9-8898-bc89e38f3560', title: 'Cell 7', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4676782632468480', pieces: 1 },
-  { id: 'c8bf3478-c45b-49e4-9fb1-3dd6f02f1fc3', title: 'Cell 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5024496754884608', pieces: 1 },
+  { id: '5f88242a-ca3f-450d-9208-61c6a0ed713d', title: 'Cell 5', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6027189204025344', pieces: 1 },
+  { id: '0e67d1ab-0f11-40c9-8898-bc89e38f3560', title: 'Cell 6', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4676782632468480', pieces: 1 },
+  { id: 'c8bf3478-c45b-49e4-9fb1-3dd6f02f1fc3', title: 'Cell 7', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5024496754884608', pieces: 1 },
   // Ames, 2026-10-24, medium, kept last: extending through a black spill. The cell at
   // (62612, 39202, 558); pieces at (62448, 39130, 537) and (61025, 38968, 394).
   // Two more small ones further on, (59871, 38215, 136) and (59810, 38060,
   // 129), are a bonus and not checked.
-  { id: 'f3dfed18-9592-46ed-8ca7-90310aea0d60', title: 'Cell 9', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600', pieces: 2,
+  { id: 'f3dfed18-9592-46ed-8ca7-90310aea0d60', title: 'Cell 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600', pieces: 2,
     note: 'There are a few more small pieces at the very end of this branch. Add them if you like, but they are not needed to finish. The blue box is where this dataset\'s cells end: past it, the 2D images go on, but there is nothing to add.' },
 ];
 

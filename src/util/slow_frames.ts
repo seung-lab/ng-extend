@@ -17,6 +17,8 @@ let started = false;
 export function startSlowFrameLog() {
   if (started) return;
   started = true;
+  // The viewer comes later than this log, and a dataset switch can bring a new one.
+  setInterval(watchDraws, 5000);
   const PO = (window as any).PerformanceObserver;
   if (!PO?.supportedEntryTypes?.includes('long-animation-frame')) { startHeartbeat(); return; }
   let minute = 0, count = 0;
@@ -42,7 +44,8 @@ export function startSlowFrameLog() {
         const renderMs = f.renderStart ? Math.round(end - f.renderStart) : 0;
         const layoutMs = f.styleAndLayoutStart ? Math.round(end - f.styleAndLayoutStart) : 0;
         const parts = [`scripts ${scriptMs}ms (${(f.scripts ?? []).length})`, `render ${renderMs}ms`, `layout ${layoutMs}ms`, `blocking ${Math.round(f.blockingDuration ?? 0)}ms`];
-        console.warn(`[slow] page froze ${Math.round(f.duration)}ms, ${parts.join(', ')}: ${scripts.join(' | ') || 'no script over 5ms'}`);
+        watchDraws();
+        console.warn(`[slow] page froze ${Math.round(f.duration)}ms, ${parts.join(', ')}: ${scripts.join(' | ') || 'no script over 5ms'} (${drawSummary()})`);
       }
     }).observe({ type: 'long-animation-frame', buffered: false });
   } catch { /* not supported after all */ }
@@ -56,6 +59,35 @@ function describe(el: EventTarget | null): string {
   const text = (e.getAttribute?.('title') || e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30);
   const cls = typeof e.className === 'string' ? e.className.split(' ').filter(Boolean)[0] : '';
   return `${e.tagName.toLowerCase()}${cls ? '.' + cls : ''}${text ? ` "${text}"` : ''}`;
+}
+
+/** How long neuroglancer's own drawing took lately (perf audit 2026-11-14:
+ *  Nseraf's 5 s freezes on the Retina every ~8 s named no script, and
+ *  Chrome's lines for the same kind of freeze said scripts 0 ms, render
+ *  1 ms). A WebGL draw that waits on a busy graphics card shows up here as
+ *  a long draw, which tells a graphics stall from anything else. */
+const draws = { attached: null as any, start: 0, recent: [] as { at: number; ms: number }[] };
+function watchDraws() {
+  const display = (window as any).viewer?.display;
+  if (!display || draws.attached === display) return;
+  draws.attached = display;
+  try {
+    display.updateStarted.add(() => { draws.start = performance.now(); });
+    display.updateFinished.add(() => {
+      const now = performance.now();
+      if (!draws.start) return;
+      draws.recent.push({ at: now, ms: now - draws.start });
+      draws.start = 0;
+      if (draws.recent.length > 600) draws.recent.splice(0, 300);
+    });
+  } catch { /* an older viewer: no draw times */ }
+}
+function drawSummary(): string {
+  const since = performance.now() - 15_000;
+  const r = draws.recent.filter(d => d.at >= since);
+  if (!r.length) return 'no draws in 15 s';
+  const slowest = Math.max(...r.map(d => d.ms));
+  return `${r.length} draws in 15 s, slowest ${Math.round(slowest)}ms`;
 }
 
 /** What the tab carries when it froze, for freezes no script is named for
@@ -76,6 +108,7 @@ function context(): string {
     }
     parts.push(`${layers.length} layers`, `${cells} cells shown`, `${marks} marks`);
   } catch { /* the counts are only a hint */ }
+  parts.push(drawSummary());
   return parts.join(', ');
 }
 

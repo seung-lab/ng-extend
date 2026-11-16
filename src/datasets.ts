@@ -763,7 +763,9 @@ export function datasetLocked(ds: DatasetEntry | undefined): boolean {
   return true;
 }
 
-export async function switchToDataset(ds: DatasetEntry, opts: {forJump?: boolean} = {}): Promise<boolean> {
+/** startingView: open the dataset's starting view even when the player's
+ *  switches pick up where they left off (the bar's "Starting view"). */
+export async function switchToDataset(ds: DatasetEntry, opts: {forJump?: boolean, startingView?: boolean} = {}): Promise<boolean> {
   if (datasetLocked(ds)) {
     StatusMessage.showTemporaryMessage('Retina opens once you unlock Level 1: send your edits with Ask for Edit Access in the menu.', 6000);
     return false;
@@ -772,8 +774,8 @@ export async function switchToDataset(ds: DatasetEntry, opts: {forJump?: boolean
     const layerStore = useLayersStore();
     // Offer the player's autosaved view of the new dataset once it is up,
     // unless the switch is on the way to a cell (see selectLayers forJump).
-    if (!opts.forJump) offerViewRestoreAfterSwitch();
-    layerStore.selectLayers(ds.layers, {forJump: opts.forJump});
+    if (!opts.forJump && !opts.startingView) offerViewRestoreAfterSwitch();
+    layerStore.selectLayers(ds.layers, {forJump: opts.forJump, startingView: opts.startingView});
     const segName = segLayerName(ds);
     if (segName) localStorage.setItem('nge_dataset_preference', segName);
     const cfg = getDatasetCaveConfig(ds.id);
