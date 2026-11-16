@@ -76,16 +76,16 @@ async function player(browser, status) {
     await p.page.waitForTimeout(400);
     check('Escape and a click outside leave it up', !!(await p.page.$('.nge-beta-panel')));
     // Filled in from the sign in.
-    const pre = await p.page.evaluate(() => ({ name: document.querySelector('#nge-beta-name').value, email: document.querySelector('#nge-beta-email').value }));
-    check('name and email are filled in from the sign in', pre.name === 'New Player' && pre.email === 'new@example.org', pre);
-    // A bad email is caught here, and nothing is sent.
-    await p.page.fill('#nge-beta-email', 'not an email');
+    const pre = await p.page.evaluate(() => ({ name: document.querySelector('#nge-beta-name').value, ewEmail: document.querySelector('#nge-beta-ewemail').value }));
+    check('the name is filled in from the sign in, the EyeWire email is left for them (Ames 2026-11-12)', pre.name === 'New Player' && pre.ewEmail === '' && !(await p.page.$('#nge-beta-email')), pre);
+    // Optional, and a bad one is caught here, and nothing is sent.
+    await p.page.fill('#nge-beta-ewemail', 'not an email');
     await p.page.click(REQUEST_BTN);
     await p.page.waitForTimeout(300);
     const err = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
-    check('a bad email says so, and nothing is sent', /email does not look right/.test(err) && !p.calls.some(c => c.action === 'access.beta'), err);
+    check('a bad EyeWire email says so, and nothing is sent', /EyeWire email does not look right/.test(err) && !p.calls.some(c => c.action === 'access.beta'), err);
     await p.page.fill('#nge-beta-name', '');
-    await p.page.fill('#nge-beta-email', 'new@example.org');
+    await p.page.fill('#nge-beta-ewemail', 'Old.Tracer@hotmail.example');
     await p.page.click(REQUEST_BTN);
     await p.page.waitForTimeout(300);
     const err2 = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
@@ -101,10 +101,18 @@ async function player(browser, status) {
     await p.page.fill('#nge-beta-ewrank', 'Scythe');
     await p.page.fill('#nge-beta-found', 'The EyeWire forum');
     await p.page.fill('#nge-beta-note', 'Heard about it on the forum');
+    // The Principles and Terms box is needed, as on connectome.quest.
+    await p.page.click(REQUEST_BTN);
+    await p.page.waitForTimeout(300);
+    const err4 = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
+    check('without the Principles and Terms box: says so, lights the box, sends nothing', /tick the box/.test(err4) && !!(await p.page.$('.nge-beta-check-row--flag')) && !p.calls.some(c => c.action === 'access.beta'), err4);
+    const boxes = p.page.locator('.nge-beta-check-row input[type=checkbox]');
+    await boxes.nth(0).check(); await boxes.nth(1).check();
     await p.page.click(REQUEST_BTN);
     await p.page.waitForSelector('.nge-beta-text--done', { timeout: 5000 }).catch(() => {});
     const sent = p.calls.filter(c => c.action === 'access.beta');
-    check('Request beta access sends one request: name, email, EyeWire username and rank, note', sent.length === 1 && sent[0].name === "Zoë O'Brien" && sent[0].email === 'new@example.org'
+    check('Request beta access sends one request: name, EyeWire email, username and rank, note, agreed, news', sent.length === 1 && sent[0].name === "Zoë O'Brien" && sent[0].email === undefined
+      && sent[0].eyewireEmail === 'Old.Tracer@hotmail.example' && sent[0].agree === true && sent[0].emailOptIn === true
       && sent[0].eyewireUsername === 'tester1' && sent[0].eyewireRank === 'Scythe' && sent[0].foundUs === 'The EyeWire forum' && sent[0].note === 'Heard about it on the forum', sent);
     const done = (await p.page.innerText('.nge-beta-panel')).replace(/\s+/g, ' ');
     check('then it thanks them, signs off, and offers no button', /Thanks for requesting early access to map the brain/.test(done) && /The Pyr \(pronounced "peer"\) team at Princeton University/.test(done) && !(await p.page.$(REQUEST_BTN)), done.slice(0, 200));

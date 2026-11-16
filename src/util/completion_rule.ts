@@ -27,6 +27,10 @@ export interface CompletedCell {
   doneAt: number;
   /** Every root id this cell was logged under. */
   roots: string[];
+  /** MEC (Ames 2026-11-14): 'axon' when every completion that counts was an
+   *  Axon complete (metadata.completion = 'axon'), else 'cell'. A whole-cell
+   *  completion of the same cell later upgrades it. Both count as one cell. */
+  kind: 'axon' | 'cell';
 }
 
 /** One name per dataset (SQL: ew_dataset_key). */
@@ -53,6 +57,7 @@ export function completedCells(rows: CompletionLogRow[]): CompletedCell[] {
         // Written by the server when this root is a later version of a cell
         // the player already completed (an edit changes a cell's root id).
         same: r.operation === 'mark_complete' && m.same_cell_as != null && m.same_cell_as !== '' ? String(m.same_cell_as) : null,
+        axon: m.completion === 'axon',
       };
     });
   // A root id that a task was completed with belongs to that task.
@@ -105,7 +110,11 @@ export function completedCells(rows: CompletionLogRow[]): CompletedCell[] {
     const un = lastUnmark.get(k);
     if (un != null && e.ts <= un) continue;
     const had = cells.get(k);
-    if (!had || e.ts < had.doneAt) cells.set(k, { dataset: e.dataset, cell: e.cell!, doneAt: e.ts, roots: [] });
+    if (!had) cells.set(k, { dataset: e.dataset, cell: e.cell!, doneAt: e.ts, roots: [], kind: e.axon ? 'axon' : 'cell' });
+    else {
+      if (e.ts < had.doneAt) had.doneAt = e.ts;
+      if (!e.axon) had.kind = 'cell';
+    }
   }
   for (const [k, c] of cells) c.roots = [...(roots.get(k) ?? [])];
   return [...cells.values()].sort((a, b) => a.doneAt - b.doneAt || (a.cell < b.cell ? -1 : 1));

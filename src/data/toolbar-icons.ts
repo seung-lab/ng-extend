@@ -18,6 +18,7 @@
  */
 // The same neuron with thicker strokes, for the bolder toolbar icon (2026-09-30).
 import neuronIconBold from '../../static/badges/pyr/neuron-icon-bold.png';
+import { shortcutLabel } from '../util/platform';
 
 export interface ToolbarIconDef {
   id: string;
@@ -113,7 +114,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
   { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)' },
   { id: 'findPath',    emoji: '🛤️', svg: FINDPATH_SVG,    label: 'Find Path (F)' },
-  { id: 'highlight',   emoji: '🖍️', svg: HIGHLIGHT_SVG,   label: 'Highlight Mode (Shift+H): mark what you have checked' },
+  { id: 'highlight',   emoji: '🖍️', svg: HIGHLIGHT_SVG,   label: 'Highlight Mode (H): mark what you have checked' },
   { id: 'layers',      emoji: '🗂️', svg: LAYERS_SVG,      label: 'Layer side panel' },
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science' },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard' },
@@ -124,7 +125,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor' },
   { id: 'screenshot',  emoji: '📷', svg: CAMERA_SVG,      label: 'Take a screenshot' },
   { id: 'undelete',    emoji: '↩️', svg: UNDELETE_SVG,    label: 'Undelete: bring back a cell you removed from view (Ctrl+Z)' },
-  { id: 'lantern',     emoji: '🏮', svg: LANTERN_SVG,     label: 'Lantern (Shift+N): light the cell around where you are, and dim the rest' },
+  { id: 'lantern',     emoji: '🏮', svg: LANTERN_SVG,     label: `Lantern (${shortcutLabel('L')})` + ': light the cell around where you are, and dim the rest' },
   { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests' },
   { id: 'tags',        emoji: '📍', svg: TAG_SVG,         label: 'Tag Mode (Shift+T)' },
   { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed' },

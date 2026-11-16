@@ -43,6 +43,10 @@ const BRAX = 'https://raw.githubusercontent.com/seung-lab/ng-extend/ee4677eeb1a5
 // Fly neurons by neurotransmitter on access granted (Ames 2026-10-16), pinned the same way.
 const GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/18309c4c1fc327d83e7dfff540f83485f8bf52b9/static/access/fly-neurons-by-neurotransmitter.jpg';
 const GRANTED_TITLE = '🎉 Congratulations! Your edit access has been granted!';
+// Ames 2026-11-14: "tells players they can start playing in retina to see the
+// different brain mapping challenges". The two Play offers on the Retina.
+const RETINA_PLAY = '**Start playing in the Retina to see its brain mapping challenges.** Press Play to choose one: '
+  + 'proofread bipolar cells in the BC Challenge, or mark the cilium on starburst cells in Cilia Quests.';
 // The open padlock on a dataset grant (Ames 2026-10-28).
 const DATASET_GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
 // The closed padlock on a dataset request, in the admins' bell (Ames 2026-10-28).
@@ -384,7 +388,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
   if (notifyPlayer) {
     const title = outcome === 'invited' ? GRANTED_TITLE : '🔬 Notes on your retina access request';
     const body = outcome === 'invited'
-      ? `Your ten examples looked great. The EyeWire II retina is now open to you for editing, and every cell you proofread there becomes part of a real map of the retina.${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out of Pyr and back in. Thank you for doing science with us!`
+      ? `Your ten examples looked great. The EyeWire II retina is now open to you for editing, and every cell you proofread there becomes part of a real map of the retina.\n\n${RETINA_PLAY}${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out of Pyr and back in. Thank you for doing science with us!\n\n[Play in the Retina ›](#nge-open-dataset=stroeh_mouse_retina)`
       : `A reviewer looked at your ten examples and would like ${redos === 1 ? 'one' : redos} again.${note ? `\n\n${note}` : ''}\n\nClick here, or open the menu and Ask for Edit Access, to see the notes on each one.`;
     try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
@@ -548,25 +552,31 @@ async function beta(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
   if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
   const name = betaName(a.name);
-  const email = betaEmail(a.email);
-  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
-  const ew = eyewireOf(a);
-  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  // The game form asks for their EyeWire email instead of a second email
+  // (Ames 2026-11-12), so the email is their sign in unless they give one.
+  const email = betaEmail(a.email || signIn);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
+  if (ew.email === signIn || ew.email === email) ew.email = null;
+  if (a.agree === false) fail(400, 'Please tick the box to say you agree to the Eyewire II Principles and the Terms of Use.');
+  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
   const same = email === signIn;
   // Invited under another address (Ames 2026-11-04: invites went to the
   // emails on the EyeWire form, many not Google accounts, and Pyr signs in
   // with Google). The admin still lets them in by hand: anyone could type an
   // invited address, so the row says to check it is them first.
-  const invitedAs = !same && await invitedEmail(io.sb, email);
+  const invitedAs = (!same && await invitedEmail(io.sb, email)) ? email
+    : (ew.email && await invitedEmail(io.sb, ew.email)) ? ew.email : '';
   const message = [
     `${name} asks to join the Pyr beta.`,
     same ? '' : `Email they gave: ${email}`,
-    invitedAs ? `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.` : '',
+    invitedAs ? `Invited as: ${invitedAs}, already on Pilot testers. They sign in with another Google account.` : '',
     `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    a.agree === true ? 'They agreed to the community principles.' : '',
     ...ewLines(ew),
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
@@ -574,7 +584,7 @@ async function beta(a, io) {
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
   const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
-    + (invitedAs ? `Already invited as ${mdText(email)}, and signs in with another Google account.\n\n` : '')
+    + (invitedAs ? `Already invited as ${mdText(invitedAs)}, and signs in with another Google account.\n\n` : '')
     + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
     + ewForBell(ew)
     + `\n\n${LET_IN}`
@@ -709,16 +719,24 @@ function eyewireOf(a) {
   if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
   // How did you find us? (Ames 2026-11-06), optional plain text, one line.
   const found = cleanText(a.foundUs, FOUND_US_MAX, 'How you found us');
+  // The email on their EyeWire account (Ames 2026-11-12: "we for sure need
+  // eyewire email"), optional: it is where our invites went, so it matches
+  // them to an invite and to their EyeWire stats.
+  let ewEmail = null;
+  if (a.eyewireEmail) {
+    try { ewEmail = betaEmail(a.eyewireEmail); } catch (e) { fail(400, 'That EyeWire email does not look right.'); }
+  }
   return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null,
+    email: ewEmail,
     found: found ? found.replace(/\s+/g, ' ') : null,
     // Email me Pyr news (Ames 2026-11-12): a box on the request form, unticked
     // to start. Only said when the form sends it, as yes or no.
     news: a.emailOptIn === true ? 'yes' : a.emailOptIn === false ? 'no' : null};
 }
 const FOUND_US_MAX = 200;
-const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
+const ewLines = ew => [ew.email ? `EyeWire email: ${ew.email}` : '', ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : '',
   ew.found ? `How they found us: ${ew.found}` : '', ew.news ? `Pyr news by email: ${ew.news}` : ''];
-const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
+const ewForBell = ew => (ew.email ? `\n\nEyeWire email: ${mdText(ew.email)}` : '') + (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '')
   + (ew.found ? `\n\nHow they found us: ${mdText(ew.found)}` : '') + (ew.news ? `\n\nPyr news by email: ${ew.news}` : '');
 /** A new request goes on the triage board now, not at the next (often late)
  *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
@@ -825,6 +843,92 @@ async function askEmail(a, io) {
 // And everyone who has signed in to Pyr, admins left out (Ames 2026-11-12:
 // "I want to see all the people we've invited, all the people who have
 // signed in"), including those who signed in and never asked.
+// ── An EyeWire username typed in on the Access page (Ames 2026-11-12: "add
+// eyewire username manually to invite"). Goes in access_ew_names, which the
+// view access_hub_people reads (supabase-access-hub.sql). Admins only.
+//   access.setEwName  admins: {email, ewName}.
+async function setEwName(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const ewName = cleanEwName(a.ewName);
+  if (!ewName) fail(400, 'Type their EyeWire username.');
+  const by = String((io.who && io.who.email) || '').slice(0, 200) || null;
+  await io.sb('access_ew_names?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify({email, ew_name: ewName.toLowerCase(), set_by: by, set_at: new Date().toISOString()})});
+  return {ewName: ewName.toLowerCase()};
+}
+
+// ── An EyeWire player's public profile: when they joined, roles, country
+// (Ames 2026-11-13: "add eyewire join date here"). eyewire.org's bio page
+// sends no CORS header, so the Access page can't read it itself; the
+// stats page it reads directly. Admins only.
+//   access.ewBio  admins: {name} -> {joined, roles, country} or {none: true}.
+async function ewBio(a, io) {
+  needAdmin(io.isAdmin);
+  const name = cleanEwName(a.name);
+  if (!name) fail(400, 'Which EyeWire username?');
+  const get = io.fetch || fetch;
+  let bio = null;
+  try {
+    const r = await get(`https://eyewire.org/1.0/player/${encodeURIComponent(name.toLowerCase())}/bio`);
+    bio = r.ok ? await r.json() : null;
+  } catch (e) { bio = null; }
+  if (!bio || typeof bio !== 'object') return {none: true};
+  return {joined: Number(bio.joined) || null, roles: Array.isArray(bio.roles) ? bio.roles.map(String).slice(0, 20) : [],
+    country: bio.country_name ? String(bio.country_name).slice(0, 80) : null};
+}
+
+// ── A Beta request bell is read once the request is dealt with on the
+// Access page (Ames 2026-11-12: "notif feed is supposed to mark these as
+// read if I've dealt with them in Access"): let in (on Pilot testers),
+// put on Later, removed, or emailed for their EyeWire name. Marked read for
+// every admin, so every admin and device agrees. The bell names the
+// person's emails in its body (escaped for markdown).
+//   access.readHandledBetaBells  admins: {marked, ids} (ids: the caller's).
+const BETA_BELL_LIKE = 'notifications?target_type=eq.user&title=like.' + encodeURIComponent(BETA_BELL + '*')
+  + '&select=id,target_id,body&order=id.desc&limit=2000';
+const EMAIL_IN = /[^\s@<>(),;:]+@[^\s@<>(),;:]+\.[a-z]{2,}/gi;
+function bellEmails(body) {
+  const plain = String(body || '').replace(/\\(.)/g, '$1');
+  return [...new Set((plain.match(EMAIL_IN) || []).map(e => e.toLowerCase().replace(/\.$/, '')))];
+}
+async function readHandledBetaBells(a, io) {
+  needAdmin(io.isAdmin);
+  const bells = (await io.sb(BETA_BELL_LIKE)).filter(b => isUuid(b.target_id));
+  if (!bells.length) return {marked: 0, ids: []};
+  const read = new Set();
+  for (let i = 0; i < bells.length; i += 100) {
+    const chunk = bells.slice(i, i + 100).map(b => b.id).join(',');
+    for (const r of await io.sb(`notification_reads?notification_id=in.(${chunk})&select=notification_id,user_id`)) read.add(`${r.notification_id}:${r.user_id}`);
+  }
+  const unread = bells.filter(b => !read.has(`${b.id}:${b.target_id}`));
+  if (!unread.length) return {marked: 0, ids: []};
+  const [pilots, marks, asked, links] = await Promise.all([
+    io.sb('pilot_members?enabled=eq.true&select=email&limit=20000').catch(() => []),
+    io.marks ? io.marks.all().catch(() => ({})) : {},
+    io.askSent ? io.askSent.all().catch(() => ({})) : {},
+    io.sb('access_email_links?select=email,linked_to&limit=5000').catch(() => []),
+  ]);
+  const done = new Set();
+  for (const p of pilots || []) done.add(String(p.email || '').toLowerCase());
+  for (const [e, m] of Object.entries(marks || {})) if (m && (m.mark === 'removed' || m.mark === 'listed')) done.add(e.toLowerCase());
+  for (const e of Object.keys(asked || {})) done.add(e.toLowerCase());
+  // One person, two emails: dealt with under either.
+  for (const l of links || []) {
+    const x = String(l.email || '').toLowerCase(), y = String(l.linked_to || '').toLowerCase();
+    if (done.has(x)) done.add(y); else if (done.has(y)) done.add(x);
+  }
+  const mark = unread.filter(b => bellEmails(b.body).some(e => done.has(e)));
+  if (mark.length) {
+    await io.sb('notification_reads?on_conflict=notification_id,user_id', {method: 'POST',
+      headers: {Prefer: 'resolution=ignore-duplicates,return=minimal'},
+      body: JSON.stringify(mark.map(b => ({notification_id: b.id, user_id: b.target_id})))});
+  }
+  const mine = io.me && io.me.id;
+  return {marked: mark.length, ids: mark.filter(b => b.target_id === mine).map(b => b.id)};
+}
+
+const TEAM_EMAILS = ['ryan.t.morey@gmail.com'];
 async function inviteCount(a, io) {
   needAdmin(io.isAdmin);
   const [rows, users, admins] = await Promise.all([
@@ -834,6 +938,9 @@ async function inviteCount(a, io) {
   ]);
   const adminIds = new Set((admins || []).map(r => r.user_id).filter(Boolean));
   const adminEmails = new Set((admins || []).map(r => String(r.email || '').toLowerCase()).filter(Boolean));
+  // The Princeton team who are not Pyr admins (Ames 2026-11-12, Ryan Morey)
+  // are left out too, as on the Access page.
+  for (const e of TEAM_EMAILS) adminEmails.add(e);
   const signedIn = (users || []).filter(u => !adminIds.has(u.id) && !adminEmails.has(String(u.middleauth_email || '').toLowerCase())).length;
   return {invited: new Set((rows || []).map(r => r.email)).size, signedIn};
 }
@@ -951,6 +1058,34 @@ const DATASET_CATEGORY = 'Dataset access';
 const DATASET_CAVE_GROUPS = {pni_mec: {id: 217, name: 'MEC_Edit'}};
 /** The short name a player knows a dataset by, for the bell. */
 const DATASET_SHORT = {pni_mec: 'MEC'};
+/** A dataset's own unlock bell (Ames 2026-11-14: "custom notifs that are sent
+ *  to players when they unlock access (especially to MEC)"). The title keeps
+ *  the "🔓 You have access to " start and the body keeps the Explore link:
+ *  grantLines finds grants by both. Others get the plain bell. */
+const DATASET_UNLOCK = {
+  pni_mec: {
+    title: '🔓 You have access to MEC, the brain\'s map of space',
+    image: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/datasets/mec-welcome.jpg',
+    body: 'Congratulations, you\'re in! **You can now edit MEC, the medial entorhinal cortex.**\n\n'
+      + 'This is one of the regions where the mouse brain keeps its map of space. Its **grid cells** fire in a hexagonal pattern as an animal explores, '
+      + 'and their discovery won the 2014 Nobel Prize. Every cell you proofread here helps show how that map is wired.\n\n'
+      + 'The first time you open MEC, a short tour introduces its seven kinds of cell, from the star shaped stellate cells to the microglia. '
+      + '**In MEC, we prioritize proofreading axons first. Feel free to cut the axon as you proofread, as long as you join it back to the cell before completion.** '
+      + 'Once the axon is mapped fully, you can mark the cell complete.\n\n'
+      + 'Please edit with care: this is a real dataset, and your edits directly change the connectome. '
+      + 'Stuck on a cell? Ask in chat or drop us an email at support@eyewire.org.',
+  },
+};
+/** The bell a player gets when a dataset is unlocked: its own, or the plain one. */
+function unlockBell(dataset, label, said) {
+  const short = DATASET_SHORT[dataset] || label;
+  const own = DATASET_UNLOCK[dataset];
+  return {title: (own ? own.title : `🔓 You have access to ${label}`).slice(0, 120), image: own ? own.image : DATASET_GRANTED,
+    body: (own ? own.body : `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
+      + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.')
+      // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
+      + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${dataset})` + said};
+}
 const DATASET_BELL = '🔓 Dataset access request';
 const DATASET_MARKS = ['granted', 'declined', 'waiting'];
 const DS_ID = /^[a-z0-9_]{2,40}$/;
@@ -1094,12 +1229,7 @@ async function datasetDecide(a, io) {
     const said = note ? '\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
     try {
       if (a.mark === 'granted') {
-        const short = DATASET_SHORT[row.dataset] || label;
-        await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120), image: DATASET_GRANTED,
-          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
-            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.'
-            // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
-            + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${row.dataset})` + said});
+        await io.notifyPlayer({userId: row.user_id, ...unlockBell(row.dataset, label, said)});
       } else {
         await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),
           body: `Not yet, sorry: your request for ${mdText(label)} was looked at, and access was not given this time.` + said});
@@ -1107,6 +1237,86 @@ async function datasetDecide(a, io) {
     } catch (e) { console.warn('[dataset access] player bell failed', e && e.message); }
   }
   return datasetList(a, io);
+}
+
+// ── Send me a test (Ames 2026-11-14: "send me a test as well"): the
+// unlock bell for a dataset, to the admin who asks. The title starts
+// "Test: " so grantLines never takes it for a real grant and says so in chat.
+//   access.datasetTestBell  admins: {dataset, label} -> {sent: true}.
+async function datasetTestBell(a, io) {
+  needAdmin(io.isAdmin);
+  if (!io.me) fail(401, 'Sign in first.');
+  const dataset = String(a.dataset || '');
+  if (!DS_ID.test(dataset)) fail(400, 'Unknown dataset.');
+  const label = cleanText(a.label, 60, 'The dataset name') || DATASET_SHORT[dataset] || dataset;
+  const bell = unlockBell(dataset, label, '');
+  await io.notifyPlayer({userId: io.me.id, ...bell, title: ('Test: ' + bell.title).slice(0, 120)});
+  return {sent: true};
+}
+
+// ── The grant email (Ames 2026-11-14: "yes build the email drafts"). The
+// notification's news by email too, when an admin lets someone into the
+// Retina or a dataset and leaves "Email them too" ticked. From Amy at Pyr,
+// replies to support, blind copies like the welcome email. Only to a player
+// who really was let in. preview returns the email without sending it.
+//   access.grantEmail  admins: {requestId} (Retina) or {datasetId}, {note, preview}
+//     -> {to, subject, text} with preview, else {sent: true, to}.
+const PLAY_URL = 'https://connectome.quest/play/';
+function grantEmail(dataset, label, name, note) {
+  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const short = DATASET_SHORT[dataset] || label;
+  const own = DATASET_UNLOCK[dataset];
+  const said = note ? `\n\n${note}` : '';
+  let subject, body;
+  if (dataset === RETINA_ID) {
+    subject = 'You can now edit the Retina in Pyr';
+    body = 'Congratulations, your edit access has been granted! Your ten examples looked great. The EyeWire II retina is now open to you for editing, '
+      + 'and every cell you proofread there becomes part of a real map of the retina.\n\n'
+      + RETINA_PLAY.replace(/\*\*/g, '') + `\n\n${PLAY_URL}` + said
+      + '\n\nIf the Retina still says View only, sign out of Pyr and back in.';
+  } else if (own) {
+    // The dataset's own notification, as plain text, ending before its "Stuck on a cell?".
+    subject = `You can now edit ${short} in Pyr`;
+    body = own.body.replace(/\*\*/g, '').replace(/\s*Stuck on a cell\?[\s\S]*$/, '') + `\n\nOpen ${short} in Pyr here:\n\n${PLAY_URL}` + said;
+  } else {
+    subject = `You can now edit ${short} in Pyr`;
+    body = `Congratulations, you're in! Your access to ${label} has been granted.\n\n`
+      + 'Please edit with care: this is a real dataset, and your edits directly change the connectome.'
+      + `\n\nOpen ${short} in Pyr here:\n\n${PLAY_URL}` + said;
+  }
+  return {subject, text: `Hi ${first},\n\n${body}\n\nStuck on a cell? Ask in chat or reply to this email.\n\n`
+    + 'Thank you for doing science with us!\n\nAmy Sterling and the Pyr Team at Princeton'};
+}
+async function grantEmailAction(a, io) {
+  needAdmin(io.isAdmin);
+  const note = cleanText(a.note, DECIDE_MAX, 'The note') || '';
+  let to, name, dataset, label, granted;
+  if (a.requestId != null) {
+    const id = Number(a.requestId);
+    if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown request.');
+    const r = (await io.sb(`access_requests?id=eq.${id}&select=email,player_name,status&limit=1`))[0];
+    if (!r) fail(404, 'That request is gone.');
+    to = r.email; name = r.player_name; dataset = RETINA_ID; label = 'the Retina'; granted = r.status === 'invited';
+  } else {
+    const id = String(a.datasetId || '');
+    if (!UUID.test(id)) fail(400, 'Unknown request.');
+    const row = (await datasetRows(io.sb, '&id=eq.' + encodeURIComponent(id)))[0];
+    if (!row) fail(404, 'That request is gone.');
+    const u = row.user_id ? (await io.sb('users?id=eq.' + encodeURIComponent(row.user_id) + '&select=middleauth_email,display_name&limit=1'))[0] : null;
+    const mark = (await io.datasetMarks.all())[id];
+    to = u && u.middleauth_email; name = (u && u.display_name) || row.user_name; dataset = row.dataset; label = labelOf(row.title);
+    granted = !!mark && mark.mark === 'granted';
+  }
+  to = String(to || '').trim().toLowerCase();
+  const draft = grantEmail(dataset, label, name, note);
+  if (a.preview === true) return {to, ...draft};
+  if (!granted) fail(409, 'Let them in first, then email them.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) fail(409, 'Pyr has no email address for this player.');
+  if (!io.sendEmail) fail(503, 'Email is not set up on the server.');
+  const copies = WELCOME_COPY_TO.filter(c => c !== to);
+  const r = await io.sendEmail({from: ASK_FROM, to: [to], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), ...draft});
+  if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in, and their notification went.`);
+  return {sent: true, to};
 }
 
 // ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
@@ -1180,6 +1390,8 @@ async function handle(action, args, io) {
   if (action === 'access.dataset') return datasetRequest(a, io);
   if (action === 'access.datasetList') return datasetList(a, io);
   if (action === 'access.datasetDecide') return datasetDecide(a, io);
+  if (action === 'access.datasetTestBell') return datasetTestBell(a, io);
+  if (action === 'access.grantEmail') return grantEmailAction(a, io);
   if (action === 'access.betaStatus') return betaStatus(a, io);
   if (action === 'access.beta') return beta(a, io);
   if (action === 'access.linkInvite') return linkInvite(a, io);
@@ -1191,6 +1403,9 @@ async function handle(action, args, io) {
   if (action === 'access.askEmail') return askEmail(a, io);
   if (action === 'access.askSent') return askSentAll(a, io);
   if (action === 'access.inviteCount') return inviteCount(a, io);
+  if (action === 'access.setEwName') return setEwName(a, io);
+  if (action === 'access.ewBio') return ewBio(a, io);
+  if (action === 'access.readHandledBetaBells') return readHandledBetaBells(a, io);
   if (action === 'access.notes') return accessNotes(a, io);
   if (action === 'access.note') return accessNote(a, io);
   if (action === 'access.noteDelete') return accessNoteDelete(a, io);
@@ -1245,4 +1460,4 @@ async function principlesAgree(a, io) {
   return {version: PRINCIPLES_VERSION, agreed: true, at};
 }
 
-module.exports = {handle, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
+module.exports = {handle, grantEmail, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};

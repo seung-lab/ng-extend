@@ -493,10 +493,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 });
 
 // ── Cell completion celebration ──
-/** The all-datasets count the last celebration showed, to notice a list that
- *  has not caught up with the cell just completed. */
-let lastCelebratedCount: number | null = null;
-const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean } | null>(null);
+const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; kind?: 'axon'; datasetAxons?: number } | null>(null);
 
 /** How much a completed cell shows (Settings): the full congratulations, a
  *  small note at the top, or nothing. Read when a cell is completed, so a
@@ -528,23 +525,29 @@ watch(() => backend.pendingCellCelebration, (pending) => {
   if (backend.userId && !(pending.batchCount && pending.batchCount > 1)) {
     const uid = backend.userId;
     const stillThis = () => cellCelebration.value && cellCelebration.value.imageUrl === shown.imageUrl && cellCelebration.value.segId === shown.segId;
-    const show = (r: { label: string; here: number; all: number }) => {
+    const show = (r: { label: string; here: number; all: number; axonsHere?: number }) => {
       if (!stillThis()) return;
       cellCelebration.value = { ...cellCelebration.value!, totalCells: r.all, counted: true,
-        ...(r.label && r.here > 0 ? { datasetLabel: r.label, datasetCells: r.here } : {}) };
+        ...(r.label && r.here > 0 ? { datasetLabel: r.label, datasetCells: r.here, datasetAxons: r.axonsHere ?? 0 } : {}) };
     };
     // The list could not be read: fall back to the profile's own total.
     const giveUp = () => { if (stillThis()) cellCelebration.value = { ...cellCelebration.value!, counted: true }; };
-    const before = lastCelebratedCount;
-    celebrationCellCounts(uid).then(async r => {
-      if (!r) { giveUp(); return; }
-      if (before != null && r.all <= before) {
-        await new Promise(res => setTimeout(res, 1500));
-        r = (await celebrationCellCounts(uid)) ?? r;
+    // Wait until the list holds a cell completed just now. It used to look
+    // again only when the count had not grown since the last celebration, so
+    // the first cell of a visit could show one short, and from then on every
+    // cell did: "+1 cell brings your total to 29" while the real count was
+    // 30 (Giedrius, #526). A cell completed again is not new and never shows
+    // up as fresh; after a few looks the numbers are shown as they are.
+    const since = Date.now() - 2 * 60_000;
+    (async () => {
+      let r = await celebrationCellCounts(uid, since);
+      for (let i = 0; r && !r.fresh && i < 4; i++) {
+        await new Promise(res => setTimeout(res, 1000 + i * 500));
+        r = (await celebrationCellCounts(uid, since)) ?? r;
       }
-      lastCelebratedCount = r.all;
+      if (!r) { giveUp(); return; }
       show(r);
-    }).catch(giveUp);
+    })().catch(giveUp);
   } else if (cellCelebration.value) {
     cellCelebration.value = { ...cellCelebration.value, counted: true };
   }
@@ -706,7 +709,7 @@ function playBatchChime() {
     <Transition name="nge-cell-chip">
       <button v-if="cellCelebration && cellMessageMode === 'small'" type="button" class="nge-cell-chip" title="Click to dismiss" @click="dismissCellCelebration">
         <span class="nge-cell-chip-check" aria-hidden="true">✓</span>
-        <span class="nge-cell-chip-title">{{ cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
+        <span class="nge-cell-chip-title">{{ cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : cellCelebration.kind === 'axon' ? 'Axon complete' : 'Cell complete' }}</span>
         <span v-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
         <template v-else-if="cellCelebration.counted">
           <span v-if="cellCelebration.datasetLabel" class="nge-cell-chip-count">{{ cellCelebration.datasetLabel }} <b>{{ cellCelebration.datasetCells }}</b></span>
@@ -721,13 +724,15 @@ function playBatchChime() {
         <div class="nge-cell-card">
           <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
           <div class="nge-cell-text">
-            <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
+            <div class="nge-cell-congrats">{{ cellCelebration.kind === 'axon' ? 'Congratulations, Axon Complete!' : 'Congratulations, Cell Complete!' }}</div>
             <div class="nge-cell-thanks">Thank you for helping to map the brain. For science!</div>
             <!-- No number until both are counted, so a stale one never flashes first. -->
             <template v-if="cellCelebration.counted">
             <div v-if="cellCelebration.datasetLabel" class="nge-cell-stats">+1 cell brings your {{ cellCelebration.datasetLabel }} total to <strong>{{ cellCelebration.datasetCells }}</strong></div>
             <!-- A second line only when there is more to say: with every cell on
                  one dataset it would repeat the number above. -->
+            <!-- MEC: Axon complete and the whole cell both count; the split, once there are axons (Ames 2026-11-14). -->
+            <div v-if="cellCelebration.datasetLabel && cellCelebration.datasetAxons" class="nge-cell-stats nge-cell-stats--all">{{ (cellCelebration.datasetCells ?? 0) - cellCelebration.datasetAxons }} whole {{ (cellCelebration.datasetCells ?? 0) - cellCelebration.datasetAxons === 1 ? 'cell' : 'cells' }} and {{ cellCelebration.datasetAxons }} {{ cellCelebration.datasetAxons === 1 ? 'axon' : 'axons' }} on {{ cellCelebration.datasetLabel }}</div>
             <div v-if="cellCelebration.datasetLabel && cellCelebration.totalCells > (cellCelebration.datasetCells ?? 0)" class="nge-cell-stats nge-cell-stats--all">{{ cellCelebration.totalCells }} cells across all datasets</div>
             <div v-else-if="!cellCelebration.datasetLabel" class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
             </template>

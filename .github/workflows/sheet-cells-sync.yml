@@ -1,7 +1,9 @@
 name: Sheet Cells Sync
 on:
   schedule:
-    - cron: '0 4,5 * * *'
+    # Hourly (Ames 2026-11-12): the Sandbox's Cell Library is kept at 50
+    # unclaimed cells. Every other sheet still imports only at midnight ET.
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       dataset:

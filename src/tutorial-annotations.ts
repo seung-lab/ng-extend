@@ -16,6 +16,9 @@ import {
 } from "./tutorial-2";
 import { startTutorialButton, stopWatching } from "./tutorial-3";
 import { makeLayer } from "neuroglancer/layer";
+import { Uint64 } from "neuroglancer/util/uint64";
+import { authHeaders } from "./widgets/pcg_service";
+import { setStatedColor } from "./widgets/widget_utils";
 import imgNurroAtHome from "./images/nurro-at-home600.png";
 import { supabase } from "./supabase";
 import { useProofreadingBackendStore } from "./store";
@@ -65,6 +68,41 @@ const START_VIEW = "middleauth+https://global.daf-apis.com/nglstate/api/v1/63121
  * away. find_path traces soma to soma through it (checked 2026-11-10).
  */
 const MERGER_CELL = '648518346352484298';
+/** A supervoxel on that cell. Every edit changes the cell's ID (the Merger
+ *  Sandbox ran it as Merger 9 until 2026-11-16, and each reset gave it a new
+ *  one), but a supervoxel never changes, so the box looks up the cell's ID
+ *  from it as it opens (Ames 2026-11-16: the tutorial showed the old ID as
+ *  outdated). Checked 2026-11-16: on the merged cell, 648518346351729265. */
+const MERGER_SUPERVOXEL = '77477774717430805';
+const MERGER_GRAPH = 'https://minnie.microns-daf.com';
+
+/** Show the merger by its current ID, in place of the one written above. */
+async function followMergerCell() {
+  let now: string | null = null;
+  try {
+    const res = await fetch(`${MERGER_GRAPH}/segmentation/api/v1/table/pinky_nf_v2/node/${MERGER_SUPERVOXEL}/root?int64_as_str=1`,
+      { headers: authHeaders(MERGER_GRAPH), signal: AbortSignal.timeout(15000) });
+    // As text: res.json() rounds an 18 digit ID.
+    const m = res.ok ? (await res.text()).match(/"root_id"\s*:\s*"?(\d+)/) : null;
+    now = m && m[1] !== '0' ? m[1] : null;
+  } catch (e) { console.warn('[tutorial] merger cell lookup', e); }
+  if (!now || now === MERGER_CELL) return;
+  // The view may still be loading: try for a few seconds.
+  for (let i = 0; i < 20; i++) {
+    const layer = viewer()?.layerManager?.getLayerByName?.('pinky_nf_v2')?.layer;
+    const g = layer?.displayState?.segmentationGroupState?.value;
+    if (g?.visibleSegments) {
+      const old = Uint64.parseString(MERGER_CELL), seg = Uint64.parseString(now);
+      try { g.visibleSegments.delete(old); g.selectedSegments?.delete(old); } catch { /* gone */ }
+      const stated = layer.displayState.segmentationColorGroupState?.value?.segmentStatedColors;
+      if (stated) { try { setStatedColor(stated, seg, 0xffc02e); } catch { /* default color */ } }
+      try { g.selectedSegments?.add(seg); } catch { /* older layer */ }
+      g.visibleSegments.add(seg);
+      return;
+    }
+    await new Promise(r => setTimeout(r, 300));
+  }
+}
 const FIND_PATH_VIEW = {
   dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] },
   position: [116464.5, 49230.5, 1480.5],
@@ -434,7 +472,7 @@ We've made the cell see through, so the path stands out. Your marks come along.`
     position: OVER_3D,
     reveals: ['findPath'],
     state: FIND_PATH_VIEW,
-    onEnter: findPathStep,
+    onEnter() { void followMergerCell(); findPathStep(); },
   },
   // Two boxes after the path (Ames 2026-11-10: "maybe this should be 2
   // boxes, one saying how we can use this to find the origin of a merger").

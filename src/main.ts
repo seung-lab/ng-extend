@@ -9,6 +9,8 @@ import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
 import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
+import {installLocalView, setLocalViewDataset} from './util/local_view';
+import {currentSegLayerName} from './datasets';
 import {startColorFamilies} from './util/color_families';
 import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
@@ -68,7 +70,6 @@ import {runPendingDatasetTour} from './dataset_tour';
 import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useUserPreferencesStore, useVolumesStore} from 'src/store';
-import {useStatsStore} from './store-pyr';
 import {exitGrapheneTool, activeGrapheneToolKind} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
@@ -94,6 +95,8 @@ import {getLayerScales} from "./widgets/widget_utils";
 import pyrIconUrl from './images/pyr-icon.png';
 // The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
 import pyrTriageIconUrl from './images/pyr-icon-triage.png';
+// The Access page's own gem, purple, so its tab stands apart from Triage's (Ames 2026-11-12).
+import pyrAccessIconUrl from './images/pyr-icon-access.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
 import {startStarshipFlyby} from './util/starship_flyby';
 
@@ -158,11 +161,15 @@ function injectNeuronFavicon() {
   const link = document.createElement('link');
   link.rel = 'icon';
   link.type = 'image/png';
-  link.href = isTriagePage() ? pyrTriageIconUrl : pyrIconUrl;
+  link.href = !isTriagePage() ? pyrIconUrl : triageView() === 'access' ? pyrAccessIconUrl : pyrTriageIconUrl;
   document.head.appendChild(link);
   // Also set the page title (neuroglancer's bindTitle keeps it, see
   // third_party/neuroglancer/ui/title.ts)
   document.title = 'Pyr · EyeWire II';
+}
+
+function triageView(): string | null {
+  try { return new URLSearchParams(window.location.search).get('triage'); } catch { return null; }
 }
 
 /** "?triage=board": the admin triage board on its own, without the game. */
@@ -222,8 +229,10 @@ window.addEventListener('DOMContentLoaded', () => {
     liveNeuroglancerInjection();
   });
 
-  const {loopUpdateLeaderboard} = useStatsStore();
-  loopUpdateLeaderboard();
+  // The old pyrdev.eyewire.org leaderboard loop (useStatsStore) is not
+  // started: nothing shows what it fetched, and every tab asked that server
+  // twice every 20 s, hidden or not (perf audit 2026-11-14). Pyr's
+  // leaderboard is the Supabase one (loadLeaderboard).
 
   // Start the scout tag store now, not on first use: its layer watcher is
   // what strips "⚑ Scout tags" / "⚑ Scout pins" layers that arrive in a saved
@@ -420,8 +429,16 @@ function setupViewer() {
     map.delete('backslash');
   }
 
+  // The address holds a short code; the view is kept in this browser
+  // (util/local_view.ts, report 541). Before the binding reads the address.
+  installLocalView();
+  setLocalViewDataset(currentSegLayerName);
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
+        // The address is written once the view has been still for 1.5 s, not
+        // five times a second while it moves: Firefox keeps every address a
+        // page sets, and those copies filled hi529's history (report 541).
+        updateDelayMilliseconds: 1500,
         defaultFragment: typeof NEUROGLANCER_DEFAULT_STATE_FRAGMENT !== 'undefined' ?
             NEUROGLANCER_DEFAULT_STATE_FRAGMENT :
             undefined
@@ -764,6 +781,18 @@ function observeSegmentSelect(targetNode: Element) {
     if (icon?.title.startsWith('Close this layer')) icon.title = 'Remove layer from this layer group';
   }, true);
 
+  // Settings, "New layer key" (Nseraf, report 516). Shift+N unless changed:
+  // plain N sat next to M (merge). neuroglancer's own N is taken out of every
+  // map it could be in.
+  watch(() => useUserPreferencesStore().prefs.newLayerKey || 'shift', mode => {
+    const g = (window as any).viewer?.inputEventBindings?.global;
+    if (!g) return;
+    for (const map of [g, ...g.parents]) for (const k of ['keyn', 'shift+keyn', 'alt+keyn']) map.delete(k);
+    if (mode === 'shift') g.set('shift+keyn', 'add-layer');
+    else if (mode === 'n') g.set('keyn', 'add-layer');
+    else if (mode === 'alt') g.set('alt+keyn', 'add-layer');
+  }, { immediate: true });
+
   watch(() => useUserPreferencesStore().prefs.segShowId === true, on => {
     document.body.classList.toggle('nge-seg-show-id', on);
     setTimeout(() => document.querySelectorAll<HTMLElement>('.neuroglancer-segment-list-entry.nge-seg-labelled').forEach(remeasureListRow), 0);
@@ -1029,6 +1058,11 @@ function observeSplitMergeTools() {
         if (shownErrorLines.has(el) || el.style.display === 'none') continue;
         const text = el.textContent?.trim() || '';
         const lower = text.toLowerCase();
+        // Progress lines the bar already says ("Splitting...", "Merged.")
+        // are kept out of sight too: shown, they lifted the bar, the chat and
+        // the side panel's TODO / PROOFREAD legend for a moment (Nseraf,
+        // report 547). They stay in the page for the scan below to read.
+        if (/^splitting \d+ sources? from \d+ sinks?|^merged\b/.test(lower)) el.classList.add('nge-status-taken');
         if (!/split|merge|multicut|supervoxel|segment/.test(lower)) continue;
         if (!/failed|error/.test(lower)) continue;
         takeErrorLine(el, text.replace(/\s*dismiss\s*$/i, '').trim());

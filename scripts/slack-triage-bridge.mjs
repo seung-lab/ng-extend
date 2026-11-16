@@ -521,8 +521,10 @@ async function fileNewReports() {
     // Dataset access requests are answered in Admin Hub, Access requests,
     // with their own bell: not a card (Ames 2026-10-29: "take them out of
     // triage"). Nor an invite someone used to get in: they are already in
-    // (Ames 2026-11-04: "How about no triage card for those").
-    sb(`site_issues?created_at=gte.${since}&or=${encodeURIComponent('(category.is.null,and(category.neq.Dataset access,category.neq.Invite used))')}&select=id,message,created_at&order=created_at.asc&limit=200`),
+    // (Ames 2026-11-04: "How about no triage card for those"). Nor a beta
+    // access request: it has its own bell in the Access tab and its list in
+    // Admin Hub (Ames 2026-11-13: "keep them off triage").
+    sb(`site_issues?created_at=gte.${since}&or=${encodeURIComponent('(category.is.null,and(category.neq.Dataset access,category.neq.Invite used,category.neq.Beta access))')}&select=id,message,created_at,user_name&order=created_at.asc&limit=200`),
     sb(`feedback_triage?source=eq.site_issue&created_at=gte.${since}&select=source_id`),
   ]);
   if (!issuesRes.ok || !triageRes.ok) { console.warn(`[bridge] new reports not filed (${issuesRes.status}/${triageRes.status})`); return 0; }
@@ -547,7 +549,7 @@ async function fileNewReports() {
     if (!Array.isArray(made) || !made.length) continue;
     filed++;
     if (threadTs) await labelSlackReport(made[0], threadTs).catch(e => console.warn(`[bridge] report ${issue.id}: Slack post not numbered: ${e.message}`));
-    await notifyAdminsOfReport(made[0]).catch(e => console.warn(`[bridge] new report ${issue.id}: admins not notified: ${e.message}`));
+    await notifyAdminsOfReport(made[0], issue.user_name).catch(e => console.warn(`[bridge] new report ${issue.id}: admins not notified: ${e.message}`));
   }
   if (filed) console.log(`[bridge] filed ${filed} new report(s) on the board, no suggestion asked`);
   return filed;
@@ -582,13 +584,19 @@ async function labelSlackReport(row, ts) {
 }
 
 /** In-game bell for every admin when a new report lands on the board (the
- *  feed files a 🗂 title under its Triage tab). Once per card. */
-async function notifyAdminsOfReport(row) {
+ *  feed files a 🗂 title under its Triage tab). Once per card. The title
+ *  names who sent it (Ames 2026-11-14: "New Triage from <username>"); the
+ *  feed colors the name. */
+export const newReportTitle = name => {
+  const who = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  return who ? `🗂️ New Triage from ${who}` : '🗂️ New Triage';
+};
+async function notifyAdminsOfReport(row, reporterName) {
   const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
   const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" A new report is on the triage board. Click this note to open it. Press Suggest a fix there if you want Claude to look.\n\n#nge-triage-report=${row.id}`;
   let sent = 0;
   for (const id of await adminUserIds()) {
-    if (await notifyUser(id, '🗂️ Feedback triage: new report', body)) sent++;
+    if (await notifyUser(id, newReportTitle(reporterName), body)) sent++;
   }
   console.log(`[bridge] new report ${row.id}: notified ${sent} admin(s)`);
 }

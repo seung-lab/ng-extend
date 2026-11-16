@@ -57,6 +57,7 @@ import {loadRepoStats, type RepoStats} from '../util/repo_stats';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
 import TutorialEditsTab from 'components/TutorialEditsTab.vue';
+import {EXTENSION_CELLS, SANDBOX_CELLS, RETIRED_SANDBOX_IDS} from '../practice_pools';
 import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
 import { isAwardTitle } from '../util/award_title';
 
@@ -2864,6 +2865,51 @@ watch(adminSubTab, t => {
 }, { immediate: true });
 onUnmounted(() => { stopPicking(); if (hoverTimer) clearInterval(hoverTimer); });
 
+/**
+ * The practice cell list in groups (Ames, 2026-11-14: "there are so many
+ * cells in here it's chaos"). Anything that needs an admin first, then each
+ * sandbox in the order players see it, named as players see it (the rows'
+ * own titles are off by one for Extension cells 3 to 8), then the tutorials'
+ * cells, then retired ones.
+ */
+type PracticeGroup = { key: string; name: string; rows: Array<{ ex: PracticeExample; name: string }> };
+const practiceGroups = computed<PracticeGroup[]>(() => {
+  const byId = new Map(practiceRows.value.map(ex => [ex.id, ex]));
+  const seen = new Set<string>();
+  const attention: PracticeGroup = { key: 'attention', name: 'Needs attention', rows: [] };
+  const groups: PracticeGroup[] = [attention];
+  const playerName = new Map<string, string>();
+  EXTENSION_CELLS.forEach(c => playerName.set(c.id, `Extension Sandbox · ${c.title}`));
+  SANDBOX_CELLS.forEach(c => playerName.set(c.id, `Merger Sandbox · ${c.title}`));
+  const needsAdmin = (ex: PracticeExample) => ex.status === 'broken' || ex.status === 'needs_reset';
+  const add = (g: PracticeGroup, ex: PracticeExample, name: string) => {
+    seen.add(ex.id);
+    (needsAdmin(ex) && ex.enabled ? attention : g).rows.push({ ex, name });
+  };
+  const fromPool = (key: string, name: string, cells: Array<{ id: string; title: string }>) => {
+    const g: PracticeGroup = { key, name, rows: [] };
+    for (const c of cells) { const ex = byId.get(c.id); if (ex) add(g, ex, `${name} · ${c.title}`); }
+    groups.push(g);
+  };
+  fromPool('extension', 'Extension Sandbox', EXTENSION_CELLS);
+  fromPool('merger', 'Merger Sandbox', SANDBOX_CELLS);
+  const tutorial: PracticeGroup = { key: 'tutorial', name: 'Tutorial cells', rows: [] };
+  const retired: PracticeGroup = { key: 'retired', name: 'Retired or disabled', rows: [] };
+  for (const ex of practiceRows.value) {
+    if (seen.has(ex.id)) continue;
+    const g = RETIRED_SANDBOX_IDS.includes(ex.id) || !ex.enabled ? retired : tutorial;
+    add(g, ex, playerName.get(ex.id) ?? ex.title);
+  }
+  groups.push(tutorial, retired);
+  return groups.filter(g => g.rows.length);
+});
+const practiceFolded = ref<Set<string>>(new Set(['retired']));
+function togglePracticeGroup(key: string) {
+  const s = new Set(practiceFolded.value);
+  if (s.has(key)) s.delete(key); else s.add(key);
+  practiceFolded.value = s;
+}
+
 async function loadPractice() {
   practiceLoading.value = true; practiceError.value = '';
   const { data, error } = await supabase.from('tutorial_practice_examples').select('*').order('created_at');
@@ -3566,9 +3612,15 @@ function practiceWhen(iso: string | null) {
         <label class="nge-admin-label">Practice cells <button class="nge-admin-action-btn" style="margin-left:8px" @click="loadPractice">Refresh</button></label>
         <p v-if="practiceLoading" class="nge-admin-hint">Loading…</p>
         <p v-else-if="!practiceRows.length" class="nge-admin-hint">None registered yet. Tutorial 3 tells learners every cell is busy until one exists.</p>
-        <div v-for="ex in practiceRows" :key="ex.id" class="nge-practice-row" :class="'nge-practice-row--' + ex.status">
+        <template v-for="g in practiceGroups" :key="g.key">
+        <button type="button" class="nge-practice-group" :class="{ 'nge-practice-group--alert': g.key === 'attention' }" :aria-expanded="!practiceFolded.has(g.key)" @click="togglePracticeGroup(g.key)">
+          <span aria-hidden="true">{{ practiceFolded.has(g.key) ? '▸' : '▾' }}</span> {{ g.name }} <span class="nge-admin-hint">({{ g.rows.length }})</span>
+        </button>
+        <template v-if="!practiceFolded.has(g.key)">
+        <div v-for="{ ex, name } in g.rows" :key="ex.id" class="nge-practice-row" :class="'nge-practice-row--' + ex.status">
           <div class="nge-practice-main">
-            <strong>{{ ex.title }}</strong>
+            <strong>{{ name }}</strong>
+            <span v-if="name !== ex.title" class="nge-admin-hint" title="The row's own title in the database">{{ ex.title }}</span>
             <span class="nge-practice-status">{{ ex.status }}{{ ex.enabled ? '' : ', disabled' }}</span>
             <span class="nge-admin-hint">{{ ex.kind === 'cut' ? 'cut example' : 'merge example' }}</span>
             <span class="nge-admin-hint">{{ ex.dataset }} · used {{ ex.uses }}×<template v-if="ex.last_reset_at"> · reset {{ practiceWhen(ex.last_reset_at) }}</template><template v-if="ex.claimed_by"> · claimed until {{ practiceWhen(ex.expires_at) }}</template></span>
@@ -3581,6 +3633,8 @@ function practiceWhen(iso: string | null) {
             <button class="nge-admin-action-btn" :disabled="practiceActing === ex.id" @click="deletePractice(ex)">Delete</button>
           </div>
         </div>
+        </template>
+        </template>
       </div>
     </div>
 
@@ -5445,6 +5499,11 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-practice-row--ready .nge-practice-status { color: #60c060; }
 .nge-practice-row--needs_reset .nge-practice-status, .nge-practice-row--broken .nge-practice-status { color: #e06060; }
 .nge-practice-row--in_use .nge-practice-status { color: #f5d142; }
+.nge-practice-group {
+  display: flex; align-items: baseline; gap: 6px; width: 100%; margin: 14px 0 4px; padding: 0;
+  background: none; border: 0; color: #dff4fb; font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.nge-practice-group--alert { color: #ff8a80; }
 .nge-practice-picker {
   position: fixed; top: 64px; right: 16px; z-index: 200;
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;

@@ -98,7 +98,6 @@ const SHEETS = [
       batch: {
         sheetId: '1lAX3pMqhevs-1JSs4VkWYQIIFKmQp1KDF2ND8QuZVXo',
         size: 50,
-        whenLeft: 10,
         // Players start from a cell nobody has proofread (Ames 2026-11-01). A
         // cell with other edits is passed over: its pre-edit ID cannot be
         // edited, and undoing edits would reverse other people's work. User
@@ -311,7 +310,7 @@ async function syncPointSheet(cfg) {
 /** A list sheet: add its next cells once few of the last ones are unclaimed. */
 async function syncBatchSheet(cfg) {
   const { batch } = cfg.byPoint;
-  console.log(`\n[cells] === ${cfg.dataset} (next ${batch.size} of a list) ===`);
+  console.log(`\n[cells] === ${cfg.dataset} (kept at ${batch.size} unclaimed) ===`);
   const res = await fetch(csvUrlFor(cfg.url));
   if (!res.ok) throw new Error(`sheet fetch ${res.status}`);
   const cells = extractPointCells(parseCsv(await res.text()));
@@ -325,8 +324,8 @@ async function syncBatchSheet(cfg) {
     tasks.push(...page);
     if (page.length < 1000) break;
   }
-  const { unclaimed, due, candidates } = nextBatch(cells, tasks, batch);
-  console.log(`[cells] list rows: ${cells.length}, not added yet: ${candidates.length}, unclaimed now: ${unclaimed} (next batch at ${batch.whenLeft} or fewer)`);
+  const { unclaimed, need, due, candidates } = nextBatch(cells, tasks, batch);
+  console.log(`[cells] list rows: ${cells.length}, not added yet: ${candidates.length}, unclaimed now: ${unclaimed}, to add: ${need}`);
   if (!due) { console.log('[cells] nothing to add'); return 0; }
 
   // A point can land on nothing, on a cell already listed or on one already
@@ -334,8 +333,8 @@ async function syncBatchSheet(cfg) {
   // down the list until the batch is full.
   const roots = new Set(tasks.map(t => String(t.segment_id)));
   const toInsert = [];
-  for (let at = 0; at < candidates.length && toInsert.length < batch.size;) {
-    const slice = candidates.slice(at, at + batch.size - toInsert.length);
+  for (let at = 0; at < candidates.length && toInsert.length < need;) {
+    const slice = candidates.slice(at, at + need - toInsert.length);
     at += slice.length;
     const resolved = await resolvePoints(cfg.byPoint, slice.map(c => c.point));
     slice.forEach((c, i) => {
@@ -697,11 +696,10 @@ async function retireOldSource(dataset, sheetId) {
     return;
   }
   const hour = etHour();
-  if (!force && hour !== 0) {
-    console.log(`[cells] ET hour is ${hour}, not midnight — skipping. (Use --force to override.)`);
-    return;
-  }
-  const targets = onlyDataset ? SHEETS.filter(s => s.dataset === onlyDataset) : SHEETS;
+  // A list kept topped up (Sandbox) is checked every hour; the rest at midnight.
+  const hourly = !force && hour !== 0;
+  if (hourly) console.log(`[cells] ET hour is ${hour}, not midnight: topping up lists only. (Use --force for everything.)`);
+  const targets = (onlyDataset ? SHEETS.filter(s => s.dataset === onlyDataset) : SHEETS).filter(s => !hourly || s.byPoint?.batch);
   if (!targets.length) {
     console.error(`No sheet configured for --dataset=${onlyDataset}`);
     process.exit(1);

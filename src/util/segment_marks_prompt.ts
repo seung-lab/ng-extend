@@ -54,6 +54,11 @@ const MAX_REMOVED = 3;
 let lastInput = 0;
 let watched: any = null;
 let known = new Set<string>();
+/** When the player added a segment by itself (no other id went at the same
+ *  time, so not a merge or cut). Marks made before it are not on it (#517). */
+const addedAt = new Map<string, number>();
+let lastAdd: { ids: string[]; at: number } = { ids: [], at: 0 };
+const REPLACE_MS = 3000;
 let pending = new Set<string>();
 let added = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -66,8 +71,10 @@ async function decide() {
   added = false;
   if (replaced || !roots.length || roots.length > MAX_REMOVED) return;
   if (!(await stillLatest(roots))) return;
+  // Every removed segment added after the mark: the oldest add decides.
+  const since = roots.every(r => addedAt.has(r)) ? Math.min(...roots.map(r => addedAt.get(r)!)) : 0;
   let marks: TrackedMark[] = [];
-  try { marks = await marksNowOn(roots, [...known]); } catch (e) { console.warn('[marks] could not look for this segment\'s marks:', e); }
+  try { marks = await marksNowOn(roots, [...known], since); } catch (e) { console.warn('[marks] could not look for this segment\'s marks:', e); }
   if (!marks.length) return;
   const counts = new Map<string, number>();
   for (const m of marks) counts.set(m.label, (counts.get(m.label) ?? 0) + 1);
@@ -78,7 +85,15 @@ async function decide() {
 function onChanged(group: any) {
   const now = new Set<string>();
   for (const id of group.selectedSegments) now.add(String(id));
-  for (const id of now) if (!known.has(id)) added = true;
+  const fresh = [...now].filter(id => !known.has(id));
+  if (fresh.length) added = true;
+  if (fresh.length && [...known].every(id => now.has(id))) {
+    for (const id of fresh) addedAt.set(id, Date.now());
+    lastAdd = { ids: fresh, at: Date.now() };
+  }
+  // Ids going right after one came in: that was a merge or cut arriving in two
+  // steps, not the player adding a segment.
+  if ([...known].some(id => !now.has(id)) && Date.now() - lastAdd.at < REPLACE_MS) for (const id of lastAdd.ids) addedAt.delete(id);
   if (Date.now() - lastInput < INPUT_MS) for (const id of known) if (!now.has(id)) pending.add(id);
   known = now;
   if (pending.size) { if (!timer) timer = setTimeout(decide, SETTLE_MS); } else added = false;

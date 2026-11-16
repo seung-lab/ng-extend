@@ -8,11 +8,22 @@
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 
-defineProps<{ title: string; text: string; yes: string }>();
+// enterYes: the yes button has the focus, so Enter confirms (Ames 2026-11-13,
+// Highlight's Clear all: "make sure Enter is ok so they don't have to click").
+const props = defineProps<{ title: string; text: string; yes: string; enterYes?: boolean }>();
 const emit = defineEmits({ yes: null, no: null });
 const cancelEl = ref<HTMLButtonElement | null>(null);
-const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); emit('no'); } };
-onMounted(() => { cancelEl.value?.focus(); window.addEventListener('keydown', onKey, true); });
+const yesEl = ref<HTMLButtonElement | null>(null);
+const onKey = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') { e.stopPropagation(); emit('no'); return; }
+  // Enter does what the focused button does, and nothing else in Pyr (Enter
+  // also submits a cut) sees it.
+  if (e.key === 'Enter') {
+    e.preventDefault(); e.stopPropagation();
+    if (document.activeElement === cancelEl.value) emit('no'); else if (document.activeElement === yesEl.value || props.enterYes) emit('yes'); else emit('no');
+  }
+};
+onMounted(() => { (props.enterYes ? yesEl : cancelEl).value?.focus(); window.addEventListener('keydown', onKey, true); });
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 </script>
 
@@ -24,7 +35,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
         <p class="nge-cfm-text">{{ text }}</p>
         <div class="nge-cfm-btns">
           <button ref="cancelEl" class="nge-cfm-no" @click="emit('no')">Cancel</button>
-          <button class="nge-cfm-yes" @click="emit('yes')">{{ yes }}</button>
+          <button ref="yesEl" class="nge-cfm-yes" @click="emit('yes')">{{ yes }}</button>
         </div>
       </div>
     </div>

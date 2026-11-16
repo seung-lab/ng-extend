@@ -29,7 +29,7 @@ const base = { user_id: null, name: null, username: null, request_id: null, aske
 const UID = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PEOPLE = [
   // Asked 9 days ago, from the site, with an EyeWire name: late.
-  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.', invited_at: '2026-11-09T21:05:00Z', invited_for: 'mec_talk', invited_role: 'Scout', invited_as: 'kmierow@old.example' },
+  { ...base, email: 'ken@example.org', name: 'Ken Mierow', request_id: UID(1), asked_at: ago(9), from_site: true, ew_name: 'kmierow', ew_rank: 'Guardian', their_note: 'I traced for years.', invited_at: '2026-11-09T21:05:00Z', invited_for: 'mec_talk', invited_role: 'Scout', invited_as: 'kmierow@old.example', ew_email: 'kmierow@old.example' },
   // One person, two emails: asked from the site with an EyeWire name, and
   // asked in Pyr, signed in, with an email starting with that EyeWire name.
   { ...base, email: 'dom.a@hotmail.example', name: 'Dominic Aitken', request_id: UID(5), asked_at: ago(0.2), from_site: true, ew_name: 'domaitk' },
@@ -51,6 +51,7 @@ const PEOPLE = [
   { ...base, email: 'lou@example.org', user_id: UID(14), name: 'Lou Baker', username: 'lbaker', pilot_enabled: true, let_in_at: ago(20), joined_at: ago(19), tutorial_at: ago(19), tutorials: 2, first_edit_at: ago(18), last_edit_at: ago(1), edits: 300, last_dataset: 'pinky_nf_v2' },
 ];
 // An admin, never asked and not on Pilot testers: the Admin step.
+PEOPLE.push({ ...base, email: 'ryan.t.morey@gmail.com', user_id: UID(16), name: 'Ryan Morey', pilot_enabled: true, joined_at: ago(30), tutorial_at: ago(29), tutorials: 3, first_edit_at: ago(28), last_edit_at: ago(1), edits: 50, edits_30d: 50 });
 PEOPLE.push({ ...base, email: 'boss@example.org', user_id: UID(15), name: 'Ames Admin', pilot_enabled: false, joined_at: ago(200), tutorial_at: ago(199), tutorials: 6, first_edit_at: ago(198), last_edit_at: ago(2), edits: 782, is_admin: true });
 for (let i = 0; i < 6; i++) PEOPLE.push({ ...base, email: `list${i}@example.org`, pilot_enabled: true, let_in_at: ago(40), from_list: true });
 const EDITS = Array.from({ length: 10 }, (_, i) => ({ at: ago(0.1 + i * 0.01), dataset: 'stroeh_mouse_retina', operation: i % 3 ? 'split' : 'merge', success: i !== 1 }));
@@ -104,11 +105,14 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.betaMarks') return r.fulfill(ok(marks));
       if (a === 'access.betaMark') { if (input.mark === 'waiting') delete marks[input.email]; else marks = { ...marks, [input.email]: { mark: input.mark, at: new Date().toISOString() } }; return r.fulfill(ok(marks)); }
       if (a === 'access.datasetList') return r.fulfill(ok(DS));
+      if (a === 'access.datasetDecide') return r.fulfill(ok(DS));
+      if (a === 'access.grantEmail') return r.fulfill(ok(input.preview ? { to: 'lou@example.org', subject: 'You can now edit MEC in Pyr', text: "Hi Lou, congratulations!" } : { sent: true, to: 'lou@example.org' }));
       if (a === 'test.tries') return r.fulfill(ok({ kept: true, test: null, key: null, line: [], tries: TRIES }));
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
       if (a === 'access.askSent') return r.fulfill(ok({}));
+      if (a === 'access.setEwName') return r.fulfill(ok({ ewName: String(input.ewName).toLowerCase() }));
       if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414, signedIn: 20 }));
       if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
 
@@ -116,6 +120,9 @@ Could you reply with your EyeWire username?
 
 Amy Sterling and the Pyr Team at Princeton` }));
       if (a === 'access.askEmail') return r.fulfill(ok({ sent: true, at: new Date().toISOString() }));
+      // The bio page sends no CORS header, so the page asks the server (Ames 2026-11-13).
+      if (a === 'access.ewBio') { const n = String(input.args?.name || input.name || ''); calls.push({ ewBio: n });
+        return r.fulfill(ok(n === 'kmierow' ? { joined: 1399207428, roles: ['scout', 'scythe'], country: 'Germany' } : n === 'domaitk' ? { joined: 1794344311, roles: [] } : { none: true })); }
       if (a === 'canEdit') return r.fulfill(ok({ 'nik@example.org': 'MEC, Retina', 'jo@example.org': 'MEC', 'lou@example.org': 'FlyWire public', 'boss@example.org': 'Retina' }));
       if (a === 'usersSheet') return r.fulfill(ok({ people: 14, url: 'https://docs.google.com/spreadsheets/d/x/edit' }));
       return r.fulfill(ok({}));
@@ -126,7 +133,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const q = new URLSearchParams(input.query || '');
     const limit = Number(q.get('limit') ?? 500), offset = Number(q.get('offset') ?? 0);
     if (!Number.isInteger(limit) || limit < 0 || limit > 500) return r.fulfill(json({ status: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Invalid limit' }) }));
-    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : input.table === 'access_hub_tutorials' ? TUTS : [];
+    const all = input.table === 'access_hub_player_datasets' ? THEIRS : input.table === 'access_hub_recent_edits' ? EDITS : input.table === 'access_hub_people' ? PEOPLE : input.table === 'access_hub_activity' ? ACTIVITY : input.table === 'tutorial_step_stats' ? STATS : input.table === 'access_hub_tutorials' ? TUTS : input.table === 'users' && /cave_user_id/.test(String(input.query || '')) ? [{ cave_user_id: 4321 }] : [];
     const rows = all.slice(offset, offset + limit);
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }));
   });
@@ -137,7 +144,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     calls.push({ eyewire: name, what });
     if (name === 'kmierow') return r.fulfill(json(what === 'stats'
       ? { username: 'kmierow', forever: { points: '31685747', cubes: '224881', complete: '13389' }, fscore: [{ fscore: 0.9247 }] }
-      : { username: 'kmierow', joined: 1399207428, roles: ['scout', 'scythe'], level: 2 }));
+      : { status: 'no CORS: the browser never sees this' }));
     if (name === 'domaitk') return r.fulfill(json(what === 'stats' ? { username: 'domaitk', forever: { points: '0', cubes: '0' }, fscore: [] } : { username: 'domaitk', joined: 1794344311, roles: [] }));
     return r.fulfill({ status: 404, body: '' });
   });
@@ -159,13 +166,25 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
     check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
-    const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.trim()));
+    const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.replace(/[▾▸]/g, '').trim()));
     check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
     const lb = () => page.$$eval('.ah-lb-row', els => els.map(e => ({ rank: e.querySelector('.ah-lb-rank').textContent.trim(), who: e.querySelector('.ah-lb-who b').textContent.trim(), v: e.querySelector('.ah-lb-v').textContent.trim() })));
     await page.screenshot({ path: path.join(OUT, 'access-hub-lb.png'), fullPage: true });
     let L = await lb();
     check('leaderboard: last 30 days by edits, top first, admin left out', L.map(r => r.who + ' ' + r.v).join('|') === 'Nik Serafin 1,880', L);
+    // Sections fold, and stay folded on the next visit (Ames 2026-11-12).
+    const lbWidth = await page.$eval('.ah-lb', e => e.getBoundingClientRect().width);
+    check('the leaderboard is not full width', lbWidth <= 900, lbWidth);
+    await page.click('.ah-lb .ah-fold-btn');
+    check('the leaderboard folds', (await page.$$('.ah-lb-row')).length === 0 && await page.$eval('.ah-lb .ah-fold-btn', e => e.getAttribute('aria-expanded')) === 'false');
+    await page.click('.ah-group-title .ah-fold-btn:has-text("Getting started")');
+    check('a board row folds', (await page.$$('.ah-group')).length === 2 && await page.$$eval('.ah-group', gs => gs.map(g => !!g.querySelector('.ah-board')).join(',')) === 'true,false');
+    await page.reload(); await page.waitForSelector('.ah-lb .ah-fold-btn');
+    check('folds are remembered', (await page.$$('.ah-lb-row')).length === 0 && await page.$$eval('.ah-group', gs => gs.map(g => !!g.querySelector('.ah-board')).join(',')) === 'true,false');
+    await page.click('.ah-lb .ah-fold-btn');
+    await page.click('.ah-group-title .ah-fold-btn:has-text("Getting started")');
+    await page.waitForSelector('.ah-lb-row');
     await page.click('.ah-seg button:has-text("All time")');
     L = await lb();
     check('leaderboard: all time', L.map(r => r.who + ' ' + r.v).join('|') === 'Nik Serafin 4,210|Lou Baker 300', L);
@@ -176,7 +195,24 @@ Amy Sterling and the Pyr Team at Princeton` }));
     await page.click('.ah-lb-row:has-text("Lou Baker")');
     await page.waitForSelector('.ah-panel h2', { timeout: 3000 }).catch(() => {});
     check('a leaderboard row opens their panel', (await page.textContent('.ah-panel h2').catch(() => '')) === 'Lou Baker');
+    const cave = await page.waitForSelector('.ah-caveid', { timeout: 3000 }).then(e => e.textContent()).catch(() => '');
+    check('the panel shows their CAVE ID (Celia #528)', cave.trim() === '4321', cave);
     const tries = await page.$$eval('.ah-tries li', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    // Ames 2026-11-14: "Let them in & send notification", and a test to my own bell.
+    const dsBtns = await page.$$eval('.ah-ds .ah-actions button', els => els.map(e => e.textContent.trim()));
+    check('the dataset buttons say they send the notification', dsBtns.join('|') === 'Let them in & send notification|I added them by hand, send notification|Not now|Send me a test', dsBtns);
+    await page.click('.ah-ds button:has-text("Send me a test")');
+    await page.waitForTimeout(300);
+    check('Send me a test asks the server for this dataset\'s bell, to me', calls.some(c => c.action === 'access.datasetTestBell' && c.args.dataset === 'pni_mec') && /Test sent to your bell/.test(await page.textContent('.ah-ds .ah-actions')), calls.filter(c => c.action === 'access.datasetTestBell'));
+    // The grant email (Ames 2026-11-14): ticked by default, shown first, sent after the grant.
+    check('Email them too is ticked', await page.isChecked('.ah-ds-email input[type=checkbox]'));
+    await page.click('.ah-ds button:has-text("See the email")');
+    await page.waitForTimeout(300);
+    const emailShown = await page.textContent('.ah-ds .ah-ask').catch(() => '');
+    check('See the email shows it before anything is sent', /To lou@example\.org, from Amy at Pyr/.test(emailShown) && /You can now edit MEC in Pyr/.test(emailShown) && calls.some(c => c.action === 'access.grantEmail' && c.args.preview === true) && !calls.some(c => c.action === 'access.grantEmail' && !c.args.preview), emailShown);
+    await page.click('.ah-ds button:has-text("Let them in & send notification")');
+    await page.waitForTimeout(400);
+    check('Let them in sends the email after the grant', calls.findIndex(c => c.action === 'access.grantEmail' && !c.args.preview) > calls.findIndex(c => c.action === 'access.datasetDecide') && /Email sent to lou@example\.org/.test(await page.textContent('.ah-ds').catch(() => '')), calls.filter(c => /grantEmail|datasetDecide/.test(c.action || '')));
     check('their dataset request shows their Proofreading Test tries, newest first, only theirs', tries.length === 2 && /^Passed \(88%\) · 9 of 10 mistakes fixed · 4 of 4 ends marked · nothing damaged/.test(tries[0]) && /^Did not pass \(41%\).*2 real branches cut off/.test(tries[1]), tries);
     await page.screenshot({ path: path.join(OUT, 'access-hub-tries.png'), fullPage: false });
     await page.click('.ah-close');
@@ -189,8 +225,11 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('a dataset card names their latest test result', /Test: passed/.test(col(b, 'Asked for a dataset').cards[0].text), col(b, 'Asked for a dataset').cards[0]);
     check('the EyeWire tag reads their cubes from eyewire.org', /EyeWire kmierow: 224,881 cubes/.test(col(b, 'Asked').cards[0].text) && /EyeWire domaitk: new/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text), col(b, 'Asked').cards.map(c => c.text));
     check('the two emails of one person are flagged on both cards', /Maybe the same as Inezh/.test(col(b, 'Asked').cards.find(c => c.name === 'Dominic Aitken').text) && /Maybe the same as Dominic Aitken/.test(col(b, 'Asked').cards.find(c => c.name === 'Inezh').text) && !/Maybe the same/.test(col(b, 'Asked').cards[0].text));
+    check('opening the page marks read the bells of requests dealt with (Ames 2026-11-12)', calls.some(c => c.action === 'access.readHandledBetaBells'));
+    const icon = await page.$eval('link[rel=icon]', e => e.getAttribute('href')).catch(() => '');
+    check('the Access tab has its own purple gem (Ames 2026-11-12)', /pyr-icon-access/.test(icon), icon);
     const totals = await page.$$eval('.ah-total', els => els.map(e => e.querySelector('b').textContent.trim() + ' ' + e.querySelector('span').textContent.trim()));
-    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Asked for access|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
+    check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Total access requests|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
     check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
@@ -235,8 +274,9 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the envelope marks only the person we invited by email', env.length === 1 && env[0][0] === 'Ken Mierow' && /invited them by email as an EyeWire Scout: the MEC talk email, Nov 9 at kmierow@old\.example/.test(env[0][1]), env);
     check('the panel says we invited them', /We invited them by email as an EyeWire Scout/.test(panel), panel.slice(0, 300));
     check('the panel shows the request', /Ken Mierow/.test(panel) && /ken@example\.org/.test(panel) && /rank Guardian/.test(panel) && /I traced for years/.test(panel), panel.slice(0, 200));
+    check('the panel shows their EyeWire email (Ames 2026-11-12)', /EyeWire email kmierow@old\.example/.test(panel), panel.slice(0, 400));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
-    check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined 2014/.test(ew), ew);
+    check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined EyeWire May 4, 2014 · Germany/.test(ew) && calls.some(c => c.ewBio === 'kmierow'), ew);
     await page.fill('.ah-panel textarea', 'Do we know him?');
     await page.click('.ah-panel button:has-text("Add note")');
     await page.waitForSelector('.ah-note-text');
@@ -282,6 +322,19 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const afterAsk = await page.textContent('.ah-panel').catch(() => '');
     b = await board();
     check('the panel says they were asked, and they move to Emailed', /Asked for their EyeWire name by email/.test(afterAsk) && col(b, 'Asked').cards.every(c => c.name !== 'Inezh') && col(b, 'Emailed').cards.some(c => c.name === 'Inezh'), { afterAsk: afterAsk.slice(0, 200), emailed: col(b, 'Emailed') });
+    // Their reply gave their EyeWire name: type it in, the stats fill in, and
+    // they come back to Asked with the envelope (Ames 2026-11-12).
+    await page.fill('.ah-ewset-input', 'KMierow');
+    await page.click('.ah-ewset button:has-text("Save")');
+    await page.waitForTimeout(600);
+    const setCall = calls.find(c => c.action === 'access.setEwName');
+    check('typing in their EyeWire username saves it', setCall && setCall.args.email === 'domaitk358@example.org' && setCall.args.ewName === 'KMierow', setCall);
+    const afterEw = await page.textContent('.ah-panel').catch(() => '');
+    b = await board();
+    check('their EyeWire stats fill in, they show as an EyeWire player, and move back to Asked', /31,685,747 points · 224,881 cubes/.test(afterEw) && /added by hand/.test(afterEw) && /An EyeWire player/.test(afterEw) && col(b, 'Asked').cards.some(c => c.name === 'Inezh') && !(await page.$('.ah-ewset-input')), afterEw.slice(0, 400));
+    await page.click('.ah-ewset-change');
+    check('Change opens the field again with the name in it', await page.$eval('.ah-ewset-input', e => e.value).catch(() => '') === 'kmierow');
+    await page.click('.ah-ewset button:has-text("Cancel")');
     // Later takes them off the Asked list.
     await page.click('.ah-panel button:has-text("Later")');
     await page.waitForTimeout(400);
@@ -308,7 +361,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('an admin is in no step column', b.every(c => c.cards.every(x => x.name !== 'Ames Admin')), b.map(c => c.title));
     await page.click('.ah-fold--wide:has-text("admin")');
     const admins = await page.$$eval('.ah-admins .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
-    check('admins fold away below as Admin', admins.length === 1 && /Ames Admin/.test(admins[0]) && /Admin, 782 edits/.test(admins[0]), admins);
+    check('admins fold away below as Admin, and the team as Team (Ryan Morey, Ames 2026-11-12)', admins.length === 2 && /Ames Admin/.test(admins[0]) && /Admin, 782 edits/.test(admins[0]) && /Ryan Morey/.test(admins[1]) && /Team, 50 edits/.test(admins[1]), admins);
     await page.click('.ah-fold--wide:has-text("removed")');
     const removed = await page.$$eval('.ah-removed .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
     check('removed requests fold away below, without the admin', removed.length === 1 && /Gone Person/.test(removed[0]), removed);

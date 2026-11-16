@@ -165,7 +165,10 @@ function sheetValues(input, me, task, now) {
     // replaced by this one's. On any other row a filled cell is kept.
     const mineKeys = [...new Set([me.sheet_name, me.display_name, me.username].map(nameKey).filter(Boolean))];
     const again = {whenReopened:mineKeys};
-    fields.push([['status'],status,{replaceValues:UNFINISHED_STATUSES}],[['datecomplete','completedtime','dateended'],now,{...isDate,...again}]);
+    // An MEC cell finished as Axon complete and later completed as the whole
+    // cell: Complete replaces Axon complete (Ames 2026-11-14, the upgrade).
+    const replaceable = status === 'Complete' && allowed.includes('Axon complete') ? [...UNFINISHED_STATUSES,'Axon complete'] : UNFINISHED_STATUSES;
+    fields.push([['status'],status,{replaceValues:replaceable}],[['datecomplete','completedtime','dateended'],now,{...isDate,...again}]);
     if (task.final_segment_id && /^\d{1,20}$/.test(task.final_segment_id)) fields.push([['finalseg'],task.final_segment_id,again]);
     // The proofreader's view of the finished cell (Amy 2026-09-28): the
     // retina sheet's "Final Link" column. https only, no spaces or quotes;
