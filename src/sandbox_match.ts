@@ -84,7 +84,14 @@ function onSandbox(): boolean {
 }
 /** The Standby line and its button: Play when not playing, else back to the
  *  cell in hand. Both press the game's own Play controls. */
-function standbyNote(): string { return isPlaying() ? 'Your cell is not on screen' : 'Press Play for a practice cell'; }
+/** Holding a Sandbox cell now. With none (a cell just completed or skipped),
+ *  Play opens a new one (Ames 2026-11-16: "shouldn't this be open new cell
+ *  ... like after I have finished"). */
+function holdsCell(): boolean { try { return (deps?.claims() ?? []).length > 0; } catch { return true; } }
+function standbyNote(): string {
+  if (!isPlaying()) return 'Press Play for a practice cell';
+  return holdsCell() ? 'Your cell is not on screen' : 'Ready for your next practice cell';
+}
 function standbyAction() {
   const playing = isPlaying();
   const chip = document.querySelector('.nge-play-chip') as HTMLElement | null;
@@ -338,6 +345,8 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-mode[data-mode="highlight"]{background:rgba(61,255,154,.14);color:#9dffd0}
 #${CARD_ID} .nge-cm-cellnote{margin:-2px 0 8px;padding:7px 9px;border-left:3px solid #7fd8ff;border-radius:4px;background:rgba(127,216,255,.08);font:13px/1.35 Inter,system-ui,sans-serif;color:#d6e2f5}
 #${CARD_ID} .nge-cm-cellnote[hidden],#${CARD_ID} .nge-cm-acc[hidden],#${CARD_ID} .nge-cm-finish-gate[hidden]{display:none}
+#${CARD_ID} .nge-cm-cellnote{display:flex;flex-direction:column;align-items:flex-start;gap:7px}
+#${CARD_ID} .nge-cm-cellnote .nge-cm-btn{margin:0;padding:6px 10px;border-radius:6px;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff;font:600 12px/1 Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
 #${CARD_ID} .nge-cm-acc{margin-top:6px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
 #${CARD_ID} .nge-cm-acc b{color:#e6f0ff}
 #${CARD_ID} .nge-cm-finish-how{margin-left:auto;padding:2px 8px;border:1px solid rgba(127,216,255,.5);border-radius:999px;background:rgba(74,158,255,.14);color:#bfeaff;font:600 11.5px/1.3 Inter,system-ui,sans-serif;cursor:pointer;flex:0 0 auto}
@@ -646,7 +655,7 @@ function idle(state: string, note: string, action = false) {
   sub.textContent = note;
   sub.hidden = !note;
   const extra = el.querySelector('.nge-cm-extra') as HTMLElement;
-  const label = isPlaying() ? 'Open my cell' : 'Play';
+  const label = !isPlaying() ? 'Play' : holdsCell() ? 'Open my cell' : 'Teleport to a new cell';
   let b = extra.querySelector('.nge-cm-idle-go') as HTMLButtonElement | null;
   if (!action) { extra.innerHTML = ''; b = null; }
   else if (!b) {
@@ -870,8 +879,16 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   // Little more than a nucleus (Ames 2026-11-14: "it keeps taking me to a
   // nucleus ... indicate that if it's just a nucleus they should add the cell").
   const note = el.querySelector('.nge-cm-cellnote') as HTMLElement;
-  const nucleus = !!(r && r.scorable && r.nucleusOnly && r.missing && r.missing.left > 0);
-  note.textContent = nucleus ? 'This cell starts as little more than its nucleus. Find the branches around it and merge them in to grow your cell.' : '';
+  // Until most of what is missing is merged in (Ames 2026-11-16: "a lot of
+  // the new cells are just a nucleus ... prompting user to merge the nucleus
+  // to the cell").
+  const nucleus = !!(r && r.scorable && r.nucleusOnly && r.missing && r.missing.left > 0 && (r.merge ?? 0) < 50);
+  if (nucleus && !note.querySelector('.nge-cm-cellnote-go')) {
+    note.innerHTML = '<span>Your cell is only its nucleus so far. Merge the nucleus into the cell body around it, then follow the branches out.</span>'
+      + '<button type="button" class="nge-cm-btn nge-cm-cellnote-go">Show me the cell</button>';
+    note.querySelector('.nge-cm-cellnote-go')!.addEventListener('click', () => void showBiggestPiece(el));
+  }
+  if (!nucleus) note.innerHTML = '';
   note.hidden = !nucleus;
   void loadMine();
   place(el);
@@ -962,6 +979,10 @@ function moment(taskId: number, kind: 'opened' | 'hint_offered' | 'complete' | '
 }
 function noteOpened(taskId: number) {
   if (clocks.has(taskId)) return;
+  // A new cell on screen: the last cell's review (Missed pieces, its pins)
+  // and any Jump marks go with it (Ames 2026-11-16: "it should also remove
+  // the missing pieces layer when I go to a new cell").
+  if (!reviewing) { removeReviewLayers(); window.clearInterval(pinsTimer); removeHintLayers(); }
   const now = Date.now();
   clocks.set(taskId, { opened: now, lastEdit: now, offered: false, n: 0, step: 1, jumped: false, jumps: 0 });
   moment(taskId, 'opened');
@@ -994,6 +1015,16 @@ function maybeOfferHint(taskId: number) {
   c.offered = true;
   el.querySelector('.nge-cm-hbtn')?.classList.add('nge-cm-nudged');
   moment(taskId, 'hint_offered');
+}
+/** The biggest piece left, shown at once (the nucleus note's Show me the cell):
+ *  Jump to the first spot, then Show me. */
+async function showBiggestPiece(el: HTMLElement) {
+  const taskId = shownFor;
+  if (taskId == null) return;
+  const c = clocks.get(taskId);
+  if (c) { c.n = 0; c.jumped = false; }
+  await pressHint(el, true);
+  if (clocks.get(taskId)?.step === 2) await pressHint(el);
 }
 /** 2D beside 3D for a hint, unless a 2D view is already open. */
 function ensureSplit() {
@@ -1762,4 +1793,4 @@ document.addEventListener('nge:play-pref', () => {
   if (!isClosed() && onScreen != null) show(onScreen, last.get(onScreen), !last.get(onScreen));
 });
 if (isClosed()) document.body.classList.add('nge-cm-closed');
-(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } }, setMine: (m: Mine | null) => { mineInfo = m; mineAt = Date.now(); paintMine(); } };
+(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } }, setMine: (m: Mine | null) => { mineInfo = m; mineAt = Date.now(); paintMine(); }, withClaims: (f: Deps['claims']) => { if (deps) deps.claims = f; } };

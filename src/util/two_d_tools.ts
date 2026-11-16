@@ -234,6 +234,7 @@ function onDown(e: MouseEvent) {
 }
 const swallow = (e: Event) => { if (twoD.lasso && (e as MouseEvent).button === 0 && !(e.target as HTMLElement).closest?.('button, input, label')) e.stopImmediatePropagation(); };
 
+let zoomTip: HTMLElement | null = null;
 function attach(panel: any) {
   const el: HTMLElement = panel.element;
   if (attachedTo === el) return;
@@ -250,6 +251,13 @@ function attach(panel: any) {
   button.addEventListener('mousedown', e => e.stopPropagation());
   button.addEventListener('click', e => { e.stopPropagation(); twoD.open = !twoD.open; if (!twoD.open) twoD.lasso = false; });
   el.appendChild(button);
+  // Hover shows how to zoom the 2D view (Ames 2026-11-16: "hover here can drop
+  // down a Ctrl + Scroll to zoom in and out of 2D").
+  zoomTip = document.createElement('div');
+  zoomTip.className = 'nge-2d-zoomtip';
+  zoomTip.textContent = 'Ctrl + scroll to zoom in and out of 2D';
+  zoomTip.setAttribute('aria-hidden', 'true');
+  el.appendChild(zoomTip);
   offerEl = document.createElement('div');
   offerEl.className = 'nge-2d-offer';
   offerEl.style.display = 'none';
@@ -278,6 +286,8 @@ function attach(panel: any) {
 function detach() {
   canvas?.remove();
   button?.remove();
+  zoomTip?.remove();
+  zoomTip = null;
   offerEl?.remove();
   offerEl = null;
   offerFor = null;

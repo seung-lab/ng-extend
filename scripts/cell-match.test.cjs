@@ -270,7 +270,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       window.__ngeCellMatch.show(16762, { ...r, nucleusOnly: false });
       return { on, off: n.hidden };
     });
-    check('a nucleus only cell says to grow it; others do not', nuc.on.shown && /little more than its nucleus/.test(nuc.on.text) && nuc.off, nuc);
+    check('a nucleus only cell says to grow it; others do not', nuc.on.shown && /only its nucleus so far. Merge the nucleus into the cell body/.test(nuc.on.text) && /Show me the cell/.test(nuc.on.text) && nuc.off, nuc);
     // Marking: Checked and Come back open Highlight on that color, and leave Merge or Cut.
     const mark = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match');
@@ -377,6 +377,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { missed: missed ? [...missed.layer.displayState.segmentationGroupState.value.visibleSegments].map(String) : null, pins: n };
     });
     check('the missed pieces are drawn, the cut pinned', layers.missed && layers.missed.length === 2 && layers.missed.includes('648518346351777001') && layers.pins === 1, layers);
+    // Missed pieces keeps its X; the Sandbox's own layers stay locked.
+    const locks = await page.evaluate(() => { const ls = window.viewer.layerManager.managedLayers; const f = window.__ngeLayerLocked; const by = n => ls.find(l => l.name === n); return { fn: typeof f, missed: f && f(by('Missed pieces')), own: f && by('pinky_nf_v2') ? f(by('pinky_nf_v2')) : null }; });
+    check('Missed pieces can be closed; the Sandbox segmentation cannot', locks.fn === 'function' && locks.missed === false && locks.own === true, locks);
     const pos0 = await page.evaluate(() => Array.from(window.viewer.navigationState.position.value).map(Math.round));
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-extra .nge-cm-btn').click());
     await page.waitForTimeout(500);
@@ -525,6 +528,16 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(800);
     const pressed = await page.evaluate(() => { let hit = false; const t = document.querySelector('.nge-play-chip') || document.querySelector('.nge-play-btn'); if (!t) return 'no play control'; t.addEventListener('click', e => { hit = true; e.stopImmediatePropagation(); }, { capture: true, once: true }); document.querySelector('#nge-cell-match .nge-cm-idle-go').click(); return hit; });
     check('Open my cell presses the game Play control', pressed === true, pressed);
+    // No Sandbox cell held (one just completed): a new cell, by teleport.
+    const fresh = await page.evaluate(async () => {
+      const m = window.__ngeCellMatch; const was = [];
+      m.withClaims(() => was);
+      window.dispatchEvent(new Event('focus'));
+      await new Promise(r => setTimeout(r, 2500));
+      const c = document.getElementById('nge-cell-match');
+      return { sub: c && c.querySelector('.nge-cm-sub').textContent, go: c && c.querySelector('.nge-cm-idle-go') && c.querySelector('.nge-cm-idle-go').textContent };
+    });
+    check('after a cell is finished: Teleport to a new cell', fresh.sub === 'Ready for your next practice cell' && fresh.go === 'Teleport to a new cell', fresh);
     const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
     check('on the Sandbox the Play button is big', playBox === null || playBox >= 56, playBox);
     await shot('play-big.png');

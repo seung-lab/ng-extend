@@ -145,6 +145,9 @@ const HELP_TEXT = [
 .nge-2d-offer button.nge-2d-offer-i { width: 18px; height: 18px; padding: 0; font: italic 700 11px/16px Georgia, serif; color: #ffd24d; background: none; border: 1px solid rgba(255, 210, 77, 0.6); border-radius: 50%; }
 .nge-2d-offer button.nge-2d-offer-i:hover { color: #05080f; background: #ffd24d; }
 .nge-2d-open:hover { background: rgba(30, 60, 90, 0.9); }
+.nge-2d-zoomtip { position: absolute; top: 34px; right: 40px; z-index: 5; padding: 4px 9px; font: 600 11.5px/1.4 system-ui, sans-serif; color: #e8eef5; white-space: nowrap; background: rgba(8, 14, 26, 0.92); border: 1px solid rgba(126, 224, 255, 0.45); border-radius: 6px; pointer-events: none; opacity: 0; transform: translateY(-4px); transition: opacity 0.15s, transform 0.15s; }
+.nge-2d-open:hover + .nge-2d-zoomtip { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .nge-2d-zoomtip { transition: none; } }
 .nge-2d { position: fixed; left: 360px; top: 100px; z-index: 900; width: 300px; max-height: calc(100vh - 170px); overflow-y: auto; padding: 10px 12px; font: 12px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.95); border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 10px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5); }
 .nge-2d-head { cursor: move; user-select: none; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .nge-2d-title { font-weight: 700; font-size: 13px; }
