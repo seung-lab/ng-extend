@@ -3274,6 +3274,18 @@ exports.ewSandboxReset = onSchedule(
   }
 );
 
+// Sandbox answer keys built ahead of time (functions/sandbox-match.js
+// warmKeys): reads CAVE, writes only sandbox_match_keys.
+exports.ewSandboxWarm = onSchedule(
+  { schedule: "every 15 minutes", region: "us-central1", secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 540, memory: "1GiB", maxInstances: 1, retryCount: 0 },
+  async () => {
+    const { warmKeys } = require("./sandbox-match");
+    const sb = ewSb(ewServiceKey.value().trim());
+    const r = await warmKeys({ fetch, caveToken: ewCaveToken.value().trim(), sb }, { budgetMs: 480000 });
+    console.log("[sandbox-warm]", JSON.stringify(r));
+  }
+);
+
 exports.ewUsersSheet = onSchedule(
   { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 300, retryCount: 0 },
   async () => {

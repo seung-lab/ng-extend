@@ -515,3 +515,19 @@ test('a cell read once serves the check, the review and Jump again', async () =>
   // Only a merge piece's own segment is read again, never the cell.
   assert.ok(w.calls.leaves - leaves <= 1, `cell leaves read ${w.calls.leaves - leaves} more times`);
 });
+
+test('keys are built ahead for open cells without one, and only those', async () => {
+  M._reset();
+  const w = world();
+  const base = w.io.sb;
+  w.io.sb = async (p, init) => {
+    if (p.startsWith('proofreading_tasks?dataset=eq.pinky_nf_v2&status=in.')) return w.db.tasks.filter(t => t.dataset === 'pinky_nf_v2');
+    if (p.startsWith('sandbox_match_keys?task_id=in.')) return Object.values(w.db.keys).map(k => ({task_id: k.task_id, version: k.version}));
+    return base(p, init);
+  };
+  const first = await M.warmKeys(w.io);
+  assert.deepEqual([first.open, first.ready, first.built, first.failed], [2, 0, 2, 0]);
+  assert.ok(w.db.keys[1] && w.db.keys[3]);
+  const again = await M.warmKeys(w.io);
+  assert.deepEqual([again.ready, again.built], [2, 0]);
+});

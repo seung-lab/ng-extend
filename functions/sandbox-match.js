@@ -652,6 +652,25 @@ async function record(io, {taskId, me, kind, idleSecs, score, detail}) {
   })});
 }
 
+/** Build the keys of every open Sandbox cell ahead of time (Ames 2026-11-16:
+ *  "it also takes a REALLY long time getting your cell ready": a cell's first
+ *  check built its key, 7 to 18 s). Reads CAVE; writes only the keys. Stops
+ *  when the time budget is spent; the next run goes on. */
+async function warmKeys(io, {budgetMs = 480000} = {}) {
+  const start = Date.now();
+  const tasks = await io.sb(`proofreading_tasks?dataset=eq.${DATASET}&status=in.(pending,assigned,in_progress)&select=id,dataset,supervoxel_id,created_at,assigned_to,status&order=id.asc&limit=500`);
+  const ids = tasks.map(t => t.id);
+  const keys = ids.length ? await io.sb(`sandbox_match_keys?task_id=in.(${ids.join(',')})&select=task_id,version`) : [];
+  const ready = new Set(keys.filter(k => k.version === KEY_VERSION).map(k => k.task_id));
+  let built = 0, failed = 0, left = 0;
+  for (const t of tasks) {
+    if (ready.has(t.id)) continue;
+    if (Date.now() - start > budgetMs) { left++; continue; }
+    try { await keyFor(io, t); built++; } catch (e) { failed++; console.warn('[sandbox-warm] no key', t.id, e.message); }
+  }
+  return {open: tasks.length, ready: ready.size, built, failed, left};
+}
+
 async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.check') return check(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
@@ -662,7 +681,7 @@ async function handle({action, args, me, isAdmin, io}) {
 }
 
 module.exports = {
-  handle, check, review, hint, event, mine, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
+  handle, check, review, hint, event, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
   _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,
