@@ -12,7 +12,9 @@
         "In Annotations, a purple Pyr gem now marks where the two soma merger starts.",
         "The nucleus box matches the cell as it is now, nucleus and all.",
         "Tutorial boxes beside a panel stay joined to their pointer line.",
-        "With Classic layer tabs on, Advanced Interface now says SHIFT and the number selects a layer, as the game does."
+        "With Classic layer tabs on, Advanced Interface now says SHIFT and the number selects a layer, as the game does.",
+        "Advanced Interface now says CTRL+L (CMD+L on a Mac) lights the Lantern, as the game does.",
+        "The Merger Sandbox now has 12 mergers: the two soma merger moved out, so it stays whole for the Annotations tutorial's Find Path."
       ],
       "digest": "minor"
     },
