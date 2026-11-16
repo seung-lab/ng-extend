@@ -1081,6 +1081,58 @@ function openAt(c: Card, part: 'comments') {
   openUp(c);
   if (part === 'comments') setTimeout(toComments, 60);
 }
+// Go to the very comment a tag or reply was about (Ames 2026-11-16: a reply
+// in My Tasks "didn't take me to the exact reply"). The bell carries the
+// comment's first 200 characters, squashed to one line as the server writes
+// them (functions/todos.js makeTagger), so match on that, by that person,
+// nearest in time.
+const bellLine = (t: string) => String(t || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200).trim();
+function findSaid(c: Card, who: string, quote: string, at: string): { comment?: number; thread?: string } | null {
+  const q = bellLine(quote), t0 = Date.parse(at) || 0;
+  const same = (text: string) => { const x = bellLine(text); return !!q && (x === q || x.startsWith(q) || q.startsWith(x) && x.length > 20); };
+  const byWho = (by: string) => !who || by === who || firstName(by) === firstName(who);
+  type Hit = { comment?: number; thread?: string; score: number };
+  const hits: Hit[] = [];
+  // The words first, then the person, then the nearest time. Failing the words
+  // (edited since), the same person within two minutes will do.
+  const score = (by: string, when: string, text: string) => {
+    const dt = Math.abs((Date.parse(when) || 0) - t0), w = same(text), p = byWho(by);
+    return !w && !(p && dt < 120e3) ? Infinity : (w ? 0 : 2e12) + (p ? 0 : 1e12) + dt;
+  };
+  (c.comments || []).forEach((cm, i) => hits.push({ comment: i, score: score(cm.by, cm.at, cm.text) }));
+  for (const th of c.note_comments || []) {
+    hits.push({ thread: th.id, score: score(th.by, th.at, th.text) });
+    for (const r of th.replies || []) hits.push({ thread: th.id, score: score(r.by, r.at, r.text) });
+  }
+  hits.sort((a, b) => a.score - b.score);
+  const best = hits[0];
+  if (!best || best.score === Infinity) return null;
+  return best.comment != null ? { comment: best.comment } : { thread: best.thread };
+}
+function openSaid(c: Card, who: string, quote: string, at: string) {
+  const hit = findSaid(c, who, quote, at);
+  if (!hit) { openAt(c, 'comments'); return; }
+  openUp(c);
+  // After opening has cleared the margin, so it stays open.
+  const pick = () => {
+    if (!hit.thread) return;
+    const th = (c.note_comments || []).find(x => x.id === hit.thread);
+    if (th?.resolved) ncmShowResolved.value = true;
+    ncmActive.value = hit.thread;
+  };
+  const sel = hit.thread ? `.nge-todo-ncm-thread[data-thread="${hit.thread}"]` : `.nge-todo-comment[data-cm="${hit.comment}"]`;
+  let tries = 0;
+  const go = () => {
+    const el = document.querySelector(sel) as HTMLElement | null;
+    if (!el) { if (++tries < 20) setTimeout(go, 50); else toComments(); return; }
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.remove('nge-todo-said--flash');
+    void el.offsetWidth;
+    el.classList.add('nge-todo-said--flash');
+    setTimeout(() => el.classList.remove('nge-todo-said--flash'), 2600);
+  };
+  setTimeout(() => { pick(); void nextTick(go); }, 80);
+}
 /** A comment as one plain line for the card's face. */
 const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼')
   // Headings and bullets read as words on one line ("Update: one, two"), not as their marks.
@@ -1347,7 +1399,7 @@ function openAct(a: Act) {
   if (!c) { error.value = 'That card is not on the board any more.'; return; }
   activityOpen.value = false;
   myTasksOpen.value = false;
-  if (a.kind === 'reply' || a.kind === 'tagged') openAt(c, 'comments'); else openUp(c);
+  if (a.kind === 'reply' || a.kind === 'tagged') openSaid(c, a.who, a.quote, a.at); else openUp(c);
 }
 // Opening a card reads its notes here too, as it does its tags.
 watch(openId, id => { if (id) void markActsRead(activity.value.filter(a => a.cardId === id)); });
@@ -1399,7 +1451,8 @@ function flipTask(t: Task) {
 const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.filter(t => t.item !== -2).length, 0));
 function openTask(t: Task) {
   myTasksOpen.value = false;
-  if (t.actId) { const a = activity.value.find(x => x.id === t.actId); if (a) void markActsRead([a]); }
+  const a = t.actId ? activity.value.find(x => x.id === t.actId) : null;
+  if (a) { void markActsRead([a]); openSaid(t.card, a.who, a.quote, a.at); return; }
   if (t.item === -1 || t.item === -2 || t.item === -3) openAt(t.card, 'comments'); else openUp(t.card);
 }
 // ── Reactions on comments ──
@@ -3225,7 +3278,7 @@ onUnmounted(() => { const l = document.querySelector<HTMLLinkElement>('link[rel=
         </form>
 
         <div ref="commentsHead" class="nge-todo-label">Comments</div>
-        <div v-for="{ cm, i, depth, rootAt, last } in commentRows(openCard)" :key="i" class="nge-todo-comment" :class="{ 'nge-todo-comment--reply': depth }">
+        <div v-for="{ cm, i, depth, rootAt, last } in commentRows(openCard)" :key="i" :data-cm="i" class="nge-todo-comment" :class="{ 'nge-todo-comment--reply': depth }">
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}<template v-if="cm.edited_at"> · edited <button type="button" class="nge-todo-linkish" @click="toggleOriginal(openCard.id, i)">{{ shownOriginal[openCard.id + ':' + i] ? 'Hide original' : 'Show original' }}</button></template>
             <button type="button" class="nge-todo-linkish nge-todo-comment-reply" @click="startReply(rootAt)">↩ Reply</button>
             <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text; rxLoad('edit', cm.text, true)">✎ Edit</button></div>
@@ -3731,6 +3784,9 @@ mark.nge-todo-ncm.nge-todo-ncm--on { background: rgba(245, 197, 66, 0.5); }
 .nge-todo-mini { background: none; border: none; color: var(--dim); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
 .nge-todo-mini:hover { color: var(--accent); }
 .nge-todo-comment { border-left: 2px solid var(--line); padding-left: 8px; }
+/* The comment a tag or reply in My Tasks or Activity was about, lit for a moment. */
+@keyframes nge-todo-said { 0%, 55% { background: rgba(79, 140, 255, 0.22); box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.55); } 100% { background: transparent; box-shadow: 0 0 0 2px transparent; } }
+.nge-todo-said--flash { animation: nge-todo-said 2.6s ease-out; border-radius: 6px; }
 .nge-todo-comment-by { font-size: 11.5px; color: var(--dim); }
 .nge-todo-foot { margin-top: auto; padding-top: 10px; font-size: 11.5px; color: var(--dim); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .nge-todo-delete { color: #ff9b9b; border-color: rgba(255, 120, 120, 0.35); }
