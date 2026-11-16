@@ -10,6 +10,7 @@
 // the command palette do."
 
 import { TOOLBAR_ICON_DEFS } from "../data/toolbar-icons";
+import type { ChangeEntry } from "../util/version_watch";
 import { formatKeyStroke } from "neuroglancer/help/input_event_bindings";
 // @ts-ignore — JSON import (esbuild bundles it). This IS the keybind source file.
 import CUSTOM_KEYBINDS from "../../config/custom-keybinds.json";
@@ -187,13 +188,42 @@ function buildNgControls(): string {
   return cachedNgControls;
 }
 
+/** Most room the recent changelog entries may take in the reference. */
+export const RECENT_CHANGES_MAX = 12000;
+/** The newest entries keep their full sentences up to this much; older ones keep their title. */
+const RECENT_CHANGES_DETAIL = 4000;
+
+/**
+ * The changelog entries players were shown, newest first, so Nurro knows every
+ * change since its notes were last written (Ames 2026-11-16: "a way for Nurro
+ * to stay up to date like by reading deployments"). Pyr deploys many times a
+ * day, so the newest entries keep their sentences and the rest keep only their
+ * title. Newest wins when it disagrees with an older note.
+ */
+export function formatRecentChanges(entries: ChangeEntry[]): string {
+  if (!entries.length) return "";
+  const out = ["## What changed recently (Pyr's changelog, newest first; where it disagrees with an older note above, this wins)"];
+  let size = out[0].length;
+  for (const e of entries) {
+    const head = `### ${e.at.slice(0, 10)}: ${e.title}`;
+    const full = [head, ...e.items.map(i => `- ${i}`)].join("\n");
+    const block = size + full.length < RECENT_CHANGES_DETAIL ? full : head;
+    if (size + block.length + 1 > RECENT_CHANGES_MAX) break;
+    out.push(block);
+    size += block.length + 1;
+  }
+  return out.length > 1 ? out.join("\n") : "";
+}
+
 /**
  * Assemble the live UI reference. `commands` (the command-palette catalog) is
  * optional — passed in from the CommandPalette component, since its list is
- * built with component-scoped closures.
+ * built with component-scoped closures. `recent` are the changelog entries
+ * from recentChanges() in util/version_watch.ts.
  */
-export function buildUiReference(commands?: CommandMeta[]): string {
+export function buildUiReference(commands?: CommandMeta[], recent?: ChangeEntry[]): string {
   if (cachedStatic === null) cachedStatic = buildStaticReference();
+  const recentSection = recent && recent.length ? "\n\n" + formatRecentChanges(recent) : "";
 
   let cmdSection = "";
   if (commands && commands.length) {
@@ -212,5 +242,5 @@ export function buildUiReference(commands?: CommandMeta[]): string {
   }
 
   const ng = buildNgControls();
-  return cachedStatic + cmdSection + (ng ? "\n\n" + ng : '');
+  return cachedStatic + recentSection + cmdSection + (ng ? "\n\n" + ng : '');
 }

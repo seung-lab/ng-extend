@@ -24,13 +24,22 @@ function staticNotesLength() {
   }, 0);
 }
 
-test("Nurro's notes leave room for the toolbar, shortcuts and commands", () => {
+// Room the recent changelog section may take (RECENT_CHANGES_MAX in knowledge.ts).
+function recentChangesMax() {
+  const src = fs.readFileSync(path.join(__dirname, "..", "src", "assistant", "knowledge.ts"), "utf8");
+  const m = src.match(/RECENT_CHANGES_MAX\s*=\s*(\d+)/);
+  assert.ok(m, "RECENT_CHANGES_MAX not found in knowledge.ts");
+  return Number(m[1]);
+}
+
+test("Nurro's notes leave room for recent changes, the toolbar, shortcuts and commands", () => {
   const notes = staticNotesLength();
+  const recent = recentChangesMax();
   assert.ok(notes > 1000, `notes look empty (${notes} characters)`);
   assert.ok(
-    notes + ROOM_FOR_GENERATED_LISTS <= GUIDE_UI_REFERENCE_MAX,
-    `knowledge.ts notes are ${notes} characters; with ${ROOM_FOR_GENERATED_LISTS} for the generated lists ` +
-      `that passes the ${GUIDE_UI_REFERENCE_MAX} cap in functions/guide-limits.js, so Nurro would lose them`,
+    notes + recent + ROOM_FOR_GENERATED_LISTS <= GUIDE_UI_REFERENCE_MAX,
+    `knowledge.ts notes are ${notes} characters; with ${recent} for recent changes and ${ROOM_FOR_GENERATED_LISTS} ` +
+      `for the generated lists that passes the ${GUIDE_UI_REFERENCE_MAX} cap in functions/guide-limits.js, so Nurro would lose them`,
   );
 });
 

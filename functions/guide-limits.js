@@ -5,6 +5,6 @@
 // off. guide-limits.test.js fails if the notes outgrow this again.
 // The reference sits in the cached part of the prompt, so a larger cap costs
 // little after the first question in each cache window.
-const GUIDE_UI_REFERENCE_MAX = 40000;
+const GUIDE_UI_REFERENCE_MAX = 50000;
 
 module.exports = { GUIDE_UI_REFERENCE_MAX };
