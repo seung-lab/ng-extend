@@ -404,7 +404,7 @@ function onShowAchievement(e: Event) {
     let tries = 0;
     const pick = () => {
       const award = profileSpecialBadges.value.find((a: any) => Number(a.badge_id ?? a.badge?.id) === Number(specialId));
-      if (award) { selectedBadge.value = null; selectedSpecialBadge.value = award; }
+      if (award) { selectedBadge.value = null; selectedSpecialBadge.value = award; revealSelectedTrophy(['special', 'competitions']); }
       else if (++tries < 12) setTimeout(pick, 300);
     };
     pick();
@@ -415,6 +415,24 @@ function onShowAchievement(e: Event) {
   activeTab.value = 'trophyCase';
   selectedSpecialBadge.value = null;
   selectedBadge.value = def;
+  revealSelectedTrophy(['cells', 'editor', 'loyalty', 'legacy-cells', 'legacy-edits']);
+}
+/** Unfold the sections the chosen Achievement may sit in (for this look only:
+ *  the player's own folded or open sections are not saved), then scroll its
+ *  tile to the middle of the Trophy Case (Ames 2026-11-16: clicking "amy earned
+ *  Reaper of the First Hunt" in chat opened the profile but not at it). */
+function revealSelectedTrophy(sections: string[]) {
+  const target = viewingOtherUser.value ? otherOpenSections : ownOpenSections;
+  const next = new Set(target.value);
+  for (const k of sections) next.add(k);
+  target.value = next;
+  let tries = 0;
+  const scroll = () => {
+    const tile = document.querySelector('.nge-trophy-badge--selected') as HTMLElement | null;
+    if (tile) { tile.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    if (++tries < 10) setTimeout(scroll, 150);
+  };
+  void nextTick(() => setTimeout(scroll, 50));
 }
 onMounted(() => document.addEventListener('nge:profile-show-achievement', onShowAchievement));
 onUnmounted(() => document.removeEventListener('nge:profile-show-achievement', onShowAchievement));
