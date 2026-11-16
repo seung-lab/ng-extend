@@ -154,6 +154,10 @@ test('an invite adds the player to the pilot list and tells them', async () => {
   assert.equal(done.pilot_added, true);
   assert.deepEqual(state.pilot_members.map(m => [m.email, m.enabled, m.added_by]), [['sam@example.org', true, celia.id]]);
   assert.match(state.players[0].title, /Congratulations! Your edit access has been granted!/);
+  assert.match(state.players[0].body, /Start playing in the Retina to see its brain mapping challenges\.\*\* Press Play/);
+  assert.match(state.players[0].body, /Lovely cuts\./);
+  assert.match(state.players[0].body, /\[Play in the Retina ›\]\(#nge-open-dataset=stroeh_mouse_retina\)$/);
+  assert.ok(state.players[0].body.length <= 1500);
   assert.match(state.players[0].image, /fly-neurons-by-neurotransmitter\.jpg$/);
   await rejects(rev('access.decide', {requestId: id, outcome: 'invited'}), 409, /already granted/);
   await rejects(p('access.save', cut(1)), 409, /already granted/);

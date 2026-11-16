@@ -288,8 +288,10 @@ onMounted(() => {
       if (!showCellLibrary.value) cellLibraryInitialTab.value = undefined;
       showCellLibrary.value = !showCellLibrary.value;
     }
-    // Shift+N: the Lantern, on and off.
-    if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'N' || e.key === 'n')) {
+    // Ctrl+L (Cmd+L on a Mac): the Lantern, on and off (Ames 2026-11-16).
+    // It had Shift+N, which now adds a new layer. The browser's own Ctrl+L
+    // (to the address bar) gives way while the page has the keyboard.
+    if (!typing && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.code === 'KeyL' || e.key === 'l' || e.key === 'L')) {
       e.preventDefault();
       e.stopImmediatePropagation();
       toggleLantern();

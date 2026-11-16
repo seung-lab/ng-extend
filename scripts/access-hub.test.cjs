@@ -105,6 +105,8 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.betaMarks') return r.fulfill(ok(marks));
       if (a === 'access.betaMark') { if (input.mark === 'waiting') delete marks[input.email]; else marks = { ...marks, [input.email]: { mark: input.mark, at: new Date().toISOString() } }; return r.fulfill(ok(marks)); }
       if (a === 'access.datasetList') return r.fulfill(ok(DS));
+      if (a === 'access.datasetDecide') return r.fulfill(ok(DS));
+      if (a === 'access.grantEmail') return r.fulfill(ok(input.preview ? { to: 'lou@example.org', subject: 'You can now edit MEC in Pyr', text: "Hi Lou, congratulations!" } : { sent: true, to: 'lou@example.org' }));
       if (a === 'test.tries') return r.fulfill(ok({ kept: true, test: null, key: null, line: [], tries: TRIES }));
       if (a === 'access.notes') return r.fulfill(ok(notes));
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
@@ -202,6 +204,15 @@ Amy Sterling and the Pyr Team at Princeton` }));
     await page.click('.ah-ds button:has-text("Send me a test")');
     await page.waitForTimeout(300);
     check('Send me a test asks the server for this dataset\'s bell, to me', calls.some(c => c.action === 'access.datasetTestBell' && c.args.dataset === 'pni_mec') && /Test sent to your bell/.test(await page.textContent('.ah-ds .ah-actions')), calls.filter(c => c.action === 'access.datasetTestBell'));
+    // The grant email (Ames 2026-11-14): ticked by default, shown first, sent after the grant.
+    check('Email them too is ticked', await page.isChecked('.ah-ds-email input[type=checkbox]'));
+    await page.click('.ah-ds button:has-text("See the email")');
+    await page.waitForTimeout(300);
+    const emailShown = await page.textContent('.ah-ds .ah-ask').catch(() => '');
+    check('See the email shows it before anything is sent', /To lou@example\.org, from Amy at Pyr/.test(emailShown) && /You can now edit MEC in Pyr/.test(emailShown) && calls.some(c => c.action === 'access.grantEmail' && c.args.preview === true) && !calls.some(c => c.action === 'access.grantEmail' && !c.args.preview), emailShown);
+    await page.click('.ah-ds button:has-text("Let them in & send notification")');
+    await page.waitForTimeout(400);
+    check('Let them in sends the email after the grant', calls.findIndex(c => c.action === 'access.grantEmail' && !c.args.preview) > calls.findIndex(c => c.action === 'access.datasetDecide') && /Email sent to lou@example\.org/.test(await page.textContent('.ah-ds').catch(() => '')), calls.filter(c => /grantEmail|datasetDecide/.test(c.action || '')));
     check('their dataset request shows their Proofreading Test tries, newest first, only theirs', tries.length === 2 && /^Passed \(88%\) · 9 of 10 mistakes fixed · 4 of 4 ends marked · nothing damaged/.test(tries[0]) && /^Did not pass \(41%\).*2 real branches cut off/.test(tries[1]), tries);
     await page.screenshot({ path: path.join(OUT, 'access-hub-tries.png'), fullPage: false });
     await page.click('.ah-close');

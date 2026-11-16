@@ -1080,6 +1080,12 @@ export interface UserPreferences {
    *  (opening merge if needed); the second M on another piece sends that
    *  merge. Defaults to false: M only opens and closes merge (Ames 2026-11-04). */
   quickMergeKey?: boolean;
+  /** The key that adds a new layer (Nseraf, report 516: plain N is next to M
+   *  and kept adding layers by mistake). 'shift' for Shift+N (the default,
+   *  Ames 2026-11-16; the Lantern moved to Ctrl+L for it), 'n' for plain N
+   *  as neuroglancer had it, 'alt' for Alt+N (Option+N on a Mac), or 'off'.
+   *  Ctrl+N opens a browser window before the page sees it. */
+  newLayerKey?: 'shift' | 'n' | 'alt' | 'off';
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;
@@ -5876,7 +5882,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const groupIds = notifGroupIds;
     // Settings, "Show Today in Pyr" off: the daily update stays out of the bell.
     const hideDigest = prefsStore.prefs.showDailyDigest === false;
-    const mine = (n: Notification) => !notificationDismissals.value.has(n.id)
+    // A reply on the To do board stays out of the bell (Ames 2026-11-16: "I
+    // don't want an in-game bell for every reply"). It still shows in the
+    // board's My Tasks and Activity, and in Slack. Tags still ring.
+    const todoReply = (n: Notification) => /^📋 .+ replied to you on a To do$/u.test(String(n.title || ''));
+    const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && !todoReply(n)
       && !(hideDigest && n.target_type !== 'user' && String(n.title || '').startsWith('Today in Pyr')) && (
       n.target_type === 'all'
       || (n.target_type === 'user' && n.target_id === userId.value)

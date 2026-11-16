@@ -1,7 +1,28 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { todoAction, slackIdOf, cleanFields, countTriage } = require('./todos');
+const { todoAction, slackIdOf, cleanFields, countTriage, stampChecklist } = require('./todos');
+
+test('a ticked checklist item records who ticked it and when; old ticks keep theirs', () => {
+  const before = [
+    { text: 'A', done: true, done_by: 'u1', done_at: '2026-11-01T00:00:00Z' },
+    { text: 'B', done: false },
+    { text: 'C', done: true, done_by: 'u1', done_at: '2026-11-02T00:00:00Z' },
+  ];
+  const after = [
+    { text: 'B', done: true, done_by: 'forged', done_at: '1999-01-01' },
+    { text: 'A', done: true },
+    { text: 'C', done: false },
+    { text: 'D', done: true },
+  ];
+  const out = stampChecklist(before, after, 'u2', '2026-11-14T10:00:00Z');
+  assert.deepEqual(out, [
+    { text: 'B', done: true, done_by: 'u2', done_at: '2026-11-14T10:00:00Z' },
+    { text: 'A', done: true, done_by: 'u1', done_at: '2026-11-01T00:00:00Z' },
+    { text: 'C', done: false },
+    { text: 'D', done: true, done_by: 'u2', done_at: '2026-11-14T10:00:00Z' },
+  ]);
+});
 
 test('triage reports closed this week count for whoever closed them', () => {
   const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };
@@ -268,6 +289,36 @@ test('a reply joins its thread, one level deep, and its writer hears', async () 
   await assert.rejects(todoAction('todo.comment', { id: card.id, text: 'x', replyTo: '1999-01-01T00:00:00Z' }, ctxOf(AMES, 'Amy R. Sterling')), /gone/);
 });
 
+test('a comment in the margin of the notes: start, reply, resolve, remove', async () => {
+  const db = memDb(), tags = [];
+  const ctxOf = (who, name) => ({ db, byName: name, me: { id: who.id }, tag: async (w, card, what, said) => tags.push({ who: w.map(p => p.name), what, said }) });
+  const { card } = await todoAction('todo.save', { fields: { title: 'Doc', notes: 'The quick brown fox jumps' } }, ctxOf(AMES, 'Amy R. Sterling'));
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, quote: 'brown', text: 'x' }, ctxOf(AMES, 'Amy R. Sterling')), /not switched on/);
+  await db.patch(card.id, { note_comments: [] });
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, quote: '  ', text: 'x' }, ctxOf(AMES, 'Amy R. Sterling')), /Select some words/);
+  const a = await todoAction('todo.noteComment', { id: card.id, quote: 'brown fox', before: 'The quick ', after: ' jumps', text: 'Which fox? @Celia D.', tagIds: [CELIA.id] }, ctxOf(AMES, 'Amy R. Sterling'));
+  const t = a.card.note_comments[0];
+  assert.equal(t.quote, 'brown fox');
+  assert.equal(t.before, 'The quick ');
+  assert.equal(t.by, 'Amy R. Sterling');
+  assert.equal(t.resolved, false);
+  assert.deepEqual(tags.at(-1), { who: ['Celia D.'], what: 'tagged you on', said: 'Which fox? @Celia D.' });
+  const b = await todoAction('todo.noteComment', { id: card.id, thread: t.id, text: 'The red one' }, ctxOf(CELIA, 'Celia D.'));
+  assert.equal(b.card.note_comments[0].replies[0].text, 'The red one');
+  assert.deepEqual(tags.at(-1).who, ['Amy R. Sterling'], 'the thread writer hears a reply');
+  const c = await todoAction('todo.noteComment', { id: card.id, thread: t.id, resolved: true }, ctxOf(CELIA, 'Celia D.'));
+  assert.equal(c.card.note_comments[0].resolved, true);
+  assert.equal(c.card.note_comments[0].resolved_by, 'Celia D.');
+  const d = await todoAction('todo.noteComment', { id: card.id, thread: t.id, text: 'Not yet' }, ctxOf(AMES, 'Amy R. Sterling'));
+  assert.equal(d.card.note_comments[0].resolved, false, 'a reply opens it again');
+  assert.equal(d.card.note_comments[0].resolved_by, undefined);
+  assert.deepEqual(tags.at(-1).who, ['Celia D.'], 'the replier before hears too');
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, thread: t.id, remove: true }, ctxOf(CELIA, 'Celia D.')), /Only the person/);
+  const e = await todoAction('todo.noteComment', { id: card.id, thread: t.id, remove: true }, ctxOf(AMES, 'Amy R. Sterling'));
+  assert.deepEqual(e.card.note_comments, []);
+  await assert.rejects(todoAction('todo.noteComment', { id: card.id, thread: t.id, text: 'x' }, ctxOf(AMES, 'Amy R. Sterling')), /gone/);
+});
+
 // ── Hierarchy (Ames 2026-11-11): cards inside cards, sections of a column, nested checklist items ──
 function withSections(db) {
   const secs = new Map(); let k = 0;
@@ -338,4 +389,21 @@ test('a due time: kept as HH:MM, checked, and cleared with the day (Ames 2026-11
   assert.equal((await save({ id: c.id, fields: { due_time: null } })).card.due_time, null);
   await save({ id: c.id, fields: { due_time: '09:05' } });
   assert.deepEqual(Object.values((({ due_on, due_time }) => ({ due_on, due_time }))((await save({ id: c.id, fields: { due_on: null } })).card)), [null, null]);
+});
+
+test('a bell links to the very comment, and a long title never cuts the link', async () => {
+  const { makeTagger } = require('./todos');
+  const posted = [];
+  const sb = async (table, opt) => { posted.push(...JSON.parse(opt.body)); };
+  const slackPost = async () => ({ ok: true });
+  const tag = makeTagger({ sb, slackPost, slackToken: 'x', channel: 'C', site: 'https://s', byName: 'Celia D', meId: 'm' });
+  const card = { id: '11111111-1111-4111-8111-111111111111', title: 'T'.repeat(600) };
+  await tag([{ id: 'p', name: 'Amy' }], card, 'replied to you on', 'hello', { c: '2026-11-16T10:00:00.000Z' });
+  assert.ok(posted[0].body.length <= 500);
+  assert.ok(posted[0].body.endsWith(`?triage=board&todo=${card.id}&c=2026-11-16T10%3A00%3A00.000Z`), posted[0].body.slice(-120));
+  await tag([{ id: 'p', name: 'Amy' }], { id: card.id, title: 'Doc' }, 'tagged you on', 'hi', { nc: 'abc123' });
+  assert.ok(posted[1].body.endsWith('&nc=abc123'));
+  assert.ok(posted[1].body.startsWith('Doc\n\n"hi"\n\n'));
+  await tag([{ id: 'p', name: 'Amy' }], { id: card.id, title: 'Doc' }, 'gave you');
+  assert.ok(posted[2].body.endsWith(`todo=${card.id}`));
 });

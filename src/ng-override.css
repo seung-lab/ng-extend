@@ -1351,7 +1351,8 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
    The line stays in the page, because the bar reads its state from it and
    presses its buttons. */
 #statusContainer li.neuroglancer-tool-status:has(.graphene-multicut),
-#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) {
+#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments),
+#statusContainer li.nge-status-taken {
   position: absolute !important;
   width: 1px !important;
   height: 1px !important;

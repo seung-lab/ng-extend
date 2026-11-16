@@ -779,6 +779,18 @@ function observeSegmentSelect(targetNode: Element) {
     if (icon?.title.startsWith('Close this layer')) icon.title = 'Remove layer from this layer group';
   }, true);
 
+  // Settings, "New layer key" (Nseraf, report 516). Shift+N unless changed:
+  // plain N sat next to M (merge). neuroglancer's own N is taken out of every
+  // map it could be in.
+  watch(() => useUserPreferencesStore().prefs.newLayerKey || 'shift', mode => {
+    const g = (window as any).viewer?.inputEventBindings?.global;
+    if (!g) return;
+    for (const map of [g, ...g.parents]) for (const k of ['keyn', 'shift+keyn', 'alt+keyn']) map.delete(k);
+    if (mode === 'shift') g.set('shift+keyn', 'add-layer');
+    else if (mode === 'n') g.set('keyn', 'add-layer');
+    else if (mode === 'alt') g.set('alt+keyn', 'add-layer');
+  }, { immediate: true });
+
   watch(() => useUserPreferencesStore().prefs.segShowId === true, on => {
     document.body.classList.toggle('nge-seg-show-id', on);
     setTimeout(() => document.querySelectorAll<HTMLElement>('.neuroglancer-segment-list-entry.nge-seg-labelled').forEach(remeasureListRow), 0);
@@ -1044,6 +1056,11 @@ function observeSplitMergeTools() {
         if (shownErrorLines.has(el) || el.style.display === 'none') continue;
         const text = el.textContent?.trim() || '';
         const lower = text.toLowerCase();
+        // Progress lines the bar already says ("Splitting...", "Merged.")
+        // are kept out of sight too: shown, they lifted the bar, the chat and
+        // the side panel's TODO / PROOFREAD legend for a moment (Nseraf,
+        // report 547). They stay in the page for the scan below to read.
+        if (/^splitting \d+ sources? from \d+ sinks?|^merged\b/.test(lower)) el.classList.add('nge-status-taken');
         if (!/split|merge|multicut|supervoxel|segment/.test(lower)) continue;
         if (!/failed|error/.test(lower)) continue;
         takeErrorLine(el, text.replace(/\s*dismiss\s*$/i, '').trim());
