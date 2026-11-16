@@ -49,6 +49,8 @@ export interface MatchResult {
   nucleusOnly?: boolean;
   /** Nothing was wrong at the start; the player merged something wrong in and has cut all of it off. */
   cutDone?: boolean;
+  /** Wrong parts attached now, wherever they came from. */
+  cutParts?: number;
 }
 /** The player's Sandbox accuracy (match.mine). */
 export interface Mine { cells: number; accuracy: number | null; lowRun: number; reviewFirst: boolean; lowScore: number; lowRunNeeded: number }
@@ -193,8 +195,12 @@ export function rowPieces(r: MatchResult, row: Row): string {
   const p = row === 'merge' ? r.missing : r.extra;
   if (pct == null && row === 'cut' && r.cutDone) return 'all cut off ✓ nice work';
   if (pct == null) return row === 'merge' ? 'nothing to merge' : 'nothing to cut';
-  if (!p || !p.total) return row === 'merge' ? 'part of the cell was cut off' : 'an error was merged in';
-  return row === 'merge' ? `${p.total - p.left} of ${plural(p.total, 'piece')} merged in` : `removed ${p.total - p.left} of ${plural(p.total, 'error')}`;
+  // Plain counts, never blame (Ames 2026-11-16: "3 of 10 pieces added";
+  // "an error was merged in" read "like I did an error").
+  // A cell that started with nothing to cut: the percent alone (Ames 2026-11-16:
+  // "for Cut we say no line at all").
+  if (!p || !p.total) return row === 'merge' ? 'a piece to add back' : '';
+  return row === 'merge' ? `${p.total - p.left} of ${plural(p.total, 'piece')} added` : `${p.total - p.left} of ${plural(p.total, 'part')} cut off`;
 }
 
 /** Cells the HUD scores: their Complete says "Complete and Review" (reactive,
@@ -334,8 +340,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
 #${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important}
 #${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:nge-cm-hglow 2.6s ease-in-out infinite}
-#${CARD_ID} .nge-cm-mark{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
-#${CARD_ID} .nge-cm-mark-label{margin-right:2px}
+#${CARD_ID} .nge-cm-mark{margin-top:9px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
+#${CARD_ID} .nge-cm-mark-head{display:flex;align-items:center;gap:6px}
+#${CARD_ID} .nge-cm-mark-i{width:18px;height:18px;flex:0 0 18px;font-size:11px}
+#${CARD_ID} .nge-cm-mark-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+#${CARD_ID} .nge-cm-mark-info{margin:6px 0 2px;padding:8px 10px;border:1px solid rgba(127,200,255,.25);border-radius:6px;background:rgba(127,200,255,.06);font-size:12.5px;line-height:1.45;color:#d6e2f5}
+#${CARD_ID} .nge-cm-mark-info[hidden]{display:none}
+#${CARD_ID} .nge-cm-mark-info br{display:block;content:"";margin-top:5px}
 #${CARD_ID} .nge-cm-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid rgba(127,190,255,.35);border-radius:999px;background:rgba(10,24,48,.6);color:#e6f0ff;font:600 12px/1 Inter,system-ui,sans-serif;cursor:pointer}
 #${CARD_ID} .nge-cm-chip:hover{border-color:#7fd8ff;background:rgba(74,158,255,.22)}
 #${CARD_ID} .nge-cm-chip i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
@@ -362,7 +373,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
 @keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:none}}
-#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-hbtn,#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
+#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
 #${CARD_ID} .nge-cm-nudge{display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
@@ -379,7 +390,6 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-btn:disabled{opacity:.5;cursor:default}
 #${CARD_ID}.nge-cm-idle .nge-cm-play,#${CARD_ID}.nge-cm-idle .nge-cm-cellid,#${CARD_ID}.nge-cm-idle .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-play,#${CARD_ID}.nge-cm-reviewing .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
-#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-nudge{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){height:auto !important;resize:horizontal}
 #${CARD_ID} .nge-cm-nudge-btns{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
@@ -402,6 +412,8 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-finish-addnote{align-self:flex-start;padding:0;border:none;background:none;color:#7fd8ff;font:500 12.5px/1.4 Inter,system-ui,sans-serif;cursor:pointer}
 #${CARD_ID} .nge-cm-finish-note{width:100%;box-sizing:border-box;resize:vertical;padding:6px 8px;border:1px solid rgba(255,255,255,.2);border-radius:6px;background:rgba(0,0,0,.35);color:#e6edf7;font:12.5px/1.45 Inter,system-ui,sans-serif}
 #${CARD_ID} .nge-cm-finish-left{margin:0;font-size:12.5px;line-height:1.45;color:#a9c3e0}
+#${CARD_ID} .nge-cm-finish-left[hidden]{display:none}
+#${CARD_ID} .nge-cm-finish-left-count{margin:0 0 3px}
 #${CARD_ID} .nge-cm-finish-actions{display:flex;gap:6px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
@@ -508,6 +520,18 @@ const INFO_LINES = [
 // paragraph when an admin edits it.
 const INFO_HTML = INFO_LINES.join('<br>' + String.fromCharCode(10));
 let infoApp: VueApp | null = null;
+const editApps = new Map<HTMLElement, VueApp>();
+/** An admin editable text in a host (the same as the i text). */
+function mountEditable(host: HTMLElement, textKey: string, original: string, textClass: string, label: string) {
+  const had = editApps.get(host);
+  if (had) { try { had.unmount(); } catch (e) { /* gone */ } editApps.delete(host); }
+  const pinia = getActivePinia();
+  if (!pinia) { host.innerHTML = `<div class="${textClass}">${original}</div>`; return; }
+  const app = createApp(EditableText, { textKey, original, textClass, label });
+  app.use(pinia);
+  app.mount(host);
+  editApps.set(host, app);
+}
 function mountInfo(host: HTMLElement) {
   if (infoApp) { try { infoApp.unmount(); } catch (e) { /* gone */ } infoApp = null; }
   const pinia = getActivePinia();
@@ -533,18 +557,29 @@ const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
 // mode ... with checked and come back pre-filled"; "we can't add highlight
 // points while you are in merge or cut mode"). A chip leaves Merge or Cut and
 // opens Highlight on that color; the pill says what a Ctrl+click does now.
+// Ames 2026-11-16: the chips on their own line, and an (i) for Highlight.
 const MARK_HTML = '<div class="nge-cm-mark">'
-  + '<span class="nge-cm-mark-label">Mark where you have been</span>'
+  + '<div class="nge-cm-mark-head"><span class="nge-cm-mark-label">Mark where you have been</span>'
+  + '<button type="button" class="nge-cm-tool nge-cm-mark-i" aria-label="What is Highlight?" aria-expanded="false" title="What is Highlight?">i</button>'
+  + '<span class="nge-cm-mode" data-mode="look" title="What a Ctrl+click does right now">Looking</span></div>'
+  + '<div class="nge-cm-mark-info" hidden></div>'
+  + '<div class="nge-cm-mark-chips">'
   + '<button type="button" class="nge-cm-chip" data-mark="checked" title="Highlight a branch you have checked, out to its end"><i></i>Checked</button>'
-  + '<button type="button" class="nge-cm-chip" data-mark="comeback" title="One click marks a spot to come back to"><i></i>Come back</button>'
-  + '<span class="nge-cm-mode" data-mode="look" title="What a Ctrl+click does right now">Looking</span></div>';
+  + '<button type="button" class="nge-cm-chip" data-mark="comeback" title="One click marks a spot to come back to"><i></i>Come back</button></div></div>';
+const MARK_INFO_KEY = 'sandbox.highlight_info';
+const MARK_INFO_HTML = 'Highlight paints over your cell so you can see where you have been. '
+  + '<b>Checked</b>: Ctrl+click two points on a branch and the stretch between them is marked. Mark each branch out to its end once you have looked at it.<br>'
+  + '<b>Come back</b>: one click marks a spot you want to look at again.<br>'
+  + 'With Merge or Cut on, hold H and click to highlight. Your marks are saved with your view.';
+const LEFT_KEY = 'sandbox.finish_left';
+const LEFT_HTML = 'Press Complete and Review to see the answers. In a production dataset, you should never complete a cell before it is completely proofread.';
 const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip Cell</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
-  + MARK_HTML
   + '<div class="nge-cm-viewnote"></div>'
+  + MARK_HTML
   + '<div class="nge-cm-acc" hidden></div>'
   + '<div class="nge-cm-skipask" hidden role="alertdialog" aria-label="Skip this cell?">'
   + '<p class="nge-cm-skipask-words"><b>Skip this cell?</b> It goes back for someone else, and your edits on it no longer count for you. Pyr takes you to a new cell.</p>'
@@ -562,7 +597,7 @@ const FINISH_HTML = '<div class="nge-cm-finish" hidden>'
   + '<div class="nge-cm-finish-line nge-cm-finish-view"><span class="nge-cm-finish-mark"></span><span class="nge-cm-finish-words"></span></div>'
   + '<button type="button" class="nge-cm-finish-addnote">+ Add a note</button>'
   + '<textarea class="nge-cm-finish-note" rows="3" maxlength="2000" placeholder="Anything about this cell (optional)" hidden></textarea>'
-  + '<p class="nge-cm-finish-left" hidden></p>'
+  + '<div class="nge-cm-finish-left" hidden><p class="nge-cm-finish-left-count"></p><div class="nge-cm-finish-left-edit"></div></div>'
   + '<p class="nge-cm-finish-gate" hidden></p>'
   + '<div class="nge-cm-finish-actions">'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-back">Keep working</button>'
@@ -591,6 +626,8 @@ function card(): HTMLElement {
     + '<div class="nge-cm-info" id="nge-cell-match-info"></div>'
     + scoreHtml + NUDGE_HTML + rowHtml('merge') + rowHtml('cut') + PLAY_HTML + FINISH_HTML + '<div class="nge-cm-extra"></div>';
   mountInfo(el.querySelector('.nge-cm-info') as HTMLElement);
+  mountEditable(el.querySelector('.nge-cm-mark-info') as HTMLElement, MARK_INFO_KEY, MARK_INFO_HTML, 'nge-cm-mark-info-text', 'Sandbox box, what Highlight is');
+  mountEditable(el.querySelector('.nge-cm-finish-left-edit') as HTMLElement, LEFT_KEY, LEFT_HTML, 'nge-cm-finish-left-text', 'Sandbox Complete, pieces left');
   el.querySelector('.nge-cm-head')!.setAttribute('title', 'Drag to move. Double click to put it back.');
   makeDraggable(el);
   el.querySelector('.nge-cm-x')!.addEventListener('click', closeCard);
@@ -947,7 +984,9 @@ function syncOwns() {
   const el = document.getElementById(CARD_ID);
   // Also while it waits (Getting your cell ready, Standby): the library's slim
   // row came up under it after Teleport to a new cell (Ames 2026-11-16).
-  const owns = !!el && document.body.contains(el) && !playOff() && !isClosed();
+  // And before the box is up at all, from the moment Pyr knows the Sandbox is
+  // being played: on a refresh the row came up, then went (Ames 2026-11-16).
+  const owns = !playOff() && !isClosed() && ((!!el && document.body.contains(el)) || onSandbox());
   document.body.classList.toggle('nge-cm-owns', owns);
 }
 /** Save view, Skip and Complete run in the Cell Library, which is only there
@@ -1101,6 +1140,7 @@ function showHintPiece(p: HintPiece) {
   // the click hit that copy and the merge read "Cannot merge segment with
   // itself" (Ames 2026-11-14).
   if (p.kind === 'merge' && p.root) {
+    tintCellBlue(shownFor != null ? last.get(shownFor)?.root : null);
     try {
       const layer = currentSegLayer()?.layer;
       const group = layer?.displayState?.segmentationGroupState?.value;
@@ -1152,9 +1192,11 @@ function openFinish(el: HTMLElement) {
   const left = f.querySelector('.nge-cm-finish-left') as HTMLElement;
   const parts: string[] = [];
   if (r?.missing && r.missing.left > 0) parts.push(`${plural(r.missing.left, 'piece')} to merge in`);
-  if (r?.extra && r.extra.left > 0) parts.push(`${plural(r.extra.left, 'part')} to cut off`);
+  const cutLeft = r?.cutParts ?? r?.extra?.left ?? 0;
+  if (cutLeft > 0) parts.push(`${plural(cutLeft, 'part')} to cut off`);
   // Ames 2026-11-16: practice only; a real cell is never completed half done.
-  left.textContent = parts.length ? `You still have ${parts.join(' and ')}. Press Complete and Review to see the answers. In a production dataset, you should never complete a cell before it is completely proofread.` : '';
+  // The advice after the count is admin editable (LEFT_KEY).
+  (left.querySelector('.nge-cm-finish-left-count') as HTMLElement).textContent = parts.length ? `You still have ${parts.join(' and ')}.` : '';
   left.hidden = !parts.length;
   showGate(el);
   renderFinish(el, { checking: true, ok: false, message: '', minting: true, submitting: false, link: false });
@@ -1248,6 +1290,11 @@ function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
   el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
   for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
+  el.querySelector('.nge-cm-mark-i')!.addEventListener('click', e => {
+    const box = el.querySelector('.nge-cm-mark-info') as HTMLElement;
+    box.hidden = !box.hidden;
+    (e.currentTarget as HTMLElement).setAttribute('aria-expanded', String(!box.hidden));
+  });
   paintChips(el);
   watchMode(el);
   el.querySelector('.nge-cm-finish-jump')!.addEventListener('click', () => {
@@ -1581,8 +1628,42 @@ function flyTo(nm: number[]) {
 
 // neuroglancer packs a colour as 0xBBGGRR: GOLD (#ffd36e).
 const GOLD_PACKED = 0x6ed3ff;
+/** The player's cell while gold pieces are on screen: blue, so a cell that
+ *  happens to be gold never hides them (Ames 2026-11-16). #3d9bff, packed. */
+const CELL_BLUE_PACKED = 0xff9b3d;
+let cellTint: { root: string; had: boolean; prev: Uint64 } | null = null;
+function segColors(): any {
+  return currentSegLayer()?.layer?.displayState?.segmentationColorGroupState?.value?.segmentStatedColors;
+}
+/** Paint the player's cell blue; its own color comes back with untintCell. */
+function tintCellBlue(root: string | undefined | null) {
+  if (!root || cellTint?.root === root) return;
+  untintCell();
+  try {
+    const colors = segColors();
+    if (!colors) return;
+    const seg = Uint64.parseString(root);
+    const prev = new Uint64();
+    const had = !!colors.get(seg, prev);
+    setStatedColor(colors, seg, CELL_BLUE_PACKED);
+    cellTint = { root, had, prev };
+  } catch (e) { console.debug('[cell-match] cell tint', e); }
+}
+function untintCell() {
+  const t = cellTint;
+  cellTint = null;
+  if (!t) return;
+  try {
+    const colors = segColors();
+    if (!colors) return;
+    const seg = Uint64.parseString(t.root);
+    colors.delete(seg);
+    if (t.had) colors.set(seg, t.prev);
+  } catch (e) { console.debug('[cell-match] cell untint', e); }
+}
 let hintShown: { root: string; wasVisible: boolean } | null = null;
 function removeHintLayers() {
+  if (!reviewing) untintCell();
   // The gold piece leaves the player's layer again, unless it was there before
   // (once merged it is part of their cell, under the cell's own id).
   if (hintShown) {
@@ -1601,6 +1682,7 @@ function removeHintLayers() {
   }
 }
 function removeReviewLayers() {
+  untintCell();
   const v = (window as any).viewer;
   for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
     if (ml.name === MISSED_LAYER || ml.name === MERGERS_LAYER) { try { dropLayer(v, ml); } catch { /* gone */ } }
@@ -1613,6 +1695,7 @@ function addReviewLayers(r: ReviewResult) {
   removeReviewLayers();
   removeHintLayers();
   const missed = r.missed ?? [];
+  if (missed.length) tintCellBlue(r.root);
   if (missed.length) {
     const colors = Object.fromEntries(missed.map(p => [p.root, GOLD]));
     try { v.layerSpecification.add(makeLayer(v.layerSpecification, MISSED_LAYER, { type: 'segmentation', source: SANDBOX_SOURCE, segments: missed.map(p => p.root), segmentColors: colors, objectAlpha: 1 })); }
@@ -1788,6 +1871,9 @@ export function startSandboxMatch(d: Deps) {
   document.addEventListener('nge:cm-library-ready', () => { libraryUp = true; toldShown = undefined; tellShown(shownFor); sendPending(); });
   document.addEventListener('nge:cm-library-gone', () => { libraryUp = false; });
   setInterval(() => { if (!document.hidden) { tick(); syncOwns(); } }, 2000);
+  // Right after a page load, often, so the Cell Library's row never shows first.
+  let early = 0;
+  const fast = window.setInterval(() => { syncOwns(); if (++early >= 40) window.clearInterval(fast); }, 250);
 }
 
 /** For headless checks. */

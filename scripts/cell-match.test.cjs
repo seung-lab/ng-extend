@@ -41,6 +41,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate/');
     const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: apps };
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
+    try { localStorage.setItem('pyr-intro-seen', '1'); } catch (e) {} // a returning player: no Starship intro
   });
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
@@ -103,7 +104,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const shown = await waitText(/merge 0%/i, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
-    check('Playing: Practice, the Match score, then Merge and Cut with their pieces', /^playing: practice .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% removed 0 of 3 errors/.test(await cardText() || ''), await cardText());
+    check('Playing: Practice, the Match score, then Merge and Cut with their pieces', /^playing: practice .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
     // Clear of the Play button in the same corner.
@@ -155,14 +156,14 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('no ask while the edits keep coming', asks.length === before, asks.length - before);
     const updated = await waitText(/39%/, 10000);
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
-    check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19 19% 1 edit merge \+39 39% 11 of 28 pieces merged in cut 0% removed 0 of 3 errors/.test(await cardText() || ''), await cardText());
+    check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19 19% 1 edit merge \+39 39% 11 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     await shot('cell-match-after-merge.png');
 
     // A worse edit: the number goes down, and says so.
     answer = ANSWERS.worse;
     await edit([ANSWERS.worse.root]);
     const worse = await waitText(/36%/, 10000);
-    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /match score [a-z ]*\+32 51% 2 edits merge −3 36% 10 of 28 pieces merged in cut \+67 67% removed 2 of 3 errors/.test(await cardText() || ''), await cardText());
+    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /match score [a-z ]*\+32 51% 2 edits merge −3 36% 10 of 28 pieces added cut \+67 67% 2 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     // A cut: "Cut complete" lights up for a moment, then back to the reading.
     // A cut: "Cut complete" at once, plain; then the reading says good or wrong
     // (Ames 2026-11-13: "I got cut complete ... but it was wrong cut").
@@ -286,7 +287,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     });
     check('Checked and Come back open Highlight on their own colors', mark.opened === 2 && mark.first === 'checked' && mark.second === 'c_comeback' && mark.chips.join(',') === 'Checked,Come back' && mark.row, mark);
     check('the box says what a Ctrl+click does now', /^(Looking|Highlighting)$/.test(mark.pill), mark.pill);
+    const markInfo = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const i = c.querySelector('.nge-cm-mark-i'); i.click(); const box = c.querySelector('.nge-cm-mark-info'); const r = { open: !box.hidden, text: box.textContent, chipsBelow: c.querySelector('.nge-cm-mark-chips').getBoundingClientRect().top > c.querySelector('.nge-cm-mark-label').getBoundingClientRect().bottom }; return r; });
+    check('the (i) explains Highlight; the chips sit on their own line', markInfo.open && /Highlight paints over your cell/.test(markInfo.text) && /Come back/.test(markInfo.text) && markInfo.chipsBelow, markInfo);
     await shot('cell-match-mark.png');
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-mark-i').click());
     // Jump is always in the row.
     const jumpNow = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { shown: h.offsetParent !== null, text: h.textContent, glow: h.classList.contains('nge-cm-nudged') }; });
     check('Jump is in the button row from the start, not lit', jumpNow.shown && jumpNow.text === 'Jump' && !jumpNow.glow, jumpNow);
@@ -298,7 +302,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await shot('cell-match-hint.png');
     // Collapsed: no Hint at all (Ames 2026-11-14: "I would be too tempted to click").
     const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
-    check('collapsed, Hint is not offered', minNudge === false, minNudge);
+    check('collapsed, Jump is still there (Ames 2026-11-16)', minNudge === true, minNudge);
     const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').click());
     await page.waitForTimeout(1500);
@@ -493,7 +497,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(300);
     const mini = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const vis = s => [...c.querySelectorAll(s)].filter(e => e.offsetParent !== null).length; return { h: c.offsetHeight, gauges: vis('.nge-cm-gauge'), nums: vis('.nge-cm-num'), pieces: vis('.nge-cm-pieces'), title: c.querySelector('.nge-cm-title').offsetParent !== null }; });
     const tips = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-row')].map(r => r.title));
-    check('hovering says what each line means', /^Match score 19%: your Merge and Cut together, half each$/.test(tips[0]) && /^Merge \d+%: \d+ of \d+ pieces merged in$/.test(tips[1]) && /^Cut/.test(tips[2]), tips);
+    check('hovering says what each line means', /^Match score 19%: your Merge and Cut together, half each$/.test(tips[0]) && /^Merge \d+%: \d+ of \d+ pieces added$/.test(tips[1]) && /^Cut/.test(tips[2]), tips);
     const miniText = await page.evaluate(() => document.getElementById('nge-cell-match').innerText.replace(/\s+/g, ' ').trim());
     check('collapse shows Practice and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^practice/i.test(miniText) && /19%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
     await shot('cell-match-collapsed.png');

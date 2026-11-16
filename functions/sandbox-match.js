@@ -267,6 +267,19 @@ function lru(limit) {
   };
 }
 const truthSets = lru(8);
+/** A Sandbox cell's supervoxels by root: a root never changes, so one read
+ *  serves the check, the review and every Jump on that version of the cell. */
+const cellSets = lru(8);
+async function cellLeaves(cg, root) {
+  let s = cellSets.get(root);
+  if (!s) { s = await cg.leaves(SANDBOX, root); cellSets.set(root, s); }
+  return s;
+}
+/** The wrong parts attached now, by `task:root`; the review by `task:root`;
+ *  where each Jump spot is, by `task:root:n`. */
+const partsMemo = lru(100);
+const reviewMemo = lru(100);
+const spotMemo = lru(300);
 /** A key's optional supervoxels as sets, by task. */
 const optionalSets = lru(50);
 function optionalOf(key) {
@@ -361,7 +374,7 @@ async function check(io, {taskId, me, isAdmin}) {
   if (!result) {
     let truth = truthSets.get(key.truth_root);
     if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
-    const cell = await cg.leaves(SANDBOX, root);
+    const cell = await cellLeaves(cg, root);
     // Tiny pieces count neither way: out of both cells.
     const opt = optionalOf(key);
     const truthE = minus(truth, opt.missing);
@@ -384,6 +397,10 @@ async function check(io, {taskId, me, isAdmin}) {
       _extraNow: extraNow, _extraStart: extraStart,
       // Little more than its nucleus at the start: the box says to grow it.
       nucleusOnly: startShare < NUCLEUS_ONLY,
+      // Wrong parts attached now, wherever they came from (Ames 2026-11-16:
+      // "I added the vertical branch, which is intentionally an error, and
+      // it's not reporting"): the start's, and any merged in since.
+      cutParts: (await wrongParts(cg, `${id}:${root}`, minus(minus(cell, opt.extra), truth))).length,
       missing: {left: piecesLeft(key.missing_pieces, rootOf, root, 'missing'), total: key.missing_pieces.length},
       extra: {left: piecesLeft(key.extra_pieces, rootOf, root, 'extra'), total: key.extra_pieces.length},
     };
@@ -413,6 +430,22 @@ async function check(io, {taskId, me, isAdmin}) {
   })}).catch(e => console.warn('[sandbox-match] score not kept', id, e.message));
   if (extraNow > 0 && peak === extraNow) await extraPeak(io, me.id, id, extraNow);
   return result;
+}
+
+/** The parts of the cell that belong to other true cells, grouped by the true
+ *  cell each belongs to (MIN_PIECE supervoxels or more), biggest first, each
+ *  with sample supervoxels (all in the player's cell). */
+async function wrongParts(cg, memo, wrong) {
+  let parts = partsMemo.get(memo);
+  if (parts) return parts;
+  parts = [];
+  if (wrong.length) {
+    const ids = Array.from(wrong, String);
+    const roots = await cg.roots(TRUTH, ids, TRUTH.at);
+    parts = groupPieces(ids, roots, {seed: ids[0]});
+  }
+  partsMemo.set(memo, parts);
+  return parts;
 }
 
 /** The most wrong supervoxels this player's cell has held (kept in
@@ -456,6 +489,9 @@ async function countEdits(io, taskId, userId) {
 async function review(io, {taskId, me, isAdmin, withSamples = false}) {
   const result = await check(io, {taskId, me, isAdmin});
   if (!result.scorable) return result;
+  const memo = `${result.taskId}:${result.root}:${withSamples ? 1 : 0}`;
+  const kept = reviewMemo.get(memo);
+  if (kept) return {...result, missed: kept.missed, mergers: kept.mergers};
   const key = await keyFor(io, await loadTask(io, Number(taskId)));
   const cell = result.root;
   const samples = [...new Set([...key.missing_pieces, ...key.extra_pieces].flatMap(p => p.samples))];
@@ -471,13 +507,12 @@ async function review(io, {taskId, me, isAdmin, withSamples = false}) {
     const root = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
     missed.push({root, size: p.size, pointNm: svPointNm(outside.find(sv => rootOf[sv] === root)), ...(withSamples ? {samples: outside} : {})});
   }
-  const mergers = [];
-  for (const p of key.extra_pieces) {
-    if (piecesLeft([p], rootOf, cell, 'extra') === 0) continue;
-    const inside = p.samples.find(sv => rootOf[sv] === cell);
-    if (inside) mergers.push({size: p.size, pointNm: svPointNm(inside), ...(withSamples ? {samples: p.samples.filter(sv => rootOf[sv] === cell)} : {})});
-  }
-  return {...result, missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
+  // Every wrong part attached now: the start's and any merged in since.
+  const parts = partsMemo.get(`${result.taskId}:${cell}`) || [];
+  const mergers = parts.map(p => ({size: p.size, pointNm: svPointNm(p.samples[0]), ...(withSamples ? {samples: p.samples} : {})}));
+  const out = {missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
+  reviewMemo.set(memo, out);
+  return {...result, ...out};
 }
 
 /** The chunk a supervoxel is in: its place to about 4 µm, from its id alone. */
@@ -524,12 +559,15 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
     // pin sat "in empty space on the wrong cell"). A missing branch meets
     // the cell the player has; a wrong part meets the true part of the cell.
     let at = null;
-    try {
+    const spotKey = `${r.taskId}:${r.root}:${i}`;
+    const spot = spotMemo.get(spotKey);
+    if (spot) { at = spot.at; if (spot.bringsMerger) p.bringsMerger = true; }
+    else try {
       const cg = cave(io);
       const key = await keyFor(io, await loadTask(io, Number(taskId)));
       let truth = truthSets.get(key.truth_root);
       if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
-      const cell = await cg.leaves(SANDBOX, r.root);
+      const cell = await cellLeaves(cg, r.root);
       if (p.kind === 'merge' && p.root) {
         // A missing piece can carry part of another cell (Ames 2026-11-14:
         // "this missed piece has a huge merger on it").
@@ -542,6 +580,7 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
         const wrong = minus(cell, truth);
         at = await contact.meetingNm({fetchImpl: io.fetch, cell: minus(cell, wrong), piece: wrong, near: p.samples || []});
       }
+      spotMemo.set(spotKey, {at, bringsMerger: !!p.bringsMerger});
     } catch (e) { console.warn('[sandbox-match] hint place', e.message); }
     const merger = p.bringsMerger ? {bringsMerger: true} : {};
     if (reveal) piece = {kind: p.kind, size: p.size, pointNm: at || p.pointNm, ...(p.root ? {root: p.root} : {}), ...merger};
@@ -625,6 +664,6 @@ async function handle({action, args, me, isAdmin, io}) {
 module.exports = {
   handle, check, review, hint, event, mine, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
-  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); },
+  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,
 };

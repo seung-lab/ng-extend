@@ -154,7 +154,7 @@ test('a check builds the key once, then scores each edit', async () => {
   M._reset();
   const w = world();
   const first = await M.check(w.io, {taskId: 1, me: ME});
-  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, score: 38, startScore: 38, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}, nucleusOnly: false, edits: 0});
+  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, score: 38, startScore: 38, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}, nucleusOnly: false, cutParts: 1, edits: 0});
   const key = w.db.keys[1];
   assert.equal(key.truth_root, w.ID.T);
   assert.equal(key.start_root, w.ID.S0);
@@ -482,4 +482,36 @@ test('Cut on a cell that started with nothing to cut: progress against the most 
   w.sandbox.edit({S3: range(1, 160), B: range(161, 200), N3: range(300, 359)});
   const done = await M.check(w.io, {taskId: 1, me: ME});
   assert.deepEqual([done.cut, done.cutDone], [null, true]);
+});
+
+test('a wrong part merged in by the player is counted, reviewed and found by Jump', async () => {
+  M._reset();
+  const w = world();
+  // A cell with nothing wrong at the start.
+  w.sandbox.events[0].groups = {S0: range(1, 100), A: range(101, 160), B: range(161, 200), N: range(300, 359)};
+  const clean = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(clean.cutParts, 0);
+  // The player merges in N, part of another cell.
+  w.sandbox.edit({S1: [...range(1, 100), ...range(300, 359)], A: range(101, 160), B: range(161, 200)});
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  assert.deepEqual([r.cut, r.cutParts], [0, 1]);
+  const rev = await M.review(w.io, {taskId: 1, me: ME});
+  assert.equal(rev.mergers.length, 1);
+  assert.equal(rev.mergers[0].size, 60);
+  // Jump goes to it (the biggest spot is the cut, 60, beside the missing A, 60).
+  const kinds = [];
+  for (let n = 0; n < 2; n++) kinds.push((await M.hint(w.io, {taskId: 1, me: ME, n, step: 1})).piece.kind);
+  assert.ok(kinds.includes('cut'));
+});
+
+test('a cell read once serves the check, the review and Jump again', async () => {
+  M._reset();
+  const w = world();
+  await M.check(w.io, {taskId: 1, me: ME});
+  const leaves = w.calls.leaves;
+  await M.review(w.io, {taskId: 1, me: ME});
+  await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 1});
+  await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 2});
+  // Only a merge piece's own segment is read again, never the cell.
+  assert.ok(w.calls.leaves - leaves <= 1, `cell leaves read ${w.calls.leaves - leaves} more times`);
 });
