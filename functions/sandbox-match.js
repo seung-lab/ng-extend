@@ -29,6 +29,13 @@
 // FOUND_SHARE of them are in the player's cell, an extra one removed when
 // FOUND_SHARE of them are out.
 //
+// Tiny pieces are optional (Ames 2026-11-14: "can we ignore teeny tiny little
+// additions? ... it's much more important to find missing branches and remove
+// mergers"). A missing or extra piece under SMALL_PIECE supervoxels is left
+// out of everything: the score (as if neither cell had it), the piece counts,
+// the review and Jump. Merging one in still counts as an edit. Half the
+// missing pieces are that small, yet only about 2% of what is missing.
+//
 // The key (true cell, start cell, pieces) is built on the first check of a
 // cell and kept in sandbox_match_keys (supabase-sandbox-match.sql), which only
 // the service role reads: it is an answer key. Served by its own function,
@@ -44,9 +51,18 @@ const SANDBOX = {server: 'https://minnie.microns-daf.com', table: 'pinky_nf_v2'}
 /** The true cells, frozen at this time so later edits to pinky_training do not
  *  move anyone's score. Bump it (and KEY_VERSION) to take in newer truth. */
 const TRUTH = {server: 'https://minnie.microns-daf.com', table: 'pinky_training', at: '2026-11-12T18:00:00Z'};
-const KEY_VERSION = '2026-11-12-1';
+const KEY_VERSION = '2026-11-16-small';
 const DATASET = 'pinky_nf_v2';
 const MIN_PIECE = 50;
+/** Pieces smaller than this (in supervoxels) are optional, see above. */
+const SMALL_PIECE = 500;
+let small = SMALL_PIECE;
+/** A cell that starts with less than this share of its true cell is mostly
+ *  its nucleus (Ames 2026-11-14: "it keeps taking me to a nucleus"). */
+const NUCLEUS_ONLY = 0.2;
+/** A missing piece that brings this much of another cell (in supervoxels, and
+ *  as a share of the piece) brings a merger with it. */
+const MERGER_MIN = 500, MERGER_SHARE = 0.25;
 const SAMPLES = 5;
 const FOUND_SHARE = 0.8;
 const ROOTS_BATCH = 50000;
@@ -154,6 +170,21 @@ function groupPieces(svs, roots, {min = MIN_PIECE, samples = SAMPLES, seed = 1} 
   return pieces.sort((a, b) => b.size - a.size || (a.root < b.root ? -1 : 1));
 }
 
+/** The supervoxels of the pieces smaller than `small`: grouped by the segment
+ *  each belonged to, as groupPieces. */
+function smallSvs(svs, roots, under = small) {
+  const by = new Map();
+  for (let i = 0; i < svs.length; i++) {
+    const r = String(roots[i]);
+    let p = by.get(r);
+    if (!p) by.set(r, p = []);
+    p.push(String(svs[i]));
+  }
+  const out = [];
+  for (const list of by.values()) if (list.length < under) out.push(...list);
+  return out;
+}
+
 /** How many pieces are still wrong, given each sample's current root.
  *  missing: wrong while fewer than FOUND_SHARE of its samples are in the cell.
  *  extra:   wrong while fewer than FOUND_SHARE of its samples are out of it. */
@@ -234,6 +265,18 @@ function lru(limit) {
   };
 }
 const truthSets = lru(8);
+/** A key's optional supervoxels as sets, by task. */
+const optionalSets = lru(50);
+function optionalOf(key) {
+  const memo = `${key.task_id}:${key.version}`;
+  let o = optionalSets.get(memo);
+  if (!o) {
+    const m = toSet(key.optional_missing || []), e = toSet(key.optional_extra || []);
+    o = {missing: m, extra: e, all: toSet([...(key.optional_missing || []), ...(key.optional_extra || [])])};
+    optionalSets.set(memo, o);
+  }
+  return o;
+}
 const lastResult = lru(200);
 const building = new Map();
 
@@ -262,16 +305,20 @@ async function buildKey(io, task) {
     missing.length ? cg.roots(SANDBOX, missing, startAt) : [],
     extra.length ? cg.roots(TRUTH, extra, TRUTH.at) : [],
   ]);
-  const missingPieces = groupPieces(missing, missingRoots, {seed: sv});
+  const missingPieces = groupPieces(missing, missingRoots, {seed: sv, min: Math.max(MIN_PIECE, small)});
   // The player's own cell is never an extra piece of itself.
-  const extraPieces = groupPieces(extra, extraRoots, {seed: sv}).filter(p => p.root !== truthRoot);
+  const extraPieces = groupPieces(extra, extraRoots, {seed: sv, min: Math.max(MIN_PIECE, small)}).filter(p => p.root !== truthRoot);
+  const optionalMissing = smallSvs(missing, missingRoots);
+  const optionalExtra = smallSvs(extra, extraRoots);
+  const toDo = missing.length - optionalMissing.length + extra.length - optionalExtra.length;
   return {
     task_id: task.id, version: KEY_VERSION, truth_at: TRUTH.at, start_at: startAt,
     start_root: startRoot, truth_root: truthRoot, truth_size: truth.length,
     missing_start: missing.length, extra_start: extra.length,
     missing_pieces: missingPieces, extra_pieces: extraPieces,
-    scorable: missing.length + extra.length > 0,
-    reason: missing.length + extra.length > 0 ? null : 'no difference from the true cell',
+    optional_missing: optionalMissing, optional_extra: optionalExtra,
+    scorable: toDo > 0,
+    reason: toDo > 0 ? null : missing.length + extra.length > 0 ? 'only tiny pieces differ' : 'no difference from the true cell',
   };
 }
 
@@ -313,24 +360,46 @@ async function check(io, {taskId, me, isAdmin}) {
     let truth = truthSets.get(key.truth_root);
     if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
     const cell = await cg.leaves(SANDBOX, root);
-    const missingNow = countMinus(truth, cell);
-    const extraNow = countMinus(cell, truth);
+    // Tiny pieces count neither way: out of both cells.
+    const opt = optionalOf(key);
+    const truthE = minus(truth, opt.missing);
+    const missingNow = countMinus(truthE, cell);
+    const extraNow = countMinus(minus(cell, opt.extra), truth);
+    const missingStart = key.missing_start - opt.missing.length;
+    const extraStart = key.extra_start - opt.extra.length;
     const samples = [...new Set([...key.missing_pieces, ...key.extra_pieces].flatMap(p => p.samples))];
     const got = samples.length ? await cg.roots(SANDBOX, samples) : [];
     const rootOf = Object.fromEntries(samples.map((sv, i) => [sv, got[i]]));
+    const startShare = key.truth_size > 0 ? (key.truth_size - key.missing_start) / key.truth_size : 1;
     result = {
       taskId: id, scorable: true, root,
-      match: matchPercent({missingNow, extraNow, missingStart: key.missing_start, extraStart: key.extra_start}),
-      score: scorePercent({truthSize: truth.length, missingNow, extraNow}),
+      match: matchPercent({missingNow, extraNow, missingStart, extraStart}),
+      score: scorePercent({truthSize: truthE.length, missingNow, extraNow}),
       // Where the cell started (Ames 2026-11-13: "how much have I done?").
-      startScore: scorePercent({truthSize: truth.length, missingNow: key.missing_start, extraNow: key.extra_start}),
-      merge: partPercent(missingNow, key.missing_start),
-      cut: partPercent(extraNow, key.extra_start),
+      startScore: scorePercent({truthSize: truthE.length, missingNow: missingStart, extraNow: extraStart}),
+      merge: partPercent(missingNow, missingStart),
+      cut: partPercent(extraNow, extraStart),
+      _extraNow: extraNow, _extraStart: extraStart,
+      // Little more than its nucleus at the start: the box says to grow it.
+      nucleusOnly: startShare < NUCLEUS_ONLY,
       missing: {left: piecesLeft(key.missing_pieces, rootOf, root, 'missing'), total: key.missing_pieces.length},
       extra: {left: piecesLeft(key.extra_pieces, rootOf, root, 'extra'), total: key.extra_pieces.length},
     };
     lastResult.set(memo, result);
   }
+  // Cut against the most wrong supervoxels this player's cell has held, when
+  // that is more than at the start (Ames 2026-11-16: "Accuracy is not counting
+  // in removal of mergers"). A cell that started with nothing to cut read 0%
+  // from the first wrong piece merged in until the last bit was cut off, so
+  // cutting most of a merger showed no progress at all.
+  const {_extraNow: extraNow, _extraStart: extraStart, ...shown} = result;
+  const peak = Math.max(extraStart, extraNow, await extraPeak(io, me.id, id, extraNow));
+  // Back to nothing wrong on a cell that started with nothing to cut: done, but
+  // not in the score (Ames 2026-11-16: "if we get to nothing to cut, it should
+  // be congrats, all done"), so merging something wrong in and cutting it off
+  // again never raises a score.
+  const cut = extraNow === 0 && extraStart === 0 ? null : partPercent(extraNow, peak);
+  result = {...shown, cut, ...(extraNow === 0 && extraStart === 0 && peak > 0 ? {cutDone: true} : {})};
   // The player's merges and cuts on this cell, from the edit log.
   const edits = await countEdits(io, id, me.id).catch(e => { console.warn('[sandbox-match] no edit count', id, e.message); return null; });
   result = {...result, edits};
@@ -340,7 +409,22 @@ async function check(io, {taskId, me, isAdmin}) {
     p_missing_left: result.missing.left, p_missing_total: result.missing.total,
     p_extra_left: result.extra.left, p_extra_total: result.extra.total,
   })}).catch(e => console.warn('[sandbox-match] score not kept', id, e.message));
+  if (extraNow > 0 && peak === extraNow) await extraPeak(io, me.id, id, extraNow);
   return result;
+}
+
+/** The most wrong supervoxels this player's cell has held (kept in
+ *  sandbox_match_scores.extra_peak), raised to `now` when higher. 0 when it
+ *  cannot be read. */
+async function extraPeak(io, userId, taskId, now) {
+  try {
+    const rows = await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}&select=extra_peak&limit=1`);
+    const had = rows && rows[0] ? Number(rows[0].extra_peak) || 0 : 0;
+    if (now > had && rows && rows[0]) {
+      await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}`, {method: 'PATCH', headers: {Prefer: 'return=minimal'}, body: JSON.stringify({extra_peak: now})});
+    }
+    return had;
+  } catch (e) { console.warn('[sandbox-match] no peak', taskId, e.message); return 0; }
 }
 
 /** How many merges and cuts this player made on this cell. */
@@ -444,14 +528,22 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
       let truth = truthSets.get(key.truth_root);
       if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
       const cell = await cg.leaves(SANDBOX, r.root);
+      if (p.kind === 'merge' && p.root) {
+        // A missing piece can carry part of another cell (Ames 2026-11-14:
+        // "this missed piece has a huge merger on it").
+        const whole = await cg.leaves(SANDBOX, p.root);
+        const other = countMinus(whole, truth);
+        p.bringsMerger = other >= MERGER_MIN && other >= MERGER_SHARE * whole.length;
+      }
       if (p.kind === 'merge') at = await contact.meetingNm({fetchImpl: io.fetch, cell, piece: minus(truth, cell), near: p.samples || []});
       else {
         const wrong = minus(cell, truth);
         at = await contact.meetingNm({fetchImpl: io.fetch, cell: minus(cell, wrong), piece: wrong, near: p.samples || []});
       }
     } catch (e) { console.warn('[sandbox-match] hint place', e.message); }
-    if (reveal) piece = {kind: p.kind, size: p.size, pointNm: at || p.pointNm, ...(p.root ? {root: p.root} : {})};
-    else piece = {kind: p.kind, size: p.size, nearNm: at || p.pointNm};
+    const merger = p.bringsMerger ? {bringsMerger: true} : {};
+    if (reveal) piece = {kind: p.kind, size: p.size, pointNm: at || p.pointNm, ...(p.root ? {root: p.root} : {}), ...merger};
+    else piece = {kind: p.kind, size: p.size, nearNm: at || p.pointNm, ...merger};
   }
   await record(io, {taskId: r.taskId, me, kind: 'hint', idleSecs, score: r.score,
     detail: piece ? {n: i, step: reveal ? 2 : 1, kind: piece.kind, size: piece.size, left: all.length} : {left: 0}}).catch(() => {});
@@ -461,14 +553,51 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
 const EVENT_KINDS = new Set(['opened', 'hint_offered', 'complete', 'skip']);
 /** A moment on a Sandbox cell (opened, Hint offered, Complete, Skip), for the lab. */
 async function event(io, {taskId, me, isAdmin, kind, idleSecs, score}) {
+  score = score == null ? null : score;
   const id = Number(taskId);
   if (!Number.isInteger(id) || id <= 0) fail(400, 'Which cell?');
   if (!me) fail(403, 'Sign in first.');
   if (!EVENT_KINDS.has(kind)) fail(400, 'Unknown moment.');
   const task = await loadTask(io, id);
   if (task.assigned_to !== me.id && !isAdmin) fail(403, 'Only on your own claimed cells.');
+  // Complete: the score kept is the server's own reading of the cell, so the
+  // player's accuracy cannot be set from the browser.
+  if (kind === 'complete') {
+    const r = await check(io, {taskId: id, me, isAdmin}).catch(() => null);
+    if (r && r.scorable) score = shownScore(r);
+  }
   await record(io, {taskId: id, me, kind, idleSecs, score});
   return {ok: true};
+}
+
+/** The score the box shows: Merge and Cut averaged (only the ones this cell has). */
+function shownScore(r) {
+  const parts = [r.merge, r.cut].filter(n => n != null);
+  return parts.length ? Math.floor(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+}
+
+/** Below this, a completed practice cell counts as low. */
+const LOW_SCORE = 40;
+/** After this many low cells in a row, Complete shows what is left first. */
+const LOW_RUN = 3;
+
+/** The player's Sandbox accuracy (Ames 2026-11-14: "can we add their overall
+ *  Sandbox accuracy somewhere?"): the mean score of their completed practice
+ *  cells, each at its last completion, and how many of the latest in a row
+ *  were under LOW_SCORE. */
+async function mine(io, {me}) {
+  if (!me) fail(403, 'Sign in first.');
+  const rows = await io.sb(`sandbox_play_events?user_id=eq.${me.id}&kind=eq.complete&score=not.is.null&select=task_id,score,at&order=at.desc&limit=500`);
+  const seen = new Set(), scores = [];
+  for (const r of rows || []) {
+    if (seen.has(r.task_id)) continue;
+    seen.add(r.task_id);
+    scores.push(Number(r.score));
+  }
+  let lowRun = 0;
+  for (const s of scores) { if (s < LOW_SCORE) lowRun++; else break; }
+  const accuracy = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+  return {cells: scores.length, accuracy, lowRun, reviewFirst: lowRun >= LOW_RUN, lowScore: LOW_SCORE, lowRunNeeded: LOW_RUN};
 }
 
 async function record(io, {taskId, me, kind, idleSecs, score, detail}) {
@@ -482,13 +611,14 @@ async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.check') return check(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, step: args && args.step, idleSecs: args && args.idleSecs});
+  if (action === 'match.mine') return mine(io, {me});
   if (action === 'match.event') return event(io, {taskId: args && args.taskId, me, isAdmin, kind: args && args.kind, idleSecs: args && args.idleSecs, score: args && args.score});
   fail(400, `unknown action ${action}`);
 }
 
 module.exports = {
-  handle, check, review, hint, event, nearestChunkNm, buildKey, keyFor, svPointNm,
+  handle, check, review, hint, event, mine, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
-  _reset() { truthSets.clear(); lastResult.clear(); building.clear(); },
+  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,
 };

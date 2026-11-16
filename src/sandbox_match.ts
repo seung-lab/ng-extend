@@ -17,6 +17,8 @@
  * answer key never reaches the browser, only what is still wrong after Complete.
  */
 import { fullViewUrl } from './util/local_view';
+import { exitGrapheneTool, activeGrapheneToolKind } from './widgets/graphene_tool_utils';
+import { highlightStyles, saveHighlightStyles, MAX_HIGHLIGHT_STYLES } from './util/highlight';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, currentSegLayer } from './datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -43,7 +45,13 @@ export interface MatchResult {
    *  size; null when there was nothing of that kind to fix. */
   merge?: number | null; cut?: number | null;
   missing?: { left: number; total: number }; extra?: { left: number; total: number };
+  /** The cell starts as little more than its nucleus. */
+  nucleusOnly?: boolean;
+  /** Nothing was wrong at the start; the player merged something wrong in and has cut all of it off. */
+  cutDone?: boolean;
 }
+/** The player's Sandbox accuracy (match.mine). */
+interface Mine { cells: number; accuracy: number | null; lowRun: number; reviewFirst: boolean; lowScore: number; lowRunNeeded: number }
 export interface ReviewResult extends MatchResult {
   missed?: { root: string; size: number; pointNm: number[] }[];
   mergers?: { size: number; pointNm: number[] }[];
@@ -176,6 +184,7 @@ function dropLayer(v: any, ml: any) {
 export function rowPieces(r: MatchResult, row: Row): string {
   const pct = row === 'merge' ? r.merge : r.cut;
   const p = row === 'merge' ? r.missing : r.extra;
+  if (pct == null && row === 'cut' && r.cutDone) return 'all cut off ✓ nice work';
   if (pct == null) return row === 'merge' ? 'nothing to merge' : 'nothing to cut';
   if (!p || !p.total) return row === 'merge' ? 'part of the cell was cut off' : 'an error was merged in';
   return row === 'merge' ? `${p.total - p.left} of ${plural(p.total, 'piece')} merged in` : `removed ${p.total - p.left} of ${plural(p.total, 'error')}`;
@@ -316,11 +325,34 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID}.nge-cm-idle .nge-cm-cellbtn{border-color:rgba(127,190,255,.35);box-shadow:none}
 #${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.2);color:#fff}
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
-#${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important;animation:nge-cm-hglow 2.6s ease-in-out infinite}
+#${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:nge-cm-hglow 2.6s ease-in-out infinite}
+#${CARD_ID} .nge-cm-mark{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
+#${CARD_ID} .nge-cm-mark-label{margin-right:2px}
+#${CARD_ID} .nge-cm-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid rgba(127,190,255,.35);border-radius:999px;background:rgba(10,24,48,.6);color:#e6f0ff;font:600 12px/1 Inter,system-ui,sans-serif;cursor:pointer}
+#${CARD_ID} .nge-cm-chip:hover{border-color:#7fd8ff;background:rgba(74,158,255,.22)}
+#${CARD_ID} .nge-cm-chip i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+#${CARD_ID} .nge-cm-mode{margin-left:auto;padding:3px 8px;border-radius:999px;background:rgba(127,216,255,.1);color:#bfeaff;font-weight:600;white-space:nowrap}
+#${CARD_ID} .nge-cm-mode[data-mode="merge"]{background:rgba(255,210,77,.14);color:#ffe08a}
+#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:rgba(255,93,115,.16);color:#ffb3bf}
+#${CARD_ID} .nge-cm-mode[data-mode="highlight"]{background:rgba(61,255,154,.14);color:#9dffd0}
+#${CARD_ID} .nge-cm-cellnote{margin:-2px 0 8px;padding:7px 9px;border-left:3px solid #7fd8ff;border-radius:4px;background:rgba(127,216,255,.08);font:13px/1.35 Inter,system-ui,sans-serif;color:#d6e2f5}
+#${CARD_ID} .nge-cm-cellnote[hidden],#${CARD_ID} .nge-cm-acc[hidden],#${CARD_ID} .nge-cm-finish-gate[hidden]{display:none}
+#${CARD_ID} .nge-cm-acc{margin-top:6px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
+#${CARD_ID} .nge-cm-acc b{color:#e6f0ff}
+#${CARD_ID} .nge-cm-finish-how{margin-left:auto;padding:2px 8px;border:1px solid rgba(127,216,255,.5);border-radius:999px;background:rgba(74,158,255,.14);color:#bfeaff;font:600 11.5px/1.3 Inter,system-ui,sans-serif;cursor:pointer;flex:0 0 auto}
+#${CARD_ID} .nge-cm-finish-how[hidden],#${CARD_ID} .nge-cm-finish-tip[hidden]{display:none}
+#${CARD_ID} .nge-cm-finish-tip{margin:2px 0 8px 23px;padding:8px 10px;border:1px solid rgba(127,216,255,.4);border-radius:6px;background:rgba(10,30,60,.85);font:12.5px/1.4 Inter,system-ui,sans-serif;color:#d6e2f5}
+#${CARD_ID} .nge-cm-finish-tip p{margin:0 0 6px}
+#${CARD_ID} .nge-cm-finish-tip .nge-cm-btn{margin:0;padding:6px 10px;border-radius:6px;font:600 12px/1 Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
+#${CARD_ID} .nge-cm-finish-gate{margin:8px 0 0;padding:8px 9px;border:1px solid rgba(255,210,77,.45);border-radius:6px;background:rgba(255,210,77,.08);font:13px/1.35 Inter,system-ui,sans-serif;color:#ffe9b0}
+#${CARD_ID}.nge-cm-idle .nge-cm-mark,#${CARD_ID}.nge-cm-reviewing .nge-cm-mark,#${CARD_ID}.nge-cm-finishing .nge-cm-mark,#${CARD_ID}.nge-cm-asking .nge-cm-mark,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-mark{display:none}
+#${CARD_ID}.nge-cm-idle .nge-cm-cellnote,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellnote,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellnote{display:none}
+#${CARD_ID}.nge-cm-idle .nge-cm-acc,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-acc{display:none}
 #${CARD_ID} .nge-cm-hbtn[hidden]{display:none}
 #${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
 @keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
-@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn{animation:none}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:none}}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-hbtn,#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
@@ -459,6 +491,7 @@ const INFO_LINES = [
   'You are in the <b>Sandbox</b>, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.',
   '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.',
   '<b>Merge</b>: the missing pieces you have merged back in. <b>Cut</b>: the wrong parts you have cut off.',
+  'Tiny bits (under 500 supervoxels) do not count either way: go for missing branches and wrong parts. <b>Jump</b> takes you to the next spot that needs fixing.',
   'In real cells there is no known answer. That is up to you and the brain.',
   'When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the 🍔 menu, top right.',
 ];
@@ -486,13 +519,24 @@ const BULB_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" st
 const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
   + '<span class="nge-cm-nudge-text"></span>'
   + '<span class="nge-cm-nudge-btns"><button type="button" class="nge-cm-btn nge-cm-hint-btn" hidden>Show me</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-next-btn" hidden>Next hint</button></span></div>';
+  + '</span></div>';
+// Highlight from the box (Ames 2026-11-14: "a button that opens highlight
+// mode ... with checked and come back pre-filled"; "we can't add highlight
+// points while you are in merge or cut mode"). A chip leaves Merge or Cut and
+// opens Highlight on that color; the pill says what a Ctrl+click does now.
+const MARK_HTML = '<div class="nge-cm-mark">'
+  + '<span class="nge-cm-mark-label">Mark where you have been</span>'
+  + '<button type="button" class="nge-cm-chip" data-mark="checked" title="Highlight a branch you have checked, out to its end"><i></i>Checked</button>'
+  + '<button type="button" class="nge-cm-chip" data-mark="comeback" title="Highlight a spot to come back to"><i></i>Come back</button>'
+  + '<span class="nge-cm-mode" data-mode="look" title="What a Ctrl+click does right now">Looking</span></div>';
 const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip Cell</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Click for a Hint" hidden>Hint</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
+  + MARK_HTML
   + '<div class="nge-cm-viewnote"></div>'
+  + '<div class="nge-cm-acc" hidden></div>'
   + '<div class="nge-cm-skipask" hidden role="alertdialog" aria-label="Skip this cell?">'
   + '<p class="nge-cm-skipask-words"><b>Skip this cell?</b> It goes back for someone else, and your edits on it no longer count for you. Pyr takes you to a new cell.</p>'
   + '<div class="nge-cm-finish-actions"><button type="button" class="nge-cm-btn nge-cm-skipask-no">Keep working</button>'
@@ -501,14 +545,20 @@ const OK_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="tru
 const BAD_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="#ff8a9e" stroke-width="1.4"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#ff8a9e" stroke-width="1.6"/></svg>';
 const FINISH_HTML = '<div class="nge-cm-finish" hidden>'
   + '<div class="nge-cm-finish-title">Complete this cell</div>'
-  + '<div class="nge-cm-finish-line nge-cm-finish-xh"><span class="nge-cm-finish-mark"></span><span class="nge-cm-finish-words"></span></div>'
+  + '<div class="nge-cm-finish-line nge-cm-finish-xh"><span class="nge-cm-finish-mark"></span><span class="nge-cm-finish-words"></span>'
+  + '<button type="button" class="nge-cm-finish-how" hidden aria-expanded="false">How?</button></div>'
+  // Ames 2026-11-16: "There should be a little info box that has a pop-up showing them what to do."
+  + '<div class="nge-cm-finish-tip" hidden><p>The crosshairs are where the red and green lines cross in the 2D view. Drag the 2D view until they sit inside your cell, then press <b>Check again</b>.</p>'
+  + '<p>Or let Pyr put them in your cell\'s soma:</p><button type="button" class="nge-cm-btn nge-cm-finish-soma">Put them in the soma</button></div>'
   + '<div class="nge-cm-finish-line nge-cm-finish-view"><span class="nge-cm-finish-mark"></span><span class="nge-cm-finish-words"></span></div>'
   + '<button type="button" class="nge-cm-finish-addnote">+ Add a note</button>'
   + '<textarea class="nge-cm-finish-note" rows="3" maxlength="2000" placeholder="Anything about this cell (optional)" hidden></textarea>'
   + '<p class="nge-cm-finish-left" hidden></p>'
+  + '<p class="nge-cm-finish-gate" hidden></p>'
   + '<div class="nge-cm-finish-actions">'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-back">Keep working</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-check" hidden>Check again</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-finish-jump" hidden>Jump to it</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-go">Complete and Review</button></div></div>';
 
 function card(): HTMLElement {
@@ -528,6 +578,7 @@ function card(): HTMLElement {
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. Press Play to open it again.">×</button></div>'
     + '<div class="nge-cm-sub" hidden></div>'
     + '<div class="nge-cm-cellid" hidden></div>'
+    + '<div class="nge-cm-cellnote" hidden></div>'
     + '<div class="nge-cm-info" id="nge-cell-match-info"></div>'
     + scoreHtml + NUDGE_HTML + rowHtml('merge') + rowHtml('cut') + PLAY_HTML + FINISH_HTML + '<div class="nge-cm-extra"></div>';
   mountInfo(el.querySelector('.nge-cm-info') as HTMLElement);
@@ -816,6 +867,13 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   const rootNow = r?.root || '';
   idLine.textContent = rootNow ? `Cell ${rootNow}` : '';
   idLine.hidden = !rootNow;
+  // Little more than a nucleus (Ames 2026-11-14: "it keeps taking me to a
+  // nucleus ... indicate that if it's just a nucleus they should add the cell").
+  const note = el.querySelector('.nge-cm-cellnote') as HTMLElement;
+  const nucleus = !!(r && r.scorable && r.nucleusOnly && r.missing && r.missing.left > 0);
+  note.textContent = nucleus ? 'This cell starts as little more than its nucleus. Find the branches around it and merge them in to grow your cell.' : '';
+  note.hidden = !nucleus;
+  void loadMine();
   place(el);
   shownFor = taskId;
   tellShown(taskId);
@@ -853,7 +911,7 @@ const HINT_AFTER_MS = 60_000;
 const HINT_SEG_LAYER = 'Hint piece';
 const HINT_PIN_LAYER = 'Hint spot';
 /** n: which piece the next hint is about; step 1 the place it starts, step 2 the piece. */
-interface Clock { opened: number; lastEdit: number; offered: boolean; n: number; step: 1 | 2 }
+interface Clock { opened: number; lastEdit: number; offered: boolean; n: number; step: 1 | 2; jumped: boolean; jumps: number }
 const clocks = new Map<number, Clock>();
 let finishing = false;
 let toldShown: number | null | undefined;
@@ -905,13 +963,14 @@ function moment(taskId: number, kind: 'opened' | 'hint_offered' | 'complete' | '
 function noteOpened(taskId: number) {
   if (clocks.has(taskId)) return;
   const now = Date.now();
-  clocks.set(taskId, { opened: now, lastEdit: now, offered: false, n: 0, step: 1 });
+  clocks.set(taskId, { opened: now, lastEdit: now, offered: false, n: 0, step: 1, jumped: false, jumps: 0 });
   moment(taskId, 'opened');
 }
 function noteEdit(taskId: number) {
   const c = clocks.get(taskId);
-  // After an edit the next hint starts again with a place, about the piece it was on.
-  if (c) { c.lastEdit = Date.now(); c.offered = false; c.step = 1; }
+  // After an edit the next Jump starts again with a place, at the same spot in
+  // the list: the piece just fixed has left it, so that is the next one.
+  if (c) { c.lastEdit = Date.now(); c.offered = false; c.step = 1; c.jumped = false; }
   removeHintLayers();
   const el = document.getElementById(CARD_ID);
   if (el) resetNudge(el);
@@ -922,10 +981,9 @@ function resetNudge(el: HTMLElement) {
   (n.querySelector('.nge-cm-nudge-text') as HTMLElement).textContent = '';
   const b = n.querySelector('.nge-cm-hint-btn') as HTMLButtonElement;
   b.textContent = 'Show me'; b.disabled = false; b.hidden = true;
-  (n.querySelector('.nge-cm-next-btn') as HTMLElement).hidden = true;
-  (el.querySelector('.nge-cm-hbtn') as HTMLElement).hidden = true;
+  el.querySelector('.nge-cm-hbtn')?.classList.remove('nge-cm-nudged');
 }
-/** A minute with no edit (Ames 2026-11-14: "introduce hint after like 1 minute"). */
+/** A minute with no edit (Ames 2026-11-14: "introduce hint after like 1 minute"): Jump lights up. */
 function maybeOfferHint(taskId: number) {
   const c = clocks.get(taskId);
   const el = document.getElementById(CARD_ID);
@@ -934,7 +992,7 @@ function maybeOfferHint(taskId: number) {
   const r = last.get(taskId);
   if (!r || !r.scorable) return;
   c.offered = true;
-  (el.querySelector('.nge-cm-hbtn') as HTMLElement).hidden = false;
+  el.querySelector('.nge-cm-hbtn')?.classList.add('nge-cm-nudged');
   moment(taskId, 'hint_offered');
 }
 /** 2D beside 3D for a hint, unless a 2D view is already open. */
@@ -945,49 +1003,55 @@ function ensureSplit() {
     openSplitView();
   } catch { /* the layout stays */ }
 }
-interface HintPiece { kind: 'merge' | 'cut'; root?: string; size: number; pointNm?: number[]; nearNm?: number[] }
+interface HintPiece { kind: 'merge' | 'cut'; root?: string; size: number; pointNm?: number[]; nearNm?: number[]; bringsMerger?: boolean }
 /** Hint in two steps (Ames 2026-11-14: "this is not a hint but giving
  *  immediately the answer"): first the place on your own cell where the
  *  trouble starts, and what to look for there; Show me then shows the piece. */
 async function pressHint(el: HTMLElement, next = false) {
   const taskId = shownFor;
   if (taskId == null) return;
-  const c = clocks.get(taskId) ?? { opened: Date.now(), lastEdit: Date.now(), offered: true, n: 0, step: 1 as const };
+  const c = clocks.get(taskId) ?? { opened: Date.now(), lastEdit: Date.now(), offered: true, n: 0, step: 1 as const, jumped: false, jumps: 0 };
   if (!clocks.has(taskId)) clocks.set(taskId, c);
-  if (next) { c.n++; c.step = 1; }
+  // Jump (Ames 2026-11-14: "Jump (takes me to next error spot)"): the first
+  // goes to the biggest piece left, each one after to the next.
+  if (next) { if (c.jumped) c.n++; c.step = 1; c.jumped = true; c.jumps++; }
   const b = el.querySelector('.nge-cm-hint-btn') as HTMLButtonElement;
-  const nb = el.querySelector('.nge-cm-next-btn') as HTMLButtonElement;
+  const jump = el.querySelector('.nge-cm-hbtn') as HTMLButtonElement;
   const text = el.querySelector('.nge-cm-nudge-text') as HTMLElement;
   const step = c.step;
+  jump.classList.remove('nge-cm-nudged');
   ensureSplit();
   const line = el.querySelector('.nge-cm-nudge') as HTMLElement;
   line.hidden = false;
-  if (step === 1) { b.hidden = true; nb.hidden = true; text.textContent = 'Finding the next spot…'; }
-  b.disabled = true; nb.disabled = true; if (step === 2) b.textContent = 'Finding…';
+  if (step === 1) { b.hidden = true; text.textContent = 'Finding the next spot…'; }
+  b.disabled = true; jump.disabled = true; if (step === 2) b.textContent = 'Finding…';
   try {
     const h = await secureWrite<{ left: number; piece: HintPiece | null }>('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) });
-    if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; nb.hidden = true; return; }
+    if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; return; }
     showHintPiece(h.piece);
+    const where = h.left > 1 ? ` Spot ${(c.n % h.left) + 1} of ${h.left}.` : '';
+    // A missing branch can bring part of another cell with it (Ames
+    // 2026-11-14: "this missed piece has a huge merger on it").
+    const merger = h.piece.kind === 'merge' && h.piece.bringsMerger;
     if (step === 1) {
-      text.textContent = h.piece.kind === 'merge'
+      text.textContent = (h.piece.kind === 'merge'
         ? 'Your cell is missing a branch that starts near the blue pin. Look for a loose end there.'
-        : 'Something that is not your cell joins it near the blue pin. Look for where it meets.';
+        : 'Something that is not your cell joins it near the blue pin. Look for where it meets.')
+        + (merger ? ' Careful: that branch also carries part of another cell.' : '') + where;
       b.textContent = 'Show me';
       b.hidden = false;
       c.step = 2;
     } else {
-      text.textContent = h.piece.kind === 'merge'
-        ? 'This gold piece belongs to your cell. Merge it in.'
-        : 'Your cell runs into another cell at the red pin. Cut it off there.';
+      text.textContent = (h.piece.kind === 'merge'
+        ? (merger ? 'This gold piece belongs to your cell, and it carries part of another cell too. Merge it in, then cut that part off.' : 'This gold piece belongs to your cell. Merge it in.')
+        : 'Your cell runs into another cell at the red pin. Cut it off there.') + where;
       b.hidden = true;
     }
-    nb.hidden = h.left < 2 && step === 1;
-    nb.textContent = h.left > 1 ? 'Next hint' : 'Start over';
   } catch (e: any) {
-    console.debug('[cell-match] no hint', e?.message);
-    text.textContent = 'No hint right now. Try again in a moment.';
+    console.debug('[cell-match] no jump', e?.message);
+    text.textContent = 'Could not find the next spot right now. Try again in a moment.';
     b.textContent = 'Show me';
-  } finally { b.disabled = false; nb.disabled = false; }
+  } finally { b.disabled = false; jump.disabled = false; }
 }
 let hintPinTimer: number | undefined;
 function showHintPiece(p: HintPiece) {
@@ -1054,8 +1118,10 @@ function openFinish(el: HTMLElement) {
   const parts: string[] = [];
   if (r?.missing && r.missing.left > 0) parts.push(`${plural(r.missing.left, 'piece')} to merge in`);
   if (r?.extra && r.extra.left > 0) parts.push(`${plural(r.extra.left, 'part')} to cut off`);
-  left.textContent = parts.length ? `You still have ${parts.join(' and ')}. You can finish now, and Review will show you where they are.` : '';
+  // Ames 2026-11-16: practice only; a real cell is never completed half done.
+  left.textContent = parts.length ? `You still have ${parts.join(' and ')}. Press Complete and Review to see the answers. In a production dataset, you should never complete a cell before it is completely proofread.` : '';
   left.hidden = !parts.length;
+  showGate(el);
   renderFinish(el, { checking: true, ok: false, message: '', minting: true, submitting: false, link: false });
   heardAt = 0;
   const askedAt = Date.now();
@@ -1085,13 +1151,16 @@ function renderFinish(el: HTMLElement, c: FinishState) {
   if (c.checking) finishLine(xh, 'wait', 'Checking the crosshairs…');
   else if (c.ok) finishLine(xh, 'ok', 'The crosshairs are inside your cell.');
   else finishLine(xh, 'bad', c.message || 'Put the crosshairs inside your cell, then Check again.');
+  const how = f.querySelector('.nge-cm-finish-how') as HTMLElement;
+  how.hidden = c.checking || c.ok;
+  if (c.checking || c.ok) { (f.querySelector('.nge-cm-finish-tip') as HTMLElement).hidden = true; how.setAttribute('aria-expanded', 'false'); }
   const view = f.querySelector('.nge-cm-finish-view') as HTMLElement;
   if (c.minting) finishLine(view, 'wait', 'Saving your view…');
   else if (c.link) finishLine(view, 'ok', 'Your view is saved with it.');
   else finishLine(view, 'bad', 'Your view could not be saved. Try again in a moment.');
   (f.querySelector('.nge-cm-finish-check') as HTMLElement).hidden = c.checking || c.ok;
   const go = f.querySelector('.nge-cm-finish-go') as HTMLButtonElement;
-  go.disabled = c.submitting || c.checking || c.minting || !c.ok || !c.link;
+  go.disabled = c.submitting || c.checking || c.minting || !c.ok || !c.link || gated();
   go.textContent = c.submitting ? 'Saving…' : 'Complete and Review';
 }
 /** What the Cell Library says about the cell on screen. */
@@ -1141,9 +1210,15 @@ function keepSize(el: HTMLElement) {
 }
 function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
-  el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => { const c = shownFor != null ? clocks.get(shownFor) : undefined; if (c) c.step = 1; void pressHint(el); });
+  el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
   el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
-  el.querySelector('.nge-cm-next-btn')!.addEventListener('click', () => void pressHint(el, true));
+  for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
+  paintChips(el);
+  watchMode(el);
+  el.querySelector('.nge-cm-finish-jump')!.addEventListener('click', () => {
+    cellAction('complete-cancel'); closeFinish(el);
+    void pressHint(el, true);
+  });
   el.querySelector('.nge-cm-saveview')!.addEventListener('click', () => cellAction('save'));
   const skipAsk = el.querySelector('.nge-cm-skipask') as HTMLElement;
   el.querySelector('.nge-cm-skipcell')!.addEventListener('click', () => {
@@ -1161,6 +1236,15 @@ function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-complete')!.addEventListener('click', () => openFinish(el));
   el.querySelector('.nge-cm-finish-back')!.addEventListener('click', () => { cellAction('complete-cancel'); closeFinish(el); });
   el.querySelector('.nge-cm-finish-check')!.addEventListener('click', () => cellAction('complete-check'));
+  el.querySelector('.nge-cm-finish-how')!.addEventListener('click', e => {
+    const tip = el.querySelector('.nge-cm-finish-tip') as HTMLElement;
+    tip.hidden = !tip.hidden;
+    (e.currentTarget as HTMLElement).setAttribute('aria-expanded', String(!tip.hidden));
+  });
+  el.querySelector('.nge-cm-finish-soma')!.addEventListener('click', () => {
+    (el.querySelector('.nge-cm-finish-tip') as HTMLElement).hidden = true;
+    cellAction('complete-soma');
+  });
   el.querySelector('.nge-cm-finish-addnote')!.addEventListener('click', e => {
     (e.currentTarget as HTMLElement).hidden = true;
     const t = el.querySelector('.nge-cm-finish-note') as HTMLTextAreaElement;
@@ -1170,9 +1254,117 @@ function wirePlayBox(el: HTMLElement) {
   for (const k of ['keydown', 'keyup', 'keypress']) el.querySelector('.nge-cm-finish-note')!.addEventListener(k, e => e.stopPropagation());
   el.querySelector('.nge-cm-finish-go')!.addEventListener('click', () => {
     if (shownFor != null) moment(shownFor, 'complete');
+    // The accuracy takes this cell in once its score is kept.
+    setTimeout(() => void loadMine(true), 4000);
     removeHintLayers();
     cellAction('complete-submit', { notes: (el.querySelector('.nge-cm-finish-note') as HTMLTextAreaElement).value.trim() });
   });
+}
+
+// ── Marking from the box ────────────────────────────────────────────────────
+const COME_BACK = { key: 'c_comeback', label: 'Come back', color: '#b48cff' };
+/** The player's style for a chip: Checked is built in; Come back is added to
+ *  their colors the first time (it stays, and can be recolored or removed in
+ *  Highlight like any color they add). */
+function markStyle(mark: string): { key: string; color: string } | null {
+  try {
+    const all = highlightStyles();
+    if (mark === 'checked') return all.find(s => s.key === 'checked') ?? null;
+    const have = all.find(s => s.key === COME_BACK.key || s.label.toLowerCase() === 'come back');
+    if (have) return have;
+    if (all.length >= MAX_HIGHLIGHT_STYLES) return all.find(s => s.key === 'look') ?? null;
+    saveHighlightStyles([...all, { ...COME_BACK, layer: COME_BACK.label }]);
+    return COME_BACK;
+  } catch { return null; }
+}
+function paintChips(el: HTMLElement) {
+  for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) {
+    const mark = chip.dataset.mark || 'checked';
+    let color = mark === 'checked' ? '#3dff9a' : COME_BACK.color;
+    try { const s = highlightStyles().find(x => mark === 'checked' ? x.key === 'checked' : (x.key === COME_BACK.key || x.label.toLowerCase() === 'come back')); if (s) color = s.color; } catch { /* the default */ }
+    const dot = chip.querySelector('i') as HTMLElement;
+    dot.style.background = color; dot.style.boxShadow = `0 0 6px ${color}`;
+  }
+}
+/** Leave Merge or Cut and open Highlight on this color. */
+function startMarking(mark: string) {
+  const style = markStyle(mark);
+  try { exitGrapheneTool(); } catch { /* no tool on */ }
+  (window as any).__ngeHighlightPick = style?.key ?? null;
+  document.dispatchEvent(new CustomEvent('nge:open-highlight'));
+  document.dispatchEvent(new CustomEvent('nge:highlight-style', { detail: { key: style?.key } }));
+  const el = document.getElementById(CARD_ID);
+  if (el) { paintChips(el); paintMode(el); }
+}
+function modeNow(): 'merge' | 'cut' | 'highlight' | 'look' {
+  const k = activeGrapheneToolKind();
+  if (k === 'merge') return 'merge';
+  if (k === 'multicut') return 'cut';
+  if (document.querySelector('.nge-hl-panel')) return 'highlight';
+  return 'look';
+}
+const MODE_WORDS = { merge: 'Merging', cut: 'Cutting', highlight: 'Highlighting', look: 'Looking' } as const;
+const MODE_TIPS = {
+  merge: 'Merge is on: Ctrl+click two cells to join them.',
+  cut: 'Cut is on: Ctrl+click points on each side of the cut.',
+  highlight: 'Highlight is on: Ctrl+click two points to mark the branch between them. With Merge or Cut on, hold H and click.',
+  look: 'Nothing is on: Ctrl+click does nothing to your cell.',
+} as const;
+function paintMode(el: HTMLElement) {
+  const pill = el.querySelector('.nge-cm-mode') as HTMLElement | null;
+  if (!pill) return;
+  const m = modeNow();
+  if (pill.dataset.mode === m) return;
+  pill.dataset.mode = m;
+  pill.textContent = MODE_WORDS[m];
+  pill.title = MODE_TIPS[m];
+}
+let modeTimer: number | undefined;
+function watchMode(el: HTMLElement) {
+  window.clearInterval(modeTimer);
+  modeTimer = window.setInterval(() => {
+    if (!document.body.contains(el)) { window.clearInterval(modeTimer); return; }
+    if (el.classList.contains('nge-cm-idle')) return;
+    paintMode(el);
+  }, 700);
+}
+
+// ── Sandbox accuracy, and Complete after a run of low scores ────────────────
+let mineInfo: Mine | null = null;
+let mineAt = 0;
+async function loadMine(force = false) {
+  if (!force && Date.now() - mineAt < 5 * 60_000) { paintMine(); return; }
+  mineAt = Date.now();
+  try { mineInfo = await secureWrite<Mine>('match.mine', {}); } catch (e: any) { console.debug('[cell-match] no accuracy', e?.message); }
+  paintMine();
+}
+function paintMine() {
+  const el = document.getElementById(CARD_ID);
+  const line = el?.querySelector('.nge-cm-acc') as HTMLElement | null;
+  if (!line) return;
+  const m = mineInfo;
+  if (!m || !m.cells || m.accuracy == null) { line.hidden = true; return; }
+  line.innerHTML = `Your Sandbox accuracy: <b>${m.accuracy}%</b> over ${plural(m.cells, 'practice cell')}`;
+  line.title = 'The average match score of the practice cells you have completed, each at its last Complete';
+  line.hidden = false;
+}
+/** Low scores in a row (Ames 2026-11-14: "if they complete >n cells with <y
+ *  accuracy it makes them review what they did"): Complete waits until the
+ *  player has jumped to what is left on this cell. */
+function gated(): boolean {
+  const m = mineInfo;
+  if (!m || !m.reviewFirst || shownFor == null) return false;
+  const r = last.get(shownFor);
+  const score = r && r.scorable ? matchScore(r) : null;
+  if (score == null || score >= m.lowScore) return false;
+  return !((clocks.get(shownFor)?.jumps ?? 0) > 0);
+}
+function showGate(el: HTMLElement) {
+  const p = el.querySelector('.nge-cm-finish-gate') as HTMLElement;
+  const j = el.querySelector('.nge-cm-finish-jump') as HTMLElement;
+  const on = gated();
+  p.hidden = !on; j.hidden = !on;
+  if (on && mineInfo) p.textContent = `Your last ${mineInfo.lowRun} practice cells finished under ${mineInfo.lowScore}%. Before you complete this one, Jump to what is left and have a look.`;
 }
 
 // ── The review after Complete ───────────────────────────────────────────────
@@ -1561,4 +1753,4 @@ document.addEventListener('nge:play-pref', () => {
   if (!isClosed() && onScreen != null) show(onScreen, last.get(onScreen), !last.get(onScreen));
 });
 if (isClosed()) document.body.classList.add('nge-cm-closed');
-(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } } };
+(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } }, setMine: (m: Mine | null) => { mineInfo = m; mineAt = Date.now(); paintMine(); } };

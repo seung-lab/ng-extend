@@ -13,6 +13,9 @@ const range = (a, b) => Array.from({length: b - a + 1}, (_, i) => String(a + i))
 
 // ── The pure rules ─────────────────────────────────────────────────────────
 
+// The worlds here are tiny: no piece is optional unless a test says so.
+{ const reset = M._reset; M._reset = (o = {}) => reset({smallPiece: 1, ...o}); }
+
 test('sets: sorted, unique, and differences', () => {
   const a = M.toSet(['5', '3', '3', '76492337823715273', '1']);
   assert.deepEqual([...a].map(String), ['1', '3', '5', '76492337823715273']);
@@ -88,7 +91,8 @@ function world() {
   const sandbox = {
     events: [{at: 0, groups: {S0: [...range(1, 100), ...range(300, 359)], A: range(101, 160), B: range(161, 200)}}],
     rootAt(sv, at) { let g = this.events[0].groups; for (const e of this.events) if (e.at <= at) g = e.groups; for (const [r, l] of Object.entries(g)) if (l.includes(sv)) return r; return '0'; },
-    leaves(root) { for (const e of this.events) if (e.groups[root]) return e.groups[root]; return []; },
+    // The latest version of a segment (a test may redefine one).
+    leaves(root) { for (const e of [...this.events].reverse()) if (e.groups[root]) return e.groups[root]; return []; },
     edit(groups) { this.events.push({at: Date.now(), groups}); },
   };
   const truth = {
@@ -130,7 +134,9 @@ function world() {
     if ((m = p.match(/^proofreading_tasks\?id=eq\.(\d+)/))) return db.tasks.filter(t => t.id === +m[1]);
     if ((m = p.match(/^sandbox_match_keys\?task_id=eq\.(\d+)/))) return db.keys[m[1]] ? [JSON.parse(JSON.stringify(db.keys[m[1]]))] : [];
     if (p.startsWith('sandbox_match_keys?on_conflict')) { const k = JSON.parse(init.body); db.keys[k.task_id] = k; return null; }
-    if (p === 'rpc/sandbox_match_record') { db.records.push(JSON.parse(init.body)); return null; }
+    if (p === 'rpc/sandbox_match_record') { const b = JSON.parse(init.body); db.records.push(b); db.peaks = db.peaks || {}; if (!(b.p_task in db.peaks)) db.peaks[b.p_task] = 0; return null; }
+    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.[^&]+&task_id=eq\.(\d+)&select=extra_peak/))) return db.peaks && m[1] in db.peaks ? [{extra_peak: db.peaks[m[1]]}] : [];
+    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.[^&]+&task_id=eq\.(\d+)$/)) && init.method === 'PATCH') { db.peaks[m[1]] = JSON.parse(init.body).extra_peak; return null; }
     if (p === 'sandbox_play_events') { (db.events = db.events || []).push(JSON.parse(init.body)); return null; }
     if ((m = p.match(/^task_assignments\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&/))) return (db.held || []).filter(h => h.task_id === +m[1] && h.user_id === decodeURIComponent(m[2]));
     // edit_log: this task's own, or (with a claim) untagged ones in its time.
@@ -148,7 +154,7 @@ test('a check builds the key once, then scores each edit', async () => {
   M._reset();
   const w = world();
   const first = await M.check(w.io, {taskId: 1, me: ME});
-  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, score: 38, startScore: 38, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}, edits: 0});
+  assert.deepEqual(first, {taskId: 1, scorable: true, root: w.ID.S0, match: 0, score: 38, startScore: 38, merge: 0, cut: 0, missing: {left: 1, total: 1}, extra: {left: 1, total: 1}, nucleusOnly: false, edits: 0});
   const key = w.db.keys[1];
   assert.equal(key.truth_root, w.ID.T);
   assert.equal(key.start_root, w.ID.S0);
@@ -391,4 +397,79 @@ test('where a piece meets the cell, to the voxel: a cell voxel touching the piec
   const apart = new Uint8Array(300);
   apart[(1 * 10 + 2) * 10 + 1] = 1; apart[(1 * 10 + 2) * 10 + 0] = 1; apart[(1 * 10 + 2) * 10 + 8] = 2;
   assert.deepEqual(C.meetingVoxel(apart, dims), [1, 2, 1]);
+});
+
+test('tiny pieces are optional: out of the score, the counts and Jump', async () => {
+  // B (40 supervoxels) is under the line; A (60) is not.
+  M._reset({smallPiece: 50});
+  const w = world();
+  const first = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(w.db.keys[1].optional_missing.length, 40);
+  assert.deepEqual(first.missing, {left: 1, total: 1});
+  // Merging A alone is all of Merge: B is not needed.
+  w.sandbox.edit({S1: [...range(1, 160), ...range(300, 359)], B: range(161, 200)});
+  const merged = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(merged.merge, 100);
+  // Merging B as well changes nothing either way.
+  w.sandbox.edit({S2: [...range(1, 200), ...range(300, 359)]});
+  assert.equal((await M.check(w.io, {taskId: 1, me: ME})).merge, 100);
+  // Only tiny pieces wrong: nothing to score.
+  M._reset({smallPiece: 1000});
+  const w2 = world();
+  assert.equal((await M.check(w2.io, {taskId: 1, me: ME})).scorable, false);
+  assert.equal(w2.db.keys[1].reason, 'only tiny pieces differ');
+});
+
+test('Jump says when a missing piece brings part of another cell with it', async () => {
+  M._reset();
+  const w = world();
+  // A now also holds 700 supervoxels of no true cell.
+  w.sandbox.edit({S0: [...range(1, 100), ...range(300, 359)], A: [...range(101, 160), ...range(1000, 1699)], B: range(161, 200)});
+  for (let n = 0; n < 2; n++) {
+    const h = await M.hint(w.io, {taskId: 1, me: ME, n, step: 2});
+    if (h.piece.kind === 'merge') assert.equal(h.piece.bringsMerger, true);
+    else assert.equal(h.piece.bringsMerger, undefined);
+  }
+});
+
+test('Sandbox accuracy: the last score of each completed cell; a run of low ones', async () => {
+  const at = i => new Date(Date.parse('2026-11-10T00:00:00Z') + i * 60000).toISOString();
+  // Newest first, as asked: cell 7 twice (its last score 20 counts).
+  const rows = [{task_id: 9, score: 10, at: at(5)}, {task_id: 8, score: 30, at: at(4)}, {task_id: 7, score: 20, at: at(3)},
+    {task_id: 6, score: 90, at: at(2)}, {task_id: 7, score: 95, at: at(1)}];
+  let asked = '';
+  const io = {sb: async p => { asked = p; return rows; }};
+  const r = await M.mine(io, {me: ME});
+  assert.match(asked, /^sandbox_play_events\?user_id=eq\.[^&]+&kind=eq\.complete/);
+  assert.deepEqual([r.cells, r.accuracy, r.lowRun, r.reviewFirst], [4, 38, 3, true]);
+  rows.shift();
+  assert.deepEqual([(await M.mine(io, {me: ME})).lowRun, (await M.mine(io, {me: ME})).reviewFirst], [2, false]);
+  await assert.rejects(M.mine(io, {me: null}), {status: 403});
+});
+
+test("Complete keeps the server's own score, not the browser's", async () => {
+  M._reset();
+  const w = world();
+  await M.event(w.io, {taskId: 1, me: ME, kind: 'complete', score: 100});
+  const ev = w.db.events.find(e => e.kind === 'complete');
+  assert.equal(ev.score, 0);
+});
+
+test('Cut on a cell that started with nothing to cut: progress against the most it held, then done', async () => {
+  M._reset();
+  const w = world();
+  // A cell with nothing wrong at the start: the player's cell is the true cell minus A and B.
+  w.sandbox.events[0].groups = {S0: range(1, 100), A: range(101, 160), B: range(161, 200), N: range(300, 359)};
+  const first = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(first.cut, null);
+  // Merging A brought N (60 wrong) along.
+  w.sandbox.edit({S1: [...range(1, 160), ...range(300, 359)], B: range(161, 200)});
+  assert.equal((await M.check(w.io, {taskId: 1, me: ME})).cut, 0);
+  // Half of N cut off: half way.
+  w.sandbox.edit({S2: [...range(1, 160), ...range(330, 359)], B: range(161, 200), N2: range(300, 329)});
+  assert.equal((await M.check(w.io, {taskId: 1, me: ME})).cut, 50);
+  // All of it: done, and out of the score.
+  w.sandbox.edit({S3: range(1, 160), B: range(161, 200), N3: range(300, 359)});
+  const done = await M.check(w.io, {taskId: 1, me: ME});
+  assert.deepEqual([done.cut, done.cutDone], [null, true]);
 });

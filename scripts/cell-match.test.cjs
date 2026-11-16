@@ -66,6 +66,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     asks.push({ action: input.action, taskId: input.taskId, hasToken: !!input.token });
     if (input.action === 'match.hint') { hintSteps.push(input.step); return r.fulfill(json({ ok: true, data: input.step === 2 ? HINT : HINT_PLACE })); }
     if (input.action === 'match.event') { events.push(input.kind); return r.fulfill(json({ ok: true, data: { ok: true } })); }
+    if (input.action === 'match.mine') return r.fulfill(json({ ok: true, data: { cells: 5, accuracy: 72, lowRun: 0, reviewFirst: false, lowScore: 40, lowRunNeeded: 3 } }));
     return r.fulfill(json({ ok: true, data: input.action === 'match.review' ? reviewAnswer : answer }));
   });
   await context.route(/supabase\.co/, r => {
@@ -104,7 +105,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
     check('Playing: Practice, the Match score, then Merge and Cut with their pieces', /^playing: practice .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces merged in cut 0% removed 0 of 3 errors/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 300, box);
+    check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -223,11 +224,77 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, skipping: false, completing: null } })));
     const fin3 = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { finish: c.querySelector('.nge-cm-finish').hidden, rows: c.querySelector('.nge-cm-row[data-row="merge"]').offsetParent !== null }; });
     check('Complete closed: back to Merge and Cut', fin3.finish && fin3.rows, fin3);
+    // The player's Sandbox accuracy, under the buttons.
+    const acc = await page.evaluate(() => { const a = document.querySelector('#nge-cell-match .nge-cm-acc'); return { shown: !a.hidden && a.offsetParent !== null, text: a.textContent }; });
+    check('the Sandbox accuracy shows under the buttons', acc.shown && acc.text === 'Your Sandbox accuracy: 72% over 5 practice cells', acc);
+    // Three low cells in a row: Complete waits until the player has jumped.
+    const gate = await page.evaluate(() => {
+      window.__ngeCellMatch.setMine({ cells: 5, accuracy: 20, lowRun: 3, reviewFirst: true, lowScore: 101, lowRunNeeded: 3 });
+      const c = document.getElementById('nge-cell-match');
+      c.querySelector('.nge-cm-complete').click();
+      document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, skipping: false, completing: { checking: false, ok: true, message: '', minting: false, submitting: false, link: true } } }));
+      const g = c.querySelector('.nge-cm-finish-gate');
+      return { gate: !g.hidden, text: g.textContent, jump: !c.querySelector('.nge-cm-finish-jump').hidden, go: c.querySelector('.nge-cm-finish-go').disabled };
+    });
+    check('after 3 low cells, Complete asks for a Jump first and waits', gate.gate && gate.jump && gate.go && /last 3 practice cells finished under 101%/.test(gate.text), gate);
+    await shot('cell-match-gate.png');
+    // Crosshairs outside: How? opens a tip, and Put them in the soma asks the library to move them.
+    const how = await page.evaluate(() => {
+      const c = document.getElementById('nge-cell-match');
+      document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, skipping: false, completing: { checking: false, ok: false, message: '', minting: false, submitting: false, link: true } } }));
+      const btn = c.querySelector('.nge-cm-finish-how');
+      const shown = !btn.hidden;
+      btn.click();
+      const tip = c.querySelector('.nge-cm-finish-tip');
+      const tipText = tip.hidden ? '' : tip.textContent;
+      let sent = null; const f = e => { sent = e.detail.action; }; document.addEventListener('nge:cm-cell-action', f);
+      c.querySelector('.nge-cm-finish-soma').click();
+      document.removeEventListener('nge:cm-cell-action', f);
+      return { shown, tipText, sent, left: c.querySelector('.nge-cm-finish-left').textContent };
+    });
+    check('crosshairs outside: How? shows what to do, and Put them in the soma moves them', how.shown && /red and green lines cross in the 2D view/.test(how.tipText) && how.sent === 'complete-soma', how);
+    check('pieces left: Complete and Review shows the answers; never in a production dataset', /Press Complete and Review to see the answers\. In a production dataset, you should never complete a cell before it is completely proofread\./.test(how.left), how.left);
+    await page.evaluate(() => {
+      const c = document.getElementById('nge-cell-match');
+      c.querySelector('.nge-cm-finish-back').click();
+      document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, skipping: false, completing: null } }));
+      window.__ngeCellMatch.setMine({ cells: 5, accuracy: 72, lowRun: 0, reviewFirst: false, lowScore: 40, lowRunNeeded: 3 });
+    });
+    // A cell that is little more than its nucleus says so.
+    const nuc = await page.evaluate(() => {
+      const c = document.getElementById('nge-cell-match');
+      const r = { taskId: 16762, scorable: true, root: '648518346351000001', match: 10, score: 10, startScore: 5, merge: 10, cut: null, missing: { left: 3, total: 4 }, extra: { left: 0, total: 0 }, nucleusOnly: true };
+      window.__ngeCellMatch.show(16762, r);
+      const n = c.querySelector('.nge-cm-cellnote');
+      const on = { shown: !n.hidden, text: n.textContent };
+      window.__ngeCellMatch.show(16762, { ...r, nucleusOnly: false });
+      return { on, off: n.hidden };
+    });
+    check('a nucleus only cell says to grow it; others do not', nuc.on.shown && /little more than its nucleus/.test(nuc.on.text) && nuc.off, nuc);
+    // Marking: Checked and Come back open Highlight on that color, and leave Merge or Cut.
+    const mark = await page.evaluate(() => {
+      const c = document.getElementById('nge-cell-match');
+      let opened = 0, picked = null;
+      const o = () => { opened++; }, s = e => { picked = e.detail && e.detail.key; };
+      document.addEventListener('nge:open-highlight', o); document.addEventListener('nge:highlight-style', s);
+      c.querySelector('.nge-cm-chip[data-mark="checked"]').click();
+      const first = picked;
+      c.querySelector('.nge-cm-chip[data-mark="comeback"]').click();
+      document.removeEventListener('nge:open-highlight', o); document.removeEventListener('nge:highlight-style', s);
+      const pill = c.querySelector('.nge-cm-mode');
+      return { opened, first, second: picked, chips: [...c.querySelectorAll('.nge-cm-chip')].map(b => b.textContent), row: c.querySelector('.nge-cm-mark').offsetParent !== null, pill: pill.textContent };
+    });
+    check('Checked and Come back open Highlight on their own colors', mark.opened === 2 && mark.first === 'checked' && mark.second === 'c_comeback' && mark.chips.join(',') === 'Checked,Come back' && mark.row, mark);
+    check('the box says what a Ctrl+click does now', /^(Looking|Highlighting)$/.test(mark.pill), mark.pill);
+    await shot('cell-match-mark.png');
+    // Jump is always in the row.
+    const jumpNow = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { shown: h.offsetParent !== null, text: h.textContent, glow: h.classList.contains('nge-cm-nudged') }; });
+    check('Jump is in the button row from the start, not lit', jumpNow.shown && jumpNow.text === 'Jump' && !jumpNow.glow, jumpNow);
     // A minute with no edit: Hint.
     await page.evaluate(() => window.__ngeCellMatch.ageHintClock(16762, 61000));
     await page.waitForTimeout(2600);
-    const nudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.querySelector('.nge-cm-hbtn'); return { h: !!h && h.offsetParent !== null && h.textContent, tip: h && h.title, line: !c.querySelector('.nge-cm-nudge').hidden }; });
-    check('after a minute with no edit, Hint appears in the button row, and nothing else opens', nudge.h === 'Hint' && nudge.tip === 'Click for a Hint' && !nudge.line, nudge);
+    const nudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.querySelector('.nge-cm-hbtn'); return { h: !!h && h.offsetParent !== null && h.textContent, glow: h.classList.contains('nge-cm-nudged'), tip: h && h.title, line: !c.querySelector('.nge-cm-nudge').hidden }; });
+    check('after a minute with no edit, Jump lights up, and nothing else opens', nudge.h === 'Jump' && nudge.glow && nudge.tip === 'Go to the next spot on your cell that needs fixing' && !nudge.line, nudge);
     await shot('cell-match-hint.png');
     // Collapsed: no Hint at all (Ames 2026-11-14: "I would be too tempted to click").
     const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
@@ -238,13 +305,13 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const place = await hintLayers();
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
-    check('Hint first: only the place on your cell where it starts, no piece shown', /missing a branch that starts near the blue pin\. look for a loose end there\. show me next hint/i.test(place.text) && place.layers.includes('Hint spot') && !place.layers.includes('Hint piece'), place);
+    check('Hint first: only the place on your cell where it starts, no piece shown', /missing a branch that starts near the blue pin\. look for a loose end there\. spot 1 of 2\. show me$/i.test(place.text) && place.layers.includes('Hint spot') && !place.layers.includes('Hint piece'), place);
     await shot('cell-match-hint-place.png');
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
     await page.waitForTimeout(1500);
     const hinted = await hintLayers();
     const inMain = await page.evaluate(() => { const ls = window.viewer.layerManager.managedLayers.filter(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState); return ls.some(l => [...l.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).includes('648518346351009999')); });
-    check('Show me: the piece in gold in your own layer (so Ctrl+click merges it), and what to do', /gold piece belongs to your cell\. merge it in\. next hint/i.test(hinted.text) && inMain && !hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), { hinted, inMain });
+    check('Show me: the piece in gold in your own layer (so Ctrl+click merges it), and what to do', /gold piece belongs to your cell\. merge it in\. spot 1 of 2\.$/i.test(hinted.text) && inMain && !hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), { hinted, inMain });
     check('the two steps were asked in order', hintSteps.join(',') === '1,2', hintSteps);
     check('the lab hears: opened, Hint offered (the hint itself is recorded by the server)', events.includes('opened') && events.includes('hint_offered'), events);
     await shot('cell-match-hint-shown.png');
@@ -410,7 +477,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const adminEdit = await page.evaluate(() => { const b = document.querySelector('#nge-cell-match .nge-cm-info .nge-edtext-btn'); if (!b) return null; const label = b.textContent.trim(); b.click(); return label; });
     await page.waitForTimeout(300);
     const draftLines = await page.evaluate(() => { const t = document.querySelector('#nge-cell-match .nge-cm-info textarea'); return t ? t.value.split('\n').filter(l => l.trim()).length : 0; });
-    check('an admin gets Edit, and it opens the text one paragraph per line', adminEdit === 'Edit' && draftLines === 5, { adminEdit, draftLines });
+    check('an admin gets Edit, and it opens the text one paragraph per line', adminEdit === 'Edit' && draftLines === 6, { adminEdit, draftLines });
     await shot('cell-match-info-edit.png');
     await page.evaluate(() => { const c = [...document.querySelectorAll('#nge-cell-match .nge-cm-info .nge-edtext-btn')].find(b => b.textContent.trim() === 'Cancel'); if (c) c.click(); const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend'); pb.isAdmin = false; });
     await page.waitForTimeout(300);

@@ -3604,6 +3604,15 @@ function onCmAction(e: Event) {
   else if (d.action === 'complete-open') openComplete(cell);
   else if (d.action === 'complete-cancel') { if (completing.value?.key === cellKey(cell)) completing.value = null; }
   else if (d.action === 'complete-check') { if (completing.value?.key === cellKey(cell)) void runCrosshairCheck(cell); }
+  else if (d.action === 'complete-soma') {
+    // The box's "Put them in the soma": the crosshairs to the cell's own
+    // point (where it was claimed, in its soma), then the check again.
+    const p = cell.claimPoint ?? parseCoords(cell.somaCoords || cell.nucCoords);
+    if (p && (p[0] || p[1] || p[2])) {
+      try { (window as any).viewer.navigationState.position.value = Float32Array.from(p as number[]); } catch { /* no viewer */ }
+    }
+    if (completing.value?.key === cellKey(cell)) setTimeout(() => void runCrosshairCheck(cell), 400);
+  }
   else if (d.action === 'complete-submit') {
     if (completing.value?.key !== cellKey(cell)) return;
     completing.value.notes = String(d.notes || '').slice(0, 2000);

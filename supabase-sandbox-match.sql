@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS public.sandbox_match_keys (
 );
 ALTER TABLE public.sandbox_match_keys ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.sandbox_match_keys FROM anon, authenticated;
+-- Tiny pieces are optional (Ames 2026-11-14, functions/sandbox-match.js):
+-- the supervoxels of each missing and extra piece under SMALL_PIECE.
+ALTER TABLE public.sandbox_match_keys ADD COLUMN IF NOT EXISTS optional_missing jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.sandbox_match_keys ADD COLUMN IF NOT EXISTS optional_extra jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS public.sandbox_match_scores (
   user_id        uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -43,6 +47,9 @@ CREATE TABLE IF NOT EXISTS public.sandbox_match_scores (
   PRIMARY KEY (user_id, task_id)
 );
 CREATE INDEX IF NOT EXISTS sandbox_match_scores_task ON public.sandbox_match_scores(task_id);
+-- The most wrong supervoxels the player's cell has held: Cut counts against it
+-- when it is more than at the start (Ames 2026-11-16).
+ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS extra_peak integer NOT NULL DEFAULT 0;
 ALTER TABLE public.sandbox_match_scores ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.sandbox_match_scores FROM anon, authenticated;
 

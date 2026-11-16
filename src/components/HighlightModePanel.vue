@@ -24,6 +24,16 @@ const panelEl = ref<HTMLElement | null>(null);
 // ── Colours: the built in three (any colour you like) and your own ────────
 const styles = ref<HighlightStyle[]>(highlightStyles());
 const styleKey = ref(styles.value[0].key);
+// Opened from the Sandbox box on a color (sandbox_match.ts, startMarking).
+function takePick(key: unknown) {
+  styles.value = highlightStyles();
+  if (typeof key === 'string' && styles.value.some(s => s.key === key)) styleKey.value = key;
+}
+takePick((window as any).__ngeHighlightPick);
+(window as any).__ngeHighlightPick = null;
+const onStylePick = (e: Event) => takePick((e as CustomEvent).detail?.key);
+document.addEventListener('nge:highlight-style', onStylePick);
+onBeforeUnmount(() => document.removeEventListener('nge:highlight-style', onStylePick));
 const adding = ref(false);
 const newName = ref('');
 const newColor = ref('#b388ff');
