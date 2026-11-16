@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-16T14:25:00Z",
+      "title": "Start at the base of the cilium",
+      "items": [
+        "Cilia Quest Training: when you trace the cilium, the view now starts right at its base, where the line begins, with a Start here marker."
+      ]
+    },
+    {
       "at": "2026-11-15T05:26:00Z",
       "title": "Lighter on your browser history",
       "items": [

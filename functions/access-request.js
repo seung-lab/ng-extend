@@ -43,6 +43,10 @@ const BRAX = 'https://raw.githubusercontent.com/seung-lab/ng-extend/ee4677eeb1a5
 // Fly neurons by neurotransmitter on access granted (Ames 2026-10-16), pinned the same way.
 const GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/18309c4c1fc327d83e7dfff540f83485f8bf52b9/static/access/fly-neurons-by-neurotransmitter.jpg';
 const GRANTED_TITLE = '🎉 Congratulations! Your edit access has been granted!';
+// Ames 2026-11-14: "tells players they can start playing in retina to see the
+// different brain mapping challenges". The two Play offers on the Retina.
+const RETINA_PLAY = '**Start playing in the Retina to see its brain mapping challenges.** Press Play to choose one: '
+  + 'proofread bipolar cells in the BC Challenge, or mark the cilium on starburst cells in Cilia Quests.';
 // The open padlock on a dataset grant (Ames 2026-10-28).
 const DATASET_GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
 // The closed padlock on a dataset request, in the admins' bell (Ames 2026-10-28).
@@ -384,7 +388,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
   if (notifyPlayer) {
     const title = outcome === 'invited' ? GRANTED_TITLE : '🔬 Notes on your retina access request';
     const body = outcome === 'invited'
-      ? `Your ten examples looked great. The EyeWire II retina is now open to you for editing, and every cell you proofread there becomes part of a real map of the retina.${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out of Pyr and back in. Thank you for doing science with us!`
+      ? `Your ten examples looked great. The EyeWire II retina is now open to you for editing, and every cell you proofread there becomes part of a real map of the retina.\n\n${RETINA_PLAY}${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out of Pyr and back in. Thank you for doing science with us!\n\n[Play in the Retina ›](#nge-open-dataset=stroeh_mouse_retina)`
       : `A reviewer looked at your ten examples and would like ${redos === 1 ? 'one' : redos} again.${note ? `\n\n${note}` : ''}\n\nClick here, or open the menu and Ask for Edit Access, to see the notes on each one.`;
     try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
@@ -1250,6 +1254,71 @@ async function datasetTestBell(a, io) {
   return {sent: true};
 }
 
+// ── The grant email (Ames 2026-11-14: "yes build the email drafts"). The
+// notification's news by email too, when an admin lets someone into the
+// Retina or a dataset and leaves "Email them too" ticked. From Amy at Pyr,
+// replies to support, blind copies like the welcome email. Only to a player
+// who really was let in. preview returns the email without sending it.
+//   access.grantEmail  admins: {requestId} (Retina) or {datasetId}, {note, preview}
+//     -> {to, subject, text} with preview, else {sent: true, to}.
+const PLAY_URL = 'https://connectome.quest/play/';
+function grantEmail(dataset, label, name, note) {
+  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const short = DATASET_SHORT[dataset] || label;
+  const own = DATASET_UNLOCK[dataset];
+  const said = note ? `\n\n${note}` : '';
+  let subject, body;
+  if (dataset === RETINA_ID) {
+    subject = 'You can now edit the Retina in Pyr';
+    body = 'Congratulations, your edit access has been granted! Your ten examples looked great. The EyeWire II retina is now open to you for editing, '
+      + 'and every cell you proofread there becomes part of a real map of the retina.\n\n'
+      + RETINA_PLAY.replace(/\*\*/g, '') + `\n\n${PLAY_URL}` + said
+      + '\n\nIf the Retina still says View only, sign out of Pyr and back in.';
+  } else if (own) {
+    // The dataset's own notification, as plain text, ending before its "Stuck on a cell?".
+    subject = `You can now edit ${short} in Pyr`;
+    body = own.body.replace(/\*\*/g, '').replace(/\s*Stuck on a cell\?[\s\S]*$/, '') + `\n\nOpen ${short} in Pyr here:\n\n${PLAY_URL}` + said;
+  } else {
+    subject = `You can now edit ${short} in Pyr`;
+    body = `Congratulations, you're in! Your access to ${label} has been granted.\n\n`
+      + 'Please edit with care: this is a real dataset, and your edits directly change the connectome.'
+      + `\n\nOpen ${short} in Pyr here:\n\n${PLAY_URL}` + said;
+  }
+  return {subject, text: `Hi ${first},\n\n${body}\n\nStuck on a cell? Ask in chat or reply to this email.\n\n`
+    + 'Thank you for doing science with us!\n\nAmy Sterling and the Pyr Team at Princeton'};
+}
+async function grantEmailAction(a, io) {
+  needAdmin(io.isAdmin);
+  const note = cleanText(a.note, DECIDE_MAX, 'The note') || '';
+  let to, name, dataset, label, granted;
+  if (a.requestId != null) {
+    const id = Number(a.requestId);
+    if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown request.');
+    const r = (await io.sb(`access_requests?id=eq.${id}&select=email,player_name,status&limit=1`))[0];
+    if (!r) fail(404, 'That request is gone.');
+    to = r.email; name = r.player_name; dataset = RETINA_ID; label = 'the Retina'; granted = r.status === 'invited';
+  } else {
+    const id = String(a.datasetId || '');
+    if (!UUID.test(id)) fail(400, 'Unknown request.');
+    const row = (await datasetRows(io.sb, '&id=eq.' + encodeURIComponent(id)))[0];
+    if (!row) fail(404, 'That request is gone.');
+    const u = row.user_id ? (await io.sb('users?id=eq.' + encodeURIComponent(row.user_id) + '&select=middleauth_email,display_name&limit=1'))[0] : null;
+    const mark = (await io.datasetMarks.all())[id];
+    to = u && u.middleauth_email; name = (u && u.display_name) || row.user_name; dataset = row.dataset; label = labelOf(row.title);
+    granted = !!mark && mark.mark === 'granted';
+  }
+  to = String(to || '').trim().toLowerCase();
+  const draft = grantEmail(dataset, label, name, note);
+  if (a.preview === true) return {to, ...draft};
+  if (!granted) fail(409, 'Let them in first, then email them.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) fail(409, 'Pyr has no email address for this player.');
+  if (!io.sendEmail) fail(503, 'Email is not set up on the server.');
+  const copies = WELCOME_COPY_TO.filter(c => c !== to);
+  const r = await io.sendEmail({from: ASK_FROM, to: [to], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), ...draft});
+  if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in, and their notification went.`);
+  return {sent: true, to};
+}
+
 // ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
 // "when the player next logs in, not when the admin approves it". The bell
 // note a grant sends is the record: on a player's first load of a visit the
@@ -1322,6 +1391,7 @@ async function handle(action, args, io) {
   if (action === 'access.datasetList') return datasetList(a, io);
   if (action === 'access.datasetDecide') return datasetDecide(a, io);
   if (action === 'access.datasetTestBell') return datasetTestBell(a, io);
+  if (action === 'access.grantEmail') return grantEmailAction(a, io);
   if (action === 'access.betaStatus') return betaStatus(a, io);
   if (action === 'access.beta') return beta(a, io);
   if (action === 'access.linkInvite') return linkInvite(a, io);
@@ -1390,4 +1460,4 @@ async function principlesAgree(a, io) {
   return {version: PRINCIPLES_VERSION, agreed: true, at};
 }
 
-module.exports = {handle, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
+module.exports = {handle, grantEmail, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
