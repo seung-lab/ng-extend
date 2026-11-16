@@ -670,6 +670,7 @@ function idle(state: string, note: string, action = false) {
   place(el);
   shownFor = null;
   tellShown(null);
+  syncOwns();
 }
 
 // ── Drag and drop (Ames 2026-11-13) ─────────────────────────────────────────
@@ -743,6 +744,7 @@ function hide() {
   removeChip();
   shownFor = null;
   tellShown(null);
+  syncOwns();
 }
 
 // ── Close and reopen (Ames 2026-11-13) ──────────────────────────────────────
@@ -943,7 +945,9 @@ function tellShown(taskId: number | null) {
 /** While the box shows a cell, the Cell Library's slim row steps aside. */
 function syncOwns() {
   const el = document.getElementById(CARD_ID);
-  const owns = !!el && !el.classList.contains('nge-cm-idle') && shownFor != null;
+  // Also while it waits (Getting your cell ready, Standby): the library's slim
+  // row came up under it after Teleport to a new cell (Ames 2026-11-16).
+  const owns = !!el && document.body.contains(el) && !playOff() && !isClosed();
   document.body.classList.toggle('nge-cm-owns', owns);
 }
 /** Save view, Skip and Complete run in the Cell Library, which is only there

@@ -538,6 +538,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { sub: c && c.querySelector('.nge-cm-sub').textContent, go: c && c.querySelector('.nge-cm-idle-go') && c.querySelector('.nge-cm-idle-go').textContent };
     });
     check('after a cell is finished: Teleport to a new cell', fresh.sub === 'Ready for your next practice cell' && fresh.go === 'Teleport to a new cell', fresh);
+    const ownsIdle = await page.evaluate(() => document.body.classList.contains('nge-cm-owns'));
+    check('while the box waits, the Cell Library slim row stays out of the way', ownsIdle === true, ownsIdle);
     const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
     check('on the Sandbox the Play button is big', playBox === null || playBox >= 56, playBox);
     await shot('play-big.png');
