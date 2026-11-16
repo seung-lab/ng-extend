@@ -536,7 +536,7 @@ const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
 const MARK_HTML = '<div class="nge-cm-mark">'
   + '<span class="nge-cm-mark-label">Mark where you have been</span>'
   + '<button type="button" class="nge-cm-chip" data-mark="checked" title="Highlight a branch you have checked, out to its end"><i></i>Checked</button>'
-  + '<button type="button" class="nge-cm-chip" data-mark="comeback" title="Highlight a spot to come back to"><i></i>Come back</button>'
+  + '<button type="button" class="nge-cm-chip" data-mark="comeback" title="One click marks a spot to come back to"><i></i>Come back</button>'
   + '<span class="nge-cm-mode" data-mode="look" title="What a Ctrl+click does right now">Looking</span></div>';
 const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'

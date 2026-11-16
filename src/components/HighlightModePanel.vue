@@ -298,7 +298,11 @@ const styleOf = (): HighlightStyle => {
 };
 /** One click drops a mark: a lab point, or anywhere the server can't trace
  *  (MEC), a highlight spot. */
-const labOn = computed(() => !!noTrace.value || (!!allStyles.value.find(s => s.key === styleKey.value)?.lab && labAs.value === 'point'));
+// Come back is one click (Ames 2026-11-16: "a Special mode of one click and
+// it will highlight a zone around that click"): a spot, lit around it.
+const isOneClickStyle = (s: { key: string; label: string } | undefined) => !!s && (s.key === 'c_comeback' || s.label.trim().toLowerCase() === 'come back');
+const labOn = computed(() => !!noTrace.value || isOneClickStyle(allStyles.value.find(s => s.key === styleKey.value))
+  || (!!allStyles.value.find(s => s.key === styleKey.value)?.lab && labAs.value === 'point'));
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
 const TRACE_LIMIT_MS = 60000;
@@ -312,7 +316,7 @@ async function place(x: number, y: number) {
   if (pointParticlesOn()) runParticleBurst(x, y, rgbOf(styleOf().color));
   lastRoot.value = pick.root;
   const style = styleOf();
-  if (!style.lab && noTrace.value) {
+  if (!style.lab && (noTrace.value || isOneClickStyle(style))) {
     try { await addHighlightSpot(pick, style); refresh(); say(`${style.label} spot placed.`); }
     catch (e: any) { say(e?.message || 'Could not place that spot.', true); }
     return;
