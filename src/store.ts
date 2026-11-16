@@ -1079,11 +1079,12 @@ export interface UserPreferences {
    *  (opening merge if needed); the second M on another piece sends that
    *  merge. Defaults to false: M only opens and closes merge (Ames 2026-11-04). */
   quickMergeKey?: boolean;
-  /** The key that adds a new layer (Nseraf, report 516: N is next to M and
-   *  kept adding layers by mistake). 'n' (the default), 'alt' for Alt+N
-   *  (Option+N on a Mac), or 'off'. Ctrl+N opens a browser window before the
-   *  page sees it, and Shift+N is Lantern, so neither can be offered. */
-  newLayerKey?: 'n' | 'alt' | 'off';
+  /** The key that adds a new layer (Nseraf, report 516: plain N is next to M
+   *  and kept adding layers by mistake). 'shift' for Shift+N (the default,
+   *  Ames 2026-11-16; the Lantern moved to Ctrl+L for it), 'n' for plain N
+   *  as neuroglancer had it, 'alt' for Alt+N (Option+N on a Mac), or 'off'.
+   *  Ctrl+N opens a browser window before the page sees it. */
+  newLayerKey?: 'shift' | 'n' | 'alt' | 'off';
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;

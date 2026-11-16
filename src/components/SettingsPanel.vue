@@ -107,7 +107,7 @@ const draftRetinaAnnot = ref(false);
 const draftLayerHide = ref(false);
 const draftQuickMerge = ref(false);
 const isMacKeys = isMac();
-const draftNewLayerKey = ref<'n' | 'alt' | 'off'>('n');
+const draftNewLayerKey = ref<'shift' | 'n' | 'alt' | 'off'>('shift');
 const draftOfferRestore = ref(true);
 const draftAnnotationGems = ref(true);
 const draftAnnotationSetupTabs = ref(false);
@@ -190,7 +190,7 @@ onMounted(() => {
   draftRetinaAnnot.value = prefsStore.prefs.retinaAnnotationLayers === true;
   draftLayerHide.value = prefsStore.prefs.layerHideButton === true;
   draftQuickMerge.value = prefsStore.prefs.quickMergeKey === true;
-  draftNewLayerKey.value = prefsStore.prefs.newLayerKey || 'n';
+  draftNewLayerKey.value = prefsStore.prefs.newLayerKey || 'shift';
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
   draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
@@ -751,8 +751,9 @@ const props = defineProps<{ embedded?: boolean }>();
               <span class="nge-settings-toggle-label">Quick merge: point at two pieces and press M on each</span>
             </label>
             <!-- Nseraf, report 516: N sits next to M and kept adding layers. -->
-            <label class="nge-settings-hint" for="nge-new-layer-key" style="display:block;margin-top:10px">The key that adds a new layer, if N is too close to M.</label>
-            <select id="nge-new-layer-key" v-model="draftNewLayerKey" class="nge-sv-select" title="Ctrl+N opens a new browser window, and Shift+N is Lantern, so they cannot be used here.">
+            <label class="nge-settings-hint" for="nge-new-layer-key" style="display:block;margin-top:10px">The key that adds a new layer.</label>
+            <select id="nge-new-layer-key" v-model="draftNewLayerKey" class="nge-sv-select" title="Ctrl+N opens a new browser window, so it cannot be used here.">
+              <option value="shift">Shift+N</option>
               <option value="n">N</option>
               <option value="alt">{{ isMacKeys ? 'Option+N' : 'Alt+N' }}</option>
               <option value="off">No key (use the + by the layer tabs)</option>

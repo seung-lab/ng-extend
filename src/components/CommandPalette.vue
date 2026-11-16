@@ -6,6 +6,7 @@ import { ARCADE_ENABLED } from '../util/arcade';
  * Fuzzy-searches across actions, cells, panels, and tools.
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { shortcutLabel } from '../util/platform';
 import { storeToRefs } from 'pinia';
 import {
   useCellHistoryStore,
@@ -321,7 +322,7 @@ function buildActions(): PaletteItem[] {
   });
   toolbarItem('findPath', 'Find Path', 'Draw the route through a cell between two points', '🛤️', ['find path', 'path', 'route', 'trace'], 'F');
   toolbarItem('highlight', 'Highlight Mode', 'Mark the parts of a cell you have checked', '🖍️', ['highlight', 'checked', 'mark', 'paint'], 'H');
-  toolbarItem('lantern', 'Lantern', 'Light the cell around where you are and dim the rest', '🏮', ['lantern', 'light', 'dim', 'focus'], 'Shift+N');
+  toolbarItem('lantern', 'Lantern', 'Light the cell around where you are and dim the rest', '🏮', ['lantern', 'light', 'dim', 'focus'], shortcutLabel('L'));
   toolbarItem('undelete', 'Undelete', 'Bring back a cell you removed from view', '↩️', ['undelete', 'undo', 'restore', 'bring back'], 'Ctrl+Z');
   toolbarItem('batch', 'Batch Processor', 'Work on many cells at once', '📦', ['batch', 'many cells', 'bulk']);
   toolbarItem('layers', 'Layer Side Panel', 'Open or close the layer side panel', '🗂️', ['layers', 'layer list', 'side panel']);
