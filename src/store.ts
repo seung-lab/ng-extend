@@ -5875,7 +5875,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const groupIds = notifGroupIds;
     // Settings, "Show Today in Pyr" off: the daily update stays out of the bell.
     const hideDigest = prefsStore.prefs.showDailyDigest === false;
-    const mine = (n: Notification) => !notificationDismissals.value.has(n.id)
+    // A reply on the To do board stays out of the bell (Ames 2026-11-16: "I
+    // don't want an in-game bell for every reply"). It still shows in the
+    // board's My Tasks and Activity, and in Slack. Tags still ring.
+    const todoReply = (n: Notification) => /^📋 .+ replied to you on a To do$/u.test(String(n.title || ''));
+    const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && !todoReply(n)
       && !(hideDigest && n.target_type !== 'user' && String(n.title || '').startsWith('Today in Pyr')) && (
       n.target_type === 'all'
       || (n.target_type === 'user' && n.target_id === userId.value)

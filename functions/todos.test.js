@@ -390,3 +390,20 @@ test('a due time: kept as HH:MM, checked, and cleared with the day (Ames 2026-11
   await save({ id: c.id, fields: { due_time: '09:05' } });
   assert.deepEqual(Object.values((({ due_on, due_time }) => ({ due_on, due_time }))((await save({ id: c.id, fields: { due_on: null } })).card)), [null, null]);
 });
+
+test('a bell links to the very comment, and a long title never cuts the link', async () => {
+  const { makeTagger } = require('./todos');
+  const posted = [];
+  const sb = async (table, opt) => { posted.push(...JSON.parse(opt.body)); };
+  const slackPost = async () => ({ ok: true });
+  const tag = makeTagger({ sb, slackPost, slackToken: 'x', channel: 'C', site: 'https://s', byName: 'Celia D', meId: 'm' });
+  const card = { id: '11111111-1111-4111-8111-111111111111', title: 'T'.repeat(600) };
+  await tag([{ id: 'p', name: 'Amy' }], card, 'replied to you on', 'hello', { c: '2026-11-16T10:00:00.000Z' });
+  assert.ok(posted[0].body.length <= 500);
+  assert.ok(posted[0].body.endsWith(`?triage=board&todo=${card.id}&c=2026-11-16T10%3A00%3A00.000Z`), posted[0].body.slice(-120));
+  await tag([{ id: 'p', name: 'Amy' }], { id: card.id, title: 'Doc' }, 'tagged you on', 'hi', { nc: 'abc123' });
+  assert.ok(posted[1].body.endsWith('&nc=abc123'));
+  assert.ok(posted[1].body.startsWith('Doc\n\n"hi"\n\n'));
+  await tag([{ id: 'p', name: 'Amy' }], { id: card.id, title: 'Doc' }, 'gave you');
+  assert.ok(posted[2].body.endsWith(`todo=${card.id}`));
+});

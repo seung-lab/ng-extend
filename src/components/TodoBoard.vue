@@ -123,7 +123,14 @@ async function load(quiet = false) {
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
-      if (c) openUp(c);
+      const ptr = saidPtr(window.location.search);
+      if (c && ptr) openSaid(c, '', '', '', ptr); else if (c) openUp(c);
+      // The comment a bell pointed at is a one time jump: a refresh just opens the card.
+      if (ptr) try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete('c'); u.searchParams.delete('nc');
+        window.history.replaceState(window.history.state, '', u.toString());
+      } catch { /* the address just stays */ }
     }
     if (openId.value && !cards.value.some(c => c.id === openId.value)) openId.value = null;
   } catch (e: any) {
@@ -143,6 +150,8 @@ watch(openId, id => {
     const u = new URL(window.location.href);
     if (!u.searchParams.has('todo')) return;
     u.searchParams.set('todo', id || '');
+    // The comment a bell pointed at is a one time jump, not part of the address.
+    u.searchParams.delete('c'); u.searchParams.delete('nc');
     window.history.replaceState(window.history.state, '', u.toString().replace(/([?&]todo)=(&|$)/, '$1$2'));
   } catch { /* the address just stays */ }
 });
@@ -1087,7 +1096,17 @@ function openAt(c: Card, part: 'comments') {
 // them (functions/todos.js makeTagger), so match on that, by that person,
 // nearest in time.
 const bellLine = (t: string) => String(t || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200).trim();
-function findSaid(c: Card, who: string, quote: string, at: string): { comment?: number; thread?: string } | null {
+// Newer bells name the comment in their link (functions/todos.js todoLink):
+// c = its time, nc = a margin thread.
+type SaidPtr = { c?: string; nc?: string };
+function saidPtr(link: string): SaidPtr | undefined {
+  const get = (k: string) => { const m = link.match(new RegExp('[?&]' + k + '=([^&\\s]+)')); try { return m ? decodeURIComponent(m[1]) : undefined; } catch { return undefined; } };
+  const c = get('c'), nc = get('nc');
+  return c || nc ? { c, nc } : undefined;
+}
+function findSaid(c: Card, who: string, quote: string, at: string, ptr?: SaidPtr): { comment?: number; thread?: string } | null {
+  if (ptr?.c) { const i = (c.comments || []).findIndex(cm => cm.at === ptr.c); if (i >= 0) return { comment: i }; }
+  if (ptr?.nc && (c.note_comments || []).some(t => t.id === ptr.nc)) return { thread: ptr.nc };
   const q = bellLine(quote), t0 = Date.parse(at) || 0;
   const same = (text: string) => { const x = bellLine(text); return !!q && (x === q || x.startsWith(q) || q.startsWith(x) && x.length > 20); };
   const byWho = (by: string) => !who || by === who || firstName(by) === firstName(who);
@@ -1109,8 +1128,8 @@ function findSaid(c: Card, who: string, quote: string, at: string): { comment?: 
   if (!best || best.score === Infinity) return null;
   return best.comment != null ? { comment: best.comment } : { thread: best.thread };
 }
-function openSaid(c: Card, who: string, quote: string, at: string) {
-  const hit = findSaid(c, who, quote, at);
+function openSaid(c: Card, who: string, quote: string, at: string, ptr?: SaidPtr) {
+  const hit = findSaid(c, who, quote, at, ptr);
   if (!hit) { openAt(c, 'comments'); return; }
   openUp(c);
   // After opening has cleared the margin, so it stays open.
@@ -1309,7 +1328,7 @@ function withTagsAndReactions(groups: { head: string; rows: Task[]; late?: boole
 // follow, reminders), read from the same notifications as the bell: reading
 // one here reads it there too. ──
 type ActKind = 'tagged' | 'reply' | 'given' | 'finished' | 'reminder';
-interface Act { id: number; kind: ActKind; who: string; what: string; quote: string; cardId: string | null; cardTitle: string; at: string; read: boolean }
+interface Act { id: number; kind: ActKind; who: string; what: string; quote: string; cardId: string | null; cardTitle: string; at: string; read: boolean; ptr?: SaidPtr }
 const ACT_FILTERS: { key: ActKind | 'all'; label: string }[] = [
   { key: 'all', label: 'All' }, { key: 'tagged', label: 'Tagged' }, { key: 'reply', label: 'Replies' },
   { key: 'given', label: 'Given to me' }, { key: 'finished', label: 'Finished' }, { key: 'reminder', label: 'Reminders' },
@@ -1338,7 +1357,7 @@ function readAct(n: any, reads: Set<number>): Act | null {
   } else if (title.startsWith('📋 ') && !title.startsWith('📋 Edited:')) {
     what = title.replace(/^📋 /, '');
   } else return null;
-  return { id: Number(n.id), kind, who, what, quote, cardId, cardTitle, at: String(n.send_at || ''), read: reads.has(Number(n.id)) };
+  return { id: Number(n.id), kind, who, what, quote, cardId, cardTitle, at: String(n.send_at || ''), read: reads.has(Number(n.id)), ptr: saidPtr(body) };
 }
 async function loadActivity() {
   const me = myId.value;
@@ -1399,7 +1418,7 @@ function openAct(a: Act) {
   if (!c) { error.value = 'That card is not on the board any more.'; return; }
   activityOpen.value = false;
   myTasksOpen.value = false;
-  if (a.kind === 'reply' || a.kind === 'tagged') openSaid(c, a.who, a.quote, a.at); else openUp(c);
+  if (a.kind === 'reply' || a.kind === 'tagged') openSaid(c, a.who, a.quote, a.at, a.ptr); else openUp(c);
 }
 // Opening a card reads its notes here too, as it does its tags.
 watch(openId, id => { if (id) void markActsRead(activity.value.filter(a => a.cardId === id)); });
@@ -1452,7 +1471,7 @@ const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.fil
 function openTask(t: Task) {
   myTasksOpen.value = false;
   const a = t.actId ? activity.value.find(x => x.id === t.actId) : null;
-  if (a) { void markActsRead([a]); openSaid(t.card, a.who, a.quote, a.at); return; }
+  if (a) { void markActsRead([a]); openSaid(t.card, a.who, a.quote, a.at, a.ptr); return; }
   if (t.item === -1 || t.item === -2 || t.item === -3) openAt(t.card, 'comments'); else openUp(t.card);
 }
 // ── Reactions on comments ──

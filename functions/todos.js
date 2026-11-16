@@ -408,10 +408,10 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     const needPeople = (Array.isArray(args.tagIds) && args.tagIds.length) || (parent && parent.by !== byName);
     const people = needPeople ? await db.people() : [];
     const who = tagged(people, args.tagIds).filter(p => p.id !== (me && me.id));
-    if (who.length) await tag(who, card, 'tagged you on', body);
+    if (who.length) await tag(who, card, 'tagged you on', body, { c: now });
     if (parent && parent.by !== byName) {
       const writer = people.filter(p => p.name === parent.by && p.id !== meId && !who.some(w => w.id === p.id));
-      if (writer.length) await tag(writer, card, 'replied to you on', body);
+      if (writer.length) await tag(writer, card, 'replied to you on', body, { c: now });
     }
     await follow(id, [meId]).catch(() => {});
     await tellFollowers(card, 'commented on', body, who.map(p => p.id)).catch(e => console.warn('[todo] followers not told:', e.message));
@@ -431,10 +431,10 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     if (!before) fail(404, 'That card is gone. Refresh the board.');
     if (!Array.isArray(before.note_comments)) fail(503, 'Comments in the notes are not switched on yet (supabase-admin-todos-note-comments.sql).');
     const threads = [...before.note_comments];
-    const tellTagged = async (card, body) => {
+    const tellTagged = async (card, body, nc) => {
       const people = (Array.isArray(args.tagIds) && args.tagIds.length) ? await db.people() : [];
       const who = tagged(people, args.tagIds).filter(p => p.id !== meId);
-      if (who.length) await tag(who, card, 'tagged you on', body);
+      if (who.length) await tag(who, card, 'tagged you on', body, { nc });
       return who;
     };
     if (!args.thread) {
@@ -447,7 +447,7 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
         before: text(args.before || '', 200, 'The words before').slice(-40), after: text(args.after || '', 200, 'The words after').slice(0, 40),
         by: byName, by_id: meId || null, at: now, text: body, replies: [], resolved: false };
       const card = await db.patch(id, { note_comments: [...threads, t], updated_at: now });
-      await tellTagged(card, body);
+      await tellTagged(card, body, t.id);
       await follow(id, [meId]).catch(() => {});
       return { card };
     }
@@ -474,13 +474,13 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     if (t.resolved) { t.resolved = false; delete t.resolved_by; delete t.resolved_at; }
     threads[k] = t;
     const card = await db.patch(id, { note_comments: threads, updated_at: now });
-    const who = await tellTagged(card, body);
+    const who = await tellTagged(card, body, t.id);
     // Everyone already in the thread hears a reply, once each.
     const inThread = new Set([t.by, ...replies.map(r => r.by)].filter(n => n && n !== byName));
     if (inThread.size) {
       const people = await db.people();
       const told = people.filter(p => inThread.has(p.name) && p.id !== meId && !who.some(w => w.id === p.id));
-      if (told.length) await tag(told, card, 'replied to you on', body);
+      if (told.length) await tag(told, card, 'replied to you on', body, { nc: t.id });
     }
     await follow(id, [meId]).catch(() => {});
     return { card };
@@ -544,6 +544,14 @@ function countTriage(people, rows) {
   return out;
 }
 
+/** A card's address on the board, and the comment in it when there is one
+ *  (Ames 2026-11-16: the bell should take you to the exact reply): c = the
+ *  comment's time, nc = a thread in the margin of the notes. */
+function todoLink(site, cardId, where) {
+  const w = where || {};
+  return `${site}/?triage=board&todo=${cardId}${w.c ? `&c=${encodeURIComponent(w.c)}` : ''}${w.nc ? `&nc=${encodeURIComponent(w.nc)}` : ''}`;
+}
+
 /** Followers: the bell only, no Slack, so following stays quiet. */
 function makeFollowBell({ sb, site, byName, meId }) {
   return async (ids, card, what, said) => {
@@ -560,11 +568,11 @@ function makeFollowBell({ sb, site, byName, meId }) {
 /** Tells the people tagged on (or given) a card: the bell in Pyr, and a
  *  Slack ping in #citsci_feedback with a link to the card. */
 function makeTagger({ sb, slackPost, slackToken, channel, site, byName, meId }) {
-  return async (people, card, what, said) => {
-    const link = `${site}/?triage=board&todo=${card.id}`;
+  return async (people, card, what, said, where) => {
+    const link = todoLink(site, card.id, where);
     const quote = String(said || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200);
     const rows = people.map(p => ({ title: `📋 ${byName} ${what} a To do`.slice(0, 120),
-      body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
+      body: `${`${card.title}${quote ? `\n\n"${quote}"` : ''}`.slice(0, 498 - link.length)}\n\n${link}`,
       target_type: 'user', target_id: p.id, send_at: new Date().toISOString(), created_by: meId || null }));
     try { await sb('notifications', { method: 'POST', body: JSON.stringify(rows) }); }
     catch (e) { console.warn('[todo] bell failed:', e.message); }
