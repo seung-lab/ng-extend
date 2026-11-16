@@ -128,6 +128,9 @@ function prune() {
 let lastJson = '';
 export function saveLocalView(json: string): string {
   const code = myViewCode();
+  // A view with no layers is not kept: brought back, it is a blank screen
+  // (Ames 2026-11-16). The tab's last real view stays under its code.
+  if (!json.includes('"layers"')) return code;
   if (json === lastJson) return code;
   lastJson = json;
   const t = Date.now();
@@ -166,6 +169,15 @@ let boot: string | null = null;
 export function bootHash(): string {
   if (boot !== null) return boot;
   boot = location.hash;
+  if (isViewWithoutLayers(boot)) {
+    // An old address for a view with no layers (one came back from Chrome's
+    // address bar for Ames, 2026-11-16) opened a blank screen until a
+    // sign-in let the dataset list load. Open the starting view instead.
+    console.info('[view] this address holds a view with no layers; opening the starting view');
+    try { history.replaceState(history.state, '', location.pathname + location.search + '#'); } catch { /* */ }
+    boot = '';
+    return boot;
+  }
   const code = codeOf(boot);
   if (code) {
     let backup = false;
@@ -178,6 +190,20 @@ export function bootHash(): string {
     }
   }
   return boot;
+}
+
+/** A "#!{...}" address whose view has no layers. Only short ones are read:
+ *  a view with layers in it is long. */
+function isViewWithoutLayers(hash: string): boolean {
+  if (!hash.startsWith('#!') || hash.length > 4000) return false;
+  let text = hash.slice(2);
+  try { text = decodeURIComponent(text); } catch { return false; }
+  if (!text.startsWith('{')) return false;
+  try {
+    const layers = JSON.parse(text)?.layers;
+    if (!layers) return true;
+    return Array.isArray(layers) ? layers.length === 0 : Object.keys(layers).length === 0;
+  } catch { return false; }
 }
 
 /** True when the address at load carried a view of the player's own with a
