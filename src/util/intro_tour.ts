@@ -1558,7 +1558,9 @@ export async function startIntroTour() {
   };
   // the X asks first; pressed again while it asks, it leaves (Ames: "wouldn't let me click the X")
   // leaving takes the Starship (and its portal and holograms) away too (Ames)
-  const leave = () => { endTour(); stopZap(); clearStarship(); };
+  // A new player who leaves early still gets Get Started: the tour closed it
+  // as it began, which marks it finished (Ames 2026-11-16).
+  const leave = () => { endTour(); stopZap(); clearStarship(); if (newPlayerRun) { newPlayerRun = false; startGetStarted(); } };
   (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => { if (panel?.classList.contains('nge-intro--asking')) leave(); else ask(true); };
   (panel.querySelector('.nge-intro-leave') as HTMLButtonElement).onclick = leave;
   stayEl.onclick = () => ask(false);
@@ -2421,8 +2423,24 @@ export function playIntro() {
  * seconds.
  */
 let playedThisLoad = false;
+/** This load's tour is a new player's first one: leaving it early still
+ *  starts Get Started. */
+let newPlayerRun = false;
+/** A player who has not begun Get Started and has not seen the tour (Ames
+ *  2026-11-16: "put the starship back!"): on the live site too, new players
+ *  fly in first, then Get Started. */
+const INTRO_SEEN = 'pyr-intro-seen';
+function newPlayerFirstVisit(): boolean {
+  try {
+    if (localStorage.getItem(INTRO_SEEN)) return false;
+    const active = localStorage.getItem('nge-active-tutorial');
+    const step = localStorage.getItem('nge-tutorial-step');
+    return (active === null || active === '1') && (step === null || step === '0');
+  } catch { return false; }
+}
 export function startStarshipIntro() {
-  if (IS_LIVE_SITE) return;
+  const newPlayer = newPlayerFirstVisit();
+  if (IS_LIVE_SITE && !newPlayer) return;
   // the cell turns slowly from the moment it shows, before anything flies
   setTimeout(startIdleTurn, 1200);
   // On the intro's own preview it plays by itself, once per browser, for the
@@ -2432,7 +2450,7 @@ export function startStarshipIntro() {
   if (location.hostname.startsWith('claude-starship-intro-dot-')) {
     try { firstVisit = !localStorage.getItem(PREVIEW_SEEN); } catch { /* no storage */ }
   }
-  const wanted = () => simulating.value || firstVisit || /[?&]starship\b/.test(location.search);
+  const wanted = () => simulating.value || firstVisit || newPlayer || /[?&]starship\b/.test(location.search);
   const signedIn = () => { try { return !!useProofreadingBackendStore().userId; } catch { return false; } };
   const go = async () => {
     if (!wanted() || playedThisLoad) return;
@@ -2444,8 +2462,9 @@ export function startStarshipIntro() {
     if (!signedIn() && !cellDrawn()) { playedThisLoad = false; return; }
     for (let k = 0; k < 80 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
     if (wanted()) {
-      try { localStorage.setItem(PREVIEW_SEEN, '1'); } catch { /* no storage */ }
+      try { localStorage.setItem(PREVIEW_SEEN, '1'); localStorage.setItem(INTRO_SEEN, '1'); } catch { /* no storage */ }
       firstVisit = false;
+      newPlayerRun = newPlayer;
       playIntro();
     }
   };

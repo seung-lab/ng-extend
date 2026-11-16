@@ -60,6 +60,22 @@ export async function readChanges(): Promise<{ since: ChangeEntry[]; latest: Cha
   return { since: known ? byNewest.filter(e => !known.has(keyOf(e))).slice(0, 12) : [], latest: byNewest.slice(0, 3) };
 }
 
+/**
+ * The changelog entries from the last `days`, newest first, for Nurro: every
+ * deploy that players can notice adds one, so Nurro learns each change the
+ * moment it goes live (Ames 2026-11-16). Read at most every 10 minutes.
+ */
+let recentCache: { at: number; entries: ChangeEntry[] } | null = null;
+export async function recentChanges(days = 14): Promise<ChangeEntry[]> {
+  if (recentCache && Date.now() - recentCache.at < 10 * 60_000) return recentCache.entries;
+  const entries = await fetchEntries();
+  if (!entries) return recentCache?.entries ?? [];
+  const since = Date.now() - days * 86_400_000;
+  const recent = entries.filter(e => Date.parse(e.at) >= since).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  recentCache = { at: Date.now(), entries: recent };
+  return recent;
+}
+
 const EVERY_MS = 4 * 60_000;
 let started = false;
 
