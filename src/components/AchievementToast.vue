@@ -19,6 +19,7 @@ import { streakMilestonesBetween } from '../util/streak_milestones';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
 import { runPanelTrace } from '../util/holo_trace';
 import { celebrationCellCounts } from '../util/dataset_contribution';
+import { sandboxAccuracy, sandboxOnScreen } from '../sandbox_match';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { isAwardTitle } from '../util/award_title';
 
@@ -493,7 +494,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 });
 
 // ── Cell completion celebration ──
-const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; kind?: 'axon'; datasetAxons?: number } | null>(null);
+const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean; kind?: 'axon'; datasetAxons?: number; sandboxAccuracy?: number; sandboxCells?: number } | null>(null);
 
 /** How much a completed cell shows (Settings): the full congratulations, a
  *  small note at the top, or nothing. Read when a cell is completed, so a
@@ -525,6 +526,11 @@ watch(() => backend.pendingCellCelebration, (pending) => {
   if (backend.userId && !(pending.batchCount && pending.batchCount > 1)) {
     const uid = backend.userId;
     const stillThis = () => cellCelebration.value && cellCelebration.value.imageUrl === shown.imageUrl && cellCelebration.value.segId === shown.segId;
+    // On the Sandbox, the player's accuracy with this cell in (Ames 2026-11-16).
+    // Its score is kept as Complete is pressed, so it is in by now.
+    if (sandboxOnScreen()) void sandboxAccuracy().then(m => {
+      if (m && m.cells && m.accuracy != null && stillThis()) cellCelebration.value = { ...cellCelebration.value!, sandboxAccuracy: m.accuracy, sandboxCells: m.cells };
+    });
     const show = (r: { label: string; here: number; all: number; axonsHere?: number }) => {
       if (!stillThis()) return;
       cellCelebration.value = { ...cellCelebration.value!, totalCells: r.all, counted: true,
@@ -736,6 +742,7 @@ function playBatchChime() {
             <div v-if="cellCelebration.datasetLabel && cellCelebration.totalCells > (cellCelebration.datasetCells ?? 0)" class="nge-cell-stats nge-cell-stats--all">{{ cellCelebration.totalCells }} cells across all datasets</div>
             <div v-else-if="!cellCelebration.datasetLabel" class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
             </template>
+            <div v-if="cellCelebration.sandboxAccuracy != null" class="nge-cell-stats nge-cell-stats--all">Your Sandbox accuracy: <strong>{{ cellCelebration.sandboxAccuracy }}%</strong> over {{ cellCelebration.sandboxCells }} practice {{ cellCelebration.sandboxCells === 1 ? 'cell' : 'cells' }}</div>
           </div>
           <div class="nge-cell-hint">Click to dismiss</div>
         </div>

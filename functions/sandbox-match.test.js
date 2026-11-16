@@ -413,11 +413,17 @@ test('tiny pieces are optional: out of the score, the counts and Jump', async ()
   // Merging B as well changes nothing either way.
   w.sandbox.edit({S2: [...range(1, 200), ...range(300, 359)]});
   assert.equal((await M.check(w.io, {taskId: 1, me: ME})).merge, 100);
-  // Only tiny pieces wrong: nothing to score.
+  // Merge only: a wrong part counts at any size (a thin axon is still a merger).
   M._reset({smallPiece: 1000});
   const w2 = world();
-  assert.equal((await M.check(w2.io, {taskId: 1, me: ME})).scorable, false);
-  assert.equal(w2.db.keys[1].reason, 'only tiny pieces differ');
+  const big = await M.check(w2.io, {taskId: 1, me: ME});
+  assert.deepEqual([big.missing.total, big.extra.total, w2.db.keys[1].optional_extra.length], [0, 1, 0]);
+  // Only tiny missing pieces: nothing to score.
+  M._reset({smallPiece: 1000});
+  const w3 = world();
+  w3.sandbox.events[0].groups = {S0: range(1, 100), A: range(101, 160), B: range(161, 200), N: range(300, 359)};
+  assert.equal((await M.check(w3.io, {taskId: 1, me: ME})).scorable, false);
+  assert.equal(w3.db.keys[1].reason, 'only tiny pieces differ');
 });
 
 test('Jump says when a missing piece brings part of another cell with it', async () => {
@@ -445,6 +451,10 @@ test('Sandbox accuracy: the last score of each completed cell; a run of low ones
   rows.shift();
   assert.deepEqual([(await M.mine(io, {me: ME})).lowRun, (await M.mine(io, {me: ME})).reviewFirst], [2, false]);
   await assert.rejects(M.mine(io, {me: null}), {status: 403});
+  // Another player's, for their profile; never anything that is not an id.
+  await M.mine(io, {me: ME, userId: OTHER.id});
+  assert.ok(asked.includes(`user_id=eq.${OTHER.id}&`));
+  await assert.rejects(M.mine(io, {me: ME, userId: 'x&kind=eq.hint'}), {status: 400});
 });
 
 test("Complete keeps the server's own score, not the browser's", async () => {

@@ -29,12 +29,14 @@
 // FOUND_SHARE of them are in the player's cell, an extra one removed when
 // FOUND_SHARE of them are out.
 //
-// Tiny pieces are optional (Ames 2026-11-14: "can we ignore teeny tiny little
-// additions? ... it's much more important to find missing branches and remove
-// mergers"). A missing or extra piece under SMALL_PIECE supervoxels is left
-// out of everything: the score (as if neither cell had it), the piece counts,
-// the review and Jump. Merging one in still counts as an edit. Half the
-// missing pieces are that small, yet only about 2% of what is missing.
+// Tiny missing pieces are optional (Ames 2026-11-14: "can we ignore teeny tiny
+// little additions? ... it's much more important to find missing branches and
+// remove mergers"). A missing piece under SMALL_PIECE supervoxels is left out
+// of everything: the score (as if neither cell had it), the piece counts, the
+// review and Jump. Merging one in still counts as an edit. Half the missing
+// pieces are that small, yet only about 2% of what is missing. Merge only
+// (Ames 2026-11-16: "the cuts are also often small volume bc axon"): a wrong
+// part counts at any size.
 //
 // The key (true cell, start cell, pieces) is built on the first check of a
 // cell and kept in sandbox_match_keys (supabase-sandbox-match.sql), which only
@@ -51,7 +53,7 @@ const SANDBOX = {server: 'https://minnie.microns-daf.com', table: 'pinky_nf_v2'}
 /** The true cells, frozen at this time so later edits to pinky_training do not
  *  move anyone's score. Bump it (and KEY_VERSION) to take in newer truth. */
 const TRUTH = {server: 'https://minnie.microns-daf.com', table: 'pinky_training', at: '2026-11-12T18:00:00Z'};
-const KEY_VERSION = '2026-11-16-small';
+const KEY_VERSION = '2026-11-16-small-merge';
 const DATASET = 'pinky_nf_v2';
 const MIN_PIECE = 50;
 /** Pieces smaller than this (in supervoxels) are optional, see above. */
@@ -307,9 +309,9 @@ async function buildKey(io, task) {
   ]);
   const missingPieces = groupPieces(missing, missingRoots, {seed: sv, min: Math.max(MIN_PIECE, small)});
   // The player's own cell is never an extra piece of itself.
-  const extraPieces = groupPieces(extra, extraRoots, {seed: sv, min: Math.max(MIN_PIECE, small)}).filter(p => p.root !== truthRoot);
+  const extraPieces = groupPieces(extra, extraRoots, {seed: sv}).filter(p => p.root !== truthRoot);
   const optionalMissing = smallSvs(missing, missingRoots);
-  const optionalExtra = smallSvs(extra, extraRoots);
+  const optionalExtra = [];
   const toDo = missing.length - optionalMissing.length + extra.length - optionalExtra.length;
   return {
     task_id: task.id, version: KEY_VERSION, truth_at: TRUTH.at, start_at: startAt,
@@ -585,9 +587,13 @@ const LOW_RUN = 3;
  *  Sandbox accuracy somewhere?"): the mean score of their completed practice
  *  cells, each at its last completion, and how many of the latest in a row
  *  were under LOW_SCORE. */
-async function mine(io, {me}) {
+async function mine(io, {me, userId = null}) {
   if (!me) fail(403, 'Sign in first.');
-  const rows = await io.sb(`sandbox_play_events?user_id=eq.${me.id}&kind=eq.complete&score=not.is.null&select=task_id,score,at&order=at.desc&limit=500`);
+  // Another player's, for their profile (Ames 2026-11-16: "a sandbox accuracy
+  // score in their profile"): any signed in player may see it.
+  const who = userId == null || userId === '' ? me.id : String(userId);
+  if (!/^[0-9a-f-]{36}$/i.test(who)) fail(400, 'Which player?');
+  const rows = await io.sb(`sandbox_play_events?user_id=eq.${who}&kind=eq.complete&score=not.is.null&select=task_id,score,at&order=at.desc&limit=500`);
   const seen = new Set(), scores = [];
   for (const r of rows || []) {
     if (seen.has(r.task_id)) continue;
@@ -611,7 +617,7 @@ async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.check') return check(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, step: args && args.step, idleSecs: args && args.idleSecs});
-  if (action === 'match.mine') return mine(io, {me});
+  if (action === 'match.mine') return mine(io, {me, userId: args && args.userId});
   if (action === 'match.event') return event(io, {taskId: args && args.taskId, me, isAdmin, kind: args && args.kind, idleSecs: args && args.idleSecs, score: args && args.score});
   fail(400, `unknown action ${action}`);
 }

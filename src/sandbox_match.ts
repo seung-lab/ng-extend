@@ -51,7 +51,7 @@ export interface MatchResult {
   cutDone?: boolean;
 }
 /** The player's Sandbox accuracy (match.mine). */
-interface Mine { cells: number; accuracy: number | null; lowRun: number; reviewFirst: boolean; lowScore: number; lowRunNeeded: number }
+export interface Mine { cells: number; accuracy: number | null; lowRun: number; reviewFirst: boolean; lowScore: number; lowRunNeeded: number }
 export interface ReviewResult extends MatchResult {
   missed?: { root: string; size: number; pointNm: number[] }[];
   mergers?: { size: number; pointNm: number[] }[];
@@ -491,7 +491,7 @@ const INFO_LINES = [
   'You are in the <b>Sandbox</b>, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.',
   '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.',
   '<b>Merge</b>: the missing pieces you have merged back in. <b>Cut</b>: the wrong parts you have cut off.',
-  'Tiny bits (under 500 supervoxels) do not count either way: go for missing branches and wrong parts. <b>Jump</b> takes you to the next spot that needs fixing.',
+  'Tiny missing bits (under 500 supervoxels) do not count either way: go for the missing branches. Wrong parts count at any size, since a merged axon can be thin. <b>Jump</b> takes you to the next spot that needs fixing.',
   'In real cells there is no known answer. That is up to you and the brain.',
   'When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the 🍔 menu, top right.',
 ];
@@ -1330,6 +1330,15 @@ function watchMode(el: HTMLElement) {
 }
 
 // ── Sandbox accuracy, and Complete after a run of low scores ────────────────
+/** A player's Sandbox accuracy (yours without an id), for the profile and the
+ *  Cell complete card (Ames 2026-11-16). Null when it cannot be read. */
+export function sandboxAccuracy(userId?: string | null): Promise<Mine | null> {
+  return secureWrite<Mine>('match.mine', userId ? { userId } : {}).catch((e: any) => { console.debug('[cell-match] no accuracy', e?.message); return null; });
+}
+/** The Sandbox is the dataset on screen. */
+export function sandboxOnScreen(): boolean {
+  try { return canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2'; } catch { return false; }
+}
 let mineInfo: Mine | null = null;
 let mineAt = 0;
 async function loadMine(force = false) {

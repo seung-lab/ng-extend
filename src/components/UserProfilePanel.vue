@@ -31,6 +31,7 @@ import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
 import {datasetAccess} from '../util/dataset_access';
 import {secureWrite} from '../secure_write';
+import {sandboxAccuracy, type Mine} from '../sandbox_match';
 import lockIcon from '../images/lock-icon.png';
 import unlockIcon from '../images/unlock-icon.png';
 import {useIssueTagStore, type IssueTag} from '../store';
@@ -146,7 +147,18 @@ async function loadOtherUser() {
 }
 loadOtherUser();
 // Clicking another name while a profile is open swaps the profile shown.
+// Sandbox accuracy (Ames 2026-11-16: "a sandbox accuracy score in their
+// profile"): the mean match score of their completed practice cells.
+const sandboxAcc = ref<Mine | null>(null);
+async function loadSandboxAcc() {
+  const want = props.viewUserId || null;
+  const r = await sandboxAccuracy(viewingOtherUser.value ? want : null);
+  if ((props.viewUserId || null) === want) sandboxAcc.value = r;
+}
+onMounted(() => { void loadSandboxAcc(); });
 watch(() => props.viewUserId, () => {
+  sandboxAcc.value = null;
+  void loadSandboxAcc();
   void loadOtherUser();
   // Opening someone's profile from inside your own (a name in Admin Hub's
   // Pilot testers or Dataset requests) shows theirs: the Admin Hub tab stayed
@@ -1925,6 +1937,10 @@ onUnmounted(() => clearTimeout(stageTimer));
                 <div class="nge-track-bar" :title="(nextExplorationAchievement) ? (nextExplorationAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
                 <div v-if="nextExplorationAchievement" class="nge-track-count" :title="(nextExplorationAchievement).remaining.toLocaleString() + ' more cells to your next Achievement'">{{ (nextExplorationAchievement).remaining.toLocaleString() }} to go</div>
               </div>
+              <div v-if="sandboxAcc && sandboxAcc.cells && sandboxAcc.accuracy != null" class="nge-profile-sandbox-acc"
+                   title="The average match score of the practice cells completed in the Sandbox, each at its last Complete">
+                Sandbox accuracy <b>{{ sandboxAcc.accuracy }}%</b> <span>over {{ sandboxAcc.cells }} practice {{ sandboxAcc.cells === 1 ? 'cell' : 'cells' }}</span>
+              </div>
               <div class="nge-track-stats">
           <!-- Cells completed on this dataset, in the game, by the completed
                cell rule: the same three windows as edits, from the completions
@@ -3660,6 +3676,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 
 /* Section label: "▌ EDITS" style */
+.nge-profile-sandbox-acc { margin: 2px 0 8px; font-size: 13px; color: #9ab; }
+.nge-profile-sandbox-acc b { color: #7fd8ff; font-size: 15px; margin: 0 2px; }
 .nge-profile-section-label {
   font-size: 0.78em;
   font-weight: 700;
