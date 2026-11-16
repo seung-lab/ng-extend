@@ -722,6 +722,9 @@ export async function flyStarship(onLanded?: () => void, skip = false, cameo = 0
           } else if (da) {
             try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), da); } catch { /* no view */ }
           }
+          // The turn alone is not saved again and again (url_hash_binding.ts,
+          // view_autosave.ts): it was the whole view every 5 s while idle.
+          (window as any).__ngeAutoTurnAt = performance.now();
         }
         // in on the soma, slowly, all the way in (Ames: the camera zooms in
         // as the ship flies in), a touch faster at the end

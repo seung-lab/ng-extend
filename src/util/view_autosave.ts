@@ -24,6 +24,8 @@ const OFFER_KEY = 'nge-offer-view-restore';
 const SKIP_KEY = 'nge-skip-view-restore';
 
 let lastSaved = '';
+/** A view's text without its 3D angle (as url_hash_binding.ts withoutTurn). */
+const withoutTurn = (json: string) => json.replace(/"projectionOrientation":\[[^\]]*\],?/, '');
 /** The state's change count when it was last looked at here. Nothing changed
  *  since: no JSON is made at all. A view too big to save is not turned into
  *  JSON again until it changes (perf audit 2026-11-14: one over the limit was
@@ -75,6 +77,10 @@ async function saveNow(viewer: any) {
   if (gen === lastSeenGen && dataset === lastSeenDataset) return;
   const text = JSON.stringify(state);
   if (text === lastSaved || text.length > MAX_BYTES) { lastSeenGen = gen; lastSeenDataset = dataset; return; }
+  // Only the Starship's slow turn moved: not saved again (it was an account
+  // write every 30 s while the page sat idle).
+  const turning = performance.now() - ((window as any).__ngeAutoTurnAt || -1e9) < 2000;
+  if (turning && lastSaved && dataset === lastSeenDataset && withoutTurn(text) === withoutTurn(lastSaved)) { lastSeenGen = gen; return; }
   const wait = MIN_GAP_MS - (Date.now() - lastSaveAt);
   if (wait > 0) { timer = setTimeout(() => saveNow(viewer), wait); return; }
   lastSaveAt = Date.now();
