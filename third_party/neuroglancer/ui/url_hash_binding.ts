@@ -53,6 +53,12 @@ export interface UrlHashBindingOptions {
  *  browser's own database (src/util/reload_guard.ts). */
 const NGE_MAX_HASH_CHARS = 100_000;
 
+/** nge: a view's text without its 3D angle (the first projectionOrientation,
+ *  the viewer's own: it comes before the layers). */
+export function withoutTurn(json: string): string {
+  return json.replace(/"projectionOrientation":\[[^\]]*\],?/, '');
+}
+
 export class UrlHashBinding extends RefCounted {
   /**
    * Most recently parsed or set state string.
@@ -95,6 +101,8 @@ export class UrlHashBinding extends RefCounted {
 
   /** nge: the last view kept under this tab's code. */
   private lastLocalJson: string | undefined;
+  /** nge: that view without its 3D angle. */
+  private lastSansTurn: string | undefined;
 
   /**
    * Sets the URL hash to match the current state.
@@ -115,7 +123,15 @@ export class UrlHashBinding extends RefCounted {
         // A view with no layers leaves the address as it is: a link still
         // loading (a state server link waiting for sign in) stays there.
         if (json === '{}' || !json.includes('"layers"')) return;
+        // The Starship's slow turn changes only the 3D angle, several times
+        // a second. While it turns, that alone is not kept again (it rewrote
+        // the whole view every 5 s); leaving the page still keeps it.
+        const turning = performance.now() - ((window as any).__ngeAutoTurnAt || -1e9) < 2000;
+        const sansTurn = withoutTurn(json);
+        const onlyTurned = turning && this.lastLocalJson !== undefined && sansTurn === this.lastSansTurn;
         this.lastLocalJson = json;
+        if (onlyTurned) return;
+        this.lastSansTurn = sansTurn;
         const want = hooks.prefix + hooks.save(json);
         if (location.hash !== want) {
           try { history.replaceState(null, '', want); } catch { /* keep the old address */ }

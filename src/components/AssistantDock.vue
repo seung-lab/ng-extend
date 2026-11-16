@@ -10,6 +10,7 @@ import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue"
 import { renderSafeMarkdown } from "../util/safe_markdown";
 import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
+import { recentChanges, type ChangeEntry } from "../util/version_watch";
 import { getMaterializationInfo } from "../assistant/materialization";
 import { dispatch } from "../assistant/dispatch";
 import { useProofreadingBackendStore, useSplitMergeOverlayStore } from "../store";
@@ -188,11 +189,16 @@ async function send(text?: string) {
     content: m.text,
   }));
 
+  // What changed in recent deploys (static/changelog.json), so Nurro knows new
+  // features as soon as they go live. Cached; never blocks the answer.
+  let recent: ChangeEntry[] = [];
+  try { recent = await recentChanges(); } catch { /* answer without it */ }
+
   let appContext: any = {};
   let uiReference = "";
   try {
     appContext = buildAppContext(props.uiState || {});
-    uiReference = buildUiReference(props.uiState?.commandCatalog);
+    uiReference = buildUiReference(props.uiState?.commandCatalog, recent);
   } catch (e) {
     console.warn("[assistant] context/reference build failed:", e);
   }

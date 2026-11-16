@@ -264,6 +264,7 @@ export function setCastView(view: 'top' | 'side') {
 let raf = 0;
 function spinStep() {
   try { viewer()?.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 0.012); } catch { /* viewer gone */ }
+  (window as any).__ngeAutoTurnAt = performance.now();   // the spin alone is not saved (url_hash_binding.ts)
   raf = requestAnimationFrame(spinStep);
 }
 function onGrab(e: Event) { if ((e.target as HTMLElement)?.tagName === 'CANVAS') stopSpin(); }
