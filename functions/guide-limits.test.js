@@ -47,3 +47,12 @@ test("index.js cuts the reference at the shared cap", () => {
   const index = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
   assert.match(index, /uiReference\.slice\(0, GUIDE_UI_REFERENCE_MAX\)/);
 });
+
+test("a full reference, history and context fit in one request", () => {
+  const { GUIDE_REQUEST_MAX_BYTES } = require("./guide-limits");
+  const index = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
+  assert.match(index, /> GUIDE_REQUEST_MAX_BYTES\) return res\.status\(413\)/);
+  // A full reference in 3-byte characters, plus 8 turns and the app context.
+  assert.ok(GUIDE_UI_REFERENCE_MAX * 2 + 30000 <= GUIDE_REQUEST_MAX_BYTES,
+    `requests up to ${GUIDE_REQUEST_MAX_BYTES} bytes leave too little room for a ${GUIDE_UI_REFERENCE_MAX} character reference`);
+});

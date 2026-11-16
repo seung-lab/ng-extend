@@ -18,7 +18,7 @@ const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
 const {recordActivity, recordVisit, serverCounts, stripCounters, stripDayCounters} = require("./activity");
 const {achievementRow, specialAwardRow} = require("./achievements");
-const {GUIDE_UI_REFERENCE_MAX} = require("./guide-limits");
+const {GUIDE_UI_REFERENCE_MAX, GUIDE_REQUEST_MAX_BYTES} = require("./guide-limits");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
 // scripts/upload-bot-docs.js. JSON shape: {"<filename>": "<file_id>"}.
@@ -1204,7 +1204,7 @@ exports.guideAssistant = onRequest(
     } catch(error) { return res.status(error.status||503).json({error:error.status?error.message:"Please try again shortly.",reply:error.status?error.message:"The Guide is temporarily unavailable."}); }
 
 
-    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 48000) return res.status(413).json({error:"Input too large"});
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > GUIDE_REQUEST_MAX_BYTES) return res.status(413).json({error:"Input too large"});
     const { message, history, appContext, uiReference } = req.body || {};
     if (!message || typeof message !== "string") {
       res.status(400).json({ error: "missing message" });
