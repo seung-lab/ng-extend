@@ -20,6 +20,12 @@ BEGIN
   -- Already open (pressed twice): nothing to do.
   IF t.status IN ('assigned','in_progress') THEN RETURN to_jsonb(t); END IF;
   IF t.status <> 'completed' THEN RAISE EXCEPTION 'This cell is not completed'; END IF;
+  -- A Sandbox practice cell expires 15 minutes after Complete (Ames 2026-11-16:
+  -- "we can expire it"): after that the reset job (functions/sandbox-reset.js,
+  -- which waits 20) undoes its edits and serves it to someone else.
+  IF t.dataset = 'pinky_nf_v2' AND (t.updated_at < now() - interval '15 minutes'
+      OR EXISTS (SELECT 1 FROM public.sandbox_cell_resets r WHERE r.task_id = t.id))
+    THEN RAISE EXCEPTION 'Practice cells can be reopened for 15 minutes after Complete. This one has gone back into play for other players.'; END IF;
   -- The claim limit, as in pilot_task_action: 10 on Retina, 8 elsewhere.
   lim := CASE WHEN t.dataset = 'stroeh_mouse_retina' THEN 10 ELSE 8 END;
   IF (SELECT count(*) FROM public.proofreading_tasks WHERE assigned_to = p_user AND dataset = t.dataset

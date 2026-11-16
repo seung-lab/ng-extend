@@ -24,8 +24,9 @@ const SANDBOX = 'https://minnie.microns-daf.com/segmentation/api/v1/table/pinky_
 const DATASET = 'pinky_nf_v2';
 /** The Sandbox's current set of cells (Ames 2026-11-01): older rows are not re-served. */
 const SET_SINCE = '2026-11-01T00:00:00Z';
-/** Time for the player's review before the cell is reset under them. */
-const AFTER_MS = 15 * 60 * 1000;
+/** Time for the player's review before the cell is reset under them. Reopen
+ *  expires at 15 minutes (supabase-task-reopen.sql); 5 more keep the two apart. */
+const AFTER_MS = 20 * 60 * 1000;
 const PASSES = 8;
 const SV = /^\d{1,20}$/;
 
