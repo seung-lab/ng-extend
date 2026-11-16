@@ -110,6 +110,7 @@ function buildStaticReference(): string {
     "## Toolbar buttons (the icon row)",
     toolbar,
     "- A new player starts with few of these and receives the rest over time: finishing Get Started brings Leaderboard, Undelete and Chat; the Merge and Cut tutorials bring Merge and Cut, and finishing both brings the Cell Library; Advanced Interface brings Find Path, Tags, Highlight and Lantern, and finishing it brings the Layer side panel; a first edit outside a tutorial brings Second Opinion; coming back on a second and third day brings anything still missing and Screenshot; a week brings Your Week in Science; production access brings the rest. Dataset Stats and Batch Processor start off for new players; Settings turns them on. Real cells can be edited only after passing the Proofreading Test. If a player cannot see an icon, it is in Profile > Settings > Toolbar Icons and in the Ctrl+K command bar. Never say it does not exist.",
+    "- N adds a new layer. A player who presses it by mistake (it sits next to M, merge) can change it in Profile > Settings > Merging: N, Alt+N (Option+N on a Mac), or no key at all, using the + by the layer tabs instead. Ctrl+N cannot be used because the browser opens a new window, and Shift+N is Lantern.",
     "",
     "## Keyboard shortcuts",
     binds.length ? binds.join("\n") : "(none configured)",

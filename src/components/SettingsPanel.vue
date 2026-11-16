@@ -2,6 +2,7 @@
 import { pumpkinSeason } from '../util/pumpkin';
 import { turkeySeason } from '../util/turkey';
 import { leavesSeason } from '../util/leaves';
+import { isMac } from '../util/platform';
 import {ref, onMounted, onUnmounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
@@ -105,6 +106,8 @@ const draftJumpAdds = ref(false);
 const draftRetinaAnnot = ref(false);
 const draftLayerHide = ref(false);
 const draftQuickMerge = ref(false);
+const isMacKeys = isMac();
+const draftNewLayerKey = ref<'n' | 'alt' | 'off'>('n');
 const draftOfferRestore = ref(true);
 const draftAnnotationGems = ref(true);
 const draftAnnotationSetupTabs = ref(false);
@@ -187,6 +190,7 @@ onMounted(() => {
   draftRetinaAnnot.value = prefsStore.prefs.retinaAnnotationLayers === true;
   draftLayerHide.value = prefsStore.prefs.layerHideButton === true;
   draftQuickMerge.value = prefsStore.prefs.quickMergeKey === true;
+  draftNewLayerKey.value = prefsStore.prefs.newLayerKey || 'n';
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
   draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
@@ -256,7 +260,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, newLayerKey: draftNewLayerKey.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
@@ -741,11 +745,18 @@ const props = defineProps<{ embedded?: boolean }>();
                and then press M"). Off by default while it is tried. -->
           <div class="nge-settings-section nge-set-card--editing" :class="{ 'nge-set-folded': isFolded('editing') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('editing')" title="Fold or unfold this box" @click.prevent="toggleFold('editing')" @keydown.enter.prevent="toggleFold('editing')" @keydown.space.prevent="toggleFold('editing')">Merging<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
-            <p class="nge-settings-hint">How the M key merges.</p>
+            <p class="nge-settings-hint">How the M key merges, and which key adds a layer.</p>
             <label class="nge-settings-toggle" title="Point at one piece and press M, then point at the other piece and press M: the two are merged where you pointed. Works in 2D and 3D. M on empty space sends any merges waiting, or closes merge. Off: M only opens and closes merge.">
               <input type="checkbox" v-model="draftQuickMerge" />
               <span class="nge-settings-toggle-label">Quick merge: point at two pieces and press M on each</span>
             </label>
+            <!-- Nseraf, report 516: N sits next to M and kept adding layers. -->
+            <label class="nge-settings-hint" for="nge-new-layer-key" style="display:block;margin-top:10px">The key that adds a new layer, if N is too close to M.</label>
+            <select id="nge-new-layer-key" v-model="draftNewLayerKey" class="nge-sv-select" title="Ctrl+N opens a new browser window, and Shift+N is Lantern, so they cannot be used here.">
+              <option value="n">N</option>
+              <option value="alt">{{ isMacKeys ? 'Option+N' : 'Alt+N' }}</option>
+              <option value="off">No key (use the + by the layer tabs)</option>
+            </select>
           </div>
 
           <div class="nge-settings-section nge-set-card--jump" :class="{ 'nge-set-folded': isFolded('jump') }">

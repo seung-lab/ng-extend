@@ -775,6 +775,16 @@ function observeSegmentSelect(targetNode: Element) {
     if (icon?.title.startsWith('Close this layer')) icon.title = 'Remove layer from this layer group';
   }, true);
 
+  // Settings, "New layer key" (Nseraf, report 516). neuroglancer binds N in
+  // its default map, a parent of the global one, so it is taken out there.
+  watch(() => useUserPreferencesStore().prefs.newLayerKey || 'n', mode => {
+    const g = (window as any).viewer?.inputEventBindings?.global;
+    if (!g) return;
+    for (const map of [g, ...g.parents]) { map.delete('keyn'); map.delete('alt+keyn'); }
+    if (mode === 'n') g.set('keyn', 'add-layer');
+    else if (mode === 'alt') g.set('alt+keyn', 'add-layer');
+  }, { immediate: true });
+
   watch(() => useUserPreferencesStore().prefs.segShowId === true, on => {
     document.body.classList.toggle('nge-seg-show-id', on);
     setTimeout(() => document.querySelectorAll<HTMLElement>('.neuroglancer-segment-list-entry.nge-seg-labelled').forEach(remeasureListRow), 0);
