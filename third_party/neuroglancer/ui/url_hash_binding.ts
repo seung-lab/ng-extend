@@ -81,8 +81,20 @@ export class UrlHashBinding extends RefCounted {
     const throttledSetUrlHash = debounce(() => this.setUrlHash(), updateDelayMilliseconds, {maxWait: Math.max(updateDelayMilliseconds, 5000)});
     this.registerDisposer(root.changed.add(throttledSetUrlHash));
     this.registerDisposer(() => throttledSetUrlHash.cancel());
+    // nge: leaving the page (a reload among it) keeps the latest view, with
+    // a copy that is written at once (src/util/local_view.ts).
+    const leave = () => {
+      throttledSetUrlHash.flush();
+      const hooks = (window as any).__ngeLocalView;
+      if (hooks && this.lastLocalJson) hooks.backup(this.lastLocalJson);
+    };
+    this.registerEventListener(window, 'pagehide', leave);
+    this.registerEventListener(document, 'visibilitychange', () => { if (document.visibilityState === 'hidden') leave(); });
     this.defaultFragment = defaultFragment;
   }
+
+  /** nge: the last view kept under this tab's code. */
+  private lastLocalJson: string | undefined;
 
   /**
    * Sets the URL hash to match the current state.
@@ -93,6 +105,23 @@ export class UrlHashBinding extends RefCounted {
     if (generation !== this.prevStateGeneration) {
       this.prevStateGeneration = cacheState.generation;
       const json = JSON.stringify(cacheState.value);
+      // nge: the address holds a short code; the view is kept in this
+      // browser (src/util/local_view.ts, report 541).
+      const hooks = (window as any).__ngeLocalView;
+      if (hooks) {
+        (window as any).__ngeHashStale = false;
+        (window as any).__ngeStaleJson = undefined;
+        this.prevStateString = undefined;
+        // A view with no layers leaves the address as it is: a link still
+        // loading (a state server link waiting for sign in) stays there.
+        if (json === '{}' || !json.includes('"layers"')) return;
+        this.lastLocalJson = json;
+        const want = hooks.prefix + hooks.save(json);
+        if (location.hash !== want) {
+          try { history.replaceState(null, '', want); } catch { /* keep the old address */ }
+        }
+        return;
+      }
       // nge: a view too big for the address is not encoded for it (that took
       // a second on a big MEC view, after every edit: Nseraf, report 383).
       // Pyr keeps it itself, from this same text (src/util/reload_guard.ts).
@@ -137,6 +166,23 @@ export class UrlHashBinding extends RefCounted {
       let s = location.href.replace(/^[^#]+/, '');
       if (s === '' || s === '#' || s === '#!') {
         s = '#!' + this.defaultFragment;
+      }
+      // nge: a code for a view kept in this browser (src/util/local_view.ts).
+      const hooks = (window as any).__ngeLocalView;
+      if (hooks && s.startsWith(hooks.prefix)) {
+        const code = s.slice(hooks.prefix.length);
+        // The address this tab wrote itself: the view is already on screen.
+        if (code === hooks.code() && this.lastLocalJson !== undefined) return;
+        hooks.load(code).then((json: string | null) => {
+          if (!json) {
+            console.warn('[view] no kept view for this address in this browser');
+            return;
+          }
+          this.root.reset();
+          this.root.restoreState(JSON.parse(json));
+          this.parseError.value = undefined;
+        }).catch((e: Error) => { this.parseError.value = e; });
+        return;
       }
       // Handle remote JSON state
       if (s.match(/^#!([a-z][a-z\d+-.]*):\/\//)) {
