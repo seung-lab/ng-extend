@@ -202,12 +202,19 @@ export function sweepVeil() {
     StatusMessage.showTemporaryMessage('This cell is being made into a Hunt, so it is hidden until the Hunt starts.', 6000);
   }
 }
+let sweepTimer: ReturnType<typeof setTimeout> | null = null;
+function sweepSoon() {
+  if (sweepTimer) return;
+  sweepTimer = setTimeout(() => { sweepTimer = null; sweepVeil(); }, 0);
+}
 function watchGroups() {
   for (const g of segGroups()) {
     if (watched.has(g)) continue;
     watched.add(g);
     // After the change has settled: removing inside its own signal would fight the layer.
-    g.visibleSegments.changed.add(() => { setTimeout(sweepVeil, 0); });
+    // One sweep per burst of changes: a pasted list or a merge sends many,
+    // and each used to sweep everything shown (perf audit 2026-11-14).
+    g.visibleSegments.changed.add(sweepSoon);
   }
 }
 let veilInstalled = false;

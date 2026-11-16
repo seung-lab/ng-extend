@@ -24,6 +24,8 @@
 import { reactive } from 'vue';
 import { taskAction } from '../pilot_actions';
 import { canonicalDataset, currentDatasetTag, currentSegLayer } from '../datasets';
+import { datasetKey } from './completion_rule';
+import { weekPeriodET, monthStartET } from './recap_week';
 import { Uint64 } from 'neuroglancer/util/uint64';
 
 /** A claim the timer can count: the player's own, open. */
@@ -61,8 +63,11 @@ export const claimTime = reactive({
   running: null as number | null,
   /** When the player first worked on each claim (the first second counted), ISO. */
   startedAt: {} as Record<number, string>,
-  /** Each claim's kind and its seconds by US Eastern day ("2026-10-28"), from the server. */
-  days: {} as Record<number, { kind: string; byDay: Record<string, number> }>,
+  /** Each claim's kind and its seconds by US Eastern day ("2026-10-28"), from
+   *  the server, plus each beat sent since. dataset: the claim's, when known. */
+  days: {} as Record<number, { kind: string; byDay: Record<string, number>; dataset?: string }>,
+  /** The server's answer has come in at least once this visit. */
+  loaded: false,
 });
 
 /** A day as the recaps count it: US Eastern, "2026-10-28". */
@@ -77,6 +82,54 @@ export function superQuestSecondsBetween(start: Date, end: Date): number {
   }
   return s;
 }
+/** Hours and minutes on Quests in one stretch of time. */
+export interface QuestTimeSplit { today: number; week: number; month: number; all: number }
+/** A Super Quest is an interneuron claim; every other timed claim is a Quest. */
+const isSuper = (kind: string) => kind === 'interneuron';
+/**
+ * Seconds on Quests and on Super Quests (Nseraf, report 525): today, this
+ * week, this month and all time, by Pyr's awards calendar (US Eastern days,
+ * weeks Monday to Sunday, months from the 1st). Only the signed-in player's
+ * own time: it is what the server sends them. With a dataset, only claims on
+ * it. Includes the seconds not sent yet, so the numbers move while playing.
+ */
+export function questTimeSplit(dataset?: string): { quest: QuestTimeSplit; superQuest: QuestTimeSplit } {
+  const zero = (): QuestTimeSplit => ({ today: 0, week: 0, month: 0, all: 0 });
+  const out = { quest: zero(), superQuest: zero() };
+  const today = etDay(new Date());
+  const week = etDay(weekPeriodET(null).start), month = etDay(monthStartET());
+  const want = dataset ? datasetKey(canonicalDataset(dataset)) : '';
+  for (const [key, { kind, byDay, dataset: ds }] of Object.entries(claimTime.days)) {
+    const id = Number(key);
+    // Every timed claim is on MEC unless the server or the open claim says
+    // otherwise (ordinary claims count only on MEC; Super Quests are MEC's).
+    const where = datasetKey(canonicalDataset(ds || deps?.claims().find(c => c.id === id)?.dataset || 'pni_mec'));
+    if (want && where !== want) continue;
+    const t = isSuper(kind) ? out.superQuest : out.quest;
+    let counted = 0;
+    for (const [day, v] of Object.entries(byDay)) {
+      const secs = Number(v) || 0;
+      counted += secs;
+      if (day === today) t.today += secs;
+      if (day >= week) t.week += secs;
+      if (day >= month) t.month += secs;
+    }
+    // Not sent yet: counted today. All time is the server's total plus that,
+    // which also holds time older than the days the server sends.
+    const unsent = Math.max(0, (claimTime.seconds[id] ?? 0) - (serverSecs[id] ?? 0));
+    t.today += unsent; t.week += unsent; t.month += unsent;
+    t.all += Math.max(counted, serverSecs[id] ?? 0) + unsent;
+  }
+  return out;
+}
+/** "3 h 05 min", "12 min", "0 min". */
+export function questTimeLabel(secs: number): string {
+  const m = Math.floor(secs / 60), h = Math.floor(m / 60);
+  return h ? `${h} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`;
+}
+/** Read the totals if they are not fresh (the profile on open): at most one
+ *  small read every 15 minutes, shared with the timer's own. */
+export function ensureClaimTimes(): Promise<void> { return loadTotals(false); }
 /** Ask the server for the latest totals and days now. */
 export function refreshClaimTimes(): Promise<void> { return loadTotals(true); }
 
@@ -203,6 +256,13 @@ async function flush(): Promise<void> {
         const r: any = await taskAction('time', { step: 'beat', id, seconds: sent.secs, edits: sent.edits, saves: sent.saves });
         b.secs -= sent.secs; b.edits -= sent.edits; b.saves -= sent.saves;
         if (r && typeof r.active_seconds === 'number') serverSecs[id] = r.active_seconds;
+        // The day's seconds too, so today, this week and this month keep up
+        // between reads (the server adds the beat to the same ET day).
+        if (sent.secs > 0) {
+          const d = (claimTime.days[id] ??= { kind: String(r?.kind || ''), byDay: {}, dataset: deps?.claims().find(c => c.id === id)?.dataset });
+          const day = etDay(new Date());
+          d.byDay[day] = (Number(d.byDay[day]) || 0) + sent.secs;
+        }
         if (r?.first_at && !claimTime.startedAt[id]) claimTime.startedAt[id] = r.first_at;
         show(id);
         for (const h of Array.isArray(r?.passed) ? r.passed : []) {
@@ -231,9 +291,10 @@ async function loadTotals(force = false): Promise<void> {
     for (const r of Array.isArray(rows) ? rows : []) {
       serverSecs[Number(r.task_id)] = Number(r.active_seconds) || 0;
       if (r.first_at) claimTime.startedAt[Number(r.task_id)] = r.first_at;
-      if (r.by_day) claimTime.days[Number(r.task_id)] = { kind: String(r.kind || ''), byDay: r.by_day };
+      if (r.by_day) claimTime.days[Number(r.task_id)] = { kind: String(r.kind || ''), byDay: r.by_day, dataset: r.dataset || deps?.claims().find(c => c.id === Number(r.task_id))?.dataset };
       show(Number(r.task_id));
     }
+    claimTime.loaded = true;
   } catch (e: any) {
     if (/pilot_claim_time|unknown pilot action|could not find the function/i.test(String(e?.message))) stopped = true;
   }

@@ -44,7 +44,7 @@ export async function cellAtCrosshair(): Promise<CrosshairCell> {
   const sv = idString(value);
   if (!sv) {
     return { position, supervoxel: null, root: null,
-      problem: 'Nothing is loaded at the crosshairs yet. Look at the 2D view so it can load, then check again.' };
+      problem: 'Place the crosshairs inside the cell.' };
   }
   if (sv === '0') {
     return { position, supervoxel: sv, root: null, problem: 'The crosshairs are on empty space, not inside a cell.' };

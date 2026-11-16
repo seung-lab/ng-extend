@@ -67,3 +67,52 @@ test('admins only, and no empty email', async () => {
   await assert.rejects(handle('access.askEmail', { email: 'a@x.org', text: '  ' }, u.io), /empty/);
   assert.strictEqual(u.sent.length, 0);
 });
+
+test('access.setEwName: admins save a typed EyeWire username, lowercased, for that email', async () => {
+  const seen = [];
+  const t = io({ sb: async (q, init) => { seen.push({ q, body: init && init.body }); return []; } });
+  assert.deepStrictEqual(await handle('access.setEwName', { email: 'Ann@X.org', ewName: ' KMierow ' }, t.io), { ewName: 'kmierow' });
+  const row = JSON.parse(seen[0].body);
+  assert.ok(seen[0].q.startsWith('access_ew_names?on_conflict=email'));
+  assert.strictEqual(row.email, 'ann@x.org'); assert.strictEqual(row.ew_name, 'kmierow');
+  await assert.rejects(handle('access.setEwName', { email: 'ann@x.org', ewName: 'bad<name>' }, t.io));
+  await assert.rejects(handle('access.setEwName', { email: 'ann@x.org', ewName: 'k' }, io({ isAdmin: false }).io));
+});
+
+test('access.readHandledBetaBells: a Beta request bell is read for every admin once the request is dealt with', async () => {
+  const A1 = '11111111-1111-1111-1111-111111111111', A2 = '22222222-2222-2222-2222-222222222222';
+  const esc = s => s.replace(/[\\`*_{}\[\]()#+\-.!|<>~&:@]/g, c => '\\' + c);
+  const bell = (id, target, email) => ({ id, target_id: target, body: `X asks to join the Pyr beta.\n\nEmail they gave: ${esc(email)}\n\nClick this note.` });
+  const bells = [bell(1, A1, 'in@x.org'), bell(2, A2, 'in@x.org'), bell(3, A1, 'later@x.org'), bell(4, A1, 'asked@x.org'),
+    bell(5, A1, 'waiting@x.org'), bell(6, A1, 'old@x.org'), bell(7, A1, 'Linked@x.org')];
+  const posted = [];
+  const t = io({
+    me: { id: A1 },
+    marks: { all: async () => ({ 'later@x.org': { mark: 'listed', at: 'x' }, 'waiting@x.org': null }) },
+    sb: async (q, init) => {
+      if (q.startsWith('notifications?')) return bells;
+      if (q.startsWith('notification_reads?notification_id')) return [{ notification_id: 6, user_id: A1 }];
+      if (q.startsWith('pilot_members')) return [{ email: 'in@x.org' }, { email: 'main@x.org' }];
+      if (q.startsWith('access_email_links')) return [{ email: 'linked@x.org', linked_to: 'main@x.org' }];
+      if (q.startsWith('notification_reads?on_conflict')) { posted.push(...JSON.parse(init.body)); return []; }
+      return [];
+    },
+  });
+  t.store['asked@x.org'] = { at: 'x' };
+  const r = await handle('access.readHandledBetaBells', {}, t.io);
+  assert.deepStrictEqual(posted.map(p => p.notification_id).sort(), [1, 2, 3, 4, 7]);
+  assert.strictEqual(posted.find(p => p.notification_id === 2).user_id, A2);
+  assert.deepStrictEqual(r, { marked: 5, ids: [1, 3, 4, 7] });
+  await assert.rejects(handle('access.readHandledBetaBells', {}, io({ isAdmin: false }).io));
+});
+
+test('access.ewBio: admins read an EyeWire join date the browser cannot (no CORS on bio)', async () => {
+  const urls = [];
+  const fetch = async (u) => { urls.push(u); return u.includes('/lobus/') ? { ok: true, json: async () => ({ joined: 1362507776, roles: ['scout'], country_name: 'Germany' }) } : { ok: false }; };
+  const t = io({ fetch });
+  assert.deepStrictEqual(await handle('access.ewBio', { name: 'Lobus' }, t.io), { joined: 1362507776, roles: ['scout'], country: 'Germany' });
+  assert.strictEqual(urls[0], 'https://eyewire.org/1.0/player/lobus/bio');
+  assert.deepStrictEqual(await handle('access.ewBio', { name: 'nobody' }, t.io), { none: true });
+  await assert.rejects(handle('access.ewBio', { name: 'bad/../x' }, t.io));
+  await assert.rejects(handle('access.ewBio', { name: 'lobus' }, io({ isAdmin: false, fetch }).io));
+});

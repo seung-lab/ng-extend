@@ -22,13 +22,13 @@
 import {watch} from 'vue';
 import {getNgeMeshTint, setNgeMeshTint, setNgeReveal, type NgeMeshTint} from 'neuroglancer/mesh/nge_tint';
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
-import {mat4} from 'neuroglancer/util/geom';
+import {mat4, quat, vec3} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {makeLayer} from 'neuroglancer/layer';
 import {getObjectKey} from 'neuroglancer/segmentation_display_state/base';
 /** The Sandbox pyramidal cell: the colors land on it alone. */
 const CELL_KEY = getObjectKey(Uint64.parseString('648518346355727683'));
-import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipMoving, starshipCruise, undockStarship} from './starship';
+import {cameraAxes, cellDrawn, clearStarship, dockStarship, oneBoundingBox, starshipEta, flyStarship, loadAssets, setHoverHighlight, setStarshipCameraHeld, startIdleTurn, starshipAt, starshipHop, starshipLengthNm, starshipMoving, starshipCruise, undockStarship} from './starship';
 import {setStatedColor} from '../widgets/widget_utils';
 import starshipIcon from '../images/starship-icon.png';
 import {IS_LIVE_SITE, simulating} from './toolbar_staging';
@@ -220,6 +220,9 @@ function framed(at: V3, viewNm: number): V3 {
   const k = px * viewNm / r.height;
   return [0, 1, 2].map(i => at[i] + cam.up[i] * k) as V3;
 }
+/** How far out the view of a cell and one partner sits: below 1 is closer
+ *  in, 1 was the old framing (Marissa #534: "very zoomed out here"). */
+const PARTNER_ZOOM = 0.65;
 /** The camera onto a MICrONS view, in the space above the card, once the
  *  card has its new size; zoomed out to suit that smaller space. */
 function frameAboveCard(at: V3, viewNm: number, ms: number) {
@@ -231,6 +234,122 @@ function frameAboveCard(at: V3, viewNm: number, ms: number) {
     const nmWide = viewNm / Math.pow(room, 0.6);
     moveCamera(framed(at, nmWide), nmWide, ms);
   }, 80);
+}
+/** The open card: the tour's panel, or in MICrONS its transmission card. */
+function openCard(): HTMLElement | null {
+  return panel ?? [...document.querySelectorAll<HTMLElement>('section.nge-intro')].find(e => !e.classList.contains('nge-intro--out')) ?? null;
+}
+
+/* ── the camera turns and zooms about the subject ──
+ * framed() puts the camera's own centre below the subject, so the subject
+ * shows in the open space above the card. Neuroglancer zooms and turns about
+ * that centre, a point hidden behind the card: scrolling did not zoom in on
+ * the cell, and dragging swung it away (Marissa #535). While the tour or a
+ * MICrONS card is up, every zoom or turn the camera centre did not move for
+ * is corrected so it happens about the middle of the open space instead. */
+let pivotRaf = 0;
+let pivotAxis: {i: number; s: number} | null = null;
+let pivotLast: {p: Float32Array; s: number; q: Float32Array} | null = null;
+const BASIS: V3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+function upOf(q: Float32Array): V3 | null {
+  if (!pivotAxis) return null;
+  const out = vec3.transformQuat(vec3.create(), vec3.fromValues(...BASIS[pivotAxis.i]), q as unknown as quat);
+  return [out[0] * pivotAxis.s, out[1] * pivotAxis.s, out[2] * pivotAxis.s];
+}
+/** How far above the 3D view's middle (px, negative) the open space's
+ *  middle is, and the 3D view's height. */
+function pivotGeometry(): {px: number; h: number} | null {
+  const pe = threeDPanel()?.element as HTMLElement | undefined, box = openCard();
+  if (!pe || !box) return null;
+  const r = pe.getBoundingClientRect();
+  if (r.height < 50) return null;
+  const bottom = Math.min(r.bottom, box.offsetTop - 10);
+  return {px: (r.top + bottom) / 2 - (r.top + r.bottom) / 2, h: r.height};
+}
+function keepPivot() {
+  if (pivotRaf) return;
+  pivotLast = null;
+  const step = () => {
+    if (!active && !cardsOpen) { pivotRaf = 0; pivotLast = null; return; }
+    pivotRaf = requestAnimationFrame(step);
+    const v = viewerNow(), nm = nmPerUnit();
+    if (!v || !nm) return;
+    const p = v.navigationState.position.value as Float32Array, s = v.projectionScale.value as number;
+    const q = v.projectionOrientation.orientation as Float32Array;
+    if (!pivotAxis) {
+      // which of the turned axes is the screen's up, read once from the view
+      const cam = cameraAxes(nm);
+      if (!cam) return;
+      let best = 0, bi = -1;
+      BASIS.forEach((b, i) => {
+        const r = vec3.transformQuat(vec3.create(), vec3.fromValues(...b), q as unknown as quat);
+        const d = r[0] * cam.up[0] + r[1] * cam.up[1] + r[2] * cam.up[2];
+        if (Math.abs(d) > Math.abs(best)) { best = d; bi = i; }
+      });
+      if (Math.abs(best) < 0.95) return;
+      pivotAxis = {i: bi, s: Math.sign(best)};
+    }
+    const L = pivotLast;
+    pivotLast = {p: Float32Array.from(p), s, q: Float32Array.from(q)};
+    // the tour's own camera moves and the ship's flights are left as they are
+    if (!L || performance.now() < camBusyUntil || starshipMoving()) return;
+    const moved = p.some((x, i) => x !== L.p[i]);
+    const turned = q.some((x, i) => x !== L.q[i]);
+    if (moved || (!turned && s === L.s)) return;
+    const geo = pivotGeometry(), u0 = upOf(L.q), u1 = upOf(q);
+    if (!geo || !u0 || !u1 || geo.px > -2) return;
+    const unit = Math.min(nm[0], nm[1], nm[2]);
+    const k0 = geo.px * L.s * unit / geo.h, k1 = geo.px * s * unit / geo.h;
+    v.navigationState.position.value = Float32Array.from([0, 1, 2].map(i => p[i] + (u1[i] * k1 - u0[i] * k0) / nm[i]));
+    pivotLast.p = Float32Array.from(v.navigationState.position.value as Float32Array);
+  };
+  pivotRaf = requestAnimationFrame(step);
+}
+
+/* ── no double-click during the tour ──
+ * In the 3D view a double-click hides the cell under it (Marissa #533: the
+ * tour's cells vanished). While the tour or a MICrONS card is up it does
+ * nothing. */
+let dblBlocked = false;
+function blockDoubleClick() {
+  if (dblBlocked) return;
+  dblBlocked = true;
+  const stop = (e: MouseEvent) => {
+    if (!active && !cardsOpen) { window.removeEventListener('dblclick', stop, true); dblBlocked = false; return; }
+    const t = e.target as HTMLElement | null;
+    if (t?.closest?.('.neuroglancer-panel, .neuroglancer-rendered-data-panel, canvas')) { e.stopPropagation(); e.preventDefault(); }
+  };
+  window.addEventListener('dblclick', stop, true);
+}
+
+/** How far the camera has to pull back (about the framed subject) for the
+ *  whole parked ship to be in the open space of the 3D view: not cut by its
+ *  top edge, its sides, or hidden behind the panel. 1 when it already is.
+ *  (Marissa 2026-11-13, a short laptop window: the ship was cut off at the
+ *  top in the soma, dendrite and synapse steps.) */
+function shipPullBack(): number {
+  const p = starshipAt(), len = starshipLengthNm(), nm = nmPerUnit();
+  const pe = threeDPanel()?.element as HTMLElement | undefined;
+  const cam = nm && cameraAxes(nm);
+  if (!p || !len || !cam || !pe) return 1;
+  const r = pe.getBoundingClientRect();
+  if (r.height < 50) return 1;
+  const box = panel ?? [...document.querySelectorAll<HTMLElement>('section.nge-intro')].find(e => !e.classList.contains('nge-intro--out'));
+  const floor = Math.min(r.bottom, box ? box.offsetTop - 10 : r.bottom);
+  // the subject sits in the middle of the open space (as framed() put it):
+  // the camera pulls back about that point
+  const cx = (r.left + r.right) / 2, cy = (r.top + floor) / 2, m = 16;
+  const room = {l: cx - r.left - m, r: r.right - m - cx, t: cy - r.top - m, b: floor - m - cy};
+  if (Math.min(room.l, room.r, room.t, room.b) < 20) return 1;
+  let need = 1;
+  const R = len * 0.65;
+  for (const [a, c] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const s = toScreen(p.map((x, k) => x + (cam.right[k] * a + cam.up[k] * c) * R) as V3);
+    if (!s) continue;
+    const dx = s[0] - cx, dy = s[1] - cy;
+    need = Math.max(need, dx > 0 ? dx / room.r : -dx / room.l, dy < 0 ? -dy / room.t : dy / room.b);
+  }
+  return need;
 }
 function cellCenter(t: Tour): V3 {
   const g = t.grid;
@@ -1223,7 +1342,10 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
     // and once the camera has settled too (Ames: "soma box appears while the ship is flying")
     callout?.classList.toggle('nge-callout--in', !starshipMoving() && performance.now() > camBusyUntil);
     if (s && callout) {
-      const W = window.innerWidth, panelTop = panel ? panel.getBoundingClientRect().top : window.innerHeight;
+      // the tour's panel, or in MICrONS its card (Marissa #532: the scan box
+      // sat over the card)
+      const cardEl = openCard(), cardR = cardEl?.getBoundingClientRect();
+      const W = window.innerWidth, panelTop = cardR ? cardR.top : window.innerHeight;
       const bw = box.offsetWidth, bh = box.offsetHeight;
       const onScreen = ship && ship[0] > 0 && ship[0] < W && ship[1] > 60 && ship[1] < panelTop;
       let bx: number, by: number;
@@ -1239,6 +1361,13 @@ function showCallout(anchor: V3, title: string, stats: [string, string][] = [], 
       }
       bx = Math.max(10, Math.min(W - bw - 10, bx));
       by = Math.max(70, Math.min(panelTop - bh - 16, by));
+      // no room above the card: beside it, on whichever side has room
+      if (cardR && by + bh > cardR.top - 4 && bx < cardR.right && bx + bw > cardR.left) {
+        const H = window.innerHeight;
+        if (W - cardR.right - 26 >= bw) bx = cardR.right + 16;
+        else if (cardR.left - 26 >= bw) bx = cardR.left - 16 - bw;
+        by = Math.max(70, Math.min(H - bh - 16, by));
+      }
       // the box glides after its spot rather than jumping with every bob
       if (cx < 0 || starshipMoving()) { cx = bx; cy = by; stillSince = performance.now(); }
       else if (performance.now() - stillSince < 400) { cx += (bx - cx) * 0.2; cy += (by - cy) * 0.2; }
@@ -1382,6 +1511,7 @@ export async function startIntroTour() {
   try { await loadTour(); } catch (e) { console.warn('[intro] no tour:', e); return; }
   const t = tour!;
   active = true;
+  keepPivot(); blockDoubleClick();
   savedTint = getNgeMeshTint();
   setStarshipCameraHeld(true);
   try { viewerNow().selectedLayer.visible = false; } catch { /* no panel */ }
@@ -1428,7 +1558,9 @@ export async function startIntroTour() {
   };
   // the X asks first; pressed again while it asks, it leaves (Ames: "wouldn't let me click the X")
   // leaving takes the Starship (and its portal and holograms) away too (Ames)
-  const leave = () => { endTour(); stopZap(); clearStarship(); };
+  // A new player who leaves early still gets Get Started: the tour closed it
+  // as it began, which marks it finished (Ames 2026-11-16).
+  const leave = () => { endTour(); stopZap(); clearStarship(); if (newPlayerRun) { newPlayerRun = false; startGetStarted(); } };
   (panel.querySelector('.nge-intro-x') as HTMLButtonElement).onclick = () => { if (panel?.classList.contains('nge-intro--asking')) leave(); else ask(true); };
   (panel.querySelector('.nge-intro-leave') as HTMLButtonElement).onclick = leave;
   stayEl.onclick = () => ask(false);
@@ -1521,6 +1653,22 @@ export async function startIntroTour() {
       if (b.key === 'spike') setTimeout(() => { if (active && i === n) moveCamera(framed(center, vnm), vnm, ms); }, 1300);
       else if (!(b.key === 'welcome' && from < 0)) moveCamera(framed(center, vnm), vnm, msNow);
       setTimeout(() => { if (active && i === n) revealTint(shown, b.part); }, b.key === 'spike' ? 600 : ms * 0.55);
+      // once the camera and the ship have both stopped, the whole ship should
+      // be in view: on a short window it hovered cut off at the top edge
+      // (Marissa 2026-11-13), so the camera eases back a little until it fits
+      if (want === 'dock' || want === 'pad' || b.key === 'spike') return;
+      let viewNm = vnm, tries = 0;
+      const fit = () => {
+        if (!active || i !== n) return;
+        if (performance.now() < camBusyUntil || starshipMoving()) { setTimeout(fit, 200); return; }
+        const k = shipPullBack();
+        if (k <= 1.02 || tries++ >= 2) return;
+        viewNm *= Math.min(2.2, k * 1.08);
+        const to = framed(center, viewNm), glide = glideMs(to, viewNm, 1400);
+        moveCamera(to, viewNm, glide);
+        setTimeout(fit, glide + 150);
+      };
+      setTimeout(fit, msNow);
     };
     camBusyUntil = Math.max(camBusyUntil, performance.now() + camDelay + 120);
     setTimeout(camera, camDelay);
@@ -1726,6 +1874,7 @@ let cardsOpen = 0;
 function transmissionCard() {
   ensureStyle();
   cardsOpen++;
+  keepPivot(); blockDoubleClick();
   document.body.classList.add('nge-intro-on', 'nge-intro-mc');
   const card = document.createElement('section');
   card.className = 'ng-extend nge-intro' + (window.innerWidth < 700 ? ' nge-intro--phone' : '');
@@ -2102,7 +2251,7 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
     const a = BIG_NEURON_NM, b = p.soma as unknown as V3;
     const mid: V3 = [0, 1, 2].map(i => (a[i] + b[i]) / 2) as V3;
     const span = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-    frameAboveCard(mid, Math.max(500_000, span * 1.8 + 350_000), 2800);
+    frameAboveCard(mid, Math.max(500_000, span * 1.8 + 350_000) * PARTNER_ZOOM, 2800);
     // the ship sweeps the synapses they share, nearest first, zapping each,
     // and ends over the partner's cell body, where it shows its stats
     const pts = (p.shared ?? []).map(q => q as V3);
@@ -2274,8 +2423,24 @@ export function playIntro() {
  * seconds.
  */
 let playedThisLoad = false;
+/** This load's tour is a new player's first one: leaving it early still
+ *  starts Get Started. */
+let newPlayerRun = false;
+/** A player who has not begun Get Started and has not seen the tour (Ames
+ *  2026-11-16: "put the starship back!"): on the live site too, new players
+ *  fly in first, then Get Started. */
+const INTRO_SEEN = 'pyr-intro-seen';
+function newPlayerFirstVisit(): boolean {
+  try {
+    if (localStorage.getItem(INTRO_SEEN)) return false;
+    const active = localStorage.getItem('nge-active-tutorial');
+    const step = localStorage.getItem('nge-tutorial-step');
+    return (active === null || active === '1') && (step === null || step === '0');
+  } catch { return false; }
+}
 export function startStarshipIntro() {
-  if (IS_LIVE_SITE) return;
+  const newPlayer = newPlayerFirstVisit();
+  if (IS_LIVE_SITE && !newPlayer) return;
   // the cell turns slowly from the moment it shows, before anything flies
   setTimeout(startIdleTurn, 1200);
   // On the intro's own preview it plays by itself, once per browser, for the
@@ -2285,7 +2450,7 @@ export function startStarshipIntro() {
   if (location.hostname.startsWith('claude-starship-intro-dot-')) {
     try { firstVisit = !localStorage.getItem(PREVIEW_SEEN); } catch { /* no storage */ }
   }
-  const wanted = () => simulating.value || firstVisit || /[?&]starship\b/.test(location.search);
+  const wanted = () => simulating.value || firstVisit || newPlayer || /[?&]starship\b/.test(location.search);
   const signedIn = () => { try { return !!useProofreadingBackendStore().userId; } catch { return false; } };
   const go = async () => {
     if (!wanted() || playedThisLoad) return;
@@ -2297,8 +2462,9 @@ export function startStarshipIntro() {
     if (!signedIn() && !cellDrawn()) { playedThisLoad = false; return; }
     for (let k = 0; k < 80 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
     if (wanted()) {
-      try { localStorage.setItem(PREVIEW_SEEN, '1'); } catch { /* no storage */ }
+      try { localStorage.setItem(PREVIEW_SEEN, '1'); localStorage.setItem(INTRO_SEEN, '1'); } catch { /* no storage */ }
       firstVisit = false;
+      newPlayerRun = newPlayer;
       playIntro();
     }
   };
@@ -2307,3 +2473,9 @@ export function startStarshipIntro() {
 }
 
 (window as any).pyrIntro = {play: playIntro, tour: startIntroTour, end: endTour};
+
+/** The transmission box's look for a box built elsewhere (Ames 2026-11-10,
+ *  the Play card: "stylize the whole box with our own UI"): its styles, and
+ *  the circuit frame drawn to the box's size. */
+export function ensureIntroStyle() { ensureStyle(); }
+export function introFrameSvg(w: number, h: number, cut = 18): string { return frameSvg(w, h, cut); }

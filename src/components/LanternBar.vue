@@ -5,6 +5,7 @@
  * util/lantern.ts for what the two settings do.
  */
 import { computed, ref } from 'vue';
+import { shortcutLabel } from '../util/platform';
 import { lantern, lanternBranch, unpinLantern, LANTERN_LIMITS as L } from '../util/lantern';
 import { isTouchRef } from '../util/mobile';
 import { spooky, callGhost, callTheReaper, shoo } from '../util/spooky';
@@ -124,7 +125,7 @@ function resetPlace() {
         </button>
         <button v-if="spooky.on" type="button" class="nge-lantern-mini" title="Send them away" aria-label="Send them away" @click="shoo">shoo</button>
       </span>
-      <button type="button" class="nge-lantern-off" title="Turn the Lantern off (Shift+N)" aria-label="Turn the Lantern off" @click="lantern.on = false">×</button>
+      <button type="button" class="nge-lantern-off" :title="`Turn the Lantern off (${shortcutLabel('L')})`" aria-label="Turn the Lantern off" @click="lantern.on = false">×</button>
     </div>
     </Transition>
     <!-- The gem where the branch was clicked: it glows while the branch is

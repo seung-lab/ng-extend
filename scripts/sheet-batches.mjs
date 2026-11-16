@@ -1,7 +1,8 @@
 /**
  * Which cells of a list sheet come next (Sandbox, Ames 2026-11-01): the sheet
- * is much longer than the Cell Library should be, so its cells are added a
- * batch at a time, in the sheet's order, once few of the last ones are left.
+ * is much longer than the Cell Library should be, so it is kept topped up to
+ * `size` unclaimed cells, taken in the sheet's order (Ames 2026-11-12: "it
+ * should keep 50").
  */
 
 /** True when nobody has proofread this cell: no edits at all, or only the
@@ -14,8 +15,8 @@ export function untouched(editors, setupEditor) {
 
 /** @param cells rows of the sheet: {index, point:[x,y,z]}
  *  @param tasks the dataset's tasks: {status, assigned_to, notes, source_sheet_url, claim_point_x, _y, _z}
- *  @param batch {sheetId, size, whenLeft, skipIndexes}
- *  @returns {unclaimed, due, candidates} candidates in sheet order, not yet added */
+ *  @param batch {sheetId, size, skipIndexes}
+ *  @returns {unclaimed, need, due, candidates} candidates in sheet order, not yet added */
 export function nextBatch(cells, tasks, batch) {
   const mine = tasks.filter(t => (t.source_sheet_url || '').includes(batch.sheetId));
   // Every task counts as added, whatever became of it: a finished or hidden
@@ -31,5 +32,6 @@ export function nextBatch(cells, tasks, batch) {
     seen.add(k);
     return true;
   });
-  return { unclaimed, due: unclaimed <= batch.whenLeft && candidates.length > 0, candidates };
+  const need = Math.max(0, batch.size - unclaimed);
+  return { unclaimed, need, due: need > 0 && candidates.length > 0, candidates };
 }

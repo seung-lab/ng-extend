@@ -5,7 +5,6 @@
       "at": "2026-11-13T00:10:10Z",
       "title": "A shorter Advanced Interface tutorial",
       "items": [
-        "The Annotations tutorial now comes straight after Cut, before Advanced Interface, in the menu and at the end of Cut.",
         "Advanced Interface now starts with adding cells, and is two boxes shorter: renaming a layer and the rest of the annotation tools live in the Annotations tutorial.",
         "In Advanced Interface, a collaborator sends you a link to a tough merger, and a new box shows how Share sends your own view.",
         "Find Path switches on by itself in the tutorials.",
@@ -16,6 +15,378 @@
         "With Classic layer tabs on, Advanced Interface now says SHIFT and the number selects a layer, as the game does."
       ],
       "digest": "minor"
+    },
+    {
+      "at": "2026-11-16T16:36:00Z",
+      "title": "Clearer reports, steadier lists",
+      "items": [
+        "The report form now opens with room for details, so you can say what happened and what you expected.",
+        "The segment list now appears right where you left it when you come back to a layer, instead of scrolling down to it."
+      ]
+    },
+    {
+      "at": "2026-11-16T16:26:00Z",
+      "title": "A Starship welcome",
+      "items": [
+        "New players now start with a short Starship tour of a real neuron, then Get Started."
+      ]
+    },
+    {
+      "at": "2026-11-16T16:03:00Z",
+      "title": "A short page address",
+      "items": [
+        "The page address is now a short code instead of your whole view, so it no longer weighs down your browser or its history.",
+        "Your view is kept in your own browser, so a reload, a reopened tab or a browser restart still brings it back.",
+        "To send a view to someone, use the Share button: it copies a short link that works anywhere.",
+        "Switching to a dataset picks up where you left off there. To open a dataset fresh instead, pick what a switch opens in Settings > Switching datasets."
+      ]
+    },
+    {
+      "at": "2026-11-16T14:58:00Z",
+      "title": "New keys and steadier panels",
+      "items": [
+        "A new layer is now Shift+N instead of N, so it is no longer pressed by mistake next to M. Settings, Merging lets you choose N, Alt+N or no key.",
+        "The Lantern moves to Ctrl+L (Cmd+L on a Mac).",
+        "The segment list keeps its place when you switch tabs or layers and come back.",
+        "The cut bar, the chat and the TODO, PROOFREAD, TYPED, DONE bar no longer jump up for a moment while a cut is sent."
+      ]
+    },
+    {
+      "at": "2026-11-16T14:25:00Z",
+      "title": "Start at the base of the cilium",
+      "items": [
+        "Cilia Quest Training: when you trace the cilium, the view now starts right at its base, where the line begins, with a Start here marker."
+      ]
+    },
+    {
+      "at": "2026-11-15T05:26:00Z",
+      "title": "Lighter on your browser history",
+      "items": [
+        "Pyr no longer fills your browser history with copies of the view while you work, which could make the history very large in Firefox.",
+        "Extension Sandbox: a cell that could not be put back to its start is retired, and the cells are now numbered 1 to 8."
+      ]
+    },
+    {
+      "at": "2026-11-15T01:42:00Z",
+      "title": "Time on Quests: MEC Quests",
+      "items": [
+        "In Time on Quests on your profile and in Dataset Stats, the first column is now called MEC Quests, so it is easy to tell apart from Cilia Quests. Cilia Quests are not timed; how many you finished is under Scout Report, Quests."
+      ]
+    },
+    {
+      "at": "2026-11-14T21:30:00Z",
+      "title": "A lighter Pyr when many people play at once",
+      "items": [
+        "Joining, leaving and finished cells now reach chat as one small message each, instead of every open tab hearing every player's check-in each minute. Chat stays quick as more people come online.",
+        "Pyr asks the lab's servers less after each edit: only the claims on your screen are looked up, and a cell's status is no longer asked about twice on the Retina.",
+        "Tabs in the background do less: chat checks less often there, and the radio and layer names wait until you come back.",
+        "Pasting a long list of cells, placing marks on a big MEC cell, and leaving the Cell Library open all do less work, so the page stays smoother.",
+        "If the page ever freezes, the report you send now says whether drawing the view was the slow part, so freezes are easier to track down."
+      ]
+    },
+    {
+      "at": "2026-11-14T21:01:00Z",
+      "title": "Your cell is never an empty screen",
+      "items": [
+        "When the view saved with your cell does not show it, Play now opens your cell at its cell body instead of leaving you on an empty screen."
+      ]
+    },
+    {
+      "at": "2026-11-14T20:18:00Z",
+      "title": "Practice cells repair",
+      "items": [
+        "Practice cells that got stuck can be put back to their start again, so a missing Extension Sandbox cell returns to the rotation."
+      ]
+    },
+    {
+      "at": "2026-11-14T20:10:00Z",
+      "title": "Stop playing on MEC",
+      "items": [
+        "While playing on MEC or the Sandbox, a small square button beside the Play pill in the top bar stops playing. Your cell stays yours and the full Cell Library comes back."
+      ]
+    },
+    {
+      "at": "2026-11-14T19:58:00Z",
+      "title": "Your cell opens where you claimed it",
+      "items": [
+        "A cell you claim now always remembers its own dataset, so opening it can no longer take you to a different one, such as Retina instead of MEC."
+      ]
+    },
+    {
+      "at": "2026-11-14T19:36:00Z",
+      "title": "MEC: Axon complete and Cell complete, counted apart",
+      "items": [
+        "On MEC, finishing a cell as Axon complete is now recorded as an axon, and Complete as the whole cell. Both still count as one completed cell.",
+        "Your MEC card in Profile > Datasets and the Now entering card show how many were whole cells and how many were axons.",
+        "Finishing a cell as Axon complete now gets its own celebration, and the Cell Library labels the cell axon complete.",
+        "An axon-complete cell can be finished as the whole cell later with Mark as Proofread. It stays one cell and becomes a whole cell, in your counts and in the sheet."
+      ]
+    },
+    {
+      "at": "2026-11-14T18:11:12Z",
+      "title": "Extension Sandbox fixes",
+      "items": [
+        "In the Extension Sandbox, the \"Place the merge points for me\" button shows up again.",
+        "When the cell you go back to is not free, the box now says so and tells you which cell you have instead."
+      ]
+    },
+    {
+      "at": "2026-11-14T18:10:00Z",
+      "title": "Play stays on MEC",
+      "items": [
+        "Play on MEC now waits to hear that you have access before picking your cell, so a player just let into MEC is no longer sent to a Retina cell instead."
+      ]
+    },
+    {
+      "at": "2026-11-14T14:55:00Z",
+      "title": "Less lag after removing a segment",
+      "items": [
+        "With thousands of annotation points open, removing a segment no longer freezes the page for seconds while Pyr checks which marks were on it."
+      ]
+    },
+    {
+      "at": "2026-11-14T14:37:00Z",
+      "title": "Your cell count, and a steadier MICrONS tour",
+      "items": [
+        "The message after you complete a cell now counts the cell you just finished, so its total matches your real count.",
+        "In the MICrONS part of the Starship tour, scrolling and dragging now zoom and turn around the cell, not a point behind the text box.",
+        "The tour starts closer in on a cell and its partner, the scan box no longer covers the text box, and a double-click no longer hides the tour's cells."
+      ]
+    },
+    {
+      "at": "2026-11-13T22:08:00Z",
+      "title": "The Starship stays in view",
+      "items": [
+        "On shorter screens the camera now eases back during the Starship tour, so the whole ship stays in view instead of being cut off at the top."
+      ]
+    },
+    {
+      "at": "2026-11-13T22:00:00Z",
+      "title": "Time on Quests",
+      "items": [
+        "Profile, Overview now shows your active time on Quests and Super Quests today, this week, this month and all time.",
+        "Dataset Stats shows the same for the dataset you pick, under Your part.",
+        "Weeks run Monday to Sunday and months start on the 1st, on US Eastern time, like the weekly and monthly awards."
+      ]
+    },
+    {
+      "at": "2026-11-13T17:01:29Z",
+      "title": "S for To soma",
+      "items": [
+        "In Highlight, with a start point placed, press S for To soma or B for Beyond instead of clicking the buttons.",
+        "Clear all asks if you are sure, and Enter says OK."
+      ]
+    },
+    {
+      "at": "2026-11-13T17:00:00Z",
+      "title": "Play pill shows and hides the box",
+      "items": [
+        "The Play pill in the top bar now shows and hides the box you play in: click once to put it away, click again to bring it back on your cell.",
+        "On Retina, a small arrows button beside the pill lets you switch between the BC Challenge and Cilia Quests, or stop playing."
+      ]
+    },
+    {
+      "at": "2026-11-13T16:59:16Z",
+      "title": "Clear all asks first",
+      "items": [
+        "In Highlight, Clear all is now gray so it stands apart from Undo, and it asks before removing every highlight in your view. Your segments and lab marks always stay."
+      ]
+    },
+    {
+      "at": "2026-11-13T16:06:00Z",
+      "title": "Save and come back",
+      "items": [
+        "Skip in Play now stays on the slim bar: the full Cell Library no longer opens and closes again on the way to your next cell.",
+        "The slim bar shows only the cell you are working on, never two.",
+        "New Save and come back button in the Complete form: it saves your view and keeps the cell reserved for you until you complete or release it."
+      ]
+    },
+    {
+      "at": "2026-11-13T15:57:00Z",
+      "title": "A cleaner Submit an issue window",
+      "digest": "minor",
+      "items": [
+        "The Submit an issue window no longer has corner brackets, so the close button is easy to see."
+      ]
+    },
+    {
+      "at": "2026-11-13T14:47:39Z",
+      "title": "Marks stay put, and so does Highlight",
+      "items": [
+        "Adding a segment to try something, then removing it, no longer asks whether to delete the marks you made nearby earlier.",
+        "The slim Highlight strip and the full Highlight box each remember where you put them, so opening the full box no longer moves the strip."
+      ]
+    },
+    {
+      "at": "2026-11-13T13:31:30Z",
+      "title": "Side panels close on a click again",
+      "items": [
+        "The leaderboard and Dataset Stats close again when you click elsewhere, as before. They stay open while you send a bug report, so you can report a problem with them."
+      ]
+    },
+    {
+      "at": "2026-11-13T13:19:56Z",
+      "title": "Your username on the leaderboard",
+      "items": [
+        "If your sign-in has no name, the leaderboard now shows the username you chose instead of the start of your email.",
+        "The leaderboard and Dataset Stats stay open while you click around, so you can report a problem with them. Close them with the x or Escape.",
+        "New players choose a username when they ask to join, and can use their EyeWire username with one checkbox."
+      ]
+    },
+    {
+      "at": "2026-11-13T04:38:00Z",
+      "title": "Training shows your part",
+      "items": [
+        "Cilia Quest Training: the top of each box now says which part you are on, like Part 2 of 3, so you can see how far through the whole training you are."
+      ]
+    },
+    {
+      "at": "2026-11-13T04:29:00Z",
+      "title": "Crosshairs go inside the cell",
+      "items": [
+        "Cilia Quests: the crosshairs need to be inside the cell again. If what you marked sits outside the cell, put the crosshairs in the cell nearby and say so in Notes."
+      ]
+    },
+    {
+      "at": "2026-11-13T04:26:00Z",
+      "title": "H for Highlight, and every mouse control in one list",
+      "items": [
+        "H now opens Highlight. Inside Highlight, hold H and click to place a point as before; Shift+H or the × closes it.",
+        "The keys list (press ?) now has Mouse and Touch sections, so every control is in one place.",
+        "Search the list: type keys zoom, ? scroll, or mouse."
+      ]
+    },
+    {
+      "at": "2026-11-13T04:24:00Z",
+      "title": "Shorter forms, and basal bodies in empty space",
+      "items": [
+        "The Complete box is shorter: Check again sits under the crosshairs message, with Complete and Cancel beside it, and the crosshairs text is bigger.",
+        "Cilia Quests: if the basal body sits where there is no segment, you can submit with the crosshairs on empty space by saying why in Notes.",
+        "The Cilia Quest Submit form is tidier: a check mark when the crosshairs are inside, a shorter Notes box you can drag taller, and the share link and point count on two short lines.",
+        "The (i) next to the crosshairs message shows a real 2D view with the crosshairs inside a cell.",
+        "Nurro, your guide, can now explain what the Play button does."
+      ]
+    },
+    {
+      "at": "2026-11-13T04:00:00Z",
+      "title": "Your big view survives a browser restart",
+      "items": [
+        "A very big view kept in your browser now comes back after Firefox restarts or restores your tabs, not only after a refresh.",
+        "Clicking a mark in the 2D or 3D view selects it in the Annotations list every time, even in a very full tab.",
+        "An announcement no longer shows up twice in chat."
+      ]
+    },
+    {
+      "at": "2026-11-13T03:56:00Z",
+      "title": "Submit is back, and MEC is just the AIS",
+      "items": [
+        "The Submit button is back on the collapsed Cell Library bar for Cilia Quests, next to Save and Release.",
+        "MEC cells now open with just the AIS layer, and Marks shows only the AIS. Layers you have already marked stay.",
+        "The Play pill in the top bar no longer pulses."
+      ]
+    },
+    {
+      "at": "2026-11-13T01:51:00Z",
+      "title": "Play starts where you are",
+      "items": [
+        "The choice between mapping and Cilia Quest only shows on Retina. In the Sandbox or anywhere else, Play and the chip in the top bar just start you mapping where you are."
+      ]
+    },
+    {
+      "at": "2026-11-13T01:43:00Z",
+      "title": "Back to your cell from the top bar",
+      "items": [
+        "While you play, clicking the chip in the top bar brings back your cell in the small Cell Library bar. Click it again while that bar is open to switch what you play, or stop.",
+        "A Retina cell you claimed before Highlight now opens with Highlight too, when its annotation layers have no marks in them."
+      ]
+    },
+    {
+      "at": "2026-11-13T01:22:00Z",
+      "title": "Switch what you play from the top bar",
+      "items": [
+        "While you play, clicking the chip in the top bar opens the choice again, so you can switch between mapping and Cilia Quest, go back to your cell, or stop."
+      ]
+    },
+    {
+      "at": "2026-11-13T01:11:00Z",
+      "title": "The Cell Library opens again",
+      "items": [
+        "The Cell Library opens again: the last update stopped it from opening.",
+        "While you play, clicking the chip in the top bar takes you back to your cell."
+      ]
+    },
+    {
+      "at": "2026-11-13T00:49:00Z",
+      "title": "Play bar tidy up",
+      "items": [
+        "The Playing chip in the top bar is shorter: the play icon and what you are playing.",
+        "While you play, click anywhere on the cell bar to open Complete, or to fold it away again.",
+        "The notes box in Complete folds away behind Add a note for the reviewers until you want it.",
+        "Pyr asks how the cell ended only if you press Complete without picking one.",
+        "A cell or Cilia Quest cell you arrive on is saved a few seconds in, so it never says Not saved yet.",
+        "The crosshairs check now says Place the crosshairs inside the cell, with an (i) that shows how in a small picture.",
+        "On the Cilia Quest bar, the Submit box runs the full width and the green edge is gone."
+      ]
+    },
+    {
+      "at": "2026-11-13T00:41:00Z",
+      "title": "Play skips the tutorials for proofreaders",
+      "items": [
+        "If you already have edit access to the main datasets, Play now takes you straight to a cell instead of to the tutorials."
+      ]
+    },
+    {
+      "at": "2026-11-13T00:19:00Z",
+      "title": "Play",
+      "items": [
+        "A new Play button at the top left takes you straight to a cell to work on. Pyr claims one for you and flies you there, and after you Complete it, the next one is waiting.",
+        "If you have not finished the tutorials yet, Play takes you through them first: Get Started, Merge, Cut, Annotations, then Advanced Interface.",
+        "On Retina you can play Cilia Quests the same way: click the quest bar to submit your answer, and Pyr brings you the next cell.",
+        "While you play, Skip hands the cell back for someone else and finds you a new one.",
+        "Each dataset in Switch Dataset now has Start playing, and Open active cell when you already have a cell claimed there.",
+        "Rather not see the Play button? Turn it off in Settings, under Screen.",
+        "The Twine Achievement now shows sideways, like an infinity sign, everywhere it appears."
+      ]
+    },
+    {
+      "at": "2026-11-12T23:11:29.189Z",
+      "title": "Folders drag again, and cut pieces stand apart",
+      "items": [
+        "Folders in the Segments list can be dragged again: drop on the top or bottom edge of another folder to put it above or below, or on its middle to put it inside.",
+        "After a cut, a piece whose color is close to the other piece now gets a clearly different color, so you no longer have to recolor it by hand."
+      ]
+    },
+    {
+      "at": "2026-11-12T21:59:36Z",
+      "title": "Retina claims really open with Highlight",
+      "items": [
+        "A Retina cell you claim now opens with the Checked Highlight layer as promised; for many players it still opened with the five annotation layers."
+      ]
+    },
+    {
+      "at": "2026-11-12T21:58:50Z",
+      "title": "Tutorial boxes scroll their words",
+      "items": [
+        "A tall tutorial box keeps its title and buttons in place and scrolls only the words."
+      ]
+    },
+    {
+      "at": "2026-11-12T21:47:04Z",
+      "title": "Claim 10 and folders",
+      "items": [
+        "Claim 10 skips a cell someone else already holds and claims the next one, and tells you how many it claimed.",
+        "Folders tell you, when you point at their name, that you can drag them into any order. Dropping above or below another folder is easier too."
+      ]
+    },
+    {
+      "at": "2026-11-12T21:45:26Z",
+      "title": "New tutorial: Annotations",
+      "items": [
+        "A new Annotations tutorial is in the menu, right after Cut.",
+        "It shows you how to make annotation layers, color them, step through your marks and jump to them.",
+        "It ends with Find Path, used to find where a merger starts.",
+        "Finish it to earn a new Achievement."
+      ]
     },
     {
       "at": "2026-11-12T21:11:25Z",

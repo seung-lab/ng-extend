@@ -13,9 +13,13 @@
 //              Each post goes once, only after its page is live, and only
 //              posts published after LIVE_SINCE. Nothing goes while LIVE is false.
 //   test       {slug}  the same email, sent only to the Test segment (Ames).
+//   notes      {token, on?}  the What's new in Pyr box on the blog.
+//   notes-off  {e, k}  the unsubscribe link in a What's new in Pyr email.
 //
 // Nothing here talks to the network itself: index.js passes in resend(),
 // posts(), page(), renderer() and the Firestore stores, so the tests can too.
+
+const crypto = require('crypto');
 
 const SITE = 'https://connectome.quest';
 const FROM = 'Map the Brain <blog@connectome.quest>';
@@ -26,7 +30,13 @@ const TEST_SEGMENT = 'connectome.quest blog test';
 // page; ticking it signs the player up with their Pyr email (the sign in tells
 // the server who they are, so nobody types an address). One email a week, the
 // Monday after the week ends: each day's summary, with every update on the blog.
-const NOTES_SEGMENT = "What's new in Pyr";
+// The list lives in Pyr (Firestore notes_subscribers), not in Resend: the
+// Resend plan holds only 3 segments (Ames 2026-11-12). Each email is sent to
+// one person, with an unsubscribe link of its own back to this function.
+const ENDPOINT = 'https://us-central1-eyewire-ii-e4d52.cloudfunctions.net/ewBlogMail';
+const notesOffUrl = (s) => `${ENDPOINT}?action=notes-off&e=${encodeURIComponent(s.email)}&k=${encodeURIComponent(s.key)}`;
+// Resend takes at most 100 emails in one batch call.
+const BATCH = 100;
 // Like LIVE: nothing goes to real subscribers until Ames has seen a test.
 const NOTES_LIVE = false;
 // Weeks due before this never go (set when NOTES_LIVE turns on).
@@ -321,26 +331,21 @@ async function notesEmail(a, io) {
 /** The box: {token} reads it, {token, on} ticks or clears it. */
 async function notes(a, io) {
   const email = await notesEmail(a, io);
-  if (typeof a.on !== 'boolean') {
-    const mine = await io.notesSubscribers.get(email);
-    let on = !!(mine && mine.on);
-    // An Unsubscribe link in any of our emails stops them all (Resend).
-    if (on) {
-      try { const c = await io.resend(`/contacts/${encodeURIComponent(email)}`); if (c && c.unsubscribed) on = false; }
-      catch (e) { if (e.status !== 404) throw e; on = false; }
-    }
-    return { on, email };
-  }
-  const segId = await segmentId(io.resend, NOTES_SEGMENT, io.cache);
-  if (a.on) {
-    await io.notesSubscribers.set(email, { email, on: true, at: new Date().toISOString() });
-    await upsertContact(io.resend, { email, name: '' }, segId);
-  } else {
-    await io.notesSubscribers.set(email, { email, on: false, at: new Date().toISOString() });
-    try { await io.resend(`/contacts/${encodeURIComponent(email)}/segments/${segId}`, { method: 'DELETE' }); }
-    catch (e) { if (e.status !== 404) throw e; }
-  }
+  const mine = await io.notesSubscribers.get(email);
+  if (typeof a.on !== 'boolean') return { on: !!(mine && mine.on), email };
+  // The key in this person's unsubscribe link: made once, kept.
+  const key = (mine && mine.key) || crypto.randomBytes(18).toString('base64url');
+  await io.notesSubscribers.set(email, { email, on: a.on, key, at: new Date().toISOString() });
   return { on: a.on, email };
+}
+
+/** The unsubscribe link in a What's new in Pyr email: {e, k}. */
+async function notesOff(a, io) {
+  const email = cleanEmail(a.e);
+  const mine = email ? await io.notesSubscribers.get(email) : null;
+  if (!mine || !mine.key || typeof a.k !== 'string' || a.k !== mine.key) fail(400, 'That unsubscribe link does not work. Untick the box on connectome.quest/blog instead.');
+  if (mine.on) await io.notesSubscribers.set(email, { on: false, at: new Date().toISOString(), via: 'email link' });
+  return { on: false, email };
 }
 
 /** The finished weeks that have not gone out yet, oldest first, one a run. */
@@ -361,10 +366,28 @@ async function sendNotes(io, live) {
     if (mark && (mark.state === 'sent' || (mark.tries || 0) >= 3)) continue;
     if (mark && mark.state === 'sending' && now - Date.parse(mark.at) < 30 * 60000) continue;
     if (!(await pageIsLive(io, post))) continue;
-    if (!(await io.sentPosts.claim(id, { slug: post.slug, title: post.title, state: 'sending', at: new Date().toISOString(), tries: ((mark && mark.tries) || 0) + 1 }, mark))) continue;
+    // Who is on the list now. A send that stopped part way goes on from where
+    // it stopped, to the people it had not reached (if they are still on).
+    const current = new Map((await io.notesSubscribers.list()).filter((s) => s && s.on && s.email && s.key).map((s) => [s.email, s]));
+    const to = (mark && Array.isArray(mark.to)) ? mark.to : [...current.keys()].sort();
+    let done = (mark && mark.done) || 0;
+    if (!(await io.sentPosts.claim(id, { slug: post.slug, title: post.title, state: 'sending', at: new Date().toISOString(), tries: ((mark && mark.tries) || 0) + 1, to, done }, mark))) continue;
     try {
-      const b = await broadcast(io, post, NOTES_SEGMENT, 'Whats new');
-      await io.sentPosts.set(id, { state: 'sent', broadcast: b, sentAt: new Date().toISOString() });
+      const msg = postEmail(post, await io.renderer());
+      for (; done < to.length; done = Math.min(done + BATCH, to.length)) {
+        const batch = to.slice(done, done + BATCH).map((e) => current.get(e)).filter(Boolean).map((s) => {
+          const off = notesOffUrl(s);
+          return {
+            from: FROM, reply_to: REPLY_TO, to: [s.email], subject: msg.subject,
+            html: msg.html.split('{{{RESEND_UNSUBSCRIBE_URL}}}').join(esc(off)),
+            text: msg.text.split('{{{RESEND_UNSUBSCRIBE_URL}}}').join(off),
+            headers: { 'List-Unsubscribe': `<${off}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+          };
+        });
+        if (batch.length) await io.resend('/emails/batch', { method: 'POST', body: batch });
+        await io.sentPosts.set(id, { done: Math.min(done + BATCH, to.length) });
+      }
+      await io.sentPosts.set(id, { state: 'sent', done: to.length, sentAt: new Date().toISOString() });
       return [post.slug];
     } catch (e) {
       await io.sentPosts.set(id, { state: 'failed', error: String(e && e.message).slice(0, 300) });
@@ -376,10 +399,11 @@ async function sendNotes(io, live) {
 
 async function handle(action, a, io) {
   if (action === 'notes') return notes(a || {}, io);
+  if (action === 'notes-off') return notesOff(a || {}, io);
   if (action === 'subscribe') return subscribe(a || {}, io);
   if (action === 'check') return check(a || {}, io);
   if (action === 'test') return test(a || {}, io);
   fail(400, 'Unknown action.');
 }
 
-module.exports = { handle, notesMarkdown, NOTES_SEGMENT, NOTES_LIVE, postEmail, emailBody, excerpt, cleanEmail, LIVE, LIVE_SINCE, SEGMENT, TEST_SEGMENT };
+module.exports = { handle, notesMarkdown, NOTES_LIVE, notesOffUrl, postEmail, emailBody, excerpt, cleanEmail, LIVE, LIVE_SINCE, SEGMENT, TEST_SEGMENT };

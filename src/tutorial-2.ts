@@ -1006,7 +1006,7 @@ Now pick a <strong>different color</strong> in the Highlight box (<strong>Needs 
     text: `
 For a big cell, <strong>Lantern</strong> lights the part around where you are and dims the rest, so you can check it one part at a time.
 
-<strong>Press SHIFT+N</strong> (or the glowing lantern on the top bar) to light it.`,
+<strong>Press CTRL+L</strong> (CMD+L on a Mac), or the glowing lantern on the top bar, to light it.`,
     width: "500px",
     position: { element: '#extensionBar [data-icon-id="lantern"]', side: "bottom", offset: { x: 0, y: 70 } },
     highlight: true,
@@ -1017,7 +1017,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
     text: `
 <strong>RIGHT-CLICK</strong> anywhere on the cell to move there: the light follows you. In the Lantern box, <strong>Size</strong> sets how much of the cell is lit and <strong>Flame</strong> how bright.
 
-<strong>Close Lantern</strong> when you want the whole cell back: the ✕ in its box, or SHIFT+N again.`,
+<strong>Close Lantern</strong> when you want the whole cell back: the ✕ in its box, or CTRL+L again.`,
     width: "500px",
     // Below the Lantern bar, which sits along the top (a player found it
     // covering this box, 2026-10-20).

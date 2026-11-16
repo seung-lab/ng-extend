@@ -196,6 +196,8 @@ onBeforeUnmount(clearTimers);
               <span class="nge-dst-stats-label">Your work here</span>
               <span v-if="mineAll || mine.edits" class="nge-dst-stat"><b>{{ mine.edits.toLocaleString() }}</b> edit{{ mine.edits === 1 ? '' : 's' }}</span>
               <span class="nge-dst-stat" :class="{ 'nge-dst-stat--cells': mine.completions }"><b>{{ mine.completions.toLocaleString() }}</b> cell{{ mine.completions === 1 ? '' : 's' }} proofread</span>
+              <!-- MEC: how many of those were Axon complete (Ames 2026-11-14). -->
+              <span v-if="mine.axons" class="nge-dst-stat"><b>{{ mine.axons.toLocaleString() }}</b> of them Axon complete</span>
               <span v-if="mine.helpRequests" class="nge-dst-stat"><b>{{ mine.helpRequests.toLocaleString() }}</b> help request{{ mine.helpRequests === 1 ? '' : 's' }}</span>
             </template>
             <span v-else class="nge-dst-stats-first">Your first visit here. Welcome, scientist!</span>

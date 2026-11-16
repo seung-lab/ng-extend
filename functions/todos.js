@@ -22,6 +22,9 @@
  *                 hear they were added, and follow the card.
  *   todo.follow   follow or stop following a card (Ames 2026-11-02, from
  *                 Asana): followers hear in the bell when it changes
+ *   todo.noteComment  a comment in the margin of the notes, on some of their
+ *                 words, with replies and Resolve (Ames 2026-11-15, like a
+ *                 Google Doc; supabase-admin-todos-note-comments.sql)
  *
  * Checklist items can have their own owner and due day (subtasks, the same
  * ask). Followers live apart from the card (deps.follows, Firestore in
@@ -48,6 +51,7 @@ const TODO_IMAGES = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/
 const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'file', 'other'];
 const COMMENT_MAX = 2000;
 const COMMENTS_MAX = 200;
+const NOTE_THREADS_MAX = 100;
 
 const crypto = require('crypto');
 const CONNECTOR_BASE = 'https://us-central1-eyewire-ii-e4d52.cloudfunctions.net/ewTodoConnector';
@@ -66,6 +70,30 @@ const text = (v, max, what) => {
 };
 
 /** Only the fields a card may have, each checked. */
+/**
+ * Who ticked each checklist item, and when (Ames 2026-11-14: checklist items
+ * earn points). The browser never sets these: an item ticked now gets this
+ * person and time, one already ticked keeps its own, an unticked one loses
+ * them. Items are matched to the old list by their words, then by place.
+ */
+function stampChecklist(before, after, meId, now) {
+  const old = Array.isArray(before) ? before : [];
+  const used = new Set();
+  return after.map((it, i) => {
+    let k = old.findIndex((o, j) => !used.has(j) && o && o.text === it.text);
+    if (k < 0 && old[i] && !used.has(i)) k = i;
+    if (k >= 0) used.add(k);
+    const was = k >= 0 ? old[k] : null;
+    const out = { ...it };
+    delete out.done_by; delete out.done_at;
+    if (!it.done) return out;
+    if (was && was.done && was.done_at) { out.done_at = was.done_at; if (was.done_by) out.done_by = was.done_by; return out; }
+    out.done_at = now;
+    if (meId) out.done_by = meId;
+    return out;
+  });
+}
+
 function cleanFields(f, isNew) {
   const out = {};
   if ('title' in f || isNew) {
@@ -196,11 +224,13 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     if (next.length !== had.length) await follows.set(cardId, next);
   };
   if (action === 'todo.list') {
-    const [cards, people, followers, helping, seenAt, sections] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
+    const [cards, people, followers, helping, seenAt, sections, closed] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({})), helpers.all().catch(() => ({})),
       meId ? seen.get(meId).catch(() => ({})) : {},
       // null until supabase-admin-todos-hierarchy.sql is run: the board then hides sections and sub cards.
-      db.sections ? db.sections().catch(() => null) : null]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt, sections };
+      db.sections ? db.sections().catch(() => null) : null,
+      db.triageClosed ? db.triageClosed(new Date(Date.now() - 7 * 864e5).toISOString()).catch(() => null) : null]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers, helpers: helping, seen: seenAt, sections,
+      triageWeek: closed ? countTriage(people, closed) : null };
   }
   // I opened a card: its tags of me so far count as seen (Ames 2026-11-06:
   // "if I click on this it shouldn't still show it as an unread task for me").
@@ -309,6 +339,7 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     if (isNew) {
       if (!('list' in fields)) fields.list = 'todo';
       if (!('rank' in fields)) fields.rank = (await db.maxRank(fields.list)) + 1;
+      if (fields.checklist) fields.checklist = stampChecklist([], fields.checklist, meId, now);
       card = await db.insert({ ...fields, created_by: byName, updated_at: now, done_at: fields.list === 'done' ? now : null });
       await follow(card.id, [meId, fields.owner_id]).catch(() => {});
       if (fields.triage_id) await db.reportToTodo(fields.triage_id, byName);
@@ -322,6 +353,7 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
       const before = await db.card(id);
       if (!before) fail(404, 'That card is gone. Refresh the board.');
       if (before.list === INCOMPLETE && !isOwner) fail(403, 'Only Ames reopens a card closed as not finished.');
+      if (fields.checklist) fields.checklist = stampChecklist(before.checklist, fields.checklist, meId, now);
       if ('list' in fields && fields.list !== before.list) {
         // done_at is when it closed: finished, or closed as not finished.
         fields.done_at = fields.list === 'done' || fields.list === INCOMPLETE ? now : null;
@@ -376,13 +408,81 @@ async function todoAction(action, args, {db, me, byName, tag, isOwner = false, f
     const needPeople = (Array.isArray(args.tagIds) && args.tagIds.length) || (parent && parent.by !== byName);
     const people = needPeople ? await db.people() : [];
     const who = tagged(people, args.tagIds).filter(p => p.id !== (me && me.id));
-    if (who.length) await tag(who, card, 'tagged you on', body);
+    if (who.length) await tag(who, card, 'tagged you on', body, { c: now });
     if (parent && parent.by !== byName) {
       const writer = people.filter(p => p.name === parent.by && p.id !== meId && !who.some(w => w.id === p.id));
-      if (writer.length) await tag(writer, card, 'replied to you on', body);
+      if (writer.length) await tag(writer, card, 'replied to you on', body, { c: now });
     }
     await follow(id, [meId]).catch(() => {});
     await tellFollowers(card, 'commented on', body, who.map(p => p.id)).catch(e => console.warn('[todo] followers not told:', e.message));
+    return { card };
+  }
+
+  // Comments in the margin of the notes (Ames 2026-11-15: "like a google doc
+  // with comments", "we have a lot of room in margins"). A thread is on some
+  // words of the notes: {quote, before, after} finds them again after the notes
+  // change. {id, quote, before, after, text} starts one; {id, thread, text}
+  // replies; {id, thread, resolved} resolves or reopens; {id, thread, remove}
+  // takes away a thread its writer started. Tags and the thread's people hear,
+  // as with comments.
+  if (action === 'todo.noteComment') {
+    const id = uuid(args.id, 'card');
+    const before = await db.card(id);
+    if (!before) fail(404, 'That card is gone. Refresh the board.');
+    if (!Array.isArray(before.note_comments)) fail(503, 'Comments in the notes are not switched on yet (supabase-admin-todos-note-comments.sql).');
+    const threads = [...before.note_comments];
+    const tellTagged = async (card, body, nc) => {
+      const people = (Array.isArray(args.tagIds) && args.tagIds.length) ? await db.people() : [];
+      const who = tagged(people, args.tagIds).filter(p => p.id !== meId);
+      if (who.length) await tag(who, card, 'tagged you on', body, { nc });
+      return who;
+    };
+    if (!args.thread) {
+      const quote = text(args.quote, 500, 'The words you picked').trim();
+      if (!quote) fail(400, 'Select some words in the notes first.');
+      const body = text(args.text, COMMENT_MAX, 'The comment').trim();
+      if (!body) fail(400, 'Write something first.');
+      if (threads.length >= NOTE_THREADS_MAX) fail(400, `At most ${NOTE_THREADS_MAX} comments in one card's notes. Remove some first.`);
+      const t = { id: crypto.randomBytes(6).toString('hex'), quote,
+        before: text(args.before || '', 200, 'The words before').slice(-40), after: text(args.after || '', 200, 'The words after').slice(0, 40),
+        by: byName, by_id: meId || null, at: now, text: body, replies: [], resolved: false };
+      const card = await db.patch(id, { note_comments: [...threads, t], updated_at: now });
+      await tellTagged(card, body, t.id);
+      await follow(id, [meId]).catch(() => {});
+      return { card };
+    }
+    const k = threads.findIndex(t => t && t.id === String(args.thread));
+    if (k < 0) fail(404, 'That comment is gone. Refresh the board.');
+    const t = { ...threads[k] };
+    if (args.remove) {
+      if (t.by !== byName) fail(403, 'Only the person who started a comment can remove it.');
+      threads.splice(k, 1);
+      return { card: await db.patch(id, { note_comments: threads }) };
+    }
+    if ('resolved' in args) {
+      t.resolved = !!args.resolved;
+      if (t.resolved) { t.resolved_by = byName; t.resolved_at = now; } else { delete t.resolved_by; delete t.resolved_at; }
+      threads[k] = t;
+      return { card: await db.patch(id, { note_comments: threads }) };
+    }
+    const body = text(args.text, COMMENT_MAX, 'The reply').trim();
+    if (!body) fail(400, 'Write something first.');
+    const replies = Array.isArray(t.replies) ? t.replies : [];
+    if (replies.length >= 100) fail(400, 'This thread is full. Start a new comment.');
+    t.replies = [...replies, { by: byName, at: now, text: body }];
+    // A reply opens a resolved thread again, as in a Google Doc.
+    if (t.resolved) { t.resolved = false; delete t.resolved_by; delete t.resolved_at; }
+    threads[k] = t;
+    const card = await db.patch(id, { note_comments: threads, updated_at: now });
+    const who = await tellTagged(card, body, t.id);
+    // Everyone already in the thread hears a reply, once each.
+    const inThread = new Set([t.by, ...replies.map(r => r.by)].filter(n => n && n !== byName));
+    if (inThread.size) {
+      const people = await db.people();
+      const told = people.filter(p => inThread.has(p.name) && p.id !== meId && !who.some(w => w.id === p.id));
+      if (told.length) await tag(told, card, 'replied to you on', body, { nc: t.id });
+    }
+    await follow(id, [meId]).catch(() => {});
     return { card };
   }
 
@@ -422,6 +522,36 @@ function slackIdOf(person) {
   return null;
 }
 
+/**
+ * Triage reports closed this week (Done or Dismiss), in all and by admin
+ * (Ames 2026-11-12: the board's "done this week" counts them too). A report
+ * closed by finishing its card on this board is already counted as the card.
+ * reviewed_by is a Pyr name ("Amy R. Sterling", or her player name "Amy
+ * Sterling") or "slack:<id>" for a decision made in Slack.
+ */
+function countTriage(people, rows) {
+  const norm = s => String(s || '').toLowerCase().replace(/\b[a-z]\.\s*/g, '').replace(/\s+/g, ' ').trim();
+  const out = { total: 0, byPerson: {} };
+  for (const r of rows) {
+    if (/^Done on the To do board/.test(r.result_note || '')) continue;
+    out.total++;
+    const by = String(r.reviewed_by || '').trim();
+    if (!by) continue;
+    const slack = by.startsWith('slack:') ? by.slice(6) : slackIdOf({ name: by });
+    const p = people.find(x => x.name === by || norm(x.name) === norm(by)) || (slack && people.find(x => slackIdOf(x) === slack));
+    if (p) out.byPerson[p.id] = (out.byPerson[p.id] || 0) + 1;
+  }
+  return out;
+}
+
+/** A card's address on the board, and the comment in it when there is one
+ *  (Ames 2026-11-16: the bell should take you to the exact reply): c = the
+ *  comment's time, nc = a thread in the margin of the notes. */
+function todoLink(site, cardId, where) {
+  const w = where || {};
+  return `${site}/?triage=board&todo=${cardId}${w.c ? `&c=${encodeURIComponent(w.c)}` : ''}${w.nc ? `&nc=${encodeURIComponent(w.nc)}` : ''}`;
+}
+
 /** Followers: the bell only, no Slack, so following stays quiet. */
 function makeFollowBell({ sb, site, byName, meId }) {
   return async (ids, card, what, said) => {
@@ -438,11 +568,11 @@ function makeFollowBell({ sb, site, byName, meId }) {
 /** Tells the people tagged on (or given) a card: the bell in Pyr, and a
  *  Slack ping in #citsci_feedback with a link to the card. */
 function makeTagger({ sb, slackPost, slackToken, channel, site, byName, meId }) {
-  return async (people, card, what, said) => {
-    const link = `${site}/?triage=board&todo=${card.id}`;
+  return async (people, card, what, said, where) => {
+    const link = todoLink(site, card.id, where);
     const quote = String(said || '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').replace(/\s+/g, ' ').slice(0, 200);
     const rows = people.map(p => ({ title: `📋 ${byName} ${what} a To do`.slice(0, 120),
-      body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
+      body: `${`${card.title}${quote ? `\n\n"${quote}"` : ''}`.slice(0, 498 - link.length)}\n\n${link}`,
       target_type: 'user', target_id: p.id, send_at: new Date().toISOString(), created_by: meId || null }));
     try { await sb('notifications', { method: 'POST', body: JSON.stringify(rows) }); }
     catch (e) { console.warn('[todo] bell failed:', e.message); }
@@ -471,6 +601,7 @@ function restDb(sb) {
     remove: id => sb(`admin_todos?id=eq.${id}`, { method: 'DELETE' }),
     children: id => sb(`admin_todos?parent_id=eq.${id}&select=id&limit=50`),
     sections: () => sb('admin_todo_sections?select=*&order=list.asc,rank.asc&limit=200'),
+    triageClosed: since => sb(`feedback_triage?select=reviewed_by,result_note&status=in.(done,dismissed)&reviewed_at=gte.${enc(since)}&limit=2000`),
     section: async id => (await sb(`admin_todo_sections?id=eq.${id}&select=*&limit=1`))[0] || null,
     insertSection: async row => (await sb('admin_todo_sections', { method: 'POST', body: JSON.stringify(row) }))[0],
     patchSection: async (id, row) => (await sb(`admin_todo_sections?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }))[0],
@@ -500,4 +631,4 @@ function restDb(sb) {
   };
 }
 
-module.exports = { todoAction, restDb, slackIdOf, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };
+module.exports = { todoAction, restDb, slackIdOf, countTriage, stampChecklist, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };

@@ -357,7 +357,9 @@ onMounted(() => {
   const wasOn = loadPrefs();
   document.body.classList.add('nge-radio-on');
   measureDock();
-  dockTimer = window.setInterval(measureDock, 350);
+  // Nothing to place in a tab nobody sees (perf audit 2026-11-14: this
+  // measured the page's layout three times a second in background tabs too).
+  dockTimer = window.setInterval(() => { if (!document.hidden) measureDock(); }, 350);
   window.addEventListener('resize', measureDock);
   document.addEventListener('pointerdown', onDocDown, true);
   window.addEventListener('pagehide', onPageHide);

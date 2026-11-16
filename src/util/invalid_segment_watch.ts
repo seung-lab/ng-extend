@@ -21,13 +21,16 @@ function levelOf(id: Uint64, nBitsForLayerId: number): number {
   return Uint64.rshift(new Uint64(), id, 64 - nBitsForLayerId).low;
 }
 
-function check(managed: any) {
+/** `only`: just the IDs that were added; without it, every ID shown. Each
+ *  change used to look at every ID shown, so adding a long list one by one,
+ *  or a merge, cost (cells shown) x (changes) (perf audit 2026-11-14). */
+function check(managed: any, only?: Iterable<Uint64>) {
   const layer = managed?.layer;
   const nBits = layer?.graphConnection?.value?.graph?.info?.graph?.nBitsForLayerId;
   const visible = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
   if (!nBits || !visible) return;
   const bad: Uint64[] = [];
-  for (const id of visible) {
+  for (const id of only ?? visible) {
     const copy = new Uint64(id.low, id.high);
     if ((copy.low !== 0 || copy.high !== 0) && levelOf(copy, nBits) === 0) bad.push(copy);
   }
@@ -46,7 +49,14 @@ export function startInvalidSegmentWatch(viewer: any) {
       // The graph arrives a moment after the layer: look again each time.
       if (!watched.has(visible)) {
         watched.add(visible);
-        visible.changed.add(() => { try { check(managed); } catch { /* never in the way */ } });
+        // Added IDs are checked alone; a removal needs nothing; a change
+        // with no IDs (a whole new state) is checked in full.
+        visible.changed.add((x: any, add?: boolean) => {
+          try {
+            if (x === undefined) check(managed);
+            else if (add && x !== null) check(managed, Array.isArray(x) ? x : [x]);
+          } catch { /* never in the way */ }
+        });
       }
       try { check(managed); } catch { /* never in the way */ }
     }

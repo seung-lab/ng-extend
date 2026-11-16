@@ -22,6 +22,7 @@ function fakeResend({ contacts = {}, segments = {} } = {}) {
     if (/^\/contacts\/[^/]+\/segments\/[^/]+$/.test(p)) return {};
     if (p === '/broadcasts' && method === 'POST') return { id: `b${++n}` };
     if (/^\/broadcasts\/[^/]+\/send$/.test(p)) return {};
+    if (p === '/emails/batch' && method === 'POST') return { data: init.body.map(() => ({ id: `e${++n}` })) };
     throw new Error(`unexpected ${method} ${p}`);
   };
   return { resend, calls, contacts, segments };
@@ -148,24 +149,39 @@ function notesIo(extra = {}) {
   const store = {};
   x.notesStore = store;
   x.verify = async (t) => (t === 'good' ? { email: 'Player@Example.com' } : null);
-  x.notesSubscribers = { get: async (e) => store[e] || null, set: async (e, v) => { store[e] = { ...store[e], ...v }; } };
+  x.notesSubscribers = {
+    get: async (e) => store[e] || null,
+    set: async (e, v) => { store[e] = { ...store[e], ...v }; },
+    list: async () => Object.values(store).filter((s) => s.on),
+  };
+  x.renderer = async () => (md) => md;
   return x;
 }
 
-test('notes: the box signs up the Pyr email, reads back, and clears', async () => {
+test('notes: the box keeps the list in Pyr, never in a Resend segment', async () => {
   const x = notesIo();
   await assert.rejects(bm.handle('notes', { token: 'bad' }, x), /sign in/);
   assert.deepStrictEqual(await bm.handle('notes', { token: 'good' }, x), { on: false, email: 'player@example.com' });
   assert.deepStrictEqual(await bm.handle('notes', { token: 'good', on: true }, x), { on: true, email: 'player@example.com' });
-  const seg = x.f.segments[bm.NOTES_SEGMENT];
-  assert.ok(x.f.calls.some((c) => c.method === 'POST' && c.p === `/contacts/player%40example.com/segments/${seg}`));
+  assert.strictEqual(x.f.calls.length, 0, 'the Resend plan has no room for another segment');
+  const key = x.notesStore['player@example.com'].key;
+  assert.ok(key && key.length >= 20);
   assert.strictEqual((await bm.handle('notes', { token: 'good' }, x)).on, true);
-  // An Unsubscribe link clicked in an email shows the box clear.
-  x.f.contacts['player@example.com'].unsubscribed = true;
-  assert.strictEqual((await bm.handle('notes', { token: 'good' }, x)).on, false);
   await bm.handle('notes', { token: 'good', on: false }, x);
-  assert.ok(x.f.calls.some((c) => c.method === 'DELETE' && c.p === `/contacts/player%40example.com/segments/${seg}`));
   assert.strictEqual(x.notesStore['player@example.com'].on, false);
+  await bm.handle('notes', { token: 'good', on: true }, x);
+  assert.strictEqual(x.notesStore['player@example.com'].key, key, 'the unsubscribe key stays the same');
+});
+
+test('notes-off: the link in the email takes you off, a wrong key does not', async () => {
+  const x = notesIo();
+  await bm.handle('notes', { token: 'good', on: true }, x);
+  const key = x.notesStore['player@example.com'].key;
+  await assert.rejects(bm.handle('notes-off', { e: 'player@example.com', k: 'guess' }, x), /does not work/);
+  await assert.rejects(bm.handle('notes-off', { e: 'nobody@example.com', k: key }, x), /does not work/);
+  assert.strictEqual(x.notesStore['player@example.com'].on, true);
+  assert.deepStrictEqual(await bm.handle('notes-off', { e: 'Player@Example.com', k: key }, x), { on: false, email: 'player@example.com' });
+  assert.strictEqual((await bm.handle('notes', { token: 'good' }, x)).on, false, 'the box shows it');
 });
 
 const WEEK = { id: 'w9', slug: 'whats-new-in-pyr-2026-11-09', title: 'Notes week of November 9', summary: 'Every update.', published_at: '2026-11-09T21:00:00Z',
@@ -186,10 +202,40 @@ test('check: a finished week goes once to its own list, never while it is still 
     Date.now = () => Date.parse('2026-11-15T22:00:00Z');   // Sunday: the week is not over
     assert.deepStrictEqual((await bm.handle('check', {}, x)).notes, undefined);
     Date.now = () => Date.parse('2026-11-16T15:00:00Z');   // the Monday after
+    for (let i = 0; i < 150; i++) x.notesStore[`p${String(i).padStart(3, '0')}@example.com`] = { email: `p${String(i).padStart(3, '0')}@example.com`, on: true, key: `key${i}aaaaaaaaaaaaaaaaaa` };
+    x.notesStore['gone@example.com'] = { email: 'gone@example.com', on: false, key: 'kgone' };
     assert.deepStrictEqual((await bm.handle('check', {}, x)).notes, [WEEK.slug]);
-    const b = x.f.calls.find((c) => c.p === '/broadcasts');
-    assert.strictEqual(b.body.segment_id, x.f.segments[bm.NOTES_SEGMENT]);
+    const batches = x.f.calls.filter((c) => c.p === '/emails/batch');
+    assert.deepStrictEqual(batches.map((c) => c.body.length), [100, 50], 'one email each, at most 100 a call');
+    assert.ok(!x.f.calls.some((c) => c.p === '/broadcasts'), 'no Resend segment');
+    const first = batches[0].body[0];
+    assert.deepStrictEqual(first.to, ['p000@example.com']);
+    const off = bm.notesOffUrl({ email: 'p000@example.com', key: 'key0aaaaaaaaaaaaaaaaaa' });
+    assert.ok(first.html.includes(off.replace(/&/g, '&amp;')), 'her own unsubscribe link');
+    assert.ok(!first.html.includes('RESEND_UNSUBSCRIBE_URL') && !first.text.includes('RESEND_UNSUBSCRIBE_URL'));
+    assert.strictEqual(first.headers['List-Unsubscribe'], `<${off}>`);
+    assert.ok(!batches.some((c) => c.body.some((m) => m.to[0] === 'gone@example.com')));
     assert.deepStrictEqual((await bm.handle('check', {}, x)).notes, undefined, 'never twice');
   } finally { Date.now = realNow; }
   assert.strictEqual(bm.NOTES_LIVE, false, 'nothing goes to real subscribers until Ames has seen a test');
+});
+
+test('check: a week that stopped part way goes on to the rest, not again to the first', async () => {
+  const pages = { 'https://connectome.quest/blog/whats-new-in-pyr-2026-11-09/': `<h1>${WEEK.title}</h1>` };
+  const x = notesIo({ posts: [WEEK], pages, io: { notesLive: { since: '2026-11-01T00:00:00Z' } } });
+  for (let i = 0; i < 150; i++) x.notesStore[`p${String(i).padStart(3, '0')}@example.com`] = { email: `p${String(i).padStart(3, '0')}@example.com`, on: true, key: `k${i}` };
+  const real = x.resend;
+  let calls = 0;
+  x.resend = async (p, init) => { if (p === '/emails/batch' && ++calls === 2) { const e = new Error('resend 500'); e.status = 500; e.resend = true; throw e; } return real(p, init); };
+  const realNow = Date.now;
+  try {
+    Date.now = () => Date.parse('2026-11-16T15:00:00Z');
+    await assert.rejects(bm.handle('check', {}, x), /resend 500/);
+    assert.strictEqual(x.marks[`notes:${WEEK.slug}`].done, 100);
+    x.notesStore['p149@example.com'].on = false;   // left the list in between
+    assert.deepStrictEqual((await bm.handle('check', {}, x)).notes, [WEEK.slug]);
+    const sent = x.f.calls.filter((c) => c.p === '/emails/batch').flatMap((c) => c.body.map((m) => m.to[0]));
+    assert.strictEqual(sent.length, 149);
+    assert.strictEqual(new Set(sent).size, 149, 'nobody twice');
+  } finally { Date.now = realNow; }
 });

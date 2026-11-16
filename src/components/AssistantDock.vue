@@ -16,7 +16,7 @@ import { useProofreadingBackendStore, useSplitMergeOverlayStore } from "../store
 import { shortcutLabel } from "../util/platform";
 import nurroAvatar from "../images/inspector-nurro-2.png";
 import { CONNECTOME_QUEST_RESOURCES } from "../data/connectome-quest";
-import { isKeysQuery } from "../util/key_list";
+import { isKeysQuery, keysSearch, keyRowMatches } from "../util/key_list";
 
 const backend = useProofreadingBackendStore();
 const splitMerge = useSplitMergeOverlayStore();
@@ -334,10 +334,17 @@ const inputPlaceholder = computed(
 
 /** Typing "keys" or "?" (or pressing ? anywhere) lists every key here. */
 const keyGroups = ref<KeyGroupList>([]);
+const keySearch = ref("");
 
 function refreshCommandMatches() {
   const q = input.value.trim();
-  keyGroups.value = isKeysQuery(q) ? (props.listKeys?.() ?? []) : [];
+  // "keys zoom", "? scroll", "mouse": the list, narrowed to what was typed.
+  // Nothing matching is a question, not a search (e.g. "mouse is lagging").
+  const search = isKeysQuery(q) ? keysSearch(q) : '';
+  keySearch.value = search;
+  keyGroups.value = isKeysQuery(q)
+    ? (props.listKeys?.() ?? []).map(g => ({ ...g, rows: g.rows.filter(r => keyRowMatches({ ...r, group: g.group }, search)) })).filter(g => g.rows.length)
+    : [];
   if (keyGroups.value.length) { commandMatches.value = []; return; }
   if (!q || q.length < 2) { commandMatches.value = []; return; }
   // A trailing "?" or a leading question word reads as a question, not a
@@ -416,7 +423,7 @@ function onKeydown(e: KeyboardEvent) {
     </div>
 
     <div v-if="keyGroups.length" class="nge-guide-scroll nge-guide-keys">
-      <div class="nge-guide-cmds-hint">Every key in Pyr · click one to try it · Esc to close</div>
+      <div class="nge-guide-cmds-hint">{{ keySearch ? `Matching “${keySearch}”` : "Every key and mouse control in Pyr" }} · type after “keys” to search, e.g. keys zoom · click a key to try it · Esc to close</div>
       <section v-for="g in keyGroups" :key="g.group" class="nge-guide-keygroup">
         <h3 class="nge-guide-keyhead">{{ g.group }}</h3>
         <button

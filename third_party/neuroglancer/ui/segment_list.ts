@@ -1293,7 +1293,9 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       if (!targetFolder) return 'inside';
       const r = heading.getBoundingClientRect();
       const y = (event.clientY - r.top) / r.height;
-      return y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'inside';
+      // Above and below get a little more of the heading: moving a folder is
+      // more common than nesting one (Nseraf #493).
+      return y < 0.35 ? 'before' : y > 0.65 ? 'after' : 'inside';
     };
     const clearZone = () => heading.classList.remove(
         'nge-folder-drop-target', 'nge-folder-drop-before', 'nge-folder-drop-after');
@@ -1358,8 +1360,14 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     // rename), a folder inside it, ungroup. Drag the heading to nest it.
     const folder = () => folders.value.find(f => f.id === mode.folder);
     heading.draggable = true;
+    // Folders could already be put in any order by dragging, but nothing said
+    // so (Nseraf #493, 2026-11-12: "it'd be nice if we could sort folders").
+    heading.title = 'Drag to move this folder: drop on the top or bottom edge of another folder to put it above or below, or on its middle to put it inside.';
     heading.addEventListener('dragstart', (event: DragEvent) => {
       if (name.contentEditable === 'true') { event.preventDefault(); return; }
+      // The side panel cancels every drag that reaches it (side_panel.ts
+      // addBody), which stopped folders moving at all (Ames 2026-11-12).
+      event.stopPropagation();
       event.dataTransfer?.setData(FOLDER_DRAG_TYPE, mode.folder);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     });
@@ -1823,6 +1831,9 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
   }
 }
 
+/** nge: where each segment list section was scrolled to, per layer (report 545). */
+const ngeListPlaces = new WeakMap<object, Map<string, {top: number}>>();
+
 export class SegmentDisplayTab extends Tab {
   constructor(public layer: SegmentationUserLayer) {
     super();
@@ -1951,6 +1962,55 @@ export class SegmentDisplayTab extends Tab {
                     // a segment's row is the same wherever it sits in the list
                     const vlist = owner.registerDisposer(new VirtualList(
                         {source, horizontalScroll: true, keepRowsOnSplice: true}));
+                    // nge: the list keeps its place when the tab is left and
+                    // opened again, or another layer is picked and this one
+                    // comes back (Nseraf, report 545: it went back to the top).
+                    const placeKey = typeof mode === 'object' ? 'folder:' + mode.folder : String(mode);
+                    let places = ngeListPlaces.get(layer);
+                    if (!places) ngeListPlaces.set(layer, places = new Map());
+                    const place = places.get(placeKey);
+                    // The rows come in after the list is made: the place is put
+                    // back once the list is tall enough to show it, and held
+                    // there for a moment while the last rows land.
+                    let placeTimer = 0;
+                    let restoring = false;
+                    if (place && place.top > 0) {
+                      restoring = true;
+                      // Hidden until it is back in place, so it does not open at the
+                      // top and then scroll down in view (Nseraf, report 550).
+                      vlist.element.style.visibility = 'hidden';
+                      const shown = () => { restoring = false; vlist.element.style.visibility = ''; };
+                      const started = Date.now();
+                      let held = 0;
+                      const putBack = () => {
+                        if (vlist.wasDisposed) return;
+                        const el = vlist.element;
+                        if (el.isConnected && el.clientHeight > 0 && el.scrollHeight >= place.top + el.clientHeight) {
+                          if (Math.abs(el.scrollTop - place.top) > 1) {
+                            el.scrollTop = place.top;
+                            el.dispatchEvent(new Event('scroll'));
+                          }
+                          if (++held >= 3) { shown(); return; }
+                        }
+                        if (Date.now() - started > 3000) { shown(); return; }
+                        placeTimer = window.setTimeout(putBack, 50);
+                      };
+                      placeTimer = window.setTimeout(putBack, 0);
+                    }
+                    // Noted as the player scrolls. Not while hidden or being
+                    // put back: leaving takes the rows out first, which sends
+                    // the list to the top.
+                    let noteTimer = 0;
+                    vlist.element.addEventListener('scroll', () => {
+                      if (restoring) return;
+                      clearTimeout(noteTimer);
+                      noteTimer = window.setTimeout(() => {
+                        const el = vlist.element;
+                        if (vlist.wasDisposed || !el.isConnected || el.clientHeight === 0) return;
+                        places!.set(placeKey, {top: el.scrollTop});
+                      }, 150);
+                    });
+                    owner.registerDisposer(() => { clearTimeout(noteTimer); clearTimeout(placeTimer); });
                     const grp = owner.registerDisposer(new SegmentListGroupSelected(
                         source, group, folders, sectionActions));
                     grp.element.appendChild(vlist.element);
@@ -2221,6 +2281,8 @@ export class SegmentDisplayTab extends Tab {
                   context.registerDisposer(
                       displayState.segmentationGroupState.value.selectedSegments.changed.add(
                           updateListItems));
+                  // nge: this also draws the list the first time; a place to go
+                  // back to (report 545) is put back right after it.
                   inview.vlist.scrollToTop();
                 }))
             .element);

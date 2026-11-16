@@ -155,6 +155,27 @@ async function undoOp(ex: PracticeExample, operationId: number): Promise<void> {
   if (!res.ok) throw new Error(`undo ${operationId}: ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
 
+/** Viewer voxel size in nm, per dataset, for the registered points. */
+const POINT_NM: Record<string, [number, number, number]> = { pinky_nf_v2: [4, 4, 40] };
+
+/**
+ * Cut a merge example's two registered spots apart: the cell (supervoxel_a
+ * at point_a) on one side, the piece (supervoxel_b at point_b) on the
+ * other. Used by a reset when the server will not undo the merge itself.
+ */
+async function cutApart(ex: PracticeExample): Promise<void> {
+  const nm = POINT_NM[ex.dataset];
+  let pa: number[] = [], pb: number[] = [];
+  try { pa = JSON.parse(ex.point_a || ''); pb = JSON.parse(ex.point_b || ''); } catch { /* checked below */ }
+  if (!nm || pa.length < 3 || pb.length < 3) throw new Error('the server would not undo an edit, and this cell has no registered points to cut it apart at');
+  const at = (p: number[]) => p.slice(0, 3).map((v, i) => Number(v) * nm[i]);
+  const res = await fetch(`${pcgBase(ex)}/split?int64_as_str=1`, {
+    method: 'POST', headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(30000),
+    body: JSON.stringify({ sources: [[ex.supervoxel_a, ...at(pa)]], sinks: [[ex.supervoxel_b, ...at(pb)]] }),
+  });
+  if (!res.ok) throw new Error(`cutting the pieces apart failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+}
+
 // ─── Viewer helpers ─────────────────────────────────────────────────────────
 
 function segLayer(dataset: string): any {
@@ -229,6 +250,8 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   // pass that finds the same operations as the last one is the end.
   let lastPass = '';
   let undoneCount = 0;
+  /** Operations the server failed to undo: not asked again. */
+  const refused = new Set<number>();
   for (let pass = 0; pass < 8; pass++) {
   const roots = new Set<string>();
   for (const sv of [ex.supervoxel_a, ex.supervoxel_b]) {
@@ -248,11 +271,23 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
     if (!res.ok) throw Error(`operation_details ${res.status}`);
     Object.assign(details, await res.json());
   }
-  const activeOps = remainingPracticeOperations(ops, details);
-  for (const op of activeOps) { await assertLease(); await undoOp(ex, op.operationId); }
+  const activeOps = remainingPracticeOperations(ops, details).filter(op => !refused.has(op.operationId));
+  for (const op of activeOps) {
+    await assertLease();
+    try { await undoOp(ex, op.operationId); undoneCount++; }
+    catch (e: any) {
+      // The graph server itself fails on some undos (Extension cell 5,
+      // operation 5127: a 500 from inside the server, "int() argument must
+      // be ... not 'NoneType'", every time). One such edit used to stop the
+      // reset for good, and the cell sat broken. It is passed over; the
+      // check below, and the cut after it, put the cell right.
+      if (!/: 5\d\d /.test(String(e?.message || e))) throw e;
+      console.warn(`[practice] the server will not undo operation ${op.operationId}, going on without it:`, e);
+      refused.add(op.operationId);
+    }
+  }
   const thisPass = activeOps.map(op => op.operationId).join(',');
   if (!activeOps.length || thisPass === lastPass) break;
-  undoneCount += activeOps.length;
   lastPass = thisPass;
   }
   const activeOps = { length: undoneCount };
@@ -260,8 +295,16 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   // The spots the game itself checks: a cell whose own pair differs from them
   // was marked ready while it still read as solved (report 331).
   const [sa, sb] = checkSupervoxels(ex);
-  const a = await rootOfSupervoxel(ex, sa);
-  const b = await rootOfSupervoxel(ex, sb);
+  let a = await rootOfSupervoxel(ex, sa);
+  let b = await rootOfSupervoxel(ex, sb);
+  // A merge example still joined after every undo the server would make:
+  // cut the two registered spots apart, which is the start state.
+  if (a && b && a === b && ex.kind !== 'cut' && refused.size) {
+    await assertLease();
+    await cutApart(ex);
+    a = await rootOfSupervoxel(ex, sa);
+    b = await rootOfSupervoxel(ex, sb);
+  }
   if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${sa} and ${sb} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';

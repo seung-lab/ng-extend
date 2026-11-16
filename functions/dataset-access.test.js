@@ -20,7 +20,7 @@ function world() {
     if (p.startsWith('users?')) {
       const id = new URLSearchParams(p.split('?')[1]).get('id') || '';
       if (id.startsWith('in.(')) return id.slice(4, -1).split(',').map(u => ({id: u, cave_user_id: caveIds[u], created_at: '2026-09-01T00:00:00Z'}));
-      return [{cave_user_id: caveIds[id.replace(/^eq\./, '')]}];
+      return [{cave_user_id: caveIds[id.replace(/^eq\./, '')], middleauth_email: 'Player@Example.org', display_name: 'Andrea Arwen'}];
     }
     if (p.startsWith('edit_log?')) {
       const q = new URLSearchParams(p.split('?')[1]);
@@ -107,7 +107,12 @@ test('only admins list and decide; Granted tells the player and shows on their s
   assert.strictEqual(after[0].mark, 'granted');
   assert.strictEqual(w.players.length, 1);
   assert.strictEqual(w.players[0].userId, 'u-player');
-  assert.match(w.players[0].title, /You have access to Medial Entorhinal Cortex/);
+  // MEC has its own unlock bell (Ames 2026-11-14), still found by grantLines.
+  assert.match(w.players[0].title, /^🔓 You have access to MEC, the brain's map of space$/);
+  assert.match(w.players[0].body, /grid cells/);
+  assert.match(w.players[0].body, /\(#nge-open-dataset=pni_mec\)/);
+  assert.match(w.players[0].image, /mec-welcome\.jpg$/);
+  assert.doesNotMatch(w.players[0].title + w.players[0].body, /—|–|Ames/);
   const status = await handle('access.datasetStatus', {}, w.io());
   assert.strictEqual(status.requests.pni_mec.mark, 'granted');
 });
@@ -195,4 +200,57 @@ test('a grant is said in chat once, on the next visit', async () => {
   assert.equal((await handle('access.grantLines', {}, io)).announced, 0);
   assert.ok(asked[0].includes('target_id=eq.u-1') && asked[0].includes('send_at=gte.2026-10-30'));
   assert.equal((await handle('access.grantLines', {}, {sb, me: null})).announced, 0);
+});
+
+test('access.datasetTestBell: the unlock bell, to the admin who asks, titled Test so no chat line is said', async () => {
+  const w = world();
+  await assert.rejects(handle('access.datasetTestBell', {dataset: 'pni_mec', label: 'Medial Entorhinal Cortex'}, w.io()), /Admins only/);
+  assert.deepStrictEqual(await handle('access.datasetTestBell', {dataset: 'pni_mec', label: 'Medial Entorhinal Cortex'}, w.io({isAdmin: true})), {sent: true});
+  const b = w.players[0];
+  assert.strictEqual(b.userId, 'u-player');
+  assert.match(b.title, /^Test: 🔓 You have access to MEC/);
+  assert.match(b.body, /we prioritize proofreading axons first/);
+  assert.match(b.body, /support@eyewire\.org/);
+  assert.match(b.body, /\(#nge-open-dataset=pni_mec\)$/);
+  assert.ok(b.body.length <= 1500, b.body.length);
+  await assert.rejects(handle('access.datasetTestBell', {dataset: 'bad id!'}, w.io({isAdmin: true})), /Unknown dataset/);
+});
+
+test('access.grantEmail: shown first, sent only once they are let in, from Amy at Pyr', async () => {
+  const w = world();
+  await handle('access.dataset', {...MEC, note: 'I trace grid cells.'}, w.io());
+  const id = w.issues[0].id;
+  const sent = [];
+  const admin = w.io({isAdmin: true, sendEmail: async m => { sent.push(m); return {ok: true, id: 'e1'}; }});
+  await assert.rejects(handle('access.grantEmail', {datasetId: id, preview: true}, w.io()), /Admins only/);
+  const draft = await handle('access.grantEmail', {datasetId: id, note: 'Welcome!', preview: true}, admin);
+  assert.strictEqual(draft.to, 'player@example.org');
+  assert.strictEqual(draft.subject, 'You can now edit MEC in Pyr');
+  assert.match(draft.text, /^Hi Andrea,\n\nCongratulations, you're in! You can now edit MEC/);
+  assert.match(draft.text, /we prioritize proofreading axons first/);
+  assert.doesNotMatch(draft.text, /\*\*/);
+  assert.match(draft.text, /Welcome!/);
+  assert.match(draft.text, /Amy Sterling and the Pyr Team at Princeton$/);
+  assert.doesNotMatch(draft.text, /[–—]/);
+  assert.strictEqual(sent.length, 0);
+  await assert.rejects(handle('access.grantEmail', {datasetId: id}, admin), /Let them in first/);
+  assert.strictEqual(sent.length, 0);
+  await handle('access.datasetDecide', {id, mark: 'granted'}, admin);
+  assert.deepStrictEqual(await handle('access.grantEmail', {datasetId: id}, admin), {sent: true, to: 'player@example.org'});
+  assert.strictEqual(sent.length, 1);
+  assert.strictEqual(sent[0].from, 'Amy at Pyr <welcome@connectome.quest>');
+  assert.strictEqual(sent[0].reply_to, 'support@eyewire.org');
+  assert.deepStrictEqual(sent[0].to, ['player@example.org']);
+  const bad = w.io({isAdmin: true, sendEmail: async () => ({ok: false, error: 'nope'})});
+  await assert.rejects(handle('access.grantEmail', {datasetId: id}, bad), /did not go: nope\. They are still let in/);
+});
+
+test('the Retina grant email and notification point to its brain mapping challenges', () => {
+  const {grantEmail} = require('./access-request');
+  const e = grantEmail('stroeh_mouse_retina', 'the Retina', 'Ines', '');
+  assert.strictEqual(e.subject, 'You can now edit the Retina in Pyr');
+  assert.match(e.text, /Start playing in the Retina to see its brain mapping challenges\. Press Play/);
+  assert.match(e.text, /BC Challenge.*Cilia Quests/);
+  assert.match(e.text, /https:\/\/connectome\.quest\/play\//);
+  assert.doesNotMatch(e.text, /[–—*]/);
 });
