@@ -95,7 +95,7 @@ function buildStaticReference(): string {
     "## The page address and sharing views",
     "- The page address is a short code (it ends in #!pyr: and a few letters). The view itself is kept in the player's own browser, so reloading, reopening a closed tab, or restarting the browser brings the view back.",
     "- The address only works in the same browser on the same computer. To send a view to someone, use the Share button in the top bar: it copies a short link that works anywhere. Copying the address bar does not share the view.",
-    "- Switching to a dataset picks up where the player left off there (their last view of it, from this browser or their account, whichever is newer). A bar then offers Starting view to open the dataset fresh. Settings > Switching datasets > \"Switching to a dataset opens\" picks Where I left off, Its starting view, or the dataset without starter cells. Opening a cell from chat, the Cell Library or a quest still goes straight to that cell.",
+    "- Switching to a dataset picks up where the player left off there (their last view of it, from this browser or their account, whichever is newer). A bar then offers Starting view to open the dataset fresh. Settings > Switching datasets > \"Switching to a dataset opens\" picks Where I left off, Its starting view, or the dataset without starter cells. Opening a cell from chat, the Cell Library or a quest still goes straight to that cell, and a running tutorial keeps its own Sandbox view. The bar shows only the first time.",
     "",
     // Nurro could not say what Start playing does (Ames 2026-11-12).
     "## Play (the Start playing button)",

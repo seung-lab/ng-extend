@@ -588,10 +588,11 @@ export const useLayersStore = defineStore('layers', () => {
     // Settings > Switching datasets > "Where I left off" (the default; Ben
     // Noble, report 542): the newest of this browser's last view of the
     // dataset and the one saved to the account comes back, by the same road
-    // as a reload. Not on the way to a cell, not on the Sandbox (tutorials
-    // set its view), and not when the address already holds a view.
+    // as a reload. Not on the way to a cell, not while a tutorial runs (it
+    // sets the Sandbox's view itself), and not when the address already
+    // holds a view.
     if (switchOpens === 'resume' && targetSegName && !opts.forJump && !opts.keepHash && !opts.startingView
-        && !skipStateUrl && findDatasetBySegName(targetSegName)?.section !== 'sandbox') {
+        && !skipStateUrl && !(findDatasetBySegName(targetSegName)?.section === 'sandbox' && isUserInActiveTutorial())) {
       const lv = await import('./util/local_view');
       const va = await import('./util/view_autosave');
       await lv.keepDatasetViewNow();

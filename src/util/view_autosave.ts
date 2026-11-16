@@ -52,6 +52,7 @@ export async function accountViewOf(seg: string): Promise<{json: string, t: numb
  *  (store.ts selectLayers): after the reload, say so, with a way back to the
  *  dataset's starting view. */
 const RESUMED_KEY = 'nge-resumed-view';
+const RESUME_TOLD_KEY = 'nge-resume-bar-shown';
 export function noteResumedView(seg: string) {
   try { sessionStorage.setItem(RESUMED_KEY, JSON.stringify({ seg, at: Date.now() })); } catch { /* */ }
   skipNextViewRestoreOffer();
@@ -199,12 +200,17 @@ export function startViewAutosave(viewer: any, userId: () => string | null) {
   userIdOf = userId;
   viewerRef = viewer;
   const hashAtLoad = bootHash();
+  // The bar comes once per browser, the first time a switch picks up where
+  // the player left off; after that Settings is the place to change it (Ames
+  // 2026-11-16: "I don't think we need this every time").
   const resumed = takeResumed();
-  if (resumed) {
+  let firstResume = false;
+  try { firstResume = !localStorage.getItem(RESUME_TOLD_KEY); if (resumed) localStorage.setItem(RESUME_TOLD_KEY, '1'); } catch { /* */ }
+  if (resumed && firstResume) {
     const ds = findDatasetBySegName(resumed);
     const label = datasetAbbrev(resumed) || ds?.shortLabel || resumed;
     setTimeout(() => showBar(resumed, '', () => { if (ds) void switchToDataset(ds, { startingView: true }); },
-      `Back where you left off in ${label}.`, 'Starting view'), 1500);
+      `Back where you left off in ${label}. You can change this in Settings.`, 'Starting view'), 1500);
   }
   let switched = false;
   try { switched = sessionStorage.getItem(OFFER_KEY) === '1'; sessionStorage.removeItem(OFFER_KEY); } catch { /* */ }
