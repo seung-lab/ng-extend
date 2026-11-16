@@ -25,7 +25,7 @@ import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {isMobileRef} from './util/mobile';
-import {currentDatasetTag, canonicalDataset, currentSegLayer, currentSegLayerName, segLayerName, DATASETS} from './datasets';
+import {currentDatasetTag, canonicalDataset, currentSegLayer, currentSegLayerName, segLayerName, DATASETS, findDatasetBySegName} from './datasets';
 import {editsAny} from './util/dataset_access';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
@@ -568,7 +568,7 @@ export const useLayersStore = defineStore('layers', () => {
    *  follows is not lost to a reload (Ames 2026-10-14: "if I jump via chat
    *  it doesn't need to load the default segments, just the segment I
    *  jumped to, true of any and all jumps"). */
-  async function selectLayers(layers: any[], opts: {keepHash?: boolean; forJump?: boolean} = {}) {
+  async function selectLayers(layers: any[], opts: {keepHash?: boolean; forJump?: boolean; startingView?: boolean} = {}) {
     if (!viewer) return;
 
     // Detect the target dataset (by segmentation layer name) BEFORE restoring,
@@ -584,8 +584,28 @@ export const useLayersStore = defineStore('layers', () => {
     // Settings > Switching datasets: the player's own start view wins, then
     // "without starter cells" skips the curated view, else the curated view.
     const startPrefs = useUserPreferencesStore().prefs;
+    const switchOpens = datasetSwitchOpens(startPrefs);
+    // Settings > Switching datasets > "Where I left off" (the default; Ben
+    // Noble, report 542): the newest of this browser's last view of the
+    // dataset and the one saved to the account comes back, by the same road
+    // as a reload. Not on the way to a cell, not on the Sandbox (tutorials
+    // set its view), and not when the address already holds a view.
+    if (switchOpens === 'resume' && targetSegName && !opts.forJump && !opts.keepHash && !opts.startingView
+        && !skipStateUrl && findDatasetBySegName(targetSegName)?.section !== 'sandbox') {
+      const lv = await import('./util/local_view');
+      const va = await import('./util/view_autosave');
+      await lv.keepDatasetViewNow();
+      const [local, account] = await Promise.all([lv.lastLocalViewOf(targetSegName), va.accountViewOf(targetSegName)]);
+      const best = local && (!account || local.t >= account.t) ? local : account;
+      if (best?.json && best.json.includes('"layers"')) {
+        console.info(`[layers] Picking up where you left off in ${targetSegName}`);
+        va.noteResumedView(targetSegName);
+        await lv.openViewHere(best.json);
+        return;
+      }
+    }
     const ownHash = targetSegName && !opts.forJump ? startViewHash(startPrefs.datasetStartViews?.[targetSegName]) : '';
-    const bareSwitch = !!startPrefs.datasetBareSwitch || !!opts.forJump;
+    const bareSwitch = switchOpens === 'bare' || !!opts.forJump;
     const curatedUrl = ownHash ? window.location.origin + window.location.pathname + ownHash
       : bareSwitch ? '' : (dsCfgEarly?.defaultStateUrl || '');
     if (curatedUrl && !skipStateUrl && !opts.keepHash) {
@@ -1140,8 +1160,12 @@ export interface UserPreferences {
   showSegSetupTabs?: boolean;
   /** Optional datasets this player turned on (DatasetEntry.id, e.g. 'h01'). */
   extraDatasets?: string[];
-  /** Switch datasets without the curated view or starter cells (faster). */
+  /** Switch datasets without the curated view or starter cells (faster).
+   *  Kept in step with datasetSwitchOpens === 'bare'. */
   datasetBareSwitch?: boolean;
+  /** What a switch to a dataset opens: where the player left off there (the
+   *  default), its starting view, or the dataset without starter cells. */
+  datasetSwitchOpens?: DatasetSwitchOpens;
   /** Segmentation layer name -> the player's own share link to open there. */
   datasetStartViews?: Record<string, string>;
   /** Mute help requests: hide the pending count on the Second Opinion toolbar
@@ -1183,6 +1207,15 @@ export interface UserPreferences {
   /** Top bar staging for new players (src/util/toolbar_staging.ts): whether
    *  this account is staged, and which icons have arrived. Absent: not decided. */
   toolbarStage?: { staged: boolean; revealed: string[]; visitDays: string[]; done: string[] };
+}
+
+export type DatasetSwitchOpens = 'resume' | 'start' | 'bare';
+/** Settings > Switching datasets. Before the choice existed there was only
+ *  the "without starter cells" box. */
+export function datasetSwitchOpens(p: {datasetSwitchOpens?: DatasetSwitchOpens, datasetBareSwitch?: boolean}): DatasetSwitchOpens {
+  const v = p.datasetSwitchOpens;
+  if (v === 'resume' || v === 'start' || v === 'bare') return v;
+  return p.datasetBareSwitch ? 'bare' : 'resume';
 }
 
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
@@ -1228,7 +1261,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetSwitchOpens', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

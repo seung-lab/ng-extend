@@ -94,11 +94,12 @@ function openDb(): Promise<IDBDatabase> {
 let dbPromise: Promise<IDBDatabase> | null = null;
 function db() { return dbPromise ??= openDb(); }
 
-async function idbPut(code: string, value: {json: string, t: number} | undefined) {
+async function idbPut(code: string, value: {json: string, t: number} | undefined, alsoKey = '') {
   const d = await db();
   await new Promise<void>((resolve, reject) => {
     const tx = d.transaction(STORE, 'readwrite');
     if (value === undefined) tx.objectStore(STORE).delete(code); else tx.objectStore(STORE).put(value, code);
+    if (alsoKey && value !== undefined) tx.objectStore(STORE).put(value, alsoKey);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -124,10 +125,23 @@ function prune() {
   for (const c of drop) void idbPut(c, undefined).catch(() => {});
 }
 
+/** The dataset on screen (its segmentation layer's name), set by main.ts. */
+let datasetOf: () => string = () => '';
+export function setLocalViewDataset(fn: () => string) { datasetOf = fn; }
+/** Each dataset's latest view in this browser is kept as well, under this
+ *  key, so switching back to a dataset picks up where it was left (Ben
+ *  Noble, report 542). One per dataset, shared by the tabs. */
+const datasetKeyOf = (seg: string) => 'dataset:' + seg;
+
+/** Set once the page is about to reload into another view (openViewHere):
+ *  nothing more is written for the view that is leaving. */
+let frozen = false;
+
 /** Keep the view under this tab's code. Returns the code for the address. */
 let lastJson = '';
 export function saveLocalView(json: string): string {
   const code = myViewCode();
+  if (frozen) return code;
   // A view with no layers is not kept: brought back, it is a blank screen
   // (Ames 2026-11-16). The tab's last real view stays under its code.
   if (!json.includes('"layers"')) return code;
@@ -137,14 +151,46 @@ export function saveLocalView(json: string): string {
   const ix = readIndex();
   ix[code] = t;
   writeIndex(ix);
-  void idbPut(code, {json, t}).catch(e => console.warn('[view] could not keep the view in this browser:', e));
+  let ds = '';
+  try { ds = datasetOf(); } catch { /* */ }
+  void idbPut(code, {json, t}, ds ? datasetKeyOf(ds) : '').catch(e => console.warn('[view] could not keep the view in this browser:', e));
   return code;
+}
+
+/** This browser's latest view of a dataset, if it has one. */
+export async function lastLocalViewOf(seg: string): Promise<{json: string, t: number} | undefined> {
+  try { return await idbGet(datasetKeyOf(seg)); } catch { return undefined; }
+}
+
+/** The view on screen, kept for its dataset now (before a switch away). */
+export async function keepDatasetViewNow(): Promise<void> {
+  if (frozen) return;
+  let ds = '', json = '';
+  try { ds = datasetOf(); json = JSON.stringify((window as any).viewer.state.toJSON()); } catch { return; }
+  if (!ds || !json.includes('"layers"')) return;
+  try { await idbPut(datasetKeyOf(ds), {json, t: Date.now()}); } catch { /* */ }
+}
+
+/** Reload this tab into the given view, the way a reload brings a view back
+ *  (used to pick up where a dataset was left). */
+export async function openViewHere(json: string): Promise<void> {
+  const code = myViewCode();
+  const t = Date.now();
+  frozen = true;
+  const ix = readIndex();
+  ix[code] = t;
+  writeIndex(ix);
+  try { await idbPut(code, {json, t}); } catch { /* the backup below stands */ }
+  try { sessionStorage.setItem(BACKUP_KEY, JSON.stringify({code, t, json})); } catch { /* too big: the database copy stands */ }
+  try { history.replaceState(history.state, '', location.pathname + location.search + LOCAL_PREFIX + code); } catch { /* */ }
+  location.reload();
 }
 
 /** Leaving the page (a reload among it): the database write may not finish
  *  in time, so the view also goes to this tab's sessionStorage, which is
  *  written at once. Only views that fit (a few MB). */
 export function backupForReload(json: string) {
+  if (frozen) return;
   try { sessionStorage.setItem(BACKUP_KEY, JSON.stringify({code: myViewCode(), t: Date.now(), json})); } catch { /* too big: the database copy stands */ }
 }
 

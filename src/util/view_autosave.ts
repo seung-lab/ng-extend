@@ -13,7 +13,7 @@
  */
 import { supabase } from '../supabase';
 import { bootHash } from './local_view';
-import { currentSegLayerName, findDatasetBySegName } from '../datasets';
+import { currentSegLayerName, findDatasetBySegName, switchToDataset, datasetAbbrev } from '../datasets';
 import { getDatasetCaveConfig } from '../config';
 import { getCachedJson } from 'neuroglancer/util/trackable';
 
@@ -34,7 +34,35 @@ let lastSaveAt = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let userIdOf: () => string | null = () => null;
 
-const datasetKey = () => (currentSegLayerName() || '').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 100);
+const keyOf = (seg: string) => (seg || '').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 100);
+const datasetKey = () => keyOf(currentSegLayerName());
+
+/** The view saved to the player's account for a dataset, when signed in. */
+export async function accountViewOf(seg: string): Promise<{json: string, t: number} | null> {
+  if (!userIdOf() || !seg) return null;
+  try {
+    const { data, error } = await supabase.from('user_views')
+      .select('state,updated_at').eq('dataset', keyOf(seg)).maybeSingle();
+    if (error || !data?.state) return null;
+    return { json: JSON.stringify(data.state), t: Date.parse(String(data.updated_at || '')) || 0 };
+  } catch { return null; }
+}
+
+/** A switch is about to reload into the player's last view of a dataset
+ *  (store.ts selectLayers): after the reload, say so, with a way back to the
+ *  dataset's starting view. */
+const RESUMED_KEY = 'nge-resumed-view';
+export function noteResumedView(seg: string) {
+  try { sessionStorage.setItem(RESUMED_KEY, JSON.stringify({ seg, at: Date.now() })); } catch { /* */ }
+  skipNextViewRestoreOffer();
+}
+function takeResumed(): string {
+  try {
+    const r = JSON.parse(sessionStorage.getItem(RESUMED_KEY) || 'null');
+    sessionStorage.removeItem(RESUMED_KEY);
+    return r && Date.now() - r.at < 120_000 ? String(r.seg || '') : '';
+  } catch { return ''; }
+}
 
 async function saveNow(viewer: any) {
   timer = null;
@@ -124,17 +152,18 @@ function ago(iso: string): string {
   return `${Math.round(s / 86400)} days ago`;
 }
 
-function showBar(dataset: string, updatedAt: string, onRestore: () => void) {
+function showBar(dataset: string, updatedAt: string, onRestore: () => void, text?: string, button = 'Restore') {
   document.querySelector('.nge-view-restore')?.remove();
   const label = findDatasetBySegName(dataset)?.shortLabel || dataset;
   const bar = document.createElement('div');
   bar.className = 'nge-view-restore';
   bar.setAttribute('role', 'status');
   bar.innerHTML = `<span class="nge-vr-text"></span>`
-    + `<button type="button" class="nge-vr-yes">Restore</button>`
+    + `<button type="button" class="nge-vr-yes"></button>`
     + `<button type="button" class="nge-vr-no" aria-label="Dismiss">×</button>`;
   (bar.querySelector('.nge-vr-text') as HTMLElement).textContent =
-    `Pick up where you left off in ${label}? Saved ${ago(updatedAt)}.`;
+    text ?? `Pick up where you left off in ${label}? Saved ${ago(updatedAt)}.`;
+  (bar.querySelector('.nge-vr-yes') as HTMLElement).textContent = button;
   const close = () => bar.remove();
   bar.querySelector('.nge-vr-yes')!.addEventListener('click', () => { onRestore(); close(); });
   bar.querySelector('.nge-vr-no')!.addEventListener('click', close);
@@ -170,6 +199,13 @@ export function startViewAutosave(viewer: any, userId: () => string | null) {
   userIdOf = userId;
   viewerRef = viewer;
   const hashAtLoad = bootHash();
+  const resumed = takeResumed();
+  if (resumed) {
+    const ds = findDatasetBySegName(resumed);
+    const label = datasetAbbrev(resumed) || ds?.shortLabel || resumed;
+    setTimeout(() => showBar(resumed, '', () => { if (ds) void switchToDataset(ds, { startingView: true }); },
+      `Back where you left off in ${label}.`, 'Starting view'), 1500);
+  }
   let switched = false;
   try { switched = sessionStorage.getItem(OFFER_KEY) === '1'; sessionStorage.removeItem(OFFER_KEY); } catch { /* */ }
   const style = document.createElement('style');

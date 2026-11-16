@@ -9,7 +9,8 @@ import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
 import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
-import {installLocalView} from './util/local_view';
+import {installLocalView, setLocalViewDataset} from './util/local_view';
+import {currentSegLayerName} from './datasets';
 import {startColorFamilies} from './util/color_families';
 import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
@@ -431,6 +432,7 @@ function setupViewer() {
   // The address holds a short code; the view is kept in this browser
   // (util/local_view.ts, report 541). Before the binding reads the address.
   installLocalView();
+  setLocalViewDataset(currentSegLayerName);
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
         // The address is written once the view has been still for 1.5 s, not

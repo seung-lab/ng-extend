@@ -7,7 +7,8 @@
       "items": [
         "The page address is now a short code instead of your whole view, so it no longer weighs down your browser or its history.",
         "Your view is kept in your own browser, so a reload, a reopened tab or a browser restart still brings it back.",
-        "To send a view to someone, use the Share button: it copies a short link that works anywhere."
+        "To send a view to someone, use the Share button: it copies a short link that works anywhere.",
+        "Switching to a dataset picks up where you left off there. Want a fresh start? Click Starting view on the bar that appears, or pick what a switch opens in Settings > Switching datasets."
       ]
     },
     {

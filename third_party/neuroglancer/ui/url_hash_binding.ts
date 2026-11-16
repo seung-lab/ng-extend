@@ -112,7 +112,9 @@ export class UrlHashBinding extends RefCounted {
         (window as any).__ngeHashStale = false;
         (window as any).__ngeStaleJson = undefined;
         this.prevStateString = undefined;
-        if (json === '{}') return;
+        // A view with no layers leaves the address as it is: a link still
+        // loading (a state server link waiting for sign in) stays there.
+        if (json === '{}' || !json.includes('"layers"')) return;
         this.lastLocalJson = json;
         const want = hooks.prefix + hooks.save(json);
         if (location.hash !== want) {
