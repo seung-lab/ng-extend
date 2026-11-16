@@ -563,6 +563,7 @@ export function startIdleTurn() {
     const v = viewerNow();
     if (v && handsOff() && turnAllowed() && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       try { v.perspectiveNavigationState.pose.rotateRelative(Float32Array.from([0, 1, 0]), 2 * Math.PI / TURN_SECONDS * dt); } catch { /* no view yet */ }
+      (window as any).__ngeAutoTurnAt = performance.now();   // not saved for the turn alone
     }
     idleRaf = requestAnimationFrame(step);
   };
