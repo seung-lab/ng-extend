@@ -41,9 +41,11 @@ const message = ref('');
 const TITLE_MAX = 80;
 const title = ref('');
 /** One short box, details only if they want (Ames 2026-10-20: "We want them
- *  to write LESS"). The box that holds what they wrote stays closed until
- *  "Add details" opens it. */
-const detailsOpen = ref(false);
+ *  to write LESS"). The details box used to stay closed until "Add details"
+ *  opened it. */
+// Open from the start, up to 500 characters (Ames 2026-11-16: one-line
+// reports like "the merge tutorial is not working" left nothing to go on).
+const detailsOpen = ref(true);
 /** Details are short unless they ask for more (Ames 2026-11-02: "some of the
  *  reports are too long"). "I need to add more" lifts it to what the report
  *  server keeps (functions/index.js submitIssue, 4000). */
@@ -108,7 +110,7 @@ watch([title, message, category], () => {
   } catch { /* storage blocked */ }
 });
 function clearDraft() {
-  title.value = ''; message.value = ''; detailsOpen.value = false; detailsLong.value = false;
+  title.value = ''; message.value = ''; detailsOpen.value = true; detailsLong.value = false;
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ }
 }
 // ── Formatting in the details (Celia #446.4) ──
@@ -575,7 +577,7 @@ onBeforeUnmount(() => {
           v-model="message"
           class="nge-fb-note"
           rows="3"
-          placeholder="Anything else that helps, like what you expected."
+          placeholder="What happened, and what did you expect? Which step or cell?"
           aria-label="Details"
           :maxlength="detailsMax"
           @keydown.stop="onNoteKey" @keyup.stop @keypress.stop
