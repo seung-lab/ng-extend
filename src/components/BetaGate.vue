@@ -118,7 +118,7 @@ function problem(): string {
   const n = name.value.trim(), e = ewEmail.value.trim();
   if (!n) return 'Please add your name.';
   if (!NAME_OK.test(n)) return 'Your name can have letters, spaces, periods, apostrophes and hyphens only.';
-  if (e && !EMAIL_OK.test(e)) return 'That EyeWire email does not look right.';
+  if (e && !EMAIL_OK.test(e)) return 'That email does not look right.';
   const u = chosenName.value;
   if (!u) return 'Please choose a username.';
   if (u !== backend.username) {
@@ -244,9 +244,9 @@ onUnmounted(() => window.clearInterval(waitCheck));
           <p class="nge-beta-text">No invite yet? Pyr is in a closed beta while we get it ready. Ask to join and we'll add you as soon as we can.</p>
           <label class="nge-beta-label" for="nge-beta-name">Your name</label>
           <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
-          <label class="nge-beta-label" for="nge-beta-ewemail">Your EyeWire email <span>(if you play EyeWire)</span></label>
-          <input id="nge-beta-ewemail" v-model="ewEmail" class="nge-beta-field" type="email" maxlength="254" autocomplete="off"
-                 placeholder="The email on your EyeWire account" @input="error = ''" />
+          <label class="nge-beta-label" for="nge-beta-ewemail">Email</label>
+          <input id="nge-beta-ewemail" v-model="ewEmail" class="nge-beta-field" type="email" maxlength="254" autocomplete="email"
+                 placeholder="The best email to reach you" @input="error = ''" />
           <div class="nge-beta-pair">
             <div>
               <label class="nge-beta-label" for="nge-beta-ewname">EyeWire username <span>(optional)</span></label>

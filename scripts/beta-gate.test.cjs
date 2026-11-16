@@ -83,7 +83,7 @@ async function player(browser, status) {
     await p.page.click(REQUEST_BTN);
     await p.page.waitForTimeout(300);
     const err = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
-    check('a bad EyeWire email says so, and nothing is sent', /EyeWire email does not look right/.test(err) && !p.calls.some(c => c.action === 'access.beta'), err);
+    check('a bad EyeWire email says so, and nothing is sent', /That email does not look right/.test(err) && !p.calls.some(c => c.action === 'access.beta'), err);
     await p.page.fill('#nge-beta-name', '');
     await p.page.fill('#nge-beta-ewemail', 'Old.Tracer@hotmail.example');
     await p.page.click(REQUEST_BTN);
