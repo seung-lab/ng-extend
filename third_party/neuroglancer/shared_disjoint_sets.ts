@@ -27,6 +27,8 @@ const ADD_METHOD_ID = 'DisjointUint64Sets.add';
 const CLEAR_METHOD_ID = 'DisjointUint64Sets.clear';
 const HIGH_BIT_REPRESENTATIVE_CHANGED_ID = 'DisjointUint64Sets.highBitRepresentativeChanged';
 const DELETE_SET_METHOD_ID = 'DisjointUint64Sets.deleteSet';
+const LINK_MANY_METHOD_ID = 'DisjointUint64Sets.linkMany';
+const DELETE_ELEMENT_METHOD_ID = 'DisjointUint64Sets.deleteElement';
 
 @registerSharedObject(RPC_TYPE_ID)
 export class SharedDisjointUint64Sets extends SharedObjectCounterpart implements
@@ -67,6 +69,45 @@ export class SharedDisjointUint64Sets extends SharedObjectCounterpart implements
         rpc.invoke(
             ADD_METHOD_ID,
             {'id': this.rpcId, 'al': a.low, 'ah': a.high, 'bl': b.low, 'bh': b.high});
+      }
+      this.changed.dispatch();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Links every id in `ids` to `a`, with one message to the counterpart and one `changed` signal
+   * for the whole batch (instead of one of each per link).
+   * @returns the number of links that changed the sets.
+   */
+  linkMany(a: Uint64, ids: Iterable<Uint64>): number {
+    const linked: number[] = [];
+    for (const b of ids) {
+      if (this.disjointSets.link(a, b)) {
+        linked.push(b.low, b.high);
+      }
+    }
+    if (linked.length === 0) return 0;
+    let {rpc} = this;
+    if (rpc) {
+      const packed = new Uint32Array(linked);
+      rpc.invoke(
+          LINK_MANY_METHOD_ID, {'id': this.rpcId, 'al': a.low, 'ah': a.high, 'b': packed},
+          [packed.buffer]);
+    }
+    this.changed.dispatch();
+    return linked.length / 2;
+  }
+
+  /**
+   * Removes the single element `x` from its set, keeping the other members linked.
+   */
+  deleteElement(x: Uint64) {
+    if (this.disjointSets.deleteElement(x)) {
+      let {rpc} = this;
+      if (rpc) {
+        rpc.invoke(DELETE_ELEMENT_METHOD_ID, {'id': this.rpcId, 'l': x.low, 'h': x.high});
       }
       this.changed.dispatch();
       return true;
@@ -185,6 +226,30 @@ registerRPC(DELETE_SET_METHOD_ID, function(x) {
   tempA.low = x['l'];
   tempA.high = x['h'];
   if (obj.disjointSets.deleteSet(tempA)) {
+    obj.changed.dispatch();
+  }
+});
+
+registerRPC(LINK_MANY_METHOD_ID, function(x) {
+  let obj = <SharedDisjointUint64Sets>this.get(x['id']);
+  const a = new Uint64(x['al'], x['ah']);
+  const packed = <Uint32Array>x['b'];
+  let changed = false;
+  for (let i = 0, length = packed.length; i < length; i += 2) {
+    tempB.low = packed[i];
+    tempB.high = packed[i + 1];
+    if (obj.disjointSets.link(a, tempB)) changed = true;
+  }
+  if (changed) {
+    obj.changed.dispatch();
+  }
+});
+
+registerRPC(DELETE_ELEMENT_METHOD_ID, function(x) {
+  let obj = <SharedDisjointUint64Sets>this.get(x['id']);
+  tempA.low = x['l'];
+  tempA.high = x['h'];
+  if (obj.disjointSets.deleteElement(tempA)) {
     obj.changed.dispatch();
   }
 });

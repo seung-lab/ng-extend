@@ -18,6 +18,7 @@ const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
 const {recordActivity, recordVisit, serverCounts, stripCounters, stripDayCounters} = require("./activity");
 const {achievementRow, specialAwardRow} = require("./achievements");
+const {GUIDE_UI_REFERENCE_MAX, GUIDE_REQUEST_MAX_BYTES} = require("./guide-limits");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
 // scripts/upload-bot-docs.js. JSON shape: {"<filename>": "<file_id>"}.
@@ -920,8 +921,9 @@ CONTEXT
 - The current app state is provided as APP CONTEXT below. Ground answers in it (dataset, whether logged in, which panels are open, current tool).
 
 LANGUAGE
-- appContext.lang holds the user's browser locale (e.g. 'en-US', 'es', 'fr', 'de', 'ja', 'zh-CN', 'ko', 'pt-BR'). Write your reply in THAT language. For any 'en...' locale, reply in English.
-- If the user clearly writes in a different language than lang, follow the language they actually wrote in.
+- Reply in the language of the user's latest message. A player who writes in English gets English, whatever their browser says (Nov 2026: English questions were answered in Chinese, Korean and Russian, and one player had to ask for English).
+- appContext.lang holds the user's browser locale (e.g. 'en-US', 'es', 'fr', 'de', 'ja', 'zh-CN', 'ko', 'pt-BR'). Use it only when the message has no clear language of its own, such as "yes", a segment id or a pasted error, and then keep the language of the conversation so far.
+- When lang is not English but the player writes in English, answer in English and, once per conversation, add one short line in their browser's language offering to continue in it. Many players don't know you speak it.
 - Keep proper nouns as-is (EyeWire II, CAVE, neuroglancer, segment ids). Translate everything else naturally; don't sound machine-translated.`;
 
 async function callGuideClaude(anthropicApiKey, messages, systemBlocks) {
@@ -1202,7 +1204,7 @@ exports.guideAssistant = onRequest(
     } catch(error) { return res.status(error.status||503).json({error:error.status?error.message:"Please try again shortly.",reply:error.status?error.message:"The Guide is temporarily unavailable."}); }
 
 
-    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 48000) return res.status(413).json({error:"Input too large"});
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > GUIDE_REQUEST_MAX_BYTES) return res.status(413).json({error:"Input too large"});
     const { message, history, appContext, uiReference } = req.body || {};
     if (!message || typeof message !== "string") {
       res.status(400).json({ error: "missing message" });
@@ -1228,7 +1230,7 @@ exports.guideAssistant = onRequest(
       const cachedText = GUIDE_SYSTEM_PROMPT +
         (uiReference && typeof uiReference === "string"
           ? "\n\nLIVE UI REFERENCE (generated from the running app — trust this over the prose above for exact button names, keyboard shortcuts, and available commands):\n" +
-            uiReference.slice(0, 8000)
+            uiReference.slice(0, GUIDE_UI_REFERENCE_MAX)
           : "");
       const systemBlocks = [
         { type: "text", text: cachedText, cache_control: { type: "ephemeral" } },

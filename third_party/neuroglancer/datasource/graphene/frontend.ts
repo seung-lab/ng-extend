@@ -2577,7 +2577,44 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       displayState.highlightColor.value = priorHighlightColor;
     });
 
+    // What the temporary (multicut) sets were last built for. Each Ctrl+click used to clear and
+    // relink every known supervoxel of the cell (one worker message each, about 3.5 ms of blocked
+    // main thread per 1000 supervoxels), so a point on a big cell took seconds to appear. Now the
+    // whole cell is linked once, in one batch, and a point only moves its own supervoxel.
+    let builtFocus: Uint64|undefined;
+    let builtMainGeneration = -1;
+    let builtMainCount = 0;
+    let builtTemporaryGeneration = -1;
+    const excluded = new Map<string, Uint64>();
+
+    // Something else (Pyr's tool watcher, another tool) may have cleared the temporary sets.
+    const temporarySetsIntact = (focus: Uint64) =>
+        segmentsState.useTemporaryVisibleSegments.value &&
+        segmentsState.useTemporarySegmentEquivalences.value &&
+        segmentsState.temporaryVisibleSegments.has(focus) &&
+        segmentsState.temporarySegmentEquivalences.disjointSets.generation ===
+            builtTemporaryGeneration;
+
+    const countMainSet = (focus: Uint64) => {
+      let n = 0;
+      for (const _ of segmentsState.segmentEquivalences.setElements(focus)) ++n;
+      return n;
+    };
+
+    // The cell can gain supervoxels while cutting (2D chunks keep loading). Supervoxels are only
+    // ever added to the main equivalences, so a changed member count means a rebuild is needed.
+    const mainSetChanged = (focus: Uint64) => {
+      const {generation} = segmentsState.segmentEquivalences.disjointSets;
+      if (generation === builtMainGeneration) return false;
+      const count = countMainSet(focus);
+      if (count !== builtMainCount) return true;
+      builtMainGeneration = generation;
+      return false;
+    };
+
     const resetMulticutDisplay = () => {
+      builtFocus = undefined;
+      excluded.clear();
       resetTemporaryVisibleSegmentsState(segmentationGroupState);
       displayState.useTempSegmentStatedColors2d.value = false;
       displayState.tempSegmentStatedColors2d.value
@@ -2586,42 +2623,89 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       displayState.highlightColor.value = undefined;
     };
 
+    const rebuildTemporarySets = (focusSegment: Uint64, segments: Uint64[]) => {
+      const {temporaryVisibleSegments, temporarySegmentEquivalences, segmentEquivalences} =
+          segmentsState;
+      temporaryVisibleSegments.clear();
+      temporarySegmentEquivalences.clear();
+      excluded.clear();
+      // add to focus segments and temporary sets
+      temporaryVisibleSegments.add(focusSegment);
+      for (const segment of segments) {
+        temporaryVisibleSegments.add(segment);
+        excluded.set(segment.toString(), segment);
+      }
+      // all other segments are added to the focus segment equivalences, in one batch
+      const others: Uint64[] = [];
+      for (const equivalence of segmentEquivalences.setElements(focusSegment)) {
+        if (!temporaryVisibleSegments.has(equivalence)) others.push(equivalence);
+      }
+      temporarySegmentEquivalences.linkMany(focusSegment, others);
+      builtFocus = focusSegment.clone();
+      builtMainGeneration = segmentEquivalences.disjointSets.generation;
+      builtMainCount = countMainSet(focusSegment);
+    };
+
+    const updateTemporarySets = (focusSegment: Uint64, segments: Uint64[]) => {
+      const {temporaryVisibleSegments, temporarySegmentEquivalences, segmentEquivalences} =
+          segmentsState;
+      const wanted = new Map<string, Uint64>();
+      for (const segment of segments) wanted.set(segment.toString(), segment);
+      // a point was taken away: its supervoxel goes back into the cell
+      for (const [key, segment] of excluded) {
+        if (wanted.has(key)) continue;
+        excluded.delete(key);
+        temporaryVisibleSegments.delete(segment);
+        if (segmentEquivalences.has(segment) &&
+            Uint64.equal(segmentEquivalences.get(segment), segmentEquivalences.get(focusSegment))) {
+          temporarySegmentEquivalences.link(focusSegment, segment);
+        }
+      }
+      // a new point: only its supervoxel leaves the cell
+      for (const [key, segment] of wanted) {
+        if (excluded.has(key)) continue;
+        excluded.set(key, segment);
+        temporaryVisibleSegments.add(segment);
+        temporarySegmentEquivalences.deleteElement(segment);
+      }
+    };
+
     const updateMulticutDisplay = () => {
-      resetMulticutDisplay();
       activeGroupIndicator.classList.toggle('blueGroup', multicutState.blueGroup.value);
 
       const focusSegment = multicutState.focusSegment.value;
-      if (focusSegment === undefined) return;
+      if (focusSegment === undefined) {
+        resetMulticutDisplay();
+        return;
+      }
 
       displayState.baseSegmentHighlighting.value = true;
       displayState.highlightColor.value =
           multicutState.blueGroup.value ? BLUE_COLOR_HIGHTLIGHT : RED_COLOR_HIGHLIGHT;
+
+      const segments = multicutState.segments;
+      const intact = builtFocus !== undefined && Uint64.equal(builtFocus, focusSegment) &&
+          temporarySetsIntact(focusSegment);
       segmentsState.useTemporaryVisibleSegments.value = true;
       segmentsState.useTemporarySegmentEquivalences.value = true;
-
-      // add to focus segments and temporary sets
-      segmentsState.temporaryVisibleSegments.add(focusSegment);
-
-      for (const segment of multicutState.segments) {
-        segmentsState.temporaryVisibleSegments.add(segment);
+      if (!intact || mainSetChanged(focusSegment)) {
+        rebuildTemporarySets(focusSegment, segments);
+      } else {
+        updateTemporarySets(focusSegment, segments);
       }
-
-      // all other segments are added to the focus segment equivalences
-      for (const equivalence of segmentsState.segmentEquivalences.setElements(focusSegment)) {
-        if (!segmentsState.temporaryVisibleSegments.has(equivalence)) {
-          segmentsState.temporarySegmentEquivalences.link(focusSegment, equivalence);
-        }
-      }
+      builtTemporaryGeneration = segmentsState.temporarySegmentEquivalences.disjointSets.generation;
 
       // set colors
+      const statedColors = displayState.tempSegmentStatedColors2d.value;
+      statedColors.clear();
       displayState.tempSegmentDefaultColor2d.value = MULTICUT_OFF_COLOR;
-      displayState.tempSegmentStatedColors2d.value.set(focusSegment, TRANSPARENT_COLOR_PACKED);
+      statedColors.set(focusSegment, TRANSPARENT_COLOR_PACKED);
 
       for (const segment of multicutState.redSegments) {
-        displayState.tempSegmentStatedColors2d.value.set(segment, RED_COLOR_SEGMENT_PACKED);
+        statedColors.set(segment, RED_COLOR_SEGMENT_PACKED);
       }
       for (const segment of multicutState.blueSegments) {
-        displayState.tempSegmentStatedColors2d.value.set(segment, BLUE_COLOR_SEGMENT_PACKED);
+        statedColors.set(segment, BLUE_COLOR_SEGMENT_PACKED);
       }
 
       displayState.useTempSegmentStatedColors2d.value = true;

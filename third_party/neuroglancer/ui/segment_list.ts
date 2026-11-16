@@ -1976,6 +1976,10 @@ export class SegmentDisplayTab extends Tab {
                     let restoring = false;
                     if (place && place.top > 0) {
                       restoring = true;
+                      // Hidden until it is back in place, so it does not open at the
+                      // top and then scroll down in view (Nseraf, report 550).
+                      vlist.element.style.visibility = 'hidden';
+                      const shown = () => { restoring = false; vlist.element.style.visibility = ''; };
                       const started = Date.now();
                       let held = 0;
                       const putBack = () => {
@@ -1986,9 +1990,9 @@ export class SegmentDisplayTab extends Tab {
                             el.scrollTop = place.top;
                             el.dispatchEvent(new Event('scroll'));
                           }
-                          if (++held >= 6) { restoring = false; return; }
+                          if (++held >= 3) { shown(); return; }
                         }
-                        if (Date.now() - started > 3000) { restoring = false; return; }
+                        if (Date.now() - started > 3000) { shown(); return; }
                         placeTimer = window.setTimeout(putBack, 50);
                       };
                       placeTimer = window.setTimeout(putBack, 0);

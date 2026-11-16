@@ -179,6 +179,48 @@ export class DisjointUint64Sets {
     return changed;
   }
 
+  /**
+   * Removes the single element `x` from its set; the other members stay in one set.
+   *
+   * Costs one walk over the pointers of that set (no string keys or map lookups), so it is much
+   * cheaper than clearing and relinking the set without `x`.
+   * @returns `false` if `x` was not present.
+   */
+  deleteElement(x: Uint64): boolean {
+    const {map} = this;
+    const key = x.toString();
+    const element: any = map.get(key);
+    if (element === undefined) {
+      return false;
+    }
+    map.delete(key);
+    ++this.generation;
+    const next = element[nextSymbol];
+    if (next === element) {
+      return true;
+    }
+    const prev = element[prevSymbol];
+    prev[nextSymbol] = next;
+    next[prevSymbol] = prev;
+    // Any remaining member's parent pointer may lead through `element`, so re-root every member
+    // directly on `next`, and recompute the representative under the current policy.
+    const isMax = (this.visibleSegmentEquivalencePolicy.value &
+                   VisibleSegmentEquivalencePolicy.MAX_REPRESENTATIVE) !== 0;
+    let best = next;
+    let j = next;
+    do {
+      j[parentSymbol] = next;
+      j[rankSymbol] = 0;
+      if (Uint64.less(best, j) === isMax && best !== j) {
+        best = j;
+      }
+      j = j[nextSymbol];
+    } while (j !== next);
+    next[rankSymbol] = 1;
+    next[minSymbol] = best;
+    return true;
+  }
+
   * setElements(a: Uint64): IterableIterator<Uint64> {
     let key = a.toString();
     let element = this.map.get(key);
