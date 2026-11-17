@@ -2152,16 +2152,49 @@ body.nge-cursor-xl .nge-3d-panel.neuroglancer-rendered-data-panel {
 .nge-lb-note-count { flex: none; }
 
 /* How solid the 2D slice is in the 3D view (report 322). */
-input.nge-slice-opacity { width: 70px; height: 12px; margin: 0 0 0 6px; vertical-align: middle; accent-color: #7ee0ff; cursor: pointer; }
-/* The slider shows only while the pointer is on Sections or on the slider
-   itself (Ames 2026-11-17: "so it isn't there always"). It sits to the left,
-   outside the label's box, so nothing moves when it appears; the label's
-   left padding joins the two, so moving onto the slider keeps it open. */
-label.perspective-panel-show-slice-views { pointer-events: auto; padding-left: 6px; cursor: default; }
-label.perspective-panel-show-slice-views input.nge-slice-opacity {
-  position: absolute; right: 100%; top: 50%; transform: translateY(-50%); margin: 0;
+/* The 3D view's Sections switch, in the look of the music button beside it
+   (Ames 2026-11-17: "not stylized to match the site"): a dark rounded chip,
+   the site's lettering, and a cyan tick box. */
+label.perspective-panel-show-slice-views {
+  pointer-events: auto; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 26px; padding: 0 9px 0 10px; box-sizing: border-box;
+  border-radius: 8px; background: rgba(6, 12, 24, 0.82); border: 1px solid rgba(100, 180, 255, 0.16);
+  font: 600 12px/1 'Inter', system-ui, sans-serif; letter-spacing: 0.02em; color: #b3c6de;
+  transition: bottom 0.2s ease, border-color 0.15s, color 0.15s, border-radius 0.15s;
+}
+label.perspective-panel-show-slice-views:hover { color: #e6f3ff; border-color: rgba(100, 180, 255, 0.4); }
+input[type="checkbox"].perspective-panel-show-slice-views {
+  -webkit-appearance: none; appearance: none; margin: 0; flex-shrink: 0;
+  width: 14px; height: 14px; border-radius: 4px; cursor: pointer;
+  border: 1.5px solid rgba(126, 224, 255, 0.55); background: rgba(10, 20, 38, 0.9);
+  display: inline-grid; place-content: center; transition: background 0.15s, border-color 0.15s;
+}
+input[type="checkbox"].perspective-panel-show-slice-views::after {
+  content: ''; width: 7px; height: 4px; margin-top: -2px;
+  border: solid #06121f; border-width: 0 0 2px 2px; transform: rotate(-45deg) scale(0);
+  transition: transform 0.12s ease;
+}
+input[type="checkbox"].perspective-panel-show-slice-views:checked { background: #42d5ec; border-color: #42d5ec; }
+input[type="checkbox"].perspective-panel-show-slice-views:checked::after { transform: rotate(-45deg) scale(1); }
+input[type="checkbox"].perspective-panel-show-slice-views:focus-visible { outline: 2px solid #7ee0ff; outline-offset: 2px; }
+/* The opacity slider shows only while the pointer is on Sections or on the
+   slider (Ames 2026-11-17: "so it isn't there always"). It opens out of the
+   chip's left side, joined to it, so nothing moves when it appears. */
+input.nge-slice-opacity {
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+  position: absolute; right: calc(100% - 1px); top: -1px; margin: 0;
+  width: 92px; height: 26px; padding: 0 6px 0 12px; box-sizing: border-box;
+  border-radius: 8px 0 0 8px; background: rgba(6, 12, 24, 0.82);
+  border: 1px solid rgba(100, 180, 255, 0.4); border-right: 0;
   opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+input.nge-slice-opacity::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, rgba(66, 213, 236, 0.25), #42d5ec); }
+input.nge-slice-opacity::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -4px;
+  border-radius: 50%; background: #e6f9ff; border: 2px solid #42d5ec; box-shadow: 0 0 6px rgba(66, 213, 236, 0.6);
 }
 label.perspective-panel-show-slice-views:hover input.nge-slice-opacity,
 label.perspective-panel-show-slice-views:has(input:focus-visible) input.nge-slice-opacity,
 label.perspective-panel-show-slice-views input.nge-slice-opacity:active { opacity: 1; pointer-events: auto; }
+label.perspective-panel-show-slice-views:has(input.nge-slice-opacity:not([style*="none"])):hover { border-top-left-radius: 0; border-bottom-left-radius: 0; }
