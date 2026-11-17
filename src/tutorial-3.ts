@@ -91,13 +91,23 @@ const MERGE_HINT_POINTS: Record<string, number[][]> = {
  * view the gems were giant and the join hard to see). Centres on them and
  * zooms in by the given factors, 3D and 2D.
  */
+/** How close the 2D images come in on a spot the tutorial points at, in
+ *  voxels a pixel: a join a few micrometres across fills the 2D view. The
+ *  2D zoom used to stay at the cell's own view, far out, while only 3D came
+ *  in (Ames 2026-11-17: "I keep asking for this section on merge or cut to
+ *  be more zoomed in"; kfay: the 2D images were too far away). */
+export const CLOSE_2D = 1.2;
+/** Bring the 2D images in to CLOSE_2D; never further out than they are. */
+export function closeIn2D() {
+  try { const z = getViewer()?.navigationState?.zoomFactor; if (z && z.value > CLOSE_2D) z.value = CLOSE_2D; } catch { /* keep the zoom */ }
+}
 function focusOn(pts: number[][], threeD: number, twoD: number) {
   const v = getViewer();
   if (!v || !pts.length) return;
   const mid = [0, 1, 2].map(i => pts.reduce((a, p) => a + Number(p[i]), 0) / pts.length);
   try { v.navigationState.position.value = Float32Array.from(mid); } catch { /* keep the view */ }
   try { const z = v.perspectiveNavigationState.zoomFactor; z.value = z.value * threeD; } catch { /* keep the zoom */ }
-  try { const z = v.navigationState.zoomFactor; z.value = z.value * twoD; } catch { /* keep the zoom */ }
+  try { const z = v.navigationState.zoomFactor; z.value = Math.min(z.value * twoD, CLOSE_2D); } catch { /* keep the zoom */ }
 }
 
 /** Drop a hint point with no other point near it (more than 3 um from all

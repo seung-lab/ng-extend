@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, focusOnCut, freshStartIfDone, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
+import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeIn2D, closeSidePanel, finishPracticeTutorial, focusOnCut, freshStartIfDone, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -220,8 +220,9 @@ In 2D, place 3 or 4 <strong style="color:#ff5c5c">red</strong> points inside one
     onEnter: () => {
       closeSidePanel();
       stopWatching();
-      // This box is about the 2D images, so put them on screen.
+      // This box is about the 2D images, so put them on screen, close in.
       show2D();
+      closeIn2D();
       // Only promise the 2D try when there is a second cell to try it on.
       setTimeout(() => {
         const el = document.querySelector('.nge-cut-2d-next');
