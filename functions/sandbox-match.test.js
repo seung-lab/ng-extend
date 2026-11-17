@@ -618,3 +618,11 @@ test('a note with a skip or a Complete is kept for admins, and only admins read 
   assert.equal(r.notes[0].kind, 'skip');
   assert.ok(Array.isArray(r.notes[0].pointNm));
 });
+
+test('Jump never leaves the cell: with no touch, the cell voxel nearest the piece', () => {
+  const C = require('./sandbox-contact');
+  // A 4 x 1 x 1 box: cell at x = 0 and 1, nothing at 2 and 3.
+  const vol = Uint8Array.from([1, 1, 0, 0]);
+  assert.deepEqual(C.nearestCellVoxel(vol, [4, 1, 1], [3, 0, 0]), [1, 0, 0]);
+  assert.equal(C.nearestCellVoxel(Uint8Array.from([0, 0]), [2, 1, 1], [0, 0, 0]), null);
+});

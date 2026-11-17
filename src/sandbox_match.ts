@@ -28,6 +28,7 @@ import { setStatedColor } from './widgets/widget_utils';
 import { openSplitView } from './practice';
 import { getActivePinia } from 'pinia';
 import EditableText from './components/EditableText.vue';
+import NeuronGlyph from './components/NeuronGlyph.vue';
 // The Cell Library's own neuron (Ames 2026-11-14: "use the neuron").
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 
@@ -288,6 +289,12 @@ const CSS = `
 #${CARD_ID} .nge-cm-info p:last-child{margin:0}
 #${CARD_ID} .nge-cm-info b{color:#7fd8ff;font-weight:600}
 #${CARD_ID} .nge-cm-info-text br{display:block;content:"";margin-top:6px}
+#${CARD_ID} .nge-cm-info-text p,#${CARD_ID} .nge-cm-mark-info-text p{margin:0 0 9px;line-height:1.45}
+#${CARD_ID} .nge-cm-info-text p:last-child,#${CARD_ID} .nge-cm-mark-info-text p:last-child{margin-bottom:0}
+#${CARD_ID} .nge-cm-info-text > p:first-child{color:#eef5ff;font-size:13.5px;padding-bottom:9px;border-bottom:1px solid rgba(127,200,255,.16)}
+#${CARD_ID} .nge-edtext-termline{padding-left:9px;border-left:2px solid rgba(127,216,255,.45)}
+#${CARD_ID} .nge-edtext-term{display:block;margin-bottom:2px;font:600 10.5px/1.3 Orbitron,Inter,sans-serif !important;letter-spacing:.12em;text-transform:uppercase;color:#7fd8ff}
+#${CARD_ID} .nge-cm-mark-info-text b:not(.nge-edtext-term),#${CARD_ID} .nge-cm-info-text b:not(.nge-edtext-term){color:#bfeaff;font-weight:600}
 #${CARD_ID} .nge-cm-info textarea{cursor:text}
 #${CARD_ID}.nge-cm-showinfo .nge-cm-info{display:block}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-state,
@@ -307,21 +314,13 @@ const CSS = `
 #${CARD_ID} .nge-cm-loader{display:none}
 #${CARD_ID}.nge-cm-loading .nge-cm-loader{display:flex;align-items:center;gap:14px;padding:6px 0 4px}
 #${CARD_ID}.nge-cm-loading .nge-cm-score,#${CARD_ID}.nge-cm-loading .nge-cm-row,#${CARD_ID}.nge-cm-loading .nge-cm-sub{display:none !important}
-#${CARD_ID} .nge-cm-ld-scope{flex:0 0 96px;width:96px;height:96px;position:relative;filter:drop-shadow(0 0 8px rgba(74,158,255,.45))}
-#${CARD_ID} .nge-cm-ld-scope svg{display:block;overflow:visible}
-#${CARD_ID} .nge-cm-ld-ring{fill:none;stroke:rgba(127,216,255,.55);stroke-width:1.2;stroke-dasharray:18 10 4 10;transform-origin:48px 48px;animation:nge-cm-ld-spin 6s linear infinite}
-#${CARD_ID} .nge-cm-ld-ring2{fill:rgba(74,158,255,.06);stroke:rgba(74,158,255,.25);stroke-width:1;stroke-dasharray:2 5;transform-origin:48px 48px;animation:nge-cm-ld-spin 9s linear infinite reverse}
-#${CARD_ID} .nge-cm-ld-cell path{fill:none;stroke:#7fd0ff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:nge-cm-ld-trace 3.2s cubic-bezier(.6,0,.3,1) infinite}
-#${CARD_ID} .nge-cm-ld-cell path:nth-child(2){animation-delay:.25s}
-#${CARD_ID} .nge-cm-ld-cell path:nth-child(3){animation-delay:.5s}
-#${CARD_ID} .nge-cm-ld-cell path:nth-child(4){animation-delay:.75s}
-#${CARD_ID} .nge-cm-ld-cell path:nth-child(5){animation-delay:1s}
-#${CARD_ID} .nge-cm-ld-soma{fill:#3d9bff;stroke:#bfe9ff;stroke-width:1.2;transform-origin:48px 52px;animation:nge-cm-ld-pulse 1.6s ease-in-out infinite}
-#${CARD_ID} .nge-cm-ld-scan{fill:#bfefff;opacity:.85;filter:drop-shadow(0 0 4px #7fd8ff);animation:nge-cm-ld-scan 2.4s ease-in-out infinite}
+#${CARD_ID} .nge-cm-ld-scope{flex:0 0 84px;width:84px;height:98px;position:relative;overflow:hidden;border-radius:8px;background:radial-gradient(circle at 50% 42%,rgba(64,208,255,.14),transparent 70%)}
+#${CARD_ID} .nge-cm-ld-glyph{position:absolute;inset:0}
+#${CARD_ID} .nge-cm-ld-scan{position:absolute;left:4px;right:4px;top:0;height:2px;border-radius:1px;background:#bfefff;box-shadow:0 0 8px #7fd8ff;opacity:.8;animation:nge-cm-ld-scan 2.6s ease-in-out infinite}
 @keyframes nge-cm-ld-spin{to{transform:rotate(360deg)}}
 @keyframes nge-cm-ld-trace{0%{stroke-dashoffset:1;opacity:.2}45%{stroke-dashoffset:0;opacity:1}80%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:.15}}
 @keyframes nge-cm-ld-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.25);opacity:1}}
-@keyframes nge-cm-ld-scan{0%{transform:translateY(8px);opacity:0}10%{opacity:.9}90%{opacity:.9}100%{transform:translateY(88px);opacity:0}}
+@keyframes nge-cm-ld-scan{0%{transform:translateY(4px);opacity:0}10%{opacity:.85}90%{opacity:.85}100%{transform:translateY(94px);opacity:0}}
 #${CARD_ID} .nge-cm-ld-text{flex:1 1 auto;min-width:0}
 #${CARD_ID} .nge-cm-ld-title{font:600 12px/1.2 Orbitron,Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#bfeaff;margin-bottom:8px}
 #${CARD_ID} .nge-cm-ld-steps{list-style:none;margin:0;padding:0;font:12.5px/1.3 Inter,system-ui,sans-serif}
@@ -336,10 +335,9 @@ const CSS = `
 #${CARD_ID} .nge-cm-ld-bar{position:relative;height:3px;margin-top:9px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden}
 #${CARD_ID} .nge-cm-ld-bar i{position:absolute;top:0;bottom:0;left:-40%;width:40%;background:linear-gradient(90deg,transparent,#7fd8ff,transparent);animation:nge-cm-ld-sweep 1.4s ease-in-out infinite}
 @keyframes nge-cm-ld-sweep{to{left:100%}}
-#${CARD_ID}.nge-cm-min.nge-cm-loading .nge-cm-ld-scope{flex-basis:56px;width:56px;height:56px}
-#${CARD_ID}.nge-cm-min.nge-cm-loading .nge-cm-ld-scope svg{width:56px;height:56px}
+#${CARD_ID}.nge-cm-min.nge-cm-loading .nge-cm-ld-scope{flex-basis:48px;width:48px;height:56px}
 #${CARD_ID}.nge-cm-min.nge-cm-loading .nge-cm-ld-steps li:not(.now){display:none}
-@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-loader *{animation:none !important}#${CARD_ID} .nge-cm-ld-cell path{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-loader *{animation:none !important}}
 #${CARD_ID} .nge-cm-sub{margin:-2px 0 8px;color:#a9c3e0;font-size:13px;line-height:1.35}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-sub{display:none}
 #${CARD_ID} .nge-cm-score{grid-template-columns:auto 1fr auto}
@@ -564,7 +562,8 @@ const INFO_KEY = 'sandbox.match_info';
 const INFO_LINES = [
   'You are in the <b>Training Sim</b>, on the Sandbox, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.',
   '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.',
-  '<b>Merge</b>: the missing pieces you have merged back in. <b>Cut</b>: the wrong parts you have cut off.',
+  '<b>Merge</b>: the missing pieces you have merged back in.',
+  '<b>Cut</b>: the wrong parts you have cut off.',
   'Tiny missing bits (under 500 supervoxels) do not count either way: go for the missing branches. Wrong parts count at any size, since a merged axon can be thin. <b>Jump</b> takes you to the next spot that needs fixing.',
   'In real cells there is no known answer. That is up to you and the brain.',
   'When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the 🍔 menu, top right.',
@@ -580,7 +579,7 @@ function mountEditable(host: HTMLElement, textKey: string, original: string, tex
   if (had) { try { had.unmount(); } catch (e) { /* gone */ } editApps.delete(host); }
   const pinia = getActivePinia();
   if (!pinia) { host.innerHTML = `<div class="${textClass}">${original}</div>`; return; }
-  const app = createApp(EditableText, { textKey, original, textClass, label });
+  const app = createApp(EditableText, { textKey, original, textClass, label, terms: true });
   app.use(pinia);
   app.mount(host);
   editApps.set(host, app);
@@ -589,7 +588,7 @@ function mountInfo(host: HTMLElement) {
   if (infoApp) { try { infoApp.unmount(); } catch (e) { /* gone */ } infoApp = null; }
   const pinia = getActivePinia();
   if (!pinia) { host.innerHTML = '<div class="nge-cm-info-text">' + INFO_HTML + '</div>'; return; }
-  infoApp = createApp(EditableText, { textKey: INFO_KEY, original: INFO_HTML, textClass: 'nge-cm-info-text', label: 'Sandbox Match card, the i text' });
+  infoApp = createApp(EditableText, { textKey: INFO_KEY, original: INFO_HTML, textClass: 'nge-cm-info-text', label: 'Sandbox Match card, the i text', terms: true });
   infoApp.use(pinia);
   infoApp.mount(host);
 }
@@ -619,7 +618,7 @@ const MARK_HTML = '<div class="nge-cm-mark">'
   + '<button type="button" class="nge-cm-chip" data-mark="checked" title="Highlight a branch you have checked, out to its end"><i></i>Checked</button>'
   + '<button type="button" class="nge-cm-chip" data-mark="comeback" title="One click marks a spot to come back to"><i></i>Come back</button></div></div>';
 const MARK_INFO_KEY = 'sandbox.highlight_info';
-const MARK_INFO_HTML = 'Highlight paints over your cell so you can see where you have been. '
+const MARK_INFO_HTML = 'Highlight paints over your cell so you can see where you have been.<br>'
   + '<b>Checked</b>: Ctrl+click two points on a branch and the stretch between them is marked. Mark each branch out to its end once you have looked at it.<br>'
   + '<b>Come back</b>: one click marks a spot you want to look at again.<br>'
   + 'With Merge or Cut on, hold H and click to highlight. Your marks are saved with your view.';
@@ -722,18 +721,7 @@ const READY_NOTE = 'Getting your cell ready';
 const LOAD_STEPS = ['Locking onto your cell', 'Reading its supervoxels', 'Loading the answer key', 'Comparing every piece'];
 const LOAD_STEP_MS = 2200;
 const LOADER_HTML = '<div class="nge-cm-loader" aria-hidden="true">'
-  + '<div class="nge-cm-ld-scope"><svg viewBox="0 0 96 96" width="96" height="96">'
-  + '<circle class="nge-cm-ld-ring" cx="48" cy="48" r="44"/>'
-  + '<circle class="nge-cm-ld-ring2" cx="48" cy="48" r="38"/>'
-  + '<g class="nge-cm-ld-cell">'
-  + '<path pathLength="1" d="M48 50 L48 12 M48 26 L36 16 M48 20 L58 10"/>'
-  + '<path pathLength="1" d="M44 54 L18 70 M30 62 L22 50 M24 66 L14 80"/>'
-  + '<path pathLength="1" d="M52 54 L78 72 M66 63 L80 56 M72 68 L74 84"/>'
-  + '<path pathLength="1" d="M45 52 L20 38 M32 45 L24 30"/>'
-  + '<path pathLength="1" d="M51 52 L76 36 M64 44 L70 28"/>'
-  + '<circle class="nge-cm-ld-soma" cx="48" cy="52" r="7"/></g>'
-  + '<rect class="nge-cm-ld-scan" x="6" y="0" width="84" height="2"/>'
-  + '</svg></div>'
+  + '<div class="nge-cm-ld-scope"><div class="nge-cm-ld-glyph"></div><i class="nge-cm-ld-scan"></i></div>'
   + '<div class="nge-cm-ld-text"><div class="nge-cm-ld-title">Getting your cell ready</div>'
   + '<ol class="nge-cm-ld-steps">' + LOAD_STEPS.map(t => `<li>${t}</li>`).join('') + '</ol>'
   + '<div class="nge-cm-ld-bar"><i></i></div></div></div>';
@@ -744,6 +732,7 @@ function runLoader(el: HTMLElement) {
   if (!ld) {
     (el.querySelector('.nge-cm-sub') as HTMLElement).insertAdjacentHTML('afterend', LOADER_HTML);
     ld = el.querySelector('.nge-cm-loader') as HTMLElement;
+    try { createApp(NeuronGlyph).mount(ld.querySelector('.nge-cm-ld-glyph') as HTMLElement); } catch (e) { console.debug('[cell-match] loader neuron', e); }
   }
   if (loadTimer != null) return;
   const started = Date.now();
@@ -2026,4 +2015,4 @@ document.addEventListener('nge:play-pref', () => {
   if (!isClosed() && onScreen != null) show(onScreen, last.get(onScreen), !last.get(onScreen));
 });
 if (isClosed()) document.body.classList.add('nge-cm-closed');
-(window as any).__ngeCellMatch = { setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } }, setMine: (m: Mine | null) => { mineInfo = m; mineAt = Date.now(); paintMine(); }, withClaims: (f: Deps['claims']) => { if (deps) deps.claims = f; } };
+(window as any).__ngeCellMatch = { loading: () => idle('', READY_NOTE), loaded: () => { const id = shownFor ?? onScreen; const r = id != null ? last.get(id) : undefined; if (id != null && r) show(id, r, false); }, setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } }, setMine: (m: Mine | null) => { mineInfo = m; mineAt = Date.now(); paintMine(); }, withClaims: (f: Deps['claims']) => { if (deps) deps.claims = f; } };

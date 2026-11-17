@@ -485,10 +485,16 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => { const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia; pinia._s.get('userPrefs').prefs.hidePlayButton = false; });
     check('Play button on again: the box is back', await waitText(/39%/, 10000), await cardText());
 
+    // The loading screen: the login box's neuron, and the server's steps (Ames 2026-11-17).
+    const ld = await page.evaluate(async () => { window.__ngeCellMatch.loading(); await new Promise(r => setTimeout(r, 600)); const c = document.getElementById('nge-cell-match'); const l = c.querySelector('.nge-cm-loader'); const g = l && l.querySelector('.nge-cm-ld-glyph svg'); return { shown: !!l && getComputedStyle(l).display !== 'none', glyph: !!g && !!g.querySelector('#mwNeuronGlow'), w: g ? Math.round(g.getBoundingClientRect().width) : 0, steps: [...c.querySelectorAll('.nge-cm-ld-steps li')].map(li => li.className + ':' + li.textContent) }; });
+    await shot('cell-match-loading.png');
+    check('Getting your cell ready shows the login neuron and the steps', ld.shown && ld.glyph && ld.w > 40 && ld.steps.length === 4 && /^now:Locking/.test(ld.steps[0]), ld);
+    await page.evaluate(() => window.__ngeCellMatch.loaded());
     // The info box (Ames 2026-11-13: "Also an info box").
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-i').click());
     const infoText = await page.evaluate(() => { const i = document.querySelector('#nge-cell-match .nge-cm-info'); return getComputedStyle(i).display !== 'none' ? i.innerText : null; });
-    check('i opens an explanation', /Match score:/.test(infoText || '') && /Merge:/.test(infoText || '') && /Cut:/.test(infoText || '') && !/[\u2013\u2014]|\s-\s/.test(infoText || ''), infoText);
+    const infoTerms = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-info .nge-edtext-term')].map(t => t.textContent));
+    check('i opens an explanation, each term a heading over its text (Ames 2026-11-17)', ['Match score', 'Merge'].every(t => infoTerms.includes(t)) && /cut off/.test(infoText || '') && !/[\u2013\u2014]|\s-\s/.test(infoText || ''), { infoTerms, infoText: (infoText || '').slice(0, 200) });
     await shot('cell-match-info.png');
     // Admins change the i text in the game (Ames 2026-11-14); players never see Edit.
     check('a player has no Edit button in the info', await page.evaluate(() => !document.querySelector('#nge-cell-match .nge-cm-info .nge-edtext-btn')), null);
@@ -497,7 +503,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const adminEdit = await page.evaluate(() => { const b = document.querySelector('#nge-cell-match .nge-cm-info .nge-edtext-btn'); if (!b) return null; const label = b.textContent.trim(); b.click(); return label; });
     await page.waitForTimeout(300);
     const draftLines = await page.evaluate(() => { const t = document.querySelector('#nge-cell-match .nge-cm-info textarea'); return t ? t.value.split('\n').filter(l => l.trim()).length : 0; });
-    check('an admin gets Edit, and it opens the text one paragraph per line', adminEdit === 'Edit' && draftLines === 6, { adminEdit, draftLines });
+    check('an admin gets Edit, and it opens the text one paragraph per line', adminEdit === 'Edit' && draftLines === 7, { adminEdit, draftLines });
     await shot('cell-match-info-edit.png');
     await page.evaluate(() => { const c = [...document.querySelectorAll('#nge-cell-match .nge-cm-info .nge-edtext-btn')].find(b => b.textContent.trim() === 'Cancel'); if (c) c.click(); const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend'); pb.isAdmin = false; });
     await page.waitForTimeout(300);

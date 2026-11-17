@@ -637,14 +637,17 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
       let truth = truthSets.get(key.truth_root);
       if (!truth) { truth = await cg.leaves(TRUTH, key.truth_root); truthSets.set(key.truth_root, truth); }
       const cell = await cellLeaves(cg, r.root);
+      let pieceTrue = null;
       if (p.kind === 'merge' && p.root) {
         // A missing piece can carry part of another cell (Ames 2026-11-14:
         // "this missed piece has a huge merger on it").
         const whole = await cg.leaves(SANDBOX, p.root);
         const other = countMinus(whole, truth);
         p.bringsMerger = other >= MERGER_MIN && other >= MERGER_SHARE * whole.length;
+        pieceTrue = minus(whole, minus(whole, truth));
       }
-      if (p.kind === 'merge') at = await contact.meetingNm({fetchImpl: io.fetch, cell, piece: minus(truth, cell), near: p.samples || []});
+      // Near the whole piece where it is known, so the spot is where it joins.
+      if (p.kind === 'merge') at = await contact.meetingNm({fetchImpl: io.fetch, cell, piece: minus(truth, cell), near: pieceTrue && pieceTrue.length ? pieceTrue : (p.samples || [])});
       else {
         const wrong = minus(cell, truth);
         at = await contact.meetingNm({fetchImpl: io.fetch, cell: minus(cell, wrong), piece: wrong, near: p.samples || []});

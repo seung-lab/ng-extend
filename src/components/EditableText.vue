@@ -25,6 +25,10 @@ const props = defineProps<{
    *  text before and after (Ames 2026-11-10, the Play card: "so Celia can make
    *  changes and notify me if she does"). */
   notify?: boolean;
+  /** One paragraph per line, and a line that starts with a bold term and a
+   *  colon ("**Merge**: ...") shows the term as a small heading above its
+   *  text (Ames 2026-11-17: "a better hierarchy to these text boxes"). */
+  terms?: boolean;
 }>();
 const emit = defineEmits<{ (e: 'action', name: string): void }>();
 
@@ -33,9 +37,18 @@ const backend = useProofreadingBackendStore();
 const isList = computed(() => Array.isArray(props.original));
 const saved = computed(() => siteTexts[props.textKey]);
 const steps = computed<string[]>(() => saved.value ? textToSteps(saved.value.body) : (props.original as string[]));
-const paragraph = computed<string>(() => saved.value
-  ? saved.value.body.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(textToHtml).join('<br>')
-  : (props.original as string));
+const paragraph = computed<string>(() => {
+  if (!props.terms) return saved.value
+    ? saved.value.body.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(textToHtml).join('<br>')
+    : (props.original as string);
+  const lines = saved.value
+    ? saved.value.body.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(textToHtml)
+    : (props.original as string).split(/<br\s*\/?>\s*/i).map(l => l.trim()).filter(Boolean);
+  return lines.map(l => {
+    const m = l.match(/^<b>([^<]{1,40})<\/b>\s*:\s*/);
+    return m ? `<p class="nge-edtext-termline"><b class="nge-edtext-term">${m[1]}</b>${l.slice(m[0].length)}</p>` : `<p>${l}</p>`;
+  }).join('');
+});
 
 // A suggestion waiting for approval is kept as its own site text, draft.<key>.
 const draftKey = computed(() => `draft.${props.textKey}`.slice(0, 64));

@@ -149,28 +149,59 @@ function meetingVoxel(vol, dims) {
 /** Where `piece` (a set) meets `cell` (a set), in nm, near the piece's
  *  samples; null when it cannot be read. Both sets are sorted BigUint64Arrays.
  *  `cellSvs` and `pieceSvs` pick the chunks (any members will do). */
-async function meetingNm({fetchImpl = fetch, cell, piece, near}) {
-  // The cell chunk nearest any chunk of the piece's samples.
-  const pc = [...new Set(near.map(sv => chunkXYZ(sv).join(',')))].map(s => s.split(',').map(Number));
-  const cc = new Map();
-  for (const sv of cell) { const c = chunkXYZ(sv); cc.set(c.join(','), c); }
+/** The cell voxel nearest a point (box voxels), or null when the box holds no cell. */
+function nearestCellVoxel(vol, dims, to) {
+  const [X, Y, Z] = dims, XY = X * Y;
   let best = null, bd = Infinity;
-  for (const c of cc.values()) for (const p of pc) {
-    const d = ((c[0] - p[0]) * 4.1) ** 2 + ((c[1] - p[1]) * 4.1) ** 2 + ((c[2] - p[2]) * 5.1) ** 2;
-    if (d < bd) { bd = d; best = [c, p]; }
+  for (let z = 0; z < Z; z++) for (let y = 0; y < Y; y++) for (let x = 0; x < X; x++) {
+    if (vol[z * XY + y * X + x] !== 1) continue;
+    const d = ((x - to[0]) * 16) ** 2 + ((y - to[1]) * 16) ** 2 + ((z - to[2]) * 40) ** 2;
+    if (d < bd) { bd = d; best = [x, y, z]; }
   }
-  if (!best) return null;
-  const [c, p] = best;
-  const adjacent = c.every((v, i) => Math.abs(v - p[i]) <= 1);
-  const lo = adjacent ? c.map((v, i) => Math.min(v, p[i])) : c;
-  const hi = adjacent ? c.map((v, i) => Math.max(v, p[i])) : c;
-  const box = boxOf(lo, hi);
-  const classOf = v => has(cell, v) ? 1 : has(piece, v) ? 2 : 0;
-  const vol = await readBox(fetchImpl, box, classOf);
-  let at = meetingVoxel(vol, box.dims);
-  if (!at && !adjacent) return null;
-  if (!at) return null;
-  return [0, 1, 2].map(i => (box.a[i] + at[i] + 0.5) * WS.res[i]);
+  return best;
 }
 
-module.exports = {meetingNm, meetingVoxel, decodeClasses, chunkXYZ, has, WS};
+/** How many chunk pairs to read before settling for the nearest cell voxel. */
+const TRIES = 3;
+async function meetingNm({fetchImpl = fetch, cell, piece, near}) {
+  // The chunks of the piece (any members: a whole piece is best, samples will
+  // do), and the cell chunks nearest them, nearest first.
+  const pc = [...new Set(Array.from(near, sv => chunkXYZ(sv).join(',')))].map(s => s.split(',').map(Number));
+  const cc = new Map();
+  for (const sv of cell) { const c = chunkXYZ(sv); cc.set(c.join(','), c); }
+  const pairs = [];
+  for (const c of cc.values()) {
+    let bp = null, bd = Infinity;
+    for (const p of pc) {
+      const d = ((c[0] - p[0]) * 4.1) ** 2 + ((c[1] - p[1]) * 4.1) ** 2 + ((c[2] - p[2]) * 5.1) ** 2;
+      if (d < bd) { bd = d; bp = p; }
+    }
+    if (bp) pairs.push({c, p: bp, d: bd});
+  }
+  pairs.sort((a, b) => a.d - b.d);
+  if (!pairs.length) return null;
+  const classOf = v => has(cell, v) ? 1 : has(piece, v) ? 2 : 0;
+  const toNm = (box, at) => [0, 1, 2].map(i => (box.a[i] + at[i] + 0.5) * WS.res[i]);
+  // Where they touch, in the nearest few pairs (Ames 2026-11-17: Jump "will
+  // take me to a point on the existing cell, not out in blank empty space").
+  let first = null;
+  for (const {c, p} of pairs.slice(0, TRIES)) {
+    const adjacent = c.every((v, i) => Math.abs(v - p[i]) <= 1);
+    const lo = adjacent ? c.map((v, i) => Math.min(v, p[i])) : c;
+    const hi = adjacent ? c.map((v, i) => Math.max(v, p[i])) : c;
+    const box = boxOf(lo, hi);
+    let vol;
+    try { vol = await readBox(fetchImpl, box, classOf); } catch (e) { if (!first) throw e; continue; }
+    if (!first) first = {box, vol, p};
+    const at = meetingVoxel(vol, box.dims);
+    if (at) return toNm(box, at);
+  }
+  // No touch read: still a point ON the cell, its voxel nearest the piece.
+  if (!first) return null;
+  const {box, vol, p} = first;
+  const towards = [0, 1, 2].map(i => WS.offset[i] + (p[i] + 0.5) * GRAPH.size[i] - box.a[i]);
+  const at = nearestCellVoxel(vol, box.dims, towards);
+  return at ? toNm(box, at) : null;
+}
+
+module.exports = {meetingNm, meetingVoxel, nearestCellVoxel, decodeClasses, chunkXYZ, has, WS};
