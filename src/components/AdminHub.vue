@@ -976,6 +976,32 @@ const ZERO_BITS = Array.from({ length: 70 }, (_, i) => ({
   color: ['#4f8cff', '#2ec4b6', '#f5c542', '#ff6fae', '#38bdf8'][i % 5], wide: i % 3 === 0,
 }));
 const boardColumns = computed(() => triageGroups.value.map(g => (isFolded(g.key) ? '46px' : 'minmax(0, 1fr)')).join(' '));
+// Two or more folded: they stack two wide at the right, rows as well as
+// columns, instead of a rail each (Ames 2026-11-17: "these take up too much
+// space - can you stack them vertically as well as horizontally?").
+const foldedKeys = computed(() => triageGroups.value.filter(g => isFolded(g.key)).map(g => g.key));
+const RAIL_WIDE = 2;
+const boardGrid = computed<Record<string, string> | undefined>(() => {
+  if (!triageBoard.value) return undefined;
+  const f = foldedKeys.value.length;
+  if (f < 2) return { gridTemplateColumns: boardColumns.value };
+  const open = triageGroups.value.length - f;
+  const wide = Math.min(RAIL_WIDE, f);
+  return { gridTemplateColumns: [...Array(open).fill('minmax(0, 1fr)'), ...Array(wide).fill('46px')].join(' '),
+    gridTemplateRows: `repeat(${Math.ceil(f / wide)}, minmax(0, 1fr))` };
+});
+function colPlace(key: TriageGroupKey): Record<string, string> | undefined {
+  const f = foldedKeys.value;
+  if (!triageBoard.value || f.length < 2) return undefined;
+  const rows = Math.ceil(f.length / Math.min(RAIL_WIDE, f.length));
+  const j = f.indexOf(key);
+  if (j < 0) {
+    const i = triageGroups.value.filter(g => !f.includes(g.key)).findIndex(g => g.key === key);
+    return { gridColumn: String(i + 1), gridRow: `1 / span ${rows}` };
+  }
+  const open = triageGroups.value.length - f.length;
+  return { gridColumn: String(open + 1 + (j % RAIL_WIDE)), gridRow: String(Math.floor(j / RAIL_WIDE) + 1) };
+}
 
 // ── In progress, by hand ──
 // Most reports are fixed in a Claude chat, not by the robot (Ames 2026-10-10).
@@ -3793,8 +3819,8 @@ function practiceWhen(iso: string | null) {
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
         </div>
 
-        <div class="nge-triage-cols" :style="triageBoard ? { gridTemplateColumns: boardColumns } : undefined">
-        <div v-for="g in triageGroups" :key="g.key" class="nge-triage-col"
+        <div class="nge-triage-cols" :style="boardGrid">
+        <div v-for="g in triageGroups" :key="g.key" class="nge-triage-col" :style="colPlace(g.key)"
              :class="[`nge-triage-col--${g.key}`, { 'nge-triage-col--folded': triageBoard && isFolded(g.key) }]">
         <button
           v-if="triageRows.length"
