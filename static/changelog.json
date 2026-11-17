@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T17:28:00Z",
+      "title": "Training Sim touch ups",
+      "items": [
+        "Jump in the Training Sim now always takes you to a spot on your own cell, never out into empty space.",
+        "Getting your cell ready shows Pyr's glowing neuron while your cell loads.",
+        "The info boxes in the Training Sim give each term its own heading, so they are easier to read."
+      ]
+    },
+    {
       "at": "2026-11-17T17:00:00Z",
       "title": "The Training Sim",
       "items": [
