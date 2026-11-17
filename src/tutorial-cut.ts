@@ -134,7 +134,7 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
   {
     title: "Place 2 red points",
     text: `
-**Ctrl+Click** the piece that doesn't belong, once by each <strong style="color:#ff5c5c">red</strong> gem.
+**Ctrl+Click** the branch right next to each <strong style="color:#ff5c5c">red</strong> gem, on the piece that doesn't belong. The gems only mark the spots and can't be clicked themselves.
 
 More than one point on each side tells the cut where the whole join is.`,
     position: OVER_3D,
@@ -158,7 +158,7 @@ More than one point on each side tells the cut where the whole join is.`,
       // cut on this cell since 2026-10-06 left the far half attached, and
       // every two-point cut took all of it.
       setTimeout(() => { showWhereToCut(2); }, 1400);
-      watchCutStep('red', 'Waiting for 2 red points: Ctrl+click by each red gem.', 2);
+      watchCutStep('red', 'Waiting for 2 red points: Ctrl+click the branch right next to each red gem.', 2);
     },
   },
 
@@ -181,7 +181,7 @@ The two colors mark the two sides of the cut.`,
   {
     title: "Place 2 blue points",
     text: `
-**Ctrl+Click** the cell, once by each <strong style="color:#5c8cff">blue</strong> gem.
+**Ctrl+Click** the cell's branch right next to each <strong style="color:#5c8cff">blue</strong> gem.
 
 Then press **Submit cut** on the bar at the bottom, or **Enter**.`,
     position: OVER_3D,
