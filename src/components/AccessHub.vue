@@ -86,6 +86,11 @@ const emailed = ref<Record<string, string>>({});
 // Asking for their EyeWire name by email (Ames 2026-11-12): who was asked,
 // and the draft open in the panel (shown first, Edit to change it).
 const asked = ref<Record<string, { at: string; by: string }>>({});
+// "You're on the list" emails (Ames 2026-11-17): who was sent one, and the
+// one open in the panel (the server numbers them, #N of everyone who asked).
+const waitSent = ref<Record<string, { at: string; by: string; n: number | null }>>({});
+interface WaitDraft { to: string; subject: string; text: string; n: number; total: number; fromForm: number; sentAt: string | null }
+const waitShown = ref<WaitDraft | null>(null);
 const inviteCount = ref<number | null>(null);
 const signedInAll = ref<number | null>(null);
 const ask = ref<{ email: string; subject: string; text: string; editing: boolean } | null>(null);
@@ -138,6 +143,7 @@ async function load() {
     show(read('Beta lists', async () => (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}, {} as Record<string, { mark: string; at: string }>), v => { marks.value = v; }),
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
     show(read('Retina requests', async () => (await secureWrite<{ requests: RetinaRow[] }>('access.list', { status: 'submitted' }))?.requests ?? [], [] as RetinaRow[]), v => { rqRows.value = v; }),
+    show(read('On the list emails', async () => (await secureWrite<Record<string, { at: string; by: string; n: number | null }>>('access.waitlistSent')) || {}, {} as Record<string, { at: string; by: string; n: number | null }>), v => { waitSent.value = v; }),
     show(read('Asked by email', async () => (await secureWrite<Record<string, { at: string; by: string }>>('access.askSent')) || {}, {} as Record<string, { at: string; by: string }>), v => { asked.value = v; }),
     show(read('Invites', async () => (await secureWrite<{ invited: number; signedIn?: number }>('access.inviteCount')) ?? null, null as { invited: number; signedIn?: number } | null), v => { inviteCount.value = v?.invited ?? null; signedInAll.value = v?.signedIn ?? null; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
@@ -484,7 +490,19 @@ const linkSame = (a: Person | null | undefined, b: Person) => run('link', async 
   openKey.value = to.email;
   await load();
 });
-function pick(c: Card) { openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; ewDraft.value = ''; ewEdit.value = ''; }
+const showWait = (c: Card) => run('waitdraft', async () => {
+  if (waitShown.value) { waitShown.value = null; return; }
+  if (!c.p) return;
+  waitShown.value = await secureWrite<WaitDraft>('access.waitlistEmail', { email: c.p.email, name: c.p.name || '', preview: true });
+});
+const sendWait = (c: Card) => run('wait', async () => {
+  const p = c.p; if (!p) return;
+  const out = await secureWrite<{ sent: boolean; at?: string; n?: number; reason?: string }>('access.waitlistEmail', { email: p.email, name: p.name || '', again: !!waitSent.value[p.email] });
+  if (!out?.sent) throw new Error(out?.reason === 'already sent' ? `Already sent ${day(out.at ?? null)}.` : 'The email did not go.');
+  waitSent.value = { ...waitSent.value, [p.email]: { at: out.at || new Date().toISOString(), by: '', n: out.n ?? null } };
+  waitShown.value = null;
+});
+function pick(c: Card) { waitShown.value = null; openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; ewDraft.value = ''; ewEdit.value = ''; }
 // Their Proofreading Test tries, on a dataset request (Ames 2026-11-10:
 // "access request test edits linked"). The tries name the player by
 // username, newest first.
@@ -771,6 +789,7 @@ const opName = (e: RecentEdit) => {
                 <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
                 <span v-if="c.p?.ew_name" class="ah-tag">{{ ewShort(c.p) }}</span>
                 <span v-if="c.p && asked[c.p.email] && (col.stage === 'asked' || col.stage === 'later')" class="ah-tag">Asked by email {{ day(asked[c.p.email].at) }}</span>
+                <span v-if="c.p && waitSent[c.p.email] && (col.stage === 'asked' || col.stage === 'emailed' || col.stage === 'later')" class="ah-tag">On the list #{{ waitSent[c.p.email].n }}, sent {{ day(waitSent[c.p.email].at) }}</span>
                 <span v-if="dupesOf(c).length" class="ah-tag ah-tag--dupe">Maybe the same as {{ dupesOf(c)[0].name || dupesOf(c)[0].email }}</span>
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
@@ -887,6 +906,19 @@ const opName = (e: RecentEdit) => {
           </div>
         </div>
         <div v-if="open.p && emailed[open.p.email]" class="ah-panel-meta">{{ emailed[open.p.email] }}</div>
+        <div v-if="(open.stage === 'asked' || open.stage === 'emailed' || open.stage === 'later') && open.p?.email" class="ah-ask ah-wait">
+          <div v-if="waitSent[open.p.email]" class="ah-panel-meta" role="status">On the list email sent {{ day(waitSent[open.p.email].at) }}<template v-if="waitSent[open.p.email].n">, as #{{ waitSent[open.p.email].n }}</template></div>
+          <button class="ah-btn" type="button" :disabled="!!busy" @click="showWait(open)">{{ busy === 'waitdraft' ? 'Opening…' : waitShown ? 'Hide the email' : waitSent[open.p.email] ? 'See the On the list email again' : 'Tell them they are on the list' }}</button>
+          <div v-if="waitShown" class="ah-ask-draft" aria-label="On the list email">
+            <div class="ah-panel-meta">#{{ waitShown.n }} of {{ waitShown.total }} who have ever asked, {{ waitShown.fromForm }} of them through the connectome.quest form. To {{ waitShown.to }}, from Amy at Pyr, replies go to support@eyewire.org.</div>
+            <div class="ah-ask-subject ah-ask-subject--read">{{ waitShown.subject }}</div>
+            <div class="ah-ask-text ah-ask-text--read">{{ waitShown.text }}</div>
+            <div class="ah-actions">
+              <button class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="sendWait(open)">{{ busy === 'wait' ? 'Sending…' : waitSent[open.p.email] ? 'Send it again' : 'Send it' }}</button>
+              <button class="ah-btn" type="button" :disabled="!!busy" @click="waitShown = null">Cancel</button>
+            </div>
+          </div>
+        </div>
 
         <div v-if="open.rq" class="ah-ds">
           <div class="ah-panel-meta"><b>The Retina</b>, sent {{ examplesOf(open.rq) }} example{{ examplesOf(open.rq) === 1 ? '' : 's' }} {{ day(open.rq.submitted_at) }}<template v-if="(open.rq.tries ?? 1) > 1">, try {{ open.rq.tries }}</template><template v-if="open.rq.eyewire_username">, EyeWire {{ open.rq.eyewire_username }}</template></div>
@@ -1156,6 +1188,7 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 .ah-panel-invited { color: #9fd3ff; }
 .ah-pyr-link { color: #9fd3ff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .ah-pyr-link:hover { color: #cfe8ff; }
+.ah-wait { margin-top: 8px; }
 .ah-card-email { font-size: 12px; color: #a9c4e6; overflow-wrap: anywhere; }
 .ah-card-line { font-size: 12px; color: #8ea3c2; }
 .ah-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }

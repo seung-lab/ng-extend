@@ -98,6 +98,7 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
   let marks = { 'rae@example.org': { mark: 'listed', at: ago(1) }, 'gone@example.org': { mark: 'removed', at: ago(4) } };
   const notes = {};
   let noteN = 0;
+  let waitSent = {};
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org|minnie\.microns-daf\.com/, r => {
     if (/user\/me/.test(r.request().url())) return r.fulfill(json({ id: 1, email: 'amy@example.org', name: 'Amy Sterling' }));
     return r.fulfill(json({}));
@@ -120,6 +121,12 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
       if (a === 'access.askSent') return r.fulfill(ok({}));
+      if (a === 'access.waitlistSent') return r.fulfill(ok(waitSent));
+      if (a === 'access.waitlistEmail') {
+        if (input.preview) return r.fulfill(ok({ to: input.email, subject: "You're on the list for the Pyr beta", text: `Hi ${String(input.name).split(' ')[0]},\n\nYou are #3 in line.`, n: 3, total: 6, fromForm: 2, sentAt: null }));
+        waitSent = { ...waitSent, [input.email]: { at: new Date().toISOString(), by: 'amy@example.org', n: 3 } };
+        return r.fulfill(ok({ sent: true, at: new Date().toISOString(), n: 3 }));
+      }
       if (a === 'access.setEwName') return r.fulfill(ok({ ewName: String(input.ewName).toLowerCase() }));
       if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414, signedIn: 20 }));
       if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
@@ -295,6 +302,17 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the panel shows their EyeWire email (Ames 2026-11-12)', /EyeWire email kmierow@old\.example/.test(panel), panel.slice(0, 400));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
     check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined EyeWire May 4, 2014 · Germany/.test(ew) && calls.some(c => c.ewBio === 'kmierow'), ew);
+    // You're on the list (Ames 2026-11-17): see the email, then send it.
+    await page.click('.ah-wait button:has-text("Tell them they are on the list")');
+    await page.waitForSelector('.ah-wait .ah-ask-draft', { timeout: 3000 }).catch(() => {});
+    const waitDraft = await page.textContent('.ah-wait').catch(() => '');
+    check('Tell them they are on the list shows the email first, numbered, nothing sent', /#3 of 6 who have ever asked, 2 of them through the connectome\.quest form/.test(waitDraft) && /You're on the list for the Pyr beta/.test(waitDraft) && /Hi Ken/.test(waitDraft)
+      && !calls.some(c => c.action === 'access.waitlistEmail' && !c.args.preview), waitDraft);
+    await page.click('.ah-wait button:has-text("Send it")');
+    await page.waitForTimeout(300);
+    const waitAfter = await page.textContent('.ah-wait').catch(() => '');
+    check('Send it sends once and says so, and the card is tagged', calls.filter(c => c.action === 'access.waitlistEmail' && !c.args.preview).length === 1 && /On the list email sent .*, as #3/.test(waitAfter)
+      && /On the list #3, sent/.test(col(await board(), 'Asked').cards.find(c => c.name === 'Ken Mierow')?.text || ''), waitAfter);
     await page.fill('.ah-panel textarea', 'Do we know him?');
     await page.click('.ah-panel button:has-text("Add note")');
     await page.waitForSelector('.ah-note-text');
