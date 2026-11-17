@@ -17,7 +17,7 @@
  * answer key never reaches the browser, only what is still wrong after Complete.
  */
 import { fullViewUrl } from './util/local_view';
-import { exitGrapheneTool, activeGrapheneToolKind } from './widgets/graphene_tool_utils';
+import { exitGrapheneTool, activeGrapheneToolKind, activateGrapheneTool } from './widgets/graphene_tool_utils';
 import { highlightStyles, saveHighlightStyles, MAX_HIGHLIGHT_STYLES } from './util/highlight';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, currentSegLayer } from './datasets';
@@ -477,10 +477,18 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
 #${CARD_ID} .nge-cm-row[data-row="merge"]{margin-top:2px;border-top:1px solid rgba(127,190,255,.18);padding-top:7px}
-#${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:58px 1fr auto;align-items:baseline}
-#${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:4px 0 7px}
+#${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:74px 1fr auto;align-items:center}
+#${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:3px 0 5px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-fill,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{box-shadow:none;opacity:.85}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{font-size:10.5px;letter-spacing:.12em;grid-column:1;grid-row:1}
+#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0;padding:3px 7px 2px;border-radius:6px;line-height:1;cursor:pointer;background:rgba(10,20,36,.6);transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
+#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]{border:1px solid rgba(61,155,255,.6);color:#9fd0ff}
+#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]{border:1px solid rgba(255,64,88,.6);color:#ffa3b0}
+#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]:hover{background:rgba(61,155,255,.18)}
+#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]:hover{background:rgba(255,64,88,.16)}
+#${CARD_ID} .nge-cm-modebtn[data-tool="merge"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
+#${CARD_ID} .nge-cm-modebtn[data-tool="cut"][aria-pressed="true"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);border-color:#ff8a9e;color:#1a0408;box-shadow:0 0 10px rgba(255,64,88,.7)}
+#${CARD_ID} .nge-cm-modebtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-num,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-num{font-size:13px;color:#a9c3e0}
@@ -543,7 +551,7 @@ function ensureStyle() {
 }
 
 const rowHtml = (row: Row) => `<div class="nge-cm-row" data-row="${row}">`
-  + `<span class="nge-cm-short" aria-hidden="true">${ROW_SHORT[row]}</span><span class="nge-cm-label">${ROW_LABEL[row]}</span>`
+  + `<span class="nge-cm-short" aria-hidden="true">${ROW_SHORT[row]}</span><button type="button" class="nge-cm-label nge-cm-modebtn" data-tool="${row}" aria-pressed="false" title="${ROW_SHORT[row]}">${ROW_LABEL[row]}</button>`
   + '<span class="nge-cm-read"><span class="nge-cm-delta"></span><span class="nge-cm-num"></span></span>'
   + '<div class="nge-cm-gauge"><i class="nge-cm-fill"></i></div>'
   + '<span class="nge-cm-pieces"></span></div>';
@@ -702,6 +710,11 @@ function card(): HTMLElement {
   });
   el.querySelector('.nge-cm-min-btn')!.addEventListener('click', () => setMin(card0, !card0.classList.contains('nge-cm-min')));
   wirePlayBox(el);
+  el.querySelectorAll<HTMLButtonElement>('.nge-cm-modebtn').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    pressModeButton(b.dataset.tool === 'cut' ? 'cut' : 'merge');
+    paintMode(card0);
+  }));
   keepSize(el);
   setMin(el, store.get(MIN_KEY) === '1', true);
   document.body.appendChild(el);
@@ -1559,10 +1572,17 @@ const MODE_TIPS = {
   highlight: 'Highlight is on: Ctrl+click two points to mark the branch between them. With Merge or Cut on, hold H and click.',
   look: 'Nothing is on: Ctrl+click does nothing to your cell.',
 } as const;
+/** Merge or Cut on from the box, as the M and C keys do; pressed again, off. */
+function pressModeButton(tool: 'merge' | 'cut') {
+  if (modeNow() === tool) { try { exitGrapheneTool(); } catch { /* none on */ } return; }
+  try { exitGrapheneTool(); } catch { /* none on */ }
+  activateGrapheneTool(tool === 'cut' ? 'multicut' : 'merge');
+}
 function paintMode(el: HTMLElement) {
   const pill = el.querySelector('.nge-cm-mode') as HTMLElement | null;
   if (!pill) return;
   const m = modeNow();
+  el.querySelectorAll<HTMLElement>('.nge-cm-modebtn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === m)));
   if (pill.dataset.mode === m) return;
   pill.dataset.mode = m;
   el.dataset.mode = m;

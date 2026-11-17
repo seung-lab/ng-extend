@@ -78,3 +78,7 @@ ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_extra int
 ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_missing_left integer;
 ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_extra_left integer;
 ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_reach real;
+
+-- The most each wrong part has held on this player's cell, by its true cell
+-- (Ames 2026-11-17): a part is cut off once most of it is gone.
+ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS parts_peak jsonb;

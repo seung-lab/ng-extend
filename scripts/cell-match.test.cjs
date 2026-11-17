@@ -300,6 +300,22 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     });
     check('Checked and Come back open Highlight on their own colors', mark.opened === 2 && mark.first === 'checked' && mark.second === 'c_comeback' && mark.chips.join(',') === 'Checked,Come back' && mark.row, mark);
     check('the box says what a Ctrl+click does now, in its header', /^(Looking|Highlighting)$/.test(mark.pill) && mark.pillTop, mark);
+    // Merge and Cut buttons on their rows (Ames 2026-11-17): each presses the
+    // viewer's own M or C key, as the toolbar does; tooltips M and C. (Here the
+    // test player has no CAVE sign in, so the tool itself cannot come on.)
+    const modes = await page.evaluate(async () => {
+      const c = document.getElementById('nge-cell-match');
+      const keys = [];
+      const od = EventTarget.prototype.dispatchEvent;
+      EventTarget.prototype.dispatchEvent = function (ev) { if (ev.type === 'keydown' && this === window.viewer.element) keys.push(ev.code); return od.call(this, ev); };
+      const m = c.querySelector('.nge-cm-modebtn[data-tool="merge"]'), k = c.querySelector('.nge-cm-modebtn[data-tool="cut"]');
+      try { m.click(); k.click(); } finally { EventTarget.prototype.dispatchEvent = od; }
+      const r = m.getBoundingClientRect();
+      return { tips: [m.title, k.title], text: [m.textContent, k.textContent], keys, h: Math.round(r.height), pressed: [m.getAttribute('aria-pressed'), k.getAttribute('aria-pressed')] };
+    });
+    check('the Merge and Cut buttons press M and C, tooltips M and C',
+      modes.tips.join() === 'M,C' && modes.text.join() === 'Merge,Cut' && modes.keys.join() === 'KeyM,KeyC' && modes.pressed.join() === 'false,false' && modes.h >= 16, modes);
+    await shot('cell-match-modebtns.png');
     const markInfo = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const i = c.querySelector('.nge-cm-mark-i'); i.click(); const box = c.querySelector('.nge-cm-mark-info'); const r = { open: !box.hidden, text: box.textContent, chipsBelow: c.querySelector('.nge-cm-mark-chips').getBoundingClientRect().top > c.querySelector('.nge-cm-mark-label').getBoundingClientRect().bottom }; return r; });
     check('the (i) explains Highlight; the chips sit on their own line', markInfo.open && /Highlight paints over your cell/.test(markInfo.text) && /Come back/.test(markInfo.text) && markInfo.chipsBelow, markInfo);
     await shot('cell-match-mark.png');

@@ -71,6 +71,17 @@ const NUCLEUS_REACH = 0.25;
  *  as a share of the piece) brings a merger with it. */
 const MERGER_MIN = 500, MERGER_SHARE = 0.25;
 const SAMPLES = 5;
+/** A wrong part is cut off once most of it is gone (Ames 2026-11-17: "how can
+ *  it show 70% but 0 of 2 parts cut off?"): a cut leaves a stub of the other
+ *  cell where it joined, 69 and 52 supervoxels of parts that were 800 and 220
+ *  on her cell 16784. Cut off: three quarters gone, or half gone with a stub
+ *  under CUT_STUB supervoxels left. Measured against the most the part has
+ *  held on this player's cell. */
+const CUT_GONE = 0.75, CUT_HALF = 0.5, CUT_STUB = 100;
+function partCutOff(now, peak) {
+  if (!(peak > now)) return false;
+  return now <= peak * (1 - CUT_GONE) || (now <= peak * (1 - CUT_HALF) && now < CUT_STUB);
+}
 const FOUND_SHARE = 0.8;
 const ROOTS_BATCH = 50000;
 const SV = /^\d{1,20}$/;
@@ -303,6 +314,8 @@ async function cellLeaves(cg, root) {
 /** The wrong parts attached now, by `task:root`; the review by `task:root`;
  *  where each Jump spot is, by `task:root:n`. */
 const partsMemo = lru(100);
+/** The wrong parts still attached for a player, by `user:task:root`. */
+const attachedMemo = lru(200);
 const reviewMemo = lru(100);
 const spotMemo = lru(300);
 /** A key's optional supervoxels as sets, by task. */
@@ -426,7 +439,8 @@ async function check(io, {taskId, me, isAdmin}) {
       // Wrong parts attached now, wherever they came from (Ames 2026-11-16:
       // "I added the vertical branch, which is intentionally an error, and
       // it's not reporting"): the start's, and any merged in since.
-      cutParts: (await wrongParts(cg, `${id}:${root}`, minus(minus(cell, opt.extra), truth))).length,
+      _parts: (await wrongParts(cg, `${id}:${root}`, minus(minus(cell, opt.extra), truth))).map(p => ({root: p.root, size: p.size})),
+      _keyParts: Object.fromEntries((key.extra_pieces || []).map(p => [p.root, p.size])),
       missing: {left: piecesLeft(key.missing_pieces, rootOf, root, 'missing'), total: key.missing_pieces.length},
       extra: {left: piecesLeft(key.extra_pieces, rootOf, root, 'extra'), total: key.extra_pieces.length},
     };
@@ -437,12 +451,31 @@ async function check(io, {taskId, me, isAdmin}) {
   // in removal of mergers"). A cell that started with nothing to cut read 0%
   // from the first wrong piece merged in until the last bit was cut off, so
   // cutting most of a merger showed no progress at all.
-  const {_extraNow: extraNow, _extraStart: keyExtraStart, _missingNow: missingNow, _missingStart: keyMissingStart, _reach: reach, ...shown} = result;
+  const {_extraNow: extraAll, _extraStart: keyExtraStart, _missingNow: missingNow, _missingStart: keyMissingStart, _reach: reach, _parts: partsNow, _keyParts: keyParts, ...shown} = result;
   // Each player starts the cell at 0% (Ames 2026-11-17: "we def should start
   // the cell at 0% match score"): practice cells keep the edits made on them
   // before, so the cell as this player first saw it is their start. A player
   // already under way before starts were kept goes on from the cell's own start.
   const mineRow = await playerRow(io, me.id, id);
+  // Each wrong part against the most it has held on this player's cell. A
+  // part's first sight takes the cell's own start size too, so a part cut
+  // down before starts were kept still counts its cut.
+  const stored = mineRow.parts_peak && typeof mineRow.parts_peak === 'object' ? mineRow.parts_peak : null;
+  const peaks = {...(stored || {})};
+  let peaksGrew = !stored && partsNow.length > 0;
+  for (const p of partsNow) {
+    const had = Number(peaks[p.root]) || 0;
+    const top = Math.max(had, p.size, had ? 0 : (Number(keyParts[p.root]) || 0));
+    if (top > had) { peaks[p.root] = top; peaksGrew = true; }
+  }
+  const sizeNow = Object.fromEntries(partsNow.map(p => [p.root, p.size]));
+  const known = Object.keys(peaks).filter(rt => peaks[rt] >= MIN_PIECE);
+  const attached = known.filter(rt => (sizeNow[rt] || 0) >= MIN_PIECE && !partCutOff(sizeNow[rt] || 0, peaks[rt]));
+  // The stub a cut leaves counts in neither the parts nor the Cut.
+  const stubs = known.filter(rt => sizeNow[rt] && partCutOff(sizeNow[rt], peaks[rt])).reduce((a, rt) => a + sizeNow[rt], 0);
+  const extraNow = Math.max(0, extraAll - stubs);
+  attachedMemo.set(`${me.id}:${id}:${root}`, new Set(attached));
+  shown.cutParts = attached.length;
   const base = mineRow.found
     ? (mineRow.start_missing != null ? mineRow : null)
     : {start_missing: missingNow, start_extra: extraNow, start_missing_left: shown.missing.left, start_extra_left: shown.extra.left, start_reach: reach, fresh: true};
@@ -453,7 +486,6 @@ async function check(io, {taskId, me, isAdmin}) {
     shown.match = matchPercent({missingNow, extraNow, missingStart, extraStart});
     // "n of m pieces added" counts the pieces left when this player began.
     shown.missing = {left: Math.min(shown.missing.left, base.start_missing_left), total: base.start_missing_left};
-    shown.extra = {left: Math.min(shown.extra.left, base.start_extra_left), total: base.start_extra_left};
     shown.nucleusOnly = base.start_reach != null ? base.start_reach < NUCLEUS_REACH : shown.nucleusOnly;
     // Nothing to fix when they began: someone finished it already.
     if (missingStart === 0 && extraStart === 0) shown.alreadyDone = true;
@@ -464,6 +496,9 @@ async function check(io, {taskId, me, isAdmin}) {
   // be congrats, all done"), so merging something wrong in and cutting it off
   // again never raises a score.
   const cut = extraNow === 0 && extraStart === 0 ? null : partPercent(extraNow, peak);
+  // "n of m parts cut off": the wrong parts this player's cell has held, and
+  // those still attached.
+  shown.extra = {left: attached.length, total: known.length};
   result = {...shown, cut, ...(extraNow === 0 && extraStart === 0 && peak > 0 ? {cutDone: true} : {})};
   // The player's merges and cuts on this cell, from the edit log.
   const edits = await countEdits(io, id, me.id).catch(e => { console.warn('[sandbox-match] no edit count', id, e.message); return null; });
@@ -475,6 +510,7 @@ async function check(io, {taskId, me, isAdmin}) {
     p_extra_left: result.extra.left, p_extra_total: result.extra.total,
   })}).catch(e => console.warn('[sandbox-match] score not kept', id, e.message));
   if (base && base.fresh) await keepStart(io, me.id, id, base);
+  if (peaksGrew) await keepPartsPeak(io, me.id, id, peaks);
   if (extraNow > 0 && peak === extraNow) await extraPeak(io, me.id, id, extraNow);
   return result;
 }
@@ -489,7 +525,7 @@ async function wrongParts(cg, memo, wrong) {
   if (wrong.length) {
     const ids = Array.from(wrong, String);
     const roots = await cg.roots(TRUTH, ids, TRUTH.at);
-    parts = groupPieces(ids, roots, {seed: ids[0]});
+    parts = groupPieces(ids, roots, {seed: ids[0], min: 1});
   }
   partsMemo.set(memo, parts);
   return parts;
@@ -501,7 +537,7 @@ async function wrongParts(cg, memo, wrong) {
 /** This player's row for this cell: whether there is one, and their start. */
 async function playerRow(io, userId, taskId) {
   try {
-    const rows = await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}&select=start_missing,start_extra,start_missing_left,start_extra_left,start_reach&limit=1`);
+    const rows = await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}&select=start_missing,start_extra,start_missing_left,start_extra_left,start_reach,parts_peak&limit=1`);
     return rows && rows[0] ? {found: true, ...rows[0]} : {found: false};
   } catch (e) {
     // Could not tell: score from the cell's own start, as before.
@@ -518,6 +554,14 @@ async function keepStart(io, userId, taskId, base) {
       start_reach: Math.round(base.start_reach * 1000) / 1000,
     })});
   } catch (e) { console.warn('[sandbox-match] start not kept', taskId, e.message); }
+}
+
+/** Keep the most each wrong part has held on this player's cell. */
+async function keepPartsPeak(io, userId, taskId, peaks) {
+  try {
+    const keep = Object.fromEntries(Object.entries(peaks).filter(([, n]) => n >= 10));
+    await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}`, {method: 'PATCH', headers: {Prefer: 'return=minimal'}, body: JSON.stringify({parts_peak: keep})});
+  } catch (e) { console.warn('[sandbox-match] part sizes not kept', taskId, e.message); }
 }
 
 async function extraPeak(io, userId, taskId, now) {
@@ -576,8 +620,10 @@ async function review(io, {taskId, me, isAdmin, withSamples = false}) {
     const root = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
     missed.push({root, size: p.size, pointNm: svPointNm(outside.find(sv => rootOf[sv] === root)), ...(withSamples ? {samples: outside} : {})});
   }
-  // Every wrong part attached now: the start's and any merged in since.
-  const parts = partsMemo.get(`${result.taskId}:${cell}`) || [];
+  // Every wrong part attached now: the start's and any merged in since; not a
+  // stub left by a cut, nor a crumb under MIN_PIECE.
+  const still = attachedMemo.get(`${me.id}:${result.taskId}:${cell}`);
+  const parts = (partsMemo.get(`${result.taskId}:${cell}`) || []).filter(p => still ? still.has(p.root) : p.size >= MIN_PIECE);
   const mergers = parts.map(p => ({size: p.size, pointNm: svPointNm(p.samples[0]), ...(withSamples ? {samples: p.samples} : {})}));
   const out = {missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
   reviewMemo.set(memo, out);
@@ -792,6 +838,6 @@ async function handle({action, args, me, isAdmin, io}) {
 module.exports = {
   handle, check, review, hint, event, notes, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, chunksOf, reachShare, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
-  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
-  SANDBOX, TRUTH, KEY_VERSION, NUCLEUS_REACH, MIN_PIECE, SAMPLES, FOUND_SHARE,
+  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); attachedMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
+  SANDBOX, TRUTH, KEY_VERSION, NUCLEUS_REACH, MIN_PIECE, partCutOff, SAMPLES, FOUND_SHARE,
 };
