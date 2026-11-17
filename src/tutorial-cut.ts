@@ -214,6 +214,8 @@ Cut points don't have to go on the 3D shape. **Ctrl+Click** works on the 2D imag
 
 In 2D, place 3 or 4 <strong style="color:#ff5c5c">red</strong> points inside one cell's outline and 3 or 4 <strong style="color:#5c8cff">blue</strong> inside the other's, spread over a few slices. With one point a side the cut may take only part of the piece.
 
+**Ctrl + mouse wheel** zooms the 2D images in and out.
+
 <span class="nge-cut-2d-next">Press next to try it on a new cell.</span>`,
     position: OVER_2D,
     width: "440px",
@@ -244,7 +246,7 @@ Click to add new cut points in the 2D images on the left, on either side of wher
 3. Press **G**, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the other side of the join.
 4. Press **Submit cut** on the bar at the bottom, or **Enter**.
 
-The red and blue dots on the images show where the points go.`,
+The red and blue dots on the images show where the points go. **Ctrl + mouse wheel** zooms the 2D images in and out.`,
     position: OVER_3D,
     width: "420px",
     onEnter: async () => {
