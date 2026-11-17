@@ -1503,6 +1503,18 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     try { if (ref.value) mergeAnnotationState.source.delete(ref); } finally { ref.dispose(); }
   }
 
+  /** nge: after a merge is refused as "must belong to different objects",
+   *  the root both points now share, when they do; else null. */
+  private ngeAlreadyJoined = async (submission: MergeSubmission, err: any): Promise<Uint64 | null> => {
+    if (!ngeRefusedAsJoined(err)) return null;
+    try {
+      const [a, b] = await Promise.all([this.graph.getRoot(submission.sink.segmentId), this.graph.getRoot(submission.source!.segmentId)]);
+      return a && b && Uint64.equal(a, b) && !Uint64.equal(a, Uint64.ZERO) ? a : null;
+    } catch {
+      return null;
+    }
+  }
+
   private submitMerge = async (submission: MergeSubmission, attempts=1): Promise<Uint64> => {
     const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
     const annotationToNanometers = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
@@ -1514,21 +1526,31 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     const stop = new CancellationTokenSource();
     submission.cancel = (why: string) => { submission.error = why; stop.cancel(); };
     const limit = setTimeout(() => submission.cancel?.('The server did not answer in time. Nothing was merged as far as the game can tell; check the cell, then try again.'), MERGE_WAIT_MS);
+    const keptColor = this.ngeColorOf(submission.sink.rootId);
+    const merged = (newRoot: Uint64) => {
+      this.ngeKeepColor(keptColor, newRoot);
+      const oldValues = new Uint64Set();
+      oldValues.add(submission.sink.rootId);
+      oldValues.add(submission.source!.rootId);
+      const newValues = new Uint64Set();
+      newValues.add(newRoot);
+      this.state.replaceSegments(oldValues, newValues);
+      return newRoot;
+    };
     try {
     for (let i = 1; i <= attempts; i++) {
       try {
         if (stop.isCanceled) throw new Error(submission.error || 'Stopped.');
-        const keptColor = this.ngeColorOf(submission.sink.rootId);
         const newRoot = await this.graph.graphServer.mergeSegments(submission.sink, submission.source!, annotationToNanometers, stop);
-        this.ngeKeepColor(keptColor, newRoot);
-        const oldValues = new Uint64Set();
-        oldValues.add(submission.sink.rootId);
-        oldValues.add(submission.source!.rootId);
-        const newValues = new Uint64Set();
-        newValues.add(newRoot);
-        this.state.replaceSegments(oldValues, newValues);
-        return newRoot;
+        return merged(newRoot);
       } catch (err) {
+        // nge: the merge went through on an earlier try whose answer was slow
+        // or lost, and the retry was refused because the two points are one
+        // cell now: "Supervoxels must belong to different objects". It showed
+        // FAILED on a merge that worked (Ames 2026-11-17). The two points
+        // sharing a root now means the merge is done.
+        const joined = await this.ngeAlreadyJoined(submission, err);
+        if (joined) return merged(joined);
         if (i === attempts || stop.isCanceled) {
           // A stop set its own reason: keep it over the bare "cancelled".
           if (!stop.isCanceled || !submission.error) submission.error = err.message || "unknown";
@@ -2794,6 +2816,11 @@ const wait = (t: number) => {
 
 /** How long one merge may wait on the server before it gives up. */
 const MERGE_WAIT_MS = 90_000;
+/** nge: the graph server's refusal of a merge whose two points are already
+ *  one cell (seen after a retry of a merge that went through). */
+export function ngeRefusedAsJoined(err: any): boolean {
+  return /must belong to different objects/i.test(String(err?.message ?? err ?? ''));
+}
 
 interface MergeSubmission {
   id: string;
