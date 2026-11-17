@@ -2320,17 +2320,6 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   overview();
 }
 
-/** The rocket by the chat box (Ames 2026-11-08): the prototype tour, offered
- *  to every player to try and give feedback on. */
-export function showTourInvite() {
-  if (document.querySelector('.nge-tour-invite')) return;
-  const card = transmissionCard();
-  card.el.classList.add('nge-tour-invite');
-  card.set('Try the new tour of Pyr',
-    "This is the prototype new tour that people will see when opening Pyr for the first time. Want to try it and give us feedback? It's supposed to be fun, beautiful, cool, and informative. Thanks for testing it! There are still some bugs but feel free to submit issues/ideas via bug report! -Amy",
-    [], {label: 'Start the tour', go: () => playIntro()}, '', {alt: {label: 'Not now', go: () => card.close()}});
-}
-
 /** The whole intro: the Starship flies in and lands, then the tour. */
 /** A loading screen while the Sandbox and the cell arrive, until the cell
  *  starts to grow (Ames: "start the tour ... just stays black for a while"). */
