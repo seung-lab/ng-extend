@@ -19,6 +19,7 @@ import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, mappingWhere
 import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import EditableText from './EditableText.vue';
+import { canonicalDataset, currentDatasetTag } from '../datasets';
 
 const backend = useProofreadingBackendStore();
 const signedIn = computed(() => !!backend.userId);
@@ -29,6 +30,28 @@ const busy = ref(false);
 /** Settings, Screen: "Show the Play button" (Ames 2026-11-12). */
 const prefs = useUserPreferencesStore();
 const hidden = computed(() => prefs.prefs.hidePlayButton === true);
+// On the Sandbox the button is big (Ames 2026-11-14: in EyeWire players said
+// they did not know what to do), and it stays away while a tutorial is on
+// screen, where the tutorial says what to do. Both read from the page, as the
+// Cut overlay does for the tutorial.
+const onSandbox = ref(false);
+const tutorialOnScreen = ref(false);
+/** The Sandbox's Playing box was closed with its X: Play opens it again
+ *  (Ames 2026-11-14: new players want the Play button back). */
+const boxClosed = ref(false);
+// The Playing box reads this setting from the page: off, the box stays away.
+watch(hidden, off => {
+  document.body.classList.toggle('nge-play-off', off);
+  document.dispatchEvent(new CustomEvent('nge:play-pref'));
+}, { immediate: true });
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+function readScreen() {
+  onSandbox.value = canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
+  tutorialOnScreen.value = !!document.querySelector('.introductionStep');
+  boxClosed.value = document.body.classList.contains('nge-cm-closed');
+}
+const showDock = computed(() => signedIn.value && !hidden.value && !tutorialOnScreen.value
+  && (!play.on || (onSandbox.value && boxClosed.value)));
 
 const SUB = 'Pyr teleports you to a neuron.';
 const MAP_LINES = [
@@ -78,18 +101,24 @@ async function go() {
   try { await startPlay(picked.value); } finally { busy.value = false; }
 }
 function onButton() {
+  // The Playing box was closed: open it again, and play if not playing.
+  if (onSandbox.value && boxClosed.value) {
+    (window as any).__ngeCellMatch?.openCard?.();
+    boxClosed.value = false;
+    if (play.on) return;
+  }
   // Playing already: back to the task in hand.
   if (play.on) { void startPlay(play.on); return; }
   pressPlay();
 }
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && play.choosing) { e.stopPropagation(); play.choosing = false; } }
-onMounted(() => document.addEventListener('keydown', onKey, true));
-onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameObs?.disconnect(); });
+onMounted(() => { document.addEventListener('keydown', onKey, true); readScreen(); watchTimer = setInterval(readScreen, 400); });
+onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameObs?.disconnect(); if (watchTimer) clearInterval(watchTimer); });
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="signedIn && !play.on && !hidden" class="nge-play-dock">
+    <div v-if="showDock" class="nge-play-dock" :class="{ 'nge-play-dock--big': onSandbox }">
     <button class="nge-play-btn" @click="onButton"
             title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
       <svg class="nge-play-icon" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
@@ -157,6 +186,13 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-btn:hover { box-shadow: 0 0 18px rgba(62, 236, 190, 0.55); background: linear-gradient(135deg, rgba(10, 90, 78, 0.96), rgba(12, 60, 80, 0.96)); }
 .nge-play-btn:focus-visible { outline: 2px solid #3eecbe; outline-offset: 3px; }
 .nge-play-icon { color: #3eecbe; }
+/* The Sandbox: twice the size, with a slow glow, so a new player sees where to start. */
+.nge-play-dock--big { top: 80px; left: 14px; }
+.nge-play-dock--big .nge-play-btn { height: 58px; padding: 0 30px 0 24px; gap: 12px; font-size: 22px; letter-spacing: 0.14em;
+  animation: nge-play-glow 2.4s ease-in-out infinite; }
+.nge-play-dock--big .nge-play-icon { width: 18px; height: 18px; }
+@keyframes nge-play-glow { 50% { box-shadow: 0 0 26px rgba(62, 236, 190, 0.7), 0 0 0 4px rgba(62, 236, 190, 0.12); } }
+@media (prefers-reduced-motion: reduce) { .nge-play-dock--big .nge-play-btn { animation: none; } }
 .nge-play-x { width: 22px; height: 22px; padding: 0; border: 1px solid rgba(62, 236, 190, 0.4); border-radius: 50%;
   background: rgba(6, 20, 30, 0.85); color: #9fe8d4; font: 400 15px/1 Inter, system-ui, sans-serif; cursor: pointer; display: grid; place-items: center; }
 .nge-play-x:hover { color: #fff; border-color: #3eecbe; background: rgba(12, 60, 56, 0.95); }

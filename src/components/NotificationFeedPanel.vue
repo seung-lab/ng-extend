@@ -436,7 +436,7 @@ function openDetail(notif: any) {
   // "clicking an access notif should open the access dash"), at the person
   // when the note names their email.
   if (backend.isAdmin && (kindOf(notif) === 'access' || accessTitle.startsWith('🔑 Invite used'))) {
-    openAccessPage(notif.body);
+    openAccessPage(notif.body, notif.title);
     emit('hide');
     return;
   }
@@ -913,11 +913,16 @@ const TRIAGE_MARK = /\s*#nge-triage-report=([0-9a-f-]{36})\s*$/i;
 const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(TRIAGE_MARK)?.[1] ?? '');
 /** The Access page (?triage=access) in its own tab, at the first email the
  *  note names, if any. Notes escape what players typed ("joe\@mail\.com"). */
-function openAccessPage(body?: string | null) {
+// Ames 2026-11-17: "clicking this link (or any related access notif) should
+// take me to the access dash with their card selected". The name after
+// "from" in the title finds them when the note has no email (the Retina's).
+function openAccessPage(body?: string | null, title?: string | null) {
   const text = String(body || '').replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
   const email = (text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/) || [])[0];
   const person = email && !/@(eyewire\.(org|ai)|connectome\.quest)$/i.test(email) ? `&person=${encodeURIComponent(email.toLowerCase())}` : '';
-  window.open(`${window.location.origin}${window.location.pathname}?triage=access${person}`, '_blank', 'noopener');
+  const from = (String(title || '').match(/\bfrom (.+?)(?: \(try \d+\))?$/) || [])[1];
+  const who = from ? `&who=${encodeURIComponent(from.trim())}` : '';
+  window.open(`${window.location.origin}${window.location.pathname}?triage=access${person}${who}`, '_blank', 'noopener');
 }
 function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');

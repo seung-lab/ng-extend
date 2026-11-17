@@ -39,7 +39,8 @@ import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } f
 import { myAxonTaskIds } from '../util/dataset_contribution';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong, latestDescendants } from '../widgets/pcg_service';
-import { mintShortStateLink } from '../util/state_link';
+import { freshenClaimView } from '../util/fresh_claim_view';
+import { mintShortStateLink, readStateLink, stateSegTable } from '../util/state_link';
 import { fullViewUrl } from '../util/local_view';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
@@ -267,8 +268,19 @@ function openCellTypes() {
   applyShowcaseWhenLoaded(before);
 }
 
-async function loadCellsForActiveDataset() {
+let datasetWait: ReturnType<typeof setTimeout> | null = null;
+async function loadCellsForActiveDataset(tries = 0) {
   const dsName = getCurrentDatasetName();
+  // Opened before the dataset's layer is there (a page still loading, a
+  // switch under way): no dataset yet. It used to load the Retina sheet (the
+  // default) and list every dataset's cells, so Play on the Sandbox took a
+  // Retina claim and went to Retina (Ames 2026-11-13, two videos). Wait for
+  // the layer instead, up to 15 s.
+  if (!dsName && tries < 50) {
+    if (datasetWait) clearTimeout(datasetWait);
+    datasetWait = setTimeout(() => { datasetWait = null; void loadCellsForActiveDataset(tries + 1); }, 300);
+    return;
+  }
   activeDataset.value = dsName;
   const cfg = getDatasetCaveConfig(dsName);
   // No fallback sheet: borrowing the pinky sheet here tagged its rows with the
@@ -836,6 +848,12 @@ function savedAtLabel(cell: CellRow): { text: string; title: string } {
 
 async function saveClaimView(cell: CellRow) {
   if (!cell.taskId || savingView.value) return;
+  // Only the cell's own dataset is saved as its view: a save made while
+  // another dataset was on screen (during a switch) sent Play there later.
+  if (cell.dataset && canonicalDataset(cell.dataset) !== canonicalDataset(currentDatasetTag())) {
+    console.warn('[cell library] not saving claim', cell.taskId, 'view: on', currentDatasetTag(), 'not', cell.dataset);
+    return;
+  }
   savingView.value = cell.taskId;
   claimError.value = '';
   try {
@@ -920,8 +938,11 @@ async function switchToClaim(cell: CellRow) {
   const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  // A saved view already found not to show the claim is passed over.
-  const saved = t?.working_link && !isBadClaimView(cell.taskId, t.working_link) ? t.working_link : null;
+  // A saved view of another dataset is not this cell's: it took Play on the
+  // Sandbox to Retina (Ames 2026-11-13: "when I click Play Sandbox Practice it
+  // takes me to retina"). It is passed over and the cell opened instead, as is
+  // a saved view already found not to show the claim.
+  const saved = t?.working_link && !isBadClaimView(cell.taskId, t.working_link) && await viewIsOnDataset(t.working_link, cell.dataset) ? t.working_link : null;
   const fromStart = !saved;
   const openedClaim = openStartLink(saved || cell.startLink);
   if (openedClaim && fromStart) openLight(cell.taskId ?? undefined, cell);
@@ -932,7 +953,7 @@ async function switchToClaim(cell: CellRow) {
     if (leftId && leftId !== cell.taskId) freshLayersForClaim();
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
   }
-  else void backend.anchorClaimAt(cell.taskId).catch(() => null);
+  else { void backend.anchorClaimAt(cell.taskId).catch(() => null); void freshenClaimView(cell.taskId, backend); }
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
   if (openedClaim && !fromStart) void checkSavedViewShowsClaim(cell);
@@ -980,6 +1001,20 @@ function isBadClaimView(taskId: number | null | undefined, link: string): boolea
 function rememberBadClaimView(taskId: number | null | undefined, link: string) {
   if (taskId == null) return;
   try { localStorage.setItem(BAD_VIEWS_KEY, JSON.stringify({ ...badClaimViews(), [String(taskId)]: link })); } catch { /* private window */ }
+}
+
+
+/** Does a saved view show this dataset? True when it cannot be told (the
+ *  view is opened as before) or the claim has no dataset. */
+async function viewIsOnDataset(link: string, dataset: string | undefined): Promise<boolean> {
+  if (!dataset) return true;
+  // A slow state server never holds the cell up: past 4 s the view opens as before.
+  const state = await Promise.race([readStateLink(link), new Promise<null>(res => setTimeout(() => res(null), 4000))]);
+  const table = state ? stateSegTable(state) : '';
+  if (!table) return true;
+  const same = canonicalDataset(table) === canonicalDataset(dataset);
+  if (!same) console.warn('[cell library] saved view is on', table, 'not', dataset, ': opening the cell instead');
+  return same;
 }
 
 // ── Actions ──────────────────────────────────────────────────────────
@@ -1094,7 +1129,7 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     // claim, so the new claim is on screen and not the last one (report 373).
     const leftOther = !!leftId && leftId !== claimed?.id;
     const opened = openStartLink(cell.startLink);
-    if (opened) { openLight(claimed?.id, cell); jumpedSegId.value = cell.segId; }
+    if (opened) { openLight(claimed?.id, cell); jumpedSegId.value = cell.segId; if (claimed) void freshenClaimView(claimed.id, backend); }
     if (!opened && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
       if (leftOther) freshLayersForClaim();
       jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
@@ -1510,6 +1545,10 @@ async function submitComplete(cell: CellRow) {
       document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segId: c.check.root } }));
     }
     const claimsBefore = myOpenClaims.value;
+    // Sandbox cells the Cell match HUD scores (Ames 2026-11-12): the review is
+    // asked for now, while the cell is still the player's open claim, and
+    // shown once it is complete, before any next cell.
+    const review = cell.taskId && hasReview(cell.taskId) ? startReview(cell.taskId) : null;
     await completeCell(cell, {
       finalSegId: c.check.root,
       coords: c.check.position.join(', '),
@@ -1520,6 +1559,7 @@ async function submitComplete(cell: CellRow) {
       cellType: type || undefined,
     });
     completing.value = null;
+    if (review && cell.taskId && await showReview(cell.taskId, review, !!play.on) === 'stay') return;
     // Straight on to your next claim. With none left, the next cell is
     // claimed and you are taken there: the cell you land on is yours (Ames
     // 2026-11-09: "it should just take you there").
@@ -1612,6 +1652,7 @@ import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import { hasReview, startReview, showReview } from '../sandbox_match';
 import OrbitDot from './OrbitDot.vue';
 import { useOrbitTick } from '../util/orbit_tick';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
@@ -2318,8 +2359,15 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
 /** Asked for a tab while already open (the Switch Dataset window's chips on
  *  the dataset on screen): go to it. */
 function onOpenAsked(e: Event) {
+  // Opened out of sight by the Sandbox Playing box, to run its buttons.
+  if ((e as CustomEvent).detail?.quiet) return;
   const tab = (e as CustomEvent).detail?.tab;
-  if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+  if (tab && ALL_CL_TABS.some(t => t.key === tab)) {
+    filter.value = tab;
+    // Asked for a tab while slim: show the full library on it (the tab list
+    // was out of sight, Ames 2026-11-13).
+    if (slim.value) expandFull();
+  }
   playIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
@@ -3131,6 +3179,9 @@ const slimCell = computed<CellRow | null>(() => {
  *  last claim just completed. It offers "Claim a new cell" (Ames 2026-10-21,
  *  report 191: "slim view on" with nothing to shrink to left the panel full). */
 const slimEmpty = ref(false);
+// Opened by the Sandbox Playing box to run its Save view, Skip or Complete:
+// open slim, which the box hides, so nothing pops up over the view.
+if ((window as any).__ngeCmQuietLibrary) { (window as any).__ngeCmQuietLibrary = false; slimEmpty.value = true; }
 /** Slim on the Quests tab: the bar shows the quest cell you are on (toknow,
  *  report 288: "show current Quest cell in slim Cell Library when I select
  *  Quests tab"). */
@@ -3275,10 +3326,35 @@ function showStartNote(text: string, ms = 4200, cellName?: string, kicker = 'Tel
  *  here, or claims the next one. Quests go to the Quests tab, which does the
  *  same with its own cells (questPlay). */
 const questPlay = ref(0);
+/** The dataset on screen, once its layer is there (up to 6 s after a switch). */
+async function liveDatasetName(): Promise<string> {
+  for (let i = 0; i < 30; i++) {
+    const n = getCurrentDatasetName();
+    if (n) return n;
+    await new Promise(res => setTimeout(res, 200));
+  }
+  return '';
+}
+/** Play is finding the cell: the panel stays out of sight until it is the slim
+ *  row, so the full library never flashes up first (Ames 2026-11-13: "it still
+ *  loads the large cell library before zipping it away in the chip"). */
+const playOpening = ref(false);
+let playOpeningTimer: ReturnType<typeof setTimeout> | null = null;
+function playOpened() {
+  playOpening.value = false;
+  if (playOpeningTimer) { clearTimeout(playOpeningTimer); playOpeningTimer = null; }
+}
 function playIfAsked() {
   const k = takePlayEnter();
   if (!k) return;
-  const go = async () => {
+  playOpening.value = true;
+  if (playOpeningTimer) clearTimeout(playOpeningTimer);
+  playOpeningTimer = setTimeout(playOpened, 20000);
+  // Play opens the slim row only, at once; the full library is a click away
+  // (Ames 2026-11-13: "just load the chip and I can expand if I want").
+  setSlimMode(true);
+  const go = async () => { try { await goPlay(); } finally { playOpened(); } };
+  const goPlay = async () => {
     setSlimMode(true);
     showTabSettings.value = false;
     showHowTo.value = false;
@@ -3291,7 +3367,16 @@ function playIfAsked() {
       return;
     }
     if (!CELL_TABS.includes(filter.value)) filter.value = 'available';
-    const mine = currentCell() && isMyClaim(currentCell()!) && currentCell()!.status !== 'completed' ? currentCell() : myOpenClaims.value[0];
+    // Play right after a dataset switch: the library can still be on the
+    // dataset left behind, and took a Retina claim as the cell to play on the
+    // Sandbox, switching back to Retina for it (Ames 2026-11-13, the Switch
+    // Dataset's Start playing). Wait for the new dataset, catch the list up,
+    // and play only a claim of the dataset on screen.
+    const live = await liveDatasetName();
+    if (live && canonicalDataset(live) !== canonicalDataset(activeDataset.value)) await loadCellsForActiveDataset();
+    const here = (c: CellRow | null | undefined) => !!c && (!c.dataset || !live || canonicalDataset(c.dataset) === canonicalDataset(live));
+    const cur = currentCell();
+    const mine = cur && isMyClaim(cur) && cur.status !== 'completed' && here(cur) ? cur : myOpenClaims.value.find(here);
     if (mine) {
       await stepToClaim(mine);
       await collapseTo(mine);
@@ -3336,7 +3421,14 @@ function playStop() {
 }
 /** Play stopped from anywhere (the top bar's stop button, the choice card):
  *  the full library comes back, with the cell in hand still claimed. */
-const onPlayStopped = () => { startNote.value = ''; if (slim.value) expandAndStay(); };
+const onPlayStopped = () => {
+  startNote.value = '';
+  // On the Sandbox the Playing box held the cell and the library was only
+  // there, out of sight, to run its buttons: it closes rather than opening
+  // full (Ames 2026-11-17: Stop playing "loaded cell library").
+  if (document.body.classList.contains('nge-cm-owns')) { document.dispatchEvent(new CustomEvent('nge:close-cell-library')); return; }
+  if (slim.value) expandAndStay();
+};
 onMounted(() => document.addEventListener('nge:play-stopped', onPlayStopped));
 onBeforeUnmount(() => document.removeEventListener('nge:play-stopped', onPlayStopped));
 
@@ -3429,7 +3521,11 @@ async function collapseTo(cell: CellRow | null) {
   if (cell ? slimSeg.value === cell.segId : slimEmpty.value) return;
   const el = panelEl.value;
   // Already slim (jumping from the slim row itself): nothing to shrink.
-  const ghost = el && !slim.value ? snapshotPanel(el, '.nge-cl-list') : null;
+  // Out of sight (Play still finding the cell, or the Sandbox box owns the
+  // row): no picture of the full library zips into it (Ames 2026-11-17:
+  // Start playing "is still momentarily loading the cell library").
+  const unseen = playOpening.value || document.body.classList.contains('nge-cm-owns');
+  const ghost = el && !slim.value && !unseen ? snapshotPanel(el, '.nge-cl-list') : null;
   if (!CELL_TABS.includes(filter.value)) filter.value = 'mine';
   showTabSettings.value = false;
   showHowTo.value = false;
@@ -3507,12 +3603,83 @@ const panelStyle = computed(() => ({
     ? { height: resizedHeight.value + 'px', maxHeight: 'none' }
     : {}),
 }));
+
+// ── The Sandbox Playing box (src/sandbox_match.ts) ─────────────────────────
+// Ames 2026-11-14: "combine these boxes, especially for newer players": on the
+// Sandbox the Playing box holds Save view, Skip and Complete, and the slim row
+// steps aside. The box asks here, by event, so each action runs exactly as the
+// row's own button does; and it hears back what the row would show.
+const CM_ACTION = 'nge:cm-cell-action';
+const CM_STATE = 'nge:cm-cell-state';
+/** The cell the box is showing: it says so (nge:cm-cell-ask) each time it changes. */
+let cmShown: number | null = null;
+function cmCell(taskId: number): CellRow | undefined {
+  return myOpenClaims.value.find(c => c.taskId === taskId);
+}
+function onCmAction(e: Event) {
+  const d = (e as CustomEvent).detail || {};
+  const taskId = Number(d.taskId);
+  // The box asking about a cell is showing it, whatever this panel heard before.
+  if (taskId > 0) cmShown = taskId;
+  const cell = cmCell(taskId);
+  if (!cell) { cmTell(taskId, 'That cell is not one of your open claims.'); return; }
+  if (d.action === 'save') void saveClaimView(cell);
+  else if (d.action === 'skip') void playSkip(cell);
+  else if (d.action === 'complete-open') openComplete(cell);
+  else if (d.action === 'complete-cancel') { if (completing.value?.key === cellKey(cell)) completing.value = null; }
+  else if (d.action === 'complete-check') { if (completing.value?.key === cellKey(cell)) void runCrosshairCheck(cell); }
+  else if (d.action === 'complete-soma') {
+    // The box's "Put them in the soma": the crosshairs to the cell's own
+    // point (where it was claimed, in its soma), then the check again.
+    const p = cell.claimPoint ?? parseCoords(cell.somaCoords || cell.nucCoords);
+    if (p && (p[0] || p[1] || p[2])) {
+      try { (window as any).viewer.navigationState.position.value = Float32Array.from(p as number[]); } catch { /* no viewer */ }
+    }
+    if (completing.value?.key === cellKey(cell)) setTimeout(() => void runCrosshairCheck(cell), 400);
+  }
+  else if (d.action === 'complete-submit') {
+    if (completing.value?.key !== cellKey(cell)) return;
+    completing.value.notes = String(d.notes || '').slice(0, 2000);
+    void submitComplete(cell);
+  }
+}
+function cmTell(taskId: number | null, problem?: string) {
+  const c = completing.value;
+  const cell = taskId != null ? cmCell(taskId) : undefined;
+  const mine = c && cell && c.key === cellKey(cell);
+  document.dispatchEvent(new CustomEvent(CM_STATE, { detail: {
+    taskId,
+    saving: taskId != null && savingView.value === taskId,
+    saved: taskId != null && !!savedViewAt.value[taskId],
+    savedText: cell ? savedAtLabel(cell).text : '',
+    skipping: skipping.value,
+    problem: problem || '',
+    completing: mine ? { checking: c!.checking, ok: c!.ok, message: c!.message, minting: c!.minting, submitting: c!.submitting, link: !!c!.link && linkLooksValid(c!.link) } : null,
+  } }));
+}
+watch([completing, savingView, savedViewAt, skipping], () => { if (cmShown != null) cmTell(cmShown); }, { deep: true });
+function onCmAsk(e: Event) { const t = Number((e as CustomEvent).detail?.taskId); cmShown = t > 0 ? t : null; if (cmShown != null) cmTell(cmShown); }
+onMounted(() => {
+  document.addEventListener(CM_ACTION, onCmAction);
+  document.addEventListener('nge:cm-cell-ask', onCmAsk);
+  // Mounted after the box said which cell it shows: ask it to say again.
+  document.dispatchEvent(new CustomEvent('nge:cm-library-ready'));
+  document.addEventListener('nge:cl-expand', onExpandAsked);
+});
+/** Asked to show while slim (the top bar button, the box's cell icon): full. */
+function onExpandAsked() { expandFull(); }
+onBeforeUnmount(() => document.removeEventListener('nge:cl-expand', onExpandAsked));
+onBeforeUnmount(() => {
+  document.removeEventListener(CM_ACTION, onCmAction);
+  document.removeEventListener('nge:cm-cell-ask', onCmAsk);
+  document.dispatchEvent(new CustomEvent('nge:cm-library-gone'));
+});
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest }" :style="panelStyle" @mousedown="onSlimMouseDown">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
       <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
@@ -4618,7 +4785,7 @@ const panelStyle = computed(() => ({
                 class="nge-cl-btn nge-cl-btn--complete"
                 :class="{ 'nge-cl-btn--complete-open': completing?.key === cellKey(cell) }"
                 @click="completing?.key === cellKey(cell) ? (completing = null) : openComplete(cell)"
-              >Complete</button>
+              >{{ hasReview(cell.taskId) ? 'Complete and Review' : 'Complete' }}</button>
             </div>
           </div>
 
@@ -4704,15 +4871,16 @@ const panelStyle = computed(() => ({
               placeholder="Anything the reviewers should know, e.g. axon cut off at the edge"
               @keydown.stop @keyup.stop @keypress.stop
             ></textarea>
-            <!-- Crosshairs on the left with Check again under it, the two
-                 buttons beside it on the right: a shorter box (Ames 2026-11-12). -->
-            <div class="nge-cl-complete-xhrow">
-            <div class="nge-cl-complete-xhcol">
+            <!-- The crosshairs line across the whole box (Ames 2026-11-13: it was
+                 squeezed into a narrow column beside the buttons), then Check
+                 again on the left and the buttons on the right. -->
             <label class="nge-cl-complete-label">Crosshairs</label>
-            <div class="nge-cl-complete-msg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
+            <div class="nge-cl-complete-msg nge-cl-complete-xhmsg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
               <template v-if="completing.checking">Checking where the crosshairs are…</template>
               <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}<CrosshairHelp v-if="!completing.ok" /></template>
             </div>
+            <div class="nge-cl-complete-xhrow">
+            <div class="nge-cl-complete-xhcol">
             <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
@@ -4721,7 +4889,7 @@ const panelStyle = computed(() => ({
                 :disabled="!!completeBlocked(cell) && !statusMissing(cell)"
                 :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
-              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : play.on ? 'Complete and next' : 'Mark complete' }}</button>
+              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : hasReview(cell.taskId) ? 'Complete and Review' : play.on ? 'Complete and next' : 'Mark complete' }}</button>
               <!-- Not finished yet: keep it for later (Ames 2026-11-13). -->
               <button v-if="cell.taskId && isMyClaim(cell)" class="nge-cl-btn" :disabled="completing.submitting || savingView === cell.taskId"
                       title="Saves your view and keeps this cell claimed for you, so you can finish it later"
@@ -5450,8 +5618,9 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-recheck:hover:not(:disabled) { border-color: rgba(160, 190, 220, 0.6); }
 .nge-cl-complete-notes { resize: vertical; min-height: 2.6em; font-family: inherit; width: 100%; box-sizing: border-box; }
 .nge-cl-complete-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
-.nge-cl-complete-xhrow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
-.nge-cl-complete-xhcol { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.nge-cl-complete-xhrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 6px; }
+.nge-cl-complete-xhcol { flex: 0 0 auto; display: flex; align-items: center; }
+.nge-cl-complete-xhmsg { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
 .nge-cl-complete-xhrow .nge-cl-complete-recheck { margin-left: 0; font-size: 13px; padding: 2px 10px; }
 .nge-cl-complete-xhrow .nge-cl-complete-actions { margin-top: 0; margin-left: auto; }
 
@@ -6624,6 +6793,7 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
   width: 8px;
   text-align: center;
 }
+.nge-cl-panel--opening { visibility: hidden; }
 .nge-cl-help-ds-arrow--collapsed {
   transform: rotate(-90deg);
 }

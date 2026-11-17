@@ -116,3 +116,41 @@ test('access.ewBio: admins read an EyeWire join date the browser cannot (no CORS
   await assert.rejects(handle('access.ewBio', { name: 'bad/../x' }, t.io));
   await assert.rejects(handle('access.ewBio', { name: 'lobus' }, io({ isAdmin: false, fetch }).io));
 });
+
+// You're on the list (Ames 2026-11-17): #N among everyone who ever asked.
+test('the On the list email numbers them among everyone who asked, let in or not, admins left out', async () => {
+  const people = [
+    { email: 'first@x.org', asked_at: '2026-10-01', from_site: true, is_admin: false },
+    { email: 'boss@x.org', asked_at: '2026-10-02', from_site: false, is_admin: true },
+    { email: 'ryan.t.morey@gmail.com', asked_at: '2026-10-03', from_site: false, is_admin: false },
+    { email: 'letin@x.org', asked_at: '2026-10-04', from_site: false, is_admin: false },
+    { email: 'olivia@x.org', asked_at: '2026-11-12', from_site: true, is_admin: false },
+  ];
+  const waits = {};
+  const t = io({ sb: async q => (/^access_hub_people\?/.test(q) ? people : []),
+    waitlistSent: { get: async e => waits[e] || null, set: async (e, v) => { waits[e] = v; }, all: async () => waits } });
+  const d = await handle('access.waitlistEmail', { email: 'Olivia@x.org', name: 'Olivia Anna Carr', preview: true }, t.io);
+  // The 100 from the earlier Google form come first (Ames 2026-11-17).
+  assert.deepStrictEqual([d.n, d.total, d.fromForm, d.earlier, d.to], [103, 103, 2, 100, 'olivia@x.org']);
+  assert.strictEqual(d.subject, "You're on the list for the Pyr beta");
+  assert.match(d.text, /^Hi Olivia,/);
+  assert.match(d.text, /You are #103 in line\./);
+  assert.match(d.text, /Amy Sterling and the Pyr Team at Princeton$/);
+  assert.doesNotMatch(d.text, /Ames|—|–/);
+  assert.strictEqual(t.sent.length, 0, 'a preview sends nothing');
+  const r = await handle('access.waitlistEmail', { email: 'olivia@x.org', name: 'Olivia' }, t.io);
+  assert.deepStrictEqual([r.sent, r.n], [true, 103]);
+  assert.strictEqual(t.sent[0].from, 'Amy at Pyr <welcome@connectome.quest>');
+  assert.strictEqual(t.sent[0].reply_to, 'support@eyewire.org');
+  assert.deepStrictEqual(t.sent[0].to, ['olivia@x.org']);
+  const again = await handle('access.waitlistEmail', { email: 'olivia@x.org', name: 'Olivia' }, t.io);
+  assert.deepStrictEqual([again.sent, again.reason, t.sent.length], [false, 'already sent', 1]);
+  await assert.rejects(handle('access.waitlistEmail', { email: 'never@x.org', name: 'N' }, t.io), /not on the list/);
+  await assert.rejects(handle('access.waitlistEmail', { email: 'olivia@x.org', preview: true }, io({ isAdmin: false }).io));
+});
+
+test('the ask confirms they are on the list and that we will tell them when their spot is ready (Ames 2026-11-17)', async () => {
+  const d = await handle('access.askDraft', { email: 'l@x.org', name: 'Luca Welsh' }, io().io);
+  assert.match(d.text, /This confirms you're on the list for the Pyr beta\./);
+  assert.match(d.text, /We'll let you know when your spot is ready\.\n\nAmy Sterling and the Pyr Team at Princeton$/);
+});

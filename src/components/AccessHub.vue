@@ -47,8 +47,12 @@ interface PlayerDataset { dataset: string; edits: number; cells: number; chats: 
 interface Activity { dataset: string; edits: number; editors: number; cells: number; finishers: number; chats: number; chatters: number }
 interface Stat { tutorial: number; step: number; last_box: string | null; n: number; players: number; median_s: number; p90_s: number; help_rate: number; closes: number }
 interface Note { id: string; text: string; by: string; at: string }
-type Stage = 'asked' | 'emailed' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'editing' | 'removed' | 'admin';
-interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; stage: Stage; since: string | null; listed: boolean }
+type Stage = 'asked' | 'emailed' | 'later' | 'letin' | 'signedin' | 'tutorial' | 'dataset' | 'retina' | 'editing' | 'removed' | 'admin';
+/** A Retina request: ten cut and merge examples, waiting on a reviewer
+ *  (access.list, status submitted). Reviewed in Pyr, Admin Hub > Access requests. */
+interface RetinaRow { id: number; status: string; tries: number; email?: string; player_name?: string; user_id?: string;
+  eyewire_username?: string | null; player_note?: string | null; submitted_at: string | null; items?: unknown[] }
+interface Card { key: string; p: Person | null; ds: DatasetRequestRow | null; rq?: RetinaRow | null; stage: Stage; since: string | null; listed: boolean }
 
 const PEOPLE_COLS = 'email,user_id,name,username,request_id,asked_at,from_site,gave_email,ew_name,ew_rank,found_us,their_note,pilot_enabled,let_in_at,from_list,joined_at,tutorial_active,tutorial_at,tutorials,first_edit_at,last_edit_at,edits,last_dataset,edits_30d,cells,cells_30d,chats,chats_30d,help_asked,help_answered_for,help_asked_30d,help_given,help_given_30d,is_admin,invited_at,invited_for,invited_role,invited_as,ew_name_set_at,ew_email';
 const people = ref<Person[]>([]);
@@ -58,6 +62,9 @@ const TEAM_EMAILS = new Set(['ryan.t.morey@gmail.com']);
 const teamUp = (p: Person): Person => (!p.is_admin && (TEAM_EMAILS.has(p.email) || TEAM_EMAILS.has(lc(p.gave_email || ''))) ? { ...p, is_admin: true, is_team: true } : p);
 const marks = ref<Record<string, { mark: string; at: string }>>({});
 const dsRows = ref<DatasetRequestRow[]>([]);
+// Retina requests waiting on a reviewer (Ames 2026-11-17: "where on these
+// lists would I find ppl who submitted production access requests?").
+const rqRows = ref<RetinaRow[]>([]);
 const notes = ref<Record<string, Note[]>>({});
 const activity = ref<Activity[]>([]);
 const stats = ref<Stat[]>([]);
@@ -79,6 +86,11 @@ const emailed = ref<Record<string, string>>({});
 // Asking for their EyeWire name by email (Ames 2026-11-12): who was asked,
 // and the draft open in the panel (shown first, Edit to change it).
 const asked = ref<Record<string, { at: string; by: string }>>({});
+// "You're on the list" emails (Ames 2026-11-17): who was sent one, and the
+// one open in the panel (the server numbers them, #N of everyone who asked).
+const waitSent = ref<Record<string, { at: string; by: string; n: number | null }>>({});
+interface WaitDraft { to: string; subject: string; text: string; n: number; total: number; fromForm: number; earlier?: number; sentAt: string | null }
+const waitShown = ref<WaitDraft | null>(null);
 const inviteCount = ref<number | null>(null);
 const signedInAll = ref<number | null>(null);
 const ask = ref<{ email: string; subject: string; text: string; editing: boolean } | null>(null);
@@ -130,6 +142,8 @@ async function load() {
     show(read('People', everyone, [] as Person[]), v => { people.value = v.map(teamUp); }),
     show(read('Beta lists', async () => (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}, {} as Record<string, { mark: string; at: string }>), v => { marks.value = v; }),
     show(read('Dataset requests', () => listDatasetRequests(), [] as DatasetRequestRow[]), v => { dsRows.value = v; }),
+    show(read('Retina requests', async () => (await secureWrite<{ requests: RetinaRow[] }>('access.list', { status: 'submitted' }))?.requests ?? [], [] as RetinaRow[]), v => { rqRows.value = v; }),
+    show(read('On the list emails', async () => (await secureWrite<Record<string, { at: string; by: string; n: number | null }>>('access.waitlistSent')) || {}, {} as Record<string, { at: string; by: string; n: number | null }>), v => { waitSent.value = v; }),
     show(read('Asked by email', async () => (await secureWrite<Record<string, { at: string; by: string }>>('access.askSent')) || {}, {} as Record<string, { at: string; by: string }>), v => { asked.value = v; }),
     show(read('Invites', async () => (await secureWrite<{ invited: number; signedIn?: number }>('access.inviteCount')) ?? null, null as { invited: number; signedIn?: number } | null), v => { inviteCount.value = v?.invited ?? null; signedInAll.value = v?.signedIn ?? null; }),
     show(read('Notes', async () => (await secureWrite<Record<string, Note[]>>('access.notes')) || {}, {} as Record<string, Note[]>), v => { notes.value = v; }),
@@ -156,11 +170,17 @@ const cards = computed<Card[]>(() => {
   const waitingDs = dsRows.value.filter(r => !r.mark);
   const dsFor = (p: Person) => waitingDs.find(r => (r.userId && r.userId === p.user_id) || (r.email && lc(r.email) === p.email));
   const used = new Set<string>();
+  const rqFor = (p: Person) => rqRows.value.find(r => (r.user_id && r.user_id === p.user_id) || (r.email && lc(r.email) === p.email));
+  const rqUsed = new Set<number>();
   for (const p of people.value) {
     const ds = dsFor(p) || null;
     if (ds) used.add(ds.id);
+    // A Retina request moves them here, unless a dataset request already has.
+    const rq = (!ds && rqFor(p)) || null;
+    if (rq) rqUsed.add(rq.id);
     let stage: Stage; let since: string | null; let listed = false;
     if (ds) { stage = 'dataset'; since = ds.at; }
+    else if (rq) { stage = 'retina'; since = rq.submitted_at; }
     // Admins are their own step (Ames 2026-11-10: "show admins as Admin").
     else if (p.is_admin) { stage = 'admin'; since = p.joined_at; }
     else if (p.request_id && !p.pilot_enabled) {
@@ -181,10 +201,16 @@ const cards = computed<Card[]>(() => {
     else if (p.edits > 0) { stage = 'editing'; since = p.first_edit_at; }
     else if (p.tutorial_at) { stage = 'tutorial'; since = p.tutorial_at; }
     else { stage = 'signedin'; since = later(p.joined_at, p.let_in_at); }
-    out.push({ key: p.email, p, ds, stage, since, listed });
+    out.push({ key: p.email, p, ds, rq, stage, since, listed });
   }
   // Dataset requests from players not on Pilot testers (they joined before it).
   for (const r of waitingDs) if (!used.has(r.id)) out.push({ key: r.email ? lc(r.email) : `user:${r.userId}`, p: null, ds: r, stage: 'dataset', since: r.at, listed: false });
+  // Retina requests of someone not on the list, or already in Asked for a dataset.
+  for (const r of rqRows.value) {
+    if (rqUsed.has(r.id)) continue;
+    const p = people.value.find(x => (r.user_id && r.user_id === x.user_id) || (r.email && lc(r.email) === x.email)) || null;
+    out.push({ key: `retina:${r.id}`, p, ds: null, rq: r, stage: 'retina', since: r.submitted_at, listed: false });
+  }
   return out;
 });
 
@@ -257,11 +283,11 @@ const ewShort = (p: Person | null | undefined) => {
 const openEw = computed(() => ewFound(open.value?.p ?? null));
 const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
 
-const nameOf = (c: Card) => c.p?.name || c.ds?.name || c.p?.username || 'No name yet';
-const emailOf = (c: Card) => c.p?.email || c.ds?.email || '';
+const nameOf = (c: Card) => c.p?.name || c.ds?.name || c.rq?.player_name || c.p?.username || 'No name yet';
+const emailOf = (c: Card) => c.p?.email || c.ds?.email || c.rq?.email || '';
 const words = computed(() => search.value.toLowerCase().split(/\s+/).filter(Boolean));
 const matches = (c: Card) => !words.value.length || words.value.every(w =>
-  [nameOf(c), emailOf(c), c.p?.username, c.p?.ew_name, c.p?.gave_email, c.p?.ew_email, c.ds?.label].map(lc).join(' ').includes(w));
+  [nameOf(c), emailOf(c), c.p?.username, c.p?.ew_name, c.p?.gave_email, c.p?.ew_email, c.ds?.label, c.rq?.eyewire_username, c.rq ? 'retina' : ''].map(lc).join(' ').includes(w));
 // A search that finds one person opens them, with their stats (Ames
 // 2026-11-09: "shouldn't it show stats for user and recent activity?").
 const found = computed(() => (words.value.length ? cards.value.filter(matches) : []));
@@ -280,16 +306,20 @@ const typical = computed<Record<string, number>>(() => {
     signedin: median(ps.map(p => ms(later(p.joined_at, p.let_in_at), p.tutorial_at))),
     tutorial: median(ps.map(p => ms(p.tutorial_at, p.first_edit_at))),
     dataset: median(dsRows.value.filter(r => r.mark && r.markedAt).map(r => ms(r.at, r.markedAt))),
+    retina: NaN,
     editing: NaN,
   };
 });
-const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean }[] = [
+// Ames 2026-11-17: the Retina left of Asked for a dataset, and Emailed in
+// the second row in its own color (it waits on their reply, not on us).
+const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean; theirs?: boolean }[] = [
   { stage: 'asked', title: 'Asked', sub: 'Beta request, waiting on us', ours: true },
-  { stage: 'emailed', title: 'Emailed', sub: 'we asked them by email, waiting on their reply', ours: true },
+  { stage: 'retina', title: 'Asked for the Retina', sub: 'sent their ten examples, waiting on us', ours: true },
+  { stage: 'dataset', title: 'Asked for a dataset', sub: 'waiting on us', ours: true },
+  { stage: 'emailed', title: 'Emailed', sub: 'we asked them by email, waiting on their reply', theirs: true },
   { stage: 'letin', title: 'Let in', sub: 'not signed in yet' },
   { stage: 'signedin', title: 'Signed in', sub: 'no tutorial finished yet' },
   { stage: 'tutorial', title: 'Tutorial done', sub: 'no edits yet' },
-  { stage: 'dataset', title: 'Asked for a dataset', sub: 'waiting on us', ours: true },
   { stage: 'editing', title: 'Editing', sub: 'made an edit' },
 ];
 const inStage = (s: Stage) => cards.value.filter(c => c.stage === s);
@@ -423,19 +453,31 @@ const noteCount = (c: Card) => (notes.value[c.key] || []).length;
 const open = computed(() => cards.value.find(c => c.key === openKey.value) || null);
 // A tag's link opens that person (Ames 2026-11-10, tags in notes):
 // "?triage=access&person=<email or user:id>". Used once.
+// A notification adds "&who=<name>" (Ames 2026-11-17: open "with their card
+// selected"): their email first, any of their emails, then the name.
 const wantPerson = (() => { try { return (new URLSearchParams(location.search).get('person') || '').toLowerCase(); } catch { return ''; } })();
-if (wantPerson) {
+const wantWho = (() => { try { return (new URLSearchParams(location.search).get('who') || '').trim().toLowerCase(); } catch { return ''; } })();
+const emailsOf = (c: Card) => [c.key, c.p?.email, c.p?.gave_email, c.p?.ew_email, c.ds?.email, c.rq?.email].map(lc).filter(Boolean);
+const namesOf = (c: Card) => [c.p?.name, c.p?.username, c.ds?.name, c.rq?.player_name, nameOf(c)].map(x => lc(x).trim()).filter(Boolean);
+// Someone waiting on us first, when two cards match.
+const WAIT_FIRST: Stage[] = ['retina', 'dataset', 'asked', 'emailed', 'later'];
+const bestOf = (list: Card[]) => [...list].sort((a, b) => (WAIT_FIRST.indexOf(a.stage) + 1 || 99) - (WAIT_FIRST.indexOf(b.stage) + 1 || 99))[0];
+if (wantPerson || wantWho) {
   let found = false;
-  const stop = watch(cards, list => {
-    const c = found ? null : list.find(x => x.key.toLowerCase() === wantPerson);
+  const stop = watch([cards, loading], ([list, busy]) => {
+    if (found) return;
+    let c = wantPerson ? bestOf(list.filter(x => emailsOf(x).includes(wantPerson))) : undefined;
+    if (!c && wantWho && !busy) c = bestOf(list.filter(x => namesOf(x).includes(wantWho)));
     if (!c) return;
     found = true; openKey.value = c.key;
-    try { const u = new URL(location.href); u.searchParams.delete('person'); history.replaceState(history.state, '', u.toString()); } catch { /* keep going */ }
+    try { const u = new URL(location.href); u.searchParams.delete('person'); u.searchParams.delete('who'); history.replaceState(history.state, '', u.toString()); } catch { /* keep going */ }
     queueMicrotask(() => stop());
+    // The card in view, where the board scrolls.
+    setTimeout(() => { try { document.querySelector('.ah-card--open')?.scrollIntoView({ block: 'nearest' }); } catch { /* fine */ } }, 50);
   }, { immediate: true });
 }
 // Read EyeWire for the people waiting on us, and anyone opened.
-watch(() => cards.value.filter(c => c.stage === 'asked' || c.stage === 'emailed' || c.stage === 'later' || c.stage === 'dataset' || c.key === openKey.value).map(c => c.p?.ew_name).filter(Boolean).join('|'),
+watch(() => cards.value.filter(c => c.stage === 'asked' || c.stage === 'emailed' || c.stage === 'later' || c.stage === 'dataset' || c.stage === 'retina' || c.key === openKey.value).map(c => c.p?.ew_name).filter(Boolean).join('|'),
   names => { for (const n of names.split('|')) if (n) void readEw(n); }, { immediate: true });
 /** The email without a Pyr account folds into the one with (the view keeps
  *  the account's email). Two accounts: they stay apart. */
@@ -462,7 +504,19 @@ const linkSame = (a: Person | null | undefined, b: Person) => run('link', async 
   openKey.value = to.email;
   await load();
 });
-function pick(c: Card) { openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; ewDraft.value = ''; ewEdit.value = ''; }
+const showWait = (c: Card) => run('waitdraft', async () => {
+  if (waitShown.value) { waitShown.value = null; return; }
+  if (!c.p) return;
+  waitShown.value = await secureWrite<WaitDraft>('access.waitlistEmail', { email: c.p.email, name: c.p.name || '', preview: true });
+});
+const sendWait = (c: Card) => run('wait', async () => {
+  const p = c.p; if (!p) return;
+  const out = await secureWrite<{ sent: boolean; at?: string; n?: number; reason?: string }>('access.waitlistEmail', { email: p.email, name: p.name || '', again: !!waitSent.value[p.email] });
+  if (!out?.sent) throw new Error(out?.reason === 'already sent' ? `Already sent ${day(out.at ?? null)}.` : 'The email did not go.');
+  waitSent.value = { ...waitSent.value, [p.email]: { at: out.at || new Date().toISOString(), by: '', n: out.n ?? null } };
+  waitShown.value = null;
+});
+function pick(c: Card) { waitShown.value = null; openKey.value = openKey.value === c.key ? '' : c.key; actionError.value = ''; noteDraft.value = ''; dsNote.value = ''; ewDraft.value = ''; ewEdit.value = ''; }
 // Their Proofreading Test tries, on a dataset request (Ames 2026-11-10:
 // "access request test edits linked"). The tries name the player by
 // username, newest first.
@@ -492,6 +546,63 @@ async function run(what: string, f: () => Promise<void>) {
   busy.value = what; actionError.value = '';
   try { await f(); } catch (e: any) { actionError.value = e?.message || 'That did not save. Try again.'; }
   busy.value = '';
+}
+// ── Several at once (Ames 2026-11-17: "can you let me select multiple
+// users here?"): a box on each card waiting on us, then one action for all.
+const PICKABLE: Stage[] = ['asked', 'emailed', 'later'];
+const picked = ref<Set<string>>(new Set());
+const bulkSaid = ref('');
+const pickedCards = computed(() => cards.value.filter(c => picked.value.has(c.key) && c.p && PICKABLE.includes(c.stage)));
+function togglePick(c: Card) {
+  const s = new Set(picked.value);
+  if (s.has(c.key)) s.delete(c.key); else s.add(c.key);
+  picked.value = s; bulkSaid.value = '';
+}
+function pickColumn(stage: Stage) {
+  const keys = columnCards(stage).map(c => c.key);
+  const all = keys.every(k => picked.value.has(k));
+  const s = new Set(picked.value);
+  for (const k of keys) { if (all) s.delete(k); else s.add(k); }
+  picked.value = s; bulkSaid.value = '';
+}
+type BulkAct = 'letin' | 'listed' | 'removed' | 'onlist' | 'ask';
+const BULK: { act: BulkAct; label: string; ask: (n: number) => string }[] = [
+  { act: 'letin', label: 'Let them in', ask: n => `Let ${n} ${n === 1 ? 'person' : 'people'} in? Each gets the welcome notification and email.` },
+  { act: 'onlist', label: 'Tell them they are on the list', ask: n => `Send the On the list email to ${n} ${n === 1 ? 'person' : 'people'}? Anyone who already had it is skipped.` },
+  { act: 'ask', label: 'Ask for their EyeWire name', ask: n => `Email ${n} ${n === 1 ? 'person' : 'people'} asking for their EyeWire username? Anyone already asked is skipped.` },
+  { act: 'listed', label: 'Later', ask: n => `Move ${n} ${n === 1 ? 'person' : 'people'} to Later?` },
+  { act: 'removed', label: 'Remove request', ask: n => `Remove ${n} ${n === 1 ? 'request' : 'requests'}?` },
+];
+async function bulk(act: BulkAct) {
+  const list = pickedCards.value;
+  const b = BULK.find(x => x.act === act);
+  if (!list.length || !b || !window.confirm(b.ask(list.length))) return;
+  busy.value = 'bulk'; bulkSaid.value = ''; actionError.value = '';
+  let done = 0, skipped = 0; const failed: string[] = [];
+  for (const c of list) {
+    const p = c.p!;
+    try {
+      if (act === 'letin') {
+        await addPilot(p.email); void welcomeBell(p.user_id);
+        void welcomeEmail(p.email, p.name || '').then(s => { emailed.value = { ...emailed.value, [p.email]: s }; });
+        people.value = people.value.map(x => x.email === p.email ? { ...x, pilot_enabled: true, let_in_at: x.let_in_at || new Date().toISOString() } : x);
+        done++;
+      } else if (act === 'listed' || act === 'removed') {
+        marks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: p.email, mark: act })) || marks.value;
+        done++;
+      } else if (act === 'onlist') {
+        const out = await secureWrite<{ sent: boolean; at?: string; n?: number }>('access.waitlistEmail', { email: p.email, name: p.name || '' });
+        if (out?.sent) { waitSent.value = { ...waitSent.value, [p.email]: { at: out.at || new Date().toISOString(), by: '', n: out.n ?? null } }; done++; } else skipped++;
+      } else {
+        const out = await secureWrite<{ sent: boolean; at?: string }>('access.askEmail', { email: p.email, name: nameOf(c) });
+        if (out?.sent) { asked.value = { ...asked.value, [p.email]: { at: out.at || new Date().toISOString(), by: '' } }; done++; } else skipped++;
+      }
+    } catch (e: any) { failed.push(`${nameOf(c)}: ${e?.message || 'did not save'}`); }
+  }
+  readBells();
+  picked.value = new Set();
+  busy.value = '';
+  bulkSaid.value = `${b.label}: ${done} done` + (skipped ? `, ${skipped} skipped (already sent)` : '') + (failed.length ? `. Not done: ${failed.join('; ')}` : '.');
 }
 const letIn = (c: Card) => run('letin', async () => {
   const p = c.p!; await addPilot(p.email);
@@ -631,6 +742,12 @@ const secs = (v: number) => { const s = Math.round(Number(v) || 0); return s < 6
 const boxName = (s: Stat) => String(s.last_box || `Box ${s.step + 1}`).replace(/\s+/g, ' ').slice(0, 70);
 const triageUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
 const gameUrl = `${window.location.origin}${window.location.pathname}`;
+// Pyr, opened on Admin Hub > Access requests, where the examples are reviewed in the view.
+const retinaReviewUrl = `${gameUrl}?admin=access`;
+// Their profile in Pyr (Ames 2026-11-17: "click their username in access
+// dash to see their edits etc in pyr").
+const playerUrl = (userId: string) => `${gameUrl}?player=${encodeURIComponent(userId)}`;
+const examplesOf = (r: RetinaRow | null | undefined) => (r?.items?.length ?? 0);
 
 // Our own Pyr Users sheet (Ames: "make our own Pyr users sheet"): the game
 // rewrites it every hour; this button does it now.
@@ -700,7 +817,7 @@ const opName = (e: RecentEdit) => {
     <header class="ah-head">
       <h1>Access</h1>
       <span class="ah-sum" v-if="people.length">
-        {{ inStage('asked').length }} Beta request{{ inStage('asked').length === 1 ? '' : 's' }} and {{ inStage('dataset').length }} dataset request{{ inStage('dataset').length === 1 ? '' : 's' }} waiting on us<template v-if="inStage('emailed').length">, {{ inStage('emailed').length }} emailed</template><template v-if="inStage('later').length">, {{ inStage('later').length }} for later</template>
+        {{ inStage('asked').length }} Beta request{{ inStage('asked').length === 1 ? '' : 's' }}{{ inStage('retina').length ? ',' : ' and' }} {{ inStage('dataset').length }} dataset request{{ inStage('dataset').length === 1 ? '' : 's' }}<template v-if="inStage('retina').length"> and {{ inStage('retina').length }} Retina request{{ inStage('retina').length === 1 ? '' : 's' }}</template> waiting on us<template v-if="inStage('emailed').length">, {{ inStage('emailed').length }} emailed</template><template v-if="inStage('later').length">, {{ inStage('later').length }} for later</template>
       </span>
       <input v-model="search" class="ah-search" type="search" autocomplete="off" placeholder="Search a name, email or username" aria-label="Search people" />
       <button class="ah-btn" type="button" :disabled="loading" @click="load">{{ loading ? 'Reading…' : 'Refresh' }}</button>
@@ -718,34 +835,49 @@ const opName = (e: RecentEdit) => {
 
     <div class="ah-main" :class="{ 'ah-main--open': open }">
       <section class="ah-boards" aria-label="People by step">
+       <div v-if="pickedCards.length || bulkSaid" class="ah-bulk" role="region" aria-label="Selected people">
+         <template v-if="pickedCards.length">
+           <b>{{ pickedCards.length }} selected</b>
+           <button v-for="b in BULK" :key="b.act" type="button" class="ah-btn" :class="{ 'ah-btn--yes': b.act === 'letin' }" :disabled="busy === 'bulk'" @click="bulk(b.act)">{{ busy === 'bulk' ? 'Working…' : b.label }}</button>
+           <button type="button" class="ah-btn ah-btn--quiet" :disabled="busy === 'bulk'" @click="picked = new Set()">Clear</button>
+         </template>
+         <span v-if="bulkSaid" class="ah-bulk-said" role="status">{{ bulkSaid }}</span>
+       </div>
        <div v-for="g in boardGroups" :key="g.title" class="ah-group">
         <h2 class="ah-group-title"><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('g:' + g.title)" @click="toggleFold('g:' + g.title)"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('g:' + g.title) ? '▸' : '▾' }}</span>{{ g.title }}</button></h2>
         <div v-if="!folded.has('g:' + g.title)" class="ah-board">
-        <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
+        <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours, 'ah-col--theirs': col.theirs }">
           <div class="ah-col-head">
             <span class="ah-col-title">{{ col.title }}</span>
+            <button v-if="PICKABLE.includes(col.stage) && columnCards(col.stage).length" type="button" class="ah-pick-all" @click="pickColumn(col.stage)">{{ columnCards(col.stage).every(c => picked.has(c.key)) ? 'Clear' : 'Select all' }}</button>
             <span class="ah-col-n">{{ inStage(col.stage).length }}</span>
           </div>
           <div class="ah-col-sub">{{ col.sub }}</div>
-          <div v-if="col.stage !== 'editing' && col.stage !== 'emailed'" class="ah-col-typ" title="How long people usually take to move on from this step">usually moves on in {{ span(typical[col.stage]) }}</div>
+          <div v-if="col.stage !== 'editing' && col.stage !== 'emailed' && col.stage !== 'retina'" class="ah-col-typ" title="How long people usually take to move on from this step">usually moves on in {{ span(typical[col.stage]) }}</div>
           <div class="ah-col-list">
-            <button v-for="c in columnCards(col.stage)" :key="col.stage + c.key" type="button" class="ah-card"
-                    :class="{ 'ah-card--open': openKey === c.key }" @click="pick(c)">
+            <div v-for="c in columnCards(col.stage)" :key="col.stage + c.key" class="ah-card-row" :class="{ 'ah-card-row--pick': PICKABLE.includes(col.stage) && c.p }">
+            <input v-if="PICKABLE.includes(col.stage) && c.p" type="checkbox" class="ah-pick" :checked="picked.has(c.key)" :aria-label="`Select ${nameOf(c)}`" @change="togglePick(c)" />
+            <button type="button" class="ah-card"
+                    :class="{ 'ah-card--open': openKey === c.key, 'ah-card--picked': picked.has(c.key) }" @click="pick(c)">
               <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span>
               <span class="ah-card-email">{{ emailOf(c) || 'no email' }}</span>
               <span class="ah-card-line">
                 <template v-if="col.stage === 'editing'">{{ c.p?.edits.toLocaleString() }} edit{{ c.p?.edits === 1 ? '' : 's' }}<template v-if="c.p?.last_dataset">, {{ dsName(c.p.last_dataset) }}</template>, last {{ ago(c.p?.last_edit_at ?? null) }} ago</template>
                 <template v-else-if="col.stage === 'dataset'">{{ c.ds?.label }}, {{ ago(c.since) }}</template>
+                <template v-else-if="col.stage === 'retina'">{{ examplesOf(c.rq) }} example{{ examplesOf(c.rq) === 1 ? '' : 's' }}, {{ ago(c.since) }}<template v-if="(c.rq?.tries ?? 1) > 1">, try {{ c.rq?.tries }}</template></template>
                 <template v-else>{{ ago(c.since) }}<template v-if="col.stage === 'signedin' && c.p?.tutorial_active">, in tutorial {{ c.p.tutorial_active }}</template><template v-if="col.stage === 'emailed'"> since we emailed, asked {{ day(c.p?.asked_at ?? null) }}</template><template v-if="col.stage === 'asked'">, {{ c.p?.from_site ? 'from connectome.quest' : 'in Pyr' }}</template></template>
               </span>
               <span class="ah-card-tags">
+                <span v-if="(col.stage === 'retina' || col.stage === 'dataset') && (c.p?.username || c.rq?.player_name)" class="ah-tag">Pyr {{ c.p?.username || c.rq?.player_name }}</span>
                 <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
                 <span v-if="c.p?.ew_name" class="ah-tag">{{ ewShort(c.p) }}</span>
                 <span v-if="c.p && asked[c.p.email] && (col.stage === 'asked' || col.stage === 'later')" class="ah-tag">Asked by email {{ day(asked[c.p.email].at) }}</span>
+                <span v-if="c.p && waitSent[c.p.email] && (col.stage === 'asked' || col.stage === 'emailed' || col.stage === 'later')" class="ah-tag">On the list #{{ waitSent[c.p.email].n }}, sent {{ day(waitSent[c.p.email].at) }}</span>
                 <span v-if="dupesOf(c).length" class="ah-tag ah-tag--dupe">Maybe the same as {{ dupesOf(c)[0].name || dupesOf(c)[0].email }}</span>
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
             </button>
+            </div>
             <button v-if="col.stage === 'letin' && !words.length && (letinHidden || showLists)" type="button" class="ah-fold" @click="showLists = !showLists">
               {{ showLists ? 'Show only the newest' : `Show ${letinHidden} more, longest waiting` }}
             </button>
@@ -799,7 +931,8 @@ const opName = (e: RecentEdit) => {
         <div v-if="open.p?.invited_at" class="ah-panel-meta ah-panel-invited">{{ invitedLine(open.p) }}</div>
         <div v-if="open.p?.gave_email && open.p.gave_email !== open.p.email" class="ah-panel-meta">Gave {{ open.p.gave_email }} on the form</div>
         <div v-if="open.p?.ew_email" class="ah-panel-meta">EyeWire email {{ open.p.ew_email }}</div>
-        <div v-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
+        <div v-if="open.p?.user_id" class="ah-panel-meta">Pyr username <a class="ah-pyr-link" :href="playerUrl(open.p.user_id)" target="_blank" rel="noopener" title="Opens their profile in Pyr: edits, cells, Achievements and more">{{ open.p.username || 'none yet' }} ↗</a></div>
+        <div v-else-if="open.p?.username" class="ah-panel-meta">Pyr username {{ open.p.username }}</div>
         <div v-if="open.p?.user_id" class="ah-panel-meta">CAVE ID <template v-if="caveId != null"><b class="ah-caveid">{{ caveId }}</b>
           <button type="button" class="ah-linkbtn" title="Copy the CAVE ID" @click="copyCaveId">{{ caveCopied ? 'Copied' : 'Copy' }}</button></template>
           <template v-else>not saved yet (it is saved when they open the game)</template></div>
@@ -857,7 +990,27 @@ const opName = (e: RecentEdit) => {
           </div>
         </div>
         <div v-if="open.p && emailed[open.p.email]" class="ah-panel-meta">{{ emailed[open.p.email] }}</div>
+        <div v-if="(open.stage === 'asked' || open.stage === 'emailed' || open.stage === 'later') && open.p?.email" class="ah-ask ah-wait">
+          <div v-if="waitSent[open.p.email]" class="ah-panel-meta" role="status">On the list email sent {{ day(waitSent[open.p.email].at) }}<template v-if="waitSent[open.p.email].n">, as #{{ waitSent[open.p.email].n }}</template></div>
+          <button class="ah-btn" type="button" :disabled="!!busy" @click="showWait(open)">{{ busy === 'waitdraft' ? 'Opening…' : waitShown ? 'Hide the email' : waitSent[open.p.email] ? 'See the On the list email again' : 'Tell them they are on the list' }}</button>
+          <div v-if="waitShown" class="ah-ask-draft" aria-label="On the list email">
+            <div class="ah-panel-meta">#{{ waitShown.n }} of {{ waitShown.total }} who have ever asked<template v-if="waitShown.earlier">: the first {{ waitShown.earlier }} on the earlier Google form, then {{ waitShown.fromForm }} through the connectome.quest form and the rest in Pyr</template><template v-else>, {{ waitShown.fromForm }} of them through the connectome.quest form</template>. To {{ waitShown.to }}, from Amy at Pyr, replies go to support@eyewire.org.</div>
+            <div class="ah-ask-subject ah-ask-subject--read">{{ waitShown.subject }}</div>
+            <div class="ah-ask-text ah-ask-text--read">{{ waitShown.text }}</div>
+            <div class="ah-actions">
+              <button class="ah-btn ah-btn--yes" type="button" :disabled="!!busy" @click="sendWait(open)">{{ busy === 'wait' ? 'Sending…' : waitSent[open.p.email] ? 'Send it again' : 'Send it' }}</button>
+              <button class="ah-btn" type="button" :disabled="!!busy" @click="waitShown = null">Cancel</button>
+            </div>
+          </div>
+        </div>
 
+        <div v-if="open.rq" class="ah-ds">
+          <div class="ah-panel-meta"><b>The Retina</b>, sent {{ examplesOf(open.rq) }} example{{ examplesOf(open.rq) === 1 ? '' : 's' }} {{ day(open.rq.submitted_at) }}<template v-if="(open.rq.tries ?? 1) > 1">, try {{ open.rq.tries }}</template><template v-if="open.rq.eyewire_username">, EyeWire {{ open.rq.eyewire_username }}</template></div>
+          <blockquote v-if="open.rq.player_note">{{ open.rq.player_note }}</blockquote>
+          <div class="ah-actions">
+            <a class="ah-btn ah-btn--yes" :href="retinaReviewUrl" target="_blank" rel="noopener" title="Opens Pyr on Admin Hub, Access requests, where you look at each example in the view and grant edit access">Review their examples in Pyr ↗</a>
+          </div>
+        </div>
         <div v-if="open.ds" class="ah-ds">
           <div class="ah-panel-meta"><b>{{ open.ds.label }}</b>, asked {{ day(open.ds.at) }}<template v-if="open.ds.cave">, CAVE {{ open.ds.cave }}</template></div>
           <blockquote v-if="open.ds.note">{{ open.ds.note }}</blockquote>
@@ -1105,6 +1258,8 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 }
 .ah-col { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 10px 8px 8px; display: flex; flex-direction: column; min-width: 0; max-height: max(380px, calc(100vh - 150px)); }
 .ah-col--ours { border-color: rgba(120,170,255,.5); }
+.ah-col--theirs { background: rgba(46,36,14,.85); border-color: rgba(245,190,90,.55); }
+.ah-col--theirs .ah-col-title, .ah-col--theirs .ah-col-n { color: #ffd58a; }
 .ah-col-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 4px; }
 .ah-col-title { font-weight: 700; color: #eef4ff; }
 .ah-col-n { font-size: 22px; font-weight: 700; color: #9fd3ff; }
@@ -1117,6 +1272,17 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 .ah-card-name { font-weight: 700; color: #f2f7ff; overflow-wrap: anywhere; }
 .ah-invited { display: inline-block; vertical-align: -2px; margin-left: 6px; color: #7fc4ff; }
 .ah-panel-invited { color: #9fd3ff; }
+.ah-pyr-link { color: #9fd3ff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.ah-pyr-link:hover { color: #cfe8ff; }
+.ah-wait { margin-top: 8px; }
+.ah-card-row { position: relative; }
+.ah-card-row--pick .ah-card { padding-right: 34px; }
+.ah-pick { position: absolute; top: 10px; right: 10px; width: 17px; height: 17px; margin: 0; cursor: pointer; accent-color: #6fb6ff; z-index: 1; }
+.ah-card--picked { border-color: rgba(111,182,255,.9) !important; background: rgba(40,70,120,.55) !important; }
+.ah-pick-all { margin-left: auto; margin-right: 8px; background: none; border: 1px solid rgba(120,170,255,.35); color: #9fd3ff; border-radius: 6px; font-size: 11px; padding: 2px 7px; cursor: pointer; }
+.ah-bulk { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; padding: 10px 12px;
+  background: rgba(20,40,74,.97); border: 1px solid rgba(111,182,255,.6); border-radius: 10px; color: #e6f0ff; }
+.ah-bulk-said { color: #bfe3ff; font-size: 13px; }
 .ah-card-email { font-size: 12px; color: #a9c4e6; overflow-wrap: anywhere; }
 .ah-card-line { font-size: 12px; color: #8ea3c2; }
 .ah-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }

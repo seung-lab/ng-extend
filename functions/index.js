@@ -2267,6 +2267,41 @@ exports.ewProofreadingTest = onRequest(
   }
 );
 
+// ── Cell match on Sandbox cells (Ames 2026-11-12): a function of its own ──
+// How close a player's Sandbox Cell Library cell is to its true cell in
+// pinky_training, after each edit. Rules in sandbox-match.js; schema in
+// supabase-sandbox-match.sql; client in src/sandbox_match.ts. Its own function
+// because it binds the CAVE token and keeps answer keys (not ewSecureWrite,
+// which other checkouts redeploy):
+//   firebase deploy --only functions:ewSandboxMatch --project eyewire-ii-e4d52
+const EW_MATCH_CODE_VERSION = "2026-11-17-sandbox-match-14-jump-on-cell";
+exports.ewSandboxMatch = onRequest(
+  // A cell's supervoxels are ~6 MB; a few at a time per instance. 120 s: the
+  // first check of a cell builds its key (up to ~20 s on the largest cells).
+  { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, concurrency: 4, memory: "1GiB", timeoutSeconds: 120 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") { res.json({ ok: true, code: EW_MATCH_CODE_VERSION }); return; }
+    if (typeof action !== "string" || !action.startsWith("match.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      // Per person only (a "write:" prefix), never the shared global counter.
+      if (!(await rateLimit({ ip: who.email }, true, "write:match", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment." });
+      const { handle } = require("./sandbox-match");
+      const data = await handle({ action, args, me, isAdmin, io: { fetch, caveToken: ewCaveToken.value().trim(), sb } });
+      res.json({ ok: true, data });
+    } catch (e) {
+      console.warn("[ewSandboxMatch]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "The check could not be completed." });
+    }
+  }
+);
+
 // ── Report replies (Ames 2026-10-13): a function of its own ──────────────
 // An approver asks a report's submitter for a reply (reply.ask, admins) and
 // the submitter answers once in the notification (reply.send). Rules in
@@ -2412,6 +2447,23 @@ const welcomeSentStore = {
     await db.collection("beta_welcome_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
   },
 };
+// Who was sent "You're on the list" (access-request.js waitlistEmail), from
+// the Access page. One document per address.
+const waitlistSentStore = {
+  get: async (email) => {
+    const d = await db.collection("beta_waitlist_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (email, v) => {
+    await db.collection("beta_waitlist_emails").doc(crypto.createHash("sha256").update(email).digest("hex")).set({ email, ...v });
+  },
+  all: async () => {
+    const snap = await db.collection("beta_waitlist_emails").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { at: v.at, by: v.by || "", n: v.n || null }; });
+    return out;
+  },
+};
 // Who was asked for their EyeWire name (access-request.js askEmail), from the
 // Access page. One document per address.
 const askSentStore = {
@@ -2527,6 +2579,7 @@ exports.ewAccessRequest = onRequest(
         wake: wakeBetaBoard, marks: betaMarkStore, notes: accessNoteStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         welcomeSent: welcomeSentStore,
         askSent: askSentStore,
+        waitlistSent: waitlistSentStore,
         sendEmail: async (msg) => {
           try {
             const r = await fetch("https://api.resend.com/emails", {
@@ -3224,6 +3277,26 @@ exports.ewQuestReview = onRequest(
 // read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 // Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
+// ── Sandbox cells back in play: NOT EXPORTED (2026-11-16) ────────────────
+// The reset job (sandbox-reset.js) damaged practice cell 16737: undo is not
+// a clean inverse once edits interleave. It was deleted from Firebase and
+// stays out of this file, so no deploy of all functions brings it back,
+// until it checks the cell after every undo and stops the moment it grows,
+// and Ames says so. Players instead start each cell at 0% from the cell as
+// they got it (sandbox-match.js).
+
+// Sandbox answer keys built ahead of time (functions/sandbox-match.js
+// warmKeys): reads CAVE, writes only sandbox_match_keys.
+exports.ewSandboxWarm = onSchedule(
+  { schedule: "every 15 minutes", region: "us-central1", secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 540, memory: "1GiB", maxInstances: 1, retryCount: 0 },
+  async () => {
+    const { warmKeys } = require("./sandbox-match");
+    const sb = ewSb(ewServiceKey.value().trim());
+    const r = await warmKeys({ fetch, caveToken: ewCaveToken.value().trim(), sb }, { budgetMs: 480000 });
+    console.log("[sandbox-warm]", JSON.stringify(r));
+  }
+);
+
 exports.ewUsersSheet = onSchedule(
   { schedule: "17 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 300, retryCount: 0 },
   async () => {

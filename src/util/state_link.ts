@@ -73,3 +73,34 @@ async function postState(state: unknown): Promise<string | null> {
     return null;
   }
 }
+
+/** The viewer state a link opens: read from its hash, or from the state
+ *  server for a short link. Null when it cannot be read. */
+export async function readStateLink(link: string): Promise<any | null> {
+  try {
+    const hash = new URL(link).hash;
+    if (!hash.startsWith('#!')) return null;
+    const rest = hash.slice(2);
+    if (!/^(middleauth\+)?https?:/i.test(rest)) return JSON.parse(decodeURIComponent(rest));
+    const {url, credentialsProvider} = parseSpecialUrl(rest, defaultCredentialsManager);
+    return await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
+  } catch (e) {
+    console.warn('[state_link] could not read link:', e);
+    return null;
+  }
+}
+
+/** The segmentation table a viewer state shows (its first visible
+ *  segmentation layer's source), e.g. "pinky_nf_v2". Empty when none. */
+export function stateSegTable(state: any): string {
+  const layers: any[] = Array.isArray(state?.layers) ? state.layers : [];
+  const seg = layers.filter(l => l && (l.type === 'segmentation' || l.type === 'segmentation_with_graph'));
+  const shown = seg.find(l => l.visible !== false && !l.archived) ?? seg[0];
+  if (!shown) return '';
+  const src = typeof shown.source === 'string' ? shown.source : (Array.isArray(shown.source) ? shown.source[0]?.url ?? shown.source[0] : shown.source?.url);
+  const m = String(src || '').match(/\/table\/([^/?#]+)/);
+  return m ? m[1] : String(shown.name || '');
+}
+
+/** For headless checks. */
+(window as any).__ngeStateLink = { readStateLink, stateSegTable };

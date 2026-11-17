@@ -174,6 +174,8 @@ export async function reopenAfterUnmark(segId: string): Promise<string> {
   const task = myCompletedTaskFor(segId);
   if (!task) return '';
   const problem = await useProofreadingBackendStore().reopenTask(task.id);
+  // An expired Sandbox practice cell: the reason says it all.
+  if (/back into play/i.test(problem)) return problem;
   return problem
     ? `Unmarked in CAVE, but the Cell Library still shows it completed: ${problem}`
     : 'Reopened: it is back in your claims, and its sheet row says WIP.';

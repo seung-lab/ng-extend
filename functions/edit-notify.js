@@ -40,6 +40,7 @@ const NAMED = {
   'quest.retina_cilia.steps': 'Cilia Quest instructions, the steps',
   'quest.retina_cilia.image': 'Cilia Quest instructions, the picture',
   'howto.retina': 'Cell Library how-to, Retina',
+  'sandbox.match_info': 'Sandbox Match card, the i text',
 };
 
 const isDraft = (key) => /^(draft\.|tutorial-draft\.)/.test(key);

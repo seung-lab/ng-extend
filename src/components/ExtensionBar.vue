@@ -358,6 +358,29 @@ onMounted(() => {
     if (e.detail?.tab) profileInitialTab.value = e.detail.tab;
     showProfile.value = true;
   }) as EventListener);
+  // Links from the Access page, used once (the address drops them):
+  // "?admin=access" (Review their examples) opens Admin Hub > Access requests;
+  // "?player=<id>" (their Pyr username) opens that player's profile.
+  // Both wait for the admin sign-in to finish, so the panel reads with it.
+  try {
+    const u = new URL(window.location.href);
+    const player = u.searchParams.get('player') || '';
+    const wantAccess = u.searchParams.get('admin') === 'access';
+    const wantPlayer = /^[0-9a-f-]{36}$/i.test(player) ? player : '';
+    if (u.searchParams.has('admin') || u.searchParams.has('player')) {
+      u.searchParams.delete('admin'); u.searchParams.delete('player');
+      history.replaceState(history.state, '', u.toString());
+    }
+    if (wantAccess || wantPlayer) {
+      const stop = watch(() => backendStore.isAdmin, admin => {
+        if (!admin) return;
+        if (wantAccess) { profileUserId.value = null; profileInitialTab.value = 'access'; }
+        else { profileUserId.value = wantPlayer; profileInitialTab.value = undefined; }
+        showProfile.value = true;
+        queueMicrotask(() => stop());
+      }, { immediate: true });
+    }
+  } catch { /* the link just opens Pyr */ }
 
   // Detect Share button click → show "Link copied" toast
   const topBar = document.getElementById('insertNGTopBar');
@@ -1013,7 +1036,16 @@ const toolbarActions: Record<string, ToolbarAction> = {
   leaderboard: { action: () => { showLeaderboard.value = true; } },
   datasetStats: { action: () => { if (showDatasetStats.value) showDatasetStats.value = false; else openDatasetStatsHome(); } },
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
-  cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
+  cells:       { action: () => {
+    // Open but out of sight (its slim row steps aside for the Sandbox Playing
+    // box): show it in full, never close it (Ames 2026-11-14: the button lit
+    // up and "nothing happens").
+    if (showCellLibrary.value && document.body.classList.contains('nge-cm-owns') && document.querySelector('.nge-cl-panel--slim')) {
+      document.dispatchEvent(new CustomEvent('nge:cl-expand'));
+      return;
+    }
+    cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value;
+  } },
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   // Toolbar camera (Amy): the same Save screenshot dialog the palette opens.
   screenshot:  { action: () => { showScreenshotDialog.value = true; } },

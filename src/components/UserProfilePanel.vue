@@ -31,6 +31,7 @@ import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
 import {datasetAccess} from '../util/dataset_access';
 import {secureWrite} from '../secure_write';
+import {sandboxAccuracy, type Mine} from '../sandbox_match';
 import lockIcon from '../images/lock-icon.png';
 import unlockIcon from '../images/unlock-icon.png';
 import {useIssueTagStore, type IssueTag} from '../store';
@@ -146,7 +147,37 @@ async function loadOtherUser() {
 }
 loadOtherUser();
 // Clicking another name while a profile is open swaps the profile shown.
+// Sandbox accuracy (Ames 2026-11-16: "a sandbox accuracy score in their
+// profile"): the mean match score of their completed practice cells.
+const sandboxAcc = ref<Mine | null>(null);
+// Hidden once they can edit the Retina (Ames 2026-11-17: "We don't want to
+// show this % on profile after they unlock access to production"): your own
+// CAVE access says so for you, and CAVE's answer about them for anyone else.
+// Not shown until that answer is in, so it does not flash and go.
+const simOtherEdit = ref<string[] | null | undefined>(undefined);
+const showSandboxAcc = computed(() => {
+  const a = sandboxAcc.value;
+  if (!a || !a.cells || a.accuracy == null) return false;
+  if (!viewingOtherUser.value) return datasetAccess('stroeh-mouse-retina') !== 'edit';
+  if (simOtherEdit.value === undefined) return false;
+  return !(simOtherEdit.value || []).includes('stroeh_mouse_retina');
+});
+async function loadSandboxAcc() {
+  const want = props.viewUserId || null;
+  simOtherEdit.value = undefined;
+  const r = await sandboxAccuracy(viewingOtherUser.value ? want : null);
+  if ((props.viewUserId || null) !== want) return;
+  sandboxAcc.value = r;
+  // Only asked when there is a score to show.
+  if (viewingOtherUser.value && want && r && r.cells) {
+    const { edit } = await askAccess(want, true);
+    if ((props.viewUserId || null) === want) simOtherEdit.value = edit;
+  }
+}
+onMounted(() => { void loadSandboxAcc(); });
 watch(() => props.viewUserId, () => {
+  sandboxAcc.value = null;
+  void loadSandboxAcc();
   void loadOtherUser();
   // Opening someone's profile from inside your own (a name in Admin Hub's
   // Pilot testers or Dataset requests) shows theirs: the Admin Hub tab stayed
@@ -1929,6 +1960,12 @@ onUnmounted(() => clearTimeout(stageTimer));
 
           <div class="nge-track-rows">
 
+            <!-- Above Cells completed, on its own line (Ames 2026-11-17), and
+                 only until the player has edit access to the real data. -->
+            <div v-if="showSandboxAcc" class="nge-profile-sandbox-acc"
+                 title="The average match score of the sim cells completed in the Training Sim, each at its last Complete">
+              Training Sim accuracy <b>{{ sandboxAcc?.accuracy }}%</b> <span>over {{ sandboxAcc?.cells }} sim {{ sandboxAcc?.cells === 1 ? 'cell' : 'cells' }}</span>
+            </div>
             <div class="nge-track-row nge-track-row--cells" :class="{ 'is-live': revealStage >= 1 }">
               <!-- One head for the row (Ames 2026-10-11): the label, a circuit
                    trace to a pad, a second pad the same small distance away in
@@ -3678,6 +3715,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 
 /* Section label: "▌ EDITS" style */
+.nge-profile-sandbox-acc { flex: none; margin: 12px 0 0; font-size: 13px; color: #9ab; }
+.nge-profile-sandbox-acc b { color: #7fd8ff; font-size: 15px; margin: 0 2px; }
 .nge-profile-section-label {
   font-size: 0.78em;
   font-weight: 700;
