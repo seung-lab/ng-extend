@@ -62,6 +62,11 @@ let small = SMALL_PIECE;
 /** A cell that starts with less than this share of its true cell is mostly
  *  its nucleus (Ames 2026-11-14: "it keeps taking me to a nucleus"). */
 const NUCLEUS_ONLY = 0.2;
+/** A cell that reaches less than this share of the space its true cell fills
+ *  (counted in graph chunks, about 4 by 4 by 5 um) is mostly its nucleus: a
+ *  nucleus holds many supervoxels in little space, so the supervoxel share
+ *  alone missed them (Ames 2026-11-17). */
+const NUCLEUS_REACH = 0.25;
 /** A missing piece that brings this much of another cell (in supervoxels, and
  *  as a share of the piece) brings a merger with it. */
 const MERGER_MIN = 500, MERGER_SHARE = 0.25;
@@ -80,6 +85,25 @@ function svPointNm(sv) {
   return [0, 1, 2].map(i => (at(i) * CHUNK.size[i] + CHUNK.size[i] / 2 + CHUNK.offset[i]) * CHUNK.nm[i]);
 }
 const REVIEW_MAX = 30;
+/** The graph chunk of a supervoxel: its 30 bits of chunk x, y, z. */
+const CHUNK_SHIFT = BigInt(64 - 8 - CHUNK.bits * 3);
+const CHUNK_MASK = (1n << BigInt(CHUNK.bits * 3)) - 1n;
+function chunksOf(set) {
+  const out = new Set();
+  for (let i = 0; i < set.length; i++) out.add((set[i] >> CHUNK_SHIFT) & CHUNK_MASK);
+  return out;
+}
+/** The share (0 to 1) of the true cell's chunks where the cell holds a true supervoxel. */
+function reachShare(truthChunks, cell, truth) {
+  if (!truthChunks.size) return 1;
+  const got = new Set();
+  let j = 0;
+  for (let i = 0; i < cell.length; i++) {
+    while (j < truth.length && truth[j] < cell[i]) j++;
+    if (j < truth.length && truth[j] === cell[i]) got.add((cell[i] >> CHUNK_SHIFT) & CHUNK_MASK);
+  }
+  return got.size / truthChunks.size;
+}
 
 const contact = require('./sandbox-contact');
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
@@ -267,6 +291,7 @@ function lru(limit) {
   };
 }
 const truthSets = lru(8);
+const truthChunkSets = lru(8);
 /** A Sandbox cell's supervoxels by root: a root never changes, so one read
  *  serves the check, the review and every Jump on that version of the cell. */
 const cellSets = lru(8);
@@ -394,7 +419,8 @@ async function check(io, {taskId, me, isAdmin}) {
       startScore: scorePercent({truthSize: truthE.length, missingNow: missingStart, extraNow: extraStart}),
       merge: partPercent(missingNow, missingStart),
       cut: partPercent(extraNow, extraStart),
-      _extraNow: extraNow, _extraStart: extraStart,
+      _extraNow: extraNow, _extraStart: extraStart, _missingNow: missingNow, _missingStart: missingStart,
+      _reach: reachShare(truthChunkSets.get(key.truth_root) || (truthChunkSets.set(key.truth_root, chunksOf(truthE)), truthChunkSets.get(key.truth_root)), cell, truthE),
       // Little more than its nucleus at the start: the box says to grow it.
       nucleusOnly: startShare < NUCLEUS_ONLY,
       // Wrong parts attached now, wherever they came from (Ames 2026-11-16:
@@ -411,8 +437,28 @@ async function check(io, {taskId, me, isAdmin}) {
   // in removal of mergers"). A cell that started with nothing to cut read 0%
   // from the first wrong piece merged in until the last bit was cut off, so
   // cutting most of a merger showed no progress at all.
-  const {_extraNow: extraNow, _extraStart: extraStart, ...shown} = result;
-  const peak = Math.max(extraStart, extraNow, await extraPeak(io, me.id, id, extraNow));
+  const {_extraNow: extraNow, _extraStart: keyExtraStart, _missingNow: missingNow, _missingStart: keyMissingStart, _reach: reach, ...shown} = result;
+  // Each player starts the cell at 0% (Ames 2026-11-17: "we def should start
+  // the cell at 0% match score"): practice cells keep the edits made on them
+  // before, so the cell as this player first saw it is their start. A player
+  // already under way before starts were kept goes on from the cell's own start.
+  const mineRow = await playerRow(io, me.id, id);
+  const base = mineRow.found
+    ? (mineRow.start_missing != null ? mineRow : null)
+    : {start_missing: missingNow, start_extra: extraNow, start_missing_left: shown.missing.left, start_extra_left: shown.extra.left, start_reach: reach, fresh: true};
+  const missingStart = base ? base.start_missing : keyMissingStart;
+  const extraStart = base ? base.start_extra : keyExtraStart;
+  if (base) {
+    shown.merge = partPercent(missingNow, missingStart);
+    shown.match = matchPercent({missingNow, extraNow, missingStart, extraStart});
+    // "n of m pieces added" counts the pieces left when this player began.
+    shown.missing = {left: Math.min(shown.missing.left, base.start_missing_left), total: base.start_missing_left};
+    shown.extra = {left: Math.min(shown.extra.left, base.start_extra_left), total: base.start_extra_left};
+    shown.nucleusOnly = base.start_reach != null ? base.start_reach < NUCLEUS_REACH : shown.nucleusOnly;
+    // Nothing to fix when they began: someone finished it already.
+    if (missingStart === 0 && extraStart === 0) shown.alreadyDone = true;
+  }
+  const peak = Math.max(extraStart, extraNow, mineRow.found ? await extraPeak(io, me.id, id, extraNow) : 0);
   // Back to nothing wrong on a cell that started with nothing to cut: done, but
   // not in the score (Ames 2026-11-16: "if we get to nothing to cut, it should
   // be congrats, all done"), so merging something wrong in and cutting it off
@@ -428,6 +474,7 @@ async function check(io, {taskId, me, isAdmin}) {
     p_missing_left: result.missing.left, p_missing_total: result.missing.total,
     p_extra_left: result.extra.left, p_extra_total: result.extra.total,
   })}).catch(e => console.warn('[sandbox-match] score not kept', id, e.message));
+  if (base && base.fresh) await keepStart(io, me.id, id, base);
   if (extraNow > 0 && peak === extraNow) await extraPeak(io, me.id, id, extraNow);
   return result;
 }
@@ -451,6 +498,28 @@ async function wrongParts(cg, memo, wrong) {
 /** The most wrong supervoxels this player's cell has held (kept in
  *  sandbox_match_scores.extra_peak), raised to `now` when higher. 0 when it
  *  cannot be read. */
+/** This player's row for this cell: whether there is one, and their start. */
+async function playerRow(io, userId, taskId) {
+  try {
+    const rows = await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}&select=start_missing,start_extra,start_missing_left,start_extra_left,start_reach&limit=1`);
+    return rows && rows[0] ? {found: true, ...rows[0]} : {found: false};
+  } catch (e) {
+    // Could not tell: score from the cell's own start, as before.
+    console.warn('[sandbox-match] no player row', taskId, e.message);
+    return {found: true, start_missing: null};
+  }
+}
+/** Keep the cell as this player first saw it (their row was just made). */
+async function keepStart(io, userId, taskId, base) {
+  try {
+    await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}&start_missing=is.null`, {method: 'PATCH', headers: {Prefer: 'return=minimal'}, body: JSON.stringify({
+      start_missing: base.start_missing, start_extra: base.start_extra,
+      start_missing_left: base.start_missing_left, start_extra_left: base.start_extra_left,
+      start_reach: Math.round(base.start_reach * 1000) / 1000,
+    })});
+  } catch (e) { console.warn('[sandbox-match] start not kept', taskId, e.message); }
+}
+
 async function extraPeak(io, userId, taskId, now) {
   try {
     const rows = await io.sb(`sandbox_match_scores?user_id=eq.${userId}&task_id=eq.${taskId}&select=extra_peak&limit=1`);
@@ -682,7 +751,7 @@ async function handle({action, args, me, isAdmin, io}) {
 
 module.exports = {
   handle, check, review, hint, event, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
-  toSet, minus, countMinus, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
-  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
-  SANDBOX, TRUTH, KEY_VERSION, MIN_PIECE, SAMPLES, FOUND_SHARE,
+  toSet, minus, countMinus, chunksOf, reachShare, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
+  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
+  SANDBOX, TRUTH, KEY_VERSION, NUCLEUS_REACH, MIN_PIECE, SAMPLES, FOUND_SHARE,
 };

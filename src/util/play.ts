@@ -128,7 +128,7 @@ async function settleAccess() {
 export function mappingWhere(): string {
   const ds = mappingDataset();
   if (!ds) return '';
-  if (ds.id === 'pinky_sandbox') return 'Sandbox cells, for practice';
+  if (ds.id === 'pinky_sandbox') return 'Training Sim cells';
   if (ds.id === 'stroeh_mouse_retina') return 'Bipolar cells on Retina';
   return `Cells on ${ds.shortLabel || ds.label}`;
 }
@@ -189,7 +189,7 @@ export function playLabel(): string {
   if (play.on === 'quests') return 'Cilia Quest';
   const ds = mappingDataset();
   if (ds?.id === 'stroeh_mouse_retina') return 'BC Challenge';
-  if (ds?.id === 'pinky_sandbox') return 'Sandbox practice';
+  if (ds?.id === 'pinky_sandbox') return 'Training Sim';
   return ds ? `${ds.shortLabel || ds.label} mapping` : 'Mapping';
 }
 

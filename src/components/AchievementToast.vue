@@ -742,7 +742,7 @@ function playBatchChime() {
             <div v-if="cellCelebration.datasetLabel && cellCelebration.totalCells > (cellCelebration.datasetCells ?? 0)" class="nge-cell-stats nge-cell-stats--all">{{ cellCelebration.totalCells }} cells across all datasets</div>
             <div v-else-if="!cellCelebration.datasetLabel" class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
             </template>
-            <div v-if="cellCelebration.sandboxAccuracy != null" class="nge-cell-stats nge-cell-stats--all">Your Sandbox accuracy: <strong>{{ cellCelebration.sandboxAccuracy }}%</strong> over {{ cellCelebration.sandboxCells }} practice {{ cellCelebration.sandboxCells === 1 ? 'cell' : 'cells' }}</div>
+            <div v-if="cellCelebration.sandboxAccuracy != null" class="nge-cell-stats nge-cell-stats--all">Your Training Sim accuracy: <strong>{{ cellCelebration.sandboxAccuracy }}%</strong> over {{ cellCelebration.sandboxCells }} sim {{ cellCelebration.sandboxCells === 1 ? 'cell' : 'cells' }}</div>
           </div>
           <div class="nge-cell-hint">Click to dismiss</div>
         </div>

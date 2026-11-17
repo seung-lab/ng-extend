@@ -137,6 +137,9 @@ function world() {
     if (p === 'rpc/sandbox_match_record') { const b = JSON.parse(init.body); db.records.push(b); db.peaks = db.peaks || {}; if (!(b.p_task in db.peaks)) db.peaks[b.p_task] = 0; return null; }
     if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.[^&]+&task_id=eq\.(\d+)&select=extra_peak/))) return db.peaks && m[1] in db.peaks ? [{extra_peak: db.peaks[m[1]]}] : [];
     if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.[^&]+&task_id=eq\.(\d+)$/)) && init.method === 'PATCH') { db.peaks[m[1]] = JSON.parse(init.body).extra_peak; return null; }
+    // Each player's start: a row once their first check is recorded.
+    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)&select=start_missing/))) { const k = `${m[1]}:${m[2]}`; return db.records.some(r => `${r.p_user}:${r.p_task}` === k) ? [{start_missing: null, start_extra: null, start_missing_left: null, start_extra_left: null, start_reach: null, ...((db.starts || {})[k] || {})}] : []; }
+    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)&start_missing=is\.null$/)) && init.method === 'PATCH') { const k = `${m[1]}:${m[2]}`; db.starts = db.starts || {}; if (!db.starts[k]) db.starts[k] = JSON.parse(init.body); return null; }
     if (p === 'sandbox_play_events') { (db.events = db.events || []).push(JSON.parse(init.body)); return null; }
     if ((m = p.match(/^task_assignments\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&/))) return (db.held || []).filter(h => h.task_id === +m[1] && h.user_id === decodeURIComponent(m[2]));
     // edit_log: this task's own, or (with a claim) untagged ones in its time.
@@ -530,4 +533,65 @@ test('keys are built ahead for open cells without one, and only those', async ()
   assert.ok(w.db.keys[1] && w.db.keys[3]);
   const again = await M.warmKeys(w.io);
   assert.deepEqual([again.ready, again.built], [2, 0]);
+});
+
+test('each player starts the cell at 0%, from the cell as they first saw it', async () => {
+  M._reset();
+  const w = world();
+  // Before this player: someone merged A in.
+  w.sandbox.edit({S1: [...range(1, 160), ...range(300, 359)], B: range(161, 200)});
+  const first = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(first.merge, 0);
+  assert.equal(first.cut, 0);
+  assert.equal(first.match, 0);
+  assert.deepEqual(first.missing, {left: 0, total: 0});
+  assert.equal(w.db.starts[`${ME.id}:1`].start_missing, 40);
+  assert.equal(w.db.starts[`${ME.id}:1`].start_extra, 60);
+  // They cut the neighbor off: Cut 100, Merge still where they began.
+  w.sandbox.edit({S2: range(1, 160), N2: range(300, 359), B: range(161, 200)});
+  const cut = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(cut.cut, 100);
+  assert.equal(cut.merge, 0);
+  // Their start is kept once, never moved by later checks.
+  assert.equal(w.db.starts[`${ME.id}:1`].start_extra, 60);
+  // Another player on the same cell now starts from there, at 0%.
+  const other = await M.check(w.io, {taskId: 3, me: OTHER});
+  assert.equal(other.merge, 0);
+  assert.equal(other.cut, null);
+  assert.equal(w.db.starts[`${OTHER.id}:3`].start_extra, 0);
+});
+
+test('a player under way before starts were kept goes on from the cell\'s own start', async () => {
+  M._reset();
+  const w = world();
+  w.db.records.push({p_user: ME.id, p_task: 1});
+  w.sandbox.edit({S1: [...range(1, 160), ...range(300, 359)], B: range(161, 200)});
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(r.merge, 60);
+  assert.ok(!w.db.starts || !w.db.starts[`${ME.id}:1`]);
+});
+
+test('a cell someone already finished says so', async () => {
+  M._reset();
+  const w = world();
+  w.sandbox.edit({S1: range(1, 200), N2: range(300, 359)});
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(r.alreadyDone, true);
+  assert.equal(r.merge, null);
+  assert.equal(r.cut, null);
+});
+
+test('nucleus: a cell reaching under a quarter of its true cell\'s space', () => {
+  // Supervoxel ids in chunks 1..8 (one each) for the true cell.
+  const sv = (chunk, n) => (BigInt(chunk) << 26n) | BigInt(n);
+  const truth = M.toSet(Array.from({length: 8}, (_, i) => sv(i + 1, 5)).concat(Array.from({length: 100}, (_, i) => sv(1, 100 + i))));
+  const chunks = M.chunksOf(truth);
+  assert.equal(chunks.size, 8);
+  // Many supervoxels, one chunk: the nucleus.
+  const nucleus = M.toSet([sv(1, 5), ...Array.from({length: 100}, (_, i) => sv(1, 100 + i))]);
+  assert.equal(M.reachShare(chunks, nucleus, truth), 1 / 8);
+  assert.ok(M.reachShare(chunks, nucleus, truth) < M.NUCLEUS_REACH);
+  // A few supervoxels across half the chunks: not a nucleus.
+  const spread = M.toSet([1, 2, 3, 4].map(c => sv(c, 5)));
+  assert.equal(M.reachShare(chunks, spread, truth), 0.5);
 });

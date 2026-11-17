@@ -104,7 +104,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const shown = await waitText(/merge 0%/i, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
-    check('Practice and the mode up top, the Match score, then Merge and Cut with their pieces', /^practice (looking|highlighting) .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
+    check('Practice and the mode up top, the Match score, then Merge and Cut with their pieces', /^training sim (looking|highlighting) .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
     // Clear of the Play button in the same corner.
@@ -227,7 +227,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('Complete closed: back to Merge and Cut', fin3.finish && fin3.rows, fin3);
     // The player's Sandbox accuracy, under the buttons.
     const acc = await page.evaluate(() => { const a = document.querySelector('#nge-cell-match .nge-cm-acc'); return { shown: !a.hidden && a.offsetParent !== null, text: a.textContent }; });
-    check('the Sandbox accuracy shows under the buttons', acc.shown && acc.text === 'Your Sandbox accuracy: 72% over 5 practice cells', acc);
+    check('the Sandbox accuracy shows under the buttons', acc.shown && acc.text === 'Your Training Sim accuracy: 72% over 5 sim cells', acc);
     // Three low cells in a row: Complete waits until the player has jumped.
     const gate = await page.evaluate(() => {
       window.__ngeCellMatch.setMine({ cells: 5, accuracy: 20, lowRun: 3, reviewFirst: true, lowScore: 101, lowRunNeeded: 3 });
@@ -237,7 +237,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       const g = c.querySelector('.nge-cm-finish-gate');
       return { gate: !g.hidden, text: g.textContent, jump: !c.querySelector('.nge-cm-finish-jump').hidden, go: c.querySelector('.nge-cm-finish-go').disabled };
     });
-    check('after 3 low cells, Complete asks for a Jump first and waits', gate.gate && gate.jump && gate.go && /last 3 practice cells finished under 101%/.test(gate.text), gate);
+    check('after 3 low cells, Complete asks for a Jump first and waits', gate.gate && gate.jump && gate.go && /last 3 sim cells finished under 101%/.test(gate.text), gate);
     await shot('cell-match-gate.png');
     // Crosshairs outside: How? opens a tip, and Put them in the soma asks the library to move them.
     const how = await page.evaluate(() => {
@@ -403,7 +403,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { button: document.querySelector('#nge-cell-match .nge-cm-save').textContent, tip: tip ? tip.innerText : null,
         title: l.title, note: l.note, hasMissedLayer: /Missed%20pieces|Missed pieces/.test(decodeURIComponent(l.url || '')), dataset: l.dataset };
     });
-    check('Save view saves this view, missed pieces and all, to My Links', saved.button === 'Saved \u2713' && saved.hasMissedLayer && saved.title === 'My 1st practice cell' && saved.dataset === 'pinky_nf_v2', saved);
+    check('Save view saves this view, missed pieces and all, to My Links', saved.button === 'Saved \u2713' && saved.hasMissedLayer && saved.title === 'My 1st sim cell' && saved.dataset === 'pinky_nf_v2', saved);
     check('a tip says it is in My Links', /SAVED/.test(saved.tip || '') && /My Links/.test(saved.tip || '') && !/[\u2013\u2014]|\s-\s/.test((saved.tip || '') + (saved.note || '')), saved);
     await shot('cell-match-saved.png');
     // Open My Links walks the way there (Ames 2026-11-13): Cell Library, then
@@ -499,7 +499,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const tips = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-row')].map(r => r.title));
     check('hovering says what each line means', /^Match score 19%: your Merge and Cut together, half each$/.test(tips[0]) && /^Merge \d+%: \d+ of \d+ pieces added$/.test(tips[1]) && /^Cut/.test(tips[2]), tips);
     const miniText = await page.evaluate(() => document.getElementById('nge-cell-match').innerText.replace(/\s+/g, ' ').trim());
-    check('collapse shows Practice and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^practice/i.test(miniText) && /19%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
+    check('collapse shows Training Sim and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^training sim/i.test(miniText) && /19%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
     await shot('cell-match-collapsed.png');
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
@@ -541,7 +541,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       const c = document.getElementById('nge-cell-match');
       return { sub: c && c.querySelector('.nge-cm-sub').textContent, go: c && c.querySelector('.nge-cm-idle-go') && c.querySelector('.nge-cm-idle-go').textContent };
     });
-    check('after a cell is finished: Teleport to a new cell', fresh.sub === 'Ready for your next practice cell' && fresh.go === 'Teleport to a new cell', fresh);
+    check('after a cell is finished: Teleport to a new cell', fresh.sub === 'Ready for your next sim cell' && fresh.go === 'Teleport to a new cell', fresh);
     const ownsIdle = await page.evaluate(() => document.body.classList.contains('nge-cm-owns'));
     check('while the box waits, the Cell Library slim row stays out of the way', ownsIdle === true, ownsIdle);
     const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });

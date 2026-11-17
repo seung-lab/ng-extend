@@ -69,3 +69,12 @@ RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
 $$;
 REVOKE ALL ON FUNCTION public.sandbox_match_record(uuid, integer, integer, text, integer, integer, integer, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sandbox_match_record(uuid, integer, integer, text, integer, integer, integer, integer) TO service_role;
+
+-- Each player starts a cell at 0% (Ames 2026-11-17): the cell as this player
+-- first saw it. Practice cells keep the edits made on them before, so the
+-- cell's own start is not where every player begins. Null on rows from before.
+ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_missing integer;
+ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_extra integer;
+ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_missing_left integer;
+ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_extra_left integer;
+ALTER TABLE public.sandbox_match_scores ADD COLUMN IF NOT EXISTS start_reach real;
