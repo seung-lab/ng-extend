@@ -605,6 +605,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 </div>
               </div>
               <div class="nge-aq-row-actions">
+                <!-- The instructions, on the slim bar too (Ames 2026-11-17: Play hid them). -->
+                <button v-if="slim" class="nge-aq-info nge-aq-info--slim" :class="{ 'nge-aq-info--open': showHelp }" @click="toggleHelp" title="How to do a Cilia Quest" aria-label="Instructions"><span class="nge-aq-info-i" aria-hidden="true">i</span></button>
                 <span v-if="slim" class="nge-aq-saved nge-aq-saved--slim" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }" :title="savedLine(r)">
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
@@ -738,6 +740,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         </template>
       </template>
       <div v-else-if="!loading && !error" class="nge-aq-empty">The quest sheet has no cells yet.</div>
+      <QuestInstructions v-if="slim && showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
       <div v-if="message && !slim" class="nge-aq-msg">{{ message }}</div>
     </template>
   </div>
@@ -769,6 +772,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
 .nge-aq-titlebtns { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.nge-aq-info--slim { padding: 0 3px; margin-right: 6px; flex-shrink: 0; }
 .nge-aq-info--tut .nge-aq-info-i { font-size: 8px; padding-left: 1px; }
 .nge-aq-info-i {
   width: 16px; height: 16px; border-radius: 50%;
