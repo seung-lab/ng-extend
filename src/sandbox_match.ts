@@ -884,6 +884,8 @@ function hide() {
 const isClosed = () => store.get(CLOSED_KEY) === '1';
 /** Settings, Screen, "Show the Play button" off: PlayButton marks the page. */
 const playOff = () => document.body.classList.contains('nge-play-off');
+/** The cell on screen when Stop playing hid the box. */
+let stoppedOn: number | null = null;
 /** Closed: no box, the Cell Library row back, and Pyr's Play button shows
  *  again (PlayButton reads the class) to open the box. */
 function folded() {
@@ -1952,6 +1954,8 @@ function tick() {
     return;
   }
   maybeOfferHint(id);
+  // Play back on, on the cell Stop hid the box from: show it again.
+  if (stoppedOn != null && isPlaying()) { if (stoppedOn === onScreen) onScreen = null; stoppedOn = null; }
   if (id === onScreen) return;
   onScreen = id;
   noteOpened(id);
@@ -2000,7 +2004,10 @@ export function startSandboxMatch(d: Deps) {
 // later, so the Cell Library, hearing the same stop, still sees the box own it.
 document.addEventListener('nge:play-stopped', () => {
   if (canonicalDataset(currentDatasetTag()) !== 'pinky_nf_v2') return;
-  window.setTimeout(() => { if (!isPlaying()) { hide(); syncOwns(); } }, 0);
+  // It keeps which cell it hid, so Start playing on that same cell shows it
+  // again (Ames 2026-11-17: "i hit start playing and the training sim box
+  // disappeared": the cell counted as already on screen).
+  window.setTimeout(() => { if (!isPlaying()) { hide(); stoppedOn = onScreen; syncOwns(); } }, 0);
 });
 // The Play button setting changed: the box goes, or comes back.
 document.addEventListener('nge:play-pref', () => {

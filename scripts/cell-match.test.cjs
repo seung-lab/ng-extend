@@ -105,6 +105,16 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
     check('Practice and the mode up top, the Match score, then Merge and Cut with their pieces', /^training sim (looking|highlighting) .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
+    // Stop playing hides the box; Start playing on the same cell brings it back (Ames 2026-11-17).
+    await page.evaluate(() => { sessionStorage.setItem('nge_play_on', 'cells'); });
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => { sessionStorage.removeItem('nge_play_on'); document.dispatchEvent(new CustomEvent('nge:play-stopped')); });
+    await page.waitForTimeout(2500);
+    const afterStop = await cardText();
+    await page.evaluate(() => sessionStorage.setItem('nge_play_on', 'cells'));
+    const backAfterStart = await waitText(/merge 0%/i, 15000);
+    check('Stop playing hides the box, and Start playing on the same cell shows it again', afterStop === null && backAfterStart, { afterStop, backAfterStart });
+    await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
     // Clear of the Play button in the same corner.
