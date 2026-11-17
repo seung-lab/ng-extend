@@ -3259,20 +3259,13 @@ exports.ewQuestReview = onRequest(
 // read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 // Our own Pyr users sheet (Ames 2026-11-09), rewritten every hour: see users-sheet.js.
-// ── Sandbox cells back in play (Ames 2026-11-14) ───────────────────────────
-// A completed Sandbox cell is put back as it was handed out (its edits since
-// then undone, checked supervoxel by supervoxel) and served again as a new
-// pending task; the completed task stays with its player. Rules in
-// sandbox-reset.js; table in supabase-sandbox-cell-resets.sql.
-//   firebase deploy --only functions:ewSandboxReset --project eyewire-ii-e4d52
-exports.ewSandboxReset = onSchedule(
-  { schedule: "every 10 minutes", region: "us-central1", secrets: [ewServiceKey, ewCaveToken], timeoutSeconds: 540, memory: "512MiB", maxInstances: 1 },
-  async () => {
-    const { run } = require("./sandbox-reset");
-    const sb = ewSb(ewServiceKey.value().trim());
-    await run({ fetch, caveToken: ewCaveToken.value().trim(), sb }, { limit: 4 });
-  }
-);
+// ── Sandbox cells back in play: NOT EXPORTED (2026-11-16) ────────────────
+// The reset job (sandbox-reset.js) damaged practice cell 16737: undo is not
+// a clean inverse once edits interleave. It was deleted from Firebase and
+// stays out of this file, so no deploy of all functions brings it back,
+// until it checks the cell after every undo and stops the moment it grows,
+// and Ames says so. Players instead start each cell at 0% from the cell as
+// they got it (sandbox-match.js).
 
 // Sandbox answer keys built ahead of time (functions/sandbox-match.js
 // warmKeys): reads CAVE, writes only sandbox_match_keys.
