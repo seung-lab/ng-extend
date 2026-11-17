@@ -121,8 +121,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
     <div v-if="showDock" class="nge-play-dock" :class="{ 'nge-play-dock--big': onSandbox }">
     <button class="nge-play-btn" @click="onButton"
             title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
-      <svg class="nge-play-icon" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
-      <span>Play</span>
+      <span class="nge-play-key" aria-hidden="true"><svg class="nge-play-icon" viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg></span>
+      <span class="nge-play-label">Play</span>
     </button>
     </div>
 
@@ -173,25 +173,48 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 /* The button: the site's own pill, as the "Playing" chip in the top bar and
    "Play here" in the Cell Library (Ames 2026-11-12: "doesn't match the site"). */
 .nge-play-dock { position: fixed; top: 72px; left: 10px; z-index: 60; display: flex; align-items: center; gap: 6px; }
+/* A command key, like the intro's Let's go (Ames 2026-11-17: the pill was
+   "ugly"): a bright teal key holding the play mark, joined on a slant to a
+   glass label with a fine teal edge. Touched, the glass fills with light
+   from the key's side and the mark slides on. */
 .nge-play-btn {
-  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 18px 0 14px;
-  border-radius: 999px; cursor: pointer;
-  border: 1px solid rgba(62, 236, 190, 0.7);
-  background: linear-gradient(135deg, rgba(8, 72, 64, 0.94), rgba(10, 48, 66, 0.94));
-  color: #dcfff4; font: 700 14px/1 'Orbitron', Inter, system-ui, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
-  text-shadow: 0 0 8px rgba(62, 236, 190, 0.6);
-  box-shadow: 0 0 12px rgba(62, 236, 190, 0.3);
-  transition: box-shadow 0.15s, background 0.15s;
+  --h: 38px; --cut: 7px;
+  position: relative; isolation: isolate; display: inline-flex; align-items: stretch; height: var(--h); padding: 0;
+  border: 0; background: none; cursor: pointer; color: #e4fff7;
+  filter: drop-shadow(0 0 7px rgba(62, 236, 190, 0.35)); transition: filter 0.25s, transform 0.12s;
 }
-.nge-play-btn:hover { box-shadow: 0 0 18px rgba(62, 236, 190, 0.55); background: linear-gradient(135deg, rgba(10, 90, 78, 0.96), rgba(12, 60, 80, 0.96)); }
-.nge-play-btn:focus-visible { outline: 2px solid #3eecbe; outline-offset: 3px; }
-.nge-play-icon { color: #3eecbe; }
-/* The Sandbox: twice the size, with a slow glow, so a new player sees where to start. */
+.nge-play-key {
+  position: relative; z-index: 1; display: grid; place-items: center; width: calc(var(--h) + 4px);
+  clip-path: polygon(var(--cut) 0, 100% 0, calc(100% - 10px) 100%, 0 100%, 0 var(--cut));
+  background: linear-gradient(135deg, #d4fff2 0%, #5ef0c6 45%, #19b9a0 100%); color: #032a24;
+}
+.nge-play-icon { width: 40%; height: 40%; transition: transform 0.25s cubic-bezier(.2,.8,.2,1); }
+.nge-play-label {
+  position: relative; display: flex; align-items: center; margin-left: -6px; padding: 0 20px 0 18px; overflow: hidden;
+  font: 700 13px/1 'Orbitron', 'Inter', system-ui, sans-serif; letter-spacing: 0.3em; text-transform: uppercase;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%);
+  background: linear-gradient(180deg, rgba(110, 245, 205, 0.16), rgba(20, 120, 110, 0.14)), rgba(4, 16, 22, 0.78);
+}
+.nge-play-label::before {
+  content: ''; position: absolute; inset: 0; padding: 1px; clip-path: inherit;
+  background: linear-gradient(90deg, rgba(94, 240, 198, 0.9), rgba(94, 240, 198, 0.35));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+}
+.nge-play-label::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; transform: scaleX(0); transform-origin: 0 50%;
+  background: linear-gradient(90deg, rgba(94, 240, 198, 0.45), rgba(94, 240, 198, 0.06)); transition: transform 0.3s cubic-bezier(.2,.8,.2,1);
+}
+.nge-play-btn:hover { filter: drop-shadow(0 0 14px rgba(94, 240, 198, 0.75)); }
+.nge-play-btn:hover .nge-play-label::after, .nge-play-btn:focus-visible .nge-play-label::after { transform: scaleX(1); }
+.nge-play-btn:hover .nge-play-icon { transform: translateX(2px); }
+.nge-play-btn:active { transform: translateY(1px) scale(0.98); }
+.nge-play-btn:focus-visible { outline: 2px solid #5ef0c6; outline-offset: 4px; }
+/* The Sandbox: larger, with a slow glow, so a new player sees where to start. */
 .nge-play-dock--big { top: 80px; left: 14px; }
-.nge-play-dock--big .nge-play-btn { height: 58px; padding: 0 30px 0 24px; gap: 12px; font-size: 22px; letter-spacing: 0.14em;
-  animation: nge-play-glow 2.4s ease-in-out infinite; }
-.nge-play-dock--big .nge-play-icon { width: 18px; height: 18px; }
-@keyframes nge-play-glow { 50% { box-shadow: 0 0 26px rgba(62, 236, 190, 0.7), 0 0 0 4px rgba(62, 236, 190, 0.12); } }
+.nge-play-dock--big .nge-play-btn { --h: 52px; --cut: 9px; animation: nge-play-glow 2.6s ease-in-out infinite; }
+.nge-play-dock--big .nge-play-label { font-size: 17px; padding: 0 28px 0 22px; }
+@keyframes nge-play-glow { 50% { filter: drop-shadow(0 0 18px rgba(94, 240, 198, 0.8)); } }
 @media (prefers-reduced-motion: reduce) { .nge-play-dock--big .nge-play-btn { animation: none; } }
 .nge-play-x { width: 22px; height: 22px; padding: 0; border: 1px solid rgba(62, 236, 190, 0.4); border-radius: 50%;
   background: rgba(6, 20, 30, 0.85); color: #9fe8d4; font: 400 15px/1 Inter, system-ui, sans-serif; cursor: pointer; display: grid; place-items: center; }
