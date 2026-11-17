@@ -134,8 +134,7 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
   {
     title: "Place 2 red points",
     text: `
-**Ctrl+Click** the branch right next to each <strong style="color:#ff5c5c">red</strong> gem, on the piece that doesn't belong. The gems only mark the spots and can't be clicked themselves.
-
+**Ctrl+Click** the branch right next to each <strong style="color:#ff5c5c">red</strong> gem, on the piece that doesn't belong.
 More than one point on each side tells the cut where the whole join is.`,
     position: OVER_3D,
     width: "380px",
