@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T17:00:00Z",
+      "title": "The Training Sim",
+      "items": [
+        "The Sandbox is now the Training Sim. Press Play and a box scores your cell as you work, against a proofread copy of the same cell.",
+        "Merge counts the missing pieces you add back, and Cut counts the wrong parts you cut off. Every cell starts at 0% for you.",
+        "Jump takes you to the next spot that needs fixing, and Complete and Review shows what you missed in gold.",
+        "A colored bar on the box shows what a Ctrl+click does: blue for Merge, red for Cut, green for Highlight.",
+        "Mark where you have been with Checked and Come back, and the 2D view opens beside the 3D when you play.",
+        "Your Training Sim accuracy shows on your profile and on your Cell complete card.",
+        "When you skip a sim cell you can say why, and the Pyr team reads it."
+      ]
+    },
+    {
       "at": "2026-11-17T16:43:00Z",
       "title": "A simpler beta request form",
       "items": [

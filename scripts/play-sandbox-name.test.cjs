@@ -54,6 +54,9 @@ async function playCard(browser, layerName) {
       if (pb) { try { pb.userId = 'test-user'; pb.userName = 'Test Player'; pb.username = 'testplayer'; } catch (e) {} }
       const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
     }, HIDE_CSS);
+    // The Play button stays away while a tutorial is on screen (Ames 2026-11-14): close the one the Sandbox opens for a new player.
+    await page.waitForTimeout(4000);
+    await page.evaluate(() => document.querySelectorAll('.introductionStep, .introductionStepAnchor').forEach(e => e.remove()));
     await page.waitForSelector('.nge-play-btn', { timeout: 30000 });
     await page.waitForTimeout(4000);
     out.layer = await page.evaluate(() => (window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState) || {}).name);
@@ -77,10 +80,10 @@ async function playCard(browser, layerName) {
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const exact = await playCard(browser, 'pinky_nf_v2');
-  check('control: the exact layer name plays on the Sandbox', /Sandbox/.test(exact.where || '') && exact.openedHere && !exact.switching, exact);
+  check('control: the exact layer name plays on the Sandbox', /Training Sim/.test(exact.where || '') && exact.openedHere && !exact.switching, exact);
   const other = await playCard(browser, 'pinky_training6');
   check('another pinky name: the top bar says Sandbox', /Sandbox/.test(other.topBar || ''), other);
-  check('another pinky name: Play plays on the Sandbox too', /Sandbox/.test(other.where || '') && other.openedHere && !other.switching, other);
+  check('another pinky name: Play plays on the Sandbox too', /Training Sim/.test(other.where || '') && other.openedHere && !other.switching, other);
   await browser.close();
   console.log(`${results.filter(Boolean).length}/${results.length} passed`);
   process.exit(results.every(Boolean) ? 0 : 1);
