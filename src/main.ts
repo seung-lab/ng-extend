@@ -1174,7 +1174,16 @@ function observeSplitMergeTools() {
       // Read point counts from internal multicut state (sinks = red, sources = blue)
       const viewer: any = (<any>window)['viewer'];
       try {
-        const segLayer = viewer?.selectedLayer?.layer?.layer;
+        // The selected layer, or else the cell layer the cut tool is on: the
+        // Cut tutorial closes the side panel, so nothing is selected there,
+        // and reading only the selected layer left the bar at "RED 0 pts"
+        // and the tutorial waiting for points it already had (2026-11-17).
+        const selectedLayer = viewer?.selectedLayer?.layer?.layer;
+        const segLayer = selectedLayer?.graphConnection?.value
+          ? selectedLayer
+          : viewer?.layerManager?.managedLayers
+              ?.map((l: any) => l.layer)
+              .find((l: any) => l?.graphConnection?.value?.state?.multicutState);
         const gc = segLayer?.graphConnection?.value;
         // Cut mode just opened: points left on a cell that is not shown would
         // make the tool hide every other cell. Clear them, offering Undo.

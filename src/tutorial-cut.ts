@@ -279,7 +279,7 @@ The red and blue dots on the images show where the points go.`,
 
 <span class="nge-done-lead">You now know the two most important proofreading operations: every <strong style="color:#60c060">merge</strong> reconnects a lost branch, every <strong style="color:#e06060">cut</strong> untangles confused neurons.</span>
 
-The cells you practised on are put back for the next person. Happy proofreading!
+The cells you practiced on are put back for the next person. Happy proofreading!
 
 Good, you've learned the basics of cut. Next is **Advanced Interface**: annotations, finding your way, working with many cells, and using **Find Path** to track down where a merger starts. After that, the Merger Sandbox's **${SANDBOX_TOTAL} mergers** put it all to work.
 

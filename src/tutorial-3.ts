@@ -1649,7 +1649,7 @@ Next up is the other half of proofreading: a <strong style="color:#e06060">cut</
 
 <div style="text-align:center;margin:16px 0 18px">` + startTutorialButton(5, 'Start the Cut tutorial') + `</div>
 
-Or press done and explore. The cells you practised on are put back for the next person.
+Or press done and explore. The cells you practiced on are put back for the next person.
 
 <a href="` + CHEAT_SHEET_URL + `" target="_blank" rel="noopener" style="color:#7ecaff">Open the cheat sheet in a new tab ↗</a>`,
     position: MIDDLE,
