@@ -2,6 +2,21 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T21:53:00Z",
+      "title": "Clearer Cut tutorial",
+      "items": [
+        "The Cut tutorial now says to Ctrl+Click the branch right next to each gem, not the gem itself."
+      ]
+    },
+    {
+      "at": "2026-11-17T21:44:00Z",
+      "title": "Keyboards and the Merge glow",
+      "items": [
+        "Letter shortcuts now follow the letter printed on your key, so M merges and C cuts on French and other keyboards too.",
+        "In the Merge tutorial, the Merge icon on the top bar glows again while the box asks you to turn it on."
+      ]
+    },
+    {
       "at": "2026-11-17T19:06:50Z",
       "title": "Training Sim score on your profile",
       "items": [
