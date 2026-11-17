@@ -147,3 +147,9 @@ test('the On the list email numbers them among everyone who asked, let in or not
   await assert.rejects(handle('access.waitlistEmail', { email: 'never@x.org', name: 'N' }, t.io), /not on the list/);
   await assert.rejects(handle('access.waitlistEmail', { email: 'olivia@x.org', preview: true }, io({ isAdmin: false }).io));
 });
+
+test('the ask confirms they are on the list and that we will tell them when their spot is ready (Ames 2026-11-17)', async () => {
+  const d = await handle('access.askDraft', { email: 'l@x.org', name: 'Luca Welsh' }, io().io);
+  assert.match(d.text, /This confirms you're on the list for the Pyr beta\./);
+  assert.match(d.text, /We'll let you know when your spot is ready\.\n\nAmy Sterling and the Pyr Team at Princeton$/);
+});

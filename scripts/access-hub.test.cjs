@@ -180,7 +180,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     let b = await board();
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
-    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Asked for the Retina|Let in|Signed in|Tutorial done', b.map(c => c.title));
+    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Asked for the Retina|Asked for a dataset|Emailed|Let in|Signed in|Tutorial done', b.map(c => c.title));
     const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.replace(/[▾▸]/g, '').trim()));
     check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
@@ -247,6 +247,9 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Total access requests|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
+    const emailedCol = await page.$eval('.ah-col--theirs .ah-col-title', e => [e.textContent.trim(), e.closest('.ah-group').querySelector('.ah-group-title').textContent.replace(/[▾▸]/g, '').trim()]).catch(() => []);
+    check('Emailed sits in the second row, in its own color', emailedCol.join('|') === 'Emailed|Getting started', emailedCol);
+    check('a Retina card names them in Pyr', /Pyr Jo Kim/.test(col(b, 'Asked for the Retina').cards[1]?.text || ''), col(b, 'Asked for the Retina').cards[1]);
     check('a Retina request takes its own column, oldest first, with examples and try', col(b, 'Asked for the Retina').cards.map(c => c.name).join(',') === 'Pat New,Jo Kim'
       && /10 examples/.test(col(b, 'Asked for the Retina').cards[1]?.text) && /try 2/.test(col(b, 'Asked for the Retina').cards[1]?.text), col(b, 'Asked for the Retina'));
     check('Tutorial done and Editing', !col(b, 'Tutorial done').cards.length && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);

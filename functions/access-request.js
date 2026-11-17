@@ -807,7 +807,9 @@ function askDraft(name, ewName) {
     : `Could you reply with your EyeWire username? If you haven't played EyeWire, we'd love to hear how you found Pyr.`;
   return {
     subject: 'Your Pyr beta request',
-    text: `Hi ${first},\n\nThanks for asking to join Pyr! For this beta testing period, we're inviting existing EyeWire players first.\n\n${ask}\n\nAmy Sterling and the Pyr Team at Princeton`,
+    // Ames 2026-11-17: confirm they're on the list, and that we'll tell them when their spot is ready.
+    text: `Hi ${first},\n\nThanks for asking to join Pyr! This confirms you're on the list for the Pyr beta. For this beta testing period, we're inviting existing EyeWire players first.\n\n${ask}\n\n`
+      + "We'll let you know when your spot is ready.\n\nAmy Sterling and the Pyr Team at Princeton",
   };
 }
 async function askDraftAction(a, io) {

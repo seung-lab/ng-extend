@@ -310,14 +310,16 @@ const typical = computed<Record<string, number>>(() => {
     editing: NaN,
   };
 });
-const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean }[] = [
+// Ames 2026-11-17: the Retina left of Asked for a dataset, and Emailed in
+// the second row in its own color (it waits on their reply, not on us).
+const COLUMNS: { stage: Stage; title: string; sub: string; ours?: boolean; theirs?: boolean }[] = [
   { stage: 'asked', title: 'Asked', sub: 'Beta request, waiting on us', ours: true },
-  { stage: 'emailed', title: 'Emailed', sub: 'we asked them by email, waiting on their reply', ours: true },
+  { stage: 'retina', title: 'Asked for the Retina', sub: 'sent their ten examples, waiting on us', ours: true },
+  { stage: 'dataset', title: 'Asked for a dataset', sub: 'waiting on us', ours: true },
+  { stage: 'emailed', title: 'Emailed', sub: 'we asked them by email, waiting on their reply', theirs: true },
   { stage: 'letin', title: 'Let in', sub: 'not signed in yet' },
   { stage: 'signedin', title: 'Signed in', sub: 'no tutorial finished yet' },
   { stage: 'tutorial', title: 'Tutorial done', sub: 'no edits yet' },
-  { stage: 'dataset', title: 'Asked for a dataset', sub: 'waiting on us', ours: true },
-  { stage: 'retina', title: 'Asked for the Retina', sub: 'sent their ten examples, waiting on us', ours: true },
   { stage: 'editing', title: 'Editing', sub: 'made an edit' },
 ];
 const inStage = (s: Stage) => cards.value.filter(c => c.stage === s);
@@ -767,7 +769,7 @@ const opName = (e: RecentEdit) => {
        <div v-for="g in boardGroups" :key="g.title" class="ah-group">
         <h2 class="ah-group-title"><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('g:' + g.title)" @click="toggleFold('g:' + g.title)"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('g:' + g.title) ? '▸' : '▾' }}</span>{{ g.title }}</button></h2>
         <div v-if="!folded.has('g:' + g.title)" class="ah-board">
-        <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours }">
+        <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours, 'ah-col--theirs': col.theirs }">
           <div class="ah-col-head">
             <span class="ah-col-title">{{ col.title }}</span>
             <span class="ah-col-n">{{ inStage(col.stage).length }}</span>
@@ -786,6 +788,7 @@ const opName = (e: RecentEdit) => {
                 <template v-else>{{ ago(c.since) }}<template v-if="col.stage === 'signedin' && c.p?.tutorial_active">, in tutorial {{ c.p.tutorial_active }}</template><template v-if="col.stage === 'emailed'"> since we emailed, asked {{ day(c.p?.asked_at ?? null) }}</template><template v-if="col.stage === 'asked'">, {{ c.p?.from_site ? 'from connectome.quest' : 'in Pyr' }}</template></template>
               </span>
               <span class="ah-card-tags">
+                <span v-if="(col.stage === 'retina' || col.stage === 'dataset') && (c.p?.username || c.rq?.player_name)" class="ah-tag">Pyr {{ c.p?.username || c.rq?.player_name }}</span>
                 <span v-if="col.stage === 'dataset' && triesOf(c).length" class="ah-tag">Test: {{ outcomeWord(triesOf(c)[0]).toLowerCase() }}</span>
                 <span v-if="c.p?.ew_name" class="ah-tag">{{ ewShort(c.p) }}</span>
                 <span v-if="c.p && asked[c.p.email] && (col.stage === 'asked' || col.stage === 'later')" class="ah-tag">Asked by email {{ day(asked[c.p.email].at) }}</span>
@@ -1174,6 +1177,8 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 }
 .ah-col { background: rgba(16,26,46,.85); border: 1px solid rgba(90,130,200,.22); border-radius: 10px; padding: 10px 8px 8px; display: flex; flex-direction: column; min-width: 0; max-height: max(380px, calc(100vh - 150px)); }
 .ah-col--ours { border-color: rgba(120,170,255,.5); }
+.ah-col--theirs { background: rgba(46,36,14,.85); border-color: rgba(245,190,90,.55); }
+.ah-col--theirs .ah-col-title, .ah-col--theirs .ah-col-n { color: #ffd58a; }
 .ah-col-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 4px; }
 .ah-col-title { font-weight: 700; color: #eef4ff; }
 .ah-col-n { font-size: 22px; font-weight: 700; color: #9fd3ff; }
