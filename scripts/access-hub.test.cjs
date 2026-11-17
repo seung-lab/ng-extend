@@ -98,6 +98,7 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
   let marks = { 'rae@example.org': { mark: 'listed', at: ago(1) }, 'gone@example.org': { mark: 'removed', at: ago(4) } };
   const notes = {};
   let noteN = 0;
+  let waitSent = {};
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org|minnie\.microns-daf\.com/, r => {
     if (/user\/me/.test(r.request().url())) return r.fulfill(json({ id: 1, email: 'amy@example.org', name: 'Amy Sterling' }));
     return r.fulfill(json({}));
@@ -120,6 +121,12 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.note') { (notes[input.key] = notes[input.key] || []).push({ id: 'n' + (++noteN), text: input.text, by: 'Amy Sterling', at: new Date().toISOString() }); return r.fulfill(ok(notes)); }
       if (a === 'access.welcomeEmail') return r.fulfill(ok({ sent: true }));
       if (a === 'access.askSent') return r.fulfill(ok({}));
+      if (a === 'access.waitlistSent') return r.fulfill(ok(waitSent));
+      if (a === 'access.waitlistEmail') {
+        if (input.preview) return r.fulfill(ok({ to: input.email, subject: "You're on the list for the Pyr beta", text: `Hi ${String(input.name).split(' ')[0]},\n\nYou are #3 in line.`, n: 3, total: 6, fromForm: 2, sentAt: null }));
+        waitSent = { ...waitSent, [input.email]: { at: new Date().toISOString(), by: 'amy@example.org', n: 3 } };
+        return r.fulfill(ok({ sent: true, at: new Date().toISOString(), n: 3 }));
+      }
       if (a === 'access.setEwName') return r.fulfill(ok({ ewName: String(input.ewName).toLowerCase() }));
       if (a === 'access.inviteCount') return r.fulfill(ok({ invited: 414, signedIn: 20 }));
       if (a === 'access.askDraft') return r.fulfill(ok({ subject: 'Your Pyr beta request', text: `Hi ${String(input.name).split(' ')[0]},
@@ -173,7 +180,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     let b = await board();
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
-    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Asked for the Retina|Let in|Signed in|Tutorial done', b.map(c => c.title));
+    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Asked for the Retina|Asked for a dataset|Emailed|Let in|Signed in|Tutorial done', b.map(c => c.title));
     const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.replace(/[▾▸]/g, '').trim()));
     check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
@@ -240,6 +247,9 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Total access requests|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
+    const emailedCol = await page.$eval('.ah-col--theirs .ah-col-title', e => [e.textContent.trim(), e.closest('.ah-group').querySelector('.ah-group-title').textContent.replace(/[▾▸]/g, '').trim()]).catch(() => []);
+    check('Emailed sits in the second row, in its own color', emailedCol.join('|') === 'Emailed|Getting started', emailedCol);
+    check('a Retina card names them in Pyr', /Pyr Jo Kim/.test(col(b, 'Asked for the Retina').cards[1]?.text || ''), col(b, 'Asked for the Retina').cards[1]);
     check('a Retina request takes its own column, oldest first, with examples and try', col(b, 'Asked for the Retina').cards.map(c => c.name).join(',') === 'Pat New,Jo Kim'
       && /10 examples/.test(col(b, 'Asked for the Retina').cards[1]?.text) && /try 2/.test(col(b, 'Asked for the Retina').cards[1]?.text), col(b, 'Asked for the Retina'));
     check('Tutorial done and Editing', !col(b, 'Tutorial done').cards.length && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
@@ -295,6 +305,17 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the panel shows their EyeWire email (Ames 2026-11-12)', /EyeWire email kmierow@old\.example/.test(panel), panel.slice(0, 400));
     const ew = await page.$eval('.ah-ew', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
     check('the panel shows their EyeWire stats', /31,685,747 points · 224,881 cubes · 92% accuracy/.test(ew) && /Scout, Scythe · joined EyeWire May 4, 2014 · Germany/.test(ew) && calls.some(c => c.ewBio === 'kmierow'), ew);
+    // You're on the list (Ames 2026-11-17): see the email, then send it.
+    await page.click('.ah-wait button:has-text("Tell them they are on the list")');
+    await page.waitForSelector('.ah-wait .ah-ask-draft', { timeout: 3000 }).catch(() => {});
+    const waitDraft = await page.textContent('.ah-wait').catch(() => '');
+    check('Tell them they are on the list shows the email first, numbered, nothing sent', /#3 of 6 who have ever asked, 2 of them through the connectome\.quest form/.test(waitDraft) && /You're on the list for the Pyr beta/.test(waitDraft) && /Hi Ken/.test(waitDraft)
+      && !calls.some(c => c.action === 'access.waitlistEmail' && !c.args.preview), waitDraft);
+    await page.click('.ah-wait button:has-text("Send it")');
+    await page.waitForTimeout(300);
+    const waitAfter = await page.textContent('.ah-wait').catch(() => '');
+    check('Send it sends once and says so, and the card is tagged', calls.filter(c => c.action === 'access.waitlistEmail' && !c.args.preview).length === 1 && /On the list email sent .*, as #3/.test(waitAfter)
+      && /On the list #3, sent/.test(col(await board(), 'Asked').cards.find(c => c.name === 'Ken Mierow')?.text || ''), waitAfter);
     await page.fill('.ah-panel textarea', 'Do we know him?');
     await page.click('.ah-panel button:has-text("Add note")');
     await page.waitForSelector('.ah-note-text');

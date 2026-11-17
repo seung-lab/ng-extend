@@ -807,7 +807,9 @@ function askDraft(name, ewName) {
     : `Could you reply with your EyeWire username? If you haven't played EyeWire, we'd love to hear how you found Pyr.`;
   return {
     subject: 'Your Pyr beta request',
-    text: `Hi ${first},\n\nThanks for asking to join Pyr! For this beta testing period, we're inviting existing EyeWire players first.\n\n${ask}\n\nAmy Sterling and the Pyr Team at Princeton`,
+    // Ames 2026-11-17: confirm they're on the list, and that we'll tell them when their spot is ready.
+    text: `Hi ${first},\n\nThanks for asking to join Pyr! This confirms you're on the list for the Pyr beta. For this beta testing period, we're inviting existing EyeWire players first.\n\n${ask}\n\n`
+      + "We'll let you know when your spot is ready.\n\nAmy Sterling and the Pyr Team at Princeton",
   };
 }
 async function askDraftAction(a, io) {
@@ -947,6 +949,55 @@ async function inviteCount(a, io) {
 async function askSentAll(a, io) {
   needAdmin(io.isAdmin);
   return io.askSent ? io.askSent.all() : {};
+}
+
+// ── You're on the list (Ames 2026-11-17: "thank you, this confirms you're
+// on the list for the Pyr beta release. You are #N on the list"). N is their
+// place among everyone who ever asked, from the connectome.quest form or in
+// Pyr, let in or not ("count all people who have ever asked even those who
+// have been let in"), oldest first; admins and the team left out. The page
+// shows the email first; an admin presses Send. Each send is kept
+// (io.waitlistSent, Firestore in index.js).
+//   access.waitlistEmail  admins: {email, name, preview, again}
+//     -> preview: {to, subject, text, n, total, fromForm, sentAt}; else {sent, at, n}.
+//   access.waitlistSent   admins: every send, {email: {at, by, n}}.
+async function waitlistPlace(io, email) {
+  const rows = await io.sb('access_hub_people?request_id=not.is.null&select=email,asked_at,from_site,is_admin&order=asked_at.asc,email.asc&limit=20000');
+  const list = (rows || []).filter(r => !r.is_admin && !TEAM_EMAILS.includes(String(r.email || '').toLowerCase()));
+  const i = list.findIndex(r => String(r.email || '').toLowerCase() === email);
+  return {n: i < 0 ? null : i + 1, total: list.length, fromForm: list.filter(r => r.from_site).length};
+}
+function waitlistDraft(name, n) {
+  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  return {
+    subject: "You're on the list for the Pyr beta",
+    text: `Hi ${first},\n\nThank you for signing up for the Pyr beta! This email confirms you're on the list.\n\n`
+      + `You are #${n} in line. We're letting people in a few at a time, and we'll email you as soon as your spot is ready.\n\n`
+      + 'In the meantime, if you have questions, just reply to this email.\n\n'
+      + 'Thank you for wanting to do science with us!\n\nAmy Sterling and the Pyr Team at Princeton',
+  };
+}
+async function waitlistEmail(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  const name = cleanText(a.name, BETA_NAME_MAX, 'The name') || '';
+  const place = await waitlistPlace(io, email);
+  if (place.n == null) fail(404, 'They are not on the list of people who asked.');
+  const draft = waitlistDraft(name, place.n);
+  const before = io.waitlistSent && await io.waitlistSent.get(email);
+  if (a.preview === true) return {to: email, ...draft, n: place.n, total: place.total, fromForm: place.fromForm, sentAt: (before && before.at) || null};
+  if (before && !a.again) return {sent: false, reason: 'already sent', at: before.at};
+  if (!io.sendEmail) fail(503, 'Email is not set up on the server.');
+  const copies = WELCOME_COPY_TO.filter(c => c !== email);
+  const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), ...draft});
+  if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
+  const at = new Date().toISOString();
+  if (io.waitlistSent) await io.waitlistSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || '', n: place.n});
+  return {sent: true, at, n: place.n};
+}
+async function waitlistSentAll(a, io) {
+  needAdmin(io.isAdmin);
+  return io.waitlistSent ? io.waitlistSent.all() : {};
 }
 // ── One person, two emails, joined by hand (Ames 2026-11-10: "some
 // duplicates ... same person"). The Access page suggests pairs; an admin
@@ -1402,6 +1453,8 @@ async function handle(action, args, io) {
   if (action === 'access.askDraft') return askDraftAction(a, io);
   if (action === 'access.askEmail') return askEmail(a, io);
   if (action === 'access.askSent') return askSentAll(a, io);
+  if (action === 'access.waitlistEmail') return waitlistEmail(a, io);
+  if (action === 'access.waitlistSent') return waitlistSentAll(a, io);
   if (action === 'access.inviteCount') return inviteCount(a, io);
   if (action === 'access.setEwName') return setEwName(a, io);
   if (action === 'access.ewBio') return ewBio(a, io);
@@ -1460,4 +1513,4 @@ async function principlesAgree(a, io) {
   return {version: PRINCIPLES_VERSION, agreed: true, at};
 }
 
-module.exports = {handle, grantEmail, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
+module.exports = {handle, grantEmail, waitlistDraft, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
