@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
+import { playIntro } from '../util/intro_tour';
 import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice, stopPlay } from '../util/play';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
@@ -1655,6 +1656,13 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">🧭</span><span>Site Tour</span>
+          </div>
+        </li>
+        <!-- The new player Starship tour, played again any time (Ames
+             2026-11-17: the chat rocket is retired, so this is the way back). -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="closeHamburger(); playIntro()">
+            <span class="nge-menu-num nge-menu-num--icon">🚀</span><span>Starship Tour</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Tutorials</li>
