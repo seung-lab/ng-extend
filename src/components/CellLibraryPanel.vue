@@ -4524,6 +4524,11 @@ const panelStyle = computed(() => ({
                 <div class="nge-cl-row-name" @click="!slim && copyId(cell.segId)" :title="slim ? undefined : 'Click to copy ' + cell.segId">
                   <span :title="cell.liveSegId ? `Updated after edits. Listed as ${cell.segId}` : undefined">{{ history.getNickname(cell.segId) || cell.liveSegId || cell.segId }}</span>
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
+                  <!-- The claim Save view saves to, marked as the Quests tab marks its
+                       quest, so a view is not saved onto the wrong cell (GTrakimas
+                       2026-11-17). -->
+                  <span v-if="!slim && isWorkingClaim(cell) && cell.status !== 'completed'" class="nge-cl-active-pill"
+                        title="The cell you are working on. Save view saves your view to this cell.">Active</span>
                 </div>
                 <div class="nge-cl-row-meta">
                   <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
@@ -5315,6 +5320,7 @@ const panelStyle = computed(() => ({
 .nge-cl-row-name { cursor: pointer; }
 .nge-cl-row-name:hover { color: #eef; }
 
+.nge-cl-active-pill { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font: 700 11px/18px 'Inter', 'Roboto', sans-serif; letter-spacing: 0.04em; color: #08140e; background: #7CFFB2; vertical-align: 1px; }
 .nge-cl-copied {
   font-size: 0.75em;
   color: #4a6;
