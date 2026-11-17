@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, focusOnCut, freshStartIfDone, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
+import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeIn2D, closeSidePanel, finishPracticeTutorial, focusOnCut, freshStartIfDone, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -214,14 +214,17 @@ Cut points don't have to go on the 3D shape. **Ctrl+Click** works on the 2D imag
 
 In 2D, place 3 or 4 <strong style="color:#ff5c5c">red</strong> points inside one cell's outline and 3 or 4 <strong style="color:#5c8cff">blue</strong> inside the other's, spread over a few slices. With one point a side the cut may take only part of the piece.
 
+**Ctrl + mouse wheel** zooms the 2D images in and out.
+
 <span class="nge-cut-2d-next">Press next to try it on a new cell.</span>`,
     position: OVER_2D,
     width: "440px",
     onEnter: () => {
       closeSidePanel();
       stopWatching();
-      // This box is about the 2D images, so put them on screen.
+      // This box is about the 2D images, so put them on screen, close in.
       show2D();
+      closeIn2D();
       // Only promise the 2D try when there is a second cell to try it on.
       setTimeout(() => {
         const el = document.querySelector('.nge-cut-2d-next');
@@ -243,7 +246,7 @@ Click to add new cut points in the 2D images on the left, on either side of wher
 3. Press **G**, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the other side of the join.
 4. Press **Submit cut** on the bar at the bottom, or **Enter**.
 
-The red and blue dots on the images show where the points go.`,
+The red and blue dots on the images show where the points go. **Ctrl + mouse wheel** zooms the 2D images in and out.`,
     position: OVER_3D,
     width: "420px",
     onEnter: async () => {
