@@ -328,11 +328,20 @@ async function fillTab() {
 }
 watch([() => props.visible, feedTab, () => shownNotes.value.length], () => { void fillTab(); });
 const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
+/** What the mark-read button marks. Mark admin read, from Access, To do and
+ *  replies or Edits, marks all three, Access whatever its New/Upgrade view
+ *  (Ames 2026-11-17: it marked only the view on screen, so the Admin count
+ *  stayed up). Triage and Hunt reports keep their own. */
+const markReadList = computed(() => {
+  const t = feedTab.value;
+  if (t === 'access' || t === 'admin' || t === 'edits') return [...accessNotes.value, ...adminNotes.value, ...editNotes.value];
+  return isAdminSide(t) ? sideNotes(t) : mainNotes.value;
+});
 /** "Mark all read" on My Pyr or Pyr Updates marks both (Ames 2026-10-25);
  *  Admin and Triage keep their own. */
 function markAllRead() {
   if (!showFeedTabs.value) return backend.markAllNotificationsRead();
-  const list = isAdminSide(feedTab.value) ? sideNotes(feedTab.value) : mainNotes.value;
+  const list = markReadList.value;
   return backend.markAllNotificationsRead(list.map(n => n.id));
 }
 // "Show Today in Pyr" switched in Settings: read the feed again with it.
@@ -1173,7 +1182,7 @@ function padRank(rank: number): string {
       <div class="nge-notif-topbar-actions">
         <!-- With the two admin tabs showing, this marks the tab you are on. -->
         <button
-          v-if="showFeedTabs ? unreadIn(isAdminSide(feedTab) ? sideNotes(feedTab) : mainNotes) > 0 : backend.unreadNotificationCount > 0"
+          v-if="showFeedTabs ? unreadIn(markReadList) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
           @click="markAllRead()"
         >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && (feedTab === 'admin' || feedTab === 'access' || feedTab === 'edits') ? 'Mark admin read' : showFeedTabs && feedTab === 'hunt' ? 'Mark reports read' : 'Mark all read' }}</button>
