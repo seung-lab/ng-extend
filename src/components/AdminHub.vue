@@ -2162,7 +2162,13 @@ function notifCategory(n: any): string {
   // Sent one by one from the triage board, or by the robot to admins (Ames
   // 2026-11-02: Announcements is for what we composed, not these).
   if (/update on your report|replied to your feedback|Reply to your question from/i.test(t)) return 'reportReply';
-  if (/^(🗂|🎉 Fixed|🔑 |🔬 |🔓 |📋 |Proofreading Test:)/u.test(t) || /tagged you on a report$/.test(t)) return 'adminAlert';
+  // To do board tags and "Still waiting on you" reminders (Ames 2026-11-17:
+  // "The proper category for these is admin todo notices").
+  if (/^(⏰ Still waiting on you|📋 )/u.test(t)) return 'todoNotice';
+  if (/^(🗂|🎉 Fixed|🔑 |🔬 |🔓 |Proofreading Test:)/u.test(t) || /tagged you on a report$/.test(t)) return 'adminAlert';
+  // Sent by Pyr itself to one player: streak milestones and the thank you
+  // after three edits (Ames 2026-11-17: Announcements is only what we sent).
+  if (/^🔥 \d+-Day Streak!$/u.test(t) || t === '💙 Thank you, for science!') return 'playerAuto';
   if (/^Today in Pyr/.test(t)) return 'daily';
   if (t === '✨ New Achievement!' || t === 'New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (isAwardTitle(t)) return 'personalBadge';     // tutorial / building / exploration
@@ -2178,6 +2184,8 @@ const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'helpResponse',    label: 'Help replies' },
   { key: 'reportReply',     label: 'Replies to reports' },
   { key: 'adminAlert',      label: 'Alerts to admins' },
+  { key: 'todoNotice',      label: 'Admin to do notices' },
+  { key: 'playerAuto',      label: 'Streaks and thank yous' },
   { key: 'daily',           label: 'Today in Pyr' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
