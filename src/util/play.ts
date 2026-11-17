@@ -200,11 +200,12 @@ export function playLabel(): string {
 export function offersChoice(): boolean { return isQuestDataset(datasetHere()) && canQuest(); }
 
 /** The Play button: straight in with the kind last chosen, else the card. */
-export function pressPlay() {
-  if (!offersChoice()) { void startPlay('cells'); return; }
+export function pressPlay(): Promise<boolean> | null {
+  if (!offersChoice()) return startPlay('cells');
   const k = savedKind();
-  if (k && (k === 'cells' || canQuest())) { void startPlay(k); return; }
+  if (k && (k === 'cells' || canQuest())) return startPlay(k);
   play.choosing = true;
+  return null;
 }
 /** Open the choice card to change the kind; off Retina, just play here. */
 export function choosePlay() {

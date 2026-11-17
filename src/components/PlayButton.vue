@@ -100,17 +100,36 @@ async function go() {
   busy.value = true;
   try { await startPlay(picked.value); } finally { busy.value = false; }
 }
+// Pressing Play (Ames 2026-11-17: "a very cool animation that plays when you
+// hit it" and a loading one): a launch burst, the key flashing, rings and
+// sparks going out from it and a comet running along the label; then, while
+// Pyr fetches the cell, a turning arc on the key and a beam sweeping the
+// label. The button stays on screen until the cell is up.
+const launching = ref(false);
+const loading = ref(false);
+let launchSeq = 0;
+const SPARKS = Array.from({ length: 12 }, (_, i) => ({ a: `${i * 30 + (i % 2 ? 9 : -6)}deg`, d: `${34 + (i % 3) * 12}px`, t: `${(i % 4) * 25}ms` }));
 function onButton() {
+  if (launching.value || loading.value) return;
+  const seq = ++launchSeq;
+  launching.value = true;
+  setTimeout(() => { if (seq === launchSeq) launching.value = false; }, 800);
+  let p: Promise<unknown> | null = null;
   // The Playing box was closed: open it again, and play if not playing.
-  if (onSandbox.value && boxClosed.value) {
+  const reopened = onSandbox.value && boxClosed.value;
+  if (reopened) {
     (window as any).__ngeCellMatch?.openCard?.();
     boxClosed.value = false;
-    if (play.on) return;
   }
   // Playing already: back to the task in hand.
-  if (play.on) { void startPlay(play.on); return; }
-  pressPlay();
+  if (play.on) { if (!reopened) p = startPlay(play.on); }
+  else p = pressPlay();
+  if (!p) return;
+  loading.value = true;
+  const stop = () => { if (seq === launchSeq) loading.value = false; };
+  void Promise.race([p.catch(() => false), new Promise(r => setTimeout(r, 20000))]).then(stop);
 }
+const dockShown = computed(() => showDock.value || launching.value || loading.value);
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && play.choosing) { e.stopPropagation(); play.choosing = false; } }
 onMounted(() => { document.addEventListener('keydown', onKey, true); readScreen(); watchTimer = setInterval(readScreen, 400); });
 onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameObs?.disconnect(); if (watchTimer) clearInterval(watchTimer); });
@@ -118,13 +137,21 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 
 <template>
   <Teleport to="body">
-    <div v-if="showDock" class="nge-play-dock" :class="{ 'nge-play-dock--big': onSandbox }">
-    <button class="nge-play-btn" @click="onButton"
-            title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
+    <Transition name="nge-play-fade">
+    <div v-if="dockShown" class="nge-play-dock" :class="{ 'nge-play-dock--big': onSandbox }">
+    <button class="nge-play-btn" :class="{ 'is-launch': launching, 'is-loading': loading && !launching }" @click="onButton"
+            :aria-busy="loading" title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
       <span class="nge-play-key" aria-hidden="true"><svg class="nge-play-icon" viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg></span>
-      <span class="nge-play-label">Play</span>
+      <span class="nge-play-label"><span class="nge-play-beam" aria-hidden="true"></span><span class="nge-play-word">{{ loading && !launching ? 'Teleporting' : 'Play' }}</span><span v-if="loading && !launching" class="nge-play-dots" aria-hidden="true"><b></b><b></b><b></b></span></span>
+      <span class="nge-play-fx" aria-hidden="true">
+        <span class="nge-play-arc"></span>
+        <span class="nge-play-ring"></span><span class="nge-play-ring nge-play-ring--2"></span>
+        <i v-for="(k, i) in SPARKS" :key="i" class="nge-play-spark" :style="{ '--a': k.a, '--d': k.d, '--t': k.t }"></i>
+      </span>
+      <span class="nge-play-comet" aria-hidden="true"></span>
     </button>
     </div>
+    </Transition>
 
     <div v-if="play.choosing" class="nge-play-screen" @click.self="play.choosing = false">
       <section ref="cardEl" class="ng-extend nge-play-card nge-intro--in" role="dialog" aria-label="Choose what to play">
@@ -216,6 +243,56 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-dock--big .nge-play-label { font-size: 17px; padding: 0 28px 0 22px; }
 @keyframes nge-play-glow { 50% { filter: drop-shadow(0 0 18px rgba(94, 240, 198, 0.8)); } }
 @media (prefers-reduced-motion: reduce) { .nge-play-dock--big .nge-play-btn { animation: none; } }
+
+/* -- Pressing Play: the launch -- */
+.nge-play-word { position: relative; }
+.nge-play-fx { position: absolute; left: calc((var(--h) + 4px) / 2); top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+.nge-play-ring { position: absolute; left: calc(var(--h) * -0.5); top: calc(var(--h) * -0.5); width: var(--h); height: var(--h);
+  border-radius: 50%; border: 2px solid #8ff7d8; opacity: 0; box-sizing: border-box; }
+.nge-play-spark { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 8px #8ff7d8, 0 0 16px #5ef0c6; opacity: 0; }
+.nge-play-comet { position: absolute; top: 50%; left: 0; width: 46px; height: 4px; margin-top: -2px; border-radius: 2px; opacity: 0; z-index: 3; pointer-events: none;
+  background: linear-gradient(90deg, rgba(94, 240, 198, 0), #eafff8 80%, #fff); box-shadow: 0 0 10px #5ef0c6, 0 0 20px rgba(94, 240, 198, 0.7); }
+.nge-play-btn.is-launch { animation: nge-play-kick 0.5s cubic-bezier(.2,.8,.2,1); }
+.nge-play-btn.is-launch .nge-play-key { animation: nge-play-keyflash 0.55s ease-out; }
+.nge-play-btn.is-launch .nge-play-icon { animation: nge-play-iconpop 0.55s cubic-bezier(.2,.8,.2,1); }
+.nge-play-btn.is-launch .nge-play-label::after { transform: scaleX(1); animation: nge-play-fill 0.75s ease-out both; }
+.nge-play-btn.is-launch .nge-play-ring { animation: nge-play-ring 0.65s cubic-bezier(.1,.7,.3,1) both; }
+.nge-play-btn.is-launch .nge-play-ring--2 { animation-delay: 0.12s; border-width: 1px; }
+.nge-play-btn.is-launch .nge-play-spark { animation: nge-play-spark 0.6s cubic-bezier(.1,.7,.3,1) var(--t) both; }
+.nge-play-btn.is-launch .nge-play-comet { animation: nge-play-comet 0.5s cubic-bezier(.5,0,.2,1) 0.06s both; }
+@keyframes nge-play-kick { 0% { transform: scale(1); } 18% { transform: scale(0.94); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
+@keyframes nge-play-keyflash { 0% { filter: brightness(1); } 20% { filter: brightness(2.2) saturate(0.6); } 100% { filter: brightness(1); } }
+@keyframes nge-play-iconpop { 0% { transform: none; } 25% { transform: scale(0.7); } 50% { transform: translateX(5px) scale(1.25); } 100% { transform: none; } }
+@keyframes nge-play-fill { 0% { opacity: 0; } 25% { opacity: 1; filter: brightness(1.8); } 100% { opacity: 0.35; } }
+@keyframes nge-play-ring { 0% { opacity: 0.95; transform: scale(0.5); } 100% { opacity: 0; transform: scale(2.8); } }
+@keyframes nge-play-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateX(6px) scale(1.2); } 100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--d)) scale(0.3); } }
+@keyframes nge-play-comet { 0% { opacity: 0; left: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; left: calc(100% - 20px); } }
+
+/* -- While the cell loads -- */
+.nge-play-arc { position: absolute; left: calc(var(--h) * -0.36); top: calc(var(--h) * -0.36); width: calc(var(--h) * 0.72); height: calc(var(--h) * 0.72);
+  box-sizing: border-box; border-radius: 50%; border: 2px solid transparent; border-top-color: #032a24; border-right-color: rgba(3, 42, 36, 0.4); opacity: 0; }
+.nge-play-btn.is-loading { cursor: progress; animation: nge-play-glow 1.3s ease-in-out infinite; }
+.nge-play-btn.is-loading .nge-play-arc { opacity: 1; animation: nge-play-spin 0.8s linear infinite; }
+.nge-play-btn.is-loading .nge-play-icon { animation: nge-play-throb 0.8s ease-in-out infinite; }
+.nge-play-btn.is-loading .nge-play-label { letter-spacing: 0.2em; }
+.nge-play-beam { position: absolute; top: 0; bottom: 0; left: -45%; width: 45%; opacity: 0;
+  background: linear-gradient(90deg, rgba(94, 240, 198, 0), rgba(94, 240, 198, 0.5), rgba(94, 240, 198, 0)); }
+.nge-play-btn.is-loading .nge-play-beam { opacity: 1; animation: nge-play-beam 1.1s cubic-bezier(.4,0,.6,1) infinite; }
+.nge-play-dots { position: relative; display: inline-flex; gap: 3px; margin-left: 4px; }
+.nge-play-dots b { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: nge-play-dot 0.9s ease-in-out infinite; }
+.nge-play-dots b:nth-child(2) { animation-delay: 0.15s; }
+.nge-play-dots b:nth-child(3) { animation-delay: 0.3s; }
+@keyframes nge-play-spin { to { transform: rotate(360deg); } }
+@keyframes nge-play-throb { 50% { transform: scale(0.8); opacity: 0.7; } }
+@keyframes nge-play-beam { to { left: 100%; } }
+@keyframes nge-play-dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+.nge-play-fade-leave-active { transition: opacity 0.3s, transform 0.3s; }
+.nge-play-fade-leave-to { opacity: 0; transform: translateX(-8px); }
+@media (prefers-reduced-motion: reduce) {
+  .nge-play-btn.is-launch, .nge-play-btn.is-launch *, .nge-play-btn.is-loading, .nge-play-btn.is-loading * { animation: none !important; }
+  .nge-play-btn.is-loading .nge-play-arc { opacity: 0; }
+}
 .nge-play-x { width: 22px; height: 22px; padding: 0; border: 1px solid rgba(62, 236, 190, 0.4); border-radius: 50%;
   background: rgba(6, 20, 30, 0.85); color: #9fe8d4; font: 400 15px/1 Inter, system-ui, sans-serif; cursor: pointer; display: grid; place-items: center; }
 .nge-play-x:hover { color: #fff; border-color: #3eecbe; background: rgba(12, 60, 56, 0.95); }
