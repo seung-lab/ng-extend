@@ -223,6 +223,23 @@ function clampPos() {
   const y = Math.max(44, Math.min(pos.value.y, window.innerHeight - el.offsetHeight - 8));
   if (x !== pos.value.x || y !== pos.value.y) pos.value = { x, y };
 }
+/** Keep clear of the Cell Library box (Ames 2026-11-17: the Highlight box
+ *  slid under the slim library bar). Moves what is shown, never the place
+ *  kept: below the library if it fits, else above, else beside it. */
+function clearOfLibrary() {
+  const el = panelEl.value;
+  const lib = document.querySelector('.nge-cl-panel') as HTMLElement | null;
+  if (!el || !lib || dragging.value) return;
+  const a = el.getBoundingClientRect(), b = lib.getBoundingClientRect();
+  if (!b.width || !b.height || a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom) return;
+  if (b.bottom + 8 + a.height <= window.innerHeight - 8) pos.value = { x: a.left, y: b.bottom + 8 };
+  else if (b.top - 8 - a.height >= 44) pos.value = { x: a.left, y: b.top - 8 - a.height };
+  else if (b.right + 8 + a.width <= window.innerWidth - 8) pos.value = { x: b.right + 8, y: Math.max(44, a.top) };
+}
+let clearTimer: ReturnType<typeof setInterval> | null = null;
+/** The slim strip drags from anywhere that is not a button, its edges too
+ *  (Ames 2026-11-17: "impossible to grab this slim highlight bar"). */
+function onPanelMouseDown(e: MouseEvent) { if (slim.value) startDrag(e); }
 function startDrag(e: MouseEvent) {
   if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
   const el = panelEl.value;
@@ -611,6 +628,7 @@ onMounted(() => {
   window.addEventListener('blur', onBlur);
   window.addEventListener('resize', clampPos);
   requestAnimationFrame(clampPos);
+  clearTimer = setInterval(clearOfLibrary, 700);
 });
 onBeforeUnmount(() => {
   stopSelectedWatch();
@@ -623,6 +641,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('contextmenu', onContextMenu, true);
   window.removeEventListener('blur', onBlur);
   window.removeEventListener('resize', clampPos);
+  if (clearTimer) clearInterval(clearTimer);
   stopLoader();
   if (traceTimer) clearInterval(traceTimer);
   document.body.classList.remove('nge-hl-tracing');
@@ -634,9 +653,10 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div ref="panelEl" class="nge-hl-panel" :class="{ 'nge-hl-panel--placed': pos, 'nge-hl-panel--dragging': dragging, 'nge-hl-panel--slim': slim }" :style="posStyle" role="dialog" aria-label="Highlight mode">
+    <div ref="panelEl" class="nge-hl-panel" :class="{ 'nge-hl-panel--placed': pos, 'nge-hl-panel--dragging': dragging, 'nge-hl-panel--slim': slim }" :style="posStyle" role="dialog" aria-label="Highlight mode" @mousedown="onPanelMouseDown">
       <!-- Slim: one row. Drag it by any empty part. -->
-      <div v-if="slim" class="nge-hl-slim" title="Drag to move" @mousedown="startDrag">
+      <div v-if="slim" class="nge-hl-slim" title="Drag to move">
+        <span class="nge-hl-grip" aria-hidden="true">⠿</span>
         <button class="nge-hl-caret" type="button" title="Open the full Highlight box" aria-label="Open the full Highlight box" @click="setSlim(false)">
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -882,7 +902,11 @@ onBeforeUnmount(() => {
 .nge-hl-caret:hover { background: rgba(124, 255, 178, 0.22); border-color: rgba(124, 255, 178, 0.75); box-shadow: 0 0 10px rgba(124, 255, 178, 0.35); }
 .nge-hl-panel--slim { width: auto; min-width: 0; padding: 7px 10px; }
 .nge-hl-slim { display: flex; align-items: center; gap: 8px; cursor: grab; user-select: none; }
-.nge-hl-panel--dragging .nge-hl-slim { cursor: grabbing; }
+.nge-hl-panel--slim { cursor: grab; }
+.nge-hl-panel--dragging .nge-hl-slim, .nge-hl-panel--slim.nge-hl-panel--dragging { cursor: grabbing; }
+/* A grip at the left edge: where to take hold of the strip. */
+.nge-hl-grip { margin: -6px -2px -6px -6px; padding: 6px 2px 6px 4px; font-size: 15px; line-height: 1; color: rgba(160, 255, 210, 0.55); }
+.nge-hl-slim:hover .nge-hl-grip { color: #a0ffd2; }
 .nge-hl-dots { display: inline-flex; align-items: center; gap: 5px; }
 .nge-hl-dot {
   width: 16px; height: 16px; padding: 0; border-radius: 50%; cursor: pointer;

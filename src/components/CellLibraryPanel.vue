@@ -3261,10 +3261,21 @@ async function claimNewCell() {
   if (!canClaimNew.value || claimingNew.value) return;
   claimingNew.value = true;
   try {
+    // A cell someone else already holds (Ames 2026-11-17: the top Retina cell
+    // was a second copy of one a player held, so Claim and Skip both stopped
+    // on "This cell is already claimed") is passed over for this visit and
+    // the next one tried.
+    for (let tries = 0; tries < 6; tries++) {
     const cell = await findNextAvailable();
     if (!cell) return;
     await claimCell(cell);
     await nextTick();
+    if (!myOpenClaims.value.some(c => c.segId === cell.segId)
+        && /already (claimed|completed)|claimed by another/i.test(claimError.value)) {
+      claimError.value = '';
+      const passed = new Set(playSkipped.value); passed.add(cell.segId); playSkipped.value = passed;
+      continue;
+    }
     // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
     if (myOpenClaims.value.some(c => c.segId === cell.segId)) {
       // A cell with a start view opened it; one without still takes you there.
@@ -3275,6 +3286,8 @@ async function claimNewCell() {
       slimSeg.value = cell.segId;
       await nextTick();
       clampPanelPos();
+    }
+    return;
     }
   } finally { claimingNew.value = false; }
 }
@@ -4678,6 +4691,11 @@ onBeforeUnmount(() => {
                 <div class="nge-cl-row-name" @click="!slim && copyId(cell.segId)" :title="slim ? undefined : 'Click to copy ' + cell.segId">
                   <span :title="cell.liveSegId ? `Updated after edits. Listed as ${cell.segId}` : undefined">{{ history.getNickname(cell.segId) || cell.liveSegId || cell.segId }}</span>
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
+                  <!-- The claim Save view saves to, marked as the Quests tab marks its
+                       quest, so a view is not saved onto the wrong cell (GTrakimas
+                       2026-11-17). -->
+                  <span v-if="!slim && isWorkingClaim(cell) && cell.status !== 'completed'" class="nge-cl-active-pill"
+                        title="The cell you are working on. Save view saves your view to this cell.">Active</span>
                 </div>
                 <div class="nge-cl-row-meta">
                   <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
@@ -5470,6 +5488,7 @@ onBeforeUnmount(() => {
 .nge-cl-row-name { cursor: pointer; }
 .nge-cl-row-name:hover { color: #eef; }
 
+.nge-cl-active-pill { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font: 700 11px/18px 'Inter', 'Roboto', sans-serif; letter-spacing: 0.04em; color: #08140e; background: #7CFFB2; vertical-align: 1px; }
 .nge-cl-copied {
   font-size: 0.75em;
   color: #4a6;

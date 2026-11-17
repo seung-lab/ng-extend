@@ -2,6 +2,44 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T16:43:00Z",
+      "title": "A simpler beta request form",
+      "items": [
+        "The beta request form now just asks for your email, the best one to reach you."
+      ]
+    },
+    {
+      "at": "2026-11-17T16:38:00Z",
+      "title": "Your active cell",
+      "items": [
+        "In the Cell Library, the cell you are working on now has a green Active tag by its name, so you always know which cell Save view saves to."
+      ]
+    },
+    {
+      "at": "2026-11-17T16:31:00Z",
+      "title": "Quest instructions, Highlight box",
+      "items": [
+        "While playing Cilia Quests, a small i button on the play bar opens the quest instructions.",
+        "The Highlight box moves out of the way when it would sit under the Cell Library.",
+        "The slim Highlight strip is easy to move: drag it by the grip at its left end, or by any part that is not a button."
+      ]
+    },
+    {
+      "at": "2026-11-17T16:04:00Z",
+      "title": "Merges that worked no longer say failed",
+      "items": [
+        "When a merge went through but the server was slow to say so, the Merge Queue could still mark it failed. Pyr now checks the cell, and a merge that worked shows as done."
+      ]
+    },
+    {
+      "at": "2026-11-17T14:52:00Z",
+      "title": "Play button setting, claiming fixed",
+      "items": [
+        "The Settings switch for the Play button is now called Play button on the 2D view. Turning it off keeps the 2D view clear, and you can still start playing from the Cell Library.",
+        "Claim a new cell and Skip pass over a cell someone else already holds and claim the next one, instead of stopping with This cell is already claimed."
+      ]
+    },
+    {
       "at": "2026-11-16T18:55:00Z",
       "title": "Faster cut points",
       "items": [

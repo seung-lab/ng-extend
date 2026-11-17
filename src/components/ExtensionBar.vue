@@ -358,6 +358,29 @@ onMounted(() => {
     if (e.detail?.tab) profileInitialTab.value = e.detail.tab;
     showProfile.value = true;
   }) as EventListener);
+  // Links from the Access page, used once (the address drops them):
+  // "?admin=access" (Review their examples) opens Admin Hub > Access requests;
+  // "?player=<id>" (their Pyr username) opens that player's profile.
+  // Both wait for the admin sign-in to finish, so the panel reads with it.
+  try {
+    const u = new URL(window.location.href);
+    const player = u.searchParams.get('player') || '';
+    const wantAccess = u.searchParams.get('admin') === 'access';
+    const wantPlayer = /^[0-9a-f-]{36}$/i.test(player) ? player : '';
+    if (u.searchParams.has('admin') || u.searchParams.has('player')) {
+      u.searchParams.delete('admin'); u.searchParams.delete('player');
+      history.replaceState(history.state, '', u.toString());
+    }
+    if (wantAccess || wantPlayer) {
+      const stop = watch(() => backendStore.isAdmin, admin => {
+        if (!admin) return;
+        if (wantAccess) { profileUserId.value = null; profileInitialTab.value = 'access'; }
+        else { profileUserId.value = wantPlayer; profileInitialTab.value = undefined; }
+        showProfile.value = true;
+        queueMicrotask(() => stop());
+      }, { immediate: true });
+    }
+  } catch { /* the link just opens Pyr */ }
 
   // Detect Share button click → show "Link copied" toast
   const topBar = document.getElementById('insertNGTopBar');
