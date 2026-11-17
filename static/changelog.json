@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T18:40:17Z",
+      "title": "Sections and scale bar restyled",
+      "items": [
+        "The Sections switch in the 3D view and the scale bar now match the rest of Pyr: dark rounded chips with a cyan tick box and a thin cyan bar."
+      ]
+    },
+    {
       "at": "2026-11-17T18:16:32Z",
       "title": "Sections slider on hover",
       "items": [
