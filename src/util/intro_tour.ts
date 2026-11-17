@@ -2320,17 +2320,6 @@ async function showConnections(card: ReturnType<typeof transmissionCard>, ml: an
   overview();
 }
 
-/** The rocket by the chat box (Ames 2026-11-08): the prototype tour, offered
- *  to every player to try and give feedback on. */
-export function showTourInvite() {
-  if (document.querySelector('.nge-tour-invite')) return;
-  const card = transmissionCard();
-  card.el.classList.add('nge-tour-invite');
-  card.set('Try the new tour of Pyr',
-    "This is the prototype new tour that people will see when opening Pyr for the first time. Want to try it and give us feedback? It's supposed to be fun, beautiful, cool, and informative. Thanks for testing it! There are still some bugs but feel free to submit issues/ideas via bug report! -Amy",
-    [], {label: 'Start the tour', go: () => playIntro()}, '', {alt: {label: 'Not now', go: () => card.close()}});
-}
-
 /** The whole intro: the Starship flies in and lands, then the tour. */
 /** A loading screen while the Sandbox and the cell arrive, until the cell
  *  starts to grow (Ames: "start the tour ... just stays black for a while"). */
@@ -2461,6 +2450,12 @@ export function startStarshipIntro() {
     for (let k = 0; k < 3600 && !signedIn() && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
     if (!signedIn() && !cellDrawn()) { playedThisLoad = false; return; }
     for (let k = 0; k < 80 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
+    // never behind the sign in box or the phone welcome sheet: the tour plays
+    // once and cannot be replayed, so it waits until they are gone (Ames
+    // 2026-11-17)
+    const covered = () => !!document.querySelector('.nge-login-blocker, .nge-mw-blocker');
+    for (let k = 0; k < 3600 && covered(); k++) await new Promise(r => setTimeout(r, 250));
+    if (covered()) { playedThisLoad = false; return; }
     if (wanted()) {
       try { localStorage.setItem(PREVIEW_SEEN, '1'); localStorage.setItem(INTRO_SEEN, '1'); } catch { /* no storage */ }
       firstVisit = false;
