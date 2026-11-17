@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T21:59:00Z",
+      "title": "The tour rocket lands",
+      "items": [
+        "The rocket by the chat box is retired now that the new tour is done. Thank you to everyone who flew it and sent feedback!",
+        "New players now start the tour only after the sign in box closes, so it never plays hidden behind it."
+      ]
+    },
+    {
       "at": "2026-11-17T21:53:00Z",
       "title": "Clearer Cut tutorial",
       "items": [
