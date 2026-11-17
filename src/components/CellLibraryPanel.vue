@@ -3210,10 +3210,21 @@ async function claimNewCell() {
   if (!canClaimNew.value || claimingNew.value) return;
   claimingNew.value = true;
   try {
+    // A cell someone else already holds (Ames 2026-11-17: the top Retina cell
+    // was a second copy of one a player held, so Claim and Skip both stopped
+    // on "This cell is already claimed") is passed over for this visit and
+    // the next one tried.
+    for (let tries = 0; tries < 6; tries++) {
     const cell = await findNextAvailable();
     if (!cell) return;
     await claimCell(cell);
     await nextTick();
+    if (!myOpenClaims.value.some(c => c.segId === cell.segId)
+        && /already (claimed|completed)|claimed by another/i.test(claimError.value)) {
+      claimError.value = '';
+      const passed = new Set(playSkipped.value); passed.add(cell.segId); playSkipped.value = passed;
+      continue;
+    }
     // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
     if (myOpenClaims.value.some(c => c.segId === cell.segId)) {
       // A cell with a start view opened it; one without still takes you there.
@@ -3224,6 +3235,8 @@ async function claimNewCell() {
       slimSeg.value = cell.segId;
       await nextTick();
       clampPanelPos();
+    }
+    return;
     }
   } finally { claimingNew.value = false; }
 }
