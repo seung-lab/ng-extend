@@ -2153,3 +2153,15 @@ body.nge-cursor-xl .nge-3d-panel.neuroglancer-rendered-data-panel {
 
 /* How solid the 2D slice is in the 3D view (report 322). */
 input.nge-slice-opacity { width: 70px; height: 12px; margin: 0 0 0 6px; vertical-align: middle; accent-color: #7ee0ff; cursor: pointer; }
+/* The slider shows only while the pointer is on Sections or on the slider
+   itself (Ames 2026-11-17: "so it isn't there always"). It sits to the left,
+   outside the label's box, so nothing moves when it appears; the label's
+   left padding joins the two, so moving onto the slider keeps it open. */
+label.perspective-panel-show-slice-views { pointer-events: auto; padding-left: 6px; cursor: default; }
+label.perspective-panel-show-slice-views input.nge-slice-opacity {
+  position: absolute; right: 100%; top: 50%; transform: translateY(-50%); margin: 0;
+  opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+label.perspective-panel-show-slice-views:hover input.nge-slice-opacity,
+label.perspective-panel-show-slice-views:has(input:focus-visible) input.nge-slice-opacity,
+label.perspective-panel-show-slice-views input.nge-slice-opacity:active { opacity: 1; pointer-events: auto; }
