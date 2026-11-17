@@ -612,7 +612,7 @@ function nearestChunkNm(from, places) {
  *  place on the player's own cell where the trouble starts (a missing
  *  branch's end, or where a wrong part joins), to the size of a chunk. Step 2
  *  shows the piece itself. Each hint is recorded with its step. */
-async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
+async function hint(io, {taskId, me, isAdmin, n, step, idleSecs, prefetch = false}) {
   const r = await review(io, {taskId, me, isAdmin, withSamples: true});
   if (!r.scorable) return {taskId: r.taskId, scorable: false};
   const all = [
@@ -658,7 +658,9 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
     if (reveal) piece = {kind: p.kind, size: p.size, pointNm: at || p.pointNm, ...(p.root ? {root: p.root} : {}), ...merger};
     else piece = {kind: p.kind, size: p.size, nearNm: at || p.pointNm, ...merger};
   }
-  await record(io, {taskId: r.taskId, me, kind: 'hint', idleSecs, score: r.score,
+  // A look ahead (the box asks for the next spot before Jump is pressed, Ames
+  // 2026-11-17: "why does it take so long to find the next spot?") is not a hint.
+  if (!prefetch) await record(io, {taskId: r.taskId, me, kind: 'hint', idleSecs, score: r.score,
     detail: piece ? {n: i, step: reveal ? 2 : 1, kind: piece.kind, size: piece.size, left: all.length} : {left: 0}}).catch(() => {});
   return {taskId: r.taskId, scorable: true, left: all.length, n: i, step: reveal ? 2 : 1, piece};
 }
@@ -780,7 +782,7 @@ async function warmKeys(io, {budgetMs = 480000} = {}) {
 async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.check') return check(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
-  if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, step: args && args.step, idleSecs: args && args.idleSecs});
+  if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, step: args && args.step, idleSecs: args && args.idleSecs, prefetch: !!(args && args.prefetch)});
   if (action === 'match.mine') return mine(io, {me, userId: args && args.userId});
   if (action === 'match.event') return event(io, {taskId: args && args.taskId, me, isAdmin, kind: args && args.kind, idleSecs: args && args.idleSecs, score: args && args.score, note: args && args.note});
   if (action === 'match.notes') return notes(io, {me, isAdmin, limit: args && args.limit});

@@ -626,3 +626,15 @@ test('Jump never leaves the cell: with no touch, the cell voxel nearest the piec
   assert.deepEqual(C.nearestCellVoxel(vol, [4, 1, 1], [3, 0, 0]), [1, 0, 0]);
   assert.equal(C.nearestCellVoxel(Uint8Array.from([0, 0]), [2, 1, 1], [0, 0, 0]), null);
 });
+
+test('a look ahead finds the spot without recording a hint', async () => {
+  M._reset();
+  const w = world();
+  await M.check(w.io, {taskId: 1, me: ME});
+  const before = (w.db.events || []).length;
+  const r = await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 1, prefetch: true});
+  assert.ok(r.piece);
+  assert.equal((w.db.events || []).length, before);
+  await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 1});
+  assert.equal((w.db.events || []).length, before + 1);
+});

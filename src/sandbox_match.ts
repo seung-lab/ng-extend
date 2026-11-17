@@ -29,6 +29,7 @@ import { openSplitView } from './practice';
 import { getActivePinia } from 'pinia';
 import EditableText from './components/EditableText.vue';
 import NeuronGlyph from './components/NeuronGlyph.vue';
+import { isLatestRoots } from './widgets/pcg_service';
 // The Cell Library's own neuron (Ames 2026-11-14: "use the neuron").
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 
@@ -214,6 +215,7 @@ export function hasReview(taskId: number | null | undefined): boolean {
 }
 function noteResult(taskId: number, r: MatchResult) {
   last.set(taskId, r);
+  lookAhead(taskId, r);
   if (r.scorable && (r.merge !== undefined || r.cut !== undefined)) reviewable.add(taskId); else reviewable.delete(taskId);
 }
 
@@ -417,7 +419,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
-#${CARD_ID} .nge-cm-nudge{display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
+#${CARD_ID} .nge-cm-nudge{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after{content:'';position:absolute;left:-40%;bottom:0;width:40%;height:2px;background:linear-gradient(90deg,transparent,#7fd8ff,transparent);animation:nge-cm-ld-sweep 1.2s ease-in-out infinite}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(127,216,255,.10) 50%,transparent 70%);background-size:220% 100%;animation:nge-cm-find-shine 1.6s linear infinite;pointer-events:none}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:nge-cm-ld-pulse 1s ease-in-out infinite;transform-origin:center}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding .nge-cm-nudge-text::after{content:'';display:inline-block;width:14px;animation:nge-cm-ld-dots 1.2s steps(4) infinite}
+@keyframes nge-cm-find-shine{from{background-position:120% 0}to{background-position:-120% 0}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after,#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before,#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:none}}
 #${CARD_ID} .nge-cm-nudge[hidden]{display:none}
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
@@ -1194,6 +1202,34 @@ interface HintPiece { kind: 'merge' | 'cut'; root?: string; size: number; pointN
 /** Hint in two steps (Ames 2026-11-14: "this is not a hint but giving
  *  immediately the answer"): first the place on your own cell where the
  *  trouble starts, and what to look for there; Show me then shows the piece. */
+// ── Look ahead (Ames 2026-11-17: "why does it take so long to find the next
+// spot? can we speed it up?"). A spot takes the server 1 to 7 s: it reads the
+// cell, the true cell and the image around the spot, and a Jump can reach a
+// server copy that has none of it in memory. So the box asks for the next
+// spot quietly as soon as a reading lands, keeps the answer here, and Jump
+// shows it at once. Keyed by the cell's root, so an edit asks again.
+interface HintAnswer { left: number; piece: HintPiece | null }
+const ahead = new Map<string, Promise<HintAnswer>>();
+const aheadKey = (taskId: number, root: string | undefined, n: number, step: number) => `${taskId}:${root ?? ''}:${n}:${step}`;
+function askAhead(taskId: number, root: string | undefined, n: number, step: 1 | 2) {
+  const key = aheadKey(taskId, root, n, step);
+  if (ahead.has(key)) return;
+  if (ahead.size > 40) ahead.delete(ahead.keys().next().value as string);
+  const p = secureWrite<HintAnswer>('match.hint', { taskId, n, step, prefetch: true });
+  p.catch(() => ahead.delete(key));
+  ahead.set(key, p);
+}
+/** The spot the next Jump goes to, asked for now. */
+function lookAhead(taskId: number, r: MatchResult) {
+  if (!r.scorable || !r.root || !isPlaying()) return;
+  const left = (r.missing?.left ?? 0) + (r.cutParts ?? r.extra?.left ?? 0);
+  if (left <= 0) return;
+  const c = clocks.get(taskId);
+  const n = c ? (c.jumped ? c.n + 1 : c.n) : 0;
+  // A moment later, so a burst of edits asks once.
+  window.setTimeout(() => { if (last.get(taskId)?.root === r.root) askAhead(taskId, r.root, n, 1); }, 1200);
+}
+
 async function pressHint(el: HTMLElement, next = false) {
   const taskId = shownFor;
   if (taskId == null) return;
@@ -1212,8 +1248,21 @@ async function pressHint(el: HTMLElement, next = false) {
   line.hidden = false;
   if (step === 1) { b.hidden = true; text.textContent = 'Finding the next spot…'; }
   b.disabled = true; jump.disabled = true; if (step === 2) b.textContent = 'Finding…';
+  line.classList.add('nge-cm-finding');
   try {
-    const h = await secureWrite<{ left: number; piece: HintPiece | null }>('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) });
+    const root = last.get(taskId)?.root;
+    const key = aheadKey(taskId, root, c.n, step);
+    const early = ahead.get(key);
+    let h: HintAnswer;
+    if (early) {
+      // Looked up already: shown at once; the hint itself is still kept.
+      h = await early;
+      void secureWrite('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) }).catch(() => {});
+    } else {
+      h = await secureWrite<HintAnswer>('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) });
+    }
+    // Show me after this: asked for now.
+    if (step === 1 && h.piece) askAhead(taskId, root, c.n, 2);
     if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; return; }
     showHintPiece(h.piece);
     const where = h.left > 1 ? ` Spot ${(c.n % h.left) + 1} of ${h.left}.` : '';
@@ -1238,7 +1287,7 @@ async function pressHint(el: HTMLElement, next = false) {
     console.debug('[cell-match] no jump', e?.message);
     text.textContent = 'Could not find the next spot right now. Try again in a moment.';
     b.textContent = 'Show me';
-  } finally { b.disabled = false; jump.disabled = false; }
+  } finally { b.disabled = false; jump.disabled = false; line.classList.remove('nge-cm-finding'); }
 }
 let hintPinTimer: number | undefined;
 function showHintPiece(p: HintPiece) {
@@ -1941,6 +1990,51 @@ export async function showReview(_taskId: number, pending: Promise<ReviewResult 
   });
 }
 
+/** The claim's own listed IDs (from the sheet, or an older view) are old
+ *  versions of the cell: on screen next to the current one, the cell showed
+ *  twice, as it is and as it was (Ames 2026-11-17: "Do you see the two
+ *  segments in view? They're the same cell", 648518346352170608 last current
+ *  on Nov 14). Swapped for the current ID whenever they appear. */
+const outdated = new Map<string, boolean>();
+let swapping = false;
+async function swapOldIds(taskId: number) {
+  const live = last.get(taskId)?.root;
+  if (!live || !deps || swapping) return;
+  const claim = deps.claims().find(c => c.id === taskId);
+  const group = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
+  const vis = group?.visibleSegments;
+  if (!claim || !vis) return;
+  let shown: string[];
+  try { shown = claim.roots.filter(id => /^\d+$/.test(id) && id !== live && vis.has(Uint64.parseString(id))); } catch { return; }
+  if (!shown.length) return;
+  swapping = true;
+  try {
+    // Only an ID CAVE says is out of date, and only for a current one: right
+    // after an edit the claim can hold the new ID before the box's reading has
+    // it, and that must never be swapped for the older one.
+    const ask = [live, ...shown].filter(id => !outdated.has(id) || id === live);
+    if (ask.length) {
+      const got = await isLatestRoots(ask);
+      for (const id of ask) if (got.has(id)) outdated.set(id, got.get(id) === false);
+    }
+    if (outdated.get(live) !== false) { outdated.delete(live); return; }
+    if (last.get(taskId)?.root !== live) return;
+    const now = Uint64.parseString(live);
+    for (const id of shown) {
+      if (outdated.get(id) !== true) continue;
+      const old = Uint64.parseString(id);
+      if (!vis.has(old)) continue;
+      const wasSelected = !!group.selectedSegments?.has(old);
+      vis.delete(old);
+      group.selectedSegments?.delete(old);
+      vis.add(now);
+      if (wasSelected) group.selectedSegments?.add(now);
+      console.debug('[cell-match] old ID of the cell on screen', id, 'swapped for', live);
+    }
+  } catch (e) { console.debug('[cell-match] swap old IDs', e); }
+  finally { swapping = false; }
+}
+
 function tick() {
   const el = document.getElementById(CARD_ID);
   if (el) place(el);
@@ -1954,6 +2048,7 @@ function tick() {
     return;
   }
   maybeOfferHint(id);
+  void swapOldIds(id);
   // Play back on, on the cell Stop hid the box from: show it again.
   if (stoppedOn != null && isPlaying()) { if (stoppedOn === onScreen) onScreen = null; stoppedOn = null; }
   if (id === onScreen) return;

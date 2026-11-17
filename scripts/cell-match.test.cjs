@@ -66,7 +66,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   await context.route(/ewSandboxMatch/, r => {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     asks.push({ action: input.action, taskId: input.taskId, hasToken: !!input.token });
-    if (input.action === 'match.hint') { hintSteps.push(input.step); return r.fulfill(json({ ok: true, data: input.step === 2 ? HINT : HINT_PLACE })); }
+    if (input.action === 'match.hint') { if (!input.prefetch) hintSteps.push(input.step); return r.fulfill(json({ ok: true, data: input.step === 2 ? HINT : HINT_PLACE })); }
     if (input.action === 'match.event') { events.push(input.kind); if (input.note) eventNotes.push([input.kind, input.note]); return r.fulfill(json({ ok: true, data: { ok: true } })); }
     if (input.action === 'match.mine') return r.fulfill(json({ ok: true, data: { cells: 5, accuracy: 72, lowRun: 0, reviewFirst: false, lowScore: 40, lowRunNeeded: 3 } }));
     return r.fulfill(json({ ok: true, data: input.action === 'match.review' ? reviewAnswer : answer }));
