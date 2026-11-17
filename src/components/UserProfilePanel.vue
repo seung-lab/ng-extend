@@ -1955,11 +1955,14 @@ onUnmounted(() => clearTimeout(stageTimer));
                 <div class="nge-track-bar" :title="(nextExplorationAchievement) ? (nextExplorationAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
                 <div v-if="nextExplorationAchievement" class="nge-track-count" :title="(nextExplorationAchievement).remaining.toLocaleString() + ' more cells to your next Achievement'">{{ (nextExplorationAchievement).remaining.toLocaleString() }} to go</div>
               </div>
-              <div v-if="sandboxAcc && sandboxAcc.cells && sandboxAcc.accuracy != null" class="nge-profile-sandbox-acc"
-                   title="The average match score of the sim cells completed in the Training Sim, each at its last Complete">
-                Training Sim accuracy <b>{{ sandboxAcc.accuracy }}%</b> <span>over {{ sandboxAcc.cells }} sim {{ sandboxAcc.cells === 1 ? 'cell' : 'cells' }}</span>
-              </div>
               <div class="nge-track-stats">
+                <!-- Inside the stats column: as its own item in the row's grid it
+                     took the first cell and pushed the counts right and the
+                     Achievements down onto the Edits row (Ames 2026-11-17). -->
+                <div v-if="sandboxAcc && sandboxAcc.cells && sandboxAcc.accuracy != null" class="nge-profile-sandbox-acc"
+                     title="The average match score of the sim cells completed in the Training Sim, each at its last Complete">
+                  Training Sim accuracy <b>{{ sandboxAcc.accuracy }}%</b> <span>over {{ sandboxAcc.cells }} sim {{ sandboxAcc.cells === 1 ? 'cell' : 'cells' }}</span>
+                </div>
           <!-- Cells completed on this dataset, in the game, by the completed
                cell rule: the same three windows as edits, from the completions
                list with each cell's completion moment, and the same curve
