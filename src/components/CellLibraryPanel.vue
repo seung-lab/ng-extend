@@ -3408,7 +3408,14 @@ function playStop() {
 }
 /** Play stopped from anywhere (the top bar's stop button, the choice card):
  *  the full library comes back, with the cell in hand still claimed. */
-const onPlayStopped = () => { startNote.value = ''; if (slim.value) expandAndStay(); };
+const onPlayStopped = () => {
+  startNote.value = '';
+  // On the Sandbox the Playing box held the cell and the library was only
+  // there, out of sight, to run its buttons: it closes rather than opening
+  // full (Ames 2026-11-17: Stop playing "loaded cell library").
+  if (document.body.classList.contains('nge-cm-owns')) { document.dispatchEvent(new CustomEvent('nge:close-cell-library')); return; }
+  if (slim.value) expandAndStay();
+};
 onMounted(() => document.addEventListener('nge:play-stopped', onPlayStopped));
 onBeforeUnmount(() => document.removeEventListener('nge:play-stopped', onPlayStopped));
 
@@ -3501,7 +3508,11 @@ async function collapseTo(cell: CellRow | null) {
   if (cell ? slimSeg.value === cell.segId : slimEmpty.value) return;
   const el = panelEl.value;
   // Already slim (jumping from the slim row itself): nothing to shrink.
-  const ghost = el && !slim.value ? snapshotPanel(el, '.nge-cl-list') : null;
+  // Out of sight (Play still finding the cell, or the Sandbox box owns the
+  // row): no picture of the full library zips into it (Ames 2026-11-17:
+  // Start playing "is still momentarily loading the cell library").
+  const unseen = playOpening.value || document.body.classList.contains('nge-cm-owns');
+  const ghost = el && !slim.value && !unseen ? snapshotPanel(el, '.nge-cl-list') : null;
   if (!CELL_TABS.includes(filter.value)) filter.value = 'mine';
   showTabSettings.value = false;
   showHowTo.value = false;

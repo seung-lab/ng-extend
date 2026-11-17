@@ -250,11 +250,11 @@ const CSS = `
 #${CARD_ID}.nge-cm-ping::after{animation:nge-cm-sweep .9s ease-out 1}
 @keyframes nge-cm-sweep{0%{top:-30%;opacity:1}100%{top:110%;opacity:0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID}.nge-cm-ping::after{animation:none}}
-#${CARD_ID} .nge-cm-head{display:flex;align-items:center;gap:6px;margin:-11px -14px 6px;padding:11px 14px 4px;cursor:grab;touch-action:none;user-select:none;font:600 11.5px/1 Orbitron,Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7fc8ff}
+#${CARD_ID} .nge-cm-head{display:flex;align-items:center;gap:4px;margin:-11px -14px 6px;padding:11px 14px 4px;cursor:grab;touch-action:none;user-select:none;font:600 11.5px/1 Orbitron,Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7fc8ff}
 #${CARD_ID} .nge-cm-dot{width:8px;height:8px;border-radius:50%;background:#59e3a7;box-shadow:0 0 6px #59e3a7}
 #${CARD_ID}.nge-cm-dragging .nge-cm-head{cursor:grabbing}
 #${CARD_ID}.nge-cm-checking .nge-cm-dot{background:#7fc8ff;box-shadow:0 0 6px #7fc8ff}
-#${CARD_ID} .nge-cm-title{white-space:nowrap;letter-spacing:.08em;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#${CARD_ID} .nge-cm-title{white-space:nowrap;letter-spacing:.05em;min-width:0;overflow:hidden;text-overflow:ellipsis}
 #${CARD_ID} .nge-cm-pre{color:#6f9cc8}
 #${CARD_ID} .nge-cm-state{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 11px/1 Inter,system-ui,sans-serif;color:#7f9fc2;letter-spacing:.04em}
 #${CARD_ID} .nge-cm-row{display:grid;grid-template-columns:1fr auto;align-items:end;column-gap:8px;padding:3px 0 2px}
@@ -295,7 +295,8 @@ const CSS = `
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-info{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-head{margin-bottom:2px}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row{padding:2px 0;grid-template-columns:16px 1fr;align-items:center}
-#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){width:240px}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){width:250px}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-pre{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-i{margin-left:auto}
 #${CARD_ID} .nge-cm-short{display:none;font:600 11px/1 Orbitron,Inter,sans-serif;color:#8fb6dc}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-short{display:block}
@@ -340,7 +341,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
 #${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important}
 #${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:nge-cm-hglow 2.6s ease-in-out infinite}
-#${CARD_ID} .nge-cm-mark{margin-top:9px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
+#${CARD_ID} .nge-cm-mark{margin-top:6px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
 #${CARD_ID} .nge-cm-mark-head{display:flex;align-items:center;gap:6px}
 #${CARD_ID} .nge-cm-mark-i{width:18px;height:18px;flex:0 0 18px;font-size:11px}
 #${CARD_ID} .nge-cm-mark-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
@@ -350,9 +351,10 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid rgba(127,190,255,.35);border-radius:999px;background:rgba(10,24,48,.6);color:#e6f0ff;font:600 12px/1 Inter,system-ui,sans-serif;cursor:pointer}
 #${CARD_ID} .nge-cm-chip:hover{border-color:#7fd8ff;background:rgba(74,158,255,.22)}
 #${CARD_ID} .nge-cm-chip i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
-#${CARD_ID} .nge-cm-mode{margin-left:auto;padding:3px 8px;border-radius:999px;background:rgba(127,216,255,.1);color:#bfeaff;font-weight:600;white-space:nowrap}
-#${CARD_ID} .nge-cm-mode[data-mode="merge"]{background:rgba(255,210,77,.14);color:#ffe08a}
-#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:rgba(255,93,115,.16);color:#ffb3bf}
+#${CARD_ID} .nge-cm-mode{flex:0 0 auto;margin-left:0;padding:3px 7px;border-radius:999px;background:rgba(127,216,255,.1);color:#bfeaff;font:600 11.5px/1.1 Inter,system-ui,sans-serif;letter-spacing:0;text-transform:none;white-space:nowrap;cursor:default}
+#${CARD_ID}.nge-cm-idle .nge-cm-mode,#${CARD_ID}.nge-cm-reviewing .nge-cm-mode{display:none}
+#${CARD_ID} .nge-cm-mode[data-mode="merge"]{background:rgba(61,155,255,.24);color:#bfe0ff;box-shadow:inset 0 0 0 1px rgba(61,155,255,.55)}
+#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:rgba(255,64,88,.24);color:#ffc2cb;box-shadow:inset 0 0 0 1px rgba(255,64,88,.6)}
 #${CARD_ID} .nge-cm-mode[data-mode="highlight"]{background:rgba(61,255,154,.14);color:#9dffd0}
 #${CARD_ID} .nge-cm-cellnote{margin:-2px 0 8px;padding:7px 9px;border-left:3px solid #7fd8ff;border-radius:4px;background:rgba(127,216,255,.08);font:13px/1.35 Inter,system-ui,sans-serif;color:#d6e2f5}
 #${CARD_ID} .nge-cm-cellnote[hidden],#${CARD_ID} .nge-cm-acc[hidden],#${CARD_ID} .nge-cm-finish-gate[hidden]{display:none}
@@ -381,8 +383,14 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
 #${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
-#${CARD_ID} .nge-cm-play{display:flex;gap:6px;align-items:center;margin-top:8px;padding-top:9px;border-top:1px solid rgba(127,190,255,.18)}
-#${CARD_ID} .nge-cm-play .nge-cm-btn{margin-left:0}
+#${CARD_ID} .nge-cm-play{display:grid;grid-template-columns:1fr 1.6fr;grid-template-areas:"jump done" "save skip";gap:5px;margin-top:6px;padding-top:7px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-play .nge-cm-btn{margin-left:0 !important;width:100%;justify-content:center;text-align:center}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn{grid-area:jump}
+#${CARD_ID} .nge-cm-play .nge-cm-complete{grid-area:done}
+#${CARD_ID} .nge-cm-play .nge-cm-saveview{grid-area:save}
+#${CARD_ID} .nge-cm-play .nge-cm-skipcell{grid-area:skip}
+#${CARD_ID} .nge-cm-play .nge-cm-saveview,#${CARD_ID} .nge-cm-play .nge-cm-skipcell{padding:4px 8px !important;border-color:rgba(127,190,255,.22);background:transparent;color:#a9c3e0;font-size:12px !important;font-weight:500 !important}
+#${CARD_ID} .nge-cm-play .nge-cm-saveview:hover,#${CARD_ID} .nge-cm-play .nge-cm-skipcell:hover{border-color:rgba(127,216,255,.55);background:rgba(74,158,255,.12);color:#e6f0ff}
 #${CARD_ID} .nge-cm-btn[hidden]{display:none}
 #${CARD_ID} .nge-cm-play .nge-cm-btn,#${CARD_ID} .nge-cm-finish-actions .nge-cm-btn,#${CARD_ID} .nge-cm-nudge .nge-cm-btn{padding:7px 10px;border-radius:6px;font:600 12.5px/1 Inter,system-ui,sans-serif;letter-spacing:0;text-transform:none;white-space:nowrap}
 #${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-go{margin-left:auto;border-color:#3eecbe;background:rgba(20,110,80,.55);color:#eafff7}
@@ -421,6 +429,9 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:58px 1fr auto;align-items:baseline}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:4px 0 7px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-fill,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{box-shadow:none;opacity:.85}
+#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{background:linear-gradient(90deg,#e8364f,#ff7a8c)}
+#${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label{color:#6fb8ff}
+#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{color:#ff7a8c}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{font-size:10.5px;letter-spacing:.12em;grid-column:1;grid-row:1}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
@@ -560,8 +571,7 @@ const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
 // Ames 2026-11-16: the chips on their own line, and an (i) for Highlight.
 const MARK_HTML = '<div class="nge-cm-mark">'
   + '<div class="nge-cm-mark-head"><span class="nge-cm-mark-label">Mark where you have been</span>'
-  + '<button type="button" class="nge-cm-tool nge-cm-mark-i" aria-label="What is Highlight?" aria-expanded="false" title="What is Highlight?">i</button>'
-  + '<span class="nge-cm-mode" data-mode="look" title="What a Ctrl+click does right now">Looking</span></div>'
+  + '<button type="button" class="nge-cm-tool nge-cm-mark-i" aria-label="What is Highlight?" aria-expanded="false" title="What is Highlight?">i</button></div>'
   + '<div class="nge-cm-mark-info" hidden></div>'
   + '<div class="nge-cm-mark-chips">'
   + '<button type="button" class="nge-cm-chip" data-mark="checked" title="Highlight a branch you have checked, out to its end"><i></i>Checked</button>'
@@ -617,6 +627,7 @@ function card(): HTMLElement {
   el.title = 'Your Merge and Cut together, half each. Merge: the missing pieces you have merged in. Cut: the wrong parts you have cut off.';
   el.innerHTML = '<div class="nge-cm-head">' + '<button type="button" class="nge-cm-tool nge-cm-cellbtn" aria-label="Open the Cell Library" title="Open the Cell Library"><img class="nge-cm-cellimg" src="' + neuronIcon + '" alt="" aria-hidden="true"></button>'
     + '<span class="nge-cm-title">' + TITLE_HTML + '</span>'
+    + '<span class="nge-cm-mode" data-mode="look" title="What a Ctrl+click does right now">Looking</span>'
     + '<button type="button" class="nge-cm-tool nge-cm-i" aria-label="What do these numbers mean?" aria-pressed="false" aria-controls="nge-cell-match-info" title="What do these numbers mean?">i</button>'
     + '<button type="button" class="nge-cm-tool nge-cm-min-btn" aria-label="Collapse" aria-pressed="false" title="Collapse to the score"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
     + '<button type="button" class="nge-cm-x" aria-label="Close" title="Close. Press Play to open it again.">×</button></div>'
@@ -1068,6 +1079,16 @@ async function showBiggestPiece(el: HTMLElement) {
   if (c) { c.n = 0; c.jumped = false; }
   await pressHint(el, true);
   if (clocks.get(taskId)?.step === 2) await pressHint(el);
+}
+/** A Sandbox cell first opened while playing: the 2D EM beside the 3D
+ *  (Ames 2026-11-17), once per cell in this tab. */
+function splitOnce(taskId: number) {
+  const KEY = 'nge-cm-split-done';
+  let done: number[] = [];
+  try { done = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch { /* none yet */ }
+  if (done.includes(taskId)) return;
+  try { sessionStorage.setItem(KEY, JSON.stringify([...done.slice(-50), taskId])); } catch { /* private window */ }
+  ensureSplit();
 }
 /** 2D beside 3D for a hint, unless a 2D view is already open. */
 function ensureSplit() {
@@ -1838,6 +1859,7 @@ function tick() {
   if (id === onScreen) return;
   onScreen = id;
   noteOpened(id);
+  if (onSandbox()) splitOnce(id);
   const r = last.get(id);
   if (r) show(id, r, false);
   void ask(id);
@@ -1877,6 +1899,13 @@ export function startSandboxMatch(d: Deps) {
 }
 
 /** For headless checks. */
+// Stop playing: the box goes at once (Ames 2026-11-17: "it kept the match
+// score box behind the start playing"; it went only on a refresh). A tick
+// later, so the Cell Library, hearing the same stop, still sees the box own it.
+document.addEventListener('nge:play-stopped', () => {
+  if (canonicalDataset(currentDatasetTag()) !== 'pinky_nf_v2') return;
+  window.setTimeout(() => { if (!isPlaying()) { hide(); syncOwns(); } }, 0);
+});
 // The Play button setting changed: the box goes, or comes back.
 document.addEventListener('nge:play-pref', () => {
   if (playOff()) { hide(); syncOwns(); return; }

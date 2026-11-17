@@ -283,10 +283,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       c.querySelector('.nge-cm-chip[data-mark="comeback"]').click();
       document.removeEventListener('nge:open-highlight', o); document.removeEventListener('nge:highlight-style', s);
       const pill = c.querySelector('.nge-cm-mode');
-      return { opened, first, second: picked, chips: [...c.querySelectorAll('.nge-cm-chip')].map(b => b.textContent), row: c.querySelector('.nge-cm-mark').offsetParent !== null, pill: pill.textContent };
+      return { opened, first, second: picked, chips: [...c.querySelectorAll('.nge-cm-chip')].map(b => b.textContent), row: c.querySelector('.nge-cm-mark').offsetParent !== null, pill: pill.textContent, pillTop: pill.parentElement.classList.contains('nge-cm-head') && pill.offsetParent !== null };
     });
     check('Checked and Come back open Highlight on their own colors', mark.opened === 2 && mark.first === 'checked' && mark.second === 'c_comeback' && mark.chips.join(',') === 'Checked,Come back' && mark.row, mark);
-    check('the box says what a Ctrl+click does now', /^(Looking|Highlighting)$/.test(mark.pill), mark.pill);
+    check('the box says what a Ctrl+click does now, in its header', /^(Looking|Highlighting)$/.test(mark.pill) && mark.pillTop, mark);
     const markInfo = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const i = c.querySelector('.nge-cm-mark-i'); i.click(); const box = c.querySelector('.nge-cm-mark-info'); const r = { open: !box.hidden, text: box.textContent, chipsBelow: c.querySelector('.nge-cm-mark-chips').getBoundingClientRect().top > c.querySelector('.nge-cm-mark-label').getBoundingClientRect().bottom }; return r; });
     check('the (i) explains Highlight; the chips sit on their own line', markInfo.open && /Highlight paints over your cell/.test(markInfo.text) && /Come back/.test(markInfo.text) && markInfo.chipsBelow, markInfo);
     await shot('cell-match-mark.png');
