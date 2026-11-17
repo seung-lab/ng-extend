@@ -215,11 +215,12 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
   clip-path: polygon(var(--cut) 0, 100% 0, calc(100% - 10px) 100%, 0 100%, 0 var(--cut));
   background: linear-gradient(135deg, #d4fff2 0%, #5ef0c6 45%, #19b9a0 100%); color: #032a24;
 }
-.nge-play-icon { position: relative; z-index: 1; width: 40%; height: 40%; }
-/* Hovered, the key darkens; pressed, darker still. The mark stays put (Ames). */
+.nge-play-icon { position: relative; z-index: 1; width: 40%; height: 40%; transition: color 0.2s, filter 0.2s; }
+/* Hovered, the key deepens and the mark turns white; pressed, deeper still. The mark stays put (Ames). */
 .nge-play-key::after { content: ''; position: absolute; inset: 0; background: #021f1a; opacity: 0; transition: opacity 0.2s; }
-.nge-play-btn:hover .nge-play-key::after, .nge-play-btn:focus-visible .nge-play-key::after { opacity: 0.22; }
-.nge-play-btn:active .nge-play-key::after { opacity: 0.4; transition-duration: 0.05s; }
+.nge-play-btn:hover .nge-play-key::after, .nge-play-btn:focus-visible .nge-play-key::after { opacity: 0.38; }
+.nge-play-btn:hover .nge-play-icon, .nge-play-btn:focus-visible .nge-play-icon { color: #fff; filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.7)); }
+.nge-play-btn:active .nge-play-key::after { opacity: 0.55; transition-duration: 0.05s; }
 .nge-play-label {
   position: relative; display: flex; align-items: center; margin-left: -6px; padding: 0 20px 0 18px; overflow: hidden;
   font: 700 13px/1 'Orbitron', 'Inter', system-ui, sans-serif; letter-spacing: 0.3em; text-transform: uppercase;
