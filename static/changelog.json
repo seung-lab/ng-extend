@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T19:06:50Z",
+      "title": "Training Sim score on your profile",
+      "items": [
+        "Your Training Sim accuracy now sits on its own line above Cells completed, so your counts and Achievements stay in their places.",
+        "Once you can edit the Retina, the Training Sim score no longer shows on your profile."
+      ]
+    },
+    {
       "at": "2026-11-17T18:40:17Z",
       "title": "Sections and scale bar restyled",
       "items": [
