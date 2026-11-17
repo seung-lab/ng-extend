@@ -215,7 +215,11 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
   clip-path: polygon(var(--cut) 0, 100% 0, calc(100% - 10px) 100%, 0 100%, 0 var(--cut));
   background: linear-gradient(135deg, #d4fff2 0%, #5ef0c6 45%, #19b9a0 100%); color: #032a24;
 }
-.nge-play-icon { width: 40%; height: 40%; transition: transform 0.25s cubic-bezier(.2,.8,.2,1); }
+.nge-play-icon { position: relative; z-index: 1; width: 40%; height: 40%; }
+/* Hovered, the key darkens; pressed, darker still. The mark stays put (Ames). */
+.nge-play-key::after { content: ''; position: absolute; inset: 0; background: #021f1a; opacity: 0; transition: opacity 0.2s; }
+.nge-play-btn:hover .nge-play-key::after, .nge-play-btn:focus-visible .nge-play-key::after { opacity: 0.22; }
+.nge-play-btn:active .nge-play-key::after { opacity: 0.4; transition-duration: 0.05s; }
 .nge-play-label {
   position: relative; display: flex; align-items: center; margin-left: -6px; padding: 0 20px 0 18px; overflow: hidden;
   font: 700 13px/1 'Orbitron', 'Inter', system-ui, sans-serif; letter-spacing: 0.3em; text-transform: uppercase;
@@ -234,7 +238,6 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 }
 .nge-play-btn:hover { filter: drop-shadow(0 0 14px rgba(94, 240, 198, 0.75)); }
 .nge-play-btn:hover .nge-play-label::after, .nge-play-btn:focus-visible .nge-play-label::after { transform: scaleX(1); }
-.nge-play-btn:hover .nge-play-icon { transform: translateX(2px); }
 .nge-play-btn:active { transform: translateY(1px) scale(0.98); }
 .nge-play-btn:focus-visible { outline: 2px solid #5ef0c6; outline-offset: 4px; }
 /* The Sandbox: larger, with a slow glow, so a new player sees where to start. */
@@ -263,7 +266,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-btn.is-launch .nge-play-comet { animation: nge-play-comet 0.5s cubic-bezier(.5,0,.2,1) 0.06s both; }
 @keyframes nge-play-kick { 0% { transform: scale(1); } 18% { transform: scale(0.94); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
 @keyframes nge-play-keyflash { 0% { filter: brightness(1); } 20% { filter: brightness(2.2) saturate(0.6); } 100% { filter: brightness(1); } }
-@keyframes nge-play-iconpop { 0% { transform: none; } 25% { transform: scale(0.7); } 50% { transform: translateX(5px) scale(1.25); } 100% { transform: none; } }
+@keyframes nge-play-iconpop { 0% { transform: none; } 25% { transform: scale(0.7); } 50% { transform: scale(1.25); } 100% { transform: none; } }
 @keyframes nge-play-fill { 0% { opacity: 0; } 25% { opacity: 1; filter: brightness(1.8); } 100% { opacity: 0.35; } }
 @keyframes nge-play-ring { 0% { opacity: 0.95; transform: scale(0.5); } 100% { opacity: 0; transform: scale(2.8); } }
 @keyframes nge-play-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateX(6px) scale(1.2); } 100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--d)) scale(0.3); } }
