@@ -2450,6 +2450,12 @@ export function startStarshipIntro() {
     for (let k = 0; k < 3600 && !signedIn() && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
     if (!signedIn() && !cellDrawn()) { playedThisLoad = false; return; }
     for (let k = 0; k < 80 && !cellDrawn(); k++) await new Promise(r => setTimeout(r, 250));
+    // never behind the sign in box or the phone welcome sheet: the tour plays
+    // once and cannot be replayed, so it waits until they are gone (Ames
+    // 2026-11-17)
+    const covered = () => !!document.querySelector('.nge-login-blocker, .nge-mw-blocker');
+    for (let k = 0; k < 3600 && covered(); k++) await new Promise(r => setTimeout(r, 250));
+    if (covered()) { playedThisLoad = false; return; }
     if (wanted()) {
       try { localStorage.setItem(PREVIEW_SEEN, '1'); localStorage.setItem(INTRO_SEEN, '1'); } catch { /* no storage */ }
       firstVisit = false;
