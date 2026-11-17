@@ -54,6 +54,11 @@ const PEOPLE = [
 PEOPLE.push({ ...base, email: 'ryan.t.morey@gmail.com', user_id: UID(16), name: 'Ryan Morey', pilot_enabled: true, joined_at: ago(30), tutorial_at: ago(29), tutorials: 3, first_edit_at: ago(28), last_edit_at: ago(1), edits: 50, edits_30d: 50 });
 PEOPLE.push({ ...base, email: 'boss@example.org', user_id: UID(15), name: 'Ames Admin', pilot_enabled: false, joined_at: ago(200), tutorial_at: ago(199), tutorials: 6, first_edit_at: ago(198), last_edit_at: ago(2), edits: 782, is_admin: true });
 for (let i = 0; i < 6; i++) PEOPLE.push({ ...base, email: `list${i}@example.org`, pilot_enabled: true, let_in_at: ago(40), from_list: true });
+const TEN = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, kind: i < 7 ? 'cut' : 'merge', slot: i }));
+const RETINA = [
+  { id: 7, status: 'submitted', tries: 2, email: 'jo@example.org', user_id: UID(12), player_name: 'Jo Kim', eyewire_username: 'jokim', player_note: 'Fixed the two merges.', submitted_at: ago(0.5), items: TEN },
+  { id: 8, status: 'submitted', tries: 1, email: 'pat@example.org', player_name: 'Pat New', submitted_at: ago(1.5), items: TEN },
+];
 const EDITS = Array.from({ length: 10 }, (_, i) => ({ at: ago(0.1 + i * 0.01), dataset: 'stroeh_mouse_retina', operation: i % 3 ? 'split' : 'merge', success: i !== 1 }));
 const THEIRS = [{ user_id: UID(13), dataset: 'stroeh_mouse_retina', edits: 1500, cells: 40, chats: 150, last_edit_at: ago(0.1) },
   { user_id: UID(13), dataset: 'pni_mec', edits: 300, cells: 1, chats: 50, last_edit_at: ago(2) },
@@ -106,6 +111,9 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.betaMark') { if (input.mark === 'waiting') delete marks[input.email]; else marks = { ...marks, [input.email]: { mark: input.mark, at: new Date().toISOString() } }; return r.fulfill(ok(marks)); }
       if (a === 'access.datasetList') return r.fulfill(ok(DS));
       if (a === 'access.datasetDecide') return r.fulfill(ok(DS));
+      // Retina requests waiting on us (Ames 2026-11-17): Jo Kim's second try, and
+      // someone not on the list.
+      if (a === 'access.list') return r.fulfill(ok({ requests: input.status === 'submitted' ? RETINA : [] }));
       if (a === 'access.grantEmail') return r.fulfill(ok(input.preview ? { to: 'lou@example.org', subject: 'You can now edit MEC in Pyr', text: "Hi Lou, congratulations!" } : { sent: true, to: 'lou@example.org' }));
       if (a === 'test.tries') return r.fulfill(ok({ kept: true, test: null, key: null, line: [], tries: TRIES }));
       if (a === 'access.notes') return r.fulfill(ok(notes));
@@ -165,7 +173,7 @@ Amy Sterling and the Pyr Team at Princeton` }));
     let b = await board();
     const errText = await page.$eval('.ah-error', e => e.textContent).catch(() => '');
     check('every part reads without an error (the 500 row limit)', !errText, errText);
-    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Let in|Signed in|Tutorial done', b.map(c => c.title));
+    check('waiting on us first, then the steps, Editing off by default', b.map(c => c.title).join('|') === 'Asked|Emailed|Asked for a dataset|Asked for the Retina|Let in|Signed in|Tutorial done', b.map(c => c.title));
     const groups = await page.$$eval('.ah-group-title', els => els.map(e => e.textContent.replace(/[▾▸]/g, '').trim()));
     check('two rows: Waiting on us above Getting started', groups.join('|') === 'Waiting on us|Getting started', groups);
     // The admins' leaderboard ranks everyone who edited (Ames 2026-11-10).
@@ -232,10 +240,20 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('overall numbers, admins left out; dataset access from CAVE (the sheet), public datasets not counted', totals.join('|') === '414 Invited by email|6 Total access requests|20 Signed in ↗|3 Finished a tutorial|2 Made an edit|2 Dataset access', totals);
     check('Let in counts the list but shows only the one who asked', col(b, 'Let in').n === '7' && col(b, 'Let in').cards.map(c => c.name).join(',') === 'Sam Park', col(b, 'Let in'));
     check('Signed in shows the tutorial they are in', col(b, 'Signed in').cards.length === 1 && /in tutorial 3/.test(col(b, 'Signed in').cards[0].text), col(b, 'Signed in'));
-    check('Tutorial done and Editing', col(b, 'Tutorial done').cards[0]?.name === 'Jo Kim' && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
+    check('a Retina request takes its own column, oldest first, with examples and try', col(b, 'Asked for the Retina').cards.map(c => c.name).join(',') === 'Pat New,Jo Kim'
+      && /10 examples/.test(col(b, 'Asked for the Retina').cards[1]?.text) && /try 2/.test(col(b, 'Asked for the Retina').cards[1]?.text), col(b, 'Asked for the Retina'));
+    check('Tutorial done and Editing', !col(b, 'Tutorial done').cards.length && col(b, 'Editing').cards.map(c => c.name).join(',') === 'Nik Serafin', [col(b, 'Tutorial done'), col(b, 'Editing')]);
     check('a waiting dataset request takes its own column', col(b, 'Asked for a dataset').cards.length === 1 && /Medial Entorhinal Cortex/.test(col(b, 'Asked for a dataset').cards[0].text), col(b, 'Asked for a dataset'));
+    await page.click('.ah-col:has(.ah-col-title:text-is("Asked for the Retina")) .ah-card:has-text("Jo Kim")');
+    await page.waitForSelector('.ah-panel .ah-ds', { timeout: 3000 }).catch(() => {});
+    const rqPanel = await page.textContent('.ah-panel .ah-ds').catch(() => '');
+    const rqHref = await page.getAttribute('.ah-panel .ah-ds a.ah-btn', 'href').catch(() => '');
+    const pyrLink = await page.$eval('.ah-panel .ah-pyr-link', e => [e.textContent.trim(), e.getAttribute('href')]).catch(() => []);
+    check('their Pyr username opens their profile in Pyr', /\?player=00000000-0000-4000-8000-000000000012$/.test(pyrLink[1] || ''), pyrLink);
+    check('the Retina panel shows the request and links to Access requests in Pyr', /The Retina/.test(rqPanel) && /try 2/.test(rqPanel) && /EyeWire jokim/.test(rqPanel) && /Fixed the two merges/.test(rqPanel) && /\?admin=access$/.test(rqHref || ''), { rqPanel, rqHref });
+    await page.click('.ah-col:has(.ah-col-title:text-is("Asked for the Retina")) .ah-card:has-text("Jo Kim")');
     const summary = await page.textContent('.ah-sum');
-    check('the head counts what waits on us, and Later', /3 Beta requests and 1 dataset request waiting on us, 1 for later/.test(summary), summary);
+    check('the head counts what waits on us, and Later', /3 Beta requests, 1 dataset request and 2 Retina requests waiting on us, 1 for later/.test(summary), summary);
     await page.click('.ah-later-fold');
     const later = await page.$$eval('.ah-later .ah-card', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
     check('Later folds away below', later.length === 1 && /Rae Lin/.test(later[0]), later);
