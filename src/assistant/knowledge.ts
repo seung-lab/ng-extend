@@ -101,6 +101,7 @@ function buildStaticReference(): string {
     // Nurro could not say what Start playing does (Ames 2026-11-12).
     "## Play (the Start playing button)",
     "- Play is the quick way in: the Play button, 'Start playing' on a dataset card, or 'Play here'. It picks the work for the player, so there is nothing to choose or claim by hand.",
+    "- If the Play button covers part of the 2D view, turn off 'Play button on the 2D view' in Settings, Screen. The Play button in the Cell Library stays, so you can still start playing from there.",
     "- A player who has not finished the training yet is taken to the next tutorial instead, in order: Get Started, Merge, Cut, Annotations, then Advanced Interface. A player with production access skips this.",
     "- After that, Play claims a cell on the dataset the player is on and opens it, with the Cell Library folded down to one slim bar showing that cell. Finish it with Complete (or Submit on a quest) and the next cell is waiting. Skip puts a cell back and moves on.",
     "- Not done with a cell yet? 'Save and come back' in the Complete form saves the view and keeps the cell claimed. An ordinary claim has no time limit: it stays the player's until they complete or release it. A Super Quest is held for 2 months from when it was claimed.",

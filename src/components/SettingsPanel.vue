@@ -736,9 +736,9 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftShowRadio" />
               <span class="nge-settings-toggle-label">Show the sound icon (EyeWire Radio)</span>
             </label>
-            <label class="nge-settings-toggle" title="The Play button at the top left: Pyr teleports you to a cell to work on. Off: no button. You can still play from a dataset card in Switch Dataset.">
+            <label class="nge-settings-toggle" title="The Play button at the top left of the 2D view: Pyr teleports you to a cell to work on. Off: the 2D view stays clear, and you start playing from the Cell Library instead.">
               <input type="checkbox" v-model="draftShowPlay" />
-              <span class="nge-settings-toggle-label">Show the Play button</span>
+              <span class="nge-settings-toggle-label">Play button on the 2D view</span>
             </label>
           </div>
 
