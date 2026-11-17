@@ -430,6 +430,17 @@ Amy Sterling and the Pyr Team at Princeton` }));
     check('the note box says how to tag', /@Celia or @Marissa/.test(await p2.getAttribute('.ah-panel textarea', 'placeholder').catch(() => '') || ''));
     await p2.close();
 
+    // A notification opens their card (Ames 2026-11-17): by the name in its
+    // title when it names no email (the Retina's), or by any of their emails.
+    for (const [q, want] of [['who=Pat%20New', 'Pat New'], ['who=jo%20kim', 'Jo Kim'], ['person=kmierow%40old.example&who=Somebody', 'Ken Mierow']]) {
+      const p3 = await context.newPage();
+      await p3.goto(`http://localhost:${PORT}/?triage=access&${q}`, { waitUntil: 'load' });
+      await p3.waitForSelector('.ah-panel h2', { timeout: 60000 }).catch(() => {});
+      const h = await p3.textContent('.ah-panel h2').catch(() => '');
+      check(`a notification link opens their card (${q})`, h === want && !/who=|person=/.test(p3.url()), [h, p3.url()]);
+      await p3.close();
+    }
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
     const wide = await page.evaluate(() => ({ sw: document.querySelector('.ah').scrollWidth, cw: document.querySelector('.ah').clientWidth }));

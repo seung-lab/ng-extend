@@ -453,15 +453,27 @@ const noteCount = (c: Card) => (notes.value[c.key] || []).length;
 const open = computed(() => cards.value.find(c => c.key === openKey.value) || null);
 // A tag's link opens that person (Ames 2026-11-10, tags in notes):
 // "?triage=access&person=<email or user:id>". Used once.
+// A notification adds "&who=<name>" (Ames 2026-11-17: open "with their card
+// selected"): their email first, any of their emails, then the name.
 const wantPerson = (() => { try { return (new URLSearchParams(location.search).get('person') || '').toLowerCase(); } catch { return ''; } })();
-if (wantPerson) {
+const wantWho = (() => { try { return (new URLSearchParams(location.search).get('who') || '').trim().toLowerCase(); } catch { return ''; } })();
+const emailsOf = (c: Card) => [c.key, c.p?.email, c.p?.gave_email, c.p?.ew_email, c.ds?.email, c.rq?.email].map(lc).filter(Boolean);
+const namesOf = (c: Card) => [c.p?.name, c.p?.username, c.ds?.name, c.rq?.player_name, nameOf(c)].map(x => lc(x).trim()).filter(Boolean);
+// Someone waiting on us first, when two cards match.
+const WAIT_FIRST: Stage[] = ['retina', 'dataset', 'asked', 'emailed', 'later'];
+const bestOf = (list: Card[]) => [...list].sort((a, b) => (WAIT_FIRST.indexOf(a.stage) + 1 || 99) - (WAIT_FIRST.indexOf(b.stage) + 1 || 99))[0];
+if (wantPerson || wantWho) {
   let found = false;
-  const stop = watch(cards, list => {
-    const c = found ? null : list.find(x => x.key.toLowerCase() === wantPerson);
+  const stop = watch([cards, loading], ([list, busy]) => {
+    if (found) return;
+    let c = wantPerson ? bestOf(list.filter(x => emailsOf(x).includes(wantPerson))) : undefined;
+    if (!c && wantWho && !busy) c = bestOf(list.filter(x => namesOf(x).includes(wantWho)));
     if (!c) return;
     found = true; openKey.value = c.key;
-    try { const u = new URL(location.href); u.searchParams.delete('person'); history.replaceState(history.state, '', u.toString()); } catch { /* keep going */ }
+    try { const u = new URL(location.href); u.searchParams.delete('person'); u.searchParams.delete('who'); history.replaceState(history.state, '', u.toString()); } catch { /* keep going */ }
     queueMicrotask(() => stop());
+    // The card in view, where the board scrolls.
+    setTimeout(() => { try { document.querySelector('.ah-card--open')?.scrollIntoView({ block: 'nearest' }); } catch { /* fine */ } }, 50);
   }, { immediate: true });
 }
 // Read EyeWire for the people waiting on us, and anyone opened.

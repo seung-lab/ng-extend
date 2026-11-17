@@ -3117,7 +3117,9 @@ function practiceWhen(iso: string | null) {
       <a class="nge-admin-subtab nge-admin-subtab--triage" :href="todoBoardUrl" target="_blank" rel="noopener" title="Opens the admins' own To do board in a new tab">To do ↗</a>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
-      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'access' }" @click="adminSubTab = 'access'" title="Players' ten examples for retina access">Access requests</button>
+      <!-- Ames 2026-11-17: "Access Requests: opens Access Dash". The Retina
+           examples are still reviewed here, reached from a Retina card there. -->
+      <a class="nge-admin-subtab nge-admin-subtab--triage" :href="accessPageUrl" target="_blank" rel="noopener" title="Opens the Access page in a new tab: every request, step by step">Access requests ↗</a>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tests' }" @click="adminSubTab = 'tests'" title="Every Proofreading Test try: the score, what was missed, and the player's cell">Test tries</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'simnotes' }" @click="adminSubTab = 'simnotes'" title="Notes players left when they skipped or completed a Training Sim cell">Training Sim notes</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
@@ -3132,7 +3134,7 @@ function practiceWhen(iso: string | null) {
     <TutorialTimesTab v-if="adminSubTab === 'tutorialTimes'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
-    <a v-if="adminSubTab === 'access' || adminSubTab === 'pilot'" class="nge-access-page-link" :href="accessPageUrl" target="_blank" rel="noopener">Open the Access page: everyone, step by step</a>
+    <a v-if="adminSubTab === 'access'" class="nge-access-page-link" :href="accessPageUrl" target="_blank" rel="noopener">Open the Access page: everyone, step by step</a>
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
     <HuntsAdminTab v-if="adminSubTab === 'hunts'" />
     <InterneuronQuestsAdminTab v-if="adminSubTab === 'interneurons'" />
@@ -3163,39 +3165,9 @@ function practiceWhen(iso: string | null) {
 
     <!-- ── Notifications ── -->
     <section v-if="adminSubTab === 'pilot'" class="nge-pilot-admin">
-      <h2>Beta requests</h2>
-      <p>People who asked to join, in the game or on connectome.quest. Let them in adds their email to Pilot testers below; then email them so they know. Add to list keeps them on the list for later, and Remove request takes them off this page.</p>
-      <div class="nge-beta-views" role="tablist" aria-label="Beta requests">
-        <button v-for="v in BETA_VIEWS" :key="v.key" role="tab" :aria-selected="betaView === v.key"
-                :class="{ 'nge-beta-view--on': betaView === v.key }" @click="betaView = v.key">{{ v.label }} <span>{{ betaCount[v.key] }}</span></button>
-      </div>
-      <p v-if="betaError" role="alert">{{ betaError }}</p>
-      <p v-if="!betaShown.length" class="nge-beta-req-empty">{{ betaView === 'waiting' ? (betaRequests.length ? 'Nobody is waiting.' : 'No requests yet.') : 'Nobody here.' }}</p>
-      <ul v-else class="nge-beta-req">
-        <li v-for="r in betaShown" :key="r.id">
-          <span>
-            <b class="nge-pilot-name">{{ r.name || 'No name' }}</b> · {{ r.email }}
-            <i class="nge-beta-req-meta">{{ betaWhen(r.at) }}{{ r.site ? ', from connectome.quest' : ', in the game' }}</i>
-            <span v-if="r.ewName || r.ewRank" class="nge-beta-req-ew">EyeWire: {{ [r.ewName, r.ewRank].filter(Boolean).join(', ') }}</span>
-            <span v-if="r.foundUs" class="nge-beta-req-ew">Found us: {{ r.foundUs }}</span>
-            <span v-if="r.note" class="nge-beta-req-note">{{ r.note }}</span>
-          </span>
-          <span class="nge-beta-req-acts">
-            <template v-if="betaStateOf(r) === 'in'">
-              <em class="nge-beta-req-in">In</em>
-              <span v-if="welcomeEmailed[r.email]" class="nge-beta-req-mailed">{{ welcomeEmailed[r.email] }}</span>
-              <a class="nge-beta-req-mail" :href="betaMailto(r)" title="Write to them yourself, from your own email">Email them</a>
-            </template>
-            <template v-else>
-              <button :disabled="betaBusy === r.email" @click="letBetaIn(r)">{{ betaBusy === r.email ? 'Saving…' : 'Let them in' }}</button>
-              <button v-if="betaStateOf(r) !== 'listed'" :disabled="betaBusy === r.email" @click="markBeta(r, 'listed')">Add to list</button>
-              <button v-if="betaStateOf(r) !== 'removed'" :disabled="betaBusy === r.email" @click="markBeta(r, 'removed')">Remove request</button>
-              <button v-if="betaStateOf(r) !== 'waiting'" :disabled="betaBusy === r.email" @click="markBeta(r, 'waiting')">Back to waiting</button>
-            </template>
-          </span>
-        </li>
-      </ul>
-
+      <!-- Ames 2026-11-17: "Pilot Testers: field to add more emails for pilot
+           testing". Beta requests are answered on the Access page. -->
+      <p class="nge-pilot-to-access">Beta requests are on the <a :href="accessPageUrl" target="_blank" rel="noopener">Access page ↗</a>.</p>
       <h2>Pilot testers</h2>
       <p>Invited testers can claim cells, use practice cells, sync Sheets, and contribute to the site. Existing administrators already have access.</p>
       <form @submit.prevent="invitePilot">

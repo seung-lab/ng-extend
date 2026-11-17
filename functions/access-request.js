@@ -265,7 +265,7 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
   const again = tries > 1 ? ` (try ${tries})` : '';
   if (notifyReviewers) {
     try { await notifyReviewers({image: IMAGE.request, title: `🔬 Retina access request from ${name}${again}`,
-      body: `${name} sent 7 cut and 3 merge examples for retina access${again}. Click here to review them in the Admin Hub, Access requests.`}); }
+      body: `${name} sent 7 cut and 3 merge examples for retina access${again}. Click this note to open their card on the Access page.`}); }
     catch (e) { console.warn('[access] reviewers were not told:', e && e.message); }
   }
   if (postSlack) {
@@ -498,7 +498,8 @@ async function readGrantedBells(args, io) {
 const BETA_CATEGORY = 'Beta access';
 const BETA_BELL = '🔑 Beta access request';
 // Clicking the bell opens Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26).
-const LET_IN = 'Click this note, then Let them in.';
+// Ames 2026-11-17: notes open their card on the Access page.
+const LET_IN = 'Click this note to open their card on the Access page, then Let them in.';
 /**
  * Has this player a Beta request still open? Their newest one counts. A
  * request an admin removed (Admin Hub, Beta requests) or dismissed on the
@@ -1214,7 +1215,7 @@ async function datasetRequest(a, io) {
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: DATASET_CATEGORY, title, message, dataset: ds.id, user_id: io.me.id, user_name: name}])});
   const bell = `${mdText(name)} asks for access to ${mdText(ds.label)}${ds.cave ? ` (CAVE dataset ${mdText(ds.cave)})` : ''}.\n\n`
     + `Sign in email: ${mdText(signIn)}\n\n`
-    + 'Open Admin Hub, Access requests, Dataset requests: Grant adds them to the CAVE group.'
+    + 'Click this note to open their card on the Access page: Let them in adds them to the CAVE group.'
     + noteForBell(note);
   try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell, image: DATASET_REQUESTED}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: DATASET_CATEGORY, user: name}); } catch (e) { console.warn('[dataset access] slack failed', e && e.message); }
