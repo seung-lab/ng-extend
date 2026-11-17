@@ -89,7 +89,7 @@ const asked = ref<Record<string, { at: string; by: string }>>({});
 // "You're on the list" emails (Ames 2026-11-17): who was sent one, and the
 // one open in the panel (the server numbers them, #N of everyone who asked).
 const waitSent = ref<Record<string, { at: string; by: string; n: number | null }>>({});
-interface WaitDraft { to: string; subject: string; text: string; n: number; total: number; fromForm: number; sentAt: string | null }
+interface WaitDraft { to: string; subject: string; text: string; n: number; total: number; fromForm: number; earlier?: number; sentAt: string | null }
 const waitShown = ref<WaitDraft | null>(null);
 const inviteCount = ref<number | null>(null);
 const signedInAll = ref<number | null>(null);
@@ -547,6 +547,63 @@ async function run(what: string, f: () => Promise<void>) {
   try { await f(); } catch (e: any) { actionError.value = e?.message || 'That did not save. Try again.'; }
   busy.value = '';
 }
+// ── Several at once (Ames 2026-11-17: "can you let me select multiple
+// users here?"): a box on each card waiting on us, then one action for all.
+const PICKABLE: Stage[] = ['asked', 'emailed', 'later'];
+const picked = ref<Set<string>>(new Set());
+const bulkSaid = ref('');
+const pickedCards = computed(() => cards.value.filter(c => picked.value.has(c.key) && c.p && PICKABLE.includes(c.stage)));
+function togglePick(c: Card) {
+  const s = new Set(picked.value);
+  if (s.has(c.key)) s.delete(c.key); else s.add(c.key);
+  picked.value = s; bulkSaid.value = '';
+}
+function pickColumn(stage: Stage) {
+  const keys = columnCards(stage).map(c => c.key);
+  const all = keys.every(k => picked.value.has(k));
+  const s = new Set(picked.value);
+  for (const k of keys) { if (all) s.delete(k); else s.add(k); }
+  picked.value = s; bulkSaid.value = '';
+}
+type BulkAct = 'letin' | 'listed' | 'removed' | 'onlist' | 'ask';
+const BULK: { act: BulkAct; label: string; ask: (n: number) => string }[] = [
+  { act: 'letin', label: 'Let them in', ask: n => `Let ${n} ${n === 1 ? 'person' : 'people'} in? Each gets the welcome notification and email.` },
+  { act: 'onlist', label: 'Tell them they are on the list', ask: n => `Send the On the list email to ${n} ${n === 1 ? 'person' : 'people'}? Anyone who already had it is skipped.` },
+  { act: 'ask', label: 'Ask for their EyeWire name', ask: n => `Email ${n} ${n === 1 ? 'person' : 'people'} asking for their EyeWire username? Anyone already asked is skipped.` },
+  { act: 'listed', label: 'Later', ask: n => `Move ${n} ${n === 1 ? 'person' : 'people'} to Later?` },
+  { act: 'removed', label: 'Remove request', ask: n => `Remove ${n} ${n === 1 ? 'request' : 'requests'}?` },
+];
+async function bulk(act: BulkAct) {
+  const list = pickedCards.value;
+  const b = BULK.find(x => x.act === act);
+  if (!list.length || !b || !window.confirm(b.ask(list.length))) return;
+  busy.value = 'bulk'; bulkSaid.value = ''; actionError.value = '';
+  let done = 0, skipped = 0; const failed: string[] = [];
+  for (const c of list) {
+    const p = c.p!;
+    try {
+      if (act === 'letin') {
+        await addPilot(p.email); void welcomeBell(p.user_id);
+        void welcomeEmail(p.email, p.name || '').then(s => { emailed.value = { ...emailed.value, [p.email]: s }; });
+        people.value = people.value.map(x => x.email === p.email ? { ...x, pilot_enabled: true, let_in_at: x.let_in_at || new Date().toISOString() } : x);
+        done++;
+      } else if (act === 'listed' || act === 'removed') {
+        marks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: p.email, mark: act })) || marks.value;
+        done++;
+      } else if (act === 'onlist') {
+        const out = await secureWrite<{ sent: boolean; at?: string; n?: number }>('access.waitlistEmail', { email: p.email, name: p.name || '' });
+        if (out?.sent) { waitSent.value = { ...waitSent.value, [p.email]: { at: out.at || new Date().toISOString(), by: '', n: out.n ?? null } }; done++; } else skipped++;
+      } else {
+        const out = await secureWrite<{ sent: boolean; at?: string }>('access.askEmail', { email: p.email, name: nameOf(c) });
+        if (out?.sent) { asked.value = { ...asked.value, [p.email]: { at: out.at || new Date().toISOString(), by: '' } }; done++; } else skipped++;
+      }
+    } catch (e: any) { failed.push(`${nameOf(c)}: ${e?.message || 'did not save'}`); }
+  }
+  readBells();
+  picked.value = new Set();
+  busy.value = '';
+  bulkSaid.value = `${b.label}: ${done} done` + (skipped ? `, ${skipped} skipped (already sent)` : '') + (failed.length ? `. Not done: ${failed.join('; ')}` : '.');
+}
 const letIn = (c: Card) => run('letin', async () => {
   const p = c.p!; await addPilot(p.email);
   readBells();
@@ -778,19 +835,30 @@ const opName = (e: RecentEdit) => {
 
     <div class="ah-main" :class="{ 'ah-main--open': open }">
       <section class="ah-boards" aria-label="People by step">
+       <div v-if="pickedCards.length || bulkSaid" class="ah-bulk" role="region" aria-label="Selected people">
+         <template v-if="pickedCards.length">
+           <b>{{ pickedCards.length }} selected</b>
+           <button v-for="b in BULK" :key="b.act" type="button" class="ah-btn" :class="{ 'ah-btn--yes': b.act === 'letin' }" :disabled="busy === 'bulk'" @click="bulk(b.act)">{{ busy === 'bulk' ? 'Working…' : b.label }}</button>
+           <button type="button" class="ah-btn ah-btn--quiet" :disabled="busy === 'bulk'" @click="picked = new Set()">Clear</button>
+         </template>
+         <span v-if="bulkSaid" class="ah-bulk-said" role="status">{{ bulkSaid }}</span>
+       </div>
        <div v-for="g in boardGroups" :key="g.title" class="ah-group">
         <h2 class="ah-group-title"><button type="button" class="ah-fold-btn" :aria-expanded="!folded.has('g:' + g.title)" @click="toggleFold('g:' + g.title)"><span class="ah-fold-mark" aria-hidden="true">{{ folded.has('g:' + g.title) ? '▸' : '▾' }}</span>{{ g.title }}</button></h2>
         <div v-if="!folded.has('g:' + g.title)" class="ah-board">
         <div v-for="col in g.cols" :key="col.stage" class="ah-col" :class="{ 'ah-col--ours': col.ours, 'ah-col--theirs': col.theirs }">
           <div class="ah-col-head">
             <span class="ah-col-title">{{ col.title }}</span>
+            <button v-if="PICKABLE.includes(col.stage) && columnCards(col.stage).length" type="button" class="ah-pick-all" @click="pickColumn(col.stage)">{{ columnCards(col.stage).every(c => picked.has(c.key)) ? 'Clear' : 'Select all' }}</button>
             <span class="ah-col-n">{{ inStage(col.stage).length }}</span>
           </div>
           <div class="ah-col-sub">{{ col.sub }}</div>
           <div v-if="col.stage !== 'editing' && col.stage !== 'emailed' && col.stage !== 'retina'" class="ah-col-typ" title="How long people usually take to move on from this step">usually moves on in {{ span(typical[col.stage]) }}</div>
           <div class="ah-col-list">
-            <button v-for="c in columnCards(col.stage)" :key="col.stage + c.key" type="button" class="ah-card"
-                    :class="{ 'ah-card--open': openKey === c.key }" @click="pick(c)">
+            <div v-for="c in columnCards(col.stage)" :key="col.stage + c.key" class="ah-card-row" :class="{ 'ah-card-row--pick': PICKABLE.includes(col.stage) && c.p }">
+            <input v-if="PICKABLE.includes(col.stage) && c.p" type="checkbox" class="ah-pick" :checked="picked.has(c.key)" :aria-label="`Select ${nameOf(c)}`" @change="togglePick(c)" />
+            <button type="button" class="ah-card"
+                    :class="{ 'ah-card--open': openKey === c.key, 'ah-card--picked': picked.has(c.key) }" @click="pick(c)">
               <span class="ah-card-name">{{ nameOf(c) }}<span v-if="c.p?.invited_at" class="ah-invited" role="img" :title="invitedLine(c.p)" :aria-label="invitedLine(c.p)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 4.5 6-4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span>
               <span class="ah-card-email">{{ emailOf(c) || 'no email' }}</span>
               <span class="ah-card-line">
@@ -809,6 +877,7 @@ const opName = (e: RecentEdit) => {
                 <span v-if="noteCount(c)" class="ah-tag ah-tag--note">{{ noteCount(c) }} note{{ noteCount(c) === 1 ? '' : 's' }}</span>
               </span>
             </button>
+            </div>
             <button v-if="col.stage === 'letin' && !words.length && (letinHidden || showLists)" type="button" class="ah-fold" @click="showLists = !showLists">
               {{ showLists ? 'Show only the newest' : `Show ${letinHidden} more, longest waiting` }}
             </button>
@@ -925,7 +994,7 @@ const opName = (e: RecentEdit) => {
           <div v-if="waitSent[open.p.email]" class="ah-panel-meta" role="status">On the list email sent {{ day(waitSent[open.p.email].at) }}<template v-if="waitSent[open.p.email].n">, as #{{ waitSent[open.p.email].n }}</template></div>
           <button class="ah-btn" type="button" :disabled="!!busy" @click="showWait(open)">{{ busy === 'waitdraft' ? 'Opening…' : waitShown ? 'Hide the email' : waitSent[open.p.email] ? 'See the On the list email again' : 'Tell them they are on the list' }}</button>
           <div v-if="waitShown" class="ah-ask-draft" aria-label="On the list email">
-            <div class="ah-panel-meta">#{{ waitShown.n }} of {{ waitShown.total }} who have ever asked, {{ waitShown.fromForm }} of them through the connectome.quest form. To {{ waitShown.to }}, from Amy at Pyr, replies go to support@eyewire.org.</div>
+            <div class="ah-panel-meta">#{{ waitShown.n }} of {{ waitShown.total }} who have ever asked<template v-if="waitShown.earlier">: the first {{ waitShown.earlier }} on the earlier Google form, then {{ waitShown.fromForm }} through the connectome.quest form and the rest in Pyr</template><template v-else>, {{ waitShown.fromForm }} of them through the connectome.quest form</template>. To {{ waitShown.to }}, from Amy at Pyr, replies go to support@eyewire.org.</div>
             <div class="ah-ask-subject ah-ask-subject--read">{{ waitShown.subject }}</div>
             <div class="ah-ask-text ah-ask-text--read">{{ waitShown.text }}</div>
             <div class="ah-actions">
@@ -1206,6 +1275,14 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 .ah-pyr-link { color: #9fd3ff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .ah-pyr-link:hover { color: #cfe8ff; }
 .ah-wait { margin-top: 8px; }
+.ah-card-row { position: relative; }
+.ah-card-row--pick .ah-card { padding-right: 34px; }
+.ah-pick { position: absolute; top: 10px; right: 10px; width: 17px; height: 17px; margin: 0; cursor: pointer; accent-color: #6fb6ff; z-index: 1; }
+.ah-card--picked { border-color: rgba(111,182,255,.9) !important; background: rgba(40,70,120,.55) !important; }
+.ah-pick-all { margin-left: auto; margin-right: 8px; background: none; border: 1px solid rgba(120,170,255,.35); color: #9fd3ff; border-radius: 6px; font-size: 11px; padding: 2px 7px; cursor: pointer; }
+.ah-bulk { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; padding: 10px 12px;
+  background: rgba(20,40,74,.97); border: 1px solid rgba(111,182,255,.6); border-radius: 10px; color: #e6f0ff; }
+.ah-bulk-said { color: #bfe3ff; font-size: 13px; }
 .ah-card-email { font-size: 12px; color: #a9c4e6; overflow-wrap: anywhere; }
 .ah-card-line { font-size: 12px; color: #8ea3c2; }
 .ah-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }

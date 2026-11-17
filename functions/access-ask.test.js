@@ -130,15 +130,16 @@ test('the On the list email numbers them among everyone who asked, let in or not
   const t = io({ sb: async q => (/^access_hub_people\?/.test(q) ? people : []),
     waitlistSent: { get: async e => waits[e] || null, set: async (e, v) => { waits[e] = v; }, all: async () => waits } });
   const d = await handle('access.waitlistEmail', { email: 'Olivia@x.org', name: 'Olivia Anna Carr', preview: true }, t.io);
-  assert.deepStrictEqual([d.n, d.total, d.fromForm, d.to], [3, 3, 2, 'olivia@x.org']);
+  // The 100 from the earlier Google form come first (Ames 2026-11-17).
+  assert.deepStrictEqual([d.n, d.total, d.fromForm, d.earlier, d.to], [103, 103, 2, 100, 'olivia@x.org']);
   assert.strictEqual(d.subject, "You're on the list for the Pyr beta");
   assert.match(d.text, /^Hi Olivia,/);
-  assert.match(d.text, /You are #3 in line\./);
+  assert.match(d.text, /You are #103 in line\./);
   assert.match(d.text, /Amy Sterling and the Pyr Team at Princeton$/);
   assert.doesNotMatch(d.text, /Ames|—|–/);
   assert.strictEqual(t.sent.length, 0, 'a preview sends nothing');
   const r = await handle('access.waitlistEmail', { email: 'olivia@x.org', name: 'Olivia' }, t.io);
-  assert.deepStrictEqual([r.sent, r.n], [true, 3]);
+  assert.deepStrictEqual([r.sent, r.n], [true, 103]);
   assert.strictEqual(t.sent[0].from, 'Amy at Pyr <welcome@connectome.quest>');
   assert.strictEqual(t.sent[0].reply_to, 'support@eyewire.org');
   assert.deepStrictEqual(t.sent[0].to, ['olivia@x.org']);

@@ -962,11 +962,14 @@ async function askSentAll(a, io) {
 //   access.waitlistEmail  admins: {email, name, preview, again}
 //     -> preview: {to, subject, text, n, total, fromForm, sentAt}; else {sent, at, n}.
 //   access.waitlistSent   admins: every send, {email: {at, by, n}}.
+// The 100 who asked on the Google form before Pyr had its own (Ames
+// 2026-11-17: "add 100 people to the list"), ahead of everyone here.
+const WAITLIST_EARLIER = 100;
 async function waitlistPlace(io, email) {
   const rows = await io.sb('access_hub_people?request_id=not.is.null&select=email,asked_at,from_site,is_admin&order=asked_at.asc,email.asc&limit=20000');
   const list = (rows || []).filter(r => !r.is_admin && !TEAM_EMAILS.includes(String(r.email || '').toLowerCase()));
   const i = list.findIndex(r => String(r.email || '').toLowerCase() === email);
-  return {n: i < 0 ? null : i + 1, total: list.length, fromForm: list.filter(r => r.from_site).length};
+  return {n: i < 0 ? null : WAITLIST_EARLIER + i + 1, total: WAITLIST_EARLIER + list.length, fromForm: list.filter(r => r.from_site).length, earlier: WAITLIST_EARLIER};
 }
 function waitlistDraft(name, n) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
@@ -986,7 +989,7 @@ async function waitlistEmail(a, io) {
   if (place.n == null) fail(404, 'They are not on the list of people who asked.');
   const draft = waitlistDraft(name, place.n);
   const before = io.waitlistSent && await io.waitlistSent.get(email);
-  if (a.preview === true) return {to: email, ...draft, n: place.n, total: place.total, fromForm: place.fromForm, sentAt: (before && before.at) || null};
+  if (a.preview === true) return {to: email, ...draft, n: place.n, total: place.total, fromForm: place.fromForm, earlier: place.earlier, sentAt: (before && before.at) || null};
   if (before && !a.again) return {sent: false, reason: 'already sent', at: before.at};
   if (!io.sendEmail) fail(503, 'Email is not set up on the server.');
   const copies = WELCOME_COPY_TO.filter(c => c !== email);
