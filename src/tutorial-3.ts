@@ -1436,14 +1436,22 @@ function glowTopIcon(id: 'merge' | 'split') {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   let ring = document.querySelector('.nge-tut-glow-ring') as HTMLElement | null;
   if (!ring) { ring = document.createElement('div'); ring.className = 'nge-tut-glow-ring'; document.body.appendChild(ring); }
+  let boxless = 0;
   const timer = setInterval(() => {
-    const here = store.activeTutorial === tutorial && store.getTutorialStep() === step && !!document.querySelector('.introductionStepAnchor');
+    // Still this step: its box comes only once the step's practice cell has
+    // loaded, and a check that wanted the box gave up in the first quarter
+    // second of that wait, so the glow never came (kfay 2026-11-17: "the
+    // merge icon isn't glowing"). The ring waits for the box instead.
+    const here = store.activeTutorial === tutorial && store.getTutorialStep() === step;
+    const boxUp = !!document.querySelector('.introductionStepAnchor');
     const icon = document.querySelector(`[data-icon-id="${id}"]`) as HTMLElement | null;
     const r = icon?.getBoundingClientRect();
-    const on = here && !practiceToolOn() && !!r && r.width > 0;
+    const on = here && boxUp && !practiceToolOn() && !!r && r.width > 0;
     if (on && r) Object.assign(ring!.style, { display: 'block', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
     else ring!.style.display = 'none';
-    if (!here) { clearInterval(timer); ring!.remove(); }
+    // No box for a minute: the tutorial was closed on this step.
+    boxless = boxUp ? 0 : boxless + 1;
+    if (!here || boxless > 240) { clearInterval(timer); ring!.remove(); }
   }, 250);
 }
 

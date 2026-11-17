@@ -106,6 +106,14 @@ export class KeyboardEventBinder<EventMap extends EventActionMapInterface> exten
 }
 
 export function getEventKeyName(event: KeyboardEvent): string {
+  // A letter goes by the letter printed on the key, so M merges on a French
+  // AZERTY keyboard too, where the key in the M place types a comma (kfay
+  // 2026-11-17). Keys that type no plain letter (digits, other alphabets,
+  // Alt+letter on a Mac) still go by their place.
+  const key = event.key;
+  if (key && key.length === 1 && /[a-z]/i.test(key)) {
+    return 'key' + key.toLowerCase();
+  }
   return event.code.toLowerCase();
 }
 
