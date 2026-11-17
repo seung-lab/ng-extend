@@ -662,7 +662,9 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs}) {
 
 const EVENT_KINDS = new Set(['opened', 'hint_offered', 'complete', 'skip']);
 /** A moment on a Sandbox cell (opened, Hint offered, Complete, Skip), for the lab. */
-async function event(io, {taskId, me, isAdmin, kind, idleSecs, score}) {
+/** The longest note kept with a skip or a Complete. */
+const NOTE_MAX = 1000;
+async function event(io, {taskId, me, isAdmin, kind, idleSecs, score, note}) {
   score = score == null ? null : score;
   const id = Number(taskId);
   if (!Number.isInteger(id) || id <= 0) fail(400, 'Which cell?');
@@ -676,8 +678,40 @@ async function event(io, {taskId, me, isAdmin, kind, idleSecs, score}) {
     const r = await check(io, {taskId: id, me, isAdmin}).catch(() => null);
     if (r && r.scorable) score = shownScore(r);
   }
-  await record(io, {taskId: id, me, kind, idleSecs, score});
+  // A note with a skip or a Complete (Ames 2026-11-17: "a way for a user to
+  // leave a note on a skipped cell"): kept with the moment, for admins.
+  const text = (kind === 'skip' || kind === 'complete') && typeof note === 'string' ? note.trim().slice(0, NOTE_MAX) : '';
+  await record(io, {taskId: id, me, kind, idleSecs, score, detail: text ? {note: text} : undefined});
   return {ok: true};
+}
+
+/** Admins: the notes players left when they skipped or completed a sim cell,
+ *  newest first, with who, the cell as they left it and where it is. */
+async function notes(io, {me, isAdmin, limit = 100}) {
+  if (!me) fail(403, 'Sign in first.');
+  if (!isAdmin) fail(403, 'Admins only.');
+  const n = Math.max(1, Math.min(300, Math.floor(Number(limit) || 100)));
+  const rows = await io.sb(`sandbox_play_events?kind=in.(skip,complete)&detail->>note=not.is.null&select=id,user_id,task_id,kind,score,at,detail&order=at.desc&limit=${n}`);
+  if (!rows.length) return {notes: []};
+  const users = [...new Set(rows.map(e => e.user_id))];
+  const tasks = [...new Set(rows.map(e => e.task_id))];
+  const [people, cells, kept] = await Promise.all([
+    io.sb(`users?id=in.(${users.join(',')})&select=id,username,display_name`),
+    io.sb(`proofreading_tasks?id=in.(${tasks.join(',')})&select=id,supervoxel_id,segment_id`),
+    io.sb(`sandbox_match_scores?task_id=in.(${tasks.join(',')})&user_id=in.(${users.join(',')})&select=user_id,task_id,root`),
+  ]);
+  const who = Object.fromEntries(people.map(u => [u.id, u.username || u.display_name || 'A player']));
+  const cell = Object.fromEntries(cells.map(t => [t.id, t]));
+  const rootOf = Object.fromEntries(kept.map(k => [`${k.user_id}:${k.task_id}`, k.root]));
+  return {notes: rows.map(e => {
+    const t = cell[e.task_id] || {};
+    return {
+      id: e.id, at: e.at, kind: e.kind, score: e.score, note: String((e.detail || {}).note || ''),
+      player: who[e.user_id] || 'A player', taskId: e.task_id,
+      root: rootOf[`${e.user_id}:${e.task_id}`] || (t.segment_id != null ? String(t.segment_id) : null),
+      pointNm: t.supervoxel_id ? svPointNm(String(t.supervoxel_id)) : null,
+    };
+  })};
 }
 
 /** The score the box shows: Merge and Cut averaged (only the ones this cell has). */
@@ -745,12 +779,13 @@ async function handle({action, args, me, isAdmin, io}) {
   if (action === 'match.review') return review(io, {taskId: args && args.taskId, me, isAdmin});
   if (action === 'match.hint') return hint(io, {taskId: args && args.taskId, me, isAdmin, n: args && args.n, step: args && args.step, idleSecs: args && args.idleSecs});
   if (action === 'match.mine') return mine(io, {me, userId: args && args.userId});
-  if (action === 'match.event') return event(io, {taskId: args && args.taskId, me, isAdmin, kind: args && args.kind, idleSecs: args && args.idleSecs, score: args && args.score});
+  if (action === 'match.event') return event(io, {taskId: args && args.taskId, me, isAdmin, kind: args && args.kind, idleSecs: args && args.idleSecs, score: args && args.score, note: args && args.note});
+  if (action === 'match.notes') return notes(io, {me, isAdmin, limit: args && args.limit});
   fail(400, `unknown action ${action}`);
 }
 
 module.exports = {
-  handle, check, review, hint, event, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
+  handle, check, review, hint, event, notes, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, chunksOf, reachShare, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
   _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, NUCLEUS_REACH, MIN_PIECE, SAMPLES, FOUND_SHARE,

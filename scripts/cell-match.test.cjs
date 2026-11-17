@@ -56,6 +56,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   });
   // The match function: answers as the test says, and counts the asks.
   const asks = [];
+  const eventNotes = [];
   const events = [];
   const hintSteps = [];
   const HINT_PLACE = { taskId: 16762, scorable: true, left: 2, n: 0, step: 1, piece: { kind: 'merge', size: 60, nearNm: [317000, 163000, 66480] } };
@@ -66,7 +67,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     asks.push({ action: input.action, taskId: input.taskId, hasToken: !!input.token });
     if (input.action === 'match.hint') { hintSteps.push(input.step); return r.fulfill(json({ ok: true, data: input.step === 2 ? HINT : HINT_PLACE })); }
-    if (input.action === 'match.event') { events.push(input.kind); return r.fulfill(json({ ok: true, data: { ok: true } })); }
+    if (input.action === 'match.event') { events.push(input.kind); if (input.note) eventNotes.push([input.kind, input.note]); return r.fulfill(json({ ok: true, data: { ok: true } })); }
     if (input.action === 'match.mine') return r.fulfill(json({ ok: true, data: { cells: 5, accuracy: 72, lowRun: 0, reviewFirst: false, lowScore: 40, lowRunNeeded: 3 } }));
     return r.fulfill(json({ ok: true, data: input.action === 'match.review' ? reviewAnswer : answer }));
   });
@@ -218,8 +219,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const sent = await page.evaluate(() => { const got = []; const f = e => got.push(e.detail.action + ':' + e.detail.taskId); document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-saveview').click(); document.removeEventListener('nge:cm-cell-action', f); return got; });
     check('Save view asks the Cell Library, for this cell', sent.join(',') === 'save:16762', sent);
     // Skip asks first (Ames 2026-11-14).
-    const skipAsk = await page.evaluate(() => { const got = []; const f = e => got.push(e.detail.action); document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-skipcell').click(); const asked = !c.querySelector('.nge-cm-skipask').hidden && c.querySelector('.nge-cm-skipask').innerText.replace(/\s+/g, ' '); const before = got.length; c.querySelector('.nge-cm-skipask-no').click(); const closed = c.querySelector('.nge-cm-skipask').hidden; c.querySelector('.nge-cm-skipcell').click(); c.querySelector('.nge-cm-skipask-yes').click(); document.removeEventListener('nge:cm-cell-action', f); return { asked, before, closed, after: got }; });
+    const skipAsk = await page.evaluate(() => { const got = []; const f = e => got.push(e.detail.action); document.addEventListener('nge:cm-cell-action', f); const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-skipcell').click(); const asked = !c.querySelector('.nge-cm-skipask').hidden && c.querySelector('.nge-cm-skipask').innerText.replace(/\s+/g, ' '); const before = got.length; c.querySelector('.nge-cm-skipask-no').click(); const closed = c.querySelector('.nge-cm-skipask').hidden; c.querySelector('.nge-cm-skipcell').click(); c.querySelector('.nge-cm-skipask-note').value = '  Looks like two cells.  '; c.querySelector('.nge-cm-skipask-yes').click(); document.removeEventListener('nge:cm-cell-action', f); return { asked, before, closed, after: got }; });
     check('Skip asks first: Keep working skips nothing, Skip this cell skips', /skip this cell\? it goes back for someone else, and your edits on it no longer count for you/i.test(skipAsk.asked || '') && skipAsk.before === 0 && skipAsk.closed && skipAsk.after.join(',') === 'skip', skipAsk);
+    await page.waitForTimeout(300);
+    check('the Skip panel asks why, and the note goes with the skip', /why are you skipping\?/i.test(skipAsk.asked || '') && eventNotes.some(([k, n]) => k === 'skip' && n === 'Looks like two cells.'), { notes: eventNotes });
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, savedText: 'Saved 2 minutes ago', skipping: false, completing: null } })));
     const vnote = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-viewnote').innerText);
     check('the box says when the view was saved, and that it saves by itself', vnote === 'Saved 2 minutes ago. Your view also saves by itself when you move to another cell.', vnote);

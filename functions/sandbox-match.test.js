@@ -140,6 +140,10 @@ function world() {
     // Each player's start: a row once their first check is recorded.
     if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)&select=start_missing/))) { const k = `${m[1]}:${m[2]}`; return db.records.some(r => `${r.p_user}:${r.p_task}` === k) ? [{start_missing: null, start_extra: null, start_missing_left: null, start_extra_left: null, start_reach: null, ...((db.starts || {})[k] || {})}] : []; }
     if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)&start_missing=is\.null$/)) && init.method === 'PATCH') { const k = `${m[1]}:${m[2]}`; db.starts = db.starts || {}; if (!db.starts[k]) db.starts[k] = JSON.parse(init.body); return null; }
+    if (p.startsWith('sandbox_play_events?kind=in.(skip,complete)')) return (db.events || []).filter(e => (e.kind === 'skip' || e.kind === 'complete') && e.detail && e.detail.note).reverse().map((e, i) => ({id: i + 1, at: '2026-11-17T00:00:00Z', ...e}));
+    if (p.startsWith('users?id=in.')) return db.users || [];
+    if (p.startsWith('proofreading_tasks?id=in.')) return db.tasks.map(t => ({id: t.id, supervoxel_id: t.supervoxel_id, segment_id: null}));
+    if (p.startsWith('sandbox_match_scores?task_id=in.')) return [];
     if (p === 'sandbox_play_events') { (db.events = db.events || []).push(JSON.parse(init.body)); return null; }
     if ((m = p.match(/^task_assignments\?task_id=eq\.(\d+)&user_id=eq\.([^&]+)&/))) return (db.held || []).filter(h => h.task_id === +m[1] && h.user_id === decodeURIComponent(m[2]));
     // edit_log: this task's own, or (with a claim) untagged ones in its time.
@@ -594,4 +598,23 @@ test('nucleus: a cell reaching under a quarter of its true cell\'s space', () =>
   // A few supervoxels across half the chunks: not a nucleus.
   const spread = M.toSet([1, 2, 3, 4].map(c => sv(c, 5)));
   assert.equal(M.reachShare(chunks, spread, truth), 0.5);
+});
+
+test('a note with a skip or a Complete is kept for admins, and only admins read them', async () => {
+  M._reset();
+  const w = world();
+  w.db.users = [{id: ME.id, username: 'tester'}];
+  await M.event(w.io, {taskId: 1, me: ME, kind: 'skip', idleSecs: 5, note: '  This cell is mostly a blood vessel.  '});
+  await M.event(w.io, {taskId: 1, me: ME, kind: 'opened', note: 'not kept'});
+  assert.deepEqual(w.db.events.map(e => [e.kind, e.detail]), [['skip', {note: 'This cell is mostly a blood vessel.'}], ['opened', {}]]);
+  await M.event(w.io, {taskId: 1, me: ME, kind: 'skip', note: 'x'.repeat(3000)});
+  assert.equal(w.db.events[2].detail.note.length, 1000);
+  await assert.rejects(M.notes(w.io, {me: ME, isAdmin: false}), /Admins only/);
+  const r = await M.notes(w.io, {me: ME, isAdmin: true});
+  // Newest first.
+  assert.equal(r.notes[0].note.length, 1000);
+  assert.equal(r.notes[1].note, 'This cell is mostly a blood vessel.');
+  assert.equal(r.notes[0].player, 'tester');
+  assert.equal(r.notes[0].kind, 'skip');
+  assert.ok(Array.isArray(r.notes[0].pointNm));
 });

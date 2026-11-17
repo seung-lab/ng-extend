@@ -450,6 +450,10 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-skipask[hidden]{display:none}
 #${CARD_ID} .nge-cm-skipask-words{margin:0 0 4px;font-size:13px;line-height:1.45;color:#e6edf7}
 #${CARD_ID} .nge-cm-skipask .nge-cm-finish-actions{border-top:none;padding-top:4px}
+#${CARD_ID} .nge-cm-skipask-label{display:block;margin:8px 0 4px;font:600 12px/1.3 Inter,system-ui,sans-serif;color:#d6e2f5}
+#${CARD_ID} .nge-cm-skipask-label span{font-weight:400;color:#8fa6c4;margin-left:4px}
+#${CARD_ID} .nge-cm-skipask-note{display:block;box-sizing:border-box;width:100%;min-height:44px;margin:0 0 8px;padding:6px 8px;border:1px solid rgba(127,190,255,.3);border-radius:6px;background:rgba(4,10,22,.7);color:#e6f0ff;font:12.5px/1.4 Inter,system-ui,sans-serif;resize:vertical}
+#${CARD_ID} .nge-cm-skipask-note:focus{outline:none;border-color:#7fd8ff;box-shadow:0 0 0 2px rgba(127,216,255,.18)}
 #${CARD_ID} .nge-cm-skipask-yes{margin-left:auto !important;border-color:#ff8a9e !important;background:rgba(255,107,138,.22) !important;color:#fff !important}
 #${CARD_ID}.nge-cm-asking .nge-cm-play,#${CARD_ID}.nge-cm-asking .nge-cm-viewnote{display:none}
 #${CARD_ID} .nge-cm-finish{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:9px;border-top:1px solid rgba(127,190,255,.18)}
@@ -631,6 +635,8 @@ const PLAY_HTML = '<div class="nge-cm-play">'
   + '<div class="nge-cm-acc" hidden></div>'
   + '<div class="nge-cm-skipask" hidden role="alertdialog" aria-label="Skip this cell?">'
   + '<p class="nge-cm-skipask-words"><b>Skip this cell?</b> It goes back for someone else, and your edits on it no longer count for you. Pyr takes you to a new cell.</p>'
+  + '<label class="nge-cm-skipask-label" for="nge-cm-skipask-note">Why are you skipping? <span>Optional. The Pyr team reads these.</span></label>'
+  + '<textarea id="nge-cm-skipask-note" class="nge-cm-skipask-note" rows="2" maxlength="1000" placeholder="For example: the cell leaves the volume, or it looks like two cells"></textarea>'
   + '<div class="nge-cm-finish-actions"><button type="button" class="nge-cm-btn nge-cm-skipask-no">Keep working</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipask-yes">Skip this cell</button></div></div>';
 const OK_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="#5fe3a1" stroke-width="1.4"/><path d="M4.8 8.2 7 10.3l4.2-4.5" fill="none" stroke="#5fe3a1" stroke-width="1.6"/></svg>';
@@ -1123,10 +1129,10 @@ function idleSecs(taskId: number): number | null {
   const c = clocks.get(taskId);
   return c ? Math.round((Date.now() - Math.max(c.opened, c.lastEdit)) / 1000) : null;
 }
-function moment(taskId: number, kind: 'opened' | 'hint_offered' | 'complete' | 'skip') {
+function moment(taskId: number, kind: 'opened' | 'hint_offered' | 'complete' | 'skip', note = '') {
   const r = last.get(taskId);
   const score = r && r.scorable ? matchScore(r) : null;
-  void secureWrite('match.event', { taskId, kind, idleSecs: idleSecs(taskId), score }).catch((e: any) => console.debug('[cell-match] no moment', kind, e?.message));
+  void secureWrite('match.event', { taskId, kind, idleSecs: idleSecs(taskId), score, ...(note ? { note: note.slice(0, 1000) } : {}) }).catch((e: any) => console.debug('[cell-match] no moment', kind, e?.message));
 }
 function noteOpened(taskId: number) {
   if (clocks.has(taskId)) return;
@@ -1427,9 +1433,13 @@ function wirePlayBox(el: HTMLElement) {
     (el.querySelector('.nge-cm-skipask-no') as HTMLElement).focus();
   });
   el.querySelector('.nge-cm-skipask-no')!.addEventListener('click', () => { skipAsk.hidden = true; el.classList.remove('nge-cm-asking'); });
+  // Typing a note must not reach the game's keyboard shortcuts.
+  const skipNote = el.querySelector('.nge-cm-skipask-note') as HTMLTextAreaElement;
+  for (const k of ['keydown', 'keyup', 'keypress']) skipNote.addEventListener(k, e => e.stopPropagation());
   el.querySelector('.nge-cm-skipask-yes')!.addEventListener('click', () => {
     skipAsk.hidden = true; el.classList.remove('nge-cm-asking');
-    if (shownFor != null) moment(shownFor, 'skip');
+    if (shownFor != null) moment(shownFor, 'skip', skipNote.value.trim());
+    skipNote.value = '';
     removeHintLayers();
     cellAction('skip');
   });
@@ -1453,7 +1463,8 @@ function wirePlayBox(el: HTMLElement) {
   // Typing a note must not reach the game's keyboard shortcuts.
   for (const k of ['keydown', 'keyup', 'keypress']) el.querySelector('.nge-cm-finish-note')!.addEventListener(k, e => e.stopPropagation());
   el.querySelector('.nge-cm-finish-go')!.addEventListener('click', () => {
-    if (shownFor != null) moment(shownFor, 'complete');
+    // Its note is kept with the moment: the Sandbox has no sheet to keep it.
+    if (shownFor != null) moment(shownFor, 'complete', (el.querySelector('.nge-cm-finish-note') as HTMLTextAreaElement).value.trim());
     // The accuracy takes this cell in once its score is kept.
     setTimeout(() => void loadMine(true), 4000);
     removeHintLayers();

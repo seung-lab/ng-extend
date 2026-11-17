@@ -23,6 +23,7 @@ import AccessRequestsTab from 'components/AccessRequestsTab.vue';
 import HuntsAdminTab from 'components/HuntsAdminTab.vue';
 import InterneuronQuestsAdminTab from 'components/InterneuronQuestsAdminTab.vue';
 import TestTriesTab from 'components/TestTriesTab.vue';
+import TrainingSimNotesTab from 'components/TrainingSimNotesTab.vue';
 import TutorialTimesTab from 'components/TutorialTimesTab.vue';
 import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
@@ -68,7 +69,7 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts' | 'interneurons' | 'tutorialEdits' | 'tutorialTimes'>(
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'simnotes' | 'hunts' | 'interneurons' | 'tutorialEdits' | 'tutorialTimes'>(
   props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits' || props.initialSubTab === 'hunts' || props.initialSubTab === 'interneurons'
     ? props.initialSubTab
     : 'notifications');
@@ -3110,6 +3111,7 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'access' }" @click="adminSubTab = 'access'" title="Players' ten examples for retina access">Access requests</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tests' }" @click="adminSubTab = 'tests'" title="Every Proofreading Test try: the score, what was missed, and the player's cell">Test tries</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'simnotes' }" @click="adminSubTab = 'simnotes'" title="Notes players left when they skipped or completed a Training Sim cell">Training Sim notes</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'hunts' }" @click="adminSubTab = 'hunts'" title="Timed merger hunts, with gold, silver and bronze Achievements">Hunts</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'interneurons' }" @click="adminSubTab = 'interneurons'" title="Super Quests (giant MEC interneurons), and the active time players spend on each claim">Super Quests</button>
@@ -3129,6 +3131,7 @@ function practiceWhen(iso: string | null) {
 
     <!-- ── Proofreading Test tries (Ames 2026-10-21): every try, and the player's cell ── -->
     <TestTriesTab v-if="adminSubTab === 'tests'" />
+    <TrainingSimNotesTab v-if="adminSubTab === 'simnotes'" />
 
     <!-- ── Cell types: the game's log against CAVE ── -->
     <div v-if="adminSubTab === 'celltypes'" class="nge-admin-section">
