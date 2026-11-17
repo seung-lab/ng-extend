@@ -104,7 +104,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const shown = await waitText(/merge 0%/i, 30000);
     check('the card shows on the Sandbox claim', shown, { text: await cardText(), asks });
     check('it asked the match function for this cell, signed in', asks.some(a => a.action === 'match.check' && a.taskId === 16762 && a.hasToken), asks);
-    check('Playing: Practice, the Match score, then Merge and Cut with their pieces', /^playing: practice .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
+    check('Practice and the mode up top, the Match score, then Merge and Cut with their pieces', /^practice (looking|highlighting) .*match score [a-z ]*0% 0 edits merge 0% 0 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
     // Clear of the Play button in the same corner.

@@ -429,15 +429,12 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:58px 1fr auto;align-items:baseline}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:4px 0 7px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-fill,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{box-shadow:none;opacity:.85}
-#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{background:linear-gradient(90deg,#e8364f,#ff7a8c)}
-#${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label{color:#6fb8ff}
-#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{color:#ff7a8c}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{font-size:10.5px;letter-spacing:.12em;grid-column:1;grid-row:1}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-num,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-num{font-size:13px;color:#a9c3e0}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-row[data-row="cut"]{display:none}
-#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-pre{display:none}
+#${CARD_ID}:not(.nge-cm-idle):not(.nge-cm-reviewing) .nge-cm-pre{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-score{grid-template-columns:1fr auto;column-gap:10px}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-score .nge-cm-gauge{grid-column:1;grid-row:1;margin:0;align-self:center}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-score .nge-cm-read{display:flex;grid-column:2;grid-row:1}
