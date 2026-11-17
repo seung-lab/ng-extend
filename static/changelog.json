@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-17T16:43:00Z",
+      "title": "A simpler beta request form",
+      "items": [
+        "The beta request form now just asks for your email, the best one to reach you."
+      ]
+    },
+    {
       "at": "2026-11-17T16:38:00Z",
       "title": "Your active cell",
       "items": [
