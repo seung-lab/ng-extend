@@ -117,6 +117,7 @@ function reachShare(truthChunks, cell, truth) {
 }
 
 const contact = require('./sandbox-contact');
+const em = require('./sandbox-em');
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 
 // ── Sets of supervoxels: sorted BigUint64Arrays ────────────────────────────
@@ -626,6 +627,10 @@ async function review(io, {taskId, me, isAdmin, withSamples = false}) {
   const parts = (partsMemo.get(`${result.taskId}:${cell}`) || []).filter(p => still ? still.has(p.root) : p.size >= MIN_PIECE);
   const mergers = parts.map(p => ({size: p.size, pointNm: svPointNm(p.samples[0]), ...(withSamples ? {samples: p.samples} : {})}));
   const out = {missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
+  // Each pin on a section with an image there, as Jump's spots.
+  for (const list of [out.missed, out.mergers]) {
+    await Promise.all(list.map(async m => { if (m.pointNm) m.pointNm = await em.onImage(io.fetch, m.pointNm); }));
+  }
   reviewMemo.set(memo, out);
   return {...result, ...out};
 }
@@ -701,8 +706,10 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs, prefetch = fals
       spotMemo.set(spotKey, {at, bringsMerger: !!p.bringsMerger});
     } catch (e) { console.warn('[sandbox-match] hint place', e.message); }
     const merger = p.bringsMerger ? {bringsMerger: true} : {};
-    if (reveal) piece = {kind: p.kind, size: p.size, pointNm: at || p.pointNm, ...(p.root ? {root: p.root} : {}), ...merger};
-    else piece = {kind: p.kind, size: p.size, nearNm: at || p.pointNm, ...merger};
+    // On a section with an image there: a blank patch showed the 2D view black.
+    const place = await em.onImage(io.fetch, at || p.pointNm);
+    if (reveal) piece = {kind: p.kind, size: p.size, pointNm: place, ...(p.root ? {root: p.root} : {}), ...merger};
+    else piece = {kind: p.kind, size: p.size, nearNm: place, ...merger};
   }
   // A look ahead (the box asks for the next spot before Jump is pressed, Ames
   // 2026-11-17: "why does it take so long to find the next spot?") is not a hint.
@@ -838,6 +845,6 @@ async function handle({action, args, me, isAdmin, io}) {
 module.exports = {
   handle, check, review, hint, event, notes, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, chunksOf, reachShare, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
-  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); attachedMemo.clear(); reviewMemo.clear(); spotMemo.clear(); },
+  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); attachedMemo.clear(); em._reset(); reviewMemo.clear(); spotMemo.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, NUCLEUS_REACH, MIN_PIECE, partCutOff, SAMPLES, FOUND_SHARE,
 };

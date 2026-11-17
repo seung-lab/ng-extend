@@ -669,3 +669,28 @@ test('the stub of a cut part counts in neither the parts nor the Cut', async () 
   const rv = await M.review(w.io, {taskId: 1, me: ME});
   assert.deepEqual(rv.mergers, []);
 });
+
+test('a spot on a blank patch of the EM moves to the nearest section with an image there', async () => {
+  const E = require('./sandbox-em');
+  E._reset();
+  // Sections 32 to 47: an image at x, y 10 only on 40 and up.
+  const [X, Y] = E.EM.size;
+  const buf = Buffer.alloc(X * Y * 16);
+  for (let z = 8; z < 16; z++) for (let y = 5; y < 15; y++) for (let x = 5; x < 15; x++) buf[z * X * Y + y * X + x] = 120;
+  const zipped = require('zlib').gzipSync(buf);
+  let reads = 0;
+  const fetchImpl = async (url) => {
+    reads++;
+    if (/_32-48$/.test(url)) return {ok: true, arrayBuffer: async () => zipped};
+    return {ok: false, status: 404};
+  };
+  const at = [10.5 * 1024, 10.5 * 1024, 36.5 * 40];
+  assert.deepEqual(await E.onImage(fetchImpl, at), [at[0], at[1], 40.5 * 40]);
+  // Already on an image: unchanged. A section that cannot be read: unchanged.
+  const on = [10.5 * 1024, 10.5 * 1024, 44.5 * 40];
+  assert.deepEqual(await E.onImage(fetchImpl, on), on);
+  const far = [10.5 * 1024, 10.5 * 1024, 900.5 * 40];
+  assert.deepEqual(await E.onImage(fetchImpl, far), far);
+  // The chunk is read once.
+  assert.ok(reads <= 4, reads);
+});
