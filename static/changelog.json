@@ -2,6 +2,18 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-18T16:14:00Z",
+      "title": "A faster Jump in the Training Sim",
+      "items": [
+        "Jump finds the next spot much faster: the Training Sim looks it up while you work.",
+        "Jump and Review now take you to a slice with an image, so the 2D view no longer goes black.",
+        "The Jump pin stays still again, big and drawn over your cell.",
+        "New Merge and Cut buttons in the Training Sim box turn those modes on and off, just like the M and C keys.",
+        "A wrong part you cut off now counts as cut off, even when a small stub of it stays on your cell.",
+        "After a cut, the old copy of your cell no longer stays on screen over the new one."
+      ]
+    },
+    {
       "at": "2026-11-18T15:13:00Z",
       "title": "Easier to spot pins, clearer mark questions",
       "items": [

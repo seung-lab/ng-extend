@@ -17,7 +17,7 @@
  * answer key never reaches the browser, only what is still wrong after Complete.
  */
 import { fullViewUrl } from './util/local_view';
-import { exitGrapheneTool, activeGrapheneToolKind } from './widgets/graphene_tool_utils';
+import { exitGrapheneTool, activeGrapheneToolKind, activateGrapheneTool } from './widgets/graphene_tool_utils';
 import { highlightStyles, saveHighlightStyles, MAX_HIGHLIGHT_STYLES } from './util/highlight';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, currentSegLayer } from './datasets';
@@ -29,6 +29,10 @@ import { openSplitView } from './practice';
 import { getActivePinia } from 'pinia';
 import EditableText from './components/EditableText.vue';
 import NeuronGlyph from './components/NeuronGlyph.vue';
+import { isLatestRoots } from './widgets/pcg_service';
+import { currentIdsOf } from './util/outdated_ids';
+import { setNgeGlow, type NgeGlow } from 'neuroglancer/perspective_view/nge_props';
+import { cameraAxes } from './util/starship';
 // The Cell Library's own neuron (Ames 2026-11-14: "use the neuron").
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 
@@ -215,6 +219,7 @@ export function hasReview(taskId: number | null | undefined): boolean {
 }
 function noteResult(taskId: number, r: MatchResult) {
   last.set(taskId, r);
+  lookAhead(taskId, r);
   if (r.scorable && (r.merge !== undefined || r.cut !== undefined)) reviewable.add(taskId); else reviewable.delete(taskId);
 }
 
@@ -418,7 +423,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
-#${CARD_ID} .nge-cm-nudge{display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
+#${CARD_ID} .nge-cm-nudge{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after{content:'';position:absolute;left:-40%;bottom:0;width:40%;height:2px;background:linear-gradient(90deg,transparent,#7fd8ff,transparent);animation:nge-cm-ld-sweep 1.2s ease-in-out infinite}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(127,216,255,.10) 50%,transparent 70%);background-size:220% 100%;animation:nge-cm-find-shine 1.6s linear infinite;pointer-events:none}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:nge-cm-ld-pulse 1s ease-in-out infinite;transform-origin:center}
+#${CARD_ID} .nge-cm-nudge.nge-cm-finding .nge-cm-nudge-text::after{content:'';display:inline-block;width:14px;animation:nge-cm-ld-dots 1.2s steps(4) infinite}
+@keyframes nge-cm-find-shine{from{background-position:120% 0}to{background-position:-120% 0}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after,#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before,#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:none}}
 #${CARD_ID} .nge-cm-nudge[hidden]{display:none}
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
@@ -470,10 +481,18 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
 #${CARD_ID} .nge-cm-row[data-row="merge"]{margin-top:2px;border-top:1px solid rgba(127,190,255,.18);padding-top:7px}
-#${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:58px 1fr auto;align-items:baseline}
-#${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:4px 0 7px}
+#${CARD_ID} .nge-cm-row[data-row="merge"],#${CARD_ID} .nge-cm-row[data-row="cut"]{grid-template-columns:74px 1fr auto;align-items:center}
+#${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:3px 0 5px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-fill,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{box-shadow:none;opacity:.85}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{font-size:10.5px;letter-spacing:.12em;grid-column:1;grid-row:1}
+#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0;padding:3px 7px 2px;border-radius:6px;line-height:1;cursor:pointer;background:rgba(10,20,36,.6);transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
+#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]{border:1px solid rgba(61,155,255,.6);color:#9fd0ff}
+#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]{border:1px solid rgba(255,64,88,.6);color:#ffa3b0}
+#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]:hover{background:rgba(61,155,255,.18)}
+#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]:hover{background:rgba(255,64,88,.16)}
+#${CARD_ID} .nge-cm-modebtn[data-tool="merge"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
+#${CARD_ID} .nge-cm-modebtn[data-tool="cut"][aria-pressed="true"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);border-color:#ff8a9e;color:#1a0408;box-shadow:0 0 10px rgba(255,64,88,.7)}
+#${CARD_ID} .nge-cm-modebtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-num,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-num{font-size:13px;color:#a9c3e0}
@@ -536,7 +555,7 @@ function ensureStyle() {
 }
 
 const rowHtml = (row: Row) => `<div class="nge-cm-row" data-row="${row}">`
-  + `<span class="nge-cm-short" aria-hidden="true">${ROW_SHORT[row]}</span><span class="nge-cm-label">${ROW_LABEL[row]}</span>`
+  + `<span class="nge-cm-short" aria-hidden="true">${ROW_SHORT[row]}</span><button type="button" class="nge-cm-label nge-cm-modebtn" data-tool="${row}" aria-pressed="false" title="${ROW_SHORT[row]}">${ROW_LABEL[row]}</button>`
   + '<span class="nge-cm-read"><span class="nge-cm-delta"></span><span class="nge-cm-num"></span></span>'
   + '<div class="nge-cm-gauge"><i class="nge-cm-fill"></i></div>'
   + '<span class="nge-cm-pieces"></span></div>';
@@ -695,6 +714,11 @@ function card(): HTMLElement {
   });
   el.querySelector('.nge-cm-min-btn')!.addEventListener('click', () => setMin(card0, !card0.classList.contains('nge-cm-min')));
   wirePlayBox(el);
+  el.querySelectorAll<HTMLButtonElement>('.nge-cm-modebtn').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    pressModeButton(b.dataset.tool === 'cut' ? 'cut' : 'merge');
+    paintMode(card0);
+  }));
   keepSize(el);
   setMin(el, store.get(MIN_KEY) === '1', true);
   document.body.appendChild(el);
@@ -1195,6 +1219,34 @@ interface HintPiece { kind: 'merge' | 'cut'; root?: string; size: number; pointN
 /** Hint in two steps (Ames 2026-11-14: "this is not a hint but giving
  *  immediately the answer"): first the place on your own cell where the
  *  trouble starts, and what to look for there; Show me then shows the piece. */
+// ── Look ahead (Ames 2026-11-17: "why does it take so long to find the next
+// spot? can we speed it up?"). A spot takes the server 1 to 7 s: it reads the
+// cell, the true cell and the image around the spot, and a Jump can reach a
+// server copy that has none of it in memory. So the box asks for the next
+// spot quietly as soon as a reading lands, keeps the answer here, and Jump
+// shows it at once. Keyed by the cell's root, so an edit asks again.
+interface HintAnswer { left: number; piece: HintPiece | null }
+const ahead = new Map<string, Promise<HintAnswer>>();
+const aheadKey = (taskId: number, root: string | undefined, n: number, step: number) => `${taskId}:${root ?? ''}:${n}:${step}`;
+function askAhead(taskId: number, root: string | undefined, n: number, step: 1 | 2) {
+  const key = aheadKey(taskId, root, n, step);
+  if (ahead.has(key)) return;
+  if (ahead.size > 40) ahead.delete(ahead.keys().next().value as string);
+  const p = secureWrite<HintAnswer>('match.hint', { taskId, n, step, prefetch: true });
+  p.catch(() => ahead.delete(key));
+  ahead.set(key, p);
+}
+/** The spot the next Jump goes to, asked for now. */
+function lookAhead(taskId: number, r: MatchResult) {
+  if (!r.scorable || !r.root || !isPlaying()) return;
+  const left = (r.missing?.left ?? 0) + (r.cutParts ?? r.extra?.left ?? 0);
+  if (left <= 0) return;
+  const c = clocks.get(taskId);
+  const n = c ? (c.jumped ? c.n + 1 : c.n) : 0;
+  // A moment later, so a burst of edits asks once.
+  window.setTimeout(() => { if (last.get(taskId)?.root === r.root) askAhead(taskId, r.root, n, 1); }, 1200);
+}
+
 async function pressHint(el: HTMLElement, next = false) {
   const taskId = shownFor;
   if (taskId == null) return;
@@ -1213,8 +1265,21 @@ async function pressHint(el: HTMLElement, next = false) {
   line.hidden = false;
   if (step === 1) { b.hidden = true; text.textContent = 'Finding the next spot…'; }
   b.disabled = true; jump.disabled = true; if (step === 2) b.textContent = 'Finding…';
+  line.classList.add('nge-cm-finding');
   try {
-    const h = await secureWrite<{ left: number; piece: HintPiece | null }>('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) });
+    const root = last.get(taskId)?.root;
+    const key = aheadKey(taskId, root, c.n, step);
+    const early = ahead.get(key);
+    let h: HintAnswer;
+    if (early) {
+      // Looked up already: shown at once; the hint itself is still kept.
+      h = await early;
+      void secureWrite('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) }).catch(() => {});
+    } else {
+      h = await secureWrite<HintAnswer>('match.hint', { taskId, n: c.n, step, idleSecs: idleSecs(taskId) });
+    }
+    // Show me after this: asked for now.
+    if (step === 1 && h.piece) askAhead(taskId, root, c.n, 2);
     if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; return; }
     showHintPiece(h.piece);
     const where = h.left > 1 ? ` Spot ${(c.n % h.left) + 1} of ${h.left}.` : '';
@@ -1239,7 +1304,7 @@ async function pressHint(el: HTMLElement, next = false) {
     console.debug('[cell-match] no jump', e?.message);
     text.textContent = 'Could not find the next spot right now. Try again in a moment.';
     b.textContent = 'Show me';
-  } finally { b.disabled = false; jump.disabled = false; }
+  } finally { b.disabled = false; jump.disabled = false; line.classList.remove('nge-cm-finding'); }
 }
 let hintPinTimer: number | undefined;
 function showHintPiece(p: HintPiece) {
@@ -1279,7 +1344,7 @@ function showHintPiece(p: HintPiece) {
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
   place();
-  pulsePin(v);
+  // No beat (Ames 2026-11-18: "immediately remove the animated annotation that appears on jump").
   // A new annotation layer takes its point only once it knows the view's space (as the review's pins).
   window.clearInterval(hintPinTimer);
   let tries = 0;
@@ -1295,24 +1360,6 @@ function showHintPiece(p: HintPiece) {
 /** The hint pin: big, drawn over the cell, and beating (kfay, report 556:
  *  "barely cannot see pins. should be bigger or glowing or heartbeat"). */
 const PIN_SIZE = 4;
-let pinPulse = 0;
-function pulsePin(v: any) {
-  window.clearInterval(pinPulse);
-  const t0 = performance.now();
-  pinPulse = window.setInterval(() => {
-    const ml = (v.layerManager?.managedLayers ?? []).find((x: any) => x.name === HINT_PIN_LAYER);
-    const size = ml?.layer?.annotationDisplayState?.ngeSize;
-    if (!ml) { window.clearInterval(pinPulse); return; }
-    if (!size) return;
-    // A heartbeat: two quick beats, then rest. Set under the hood, so the
-    // beat does not count as a change to the view (no save, no address churn).
-    const ph = ((performance.now() - t0) / 1100) % 1;
-    const beat = Math.max(0, Math.sin(Math.min(1, ph / 0.18) * Math.PI)) + 0.6 * Math.max(0, Math.sin(Math.min(1, Math.max(0, ph - 0.22) / 0.18) * Math.PI));
-    size.value_ = PIN_SIZE * (1 + 0.6 * beat);
-    try { v.display?.scheduleRedraw(); } catch { /* gone */ }
-  }, 50);
-}
-
 /** Complete inside the box: the Cell Library runs the checks and the save; the box shows them. */
 function openFinish(el: HTMLElement) {
   finishing = true;
@@ -1533,10 +1580,17 @@ const MODE_TIPS = {
   highlight: 'Highlight is on: Ctrl+click two points to mark the branch between them. With Merge or Cut on, hold H and click.',
   look: 'Nothing is on: Ctrl+click does nothing to your cell.',
 } as const;
+/** Merge or Cut on from the box, as the M and C keys do; pressed again, off. */
+function pressModeButton(tool: 'merge' | 'cut') {
+  if (modeNow() === tool) { try { exitGrapheneTool(); } catch { /* none on */ } return; }
+  try { exitGrapheneTool(); } catch { /* none on */ }
+  activateGrapheneTool(tool === 'cut' ? 'multicut' : 'merge');
+}
 function paintMode(el: HTMLElement) {
   const pill = el.querySelector('.nge-cm-mode') as HTMLElement | null;
   if (!pill) return;
   const m = modeNow();
+  el.querySelectorAll<HTMLElement>('.nge-cm-modebtn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === m)));
   if (pill.dataset.mode === m) return;
   pill.dataset.mode = m;
   el.dataset.mode = m;
@@ -1822,7 +1876,45 @@ function removeHintLayers() {
   for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
     if (ml.name === HINT_SEG_LAYER || ml.name === HINT_PIN_LAYER) { try { dropLayer(v, ml); } catch { /* gone */ } }
   }
+  pinGlow(null);
 }
+
+/** The Jump pin breathes (Ames 2026-11-18: "no animation of the annotation
+ *  point!"): a soft glow in the pin's color around it in 3D, as the tour's
+ *  synapse marker, a steady size on screen. It stops with the pin. */
+let pinGlowRaf = 0;
+function pinGlow(nm: number[] | null, hex = '#7fd8ff') {
+  cancelAnimationFrame(pinGlowRaf);
+  pinGlowRaf = 0;
+  setNgeGlow(null, 'cell-match-pin');
+  const v = (window as any).viewer;
+  const unit = toView([1, 1, 1]);
+  if (!nm || !v || !unit) return;
+  const per = unit.map(u => 1 / u) as [number, number, number];
+  const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const glow: NgeGlow = { positions: Float32Array.from(toView(nm)!), colors: new Float32Array(4), sizesNm: new Float32Array(1), count: 1, nmRight: [unit[0], 0, 0] };
+  const t0 = performance.now();
+  const step = (now: number) => {
+    if (!(v.layerManager?.managedLayers ?? []).some((ml: any) => ml.name === HINT_PIN_LAYER)) { pinGlow(null); return; }
+    const k = 0.5 + 0.5 * Math.sin((now - t0) / 1000 * 3.2);
+    let across = 40_000;
+    try { across = v.projectionScale.value * Math.min(...per); } catch { /* a guess */ }
+    glow.colors.set([rgb[0], rgb[1], rgb[2], 0.55 + 0.45 * k]);
+    glow.sizesNm[0] = Math.min(4000, across * 0.04) * (0.7 + 0.45 * k);
+    const cam = cameraAxes(per);
+    if (cam) {
+      glow.nmRight = [cam.right[0] * unit[0], cam.right[1] * unit[1], cam.right[2] * unit[2]];
+      // A little toward the viewer, so the membrane it sits on does not cut it in half.
+      for (let a = 0; a < 3; a++) glow.positions[a] = (nm[a] + cam.toEye[a] * 2400) * unit[a];
+    }
+    setNgeGlow(glow, 'cell-match-pin');
+    try { v.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    pinGlowRaf = requestAnimationFrame(step);
+  };
+  pinGlowRaf = requestAnimationFrame(step);
+}
+/** For headless checks: is the Jump pin glowing. */
+(window as any).__ngeCellMatchPinGlow = () => pinGlowRaf !== 0;
 function removeReviewLayers() {
   untintCell();
   const v = (window as any).viewer;
@@ -1964,6 +2056,72 @@ export async function showReview(_taskId: number, pending: Promise<ReviewResult 
   });
 }
 
+/** The claim's own listed IDs (from the sheet, or an older view) are old
+ *  versions of the cell: on screen next to the current one, the cell showed
+ *  twice, as it is and as it was (Ames 2026-11-17: "Do you see the two
+ *  segments in view? They're the same cell", 648518346352170608 last current
+ *  on Nov 14). Swapped for the current ID whenever they appear. */
+const outdated = new Map<string, boolean>();
+/** `old:live` → is that old ID the live cell now. */
+const becomes = new Map<string, boolean>();
+const lookedUp = new Map<string, number>();
+let swapping = false;
+async function swapOldIds(taskId: number) {
+  const live = last.get(taskId)?.root;
+  if (!live || !deps || swapping) return;
+  const claim = deps.claims().find(c => c.id === taskId);
+  const group = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
+  const vis = group?.visibleSegments;
+  if (!claim || !vis) return;
+  // Any old ID on screen that is the cell now, not only the claim's own: after
+  // a cut, the cell's ID from before stayed on screen over the new one and
+  // looked like the finished cell (Ames 2026-11-18, task 16780: 596200 over
+  // 100509, which differ by 21 supervoxels). A piece cut off is not the cell
+  // now, so it is never swapped in.
+  let shown: string[];
+  try {
+    shown = [...vis].map(String).filter(id => /^\d+$/.test(id) && id !== live && outdated.get(id) !== false
+      && becomes.get(`${id}:${live}`) !== false && Uint64.parseString(id).high >>> 24 !== 1);
+  } catch { return; }
+  if (!shown.length) return;
+  swapping = true;
+  try {
+    // Only an ID CAVE says is out of date, and only for a current one: right
+    // after an edit the claim can hold the new ID before the box's reading has
+    // it, and that must never be swapped for the older one.
+    const ask = [live, ...shown].filter(id => !outdated.has(id) || id === live);
+    if (ask.length) {
+      const got = await isLatestRoots(ask);
+      for (const id of ask) if (got?.has(id)) outdated.set(id, got.get(id) === false);
+    }
+    if (outdated.get(live) !== false) { outdated.delete(live); return; }
+    if (last.get(taskId)?.root !== live) return;
+    const now = Uint64.parseString(live);
+    for (const id of shown) {
+      if (outdated.get(id) !== true) continue;
+      if (!claim.roots.includes(id)) {
+        const k = `${id}:${live}`;
+        if (!becomes.has(k) && (lookedUp.get(k) ?? 0) < Date.now() - 30_000) {
+          lookedUp.set(k, Date.now());
+          const ends = await currentIdsOf(id).catch(() => null);
+          // A lookup that failed is asked again, half a minute later.
+          if (ends) becomes.set(k, ends.includes(live));
+        }
+        if (!becomes.get(k) || last.get(taskId)?.root !== live) continue;
+      }
+      const old = Uint64.parseString(id);
+      if (!vis.has(old)) continue;
+      const wasSelected = !!group.selectedSegments?.has(old);
+      vis.delete(old);
+      group.selectedSegments?.delete(old);
+      vis.add(now);
+      if (wasSelected) group.selectedSegments?.add(now);
+      console.debug('[cell-match] old ID of the cell on screen', id, 'swapped for', live);
+    }
+  } catch (e) { console.debug('[cell-match] swap old IDs', e); }
+  finally { swapping = false; }
+}
+
 function tick() {
   const el = document.getElementById(CARD_ID);
   if (el) place(el);
@@ -1977,6 +2135,7 @@ function tick() {
     return;
   }
   maybeOfferHint(id);
+  void swapOldIds(id);
   // Play back on, on the cell Stop hid the box from: show it again.
   if (stoppedOn != null && isPlaying()) { if (stoppedOn === onScreen) onScreen = null; stoppedOn = null; }
   if (id === onScreen) return;

@@ -136,9 +136,14 @@ function world() {
     if (p.startsWith('sandbox_match_keys?on_conflict')) { const k = JSON.parse(init.body); db.keys[k.task_id] = k; return null; }
     if (p === 'rpc/sandbox_match_record') { const b = JSON.parse(init.body); db.records.push(b); db.peaks = db.peaks || {}; if (!(b.p_task in db.peaks)) db.peaks[b.p_task] = 0; return null; }
     if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.[^&]+&task_id=eq\.(\d+)&select=extra_peak/))) return db.peaks && m[1] in db.peaks ? [{extra_peak: db.peaks[m[1]]}] : [];
-    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.[^&]+&task_id=eq\.(\d+)$/)) && init.method === 'PATCH') { db.peaks[m[1]] = JSON.parse(init.body).extra_peak; return null; }
+    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)$/)) && init.method === 'PATCH') {
+      const b = JSON.parse(init.body);
+      if ('extra_peak' in b) db.peaks[m[2]] = b.extra_peak;
+      if ('parts_peak' in b) (db.partsPeak = db.partsPeak || {})[`${m[1]}:${m[2]}`] = b.parts_peak;
+      return null;
+    }
     // Each player's start: a row once their first check is recorded.
-    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)&select=start_missing/))) { const k = `${m[1]}:${m[2]}`; return db.records.some(r => `${r.p_user}:${r.p_task}` === k) ? [{start_missing: null, start_extra: null, start_missing_left: null, start_extra_left: null, start_reach: null, ...((db.starts || {})[k] || {})}] : []; }
+    if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)&select=start_missing/))) { const k = `${m[1]}:${m[2]}`; return db.records.some(r => `${r.p_user}:${r.p_task}` === k) ? [{start_missing: null, start_extra: null, start_missing_left: null, start_extra_left: null, start_reach: null, parts_peak: (db.partsPeak || {})[k] || null, ...((db.starts || {})[k] || {})}] : []; }
     if ((m = p.match(/^sandbox_match_scores\?user_id=eq\.([^&]+)&task_id=eq\.(\d+)&start_missing=is\.null$/)) && init.method === 'PATCH') { const k = `${m[1]}:${m[2]}`; db.starts = db.starts || {}; if (!db.starts[k]) db.starts[k] = JSON.parse(init.body); return null; }
     if (p.startsWith('sandbox_play_events?kind=in.(skip,complete)')) return (db.events || []).filter(e => (e.kind === 'skip' || e.kind === 'complete') && e.detail && e.detail.note).reverse().map((e, i) => ({id: i + 1, at: '2026-11-17T00:00:00Z', ...e}));
     if (p.startsWith('users?id=in.')) return db.users || [];
@@ -483,9 +488,9 @@ test('Cut on a cell that started with nothing to cut: progress against the most 
   // Merging A brought N (60 wrong) along.
   w.sandbox.edit({S1: [...range(1, 160), ...range(300, 359)], B: range(161, 200)});
   assert.equal((await M.check(w.io, {taskId: 1, me: ME})).cut, 0);
-  // Half of N cut off: half way.
-  w.sandbox.edit({S2: [...range(1, 160), ...range(330, 359)], B: range(161, 200), N2: range(300, 329)});
-  assert.equal((await M.check(w.io, {taskId: 1, me: ME})).cut, 50);
+  // A third of N cut off: a third of the way.
+  w.sandbox.edit({S2: [...range(1, 160), ...range(320, 359)], B: range(161, 200), N2: range(300, 319)});
+  assert.equal((await M.check(w.io, {taskId: 1, me: ME})).cut, 33);
   // All of it: done, and out of the score.
   w.sandbox.edit({S3: range(1, 160), B: range(161, 200), N3: range(300, 359)});
   const done = await M.check(w.io, {taskId: 1, me: ME});
@@ -626,6 +631,69 @@ test('Jump never leaves the cell: with no touch, the cell voxel nearest the piec
   const vol = Uint8Array.from([1, 1, 0, 0]);
   assert.deepEqual(C.nearestCellVoxel(vol, [4, 1, 1], [3, 0, 0]), [1, 0, 0]);
   assert.equal(C.nearestCellVoxel(Uint8Array.from([0, 0]), [2, 1, 1], [0, 0, 0]), null);
+});
+
+test('a look ahead finds the spot without recording a hint', async () => {
+  M._reset();
+  const w = world();
+  await M.check(w.io, {taskId: 1, me: ME});
+  const before = (w.db.events || []).length;
+  const r = await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 1, prefetch: true});
+  assert.ok(r.piece);
+  assert.equal((w.db.events || []).length, before);
+  await M.hint(w.io, {taskId: 1, me: ME, n: 0, step: 1});
+  assert.equal((w.db.events || []).length, before + 1);
+});
+
+test('a part is cut off once most of it is gone: the stub a cut leaves does not hold it back', () => {
+  // Ames's cell 16784: parts of 800 and 220 cut down to stubs of 69 and 52.
+  assert.equal(M.partCutOff(69, 800), true);
+  assert.equal(M.partCutOff(52, 220), true);
+  // A third gone is not cut off; nor a part just merged in, at any size.
+  assert.equal(M.partCutOff(40, 60), false);
+  assert.equal(M.partCutOff(60, 60), false);
+  // Half gone with a big piece left is still attached.
+  assert.equal(M.partCutOff(400, 800), false);
+  assert.equal(M.partCutOff(150, 800), true);
+});
+
+test('the stub of a cut part counts in neither the parts nor the Cut', async () => {
+  M._reset();
+  const w = world();
+  await M.check(w.io, {taskId: 1, me: ME});
+  // N (60) cut down to 25 still attached: cut off.
+  w.sandbox.edit({S1: [...range(1, 100), ...range(335, 359)], A: range(101, 160), B: range(161, 200), N2: range(300, 334)});
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  assert.deepEqual(r.extra, {left: 0, total: 1});
+  assert.equal(r.cutParts, 0);
+  assert.equal(r.cut, 100);
+  const rv = await M.review(w.io, {taskId: 1, me: ME});
+  assert.deepEqual(rv.mergers, []);
+});
+
+test('a spot on a blank patch of the EM moves to the nearest section with an image there', async () => {
+  const E = require('./sandbox-em');
+  E._reset();
+  // Sections 32 to 47: an image at x, y 10 only on 40 and up.
+  const [X, Y] = E.EM.size;
+  const buf = Buffer.alloc(X * Y * 16);
+  for (let z = 8; z < 16; z++) for (let y = 5; y < 15; y++) for (let x = 5; x < 15; x++) buf[z * X * Y + y * X + x] = 120;
+  const zipped = require('zlib').gzipSync(buf);
+  let reads = 0;
+  const fetchImpl = async (url) => {
+    reads++;
+    if (/_32-48$/.test(url)) return {ok: true, arrayBuffer: async () => zipped};
+    return {ok: false, status: 404};
+  };
+  const at = [10.5 * 1024, 10.5 * 1024, 36.5 * 40];
+  assert.deepEqual(await E.onImage(fetchImpl, at), [at[0], at[1], 40.5 * 40]);
+  // Already on an image: unchanged. A section that cannot be read: unchanged.
+  const on = [10.5 * 1024, 10.5 * 1024, 44.5 * 40];
+  assert.deepEqual(await E.onImage(fetchImpl, on), on);
+  const far = [10.5 * 1024, 10.5 * 1024, 900.5 * 40];
+  assert.deepEqual(await E.onImage(fetchImpl, far), far);
+  // The chunk is read once.
+  assert.ok(reads <= 4, reads);
 });
 
 test('the Merge row moves a tenth of a percent at a time', () => {
