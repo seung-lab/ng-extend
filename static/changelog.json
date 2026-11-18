@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-18T21:29:00Z",
+      "title": "Smoother Advanced tutorial",
+      "items": [
+        "In the Render step, the settings light up one at a time, and each slider moves once on its own to show what it does.",
+        "Glowing buttons on the top bar now glow all the way around.",
+        "The nucleus step says what to do if the whole cell comes in instead of just its nucleus."
+      ]
+    },
+    {
       "at": "2026-11-18T21:13:00Z",
       "title": "Opening on your cells again",
       "items": [
