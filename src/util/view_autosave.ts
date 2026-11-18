@@ -12,7 +12,7 @@
  * A link someone opened on purpose (a shared view) is never interrupted.
  */
 import { supabase } from '../supabase';
-import { bootHash } from './local_view';
+import { bootHash, viewHasCells } from './local_view';
 import { currentSegLayerName, findDatasetBySegName, switchToDataset, datasetAbbrev } from '../datasets';
 import { getDatasetCaveConfig } from '../config';
 import { getCachedJson } from 'neuroglancer/util/trackable';
@@ -77,6 +77,8 @@ async function saveNow(viewer: any) {
   if (gen === lastSeenGen && dataset === lastSeenDataset) return;
   const text = JSON.stringify(state);
   if (text === lastSaved || text.length > MAX_BYTES) { lastSeenGen = gen; lastSeenDataset = dataset; return; }
+  // No cell on screen: the account keeps the last view that had one.
+  if (!viewHasCells(text)) { lastSeenGen = gen; lastSeenDataset = dataset; return; }
   // Only the Starship's slow turn moved: not saved again (it was an account
   // write every 30 s while the page sat idle).
   const turning = performance.now() - ((window as any).__ngeAutoTurnAt || -1e9) < 2000;
