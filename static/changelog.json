@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-18T15:13:00Z",
+      "title": "Easier to spot pins, clearer mark questions",
+      "items": [
+        "In the Training Sim, the pin that shows where to look is bigger, drawn over the cell, and beats like a heart.",
+        "When you remove a segment that has marks on it, the question now shows that segment in its own color with its number, and Show takes you to the marks before you decide.",
+        "That question also comes up faster."
+      ]
+    },
+    {
       "at": "2026-11-18T14:55:00Z",
       "title": "Every merge counts in the Training Sim",
       "items": [
