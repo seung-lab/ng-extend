@@ -1618,9 +1618,10 @@ async function onHtmlClick(e: MouseEvent) {
 @media (prefers-reduced-motion: reduce) { .nge-tour-target::after { animation: none; opacity: 1; } }
 /* On the top bar the ring grew past the bar and was cut flat top and bottom
    (kfay, report 568: "glow isn't good on this tool"): there it sits just
-   inside the button and glows inward, without growing. */
+   inside the button, a little in from its top and bottom (the icon row
+   clips at the button's own edges), and glows inward, without growing. */
 #extensionBar .nge-tour-target { outline: none !important; animation: none !important; }
-#extensionBar .nge-tour-target::after { inset: 0; border-radius: 8px; animation: nge-tour-ring-in 1.4s ease-in-out infinite; }
+#extensionBar .nge-tour-target::after { inset: 4px 1px; border-radius: 8px; animation: nge-tour-ring-in 1.4s ease-in-out infinite; }
 /* One setting's name at a time (the Advanced tutorial's Render step). */
 .nge-tut-label-glow { color: #bff3ff !important; text-shadow: 0 0 6px rgba(0, 220, 255, 0.95), 0 0 14px rgba(0, 200, 255, 0.7); animation: nge-tut-label 1.2s ease-in-out infinite; }
 @keyframes nge-tut-label { 0%, 100% { text-shadow: 0 0 4px rgba(0, 220, 255, 0.6), 0 0 10px rgba(0, 200, 255, 0.4); } 50% { text-shadow: 0 0 8px rgba(0, 230, 255, 1), 0 0 18px rgba(0, 210, 255, 0.85); } }
