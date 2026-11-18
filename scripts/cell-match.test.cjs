@@ -373,6 +373,15 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     answer = ANSWERS.clean;
     await edit([ANSWERS.clean.root]);
     check('nothing to cut', await waitText(/50%/, 10000) && /cut nothing to cut/.test(await cardText() || ''), await cardText());
+    // Merge high, nothing cut yet: the note says Cut is what holds the score (kfay 563).
+    answer = { ...ANSWERS.clean, root: '648518346351004100', merge: 87, cut: 0, cutParts: 2, extra: { left: 2, total: 2 } };
+    await edit([answer.root]);
+    const cutNote = await waitText(/cut off the 2 wrong parts to raise it/, 10000);
+    check('Merge high and Cut at 0: the card says to cut off the wrong parts', cutNote, await cardText());
+    answer = ANSWERS.clean;
+    await edit([ANSWERS.clean.root]);
+    await waitText(/50%/, 10000);
+    check('the Cut note goes once there is nothing to cut', !/wrong parts? to raise it/.test(await cardText() || ''), await cardText());
 
     // The function before Merge and Cut (one number only): no card rather than a wrong one.
     answer = { taskId: 16762, scorable: true, root: '648518346351005000', match: 12, missing: { left: 9, total: 20 }, extra: { left: 0, total: 0 } };
@@ -587,6 +596,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
 
     await page.evaluate(() => {
       const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState);
+      const v0 = [...ml.layer.displayState.segmentationGroupState.value.visibleSegments][0];
+      if (v0) window.__testU64 = v0.constructor;
       ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
     });
     await page.waitForTimeout(3000);
@@ -623,6 +634,29 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('while the box waits, the Cell Library slim row stays out of the way', ownsIdle === true, ownsIdle);
     const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
     check('on the Sandbox the Play button is big', playBox === null || playBox >= 52, playBox);
+    // The claim's IDs out of date (merges made while the box had lost track):
+    // the box asks which cell the claim's soma is in now and finds it on
+    // screen (kfay, report 560: "still in stand by even after a dozen merge").
+    {
+      const NOW = '648518346350788734', SOMA = '73325262829729817';
+      await context.route(new RegExp(`/node/${SOMA}/root`), r => r.fulfill(json({ root_id: NOW })));
+      answer = { ...ANSWERS.merged, root: NOW };
+      await page.evaluate(([now, soma]) => {
+        window.__ngeCellMatch.withClaims(() => [{ id: 16762, dataset: 'pinky_nf_v2', roots: ['648518346350000001'], anchor: soma }]);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        const vis = ml.layer.displayState.segmentationGroupState.value.visibleSegments;
+        vis.add(window.__testU64.parseString(now));
+      }, [NOW, SOMA]);
+      const live = await waitText(/39%/, 20000);
+      check('after merges the box lost track of, it finds the cell by its soma and reads Live, not Standby', live && !/standby|not on screen|next sim cell/.test(await cardText() || ''), await cardText());
+      await context.unroute(new RegExp(`/node/${SOMA}/root`));
+      await page.evaluate(() => {
+        window.__ngeCellMatch.withClaims(() => []);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
+      });
+      await page.waitForTimeout(2500);
+    }
     await shot('play-big.png');
     await shot('cell-match-standby.png');
     await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));

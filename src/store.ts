@@ -5433,7 +5433,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
   // Cell match (Ames 2026-11-12): Sandbox claims, known by the same IDs.
   const sandboxClaims = computed(() => myActiveClaims().filter(t => canonicalDataset(t.dataset) === 'pinky_nf_v2').map(t => ({
-    id: t.id, dataset: t.dataset,
+    id: t.id, dataset: t.dataset, anchor: anchorOf(t) ?? undefined,
     roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
       .filter((r): r is string => !!r))],
   })));

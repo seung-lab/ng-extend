@@ -29,14 +29,14 @@ import { openSplitView } from './practice';
 import { getActivePinia } from 'pinia';
 import EditableText from './components/EditableText.vue';
 import NeuronGlyph from './components/NeuronGlyph.vue';
-import { isLatestRoots } from './widgets/pcg_service';
+import { isLatestRoots, getRootFromSupervoxel } from './widgets/pcg_service';
 import { currentIdsOf } from './util/outdated_ids';
 import { setNgeGlow, type NgeGlow } from 'neuroglancer/perspective_view/nge_props';
 import { cameraAxes } from './util/starship';
 // The Cell Library's own neuron (Ames 2026-11-14: "use the neuron").
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 
-export interface SandboxClaim { id: number; dataset: string; roots: string[] }
+export interface SandboxClaim { id: number; dataset: string; roots: string[]; /** A supervoxel of the cell (its soma). */ anchor?: string }
 export interface SavedLinkInput { title: string; note?: string; url: string; dataset?: string; position?: [number, number, number]; visibleSegments?: string[] }
 interface Deps { claims: () => SandboxClaim[]; signedIn: () => boolean; saveLink?: (l: SavedLinkInput) => Promise<string | null>; myLinkTitles?: () => string[] }
 export interface MatchResult {
@@ -241,7 +241,32 @@ function claimOnScreen(): number | null {
     }
     return false;
   };
-  return mine.find(shown)?.id ?? null;
+  const found = mine.find(shown)?.id ?? null;
+  if (found == null) void findCellOnScreen(mine, vis);
+  return found;
+}
+
+/** No claim's IDs on screen: ask which cell each claim's soma is in now, and
+ *  take it if that is on screen (kfay, report 560: "points still in stand by
+ *  even after a dozen merge"). The claim's own IDs are brought up to date
+ *  only for a claim seen on screen lately, so after merges made while the box
+ *  had lost track (a reload, a lookup that failed) nothing ever caught up.
+ *  At most every 10 s. */
+let lookedForCell = 0;
+async function findCellOnScreen(mine: SandboxClaim[], vis: any) {
+  if (Date.now() - lookedForCell < 10_000 || !vis.size) return;
+  lookedForCell = Date.now();
+  for (const c of mine) {
+    if (!c.anchor) continue;
+    const root = await getRootFromSupervoxel(c.anchor).catch(() => null);
+    if (!root || !/^\d+$/.test(root)) continue;
+    let here = false;
+    try { here = vis.has(Uint64.parseString(root)); } catch { /* not an ID */ }
+    if (!here) continue;
+    aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), root]));
+    console.debug('[cell-match] claim', c.id, 'is on screen as', root);
+    return;
+  }
 }
 
 // ── The HUD ─────────────────────────────────────────────────────────────────
@@ -1055,8 +1080,17 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
       + '<button type="button" class="nge-cm-btn nge-cm-cellnote-go">Show me the cell</button>';
     note.querySelector('.nge-cm-cellnote-go')!.addEventListener('click', () => void showBiggestPiece(el));
   }
-  if (!nucleus) note.innerHTML = '';
-  note.hidden = !nucleus;
+  // Merge well along and nothing cut yet: the Match score is the two
+  // together, so it stays near half however much is merged (kfay, reports 562
+  // and 563: "still 44% after few more good merge").
+  const toCut = r?.cutParts ?? r?.extra?.left ?? 0;
+  const cutNudge = !nucleus && !!(r && r.scorable && toCut > 0 && (r.cut ?? 0) < 1 && (r.merge ?? 0) >= 50);
+  if (cutNudge) {
+    const text = `Your Match score is Merge and Cut together. Cut off the ${toCut === 1 ? 'wrong part' : `${toCut} wrong parts`} to raise it.`;
+    if (note.dataset.cut !== text) { note.innerHTML = `<span>${text}</span>`; note.dataset.cut = text; }
+  } else if (!nucleus) { note.innerHTML = ''; delete note.dataset.cut; }
+  if (nucleus) delete note.dataset.cut;
+  note.hidden = !nucleus && !cutNudge;
   void loadMine();
   place(el);
   shownFor = taskId;
