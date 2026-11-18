@@ -1275,10 +1275,11 @@ function showHintPiece(p: HintPiece) {
   const color = place1 ? '#7fd8ff' : p.kind === 'merge' ? GOLD : RED;
   const place = () => {
     for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === HINT_PIN_LAYER) dropLayer(v, ml);
-    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: 1.5, annotations: pin })); }
+    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: PIN_SIZE, onTop: true, annotations: pin })); }
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
   place();
+  pulsePin(v);
   // A new annotation layer takes its point only once it knows the view's space (as the review's pins).
   window.clearInterval(hintPinTimer);
   let tries = 0;
@@ -1289,6 +1290,27 @@ function showHintPiece(p: HintPiece) {
     if (!ml || n === 1 || ++tries > 10) { window.clearInterval(hintPinTimer); return; }
     if (tries > 1) place();
   }, 700);
+}
+
+/** The hint pin: big, drawn over the cell, and beating (kfay, report 556:
+ *  "barely cannot see pins. should be bigger or glowing or heartbeat"). */
+const PIN_SIZE = 4;
+let pinPulse = 0;
+function pulsePin(v: any) {
+  window.clearInterval(pinPulse);
+  const t0 = performance.now();
+  pinPulse = window.setInterval(() => {
+    const ml = (v.layerManager?.managedLayers ?? []).find((x: any) => x.name === HINT_PIN_LAYER);
+    const size = ml?.layer?.annotationDisplayState?.ngeSize;
+    if (!ml) { window.clearInterval(pinPulse); return; }
+    if (!size) return;
+    // A heartbeat: two quick beats, then rest. Set under the hood, so the
+    // beat does not count as a change to the view (no save, no address churn).
+    const ph = ((performance.now() - t0) / 1100) % 1;
+    const beat = Math.max(0, Math.sin(Math.min(1, ph / 0.18) * Math.PI)) + 0.6 * Math.max(0, Math.sin(Math.min(1, Math.max(0, ph - 0.22) / 0.18) * Math.PI));
+    size.value_ = PIN_SIZE * (1 + 0.6 * beat);
+    try { v.display?.scheduleRedraw(); } catch { /* gone */ }
+  }, 50);
 }
 
 /** Complete inside the box: the Cell Library runs the checks and the save; the box shows them. */

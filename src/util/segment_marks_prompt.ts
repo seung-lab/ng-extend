@@ -12,6 +12,7 @@ import { reactive } from 'vue';
 import { currentSegLayer } from '../datasets';
 import { marksNowOn, removeTrackedMarks, type TrackedMark } from './highlight';
 import { getPcgInfo, authHeaders } from '../widgets/pcg_service';
+import { Uint64 } from 'neuroglancer/util/uint64';
 
 /** Are these still whole cells on the server? An id a merge or cut replaced is
  *  not: that segment was edited, not removed, however late its new id turns up
@@ -32,7 +33,37 @@ async function stillLatest(roots: string[]): Promise<boolean> {
   } catch { return false; }
 }
 
-export const segmentMarksPrompt = reactive<{ counts: { label: string; n: number }[] }>({ counts: [] });
+/** The prompt names the segment it means, by its color and id, and can show
+ *  where the marks are (annkri, report 558: "this makes me really unsure what
+ *  annotations i am actually removing"). */
+export const segmentMarksPrompt = reactive<{ counts: { label: string; n: number }[]; segments: { id: string; color: string }[]; at: number[] | null }>({ counts: [], segments: [], at: null });
+
+/** The color a segment is drawn in: its own color, else Neuroglancer's for its id. */
+function colorOf(id: string): string {
+  try {
+    const cg = currentSegLayer()?.layer?.displayState?.segmentationColorGroupState?.value;
+    const seg = Uint64.parseString(id);
+    const out = new Uint64();
+    if (cg?.segmentStatedColors?.get?.(seg, out)) {
+      const p = out.low >>> 0;
+      return '#' + [p & 0xff, (p >>> 8) & 0xff, (p >>> 16) & 0xff].map(v => v.toString(16).padStart(2, '0')).join('');
+    }
+    if (cg?.segmentColorHash?.computeCssColor) return cg.segmentColorHash.computeCssColor(seg);
+  } catch { /* no layer */ }
+  return '#9fb3c8';
+}
+
+/** Take the view to the first of the marks. */
+export function showSegmentMarks() {
+  const at = segmentMarksPrompt.at;
+  const v: any = (window as any).viewer;
+  if (!at || !v) return;
+  try {
+    const pos = v.navigationState.position;
+    const now = Array.from(pos.value as ArrayLike<number>);
+    pos.value = Float32Array.from(now.map((n, i) => (i < 3 ? at[i] : n)));
+  } catch (e) { console.warn('[marks] could not show the marks:', e); }
+}
 let found: TrackedMark[] = [];
 
 export function deleteSegmentMarks() {
@@ -42,6 +73,8 @@ export function deleteSegmentMarks() {
 export function keepSegmentMarks() {
   found = [];
   segmentMarksPrompt.counts = [];
+  segmentMarksPrompt.segments = [];
+  segmentMarksPrompt.at = null;
 }
 
 /** A click or key this recently can be what removed the segment. */
@@ -79,6 +112,8 @@ async function decide() {
   const counts = new Map<string, number>();
   for (const m of marks) counts.set(m.label, (counts.get(m.label) ?? 0) + 1);
   found = marks;
+  segmentMarksPrompt.segments = roots.map(id => ({ id, color: colorOf(id) }));
+  segmentMarksPrompt.at = marks.find(m => m.at)?.at ?? null;
   segmentMarksPrompt.counts = [...counts].map(([label, n]) => ({ label, n }));
 }
 
