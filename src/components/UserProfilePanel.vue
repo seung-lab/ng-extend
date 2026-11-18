@@ -2270,7 +2270,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                scrolls inside it, so the profile never scrolls as a whole
                (Ames 2026-10-11). -->
           <div class="nge-profile-section nge-profile-section--cells">
-            <div class="nge-cell-list" v-if="recentCells.length > 0">
+            <div class="nge-cell-list" v-if="recentCells.length > 0" :class="{ 'nge-cell-list--notype': !recentCells.some(c => c.cellType) }">
               <div class="nge-cell-list-header">
                 <span class="nge-cell-list-title">{{ viewingOtherUser ? 'Recently completed cells' : 'My recently completed cells' }}</span>
                 <button class="nge-cell-list-all" @click="activeTab = 'myCells'" title="Every cell, by dataset">{{ viewingOtherUser ? 'All cells' : 'My cells' }} →</button>
@@ -5866,4 +5866,64 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(0.6) brightness(0.85); }
 .nge-ds-access-tile--unknown { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
+
+/* ── Laptops (Ames 2026-11-18: "this laptop layout for profile is ABYSMAL
+   we gotta do better"). Every item stays; what changes is the arrangement.
+   Cells, Edits and Days become three cards side by side, each with its
+   numbers, its Achievements and, at the foot, the bar to the next one with
+   how many to go. The last row (recent cells and the Scout report or
+   annotations) runs under all three and takes the rest of the height. ── */
+body:not(.nge-mobile) .is-compact .nge-track-rows {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto minmax(240px, 1fr); gap: 10px; align-content: stretch;
+}
+body:not(.nge-mobile) .is-compact .nge-track-rows:has(> .nge-profile-sandbox-acc) { grid-template-rows: auto auto minmax(240px, 1fr); }
+.is-compact .nge-track-rows > .nge-profile-sandbox-acc { grid-column: 1 / -1; margin: 4px 0 0; }
+body:not(.nge-mobile) .is-compact .nge-track-row--rest { grid-column: 1 / -1; min-height: 0; padding-top: 6px; }
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label label" "stats stats" "ach ach" "bar count";
+  grid-template-rows: auto auto 1fr auto;
+  gap: 8px 10px; padding: 10px 12px 10px; min-width: 0;
+  border: 1px solid rgba(100, 180, 255, 0.12); border-radius: 10px;
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.05), rgba(74, 158, 255, 0.015));
+}
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) .nge-track-head { display: contents; }
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) .nge-track-head .nge-profile-section-label { grid-area: label; margin: 0; white-space: normal; }
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) :is(.nge-track-wire, .nge-track-pads) { display: none; }
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) .nge-track-bar {
+  grid-area: bar; align-self: center; height: 9px; min-width: 0;
+  --trace: var(--track);
+  background:
+    linear-gradient(var(--track), var(--track)) left 50% / calc(100% * var(--frac, 1) * var(--nge-track-fill)) 3px no-repeat,
+    linear-gradient(rgba(201, 228, 255, 0.14), rgba(201, 228, 255, 0.14)) left 50% / 100% 3px no-repeat;
+}
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) .nge-track-count { grid-area: count; align-self: center; margin: 0; }
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) > .nge-track-stats { grid-area: stats; }
+body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) > .nge-track-achievements {
+  grid-area: ach; padding: 8px 0 0; border-left: none; background: none;
+  border-top: 1px solid rgba(74, 158, 255, 0.1); justify-content: flex-start;
+}
+.is-compact .nge-track-row:not(.nge-track-row--rest) .nge-profile-windows .nge-profile-stat-row { gap: 0 12px; grid-template-columns: repeat(3, minmax(min-content, 1fr)); }
+.is-compact .nge-track-row:not(.nge-track-row--rest) .nge-track-achievements .nge-profile-badges-grid { max-width: none; }
+/* the header: the name and bio on the first line; under them, on one line,
+   Special Awards at the left and Cells identified at the right, each with
+   its label above */
+.is-compact .nge-profile-header { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 6px; }
+.is-compact .nge-profile-header-main { flex: none; max-width: none; }
+.is-compact .nge-profile-header-side { flex: none; flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 22px; flex-wrap: nowrap; padding: 0; }
+.is-compact .nge-profile-header-side .nge-profile-section { flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.is-compact .nge-profile-header-side .nge-profile-section--identified { align-items: flex-end; }
+/* the card numbers: room for Past 7d on one line */
+.is-compact .nge-track-row:not(.nge-track-row--rest) .nge-profile-stat-label { white-space: nowrap; }
+/* recent cells: no empty Type column when none of them has a type */
+.nge-cell-list--notype :is(.nge-cell-list-columns, .nge-cell-row) { grid-template-columns: 18px 16px minmax(0, 1fr) 0 64px 18px; }
+.nge-cell-list--notype :is(.nge-cell-col-label--type, .nge-cell-type) { visibility: hidden; }
+/* the right column: the favorite art smaller, so Top of the Week and Streak
+   are in view without a scroll */
+@media (max-height: 960px) {
+  body:not(.nge-mobile) .nge-profile-col--right .nge-profile-viz-badge-icon,
+  body:not(.nge-mobile) .nge-profile-col--right .nge-profile-viz-badge-icon--large { width: min(140px, calc(16 * var(--nge-vh, 1vh))); height: min(140px, calc(16 * var(--nge-vh, 1vh))); }
+  body:not(.nge-mobile) .nge-profile-col--right .nge-profile-viz-badge { gap: 6px; padding-top: 8px; }
+}
 </style>
