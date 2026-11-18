@@ -406,18 +406,19 @@ test('where a piece meets the cell, to the voxel: a cell voxel touching the piec
   assert.deepEqual(C.meetingVoxel(apart, dims), [1, 2, 1]);
 });
 
-test('tiny pieces are optional: out of the score, the counts and Jump', async () => {
+test('tiny pieces: out of the score, the counts and Jump, but they count in the Merge row', async () => {
   // B (40 supervoxels) is under the line; A (60) is not.
   M._reset({smallPiece: 50});
   const w = world();
   const first = await M.check(w.io, {taskId: 1, me: ME});
   assert.equal(w.db.keys[1].optional_missing.length, 40);
   assert.deepEqual(first.missing, {left: 1, total: 1});
-  // Merging A alone is all of Merge: B is not needed.
+  // Merging A is 60 of the 100 missing (Ames 2026-11-18: "a tiny piece should still count").
   w.sandbox.edit({S1: [...range(1, 160), ...range(300, 359)], B: range(161, 200)});
   const merged = await M.check(w.io, {taskId: 1, me: ME});
-  assert.equal(merged.merge, 100);
-  // Merging B as well changes nothing either way.
+  assert.equal(merged.merge, 60);
+  assert.deepEqual(merged.missing, {left: 0, total: 1});
+  // Merging B as well is the rest.
   w.sandbox.edit({S2: [...range(1, 200), ...range(300, 359)]});
   assert.equal((await M.check(w.io, {taskId: 1, me: ME})).merge, 100);
   // Merge only: a wrong part counts at any size (a thin axon is still a merger).
@@ -625,4 +626,12 @@ test('Jump never leaves the cell: with no touch, the cell voxel nearest the piec
   const vol = Uint8Array.from([1, 1, 0, 0]);
   assert.deepEqual(C.nearestCellVoxel(vol, [4, 1, 1], [3, 0, 0]), [1, 0, 0]);
   assert.equal(C.nearestCellVoxel(Uint8Array.from([0, 0]), [2, 1, 1], [0, 0, 0]), null);
+});
+
+test('the Merge row moves a tenth of a percent at a time', () => {
+  assert.equal(M.mergePercent(3000, 24000), 87.5);
+  assert.equal(M.mergePercent(2950, 24000), 87.7);
+  assert.equal(M.mergePercent(0, 24000), 100);
+  assert.equal(M.mergePercent(30000, 24000), 0);
+  assert.equal(M.mergePercent(0, 0), null);
 });

@@ -182,7 +182,8 @@ const scoreTip = (pct: number | null | undefined) => `Match score${pct == null ?
 /** The match score: Merge and Cut averaged (only the ones this cell has). */
 export function matchScore(r: MatchResult): number | null {
   const parts = [r.merge, r.cut].filter((n): n is number => n != null);
-  return parts.length ? Math.floor(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+  // To a tenth, as the Merge row (Ames 2026-11-18: a tiny piece still counts).
+  return parts.length ? Math.floor(parts.reduce((a, b) => a + b, 0) / parts.length * 10 + 1e-9) / 10 : null;
 }
 
 /** Remove a layer of ours. If its panel was open, close the panel first:
@@ -564,7 +565,7 @@ const INFO_LINES = [
   '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.',
   '<b>Merge</b>: the missing pieces you have merged back in.',
   '<b>Cut</b>: the wrong parts you have cut off.',
-  'Tiny missing bits (under 500 supervoxels) do not count either way: go for the missing branches. Wrong parts count at any size, since a merged axon can be thin. <b>Jump</b> takes you to the next spot that needs fixing.',
+  'Every missing piece adds to Merge, even a tiny one, but the branches add the most: go for those first. Wrong parts count at any size, since a merged axon can be thin. <b>Jump</b> takes you to the next spot that needs fixing.',
   'In real cells there is no known answer. That is up to you and the brain.',
   'When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the 🍔 menu, top right.',
 ];
