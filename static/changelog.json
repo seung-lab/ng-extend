@@ -2,6 +2,92 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-18T15:13:00Z",
+      "title": "Easier to spot pins, clearer mark questions",
+      "items": [
+        "In the Training Sim, the pin that shows where to look is bigger, drawn over the cell, and beats like a heart.",
+        "When you remove a segment that has marks on it, the question now shows that segment in its own color with its number, and Show takes you to the marks before you decide.",
+        "That question also comes up faster."
+      ]
+    },
+    {
+      "at": "2026-11-18T14:55:00Z",
+      "title": "Every merge counts in the Training Sim",
+      "items": [
+        "Every missing piece you merge in now adds to your Merge score, even a tiny one, so each good merge moves the number.",
+        "The Match score and Merge show tenths of a percent."
+      ]
+    },
+    {
+      "at": "2026-11-17T22:15:00Z",
+      "title": "Fly the Starship Tour again",
+      "items": [
+        "Want to see the Starship tour again? Open the menu at the top right and pick Starship Tour, just under Site Tour."
+      ]
+    },
+    {
+      "at": "2026-11-17T22:08:00Z",
+      "title": "A new Play button",
+      "items": [
+        "The Play button is now a bright teal key with a glass label.",
+        "Press it and it launches with a flash, rings of light and a comet along the label.",
+        "While your cell loads, it says Teleporting until you arrive."
+      ]
+    },
+    {
+      "at": "2026-11-17T22:06:00Z",
+      "title": "Closer 2D in the tutorials",
+      "items": [
+        "In the Merge and Cut tutorials, the 2D images now zoom in close on the spot each step points at.",
+        "The 2D cut steps remind you that Ctrl and the mouse wheel zoom the 2D images."
+      ]
+    },
+    {
+      "at": "2026-11-17T21:59:00Z",
+      "title": "The tour rocket lands",
+      "items": [
+        "The rocket by the chat box is retired now that the new tour is done. Thank you to everyone who flew it and sent feedback!",
+        "New players now start the tour only after the sign in box closes, so it never plays hidden behind it."
+      ]
+    },
+    {
+      "at": "2026-11-17T21:53:00Z",
+      "title": "Clearer Cut tutorial",
+      "items": [
+        "The Cut tutorial now says to Ctrl+Click the branch right next to each gem, not the gem itself."
+      ]
+    },
+    {
+      "at": "2026-11-17T21:44:00Z",
+      "title": "Keyboards and the Merge glow",
+      "items": [
+        "Letter shortcuts now follow the letter printed on your key, so M merges and C cuts on French and other keyboards too.",
+        "In the Merge tutorial, the Merge icon on the top bar glows again while the box asks you to turn it on."
+      ]
+    },
+    {
+      "at": "2026-11-17T19:06:50Z",
+      "title": "Training Sim score on your profile",
+      "items": [
+        "Your Training Sim accuracy now sits on its own line above Cells completed, so your counts and Achievements stay in their places.",
+        "Once you can edit the Retina, the Training Sim score no longer shows on your profile."
+      ]
+    },
+    {
+      "at": "2026-11-17T18:40:17Z",
+      "title": "Sections and scale bar restyled",
+      "items": [
+        "The Sections switch in the 3D view and the scale bar now match the rest of Pyr: dark rounded chips with a cyan tick box and a thin cyan bar."
+      ]
+    },
+    {
+      "at": "2026-11-17T18:16:32Z",
+      "title": "Sections slider on hover",
+      "items": [
+        "In the 3D view, the slider for how solid the sections are now shows only when you hover on Sections, so it stays out of the way."
+      ]
+    },
+    {
       "at": "2026-11-17T17:28:00Z",
       "title": "Training Sim touch ups",
       "items": [

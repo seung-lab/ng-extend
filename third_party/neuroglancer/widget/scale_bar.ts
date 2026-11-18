@@ -176,30 +176,52 @@ export class ScaleBarDimensions {
 function makeScaleBarTexture(
     dimensions: ScaleBarDimensions, gl: GL, texture: WebGLTexture|null, label: string,
     options: ScaleBarTextureOptions) {
+  // nge: drawn in the site's look (Ames 2026-11-17: "stylize this as well"),
+  // a dark rounded chip like the music button and the Sections switch, the
+  // site's lettering, and a thin cyan bar with an end tick each side.
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
-  const textHeight = options.textHeightInPixels * options.scaleFactor;
-  const font = `bold ${textHeight}px ${options.fontName}`;
+  const k = options.scaleFactor;
+  const textHeight = 12 * k;
+  const font = `600 ${textHeight}px Inter, system-ui, ${options.fontName}`;
   ctx.font = font;
-  ctx.fillStyle = 'white';
   const text = `${label}${dimensions.physicalLength} ${dimensions.physicalUnit}`;
   const textMetrics = ctx.measureText(text);
   const innerWidth = Math.max(dimensions.lengthInPixels, textMetrics.width);
-  const barHeight = options.barHeightInPixels * options.scaleFactor;
-  const barTopMargin = options.barTopMarginInPixels * options.scaleFactor;
-  const innerHeight = barHeight + barTopMargin + textHeight;
-  const padding = options.paddingInPixels * options.scaleFactor;
-  const totalHeight = innerHeight + 2 * padding;
-  const totalWidth = innerWidth + 2 * padding;
+  const barHeight = 3 * k;
+  const tickHeight = 8 * k;
+  const barTopMargin = 4 * k;
+  const innerHeight = tickHeight + barTopMargin + textHeight;
+  const padX = 9 * k, padY = 5 * k;
+  const totalHeight = Math.ceil(innerHeight + 2 * padY);
+  const totalWidth = Math.ceil(innerWidth + 2 * padX);
   canvas.width = totalWidth;
   canvas.height = totalHeight;
+  const radius = 8 * k, line = Math.max(1, k);
+  ctx.beginPath();
+  ctx.roundRect(line / 2, line / 2, totalWidth - line, totalHeight - line, radius);
+  ctx.fillStyle = 'rgba(6, 12, 24, 0.82)';
+  ctx.fill();
+  ctx.lineWidth = line;
+  ctx.strokeStyle = 'rgba(100, 180, 255, 0.22)';
+  ctx.stroke();
   ctx.font = font;
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-  ctx.fillRect(0, 0, totalWidth, totalHeight);
-  ctx.fillStyle = 'white';
-  ctx.fillText(text, totalWidth / 2, totalHeight - padding - barHeight - barTopMargin);
-  ctx.fillRect(padding, totalHeight - padding - barHeight, dimensions.lengthInPixels, barHeight);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#d6e2f5';
+  ctx.fillText(text, totalWidth / 2, padY + textHeight * 0.9);
+  const barLeft = (totalWidth - dimensions.lengthInPixels) / 2;
+  const tickTop = totalHeight - padY - tickHeight;
+  const barTop = tickTop + (tickHeight - barHeight) / 2;
+  ctx.fillStyle = '#42d5ec';
+  ctx.shadowColor = 'rgba(66, 213, 236, 0.55)';
+  ctx.shadowBlur = 4 * k;
+  ctx.beginPath();
+  ctx.roundRect(barLeft, barTop, dimensions.lengthInPixels, barHeight, barHeight / 2);
+  ctx.fill();
+  ctx.fillRect(barLeft, tickTop, line * 1.5, tickHeight);
+  ctx.fillRect(barLeft + dimensions.lengthInPixels - line * 1.5, tickTop, line * 1.5, tickHeight);
+  ctx.shadowBlur = 0;
   setTextureFromCanvas(gl, texture, canvas);
   return {width: totalWidth, height: totalHeight};
 }

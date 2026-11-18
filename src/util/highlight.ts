@@ -923,7 +923,24 @@ function cellOfMark(m: { mark: string; style: HighlightStyle }): string {
 }
 
 /** A mark or hand placed point, wherever it is now. */
-export interface TrackedMark { label: string; style: HighlightStyle; ids: string[]; }
+export interface TrackedMark { label: string; style: HighlightStyle; ids: string[]; at?: number[] | null }
+
+/** The supervoxel under a place, by place: a supervoxel never moves, so each
+ *  mark is looked up once. Every lookup is a fetch, and with hundreds of marks
+ *  the "delete its marks?" box came long after the segment went (annkri,
+ *  report 558). */
+const svAtPlace = new Map<string, Promise<string | null>>();
+function cachedSupervoxelAt(at: number[]): Promise<string | null> {
+  const key = at.map(n => Math.round(n * 100) / 100).join(',');
+  let p = svAtPlace.get(key);
+  if (!p) {
+    p = supervoxelAtPlace(at).catch(() => null);
+    p.then(sv => { if (sv == null) svAtPlace.delete(key); });
+    if (svAtPlace.size > 20000) svAtPlace.clear();
+    svAtPlace.set(key, p);
+  }
+  return p;
+}
 
 /** Where an annotation starts, in viewer coordinates. */
 function startOf(ann: any): number[] | null {
@@ -969,7 +986,7 @@ export async function marksNowOn(roots: string[], stillShown: string[] = [], add
   }
   for (let i = 0; i < items.length; i += 8) {
     await Promise.all(items.slice(i, i + 8).map(async it => {
-      const sv = it.at ? await supervoxelAtPlace(it.at).catch(() => null) : null;
+      const sv = it.at ? await cachedSupervoxelAt(it.at) : null;
       if (sv && sv !== '0') it.piece = sv;
     }));
   }
@@ -1005,7 +1022,7 @@ export async function marksNowOn(roots: string[], stillShown: string[] = [], add
   const out: TrackedMark[] = [];
   for (const it of items) {
     const now = it.piece ? rootOf.get(it.piece) : undefined;
-    if (now ? want.has(now) : (!!it.cell && await descends(it.cell))) out.push({ label: it.label, style: it.style, ids: it.ids });
+    if (now ? want.has(now) : (!!it.cell && await descends(it.cell))) out.push({ label: it.label, style: it.style, ids: it.ids, at: it.at });
   }
   return out;
 }

@@ -328,11 +328,20 @@ async function fillTab() {
 }
 watch([() => props.visible, feedTab, () => shownNotes.value.length], () => { void fillTab(); });
 const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
+/** What the mark-read button marks. Mark admin read, from Access, To do and
+ *  replies or Edits, marks all three, Access whatever its New/Upgrade view
+ *  (Ames 2026-11-17: it marked only the view on screen, so the Admin count
+ *  stayed up). Triage and Hunt reports keep their own. */
+const markReadList = computed(() => {
+  const t = feedTab.value;
+  if (t === 'access' || t === 'admin' || t === 'edits') return [...accessNotes.value, ...adminNotes.value, ...editNotes.value];
+  return isAdminSide(t) ? sideNotes(t) : mainNotes.value;
+});
 /** "Mark all read" on My Pyr or Pyr Updates marks both (Ames 2026-10-25);
  *  Admin and Triage keep their own. */
 function markAllRead() {
   if (!showFeedTabs.value) return backend.markAllNotificationsRead();
-  const list = isAdminSide(feedTab.value) ? sideNotes(feedTab.value) : mainNotes.value;
+  const list = markReadList.value;
   return backend.markAllNotificationsRead(list.map(n => n.id));
 }
 // "Show Today in Pyr" switched in Settings: read the feed again with it.
@@ -427,7 +436,7 @@ function openDetail(notif: any) {
   // "clicking an access notif should open the access dash"), at the person
   // when the note names their email.
   if (backend.isAdmin && (kindOf(notif) === 'access' || accessTitle.startsWith('🔑 Invite used'))) {
-    openAccessPage(notif.body);
+    openAccessPage(notif.body, notif.title);
     emit('hide');
     return;
   }
@@ -904,11 +913,16 @@ const TRIAGE_MARK = /\s*#nge-triage-report=([0-9a-f-]{36})\s*$/i;
 const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(TRIAGE_MARK)?.[1] ?? '');
 /** The Access page (?triage=access) in its own tab, at the first email the
  *  note names, if any. Notes escape what players typed ("joe\@mail\.com"). */
-function openAccessPage(body?: string | null) {
+// Ames 2026-11-17: "clicking this link (or any related access notif) should
+// take me to the access dash with their card selected". The name after
+// "from" in the title finds them when the note has no email (the Retina's).
+function openAccessPage(body?: string | null, title?: string | null) {
   const text = String(body || '').replace(/\\([\\`*_{}[\]()#+\-.!|<>~&:@])/g, '$1');
   const email = (text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/) || [])[0];
   const person = email && !/@(eyewire\.(org|ai)|connectome\.quest)$/i.test(email) ? `&person=${encodeURIComponent(email.toLowerCase())}` : '';
-  window.open(`${window.location.origin}${window.location.pathname}?triage=access${person}`, '_blank', 'noopener');
+  const from = (String(title || '').match(/\bfrom (.+?)(?: \(try \d+\))?$/) || [])[1];
+  const who = from ? `&who=${encodeURIComponent(from.trim())}` : '';
+  window.open(`${window.location.origin}${window.location.pathname}?triage=access${person}${who}`, '_blank', 'noopener');
 }
 function openTriageReport() {
   window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
@@ -1173,7 +1187,7 @@ function padRank(rank: number): string {
       <div class="nge-notif-topbar-actions">
         <!-- With the two admin tabs showing, this marks the tab you are on. -->
         <button
-          v-if="showFeedTabs ? unreadIn(isAdminSide(feedTab) ? sideNotes(feedTab) : mainNotes) > 0 : backend.unreadNotificationCount > 0"
+          v-if="showFeedTabs ? unreadIn(markReadList) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
           @click="markAllRead()"
         >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && (feedTab === 'admin' || feedTab === 'access' || feedTab === 'edits') ? 'Mark admin read' : showFeedTabs && feedTab === 'hunt' ? 'Mark reports read' : 'Mark all read' }}</button>

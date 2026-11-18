@@ -186,7 +186,8 @@ const scoreTip = (pct: number | null | undefined) => `Match score${pct == null ?
 /** The match score: Merge and Cut averaged (only the ones this cell has). */
 export function matchScore(r: MatchResult): number | null {
   const parts = [r.merge, r.cut].filter((n): n is number => n != null);
-  return parts.length ? Math.floor(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+  // To a tenth, as the Merge row (Ames 2026-11-18: a tiny piece still counts).
+  return parts.length ? Math.floor(parts.reduce((a, b) => a + b, 0) / parts.length * 10 + 1e-9) / 10 : null;
 }
 
 /** Remove a layer of ours. If its panel was open, close the panel first:
@@ -583,7 +584,7 @@ const INFO_LINES = [
   '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.',
   '<b>Merge</b>: the missing pieces you have merged back in.',
   '<b>Cut</b>: the wrong parts you have cut off.',
-  'Tiny missing bits (under 500 supervoxels) do not count either way: go for the missing branches. Wrong parts count at any size, since a merged axon can be thin. <b>Jump</b> takes you to the next spot that needs fixing.',
+  'Every missing piece adds to Merge, even a tiny one, but the branches add the most: go for those first. Wrong parts count at any size, since a merged axon can be thin. <b>Jump</b> takes you to the next spot that needs fixing.',
   'In real cells there is no known answer. That is up to you and the brain.',
   'When you feel comfortable editing here, ask for a dataset used for research: <b>Ask for Edit Access</b> in the 🍔 menu, top right.',
 ];
@@ -1339,10 +1340,11 @@ function showHintPiece(p: HintPiece) {
   const color = place1 ? '#7fd8ff' : p.kind === 'merge' ? GOLD : RED;
   const place = () => {
     for (const ml of [...(v.layerManager?.managedLayers ?? [])]) if (ml.name === HINT_PIN_LAYER) dropLayer(v, ml);
-    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: 1.5, annotations: pin })); }
+    try { v.layerSpecification.add(makeLayer(v.layerSpecification, HINT_PIN_LAYER, { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: color, pointSize: PIN_SIZE, onTop: true, annotations: pin })); }
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
   place();
+  pulsePin(v);
   // A new annotation layer takes its point only once it knows the view's space (as the review's pins).
   window.clearInterval(hintPinTimer);
   let tries = 0;
@@ -1353,6 +1355,27 @@ function showHintPiece(p: HintPiece) {
     if (!ml || n === 1 || ++tries > 10) { window.clearInterval(hintPinTimer); return; }
     if (tries > 1) place();
   }, 700);
+}
+
+/** The hint pin: big, drawn over the cell, and beating (kfay, report 556:
+ *  "barely cannot see pins. should be bigger or glowing or heartbeat"). */
+const PIN_SIZE = 4;
+let pinPulse = 0;
+function pulsePin(v: any) {
+  window.clearInterval(pinPulse);
+  const t0 = performance.now();
+  pinPulse = window.setInterval(() => {
+    const ml = (v.layerManager?.managedLayers ?? []).find((x: any) => x.name === HINT_PIN_LAYER);
+    const size = ml?.layer?.annotationDisplayState?.ngeSize;
+    if (!ml) { window.clearInterval(pinPulse); return; }
+    if (!size) return;
+    // A heartbeat: two quick beats, then rest. Set under the hood, so the
+    // beat does not count as a change to the view (no save, no address churn).
+    const ph = ((performance.now() - t0) / 1100) % 1;
+    const beat = Math.max(0, Math.sin(Math.min(1, ph / 0.18) * Math.PI)) + 0.6 * Math.max(0, Math.sin(Math.min(1, Math.max(0, ph - 0.22) / 0.18) * Math.PI));
+    size.value_ = PIN_SIZE * (1 + 0.6 * beat);
+    try { v.display?.scheduleRedraw(); } catch { /* gone */ }
+  }, 50);
 }
 
 /** Complete inside the box: the Cell Library runs the checks and the save; the box shows them. */

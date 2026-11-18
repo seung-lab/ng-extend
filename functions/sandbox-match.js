@@ -33,7 +33,8 @@
 // little additions? ... it's much more important to find missing branches and
 // remove mergers"). A missing piece under SMALL_PIECE supervoxels is left out
 // of everything: the score (as if neither cell had it), the piece counts, the
-// review and Jump. Merging one in still counts as an edit. Half the missing
+// review and Jump. Merging one in still counts as an edit, and in the Merge
+// row (Ames 2026-11-18: "a tiny piece should still count"), see mergePercent. Half the missing
 // pieces are that small, yet only about 2% of what is missing. Merge only
 // (Ames 2026-11-16: "the cuts are also often small volume bc axon"): a wrong
 // part counts at any size.
@@ -178,6 +179,16 @@ function scorePercent({truthSize, missingNow, extraNow}) {
 function partPercent(now, start) {
   if (!(start > 0)) return now > 0 ? 0 : null;
   return Math.max(0, Math.min(100, Math.floor((1 - now / start) * 100 + 1e-9)));
+}
+
+/** The Merge row, to a tenth of a percent: every missing piece counts, the
+ *  tiny ones too (Ames 2026-11-18: "a tiny piece should still count. Like you
+ *  can add a 0.5 in the score"). By size, a branch moved it and a small piece
+ *  did not, so after one big piece the row sat at 87% through a dozen merges
+ *  (kfay, reports 562 and 563). */
+function mergePercent(now, start) {
+  if (!(start > 0)) return now > 0 ? 0 : null;
+  return Math.max(0, Math.min(100, Math.floor((1 - now / start) * 1000 + 1e-9) / 10));
 }
 
 /** A deterministic random, so a key built twice samples the same supervoxels. */
@@ -434,6 +445,8 @@ async function check(io, {taskId, me, isAdmin}) {
       merge: partPercent(missingNow, missingStart),
       cut: partPercent(extraNow, extraStart),
       _extraNow: extraNow, _extraStart: extraStart, _missingNow: missingNow, _missingStart: missingStart,
+      // The tiny missing pieces still out of the cell, for the Merge row.
+      _tinyNow: countMinus(opt.missing, cell),
       _reach: reachShare(truthChunkSets.get(key.truth_root) || (truthChunkSets.set(key.truth_root, chunksOf(truthE)), truthChunkSets.get(key.truth_root)), cell, truthE),
       // Little more than its nucleus at the start: the box says to grow it.
       nucleusOnly: startShare < NUCLEUS_ONLY,
@@ -452,7 +465,11 @@ async function check(io, {taskId, me, isAdmin}) {
   // in removal of mergers"). A cell that started with nothing to cut read 0%
   // from the first wrong piece merged in until the last bit was cut off, so
   // cutting most of a merger showed no progress at all.
-  const {_extraNow: extraAll, _extraStart: keyExtraStart, _missingNow: missingNow, _missingStart: keyMissingStart, _reach: reach, _parts: partsNow, _keyParts: keyParts, ...shown} = result;
+  const {_extraNow: extraAll, _extraStart: keyExtraStart, _missingNow: missingNow, _missingStart: keyMissingStart, _reach: reach, _parts: partsNow, _keyParts: keyParts, _tinyNow: tinyNow, ...shown} = result;
+  // The tiny pieces count in the Merge row only (the match score and the
+  // leaderboard stay as they were), against all of them at the cell's start.
+  const tinyStart = key.optional_missing ? key.optional_missing.length : 0;
+  shown.merge = mergePercent(missingNow + (tinyNow || 0), keyMissingStart + tinyStart);
   // Each player starts the cell at 0% (Ames 2026-11-17: "we def should start
   // the cell at 0% match score"): practice cells keep the edits made on them
   // before, so the cell as this player first saw it is their start. A player
@@ -483,7 +500,7 @@ async function check(io, {taskId, me, isAdmin}) {
   const missingStart = base ? base.start_missing : keyMissingStart;
   const extraStart = base ? base.start_extra : keyExtraStart;
   if (base) {
-    shown.merge = partPercent(missingNow, missingStart);
+    shown.merge = mergePercent(missingNow + (tinyNow || 0), missingStart + tinyStart);
     shown.match = matchPercent({missingNow, extraNow, missingStart, extraStart});
     // "n of m pieces added" counts the pieces left when this player began.
     shown.missing = {left: Math.min(shown.missing.left, base.start_missing_left), total: base.start_missing_left};
@@ -845,6 +862,7 @@ async function handle({action, args, me, isAdmin, io}) {
 }
 
 module.exports = {
+  mergePercent,
   handle, check, review, hint, event, notes, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, chunksOf, reachShare, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
   _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); attachedMemo.clear(); em._reset(); reviewMemo.clear(); spotMemo.clear(); },

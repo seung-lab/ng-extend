@@ -5813,6 +5813,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const notifLimit = ref(NOTIF_PAGE);
   /** True when the last full load filled its page: there may be older ones. */
   const notificationsHaveMore = ref(false);
+  /** Read or unread marks made here (or in another tab) lately, by note:
+   *  a reload of the reads keeps them until the server surely has them. */
+  const RECENT_MARK_MS = 120_000;
+  const recentMarks = new Map<number, { read: boolean; at: number }>();
+  function rememberMarks(ids: number[], read: boolean) {
+    const at = Date.now();
+    for (const id of ids) if (typeof id === 'number') recentMarks.set(id, { read, at });
+  }
+
   async function loadMoreNotifications() {
     notifLimit.value += NOTIF_PAGE;
     await loadNotifications();
@@ -5909,7 +5918,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       // tab knows and add what did come back.
       const ids = reads.map((r: any) => r.notification_id);
       const gone = reads.filter((r: any) => r.dismissed).map((r: any) => r.notification_id);
-      notificationReads.value = readsFailed ? new Set([...notificationReads.value, ...ids]) : new Set(ids);
+      // Marks made here in the last two minutes win over the server's list:
+      // a reload that asked before their save landed put them back as
+      // unread, and the counts jumped about after Mark admin read (Ames
+      // 2026-11-17).
+      const nextReads = readsFailed ? new Set([...notificationReads.value, ...ids]) : new Set(ids);
+      const cut = Date.now() - RECENT_MARK_MS;
+      for (const [id, m] of recentMarks) {
+        if (m.at < cut) recentMarks.delete(id);
+        else if (m.read) nextReads.add(id); else nextReads.delete(id);
+      }
+      notificationReads.value = nextReads;
       notificationDismissals.value = readsFailed ? new Set([...notificationDismissals.value, ...gone]) : new Set(gone);
       if (opts.share) shareResult('notifications', { user: userId.value, at: now, rows: allNotifs, groupIds: notifGroupIds, reads: ids, dismissed: gone } as SharedNotifs);
     } else if (opts.share && !s) {
@@ -6061,7 +6080,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
     const m = e.data || {};
     if (m.user !== userId.value || !Array.isArray(m.ids)) return;
-    if (m.unread) { for (const id of m.ids) notificationReads.value.delete(id); return; }
+    if (m.unread) { rememberMarks(m.ids, false); for (const id of m.ids) notificationReads.value.delete(id); return; }
+    if (!m.dismissed) rememberMarks(m.ids, true);
     const set = m.dismissed ? notificationDismissals : notificationReads;
     for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
     if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
@@ -6074,6 +6094,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  read row, never one that hides a note the player deleted. */
   async function markNotificationsUnread(ids: number[]) {
     if (!userId.value || !ids.length) return;
+    rememberMarks(ids, false);
     for (const id of ids) notificationReads.value.delete(id);
     try { readsChannel?.postMessage({ user: userId.value, ids, unread: true }); } catch { /* closed */ }
     const { error } = await supabase.from('notification_reads').delete()
@@ -6084,6 +6105,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function markNotificationRead(notifId: number) {
     if (!userId.value) return;
     notificationReads.value.add(notifId);
+    rememberMarks([notifId], true);
     tellOtherTabs([notifId]);
     await supabase.from('notification_reads').insert({
       notification_id: notifId,
@@ -6148,11 +6170,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     for (const n of unread) {
       notificationReads.value.add(n.id);
     }
+    rememberMarks(unread.map(n => n.id), true);
     tellOtherTabs(unread.map(n => n.id));
     // Batch insert (ignore conflicts)
     const rows = unread.map(n => ({ notification_id: n.id, user_id: userId.value }));
     if (rows.length > 0) {
-      await supabase.from('notification_reads').upsert(rows, { onConflict: 'notification_id,user_id' });
+      const { error } = await supabase.from('notification_reads').upsert(rows, { onConflict: 'notification_id,user_id' });
+      if (error) console.warn('[notifications] mark all read failed:', error.message);
     }
   }
 
