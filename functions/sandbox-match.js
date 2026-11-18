@@ -627,8 +627,10 @@ async function review(io, {taskId, me, isAdmin, withSamples = false}) {
   const parts = (partsMemo.get(`${result.taskId}:${cell}`) || []).filter(p => still ? still.has(p.root) : p.size >= MIN_PIECE);
   const mergers = parts.map(p => ({size: p.size, pointNm: svPointNm(p.samples[0]), ...(withSamples ? {samples: p.samples} : {})}));
   const out = {missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
-  // Each pin on a section with an image there, as Jump's spots.
-  for (const list of [out.missed, out.mergers]) {
+  // Each pin on a section with an image there, as Jump's spots. Jump asks with
+  // samples and moves only the one spot it gives (Ames 2026-11-18: "it really
+  // takes a long time to load jump").
+  if (!withSamples) for (const list of [out.missed, out.mergers]) {
     await Promise.all(list.map(async m => { if (m.pointNm) m.pointNm = await em.onImage(io.fetch, m.pointNm); }));
   }
   reviewMemo.set(memo, out);

@@ -30,6 +30,9 @@ import { getActivePinia } from 'pinia';
 import EditableText from './components/EditableText.vue';
 import NeuronGlyph from './components/NeuronGlyph.vue';
 import { isLatestRoots } from './widgets/pcg_service';
+import { currentIdsOf } from './util/outdated_ids';
+import { setNgeGlow, type NgeGlow } from 'neuroglancer/perspective_view/nge_props';
+import { cameraAxes } from './util/starship';
 // The Cell Library's own neuron (Ames 2026-11-14: "use the neuron").
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 
@@ -1340,6 +1343,7 @@ function showHintPiece(p: HintPiece) {
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
   place();
+  pinGlow(at, color);
   // A new annotation layer takes its point only once it knows the view's space (as the review's pins).
   window.clearInterval(hintPinTimer);
   let tries = 0;
@@ -1868,7 +1872,45 @@ function removeHintLayers() {
   for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
     if (ml.name === HINT_SEG_LAYER || ml.name === HINT_PIN_LAYER) { try { dropLayer(v, ml); } catch { /* gone */ } }
   }
+  pinGlow(null);
 }
+
+/** The Jump pin breathes (Ames 2026-11-18: "no animation of the annotation
+ *  point!"): a soft glow in the pin's color around it in 3D, as the tour's
+ *  synapse marker, a steady size on screen. It stops with the pin. */
+let pinGlowRaf = 0;
+function pinGlow(nm: number[] | null, hex = '#7fd8ff') {
+  cancelAnimationFrame(pinGlowRaf);
+  pinGlowRaf = 0;
+  setNgeGlow(null, 'cell-match-pin');
+  const v = (window as any).viewer;
+  const unit = toView([1, 1, 1]);
+  if (!nm || !v || !unit) return;
+  const per = unit.map(u => 1 / u) as [number, number, number];
+  const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const glow: NgeGlow = { positions: Float32Array.from(toView(nm)!), colors: new Float32Array(4), sizesNm: new Float32Array(1), count: 1, nmRight: [unit[0], 0, 0] };
+  const t0 = performance.now();
+  const step = (now: number) => {
+    if (!(v.layerManager?.managedLayers ?? []).some((ml: any) => ml.name === HINT_PIN_LAYER)) { pinGlow(null); return; }
+    const k = 0.5 + 0.5 * Math.sin((now - t0) / 1000 * 3.2);
+    let across = 40_000;
+    try { across = v.projectionScale.value * Math.min(...per); } catch { /* a guess */ }
+    glow.colors.set([rgb[0], rgb[1], rgb[2], 0.55 + 0.45 * k]);
+    glow.sizesNm[0] = Math.min(4000, across * 0.04) * (0.7 + 0.45 * k);
+    const cam = cameraAxes(per);
+    if (cam) {
+      glow.nmRight = [cam.right[0] * unit[0], cam.right[1] * unit[1], cam.right[2] * unit[2]];
+      // A little toward the viewer, so the membrane it sits on does not cut it in half.
+      for (let a = 0; a < 3; a++) glow.positions[a] = (nm[a] + cam.toEye[a] * 2400) * unit[a];
+    }
+    setNgeGlow(glow, 'cell-match-pin');
+    try { v.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    pinGlowRaf = requestAnimationFrame(step);
+  };
+  pinGlowRaf = requestAnimationFrame(step);
+}
+/** For headless checks: is the Jump pin glowing. */
+(window as any).__ngeCellMatchPinGlow = () => pinGlowRaf !== 0;
 function removeReviewLayers() {
   untintCell();
   const v = (window as any).viewer;
@@ -2016,6 +2058,9 @@ export async function showReview(_taskId: number, pending: Promise<ReviewResult 
  *  segments in view? They're the same cell", 648518346352170608 last current
  *  on Nov 14). Swapped for the current ID whenever they appear. */
 const outdated = new Map<string, boolean>();
+/** `old:live` → is that old ID the live cell now. */
+const becomes = new Map<string, boolean>();
+const lookedUp = new Map<string, number>();
 let swapping = false;
 async function swapOldIds(taskId: number) {
   const live = last.get(taskId)?.root;
@@ -2024,8 +2069,16 @@ async function swapOldIds(taskId: number) {
   const group = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
   const vis = group?.visibleSegments;
   if (!claim || !vis) return;
+  // Any old ID on screen that is the cell now, not only the claim's own: after
+  // a cut, the cell's ID from before stayed on screen over the new one and
+  // looked like the finished cell (Ames 2026-11-18, task 16780: 596200 over
+  // 100509, which differ by 21 supervoxels). A piece cut off is not the cell
+  // now, so it is never swapped in.
   let shown: string[];
-  try { shown = claim.roots.filter(id => /^\d+$/.test(id) && id !== live && vis.has(Uint64.parseString(id))); } catch { return; }
+  try {
+    shown = [...vis].map(String).filter(id => /^\d+$/.test(id) && id !== live && outdated.get(id) !== false
+      && becomes.get(`${id}:${live}`) !== false && Uint64.parseString(id).high >>> 24 !== 1);
+  } catch { return; }
   if (!shown.length) return;
   swapping = true;
   try {
@@ -2035,13 +2088,23 @@ async function swapOldIds(taskId: number) {
     const ask = [live, ...shown].filter(id => !outdated.has(id) || id === live);
     if (ask.length) {
       const got = await isLatestRoots(ask);
-      for (const id of ask) if (got.has(id)) outdated.set(id, got.get(id) === false);
+      for (const id of ask) if (got?.has(id)) outdated.set(id, got.get(id) === false);
     }
     if (outdated.get(live) !== false) { outdated.delete(live); return; }
     if (last.get(taskId)?.root !== live) return;
     const now = Uint64.parseString(live);
     for (const id of shown) {
       if (outdated.get(id) !== true) continue;
+      if (!claim.roots.includes(id)) {
+        const k = `${id}:${live}`;
+        if (!becomes.has(k) && (lookedUp.get(k) ?? 0) < Date.now() - 30_000) {
+          lookedUp.set(k, Date.now());
+          const ends = await currentIdsOf(id).catch(() => null);
+          // A lookup that failed is asked again, half a minute later.
+          if (ends) becomes.set(k, ends.includes(live));
+        }
+        if (!becomes.get(k) || last.get(taskId)?.root !== live) continue;
+      }
       const old = Uint64.parseString(id);
       if (!vis.has(old)) continue;
       const wasSelected = !!group.selectedSegments?.has(old);

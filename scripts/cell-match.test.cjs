@@ -339,6 +339,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
     check('Hint first: only the place on your cell where it starts, no piece shown', /missing a branch that starts near the blue pin\. look for a loose end there\. spot 1 of 2\. show me$/i.test(place.text) && place.layers.includes('Hint spot') && !place.layers.includes('Hint piece'), place);
+    const glowOn = await page.evaluate(() => window.__ngeCellMatchPinGlow());
+    check('the Jump pin breathes: a glow around it (Ames 2026-11-18)', glowOn === true, glowOn);
     await shot('cell-match-hint-place.png');
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
     await page.waitForTimeout(1500);
@@ -352,7 +354,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(400);
     const after = await page.evaluate(() => ({ nudge: document.querySelector('#nge-cell-match .nge-cm-nudge').hidden, layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
     after.inMain = await page.evaluate(() => window.viewer.layerManager.managedLayers.filter(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState).some(l => [...l.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).includes('648518346351009999')));
-    check('an edit puts Hint away and clears its piece', after.nudge && after.layers.length === 0 && !after.inMain, after);
+    after.glow = await page.evaluate(() => window.__ngeCellMatchPinGlow());
+    check('an edit puts Hint away and clears its piece', after.nudge && after.layers.length === 0 && !after.inMain && after.glow === false, after);
     // Resize by the corner (Ames 2026-11-14), kept.
     const sized = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const cs = getComputedStyle(c); c.style.width = '440px'; c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); return { resize: cs.resize, w: Math.round(c.getBoundingClientRect().width), kept: localStorage.getItem('nge-cell-match-size') }; });
     check('the box resizes from its corner, and keeps the size', sized.resize === 'both' && sized.w === 440 && /"w":440/.test(sized.kept || ''), sized);
@@ -374,6 +377,39 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await edit([ANSWERS.clean.root]);
     await waitText(/50%/, 10000);
 
+    // An old ID of the cell on screen, not on the claim's list, is swapped for
+    // the current one; an old ID of something else stays (Ames 2026-11-18:
+    // after her cut, 596200 stayed over 100509 and looked like the finished cell).
+    {
+      const live = ANSWERS.clean.root, OLD = '648518346351596200', OTHER = '648518346352170608', OTHER_NOW = '648518346351086279';
+      await context.route(/is_latest_roots/, r => {
+        const ids = (r.request().postData() || '').match(/\d{10,}/g) || [];
+        r.fulfill(json({ is_latest: ids.map(id => id !== OLD && id !== OTHER) }));
+      });
+      await context.route(/lineage_graph/, r => {
+        const u = r.request().url();
+        r.fulfill(json({ nodes: [], links: u.includes(OLD) ? [{ source: OLD, target: live }] : u.includes(OTHER) ? [{ source: OTHER, target: OTHER_NOW }] : [] }));
+      });
+      await page.evaluate(([o, t]) => {
+        const l = window.viewer.layerManager.managedLayers.find(x => x.layer && x.layer.displayState && x.layer.displayState.segmentationGroupState && !x.archived);
+        const vis = l.layer.displayState.segmentationGroupState.value.visibleSegments;
+        const U = [...vis][0].constructor;
+        for (const id of [o, t]) vis.add(U.parseString(id));
+      }, [OLD, OTHER]);
+      await page.waitForTimeout(4000);
+      const vis = await page.evaluate(() => {
+        const l = window.viewer.layerManager.managedLayers.find(x => x.layer && x.layer.displayState && x.layer.displayState.segmentationGroupState && !x.archived);
+        return [...l.layer.displayState.segmentationGroupState.value.visibleSegments].map(String);
+      });
+      check('an old ID of your cell on screen, off the claim list, is swapped for the current one; others stay', !vis.includes(OLD) && vis.includes(live) && vis.includes(OTHER), vis);
+      await page.evaluate(id => {
+        const l = window.viewer.layerManager.managedLayers.find(x => x.layer && x.layer.displayState && x.layer.displayState.segmentationGroupState && !x.archived);
+        const vis = l.layer.displayState.segmentationGroupState.value.visibleSegments;
+        vis.delete([...vis][0].constructor.parseString(id));
+      }, OTHER);
+      await context.unroute(/is_latest_roots/);
+      await context.unroute(/lineage_graph/);
+    }
     // The Proofreading Test's line card in the same corner: the card moves below it.
     await page.evaluate(() => { const q = document.createElement('div'); q.className = 'nge-tqc'; q.style.cssText = 'position:fixed;top:64px;left:12px;width:300px;height:80px'; document.body.appendChild(q); });
     await page.waitForTimeout(2500);
