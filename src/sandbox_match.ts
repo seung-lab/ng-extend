@@ -1343,7 +1343,6 @@ function showHintPiece(p: HintPiece) {
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
   place();
-  pinGlow(at, color);
   // A new annotation layer takes its point only once it knows the view's space (as the review's pins).
   window.clearInterval(hintPinTimer);
   let tries = 0;

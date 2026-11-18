@@ -339,8 +339,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
     check('Hint first: only the place on your cell where it starts, no piece shown', /missing a branch that starts near the blue pin\. look for a loose end there\. spot 1 of 2\. show me$/i.test(place.text) && place.layers.includes('Hint spot') && !place.layers.includes('Hint piece'), place);
+    // No glow on the Jump pin (Ames 2026-11-18: "immediately remove the animated annotation").
     const glowOn = await page.evaluate(() => window.__ngeCellMatchPinGlow());
-    check('the Jump pin breathes: a glow around it (Ames 2026-11-18)', glowOn === true, glowOn);
+    check('the Jump pin has no glow', glowOn === false, glowOn);
     await shot('cell-match-hint-place.png');
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hint-btn').click());
     await page.waitForTimeout(1500);
