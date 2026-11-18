@@ -1344,7 +1344,7 @@ function showHintPiece(p: HintPiece) {
     catch (e) { console.debug('[cell-match] hint pin', e); }
   };
   place();
-  pulsePin(v);
+  // No beat (Ames 2026-11-18: "immediately remove the animated annotation that appears on jump").
   // A new annotation layer takes its point only once it knows the view's space (as the review's pins).
   window.clearInterval(hintPinTimer);
   let tries = 0;
@@ -1360,24 +1360,6 @@ function showHintPiece(p: HintPiece) {
 /** The hint pin: big, drawn over the cell, and beating (kfay, report 556:
  *  "barely cannot see pins. should be bigger or glowing or heartbeat"). */
 const PIN_SIZE = 4;
-let pinPulse = 0;
-function pulsePin(v: any) {
-  window.clearInterval(pinPulse);
-  const t0 = performance.now();
-  pinPulse = window.setInterval(() => {
-    const ml = (v.layerManager?.managedLayers ?? []).find((x: any) => x.name === HINT_PIN_LAYER);
-    const size = ml?.layer?.annotationDisplayState?.ngeSize;
-    if (!ml) { window.clearInterval(pinPulse); return; }
-    if (!size) return;
-    // A heartbeat: two quick beats, then rest. Set under the hood, so the
-    // beat does not count as a change to the view (no save, no address churn).
-    const ph = ((performance.now() - t0) / 1100) % 1;
-    const beat = Math.max(0, Math.sin(Math.min(1, ph / 0.18) * Math.PI)) + 0.6 * Math.max(0, Math.sin(Math.min(1, Math.max(0, ph - 0.22) / 0.18) * Math.PI));
-    size.value_ = PIN_SIZE * (1 + 0.6 * beat);
-    try { v.display?.scheduleRedraw(); } catch { /* gone */ }
-  }, 50);
-}
-
 /** Complete inside the box: the Cell Library runs the checks and the save; the box shows them. */
 function openFinish(el: HTMLElement) {
   finishing = true;
