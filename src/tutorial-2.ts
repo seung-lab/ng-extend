@@ -775,9 +775,11 @@ ${copyButton('85624, 70674, 651')}
   {
     part: "Part 2 of 4 · Working with cells",
     text: `
-That's the <strong>NUCLEUS</strong> of a cell! Here the nucleus is its own piece, apart from the rest of its cell.
+That's the <strong>NUCLEUS</strong> of a cell! Here the nucleus is usually its own piece, apart from the rest of its cell.
 
-To find the cell it belongs to, <strong>DOUBLE CLICK the EM just around the nucleus</strong> in the 2D view.`,
+To find the cell it belongs to, <strong>DOUBLE CLICK the EM just around the nucleus</strong> in the 2D view.
+
+<em>Did the whole cell come in, not just its nucleus?</em> The Sandbox is shared, and another player has already merged this one. Press <strong>Next</strong>.`,
     width: "460px",
     position: OVER_3D,
     onEnter: () => { showTwoPanels(); nextWhenCellsAdded(1); },
