@@ -94,7 +94,17 @@ const SV_A = '72057594037929001', SV_B = '72057594037929002';
     await page.waitForFunction(() => { const a = document.querySelector('#app'); return !!(a && a.__vue_app__ && window.viewer); }, null, { timeout: 90000 });
     await page.waitForTimeout(3000);
     // The layer shows the two cells, so a Uint64 is at hand and the graph is up.
-    const st = await page.evaluate(() => window.viewer.state.toJSON());
+    let st = await page.evaluate(() => window.viewer.state.toJSON());
+    // Signed in, Pyr now opens the dataset's saved view link, which the fake
+    // state server answers empty: take the build's own first view instead.
+    if (!st.layers) {
+      const plain = await browser.newContext({ viewport: { width: 1300, height: 850 } });
+      const p2 = await plain.newPage();
+      await p2.goto(BASE, { waitUntil: 'load' });
+      await p2.waitForFunction(() => !!(window.viewer && window.viewer.state.toJSON().layers), null, { timeout: 90000 });
+      st = await p2.evaluate(() => window.viewer.state.toJSON());
+      await plain.close();
+    }
     const L = st.layers.find(l => l.type === 'segmentation');
     L.segments = [ROOT_A, ROOT_B];
     await page.goto('about:blank');
@@ -110,6 +120,31 @@ const SV_A = '72057594037929001', SV_B = '72057594037929002';
       joined = false; merges = 0;
       const two = await send();
       check('a refusal when the two are NOT one cell still fails, in the server\'s words', two.status !== 'done' && /different objects/.test(two.error || two.status || ''), two);
+      // 3. A failed merge saved with the view (Kfay #581): on load, one whose
+      // two points are one cell now goes; one still apart stays.
+      const savedFailed = async (isJoined) => {
+        joined = isJoined;
+        const st2 = await page.evaluate(({ SV_A, SV_B, ROOT_A, ROOT_B }) => {
+          const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.constructor.type === 'segmentation');
+          const gc = ml.layer.graphConnection.value;
+          const Uint64 = [...ml.layer.displayState.segmentationGroupState.value.visibleSegments][0].constructor;
+          const sel = (sv, root, dx) => ({ segmentId: Uint64.parseString(sv), rootId: Uint64.parseString(root), position: new Float32Array([32653 + dx, 23923, 583]) });
+          gc.state.mergeState.merges.value = [{ id: 'saved-' + Math.random(), locked: false, sink: sel(SV_A, ROOT_A, 0), source: sel(SV_B, ROOT_B, 30), error: '[400]: Supervoxels must belong to different objects.' }];
+          return window.viewer.state.toJSON();
+        }, { SV_A, SV_B, ROOT_A, ROOT_B });
+        await page.goto('about:blank');
+        await page.goto(BASE + '#!' + encodeURIComponent(JSON.stringify(st2)), { waitUntil: 'load' });
+        await page.waitForFunction(() => { const ml = window.viewer && window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.constructor.type === 'segmentation'); return !!(ml && ml.layer && ml.layer.graphConnection && ml.layer.graphConnection.value); }, null, { timeout: 90000 });
+        await page.waitForTimeout(3000);
+        return page.evaluate(() => {
+          const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.constructor.type === 'segmentation');
+          return ml.layer.graphConnection.value.state.mergeState.merges.value.map(m => m.error || m.status || 'queued');
+        });
+      };
+      const gone = await savedFailed(true);
+      check('a saved FAILED merge whose two points are one cell now is gone after a reload', gone.length === 0, gone);
+      const kept = await savedFailed(false);
+      check('a saved FAILED merge still apart stays after a reload', kept.length === 1 && /different objects/.test(kept[0]), kept);
     }
     check('no page errors', errors.length === 0, errors);
   } catch (e) { check('the run finished', false, String(e).slice(0, 300)); }
