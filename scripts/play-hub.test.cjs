@@ -90,26 +90,44 @@ async function run(browser, perms, tag) {
       await page.evaluate(() => [...document.querySelectorAll('.nge-play-card .nge-go')].find(b => /Start playing/.test(b.textContent)).click());
       await page.waitForSelector('.nge-orph-task', { timeout: 20000 });
       await page.waitForTimeout(1500);
-      const seg = () => page.evaluate(() => (document.querySelector('.nge-orph-task-name') || {}).textContent || '');
+      const seg = () => page.evaluate(() => (document.querySelector('.nge-orph-task-id') || {}).textContent || '');
       out.first = await seg();
-      out.playingBar = await page.evaluate(() => !!document.querySelector('.nge-orph-play'));
+      out.playingBar = await page.evaluate(() => !document.querySelector('.nge-orph-play') && !![...document.querySelectorAll('.nge-orph-link')].find(b => b.textContent.trim() === 'Stop') && !![...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Highlight'));
       out.chip = await page.evaluate(() => { const c = document.querySelector('.nge-play-chip'); return c ? c.textContent.trim() : null; });
       out.submitLabel = await page.evaluate(() => document.querySelector('.nge-orph-submit').textContent.trim());
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fragments-playing.png` });
       await page.evaluate(() => [...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Skip').click());
       await page.waitForTimeout(1200);
       out.afterSkip = await seg();
+      // Switch group from the fragment line, while playing.
+      out.groupBefore = await page.evaluate(() => document.querySelector('.nge-orph-groupsel').value);
+      await page.evaluate(() => { const sel = document.querySelector('.nge-orph-groupsel'); sel.value = 'soma'; sel.dispatchEvent(new Event('change')); });
+      await page.waitForTimeout(1200);
+      out.groupAfter = await page.evaluate(() => [document.querySelector('.nge-orph-groupsel').value, (document.querySelector('.nge-orph-task-meta') || {}).textContent || '']);
       out.slimBar = await page.evaluate(() => !!document.querySelector('.nge-orph--slim'));
       // Close the library and open it again: still on Lost Fragments (Ames 2026-11-19).
+      out.beforeClose = await seg();
+      await page.evaluate(() => { const t = document.querySelector('.nge-orph-notes'); t.value = 'kept note'; t.dispatchEvent(new Event('input')); });
       await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:close-cell-library')));
       await page.waitForTimeout(800);
       await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:open-cell-library')));
       await page.waitForTimeout(1500);
       out.reopened = await page.evaluate(() => !!document.querySelector('.nge-orph'));
+      out.afterReopen = await seg();
+      out.noteKept = await page.evaluate(() => (document.querySelector('.nge-orph-notes') || {}).value);
+      // Play again while that one is open: it stays (Ames 2026-11-19).
+      // The chip in the top bar: one press hides the library, the next goes back to the task.
+      for (let i = 0; i < 2; i++) { await page.evaluate(() => document.querySelector('.nge-play-chip').click()); await page.waitForTimeout(6000); }
+      out.afterReplay = await seg();
+      out.replayDbg = await page.evaluate(() => ({ orph: !!document.querySelector('.nge-orph'), slim: !!document.querySelector('.nge-orph--slim'), lib: !!document.querySelector('.nge-cl-panel'), empty: (document.querySelector('.nge-orph-slim-empty') || {}).textContent, tut: !!document.querySelector('.nge-tut, .nge-training, .introductionStep') }));
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/replay.png` });
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fragments-reopened.png` });
       // The full view, for the banner.
       await page.evaluate(() => { const b = document.querySelector('.nge-cl-slim-expand'); if (b) b.click(); });
       await page.waitForTimeout(1500);
+      out.playHere = await page.evaluate(() => { const st = [...document.querySelectorAll('.nge-orph-link')].find(b => b.textContent.trim() === 'Stop'); if (st) st.click(); return true; });
+      await page.waitForTimeout(800);
+      out.playHere = await page.evaluate(() => !!document.querySelector('.nge-orph-playhere'));
       out.banner = await page.evaluate(() => { const b = document.querySelector('.nge-orph-banner'); if (!b) return null; const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), bg: getComputedStyle(b).backgroundImage.slice(0, 60) }; });
       if (SHOTS) { const el = await page.$('.nge-orph'); if (el) await el.screenshot({ path: `${SHOTS}/fragments-banner.png` }); }
     }
@@ -124,12 +142,16 @@ async function run(browser, perms, tag) {
   const names = (ed.cards || []).map(c => c.name);
   check('edit: four quests on the card', ['BC Challenge', 'Lost Fragments', 'Cilia Quest', 'Glia Quest'].every(n => names.includes(n)), ed.cards || ed);
   check('edit: Lost Fragments and Cilia open', (ed.cards || []).filter(c => /Lost|Cilia/.test(c.name)).every(c => !c.off), ed.cards);
-  check('edit: Start playing lands on a fragment', /Segment/.test(ed.first || ''), ed);
-  check('edit: the Playing line and Submit and next show', ed.playingBar && /Submit and next/.test(ed.submitLabel || ''), ed);
+  check('edit: Start playing lands on a fragment, full ID shown', /^\d{15,}$/.test(ed.first || ''), ed.first);
+  check('edit: no Playing box; Stop, Highlight and Submit and next show', ed.playingBar && /Submit and next/.test(ed.submitLabel || ''), ed);
   check('edit: the top bar says Lost Fragments', /Lost Fragments/.test(ed.chip || ''), ed.chip);
   check('edit: Play shows the slim bar on Lost Fragments', ed.slimBar, ed.slimBar);
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);
+  check('edit: Play here shows in the full view when not playing', ed.playHere, ed.playHere);
   check('edit: the banner shows in the full view', ed.banner && ed.banner.w > 200 && /lost-fragments-banner/.test(ed.banner.bg), ed.banner);
+  check('edit: the group menu switches to Soma-like', ed.groupBefore === 'large' && ed.groupAfter && ed.groupAfter[0] === 'soma' && /1 of/.test(ed.groupAfter[1]), [ed.groupBefore, ed.groupAfter]);
+  check('edit: reopening keeps the fragment and the note', ed.beforeClose && ed.afterReopen === ed.beforeClose && ed.noteKept === 'kept note', [ed.beforeClose, ed.afterReopen, ed.noteKept]);
+  check('edit: Play again stays on the open fragment', ed.afterReplay === ed.beforeClose, [ed.beforeClose, ed.afterReplay, ed.replayDbg]);
   check('edit: Skip goes to another fragment', ed.afterSkip && ed.afterSkip !== ed.first, [ed.first, ed.afterSkip]);
   // View only (Ames 2026-11-19: "Yes, unlock to view"): Retina opens, and the card shows
   // with the edit quests locked.

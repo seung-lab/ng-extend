@@ -15,7 +15,7 @@ import bannerImg from '../images/lost-fragments-banner.jpg';
  * Players read it as "Lost Fragments" (Ames 2026-11-19), ORPHAN_NAME.
  */
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
-import { play, stopPlay } from '../util/play';
+import { play, stopPlay, startPlay } from '../util/play';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
 import { useCellHistoryStore } from '../store';
@@ -79,6 +79,32 @@ function resetForm(s?: OrphanSave) {
   form.saved = !!s;
 }
 
+// The fragment open and its unsent answers, for this tab's session: the
+// library closes and opens again (slim bar, Play), and the tab with it.
+const DRAFT_KEY = 'nge_orph_draft_v1';
+function saveDraft() {
+  try {
+    const a = active.value;
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ group: group.value, id: a?.id ?? null, root: shownRoot.value,
+      form: a && !form.saved ? { fixed: form.fixed, ends: form.ends, where: form.where, point: form.point, pointOk: form.pointOk,
+        pointMsg: form.pointMsg, nucId: form.nucId, noNucleus: form.noNucleus, note: form.note } : null }));
+  } catch { /* private window */ }
+}
+function restoreDraft() {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+    if (!d || !GROUPS.some(g => g.key === d.group)) return;
+    group.value = d.group;
+    const row = d.id ? GROUPS.find(g => g.key === d.group)!.rows.find(r => r.id === d.id) : null;
+    if (!row) return;
+    active.value = row;
+    shownRoot.value = d.root || row.id;
+    resetForm(saves[row.id]);
+    if (d.form && !saves[row.id]) Object.assign(form, d.form);
+  } catch { /* nothing kept */ }
+}
+watch([group, active, shownRoot, () => ({ ...form })], saveDraft, { deep: true });
+
 const history = useCellHistoryStore();
 async function open(row: OrphanSeg) {
   active.value = row;
@@ -124,13 +150,38 @@ function playNext() {
   void open(n.row);
   document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your fragment', cell: 'Segment ' + short(n.row.id) } }));
 }
-watch(() => props.playTick, t => { if (t) playNext(); });
-onMounted(() => { if (props.playTick) playNext(); });
+// Pressing Play while a fragment is open and not yet submitted stays on it
+// (Ames 2026-11-19: Play took her from Smaller back to Large, losing her note).
+function playResume() {
+  const a = active.value;
+  if (a && !saves[a.id]) {
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your fragment', cell: 'Segment ' + a.id } }));
+    return;
+  }
+  playNext();
+}
+watch(() => props.playTick, t => { if (t) playResume(); });
+onMounted(() => { restoreDraft(); if (props.playTick) playResume(); });
 const onSkip = () => playNext();
 onMounted(() => document.addEventListener('nge:play-skip-fragment', onSkip));
 onUnmounted(() => document.removeEventListener('nge:play-skip-fragment', onSkip));
 const playing = computed(() => play.on === 'fragments');
 
+/** The group menu on the fragment line (Ames 2026-11-19: "How do I switch from
+ *  large to medium to small?", the group buttons are hidden while playing). */
+/** Highlight mode (Ames 2026-11-19: "make it easier to open highlight mode
+ *  here"). It runs beside Merge and Cut: Ctrl+click goes to them, H+click to it. */
+function openHighlight() { document.dispatchEvent(new CustomEvent('nge:open-highlight')); }
+const copied = ref(false);
+async function copyId(id: string) {
+  try { await navigator.clipboard.writeText(id); copied.value = true; setTimeout(() => { copied.value = false; }, 1500); } catch { /* clipboard blocked */ }
+}
+function onGroupChange(e: Event) { switchGroup((e.target as HTMLSelectElement).value as GroupKey); }
+function switchGroup(g: GroupKey) {
+  if (g === group.value) return;
+  pickGroup(g);
+  if (playing.value) { active.value = null; playNext(); }
+}
 function pickGroup(g: GroupKey) {
   group.value = g;
   if (active.value && !GROUPS.find(x => x.key === g)!.rows.some(r => r.id === active.value!.id)) active.value = null;
@@ -145,6 +196,22 @@ async function usePoint() {
     const visible = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
     let inShown = false;
     try { inShown = !!visible?.has(Uint64.parseString(at.root)); } catch { /* */ }
+    // After merges and cuts the fragment has a new ID that the list on screen
+    // may not have yet (Ames 2026-11-19: the check failed on her edited
+    // fragment). Ask what the fragment's own start point belongs to now.
+    const row = active.value;
+    if (!inShown && row) {
+      const sv = await supervoxelAtPlace(row.pt).catch(() => null);
+      const now = sv && sv !== '0' ? await getRootFromSupervoxel(sv).catch(() => null) : null;
+      if (now && now === at.root && active.value?.id === row.id) {
+        inShown = true;
+        try {
+          if (shownRoot.value && shownRoot.value !== now) visible?.delete(Uint64.parseString(shownRoot.value));
+          visible?.add(Uint64.parseString(now));
+        } catch { /* layer went away */ }
+        shownRoot.value = now;
+      }
+    }
     form.pointOk = inShown;
     form.pointMsg = inShown
       ? `Inside the segment, at ${at.position.join(', ')}.`
@@ -204,19 +271,27 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </button>
     </div>
     <div v-if="!slim" class="nge-orph-about">{{ cur.about }}</div>
+    <div v-if="!slim && !playing" class="nge-orph-playhere-row">
+      <button class="nge-orph-playhere" @click="startPlay('fragments')" title="Play: opens the next fragment you haven't answered. After Submit, the next one.">
+        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
+      </button>
+      <span class="nge-orph-playhere-hint">Opens the next fragment, then the next one after each Submit.</span>
+    </div>
     <div v-if="slim && !active" class="nge-orph-note nge-orph-slim-empty">No fragment open. Open the full view to pick one.</div>
 
-    <div v-if="playing" class="nge-orph-play">
-      <span>Playing Lost Fragments. Submit takes you to the next one.</span>
-      <button class="nge-orph-link" @click="stopPlay">Stop playing</button>
-    </div>
     <div v-if="playing && allDone" class="nge-orph-note nge-orph-note--ok">You have answered every fragment here. Thank you!</div>
     <div v-if="active" class="nge-orph-task">
       <div class="nge-orph-task-top">
         <div>
-          <div class="nge-orph-task-name">Segment {{ short(shownRoot || active.id) }}</div>
+          <div class="nge-orph-task-name">
+            <span class="nge-orph-task-id">{{ shownRoot || active.id }}</span>
+            <button class="nge-orph-copy" :title="copied ? 'Copied' : 'Copy the segment ID'" @click="copyId(shownRoot || active.id)">{{ copied ? 'Copied' : 'Copy' }}</button>
+          </div>
           <div class="nge-orph-task-meta">
-            <span :style="{ color: cur.color }">{{ cur.label }}</span>, {{ place + 1 }} of {{ cur.rows.length }},
+            <select class="nge-orph-groupsel" :value="group" :style="{ color: cur.color }" aria-label="Fragment group"
+                    title="Switch group" @change="onGroupChange">
+              <option v-for="g in GROUPS" :key="g.key" :value="g.key">{{ g.label }}</option>
+            </select>, {{ place + 1 }} of {{ cur.rows.length }},
             {{ fmt(active.um3) }} µm³, lab flag: {{ FLAG_WORDS[active.flag] }}
           </div>
           <div v-if="shownRoot && shownRoot !== active.id" class="nge-orph-note">Edited since the lab's list; showing its current ID.</div>
@@ -225,8 +300,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div class="nge-orph-controls">
         <button class="nge-orph-btn" @click="step(-1)">&lsaquo; Previous</button>
         <button class="nge-orph-btn" @click="step(1)">Next &rsaquo;</button>
-        <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to where this fragment starts">Back to start</button>
+        <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
+        <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
         <button v-if="playing" class="nge-orph-btn" @click="playNext" title="Leave this one and go to the next fragment">Skip</button>
+        <button v-if="playing" class="nge-orph-link nge-orph-stop" @click="stopPlay" title="Stop playing: Submit stays on this fragment">Stop</button>
       </div>
 
       <ol class="nge-orph-check">
@@ -285,9 +362,22 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 
 <style scoped>
 .nge-orph--slim .nge-orph-task { margin-top: 8px; }
-.nge-orph--slim .nge-orph-play { margin: 8px 10px 0; }
 .nge-orph-slim-empty { padding: 10px 12px; }
-.nge-orph-play { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin: 8px 0; padding: 7px 10px; border: 1px solid rgba(62, 236, 190, 0.45); background: rgba(62, 236, 190, 0.08); color: #c8fbea; font-size: 13.5px; }
+.nge-orph-task-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nge-orph-task-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14.5px; user-select: all; }
+.nge-orph-copy { font: 600 11.5px Inter, sans-serif; padding: 2px 8px; border-radius: 5px; cursor: pointer; color: #9fd0ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(126, 202, 255, 0.35); }
+.nge-orph-copy:hover { background: rgba(74, 158, 255, 0.2); }
+.nge-orph-stop { margin-left: auto; align-self: center; }
+.nge-orph-groupsel { font: inherit; font-weight: 600; background: rgba(10, 18, 32, 0.9); border: 1px solid rgba(126, 202, 255, 0.35); border-radius: 5px; padding: 0 2px; cursor: pointer; }
+.nge-orph-groupsel option { color: #dce6f5; background: #0b1220; }
+.nge-orph-playhere-row { display: flex; align-items: center; gap: 10px; margin: 2px 12px 8px; flex-wrap: wrap; }
+.nge-orph-playhere { display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(62, 236, 190, 0.7); background: linear-gradient(135deg, rgba(8, 72, 64, 0.94), rgba(10, 48, 66, 0.94));
+  color: #dcfff4; font: 700 12.5px/1 'Orbitron', Inter, system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(62, 236, 190, 0.6); box-shadow: 0 0 12px rgba(62, 236, 190, 0.3); }
+.nge-orph-playhere svg { color: #3eecbe; }
+.nge-orph-playhere:hover { box-shadow: 0 0 18px rgba(62, 236, 190, 0.55); }
+.nge-orph-playhere-hint { font-size: 12px; color: #9fb4cc; }
 /* In the Cell Library's own colors and sizes (see RetinaCastTab). */
 .nge-orph { display: flex; flex-direction: column; }
 .nge-orph-banner { position: relative; height: 92px; margin: -10px -12px 4px; background-size: cover; background-position: center 30%; display: flex; align-items: flex-end; padding: 0 14px 9px; }
