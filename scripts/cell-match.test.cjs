@@ -118,6 +118,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
+    // Ames 2026-11-19: resized smaller, the box scrolls.
+    const scroll = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.style.height; c.style.height = '200px'; const r = { oy: getComputedStyle(c).overflowY, can: c.scrollHeight > c.clientHeight }; c.style.height = h; return r; });
+    check('resized smaller, the box scrolls', scroll.oy === 'auto' && scroll.can, scroll);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -167,14 +170,25 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('no ask while the edits keep coming', asks.length === before, asks.length - before);
     const updated = await waitText(/39%/, 10000);
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
-    check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19 19% 1 edit merge \+39 39% 11 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
+    check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19\.5 19\.5% 1 edit merge \+39 39% 11 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     await shot('cell-match-after-merge.png');
+    // Report 573: 19.9 to 34.9 read +14.999999 in floating point.
+    const tenth = await page.evaluate(() => {
+      const box = document.createElement('div');
+      box.innerHTML = '<span class="nge-cm-num"></span><span class="nge-cm-delta"></span><i class="nge-cm-fill"></i>';
+      const S = window.__ngeCellMatch.setReading;
+      S(box, 19.9, true); S(box, 34.9, false);
+      const up = box.querySelector('.nge-cm-delta').textContent;
+      S(box, 0.3, false);
+      return [up, box.querySelector('.nge-cm-delta').textContent];
+    });
+    check('a change reads to the tenth, never +14.999999 (report 573)', tenth[0] === '+15' && tenth[1] === '−34.6', tenth);
 
     // A worse edit: the number goes down, and says so.
     answer = ANSWERS.worse;
     await edit([ANSWERS.worse.root]);
     const worse = await waitText(/36%/, 10000);
-    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /match score [a-z ]*\+32 51% 2 edits merge −3 36% 10 of 28 pieces added cut \+67 67% 2 of 3 parts cut off/.test(await cardText() || ''), await cardText());
+    check('a cut shows in the Cut row, a lost piece lowers Merge', worse && /match score [a-z ]*\+32 51\.5% 2 edits merge −3 36% 10 of 28 pieces added cut \+67 67% 2 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     // A cut: "Cut complete" lights up for a moment, then back to the reading.
     // A cut: "Cut complete" at once, plain; then the reading says good or wrong
     // (Ames 2026-11-13: "I got cut complete ... but it was wrong cut").
@@ -187,6 +201,11 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await waitText(/100%/, 10000);
     const judged = await state();
     check('a cut that takes off a merger says Good cut, in green', judged.state === 'Good cut' && judged.good && !judged.bad, judged);
+    // Report 564: Jump glows once after a good edit, then is still.
+    const glow1 = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { on: h.classList.contains('nge-cm-glow1'), anim: getComputedStyle(h).animationIterationCount }; });
+    await page.waitForTimeout(2400);
+    const glow1Off = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').classList.contains('nge-cm-glow1'));
+    check('after a good edit Jump glows once, then stops', glow1.on && glow1.anim === '1' && !glow1Off, { glow1, glow1Off });
     const wrongCut = { ...goodCut, root: '648518346351007000', merge: 20, missing: { left: 22, total: 28 } };
     answer = wrongCut;
     await edit([wrongCut.root], 'split');
@@ -225,7 +244,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('the Skip panel asks why, and the note goes with the skip', /why are you skipping\?/i.test(skipAsk.asked || '') && eventNotes.some(([k, n]) => k === 'skip' && n === 'Looks like two cells.'), { notes: eventNotes });
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, savedText: 'Saved 2 minutes ago', skipping: false, completing: null } })));
     const vnote = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-viewnote').innerText);
-    check('the box says when the view was saved, and that it saves by itself', vnote === 'Saved 2 minutes ago. Your view also saves by itself when you move to another cell.', vnote);
+    check('the box says when the view was saved, and that it saves by itself, on one line', vnote === 'Saved 2 minutes ago. Also saves when you change cells.' && await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-viewnote'); return n.getBoundingClientRect().height < 20 && /saves by itself/.test(n.title); }), vnote);
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-complete').click());
     const fin1 = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { text: c.querySelector('.nge-cm-finish').innerText.replace(/\s+/g, ' '), go: c.querySelector('.nge-cm-finish-go').disabled, rows: c.querySelector('.nge-cm-row[data-row="merge"]').offsetParent !== null }; });
     check('Complete opens in the box: checking the crosshairs, saving the view, not yet ready', /complete this cell checking the crosshairs… saving your view…/i.test(fin1.text) && fin1.go && !fin1.rows, fin1);
@@ -285,6 +304,16 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { on, off: n.hidden };
     });
     check('a nucleus only cell says to grow it; others do not', nuc.on.shown && /only its nucleus so far. Merge the nucleus into the cell body/.test(nuc.on.text) && /Show me the cell/.test(nuc.on.text) && nuc.off, nuc);
+    // Highlight folds behind a button on the Save row, closed at first, and remembers (Ames 2026-11-18).
+    const fold = await page.evaluate(() => {
+      const c = document.getElementById('nge-cell-match');
+      const b = c.querySelector('.nge-cm-marktoggle'), m = c.querySelector('.nge-cm-mark');
+      const first = { shown: b.offsetParent !== null, open: m.offsetParent !== null, h: c.getBoundingClientRect().height };
+      b.click();
+      const opened = { open: m.offsetParent !== null, aria: b.getAttribute('aria-expanded'), saved: localStorage.getItem('nge_sandbox_highlight_open') };
+      return { first, opened };
+    });
+    check('Highlight starts folded behind its button and opens on a click, remembered', fold.first.shown && !fold.first.open && fold.opened.open && fold.opened.aria === 'true' && fold.opened.saved === '1', fold);
     // Marking: Checked and Come back open Highlight on that color, and leave Merge or Cut.
     const mark = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match');
@@ -322,12 +351,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-mark-i').click());
     // Jump is always in the row.
     const jumpNow = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { shown: h.offsetParent !== null, text: h.textContent, glow: h.classList.contains('nge-cm-nudged') }; });
-    check('Jump is in the button row from the start, not lit', jumpNow.shown && jumpNow.text === 'Jump' && !jumpNow.glow, jumpNow);
+    check('Jump is in the button row from the start, not lit', jumpNow.shown && jumpNow.text === 'Jump to next spot' && !jumpNow.glow, jumpNow);
     // A minute with no edit: Hint.
     await page.evaluate(() => window.__ngeCellMatch.ageHintClock(16762, 61000));
     await page.waitForTimeout(2600);
     const nudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.querySelector('.nge-cm-hbtn'); return { h: !!h && h.offsetParent !== null && h.textContent, glow: h.classList.contains('nge-cm-nudged'), tip: h && h.title, line: !c.querySelector('.nge-cm-nudge').hidden }; });
-    check('after a minute with no edit, Jump lights up, and nothing else opens', nudge.h === 'Jump' && nudge.glow && nudge.tip === 'Go to the next spot on your cell that needs fixing' && !nudge.line, nudge);
+    check('after a minute with no edit, Jump lights up, and nothing else opens', nudge.h === 'Jump to next spot' && nudge.glow && nudge.tip === 'Go to the next spot on your cell that needs fixing' && !nudge.line, nudge);
     await shot('cell-match-hint.png');
     // Collapsed: no Hint at all (Ames 2026-11-14: "I would be too tempted to click").
     const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
@@ -373,6 +402,15 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     answer = ANSWERS.clean;
     await edit([ANSWERS.clean.root]);
     check('nothing to cut', await waitText(/50%/, 10000) && /cut nothing to cut/.test(await cardText() || ''), await cardText());
+    // Merge high, nothing cut yet: no note on the card; the (i) box says it (Ames 2026-11-19).
+    answer = { ...ANSWERS.clean, root: '648518346351004100', merge: 87, cut: 0, cutParts: 2, extra: { left: 2, total: 2 } };
+    await edit([answer.root]);
+    await waitText(/87%/, 10000);
+    const cutInfo = await page.evaluate(() => document.querySelector('#nge-cell-match-info')?.textContent || document.querySelector('.nge-cm-info-text')?.textContent || '');
+    check('Merge high and Cut at 0: no note on the card, the (i) box says it', !/wrong parts? to raise it/.test(await cardText() || '') && /Merging alone gets you halfway/.test(cutInfo), { card: await cardText(), cutInfo });
+    answer = ANSWERS.clean;
+    await edit([ANSWERS.clean.root]);
+    await waitText(/50%/, 10000);
 
     // The function before Merge and Cut (one number only): no card rather than a wrong one.
     answer = { taskId: 16762, scorable: true, root: '648518346351005000', match: 12, missing: { left: 9, total: 20 }, extra: { left: 0, total: 0 } };
@@ -574,9 +612,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(300);
     const mini = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const vis = s => [...c.querySelectorAll(s)].filter(e => e.offsetParent !== null).length; return { h: c.offsetHeight, gauges: vis('.nge-cm-gauge'), nums: vis('.nge-cm-num'), pieces: vis('.nge-cm-pieces'), title: c.querySelector('.nge-cm-title').offsetParent !== null }; });
     const tips = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-row')].map(r => r.title));
-    check('hovering says what each line means', /^Match score 19%: your Merge and Cut together, half each$/.test(tips[0]) && /^Merge \d+%: \d+ of \d+ pieces added$/.test(tips[1]) && /^Cut/.test(tips[2]), tips);
+    check('hovering says what each line means', /^Match score 19\.5%: your Merge and Cut together, half each$/.test(tips[0]) && /^Merge \d+%: \d+ of \d+ pieces added$/.test(tips[1]) && /^Cut/.test(tips[2]), tips);
     const miniText = await page.evaluate(() => document.getElementById('nge-cell-match').innerText.replace(/\s+/g, ' ').trim());
-    check('collapse shows Training Sim and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^training sim/i.test(miniText) && /19%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
+    check('collapse shows Training Sim and the score bar only', mini.title && mini.gauges === 1 && mini.nums === 1 && mini.pieces === 0 && /^training sim/i.test(miniText) && /19\.5%/.test(miniText) && !/playing/i.test(miniText) && mini.h < fullH / 2, { mini, fullH, miniText });
     await shot('cell-match-collapsed.png');
     answer = ANSWERS.merged;
     await edit([ANSWERS.merged.root]);
@@ -587,6 +625,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
 
     await page.evaluate(() => {
       const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState);
+      const v0 = [...ml.layer.displayState.segmentationGroupState.value.visibleSegments][0];
+      if (v0) window.__testU64 = v0.constructor;
       ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
     });
     await page.waitForTimeout(3000);
@@ -622,7 +662,30 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const ownsIdle = await page.evaluate(() => document.body.classList.contains('nge-cm-owns'));
     check('while the box waits, the Cell Library slim row stays out of the way', ownsIdle === true, ownsIdle);
     const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
-    check('on the Sandbox the Play button is big', playBox === null || playBox >= 56, playBox);
+    check('on the Sandbox the Play button is big', playBox === null || playBox >= 52, playBox);
+    // The claim's IDs out of date (merges made while the box had lost track):
+    // the box asks which cell the claim's soma is in now and finds it on
+    // screen (kfay, report 560: "still in stand by even after a dozen merge").
+    {
+      const NOW = '648518346350788734', SOMA = '73325262829729817';
+      await context.route(new RegExp(`/node/${SOMA}/root`), r => r.fulfill(json({ root_id: NOW })));
+      answer = { ...ANSWERS.merged, root: NOW };
+      await page.evaluate(([now, soma]) => {
+        window.__ngeCellMatch.withClaims(() => [{ id: 16762, dataset: 'pinky_nf_v2', roots: ['648518346350000001'], anchor: soma }]);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        const vis = ml.layer.displayState.segmentationGroupState.value.visibleSegments;
+        vis.add(window.__testU64.parseString(now));
+      }, [NOW, SOMA]);
+      const live = await waitText(/39%/, 20000);
+      check('after merges the box lost track of, it finds the cell by its soma and reads Live, not Standby', live && !/standby|not on screen|next sim cell/.test(await cardText() || ''), await cardText());
+      await context.unroute(new RegExp(`/node/${SOMA}/root`));
+      await page.evaluate(() => {
+        window.__ngeCellMatch.withClaims(() => []);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
+      });
+      await page.waitForTimeout(2500);
+    }
     await shot('play-big.png');
     await shot('cell-match-standby.png');
     await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));

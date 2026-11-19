@@ -2,6 +2,41 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-19T14:56:00Z",
+      "title": "A quieter Training Sim box",
+      "items": [
+        "The note about cutting off wrong parts has moved from the box into its info button."
+      ]
+    },
+    {
+      "at": "2026-11-19T14:43:00Z",
+      "title": "Your profile on a laptop",
+      "items": [
+        "On laptop screens, Cells completed, Edits and Days helping science sit side by side as cards, each with its bar to the next Achievement.",
+        "Your name comes first, with Special Awards and Cells identified on one line under it.",
+        "Time on Quests now counts Super Quests inside All MEC Quests, since Super Quests are MEC Quests."
+      ]
+    },
+    {
+      "at": "2026-11-19T14:36:00Z",
+      "title": "A smaller Training Sim box, and an easier Jump",
+      "items": [
+        "Jump to next spot now has its own full row, and it glows once after a good merge or cut.",
+        "Highlight folds behind a button next to Save and Skip Cell, and Pyr remembers whether you keep it open.",
+        "The note under Save fits on one line.",
+        "Score changes read to the tenth, so a +15 no longer shows as +14.9999.",
+        "If you make the box smaller, it scrolls, so nothing gets cut off."
+      ]
+    },
+    {
+      "at": "2026-11-19T01:51:00Z",
+      "title": "The Training Sim keeps track of your cell",
+      "items": [
+        "After a run of merges, the Training Sim box no longer gets stuck on Standby: it finds your cell again on its own.",
+        "When your Merge is high but nothing is cut yet, the box tells you that cutting off the wrong parts is what will raise your Match score."
+      ]
+    },
+    {
       "at": "2026-11-18T21:36:00Z",
       "title": "Shorter nucleus step",
       "items": [
