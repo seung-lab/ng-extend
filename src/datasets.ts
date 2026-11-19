@@ -763,7 +763,7 @@ export function datasetLocked(ds: DatasetEntry | undefined): boolean {
   if (access === 'edit' || access === 'unknown') return false;
   // Beta players with view access may look at Retina, for Glia Quest's first
   // stage (Ames 2026-11-19: "Yes, unlock to view"). Test sites only for now,
-  // with the Retina hub (util/play.ts RETINA_HUB).
+  // with the Retina hub (util/play.ts retinaHub).
   if (access === 'view' && ON_TEST_SITE) return false;
   try { if (useProofreadingBackendStore().isAdmin) return false; } catch { /* store not ready */ }
   return true;

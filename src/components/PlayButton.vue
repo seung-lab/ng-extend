@@ -15,7 +15,7 @@
  * admins can Edit them, and Ames gets a note when someone else does.
  */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, canViewRetina, mappingWhere, RETINA_HUB, type PlayKind } from '../util/play';
+import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, canViewRetina, mappingWhere, retinaHub, type PlayKind } from '../util/play';
 import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import EditableText from './EditableText.vue';
@@ -29,7 +29,7 @@ const signedIn = computed(() => !!backend.userId);
 type HubPick = PlayKind | 'glia';
 const picked = ref<HubPick>('cells');
 const questsOk = computed(() => canQuest());
-const hub = RETINA_HUB;
+const hub = computed(() => retinaHub());
 const glia1Ok = computed(() => canViewRetina());
 /** Glia Quest is on its own branch (claude/muller-glia-quest) until merged here. */
 const GLIA_HERE = false;

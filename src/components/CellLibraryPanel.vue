@@ -2481,7 +2481,8 @@ const questsHere = computed(() => canonicalDataset(activeDataset.value || getCur
  *  on the Retina only. */
 const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 /** Orphan segments mockup: Retina, and never on the live site until Ames says so. */
-const orphansHere = computed(() => ON_TEST_SITE && castHere.value);
+// Lost Fragments: test sites, and admins on live (Ames 2026-11-19: "Admins only").
+const orphansHere = computed(() => (ON_TEST_SITE || backend.isAdmin) && castHere.value);
 // Off Retina (or the live game) there is no Lost Fragments tab to stay on.
 watch(orphansHere, here => { if (!here && filter.value === 'orphans') filter.value = 'mine'; });
 const orphanTitle = orphanName().title;

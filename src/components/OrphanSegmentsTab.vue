@@ -16,6 +16,7 @@ import bannerImg from '../images/lost-fragments-banner.jpg';
  */
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { play, stopPlay, startPlay } from '../util/play';
+import { ON_TEST_SITE } from '../hunt';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
 import { useCellHistoryStore } from '../store';
@@ -262,7 +263,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <div class="nge-orph-title">{{ name.title }}</div>
       </div>
       <div class="nge-orph-lead">{{ name.lead }}</div>
-      <div class="nge-orph-mock">Test site preview: {{ GROUPS.reduce((a, g) => a + g.rows.length, 0) }} sample segments
+      <div class="nge-orph-mock">{{ ON_TEST_SITE ? 'Test site preview' : 'Admin preview' }}: {{ GROUPS.reduce((a, g) => a + g.rows.length, 0) }} sample segments
         of the {{ fmt(poolTotal) }} the lab found. Submit saves on this computer only.</div>
     </div>
 

@@ -113,9 +113,9 @@ export function canViewRetina(): boolean {
   return a === 'edit' || a === 'view';
 }
 /** The Retina hub (Ames 2026-11-19: one "Start playing" card with BC
- *  Challenge, Lost Fragments, Cilia Quest and Glia Quest) is a test site
- *  preview for now. */
-export const RETINA_HUB = ON_TEST_SITE;
+ *  Challenge, Lost Fragments, Cilia Quest and Glia Quest): every test site,
+ *  and admins on live ("Admins only" while saves stay in the browser). */
+export function retinaHub(): boolean { return ON_TEST_SITE || isAdmin(); }
 
 /** Where mapping happens for this player: the dataset on screen when it has
  *  cells to claim and they may edit it (MEC, say), else Retina's bipolar
@@ -162,7 +162,7 @@ export async function startPlay(k: PlayKind, on?: DatasetEntry, justOpen = false
   const target = on ?? (onRetina ? RETINA() : mappingDataset());
   if (!target) return false;
   if (onRetina && !canQuest()) return false;
-  if (k === 'fragments' && !RETINA_HUB) return false;
+  if (k === 'fragments' && !retinaHub()) return false;
   // Tutorials still to do come first (Ames 2026-11-12): Play carries on the training.
   if (!justOpen) {
     const t = await trainingLeft();
@@ -218,7 +218,7 @@ export function playLabel(): string {
  *  (the Sandbox, MEC) Play just starts mapping there (Ames 2026-11-12: "if I'm
  *  in the sandbox ... it should just start me playing in the sandbox"). */
 export function offersChoice(): boolean {
-  return isQuestDataset(datasetHere()) && (canQuest() || (RETINA_HUB && canViewRetina()));
+  return isQuestDataset(datasetHere()) && (canQuest() || (retinaHub() && canViewRetina()));
 }
 
 /** The Play button: straight in with the kind last chosen, else the card. */
@@ -226,8 +226,8 @@ export function pressPlay(): Promise<boolean> | null {
   if (!offersChoice()) return startPlay('cells');
   const k = savedKind();
   // A view only player in the hub sees the card: Glia Quest is theirs to play.
-  if (k && canQuest() && (k !== 'fragments' || RETINA_HUB)) return startPlay(k);
-  if (k === 'cells' && !RETINA_HUB) return startPlay(k);
+  if (k && canQuest() && (k !== 'fragments' || retinaHub())) return startPlay(k);
+  if (k === 'cells' && !retinaHub()) return startPlay(k);
   play.choosing = true;
   return null;
 }
