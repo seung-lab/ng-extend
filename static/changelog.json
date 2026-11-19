@@ -2,12 +2,23 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-19T02:45:00Z",
+      "at": "2026-11-19T14:41:00Z",
       "title": "Safer names, invites and shared notes",
       "items": [
         "If you use an invite that was sent to a different email, an admin now checks it is you before letting you in.",
         "You can no longer change your name to one another player already uses.",
         "You can remove only the help requests and tags you made yourself. Anyone can still mark a help request as solved."
+      ]
+    },
+    {
+      "at": "2026-11-19T14:36:00Z",
+      "title": "A smaller Training Sim box, and an easier Jump",
+      "items": [
+        "Jump to next spot now has its own full row, and it glows once after a good merge or cut.",
+        "Highlight folds behind a button next to Save and Skip Cell, and Pyr remembers whether you keep it open.",
+        "The note under Save fits on one line.",
+        "Score changes read to the tenth, so a +15 no longer shows as +14.9999.",
+        "If you make the box smaller, it scrolls, so nothing gets cut off."
       ]
     },
     {
