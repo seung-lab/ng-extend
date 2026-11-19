@@ -107,6 +107,11 @@ async function run(browser, perms, tag) {
       await page.waitForTimeout(1500);
       out.reopened = await page.evaluate(() => !!document.querySelector('.nge-orph'));
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fragments-reopened.png` });
+      // The full view, for the banner.
+      await page.evaluate(() => { const b = document.querySelector('.nge-cl-slim-expand'); if (b) b.click(); });
+      await page.waitForTimeout(1500);
+      out.banner = await page.evaluate(() => { const b = document.querySelector('.nge-orph-banner'); if (!b) return null; const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), bg: getComputedStyle(b).backgroundImage.slice(0, 60) }; });
+      if (SHOTS) { const el = await page.$('.nge-orph'); if (el) await el.screenshot({ path: `${SHOTS}/fragments-banner.png` }); }
     }
   } catch (e) { out.error = String(e).slice(0, 300); }
   await context.close();
@@ -124,6 +129,7 @@ async function run(browser, perms, tag) {
   check('edit: the top bar says Lost Fragments', /Lost Fragments/.test(ed.chip || ''), ed.chip);
   check('edit: Play shows the slim bar on Lost Fragments', ed.slimBar, ed.slimBar);
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);
+  check('edit: the banner shows in the full view', ed.banner && ed.banner.w > 200 && /lost-fragments-banner/.test(ed.banner.bg), ed.banner);
   check('edit: Skip goes to another fragment', ed.afterSkip && ed.afterSkip !== ed.first, [ed.first, ed.afterSkip]);
   // View only (Ames 2026-11-19: "Yes, unlock to view"): Retina opens, and the card shows
   // with the edit quests locked.

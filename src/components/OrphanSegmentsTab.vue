@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import bannerImg from '../images/lost-fragments-banner.jpg';
 /**
  * OrphanSegmentsTab.vue
  * MOCKUP (Ames 2026-11-19, branch claude/orphan-segments, test site only).
@@ -185,34 +186,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 <template>
   <div class="nge-orph" :class="{ 'nge-orph--slim': slim }">
     <div v-if="!slim" class="nge-orph-head">
-      <!-- The emblem (Ames 2026-11-19: "a cool graphic"): loose shards of a
-           cell drifting back into the dashed outline of the neuron they left. -->
-      <svg class="nge-orph-art" viewBox="0 0 320 84" role="img" aria-label="Fragments drifting back into a neuron's outline">
-        <defs>
-          <radialGradient id="orphGlow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#7ecaff" stop-opacity="0.35"/><stop offset="1" stop-color="#7ecaff" stop-opacity="0"/></radialGradient>
-          <linearGradient id="orphShard" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9f1ff"/><stop offset="0.5" stop-color="#7ecaff"/><stop offset="1" stop-color="#4a7dff"/></linearGradient>
-        </defs>
-        <ellipse cx="226" cy="44" rx="74" ry="36" fill="url(#orphGlow)"/>
-        <g class="nge-orph-art-ghost" fill="none" stroke="#9fb4ff" stroke-width="1.4" stroke-dasharray="3 4" stroke-linecap="round">
-          <circle cx="226" cy="44" r="11"/>
-          <path d="M215 40 Q196 30 176 33 Q160 35 146 26"/><path d="M216 50 Q198 62 180 60"/>
-          <path d="M237 38 Q258 22 284 20"/><path d="M237 49 Q262 58 290 66"/><path d="M258 29 L270 12"/>
-          <path d="M226 55 L228 78"/>
-        </g>
-        <circle cx="226" cy="44" r="4" fill="#c9b6ff" opacity="0.8"/>
-        <g fill="url(#orphShard)">
-          <polygon class="nge-orph-shard s1" points="22,30 34,24 38,36 27,40"/>
-          <polygon class="nge-orph-shard s2" points="58,58 72,52 70,66"/>
-          <polygon class="nge-orph-shard s3" points="86,22 98,18 101,29 90,31"/>
-          <polygon class="nge-orph-shard s4" points="112,50 121,44 128,54 118,60"/>
-          <polygon class="nge-orph-shard s5" points="42,10 50,8 52,15"/>
-          <polygon class="nge-orph-shard s6" points="132,30 140,27 142,35"/>
-        </g>
-        <g class="nge-orph-art-trail" stroke="#7ecaff" stroke-width="1" stroke-linecap="round" opacity="0.5">
-          <path d="M40 34 L60 36"/><path d="M74 59 L92 57"/><path d="M103 26 L120 27"/><path d="M130 52 L146 49"/>
-        </g>
-      </svg>
-      <div class="nge-orph-title">{{ name.title }}</div>
+      <!-- The banner (Ames 2026-11-19): her render of EyeWire cubes with
+           gold branches running through them, the title over it. -->
+      <div class="nge-orph-banner" :style="{ backgroundImage: `url(${bannerImg})` }" role="img" aria-label="Blue cubes tumbling apart with gold neuron branches running through them">
+        <div class="nge-orph-title">{{ name.title }}</div>
+      </div>
       <div class="nge-orph-lead">{{ name.lead }}</div>
       <div class="nge-orph-mock">Test site preview: {{ GROUPS.reduce((a, g) => a + g.rows.length, 0) }} sample segments
         of the {{ fmt(poolTotal) }} the lab found. Submit saves on this computer only.</div>
@@ -306,21 +284,15 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 </template>
 
 <style scoped>
-.nge-orph-art { display: block; width: 100%; height: auto; max-height: 84px; margin-bottom: 2px; }
-.nge-orph-art-ghost { opacity: 0.75; }
-.nge-orph-shard { transform-box: fill-box; transform-origin: center; animation: nge-orph-drift 5.5s ease-in-out infinite; filter: drop-shadow(0 0 4px rgba(126, 202, 255, 0.7)); }
-.nge-orph-shard.s2 { animation-delay: -1.2s; } .nge-orph-shard.s3 { animation-delay: -2.1s; } .nge-orph-shard.s4 { animation-delay: -3.3s; }
-.nge-orph-shard.s5 { animation-delay: -0.6s; } .nge-orph-shard.s6 { animation-delay: -4.2s; }
-.nge-orph-art-trail { animation: nge-orph-trail 5.5s ease-in-out infinite; }
-@keyframes nge-orph-drift { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 50% { transform: translate(7px, -3px) rotate(9deg); } }
-@keyframes nge-orph-trail { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.6; } }
-@media (prefers-reduced-motion: reduce) { .nge-orph-shard, .nge-orph-art-trail { animation: none; } }
 .nge-orph--slim .nge-orph-task { margin-top: 8px; }
 .nge-orph--slim .nge-orph-play { margin: 8px 10px 0; }
 .nge-orph-slim-empty { padding: 10px 12px; }
 .nge-orph-play { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin: 8px 0; padding: 7px 10px; border: 1px solid rgba(62, 236, 190, 0.45); background: rgba(62, 236, 190, 0.08); color: #c8fbea; font-size: 13.5px; }
 /* In the Cell Library's own colors and sizes (see RetinaCastTab). */
 .nge-orph { display: flex; flex-direction: column; }
+.nge-orph-banner { position: relative; height: 92px; margin: -10px -12px 4px; background-size: cover; background-position: center 30%; display: flex; align-items: flex-end; padding: 0 14px 9px; }
+.nge-orph-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(8, 12, 24, 0) 35%, rgba(8, 12, 24, 0.85) 100%); pointer-events: none; }
+.nge-orph-banner .nge-orph-title { position: relative; z-index: 1; font-size: 16px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
 .nge-orph-head { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 5px; }
 .nge-orph-title { font-family: 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; font-size: 14px; font-weight: 700; color: #eef; text-transform: uppercase; }
 .nge-orph-lead { font-size: 14px; line-height: 1.5; color: #b3c0d3; }
