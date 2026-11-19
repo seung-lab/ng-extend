@@ -367,6 +367,11 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').click());
     await page.waitForTimeout(1500);
+    // Folded to one line at first; a click opens it with Show me (Ames 2026-11-19).
+    const hintFold = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); const t = n.querySelector('.nge-cm-nudge-text'); return { open: n.classList.contains('nge-cm-nudge-open'), oneLine: t.getBoundingClientRect().height < 22, showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null }; });
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-nudge').click());
+    const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); return { open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open') }; });
+    check('the hint starts folded to one line, and a click opens it with Show me, remembered', !hintFold.open && hintFold.oneLine && !hintFold.showMe && unfolded.open && unfolded.showMe && unfolded.saved === '1', { hintFold, unfolded });
     const place = await hintLayers();
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);

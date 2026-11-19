@@ -448,10 +448,11 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-mode{position:absolute;top:0;left:0;right:0;height:4px;padding:0;margin:0;overflow:hidden;font-size:0;line-height:0;color:transparent;background:transparent;transition:background .2s ease}
 #${CARD_ID}.nge-cm-idle .nge-cm-mode,#${CARD_ID}.nge-cm-reviewing .nge-cm-mode{display:none}
 #${CARD_ID} .nge-cm-mode[data-mode="merge"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);box-shadow:0 0 10px rgba(61,155,255,.7)}
-#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);box-shadow:0 0 10px rgba(255,64,88,.7)}
+/* Cut mode is blue, as the cut bar at the bottom is (Ames 2026-11-19: "keep cut mode blue period"). */
+#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);box-shadow:0 0 10px rgba(61,155,255,.7)}
 #${CARD_ID} .nge-cm-mode[data-mode="highlight"]{background:linear-gradient(90deg,#2fe39a,#9dffd0);box-shadow:0 0 10px rgba(61,255,154,.55)}
 #${CARD_ID}[data-mode="merge"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,155,255,.85)}
-#${CARD_ID}[data-mode="cut"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(255,64,88,.8)}
+#${CARD_ID}[data-mode="cut"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,155,255,.85)}
 #${CARD_ID}[data-mode="highlight"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,255,154,.6)}
 #${CARD_ID} .nge-cm-cellnote{margin:-2px 0 8px;padding:7px 9px;border-left:3px solid #7fd8ff;border-radius:4px;background:rgba(127,216,255,.08);font:13px/1.35 Inter,system-ui,sans-serif;color:#d6e2f5}
 #${CARD_ID} .nge-cm-cellnote[hidden],#${CARD_ID} .nge-cm-acc[hidden],#${CARD_ID} .nge-cm-finish-gate[hidden]{display:none}
@@ -483,6 +484,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 @keyframes nge-cm-find-shine{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after,#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before,#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:none}}
 #${CARD_ID} .nge-cm-nudge[hidden]{display:none}
+/* Folded to one line until the player opens it (Ames 2026-11-19: "this is too big, need a way to collapse"). */
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){padding:6px 9px;cursor:pointer}
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-btns{display:none}
+#${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px}
+#${CARD_ID} .nge-cm-nudge-more svg{transition:transform .15s}
+#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open .nge-cm-nudge-more svg{transform:rotate(180deg)}
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
 #${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
@@ -547,7 +555,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-modebtn[data-tool="merge"]:hover{background:rgba(61,155,255,.18)}
 #${CARD_ID} .nge-cm-modebtn[data-tool="cut"]:hover{background:rgba(255,64,88,.16)}
 #${CARD_ID} .nge-cm-modebtn[data-tool="merge"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"][aria-pressed="true"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);border-color:#ff8a9e;color:#1a0408;box-shadow:0 0 10px rgba(255,64,88,.7)}
+#${CARD_ID} .nge-cm-modebtn[data-tool="cut"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
 #${CARD_ID} .nge-cm-modebtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
@@ -680,7 +688,9 @@ const BULB_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" st
 const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
   + '<span class="nge-cm-nudge-text"></span>'
   + '<span class="nge-cm-nudge-btns"><button type="button" class="nge-cm-btn nge-cm-hint-btn" hidden>Show me</button>'
-  + '</span></div>';
+  + '</span><button type="button" class="nge-cm-tool nge-cm-nudge-more" aria-expanded="false" aria-label="Show the whole hint" title="Show the whole hint">'
+  + '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button></div>';
+const HINT_OPEN_KEY = 'nge_sandbox_hint_open';
 // Highlight from the box (Ames 2026-11-14: "a button that opens highlight
 // mode ... with checked and come back pre-filled"; "we can't add highlight
 // points while you are in merge or cut mode"). A chip leaves Merge or Cut and
@@ -1538,7 +1548,17 @@ function keepSize(el: HTMLElement) {
 function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
   el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
-  el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
+  el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', e => { e.stopPropagation(); void pressHint(el); });
+  // The hint folds to one line; a click opens it, and Pyr remembers.
+  const hintLine = el.querySelector('.nge-cm-nudge') as HTMLElement;
+  const hintMore = el.querySelector('.nge-cm-nudge-more') as HTMLElement;
+  const setHintOpen = (open: boolean) => { hintLine.classList.toggle('nge-cm-nudge-open', open); hintMore.setAttribute('aria-expanded', String(open)); hintMore.setAttribute('aria-label', open ? 'Fold the hint' : 'Show the whole hint'); hintMore.title = hintMore.getAttribute('aria-label')!; };
+  let hintOpen = false;
+  try { hintOpen = localStorage.getItem(HINT_OPEN_KEY) === '1'; } catch { /* folded */ }
+  setHintOpen(hintOpen);
+  const toggleHint = (open: boolean) => { setHintOpen(open); try { localStorage.setItem(HINT_OPEN_KEY, open ? '1' : '0'); } catch { /* this visit only */ } };
+  hintMore.addEventListener('click', e => { e.stopPropagation(); toggleHint(!hintLine.classList.contains('nge-cm-nudge-open')); });
+  hintLine.addEventListener('click', () => { if (!hintLine.classList.contains('nge-cm-nudge-open')) toggleHint(true); });
   for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
   // Highlight folds away (Ames 2026-11-18: "this box is so big"), closed at
   // first; each player's choice is remembered.
