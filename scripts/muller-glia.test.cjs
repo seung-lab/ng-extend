@@ -26,6 +26,13 @@ const ROWS = [
   row('A40', '720575940553016515', 'ON SAC', { annotator: 'Celia D', status: 'No cilium', date: '10/11/2026', link: 'https://x.test/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/9' }),
 ];
 const calls = [];
+const {gliaAction, memDb} = require('../functions/muller-glia');
+const TEST_UUID = '00000000-0000-4000-8000-000000000001';
+const gliaCells = [];
+for (let i = 0; i < 14; i++) gliaCells.push({sheet_index: `F${100 + i}`, segment_id: String(720575940559811933n + BigInt(i)), soma_coords: '24771,38930,1875', guess: 'Muller', stage: 1});
+for (const [ix, at] of [['F560', '40856,35011,2024'], ['E758', '39650,34032,421']]) gliaCells.push({sheet_index: ix, segment_id: '720575940548399816', soma_coords: at, stage: 2, pair_segment: '720575940548399816'});
+const gliaDb = memDb({cells: gliaCells});
+let gliaRoots = {'40856,35011,2024': '720575940548399816', '39650,34032,421': '720575940548399816'};
 const json = (body, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
 const RETINA_LAYERS = [
   { type: 'image', source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2', name: 'em' },
@@ -67,6 +74,13 @@ const RETINA_LAYERS = [
   await context.route(/daf-apis\.com\/auth\/api\/v1\/user\/me|microns-daf\.com\/auth\/api\/v1\/user\/me/, r => r.fulfill(json({ email: 't@example.org', name: 'Test Player' })));
   // The quest gateway and the data gateway.
   await context.route(/cloudfunctions\.net|run\.app/, r => {
+    if (/ewMullerGlia/.test(r.request().url())) {
+      let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
+      const {action, token, ...args} = input;
+      calls.push({glia: action, args});
+      return gliaAction(action, args, {db: gliaDb, me: {id: TEST_UUID}, isAdmin: false, somaRoots: async s => s.map(x => gliaRoots[x] ?? null)})
+        .then(data => r.fulfill(json({ok: true, data})), e => r.fulfill(json({error: e.message}, e.status || 500)));
+    }
     const u = r.request().url();
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     if (/ewSheetSync/.test(u)) {
@@ -133,7 +147,6 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(300);
     let fails = 0;
     const ok = (cond, what) => { console.log((cond ? 'ok   ' : 'FAIL ') + what); if (!cond) fails++; };
-    await page.evaluate(() => { try { localStorage.removeItem('nge_muller_glia_mock_v1'); } catch (e) {} });
     await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'L', code: 'KeyL', shiftKey: true, bubbles: true })));
     await page.waitForTimeout(800);
     await page.click('.nge-cl-quests-tab');
@@ -161,34 +174,42 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(400);
     ok(await page.locator('.nge-mg').count() === 1, 'Muller Glia Quest opens');
     await shot('1-stage1');
-    const first = await page.locator('.nge-mg-card-name').innerText();
-    await page.click('.nge-mg-card .nge-mg-btn');
+    const first = (await page.locator('.nge-mg-card-name').innerText()).trim();
+    await page.evaluate(() => document.querySelector('.nge-mg-card .nge-mg-btn').click());
     await page.waitForTimeout(300);
     const after = await page.evaluate(() => { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); const gs = g && g.layer.displayState.segmentationGroupState.value; return { vis: gs ? [...gs.visibleSegments].map(String) : [], pos: [...window.viewer.navigationState.position.value].map(Math.round) }; });
-    console.log('  after Open: ' + JSON.stringify(after));
-    ok(after.vis.length === 1, 'Open shows only that cell');
-    for (const n of [0, 1, 2]) { await page.locator('.nge-mg-answers button').nth(n).click({ timeout: 5000 }); await page.waitForTimeout(250); }
-    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('nge_muller_glia_mock_v1') || '{}'));
-    ok(Object.keys(saved.answers || {}).length === 3 && saved.answers[first] === 'yes', 'three answers kept in this browser, first is Yes');
+    ok(after.vis.length === 1 && after.pos.join(',') === '24771,38930,1875', 'Open shows only that cell, at its soma');
+    for (const n of [0, 1, 2]) { await page.evaluate(n => document.querySelectorAll('.nge-mg-answers button')[n].click(), n); await page.waitForTimeout(500); }
+    const s = gliaDb._state;
+    ok(s.answers.length === 3 && s.answers[0].answer === 'yes' && s.answers[0].user_id === TEST_UUID, 'three answers reach the server, first is Yes');
+    ok((await page.locator('.nge-mg-card-name').innerText()).trim() !== first, 'the next cell comes up');
+    ok(await page.locator('.nge-mg-row').count() === 3, 'latest answers listed');
     await shot('2-answered');
     await page.evaluate(() => document.querySelector('.nge-mg-row .nge-mg-btn--sm').click());
-    await page.waitForTimeout(200);
-    ok(Object.keys(JSON.parse(await page.evaluate(() => localStorage.getItem('nge_muller_glia_mock_v1'))).answers).length === 2, 'Undo removes an answer');
+    await page.waitForTimeout(600);
+    ok(s.answers.length === 2, 'Undo takes an answer back on the server');
     await page.evaluate(() => document.querySelectorAll('.nge-mg-stage')[1].click());
-    await page.waitForTimeout(300);
-    console.log('  stage2 text: ' + JSON.stringify((await page.locator('.nge-mg').innerText()).slice(0, 600)));
-    ok(/Merged pairs/i.test(await page.locator('.nge-mg').innerText()), 'Stage 2 lists merged pairs');
+    await page.waitForTimeout(400);
+    ok(/opens after 10 answers/.test(await page.locator('.nge-mg').innerText()), 'Stage 2 locked before 10 answers');
+    await page.evaluate(() => document.querySelectorAll('.nge-mg-stage')[0].click());
+    for (let k = 0; k < 8; k++) { await page.evaluate(() => document.querySelectorAll('.nge-mg-answers button')[0].click()); await page.waitForTimeout(450); }
+    ok(/Stage 2 is open/.test(await page.locator('.nge-mg').innerText()), 'the 10th answer opens Stage 2');
+    await page.evaluate(() => document.querySelectorAll('.nge-mg-stage')[1].click());
+    await page.waitForTimeout(600);
+    ok(await page.locator('.nge-mg-row').count() === 1, 'one merged pair listed');
     await page.evaluate(() => document.querySelector('.nge-mg-row .nge-mg-btn--sm').click());
     await page.waitForTimeout(300);
-    await shot('3-stage2');
-    await page.evaluate(() => document.querySelector('.nge-mg-btn--b').click());
-    await page.waitForTimeout(200);
     await page.evaluate(() => document.querySelector('.nge-mg-btn--go').click());
-    await page.waitForTimeout(2500);
-    console.log('  check note (servers stubbed): ' + JSON.stringify(await page.evaluate(() => (document.querySelector('.nge-mg-pair .nge-mg-msg') || {}).innerText || '')));
-    await shot('4-stage2-check');
-    const writes = calls.filter(c => c.action && c.action !== 'quest_list');
-    ok(writes.length === 0, 'no server writes from the mockup');
+    await page.waitForTimeout(800);
+    ok(/still in one cell/.test(await page.locator('.nge-mg-pair').innerText()), 'Check: still merged');
+    await shot('3-stage2');
+    gliaRoots = {'40856,35011,2024': '720575940000000001', '39650,34032,421': '720575940000000002'};
+    await page.evaluate(() => document.querySelector('.nge-mg-btn--go').click());
+    await page.waitForTimeout(800);
+    ok(/Split! F560 and E758 are two cells now/.test(await page.locator('.nge-mg').innerText()) && s.splits.length === 1, 'Check: split recorded');
+    await shot('4-split');
+    const other = calls.filter(c => c.action && c.action !== 'quest_list');
+    ok(other.length === 0, 'nothing else written');
     console.log(errors.length ? 'page errors: ' + errors.join(' | ') : 'no page errors');
     console.log(fails ? fails + ' FAILED' : 'all passed');
   } catch (e) { console.log('ERROR ' + (e && e.stack || e)); }

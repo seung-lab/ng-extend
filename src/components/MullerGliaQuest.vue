@@ -1,49 +1,53 @@
 <script setup lang="ts">
 /**
- * MullerGliaQuest.vue — TEST SITE MOCKUP (Ames 2026-11-19).
- * "A secondary quest about Muller glia cells. The first section is confirming
- * that it's a glia with a yes or no. The second stage has users split two glia
- * together that are merged."
+ * MullerGliaQuest.vue: the Muller Glia Quest in the Quests tab (Ames
+ * 2026-11-19). "The first section is confirming that it's a glia with a yes
+ * or no. The second stage has users split two glia together that are merged."
  *
- * Rows are a SAMPLE generated from the lab's All Glia tab
- * (src/data/muller_glia_mock.ts). Answers and finished splits stay in this
- * browser only (localStorage): no game table, no bells, no chat, no
- * Achievements, no stats. The Stage 2 check is real and read only: it asks the
- * PyChunkedGraph which cell each soma sits in now.
+ * Stage 1: one cell at a time from the lab's All Glia tab; Yes, No or Not
+ * sure. Three Yes confirm a cell, two No send it to the lab.
+ * Stage 2 (after enough answers): segments holding two or more glia; the
+ * player cuts them apart in Cut Mode and presses Check, and the server reads
+ * the cell at every soma (src/muller_glia.ts, functions/muller-glia.js).
+ * No bells, chat, Achievements or stats.
  */
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
-import { supervoxelAt } from '../util/supervoxel_at';
-import { getRootFromSupervoxel } from '../widgets/pcg_service';
-import { GLIA_CHECK_CELLS, GLIA_PAIRS, GLIA_STAGE1_POOL, GLIA_STAGE2_POOL, type GliaCheckCell, type GliaPair } from '../data/muller_glia_mock';
+import { useProofreadingBackendStore } from '../store';
+import { gliaStatus, gliaNext, gliaAnswer, gliaUndo, gliaMine, gliaPairs, gliaCheck,
+  type GliaCell, type GliaPair, type GliaStatus, type GliaAnswer } from '../muller_glia';
 
-const KEY = 'nge_muller_glia_mock_v1';
-type Answer = 'yes' | 'no' | 'unsure';
-interface Saved { answers: Record<string, Answer>; split: Record<string, { a: string; b: string }> }
-function read(): Saved {
-  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.answers && s.split) return s; } catch {}
-  return { answers: {}, split: {} };
-}
-const saved = ref<Saved>(read());
-function write() { try { localStorage.setItem(KEY, JSON.stringify(saved.value)); } catch {} }
-
-/** Stage 2 opens after this many Stage 1 answers (proposal; open on the test site). */
-const UNLOCK_AFTER = 10;
-const stage = ref<1 | 2>(1);
-const answered = computed(() => Object.keys(saved.value.answers).length);
-const stage2Ready = computed(() => answered.value >= UNLOCK_AFTER);
-const splitDone = computed(() => Object.keys(saved.value.split).length);
+const backend = useProofreadingBackendStore();
+const status = ref<GliaStatus | null>(null);
+const loading = ref(false);
+const busy = ref(false);
 const error = ref('');
 const message = ref('');
 const showHow = ref(false);
+const stage = ref<1 | 2>(1);
+
+const queue = ref<GliaCell[]>([]);
+const current = computed(() => queue.value[0] || null);
+const onScreen = ref(0);
+const recent = ref<{ cellId: number; answer: GliaAnswer; index: string; segmentId: string }[]>([]);
+
+const pairs = ref<GliaPair[]>([]);
+const pairsLoaded = ref(false);
+const pairOpen = ref('');
+const checking = ref('');
+const pairNote = ref<Record<string, string>>({});
+
+const label = (a: GliaAnswer) => (a === 'yes' ? 'Yes' : a === 'no' ? 'No' : 'Not sure');
+const short = (id: string) => `…${String(id).slice(-6)}`;
+const letter = (i: number) => String.fromCharCode(65 + i);
 
 function show(segmentId: string, at: string) {
   error.value = '';
   try {
     const viewer: any = (window as any)['viewer'];
     const gs = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
-    if (!viewer || !gs?.visibleSegments) { error.value = 'No segmentation layer is open. Switch to Retina first.'; return; }
+    if (!viewer || !gs?.visibleSegments) { error.value = 'No segmentation layer is open.'; return; }
     gs.visibleSegments.clear();
     gs.visibleSegments.add(Uint64.parseString(segmentId));
     const xyz = (at.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
@@ -51,53 +55,100 @@ function show(segmentId: string, at: string) {
   } catch (e: any) { error.value = `Could not show this cell: ${e?.message || e}`; }
 }
 
-// ── Stage 1: is it a Muller glia? ─────────────────────────────────────────
-const nextCell = computed<GliaCheckCell | null>(() => GLIA_CHECK_CELLS.find(c => !saved.value.answers[c.index]) ?? null);
-const onScreen = ref('');
-function openCell(c: GliaCheckCell) { onScreen.value = c.index; show(c.segmentId, c.soma); }
-function answer(c: GliaCheckCell, a: Answer) {
-  saved.value.answers[c.index] = a; write();
-  message.value = `${c.index}: ${a === 'yes' ? 'Yes' : a === 'no' ? 'No' : 'Not sure'}. Saved in this browser only.`;
-  const n = nextCell.value;
-  if (n) openCell(n);
-}
-function undo(index: string) { delete saved.value.answers[index]; write(); message.value = ''; }
-const recent = computed(() => GLIA_CHECK_CELLS.filter(c => saved.value.answers[c.index]).slice(-6).reverse());
-const label = (a: Answer) => (a === 'yes' ? 'Yes' : a === 'no' ? 'No' : 'Not sure');
-
-// ── Stage 2: split the pair ───────────────────────────────────────────────
-const pairOpen = ref('');
-const checking = ref('');
-const pairNote = ref<Record<string, string>>({});
-const openPairs = computed(() => GLIA_PAIRS.filter(p => !saved.value.split[p.segmentId]));
-function openPair(p: GliaPair, i = 0) { pairOpen.value = p.segmentId; show(p.segmentId, p.nuclei[i].at); }
-async function rootAt(at: string): Promise<string | null> {
-  const xyz = (at.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
-  if (xyz.length !== 3) return null;
-  const sv = await supervoxelAt(xyz);
-  return sv && sv !== '0' ? getRootFromSupervoxel(sv) : null;
-}
-/** Real check, read only: which cell holds each soma now (Retina nuclei are
- *  segments of their own, so the soma point, not the nucleus center). */
-async function check(p: GliaPair) {
-  checking.value = p.segmentId; error.value = ''; message.value = '';
+async function load() {
+  if (!backend.userId) return;
+  loading.value = true; error.value = '';
   try {
-    const [a, b] = await Promise.all([rootAt(p.nuclei[0].at), rootAt(p.nuclei[1].at)]);
-    if (!a || !b) { pairNote.value[p.segmentId] = 'Could not read the cell at one of the somas. Sign in, or try again.'; return; }
-    if (a === b) { pairNote.value[p.segmentId] = 'Both somas are still in one cell. Keep cutting along where the two glia touch.'; return; }
-    saved.value.split[p.segmentId] = { a, b }; write();
-    pairNote.value[p.segmentId] = '';
-    message.value = `Split! ${p.nuclei[0].index} and ${p.nuclei[1].index} are two cells now. Saved in this browser only.`;
-    pairOpen.value = '';
+    status.value = await gliaStatus();
+    if (!status.value.installed) return;
+    const [next, mine] = await Promise.all([gliaNext(5), gliaMine()]);
+    queue.value = next.cells;
+    recent.value = mine.answers;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { loading.value = false; }
+}
+onMounted(load);
+
+async function refill() {
+  if (queue.value.length > 2) return;
+  try {
+    const { cells } = await gliaNext(6);
+    const have = new Set(queue.value.map(c => c.id));
+    queue.value = queue.value.concat(cells.filter(c => !have.has(c.id)));
+  } catch { /* the next answer tries again */ }
+}
+
+function openCell(c: GliaCell) { onScreen.value = c.id; show(c.segmentId, c.soma); }
+
+async function answer(a: GliaAnswer) {
+  const c = current.value;
+  if (!c || busy.value) return;
+  busy.value = true; error.value = ''; message.value = '';
+  try {
+    const r = await gliaAnswer(c.id, a);
+    const was = !!status.value?.unlocked;
+    if (status.value) {
+      status.value.answered = r.answered;
+      if (r.answered >= status.value.unlockAfter) status.value.unlocked = true;
+    }
+    recent.value = [{ cellId: c.id, answer: a, index: c.index, segmentId: c.segmentId }, ...recent.value.filter(x => x.cellId !== c.id)].slice(0, 8);
+    message.value = !was && status.value?.unlocked ? `${c.index}: ${label(a)}. Stage 2 is open: you can split merged glia now.` : `${c.index}: ${label(a)}. Thank you!`;
+    queue.value = queue.value.slice(1);
+    if (current.value) openCell(current.value);
+    void refill();
+  } catch (e: any) {
+    error.value = e?.message || String(e);
+    if (/already has its answer/.test(error.value)) { queue.value = queue.value.slice(1); void refill(); }
+  } finally { busy.value = false; }
+}
+function skip() {
+  const c = current.value;
+  if (!c) return;
+  queue.value = [...queue.value.slice(1), c];
+  if (current.value) openCell(current.value);
+}
+async function undo(cellId: number) {
+  busy.value = true; error.value = ''; message.value = '';
+  try {
+    const r = await gliaUndo(cellId);
+    if (status.value) status.value.answered = r.answered;
+    recent.value = recent.value.filter(x => x.cellId !== cellId);
+    const { cells } = await gliaNext(5);
+    queue.value = cells;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = false; }
+}
+
+async function openStage2() {
+  stage.value = 2;
+  if (!status.value?.unlocked || pairsLoaded.value) return;
+  try { const r = await gliaPairs(); pairs.value = r.pairs; pairsLoaded.value = true; if (status.value) status.value.split = r.split; }
+  catch (e: any) { error.value = e?.message || String(e); }
+}
+function openPair(p: GliaPair, i = 0) { pairOpen.value = p.segmentId; show(p.segmentId, p.glia[i].at); }
+async function check(p: GliaPair) {
+  checking.value = p.segmentId; error.value = ''; message.value = ''; pairNote.value[p.segmentId] = '';
+  try {
+    const r = await gliaCheck(p.segmentId);
+    if (r.split) {
+      pairs.value = pairs.value.filter(x => x.segmentId !== p.segmentId);
+      pairOpen.value = '';
+      if (!r.already && status.value) { status.value.split += 1; status.value.splitAll += 1; }
+      message.value = r.already ? `Someone already split ${p.glia.map(g => g.index).join(' + ')}. On to the next one!`
+        : `Split! ${p.glia.map(g => g.index).join(' and ')} are ${p.glia.length === 2 ? 'two' : 'separate'} cells now.`;
+    } else if (r.unreadable) {
+      pairNote.value[p.segmentId] = 'Could not read the cell at one of the somas. Try again in a moment.';
+    } else {
+      const together = p.glia.length === 2 ? 'Both somas are still in one cell.' : 'Some somas are still in one cell.';
+      pairNote.value[p.segmentId] = `${together} Keep cutting along where the glia touch.`;
+    }
   } catch (e: any) { pairNote.value[p.segmentId] = e?.message || String(e); }
   finally { checking.value = ''; }
 }
-const short = (id: string) => `…${id.slice(-6)}`;
 </script>
 
 <template>
   <div class="nge-mg">
-    <div class="nge-mg-mock">Test site preview. Your answers stay in this browser and count for nothing yet.</div>
     <div class="nge-mg-head">
       <div class="nge-mg-titlerow">
         <div class="nge-mg-title">Muller Glia Quest</div>
@@ -110,88 +161,96 @@ const short = (id: string) => `…${id.slice(-6)}`;
         <li>A wide end foot on the ganglion cell side, and fine sheets wrapped around its neighbors.</li>
         <li>No axon, and no tidy dendritic tree like a neuron's.</li>
       </ul>
-      <div class="nge-mg-stages">
+      <div v-if="status?.installed" class="nge-mg-stages">
         <button class="nge-mg-stage" :class="{ on: stage === 1 }" @click="stage = 1">
           <span class="nge-mg-stage-n">1</span> Is it a Muller glia?
-          <span class="nge-mg-stage-c">{{ answered }} answered</span>
+          <span class="nge-mg-stage-c">{{ status.answered }} answered</span>
         </button>
-        <button class="nge-mg-stage" :class="{ on: stage === 2, locked: !stage2Ready }" @click="stage = 2">
+        <button class="nge-mg-stage" :class="{ on: stage === 2, locked: !status.unlocked }" @click="openStage2">
           <span class="nge-mg-stage-n">2</span> Split the pair
-          <span class="nge-mg-stage-c">{{ stage2Ready ? `${splitDone} split` : `opens after ${UNLOCK_AFTER} answers` }}</span>
+          <span class="nge-mg-stage-c">{{ status.unlocked ? `${status.split} split by you` : `opens after ${status.unlockAfter} answers` }}</span>
         </button>
       </div>
     </div>
 
-    <div v-if="error" class="nge-mg-msg nge-mg-msg--bad">{{ error }}</div>
-    <div v-else-if="message" class="nge-mg-msg">{{ message }}</div>
+    <div v-if="!backend.userId" class="nge-mg-empty">Sign in to take a quest.</div>
+    <div v-else-if="loading && !status" class="nge-mg-empty">Reading the quest…</div>
+    <div v-else-if="status && !status.installed" class="nge-mg-empty">The Muller Glia Quest is not open yet.</div>
+    <template v-else-if="status">
+      <div v-if="error" class="nge-mg-msg nge-mg-msg--bad">{{ error }}</div>
+      <div v-else-if="message" class="nge-mg-msg">{{ message }}</div>
 
-    <!-- Stage 1 -->
-    <template v-if="stage === 1">
-      <div class="nge-mg-sub">Look at the cell in 3D. Is it a Muller glia? One answer per cell, then the next one opens.</div>
-      <div v-if="nextCell" class="nge-mg-card">
-        <div class="nge-mg-card-top">
-          <div>
-            <div class="nge-mg-card-name">{{ nextCell.index }}</div>
-            <div class="nge-mg-meta">Cell {{ nextCell.segmentId }}</div>
+      <!-- Stage 1 -->
+      <template v-if="stage === 1">
+        <div class="nge-mg-sub">Look at the cell in 3D. Is it a Muller glia? One answer per cell, then the next one opens.</div>
+        <div v-if="current" class="nge-mg-card">
+          <div class="nge-mg-card-top">
+            <div>
+              <div class="nge-mg-card-name">{{ current.index }}</div>
+              <div class="nge-mg-meta">Cell {{ current.segmentId }}</div>
+            </div>
+            <span class="nge-mg-card-btns">
+              <button class="nge-mg-btn" @click="openCell(current)" title="Show only this cell and go to its soma">{{ onScreen === current.id ? 'Show again' : 'Open' }}</button>
+              <button v-if="queue.length > 1" class="nge-mg-btn nge-mg-btn--sm" @click="skip" title="Look at another cell first">Skip</button>
+            </span>
           </div>
-          <button class="nge-mg-btn" @click="openCell(nextCell)" title="Show only this cell and go to its soma">{{ onScreen === nextCell.index ? 'Show again' : 'Open' }}</button>
+          <div class="nge-mg-answers">
+            <button class="nge-mg-ans nge-mg-ans--yes" :disabled="busy" @click="answer('yes')">Yes</button>
+            <button class="nge-mg-ans nge-mg-ans--no" :disabled="busy" @click="answer('no')">No</button>
+            <button class="nge-mg-ans" :disabled="busy" @click="answer('unsure')">Not sure</button>
+          </div>
         </div>
-        <div class="nge-mg-answers">
-          <button class="nge-mg-ans nge-mg-ans--yes" @click="answer(nextCell, 'yes')">Yes</button>
-          <button class="nge-mg-ans nge-mg-ans--no" @click="answer(nextCell, 'no')">No</button>
-          <button class="nge-mg-ans" @click="answer(nextCell, 'unsure')">Not sure</button>
-        </div>
-      </div>
-      <div v-else class="nge-mg-empty">You answered every cell in this preview.</div>
-      <template v-if="recent.length">
-        <div class="nge-mg-section">Your answers</div>
-        <div v-for="c in recent" :key="c.index" class="nge-mg-row">
-          <span>{{ c.index }} <span class="nge-mg-meta">{{ short(c.segmentId) }}</span></span>
-          <span class="nge-mg-row-r">
-            <span class="nge-mg-pill" :class="'nge-mg-pill--' + saved.answers[c.index]">{{ label(saved.answers[c.index]) }}</span>
-            <button class="nge-mg-btn nge-mg-btn--sm" @click="undo(c.index)">Undo</button>
-          </span>
-        </div>
+        <div v-else-if="!loading" class="nge-mg-empty">You answered every cell waiting for you. Thank you!</div>
+        <template v-if="recent.length">
+          <div class="nge-mg-section">Your latest answers</div>
+          <div v-for="r in recent" :key="r.cellId" class="nge-mg-row">
+            <span>{{ r.index }} <span class="nge-mg-meta">{{ short(r.segmentId) }}</span></span>
+            <span class="nge-mg-row-r">
+              <span class="nge-mg-pill" :class="'nge-mg-pill--' + r.answer">{{ label(r.answer) }}</span>
+              <button class="nge-mg-btn nge-mg-btn--sm" :disabled="busy" @click="undo(r.cellId)" title="Take this answer back">Undo</button>
+            </span>
+          </div>
+        </template>
+        <div class="nge-mg-foot">Three Yes answers confirm a Muller glia. Two No answers send it to the lab for a closer look. So far: {{ status.confirmed }} confirmed, {{ status.flagged }} sent to the lab.</div>
       </template>
-      <div class="nge-mg-foot">Preview: {{ GLIA_CHECK_CELLS.length }} cells. The full list holds {{ GLIA_STAGE1_POOL.toLocaleString() }} glia from the lab's sheet that no one has typed yet.</div>
-    </template>
 
-    <!-- Stage 2 -->
-    <template v-else>
-      <div v-if="!stage2Ready" class="nge-mg-lock">In the game, Stage 2 opens after {{ UNLOCK_AFTER }} answers in Stage 1. It is open here so you can try it.</div>
-      <div class="nge-mg-sub">Each of these is one segment holding two Muller glia that grew together. Cut them apart so each soma has its own cell.</div>
-      <ol class="nge-mg-steps">
-        <li>Open the pair. Use Cell A and Cell B to visit each glia's soma.</li>
-        <li>Find where the two glia touch. Turn on Cut Mode (C).</li>
-        <li>Red points on cell A's side, blue points on cell B's side, then cut.</li>
-        <li>Press Check. Pyr asks the server which cell each soma is in now.</li>
-      </ol>
-      <div class="nge-mg-section">Merged pairs <span class="nge-mg-count">{{ openPairs.length }}</span></div>
-      <template v-for="p in openPairs.slice(0, 12)" :key="p.segmentId">
-        <div class="nge-mg-row" :class="{ 'nge-mg-row--open': pairOpen === p.segmentId }">
-          <span>{{ p.nuclei[0].index }} + {{ p.nuclei[1].index }} <span class="nge-mg-meta">{{ short(p.segmentId) }}</span></span>
-          <span class="nge-mg-row-r">
-            <button class="nge-mg-btn nge-mg-btn--sm" @click="openPair(p)">Open</button>
-          </span>
-        </div>
-        <div v-if="pairOpen === p.segmentId" class="nge-mg-pair">
-          <div class="nge-mg-meta">Segment {{ p.segmentId }}</div>
-          <div class="nge-mg-pair-btns">
-            <button class="nge-mg-btn nge-mg-btn--a" @click="openPair(p, 0)">Cell A</button>
-            <button class="nge-mg-btn nge-mg-btn--b" @click="openPair(p, 1)">Cell B</button>
-            <button class="nge-mg-btn nge-mg-btn--go" :disabled="checking === p.segmentId" @click="check(p)">{{ checking === p.segmentId ? 'Checking…' : 'Check' }}</button>
-          </div>
-          <div v-if="pairNote[p.segmentId]" class="nge-mg-msg nge-mg-msg--bad">{{ pairNote[p.segmentId] }}</div>
-        </div>
+      <!-- Stage 2 -->
+      <template v-else>
+        <div v-if="!status.unlocked" class="nge-mg-empty">Stage 2 opens after {{ status.unlockAfter }} answers in Stage 1. You have {{ status.answered }}.</div>
+        <template v-else>
+          <div class="nge-mg-sub">Each of these is one segment holding two or more Muller glia that grew together. Cut them apart so each soma has its own cell.</div>
+          <ol class="nge-mg-steps">
+            <li>Open the segment. Use Cell A and Cell B to visit each glia's soma.</li>
+            <li>Find where the glia touch. Turn on Cut Mode (C).</li>
+            <li>Red points on cell A's side, blue points on cell B's side, then cut.</li>
+            <li>Press Check. Pyr asks the server which cell each soma is in now.</li>
+          </ol>
+          <div class="nge-mg-section">Merged glia <span class="nge-mg-count">{{ pairs.length }}</span></div>
+          <div v-if="pairsLoaded && !pairs.length" class="nge-mg-empty">Every merged pair is split. Thank you!</div>
+          <template v-for="p in pairs.slice(0, 15)" :key="p.segmentId">
+            <div class="nge-mg-row" :class="{ 'nge-mg-row--open': pairOpen === p.segmentId }">
+              <span>{{ p.glia.map(g => g.index).join(' + ') }} <span class="nge-mg-meta">{{ short(p.segmentId) }}</span></span>
+              <span class="nge-mg-row-r"><button class="nge-mg-btn nge-mg-btn--sm" @click="openPair(p)">Open</button></span>
+            </div>
+            <div v-if="pairOpen === p.segmentId" class="nge-mg-pair">
+              <div class="nge-mg-meta">Segment {{ p.segmentId }}</div>
+              <div class="nge-mg-pair-btns">
+                <button v-for="(g, i) in p.glia" :key="g.index" class="nge-mg-btn" :class="i % 2 ? 'nge-mg-btn--b' : 'nge-mg-btn--a'" @click="openPair(p, i)" :title="`Go to ${g.index}'s soma`">Cell {{ letter(i) }}</button>
+                <button class="nge-mg-btn nge-mg-btn--go" :disabled="checking === p.segmentId" @click="check(p)">{{ checking === p.segmentId ? 'Checking…' : 'Check' }}</button>
+              </div>
+              <div v-if="pairNote[p.segmentId]" class="nge-mg-msg nge-mg-msg--bad nge-mg-msg--in">{{ pairNote[p.segmentId] }}</div>
+            </div>
+          </template>
+          <div class="nge-mg-foot">Split by everyone so far: {{ status.splitAll }}.</div>
+        </template>
       </template>
-      <div class="nge-mg-foot">Found today: {{ GLIA_STAGE2_POOL }} segments in the lab's sheet still hold two or more glia nuclei. The preview lists the pairs.</div>
     </template>
+    <div v-if="!status && error" class="nge-mg-msg nge-mg-msg--bad">{{ error }}</div>
   </div>
 </template>
 
 <style scoped>
 .nge-mg { display: flex; flex-direction: column; font-size: 14px; color: #c9d6ea; }
-.nge-mg-mock { margin: 8px 12px 0; padding: 6px 10px; border-radius: 6px; font-size: 12px; color: #9fc4ff; background: rgba(74, 158, 255, 0.08); border: 1px dashed rgba(74, 158, 255, 0.35); }
 .nge-mg-head { padding: 10px 12px 8px; border-bottom: 1px solid rgba(120, 140, 255, 0.08); display: flex; flex-direction: column; gap: 6px; }
 .nge-mg-titlerow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nge-mg-title { font-family: 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; font-size: 14px; font-weight: 700; color: #eef; }
@@ -207,11 +266,13 @@ const short = (id: string) => `…${id.slice(-6)}`;
 .nge-mg-sub { padding: 10px 12px 2px; font-size: 13px; line-height: 1.5; color: #a9b8cc; }
 .nge-mg-card { margin: 8px 12px; padding: 12px; border-radius: 8px; border: 1px solid rgba(74, 158, 255, 0.35); background: linear-gradient(160deg, rgba(20, 40, 80, 0.55), rgba(8, 14, 30, 0.6)); }
 .nge-mg-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.nge-mg-card-btns { display: flex; gap: 6px; align-items: center; }
 .nge-mg-card-name { font-size: 16px; font-weight: 700; color: #eef4ff; }
 .nge-mg-meta { font-size: 12px; color: #7f92ad; }
 .nge-mg-answers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
 .nge-mg-ans { padding: 10px 0; border-radius: 7px; cursor: pointer; font: 700 15px 'Inter', sans-serif; border: 1px solid rgba(120, 140, 255, 0.25); background: rgba(255, 255, 255, 0.03); color: #c9d6ea; }
-.nge-mg-ans:hover { background: rgba(74, 158, 255, 0.12); }
+.nge-mg-ans:hover:not(:disabled) { background: rgba(74, 158, 255, 0.12); }
+.nge-mg-ans:disabled { opacity: 0.5; cursor: default; }
 .nge-mg-ans--yes { border-color: rgba(80, 220, 170, 0.55); color: #a6ffd6; }
 .nge-mg-ans--no { border-color: rgba(206, 147, 216, 0.55); color: #e4c1ec; }
 .nge-mg-section { padding: 12px 12px 4px; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(100, 200, 255, 0.8); display: flex; gap: 6px; align-items: center; }
@@ -231,12 +292,11 @@ const short = (id: string) => `…${id.slice(-6)}`;
 .nge-mg-btn--go { color: #a6ffd6; border-color: rgba(80, 220, 170, 0.5); margin-left: auto; }
 .nge-mg-btn:disabled { opacity: 0.5; cursor: default; }
 .nge-mg-pair { padding: 8px 12px 10px; background: rgba(74, 158, 255, 0.05); display: flex; flex-direction: column; gap: 6px; }
-.nge-mg-pair-btns { display: flex; gap: 6px; }
+.nge-mg-pair-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-mg-steps { margin: 6px 12px 0; padding: 8px 12px 8px 28px; border-radius: 6px; background: rgba(10, 20, 40, 0.5); font-size: 13px; line-height: 1.55; color: #b9c8de; }
-.nge-mg-lock { margin: 8px 12px 0; font-size: 12px; color: #9fc4ff; }
 .nge-mg-msg { margin: 8px 12px 0; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #a6ffd6; background: rgba(80, 220, 170, 0.08); }
-.nge-mg-msg--bad { color: #ffb4c8; background: rgba(255, 100, 140, 0.08); margin: 0; }
-.nge-mg-head + .nge-mg-msg--bad { margin: 8px 12px 0; }
+.nge-mg-msg--bad { color: #ffb4c8; background: rgba(255, 100, 140, 0.08); }
+.nge-mg-msg--in { margin: 0; }
 .nge-mg-empty { padding: 16px 12px; color: #8ea3c0; }
-.nge-mg-foot { padding: 12px; font-size: 12px; color: #7f92ad; }
+.nge-mg-foot { padding: 12px; font-size: 12px; line-height: 1.5; color: #7f92ad; }
 </style>
