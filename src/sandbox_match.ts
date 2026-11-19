@@ -996,8 +996,9 @@ function setReading(box: HTMLElement, pct: number | null, fresh: boolean) {
   num.textContent = pct == null ? '' : `${pct}%`;
   const before = fresh ? NaN : Number(box.dataset.pct);
   box.dataset.pct = pct == null ? '' : String(pct);
-  if (pct != null && Number.isFinite(before) && box.dataset.pctWas !== '' && before !== pct) {
-    const d = pct - before;
+  // To the tenth, as the score is (report 573: 34.9 minus 19.9 read +14.999999).
+  const d = pct == null || !Number.isFinite(before) ? 0 : Math.round((pct - before) * 10) / 10;
+  if (pct != null && Number.isFinite(before) && box.dataset.pctWas !== '' && d !== 0) {
     // A minus sign, not a hyphen: Pyr's copy has no dashes.
     delta.textContent = d > 0 ? `+${d}` : `−${-d}`;
     delta.style.color = d > 0 ? '#59e3a7' : '#ff8fa3';
@@ -2231,4 +2232,4 @@ document.addEventListener('nge:play-pref', () => {
   if (!isClosed() && onScreen != null) show(onScreen, last.get(onScreen), !last.get(onScreen));
 });
 if (isClosed()) document.body.classList.add('nge-cm-closed');
-(window as any).__ngeCellMatch = { loading: () => idle('', READY_NOTE), loaded: () => { const id = shownFor ?? onScreen; const r = id != null ? last.get(id) : undefined; if (id != null && r) show(id, r, false); }, setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } }, setMine: (m: Mine | null) => { mineInfo = m; mineAt = Date.now(); paintMine(); }, withClaims: (f: Deps['claims']) => { if (deps) deps.claims = f; } };
+(window as any).__ngeCellMatch = { loading: () => idle('', READY_NOTE), loaded: () => { const id = shownFor ?? onScreen; const r = id != null ? last.get(id) : undefined; if (id != null && r) show(id, r, false); }, setSaveLink: (f: Deps['saveLink']) => { if (deps) deps.saveLink = f; }, judgeEdit, closeCard, openCard, show: (id: number, r: MatchResult) => { onScreen = id; noteResult(id, r); show(id, r, false); }, hide, rowPieces, progressLine, matchScore, hasReview, startReview, showReview, ageHintClock: (id: number, ms: number) => { const c = clocks.get(id); if (c) { c.opened -= ms; c.lastEdit -= ms; } }, setMine: (m: Mine | null) => { mineInfo = m; mineAt = Date.now(); paintMine(); }, withClaims: (f: Deps['claims']) => { if (deps) deps.claims = f; }, setReading };

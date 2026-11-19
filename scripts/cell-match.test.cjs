@@ -169,6 +169,17 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
     check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19\.5 19\.5% 1 edit merge \+39 39% 11 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
     await shot('cell-match-after-merge.png');
+    // Report 573: 19.9 to 34.9 read +14.999999 in floating point.
+    const tenth = await page.evaluate(() => {
+      const box = document.createElement('div');
+      box.innerHTML = '<span class="nge-cm-num"></span><span class="nge-cm-delta"></span><i class="nge-cm-fill"></i>';
+      const S = window.__ngeCellMatch.setReading;
+      S(box, 19.9, true); S(box, 34.9, false);
+      const up = box.querySelector('.nge-cm-delta').textContent;
+      S(box, 0.3, false);
+      return [up, box.querySelector('.nge-cm-delta').textContent];
+    });
+    check('a change reads to the tenth, never +14.999999 (report 573)', tenth[0] === '+15' && tenth[1] === '−34.6', tenth);
 
     // A worse edit: the number goes down, and says so.
     answer = ANSWERS.worse;
