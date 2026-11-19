@@ -46,6 +46,7 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
+import MullerGliaQuest from './MullerGliaQuest.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from '../annotation_quests';
@@ -163,6 +164,9 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
+/** Quests tab: which quest is shown (Muller glia mockup, Ames 2026-11-19). */
+const questPick = ref<'cilia' | 'muller'>((() => { try { return localStorage.getItem('nge_quest_pick_v1') === 'muller' ? 'muller' : 'cilia'; } catch { return 'cilia'; } })());
+function pickQuest(q: 'cilia' | 'muller') { questPick.value = q; try { localStorage.setItem('nge_quest_pick_v1', q); } catch {} }
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
@@ -4234,7 +4238,12 @@ onBeforeUnmount(() => {
 
         <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
         <div v-else-if="filter === 'quests'" class="nge-cl-list">
-          <annotation-quests-tab v-if="questsHere" :slim="slimQuest" :play-enter="questPlay" />
+          <div v-if="questsHere && !slimQuest" class="nge-cl-questpick">
+            <button :class="{ on: questPick === 'cilia' }" @click="pickQuest('cilia')">Cilia Quest</button>
+            <button :class="{ on: questPick === 'muller' }" @click="pickQuest('muller')">Muller Glia Quest <span class="nge-cl-questpick-new">New</span></button>
+          </div>
+          <muller-glia-quest v-if="questsHere && questPick === 'muller' && !slimQuest" />
+          <annotation-quests-tab v-else-if="questsHere" :slim="slimQuest" :play-enter="questPlay" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
             <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
             <div v-if="questsLocked" class="nge-cl-quests-elsewhere-text">Unlock Level 1 ({{ questDatasetName }}) to take them.</div>
@@ -7165,4 +7174,8 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 .nge-cl-popout-reply { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); font-size: 14px; }
 .nge-cl-popout-reply-text { color: #dde; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 960px) { .nge-cl-popout { right: 8px; } }
+.nge-cl-questpick { display: flex; gap: 6px; padding: 10px 12px 2px; }
+.nge-cl-questpick button { flex: 1; padding: 7px 10px; border-radius: 7px; cursor: pointer; border: 1px solid rgba(120, 140, 255, 0.18); background: transparent; color: #a9b8cc; font: 600 13px 'Inter', sans-serif; }
+.nge-cl-questpick button.on { border-color: rgba(74, 158, 255, 0.7); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
+.nge-cl-questpick-new { margin-left: 4px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #9fc4ff; }
 </style>
