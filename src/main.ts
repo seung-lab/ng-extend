@@ -10,7 +10,7 @@ import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
 import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
 import {installLocalView, setLocalViewDataset} from './util/local_view';
-import {currentSegLayerName} from './datasets';
+import {currentSegLayerName, currentSegLayer} from './datasets';
 import {startColorFamilies} from './util/color_families';
 import {startSlowFrameLog} from './util/slow_frames';
 import {startScytheControls} from './util/scythe';
@@ -131,6 +131,23 @@ function mergeTopBars() {
     for (const suffix of ['help panel', 'layer side panel']) {
       const btn = topBarVueParent.querySelector(`[title$="${suffix}"]`);
       if (btn) farRight.appendChild(btn);
+      // The side panel button shows the SELECTED layer's panel, so with no
+      // layer selected it did nothing (kfay, report 565: "The side panel don't
+      // show up when I click on the top right button"). With none selected, it
+      // opens the cell layer's panel (else the first layer's).
+      if (btn && suffix === 'layer side panel') {
+        btn.addEventListener('click', () => {
+          try {
+            const v: any = (window as any).viewer;
+            if (!v || v.selectedLayer.layer) return;
+            const ml = currentSegLayer() ?? v.layerManager.managedLayers.find((l: any) => !l.archived);
+            if (!ml) return;
+            // Neuroglancer's own click then flips it to shown.
+            v.selectedLayer.layer = ml;
+            v.selectedLayer.visible = false;
+          } catch (e) { console.debug('[side panel] could not pick a layer', e); }
+        }, true);
+      }
     }
   }
 }

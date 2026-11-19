@@ -598,7 +598,9 @@ export const useLayersStore = defineStore('layers', () => {
       const va = await import('./util/view_autosave');
       await lv.keepDatasetViewNow();
       const [local, account] = await Promise.all([lv.lastLocalViewOf(targetSegName), va.accountViewOf(targetSegName)]);
-      const best = local && (!account || local.t >= account.t) ? local : account;
+      // Only a view with a cell in it (an empty one opened the Sandbox on nothing).
+      const withCells = [local, account].filter((x): x is {json: string, t: number} => !!x?.json && lv.viewHasCells(x.json));
+      const best = withCells.sort((a, b) => b.t - a.t)[0];
       if (best?.json && best.json.includes('"layers"')) {
         console.info(`[layers] Picking up where you left off in ${targetSegName}`);
         va.noteResumedView(targetSegName);

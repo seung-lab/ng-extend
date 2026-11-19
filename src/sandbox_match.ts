@@ -1391,9 +1391,9 @@ function showHintPiece(p: HintPiece) {
   }, 700);
 }
 
-/** The hint pin: big, drawn over the cell, and beating (kfay, report 556:
- *  "barely cannot see pins. should be bigger or glowing or heartbeat"). */
-const PIN_SIZE = 4;
+/** The hint pin: bigger than before and drawn over the cell (kfay, report 556:
+ *  "barely cannot see pins"), but not huge (Ames 2026-11-18: "too large"). */
+const PIN_SIZE = 2.5;
 /** Complete inside the box: the Cell Library runs the checks and the save; the box shows them. */
 function openFinish(el: HTMLElement) {
   finishing = true;

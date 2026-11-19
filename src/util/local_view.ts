@@ -137,6 +137,19 @@ const datasetKeyOf = (seg: string) => 'dataset:' + seg;
  *  nothing more is written for the view that is leaving. */
 let frozen = false;
 
+/** Does this view (its JSON) show any cell? A view with none is never kept as
+ *  where a dataset was left, nor brought back as that: the landing kept the
+ *  empty starting view as the newest, then "picked up" that, and the Sandbox
+ *  opened on no cell at all (Ames 2026-11-18: "the landing page is showing
+ *  this by default again instead of a cell (or even my most recent cell)"). */
+export function viewHasCells(json: string): boolean {
+  try {
+    const st = JSON.parse(json);
+    const layers: any[] = Array.isArray(st?.layers) ? st.layers : st?.layers && typeof st.layers === 'object' ? Object.values(st.layers) : [];
+    return layers.some(l => String(l?.type || '').startsWith('segmentation') && Array.isArray(l.segments) && l.segments.length > 0);
+  } catch { return false; }
+}
+
 /** Keep the view under this tab's code. Returns the code for the address. */
 let lastJson = '';
 export function saveLocalView(json: string): string {
@@ -153,7 +166,7 @@ export function saveLocalView(json: string): string {
   writeIndex(ix);
   let ds = '';
   try { ds = datasetOf(); } catch { /* */ }
-  void idbPut(code, {json, t}, ds ? datasetKeyOf(ds) : '').catch(e => console.warn('[view] could not keep the view in this browser:', e));
+  void idbPut(code, {json, t}, ds && viewHasCells(json) ? datasetKeyOf(ds) : '').catch(e => console.warn('[view] could not keep the view in this browser:', e));
   return code;
 }
 
@@ -167,7 +180,7 @@ export async function keepDatasetViewNow(): Promise<void> {
   if (frozen) return;
   let ds = '', json = '';
   try { ds = datasetOf(); json = JSON.stringify((window as any).viewer.state.toJSON()); } catch { return; }
-  if (!ds || !json.includes('"layers"')) return;
+  if (!ds || !json.includes('"layers"') || !viewHasCells(json)) return;
   try { await idbPut(datasetKeyOf(ds), {json, t: Date.now()}); } catch { /* */ }
 }
 

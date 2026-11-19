@@ -519,29 +519,64 @@ function watchMission() {
   }, 500);
 }
 /** Glow the Render tab's controls worth trying first (Ames 2026-10-18). */
+
+/** The Render step's three settings, one at a time: only the name glows, and
+ *  the first time round its slider moves by itself and back, to show what it
+ *  does (kfay, report 567: "put the glow only on the text AND one by one, not
+ *  all at the same time ... put an animation on the sliders"). The player's
+ *  own touch on the panel stops the sliders. Kept on while the step shows:
+ *  the Render tab may open after the box does and rebuilds its rows. */
 function glowRenderControls() {
-  // Kept on while the step shows: the Render tab may open after the box
-  // does, and its rows are rebuilt when it does (Ames 2026-10-19: "not
-  // highlighting").
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
-  const lit = new Set<HTMLElement>();
+  const NAMES = ['Opacity (on)', 'Opacity (3d)', 'Silhouette (3d)'];
+  const GLOW = 'nge-tut-label-glow';
+  const shown = new Set<string>();
+  let turn = 0, since = 0, touched = false;
+  const onTouch = (e: Event) => { if ((e.target as HTMLElement)?.closest?.('.neuroglancer-layer-side-panel')) touched = true; };
+  window.addEventListener('pointerdown', onTouch, true);
+  const rowOf = (name: string) => {
+    const tagged = document.querySelector<HTMLElement>(`.neuroglancer-layer-side-panel-tab-view [data-nge-control="${name}"]`);
+    return tagged?.matches('.neuroglancer-layer-control-container') ? tagged : tagged?.querySelector<HTMLElement>('.neuroglancer-layer-control-container') ?? null;
+  };
+  const clear = () => document.querySelectorAll('.' + GLOW).forEach(el => el.classList.remove(GLOW));
+  /** Move a slider out and back over about 1.6 s, then leave it as it was. */
+  const demo = (input: HTMLInputElement) => {
+    const min = Number(input.min || 0), max = Number(input.max || 1), was = Number(input.value);
+    const to = was - min > (max - min) / 2 ? was - (max - min) * 0.45 : was + (max - min) * 0.45;
+    const set = (v: number) => { input.value = String(v); input.dispatchEvent(new Event('input', { bubbles: true })); };
+    const t0 = performance.now();
+    const tick = () => {
+      if (touched) { set(was); return; }
+      const k = Math.min(1, (performance.now() - t0) / 1600);
+      set(was + (to - was) * Math.sin(k * Math.PI));
+      if (k < 1) requestAnimationFrame(tick); else set(was);
+    };
+    requestAnimationFrame(tick);
+  };
   const timer = setInterval(() => {
     if (store.activeTutorial !== tutorial || store.getTutorialStep() !== step) {
       clearInterval(timer);
-      lit.forEach(el => el.classList.remove('nge-tour-target'));
+      window.removeEventListener('pointerdown', onTouch, true);
+      clear();
       return;
     }
-    for (const name of ['Opacity (on)', 'Opacity (3d)', 'Silhouette (3d)']) {
-      // The tagged element can be a wrapper with no box of its own: light the
-      // row inside it (a glow on the wrapper drew a bar across the panel top).
-      const tagged = document.querySelector<HTMLElement>(`.neuroglancer-layer-side-panel-tab-view [data-nge-control="${name}"]`);
-      const row = tagged?.matches('.neuroglancer-layer-control-container') ? tagged : tagged?.querySelector<HTMLElement>('.neuroglancer-layer-control-container');
-      if (!row || row.classList.contains('nge-tour-target')) continue;
-      row.classList.add('nge-tour-target');
-      lit.add(row);
+    const name = NAMES[turn % NAMES.length];
+    const row = rowOf(name);
+    const label = row?.querySelector<HTMLElement>('.neuroglancer-layer-control-label-text-container');
+    if (!label) return; // the tab is not open yet: wait on this one
+    if (!label.classList.contains(GLOW)) {
+      clear();
+      label.classList.add(GLOW);
+      since = Date.now();
+      if (!shown.has(name) && !touched) {
+        shown.add(name);
+        const input = row?.querySelector<HTMLInputElement>('input[type="range"]');
+        if (input) setTimeout(() => demo(input), 300);
+      }
     }
-  }, 500);
+    if (Date.now() - since > 2400) { label.classList.remove(GLOW); turn++; }
+  }, 200);
 }
 
 export const steps: Step[] = [
@@ -740,7 +775,7 @@ ${copyButton('85624, 70674, 651')}
   {
     part: "Part 2 of 4 · Working with cells",
     text: `
-That's the <strong>NUCLEUS</strong> of a cell! Here the nucleus is its own piece, apart from the rest of its cell.
+That's the <strong>NUCLEUS</strong> of a cell! Here the nucleus is usually its own piece, apart from the rest of its cell.
 
 To find the cell it belongs to, <strong>DOUBLE CLICK the EM just around the nucleus</strong> in the 2D view.`,
     width: "460px",
@@ -881,7 +916,7 @@ One more tool for keeping track: <strong>Highlight</strong> marks the parts of a
 
 <strong>Press SHIFT+H</strong> (or the glowing Highlight button on the top bar), pick <strong>Checked</strong> (pink in this tutorial), then <strong>CTRL+CLICK two points along a branch</strong>. The branch between them lights up.`,
     width: "500px",
-    position: { element: '#extensionBar [data-icon-id="highlight"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '#extensionBar [data-icon-id="highlight"]', side: "bottom", offset: { x: 0, y: 4 } },
     highlight: true,
     onEnter: () => { pinkHighlights(); nextWhenHighlighted(); },
   },
