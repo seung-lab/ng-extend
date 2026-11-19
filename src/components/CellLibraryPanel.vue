@@ -170,8 +170,15 @@ const loading = ref(false);
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast' | 'orphans'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
-  (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
+  // Lost Fragments open when the library closed (or being played) opens it
+  // again there (Ames 2026-11-19: reopening took her to My Cells).
+  (props.initialTab as any) || (orphansWereOpen() ? 'orphans' : '') || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
 );
+function orphansWereOpen(): boolean {
+  if (play.on === 'fragments') return true;
+  try { return sessionStorage.getItem('nge_cl_orphans_open') === '1'; } catch { return false; }
+}
+watch(filter, f => { try { if (f === 'orphans') sessionStorage.setItem('nge_cl_orphans_open', '1'); else sessionStorage.removeItem('nge_cl_orphans_open'); } catch { /* */ } });
 const search = ref('');
 const claimError = ref('');
 let claimErrorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2475,6 +2482,8 @@ const questsHere = computed(() => canonicalDataset(activeDataset.value || getCur
 const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 /** Orphan segments mockup: Retina, and never on the live site until Ames says so. */
 const orphansHere = computed(() => ON_TEST_SITE && castHere.value);
+// Off Retina (or the live game) there is no Lost Fragments tab to stay on.
+watch(orphansHere, here => { if (!here && filter.value === 'orphans') filter.value = 'mine'; });
 const orphanTitle = orphanName().title;
 const orphanCount = ORPHANS_LARGE.length + ORPHANS_SMALLER.length + ORPHANS_GLIA.length + ORPHANS_SOMA.length;
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
@@ -3194,12 +3203,17 @@ if ((window as any).__ngeCmQuietLibrary) { (window as any).__ngeCmQuietLibrary =
  *  report 288: "show current Quest cell in slim Cell Library when I select
  *  Quests tab"). */
 const slimQuest = ref(false);
-const slim = computed(() => slimCell.value !== null || slimEmpty.value || slimQuest.value);
+/** Slim on Lost Fragments (Ames 2026-11-19: the caret took her out of it and
+ *  into My Cells): the bar keeps the fragment you are on. */
+const slimOrphan = ref(false);
+const slim = computed(() => slimCell.value !== null || slimEmpty.value || slimQuest.value || slimOrphan.value);
 // With slim view on, opening the Quests tab while a quest is under way goes
 // straight to that cell's slim bar (toknow, report 288).
 watch(filter, f => {
   if (f === 'quests' && slimMode.value && questWork.active) { slimQuest.value = true; void nextTick(clampPanelPos); }
   else if (f !== 'quests') slimQuest.value = false;
+  if (f === 'orphans' && slimMode.value) { slimOrphan.value = true; void nextTick(clampPanelPos); }
+  else if (f !== 'orphans') slimOrphan.value = false;
 });
 /** The rows the cell list draws: one in the slim view, none on the empty bar. */
 // Slim with no cell of its own draws none: never the whole tab on the bar
@@ -3227,6 +3241,13 @@ function setSlimMode(on: boolean) {
 }
 function collapseToCurrent() {
   setSlimMode(true);
+  if (filter.value === 'orphans') {
+    showTabSettings.value = false;
+    showHowTo.value = false;
+    slimOrphan.value = true;
+    void nextTick(clampPanelPos);
+    return;
+  }
   if (filter.value === 'quests') {
     showTabSettings.value = false;
     showHowTo.value = false;
@@ -3241,6 +3262,7 @@ function collapseToCurrent() {
 // slim once the claims are in. Opened to a given tab, or to complete a cell,
 // it stays full, since it was opened for that.
 onMounted(() => {
+  if (slimMode.value && filter.value === 'orphans') { slimOrphan.value = true; void nextTick(clampPanelPos); return; }
   if (!slimMode.value || props.initialTab) return;
   const go = () => {
     if (slim.value || pendingCompleteRequest.value || !CELL_TABS.includes(filter.value)) return;
@@ -3291,6 +3313,7 @@ async function claimNewCell() {
       jumpedSegId.value = cell.segId;
       slimEmpty.value = false;
       slimQuest.value = false;
+      slimOrphan.value = false;
       slimSeg.value = cell.segId;
       await nextTick();
       clampPanelPos();
@@ -3352,9 +3375,14 @@ function playOpened() {
   playOpening.value = false;
   if (playOpeningTimer) { clearTimeout(playOpeningTimer); playOpeningTimer = null; }
 }
+/** Play on Lost Fragments: the tab opens the next one at each tick. */
+const fragmentPlay = ref(0);
 function playIfAsked() {
   const k = takePlayEnter();
   if (!k) return;
+  // Lost Fragments plays in its own tab, full size, not the slim row.
+  // Play shows the slim bar, as for cells and quests (Ames 2026-11-13).
+  if (k === 'fragments') { setSlimMode(true); filter.value = 'orphans'; slimOrphan.value = true; fragmentPlay.value++; void nextTick(clampPanelPos); return; }
   playOpening.value = true;
   if (playOpeningTimer) clearTimeout(playOpeningTimer);
   playOpeningTimer = setTimeout(playOpened, 20000);
@@ -3409,6 +3437,7 @@ const skipping = ref(false);
 async function playSkip(which?: CellRow) {
   if (skipping.value) return;
   if (play.on === 'quests') { document.dispatchEvent(new CustomEvent('nge:play-skip-quest')); return; }
+  if (play.on === 'fragments') { document.dispatchEvent(new CustomEvent('nge:play-skip-fragment')); return; }
   const cell = which ?? currentCell();
   if (!cell || !isMyClaim(cell) || cell.status === 'completed') { await claimNewCell(); return; }
   skipping.value = true;
@@ -3540,6 +3569,7 @@ async function collapseTo(cell: CellRow | null) {
   slimSeg.value = cell ? cell.segId : null;
   slimEmpty.value = !cell;
   slimQuest.value = false;
+  slimOrphan.value = false;
   await nextTick();
   clampPanelPos();
   if (!ghost || !el) return;
@@ -3552,7 +3582,7 @@ async function collapseTo(cell: CellRow | null) {
   morphIntoSlim(ghost, el, parts);
 }
 function expandFull() {
-  if (!slimSeg.value && !slimEmpty.value && !slimQuest.value) return;
+  if (!slimSeg.value && !slimEmpty.value && !slimQuest.value && !slimOrphan.value) return;
   // Hide the slim row before the full list renders (a long list takes a
   // moment), so the panel never flashes open ahead of the beam.
   if (panelEl.value && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -3561,6 +3591,7 @@ function expandFull() {
   slimSeg.value = null;
   slimEmpty.value = false;
   slimQuest.value = false;
+  slimOrphan.value = false;
   void nextTick(() => {
     clampPanelPos();
     // revealWithBeam waits for the panel to settle (the clamp above moves it
@@ -3687,7 +3718,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest || slimOrphan, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
       <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
@@ -4265,7 +4296,10 @@ onBeforeUnmount(() => {
 
         <!-- ═══ ORPHAN SEGMENTS (mockup, test sites only) ═══ -->
         <div v-else-if="filter === 'orphans' && orphansHere" class="nge-cl-list">
-          <orphan-segments-tab />
+          <orphan-segments-tab :play-tick="fragmentPlay" :slim="slimOrphan" />
+          <button v-if="slimOrphan" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->

@@ -13,7 +13,8 @@
  *
  * Players read it as "Lost Fragments" (Ames 2026-11-19), ORPHAN_NAME.
  */
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
+import { play, stopPlay } from '../util/play';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
 import { useCellHistoryStore } from '../store';
@@ -24,6 +25,7 @@ import {
   type OrphanSeg, type OrphanFlag,
 } from '../data/orphan-segments';
 
+const props = defineProps<{ playTick?: number; slim?: boolean }>();
 const name = orphanName();
 
 type GroupKey = 'large' | 'smaller' | 'glia' | 'soma';
@@ -100,6 +102,34 @@ function step(d: number) {
   const i = place.value < 0 ? (d > 0 ? 0 : rows.length - 1) : (place.value + d + rows.length) % rows.length;
   void open(rows[i]);
 }
+// ── Play (util/play.ts): Submit, then the next one not yet done ─────
+/** The next fragment with no answer, from this group on, then the others. */
+function nextUndone(): { g: GroupKey; row: OrphanSeg } | null {
+  const start = GROUPS.findIndex(x => x.key === group.value);
+  for (let k = 0; k < GROUPS.length; k++) {
+    const g = GROUPS[(start + k) % GROUPS.length];
+    const from = k === 0 && active.value ? g.rows.findIndex(r => r.id === active.value!.id) + 1 : 0;
+    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && r.id !== active.value?.id);
+    if (row) return { g: g.key, row };
+  }
+  return null;
+}
+const allDone = ref(false);
+function playNext() {
+  const n = nextUndone();
+  if (!n) { allDone.value = true; return; }
+  allDone.value = false;
+  group.value = n.g;
+  void open(n.row);
+  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your fragment', cell: 'Segment ' + short(n.row.id) } }));
+}
+watch(() => props.playTick, t => { if (t) playNext(); });
+onMounted(() => { if (props.playTick) playNext(); });
+const onSkip = () => playNext();
+onMounted(() => document.addEventListener('nge:play-skip-fragment', onSkip));
+onUnmounted(() => document.removeEventListener('nge:play-skip-fragment', onSkip));
+const playing = computed(() => play.on === 'fragments');
+
 function pickGroup(g: GroupKey) {
   group.value = g;
   if (active.value && !GROUPS.find(x => x.key === g)!.rows.some(r => r.id === active.value!.id)) active.value = null;
@@ -139,6 +169,7 @@ function submit() {
   };
   persist();
   form.saved = true;
+  if (playing.value) playNext();
 }
 function forget() {
   if (!active.value) return;
@@ -152,23 +183,56 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 </script>
 
 <template>
-  <div class="nge-orph">
-    <div class="nge-orph-head">
+  <div class="nge-orph" :class="{ 'nge-orph--slim': slim }">
+    <div v-if="!slim" class="nge-orph-head">
+      <!-- The emblem (Ames 2026-11-19: "a cool graphic"): loose shards of a
+           cell drifting back into the dashed outline of the neuron they left. -->
+      <svg class="nge-orph-art" viewBox="0 0 320 84" role="img" aria-label="Fragments drifting back into a neuron's outline">
+        <defs>
+          <radialGradient id="orphGlow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#7ecaff" stop-opacity="0.35"/><stop offset="1" stop-color="#7ecaff" stop-opacity="0"/></radialGradient>
+          <linearGradient id="orphShard" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9f1ff"/><stop offset="0.5" stop-color="#7ecaff"/><stop offset="1" stop-color="#4a7dff"/></linearGradient>
+        </defs>
+        <ellipse cx="226" cy="44" rx="74" ry="36" fill="url(#orphGlow)"/>
+        <g class="nge-orph-art-ghost" fill="none" stroke="#9fb4ff" stroke-width="1.4" stroke-dasharray="3 4" stroke-linecap="round">
+          <circle cx="226" cy="44" r="11"/>
+          <path d="M215 40 Q196 30 176 33 Q160 35 146 26"/><path d="M216 50 Q198 62 180 60"/>
+          <path d="M237 38 Q258 22 284 20"/><path d="M237 49 Q262 58 290 66"/><path d="M258 29 L270 12"/>
+          <path d="M226 55 L228 78"/>
+        </g>
+        <circle cx="226" cy="44" r="4" fill="#c9b6ff" opacity="0.8"/>
+        <g fill="url(#orphShard)">
+          <polygon class="nge-orph-shard s1" points="22,30 34,24 38,36 27,40"/>
+          <polygon class="nge-orph-shard s2" points="58,58 72,52 70,66"/>
+          <polygon class="nge-orph-shard s3" points="86,22 98,18 101,29 90,31"/>
+          <polygon class="nge-orph-shard s4" points="112,50 121,44 128,54 118,60"/>
+          <polygon class="nge-orph-shard s5" points="42,10 50,8 52,15"/>
+          <polygon class="nge-orph-shard s6" points="132,30 140,27 142,35"/>
+        </g>
+        <g class="nge-orph-art-trail" stroke="#7ecaff" stroke-width="1" stroke-linecap="round" opacity="0.5">
+          <path d="M40 34 L60 36"/><path d="M74 59 L92 57"/><path d="M103 26 L120 27"/><path d="M130 52 L146 49"/>
+        </g>
+      </svg>
       <div class="nge-orph-title">{{ name.title }}</div>
       <div class="nge-orph-lead">{{ name.lead }}</div>
       <div class="nge-orph-mock">Test site preview: {{ GROUPS.reduce((a, g) => a + g.rows.length, 0) }} sample segments
         of the {{ fmt(poolTotal) }} the lab found. Submit saves on this computer only.</div>
     </div>
 
-    <div class="nge-orph-groups">
+    <div v-if="!slim" class="nge-orph-groups">
       <button v-for="g in GROUPS" :key="g.key" class="nge-orph-group" :class="{ 'nge-orph-group--on': group === g.key }"
               :style="{ '--g': g.color }" @click="pickGroup(g.key)" :title="g.about">
         <span class="nge-orph-group-name">{{ g.label }}</span>
         <span class="nge-orph-group-n">{{ doneIn(g.key) }} / {{ g.rows.length }}</span>
       </button>
     </div>
-    <div class="nge-orph-about">{{ cur.about }}</div>
+    <div v-if="!slim" class="nge-orph-about">{{ cur.about }}</div>
+    <div v-if="slim && !active" class="nge-orph-note nge-orph-slim-empty">No fragment open. Open the full view to pick one.</div>
 
+    <div v-if="playing" class="nge-orph-play">
+      <span>Playing Lost Fragments. Submit takes you to the next one.</span>
+      <button class="nge-orph-link" @click="stopPlay">Stop playing</button>
+    </div>
+    <div v-if="playing && allDone" class="nge-orph-note nge-orph-note--ok">You have answered every fragment here. Thank you!</div>
     <div v-if="active" class="nge-orph-task">
       <div class="nge-orph-task-top">
         <div>
@@ -183,7 +247,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div class="nge-orph-controls">
         <button class="nge-orph-btn" @click="step(-1)">&lsaquo; Previous</button>
         <button class="nge-orph-btn" @click="step(1)">Next &rsaquo;</button>
-        <button class="nge-orph-btn" @click="open(active)" title="Jump back to this segment">Jump back</button>
+        <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to where this fragment starts">Back to start</button>
+        <button v-if="playing" class="nge-orph-btn" @click="playNext" title="Leave this one and go to the next fragment">Skip</button>
       </div>
 
       <ol class="nge-orph-check">
@@ -219,7 +284,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <textarea v-model="form.note" class="nge-orph-input nge-orph-notes" rows="2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
 
       <div class="nge-orph-row">
-        <button class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit" @click="submit">{{ form.saved ? 'Submit again' : 'Submit' }}</button>
+        <button class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit" @click="submit">{{ form.saved ? 'Submit again' : playing ? 'Submit and next' : 'Submit' }}</button>
         <button v-if="form.saved" class="nge-orph-btn" @click="step(1)">Next segment &rsaquo;</button>
         <button v-if="form.saved" class="nge-orph-link" @click="forget">Clear my answer</button>
       </div>
@@ -227,7 +292,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div v-else-if="missing.length" class="nge-orph-note">Still to do: {{ missing.join(', ') }}.</div>
     </div>
 
-    <div class="nge-orph-list">
+    <div v-if="!slim" class="nge-orph-list">
       <button v-for="(r, i) in cur.rows" :key="r.id" class="nge-orph-item" :class="{ 'nge-orph-item--on': active?.id === r.id, 'nge-orph-item--done': !!saves[r.id] }"
               @click="open(r)" :title="`Jump to segment ${r.id}`">
         <span class="nge-orph-item-i">{{ i + 1 }}</span>
@@ -241,6 +306,19 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 </template>
 
 <style scoped>
+.nge-orph-art { display: block; width: 100%; height: auto; max-height: 84px; margin-bottom: 2px; }
+.nge-orph-art-ghost { opacity: 0.75; }
+.nge-orph-shard { transform-box: fill-box; transform-origin: center; animation: nge-orph-drift 5.5s ease-in-out infinite; filter: drop-shadow(0 0 4px rgba(126, 202, 255, 0.7)); }
+.nge-orph-shard.s2 { animation-delay: -1.2s; } .nge-orph-shard.s3 { animation-delay: -2.1s; } .nge-orph-shard.s4 { animation-delay: -3.3s; }
+.nge-orph-shard.s5 { animation-delay: -0.6s; } .nge-orph-shard.s6 { animation-delay: -4.2s; }
+.nge-orph-art-trail { animation: nge-orph-trail 5.5s ease-in-out infinite; }
+@keyframes nge-orph-drift { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 50% { transform: translate(7px, -3px) rotate(9deg); } }
+@keyframes nge-orph-trail { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .nge-orph-shard, .nge-orph-art-trail { animation: none; } }
+.nge-orph--slim .nge-orph-task { margin-top: 8px; }
+.nge-orph--slim .nge-orph-play { margin: 8px 10px 0; }
+.nge-orph-slim-empty { padding: 10px 12px; }
+.nge-orph-play { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin: 8px 0; padding: 7px 10px; border: 1px solid rgba(62, 236, 190, 0.45); background: rgba(62, 236, 190, 0.08); color: #c8fbea; font-size: 13.5px; }
 /* In the Cell Library's own colors and sizes (see RetinaCastTab). */
 .nge-orph { display: flex; flex-direction: column; }
 .nge-orph-head { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 5px; }
