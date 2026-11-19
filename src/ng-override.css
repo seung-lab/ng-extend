@@ -2223,3 +2223,10 @@ body.nge-roomy-header .neuroglancer-layer-item {
 body.nge-roomy-header .neuroglancer-layer-add-button {
   margin-bottom: 3px !important;
 }
+/* Laptops (short windows) keep most of the room for the view: half the gap
+   and slightly shorter tabs, but the same line under them. About 4px taller
+   than before instead of 10. */
+@media (max-height: 820px), (max-width: 1366px) {
+  body.nge-roomy-header .neuroglancer-layer-panel { padding-top: 4px !important; }
+  body.nge-roomy-header .neuroglancer-layer-item { height: 26px; }
+}
