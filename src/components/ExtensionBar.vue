@@ -264,6 +264,8 @@ onMounted(() => {
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
   document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
+  // From the profile's Quests card: the leaderboard, on its Quests tab (it reads the tab from localStorage).
+  document.addEventListener('nge:open-leaderboard', () => { showLeaderboard.value = true; });
   document.addEventListener('nge:open-arcade', () => { if (ARCADE_ENABLED) showArcade.value = true; });
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
