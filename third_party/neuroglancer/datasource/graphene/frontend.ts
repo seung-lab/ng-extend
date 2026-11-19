@@ -1092,6 +1092,16 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         ref.dispose();
       }));
 
+      // A loaded or reset merge list replaces the queue but used to leave
+      // the old lines drawn, so a red dot could stay that no Clear removed
+      // (Nseraf #544). Lines with no merge in the queue go.
+      let sweepQueued = false;
+      this.registerDisposer(merges.changed.add(() => {
+        if (sweepQueued) return;
+        sweepQueued = true;
+        setTimeout(() => { sweepQueued = false; if (!this.wasDisposed) this.ngeSweepMergeDots(); }, 0);
+      }));
+
       this.registerDisposer(mergeAnnotationState.source.childDeleted.add((id) => {
         let changed = false;
         const filtered = merges.value.filter(x => {
@@ -1503,6 +1513,22 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     }
     if (sent.error || !sent.mergedRoot) { say(`Merge failed: ${sent.error || 'no answer'}`, 9000); return undefined; }
     return sent.mergedRoot;
+  }
+
+  /** nge: removes merge lines and dots that belong to no merge in the queue,
+   *  except the one the merge tool is placing right now (#544). */
+  ngeSweepMergeDots = () => {
+    const {mergeAnnotationState} = this;
+    const merges = this.state.mergeState?.merges.value ?? [];
+    const keep = new Set(merges.map(x => x.id));
+    const tool = this.layer.tool.value;
+    const placing = tool instanceof MergeSegmentsPlaceLineTool ? tool.inProgressAnnotation.value?.reference.id : undefined;
+    if (placing) keep.add(placing);
+    for (const annotation of [...mergeAnnotationState.source]) {
+      if (keep.has(annotation.id)) continue;
+      const ref = mergeAnnotationState.source.getReference(annotation.id);
+      try { if (ref.value) mergeAnnotationState.source.delete(ref); } finally { ref.dispose(); }
+    }
   }
 
   deleteMergeSubmission = (submission: MergeSubmission) => {
@@ -3162,6 +3188,8 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
           if (merge.locked) merge.cancel?.('Stopped. If the server had already taken this merge it may still go through: check the cell.');
           graphConnection.deleteMergeSubmission(merge);
         }
+        // And any dot left over from a merge that never made the queue.
+        graphConnection.ngeSweepMergeDots();
       }
     }));
     const checkbox = activation.registerDisposer(new TrackableBooleanCheckbox(autoSubmit));
