@@ -266,10 +266,20 @@ export class VirtualList extends RefCounted {
   private source: VirtualListSource;
   private debouncedUpdateView =
       this.registerCancellable(animationFrameDebounce(() => this.updateView()));
+  // nge: hidden behind another tab (display none), the list keeps its place.
+  // Measured while hidden, every row read as 0 high and the scroll as 0, so
+  // coming back it first jumped to the top and then bounced up and down
+  // finding its place again, for seconds in a long list (Nseraf #574,
+  // Annotations tab to Segments tab). Coming back, it goes straight to where
+  // it was.
+  private hiddenAway = false;
+  isHidden() {
+    return !this.element.isConnected || this.element.getClientRects().length === 0;
+  }
   // nge: a list taken off the page (its layer closed or restored) can still
   // get one last resize: it must not draw rows from a closed layer.
   private resizeObserver = new ResizeObserver(() => {
-    if (!this.wasDisposed && this.element.isConnected) this.updateView();
+    if (!this.wasDisposed) this.updateView();
   });
   // nge: a row can change height after it was measured (the game adds a cell
   // name or label under it a moment later). The list then believed it was
@@ -337,6 +347,7 @@ export class VirtualList extends RefCounted {
     bottomItems.style.position = 'relative';
     element.addEventListener('wheel', () => { this.lastWheelAt = Date.now(); }, {passive: true});
     element.addEventListener('scroll', () => {
+      if (this.hiddenAway || this.isHidden()) return;
       const scrollOffset = element.scrollTop;
       this.state.anchorClientOffset = this.renderParams.anchorOffset - scrollOffset;
       this.renderParams.scrollOffset = scrollOffset;
@@ -367,6 +378,15 @@ export class VirtualList extends RefCounted {
 
   private updateView() {
     const {element} = this;
+    if (this.isHidden()) {
+      this.hiddenAway = true;
+      return;
+    }
+    if (this.hiddenAway) {
+      // Back on screen: put the scroll back where the list was.
+      this.hiddenAway = false;
+      this.jumpAsked = true;
+    }
     const viewportHeight = element.clientHeight - this.header.offsetHeight;
     const viewportWidth = element.clientWidth;
 
@@ -452,6 +472,7 @@ export class VirtualList extends RefCounted {
   /** Measures the rows on screen again and puts the list right if any of
    *  them changed height since it was drawn. */
   private remeasure() {
+    if (this.hiddenAway || this.isHidden()) return;
     const {sizes, renderedItems, renderParams} = this;
     let changed = false;
     for (let i = renderParams.startIndex; i < renderParams.endIndex; ++i) {

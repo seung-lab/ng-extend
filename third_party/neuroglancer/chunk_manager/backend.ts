@@ -442,10 +442,46 @@ function startChunkDownload(chunk: Chunk) {
           (error: any) => {
             if (chunk.downloadCancellationToken === downloadCancellationToken) {
               chunk.downloadCancellationToken = undefined;
+              const queueManager = chunk.queueManager;
               chunk.downloadFailed(error);
               console.log(`Error retrieving chunk ${chunk}: ${error}`);
+              if (isOutOfMemory(error)) relieveMemoryPressure(queueManager);
             }
           });
+}
+
+/**
+ * Pyr (Nseraf #569, #570): the tab ran out of memory ("RangeError: Array
+ * buffer allocation failed") and 2D, 3D or both stayed blank until F5, on a
+ * fast PC too: a browser tab has about 4 GB whatever the computer has. Now
+ * the cache is made smaller at once, down to 70% of what it holds, so the
+ * images and shapes least needed (not on screen) are let go and the failed
+ * ones load again on their next try. After 3 minutes with no more trouble the
+ * player's own limit comes back.
+ */
+function isOutOfMemory(error: any) {
+  return /allocation failed|out of memory/i.test(String(error?.message ?? error));
+}
+let pressureTimer: ReturnType<typeof setTimeout>|undefined;
+let lastPressureAt = 0;
+function relieveMemoryPressure(queueManager: ChunkQueueManager) {
+  const capacity = queueManager.systemMemoryCapacity;
+  const now = Date.now();
+  // Once a second at most: one shortage fails many chunks at once.
+  if (now - lastPressureAt > 1000) {
+    lastPressureAt = now;
+    const target = Math.floor(capacity.currentSize * 0.7);
+    capacity.pressureLimit = Math.min(capacity.pressureLimit ?? Infinity, target);
+    console.warn(`[memory] the tab ran out of memory: cache cut to ${(target / 1e9).toFixed(2)} GB for now (${capacity})`);
+    capacity.capacityChanged.dispatch();
+  }
+  if (pressureTimer !== undefined) clearTimeout(pressureTimer);
+  pressureTimer = setTimeout(() => {
+    pressureTimer = undefined;
+    capacity.pressureLimit = undefined;
+    console.info('[memory] cache back to its full size');
+    capacity.capacityChanged.dispatch();
+  }, 180000);
 }
 
 function cancelChunkDownload(chunk: Chunk) {
@@ -616,8 +652,14 @@ class AvailableCapacity extends RefCounted {
     this.currentSize -= size;
   }
 
+  /** Pyr: a lower limit for a while after the tab ran out of memory (see
+   *  relieveMemoryPressure). Undefined: the player's limit stands alone. */
+  pressureLimit: number|undefined = undefined;
+
   get availableSize() {
-    return this.sizeLimit.value - this.currentSize;
+    const limit = this.pressureLimit === undefined ? this.sizeLimit.value :
+                                                     Math.min(this.sizeLimit.value, this.pressureLimit);
+    return limit - this.currentSize;
   }
   get availableItems() {
     return this.itemLimit.value - this.currentItems;

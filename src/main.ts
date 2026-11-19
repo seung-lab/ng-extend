@@ -35,6 +35,7 @@ import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
+import { startRightHoldDelta } from './util/right_hold_delta';
 import { startKeepToolAcrossViews } from './util/keep_tool_across_views';
 import { startCutPreview } from './util/cut_preview';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
@@ -498,6 +499,7 @@ function setupViewer() {
   recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
+  startRightHoldDelta();
   // Merge or cut mode keeps working in a view loaded in place (Nseraf #203).
   startKeepToolAcrossViews();
   startCloseGuard();
@@ -1087,6 +1089,24 @@ function observeSplitMergeTools() {
     }).observe(container, { childList: true, subtree: true, characterData: true });
   }
   watchStatusLines();
+
+  /** Neuroglancer's own cut and merge tool line ("Multicut segments" and its
+   *  raw key names) is hidden under the bar by a CSS rule that finds it by
+   *  what it holds (ng-override.css). That rule missed for Ames (2026-11-19:
+   *  "bottom bar issue is back"), so the line is also marked by class the
+   *  moment it appears, which the same rule hides whatever the browser. */
+  function markToolLines() {
+    const container = document.getElementById('statusContainer');
+    if (!container) { setTimeout(markToolLines, 1000); return; }
+    const mark = () => {
+      for (const li of Array.from(container.querySelectorAll('li.neuroglancer-tool-status'))) {
+        if (li.querySelector('.graphene-multicut, .graphene-merge-segments')) li.classList.add('nge-status-taken');
+      }
+    };
+    new MutationObserver(mark).observe(container, { childList: true, subtree: true });
+    mark();
+  }
+  markToolLines();
 
   /** Scan #statusContainer for split/merge related errors/info */
   function checkStatusMessages() {

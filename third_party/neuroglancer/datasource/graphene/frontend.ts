@@ -70,6 +70,17 @@ import {removeChildren} from 'neuroglancer/util/dom';
 import {getDefaultAnnotationListBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {MouseEventBinder} from 'neuroglancer/util/mouse_bindings';
 
+// nge: the server's refusal, in a player's words. Merge points too far apart
+// came back as "[400] Chebyshev distance between merge points exceeded
+// allowed maximum (3 chunks)" (Claude's own play, 2026-11-18).
+const NGE_TOO_FAR = /chebyshev|exceeded allowed maximum/i;
+function ngePlainMergeError(msg: string): string {
+  if (NGE_TOO_FAR.test(msg)) {
+    return 'Those two points are too far apart. Click both pieces close together, right where they touch.';
+  }
+  return msg;
+}
+
 function vec4FromVec3(vec: vec3, alpha = 0) {
   const res = vec4.clone([...vec]);
   res[3] = alpha;
@@ -1551,9 +1562,11 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         // sharing a root now means the merge is done.
         const joined = await this.ngeAlreadyJoined(submission, err);
         if (joined) return merged(joined);
-        if (i === attempts || stop.isCanceled) {
+        // Too far apart is the same answer every time: no use asking again.
+        const tooFar = NGE_TOO_FAR.test(err?.message || '');
+        if (i === attempts || stop.isCanceled || tooFar) {
           // A stop set its own reason: keep it over the bare "cancelled".
-          if (!stop.isCanceled || !submission.error) submission.error = err.message || "unknown";
+          if (!stop.isCanceled || !submission.error) submission.error = ngePlainMergeError(err.message || "unknown");
           throw err;
         }
       }

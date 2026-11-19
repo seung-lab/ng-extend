@@ -146,6 +146,20 @@ const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
 
 export class ButtonService {
+  /** Opens a cell's Δ menu, as its button in the segment list does. A cell
+   *  with no row there (the side panel closed, or the row not drawn) gets a
+   *  button of its own, not shown, and the menu docks under the top bar
+   *  (Nseraf #572: hold the right button on a cell to open it). */
+  openMenuFor(segmentIDString: string, localServerURL: string, dataset: string) {
+    const rowButton = document.querySelector<HTMLButtonElement>(
+        `.neuroglancer-segment-display-tab .nge-lb-btn[data-segment-id="${CSS.escape(segmentIDString)}"]`);
+    if (rowButton && rowButton.offsetParent) {
+      rowButton.click();
+      return;
+    }
+    this.createButton(localServerURL, segmentIDString, dataset).click();
+  }
+
   createButton(
       localServerURL: string, segmentIDString: string,
       dataset: string): HTMLButtonElement {
@@ -191,7 +205,9 @@ export class ButtonService {
       // width guess it left the side panel's X showing beside it, which read
       // as its own close (player report and Ames, 2026-10-14). It has its own X.
       const panel = button.closest('.neuroglancer-side-panel') as HTMLElement | null;
-      const top = panel ? Math.max(0, panel.getBoundingClientRect().top) : 0;
+      const bar = document.getElementById('extensionBar');
+      const top = panel ? Math.max(0, panel.getBoundingClientRect().top)
+          : bar ? Math.max(0, bar.getBoundingClientRect().bottom) : 0;
       el.classList.add('nge-lb-docked');
       el.style.left = 'auto';
       el.style.right = '0px';
