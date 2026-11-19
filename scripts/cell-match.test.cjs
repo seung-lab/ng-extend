@@ -402,15 +402,15 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     answer = ANSWERS.clean;
     await edit([ANSWERS.clean.root]);
     check('nothing to cut', await waitText(/50%/, 10000) && /cut nothing to cut/.test(await cardText() || ''), await cardText());
-    // Merge high, nothing cut yet: the note says Cut is what holds the score (kfay 563).
+    // Merge high, nothing cut yet: no note on the card; the (i) box says it (Ames 2026-11-19).
     answer = { ...ANSWERS.clean, root: '648518346351004100', merge: 87, cut: 0, cutParts: 2, extra: { left: 2, total: 2 } };
     await edit([answer.root]);
-    const cutNote = await waitText(/cut off the 2 wrong parts to raise it/, 10000);
-    check('Merge high and Cut at 0: the card says to cut off the wrong parts', cutNote, await cardText());
+    await waitText(/87%/, 10000);
+    const cutInfo = await page.evaluate(() => document.querySelector('#nge-cell-match-info')?.textContent || document.querySelector('.nge-cm-info-text')?.textContent || '');
+    check('Merge high and Cut at 0: no note on the card, the (i) box says it', !/wrong parts? to raise it/.test(await cardText() || '') && /Merging alone gets you halfway/.test(cutInfo), { card: await cardText(), cutInfo });
     answer = ANSWERS.clean;
     await edit([ANSWERS.clean.root]);
     await waitText(/50%/, 10000);
-    check('the Cut note goes once there is nothing to cut', !/wrong parts? to raise it/.test(await cardText() || ''), await cardText());
 
     // The function before Merge and Cut (one number only): no card rather than a wrong one.
     answer = { taskId: 16762, scorable: true, root: '648518346351005000', match: 12, missing: { left: 9, total: 20 }, extra: { left: 0, total: 0 } };
