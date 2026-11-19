@@ -81,6 +81,7 @@ function buildStaticReference(): string {
     // (Ames, 2026-10-11): a "merger" there is the opposite job.
     "## Practice tutorials and the Merger Sandbox",
     "- A MERGER is an error where two different neurons are wrongly fused into one segment. It is fixed with a CUT, never with a merge. A missing branch is the opposite error and is fixed with a merge.",
+    "- In the tutorials menu (top right), a green check mark after a tutorial's name means you have finished it and have its Achievement.",
     "- Merge tutorial (burger menu, top right): two real merges on a practice cell. Press M, Ctrl+click each of the two pieces, then Submit merge.",
     "- Cut tutorial (burger menu): two real cuts. Press C, Ctrl+click a red point on one neuron, press G to switch to blue, Ctrl+click a blue point on the other neuron right where they touch, then Submit cut.",
     "- Merger Sandbox (burger menu, 'Cut the mergers'): a set of fused cells, one at a time, shown as 'N / total solved'. Each opens in 3D with two neurons fused into one purple segment. The player finds where they touch and cuts them apart with the Cut tool (C, red points, G, blue points, Submit cut). Space brings up the 2D images.",
