@@ -14,6 +14,7 @@ import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRec
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset, DATASETS, switchToDataset } from '../datasets';
 import { refreshDatasetPermissions } from '../util/dataset_access';
+import { reviewRequestByName } from '../access_request';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
@@ -435,6 +436,17 @@ function openDetail(notif: any) {
   // Admins: every access note opens the Access page (Ames 2026-11-12:
   // "clicking an access notif should open the access dash"), at the person
   // when the note names their email.
+  // A Retina request opens their examples in the view, here (Ames
+  // 2026-11-19: "it was supposed to open their access request"); Admin Hub
+  // when it is no longer waiting.
+  const retinaFrom = backend.isAdmin ? (accessTitle.match(/^🔬 Retina access request from (.+?)(?: \(try \d+\))?$/) || [])[1] : '';
+  if (retinaFrom) {
+    emit('hide');
+    // Not waiting any more: Admin Hub > Access requests, in place (a new tab
+    // opened after the lookup would be stopped as a pop up).
+    void reviewRequestByName(retinaFrom).catch(() => false).then(ok => { if (!ok) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } })); });
+    return;
+  }
   if (backend.isAdmin && (kindOf(notif) === 'access' || accessTitle.startsWith('🔑 Invite used'))) {
     openAccessPage(notif.body, notif.title);
     emit('hide');

@@ -264,6 +264,27 @@ export async function resumeReview(tries = 6): Promise<void> {
   }
 }
 
+/** From the Access page's "Review their examples in Pyr" (Ames 2026-11-19:
+ *  it "did not take me to their edits"): that request's first example in
+ *  the view, cuts first as in Admin Hub. False when it is not found. */
+export async function reviewRequestById(id: number): Promise<boolean> {
+  return reviewRequestWhere(r => r.id === id);
+}
+/** A "🔬 Retina access request from <name>" bell (Ames 2026-11-19: "it was
+ *  supposed to open their access request"): their newest waiting request. */
+export async function reviewRequestByName(name: string): Promise<boolean> {
+  const want = name.trim().toLowerCase();
+  if (!want) return false;
+  return reviewRequestWhere(r => r.status === 'submitted' && String(r.player_name || '').trim().toLowerCase() === want);
+}
+async function reviewRequestWhere(match: (r: AccessRequest) => boolean): Promise<boolean> {
+  const request = (await listAccessRequests('all')).filter(match).sort((a, b) => b.id - a.id)[0];
+  if (!request) return false;
+  const items = [...(request.items ?? [])].sort((a, b) => (a.kind === b.kind ? a.slot - b.slot : a.kind === 'cut' ? -1 : 1));
+  reviewInView({ ...request, items }, 0);
+  return true;
+}
+
 /** Leave the Admin Hub and open one example in the view, with the review bar. */
 export function reviewInView(request: AccessRequest, index: number) {
   reviewing.value = { request, index };

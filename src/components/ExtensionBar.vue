@@ -160,7 +160,7 @@ function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbo
 // Extension Sandbox (extension-sandbox.ts), the same way.
 const extensionFinished = computed(() => EXTENSION_CELLS.filter(c => extensionDone.value.includes(c.id)).length);
 function startNextExtension() { document.dispatchEvent(new CustomEvent('nge:extsandbox-next')); }
-import { myAccess, loadMyAccess, accessStatusLabel, resumeReview } from '../access_request';
+import { myAccess, loadMyAccess, accessStatusLabel, resumeReview, reviewRequestById } from '../access_request';
 import { datasetAccess } from '../util/dataset_access';
 const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
 // Where the player's request stands, for the menu line: asked once a session
@@ -371,25 +371,35 @@ onMounted(() => {
     showProfile.value = true;
   }) as EventListener);
   // Links from the Access page, used once (the address drops them):
-  // "?admin=access" (Review their examples) opens Admin Hub > Access requests;
+  // "?review=<id>" (Review their examples) opens that request in the view;
+  // "?admin=access" opens Admin Hub > Access requests;
   // "?player=<id>" (their Pyr username) opens that player's profile.
   // Both wait for the admin sign-in to finish, so the panel reads with it.
   try {
     const u = new URL(window.location.href);
     const player = u.searchParams.get('player') || '';
+    const wantReview = /^\d+$/.test(u.searchParams.get('review') || '') ? Number(u.searchParams.get('review')) : 0;
     const wantAccess = u.searchParams.get('admin') === 'access';
     const wantPlayer = /^[0-9a-f-]{36}$/i.test(player) ? player : '';
-    if (u.searchParams.has('admin') || u.searchParams.has('player')) {
-      u.searchParams.delete('admin'); u.searchParams.delete('player');
+    if (u.searchParams.has('admin') || u.searchParams.has('player') || u.searchParams.has('review')) {
+      u.searchParams.delete('admin'); u.searchParams.delete('player'); u.searchParams.delete('review');
       history.replaceState(history.state, '', u.toString());
     }
-    if (wantAccess || wantPlayer) {
+    if (wantReview || wantAccess || wantPlayer) {
       const stop = watch(() => backendStore.isAdmin, admin => {
         if (!admin) return;
+        queueMicrotask(() => stop());
+        // "?review=<id>": straight into that request's examples in the view;
+        // Admin Hub > Access requests if it cannot be found.
+        if (wantReview) {
+          void reviewRequestById(wantReview).catch(() => false).then(ok => {
+            if (!ok) { profileUserId.value = null; profileInitialTab.value = 'access'; showProfile.value = true; }
+          });
+          return;
+        }
         if (wantAccess) { profileUserId.value = null; profileInitialTab.value = 'access'; }
         else { profileUserId.value = wantPlayer; profileInitialTab.value = undefined; }
         showProfile.value = true;
-        queueMicrotask(() => stop());
       }, { immediate: true });
     }
   } catch { /* the link just opens Pyr */ }
