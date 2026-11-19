@@ -563,9 +563,15 @@ const filteredCells = computed(() => {
     const myClaimed = list.filter(c => isMyClaim(c));
     // Completed: the latest first (annkri, report 352: they kept the cell
     // list's order). A completion stamps the claim's updated time.
-    const doneAt = (c: CellRow) => backend.tasks.find(t => t.id === c.taskId)?.updated_at || '';
+    // Look each completion time up once (one pass, still tracked). A find over
+    // the claims inside the sort's compare froze the page 6.4 s for a player
+    // with many completed cells (Nseraf #538, Firefox profile).
+    const doneAtById = new Map<unknown, string>();
+    for (const t of backend.tasks) doneAtById.set(t.id, t.updated_at || '');
     const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId)
-      .sort((a, b) => doneAt(b).localeCompare(doneAt(a)));
+      .map(c => [c, doneAtById.get(c.taskId) || ''] as const)
+      .sort((a, b) => b[1].localeCompare(a[1]))
+      .map(([c]) => c);
     list = [...myQuests, ...myClaimed, ...myCompleted];
   } else if (filter.value === 'available') {
     list = list.filter(c => c.status === 'pending');
