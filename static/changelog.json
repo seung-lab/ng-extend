@@ -2,6 +2,45 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-19T23:07:00Z",
+      "title": "Clear removes stray merge dots, and a place in line after a reload",
+      "items": [
+        "Clear in the Merge Queue now also removes leftover red merge dots that stayed on the screen with nothing queued.",
+        "If you reload partway through a tutorial while every practice cell is in use, you now get a place in line, and your cell loads by itself when it is your turn."
+      ]
+    },
+    {
+      "at": "2026-11-19T22:36:00Z",
+      "title": "Training Sim stops calling good merges wrong",
+      "items": [
+        "The Training Sim no longer calls a merge wrong when the finished cell simply never placed that piece. Most of those merges were right.",
+        "Pieces the finished cell never placed no longer count as wrong parts, in your score, in Show me or in Jump. Some cells showed dozens of wrong parts that were really one.",
+        "A failed merge left over in your Merge Queue from an earlier visit goes away on its own once those two pieces are already one cell."
+      ]
+    },
+    {
+      "at": "2026-11-19T21:13:00Z",
+      "title": "A tidier Training Sim box",
+      "items": [
+        "The Training Sim hint folds to one line. Click it to read it all and use Show me, and Pyr remembers which way you left it.",
+        "Merge and Cut in the box look like the rest of the box, and light up blue while their mode is on.",
+        "Cut mode is blue in the box, like the cut bar.",
+        "After a page refresh, the box finds your cell again instead of saying it is not on screen.",
+        "On Standby the box shows only its note and its button.",
+        "A merge that adds part of your cell now reads Good merge.",
+        "Jump to next spot no longer sends you back to a spot you just fixed."
+      ]
+    },
+    {
+      "at": "2026-11-19T19:19:00Z",
+      "title": "Cilia Quests on your profile",
+      "items": [
+        "Your profile has a Cilia Quests card with your Quests today, this week and all time.",
+        "It shows your place on the Quests leaderboard, such as 2nd of 8 this week, and a bar to your next Quest milestone.",
+        "Quests leaderboard opens the leaderboard right on the Quests tab."
+      ]
+    },
+    {
       "at": "2026-11-19T16:50:00Z",
       "title": "No extra strip under the cut and merge bar",
       "items": [

@@ -97,11 +97,13 @@ function world() {
   };
   const truth = {
     groups: {T: range(1, 200), N: range(300, 359)},
+    // The proofread objects; any other is raw segmentation nobody touched.
+    edited: new Set(['T', 'N']),
     rootAt(sv) { for (const [r, l] of Object.entries(this.groups)) if (l.includes(sv)) return r; return '0'; },
     leaves(root) { return this.groups[root] || []; },
   };
   // Root names that look like ids.
-  const ID = {S0: '9001', A: '9002', B: '9003', S1: '9004', S2: '9005', N2: '9006', T: '8001', N: '8002'};
+  const ID = {S0: '9001', A: '9002', B: '9003', S1: '9004', S2: '9005', N2: '9006', T: '8001', N: '8002', O: '8003', Q: '8004', S3: '9007', S4: '9008', Q2: '9009'};
   const NAME = Object.fromEntries(Object.entries(ID).map(([k, v]) => [v, k]));
   const calls = {leaves: 0, roots: 0, root: 0};
   const fetch = async (url, init = {}) => {
@@ -113,6 +115,10 @@ function world() {
     let m;
     if ((m = u.pathname.match(/\/node\/(\d+)\/root$/))) { calls.root++; return ok({root_id: ID[g.rootAt(m[1], at)] || '0'}); }
     if ((m = u.pathname.match(/\/node\/(\d+)\/leaves$/))) { calls.leaves++; return ok({leaf_ids: g.leaves(NAME[m[1]])}); }
+    if ((m = u.pathname.match(/\/root\/(\d+)\/lineage_graph$/)) && g === truth) {
+      calls.lineage = (calls.lineage || 0) + 1;
+      return ok({nodes: truth.edited.has(NAME[m[1]]) ? [{id: m[1], operation_id: '7'}, {id: '1'}] : [{id: m[1]}]});
+    }
     if (u.pathname.endsWith('/roots_binary')) {
       calls.roots++;
       const buf = Buffer.from(init.body); const out = Buffer.alloc(buf.length);
@@ -702,4 +708,46 @@ test('the Merge row moves a tenth of a percent at a time', () => {
   assert.equal(M.mergePercent(0, 24000), 100);
   assert.equal(M.mergePercent(30000, 24000), 0);
   assert.equal(M.mergePercent(0, 0), null);
+});
+
+test('an object the true cells never placed is neither right nor wrong (synapse123, task 16780)', async () => {
+  M._reset();
+  const w = world();
+  // O: 60 supervoxels of raw segmentation nobody edited in the truth. Q: an
+  // untouched object reaching past the player's cell (600..719, half merged).
+  w.truth.groups.O = range(500, 559);
+  w.truth.groups.Q = range(600, 719);
+  w.sandbox.events[0].groups = {S0: range(1, 100), A: range(101, 160), B: range(161, 200), N: range(300, 359), O: range(500, 559), Q2: range(600, 659)};
+  const clean = await M.check(w.io, {taskId: 1, me: ME});
+  assert.deepEqual([clean.cut, clean.cutParts], [null, 0]);
+  // Merging O in: no wrong part, no Cut, the score as it was.
+  w.sandbox.edit({S1: [...range(1, 100), ...range(500, 559)], A: range(101, 160), B: range(161, 200), N: range(300, 359), Q2: range(600, 659)});
+  const o = await M.check(w.io, {taskId: 1, me: ME});
+  assert.deepEqual([o.cut, o.cutParts, o.extra.total, o.score], [null, 0, 0, clean.score]);
+  assert.equal((await M.review(w.io, {taskId: 1, me: ME})).mergers.length, 0);
+  for (let n = 0; n < 3; n++) assert.notEqual((await M.hint(w.io, {taskId: 1, me: ME, n, step: 1})).piece.kind, 'cut');
+  // Part of Q, which reaches beyond the cell: wrong, as before.
+  w.sandbox.edit({S3: [...range(1, 100), ...range(500, 559), ...range(600, 659)], A: range(101, 160), B: range(161, 200), N: range(300, 359)});
+  const q = await M.check(w.io, {taskId: 1, me: ME});
+  assert.deepEqual([q.cut, q.cutParts], [0, 1]);
+  // All of N, an object the proofreader edited: wrong, as before.
+  w.sandbox.edit({S4: [...range(1, 100), ...range(500, 559), ...range(600, 659), ...range(300, 359)], A: range(101, 160), B: range(161, 200)});
+  const n2 = await M.check(w.io, {taskId: 1, me: ME});
+  assert.equal(n2.cutParts, 2);
+});
+
+test('a kept start counted before unplaced objects were set aside reads without them', async () => {
+  M._reset();
+  const w = world();
+  // Task 16780: a cell holding an untouched object O from before this player.
+  w.truth.groups.O = range(500, 559);
+  w.sandbox.events[0].groups = {S0: [...range(1, 100), ...range(500, 559)], A: range(101, 160), B: range(161, 200), N: range(300, 359)};
+  // The player's kept start and peak count O as wrong (60), as the old rule did.
+  w.db.records.push({p_user: ME.id, p_task: 1});
+  w.db.starts = {[`${ME.id}:1`]: {start_missing: 100, start_extra: 60, start_missing_left: 2, start_extra_left: 1, start_reach: 0.5}};
+  w.db.peaks = {1: 60};
+  w.db.partsPeak = {[`${ME.id}:1`]: {[w.ID.O]: 60}};
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  // Nothing to cut: no Cut, no parts, not "1 of 1 cut off".
+  assert.deepEqual([r.cut, r.cutParts, r.extra.total, r.extra.left], [null, 0, 0, 0]);
 });

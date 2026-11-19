@@ -80,6 +80,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   context.on('page', p => { if (p !== page) p.close().catch(() => {}); });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
+  if (process.env.CM_DEBUG) page.on('console', m => { const t = m.text(); if (/cell-match|outdated|lineage/i.test(t)) console.log('  [page]', t.slice(0, 200)); });
   const cardText = () => page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? c.innerText.replace(/\s+/g, ' ').trim().toLowerCase() : null; });
   const waitText = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.getElementById('nge-cell-match'); return !!c && new RegExp(src, 'i').test(c.innerText.replace(/\s+/g, ' ')); }, re.source, { timeout: ms }).then(() => true, () => false);
   const edit = (roots, kind = 'merge') => page.evaluate(([r, k]) => window.dispatchEvent(new CustomEvent('nge-graph-edit', { detail: { kind: k, roots: r } })), [roots, kind]);
@@ -216,9 +217,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const verdicts = await page.evaluate(() => {
       const j = window.__ngeCellMatch.judgeEdit;
       const a = { scorable: true, merge: 40, cut: null, missing: { left: 10, total: 20 }, extra: { left: 0, total: 0 } };
-      return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text];
+      return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text,
+        // Ames 2026-11-19: the nucleus merge brought in the cell and a wrong part with it.
+        j('merge', a, { ...a, merge: 90, cut: 0, missing: { left: 1, total: 20 }, extra: { left: 2, total: 2 } }).text,
+        j('split', { ...a, cut: 0, extra: { left: 2, total: 2 } }, { ...a, merge: 30, cut: 50, missing: { left: 12, total: 20 }, extra: { left: 1, total: 2 } }).text];
     });
-    check('a merge that brings in a wrong part is a Wrong merge; nothing moved is No change', verdicts.join('|') === 'Good merge|Wrong merge|No change', verdicts);
+    check('a merge judged by its pieces: one that only brings a wrong part is Wrong; one that brings the cell and a wrong part is Good; a cut that takes real cell is Wrong', verdicts.join('|') === 'Good merge|Wrong merge|No change|Good merge|Wrong cut', verdicts);
     const heads = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-head'); const t = document.querySelector('#nge-cell-match .nge-cm-title'); const st = document.querySelector('#nge-cell-match .nge-cm-state'); const was = st.textContent; st.textContent = 'Merge complete'; const longest = st.scrollWidth > st.clientWidth; st.textContent = was; return { longestCut: longest, head: Math.round(h.getBoundingClientRect().height), title: Math.round(t.getBoundingClientRect().height), state: st.textContent, cut: st.scrollWidth > st.clientWidth }; });
     check('the top line stays one line and a long verdict is not cut off', heads.title <= 16 && !heads.cut && !heads.longestCut, heads);
     const fills = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-fill')].map(f => Math.round(f.getBoundingClientRect().width)));
@@ -364,6 +368,11 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').click());
     await page.waitForTimeout(1500);
+    // Folded to one line at first; a click opens it with Show me (Ames 2026-11-19).
+    const hintFold = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); const t = n.querySelector('.nge-cm-nudge-text'); return { open: n.classList.contains('nge-cm-nudge-open'), oneLine: t.getBoundingClientRect().height < 22, showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null }; });
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-nudge').click());
+    const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); return { open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open') }; });
+    check('the hint starts folded to one line, and a click opens it with Show me, remembered', !hintFold.open && hintFold.oneLine && !hintFold.showMe && unfolded.open && unfolded.showMe && unfolded.saved === '1', { hintFold, unfolded });
     const place = await hintLayers();
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
@@ -685,6 +694,33 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
         ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
       });
       await page.waitForTimeout(2500);
+    }
+    // A reload: the saved view holds the cell as it was before the last edit
+    // (Ames 2026-11-19: "I'm already on my cell. I simply refreshed the page").
+    {
+      const NOW = '648518346350788735', STALE = '648518346350788700', SOMA = '73325262829729818';
+      await context.route(new RegExp(`/node/${SOMA}/root`), r => r.fulfill(json({ root_id: NOW })));
+      await context.route(/is_latest_roots/, r => { const ids = (r.request().postData() || '').match(/\d{10,}/g) || []; r.fulfill(json({ is_latest: ids.map(id => id !== STALE) })); });
+      await context.route(/lineage_graph/, r => r.fulfill(json({ nodes: [], links: r.request().url().includes(STALE) ? [{ source: STALE, target: NOW }] : [] })));
+      answer = { ...ANSWERS.merged, root: NOW };
+      await page.evaluate(([stale, soma]) => {
+        window.__ngeCellMatch.withClaims(() => [{ id: 16762, dataset: 'pinky_nf_v2', roots: ['648518346350000002'], anchor: soma }]);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.add(window.__testU64.parseString(stale));
+      }, [STALE, SOMA]);
+      const live = await waitText(/39%/, 25000);
+      await page.waitForTimeout(2500);
+      const shownIds = await page.evaluate(() => { const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived); return [...ml.layer.displayState.segmentationGroupState.value.visibleSegments].map(String); });
+      check('after a reload with the cell as it was before an edit, the box finds it by its soma and shows the current one', live && !/not on screen/.test(await cardText() || '') && shownIds.includes(NOW) && !shownIds.includes(STALE), { text: await cardText(), shownIds });
+      await context.unroute(new RegExp(`/node/${SOMA}/root`)); await context.unroute(/is_latest_roots/); await context.unroute(/lineage_graph/);
+      await page.evaluate(() => {
+        window.__ngeCellMatch.withClaims(() => []);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
+      });
+      await page.waitForTimeout(2500);
+      const idle = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? [...c.querySelectorAll('.nge-cm-row')].filter(r => r.offsetParent !== null).length : -1; });
+      check('Standby shows no empty rows (Ames 2026-11-19)', idle === 0, idle);
     }
     await shot('play-big.png');
     await shot('cell-match-standby.png');
