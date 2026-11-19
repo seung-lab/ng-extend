@@ -109,7 +109,43 @@ async function loadQuestsCompleted(userId?: string | null) {
     questsCompleted.value = ((board.data ?? []) as any[])
       .filter(r => keys.has(questNameKey(r.name)))
       .reduce((n, r) => n + (r.alltime | 0), 0);
-  } catch { questsCompleted.value = null; }
+    // The Quests card (Ames 2026-11-19: "can we do more for Quests?"): today,
+    // this week and all time, and the place on the Quests leaderboard, from
+    // the same rows, added up by name the way the leaderboard does.
+    const byKey = new Map<string, { today: number; week: number; all: number }>();
+    for (const r of (board.data ?? []) as any[]) {
+      const k = questNameKey(r.name);
+      if (!k) continue;
+      const c = byKey.get(k) ?? { today: 0, week: 0, all: 0 };
+      c.today += r.today | 0; c.week += r.week | 0; c.all += r.alltime | 0;
+      byKey.set(k, c);
+    }
+    const mine = { today: 0, week: 0, all: 0 };
+    for (const k of keys) { const c = byKey.get(k as string); if (c) { mine.today += c.today; mine.week += c.week; mine.all += c.all; } }
+    const others = [...byKey.entries()].filter(([k]) => !keys.has(k)).map(([, c]) => c);
+    const place = (f: 'week' | 'all') => mine[f] > 0 ? 1 + others.filter(c => c[f] > mine[f]).length : 0;
+    questStats.value = { ...mine, weekPlace: place('week'), allPlace: place('all'),
+      weekPlayers: others.filter(c => c.week > 0).length + (mine.week > 0 ? 1 : 0),
+      allPlayers: others.filter(c => c.all > 0).length + (mine.all > 0 ? 1 : 0) };
+  } catch { questsCompleted.value = null; questStats.value = null; }
+}
+const questStats = ref<{ today: number; week: number; all: number; weekPlace: number; allPlace: number; weekPlayers: number; allPlayers: number } | null>(null);
+/** Quest milestones for the bar under the Quests card. */
+const QUEST_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+const nextQuestMilestone = computed(() => {
+  const n = questStats.value?.all ?? 0;
+  const i = QUEST_MILESTONES.findIndex(m => m > n);
+  if (i < 0) return null;
+  const from = i ? QUEST_MILESTONES[i - 1] : 0, to = QUEST_MILESTONES[i];
+  return { to, remaining: to - n, frac: (n - from) / (to - from) };
+});
+function placeLabel(n: number) {
+  const t = n % 100, d = n % 10;
+  return n + (t >= 11 && t <= 13 ? 'th' : d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th');
+}
+function openQuestBoard() {
+  try { localStorage.setItem('nge-leaderboard-metric', 'quests'); } catch { /* private mode */ }
+  document.dispatchEvent(new CustomEvent('nge:open-leaderboard'));
 }
 // Annotations placed: their total, or mine plus what this browser has yet to send.
 const otherAnnotations = ref<number | null>(null);
@@ -2378,6 +2414,36 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               </div>
             </div>
             </template>
+          </div>
+          <!-- The Quests card (Ames 2026-11-19: "can we do more for Quests?
+               the retina quests for example"): Cilia Quests today, this week
+               and all time, the place on the Quests leaderboard, and a bar to
+               the next milestone. The Quests column above stays. -->
+          <div v-if="questStats && questStats.all > 0" class="nge-profile-section nge-profile-quests">
+            <div class="nge-pq-head">
+              <div class="nge-profile-section-label" title="Cilia Quests on the Retina: cells whose cilium was marked, or found to have none, and sent to the lab's sheet">▌ Cilia Quests</div>
+              <button class="nge-pq-board" title="Open the Quests leaderboard" @click="openQuestBoard">Quests leaderboard →</button>
+            </div>
+            <div class="nge-pq-grid">
+              <div class="nge-profile-stat-col" title="Today, US Eastern time">
+                <div class="nge-profile-stat-label">Today</div>
+                <div class="nge-profile-stat-val nge-pq-val" :class="{ 'nge-pq-val--zero': !questStats.today }"><RollUp :value="questStats.today" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Since Monday, US Eastern time">
+                <div class="nge-profile-stat-label">This week</div>
+                <div class="nge-profile-stat-val nge-pq-val" :class="{ 'nge-pq-val--zero': !questStats.week }"><RollUp :value="questStats.week" /></div>
+                <div v-if="questStats.weekPlace" class="nge-pq-place" :title="`${placeLabel(questStats.weekPlace)} of ${questStats.weekPlayers} players with Quests this week`">{{ placeLabel(questStats.weekPlace) }} of {{ questStats.weekPlayers }}</div>
+              </div>
+              <div class="nge-profile-stat-col" title="Every Cilia Quest, ever">
+                <div class="nge-profile-stat-label">All time</div>
+                <div class="nge-profile-stat-val nge-pq-val"><RollUp :value="questStats.all" /></div>
+                <div v-if="questStats.allPlace" class="nge-pq-place" :title="`${placeLabel(questStats.allPlace)} of ${questStats.allPlayers} players with Quests`">{{ placeLabel(questStats.allPlace) }} of {{ questStats.allPlayers }}</div>
+              </div>
+            </div>
+            <div v-if="nextQuestMilestone" class="nge-pq-next" :title="`${nextQuestMilestone.remaining.toLocaleString()} more Quests to ${nextQuestMilestone.to.toLocaleString()}`">
+              <div class="nge-pq-bar"><div class="nge-pq-fill" :style="{ width: Math.round(nextQuestMilestone.frac * 100) + '%' }"></div></div>
+              <span class="nge-pq-count">{{ nextQuestMilestone.remaining.toLocaleString() }} to {{ nextQuestMilestone.to.toLocaleString() }}</span>
+            </div>
           </div>
           <!-- Building Pyr: how much has been built, from GitHub. Only on
                the profile of the person building it (Ames 2026-10-10). Under
@@ -5926,4 +5992,19 @@ body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) > .ng
   body:not(.nge-mobile) .nge-profile-col--right .nge-profile-viz-badge-icon--large { width: min(140px, calc(16 * var(--nge-vh, 1vh))); height: min(140px, calc(16 * var(--nge-vh, 1vh))); }
   body:not(.nge-mobile) .nge-profile-col--right .nge-profile-viz-badge { gap: 6px; padding-top: 8px; }
 }
+/* ── The Quests card (Ames 2026-11-19) ── */
+.nge-profile-quests { margin-top: 4px; padding: 10px 12px; border: 1px solid rgba(127, 224, 255, 0.16); border-radius: 10px;
+  background: linear-gradient(180deg, rgba(127, 224, 255, 0.06), rgba(127, 224, 255, 0.015)); }
+.nge-pq-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.nge-pq-head .nge-profile-section-label { color: #7fe0ff; margin-bottom: 8px; }
+.nge-pq-board { background: none; border: none; padding: 0; cursor: pointer; font: inherit; font-size: 11px; color: rgba(127, 224, 255, 0.75); white-space: nowrap; }
+.nge-pq-board:hover { color: #bff0ff; text-decoration: underline; }
+.nge-pq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 12px; }
+.nge-pq-val { color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35); }
+.nge-pq-val--zero { color: rgba(220, 230, 245, 0.35); text-shadow: none; }
+.nge-pq-place { margin-top: 2px; font-size: 11px; color: rgba(191, 240, 255, 0.7); white-space: nowrap; }
+.nge-pq-next { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.nge-pq-bar { flex: 1; height: 3px; border-radius: 2px; background: rgba(201, 228, 255, 0.14); overflow: hidden; }
+.nge-pq-fill { height: 100%; background: #7fe0ff; box-shadow: 0 0 8px rgba(127, 224, 255, 0.6); }
+.nge-pq-count { font-size: 11px; color: rgba(220, 230, 245, 0.7); white-space: nowrap; }
 </style>
