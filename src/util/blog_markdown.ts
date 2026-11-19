@@ -40,13 +40,23 @@ export function blogImageOk(url: string): boolean { return IMG_OK.test(url); }
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unamp = (s: string) => s.replace(/&amp;/g, '&');
 
+// Every tag made here is set aside behind a marker and put back at the end,
+// so a later pattern never reads an earlier tag as text. Before, a link
+// written inside a picture's description landed inside the picture's tag and
+// could add an attribute that runs script (security review 2026-11-18).
 function inline(s: string): string {
-  return s
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, url) => IMG_OK.test(unamp(url)) ? `<img src="${url}" alt="${alt}" loading="lazy" />` : m)
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, url) => LINK_OK.test(unamp(url)) ? `<a href="${url}"${/^https:/.test(url) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${text}</a>` : m)
+  const kept: string[] = [];
+  const keep = (html: string) => '\u0000' + (kept.push(html) - 1) + '\u0000';
+  const MARK = /\u0000(\d+)\u0000/g;
+  const plain = (t: string) => t.replace(MARK, (m, n) => kept[+n].replace(/<[^>]*>/g, ''));
+  const whole = (url: string) => url.indexOf('\u0000') < 0;
+  return s.replace(/\u0000/g, '')
+    .replace(/`([^`]+)`/g, (m, code) => keep(`<code>${code}</code>`))
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, url) => whole(url) && IMG_OK.test(unamp(url)) ? keep(`<img src="${url}" alt="${plain(alt)}" loading="lazy" />`) : m)
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, url) => whole(url) && LINK_OK.test(unamp(url)) ? keep(`<a href="${url}"${/^https:/.test(url) ? ' target="_blank" rel="noopener noreferrer"' : ''}>`) + text + keep('</a>') : m)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>');
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+    .replace(MARK, (m, n) => kept[+n]);
 }
 
 /** Image lines, each optionally followed by a "^ caption" line, an
