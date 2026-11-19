@@ -1037,6 +1037,7 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       for (const merge of merges.value) {
         mergeAnnotationState.source.add(mergeToLine(merge));
       }
+      void this.ngeTidySavedMerges();
 
       // initialize source changes
       this.registerDisposer(mergeAnnotationState.source.childAdded.add((x) => {
@@ -1090,6 +1091,16 @@ class GraphConnection extends SegmentationGraphSourceConnection {
           }
         }
         ref.dispose();
+      }));
+
+      // A loaded or reset merge list replaces the queue but used to leave
+      // the old lines drawn, so a red dot could stay that no Clear removed
+      // (Nseraf #544). Lines with no merge in the queue go.
+      let sweepQueued = false;
+      this.registerDisposer(merges.changed.add(() => {
+        if (sweepQueued) return;
+        sweepQueued = true;
+        setTimeout(() => { sweepQueued = false; if (!this.wasDisposed) this.ngeSweepMergeDots(); }, 0);
       }));
 
       this.registerDisposer(mergeAnnotationState.source.childDeleted.add((id) => {
@@ -1505,6 +1516,22 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     return sent.mergedRoot;
   }
 
+  /** nge: removes merge lines and dots that belong to no merge in the queue,
+   *  except the one the merge tool is placing right now (#544). */
+  ngeSweepMergeDots = () => {
+    const {mergeAnnotationState} = this;
+    const merges = this.state.mergeState?.merges.value ?? [];
+    const keep = new Set(merges.map(x => x.id));
+    const tool = this.layer.tool.value;
+    const placing = tool instanceof MergeSegmentsPlaceLineTool ? tool.inProgressAnnotation.value?.reference.id : undefined;
+    if (placing) keep.add(placing);
+    for (const annotation of [...mergeAnnotationState.source]) {
+      if (keep.has(annotation.id)) continue;
+      const ref = mergeAnnotationState.source.getReference(annotation.id);
+      try { if (ref.value) mergeAnnotationState.source.delete(ref); } finally { ref.dispose(); }
+    }
+  }
+
   deleteMergeSubmission = (submission: MergeSubmission) => {
     const {mergeAnnotationState} = this;
     submission.locked = false;
@@ -1514,15 +1541,38 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     try { if (ref.value) mergeAnnotationState.source.delete(ref); } finally { ref.dispose(); }
   }
 
-  /** nge: after a merge is refused as "must belong to different objects",
-   *  the root both points now share, when they do; else null. */
-  private ngeAlreadyJoined = async (submission: MergeSubmission, err: any): Promise<Uint64 | null> => {
-    if (!ngeRefusedAsJoined(err)) return null;
+  /** nge: the root both points of a merge share now, or null when they are
+   *  two cells or the server cannot say. */
+  private ngeSharedRoot = async (submission: MergeSubmission): Promise<Uint64 | null> => {
     try {
       const [a, b] = await Promise.all([this.graph.getRoot(submission.sink.segmentId), this.graph.getRoot(submission.source!.segmentId)]);
       return a && b && Uint64.equal(a, b) && !Uint64.equal(a, Uint64.ZERO) ? a : null;
     } catch {
       return null;
+    }
+  }
+
+  /** nge: after a merge is refused as "must belong to different objects",
+   *  the root both points now share, when they do; else null. Right after a
+   *  merge the server can still answer the old roots for a moment, so a
+   *  refusal that finds them apart asks once more. */
+  private ngeAlreadyJoined = async (submission: MergeSubmission, err: any): Promise<Uint64 | null> => {
+    if (!ngeRefusedAsJoined(err)) return null;
+    const first = await this.ngeSharedRoot(submission);
+    if (first) return first;
+    await wait(1500);
+    return this.ngeSharedRoot(submission);
+  }
+
+  /** nge: a failed merge is saved with the view, so it came back FAILED on
+   *  every load, long after its two pieces were joined (Kfay #581: a FAILED
+   *  from two days before sat beside a merge that had just worked). A saved
+   *  failed merge whose two points are one cell now is done: it goes. One
+   *  still apart stays, to try again or clear. */
+  private ngeTidySavedMerges = async () => {
+    const {merges} = this.state.mergeState;
+    for (const m of merges.value.filter(x => x.error && !x.locked && x.source)) {
+      if (await this.ngeSharedRoot(m) && merges.value.includes(m) && m.error && !m.locked) this.deleteMergeSubmission(m);
     }
   }
 
@@ -3162,6 +3212,8 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
           if (merge.locked) merge.cancel?.('Stopped. If the server had already taken this merge it may still go through: check the cell.');
           graphConnection.deleteMergeSubmission(merge);
         }
+        // And any dot left over from a merge that never made the queue.
+        graphConnection.ngeSweepMergeDots();
       }
     }));
     const checkbox = activation.registerDisposer(new TrackableBooleanCheckbox(autoSubmit));

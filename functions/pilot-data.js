@@ -19,6 +19,7 @@ const fields = {
   // (supabase-tutorial-completions.sql). The player is stamped here.
   tutorial_completions: 'tutorial,item,practice_asked,practice_made',
 };
+const OWNER = {help_requests:'user_id',issue_tags:'user_id',segment_tags:'created_by'};
 const INSERT_ONLY = new Set(['edit_log','activity_feed','help_responses','client_errors','badge_awards','tutorial_completions']);
 const conflicts = {pilot_members:'email',tutorial_practice_waitlist:'user_id,kind',special_badge_awards:'badge_id,user_id',badge_awards:'user_id,track,badge_id'};
 function authorizePilotData(input,ctx) {
@@ -44,6 +45,19 @@ function authorizePilotData(input,ctx) {
   if(query.has('on_conflict') && query.get('on_conflict')!==conflicts[table]) fail(400,'Unsupported conflict target');
   if(method!=='POST' && !query.has('id') && !['pilot_members','tutorial_practice_waitlist','special_badge_awards'].includes(table)) fail(400,'A row id is required.');
   if(INSERT_ONLY.has(table) && method!=='POST') fail(403,'This record is append only.');
+  // One row at a time, and only an exact match: "id=not.is.null" once chose every
+  // row of a shared table (security review 2026-11-13, finding 1).
+  if(method!=='POST') for(const key of ['id','user_id','task_id','badge_id','kind']) {
+    const values=query.getAll(key);
+    if(values.length>1 || (values.length && !/^eq\.[A-Za-z0-9_-]{1,64}$/.test(values[0]))) fail(400,'Choose a single row.');
+  }
+  // Shared help and tags: a player removes only their own, and labels imported
+  // from the lab's sheets are an admin's to change. Marking someone else's
+  // request solved stays open to every tester; that is how help works.
+  const shared=method!=='POST' && !ctx.isAdmin && Object.hasOwn(OWNER,table);
+  const own=shared ? OWNER[table]+'.eq.'+ctx.me.id : '';
+  const notImported='or(source.is.null,source.neq.spreadsheet_import)';
+  if(shared && method==='DELETE') query.set('and','('+own+(table==='segment_tags'?','+notImported:'')+')');
   if(['pilot_members','special_badges','tutorial_practice_examples'].includes(table) && !ctx.isAdmin) fail(403,'Admins only');
   if(table==='proofreading_tasks') {
     if(method==='POST' && !ctx.isAdmin) fail(403,'Use the atomic cell claim action.');
@@ -62,6 +76,14 @@ function authorizePilotData(input,ctx) {
   }
   if(method==='DELETE') return {table,method,query};
   const rows=Array.isArray(input.body)?input.body:[input.body];
+  if(shared && method==='PATCH') {
+    if(table==='segment_tags') query.set('and','('+notImported+')');
+    else {
+      const key=table==='help_requests'?'resolved':'status', solved=table==='help_requests'?true:'resolved';
+      const onlySolves=rows.every(v=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).filter(k=>fields[table].split(',').includes(k)).every(k=>k===key&&v[k]===solved));
+      if(!onlySolves) query.set('and','('+own+')');
+    }
+  }
   if(!rows.length||rows.length>(ctx.isAdmin?500:100)) fail(400,'Invalid row count');
   const body=rows.map(value=>{
     if(!value||typeof value!=='object'||Array.isArray(value)) fail(400,'Invalid row');
@@ -91,7 +113,10 @@ function authorizePilotData(input,ctx) {
     if(['help_requests','issue_tags'].includes(table) && (row.resolved===true||row.status==='resolved')) {
       row.resolved_by=me;row.resolved_by_name=name;row.resolved_at=ctx.now;
     }
-    if(table==='segment_tags') row.source=ctx.isAdmin && row.source==='spreadsheet_import'?'spreadsheet_import':'user_created';
+    if(table==='segment_tags') {
+      if(method==='POST') row.source=ctx.isAdmin && row.source==='spreadsheet_import'?'spreadsheet_import':'user_created';
+      else if(!ctx.isAdmin) delete row.source;
+    }
     if(table==='special_badge_awards') {
       if(!ctx.isAdmin) {row.user_id=me;row.awarded_by=null;} else row.awarded_by=me;
     }
