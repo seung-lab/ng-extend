@@ -198,6 +198,11 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await waitText(/100%/, 10000);
     const judged = await state();
     check('a cut that takes off a merger says Good cut, in green', judged.state === 'Good cut' && judged.good && !judged.bad, judged);
+    // Report 564: Jump glows once after a good edit, then is still.
+    const glow1 = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { on: h.classList.contains('nge-cm-glow1'), anim: getComputedStyle(h).animationIterationCount }; });
+    await page.waitForTimeout(2400);
+    const glow1Off = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').classList.contains('nge-cm-glow1'));
+    check('after a good edit Jump glows once, then stops', glow1.on && glow1.anim === '1' && !glow1Off, { glow1, glow1Off });
     const wrongCut = { ...goodCut, root: '648518346351007000', merge: 20, missing: { left: 22, total: 28 } };
     answer = wrongCut;
     await edit([wrongCut.root], 'split');
@@ -236,7 +241,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('the Skip panel asks why, and the note goes with the skip', /why are you skipping\?/i.test(skipAsk.asked || '') && eventNotes.some(([k, n]) => k === 'skip' && n === 'Looks like two cells.'), { notes: eventNotes });
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:cm-cell-state', { detail: { taskId: 16762, saving: false, saved: true, savedText: 'Saved 2 minutes ago', skipping: false, completing: null } })));
     const vnote = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-viewnote').innerText);
-    check('the box says when the view was saved, and that it saves by itself', vnote === 'Saved 2 minutes ago. Your view also saves by itself when you move to another cell.', vnote);
+    check('the box says when the view was saved, and that it saves by itself, on one line', vnote === 'Saved 2 minutes ago. Also saves when you change cells.' && await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-viewnote'); return n.getBoundingClientRect().height < 20 && /saves by itself/.test(n.title); }), vnote);
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-complete').click());
     const fin1 = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return { text: c.querySelector('.nge-cm-finish').innerText.replace(/\s+/g, ' '), go: c.querySelector('.nge-cm-finish-go').disabled, rows: c.querySelector('.nge-cm-row[data-row="merge"]').offsetParent !== null }; });
     check('Complete opens in the box: checking the crosshairs, saving the view, not yet ready', /complete this cell checking the crosshairs… saving your view…/i.test(fin1.text) && fin1.go && !fin1.rows, fin1);
@@ -296,6 +301,16 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { on, off: n.hidden };
     });
     check('a nucleus only cell says to grow it; others do not', nuc.on.shown && /only its nucleus so far. Merge the nucleus into the cell body/.test(nuc.on.text) && /Show me the cell/.test(nuc.on.text) && nuc.off, nuc);
+    // Highlight folds behind a button on the Save row, closed at first, and remembers (Ames 2026-11-18).
+    const fold = await page.evaluate(() => {
+      const c = document.getElementById('nge-cell-match');
+      const b = c.querySelector('.nge-cm-marktoggle'), m = c.querySelector('.nge-cm-mark');
+      const first = { shown: b.offsetParent !== null, open: m.offsetParent !== null, h: c.getBoundingClientRect().height };
+      b.click();
+      const opened = { open: m.offsetParent !== null, aria: b.getAttribute('aria-expanded'), saved: localStorage.getItem('nge_sandbox_highlight_open') };
+      return { first, opened };
+    });
+    check('Highlight starts folded behind its button and opens on a click, remembered', fold.first.shown && !fold.first.open && fold.opened.open && fold.opened.aria === 'true' && fold.opened.saved === '1', fold);
     // Marking: Checked and Come back open Highlight on that color, and leave Merge or Cut.
     const mark = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match');
@@ -333,12 +348,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-mark-i').click());
     // Jump is always in the row.
     const jumpNow = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { shown: h.offsetParent !== null, text: h.textContent, glow: h.classList.contains('nge-cm-nudged') }; });
-    check('Jump is in the button row from the start, not lit', jumpNow.shown && jumpNow.text === 'Jump' && !jumpNow.glow, jumpNow);
+    check('Jump is in the button row from the start, not lit', jumpNow.shown && jumpNow.text === 'Jump to next spot' && !jumpNow.glow, jumpNow);
     // A minute with no edit: Hint.
     await page.evaluate(() => window.__ngeCellMatch.ageHintClock(16762, 61000));
     await page.waitForTimeout(2600);
     const nudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.querySelector('.nge-cm-hbtn'); return { h: !!h && h.offsetParent !== null && h.textContent, glow: h.classList.contains('nge-cm-nudged'), tip: h && h.title, line: !c.querySelector('.nge-cm-nudge').hidden }; });
-    check('after a minute with no edit, Jump lights up, and nothing else opens', nudge.h === 'Jump' && nudge.glow && nudge.tip === 'Go to the next spot on your cell that needs fixing' && !nudge.line, nudge);
+    check('after a minute with no edit, Jump lights up, and nothing else opens', nudge.h === 'Jump to next spot' && nudge.glow && nudge.tip === 'Go to the next spot on your cell that needs fixing' && !nudge.line, nudge);
     await shot('cell-match-hint.png');
     // Collapsed: no Hint at all (Ames 2026-11-14: "I would be too tempted to click").
     const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });

@@ -138,6 +138,19 @@ let doneTimer: ReturnType<typeof setTimeout> | null = null;
 let editKind: 'merge' | 'split' | null = null;
 const VERDICT_MS = 4500;
 
+/** After a good edit Jump glows once, about 2 s, so the next spot is one
+ *  click away (kfay, report 564). No lasting beat. */
+let glowTimer: ReturnType<typeof setTimeout> | null = null;
+function glowJumpOnce(el: HTMLElement) {
+  const h = el.querySelector('.nge-cm-hbtn') as HTMLElement | null;
+  if (!h) return;
+  h.classList.remove('nge-cm-glow1');
+  void h.offsetWidth;
+  h.classList.add('nge-cm-glow1');
+  if (glowTimer) clearTimeout(glowTimer);
+  glowTimer = setTimeout(() => { glowTimer = null; h.classList.remove('nge-cm-glow1'); }, 2100);
+}
+
 /** Says on the card's top line, for a while, how the last edit went. */
 function flash(text: string, tone: 'plain' | 'good' | 'bad', ms: number) {
   doneText = text;
@@ -148,6 +161,7 @@ function flash(text: string, tone: 'plain' | 'good' | 'bad', ms: number) {
     el.classList.toggle('nge-cm-done', tone === 'good');
     el.classList.toggle('nge-cm-bad', tone === 'bad');
     (el.querySelector('.nge-cm-state') as HTMLElement).textContent = text;
+    if (tone === 'good') glowJumpOnce(el);
   }
   if (doneTimer) clearTimeout(doneTimer);
   doneTimer = setTimeout(() => {
@@ -408,6 +422,8 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
 #${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important}
 #${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:nge-cm-hglow 2.6s ease-in-out infinite}
+/* One soft glow after a good edit (report 564), then still. */
+#${CARD_ID} .nge-cm-hbtn.nge-cm-glow1{animation:nge-cm-hglow 2s ease-in-out 1}
 #${CARD_ID} .nge-cm-mark{margin-top:6px;font:12px/1.3 Inter,system-ui,sans-serif;color:#a9c3e0}
 #${CARD_ID} .nge-cm-mark-head{display:flex;align-items:center;gap:6px}
 #${CARD_ID} .nge-cm-mark-i{width:18px;height:18px;flex:0 0 18px;font-size:11px}
@@ -444,7 +460,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-hbtn[hidden]{display:none}
 #${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
 @keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
-@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:none}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged,#${CARD_ID} .nge-cm-hbtn.nge-cm-glow1{animation:none}}
 #${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
@@ -459,26 +475,30 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
 #${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
-#${CARD_ID} .nge-cm-play{display:grid;grid-template-columns:1fr 1.6fr;grid-template-areas:"jump done" "save skip";gap:5px;margin-top:6px;padding-top:7px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-play{display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-areas:"jump jump jump" "done done done" "save skip mark";gap:5px;margin-top:6px;padding-top:7px;border-top:1px solid rgba(127,190,255,.18)}
 #${CARD_ID} .nge-cm-play .nge-cm-btn{margin-left:0 !important;width:100%;justify-content:center;text-align:center}
 #${CARD_ID} .nge-cm-play .nge-cm-hbtn{grid-area:jump}
 #${CARD_ID} .nge-cm-play .nge-cm-complete{grid-area:done}
 #${CARD_ID} .nge-cm-play .nge-cm-saveview{grid-area:save}
 #${CARD_ID} .nge-cm-play .nge-cm-skipcell{grid-area:skip}
-#${CARD_ID} .nge-cm-play .nge-cm-saveview,#${CARD_ID} .nge-cm-play .nge-cm-skipcell{padding:4px 8px !important;border-color:rgba(127,190,255,.22);background:transparent;color:#a9c3e0;font-size:12px !important;font-weight:500 !important}
-#${CARD_ID} .nge-cm-play .nge-cm-saveview:hover,#${CARD_ID} .nge-cm-play .nge-cm-skipcell:hover{border-color:rgba(127,216,255,.55);background:rgba(74,158,255,.12);color:#e6f0ff}
+#${CARD_ID} .nge-cm-play .nge-cm-marktoggle{grid-area:mark;display:inline-flex;align-items:center;gap:5px}
+#${CARD_ID} .nge-cm-marktoggle svg{transition:transform .15s}
+#${CARD_ID} .nge-cm-marktoggle[aria-expanded="true"] svg{transform:rotate(180deg)}
+#${CARD_ID} .nge-cm-mark[hidden]{display:none !important}
+#${CARD_ID} .nge-cm-play .nge-cm-saveview,#${CARD_ID} .nge-cm-play .nge-cm-skipcell,#${CARD_ID} .nge-cm-play .nge-cm-marktoggle{padding:4px 8px !important;border-color:rgba(127,190,255,.22);background:transparent;color:#a9c3e0;font-size:12px !important;font-weight:500 !important}
+#${CARD_ID} .nge-cm-play .nge-cm-saveview:hover,#${CARD_ID} .nge-cm-play .nge-cm-skipcell:hover,#${CARD_ID} .nge-cm-play .nge-cm-marktoggle:hover,#${CARD_ID} .nge-cm-play .nge-cm-marktoggle[aria-expanded="true"]{border-color:rgba(127,216,255,.55);background:rgba(74,158,255,.12);color:#e6f0ff}
 #${CARD_ID} .nge-cm-btn[hidden]{display:none}
 #${CARD_ID} .nge-cm-play .nge-cm-btn,#${CARD_ID} .nge-cm-finish-actions .nge-cm-btn,#${CARD_ID} .nge-cm-nudge .nge-cm-btn{padding:7px 10px;border-radius:6px;font:600 12.5px/1 Inter,system-ui,sans-serif;letter-spacing:0;text-transform:none;white-space:nowrap}
 #${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-go{margin-left:auto;border-color:#3eecbe;background:rgba(20,110,80,.55);color:#eafff7}
 #${CARD_ID} .nge-cm-play .nge-cm-complete:hover,#${CARD_ID} .nge-cm-finish-go:hover:not(:disabled){background:rgba(24,140,100,.7)}
 #${CARD_ID} .nge-cm-btn:disabled{opacity:.5;cursor:default}
 #${CARD_ID}.nge-cm-idle .nge-cm-play,#${CARD_ID}.nge-cm-idle .nge-cm-cellid,#${CARD_ID}.nge-cm-idle .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-play,#${CARD_ID}.nge-cm-reviewing .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellid{display:none}
-#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
+#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-marktoggle,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){height:auto !important;resize:horizontal}
 #${CARD_ID} .nge-cm-nudge-btns{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
 #${CARD_ID}.nge-cm-finishing .nge-cm-play,#${CARD_ID}.nge-cm-finishing .nge-cm-nudge,#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="cut"]{display:none}
-#${CARD_ID} .nge-cm-viewnote{margin-top:6px;font-size:11.5px;line-height:1.4;color:#8fa6c4}
+#${CARD_ID} .nge-cm-viewnote{margin-top:6px;font-size:11.5px;line-height:1.4;color:#8fa6c4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #${CARD_ID} .nge-cm-viewnote:empty{display:none}
 #${CARD_ID}.nge-cm-idle .nge-cm-viewnote,#${CARD_ID}.nge-cm-reviewing .nge-cm-viewnote,#${CARD_ID}.nge-cm-finishing .nge-cm-viewnote,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-viewnote{display:none}
 #${CARD_ID} .nge-cm-skipask{margin-top:8px;padding:10px;border:1px solid rgba(255,138,158,.5);border-radius:8px;background:rgba(255,107,138,.08)}
@@ -655,7 +675,7 @@ const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
 // points while you are in merge or cut mode"). A chip leaves Merge or Cut and
 // opens Highlight on that color; the pill says what a Ctrl+click does now.
 // Ames 2026-11-16: the chips on their own line, and an (i) for Highlight.
-const MARK_HTML = '<div class="nge-cm-mark">'
+const MARK_HTML = '<div class="nge-cm-mark" hidden>'
   + '<div class="nge-cm-mark-head"><span class="nge-cm-mark-label">Mark where you have been</span>'
   + '<button type="button" class="nge-cm-tool nge-cm-mark-i" aria-label="What is Highlight?" aria-expanded="false" title="What is Highlight?">i</button></div>'
   + '<div class="nge-cm-mark-info" hidden></div>'
@@ -663,6 +683,7 @@ const MARK_HTML = '<div class="nge-cm-mark">'
   + '<button type="button" class="nge-cm-chip" data-mark="checked" title="Highlight a branch you have checked, out to its end"><i></i>Checked</button>'
   + '<button type="button" class="nge-cm-chip" data-mark="comeback" title="One click marks a spot to come back to"><i></i>Come back</button></div></div>';
 const MARK_INFO_KEY = 'sandbox.highlight_info';
+const MARK_OPEN_KEY = 'nge_sandbox_highlight_open';
 const MARK_INFO_HTML = 'Highlight paints over your cell so you can see where you have been.<br>'
   + '<b>Checked</b>: Ctrl+click two points on a branch and the stretch between them is marked. Mark each branch out to its end once you have looked at it.<br>'
   + '<b>Come back</b>: one click marks a spot you want to look at again.<br>'
@@ -672,7 +693,8 @@ const LEFT_HTML = 'Press Complete and Review to see the answers. In a production
 const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip Cell</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-marktoggle" aria-expanded="false" title="Mark where you have been">Highlight<svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump to next spot</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
   + '<div class="nge-cm-viewnote"></div>'
   + MARK_HTML
@@ -1471,7 +1493,8 @@ function onCellState(e: Event) {
   // saves by itself when you move to another cell; a reload does not.
   const note = el.querySelector('.nge-cm-viewnote') as HTMLElement;
   const savedText = d.saved && (!d.savedText || /not saved/i.test(d.savedText)) ? 'Saved just now' : (d.savedText || 'Not saved yet');
-  note.textContent = `${savedText}. Your view also saves by itself when you move to another cell.`;
+  note.textContent = `${savedText}. Also saves when you change cells.`;
+  note.title = `${savedText}. Your view also saves by itself when you move to another cell.`;
   const skip = el.querySelector('.nge-cm-skipcell') as HTMLButtonElement;
   skip.disabled = !!d.skipping;
   skip.textContent = d.skipping ? 'Skipping…' : 'Skip Cell';
@@ -1508,6 +1531,19 @@ function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
   el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
   for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
+  // Highlight folds away (Ames 2026-11-18: "this box is so big"), closed at
+  // first; each player's choice is remembered.
+  const markBox = el.querySelector('.nge-cm-mark') as HTMLElement;
+  const markBtn = el.querySelector('.nge-cm-marktoggle') as HTMLElement;
+  const setMarkOpen = (open: boolean) => { markBox.hidden = !open; markBtn.setAttribute('aria-expanded', String(open)); };
+  let markOpen = false;
+  try { markOpen = localStorage.getItem(MARK_OPEN_KEY) === '1'; } catch { /* closed */ }
+  setMarkOpen(markOpen);
+  markBtn.addEventListener('click', () => {
+    const open = markBox.hidden;
+    setMarkOpen(open);
+    try { localStorage.setItem(MARK_OPEN_KEY, open ? '1' : '0'); } catch { /* this visit only */ }
+  });
   el.querySelector('.nge-cm-mark-i')!.addEventListener('click', e => {
     const box = el.querySelector('.nge-cm-mark-info') as HTMLElement;
     box.hidden = !box.hidden;
