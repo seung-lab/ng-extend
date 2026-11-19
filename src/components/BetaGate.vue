@@ -158,7 +158,7 @@ async function request() {
 // Use my invite (Ames 2026-11-04: "I don't want them replying with a gmail
 // to me, I want them to use the site"). Invites went to the email on the
 // EyeWire form, which often isn't the Google account they sign in with: the
-// email the invite reached brings this account in at once
+// email the invite reached sends this account to an admin to let in
 // (functions/access-request.js, access.linkInvite).
 const inviteEmail = ref('');
 const inviteBusy = ref(false);

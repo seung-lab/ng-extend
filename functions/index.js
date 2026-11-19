@@ -2780,6 +2780,14 @@ exports.ewCommunityData = onRequest(
       // your own username / name / flag / bio / avatar.
       if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","user_views","blog_posts","tutorial_step_events"].includes(input.table) && !isPersonalProfileEdit(input)) requirePilot(context);
       const plan=authorizePilotData(input,context)||authorizeData(input,context);
+      // A new display name or username may not be one another player carries:
+      // quest sheet rows are owned by name (name-owner.js; security review 2026-11-13).
+      if(plan.table==="users" && plan.method==="PATCH" && me && plan.body) {
+        const {nameKey}=require("./sheet-policy"), {nameTaken,NAME_TAKEN}=require("./name-owner");
+        const row=Array.isArray(plan.body)?plan.body[0]:plan.body, mine=new Set([me.display_name,me.username].map(nameKey));
+        const fresh=["display_name","username"].map(k=>row&&row[k]).filter(v=>typeof v==="string"&&nameKey(v)&&!mine.has(nameKey(v)));
+        if(fresh.length && await nameTaken(sb,me.id,fresh)) throw ewErr(409,NAME_TAKEN);
+      }
       if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
         for(const row of rows) {
@@ -3099,6 +3107,9 @@ exports.ewSheetSync = onRequest(
       await mirrorQuestRows(sb,input.quest,rows);
       return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows});
     }
+    // The sheet knows a row's owner by name alone, so the name has to be this
+    // player's and nobody else's (name-owner.js; security review 2026-11-13).
+    { const {ownsName,SHARED_NAME}=require('./name-owner'); if(!(await ownsName(sb,me))) throw ewErr(409,SHARED_NAME); }
     const done=await syncQuest(input,me,admin.applicationDefault());
     questMirrorAt[input.quest]=0;  // the next list copies this write
     // A submit is what moves the Quests leaderboard, which reads only the
@@ -3264,6 +3275,8 @@ exports.ewQuestReview = onRequest(
         const out = await review.digest({ api, sb, dryRun: !!args.dryRun, ...(args.toMe ? { to: [{ id: me.id, name: me.display_name || "you" }] } : {}) });
         return res.json({ ok: true, ...out });
       }
+      // A review is found by the row's Annotator Name: see name-owner.js.
+      { const { ownsName, SHARED_NAME } = require("./name-owner"); if (!(await ownsName(sb, me))) throw ewErr(409, SHARED_NAME); }
       return res.json({ ok: true, data: await review[action](args, { api, me }) });
     } catch (e) {
       console.warn("[ewQuestReview]", action, e.status || 500, e.message);

@@ -601,10 +601,9 @@ async function beta(a, io) {
 // not a Google account, and Pyr signs in with Google. "I don't want them
 // replying with a gmail to me, I want them to use the site": the blocked
 // screen asks for the email the invite reached, and if it is on Pilot
-// testers the Google account they signed in with is added at once. An
-// invite email is not a secret, so each invite brings in one account, only
-// while nobody has joined under the invite itself, and every admin is told.
-// Anything else becomes a Beta request for an admin to look at.
+// testers the request goes to the admins marked as an invited tester on
+// another Google account. An invite email is not a secret, so naming one
+// never lets an account in by itself: an admin adds it.
 //   access.linkInvite  a player not on the list: {email} the invite reached.
 const LINKED_PREFIX = 'Linked to invite: ';
 // Its own category, so no triage card: the player is already in and nothing
@@ -628,31 +627,24 @@ async function linkInvite(a, io) {
     linkedBefore = (await io.sb('site_issues?category=in.' + encodeURIComponent(`("${BETA_CATEGORY}","${INVITE_CATEGORY}")`)
       + '&message=like.' + encodeURIComponent('*' + LINKED_PREFIX + email + '.*') + '&select=id&limit=1')).length > 0;
   } catch (e) { linkedBefore = true; }
-  if (joined || linkedBefore) {
-    const why = joined ? 'Someone already plays Pyr with that invite email.' : 'That invite already brought in another Google account.';
-    const message = [
-      `${name} asks to join the Pyr beta.`,
-      `Email they gave: ${email}`,
-      `Invited as: ${email}, already on Pilot testers. They sign in with another Google account. ${why}`,
-      `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
-    ].join('\n');
-    const title = `Invited tester on another Google account: ${name}`.slice(0, 120);
-    await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
-    const bell = `${mdText(name)} used the invite for ${mdText(email)} from another Google account, ${mdText(signIn)}. ${mdText(why)}\n\n${LET_IN}`;
-    try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
-    await wakeBoard(io);
-    return {invited: false, requested: true, review: true};
-  }
-  await io.sb('pilot_members?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
-    body: JSON.stringify({email: signIn, enabled: true})});
-  // The record: it is how a second use of this invite is caught.
-  const message = `${name} was invited as ${email} and joined as ${signIn}.\n${LINKED_PREFIX}${email}.\nSign in email: ${signIn}. If this isn't them, turn ${signIn} off under Admin Hub, Pilot testers.`;
-  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: INVITE_CATEGORY,
-    title: `Invite used: ${name}`.slice(0, 120), message, user_id: io.me.id, user_name: name}])});
-  // Nothing to do (Ames 2026-11-04: "asks to join" read as a request).
-  const bell = `${mdText(name)} is in. They were invited as ${mdText(email)} and signed in as ${mdText(signIn)}. Nothing to do.\n\nIf this isn't them, turn ${mdText(signIn)} off under Admin Hub, Pilot testers.`;
-  try { await io.notifyAdmins({title: `🔑 Invite used by ${name}`.slice(0, 120), body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
-  return {invited: true, linked: true};
+  // Knowing an invited address is not proof of owning it, so nobody is let in
+  // here: an admin sees the request and adds the account (security review
+  // 2026-11-13, finding 2). Before, the first account to name an unused invite
+  // joined at once.
+  const why = joined ? ' Someone already plays Pyr with that invite email.'
+    : linkedBefore ? ' That invite already brought in another Google account.' : '';
+  const message = [
+    `${name} asks to join the Pyr beta.`,
+    `Email they gave: ${email}`,
+    `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.${why}`,
+    `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+  ].join('\n');
+  const title = `Invited tester on another Google account: ${name}`.slice(0, 120);
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
+  const bell = `${mdText(name)} used the invite for ${mdText(email)} from another Google account, ${mdText(signIn)}.${mdText(why)} Check it is them before letting them in.\n\n${LET_IN}`;
+  try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  await wakeBoard(io);
+  return {invited: false, requested: true, review: true};
 }
 
 /** Is this address on Pilot testers? A failed look up counts as no: the
