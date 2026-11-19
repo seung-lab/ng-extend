@@ -563,13 +563,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:3px 0 5px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-fill,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{box-shadow:none;opacity:.85}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{font-size:10.5px;letter-spacing:.12em;grid-column:1;grid-row:1}
-#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0;padding:3px 7px 2px;border-radius:6px;line-height:1;cursor:pointer;background:rgba(10,20,36,.6);transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]{border:1px solid rgba(61,155,255,.6);color:#9fd0ff}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]{border:1px solid rgba(255,64,88,.6);color:#ffa3b0}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]:hover{background:rgba(61,155,255,.18)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]:hover{background:rgba(255,64,88,.16)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
+/* Merge and Cut as plain labels, like MATCH SCORE (Ames 2026-11-19: the
+   pills "don't match our UI"). A label is the M or C button; when its mode
+   is on it lights blue, Cut too (Ames: "keep cut mode blue period"). */
+#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0 0 0 -6px;padding:4px 6px 3px;border:1px solid transparent;border-radius:5px;line-height:1;cursor:pointer;background:transparent;color:#8fb6dc;transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
+#${CARD_ID} .nge-cm-modebtn:hover{color:#e6f0ff;background:rgba(61,155,255,.12);border-color:rgba(127,190,255,.3)}
+#${CARD_ID} .nge-cm-modebtn[aria-pressed="true"]{color:#fff;background:rgba(61,155,255,.32);border-color:rgba(127,208,255,.85);box-shadow:0 0 9px rgba(61,155,255,.55)}
+#${CARD_ID} .nge-cm-row:has(.nge-cm-modebtn[aria-pressed="true"]) .nge-cm-pieces{color:#e6f0ff}
 #${CARD_ID} .nge-cm-modebtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
