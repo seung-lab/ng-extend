@@ -486,7 +486,20 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-hbtn[hidden]{display:none}
 #${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
 @keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
-@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged,#${CARD_ID} .nge-cm-hbtn.nge-cm-glow1{animation:none}}
+/* Jump you can feel (Ames 2026-11-19: "make the click on Jump more satisfying"):
+   it presses in, a ripple runs out from the click, a light runs along it while
+   it looks, and it flares once when the spot is there. */
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn{position:relative;overflow:hidden;transition:transform .09s ease-out,box-shadow .15s ease,background-color .15s ease}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled){background:rgba(74,158,255,.34) !important;border-color:#a8e4ff !important;color:#fff !important;box-shadow:0 0 8px rgba(127,216,255,.35)}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:active:not(:disabled){transform:translateY(1px) scale(.97);box-shadow:inset 0 2px 7px rgba(0,8,24,.55)}
+#${CARD_ID} .nge-cm-ripple{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(214,242,255,.85) 0,rgba(127,216,255,.35) 45%,rgba(127,216,255,0) 70%);animation:nge-cm-ripple .6s ease-out forwards}
+@keyframes nge-cm-ripple{to{transform:scale(24);opacity:0}}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-going:disabled{opacity:1;cursor:progress;color:#e6f6ff !important}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-going::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;background:linear-gradient(90deg,rgba(191,234,255,0),#bfeaff,rgba(191,234,255,0)) no-repeat;background-size:45% 100%;animation:nge-cm-going .85s linear infinite}
+@keyframes nge-cm-going{from{background-position:-60% 0}to{background-position:160% 0}}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-landed{animation:nge-cm-landed .65s ease-out 1}
+@keyframes nge-cm-landed{0%{filter:brightness(1.7);box-shadow:0 0 0 0 rgba(127,216,255,.75)}100%{filter:none;box-shadow:0 0 0 11px rgba(127,216,255,0)}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged,#${CARD_ID} .nge-cm-hbtn.nge-cm-glow1,#${CARD_ID} .nge-cm-hbtn.nge-cm-landed,#${CARD_ID} .nge-cm-hbtn.nge-cm-going::after{animation:none}#${CARD_ID} .nge-cm-ripple{display:none}#${CARD_ID} .nge-cm-play .nge-cm-hbtn:active:not(:disabled){transform:none}}
 #${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
@@ -1364,6 +1377,7 @@ async function pressHint(el: HTMLElement, next = false) {
   line.hidden = false;
   if (step === 1) { b.hidden = true; text.textContent = 'Finding the next spot…'; }
   b.disabled = true; jump.disabled = true; if (step === 2) b.textContent = 'Finding…';
+  if (next) jump.classList.add('nge-cm-going');
   line.classList.add('nge-cm-finding');
   try {
     const root = last.get(taskId)?.root;
@@ -1381,6 +1395,7 @@ async function pressHint(el: HTMLElement, next = false) {
     if (step === 1 && h.piece) askAhead(taskId, root, c.n, 2);
     if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; return; }
     showHintPiece(h.piece);
+    if (next) jumpLanded(jump);
     const where = h.left > 1 ? ` Spot ${(c.n % h.left) + 1} of ${h.left}.` : '';
     // A missing branch can bring part of another cell with it (Ames
     // 2026-11-14: "this missed piece has a huge merger on it").
@@ -1403,7 +1418,7 @@ async function pressHint(el: HTMLElement, next = false) {
     console.debug('[cell-match] no jump', e?.message);
     text.textContent = 'Could not find the next spot right now. Try again in a moment.';
     b.textContent = 'Show me';
-  } finally { b.disabled = false; jump.disabled = false; line.classList.remove('nge-cm-finding'); }
+  } finally { b.disabled = false; jump.disabled = false; jump.classList.remove('nge-cm-going'); line.classList.remove('nge-cm-finding'); }
 }
 let hintPinTimer: number | undefined;
 function showHintPiece(p: HintPiece) {
@@ -1568,9 +1583,30 @@ function keepSize(el: HTMLElement) {
   el.addEventListener('mouseup', save);
   el.addEventListener('pointerup', save);
 }
+/** A ripple out from where Jump was clicked (its middle, from the keyboard). */
+function jumpRipple(e: MouseEvent) {
+  const btn = e.currentTarget as HTMLElement | null;
+  if (!btn || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const r = btn.getBoundingClientRect();
+  const fromMouse = e.detail > 0 && (e.clientX || e.clientY);
+  const dot = document.createElement('span');
+  dot.className = 'nge-cm-ripple';
+  dot.setAttribute('aria-hidden', 'true');
+  dot.style.left = `${fromMouse ? e.clientX - r.left : r.width / 2}px`;
+  dot.style.top = `${fromMouse ? e.clientY - r.top : r.height / 2}px`;
+  btn.appendChild(dot);
+  setTimeout(() => dot.remove(), 650);
+}
+/** Jump flares once: the spot is on screen. */
+function jumpLanded(jump: HTMLElement) {
+  jump.classList.remove('nge-cm-landed');
+  void jump.offsetWidth;
+  jump.classList.add('nge-cm-landed');
+  setTimeout(() => jump.classList.remove('nge-cm-landed'), 700);
+}
 function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
-  el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
+  el.querySelector('.nge-cm-hbtn')!.addEventListener('click', e => { jumpRipple(e as MouseEvent); void pressHint(el, true); });
   el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', e => { e.stopPropagation(); void pressHint(el); });
   // The hint folds to one line; a click opens it, and Pyr remembers.
   const hintLine = el.querySelector('.nge-cm-nudge') as HTMLElement;
