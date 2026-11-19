@@ -374,31 +374,44 @@ onMounted(() => {
   // "?review=<id>" (Review their examples) opens that request in the view;
   // "?admin=access" opens Admin Hub > Access requests;
   // "?player=<id>" (their Pyr username) opens that player's profile.
-  // Both wait for the admin sign-in to finish, so the panel reads with it.
+  // They wait for the admin sign-in. Kept for this tab a little while, since
+  // a fresh Pyr reloads once to load its start view and that reload lost
+  // them (Ames 2026-11-19: the link "opened" Pyr and nothing else).
   try {
+    const PENDING = 'nge-open-from-link';
     const u = new URL(window.location.href);
     const player = u.searchParams.get('player') || '';
-    const wantReview = /^\d+$/.test(u.searchParams.get('review') || '') ? Number(u.searchParams.get('review')) : 0;
-    const wantAccess = u.searchParams.get('admin') === 'access';
-    const wantPlayer = /^[0-9a-f-]{36}$/i.test(player) ? player : '';
+    const review = /^\d+$/.test(u.searchParams.get('review') || '') ? Number(u.searchParams.get('review')) : 0;
+    const fresh = { review, access: u.searchParams.get('admin') === 'access', player: /^[0-9a-f-]{36}$/i.test(player) ? player : '', at: Date.now() };
     if (u.searchParams.has('admin') || u.searchParams.has('player') || u.searchParams.has('review')) {
       u.searchParams.delete('admin'); u.searchParams.delete('player'); u.searchParams.delete('review');
       history.replaceState(history.state, '', u.toString());
+      if (fresh.review || fresh.access || fresh.player) { try { sessionStorage.setItem(PENDING, JSON.stringify(fresh)); } catch { /* used now only */ } }
     }
-    if (wantReview || wantAccess || wantPlayer) {
+    let want = fresh;
+    if (!(want.review || want.access || want.player)) {
+      try { want = JSON.parse(sessionStorage.getItem(PENDING) || 'null') || want; } catch { /* none */ }
+    }
+    if (Date.now() - (want.at || 0) > 2 * 60 * 1000) { try { sessionStorage.removeItem(PENDING); } catch { /* */ } want = { ...want, review: 0, access: false, player: '' }; }
+    if (want.review || want.access || want.player) {
       const stop = watch(() => backendStore.isAdmin, admin => {
         if (!admin) return;
         queueMicrotask(() => stop());
+        // Done once this page has stayed up a moment (no reload after it).
+        setTimeout(() => { try { sessionStorage.removeItem(PENDING); } catch { /* */ } }, 20000);
         // "?review=<id>": straight into that request's examples in the view;
         // Admin Hub > Access requests if it cannot be found.
-        if (wantReview) {
-          void reviewRequestById(wantReview).catch(() => false).then(ok => {
-            if (!ok) { profileUserId.value = null; profileInitialTab.value = 'access'; showProfile.value = true; }
-          });
+        // After the start view has loaded, so it does not replace theirs.
+        if (want.review) {
+          setTimeout(() => {
+            void reviewRequestById(want.review).catch(() => false).then(ok => {
+              if (!ok) { profileUserId.value = null; profileInitialTab.value = 'access'; showProfile.value = true; }
+            });
+          }, 2500);
           return;
         }
-        if (wantAccess) { profileUserId.value = null; profileInitialTab.value = 'access'; }
-        else { profileUserId.value = wantPlayer; profileInitialTab.value = undefined; }
+        if (want.access) { profileUserId.value = null; profileInitialTab.value = 'access'; }
+        else { profileUserId.value = want.player; profileInitialTab.value = undefined; }
         showProfile.value = true;
       }, { immediate: true });
     }
