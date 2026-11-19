@@ -9,12 +9,12 @@
  * (src/data/muller_glia_mock.ts). Answers and finished splits stay in this
  * browser only (localStorage): no game table, no bells, no chat, no
  * Achievements, no stats. The Stage 2 check is real and read only: it asks the
- * PyChunkedGraph which cell each nucleus sits in now.
+ * PyChunkedGraph which cell each soma sits in now.
  */
 import { computed, ref } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
-import { supervoxelAtPlace } from '../util/crosshair_cell';
+import { supervoxelAt } from '../util/supervoxel_at';
 import { getRootFromSupervoxel } from '../widgets/pcg_service';
 import { GLIA_CHECK_CELLS, GLIA_PAIRS, GLIA_STAGE1_POOL, GLIA_STAGE2_POOL, type GliaCheckCell, type GliaPair } from '../data/muller_glia_mock';
 
@@ -74,16 +74,17 @@ function openPair(p: GliaPair, i = 0) { pairOpen.value = p.segmentId; show(p.seg
 async function rootAt(at: string): Promise<string | null> {
   const xyz = (at.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
   if (xyz.length !== 3) return null;
-  const sv = await supervoxelAtPlace(xyz);
+  const sv = await supervoxelAt(xyz);
   return sv && sv !== '0' ? getRootFromSupervoxel(sv) : null;
 }
-/** Real check, read only: which cell holds each nucleus now. */
+/** Real check, read only: which cell holds each soma now (Retina nuclei are
+ *  segments of their own, so the soma point, not the nucleus center). */
 async function check(p: GliaPair) {
   checking.value = p.segmentId; error.value = ''; message.value = '';
   try {
     const [a, b] = await Promise.all([rootAt(p.nuclei[0].at), rootAt(p.nuclei[1].at)]);
-    if (!a || !b) { pairNote.value[p.segmentId] = 'Could not read the cell at one of the nuclei. Sign in, or try again.'; return; }
-    if (a === b) { pairNote.value[p.segmentId] = 'Both nuclei are still in one cell. Keep cutting along where the two glia touch.'; return; }
+    if (!a || !b) { pairNote.value[p.segmentId] = 'Could not read the cell at one of the somas. Sign in, or try again.'; return; }
+    if (a === b) { pairNote.value[p.segmentId] = 'Both somas are still in one cell. Keep cutting along where the two glia touch.'; return; }
     saved.value.split[p.segmentId] = { a, b }; write();
     pairNote.value[p.segmentId] = '';
     message.value = `Split! ${p.nuclei[0].index} and ${p.nuclei[1].index} are two cells now. Saved in this browser only.`;
@@ -158,12 +159,12 @@ const short = (id: string) => `…${id.slice(-6)}`;
     <!-- Stage 2 -->
     <template v-else>
       <div v-if="!stage2Ready" class="nge-mg-lock">In the game, Stage 2 opens after {{ UNLOCK_AFTER }} answers in Stage 1. It is open here so you can try it.</div>
-      <div class="nge-mg-sub">Each of these is one segment holding two Muller glia that grew together. Cut them apart so each nucleus has its own cell.</div>
+      <div class="nge-mg-sub">Each of these is one segment holding two Muller glia that grew together. Cut them apart so each soma has its own cell.</div>
       <ol class="nge-mg-steps">
-        <li>Open the pair. Use Nucleus A and Nucleus B to visit each cell's nucleus.</li>
+        <li>Open the pair. Use Cell A and Cell B to visit each glia's soma.</li>
         <li>Find where the two glia touch. Turn on Cut Mode (C).</li>
         <li>Red points on cell A's side, blue points on cell B's side, then cut.</li>
-        <li>Press Check. Pyr asks the server which cell each nucleus is in now.</li>
+        <li>Press Check. Pyr asks the server which cell each soma is in now.</li>
       </ol>
       <div class="nge-mg-section">Merged pairs <span class="nge-mg-count">{{ openPairs.length }}</span></div>
       <template v-for="p in openPairs.slice(0, 12)" :key="p.segmentId">
@@ -176,8 +177,8 @@ const short = (id: string) => `…${id.slice(-6)}`;
         <div v-if="pairOpen === p.segmentId" class="nge-mg-pair">
           <div class="nge-mg-meta">Segment {{ p.segmentId }}</div>
           <div class="nge-mg-pair-btns">
-            <button class="nge-mg-btn nge-mg-btn--a" @click="openPair(p, 0)">Nucleus A</button>
-            <button class="nge-mg-btn nge-mg-btn--b" @click="openPair(p, 1)">Nucleus B</button>
+            <button class="nge-mg-btn nge-mg-btn--a" @click="openPair(p, 0)">Cell A</button>
+            <button class="nge-mg-btn nge-mg-btn--b" @click="openPair(p, 1)">Cell B</button>
             <button class="nge-mg-btn nge-mg-btn--go" :disabled="checking === p.segmentId" @click="check(p)">{{ checking === p.segmentId ? 'Checking…' : 'Check' }}</button>
           </div>
           <div v-if="pairNote[p.segmentId]" class="nge-mg-msg nge-mg-msg--bad">{{ pairNote[p.segmentId] }}</div>
