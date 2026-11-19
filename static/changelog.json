@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-19T22:36:00Z",
+      "title": "Training Sim stops calling good merges wrong",
+      "items": [
+        "The Training Sim no longer calls a merge wrong when the finished cell simply never placed that piece. Most of those merges were right.",
+        "Pieces the finished cell never placed no longer count as wrong parts, in your score, in Show me or in Jump. Some cells showed dozens of wrong parts that were really one.",
+        "A failed merge left over in your Merge Queue from an earlier visit goes away on its own once those two pieces are already one cell."
+      ]
+    },
+    {
       "at": "2026-11-19T21:13:00Z",
       "title": "A tidier Training Sim box",
       "items": [
