@@ -14,10 +14,17 @@ async function call<T = any>(action: string, body: Record<string, unknown> = {})
   let token: string | null = null;
   try { token = JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken || null; } catch { /* signed out */ }
   if (!token) throw new Error('Sign in to take a quest.');
-  const response = await fetch(functionUrl('ewMullerGlia'), {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
-    body: JSON.stringify({ action, token, ...body }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(functionUrl('ewMullerGlia'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
+      body: JSON.stringify({ action, token, ...body }),
+    });
+  } catch {
+    // Not reachable at all ("Failed to fetch"): the server is not open yet, or the connection dropped.
+    throw new Error('The Muller Glia Quest could not be reached. It may not be open yet: try again later.');
+  }
+  if (response.status === 404) throw new Error('The Muller Glia Quest is not open yet. Try again later.');
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'The quest could not be reached. Try again in a moment.');
   return result.data as T;

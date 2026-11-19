@@ -49,7 +49,7 @@ const RETINA_LAYERS = [
   // A stored middleauth token the way the provider expects it: under the
   // login URL that /auth_info names, and listing the app URLs it may be used
   // for (the provider refuses a token whose appUrls lack the server).
-  await context.addInitScript(() => { try { localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('nge-cilia-quest-intro-seen', '1'); } catch (e) {} });
+  await context.addInitScript(() => { try { localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('nge-cilia-quest-intro-seen', '1'); localStorage.setItem('pyr-intro-seen', '1'); } catch (e) {} });
   await context.addInitScript(() => {
     const apps = [];
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate', host + '/nglstate/', host + '/nglstate/api/v1', host + '/segmentation', host + '/segmentation/');
@@ -174,7 +174,16 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(400);
     ok(await page.locator('.nge-mg').count() === 1, 'Muller Glia Quest opens');
     await shot('1-stage1');
-    const first = (await page.locator('.nge-mg-card-name').innerText()).trim();
+    await page.evaluate(() => [...document.querySelectorAll('.nge-mg-btn')].find(b => /What is a Muller glia/.test(b.textContent)).click());
+    await page.waitForTimeout(800);
+    const pop = await page.evaluate(() => { const q = document.querySelector('.nge-qi'); const img = q && q.querySelector('img'); return q ? { title: q.querySelector('.nge-qi-title').innerText, img: !!img && img.naturalWidth > 0, items: q.querySelectorAll('li').length } : null; });
+    ok(pop && /What is a Muller glia/.test(pop.title) && pop.img && pop.items === 5, 'popup: title, picture loaded, five lines ' + JSON.stringify(pop));
+    await page.screenshot({ path: path.join(OUT, '0-popup.png') });
+    await page.evaluate(() => document.querySelector('.nge-qi a[data-nge-action="glia-example"]').click());
+    await page.waitForTimeout(500);
+    const ex = await page.evaluate(() => { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); return { vis: [...g.layer.displayState.segmentationGroupState.value.visibleSegments].map(String), open: !!document.querySelector('.nge-qi') }; });
+    ok(ex.vis.join() === '720575940572199198' && !ex.open, 'Show this glia loads the lab example and closes the popup');
+    const first = (await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg-card-name')).trim();
     await page.evaluate(() => document.querySelector('.nge-mg-card .nge-mg-btn').click());
     await page.waitForTimeout(300);
     const after = await page.evaluate(() => { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); const gs = g && g.layer.displayState.segmentationGroupState.value; return { vis: gs ? [...gs.visibleSegments].map(String) : [], pos: [...window.viewer.navigationState.position.value].map(Math.round) }; });
@@ -182,7 +191,7 @@ const RETINA_LAYERS = [
     for (const n of [0, 1, 2]) { await page.evaluate(n => document.querySelectorAll('.nge-mg-answers button')[n].click(), n); await page.waitForTimeout(500); }
     const s = gliaDb._state;
     ok(s.answers.length === 3 && s.answers[0].answer === 'yes' && s.answers[0].user_id === TEST_UUID, 'three answers reach the server, first is Yes');
-    ok((await page.locator('.nge-mg-card-name').innerText()).trim() !== first, 'the next cell comes up');
+    ok((await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg-card-name')).trim() !== first, 'the next cell comes up');
     ok(await page.locator('.nge-mg-row').count() === 3, 'latest answers listed');
     await shot('2-answered');
     await page.evaluate(() => document.querySelector('.nge-mg-row .nge-mg-btn--sm').click());
@@ -190,10 +199,12 @@ const RETINA_LAYERS = [
     ok(s.answers.length === 2, 'Undo takes an answer back on the server');
     await page.evaluate(() => document.querySelectorAll('.nge-mg-stage')[1].click());
     await page.waitForTimeout(400);
-    ok(/opens after 10 answers/.test(await page.locator('.nge-mg').innerText()), 'Stage 2 locked before 10 answers');
+    console.log('  mg count ' + await page.locator('.nge-mg').count() + ' panel ' + await page.locator('.nge-cl-panel').count()); await page.screenshot({ path: path.join(OUT, 'dbg.png') });
+    ok(/opens after 10 answers/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg')), 'Stage 2 locked before 10 answers');
     await page.evaluate(() => document.querySelectorAll('.nge-mg-stage')[0].click());
+    await page.waitForTimeout(400);
     for (let k = 0; k < 8; k++) { await page.evaluate(() => document.querySelectorAll('.nge-mg-answers button')[0].click()); await page.waitForTimeout(450); }
-    ok(/Stage 2 is open/.test(await page.locator('.nge-mg').innerText()), 'the 10th answer opens Stage 2');
+    ok(/Stage 2 is open/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg')), 'the 10th answer opens Stage 2');
     await page.evaluate(() => document.querySelectorAll('.nge-mg-stage')[1].click());
     await page.waitForTimeout(600);
     ok(await page.locator('.nge-mg-row').count() === 1, 'one merged pair listed');
@@ -201,12 +212,12 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(300);
     await page.evaluate(() => document.querySelector('.nge-mg-btn--go').click());
     await page.waitForTimeout(800);
-    ok(/still in one cell/.test(await page.locator('.nge-mg-pair').innerText()), 'Check: still merged');
+    ok(/still in one cell/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg-pair')), 'Check: still merged');
     await shot('3-stage2');
     gliaRoots = {'40856,35011,2024': '720575940000000001', '39650,34032,421': '720575940000000002'};
     await page.evaluate(() => document.querySelector('.nge-mg-btn--go').click());
     await page.waitForTimeout(800);
-    ok(/Split! F560 and E758 are two cells now/.test(await page.locator('.nge-mg').innerText()) && s.splits.length === 1, 'Check: split recorded');
+    ok(/Split! F560 and E758 are two cells now/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg')) && s.splits.length === 1, 'Check: split recorded');
     await shot('4-split');
     const other = calls.filter(c => c.action && c.action !== 'quest_list');
     ok(other.length === 0, 'nothing else written');

@@ -15,6 +15,9 @@ import { computed, onMounted, ref } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
 import { useProofreadingBackendStore } from '../store';
+import QuestInstructions from './QuestInstructions.vue';
+import EditableText from './EditableText.vue';
+import imgMullerGlia from '../images/muller-glia.jpg';
 import { gliaStatus, gliaNext, gliaAnswer, gliaUndo, gliaMine, gliaPairs, gliaCheck,
   type GliaCell, type GliaPair, type GliaStatus, type GliaAnswer } from '../muller_glia';
 
@@ -37,6 +40,35 @@ const pairsLoaded = ref(false);
 const pairOpen = ref('');
 const checking = ref('');
 const pairNote = ref<Record<string, string>>({});
+
+/** "What is a Muller glia?" (Ames 2026-11-19: "link to a glia here and have
+ *  an image in a popup"): the game's instructions box, with a Muller glia the
+ *  lab proofread (Ames's example, 720575940572199198) and a link that shows it.
+ *  Admins can edit the words and the picture (edit notes reach Ames). */
+const EXAMPLE_GLIA = { segmentId: '720575940572199198', at: '43037,55535,1018' };
+const WHAT_LEAD = "Muller glia are the retina's support cells. Each one spans the whole retina, from its foot at the inner surface to the photoreceptors, and holds the neurons around it in place.";
+const WHAT_STEPS: string[] = [
+  'A long column through the full depth of the retina.',
+  'Its soma sits in the inner nuclear layer, among the bipolar cells.',
+  'A wide end foot on the ganglion cell side (at the bottom of the picture), and fine sheets wrapped around its neighbors.',
+  "No axon, and no tidy dendritic tree like a neuron's.",
+  '<a href="#" data-nge-action="glia-example">Show this glia</a> in the viewer: a proofread Muller glia.',
+];
+/** Stage 2's steps (Ames 2026-11-19: fused glia usually touch in more than
+ *  one place; Find Path shows where). Editable by admins. */
+const SPLIT_STEPS: string[] = [
+  "Open the segment. Use <b>Cell A</b> and <b>Cell B</b> to visit each glia's soma.",
+  'Fused glia usually join in <b>more than one place</b>. To find one, press <b>F</b> for Find Path, <b>Ctrl+click</b> on soma A and then on soma B, and press <b>Enter</b>. The path runs through a place where the two cells join.',
+  "Turn on Cut Mode (<b>C</b>). Put red points on cell A's side of that join and blue points on cell B's side, then cut.",
+  'Run Find Path again. If a path still crosses from A to B, there is another join: cut it the same way.',
+  'When no path is left, press <b>Check</b>. Pyr asks the server which cell each soma is in now.',
+];
+function onWhatAction(name: string) {
+  if (name !== 'glia-example') return;
+  showHow.value = false;
+  show(EXAMPLE_GLIA.segmentId, EXAMPLE_GLIA.at);
+  message.value = 'This is a proofread Muller glia. Turn it in 3D to see the whole column.';
+}
 
 const label = (a: GliaAnswer) => (a === 'yes' ? 'Yes' : a === 'no' ? 'No' : 'Not sure');
 const short = (id: string) => `…${String(id).slice(-6)}`;
@@ -140,7 +172,7 @@ async function check(p: GliaPair) {
       pairNote.value[p.segmentId] = 'Could not read the cell at one of the somas. Try again in a moment.';
     } else {
       const together = p.glia.length === 2 ? 'Both somas are still in one cell.' : 'Some somas are still in one cell.';
-      pairNote.value[p.segmentId] = `${together} Keep cutting along where the glia touch.`;
+      pairNote.value[p.segmentId] = `${together} There is still a join: run Find Path from soma to soma to find it.`;
     }
   } catch (e: any) { pairNote.value[p.segmentId] = e?.message || String(e); }
   finally { checking.value = ''; }
@@ -155,12 +187,10 @@ async function check(p: GliaPair) {
         <button class="nge-mg-btn" :class="{ on: showHow }" @click="showHow = !showHow">What is a Muller glia?</button>
       </div>
       <div class="nge-mg-lead">Muller glia are the retina's support cells. Each one spans the whole retina, from its foot at the inner surface to the photoreceptors, and holds the neurons around it in place. Help us find every one of them.</div>
-      <ul v-if="showHow" class="nge-mg-how">
-        <li>A long column through the full depth of the retina.</li>
-        <li>Its soma sits in the inner nuclear layer, among the bipolar cells.</li>
-        <li>A wide end foot on the ganglion cell side, and fine sheets wrapped around its neighbors.</li>
-        <li>No axon, and no tidy dendritic tree like a neuron's.</li>
-      </ul>
+      <QuestInstructions v-if="showHow" kicker="Muller Glia Quest" title="What is a Muller glia?"
+        :lead="WHAT_LEAD" :steps="WHAT_STEPS" lead-key="quest.muller_glia.lead" steps-key="quest.muller_glia.what"
+        image-key="quest.muller_glia.image" :image="imgMullerGlia" image-alt="A Muller glia from the Retina dataset in 3D: a long column with a wide end foot at the bottom"
+        :legend="[]" @close="showHow = false" @action="onWhatAction" />
       <div v-if="status?.installed" class="nge-mg-stages">
         <button class="nge-mg-stage" :class="{ on: stage === 1 }" @click="stage = 1">
           <span class="nge-mg-stage-n">1</span> Is it a Muller glia?
@@ -219,12 +249,7 @@ async function check(p: GliaPair) {
         <div v-if="!status.unlocked" class="nge-mg-empty">Stage 2 opens after {{ status.unlockAfter }} answers in Stage 1. You have {{ status.answered }}.</div>
         <template v-else>
           <div class="nge-mg-sub">Each of these is one segment holding two or more Muller glia that grew together. Cut them apart so each soma has its own cell.</div>
-          <ol class="nge-mg-steps">
-            <li>Open the segment. Use Cell A and Cell B to visit each glia's soma.</li>
-            <li>Find where the glia touch. Turn on Cut Mode (C).</li>
-            <li>Red points on cell A's side, blue points on cell B's side, then cut.</li>
-            <li>Press Check. Pyr asks the server which cell each soma is in now.</li>
-          </ol>
+          <EditableText text-key="quest.muller_glia.split_steps" :original="SPLIT_STEPS" list-class="nge-mg-steps" />
           <div class="nge-mg-section">Merged glia <span class="nge-mg-count">{{ pairs.length }}</span></div>
           <div v-if="pairsLoaded && !pairs.length" class="nge-mg-empty">Every merged pair is split. Thank you!</div>
           <template v-for="p in pairs.slice(0, 15)" :key="p.segmentId">
@@ -255,7 +280,6 @@ async function check(p: GliaPair) {
 .nge-mg-titlerow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nge-mg-title { font-family: 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; font-size: 14px; font-weight: 700; color: #eef; }
 .nge-mg-lead { font-size: 14px; line-height: 1.5; color: #b3c0d3; }
-.nge-mg-how { margin: 0; padding: 8px 12px 8px 26px; border-radius: 6px; background: rgba(10, 20, 40, 0.6); border: 1px solid rgba(120, 140, 255, 0.12); font-size: 13px; line-height: 1.55; color: #b9c8de; }
 .nge-mg-stages { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
 .nge-mg-stage { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 7px; cursor: pointer; text-align: left;
   border: 1px solid rgba(120, 140, 255, 0.15); background: transparent; color: #a9b8cc; font: 600 13px 'Inter', sans-serif; }
@@ -293,7 +317,7 @@ async function check(p: GliaPair) {
 .nge-mg-btn:disabled { opacity: 0.5; cursor: default; }
 .nge-mg-pair { padding: 8px 12px 10px; background: rgba(74, 158, 255, 0.05); display: flex; flex-direction: column; gap: 6px; }
 .nge-mg-pair-btns { display: flex; flex-wrap: wrap; gap: 6px; }
-.nge-mg-steps { margin: 6px 12px 0; padding: 8px 12px 8px 28px; border-radius: 6px; background: rgba(10, 20, 40, 0.5); font-size: 13px; line-height: 1.55; color: #b9c8de; }
+:deep(.nge-mg-steps) { margin: 6px 12px 0; padding: 8px 12px 8px 28px; border-radius: 6px; background: rgba(10, 20, 40, 0.5); font-size: 13px; line-height: 1.55; color: #b9c8de; }
 .nge-mg-msg { margin: 8px 12px 0; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #a6ffd6; background: rgba(80, 220, 170, 0.08); }
 .nge-mg-msg--bad { color: #ffb4c8; background: rgba(255, 100, 140, 0.08); }
 .nge-mg-msg--in { margin: 0; }
