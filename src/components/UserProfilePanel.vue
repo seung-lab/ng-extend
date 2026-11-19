@@ -145,7 +145,10 @@ function placeLabel(n: number) {
 }
 function openQuestBoard() {
   try { localStorage.setItem('nge-leaderboard-metric', 'quests'); } catch { /* private mode */ }
-  document.dispatchEvent(new CustomEvent('nge:open-leaderboard'));
+  // The profile closes first: the leaderboard opens beside the site, under it,
+  // and a click elsewhere would put it away again.
+  handleClose();
+  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:open-leaderboard')), 220);
 }
 // Annotations placed: their total, or mine plus what this browser has yet to send.
 const otherAnnotations = ref<number | null>(null);
