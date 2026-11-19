@@ -47,6 +47,10 @@ import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
+// Orphan segments MOCKUP (Ames 2026-11-19): Retina, test sites only.
+import OrphanSegmentsTab from './OrphanSegmentsTab.vue';
+import { ON_TEST_SITE } from '../hunt';
+import { orphanName, ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA } from '../data/orphan-segments';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
@@ -163,7 +167,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast' | 'orphans'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -2469,6 +2473,10 @@ const questsHere = computed(() => canonicalDataset(activeDataset.value || getCur
 /** The cast of the retina (Ames 2026-10-24): one example of each cell type,
  *  on the Retina only. */
 const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
+/** Orphan segments mockup: Retina, and never on the live site until Ames says so. */
+const orphansHere = computed(() => ON_TEST_SITE && castHere.value);
+const orphanTitle = orphanName().title;
+const orphanCount = ORPHANS_LARGE.length + ORPHANS_SMALLER.length + ORPHANS_GLIA.length + ORPHANS_SOMA.length;
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
 /** No access to the quests' dataset: this button was a way around the lock
  *  on the dataset switcher (양동호, report 304). */
@@ -3787,6 +3795,10 @@ onBeforeUnmount(() => {
                       title="One example cell of each retinal type, to turn in 3D, alone or all together">
                 Meet the cells <b>{{ CAST.length }}</b>
               </button>
+              <button v-if="orphansHere" :class="{ active: filter === 'orphans', 'nge-cl-orphans-tab': true }" @click="filter = 'orphans'"
+                      title="Pieces of the retina that belong to no cell yet: tidy one up and record what it is (test site preview)">
+                {{ orphanTitle }} <b>{{ orphanCount }}</b>
+              </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
               </button>
@@ -4249,6 +4261,11 @@ onBeforeUnmount(() => {
         <!-- ═══ CAST TAB (one example of each retinal cell type) ═══ -->
         <div v-else-if="filter === 'cast' && castHere" class="nge-cl-list">
           <retina-cast-tab />
+        </div>
+
+        <!-- ═══ ORPHAN SEGMENTS (mockup, test sites only) ═══ -->
+        <div v-else-if="filter === 'orphans' && orphansHere" class="nge-cl-list">
+          <orphan-segments-tab />
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
