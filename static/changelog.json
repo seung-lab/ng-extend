@@ -8,7 +8,8 @@
         "Jump to next spot now has its own full row, and it glows once after a good merge or cut.",
         "Highlight folds behind a button next to Save and Skip Cell, and Pyr remembers whether you keep it open.",
         "The note under Save fits on one line.",
-        "Score changes read to the tenth, so a +15 no longer shows as +14.9999."
+        "Score changes read to the tenth, so a +15 no longer shows as +14.9999.",
+        "If you make the box smaller, it scrolls, so nothing gets cut off."
       ]
     },
     {

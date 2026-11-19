@@ -118,6 +118,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
+    // Ames 2026-11-19: resized smaller, the box scrolls.
+    const scroll = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.style.height; c.style.height = '200px'; const r = { oy: getComputedStyle(c).overflowY, can: c.scrollHeight > c.clientHeight }; c.style.height = h; return r; });
+    check('resized smaller, the box scrolls', scroll.oy === 'auto' && scroll.can, scroll);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();

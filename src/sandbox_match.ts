@@ -292,11 +292,13 @@ const CSS = `
 #${CARD_ID}{position:fixed;top:64px;left:12px;z-index:59;width:350px;min-width:300px;max-width:calc(100vw - 24px);resize:both;overflow:auto;box-sizing:border-box;
   padding:12px 14px 11px;color:#dfe8f6;font:14px/1.4 Inter,system-ui,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;
   background:linear-gradient(135deg,rgba(4,6,14,.95),rgba(10,16,32,.94));border:1px solid rgba(74,158,255,.45);border-radius:10px;
-  box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 22px rgba(74,158,255,.14);backdrop-filter:blur(6px);overflow:hidden;pointer-events:auto}
-#${CARD_ID}::after{content:'';position:absolute;left:0;right:0;top:-30%;height:30%;pointer-events:none;opacity:0;
-  background:linear-gradient(180deg,transparent,rgba(127,216,255,.16),transparent)}
+  box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 22px rgba(74,158,255,.14);backdrop-filter:blur(6px);overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(127,190,255,.35) transparent;pointer-events:auto}
+/* Ames 2026-11-19: a box resized smaller scrolls. The sweep stays inside the
+   box (it moves its background, not itself), so it never adds a scrollbar. */
+#${CARD_ID}::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;
+  background:linear-gradient(180deg,transparent 40%,rgba(127,216,255,.16) 50%,transparent 60%) 0 100%/100% 300% no-repeat}
 #${CARD_ID}.nge-cm-ping::after{animation:nge-cm-sweep .9s ease-out 1}
-@keyframes nge-cm-sweep{0%{top:-30%;opacity:1}100%{top:110%;opacity:0}}
+@keyframes nge-cm-sweep{0%{background-position:0 100%;opacity:1}100%{background-position:0 0;opacity:0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID}.nge-cm-ping::after{animation:none}}
 #${CARD_ID} .nge-cm-head{display:flex;align-items:center;gap:4px;margin:-11px -14px 6px;padding:11px 14px 4px;cursor:grab;touch-action:none;user-select:none;font:600 11.5px/1 Orbitron,Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#7fc8ff}
 #${CARD_ID} .nge-cm-dot{width:8px;height:8px;border-radius:50%;background:#59e3a7;box-shadow:0 0 6px #59e3a7}
