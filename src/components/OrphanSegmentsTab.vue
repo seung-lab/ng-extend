@@ -38,7 +38,7 @@ const GROUPS: { key: GroupKey; label: string; about: string; color: string; rows
   { key: 'glia',    label: 'Glia-like', color: '#6fe0d0', rows: ORPHANS_GLIA,
     about: 'The shape looks like a glial cell. Check it, and look for a soma.' },
   { key: 'soma',    label: 'Soma-like', color: '#c9b6ff', rows: ORPHANS_SOMA,
-    about: 'May have a cell body. Put the point in the soma, and read the NucID if there is a nucleus.' },
+    about: 'May have a cell body. Put the point in the soma, and add the nucleus ID if there is a nucleus.' },
 ];
 const FLAG_WORDS: Record<OrphanFlag, string> = { n: 'no flag', s: 'soma', sg: 'soma, glia', g: 'glia' };
 const poolTotal = ORPHAN_POOL.n + ORPHAN_POOL.s + ORPHAN_POOL.sg + ORPHAN_POOL.g;
@@ -173,6 +173,9 @@ const playing = computed(() => play.on === 'fragments');
  *  here"). It runs beside Merge and Cut: Ctrl+click goes to them, H+click to it. */
 function openHighlight() { document.dispatchEvent(new CustomEvent('nge:open-highlight')); }
 const copied = ref(false);
+/** The slim bar keeps the note box closed until asked (Ames 2026-11-19: "this box is too big"). */
+const noteOpen = ref(false);
+const helpOpen = ref(false);
 async function copyId(id: string) {
   try { await navigator.clipboard.writeText(id); copied.value = true; setTimeout(() => { copied.value = false; }, 1500); } catch { /* clipboard blocked */ }
 }
@@ -225,7 +228,7 @@ const missing = computed(() => {
   if (!form.fixed) m.push('fix the splits and merges');
   if (!form.ends) m.push('check the ends');
   if (!form.pointOk) m.push(`put a point in the ${form.where === 'soma' ? 'soma' : 'major dendrite'}`);
-  if (form.where === 'soma' && !form.noNucleus && !form.nucId.trim()) m.push('add the NucID, or tick No nucleus');
+  if (form.where === 'soma' && !form.noNucleus && !form.nucId.trim()) m.push('add the nucleus ID, or tick No nucleus');
   return m;
 });
 function submit() {
@@ -298,53 +301,59 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         </div>
       </div>
       <div class="nge-orph-controls">
-        <button class="nge-orph-btn" @click="step(-1)">&lsaquo; Previous</button>
-        <button class="nge-orph-btn" @click="step(1)">Next &rsaquo;</button>
+        <button class="nge-orph-btn" @click="step(-1)" title="Previous fragment">&lsaquo;<template v-if="!slim"> Previous</template></button>
+        <button class="nge-orph-btn" @click="step(1)" title="Next fragment"><template v-if="!slim">Next </template>&rsaquo;</button>
         <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
         <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
         <button v-if="playing" class="nge-orph-btn" @click="playNext" title="Leave this one and go to the next fragment">Skip</button>
+        <button class="nge-orph-help-btn" :class="{ on: helpOpen }" :aria-expanded="helpOpen ? 'true' : 'false'" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button>
         <button v-if="playing" class="nge-orph-link nge-orph-stop" @click="stopPlay" title="Stop playing: Submit stays on this fragment">Stop</button>
       </div>
 
+      <div v-if="helpOpen" class="nge-orph-help">
+        <p><b>1. Fix splits and merges.</b> Cut off anything that belongs to another cell, and merge in pieces that are missing.</p>
+        <p><b>2. Check every end.</b> Follow each branch to its tip and extend it where it was cut short.</p>
+        <p><b>3. Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.</p>
+        <p><b>4. Nucleus ID</b> (soma only). In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
+        <p><b>Recenter</b> flies the view back to the fragment. <b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
+      </div>
       <ol class="nge-orph-check">
         <li :class="{ done: form.fixed }">
-          <label><input type="checkbox" v-model="form.fixed" /> <b>Fix splits and merges.</b>
-            Cut off anything that belongs to another cell and merge in missing pieces.</label>
+          <label title="Cut off anything that belongs to another cell and merge in missing pieces."><input type="checkbox" v-model="form.fixed" /> <b>Fix splits and merges</b></label>
         </li>
         <li :class="{ done: form.ends }">
-          <label><input type="checkbox" v-model="form.ends" /> <b>Check every end.</b>
-            Follow each branch to its tip and extend it where it was cut short.</label>
+          <label title="Follow each branch to its tip and extend it where it was cut short."><input type="checkbox" v-model="form.ends" /> <b>Check every end</b></label>
         </li>
         <li :class="{ done: form.pointOk }">
-          <div><b>Record a point</b> in the
+          <div class="nge-orph-row"><span><b>Crosshairs in</b></span>
             <span class="nge-orph-seg">
               <button :class="{ on: form.where === 'dendrite' }" @click="form.where = 'dendrite'">major dendrite</button>
               <button :class="{ on: form.where === 'soma' }" @click="form.where = 'soma'">soma</button>
             </span>
+            <button class="nge-orph-btn" :disabled="form.checking" @click="usePoint" :title="`Put the crosshairs inside the ${form.where === 'soma' ? 'soma' : 'thickest dendrite'}, then press this.`">{{ form.checking ? 'Checking…' : 'Use crosshairs' }}</button>
           </div>
-          <div class="nge-orph-sub">Put the crosshairs inside the {{ form.where === 'soma' ? 'soma' : 'thickest dendrite' }}, then press Use crosshairs.</div>
-          <div class="nge-orph-row">
-            <button class="nge-orph-btn" :disabled="form.checking" @click="usePoint">{{ form.checking ? 'Checking…' : 'Use crosshairs' }}</button>
+          <div v-if="form.pointMsg" class="nge-orph-row">
             <span v-if="form.pointMsg" class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.pointOk }">{{ form.pointMsg }}</span>
           </div>
         </li>
-        <li :class="{ done: form.noNucleus || !!form.nucId.trim() }">
-          <div><b>NucID</b>, if the segment has a nucleus.</div>
-          <div class="nge-orph-row">
-            <input v-model="form.nucId" class="nge-orph-input" :disabled="form.noNucleus" inputmode="numeric" placeholder="NucID" aria-label="NucID" />
+        <li v-if="form.where === 'soma'" :class="{ done: form.noNucleus || !!form.nucId.trim() }">
+          <div class="nge-orph-row" title="In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its segment ID here, so the lab can match the soma to its nucleus.">
+            <b>Nucleus ID</b>
+            <input v-model="form.nucId" class="nge-orph-input" :disabled="form.noNucleus" inputmode="numeric" placeholder="the nucleus segment's ID" aria-label="Nucleus ID" />
             <label class="nge-orph-sub"><input type="checkbox" v-model="form.noNucleus" /> No nucleus</label>
           </div>
         </li>
       </ol>
-      <textarea v-model="form.note" class="nge-orph-input nge-orph-notes" rows="2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
+      <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
 
       <div class="nge-orph-row">
-        <button class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit" @click="submit">{{ form.saved ? 'Submit again' : playing ? 'Submit and next' : 'Submit' }}</button>
+        <button class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : ''" @click="submit">{{ form.saved ? 'Submit again' : playing ? 'Submit and next' : 'Submit' }}</button>
         <button v-if="form.saved" class="nge-orph-btn" @click="step(1)">Next segment &rsaquo;</button>
         <button v-if="form.saved" class="nge-orph-link" @click="forget">Clear my answer</button>
+        <button v-if="!noteOpen && !form.note" class="nge-orph-link" @click="noteOpen = true">Add a note</button>
       </div>
       <div v-if="form.saved" class="nge-orph-note nge-orph-note--ok">Saved on this computer. On the real version it goes to the lab.</div>
-      <div v-else-if="missing.length" class="nge-orph-note">Still to do: {{ missing.join(', ') }}.</div>
+      <div v-else-if="missing.length && !slim" class="nge-orph-note">Still to do: {{ missing.join(', ') }}.</div>
     </div>
 
     <div v-if="!slim" class="nge-orph-list">
@@ -363,10 +372,23 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 <style scoped>
 .nge-orph--slim .nge-orph-task { margin-top: 8px; }
 .nge-orph-slim-empty { padding: 10px 12px; }
+.nge-orph--slim .nge-orph-task { margin: 4px 6px 6px; padding: 7px 9px; gap: 5px; }
+.nge-orph--slim .nge-orph-task-name { font-size: 14px; }
+.nge-orph--slim .nge-orph-task-id { font-size: 13px; }
+.nge-orph--slim .nge-orph-task-meta { font-size: 12px; }
+.nge-orph--slim .nge-orph-btn { padding: 3px 8px; font-size: 12px; }
+.nge-orph--slim .nge-orph-check { gap: 4px; font-size: 12.5px; line-height: 1.35; padding-left: 18px; }
+.nge-orph--slim .nge-orph-input { height: 24px; font-size: 12px; width: 120px; }
+.nge-orph--slim .nge-orph-notes { width: auto; height: auto; }
 .nge-orph-task-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nge-orph-task-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14.5px; user-select: all; }
 .nge-orph-copy { font: 600 11.5px Inter, sans-serif; padding: 2px 8px; border-radius: 5px; cursor: pointer; color: #9fd0ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(126, 202, 255, 0.35); }
 .nge-orph-copy:hover { background: rgba(74, 158, 255, 0.2); }
+.nge-orph-help-btn { width: 24px; height: 24px; border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.45); background: transparent; color: #9fd0ff; font: 700 13px 'Inter', sans-serif; cursor: pointer; padding: 0; }
+.nge-orph-help-btn.on, .nge-orph-help-btn:hover { background: rgba(74, 158, 255, 0.18); color: #fff; }
+.nge-orph-help { font-size: 12.5px; line-height: 1.45; color: #c3d0e2; background: rgba(10, 18, 32, 0.7); border: 1px solid rgba(126, 202, 255, 0.25); border-radius: 8px; padding: 7px 10px; display: flex; flex-direction: column; gap: 5px; }
+.nge-orph-help p { margin: 0; }
+.nge-orph-help b { color: #eef; }
 .nge-orph-stop { margin-left: auto; align-self: center; }
 .nge-orph-groupsel { font: inherit; font-weight: 600; background: rgba(10, 18, 32, 0.9); border: 1px solid rgba(126, 202, 255, 0.35); border-radius: 5px; padding: 0 2px; cursor: pointer; }
 .nge-orph-groupsel option { color: #dce6f5; background: #0b1220; }

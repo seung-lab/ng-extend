@@ -107,6 +107,8 @@ async function run(browser, perms, tag) {
       out.slimBar = await page.evaluate(() => !!document.querySelector('.nge-orph--slim'));
       // Close the library and open it again: still on Lost Fragments (Ames 2026-11-19).
       out.beforeClose = await seg();
+      await page.evaluate(() => { const add = [...document.querySelectorAll('.nge-orph-link')].find(b => b.textContent.trim() === 'Add a note'); if (add) add.click(); });
+      await page.waitForTimeout(300);
       await page.evaluate(() => { const t = document.querySelector('.nge-orph-notes'); t.value = 'kept note'; t.dispatchEvent(new Event('input')); });
       await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:close-cell-library')));
       await page.waitForTimeout(800);
