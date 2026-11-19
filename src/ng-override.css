@@ -1350,9 +1350,22 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
    (SplitMergeOverlay.vue), with the coordinates and chat stacked above it.
    The line stays in the page, because the bar reads its state from it and
    presses its buttons. */
-#statusContainer li.neuroglancer-tool-status:has(.graphene-multicut),
-#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments),
+/* Two rules, not one list: a browser that cannot read :has drops a whole
+   selector list it is in, and the class rule went with it (Ames 2026-11-19).
+   main.ts puts the class on the cut and merge lines as they appear. */
 #statusContainer li.nge-status-taken {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  max-height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%);
+  opacity: 0;
+  pointer-events: none;
+}
+#statusContainer li.neuroglancer-tool-status:has(.graphene-multicut),
+#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) {
   position: absolute !important;
   width: 1px !important;
   height: 1px !important;

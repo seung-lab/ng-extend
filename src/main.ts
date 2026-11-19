@@ -1090,6 +1090,24 @@ function observeSplitMergeTools() {
   }
   watchStatusLines();
 
+  /** Neuroglancer's own cut and merge tool line ("Multicut segments" and its
+   *  raw key names) is hidden under the bar by a CSS rule that finds it by
+   *  what it holds (ng-override.css). That rule missed for Ames (2026-11-19:
+   *  "bottom bar issue is back"), so the line is also marked by class the
+   *  moment it appears, which the same rule hides whatever the browser. */
+  function markToolLines() {
+    const container = document.getElementById('statusContainer');
+    if (!container) { setTimeout(markToolLines, 1000); return; }
+    const mark = () => {
+      for (const li of Array.from(container.querySelectorAll('li.neuroglancer-tool-status'))) {
+        if (li.querySelector('.graphene-multicut, .graphene-merge-segments')) li.classList.add('nge-status-taken');
+      }
+    };
+    new MutationObserver(mark).observe(container, { childList: true, subtree: true });
+    mark();
+  }
+  markToolLines();
+
   /** Scan #statusContainer for split/merge related errors/info */
   function checkStatusMessages() {
     if (!store.toolActive && !store.pendingClose) return;
