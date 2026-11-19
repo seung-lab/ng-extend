@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-19T14:43:00Z",
+      "title": "Your profile on a laptop",
+      "items": [
+        "On laptop screens, Cells completed, Edits and Days helping science sit side by side as cards, each with its bar to the next Achievement.",
+        "Your name comes first, with Special Awards and Cells identified on one line under it.",
+        "Time on Quests now counts Super Quests inside All MEC Quests, since Super Quests are MEC Quests."
+      ]
+    },
+    {
       "at": "2026-11-19T14:36:00Z",
       "title": "A smaller Training Sim box, and an easier Jump",
       "items": [

@@ -30,10 +30,17 @@ const PERIODS: { key: keyof QuestTimeSplit; label: string; title: string }[] = [
   { key: 'month', label: 'This month', title: 'Since the 1st of the month, US Eastern time' },
   { key: 'all', label: 'All time', title: 'Every second Pyr has counted on your Quests' },
 ];
-const cols = computed(() => [
-  { key: 'quest', name: 'MEC Quests', t: split.value.quest },
-  { key: 'super', name: 'Super Quests', t: split.value.superQuest },
-].filter(c => c.t.all >= 60));
+// Super Quests are MEC Quests too (Ames 2026-11-19: "aren't Super Quests MEC
+// Quests?"), so the first column is every MEC Quest, Super Quests included,
+// and the second is the Super Quest part of it.
+const cols = computed(() => {
+  const q = split.value.quest, s = split.value.superQuest;
+  const all: QuestTimeSplit = { today: q.today + s.today, week: q.week + s.week, month: q.month + s.month, all: q.all + s.all };
+  return [
+    { key: 'quest', name: 'All MEC Quests', t: all },
+    { key: 'super', name: 'Super Quests', t: s },
+  ].filter(c => c.t.all >= 60);
+});
 </script>
 
 <template>
