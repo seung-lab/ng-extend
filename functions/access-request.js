@@ -523,29 +523,8 @@ async function betaRequested(sb, me, io = {}) {
   } catch (e) { /* no triage row: the request stands */ }
   return true;
 }
-// Everyone let into the beta can see Retina (Ames 2026-11-19: "yes access
-// when they're in the beta"): the first time a pilot signs in without view
-// access, Pyr adds them to Eyewire_2_View. Asked once per player per server.
-const RETINA_VIEW_GROUP = 202;
-const viewTried = new Set();
-async function giveRetinaView(io) {
-  const caveId = Number(io.who && io.who.caveId);
-  if (!io.isPilot || !Number.isSafeInteger(caveId) || caveId <= 0 || viewTried.has(caveId)) return false;
-  if (!io.retinaAccess || !io.grantCave) return false;
-  viewTried.add(caveId);
-  const has = await io.retinaAccess();
-  if (has === null || has.includes('view') || has.includes('edit')) return false;
-  const r = await io.grantCave(caveId, RETINA_VIEW_GROUP);
-  if (!r || !r.ok) { viewTried.delete(caveId); return false; }
-  return !r.already;
-}
 async function betaStatus(a, io) {
-  if (io.isAdmin) return {invited: true, requested: false};
-  if (io.isPilot) {
-    let viewGranted = false;
-    try { viewGranted = await giveRetinaView(io); } catch (e) { /* they are in either way */ }
-    return {invited: true, requested: false, ...(viewGranted ? {viewGranted: true} : {})};
-  }
+  if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
   return {invited: false, requested: await betaRequested(io.sb, io.me, io)};
 }
 // What a player types is checked hard (Ames 2026-10-24: "Make sure it's
