@@ -6,7 +6,7 @@
 //   edit access: the card shows BC Challenge, Lost Fragments, Cilia Quest, Glia Quest;
 //     picking Lost Fragments and Start playing opens its tab on a fragment, with
 //     Playing in the top bar; Skip goes to another fragment.
-//   (view only players can't open Retina yet: see the note at the bottom.)
+//   view only: Retina opens, the card shows, the edit quests are locked.
 // Nothing reaches production: every server call is answered here.
 const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
 const CHROME = 'C:/Users/amyle/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe';
@@ -125,8 +125,12 @@ async function run(browser, perms, tag) {
   check('edit: Play shows the slim bar on Lost Fragments', ed.slimBar, ed.slimBar);
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);
   check('edit: Skip goes to another fragment', ed.afterSkip && ed.afterSkip !== ed.first, [ed.first, ed.afterSkip]);
-  // A view only player is not tested here: Retina is locked to them (datasetLocked, Level 1),
-  // so they land on the Sandbox and never see this card. Opening Retina to viewers is Ames's call.
+  // View only (Ames 2026-11-19: "Yes, unlock to view"): Retina opens, and the card shows
+  // with the edit quests locked.
+  const vw = await run(browser, ['view'], 'view');
+  check('view: stays on Retina', /retina/i.test(String(vw.before || '')) && /retina/i.test(String((vw.dbg || {}).layer || '')), [vw.before, vw.dbg]);
+  check('view: the card shows', (vw.cards || []).length === 4, vw.cards || vw);
+  check('view: Cilia and Lost Fragments locked', (vw.cards || []).filter(c => /Lost|Cilia/.test(c.name)).every(c => c.off && /edit access/.test(c.lock)), vw.cards);
   await browser.close();
   console.log(`${results.filter(Boolean).length}/${results.length} passed`);
   process.exit(results.every(Boolean) ? 0 : 1);
