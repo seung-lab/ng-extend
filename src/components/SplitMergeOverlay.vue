@@ -618,7 +618,7 @@ function cancelTool() {
     rgba(20, 14, 40, 0.92) 30%,
     rgba(20, 14, 40, 0.92) 100%
   );
-  border-top: 2px solid rgba(0, 220, 120, 0.5);
+  border-top: 2px solid rgba(84, 112, 255, 0.5);
   backdrop-filter: blur(8px);
 }
 
@@ -632,13 +632,13 @@ function cancelTool() {
   background: linear-gradient(
     90deg,
     rgba(0, 180, 80, 0.92) 0%,
-    rgba(0, 200, 100, 0.88) 30%,
+    rgba(60, 86, 230, 0.88) 30%,
     rgba(0, 180, 90, 0.90) 70%,
-    rgba(0, 200, 100, 0.88) 100%
+    rgba(60, 86, 230, 0.88) 100%
   ) !important;
-  border-top: 2px solid rgba(0, 255, 140, 0.7) !important;
+  border-top: 2px solid rgba(120, 150, 255, 0.7) !important;
   backdrop-filter: blur(8px);
-  box-shadow: 0 0 30px rgba(0, 220, 120, 0.3), inset 0 0 20px rgba(0, 255, 140, 0.05);
+  box-shadow: 0 0 30px rgba(84, 112, 255, 0.3), inset 0 0 20px rgba(120, 150, 255, 0.05);
   transition: background 0.4s ease, border-color 0.3s ease, box-shadow 0.4s ease;
 }
 
@@ -656,8 +656,8 @@ function cancelTool() {
 
 /* Inline flash on bar (merge mode — tool stays open) */
 .nge-split-merge-overlay.bar-inline-success {
-  border-top-color: rgba(0, 255, 140, 0.7) !important;
-  box-shadow: 0 0 20px rgba(0, 220, 120, 0.2);
+  border-top-color: rgba(120, 150, 255, 0.7) !important;
+  box-shadow: 0 0 20px rgba(84, 112, 255, 0.2);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
@@ -688,17 +688,17 @@ function cancelTool() {
 
 .merge-badge {
   background: rgba(15, 160, 90, 0.6);
-  border: 1px solid rgba(0, 220, 120, 0.7);
-  color: #80ffc0;
-  text-shadow: 0 0 8px rgba(0, 220, 120, 0.6);
+  border: 1px solid rgba(84, 112, 255, 0.7);
+  color: #b4c4ff;
+  text-shadow: 0 0 8px rgba(84, 112, 255, 0.6);
   animation: pulse-merge 2s ease-in-out infinite;
 }
 
 .success-badge {
-  background: rgba(0, 200, 100, 0.7);
-  border: 1px solid rgba(0, 255, 140, 0.8);
+  background: rgba(60, 86, 230, 0.7);
+  border: 1px solid rgba(120, 150, 255, 0.8);
   color: #e0fff0;
-  text-shadow: 0 0 12px rgba(0, 255, 140, 0.8);
+  text-shadow: 0 0 12px rgba(120, 150, 255, 0.8);
   animation: pulse-success 1s ease-in-out infinite;
   font-size: 15px;
   letter-spacing: 2px;
@@ -708,7 +708,7 @@ function cancelTool() {
   color: #c0ffe0 !important;
   font-style: normal !important;
   font-weight: 500;
-  text-shadow: 0 0 6px rgba(0, 220, 120, 0.4);
+  text-shadow: 0 0 6px rgba(84, 112, 255, 0.4);
 }
 
 /* Loading spinner */
@@ -940,21 +940,21 @@ function cancelTool() {
 }
 
 .nge-smo-action-btn.submit-btn {
-  background: rgba(0, 200, 100, 0.22);
-  border-color: rgba(0, 220, 120, 0.55);
+  background: rgba(60, 86, 230, 0.22);
+  border-color: rgba(84, 112, 255, 0.55);
   color: #e6ffef;
   font-weight: 600;
 }
 .nge-smo-action-btn.submit-btn:hover {
-  background: rgba(0, 220, 120, 0.38);
+  background: rgba(84, 112, 255, 0.38);
   border-color: rgba(0, 240, 140, 0.8);
 }
 .nge-smo-action-btn.submit-btn.is-ready {
   animation: nge-smo-submit-pulse 1.1s ease-in-out infinite;
 }
 @keyframes nge-smo-submit-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 220, 120, 0.0); background: rgba(0, 200, 100, 0.22); }
-  50%      { box-shadow: 0 0 14px 4px rgba(0, 220, 120, 0.55); background: rgba(0, 220, 120, 0.42); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(84, 112, 255, 0.0); background: rgba(60, 86, 230, 0.22); }
+  50%      { box-shadow: 0 0 14px 4px rgba(84, 112, 255, 0.55); background: rgba(84, 112, 255, 0.42); }
 }
 
 .nge-smo-key-hint {
@@ -990,7 +990,7 @@ function cancelTool() {
   display: flex;
   flex-direction: column;
   background: rgba(10, 18, 28, 0.92);
-  border: 1px solid rgba(0, 220, 120, 0.25);
+  border: 1px solid rgba(84, 112, 255, 0.25);
   border-radius: 8px;
   backdrop-filter: blur(12px);
   pointer-events: auto;
@@ -1002,19 +1002,19 @@ function cancelTool() {
   padding: 6px 12px;
   font-size: 11px;
   font-weight: 600;
-  color: #80ffc0;
+  color: #b4c4ff;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(0, 220, 120, 0.15);
+  border-bottom: 1px solid rgba(84, 112, 255, 0.15);
 }
 
 .nge-smo-merge-panel-header { display: flex; align-items: center; gap: 6px; }
 .nge-smo-merge-grip { margin-left: auto; }
 .nge-smo-merge-min {
-  background: none; border: 1px solid rgba(0, 220, 120, 0.3); border-radius: 4px; color: #80ffc0;
+  background: none; border: 1px solid rgba(84, 112, 255, 0.3); border-radius: 4px; color: #b4c4ff;
   font-size: 13px; line-height: 1; width: 20px; height: 18px; padding: 0; cursor: pointer;
 }
-.nge-smo-merge-min:hover { background: rgba(0, 220, 120, 0.18); color: #fff; }
+.nge-smo-merge-min:hover { background: rgba(84, 112, 255, 0.18); color: #fff; }
 .nge-smo-queue-chip { white-space: nowrap; }
 
 .nge-smo-merge-panel-list {
@@ -1022,7 +1022,7 @@ function cancelTool() {
   max-height: 300px;
   padding: 4px 0;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 220, 120, 0.3) transparent;
+  scrollbar-color: rgba(84, 112, 255, 0.3) transparent;
 }
 
 .nge-smo-merge-row {
@@ -1033,14 +1033,14 @@ function cancelTool() {
   transition: background 0.15s ease;
 }
 .nge-smo-merge-row:hover {
-  background: rgba(0, 220, 120, 0.08);
+  background: rgba(84, 112, 255, 0.08);
 }
 .nge-smo-seg-id--hover { cursor: default; border-radius: 3px; transition: background 0.12s ease, color 0.12s ease; }
-.nge-smo-seg-id--hover:hover { background: rgba(0, 220, 120, 0.22); color: #ffffff; }
+.nge-smo-seg-id--hover:hover { background: rgba(84, 112, 255, 0.22); color: #ffffff; }
 
 .nge-smo-merge-num {
   font-size: 10px;
-  color: rgba(0, 220, 120, 0.5);
+  color: rgba(84, 112, 255, 0.5);
   min-width: 18px;
 }
 
@@ -1055,7 +1055,7 @@ function cancelTool() {
 }
 
 .nge-smo-merge-arrow {
-  color: rgba(0, 220, 120, 0.5);
+  color: rgba(84, 112, 255, 0.5);
   font-size: 10px;
 }
 
@@ -1117,7 +1117,7 @@ function cancelTool() {
 }
 
 .nge-smo-auto-submit:hover {
-  color: #80ffc0;
+  color: #b4c4ff;
 }
 
 .nge-smo-checkbox {
@@ -1127,8 +1127,8 @@ function cancelTool() {
 }
 
 .nge-smo-checkbox.checked {
-  color: #80ffc0;
-  text-shadow: 0 0 6px rgba(0, 220, 120, 0.5);
+  color: #b4c4ff;
+  text-shadow: 0 0 6px rgba(84, 112, 255, 0.5);
 }
 
 /* Error hint styling */
@@ -1145,13 +1145,13 @@ function cancelTool() {
 }
 
 @keyframes pulse-merge {
-  0%, 100% { box-shadow: 0 0 8px rgba(0, 220, 120, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(0, 220, 120, 0.6); }
+  0%, 100% { box-shadow: 0 0 8px rgba(84, 112, 255, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(84, 112, 255, 0.6); }
 }
 
 @keyframes pulse-success {
-  0%, 100% { box-shadow: 0 0 8px rgba(0, 255, 140, 0.4); }
-  50% { box-shadow: 0 0 20px rgba(0, 255, 140, 0.8); }
+  0%, 100% { box-shadow: 0 0 8px rgba(120, 150, 255, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(120, 150, 255, 0.8); }
 }
 
 @keyframes bar-submitting-pulse {
@@ -1208,10 +1208,10 @@ function cancelTool() {
 /* ── SUCCESS ── */
 .nge-smo-result-flash.success {
   background-color: rgba(8, 30, 22, 0.92);
-  border: 1px solid rgba(0, 220, 120, 0.25);
+  border: 1px solid rgba(84, 112, 255, 0.25);
   color: #a0ffd4;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 220, 120, 0.15);
-  text-shadow: 0 0 6px rgba(0, 220, 120, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(84, 112, 255, 0.15);
+  text-shadow: 0 0 6px rgba(84, 112, 255, 0.4);
   animation: smo-result-glow-green 2s ease-in-out infinite;
 }
 
@@ -1393,7 +1393,8 @@ function cancelTool() {
    merge or cut is ready, which is a status the player asked for.
    These rules come last, so they win over the older ones above. */
 .nge-split-merge-overlay { --smo-rgb: 196 228 255; gap: 14px; padding: 9px 20px; min-height: 50px; color: rgb(239 244 251 / .92); }
-.nge-split-merge-overlay.merge { --smo-rgb: 0 220 120; --smo-ink: #a6ffd6; --smo-wash: .30; }
+/* Merge is blue, as cut is (Ames 2026-11-19: "I prefer blue tbh"); a merge marked done stays green. */
+.nge-split-merge-overlay.merge { --smo-rgb: 84 112 255; --smo-ink: #d2dbff; --smo-wash: .30; }
 /* Cut has one colour of its own, blue, whichever side is being placed (Ames
    2026-11-19: "I don't think that the whole cut mode should switch to blue
    just because you're on the blue point ... keep cut mode blue period").
@@ -1527,7 +1528,7 @@ function cancelTool() {
   height: 28px; gap: 7px; margin: 0 4px 0 6px; padding-left: 14px; border-left: 1px solid rgb(196 228 255 / .14);
   color: rgb(154 162 177);
 }
-.nge-smo-auto-submit:hover { color: #a6ffd6; }
+.nge-smo-auto-submit:hover { color: #d2dbff; }
 /* the cut bar's one option sits at the right end, after the hint */
 .nge-smo-keep-open { margin-left: auto; margin-right: 0; flex-shrink: 0; }
 .nge-smo-point-size { margin-left: auto; flex-shrink: 0; gap: 6px; cursor: default; }
@@ -1553,10 +1554,10 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
   border: 1px solid rgb(196 228 255 / .42); background: rgb(196 228 255 / .04);
   transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
-.nge-smo-checkbox.checked { background: rgb(0 220 120 / .22); border-color: rgb(0 230 130 / .95); box-shadow: 0 0 8px rgb(0 220 120 / .5); text-shadow: none; }
+.nge-smo-checkbox.checked { background: rgb(84 112 255 / .22); border-color: rgb(110 136 255 / .95); box-shadow: 0 0 8px rgb(84 112 255 / .5); text-shadow: none; }
 .nge-smo-checkbox.checked::after {
   content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
-  border: solid #a6ffd6; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  border: solid #d2dbff; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
 /* Hint: upright (no thin italic on a dark field), in the dim ink. */
@@ -1569,16 +1570,16 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
   /* clear of the bar, whatever height it comes to */
   bottom: calc(max(var(--nge-tool-bar-h, 50px), 50px) + 8px + var(--nge-bottom-bar, 0px));
   background: linear-gradient(158deg, rgb(15 18 24 / .96) 0%, rgb(6 10 18 / .98) 100%);
-  border: 1px solid rgb(0 220 120 / .30); border-radius: 10px;
+  border: 1px solid rgb(84 112 255 / .30); border-radius: 10px;
   backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2);
-  box-shadow: 0 18px 50px rgb(0 0 0 / .5), 0 0 40px rgb(0 220 120 / .07), inset 0 1px 0 rgb(196 228 255 / .10);
+  box-shadow: 0 18px 50px rgb(0 0 0 / .5), 0 0 40px rgb(84 112 255 / .07), inset 0 1px 0 rgb(196 228 255 / .10);
 }
 .nge-smo-merge-panel::before {
   content: ""; position: absolute; left: 8%; right: 8%; top: -1px; height: 1px; pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgb(0 230 130 / .95) 50%, transparent);
-  box-shadow: 0 0 12px rgb(0 220 120 / .6);
+  background: linear-gradient(90deg, transparent, rgb(110 136 255 / .95) 50%, transparent);
+  box-shadow: 0 0 12px rgb(84 112 255 / .6);
 }
-.nge-smo-merge-panel-header { padding: 8px 12px 7px; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 10.5px; letter-spacing: .14em; color: #a6ffd6; border-bottom-color: rgb(0 220 120 / .16); }
+.nge-smo-merge-panel-header { padding: 8px 12px 7px; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 10.5px; letter-spacing: .14em; color: #d2dbff; border-bottom-color: rgb(84 112 255 / .16); }
 .nge-smo-merge-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: grab; user-select: none; }
 .nge-smo-merge-panel-header:active { cursor: grabbing; }
 .nge-smo-merge-grip { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 0; color: rgb(166 255 214 / .45); }
