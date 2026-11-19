@@ -80,6 +80,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   context.on('page', p => { if (p !== page) p.close().catch(() => {}); });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
+  if (process.env.CM_DEBUG) page.on('console', m => { const t = m.text(); if (/cell-match|outdated|lineage/i.test(t)) console.log('  [page]', t.slice(0, 200)); });
   const cardText = () => page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? c.innerText.replace(/\s+/g, ' ').trim().toLowerCase() : null; });
   const waitText = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.getElementById('nge-cell-match'); return !!c && new RegExp(src, 'i').test(c.innerText.replace(/\s+/g, ' ')); }, re.source, { timeout: ms }).then(() => true, () => false);
   const edit = (roots, kind = 'merge') => page.evaluate(([r, k]) => window.dispatchEvent(new CustomEvent('nge-graph-edit', { detail: { kind: k, roots: r } })), [roots, kind]);
@@ -693,6 +694,33 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
         ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
       });
       await page.waitForTimeout(2500);
+    }
+    // A reload: the saved view holds the cell as it was before the last edit
+    // (Ames 2026-11-19: "I'm already on my cell. I simply refreshed the page").
+    {
+      const NOW = '648518346350788735', STALE = '648518346350788700', SOMA = '73325262829729818';
+      await context.route(new RegExp(`/node/${SOMA}/root`), r => r.fulfill(json({ root_id: NOW })));
+      await context.route(/is_latest_roots/, r => { const ids = (r.request().postData() || '').match(/\d{10,}/g) || []; r.fulfill(json({ is_latest: ids.map(id => id !== STALE) })); });
+      await context.route(/lineage_graph/, r => r.fulfill(json({ nodes: [], links: r.request().url().includes(STALE) ? [{ source: STALE, target: NOW }] : [] })));
+      answer = { ...ANSWERS.merged, root: NOW };
+      await page.evaluate(([stale, soma]) => {
+        window.__ngeCellMatch.withClaims(() => [{ id: 16762, dataset: 'pinky_nf_v2', roots: ['648518346350000002'], anchor: soma }]);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.add(window.__testU64.parseString(stale));
+      }, [STALE, SOMA]);
+      const live = await waitText(/39%/, 25000);
+      await page.waitForTimeout(2500);
+      const shownIds = await page.evaluate(() => { const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived); return [...ml.layer.displayState.segmentationGroupState.value.visibleSegments].map(String); });
+      check('after a reload with the cell as it was before an edit, the box finds it by its soma and shows the current one', live && !/not on screen/.test(await cardText() || '') && shownIds.includes(NOW) && !shownIds.includes(STALE), { text: await cardText(), shownIds });
+      await context.unroute(new RegExp(`/node/${SOMA}/root`)); await context.unroute(/is_latest_roots/); await context.unroute(/lineage_graph/);
+      await page.evaluate(() => {
+        window.__ngeCellMatch.withClaims(() => []);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
+      });
+      await page.waitForTimeout(2500);
+      const idle = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? [...c.querySelectorAll('.nge-cm-row')].filter(r => r.offsetParent !== null).length : -1; });
+      check('Standby shows no empty rows (Ames 2026-11-19)', idle === 0, idle);
     }
     await shot('play-big.png');
     await shot('cell-match-standby.png');

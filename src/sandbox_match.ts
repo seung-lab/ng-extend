@@ -285,10 +285,23 @@ async function findCellOnScreen(mine: SandboxClaim[], vis: any) {
     if (!root || !/^\d+$/.test(root)) continue;
     let here = false;
     try { here = vis.has(Uint64.parseString(root)); } catch { /* not an ID */ }
-    if (!here) continue;
-    aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), root]));
-    console.debug('[cell-match] claim', c.id, 'is on screen as', root);
-    return;
+    if (here) {
+      aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), root]));
+      console.debug('[cell-match] claim', c.id, 'is on screen as', root);
+      return;
+    }
+    // A reloaded view can hold the cell as it was before the last edit
+    // (Ames 2026-11-19: "I'm already on my cell. I simply refreshed the
+    // page"). An ID on screen that has since become this root is the cell;
+    // once found, swapOldIds puts the current one in its place.
+    const ids = [...vis].map((v: any) => String(v)).filter(id => /^\d+$/.test(id) && id !== root).slice(0, 12);
+    for (const id of ids) {
+      const now = await currentIdsOf(id).catch(() => null);
+      if (!now || !now.includes(root)) continue;
+      aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), id]));
+      console.debug('[cell-match] claim', c.id, 'is on screen as an older', id, 'of', root);
+      return;
+    }
   }
 }
 
@@ -369,6 +382,7 @@ const CSS = `
 #${CARD_ID}.nge-cm-idle .nge-cm-pieces{color:#8fb6dc}
 #${CARD_ID} .nge-cm-loader{display:none}
 #${CARD_ID}.nge-cm-loading .nge-cm-loader{display:flex;align-items:center;gap:14px;padding:6px 0 4px}
+#${CARD_ID}.nge-cm-idle:not(.nge-cm-reviewing) .nge-cm-row{display:none !important}
 #${CARD_ID}.nge-cm-loading .nge-cm-score,#${CARD_ID}.nge-cm-loading .nge-cm-row,#${CARD_ID}.nge-cm-loading .nge-cm-sub{display:none !important}
 #${CARD_ID} .nge-cm-ld-scope{flex:0 0 84px;width:84px;height:98px;position:relative;overflow:hidden;border-radius:8px;background:radial-gradient(circle at 50% 42%,rgba(64,208,255,.14),transparent 70%)}
 #${CARD_ID} .nge-cm-ld-glyph{position:absolute;inset:0}
@@ -1135,6 +1149,12 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   tellShown(taskId);
 }
 
+function rootShown(root: string): boolean {
+  try {
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    return !!vis && vis.has(Uint64.parseString(root));
+  } catch { return true; }
+}
 async function ask(taskId: number) {
   const mine = ++asking;
   show(taskId, last.get(taskId), true);
@@ -1142,7 +1162,10 @@ async function ask(taskId: number) {
     const r = await secureWrite<MatchResult>('match.check', { taskId });
     const prev = last.get(taskId);
     noteResult(taskId, r);
-    if (r.root) aliases.delete(taskId);
+    // The other IDs are dropped once the current one is on screen; until then
+    // (a reloaded view with an older ID, before swapOldIds runs) they keep
+    // the cell found.
+    if (r.root && rootShown(r.root)) aliases.delete(taskId);
     if (mine !== asking || onScreen !== taskId) return;
     const kind = editKind;
     editKind = null;
