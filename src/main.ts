@@ -35,6 +35,7 @@ import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
+import { startRightHoldDelta } from './util/right_hold_delta';
 import { startKeepToolAcrossViews } from './util/keep_tool_across_views';
 import { startCutPreview } from './util/cut_preview';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
@@ -498,6 +499,7 @@ function setupViewer() {
   recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
+  startRightHoldDelta();
   // Merge or cut mode keeps working in a view loaded in place (Nseraf #203).
   startKeepToolAcrossViews();
   startCloseGuard();

@@ -38,7 +38,7 @@ import {VirtualList} from 'neuroglancer/widget/virtual_list';
     // can't be scrolled to. main.ts calls this once a row's injection is done
     // to record the row's real height and rerun the layout.
     proto.remeasureItem = function(this: any, element: HTMLElement) {
-      if (!element.isConnected) return;
+      if (!element.isConnected || this.isHidden?.()) return;
       const index = this.renderedItems.indexOf(element);
       if (index < 0) return;
       const {sizes} = this;

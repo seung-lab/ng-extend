@@ -517,6 +517,8 @@ export abstract class RenderedDataPanel extends RenderedPanel {
         if (travelled > 3) this.translateByViewportPixels(deltaX, deltaY);
       }, () => {
         if (travelled > 3) return;
+        // nge: a held right button opened the cell's menu (src/util/right_hold_delta.ts)
+        if ((window as any).__ngeRightHoldFired?.()) return;
         const {mouseState} = this.viewer;
         if (mouseState.updateUnconditionally() && !ngeOnDataBounds(mouseState)) this.navigationState.position.value = mouseState.position;
       });

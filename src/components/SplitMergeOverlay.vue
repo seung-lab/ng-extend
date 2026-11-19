@@ -429,7 +429,7 @@ function cancelTool() {
             </div>
             <!-- The swap key sits with the colours it swaps (it used to be
                  far right, among Submit and Cancel). -->
-            <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap, 'nge-smo-swap-hint--touch': isTouchRef }" @click="swapGroup()" title="Switch between red and blue"><kbd v-if="!isTouchRef">G</kbd> {{ needsSwap ? (isTouchRef ? 'Tap for blue' : 'Press G for blue') : 'Swap' }}</span>
+            <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap, 'nge-smo-swap-hint--touch': isTouchRef }" @click="swapGroup()" title="Red points go on one side of the cut, blue on the other. G switches which one you place."><kbd v-if="!isTouchRef">G</kbd> {{ isTouchRef ? 'Tap to place' : 'Place' }} <b class="nge-smo-swap-to" :class="isRedActive ? 'to-blue' : 'to-red'">{{ isRedActive ? 'blue' : 'red' }}</b></span>
           </div>
 
           <!-- All the cut controls sit together on the left (Ames,
@@ -1394,8 +1394,23 @@ function cancelTool() {
    These rules come last, so they win over the older ones above. */
 .nge-split-merge-overlay { --smo-rgb: 196 228 255; gap: 14px; padding: 9px 20px; min-height: 50px; color: rgb(239 244 251 / .92); }
 .nge-split-merge-overlay.merge { --smo-rgb: 0 220 120; --smo-ink: #a6ffd6; --smo-wash: .30; }
-.nge-split-merge-overlay.multicut.group-red { --smo-rgb: 255 44 44; --smo-ink: #ffd0d0; --smo-wash: .78; }
-.nge-split-merge-overlay.multicut.group-blue { --smo-rgb: 84 112 255; --smo-ink: #d2dbff; --smo-wash: .72; }
+/* Cut has one colour of its own, blue, whichever side is being placed (Ames
+   2026-11-19: "I don't think that the whole cut mode should switch to blue
+   just because you're on the blue point ... keep cut mode blue period").
+   Which side is being placed shows only on the side switch, where the
+   active side is a solid pill, and on the swap button, which names the
+   other side in its colour. */
+.nge-split-merge-overlay.multicut.group-red,
+.nge-split-merge-overlay.multicut.group-blue { --smo-rgb: 84 112 255; --smo-ink: #d2dbff; --smo-wash: .62; }
+/* The swap: a button that says what G does, "G Place blue" */
+.nge-split-merge-overlay .nge-smo-swap-hint {
+  height: 28px; padding: 0 10px; border-radius: 6px; margin-left: 6px; opacity: 1;
+  background: rgb(196 228 255 / .06); border: 1px solid rgb(196 228 255 / .28); color: rgb(239 244 251 / .9);
+}
+.nge-split-merge-overlay .nge-smo-swap-hint:hover { background: rgb(196 228 255 / .14); border-color: rgb(196 228 255 / .6); }
+.nge-smo-swap-to { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.nge-smo-swap-to.to-red { color: #ff7a7a; }
+.nge-smo-swap-to.to-blue { color: #9db4ff; }
 
 /* Cut is on the same surface as merge (Ames 2026-10-08: the grey and green
    buttons on a solid red or blue bar were ugly). The active colour still
@@ -1461,10 +1476,17 @@ function cancelTool() {
 /* The red and blue pills: hairline capsules, the active one lit. */
 .nge-smo-group { padding: 4px 12px; border-radius: 6px; }
 .nge-smo-group:not(.active) { border: 1px solid rgb(196 228 255 / .16); }
+.nge-smo-group.red { --side-rgb: 255 52 52; }
+.nge-smo-group.blue { --side-rgb: 70 100 255; }
+/* The side being placed: filled solid in its own colour, so it is the one
+   red or blue thing on the bar. The other side stays a quiet outline. */
 .nge-smo-group.red.active, .nge-smo-group.blue.active {
-  background: rgb(var(--smo-rgb) / .16); border: 1px solid rgb(var(--smo-rgb) / .7);
-  box-shadow: 0 0 14px rgb(var(--smo-rgb) / .35), inset 0 0 10px rgb(var(--smo-rgb) / .14);
+  background: rgb(var(--side-rgb) / .92); border: 1px solid rgb(var(--side-rgb));
+  box-shadow: 0 0 16px rgb(var(--side-rgb) / .55);
 }
+.nge-smo-group.active .nge-smo-group-dot { background: #fff; box-shadow: 0 0 6px rgb(255 255 255 / .9); }
+.nge-smo-group:not(.active) { opacity: .5; }
+.nge-smo-group:not(.active):hover { opacity: .85; border-color: rgb(var(--side-rgb) / .7); }
 .nge-smo-divider { color: rgb(196 228 255 / .16); }
 /* Cut: the colour reaches further across the bar than on merge, since red
    or blue is the thing to read (Ames: "the red is not red enough"). */
@@ -1484,9 +1506,9 @@ function cancelTool() {
    stronger prompts: the pill flashes and the G key pulses until pressed. */
 .nge-split-merge-overlay:not(.nge-smo-learning) .nge-smo-groups--pulse .nge-smo-group.active { animation: nge-smo-group-land .42s cubic-bezier(.2, 1.35, .4, 1) 1; }
 @keyframes nge-smo-group-land {
-  0%   { transform: scale(.94); box-shadow: 0 0 0 0 rgb(var(--smo-rgb) / .75), inset 0 0 10px rgb(var(--smo-rgb) / .14); }
+  0%   { transform: scale(.94); box-shadow: 0 0 0 0 rgb(var(--side-rgb) / .75); }
   60%  { transform: scale(1.11); }
-  100% { transform: scale(1.08); box-shadow: 0 0 0 9px rgb(var(--smo-rgb) / 0), inset 0 0 10px rgb(var(--smo-rgb) / .14); }
+  100% { transform: scale(1.08); box-shadow: 0 0 0 9px rgb(var(--side-rgb) / 0), 0 0 16px rgb(var(--side-rgb) / .55); }
 }
 @media (prefers-reduced-motion: reduce) { .nge-split-merge-overlay:not(.nge-smo-learning) .nge-smo-groups--pulse .nge-smo-group.active { animation: none; } }
 /* The G key lights up when it is the next thing to press, and holds still
