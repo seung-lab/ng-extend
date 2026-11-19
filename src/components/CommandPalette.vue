@@ -22,6 +22,8 @@ import { pumpkinSeason, togglePumpkin, smashPumpkins } from '../util/pumpkin';
 import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
 import { clearStarship } from '../util/starship';
 import { playIntro } from '../util/intro_tour';
+// Mockup (#571): the roomier header starts on unless switched off in Ctrl+K.
+try { if (localStorage.getItem('nge-roomy-header') !== '0') document.body.classList.add('nge-roomy-header'); } catch { /* private window */ }
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -239,6 +241,19 @@ function buildActions(): PaletteItem[] {
       action: () => smashPumpkins(),
     });
   }
+  // Mockup for Kfay's report #571: switch the roomier header on and off to compare.
+  items.push({
+    id: 'roomy-header',
+    label: document.body.classList.contains('nge-roomy-header') ? 'Roomy header: off (mockup)' : 'Roomy header: on (mockup)',
+    description: 'Compare the header with more space and a line under the tabs',
+    category: 'tool',
+    icon: '📐',
+    aliases: ['header', 'roomy', 'tabs', 'kfay'],
+    action: () => {
+      const on = document.body.classList.toggle('nge-roomy-header');
+      try { localStorage.setItem('nge-roomy-header', on ? '1' : '0'); } catch { /* private window */ }
+    },
+  });
   if (turkeySeason()) items.push({
     id: 'turkey',
     label: turkeyHidden() ? 'Show the Turkey' : 'Hide the Turkey',
