@@ -103,7 +103,7 @@ function world() {
     leaves(root) { return this.groups[root] || []; },
   };
   // Root names that look like ids.
-  const ID = {S0: '9001', A: '9002', B: '9003', S1: '9004', S2: '9005', N2: '9006', T: '8001', N: '8002', O: '8003', Q: '8004', S3: '9007', S4: '9008', Q2: '9009'};
+  const ID = {S0: '9001', A: '9002', B: '9003', S1: '9004', S2: '9005', N2: '9006', T: '8001', N: '8002', O: '8003', Q: '8004', R: '8005', S3: '9007', S4: '9008', Q2: '9009'};
   const NAME = Object.fromEntries(Object.entries(ID).map(([k, v]) => [v, k]));
   const calls = {leaves: 0, roots: 0, root: 0};
   const fetch = async (url, init = {}) => {
@@ -710,30 +710,31 @@ test('the Merge row moves a tenth of a percent at a time', () => {
   assert.equal(M.mergePercent(0, 0), null);
 });
 
-test('an object the true cells never placed is neither right nor wrong (synapse123, task 16780)', async () => {
-  M._reset();
+test('an object the true cells never placed is neither right nor wrong (synapse123, task 16780, Kfay)', async () => {
+  M._reset({unplacedBig: 200});
   const w = world();
   // O: 60 supervoxels of raw segmentation nobody edited in the truth. Q: an
   // untouched object reaching past the player's cell (600..719, half merged).
+  // R: an untouched object of 200 or more (a neuron nobody proofread).
   w.truth.groups.O = range(500, 559);
   w.truth.groups.Q = range(600, 719);
-  w.sandbox.events[0].groups = {S0: range(1, 100), A: range(101, 160), B: range(161, 200), N: range(300, 359), O: range(500, 559), Q2: range(600, 659)};
+  w.truth.groups.R = range(800, 1009);
+  w.sandbox.events[0].groups = {S0: range(1, 100), A: range(101, 160), B: range(161, 200), N: range(300, 359), O: range(500, 559), Q2: range(600, 659), R: range(800, 1009)};
   const clean = await M.check(w.io, {taskId: 1, me: ME});
   assert.deepEqual([clean.cut, clean.cutParts], [null, 0]);
-  // Merging O in: no wrong part, no Cut, the score as it was.
-  w.sandbox.edit({S1: [...range(1, 100), ...range(500, 559)], A: range(101, 160), B: range(161, 200), N: range(300, 359), Q2: range(600, 659)});
+  // Merging O and part of Q in: no wrong part, no Cut, the score as it was.
+  w.sandbox.edit({S1: [...range(1, 100), ...range(500, 559), ...range(600, 659)], A: range(101, 160), B: range(161, 200), N: range(300, 359), R: range(800, 1009)});
   const o = await M.check(w.io, {taskId: 1, me: ME});
   assert.deepEqual([o.cut, o.cutParts, o.extra.total, o.score], [null, 0, 0, clean.score]);
   assert.equal((await M.review(w.io, {taskId: 1, me: ME})).mergers.length, 0);
   for (let n = 0; n < 3; n++) assert.notEqual((await M.hint(w.io, {taskId: 1, me: ME, n, step: 1})).piece.kind, 'cut');
-  // Part of Q, which reaches beyond the cell: wrong, as before.
-  w.sandbox.edit({S3: [...range(1, 100), ...range(500, 559), ...range(600, 659)], A: range(101, 160), B: range(161, 200), N: range(300, 359)});
-  const q = await M.check(w.io, {taskId: 1, me: ME});
-  assert.deepEqual([q.cut, q.cutParts], [0, 1]);
+  // R, untouched but neuron sized: wrong, as before.
+  w.sandbox.edit({S3: [...range(1, 100), ...range(500, 559), ...range(600, 659), ...range(800, 1009)], A: range(101, 160), B: range(161, 200), N: range(300, 359)});
+  const r = await M.check(w.io, {taskId: 1, me: ME});
+  assert.deepEqual([r.cut, r.cutParts], [0, 1]);
   // All of N, an object the proofreader edited: wrong, as before.
-  w.sandbox.edit({S4: [...range(1, 100), ...range(500, 559), ...range(600, 659), ...range(300, 359)], A: range(101, 160), B: range(161, 200)});
-  const n2 = await M.check(w.io, {taskId: 1, me: ME});
-  assert.equal(n2.cutParts, 2);
+  w.sandbox.edit({S4: [...range(1, 100), ...range(500, 559), ...range(600, 659), ...range(800, 1009), ...range(300, 359)], A: range(101, 160), B: range(161, 200)});
+  assert.equal((await M.check(w.io, {taskId: 1, me: ME})).cutParts, 2);
 });
 
 test('a kept start counted before unplaced objects were set aside reads without them', async () => {
