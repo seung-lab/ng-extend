@@ -146,6 +146,15 @@ import { extensionDone } from '../extension-sandbox';
 // says a test is open; its line says passed or in use.
 import { testStatus } from '../proofreading-test';
 function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
+// A check mark beside each tutorial already finished (Nseraf #575: "Only
+// other way to know if you've done a tutorial is to check your profile").
+// Read when the menu opens, so a tutorial just finished shows at once.
+import { finished as finishedTutorials } from '../util/play_training';
+const tutorialsDone = ref<Set<number>>(new Set());
+function refreshTutorialsDone() {
+  void finishedTutorials([1, 3, 5, 15, 2, 14]).then(d => { tutorialsDone.value = d; }).catch(() => { /* no marks */ });
+}
+watch(() => dropdownStore.activeDropdowns['extension-bar-right'], open => { if (open) refreshTutorialsDone(); });
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
 // Extension Sandbox (extension-sandbox.ts), the same way.
@@ -255,6 +264,8 @@ onMounted(() => {
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
   document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
+  // From the profile's Quests card: the leaderboard, on its Quests tab (it reads the tab from localStorage).
+  document.addEventListener('nge:open-leaderboard', () => { showLeaderboard.value = true; });
   document.addEventListener('nge:open-arcade', () => { if (ARCADE_ENABLED) showArcade.value = true; });
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
@@ -1668,7 +1679,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <li class="nge-menu-heading" @click.stop>Tutorials</li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 1; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">1</span><span>Get Started</span>
+            <span class="nge-menu-num">1</span><span>Get Started</span><span v-if="tutorialsDone.has(1)" class="nge-menu-done" title="Finished: you have this one's Achievement">✓</span>
           </div>
         </li>
         <li>
@@ -1676,26 +1687,26 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
                start goes through a gate (tutorial-3.ts) that offers a place in
                line when the cells are held. -->
           <div class="logoutButton button nge-menu-item" @click="startTutorial(3); closeHamburger()">
-            <span class="nge-menu-num">2</span><span>Merge</span>
+            <span class="nge-menu-num">2</span><span>Merge</span><span v-if="tutorialsDone.has(3)" class="nge-menu-done" title="Finished: you have this one's Achievement">✓</span>
           </div>
         </li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="startTutorial(5); closeHamburger()">
-            <span class="nge-menu-num">3</span><span>Cut</span>
+            <span class="nge-menu-num">3</span><span>Cut</span><span v-if="tutorialsDone.has(5)" class="nge-menu-done" title="Finished: you have this one's Achievement">✓</span>
           </div>
         </li>
         <!-- Annotations (Ames 2026-10-23, player report 220): layers, color,
              stepping, more than one layer, the tools and Size, Find Path. -->
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 15; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">4</span><span>Annotations</span>
+            <span class="nge-menu-num">4</span><span>Annotations</span><span v-if="tutorialsDone.has(15)" class="nge-menu-done" title="Finished: you have this one's Achievement">✓</span>
           </div>
         </li>
         <!-- Advanced Interface after Merge, Cut and Annotations (Ames
              2026-11-12: Annotations straight after Cut). -->
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">5</span><span>Advanced Interface</span>
+            <span class="nge-menu-num">5</span><span>Advanced Interface</span><span v-if="tutorialsDone.has(2)" class="nge-menu-done" title="Finished: you have this one's Achievement">✓</span>
           </div>
         </li>
         <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
@@ -1739,7 +1750,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <li class="nge-menu-heading" @click.stop>Quests</li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="startTutorial(14); closeHamburger()">
-            <span class="nge-menu-num nge-menu-num--icon">🔬</span><span>Cilia Quest Training</span>
+            <span class="nge-menu-num nge-menu-num--icon">🔬</span><span>Cilia Quest Training</span><span v-if="tutorialsDone.has(14)" class="nge-menu-done" title="Finished: you have this one's Achievement">✓</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
@@ -2920,6 +2931,8 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 }
 /* The Site Tour's compass sits in the same circle as the numbers. */
 .nge-menu-num--icon { font-size: 10px; line-height: 1; }
+/* A finished tutorial: a green check after its name (Nseraf #575). */
+.nge-menu-done { margin-left: 2px; color: #5fe0a0; font-weight: 700; font-size: 13px; text-shadow: 0 0 6px rgb(95 224 160 / .45); }
 /* The Hunt pill (Ames 2026-10-20; restyled 2026-10-21, "does not look good"): an instrument chip like
    the Hunt box, a gold hairline while a Hunt runs, the word in Orbitron and a steady countdown. The
    doubled class wins over the top bar's own button rules, which had flattened it. No pulsing. */

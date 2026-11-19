@@ -34,24 +34,26 @@ const ACHIEVEMENT: Record<number, string[]> = {
   3: ['mini-michelangelo', 'Mini Michelangelo'],
   5: ['safety-scissors', 'Safety Scissors'],
   15: ['annotations-tutorial'],
+  14: ['cilia-tutorial'],
 };
 
-/** Tutorials finished, as far as can be told. */
-async function finished(): Promise<Set<number>> {
+/** Tutorials finished, as far as can be told. Also marks the finished ones
+ *  in the tutorials menu (Nseraf #575), with Cilia Quest Training (14). */
+export async function finished(list: number[] = TRAINING): Promise<Set<number>> {
   const done = new Set<number>();
-  for (const t of TRAINING) {
-    try { if (localStorage.getItem(LOCAL[t])) done.add(t); } catch { /* private window */ }
+  for (const t of list) {
+    try { if (LOCAL[t] && localStorage.getItem(LOCAL[t])) done.add(t); } catch { /* private window */ }
   }
   try {
     const backend = useProofreadingBackendStore();
     for (const a of backend.mySpecialBadges as any[]) {
       const names = [a?.badge?.slug, a?.badge?.name].filter(Boolean);
-      for (const t of TRAINING) if (ACHIEVEMENT[t].some(n => names.includes(n) || names.includes('nge-badge-' + n))) done.add(t);
+      for (const t of list) if ((ACHIEVEMENT[t] ?? []).some(n => names.includes(n) || names.includes('nge-badge-' + n))) done.add(t);
     }
     const uid = backend.userId;
-    if (uid && done.size < TRAINING.length) {
+    if (uid && done.size < list.length) {
       const { data } = await supabase.from('tutorial_completions')
-        .select('tutorial').eq('user_id', uid).in('tutorial', TRAINING);
+        .select('tutorial').eq('user_id', uid).in('tutorial', list);
       for (const r of (data ?? []) as Array<{ tutorial: number }>) done.add(Number(r.tutorial));
     }
   } catch { /* what is known locally stands */ }

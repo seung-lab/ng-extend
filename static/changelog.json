@@ -2,6 +2,42 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-19T19:19:00Z",
+      "title": "Cilia Quests on your profile",
+      "items": [
+        "Your profile has a Cilia Quests card with your Quests today, this week and all time.",
+        "It shows your place on the Quests leaderboard, such as 2nd of 8 this week, and a bar to your next Quest milestone.",
+        "Quests leaderboard opens the leaderboard right on the Quests tab."
+      ]
+    },
+    {
+      "at": "2026-11-19T16:50:00Z",
+      "title": "No extra strip under the cut and merge bar",
+      "items": [
+        "In cut and merge mode, the extra strip of key names under the bar is gone again, in every browser."
+      ]
+    },
+    {
+      "at": "2026-11-19T16:29:00Z",
+      "title": "Check marks on finished tutorials, and a blue merge bar",
+      "items": [
+        "In the tutorials menu, a green check mark now follows each tutorial you have finished.",
+        "The merge bar is blue now, like the cut bar.",
+        "When your browser tab runs low on memory, Pyr frees some space and reloads the images by itself, so 2D and 3D should no longer stay blank until you refresh."
+      ]
+    },
+    {
+      "at": "2026-11-19T15:53:00Z",
+      "title": "A clearer cut bar, and the Δ menu on a right click hold",
+      "items": [
+        "In cut mode the bar stays blue the whole time, and the side you are placing is the one lit up solid, red or blue.",
+        "The button beside it now says what G does: Place blue, or Place red.",
+        "Hold the right mouse button still on a cell for half a second to open its Δ menu, without finding it in the segment list.",
+        "Your segment list keeps its place when you come back from the Annotations tab, instead of jumping around.",
+        "When two merge points are too far apart, the game now says so in plain words: click both pieces right where they touch."
+      ]
+    },
+    {
       "at": "2026-11-19T14:56:00Z",
       "title": "A quieter Training Sim box",
       "items": [
