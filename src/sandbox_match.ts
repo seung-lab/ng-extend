@@ -181,9 +181,18 @@ export function judgeEdit(kind: 'merge' | 'split', prev: MatchResult, now: Match
   const rowMove = (a: number | null | undefined, b: number | null | undefined) =>
     a == null && b != null ? -1 : a != null && b != null ? Math.sign(b - a) : 0;
   const leftMove = (a?: { left: number }, b?: { left: number }) => (a && b ? Math.sign(a.left - b.left) : 0);
-  const moves = [rowMove(prev.merge, now.merge), rowMove(prev.cut, now.cut), leftMove(prev.missing, now.missing), leftMove(prev.extra, now.extra)];
-  if (moves.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
-  if (moves.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
+  // Judged by what the edit is for (Ames 2026-11-19: merging the nucleus
+  // onto the cell said Wrong merge, then right). A merge that brings in
+  // missing pieces is good even when a wrong part comes along; that part is
+  // for a cut. A cut that takes off part of the cell itself is wrong.
+  const mergeMoves = [rowMove(prev.merge, now.merge), leftMove(prev.missing, now.missing)];
+  const cutMoves = [rowMove(prev.cut, now.cut), leftMove(prev.extra, now.extra)];
+  const [ours, other] = kind === 'merge' ? [mergeMoves, cutMoves] : [cutMoves, mergeMoves];
+  if (ours.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (kind === 'split' && other.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (ours.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
+  if (other.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (other.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
   return { text: 'No change', tone: 'plain' };
 }
 
@@ -1216,6 +1225,10 @@ function noteEdit(taskId: number) {
   // After an edit the next Jump starts again with a place, at the same spot in
   // the list: the piece just fixed has left it, so that is the next one.
   if (c) { c.lastEdit = Date.now(); c.offered = false; c.step = 1; c.jumped = false; }
+  // Spots looked up before this edit are stale (Ames 2026-11-19: "I've
+  // already made the merge, and it's still showing me your cell is missing a
+  // branch"): a Jump pressed before the new reading asked the server afresh.
+  for (const k of [...ahead.keys()]) if (k.startsWith(`${taskId}:`)) ahead.delete(k);
   removeHintLayers();
   const el = document.getElementById(CARD_ID);
   if (el) resetNudge(el);

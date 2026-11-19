@@ -216,9 +216,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const verdicts = await page.evaluate(() => {
       const j = window.__ngeCellMatch.judgeEdit;
       const a = { scorable: true, merge: 40, cut: null, missing: { left: 10, total: 20 }, extra: { left: 0, total: 0 } };
-      return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text];
+      return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text,
+        // Ames 2026-11-19: the nucleus merge brought in the cell and a wrong part with it.
+        j('merge', a, { ...a, merge: 90, cut: 0, missing: { left: 1, total: 20 }, extra: { left: 2, total: 2 } }).text,
+        j('split', { ...a, cut: 0, extra: { left: 2, total: 2 } }, { ...a, merge: 30, cut: 50, missing: { left: 12, total: 20 }, extra: { left: 1, total: 2 } }).text];
     });
-    check('a merge that brings in a wrong part is a Wrong merge; nothing moved is No change', verdicts.join('|') === 'Good merge|Wrong merge|No change', verdicts);
+    check('a merge judged by its pieces: one that only brings a wrong part is Wrong; one that brings the cell and a wrong part is Good; a cut that takes real cell is Wrong', verdicts.join('|') === 'Good merge|Wrong merge|No change|Good merge|Wrong cut', verdicts);
     const heads = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-head'); const t = document.querySelector('#nge-cell-match .nge-cm-title'); const st = document.querySelector('#nge-cell-match .nge-cm-state'); const was = st.textContent; st.textContent = 'Merge complete'; const longest = st.scrollWidth > st.clientWidth; st.textContent = was; return { longestCut: longest, head: Math.round(h.getBoundingClientRect().height), title: Math.round(t.getBoundingClientRect().height), state: st.textContent, cut: st.scrollWidth > st.clientWidth }; });
     check('the top line stays one line and a long verdict is not cut off', heads.title <= 16 && !heads.cut && !heads.longestCut, heads);
     const fills = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-fill')].map(f => Math.round(f.getBoundingClientRect().width)));
