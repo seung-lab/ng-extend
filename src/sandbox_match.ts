@@ -181,9 +181,18 @@ export function judgeEdit(kind: 'merge' | 'split', prev: MatchResult, now: Match
   const rowMove = (a: number | null | undefined, b: number | null | undefined) =>
     a == null && b != null ? -1 : a != null && b != null ? Math.sign(b - a) : 0;
   const leftMove = (a?: { left: number }, b?: { left: number }) => (a && b ? Math.sign(a.left - b.left) : 0);
-  const moves = [rowMove(prev.merge, now.merge), rowMove(prev.cut, now.cut), leftMove(prev.missing, now.missing), leftMove(prev.extra, now.extra)];
-  if (moves.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
-  if (moves.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
+  // Judged by what the edit is for (Ames 2026-11-19: merging the nucleus
+  // onto the cell said Wrong merge, then right). A merge that brings in
+  // missing pieces is good even when a wrong part comes along; that part is
+  // for a cut. A cut that takes off part of the cell itself is wrong.
+  const mergeMoves = [rowMove(prev.merge, now.merge), leftMove(prev.missing, now.missing)];
+  const cutMoves = [rowMove(prev.cut, now.cut), leftMove(prev.extra, now.extra)];
+  const [ours, other] = kind === 'merge' ? [mergeMoves, cutMoves] : [cutMoves, mergeMoves];
+  if (ours.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (kind === 'split' && other.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (ours.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
+  if (other.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (other.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
   return { text: 'No change', tone: 'plain' };
 }
 
@@ -276,10 +285,23 @@ async function findCellOnScreen(mine: SandboxClaim[], vis: any) {
     if (!root || !/^\d+$/.test(root)) continue;
     let here = false;
     try { here = vis.has(Uint64.parseString(root)); } catch { /* not an ID */ }
-    if (!here) continue;
-    aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), root]));
-    console.debug('[cell-match] claim', c.id, 'is on screen as', root);
-    return;
+    if (here) {
+      aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), root]));
+      console.debug('[cell-match] claim', c.id, 'is on screen as', root);
+      return;
+    }
+    // A reloaded view can hold the cell as it was before the last edit
+    // (Ames 2026-11-19: "I'm already on my cell. I simply refreshed the
+    // page"). An ID on screen that has since become this root is the cell;
+    // once found, swapOldIds puts the current one in its place.
+    const ids = [...vis].map((v: any) => String(v)).filter(id => /^\d+$/.test(id) && id !== root).slice(0, 12);
+    for (const id of ids) {
+      const now = await currentIdsOf(id).catch(() => null);
+      if (!now || !now.includes(root)) continue;
+      aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), id]));
+      console.debug('[cell-match] claim', c.id, 'is on screen as an older', id, 'of', root);
+      return;
+    }
   }
 }
 
@@ -360,6 +382,7 @@ const CSS = `
 #${CARD_ID}.nge-cm-idle .nge-cm-pieces{color:#8fb6dc}
 #${CARD_ID} .nge-cm-loader{display:none}
 #${CARD_ID}.nge-cm-loading .nge-cm-loader{display:flex;align-items:center;gap:14px;padding:6px 0 4px}
+#${CARD_ID}.nge-cm-idle:not(.nge-cm-reviewing) .nge-cm-row{display:none !important}
 #${CARD_ID}.nge-cm-loading .nge-cm-score,#${CARD_ID}.nge-cm-loading .nge-cm-row,#${CARD_ID}.nge-cm-loading .nge-cm-sub{display:none !important}
 #${CARD_ID} .nge-cm-ld-scope{flex:0 0 84px;width:84px;height:98px;position:relative;overflow:hidden;border-radius:8px;background:radial-gradient(circle at 50% 42%,rgba(64,208,255,.14),transparent 70%)}
 #${CARD_ID} .nge-cm-ld-glyph{position:absolute;inset:0}
@@ -439,10 +462,11 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-mode{position:absolute;top:0;left:0;right:0;height:4px;padding:0;margin:0;overflow:hidden;font-size:0;line-height:0;color:transparent;background:transparent;transition:background .2s ease}
 #${CARD_ID}.nge-cm-idle .nge-cm-mode,#${CARD_ID}.nge-cm-reviewing .nge-cm-mode{display:none}
 #${CARD_ID} .nge-cm-mode[data-mode="merge"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);box-shadow:0 0 10px rgba(61,155,255,.7)}
-#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);box-shadow:0 0 10px rgba(255,64,88,.7)}
+/* Cut mode is blue, as the cut bar at the bottom is (Ames 2026-11-19: "keep cut mode blue period"). */
+#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);box-shadow:0 0 10px rgba(61,155,255,.7)}
 #${CARD_ID} .nge-cm-mode[data-mode="highlight"]{background:linear-gradient(90deg,#2fe39a,#9dffd0);box-shadow:0 0 10px rgba(61,255,154,.55)}
 #${CARD_ID}[data-mode="merge"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,155,255,.85)}
-#${CARD_ID}[data-mode="cut"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(255,64,88,.8)}
+#${CARD_ID}[data-mode="cut"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,155,255,.85)}
 #${CARD_ID}[data-mode="highlight"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,255,154,.6)}
 #${CARD_ID} .nge-cm-cellnote{margin:-2px 0 8px;padding:7px 9px;border-left:3px solid #7fd8ff;border-radius:4px;background:rgba(127,216,255,.08);font:13px/1.35 Inter,system-ui,sans-serif;color:#d6e2f5}
 #${CARD_ID} .nge-cm-cellnote[hidden],#${CARD_ID} .nge-cm-acc[hidden],#${CARD_ID} .nge-cm-finish-gate[hidden]{display:none}
@@ -474,6 +498,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 @keyframes nge-cm-find-shine{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after,#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before,#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:none}}
 #${CARD_ID} .nge-cm-nudge[hidden]{display:none}
+/* Folded to one line until the player opens it (Ames 2026-11-19: "this is too big, need a way to collapse"). */
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){padding:6px 9px;cursor:pointer}
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-btns{display:none}
+#${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px}
+#${CARD_ID} .nge-cm-nudge-more svg{transition:transform .15s}
+#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open .nge-cm-nudge-more svg{transform:rotate(180deg)}
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
 #${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
@@ -532,13 +563,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:3px 0 5px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-fill,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{box-shadow:none;opacity:.85}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{font-size:10.5px;letter-spacing:.12em;grid-column:1;grid-row:1}
-#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0;padding:3px 7px 2px;border-radius:6px;line-height:1;cursor:pointer;background:rgba(10,20,36,.6);transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]{border:1px solid rgba(61,155,255,.6);color:#9fd0ff}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]{border:1px solid rgba(255,64,88,.6);color:#ffa3b0}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]:hover{background:rgba(61,155,255,.18)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]:hover{background:rgba(255,64,88,.16)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"][aria-pressed="true"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);border-color:#ff8a9e;color:#1a0408;box-shadow:0 0 10px rgba(255,64,88,.7)}
+/* Merge and Cut as plain labels, like MATCH SCORE (Ames 2026-11-19: the
+   pills "don't match our UI"). A label is the M or C button; when its mode
+   is on it lights blue, Cut too (Ames: "keep cut mode blue period"). */
+#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0 0 0 -6px;padding:4px 6px 3px;border:1px solid transparent;border-radius:5px;line-height:1;cursor:pointer;background:transparent;color:#8fb6dc;transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
+#${CARD_ID} .nge-cm-modebtn:hover{color:#e6f0ff;background:rgba(61,155,255,.12);border-color:rgba(127,190,255,.3)}
+#${CARD_ID} .nge-cm-modebtn[aria-pressed="true"]{color:#fff;background:rgba(61,155,255,.32);border-color:rgba(127,208,255,.85);box-shadow:0 0 9px rgba(61,155,255,.55)}
+#${CARD_ID} .nge-cm-row:has(.nge-cm-modebtn[aria-pressed="true"]) .nge-cm-pieces{color:#e6f0ff}
 #${CARD_ID} .nge-cm-modebtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
@@ -671,7 +702,9 @@ const BULB_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" st
 const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
   + '<span class="nge-cm-nudge-text"></span>'
   + '<span class="nge-cm-nudge-btns"><button type="button" class="nge-cm-btn nge-cm-hint-btn" hidden>Show me</button>'
-  + '</span></div>';
+  + '</span><button type="button" class="nge-cm-tool nge-cm-nudge-more" aria-expanded="false" aria-label="Show the whole hint" title="Show the whole hint">'
+  + '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button></div>';
+const HINT_OPEN_KEY = 'nge_sandbox_hint_open';
 // Highlight from the box (Ames 2026-11-14: "a button that opens highlight
 // mode ... with checked and come back pre-filled"; "we can't add highlight
 // points while you are in merge or cut mode"). A chip leaves Merge or Cut and
@@ -1116,6 +1149,12 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   tellShown(taskId);
 }
 
+function rootShown(root: string): boolean {
+  try {
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    return !!vis && vis.has(Uint64.parseString(root));
+  } catch { return true; }
+}
 async function ask(taskId: number) {
   const mine = ++asking;
   show(taskId, last.get(taskId), true);
@@ -1123,7 +1162,10 @@ async function ask(taskId: number) {
     const r = await secureWrite<MatchResult>('match.check', { taskId });
     const prev = last.get(taskId);
     noteResult(taskId, r);
-    if (r.root) aliases.delete(taskId);
+    // The other IDs are dropped once the current one is on screen; until then
+    // (a reloaded view with an older ID, before swapOldIds runs) they keep
+    // the cell found.
+    if (r.root && rootShown(r.root)) aliases.delete(taskId);
     if (mine !== asking || onScreen !== taskId) return;
     const kind = editKind;
     editKind = null;
@@ -1216,6 +1258,10 @@ function noteEdit(taskId: number) {
   // After an edit the next Jump starts again with a place, at the same spot in
   // the list: the piece just fixed has left it, so that is the next one.
   if (c) { c.lastEdit = Date.now(); c.offered = false; c.step = 1; c.jumped = false; }
+  // Spots looked up before this edit are stale (Ames 2026-11-19: "I've
+  // already made the merge, and it's still showing me your cell is missing a
+  // branch"): a Jump pressed before the new reading asked the server afresh.
+  for (const k of [...ahead.keys()]) if (k.startsWith(`${taskId}:`)) ahead.delete(k);
   removeHintLayers();
   const el = document.getElementById(CARD_ID);
   if (el) resetNudge(el);
@@ -1525,7 +1571,17 @@ function keepSize(el: HTMLElement) {
 function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
   el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
-  el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
+  el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', e => { e.stopPropagation(); void pressHint(el); });
+  // The hint folds to one line; a click opens it, and Pyr remembers.
+  const hintLine = el.querySelector('.nge-cm-nudge') as HTMLElement;
+  const hintMore = el.querySelector('.nge-cm-nudge-more') as HTMLElement;
+  const setHintOpen = (open: boolean) => { hintLine.classList.toggle('nge-cm-nudge-open', open); hintMore.setAttribute('aria-expanded', String(open)); hintMore.setAttribute('aria-label', open ? 'Fold the hint' : 'Show the whole hint'); hintMore.title = hintMore.getAttribute('aria-label')!; };
+  let hintOpen = false;
+  try { hintOpen = localStorage.getItem(HINT_OPEN_KEY) === '1'; } catch { /* folded */ }
+  setHintOpen(hintOpen);
+  const toggleHint = (open: boolean) => { setHintOpen(open); try { localStorage.setItem(HINT_OPEN_KEY, open ? '1' : '0'); } catch { /* this visit only */ } };
+  hintMore.addEventListener('click', e => { e.stopPropagation(); toggleHint(!hintLine.classList.contains('nge-cm-nudge-open')); });
+  hintLine.addEventListener('click', () => { if (!hintLine.classList.contains('nge-cm-nudge-open')) toggleHint(true); });
   for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
   // Highlight folds away (Ames 2026-11-18: "this box is so big"), closed at
   // first; each player's choice is remembered.
