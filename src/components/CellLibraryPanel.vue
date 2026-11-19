@@ -3796,7 +3796,7 @@ onBeforeUnmount(() => {
                 Meet the cells <b>{{ CAST.length }}</b>
               </button>
               <button v-if="orphansHere" :class="{ active: filter === 'orphans', 'nge-cl-orphans-tab': true }" @click="filter = 'orphans'"
-                      title="Pieces of the retina that belong to no cell yet: tidy one up and record what it is (test site preview)">
+                      title="Lost Fragments: pieces of the retina nobody has traced yet. Tidy one up and record what it is (test site preview)">
                 {{ orphanTitle }} <b>{{ orphanCount }}</b>
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">

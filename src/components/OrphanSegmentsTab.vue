@@ -11,8 +11,7 @@
  * Nothing leaves this browser: Submit saves to localStorage only. Test sites
  * share the live Supabase and functions, so no bells, chat, stats or claims.
  *
- * The player-facing name is not decided. ORPHAN_NAMES holds the proposals and
- * ?orphanName=lost|strays|orphan on the test site switches between them.
+ * Players read it as "Lost Fragments" (Ames 2026-11-19), ORPHAN_NAME.
  */
 import { computed, reactive, ref } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
