@@ -94,7 +94,11 @@ async function run(browser, perms, tag) {
       out.first = await seg();
       out.playingBar = await page.evaluate(() => !document.querySelector('.nge-orph-play') && !![...document.querySelectorAll('.nge-orph-link')].find(b => b.textContent.trim() === 'Stop') && !![...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Highlight'));
       out.chip = await page.evaluate(() => { const c = document.querySelector('.nge-play-chip'); return c ? c.textContent.trim() : null; });
-      out.submitLabel = await page.evaluate(() => document.querySelector('.nge-orph-submit').textContent.trim());
+      out.collapsed = await page.evaluate(() => !document.querySelector('.nge-orph-check') && !!document.querySelector('.nge-orph-complete'));
+      out.selectionClosed = await page.evaluate(() => { const v = window.viewer.selectionDetailsState?.location?.watchableVisible; return !v || !v.value; });
+      await page.evaluate(() => document.querySelector('.nge-orph-complete').click());
+      await page.waitForTimeout(300);
+      out.submitLabel = await page.evaluate(() => [...document.querySelectorAll('.nge-orph-submit')].map(b => b.textContent.trim()).find(t => /Submit/.test(t)) || '');
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fragments-playing.png` });
       await page.evaluate(() => [...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Skip').click());
       await page.waitForTimeout(1200);
@@ -107,6 +111,8 @@ async function run(browser, perms, tag) {
       out.slimBar = await page.evaluate(() => !!document.querySelector('.nge-orph--slim'));
       // Close the library and open it again: still on Lost Fragments (Ames 2026-11-19).
       out.beforeClose = await seg();
+      await page.evaluate(() => { const c = document.querySelector('.nge-orph-complete'); if (c) c.click(); });
+      await page.waitForTimeout(300);
       await page.evaluate(() => { const add = [...document.querySelectorAll('.nge-orph-link')].find(b => b.textContent.trim() === 'Add a note'); if (add) add.click(); });
       await page.waitForTimeout(300);
       await page.evaluate(() => { const t = document.querySelector('.nge-orph-notes'); t.value = 'kept note'; t.dispatchEvent(new Event('input')); });
@@ -116,6 +122,8 @@ async function run(browser, perms, tag) {
       await page.waitForTimeout(1500);
       out.reopened = await page.evaluate(() => !!document.querySelector('.nge-orph'));
       out.afterReopen = await seg();
+      await page.evaluate(() => { const c = document.querySelector('.nge-orph-complete'); if (c) c.click(); });
+      await page.waitForTimeout(300);
       out.noteKept = await page.evaluate(() => (document.querySelector('.nge-orph-notes') || {}).value);
       // Play again while that one is open: it stays (Ames 2026-11-19).
       // The chip in the top bar: one press hides the library, the next goes back to the task.
@@ -146,6 +154,8 @@ async function run(browser, perms, tag) {
   check('edit: Lost Fragments and Cilia open', (ed.cards || []).filter(c => /Lost|Cilia/.test(c.name)).every(c => !c.off), ed.cards);
   check('edit: Start playing lands on a fragment, full ID shown', /^\d{15,}$/.test(ed.first || ''), ed.first);
   check('edit: no Playing box; Stop, Highlight and Submit and next show', ed.playingBar && /Submit and next/.test(ed.submitLabel || ''), ed);
+  check('edit: slim shows Complete and folds the checklist', ed.collapsed, ed.collapsed);
+  check('edit: the Selection panel stays closed', ed.selectionClosed, ed.selectionClosed);
   check('edit: the top bar says Lost Fragments', /Lost Fragments/.test(ed.chip || ''), ed.chip);
   check('edit: Play shows the slim bar on Lost Fragments', ed.slimBar, ed.slimBar);
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);

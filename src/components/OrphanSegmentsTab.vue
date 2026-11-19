@@ -107,11 +107,24 @@ function restoreDraft() {
 watch([group, active, shownRoot, () => ({ ...form })], saveDraft, { deep: true });
 
 const history = useCellHistoryStore();
+/** The jump opens neuroglancer's Selection panel on the right; it means
+ *  nothing here (Ames 2026-11-19: "I don't want the selection window to
+ *  appear"). Close it as it opens, the way Cilia Quest does. */
+function closeSelectionPanel() {
+  const shut = () => { try { const vis = (window as any).viewer?.selectionDetailsState?.location?.watchableVisible; if (vis && vis.value) vis.value = false; } catch { /* no such panel */ } };
+  shut(); setTimeout(shut, 300); setTimeout(shut, 1200);
+}
+/** Slim: the fragment and what you are playing; Complete opens the checklist
+ *  (Ames 2026-11-19: "when I'm ready to complete it, then I hit complete and
+ *  then the rest of it folds down"). */
+const finishing = ref(false);
 async function open(row: OrphanSeg) {
   active.value = row;
   shownRoot.value = row.id;
   resetForm(saves[row.id]);
   history.jumpToCell(row.id, row.pt);
+  finishing.value = false;
+  closeSelectionPanel();
   // The listed ID may be old (one in the lab's list already was). The jump
   // point sits inside the segment, so ask what is there now and show that.
   const sv = await supervoxelAtPlace(row.pt).catch(() => null);
@@ -149,14 +162,14 @@ function playNext() {
   allDone.value = false;
   group.value = n.g;
   void open(n.row);
-  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your fragment', cell: 'Segment ' + short(n.row.id) } }));
+  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + short(n.row.id) } }));
 }
 // Pressing Play while a fragment is open and not yet submitted stays on it
 // (Ames 2026-11-19: Play took her from Smaller back to Large, losing her note).
 function playResume() {
   const a = active.value;
   if (a && !saves[a.id]) {
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your fragment', cell: 'Segment ' + a.id } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + a.id } }));
     return;
   }
   playNext();
@@ -241,6 +254,7 @@ function submit() {
   };
   persist();
   form.saved = true;
+  finishing.value = false;
   if (playing.value) playNext();
 }
 function forget() {
@@ -284,6 +298,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
     <div v-if="slim && !active" class="nge-orph-note nge-orph-slim-empty">No fragment open. Open the full view to pick one.</div>
 
     <div v-if="playing && allDone" class="nge-orph-note nge-orph-note--ok">You have answered every fragment here. Thank you!</div>
+    <!-- The slim bar's header (Ames 2026-11-19: "needs a header"). -->
+    <div v-if="slim" class="nge-orph-slimhead" :style="{ backgroundImage: `url(${bannerImg})` }"><span>Lost Fragments</span><em v-if="playing" class="nge-orph-slimplaying">Playing</em></div>
     <div v-if="active" class="nge-orph-task">
       <div class="nge-orph-task-top">
         <div>
@@ -307,6 +323,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
         <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
         <button v-if="playing" class="nge-orph-btn" @click="playNext" title="Leave this one and go to the next fragment">Skip</button>
+        <button v-else class="nge-orph-btn nge-orph-playbtn" @click="startPlay('fragments')" title="Play: after Submit, the next fragment opens by itself">&#9654; Play</button>
         <button class="nge-orph-help-btn" :class="{ on: helpOpen }" :aria-expanded="helpOpen ? 'true' : 'false'" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button>
         <button v-if="playing" class="nge-orph-link nge-orph-stop" @click="stopPlay" title="Stop playing: Submit stays on this fragment">Stop</button>
       </div>
@@ -318,6 +335,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <p><b>4. Nucleus ID</b> (soma only). In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
         <p><b>Recenter</b> flies the view back to the fragment. <b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
       </div>
+      <div v-if="slim && !finishing" class="nge-orph-row">
+        <button class="nge-orph-btn nge-orph-submit nge-orph-complete" @click="finishing = true" title="Done with this fragment? Open the checklist and Submit.">Complete</button>
+        <span v-if="form.saved" class="nge-orph-note nge-orph-note--ok">Submitted</span>
+      </div>
+      <template v-if="!slim || finishing">
       <ol class="nge-orph-check">
         <li :class="{ done: form.fixed }">
           <label title="Cut off anything that belongs to another cell and merge in missing pieces."><input type="checkbox" v-model="form.fixed" /> <b>Fix splits and merges</b></label>
@@ -355,6 +377,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
       <div v-if="form.saved" class="nge-orph-note nge-orph-note--ok">Saved on this computer. On the real version it goes to the lab.</div>
       <div v-else-if="missing.length && !slim" class="nge-orph-note">Still to do: {{ missing.join(', ') }}.</div>
+      </template>
     </div>
 
     <div v-if="!slim" class="nge-orph-list">
@@ -385,6 +408,13 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-task-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14.5px; user-select: all; }
 .nge-orph-copy { font: 600 11.5px Inter, sans-serif; padding: 2px 8px; border-radius: 5px; cursor: pointer; color: #9fd0ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(126, 202, 255, 0.35); }
 .nge-orph-copy:hover { background: rgba(74, 158, 255, 0.2); }
+.nge-orph-slimhead { position: relative; margin: 6px 6px 0; height: 30px; border-radius: 8px 8px 0 0; background-size: cover; background-position: center 30%; display: flex; align-items: center; padding: 0 10px; overflow: hidden; }
+.nge-orph-slimhead::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to right, rgba(8, 12, 24, 0.85), rgba(8, 12, 24, 0.35)); }
+.nge-orph-slimhead span { position: relative; z-index: 1; font: 700 12.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #eef; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
+.nge-orph--slim .nge-orph-slimhead + .nge-orph-task { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.nge-orph-slimplaying { position: relative; z-index: 1; margin-left: auto; font: 600 11px 'Inter', sans-serif; font-style: normal; color: #9ff5da; border: 1px solid rgba(62, 236, 190, 0.55); border-radius: 999px; padding: 1px 8px; background: rgba(8, 40, 36, 0.7); }
+.nge-orph-complete { padding: 4px 14px; }
+.nge-orph-playbtn { color: #9ff5da; border-color: rgba(62, 236, 190, 0.5); }
 .nge-orph-help-btn { width: 24px; height: 24px; border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.45); background: transparent; color: #9fd0ff; font: 700 13px 'Inter', sans-serif; cursor: pointer; padding: 0; }
 .nge-orph-help-btn.on, .nge-orph-help-btn:hover { background: rgba(74, 158, 255, 0.18); color: #fff; }
 .nge-orph-help { font-size: 12.5px; line-height: 1.45; color: #c3d0e2; background: rgba(10, 18, 32, 0.7); border: 1px solid rgba(126, 202, 255, 0.25); border-radius: 8px; padding: 7px 10px; display: flex; flex-direction: column; gap: 5px; }
