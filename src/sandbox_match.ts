@@ -628,7 +628,7 @@ export function progressLine(r: MatchResult): string {
 const INFO_KEY = 'sandbox.match_info';
 const INFO_LINES = [
   'You are in the <b>Training Sim</b>, on the Sandbox, a dataset used only for learning. Play gives you a cell that has already been proofread, so you can practice and get instant feedback.',
-  '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell.',
+  '<b>Match score</b>: your Merge and Cut together, half each. It starts at 0% and reads 100% when your cell matches the true cell. Merging alone gets you halfway: cut off the wrong parts to go higher.',
   '<b>Merge</b>: the missing pieces you have merged back in.',
   '<b>Cut</b>: the wrong parts you have cut off.',
   'Every missing piece adds to Merge, even a tiny one, but the branches add the most: go for those first. Wrong parts count at any size, since a merged axon can be thin. <b>Jump</b> takes you to the next spot that needs fixing.',
@@ -1105,17 +1105,11 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
       + '<button type="button" class="nge-cm-btn nge-cm-cellnote-go">Show me the cell</button>';
     note.querySelector('.nge-cm-cellnote-go')!.addEventListener('click', () => void showBiggestPiece(el));
   }
-  // Merge well along and nothing cut yet: the Match score is the two
-  // together, so it stays near half however much is merged (kfay, reports 562
-  // and 563: "still 44% after few more good merge").
-  const toCut = r?.cutParts ?? r?.extra?.left ?? 0;
-  const cutNudge = !nucleus && !!(r && r.scorable && toCut > 0 && (r.cut ?? 0) < 1 && (r.merge ?? 0) >= 50);
-  if (cutNudge) {
-    const text = `Your Match score is Merge and Cut together. Cut off the ${toCut === 1 ? 'wrong part' : `${toCut} wrong parts`} to raise it.`;
-    if (note.dataset.cut !== text) { note.innerHTML = `<span>${text}</span>`; note.dataset.cut = text; }
-  } else if (!nucleus) { note.innerHTML = ''; delete note.dataset.cut; }
-  if (nucleus) delete note.dataset.cut;
-  note.hidden = !nucleus && !cutNudge;
+  // Why the score stays near half until something is cut (kfay, reports 562
+  // and 563) is said in the (i) box, not on the card (Ames 2026-11-19: "get
+  // rid of this, it belongs in the info box").
+  if (!nucleus) note.innerHTML = '';
+  note.hidden = !nucleus;
   void loadMine();
   place(el);
   shownFor = taskId;
