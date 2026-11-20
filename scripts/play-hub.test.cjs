@@ -161,6 +161,17 @@ async function run(browser, perms, tag) {
       out.playHere = await page.evaluate(() => !!document.querySelector('.nge-orph-playhere'));
       out.banner = await page.evaluate(() => { const b = document.querySelector('.nge-orph-banner'); if (!b) return null; const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), bg: getComputedStyle(b).backgroundImage.slice(0, 60) }; });
       if (SHOTS) { const el = await page.$('.nge-orph'); if (el) await el.screenshot({ path: `${SHOTS}/fragments-banner.png` }); }
+      // The tab rows fold into a header naming the tab (Ames 2026-11-20), and open again.
+      out.fold = await (async () => {
+        const fold = await page.$('.nge-cl-tabsfold--in');
+        if (!fold) return { button: false };
+        await fold.click(); await page.waitForTimeout(250);
+        const folded = await page.evaluate(() => ({ name: (document.querySelector('.nge-cl-tabshead-name') || {}).textContent || '', rows: !!document.querySelector('.nge-cl-tabgroup') }));
+        if (SHOTS) { const p = await page.$('.nge-cl-panel'); if (p) await p.screenshot({ path: `${SHOTS}/library-folded.png` }); }
+        await page.click('.nge-cl-tabshead .nge-cl-tabsfold'); await page.waitForTimeout(250);
+        const open = await page.evaluate(() => !!document.querySelector('.nge-cl-tabgroup'));
+        return { folded, open };
+      })();
     }
   } catch (e) { out.error = String(e).slice(0, 300); }
   await context.close();
@@ -181,6 +192,7 @@ async function run(browser, perms, tag) {
   check('edit: Play shows the slim bar on Lost Fragments', ed.slimBar, ed.slimBar);
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);
   check('edit: Play here shows in the full view when not playing', ed.playHere, ed.playHere);
+  check('edit: the tab rows fold into a Lost Fragments header and open again', ed.fold && ed.fold.folded && ed.fold.folded.name.trim() === 'Lost Fragments' && !ed.fold.folded.rows && ed.fold.open, ed.fold);
   check('edit: the banner shows in the full view', ed.banner && ed.banner.w > 200 && /lost-fragments-banner/.test(ed.banner.bg), ed.banner);
   check('edit: the slim box resizes from its corner and keeps the size', ed.resize && ed.resize.after && ed.resize.before && ed.resize.after[0] < ed.resize.before[0] - 100 && ed.resize.after[1] > ed.resize.before[1] + 80 && !!ed.resize.kept, ed.resize);
   check('edit: slim bar has no group menu, ID, Playing chip, arrows or count', ed.slimLean && ed.slimLean.row && !ed.slimLean.select && !ed.slimLean.chip && !ed.slimLean.arrows && /^(Large|Small|Glia-like|Soma-like)$/.test(ed.slimLean.meta.trim()), ed.slimLean);

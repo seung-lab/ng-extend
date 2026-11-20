@@ -31,8 +31,8 @@ import { postLostFragmentPoint } from '../widgets/lightbulb_service';
 import { cellAtCrosshair, supervoxelAtPlace } from '../util/crosshair_cell';
 import { getRootFromSupervoxel } from '../widgets/pcg_service';
 import { NURRO_IMAGES } from '../widgets/lightbulb_service';
-import { frameSvg } from '../sandbox_match';
 import { getToolbarIconDef } from '../data/toolbar-icons';
+import EditableText from './EditableText.vue';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
   type OrphanSeg, type OrphanFlag,
@@ -40,29 +40,19 @@ import {
 
 const props = defineProps<{ playTick?: number; slim?: boolean }>();
 
-/** The Training Sim's circuit edge on a button, redrawn when it resizes. */
-const vCircuit = {
-  mounted(el: HTMLElement) {
-    const host = document.createElement('span');
-    host.className = 'nge-orph-frame';
-    host.setAttribute('aria-hidden', 'true');
-    el.prepend(host);
-    let drawn = '';
-    const draw = () => {
-      const w = el.offsetWidth, h = el.offsetHeight;
-      if (!w || !h || `${w}x${h}` === drawn) return;
-      drawn = `${w}x${h}`;
-      host.innerHTML = frameSvg(w, h, false);
-    };
-    try { const ro = new ResizeObserver(draw); ro.observe(el); (el as any)._ngeRo = ro; } catch { /* drawn once */ }
-    requestAnimationFrame(draw);
-  },
-  unmounted(el: HTMLElement) { (el as any)._ngeRo?.disconnect(); },
-};
 /** After five fragments a player knows the drill (Ames 2026-11-20: power
  *  players "not going to want to have to check fix splits and merges and
  *  check every end every time"): the first two ticks go away and count as done. */
 const VETERAN_AT = 5;
+/** The how-to, admins edit it in the game (EditableText, key howto.lost_fragments). */
+const HOWTO_LINES = [
+  '<b>1. Fix splits and merges.</b> Cut off anything that belongs to another cell, and merge in pieces that are missing.',
+  '<b>2. Check every end.</b> Follow each branch to its tip and extend it where it was cut short.',
+  '<b>3. Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.',
+  '<b>4. Nucleus</b> (soma only). In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs: Pyr reads its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.',
+  'After 5 fragments, Pyr trusts you on 1 and 2 and stops asking.',
+  '<b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.',
+];
 /** The top bar's Highlight can, in place of the word (Ames 2026-11-20). */
 const HIGHLIGHT_ICON = getToolbarIconDef('highlight')?.svg ?? '';
 const name = orphanName();
@@ -485,11 +475,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
       <div class="nge-orph-slimbtns">
         <button class="nge-orph-btn nge-orph-hl" @click="openHighlight" aria-label="Highlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight." v-html="HIGHLIGHT_ICON"></button>
-        <button v-if="playing" v-circuit class="nge-orph-btn nge-orph-circ nge-orph-skip" @click="skip" title="Give this one back and go to the next fragment"><span class="nge-orph-label">Skip</span></button>
+        <button v-if="playing" class="nge-orph-btn nge-orph-skip" @click="skip" title="Give this one back and go to the next fragment"><span class="nge-orph-label">Skip</span></button>
         <!-- One button (Ames 2026-11-20: "we have one complete and next
              button"): Complete opens the checklist, then sends it. -->
-        <button v-if="!finishing" v-circuit class="nge-orph-btn nge-orph-circ nge-orph-complete" @click="finishing = true" title="Done with this fragment? Open the checklist."><span class="nge-orph-label">{{ form.saved ? 'Completed' : 'Complete' }}</span></button>
-        <button v-else v-circuit class="nge-orph-btn nge-orph-circ nge-orph-complete on" :disabled="!canSubmit || sending" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : 'Send it to the lab'" @click="submit"><span class="nge-orph-label">{{ sending ? 'Sending…' : completeLabel }}</span></button>
+        <button v-if="!finishing" class="nge-orph-btn nge-orph-complete" @click="finishing = true" title="Done with this fragment? Open the checklist."><span class="nge-orph-label">{{ form.saved ? 'Completed' : 'Complete' }}</span></button>
+        <button v-else class="nge-orph-btn nge-orph-complete on" :disabled="!canSubmit || sending" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : 'Send it to the lab'" @click="submit"><span class="nge-orph-label">{{ sending ? 'Sending…' : completeLabel }}</span></button>
       </div>
     </div>
     <div v-if="active && (!slim || finishing)" class="nge-orph-task">
@@ -521,13 +511,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
 
       <div v-if="helpOpen" class="nge-orph-help">
-        <p><b>1. Fix splits and merges.</b> Cut off anything that belongs to another cell, and merge in pieces that are missing.</p>
-        <p><b>2. Check every end.</b> Follow each branch to its tip and extend it where it was cut short.</p>
-        <p><b>3. Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.</p>
-        <p><b>4. Nucleus</b> (soma only). In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs: Pyr reads its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
-        <p v-if="veteran">You have done {{ VETERAN_AT }} or more, so Pyr trusts you on 1 and 2 and stops asking.</p>
-        <p v-else>After {{ VETERAN_AT }} fragments, Pyr trusts you on 1 and 2 and stops asking.</p>
-        <p><b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
+        <EditableText text-key="howto.lost_fragments" :original="HOWTO_LINES" list-class="nge-orph-help-list" notify label="Lost Fragments how to" />
       </div>
       <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
@@ -619,6 +603,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-help-btn.on, .nge-orph-help-btn:hover { background: rgba(74, 158, 255, 0.18); color: #fff; }
 .nge-orph-help { font-size: 12.5px; line-height: 1.45; color: #c3d0e2; background: rgba(10, 18, 32, 0.7); border: 1px solid rgba(126, 202, 255, 0.25); border-radius: 8px; padding: 7px 10px; display: flex; flex-direction: column; gap: 5px; }
 .nge-orph-help p { margin: 0; }
+.nge-orph-help :deep(.nge-orph-help-list) { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.nge-orph-help :deep(.nge-orph-help-list b) { color: #eef; }
 .nge-orph-help b { color: #eef; }
 .nge-orph-stop { margin-left: auto; align-self: center; }
 .nge-orph-groupsel { font: inherit; font-weight: 600; background: rgba(10, 18, 32, 0.9); border: 1px solid rgba(126, 202, 255, 0.35); border-radius: 5px; padding: 0 2px; cursor: pointer; }
@@ -680,8 +666,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-item:hover { background: rgba(74, 158, 255, 0.08); }
 .nge-orph-item--held { opacity: 0.45; }
 /* Training Sim's look (Ames 2026-11-20). Quiet buttons: thin edge, soft words. */
-.nge-orph-slimrow .nge-orph-btn:not(.nge-orph-circ), .nge-orph--slim .nge-orph-task .nge-orph-btn { padding: 5px 9px; border: 1px solid rgba(127, 190, 255, 0.22); border-radius: 6px; background: transparent; color: #a9c3e0; font: 500 12px/1 Inter, system-ui, sans-serif; }
-.nge-orph-slimrow .nge-orph-btn:not(.nge-orph-circ):hover:not(:disabled), .nge-orph--slim .nge-orph-task .nge-orph-btn:hover:not(:disabled) { border-color: rgba(127, 216, 255, 0.55); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
+.nge-orph--slim .nge-orph-task .nge-orph-btn { padding: 5px 9px; border: 1px solid rgba(127, 190, 255, 0.22); border-radius: 6px; background: transparent; color: #a9c3e0; font: 500 12px/1 Inter, system-ui, sans-serif; }
+.nge-orph--slim .nge-orph-task .nge-orph-btn:hover:not(:disabled) { border-color: rgba(127, 216, 255, 0.55); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
 /* Action buttons in the checklist: filled blue, as Training Sim's. */
 .nge-orph--slim .nge-orph-check .nge-orph-btn { border-color: #7fd8ff; background: rgba(74, 158, 255, 0.3); color: #fff; font-weight: 600; }
 .nge-orph--slim .nge-orph-check .nge-orph-btn:hover:not(:disabled) { background: rgba(74, 158, 255, 0.45); border-color: #a8e4ff; color: #fff; }
@@ -689,25 +675,40 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-seg button { color: #a9c3e0; font: 600 12px/1.3 Inter, system-ui, sans-serif; padding: 4px 9px; }
 .nge-orph-seg button.on { background: rgba(74, 158, 255, 0.3); color: #fff; box-shadow: inset 0 0 0 1px #7fd8ff; }
 .nge-orph-finishhead b { font: 600 12px/1 Orbitron, Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #d6e2f5; }
-/* Complete and Skip: the circuit edge, green and blue as Training Sim's Complete and Jump. */
-.nge-orph-slimrow .nge-orph-circ { --cc: 127, 216, 255; --fill: rgba(127, 216, 255, 0.1); --fill-on: rgba(127, 216, 255, 0.2); position: relative; isolation: isolate; overflow: visible; border: 0 !important; border-radius: 0; background: none !important; box-shadow: none; color: #eef8ff !important; font: 600 13px/1 Inter, system-ui, sans-serif; padding: 9px 16px; }
-.nge-orph-slimrow .nge-orph-complete { --cc: 62, 236, 190; --fill: rgba(32, 150, 110, 0.28); --fill-on: rgba(36, 170, 124, 0.42); color: #eafff6 !important; }
-.nge-orph-slimrow .nge-orph-circ:hover:not(:disabled) { filter: drop-shadow(0 0 6px rgba(var(--cc), 0.35)); }
-.nge-orph-slimrow .nge-orph-circ:focus-visible { outline: none; }
-.nge-orph-label { position: relative; z-index: 1; }
-.nge-orph-slimrow .nge-orph-circ :deep(.nge-orph-frame) { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
-.nge-orph-slimrow .nge-orph-circ :deep(.nge-orph-frame svg) { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.nge-orph-slimrow .nge-orph-circ :deep(.rim) { fill: var(--fill); stroke: rgba(var(--cc), 0.72); stroke-width: 1; transition: fill 0.15s, stroke 0.15s; }
-.nge-orph-slimrow .nge-orph-circ:hover:not(:disabled) :deep(.rim), .nge-orph-slimrow .nge-orph-complete.on :deep(.rim) { fill: var(--fill-on); stroke: rgb(var(--cc)); }
-.nge-orph-slimrow .nge-orph-circ:focus-visible :deep(.rim) { stroke: #fff; }
-.nge-orph-slimrow .nge-orph-circ :deep(.tr) { fill: none; stroke: rgba(var(--cc), 0.6); stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; }
-.nge-orph-slimrow .nge-orph-circ :deep(.pad) { fill: rgb(var(--cc)); }
-.nge-orph-slimrow .nge-orph-circ :deep(.via) { fill: #0a1322; stroke: rgba(var(--cc), 0.85); stroke-width: 1; }
-.nge-orph-slimrow .nge-orph-circ :deep(.pin) { fill: rgba(var(--cc), 0.7); }
-.nge-orph-slimrow .nge-orph-circ :deep(.side) { fill: #0a1322; stroke: rgb(var(--cc)); stroke-width: 1.4; filter: drop-shadow(0 0 3px rgba(var(--cc), 0.8)); }
-.nge-orph-slimrow .nge-orph-circ :deep(.side-in) { fill: rgb(var(--cc)); }
-.nge-orph-slimrow .nge-orph-hl { display: grid; place-items: center; width: 32px; height: 32px; padding: 0 !important; }
-.nge-orph-slimrow .nge-orph-hl :deep(svg) { width: 20px !important; height: 20px !important; }
+/* The selected layer tab's border (Ames 2026-11-20: "the top bar of the
+   layers tab that's active has the line with the circle and then the gap and
+   then another circle and then the line continues ... that's the border"):
+   a solid edge all round, no fade, and on Skip and Complete the top edge
+   breaks at two pads three quarters across. 3px of headroom above the edge
+   holds the pads, which sit half above it. */
+.nge-orph-slimbtns { gap: 10px !important; }
+.nge-orph-slimrow { padding-right: 16px !important; }
+.nge-orph-slimrow .nge-orph-btn { --edge: rgba(74, 158, 255, 0.6); --face: #0a1326; --pad: var(--edge);
+  position: relative; isolation: isolate; height: 33px; box-sizing: border-box; display: inline-flex; align-items: center;
+  padding: 3px 16px 0 13px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: linear-gradient(var(--edge), var(--edge)) left bottom / 100% calc(100% - 3px) no-repeat !important;
+  clip-path: polygon(0 3px, calc(100% - 9px) 3px, 100% 12px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+  color: #cfe2f7 !important; font: 600 13px/1 Inter, system-ui, sans-serif !important; }
+.nge-orph-slimrow .nge-orph-btn::before { content: ''; position: absolute; inset: 4px 1px 1px 1px; z-index: -1; pointer-events: none; background: var(--face);
+  clip-path: polygon(0 0, calc(100% - 8.6px) 0, 100% 8.6px, 100% 100%, 6.6px 100%, 0 calc(100% - 6.6px)); }
+.nge-orph-slimrow .nge-orph-btn:hover:not(:disabled) { --edge: #8fd6ff; --face: #0f1d3a; color: #fff !important; }
+.nge-orph-slimrow .nge-orph-btn:focus-visible { outline: none; --edge: #ffffff; }
+/* Skip and Complete: the two pads and the gap in the top edge, three quarters
+   across, or clear of the cut corner on a narrow button. */
+.nge-orph-slimrow .nge-orph-skip, .nge-orph-slimrow .nge-orph-complete { --px: min(75%, calc(100% - 26px));
+  clip-path: polygon(0 3px, calc(var(--px) - 8px) 3px, calc(var(--px) - 8px) 0, calc(var(--px) + 8px) 0, calc(var(--px) + 8px) 3px,
+    calc(100% - 9px) 3px, 100% 12px, 100% 100%, 7px 100%, 0 calc(100% - 7px)); }
+.nge-orph-slimrow .nge-orph-skip::after, .nge-orph-slimrow .nge-orph-complete::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 8px; z-index: 1; pointer-events: none;
+  background:
+    radial-gradient(circle at calc(var(--px) - 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at calc(var(--px) + 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
+    linear-gradient(90deg, transparent calc(var(--px) - 2.6px), var(--face) calc(var(--px) - 2.6px), var(--face) calc(var(--px) + 2.6px), transparent calc(var(--px) + 2.6px)) left 0 top 3px / 100% 1px no-repeat; }
+.nge-orph-slimrow .nge-orph-skip { --edge: #6fc4ff; --pad: #c9f3ff; padding: 3px 16px 0 13px !important; }
+.nge-orph-slimrow .nge-orph-complete { --edge: #3eecbe; --face: #0c3a30; --pad: #b9ffe6; color: #eafff7 !important; padding: 3px 18px 0 14px !important; }
+.nge-orph-slimrow .nge-orph-complete:hover:not(:disabled), .nge-orph-slimrow .nge-orph-complete.on:not(:disabled) { --edge: #8ff7d6; --face: #11503f; }
+.nge-orph-slimrow .nge-orph-btn:disabled { opacity: 0.55; }
+.nge-orph-slimrow .nge-orph-hl { width: 34px; justify-content: center; padding: 3px 3px 0 0 !important; }
+.nge-orph-slimrow .nge-orph-hl :deep(svg) { width: 18px !important; height: 18px !important; }
 .nge-orph-nucid { font: 600 12px 'JetBrains Mono', ui-monospace, monospace; color: #cfe6ff; }
 .nge-orph-item--on { background: rgba(74, 158, 255, 0.14); border-color: rgba(126, 202, 255, 0.35); }
 .nge-orph-item-i { color: #6c7a90; font-variant-numeric: tabular-nums; text-align: right; }
