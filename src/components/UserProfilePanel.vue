@@ -34,6 +34,10 @@ import {secureWrite} from '../secure_write';
 import {sandboxAccuracy, type Mine} from '../sandbox_match';
 import lockIcon from '../images/lock-icon.png';
 import unlockIcon from '../images/unlock-icon.png';
+// Each dataset's own emblem (Ames 2026-11-19), shown where its edit access is.
+import retinaEmblem from '../images/datasets/retina.png';
+import mecEmblem from '../images/datasets/mec.png';
+import bancEmblem from '../images/datasets/banc.png';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -562,6 +566,7 @@ async function loadDatasetStats() {
 const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'banc'];
 /** Short names for the tiles. */
 const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', banc: 'BANC' };
+const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, banc: bancEmblem };
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
@@ -598,11 +603,18 @@ const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d
   const at = accessGrants.value[ds.id];
   const state = viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
   const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-  return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], state, when };
+  const short = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], emblem: ACCESS_EMBLEMS[ds.id] || '', state, when, short };
 }).filter(r => !viewingOtherUser.value || otherEdit.value || r.state === 'edit'));
 
 watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loadAccess(); } });
-watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') void loadAccess(); });
+// The overview's Datasets Unlocked row reads it too, once the player is known.
+watch(() => backendStore.userId, () => { if (activeTab.value === 'overview') void loadAccess(); }, { immediate: true });
+watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets' || activeTab.value === 'overview') void loadAccess(); });
+/** Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19):
+ *  your own shows every dataset, locked ones dark; someone else's only the
+ *  ones they have unlocked, and nothing when they have none. */
+const unlockedRow = computed(() => accessRows.value.filter(r => r.emblem && (!viewingOtherUser.value || r.state === 'edit')));
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -2580,6 +2592,19 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span class="nge-trophy-fav-star">★</span>
             </button>
           </div>
+          <!-- Datasets Unlocked (Ames 2026-11-19: "a row below featured badge") -->
+          <div v-if="unlockedRow.length" class="nge-ds-unlocked" aria-label="Datasets unlocked">
+            <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Datasets Unlocked</div>
+            <div class="nge-ds-unlocked-row">
+              <div v-for="r in unlockedRow" :key="r.id" class="nge-ds-unlocked-tile" :class="'nge-ds-unlocked-tile--' + r.state"
+                   :title="r.state === 'edit' ? `${r.label}: unlocked${r.when ? ` ${r.when}` : ''}` : r.state === 'locked' ? `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.` : `${r.label}: checking…`">
+                <img :src="r.emblem" class="nge-ds-unlocked-icon" alt="" draggable="false" />
+                <img v-if="r.state === 'locked'" :src="lockIcon" class="nge-ds-unlocked-lock" alt="" draggable="false" />
+                <span class="nge-ds-unlocked-name">{{ r.name }}</span>
+                <span class="nge-ds-unlocked-state">{{ r.state === 'edit' ? (r.short || 'Unlocked') : r.state === 'locked' ? 'Locked' : '…' }}</span>
+              </div>
+            </div>
+          </div>
 
           <!-- Divider between badge and streak -->
           <div class="nge-profile-right-divider"></div>
@@ -3093,7 +3118,8 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           <div class="nge-ds-access-row">
             <div v-for="r in accessRows" :key="r.id" class="nge-ds-access-tile" :class="'nge-ds-access-tile--' + r.state"
                  :title="r.state === 'edit' ? `${r.label}: edit access${r.when ? ` since ${r.when}` : ''}` : r.state === 'locked' ? (viewingOtherUser ? `${r.label}: not unlocked yet` : `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.`) : `${r.label}: checking…`">
-              <img :src="r.state === 'edit' ? unlockIcon : lockIcon" class="nge-ds-access-icon" alt="" draggable="false" />
+              <img :src="r.emblem || (r.state === 'edit' ? unlockIcon : lockIcon)" class="nge-ds-access-icon" alt="" draggable="false" />
+              <img v-if="r.emblem && r.state === 'locked'" :src="lockIcon" class="nge-ds-access-lock" alt="" draggable="false" />
               <span class="nge-ds-access-text">
                 <span class="nge-ds-access-name">{{ r.name }}</span>
                 <span class="nge-ds-access-state">{{ r.state === 'edit' ? (r.when ? `Unlocked · ${r.when}` : 'Unlocked') : r.state === 'locked' ? 'Locked' : 'Checking' }}</span>
@@ -5934,6 +5960,25 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-tile--locked { --c: 150, 170, 200; opacity: 0.7; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(0.6) brightness(0.85); }
 .nge-ds-access-tile--unknown { opacity: 0.55; }
+.nge-ds-access-lock { position: absolute; left: 20px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); }
+.nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(1) brightness(0.5); }
+/* Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19). */
+.nge-ds-unlocked { width: 100%; margin-top: 12px; box-sizing: border-box; }
+.nge-ds-unlocked-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.nge-ds-unlocked-tile {
+  --c: 110, 240, 170;
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 8px; min-width: 0;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: linear-gradient(135deg, rgba(var(--c), 0.14), rgba(20, 40, 80, 0.55) 55%, rgba(var(--c), 0.07));
+  box-shadow: inset 0 0 0 1px rgba(var(--c), 0.5), inset 0 0 18px rgba(var(--c), 0.1);
+}
+.nge-ds-unlocked-icon { width: 56px; height: 56px; object-fit: contain; filter: drop-shadow(0 0 8px rgba(var(--c), 0.45)); }
+.nge-ds-unlocked-lock { position: absolute; top: 26px; left: 50%; width: 20px; height: 20px; transform: translateX(-50%); }
+.nge-ds-unlocked-name { font: 700 12px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; text-shadow: 0 0 8px rgba(var(--c), 0.45); }
+.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(var(--c)); }
+.nge-ds-unlocked-tile--locked { --c: 150, 170, 200; }
+.nge-ds-unlocked-tile--locked .nge-ds-unlocked-icon { filter: grayscale(1) brightness(0.45); opacity: 0.75; }
+.nge-ds-unlocked-tile--unknown { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 
 /* ── Laptops (Ames 2026-11-18: "this laptop layout for profile is ABYSMAL
