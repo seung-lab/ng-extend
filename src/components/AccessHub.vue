@@ -180,7 +180,8 @@ const cards = computed<Card[]>(() => {
     if (rq) rqUsed.add(rq.id);
     let stage: Stage; let since: string | null; let listed = false;
     if (ds) { stage = 'dataset'; since = ds.at; }
-    else if (rq) { stage = 'retina'; since = rq.submitted_at; }
+    // Granted here moves them on, the request kept for the panel's note.
+    else if (rq && rq.status === 'submitted') { stage = 'retina'; since = rq.submitted_at; }
     // Admins are their own step (Ames 2026-11-10: "show admins as Admin").
     else if (p.is_admin) { stage = 'admin'; since = p.joined_at; }
     else if (p.request_id && !p.pilot_enabled) {
@@ -743,7 +744,35 @@ const boxName = (s: Stat) => String(s.last_box || `Box ${s.step + 1}`).replace(/
 const triageUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
 const gameUrl = `${window.location.origin}${window.location.pathname}`;
 // Pyr, opened on Admin Hub > Access requests, where the examples are reviewed in the view.
-const retinaReviewUrl = `${gameUrl}?admin=access`;
+// Ames 2026-11-19: straight to their examples in the view, not the list.
+// Grant from the Access page (Ames 2026-11-19), as Admin Hub > Access requests does.
+const grantNote = ref('');
+const grantEmailToo = ref(true);
+const grantByHand = ref<number | null>(null);
+const grantSaid = ref<Record<number, string>>({});
+async function grantRetina(r: RetinaRow, byHand = false) {
+  const who = r.player_name || r.email || 'them';
+  if (!window.confirm(`Grant ${who} Retina edit access? They are told in Pyr${grantEmailToo.value ? ' and by email' : ''}.`)) return;
+  busy.value = 'grant'; actionError.value = '';
+  const note = grantNote.value;
+  try {
+    const out = await secureWrite<{ cave_granted?: boolean; pilot_added?: boolean }>('access.decide', { requestId: r.id, outcome: 'invited', note, ...(byHand ? { byHand: true } : {}) });
+    let said = out?.cave_granted ? `Granted: ${who} is in Eyewire_2_Edit, on the pilot testers, and was told.` : `Granted by hand: ${who} is on the pilot testers and was told.`;
+    if (grantEmailToo.value) {
+      try { const m = await secureWrite<{ to: string }>('access.grantEmail', { requestId: r.id, note }); said += ` Email sent to ${m.to}.`; }
+      catch (e: any) { said += ` ${e?.message || 'The email did not go.'}`; }
+    }
+    grantSaid.value = { ...grantSaid.value, [r.id]: said };
+    grantNote.value = ''; grantByHand.value = null;
+    rqRows.value = rqRows.value.map(x => x.id === r.id ? { ...x, status: 'invited' } : x);
+    readBells();
+  } catch (e: any) {
+    actionError.value = e?.message || 'That was not granted.';
+    if (/no CAVE id/.test(actionError.value)) grantByHand.value = r.id;
+  }
+  busy.value = '';
+}
+const retinaReviewUrl = (r: RetinaRow | null | undefined) => (r?.id ? `${gameUrl}?review=${r.id}` : `${gameUrl}?admin=access`);
 // Their profile in Pyr (Ames 2026-11-17: "click their username in access
 // dash to see their edits etc in pyr").
 const playerUrl = (userId: string) => `${gameUrl}?player=${encodeURIComponent(userId)}`;
@@ -1008,8 +1037,22 @@ const opName = (e: RecentEdit) => {
           <div class="ah-panel-meta"><b>The Retina</b>, sent {{ examplesOf(open.rq) }} example{{ examplesOf(open.rq) === 1 ? '' : 's' }} {{ day(open.rq.submitted_at) }}<template v-if="(open.rq.tries ?? 1) > 1">, try {{ open.rq.tries }}</template><template v-if="open.rq.eyewire_username">, EyeWire {{ open.rq.eyewire_username }}</template></div>
           <blockquote v-if="open.rq.player_note">{{ open.rq.player_note }}</blockquote>
           <div class="ah-actions">
-            <a class="ah-btn ah-btn--yes" :href="retinaReviewUrl" target="_blank" rel="noopener" title="Opens Pyr on Admin Hub, Access requests, where you look at each example in the view and grant edit access">Review their examples in Pyr ↗</a>
+            <a class="ah-btn" :href="retinaReviewUrl(open.rq)" target="_blank" rel="noopener" title="Opens Pyr on their first example in the view, with the review bar to step through all ten">Review their examples in Pyr ↗</a>
           </div>
+          <!-- Ames 2026-11-19: "I can't figure out how to grant their retina
+               access from this page". The same grant as Admin Hub's. -->
+          <div v-if="open.rq.status === 'submitted'" class="ah-grant">
+            <label class="ah-panel-meta">Note to {{ open.rq.player_name || 'them' }} (optional, goes with your answer)
+              <textarea v-model="grantNote" rows="2" maxlength="4000"></textarea>
+            </label>
+            <div class="ah-panel-meta">Grant adds {{ open.rq.email || 'them' }} to Eyewire_2_Edit in CAVE and to the pilot testers, then tells them in Pyr. If CAVE says no, nothing is sent.</div>
+            <label class="ah-panel-meta"><input type="checkbox" v-model="grantEmailToo" /> Email them too</label>
+            <div class="ah-actions">
+              <button type="button" class="ah-btn ah-btn--yes" :disabled="busy === 'grant'" @click="grantRetina(open.rq)">{{ busy === 'grant' ? 'Granting…' : 'Grant Retina access' }}</button>
+              <button v-if="grantByHand === open.rq.id" type="button" class="ah-btn" :disabled="busy === 'grant'" title="Only after you added them to Eyewire_2_Edit in CAVE yourself" @click="grantRetina(open.rq, true)">I added them by hand, grant</button>
+            </div>
+          </div>
+          <div v-if="grantSaid[open.rq.id]" class="ah-panel-meta ah-grant-said" role="status">{{ grantSaid[open.rq.id] }}</div>
         </div>
         <div v-if="open.ds" class="ah-ds">
           <div class="ah-panel-meta"><b>{{ open.ds.label }}</b>, asked {{ day(open.ds.at) }}<template v-if="open.ds.cave">, CAVE {{ open.ds.cave }}</template></div>
@@ -1275,6 +1318,9 @@ a.ah-total--link:hover, a.ah-total--link:focus-visible { border-color: rgba(127,
 .ah-pyr-link { color: #9fd3ff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .ah-pyr-link:hover { color: #cfe8ff; }
 .ah-wait { margin-top: 8px; }
+.ah-grant { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.ah-grant textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; background: rgba(10,20,40,.8); color: #e6f0ff; border: 1px solid rgba(120,170,255,.35); border-radius: 6px; padding: 6px; font: inherit; }
+.ah-grant-said { color: #9fe8b0; margin-top: 6px; }
 .ah-card-row { position: relative; }
 .ah-card-row--pick .ah-card { padding-right: 34px; }
 .ah-pick { position: absolute; top: 10px; right: 10px; width: 17px; height: 17px; margin: 0; cursor: pointer; accent-color: #6fb6ff; z-index: 1; }
