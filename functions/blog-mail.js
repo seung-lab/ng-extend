@@ -239,7 +239,10 @@ Seung Lab, Princeton University</td></tr>
 </table></td></tr></table></body></html>`;
   const text = [title, meta.replace(/&[a-z#0-9]+;/g, ''), '', summary, '', `Read it on the blog: ${url}`, '',
     'You\'re getting this because you signed up at connectome.quest.', 'Unsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}'].join('\n');
-  return { subject: title, html, text };
+  // "it should somehow say Blog in the email subject" (Ames 2026-11-20). The
+  // weekly What's new in Pyr keeps its own title, which already says Pyr.
+  const subject = RELEASE_NOTES.test(String(post.slug || '')) ? title : `Pyr Blog: ${title}`;
+  return { subject, html, text };
 }
 
 // ── Sending ───────────────────────────────────────────────────────────────
