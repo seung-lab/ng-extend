@@ -90,6 +90,30 @@ test('quests: a player holds at most the quest\'s limit of uncompleted cells',()
  assert.doesNotThrow(()=>questClaimRoom([{annotator:'Amy Sterling',status:'Need help'},{annotator:'Nseraf',status:''},{annotator:'Nseraf',status:''},{annotator:'Nseraf',status:''}],qme,quest));
  assert.doesNotThrow(()=>questClaimRoom(held(3),qme,{...quest,claimLimit:0}));
 });
+test('quests: the list sends the first open cells, every row of the player\'s, and counts of the rest',()=>{
+ const {questListFor}=require('./sheet-policy');
+ const row=(i,o={})=>({index:'A'+i,segmentId:String(i),soma:'1, 2, 3',cellClass:'SAC',cellType:'ON SAC',startLink:'https://x/'+i,status:'',splitMerged:'',link:'',annotator:'',date:'',notes:'',held:false,...o});
+ const rows=[
+  row(1,{annotator:'Nseraf'}),                                         // taken by another
+  row(2,{annotator:'Nseraf',status:'No cilium',notes:'their note'}),   // done by another
+  row(3,{annotator:'amy sterling'}),                                   // held by me
+  row(4,{annotator:'Amy Sterling',status:'Cilium annotated',held:true,notes:'mine'}), // mine, sent back
+  row(5,{annotator:'AMY',status:'Need help'}),                         // mine by username
+  ...Array.from({length:60},(_,i)=>row(100+i)),                        // open
+ ];
+ const out=questListFor(rows,qme);
+ assert.deepEqual(out.counts,{open:60,taken:1,done:1,total:65});
+ assert.deepEqual(out.rows.filter(r=>r.annotator).map(r=>r.segmentId),['3','4','5']);
+ assert.equal(out.rows.find(r=>r.segmentId==='4').held,true);
+ const open=out.rows.filter(r=>!r.annotator);
+ assert.equal(open.length,50);
+ assert.deepEqual(open.slice(0,2).map(r=>r.segmentId),['100','101']);
+ assert.deepEqual(Object.keys(open[0]).sort(),['cellClass','cellType','index','segmentId','soma','startLink']);
+ // Nothing of other players' leaves: no names, notes or rows.
+ assert.ok(!/Nseraf|their note/.test(JSON.stringify(out)));
+ assert.equal(questListFor(rows,qme,5).rows.filter(r=>!r.annotator).length,5);
+ assert.equal(questListFor(rows,{id:'x'}).rows.length,50);
+});
 test('quests: a release clears only the player\'s own name, only before a submit',()=>{
  const own=planQuestUpdate([QH,qrow({'Annotator Name':'Amy Sterling'})],'s',quest,{action:'quest_release',segmentId:'720575940561794892'},qme,'now');
  assert.deepEqual(cols(own),{'Annotator Name':''});

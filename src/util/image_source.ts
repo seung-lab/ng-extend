@@ -35,8 +35,10 @@ export const IMAGE_MIRRORS: Mirror[] = [
   // and left a redirect at the old address, which this neuroglancer does not
   // follow, so retina 2D went blank (AzureJay and Nseraf, reports 416, 418).
   { americas: 'precomputed://gs://stroeh_sem_mouse_retina2/image/v2',
-    asia: 'precomputed://gs://stroeh_sem_mouse_retina_asia/image/v2',
-    old: ['precomputed://gs://stroeh_sem_mouse_retina/image/v2'] },
+    // The Asia copy moved too (Krzysztof, report 597: black 2D on Asia; the
+    // old address answers 404). New address from Marissa, 2026-11-20.
+    asia: 'precomputed://gs://stroeh_sem_mouse_retina_asia2/image_jxl/v2',
+    old: ['precomputed://gs://stroeh_sem_mouse_retina/image/v2', 'precomputed://gs://stroeh_sem_mouse_retina_asia/image/v2'] },
   // MEC
   { americas: 'precomputed://https://c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/img/v2',
     asia: 'precomputed://gs://princeton-eric-medial-entorhinal-cortex-asia' },

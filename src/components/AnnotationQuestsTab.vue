@@ -13,7 +13,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { play, startPlay } from '../util/play';
 import { useProofreadingBackendStore } from '../store';
 import { onTextEditAsked } from '../text_edit_links';
-import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
+import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow, type QuestCounts } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import CrosshairHelp from './CrosshairHelp.vue';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
@@ -50,6 +50,8 @@ async function sendReviews() {
   }
 }
 const rows = ref<QuestRow[]>([]);
+/** The tab's counts from the server, or null when it sent every row (an older server). */
+const counts = ref<QuestCounts | null>(null);
 const loading = ref(false);
 const error = ref('');
 /** Segment ID of the row being written, or ''. */
@@ -135,14 +137,23 @@ async function sendUpdate(r: QuestRow) {
   finally { upSending.value = false; }
 }
 const available = computed(() => rows.value.filter(r => !r.annotator && !r.status));
-const taken = computed(() => rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)));
-const done = computed(() => rows.value.filter(r => isDone(r) && !(r.held && isMine(r))).sort((a, b) => Number(isMine(b)) - Number(isMine(a))));
+/** Open cells listed: the first ones, as the server sends them (Ames 2026-11-20). */
+const OPEN_SHOWN = 50;
+const availableShown = computed(() => available.value.slice(0, OPEN_SHOWN));
+// Other players' cells are counted, not listed: the server no longer sends
+// their rows. An older server sends them; they are counted the same way.
+const openCount = computed(() => counts.value?.open ?? available.value.length);
+const takenCount = computed(() => counts.value?.taken ?? rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)).length);
+const doneByOthers = computed(() => counts.value?.done ?? rows.value.filter(r => isDone(r) && !isMine(r)).length);
+const done = computed(() => rows.value.filter(r => isDone(r) && isMine(r) && !r.held));
+/** The sheet has cells, though none of them may be in the list. */
+const hasCells = computed(() => rows.value.length > 0 || (counts.value?.total ?? 0) > 0);
 
 async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const r = await listQuests(); rows.value = r.rows; if (r.you) you.value = r.you;
+    const r = await listQuests(); rows.value = r.rows; counts.value = r.counts; if (r.you) you.value = r.you;
     void readSavedQuestWork();
     // Submitted or released somewhere else: it is no longer the one being worked on.
     const a = questWork.active;
@@ -179,7 +190,7 @@ const skippedHere = new Set<string>();
 watch(() => props.playEnter, n => { if (n) { playWanted = true; void playNow(); } }, { immediate: true });
 const nextOpen = () => available.value.find(r => !skippedHere.has(r.segmentId));
 async function playNow() {
-  if (!playWanted || loading.value || !rows.value.length || busy.value) return;
+  if (!playWanted || loading.value || !hasCells.value || busy.value) return;
   playWanted = false;
   const held = mine.value.find(isActive) ?? mine.value[0];
   if (held) { await openCell(held); message.value = `${held.index || 'Your cell'} is open. Mark the cilium, then press Submit. The next cell will be waiting.`; landed('Your quest cell', held); return; }
@@ -388,7 +399,7 @@ async function take(r: QuestRow) {
   finally { busy.value = ''; }
 }
 /** How many more cells "Claim next" would take: up to the limit, as many as are open. */
-const nextRoom = computed(() => Math.min(QUEST_CLAIM_LIMIT - mine.value.length, available.value.length));
+const nextRoom = computed(() => Math.max(0, Math.min(QUEST_CLAIM_LIMIT - mine.value.length, available.value.length)));
 /** Claim the next open cells in the sheet's order, up to the limit, in one
  *  press (toknow, report 213). A cell someone else took a moment ago is
  *  passed over for the one after it. The first one claimed opens. */
@@ -532,9 +543,9 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
           <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
         </button>
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
-        <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
+        <span v-if="hasCells" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
         <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back. Send your update from Needs your update below, and they count again.">Waiting on your update: <b>{{ mineHeld }}</b></span>
-        <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
+        <span v-if="hasCells" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
         <button v-if="backend.showAdminUi" class="nge-aq-btn" :disabled="sendingReviews" @click="sendReviews"
                 title="Admins: send every review marked Send Review in the sheet now. Pyr also does this at 8 am and 4 pm Eastern.">{{ sendingReviews ? 'Sending…' : 'Send waiting reviews now' }}</button>
       </div>
@@ -543,8 +554,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
     <div v-if="!backend.userId" class="nge-aq-empty">Sign in to take a quest.</div>
     <template v-else>
       <div v-if="error" class="nge-aq-error">{{ error }}</div>
-      <div v-if="loading && !rows.length" class="nge-aq-empty">Reading the quest sheet…</div>
-      <template v-else-if="rows.length">
+      <div v-if="loading && !hasCells" class="nge-aq-empty">Reading the quest sheet…</div>
+      <template v-else-if="hasCells">
         <!-- Needs your update: cells a reviewer sent back (toknow #483) -->
         <template v-if="needsUpdate.length">
           <div class="nge-aq-section nge-aq-section--update">Needs your update <span class="nge-aq-count">{{ needsUpdate.length }}</span></div>
@@ -652,12 +663,12 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 
         <template v-if="!slim">
         <!-- Open: nobody's yet -->
-        <div class="nge-aq-section">Open <span class="nge-aq-count">{{ available.length }}</span>
+        <div class="nge-aq-section">Open <span class="nge-aq-count">{{ openCount }}</span>
           <button v-if="nextRoom > 0" class="nge-aq-btn nge-aq-btn--take nge-aq-btn--next" :disabled="!!busy" @click="takeNext"
                   :title="`Claim the next ${nextRoom === 1 ? 'open cell' : nextRoom + ' open cells'} in the list. The first one opens.`">{{ busy === 'next' ? 'Claiming…' : `Claim next ${nextRoom}` }}</button>
         </div>
         <div v-if="!available.length" class="nge-aq-empty nge-aq-empty--tight">Every cell is taken or done.</div>
-        <div v-for="r in available" :key="r.segmentId" class="nge-aq-row" :class="{ 'nge-aq-row--current': current === r.segmentId }">
+        <div v-for="r in availableShown" :key="r.segmentId" class="nge-aq-row" :class="{ 'nge-aq-row--current': current === r.segmentId }">
           <div class="nge-aq-row-left">
             <span class="nge-aq-pip nge-aq-pip--available"></span>
             <div class="nge-aq-row-info">
@@ -672,26 +683,15 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
           </div>
         </div>
 
-        <!-- Taken by others -->
-        <template v-if="taken.length">
-          <div class="nge-aq-section">Taken</div>
-          <div v-for="r in taken" :key="r.segmentId" class="nge-aq-row nge-aq-row--dim" :class="{ 'nge-aq-row--current': current === r.segmentId }">
-            <div class="nge-aq-row-left">
-              <span class="nge-aq-pip nge-aq-pip--claimed"></span>
-              <div class="nge-aq-row-info">
-                <div class="nge-aq-row-name">{{ label(r) }}</div>
-                <div class="nge-aq-row-meta">{{ r.annotator }}</div>
-              </div>
-            </div>
-            <div class="nge-aq-row-actions">
-              <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
-            </div>
-          </div>
-        </template>
+        <div v-if="openCount > availableShown.length" class="nge-aq-empty nge-aq-empty--tight">And {{ openCount - availableShown.length }} more. The next ones show as these are claimed.</div>
+
+        <!-- Taken by other players: counted, not listed -->
+        <div v-if="takenCount" class="nge-aq-section">Taken by other players <span class="nge-aq-count">{{ takenCount }}</span></div>
 
         <!-- Submitted -->
-        <template v-if="done.length">
-          <div class="nge-aq-section">Submitted <span class="nge-aq-count">{{ done.length }}</span></div>
+        <template v-if="done.length || doneByOthers">
+          <div class="nge-aq-section">Submitted <span class="nge-aq-count">{{ done.length + doneByOthers }}</span></div>
+          <div v-if="doneByOthers" class="nge-aq-empty nge-aq-empty--tight">{{ done.length ? `Yours are below. ${doneByOthers} more by other players.` : `${doneByOthers} by other players.` }}</div>
           <template v-for="r in done" :key="r.segmentId">
             <div class="nge-aq-row nge-aq-row--done" :class="{ 'nge-aq-row--mine': isMine(r), 'nge-aq-row--current': current === r.segmentId }">
               <div class="nge-aq-row-left">

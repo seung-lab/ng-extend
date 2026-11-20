@@ -314,6 +314,26 @@ function questRows(grid) {
   }
   return rows;
 }
+/** How many open cells the list sends. Claim, Claim next and Play take
+ *  from the top, and the list is read again after every claim. */
+const QUEST_LIST_OPEN = 50;
+/** What the game's list needs from the whole tab (Ames 2026-11-20: "do we
+ *  really need to be reading thousands of rows?"): the first open cells, every
+ *  row of this player's (held for review too), and counts of the rest. Other
+ *  players' rows, names and notes stay on the server. The whole tab is still
+ *  read and kept here, for the leaderboard's copy and the claim limit. */
+function questListFor(rows, me, openLimit = QUEST_LIST_OPEN) {
+  const mine=new Set([me.sheet_name,me.display_name,me.username].map(nameKey).filter(Boolean));
+  const out=[], counts={open:0,taken:0,done:0,total:rows.length};
+  for(const r of rows) {
+    if(r.annotator && mine.has(nameKey(r.annotator))) { out.push(r); continue; }
+    if(!r.annotator && !r.status) {
+      if(counts.open++<openLimit) out.push({index:r.index,segmentId:r.segmentId,soma:r.soma,cellClass:r.cellClass,cellType:r.cellType,startLink:r.startLink});
+    } else if(r.status) counts.done++;
+    else counts.taken++;
+  }
+  return {rows:out,counts};
+}
 /** Whether this submit is one of the player's first NEW_PLAYER_QUESTS:
  *  fewer than that many other rows already carry their name and a status. */
 function isNewPlayerSubmit(rows, me, segmentId) {
@@ -390,5 +410,5 @@ function planQuestUpdate(grid, title, quest, input, me, today, opts = {}) {
   return {valueInputOption:'RAW',data,userEnteredData};
 }
 module.exports={SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS,sourceFor,sheetValues,sheetSpelling,nameKey,planSheetUpdate,pointKey,
-  QUESTS,QUEST_COLUMNS,questFor,questHeader,questRows,planQuestUpdate,questClaimRoom,
+  QUESTS,QUEST_COLUMNS,questFor,questHeader,questRows,questListFor,QUEST_LIST_OPEN,planQuestUpdate,questClaimRoom,
   REVIEW_HOLDS,NEW_PLAYER_STATUS,NEW_PLAYER_QUESTS,isNewPlayerSubmit};
