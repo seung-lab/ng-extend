@@ -65,3 +65,12 @@ ALTER TABLE public.ew_lost_fragment_claims ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.ew_lost_fragment_claims FROM PUBLIC, anon, authenticated;
 
 COMMIT;
+
+-- The sheet line is written by the job ewLostFragmentsSheet, which runs as the
+-- sheet identity (2026-11-20): Submit marks the answer waiting, with the
+-- player's name for the line.
+alter table public.ew_lost_fragments
+  add column if not exists player_name text,
+  add column if not exists sheet_dirty boolean not null default true;
+update public.ew_lost_fragments f set player_name = coalesce(u.display_name, u.username, 'Player')
+  from public.users u where u.id = f.user_id and f.player_name is null;

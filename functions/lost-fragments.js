@@ -35,7 +35,7 @@ const CG = 'https://minnie.microns-daf.com/segmentation/api/v1/table/stroeh_mous
 const L2 = 'https://minnie.microns-daf.com/l2cache/api/v1/table/stroeh_mouse_retina/attributes';
 /** Players in the preview on live, beside admins (src/util/play.ts FRAGMENT_TESTERS). */
 const TESTERS = new Set(['5bb0310a-b42d-4d13-937f-eab620794949']);  // Jan Lause
-const GROUPS = { large: 'Large', smaller: 'Smaller', glia: 'Glia-like', soma: 'Soma-like' };
+const GROUPS = { large: 'Large', smaller: 'Small', glia: 'Glia-like', soma: 'Soma-like' };
 const FLAGS = ['no flag', 'soma', 'glia', 'soma, glia'];
 const ID = /^\d{15,20}$/;
 const MAX_L2 = 6000;
@@ -191,24 +191,39 @@ async function fragmentsAction(action, args, io) {
     const had = (await sb(`ew_lost_fragments?user_id=${eq(me.id)}&fragment_id=${eq(answer.fragment_id)}&select=id,sheet_row,cave_annotation_id&limit=1`))[0];
     const counts = await measure(io.caveToken, io.caveId, answer.fragment_id, answer.root_id || answer.fragment_id);
     const now = new Date().toISOString();
-    const fields = { ...answer, ...counts, updated_at: now,
+    // The sheet line is written by ewLostFragmentsSheet (syncSheet below),
+    // which runs as the sheet identity; this function can't (Ames 2026-11-20:
+    // "I don't see my lost fragment completions" in the sheet, a 403).
+    const fields = { ...answer, ...counts, updated_at: now, player_name: playerName, sheet_dirty: true,
       cave_annotation_id: answer.cave_annotation_id ?? (had ? had.cave_annotation_id : null) };
     let row;
     if (had) row = (await sb(`ew_lost_fragments?id=eq.${had.id}`, { method: 'PATCH', body: JSON.stringify(fields) }))[0];
     else row = (await sb('ew_lost_fragments', { method: 'POST', body: JSON.stringify({ user_id: me.id, ...fields, submitted_at: now }) }))[0];
     await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(answer.fragment_id)}`, { method: 'DELETE' }).catch(() => undefined);
-    let sheet = 'saved';
-    try {
-      const at = await writeSheet(io.sheets, row, playerName);
-      if (at && at !== row.sheet_row) await sb(`ew_lost_fragments?id=eq.${row.id}`, { method: 'PATCH', body: JSON.stringify({ sheet_row: at }) });
-    } catch (e) {
-      console.warn('[fragments] sheet:', e && e.message);
-      sheet = 'failed';
-    }
-    return { saved: true, first: !had, sheet, merges: counts.merges, cuts: counts.cuts, um3Added: counts.um3_added, um3Removed: counts.um3_removed };
+    return { saved: true, first: !had, sheet: row ? 'queued' : 'failed', merges: counts.merges, cuts: counts.cuts, um3Added: counts.um3_added, um3Removed: counts.um3_removed };
   }
 
   throw bad(`unknown action ${action}`);
 }
 
-module.exports = { fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, CLAIM_DAYS };
+/** Writes every answer waiting for the sheet (new, or sent again), oldest
+ *  first. Runs every few minutes as the sheet identity. An answer sent again
+ *  while it writes stays waiting, so the next run writes the newer one. */
+async function syncSheet({ sb, sheets }) {
+  const rows = await sb('ew_lost_fragments?sheet_dirty=eq.true&select=*&order=submitted_at.asc&limit=200');
+  let written = 0, failed = 0;
+  for (const row of rows) {
+    try {
+      const at = await writeSheet(sheets, row, row.player_name || 'Player');
+      if (at && at !== row.sheet_row) await sb(`ew_lost_fragments?id=eq.${row.id}`, { method: 'PATCH', body: JSON.stringify({ sheet_row: at }) });
+      await sb(`ew_lost_fragments?id=eq.${row.id}&updated_at=${eq(row.updated_at)}`, { method: 'PATCH', body: JSON.stringify({ sheet_dirty: false }) });
+      written++;
+    } catch (e) {
+      console.warn('[fragments] sheet:', e && e.message);
+      failed++;
+    }
+  }
+  return { waiting: rows.length, written, failed };
+}
+
+module.exports = { syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, CLAIM_DAYS };

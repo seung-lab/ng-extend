@@ -2163,9 +2163,7 @@ exports.ewSecureWrite = onRequest(
           // player's own CAVE sign in, and the researchers' sheet.
           if (typeof action === "string" && action.startsWith("fragments.")) {
             const { fragmentsAction } = require("./lost-fragments");
-            const { sheetsApi } = require("./sheet-sync");
-            out = await fragmentsAction(action, args, { sb, me, isAdmin, caveToken: token, caveId: who.caveId,
-              sheets: (path, init) => sheetsApi(admin.applicationDefault(), path, init) });
+            out = await fragmentsAction(action, args, { sb, me, isAdmin, caveToken: token, caveId: who.caveId });
             break;
           }
           // The admins' To do board (supabase-admin-todos.sql, Ames
@@ -3353,6 +3351,18 @@ exports.ewSandboxWarm = onSchedule(
     const sb = ewSb(ewServiceKey.value().trim());
     const r = await warmKeys({ fetch, caveToken: ewCaveToken.value().trim(), sb }, { budgetMs: 480000 });
     console.log("[sandbox-warm]", JSON.stringify(r));
+  }
+);
+
+// Lost Fragments answers to the lab's sheet (lost-fragments.js syncSheet). Its
+// own job because only the sheet identity may write the sheet; ewSecureWrite
+// got a 403 (Ames 2026-11-20). Every 5 minutes; a run with nothing waiting is
+// one small read.
+exports.ewLostFragmentsSheet = onSchedule(
+  { schedule: "every 5 minutes", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 120, retryCount: 0 },
+  async () => {
+    const out = await require("./lost-fragments").syncSheet({ sb: ewSb(ewServiceKey.value().trim()), sheets: ewSheetsApi() });
+    if (out.waiting) console.info("[ewLostFragmentsSheet]", JSON.stringify(out));
   }
 );
 
