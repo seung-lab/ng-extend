@@ -312,21 +312,22 @@ onUnmounted(() => {
   transform: scale(var(--flame-scale, 1));
   pointer-events: none;
 }
-/* the count sits in the belly of the flame, gold with a dark rim so it reads
-   on the orange, and warms with the fire */
+/* the count sits in the belly of the flame in the bar's own dark color, cut
+   out of the fire, with a pale glow behind it so it reads on the orange
+   (report 592: a gold number on a gold flame was not readable) */
 .nge-streak-chip-count {
   position: absolute; left: 50%; top: 64%;
   translate: -50% -50%;                     /* translate, not transform: the click's bump owns transform */
   font-size: var(--count-px, 12px);
-  font-weight: 800;
   line-height: 1;
   letter-spacing: -0.02em;
   pointer-events: none;
   z-index: 1;
-  color: color-mix(in srgb, #ffd54a, #fff4c8 calc(var(--streak-heat) * 45%));
+  font-weight: 900;
+  color: var(--color-dark-bg, #121212);
   text-shadow:
-    0 0 1px rgba(70, 18, 0, 0.95), 0 0 2px rgba(70, 18, 0, 0.9), 0 1px 1px rgba(40, 8, 0, 0.9),
-    0 0 calc(var(--streak-heat) * 10px) rgba(255, 170, 60, calc(var(--streak-heat) * 0.75));
+    0 0 2px rgba(255, 236, 170, 0.95), 0 0 4px rgba(255, 220, 140, 0.8),
+    0 0 calc(4px + var(--streak-heat) * 6px) rgba(255, 200, 110, calc(0.5 + var(--streak-heat) * 0.4));
 }
 /* the click: the number takes the hit and springs back */
 .nge-streak-chip--stoked .nge-streak-chip-count { animation: nge-streak-bump 520ms cubic-bezier(.2, 1.7, .4, 1) both; }
