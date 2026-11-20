@@ -75,3 +75,69 @@ language sql stable security invoker set search_path = public as $$
 $$;
 revoke all on function muller_glia_next(uuid, int) from public, anon, authenticated;
 grant execute on function muller_glia_next(uuid, int) to service_role;
+
+-- ── Every vote counts as a Quest, and every vote is logged (Ames 2026-11-20:
+-- "count each as a quest and also log them in case we want to separate at
+-- some point"). Migration muller_glia_votes_count.
+-- The log: one row per answer, change and undo, never edited or removed, so
+-- the votes can be counted again any other way later.
+create table if not exists muller_glia_vote_log (
+  id bigserial primary key,
+  cell_id bigint not null,
+  user_id uuid not null,
+  answer text,
+  action text not null check (action in ('answer', 'change', 'undo')),
+  at timestamptz not null default now()
+);
+create index if not exists muller_glia_vote_log_user on muller_glia_vote_log (user_id, at);
+alter table muller_glia_vote_log enable row level security;
+revoke all on muller_glia_vote_log from anon, authenticated;
+
+create or replace function muller_glia_log_vote() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into muller_glia_vote_log (cell_id, user_id, answer, action) values (new.cell_id, new.user_id, new.answer, 'answer');
+  elsif tg_op = 'UPDATE' then
+    if new.answer is distinct from old.answer then
+      insert into muller_glia_vote_log (cell_id, user_id, answer, action) values (new.cell_id, new.user_id, new.answer, 'change');
+    end if;
+  else
+    insert into muller_glia_vote_log (cell_id, user_id, answer, action) values (old.cell_id, old.user_id, old.answer, 'undo');
+  end if;
+  return null;
+end;
+$$;
+revoke all on function muller_glia_log_vote() from public, anon, authenticated;
+drop trigger if exists muller_glia_log_vote on muller_glia_answers;
+create trigger muller_glia_log_vote after insert or update or delete on muller_glia_answers
+  for each row execute function muller_glia_log_vote();
+
+-- The Quests board (Profile and the leaderboard's Quests tab): one Quest per
+-- glia a player has an answer on (an undo takes it back, a change does not
+-- add one), dated by the answer's day in New York, named by their Pyr name.
+-- p_quest 'retina_cilia' is the Cilia Quest exactly as before,
+-- 'retina_muller_glia' the glia votes alone, 'all' both together.
+create or replace function public.ew_quest_board(p_quest text)
+ returns table(name text, today integer, week integer, alltime integer)
+ language sql stable security definer set search_path to ''
+as $function$
+  WITH t AS (SELECT (now() AT TIME ZONE 'America/New_York')::date AS today),
+  r AS (
+    SELECT lower(regexp_replace(s.annotator, '[^[:alnum:]]', '', 'g')) AS k, btrim(s.annotator) AS n,
+           CASE WHEN s.quest_date ~ '^\d{1,2}/\d{1,2}/\d{4}$' THEN to_date(s.quest_date, 'MM/DD/YYYY') END AS d
+    FROM public.ew_quest_sheet_rows s
+    WHERE p_quest IN ('retina_cilia', 'all') AND s.quest = 'retina_cilia' AND s.annotator <> '' AND s.status ~* '^\s*(cilium annotated|no cilium)'
+    UNION ALL
+    SELECT lower(regexp_replace(coalesce(nullif(btrim(u.display_name), ''), u.username, ''), '[^[:alnum:]]', '', 'g')),
+           coalesce(nullif(btrim(u.display_name), ''), u.username),
+           (a.answered_at AT TIME ZONE 'America/New_York')::date
+    FROM public.muller_glia_answers a JOIN public.users u ON u.id = a.user_id
+    WHERE p_quest IN ('retina_muller_glia', 'all')
+  )
+  SELECT min(r.n),
+         (count(*) FILTER (WHERE r.d = t.today))::int,
+         (count(*) FILTER (WHERE r.d > t.today - 7 AND r.d <= t.today))::int,
+         count(*)::int
+  FROM r, t WHERE r.k <> '' GROUP BY r.k;
+$function$;

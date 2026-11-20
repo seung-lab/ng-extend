@@ -245,7 +245,7 @@ async function check(p: GliaPair) {
 
       <!-- Stage 1 -->
       <template v-if="stage === 1">
-        <div class="nge-mg-sub">Look at the cell in 3D. Is it a Müller glia? One answer per cell, then the next one opens.</div>
+        <div class="nge-mg-sub">Look at the cell in 3D. Is it a Müller glia? One answer per cell, then the next one opens. Each answer counts as a Quest.</div>
         <div v-if="current" class="nge-mg-card">
           <div class="nge-mg-card-top">
             <div>

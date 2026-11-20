@@ -530,11 +530,11 @@ onUnmounted(() => {
           <button
             class="nge-lb-metric"
             :class="{ 'nge-lb-metric--active': metric === 'quests' }"
-            title="Cilia Quests finished on the Retina"
+            title="Quests finished on the Retina: Cilia Quests, and each Müller glia answered"
             @click="setMetric('quests')"
           >Quests</button>
         </div>
-        <div v-if="isQuests" class="nge-lb-quest-lead">Cilia Quests finished on the Retina. Days are US Eastern time.</div>
+        <div v-if="isQuests" class="nge-lb-quest-lead">Quests finished on the Retina: each Cilia Quest, and each Müller glia you answered. Days are US Eastern time.</div>
 
         <div ref="contentEl" class="nge-lb-content">
           <div v-if="boardNote" class="nge-lb-note" role="status">{{ boardNote }}</div>

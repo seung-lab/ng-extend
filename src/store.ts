@@ -5062,7 +5062,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function loadQuestBoard() {
     try {
       const { nameKey } = await import('./annotation_quests');
-      const { data, error } = await supabase.rpc('ew_quest_board', { p_quest: 'retina_cilia' });
+      // 'all': Cilia Quests and Müller Glia Quest votes, each vote one Quest
+      // (Ames 2026-11-20); 'retina_cilia' and 'retina_muller_glia' still give
+      // each alone (supabase-muller-glia.sql).
+      const { data, error } = await supabase.rpc('ew_quest_board', { p_quest: 'all' });
       if (error) throw error;
       const byKey = new Map<string, { name: string; today: number; week: number; all: number }>();
       for (const r of (data ?? []) as any[]) {

@@ -106,7 +106,8 @@ async function loadQuestsCompleted(userId?: string | null) {
   try {
     const id = userId || backendStore.userId;
     const [board, me] = await Promise.all([
-      supabase.rpc('ew_quest_board', { p_quest: 'retina_cilia' }),
+      // Cilia Quests and Müller Glia Quest votes together (Ames 2026-11-20).
+      supabase.rpc('ew_quest_board', { p_quest: 'all' }),
       id ? supabase.from('users').select('display_name, username').eq('id', id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     ]);
     if (board.error) throw board.error;
@@ -2411,7 +2412,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
               </div>
               <!-- Annotation quests completed, from the quest sheet (2026-10-13). -->
-              <div class="nge-profile-stat-col" title="Annotation quests you completed: cells whose cilium you marked, or found none, and sent to the lab's sheet">
+              <div class="nge-profile-stat-col" title="Quests you completed on the Retina: each Cilia Quest you sent to the lab, and each Müller glia you answered yes, no or not sure">
                 <div class="nge-profile-stat-label">Quests</div>
                 <div class="nge-profile-stat-val" style="color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35);">
                   <RollUp v-if="questsCompleted !== null" :value="questsCompleted" />
@@ -2432,7 +2433,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
               </div>
               <!-- Their Cilia Quests, as the leaderboard counts them (Ames 2026-11-05). -->
-              <div class="nge-profile-stat-col" title="Annotation quests this player completed: cells whose cilium they marked, or found none, and sent to the lab's sheet">
+              <div class="nge-profile-stat-col" title="Quests this player completed on the Retina: each Cilia Quest sent to the lab, and each Müller glia answered yes, no or not sure">
                 <div class="nge-profile-stat-label">Quests</div>
                 <div class="nge-profile-stat-val" style="color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35);">
                   <RollUp v-if="questsCompleted !== null" :value="questsCompleted" />
@@ -2448,7 +2449,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                the next milestone. The Quests column above stays. -->
           <div v-if="questStats && questStats.all > 0" class="nge-profile-section nge-profile-quests">
             <div class="nge-pq-head">
-              <div class="nge-profile-section-label" title="Cilia Quests on the Retina: cells whose cilium was marked, or found to have none, and sent to the lab's sheet">▌ Cilia Quests</div>
+              <div class="nge-profile-section-label" title="Quests on the Retina: each Cilia Quest sent to the lab, and each Müller glia answered">▌ Retina Quests</div>
               <button class="nge-pq-board" title="Open the Quests leaderboard" @click="openQuestBoard">Quests leaderboard →</button>
             </div>
             <div class="nge-pq-grid">
