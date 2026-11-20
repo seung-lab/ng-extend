@@ -102,6 +102,29 @@ function standbyNote(): string {
   if (!isPlaying()) return 'Press Play for a sim cell';
   return holdsCell() ? 'Your cell is not on screen' : 'Ready for your next sim cell';
 }
+const BOLT_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4.5 13.5h6L9.5 22l10-12.5h-6.2z" fill="currentColor"/></svg>';
+/** The click sends lightning from the key across the face until the cell is
+ *  up (the card leaves standby), then it strikes; as Play and Jump do. */
+function startTeleportBolt(b: HTMLButtonElement, el: HTMLElement) {
+  const face = b.querySelector('.nge-cm-tlabel') as HTMLElement | null;
+  if (!face || face.querySelector('canvas')) return;
+  const cv = document.createElement('canvas');
+  cv.className = 'nge-cm-tloader';
+  cv.setAttribute('aria-hidden', 'true');
+  face.appendChild(cv);
+  b.classList.add('nge-cm-teleporting');
+  const live: Live = { raf: 0, timer: 0 };
+  startLoader(cv, live, face.clientWidth + 9.5, 22, 6);
+  const t0 = performance.now();
+  const end = () => { cancelAnimationFrame(live.raf); cv.remove(); b.classList.remove('nge-cm-teleporting'); };
+  const watch = window.setInterval(() => {
+    const up = !b.isConnected || !el.classList.contains('nge-cm-idle');
+    const slow = performance.now() - t0 > 20000;
+    if (!up && !slow) return;
+    clearInterval(watch);
+    if (up && live.finish && b.isConnected) live.finish(end); else end();
+  }, 120);
+}
 function standbyAction() {
   const playing = isPlaying();
   const chip = document.querySelector('.nge-play-chip') as HTMLElement | null;
@@ -540,30 +563,36 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-go{margin-left:auto;border-color:#3eecbe;background:rgba(20,110,80,.55);color:#eafff7}
 #${CARD_ID} .nge-cm-play .nge-cm-complete:hover,#${CARD_ID} .nge-cm-finish-go:hover:not(:disabled){background:rgba(24,140,100,.7)}
 #${CARD_ID} .nge-cm-btn:disabled{opacity:.5;cursor:default}
-/* Circuit buttons (Ames 2026-11-20: "stylize the jump and complete button to
-   look cooler with circuit"): traces etched in the face and a round pad at the
-   middle of each side edge. Jump's lightning runs from one pad to the other. */
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn,#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:127,216,255;position:relative;overflow:visible;border-radius:4px;border-color:rgba(var(--cc),.75) !important;box-shadow:inset 0 0 10px rgba(var(--cc),.16);text-shadow:0 0 6px rgba(var(--cc),.6);transition:box-shadow .15s,border-color .15s}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.26),rgba(74,158,255,.1)) !important}
-#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:62,236,190;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%233eecbe' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%233eecbe' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(20,120,88,.62),rgba(20,110,80,.38)) !important}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled){background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.4),rgba(74,158,255,.18)) !important}
-#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled){background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%233eecbe' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%233eecbe' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(24,150,108,.75),rgba(24,140,100,.5)) !important}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled),#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled){box-shadow:inset 0 0 12px rgba(var(--cc),.28),0 0 10px rgba(var(--cc),.35)}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn::before,#${CARD_ID} .nge-cm-play .nge-cm-hbtn::after,#${CARD_ID} .nge-cm-play .nge-cm-complete::before,#${CARD_ID} .nge-cm-play .nge-cm-complete::after{content:'';position:absolute;top:50%;z-index:1;box-sizing:border-box;width:9px;height:9px;margin-top:-4.5px;border:1.5px solid rgb(var(--cc));border-radius:50%;background:radial-gradient(circle,rgb(var(--cc)) 0 1.4px,#0a1322 1.9px);box-shadow:0 0 6px rgba(var(--cc),.75);pointer-events:none}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn::before,#${CARD_ID} .nge-cm-play .nge-cm-complete::before{left:-5px}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn::after,#${CARD_ID} .nge-cm-play .nge-cm-complete::after{right:-5px}
+/* Circuit edges (Ames 2026-11-20: traces in the face were "too hard to read";
+   "draw inspiration from the circuit in the rocket ship border and the borders
+   of the layers"). The face is clean, tinted like the hint box. The circuit is
+   the edge: a rim with cut corners, short traces that step in at 45 degrees
+   and end on pads, and a ring pad at the middle of each side, where Jump's
+   lightning starts and ends. Drawn to size by frameButton(). */
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn,#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:127,216,255;position:relative;isolation:isolate;overflow:visible;border:0 !important;border-radius:0 !important;background:none !important;box-shadow:none !important;
+  color:#eef8ff !important;font:600 13px/1 Inter,system-ui,sans-serif !important;padding:9px 12px !important;text-shadow:none}
+#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:62,236,190;color:#eafff6 !important}
+#${CARD_ID} .nge-cm-frame{position:absolute;inset:0;z-index:-1;pointer-events:none}
+#${CARD_ID} .nge-cm-frame svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+#${CARD_ID} .nge-cm-frame .rim{fill:rgba(var(--cc),.1);stroke:rgba(var(--cc),.72);stroke-width:1;transition:fill .15s,stroke .15s}
+#${CARD_ID} .nge-cm-play .nge-cm-complete .nge-cm-frame .rim{fill:rgba(32,150,110,.28)}
+#${CARD_ID} .nge-cm-frame .tr{fill:none;stroke:rgba(var(--cc),.55);stroke-width:1;stroke-linejoin:round}
+#${CARD_ID} .nge-cm-frame .pad{fill:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-frame .side{fill:#0a1322;stroke:rgb(var(--cc));stroke-width:1.4;filter:drop-shadow(0 0 3px rgba(var(--cc),.8))}
+#${CARD_ID} .nge-cm-frame .side-in{fill:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled) .rim{fill:rgba(var(--cc),.2);stroke:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled) .rim{fill:rgba(36,170,124,.42);stroke:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled),#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled){filter:drop-shadow(0 0 6px rgba(var(--cc),.35))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible{outline:none}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible .rim,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible .rim{stroke:#fff}
+#${CARD_ID} .nge-cm-jlabel{position:relative;z-index:1}
 #${CARD_ID} .nge-cm-jloader{z-index:2}
-/* Little vias on traces running out from each pad (Ames 2026-11-20). */
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M0 15h8l5-5h4'/%3E%3Cpath d='M3 15l6 6h6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='19' cy='10' r='1.8'/%3E%3Ccircle cx='17' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='24' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") left center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M30 15h-8l-5-5h-4'/%3E%3Cpath d='M27 15l-6 6h-6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='11' cy='10' r='1.8'/%3E%3Ccircle cx='13' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='6' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") right center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.26),rgba(74,158,255,.1)) !important}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled){background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M0 15h8l5-5h4'/%3E%3Cpath d='M3 15l6 6h6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='19' cy='10' r='1.8'/%3E%3Ccircle cx='17' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='24' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") left center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M30 15h-8l-5-5h-4'/%3E%3Cpath d='M27 15l-6 6h-6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='11' cy='10' r='1.8'/%3E%3Ccircle cx='13' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='6' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") right center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.4),rgba(74,158,255,.18)) !important}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn .nge-cm-jloader{left:-6.5px;transform:translateY(-50%)}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn .nge-cm-jloader{left:-6px;transform:translateY(-50%)}
 /* The bulb is Jump's key, as the play mark is Play's (Ames 2026-11-20: "fit in
    almost like how the play button has that slash line"): Jump ends in a slash,
    the key follows it, and Jump's right pad sits on the slash. */
 #${CARD_ID} .nge-cm-jumprow{gap:0;align-items:stretch}
-#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;border-top-right-radius:0 !important;border-bottom-right-radius:0 !important;padding-right:16px !important;
-  clip-path:polygon(-8px 0,100% 0,calc(100% - 3px) calc(50% - 6px),calc(100% + 2px) calc(50% - 6px),calc(100% + 2px) calc(50% + 6px),calc(100% - 7px) calc(50% + 6px),calc(100% - 10px) 100%,-8px 100%)}
-#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn::after{right:-.5px}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;padding-right:18px !important}
 #${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb{position:relative;overflow:hidden;flex:0 0 42px;margin-left:-7px;padding:0 0 0 6px;border:0;border-radius:0 4px 4px 0;
   clip-path:polygon(10px 0,100% 0,100% 100%,0 100%);background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%);transition:filter .2s}
 #${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb svg{stroke:#06213a;position:relative;z-index:1}
@@ -671,6 +700,39 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 #${CARD_ID} .nge-cm-save{margin-right:auto}
 #${CARD_ID} .nge-cm-go{margin-left:0;padding:8px 14px;border-color:#7fd8ff;background:rgba(127,216,255,.16);color:#fff;box-shadow:0 0 10px rgba(127,216,255,.25)}
+/* Standby (Ames 2026-11-20): a live dot by the line, and the button in
+   Play's shape with a circuit face. */
+#${CARD_ID}.nge-cm-idle .nge-cm-sub{display:flex;align-items:center;gap:8px;color:#cfe6ff}
+#${CARD_ID}.nge-cm-idle .nge-cm-sub::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#7fd8ff;box-shadow:0 0 8px #7fd8ff;animation:nge-cm-standby-dot 1.8s ease-in-out infinite}
+@keyframes nge-cm-standby-dot{50%{opacity:.35;box-shadow:0 0 2px #7fd8ff}}
+#${CARD_ID} .nge-cm-actions:has(.nge-cm-idle-go){justify-content:stretch;margin-top:10px;padding:0 5px 2px 0}
+#${CARD_ID} .nge-cm-idle-go{--cut:6px;position:relative;flex:1 1 auto;display:flex;align-items:stretch;height:38px;margin:0;padding:0;border:0;border-radius:0;background:none !important;box-shadow:none;color:#e8f7ff;
+  filter:drop-shadow(0 0 7px rgba(127,216,255,.32));transition:filter .2s,transform .12s}
+#${CARD_ID} .nge-cm-idle-go:hover{filter:drop-shadow(0 0 11px rgba(127,216,255,.55))}
+#${CARD_ID} .nge-cm-idle-go:active{transform:translateY(1px)}
+#${CARD_ID} .nge-cm-tkey{position:relative;z-index:1;display:grid;place-items:center;flex:0 0 46px;overflow:hidden;color:#06213a;
+  clip-path:polygon(var(--cut) 0,100% 0,calc(100% - 10px) 100%,0 100%,0 var(--cut));background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%)}
+#${CARD_ID} .nge-cm-tkey svg{position:relative;z-index:1;transition:transform .2s}
+#${CARD_ID} .nge-cm-tkey::after{content:'';position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.85),rgba(255,255,255,0));transform:skewX(-20deg)}
+#${CARD_ID} .nge-cm-idle-go:hover .nge-cm-tkey::after,#${CARD_ID} .nge-cm-idle-go:focus-visible .nge-cm-tkey::after{animation:nge-cm-keyshine .6s ease-out}
+#${CARD_ID} .nge-cm-idle-go:hover .nge-cm-tkey svg{transform:scale(1.15) rotate(-6deg)}
+#${CARD_ID} .nge-cm-tlabel{position:relative;flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-width:0;margin-left:-7px;padding:0 16px 0 18px;
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%);
+  background:linear-gradient(180deg,rgba(127,216,255,.16),rgba(127,216,255,.07)),rgba(6,14,28,.92)}
+#${CARD_ID} .nge-cm-tlabel::before{content:'';position:absolute;inset:0;padding:1px;clip-path:inherit;pointer-events:none;
+  background:linear-gradient(90deg,rgba(127,216,255,.95),rgba(127,216,255,.35));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+#${CARD_ID} .nge-cm-tword{position:relative;z-index:1;font:600 13.5px/1 Inter,system-ui,sans-serif;letter-spacing:.02em;color:#f2faff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* A pad on the slash and one at the far end; the lightning runs between them. */
+#${CARD_ID} .nge-cm-idle-go::before,#${CARD_ID} .nge-cm-idle-go::after{content:'';position:absolute;top:50%;z-index:2;box-sizing:border-box;width:9px;height:9px;margin-top:-4.5px;border:1.5px solid #7fd8ff;border-radius:50%;
+  background:radial-gradient(circle,#7fd8ff 0 1.4px,#0a1322 1.9px);box-shadow:0 0 6px rgba(127,216,255,.75);pointer-events:none}
+#${CARD_ID} .nge-cm-idle-go::before{left:37px}
+#${CARD_ID} .nge-cm-idle-go::after{right:-4.5px}
+#${CARD_ID} .nge-cm-tloader{position:absolute;left:-3.5px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none}
+#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting{cursor:progress}
+#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting .nge-cm-tword{visibility:hidden}
+#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting .nge-cm-tkey{animation:nge-cm-tkey-pulse .8s ease-in-out infinite}
+@keyframes nge-cm-tkey-pulse{50%{filter:brightness(1.3)}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID}.nge-cm-idle .nge-cm-sub::before,#${CARD_ID} .nge-cm-tkey::after,#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting .nge-cm-tkey{animation:none !important}}
 #${CARD_ID} .nge-cm-quiet{margin-left:0;border-color:rgba(127,200,255,.25);background:transparent;color:#8fb6dc}
 #${CARD_ID} .nge-cm-clean{color:#59e3a7;font:600 12px/1.4 Orbitron,Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:2px 0}
 `;
@@ -947,10 +1009,14 @@ function idle(state: string, note: string, action = false) {
     b = document.createElement('button');
     b.type = 'button';
     b.className = 'nge-cm-btn nge-cm-go nge-cm-idle-go';
-    b.addEventListener('click', standbyAction);
+    // Play's shape (Ames 2026-11-20: "the teleport to a new cell box needs
+    // better styling"): a key, a slash, a circuit face, a pad at each end.
+    b.innerHTML = '<span class="nge-cm-tkey" aria-hidden="true">' + BOLT_SVG + '</span><span class="nge-cm-tlabel"><span class="nge-cm-tword"></span></span>';
+    b.addEventListener('click', () => { startTeleportBolt(b!, el); standbyAction(); });
     extra.firstElementChild!.appendChild(b);
   }
-  if (b && b.textContent !== label) b.textContent = label;
+  const word = b?.querySelector('.nge-cm-tword') as HTMLElement | null;
+  if (word && word.textContent !== label) word.textContent = label;
   place(el);
   shownFor = null;
   tellShown(null);
@@ -1646,6 +1712,43 @@ function endJumpSearch() {
   j.cv.remove();
   j.jump.classList.remove('nge-cm-searching');
 }
+/** A button's circuit edge, drawn to its size (see "Circuit edges" above).
+ *  Keyed: the right end is the slash before the bulb key. */
+function frameSvg(w: number, h: number, keyed: boolean): string {
+  const c = 7, f = (n: number) => n.toFixed(1);
+  const R = w - 0.5, B = h - 0.5, m = h / 2;
+  const rim = keyed
+    ? `M${c} .5H${f(R)}L${f(w - 10.5)} ${f(B)}H.5V${c}Z`
+    : `M${c} .5H${f(R)}V${f(h - c)}L${f(w - c)} ${f(B)}H.5V${c}Z`;
+  const L = Math.min(26, w * 0.12);
+  // Top, from the right: leaves the rim, steps in, runs left to a pad.
+  const tx = w - (keyed ? 22 : 14);
+  // Bottom, from the left: the same, running right.
+  const bx = 12;
+  const tr = `M${f(tx)} .5l-3 3h${f(-L)}` + ` M${bx} ${f(B)}l3 -3h${f(L)}`;
+  const pads = `<circle class="pad" cx="${f(tx - 3 - L)}" cy="3.5" r="1.6"/><circle class="pad" cx="${f(bx + 3 + L)}" cy="${f(h - 3.5)}" r="1.6"/>`;
+  const rx = keyed ? w - 5.5 : R;
+  const side = (x: number) => `<circle class="side" cx="${f(x)}" cy="${f(m)}" r="3.6"/><circle class="side-in" cx="${f(x)}" cy="${f(m)}" r="1.3"/>`;
+  return `<svg viewBox="0 0 ${f(w)} ${f(h)}" aria-hidden="true"><path class="rim" d="${rim}"/><path class="tr" d="${tr}"/>${pads}${side(0.5)}${side(rx)}</svg>`;
+}
+function frameButton(btn: HTMLElement) {
+  const host = document.createElement('span');
+  host.className = 'nge-cm-frame';
+  host.setAttribute('aria-hidden', 'true');
+  btn.prepend(host);
+  let drawn = '';
+  const draw = () => {
+    const w = btn.offsetWidth, h = btn.offsetHeight;
+    if (!w || !h) return;
+    const keyed = !!btn.parentElement?.querySelector('.nge-cm-bulb:not([hidden])') && btn.classList.contains('nge-cm-hbtn');
+    const key = `${w}x${h}${keyed}`;
+    if (key === drawn) return;
+    drawn = key;
+    host.innerHTML = frameSvg(w, h, keyed);
+  };
+  try { new ResizeObserver(draw).observe(btn); } catch { /* drawn once */ }
+  requestAnimationFrame(draw);
+}
 function startJumpSearch(jump: HTMLElement) {
   endJumpSearch();
   const cv = document.createElement('canvas');
@@ -1660,7 +1763,7 @@ function startJumpSearch(jump: HTMLElement) {
   // each edge so the end dots sit on the pads.
   // With the bulb beside it, the right pad sits on Jump's slash, 4 px in.
   const keyed = !!jump.parentElement?.querySelector('.nge-cm-bulb:not([hidden])');
-  startLoader(cv, live, jump.clientWidth + (keyed ? 8.5 : 13), 20, 6);
+  startLoader(cv, live, jump.offsetWidth + (keyed ? 7 : 12), 20, 6);
 }
 /** Found: the route lights, then the label is back. Not found: it stops. */
 function finishJumpSearch(found: boolean) {
@@ -1738,6 +1841,8 @@ function wirePlayBox(el: HTMLElement) {
     cellAction('skip');
   });
   el.querySelector('.nge-cm-complete')!.addEventListener('click', () => openFinish(el));
+  frameButton(el.querySelector('.nge-cm-hbtn') as HTMLElement);
+  frameButton(el.querySelector('.nge-cm-complete') as HTMLElement);
   el.querySelector('.nge-cm-finish-back')!.addEventListener('click', () => { cellAction('complete-cancel'); closeFinish(el); });
   el.querySelector('.nge-cm-finish-check')!.addEventListener('click', () => cellAction('complete-check'));
   el.querySelector('.nge-cm-finish-how')!.addEventListener('click', e => {

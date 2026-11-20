@@ -693,6 +693,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { sub: c && c.querySelector('.nge-cm-sub').textContent, go: c && c.querySelector('.nge-cm-idle-go') && c.querySelector('.nge-cm-idle-go').textContent };
     });
     check('after a cell is finished: Teleport to a new cell', fresh.sub === 'Ready for your next sim cell' && fresh.go === 'Teleport to a new cell', fresh);
+    // In Play's shape, with a pad at each end (Ames 2026-11-20).
+    const tshape = await page.evaluate(() => { const b = document.querySelector('#nge-cell-match .nge-cm-idle-go'); const k = b.querySelector('.nge-cm-tkey').getBoundingClientRect(), f = b.querySelector('.nge-cm-tlabel').getBoundingClientRect(), r = b.getBoundingClientRect(); return { key: k.width > 30 && k.left - r.left < 2, face: f.left < k.right && f.right > r.right - 2, h: Math.round(r.height), wide: r.width > b.closest('#nge-cell-match').getBoundingClientRect().width * 0.7, pads: getComputedStyle(b, '::after').content !== 'none' }; });
+    check('Teleport to a new cell is a key and a circuit face, full width, a pad at each end', tshape.key && tshape.face && tshape.h >= 34 && tshape.wide && tshape.pads, tshape);
+    await page.locator('#nge-cell-match').screenshot({ path: path.join(OUT, 'teleport-idle.png') }).catch(() => {});
     const ownsIdle = await page.evaluate(() => document.body.classList.contains('nge-cm-owns'));
     check('while the box waits, the Cell Library slim row stays out of the way', ownsIdle === true, ownsIdle);
     const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
