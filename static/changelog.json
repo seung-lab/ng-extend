@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T22:01:00Z",
+      "title": "Community milestones",
+      "items": [
+        "When all Pyr players together reach a big milestone, everyone sees a CONGRATS! banner with confetti, and Nurro flies across once it has landed.",
+        "The milestones are 5,000 cells completed and every 5,000 after, 100,000 merges and splits and every 100,000 after, 100, 250 and 500 players, and the Lost Fragments milestones.",
+        "Each one shows once. Close it with the X, and its notification brings it back any time.",
+        "Dataset Stats shows the next milestone and how many to go."
+      ]
+    },
+    {
       "at": "2026-11-20T22:00:00Z",
       "title": "Faster Cilia Quest list, Asia 2D back",
       "items": [
