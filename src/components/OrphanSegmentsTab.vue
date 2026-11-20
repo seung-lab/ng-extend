@@ -299,9 +299,29 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 
     <div v-if="playing && allDone" class="nge-orph-note nge-orph-note--ok">You have answered every fragment here. Thank you!</div>
     <!-- The slim bar's header (Ames 2026-11-19: "needs a header"). -->
-    <div v-if="slim" class="nge-orph-slimhead" :style="{ backgroundImage: `url(${bannerImg})` }"><span>Lost Fragments</span><em v-if="playing" class="nge-orph-slimplaying">Playing</em></div>
-    <div v-if="active" class="nge-orph-task">
-      <div class="nge-orph-task-top">
+    <!-- Slim: one row, like the BC Challenge slim row (Ames 2026-11-19: "make
+         it styled ACTUALLY slim"); Complete opens the checklist under it. -->
+    <div v-if="slim && active" class="nge-orph-slimrow">
+      <div class="nge-orph-slimid">
+        <div class="nge-orph-slimtop"><span class="nge-orph-slimlabel">Lost Fragments</span><span v-if="playing" class="nge-orph-slimplaying">Playing</span></div>
+        <button class="nge-orph-slimseg" :data-id="shownRoot || active.id" :title="copied ? 'Copied' : `${shownRoot || active.id}: click to copy`" @click="copyId(shownRoot || active.id)">{{ copied ? 'Copied' : short(shownRoot || active.id) }}</button>
+        <div class="nge-orph-slimmeta">
+          <select class="nge-orph-groupsel" :value="group" :style="{ color: cur.color }" aria-label="Fragment group" title="Switch group" @change="onGroupChange">
+            <option v-for="g in GROUPS" :key="g.key" :value="g.key">{{ g.label }}</option>
+          </select> {{ place + 1 }} of {{ cur.rows.length }}
+        </div>
+      </div>
+      <div class="nge-orph-slimbtns">
+        <button class="nge-orph-btn" @click="step(-1)" title="Previous fragment">&lsaquo;</button>
+        <button class="nge-orph-btn" @click="step(1)" title="Next fragment">&rsaquo;</button>
+        <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
+        <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
+        <button v-if="playing" class="nge-orph-btn" @click="playNext" title="Leave this one and go to the next fragment">Skip</button>
+        <button class="nge-orph-btn nge-orph-complete" :class="{ on: finishing }" @click="finishing = !finishing" :title="finishing ? 'Fold the checklist away' : 'Done with this fragment? Open the checklist and Submit.'">{{ form.saved ? 'Submitted' : 'Complete' }}</button>
+      </div>
+    </div>
+    <div v-if="active && (!slim || finishing)" class="nge-orph-task">
+      <div v-if="!slim" class="nge-orph-task-top">
         <div>
           <div class="nge-orph-task-name">
             <span class="nge-orph-task-id">{{ shownRoot || active.id }}</span>
@@ -317,7 +337,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           <div v-if="shownRoot && shownRoot !== active.id" class="nge-orph-note">Edited since the lab's list; showing its current ID.</div>
         </div>
       </div>
-      <div class="nge-orph-controls">
+      <div v-if="!slim" class="nge-orph-controls">
         <button class="nge-orph-btn" @click="step(-1)" title="Previous fragment">&lsaquo;<template v-if="!slim"> Previous</template></button>
         <button class="nge-orph-btn" @click="step(1)" title="Next fragment"><template v-if="!slim">Next </template>&rsaquo;</button>
         <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
@@ -335,10 +355,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <p><b>4. Nucleus ID</b> (soma only). In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
         <p><b>Recenter</b> flies the view back to the fragment. <b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
       </div>
-      <div v-if="slim && !finishing" class="nge-orph-row">
-        <button class="nge-orph-btn nge-orph-submit nge-orph-complete" @click="finishing = true" title="Done with this fragment? Open the checklist and Submit.">Complete</button>
-        <span v-if="form.saved" class="nge-orph-note nge-orph-note--ok">Submitted</span>
-      </div>
+      <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you submit</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button></div>
       <template v-if="!slim || finishing">
       <ol class="nge-orph-check">
         <li :class="{ done: form.fixed }">
@@ -408,11 +425,19 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-task-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14.5px; user-select: all; }
 .nge-orph-copy { font: 600 11.5px Inter, sans-serif; padding: 2px 8px; border-radius: 5px; cursor: pointer; color: #9fd0ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(126, 202, 255, 0.35); }
 .nge-orph-copy:hover { background: rgba(74, 158, 255, 0.2); }
-.nge-orph-slimhead { position: relative; margin: 6px 6px 0; height: 30px; border-radius: 8px 8px 0 0; background-size: cover; background-position: center 30%; display: flex; align-items: center; padding: 0 10px; overflow: hidden; }
-.nge-orph-slimhead::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to right, rgba(8, 12, 24, 0.85), rgba(8, 12, 24, 0.35)); }
-.nge-orph-slimhead span { position: relative; z-index: 1; font: 700 12.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #eef; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
-.nge-orph--slim .nge-orph-slimhead + .nge-orph-task { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
-.nge-orph-slimplaying { position: relative; z-index: 1; margin-left: auto; font: 600 11px 'Inter', sans-serif; font-style: normal; color: #9ff5da; border: 1px solid rgba(62, 236, 190, 0.55); border-radius: 999px; padding: 1px 8px; background: rgba(8, 40, 36, 0.7); }
+.nge-orph-slimrow { display: flex; align-items: center; gap: 10px; padding: 8px 6px 8px 2px; }
+.nge-orph-slimid { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 auto; }
+.nge-orph-slimtop { display: flex; align-items: center; gap: 6px; }
+.nge-orph-slimlabel { font: 700 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #9fd0ff; }
+.nge-orph-slimseg { all: unset; cursor: pointer; font: 700 15px 'Inter', sans-serif; color: #fff; white-space: nowrap; }
+.nge-orph-slimseg:hover { color: #9fd0ff; }
+.nge-orph-slimmeta { font-size: 12px; color: #a9b8cc; white-space: nowrap; }
+.nge-orph-slimbtns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
+.nge-orph-slimrow .nge-orph-btn { padding: 6px 11px; font-size: 13px; }
+.nge-orph-complete { color: #c8fbea !important; border-color: rgba(62, 236, 190, 0.6) !important; background: rgba(20, 90, 70, 0.35) !important; }
+.nge-orph-complete.on { background: rgba(20, 110, 85, 0.6) !important; }
+.nge-orph-finishhead { justify-content: space-between; font-size: 13px; color: #eef; }
+.nge-orph-slimplaying { font: 600 10.5px 'Inter', sans-serif; font-style: normal; color: #9ff5da; border: 1px solid rgba(62, 236, 190, 0.55); border-radius: 999px; padding: 1px 8px; background: rgba(8, 40, 36, 0.7); }
 .nge-orph-complete { padding: 4px 14px; }
 .nge-orph-playbtn { color: #9ff5da; border-color: rgba(62, 236, 190, 0.5); }
 .nge-orph-help-btn { width: 24px; height: 24px; border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.45); background: transparent; color: #9fd0ff; font: 700 13px 'Inter', sans-serif; cursor: pointer; padding: 0; }

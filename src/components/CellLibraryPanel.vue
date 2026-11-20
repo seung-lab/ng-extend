@@ -1662,7 +1662,7 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
-import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, fragmentTester, type PlayKind } from '../util/play';
 import { hasReview, startReview, showReview } from '../sandbox_match';
 import OrbitDot from './OrbitDot.vue';
 import { useOrbitTick } from '../util/orbit_tick';
@@ -1760,6 +1760,8 @@ function onAxonStatusChanged() {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+/** A claim of yours still being worked on. */
+function mineInHand(cell: CellRow) { return isMyClaim(cell) && (cell.status === 'assigned' || cell.status === 'in_progress'); }
 function statusLabel(status: string) {
   switch (status) {
     case 'pending': return 'available';
@@ -2482,7 +2484,7 @@ const questsHere = computed(() => canonicalDataset(activeDataset.value || getCur
 const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 /** Orphan segments mockup: Retina, and never on the live site until Ames says so. */
 // Lost Fragments: test sites, and admins on live (Ames 2026-11-19: "Admins only").
-const orphansHere = computed(() => (ON_TEST_SITE || backend.isAdmin) && castHere.value);
+const orphansHere = computed(() => (ON_TEST_SITE || backend.isAdmin || fragmentTester()) && castHere.value);
 // Off Retina (or the live game) there is no Lost Fragments tab to stay on.
 watch(orphansHere, here => { if (!here && filter.value === 'orphans') filter.value = 'mine'; });
 const orphanTitle = orphanName().title;
@@ -4752,8 +4754,9 @@ onBeforeUnmount(() => {
                 <div class="nge-cl-row-meta">
                   <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
                   <span class="nge-cl-badge" :class="statusClass(cell.status)"
-                        :title="isAxonComplete(cell) ? 'Axon complete: the axon is proofread to every end. The whole cell can still be completed.' : undefined">{{ isAxonComplete(cell) ? 'axon complete' : statusLabel(cell.status) }}</span>
-                  <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
+                        :title="isAxonComplete(cell) ? 'Axon complete: the axon is proofread to every end. The whole cell can still be completed.' : undefined">{{ isAxonComplete(cell) ? 'axon complete' : mineInHand(cell) ? 'my cell' : statusLabel(cell.status) }}</span>
+                  <!-- Your own claim says "My cell", not "Claimed" and "You" (Ames 2026-11-19). -->
+                  <span v-if="cell.assignedTo && !mineInHand(cell)" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
                   <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, for up to 2 months, and Pyr counts your active time on it.">Super Quest</span>
@@ -4813,7 +4816,7 @@ onBeforeUnmount(() => {
                 class="nge-cl-btn nge-cl-btn--annot"
                 @click="addAnnotationLayers(cell)"
                 title="Add the annotation layers to this cell: Soma, True End, Can't Fix, Hits Edge and Notes. To have them on every Retina claim, turn them on in Settings, Jumping and views."
-              >+ Annotation layers</button>
+              >+ Annotation</button>
 
               <button
                 v-if="isMyClaim(cell) && !(play.on === 'cells' && cell.status !== 'completed')"
@@ -7156,6 +7159,8 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 /* !important: the slim bar's pull-left rule (many :not()s) outranks a plain selector. */
 .nge-cl-panel--slim.nge-cl-panel--slimquest .nge-cl-list > :not(.nge-cl-slim-expand) { margin-left: 0 !important; }
 .nge-cl-panel--slimquest .nge-cl-list:not(:has(.nge-aq-form)) > .nge-cl-slim-expand { top: 50%; transform: translateY(-50%); }
+/* Lost Fragments slim: the caret stays at the top, beside the row, when Complete opens the checklist. */
+.nge-cl-panel--slimquest .nge-cl-list:has(.nge-orph--slim) > .nge-cl-slim-expand { top: 16px; transform: none; }
 /* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
 .nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
 .nge-cl-panel--slim .nge-cl-row .nge-cl-pip { display: none; }
