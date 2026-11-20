@@ -37,7 +37,7 @@ import unlockIcon from '../images/unlock-icon.png';
 // Each dataset's own emblem (Ames 2026-11-19), shown where its edit access is.
 import retinaEmblem from '../images/datasets/retina.png';
 import mecEmblem from '../images/datasets/mec.png';
-import bancEmblem from '../images/datasets/banc.png';
+import flywireEmblem from '../images/datasets/flywire.png';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -559,14 +559,15 @@ async function loadDatasetStats() {
 }
 
 // ── Edit access (Ames 2026-11-02: "should we show accesses unlocked in
-// profile?") ── The datasets that are earned: Retina, MEC and BANC. Your own
+// profile?") ── The datasets that are earned: Retina, MEC and FlyWire. Your own
 // profile asks CAVE, so it is always right, with the date from the grant's
 // chat line when there is one. Someone else's shows only the grants on record
 // (since 2026-10-30): an older one is simply not shown, never "not yet".
-const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'banc'];
+// FlyWire, not BANC (Ames 2026-11-19: "BANC should be FlyWire").
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'flywire_fafb_production'];
 /** Short names for the tiles. */
-const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', banc: 'BANC' };
-const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, banc: bancEmblem };
+const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', flywire_fafb_production: 'FlyWire' };
+const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, flywire_fafb_production: flywireEmblem };
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
