@@ -507,7 +507,11 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 /* Folded into a light bulb beside Jump (Ames 2026-11-19: "just a little light
    bulb we can click to open it as an icon to keep it small and sweet"). */
 #${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){display:none}
-#${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px}
+#${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px;align-self:flex-start;order:2}
+/* Open: the words across the top, Show me under them (Ames 2026-11-19: "this layout is weird"). */
+#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open{flex-wrap:wrap;align-items:flex-start;row-gap:7px}
+#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open .nge-cm-nudge-text{flex:1 1 0;min-width:0;order:1}
+#${CARD_ID} .nge-cm-nudge-btns:not(:has(.nge-cm-hint-btn:not([hidden]))){display:none}
 #${CARD_ID} .nge-cm-nudge-more svg{transform:rotate(180deg)}
 #${CARD_ID} .nge-cm-jumprow{grid-area:jump;display:flex;gap:5px;min-width:0}
 #${CARD_ID} .nge-cm-jumprow .nge-cm-hbtn{flex:1 1 auto;min-width:0}
@@ -539,7 +543,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID}.nge-cm-idle .nge-cm-play,#${CARD_ID}.nge-cm-idle .nge-cm-cellid,#${CARD_ID}.nge-cm-idle .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-play,#${CARD_ID}.nge-cm-reviewing .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-marktoggle,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){height:auto !important;resize:horizontal}
-#${CARD_ID} .nge-cm-nudge-btns{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
+#${CARD_ID} .nge-cm-nudge-btns{display:flex;gap:5px;order:3;flex:1 0 100%;padding-left:27px}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
 #${CARD_ID}.nge-cm-finishing .nge-cm-play,#${CARD_ID}.nge-cm-finishing .nge-cm-nudge,#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="cut"]{display:none}
 #${CARD_ID} .nge-cm-viewnote{margin-top:6px;font-size:11.5px;line-height:1.4;color:#8fa6c4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -566,6 +570,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-finish-left{margin:0;font-size:12.5px;line-height:1.45;color:#a9c3e0}
 #${CARD_ID} .nge-cm-finish-left[hidden]{display:none}
 #${CARD_ID} .nge-cm-finish-left-count{margin:0 0 3px}
+#${CARD_ID} .nge-cm-left-red{color:#ff6b8a;font-weight:600}
 #${CARD_ID} .nge-cm-finish-actions{display:flex;gap:6px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
@@ -1493,7 +1498,20 @@ function openFinish(el: HTMLElement) {
   if (cutLeft > 0) parts.push(`${plural(cutLeft, 'part')} to cut off`);
   // Ames 2026-11-16: practice only; a real cell is never completed half done.
   // The advice after the count is admin editable (LEFT_KEY).
-  (left.querySelector('.nge-cm-finish-left-count') as HTMLElement).textContent = parts.length ? `You still have ${parts.join(' and ')}.` : '';
+  // The pieces and parts left in red (Ames 2026-11-19).
+  const count = left.querySelector('.nge-cm-finish-left-count') as HTMLElement;
+  count.textContent = '';
+  if (parts.length) {
+    count.append('You still have ');
+    parts.forEach((part, i) => {
+      if (i) count.append(' and ');
+      const b = document.createElement('b');
+      b.className = 'nge-cm-left-red';
+      b.textContent = part;
+      count.append(b);
+    });
+    count.append('.');
+  }
   left.hidden = !parts.length;
   showGate(el);
   renderFinish(el, { checking: true, ok: false, message: '', minting: true, submitting: false, link: false });
@@ -1602,7 +1620,8 @@ function startJumpSearch(jump: HTMLElement) {
   jump.classList.add('nge-cm-searching');
   const live: Live = { raf: 0, timer: 0 };
   jumpSearch = { jump, cv, live };
-  startLoader(cv, live, Math.max(80, Math.min(190, jump.clientWidth - 24)), 20);
+  // Near the button's ends (Ames: "why are the dots so far from the edge").
+  startLoader(cv, live, Math.max(80, jump.clientWidth - 4), 20);
 }
 /** Found: the route lights, then the label is back. Not found: it stops. */
 function finishJumpSearch(found: boolean) {

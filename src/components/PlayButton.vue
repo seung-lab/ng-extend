@@ -17,6 +17,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, canViewRetina, mappingWhere, retinaHub, type PlayKind } from '../util/play';
 import { ensureIntroStyle, introFrameSvg, introPending } from '../util/intro_tour';
+import { startLoader, type Live } from '../find_path_status';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import EditableText from './EditableText.vue';
 import { canonicalDataset, currentDatasetTag } from '../datasets';
@@ -158,10 +159,31 @@ function onButton() {
   else p = pressPlay();
   if (!p) return;
   loading.value = true;
-  const stop = () => { if (seq === launchSeq) loading.value = false; };
+  // The cell is up: the loader's route lights, then the button settles.
+  const stop = () => {
+    if (seq !== launchSeq) return;
+    const l = loaderLive;
+    loaderLive = null;
+    if (l?.finish && searching.value) l.finish(() => { cancelAnimationFrame(l.raf); if (seq === launchSeq) loading.value = false; });
+    else { if (l) cancelAnimationFrame(l.raf); loading.value = false; }
+  };
   void Promise.race([p.catch(() => false), new Promise(r => setTimeout(r, 20000))]).then(stop);
 }
 const dockShown = computed(() => showDock.value || launching.value || loading.value);
+// While Pyr fetches the cell, Find Path's loader runs across the button, as
+// Jump's does (Ames 2026-11-19: "can we use this same animation when user
+// clicks play?").
+const searching = computed(() => loading.value && !launching.value);
+const loaderCv = ref<HTMLCanvasElement | null>(null);
+let loaderLive: Live | null = null;
+watch(searching, async on => {
+  if (!on) return;
+  await nextTick();
+  const cv = loaderCv.value;
+  if (!cv || !searching.value) return;
+  loaderLive = { raf: 0, timer: 0 };
+  startLoader(cv, loaderLive, Math.max(60, (cv.parentElement?.clientWidth ?? 120) - 4), 20);
+});
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && play.choosing) { e.stopPropagation(); play.choosing = false; } }
 onMounted(() => { document.addEventListener('keydown', onKey, true); readScreen(); watchTimer = setInterval(readScreen, 400); });
 onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameObs?.disconnect(); if (watchTimer) clearInterval(watchTimer); });
@@ -174,7 +196,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
     <button class="nge-play-btn" :class="{ 'is-launch': launching, 'is-loading': loading && !launching }" @click="onButton"
             :aria-busy="loading" title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
       <span class="nge-play-key" aria-hidden="true"><svg class="nge-play-icon" viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg></span>
-      <span class="nge-play-label"><span class="nge-play-beam" aria-hidden="true"></span><span class="nge-play-word">{{ loading && !launching ? 'Teleporting' : 'Play' }}</span><span v-if="loading && !launching" class="nge-play-dots" aria-hidden="true"><b></b><b></b><b></b></span></span>
+      <span class="nge-play-label" :class="{ 'is-searching': searching }"><span class="nge-play-word">{{ searching ? 'Teleporting' : 'Play' }}</span><canvas v-if="searching" ref="loaderCv" class="nge-play-loader" aria-hidden="true"></canvas></span>
       <span class="nge-play-fx" aria-hidden="true">
         <span class="nge-play-arc"></span>
         <span class="nge-play-ring"></span><span class="nge-play-ring nge-play-ring--2"></span>
@@ -355,6 +377,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-btn.is-loading .nge-play-arc { opacity: 1; animation: nge-play-spin 0.8s linear infinite; }
 .nge-play-btn.is-loading .nge-play-icon { animation: nge-play-throb 0.8s ease-in-out infinite; }
 .nge-play-btn.is-loading .nge-play-label { letter-spacing: 0.2em; }
+.nge-play-label.is-searching .nge-play-word { visibility: hidden; }
+.nge-play-loader { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 .nge-play-beam { position: absolute; top: 0; bottom: 0; left: -45%; width: 45%; opacity: 0;
   background: linear-gradient(90deg, rgba(94, 240, 198, 0), rgba(94, 240, 198, 0.5), rgba(94, 240, 198, 0)); }
 .nge-play-btn.is-loading .nge-play-beam { opacity: 1; animation: nge-play-beam 1.1s cubic-bezier(.4,0,.6,1) infinite; }

@@ -287,9 +287,11 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       let sent = null; const f = e => { sent = e.detail.action; }; document.addEventListener('nge:cm-cell-action', f);
       c.querySelector('.nge-cm-finish-soma').click();
       document.removeEventListener('nge:cm-cell-action', f);
-      return { shown, tipText, sent, left: c.querySelector('.nge-cm-finish-left').textContent };
+      const reds = [...c.querySelectorAll('.nge-cm-finish-left-count .nge-cm-left-red')].map(b => ({ text: b.textContent, color: getComputedStyle(b).color }));
+      return { shown, tipText, sent, left: c.querySelector('.nge-cm-finish-left').textContent, reds };
     });
     check('crosshairs outside: How? shows what to do, and Put them in the soma moves them', how.shown && /red and green lines cross in the 2D view/.test(how.tipText) && how.sent === 'complete-soma', how);
+    check('what is left reads in red: the pieces to merge in and the parts to cut off', how.reds.length >= 1 && how.reds.every(r => /to (merge in|cut off)$/.test(r.text) && r.color === 'rgb(255, 107, 138)'), how.reds);
     check('pieces left: Complete and Review shows the answers; never in a production dataset', /Press Complete and Review to see the answers\. In a production dataset, you should never complete a cell before it is completely proofread\./.test(how.left), how.left);
     await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match');
@@ -375,8 +377,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     // Folded to one line at first; a click opens it with Show me (Ames 2026-11-19).
     const hintFold = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const n = c.querySelector('.nge-cm-nudge'); const b = c.querySelector('.nge-cm-bulb'); const j = c.querySelector('.nge-cm-hbtn').getBoundingClientRect(), bb = b.getBoundingClientRect(); return { open: n.classList.contains('nge-cm-nudge-open'), lineShown: n.offsetParent !== null, bulb: b.offsetParent !== null, beside: Math.abs(bb.top - j.top) < 4 && bb.left > j.right, small: bb.width <= 34 }; });
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-bulb').click());
-    const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); return { open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open'), pressed: document.querySelector('#nge-cell-match .nge-cm-bulb').getAttribute('aria-expanded') }; });
-    check('the hint starts folded into a small light bulb beside Jump, and the bulb opens it with Show me, remembered', !hintFold.open && !hintFold.lineShown && hintFold.bulb && hintFold.beside && hintFold.small && unfolded.open && unfolded.showMe && unfolded.saved === '1' && unfolded.pressed === 'true', { hintFold, unfolded });
+    const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); const t = n.querySelector('.nge-cm-nudge-text').getBoundingClientRect(), sm = n.querySelector('.nge-cm-hint-btn').getBoundingClientRect(); return { below: sm.top >= t.bottom - 1, wide: t.width > n.getBoundingClientRect().width * 0.7, open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open'), pressed: document.querySelector('#nge-cell-match .nge-cm-bulb').getAttribute('aria-expanded') }; });
+    check('the hint starts folded into a small light bulb beside Jump, and the bulb opens it with Show me, remembered', !hintFold.open && !hintFold.lineShown && hintFold.bulb && hintFold.beside && hintFold.small && unfolded.open && unfolded.showMe && unfolded.saved === '1' && unfolded.pressed === 'true' && unfolded.below && unfolded.wide, { hintFold, unfolded });
     const place = await hintLayers();
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
