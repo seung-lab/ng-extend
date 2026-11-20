@@ -18,6 +18,7 @@ import { useProofreadingBackendStore } from '../store';
 import QuestInstructions from './QuestInstructions.vue';
 import EditableText from './EditableText.vue';
 import imgMullerGlia from '../images/muller-glia.jpg';
+import { startGliaSplitTutorial } from '../tutorial-glia-split';
 import { gliaStatus, gliaNext, gliaAnswer, gliaUndo, gliaMine, gliaPairs, gliaCheck,
   type GliaCell, type GliaPair, type GliaStatus, type GliaAnswer } from '../muller_glia';
 
@@ -246,6 +247,10 @@ async function check(p: GliaPair) {
 
       <!-- Stage 2 -->
       <template v-else>
+        <div class="nge-mg-train">
+          <span>New to splitting glia? Practice on a real fused pair first. Nothing is cut.</span>
+          <button class="nge-mg-btn nge-mg-btn--sm" @click="startGliaSplitTutorial()" title="Glia Split Training: Find Path, red and blue points and Preview, without cutting">Training</button>
+        </div>
         <div v-if="!status.unlocked" class="nge-mg-empty">Stage 2 opens after {{ status.unlockAfter }} answers in Stage 1. You have {{ status.answered }}.</div>
         <template v-else>
           <div class="nge-mg-sub">Each of these is one segment holding two or more Muller glia that grew together. Cut them apart so each soma has its own cell.</div>
@@ -311,6 +316,7 @@ async function check(p: GliaPair) {
 .nge-mg-btn:hover:not(:disabled) { background: rgba(74, 158, 255, 0.12); }
 .nge-mg-btn.on { background: rgba(74, 158, 255, 0.15); }
 .nge-mg-btn--sm { padding: 3px 9px; font-size: 12px; }
+.nge-mg-train { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; padding: 8px 10px; border: 1px solid rgba(95, 180, 255, 0.25); border-radius: 6px; background: rgba(95, 180, 255, 0.06); color: #cfe3ff; font: 13px/1.4 'Inter', sans-serif; }
 .nge-mg-btn--a { color: #ff9c9c; border-color: rgba(255, 120, 120, 0.4); }
 .nge-mg-btn--b { color: #9cc8ff; border-color: rgba(120, 170, 255, 0.5); }
 .nge-mg-btn--go { color: #a6ffd6; border-color: rgba(80, 220, 170, 0.5); margin-left: auto; }

@@ -1344,6 +1344,13 @@ class GraphConnection extends SegmentationGraphSourceConnection {
   async submitMulticut(annotationToNanometers: Float64Array): Promise<boolean> {
     const {state: {multicutState}} = this;
     const {sinks, sources} = multicutState;
+    // nge: a training box that practices on a real cell turns sending off
+    // (Glia Split Training, src/tutorial-glia-split.ts): Preview still works.
+    const noSubmit = (window as any).__ngeNoCutSubmit;
+    if (typeof noSubmit === 'function' && noSubmit()) {
+      StatusMessage.showTemporaryMessage(String(noSubmit()), 7000);
+      return false;
+    }
     if (sinks.size === 0 || sources.size === 0) {
       StatusMessage.showTemporaryMessage(
           'Must select both red and blue groups to perform a multi-cut.', 7000);

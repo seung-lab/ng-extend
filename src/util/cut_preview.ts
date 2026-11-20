@@ -42,6 +42,9 @@ function clear() {
   redraw();
 }
 
+/** A preview is colouring the cell now (Glia Split Training watches for it). */
+export const cutPreviewShowing = () => showing;
+
 const redraw = () => { try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ } };
 
 /** The fine picture: the supervoxels themselves, read from the volume round

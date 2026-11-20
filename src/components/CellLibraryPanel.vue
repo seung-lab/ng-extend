@@ -167,6 +167,8 @@ const loading = ref(false);
 /** Quests tab: which quest is shown (Muller glia mockup, Ames 2026-11-19). */
 const questPick = ref<'cilia' | 'muller'>((() => { try { return localStorage.getItem('nge_quest_pick_v1') === 'muller' ? 'muller' : 'cilia'; } catch { return 'cilia'; } })());
 function pickQuest(q: 'cilia' | 'muller') { questPick.value = q; try { localStorage.setItem('nge_quest_pick_v1', q); } catch {} }
+// Glia Split Training's last button opens the Muller Glia Quest (tutorial-glia-split.ts).
+document.addEventListener('nge:quest-pick', (e: Event) => { const q = (e as CustomEvent).detail; if (q === 'cilia' || q === 'muller') pickQuest(q); });
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.

@@ -22,6 +22,9 @@
  * `db` is restDb (service key) or memDb (tests).
  */
 const UNLOCK_AFTER = 10;
+/** The pair Glia Split Training practises on (src/tutorial-glia-split.ts):
+ *  held out of the quest so it stays fused for every new player. */
+const TRAINING_PAIR = '720575940552463731';
 const ANSWERS = ['yes', 'no', 'unsure'];
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -74,7 +77,7 @@ async function gliaAction(action, args, {db, me, isAdmin = false, somaRoots}) {
       const doneSet = new Set(done);
       const groups = new Map();
       for (const c of cells) {
-        if (doneSet.has(c.pair_segment)) continue;
+        if (doneSet.has(c.pair_segment) || c.pair_segment === TRAINING_PAIR) continue;
         if (!groups.has(c.pair_segment)) groups.set(c.pair_segment, []);
         groups.get(c.pair_segment).push({index: c.sheet_index, at: c.soma_coords});
       }
@@ -85,6 +88,7 @@ async function gliaAction(action, args, {db, me, isAdmin = false, somaRoots}) {
     case 'glia.check': {
       const seg = String(args.pairSegment || '');
       if (!SEG.test(seg)) fail(400, 'Which segment?');
+      if (seg === TRAINING_PAIR) fail(404, 'That segment is the training pair, not in the quest.');
       if (!(await unlocked())) fail(403, `Stage 2 opens after ${UNLOCK_AFTER} answers in Stage 1.`);
       const cells = await db.groupCells(seg);
       if (cells.length < 2) fail(404, 'That segment is not in the quest.');
@@ -224,4 +228,4 @@ function memDb({cells = []} = {}) {
   };
 }
 
-module.exports = {gliaAction, makeSomaRoots, readUint64, restDb, memDb, UNLOCK_AFTER};
+module.exports = {gliaAction, makeSomaRoots, readUint64, restDb, memDb, UNLOCK_AFTER, TRAINING_PAIR};

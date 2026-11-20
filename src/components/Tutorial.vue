@@ -21,6 +21,7 @@ import { extensionSteps as steps13, extensionContinue, extensionRestart, extensi
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps14, CILIA_TUTORIAL, awardCiliaAchievement } from '../tutorial-cilia';
 import { steps as steps15, ANNOTATIONS_TUTORIAL, awardAnnotationsAchievement } from '../tutorial-annotations';
+import { steps as steps16, GLIA_SPLIT_TUTORIAL } from '../tutorial-glia-split';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice, pausePracticeTools } from '../practice';
 import { startTutorialTiming } from '../tutorial_timing';
@@ -43,7 +44,7 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13, 14: steps14, 15: steps15 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13, 14: steps14, 15: steps15, 16: steps16 };
 // The real lengths, for the landing's "is a tutorial under way" test in
 // store.ts (isUserInActiveTutorial), which cannot import the step lists.
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
@@ -66,6 +67,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 10) return store.tutorialStep10;
     if (store.activeTutorial === 11) return store.tutorialStep11;
     if (store.activeTutorial === 14) return store.tutorialStep14;
+    if (store.activeTutorial === 16) return store.tutorialStep16;
     return store.tutorialStep4;
 });
 
@@ -277,6 +279,11 @@ const next = (_auto?: unknown) => {
         }
         // The Cilia Quest tutorial ends on "Open Cilia Quests" (its "Not now" only closes it).
         if (tutorialNum === CILIA_TUTORIAL && !skipFollowOn) {
+            document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+        }
+        // Glia Split Training ends on "Open Muller Glia Quest".
+        if (tutorialNum === GLIA_SPLIT_TUTORIAL && !skipFollowOn) {
+            document.dispatchEvent(new CustomEvent('nge:quest-pick', { detail: 'muller' }));
             document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
         }
         if (tutorialNum === 1) {

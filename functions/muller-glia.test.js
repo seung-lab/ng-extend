@@ -111,3 +111,16 @@ test('compressed_segmentation reader: one 8x8x8 block, 2 values at 1 bit', () =>
   assert.equal(readUint64(data, 1, chunk, block, [0, 0, 0]), '7');
   assert.equal(readUint64(data, 1, chunk, block, [3, 4, 5]), ((0xa000000n << 32n) | 0x89abcdefn).toString());
 });
+
+test('the training pair is held out of Stage 2', async () => {
+  const {TRAINING_PAIR} = require('./muller-glia');
+  const cells = [
+    {sheet_index: 'T1', segment_id: TRAINING_PAIR, soma_coords: '1,1,1', stage: 2, pair_segment: TRAINING_PAIR},
+    {sheet_index: 'T2', segment_id: TRAINING_PAIR, soma_coords: '2,2,2', stage: 2, pair_segment: TRAINING_PAIR},
+  ];
+  const db = memDb({cells});
+  const ctx = {db, me: {id: U(1)}, isAdmin: true, somaRoots: async s => s.map((_, i) => String(i + 1))};
+  assert.equal((await gliaAction('glia.pairs', {}, ctx)).pairs.length, 0);
+  await assert.rejects(gliaAction('glia.check', {pairSegment: TRAINING_PAIR}, ctx), /training pair/);
+  assert.equal(db._state.splits.length, 0);
+});
