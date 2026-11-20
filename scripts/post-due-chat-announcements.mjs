@@ -169,16 +169,22 @@ async function postDatasetsCeremony() {
   if (!(now >= at && now < at + 24 * 3600 * 1000)) return false;
   // Done once: the outro is the last line it says.
   if (!dryRun && (await rest(`chat_messages?name=eq.Nurro&text=eq.${encodeURIComponent(c.outro)}&select=id&limit=1`)).length) return false;
+  // Paced, so it reads like a ceremony (Ames: "not like BANG BANG BANG").
+  const pause = { afterNurro: 6000, betweenPlayers: 3500, betweenDatasets: 10000, ...(c.pauseMs || {}) };
+  const wait = ms => dryRun ? Promise.resolve() : new Promise(r => setTimeout(r, ms));
   const nurro = async (text) => {
     if (dryRun) { console.log(`[chat-announce] DRY-RUN Nurro: ${text}`); return; }
     if ((await rest(`chat_messages?name=eq.Nurro&text=eq.${encodeURIComponent(text)}&select=id&limit=1`)).length) return;
     await insertChat({ name: 'Nurro', rank: 'bot', text });
-    await new Promise(r => setTimeout(r, 2000));
+    await wait(pause.afterNurro);
   };
   await nurro(c.intro);
+  let first = true;
   for (const ds of c.datasets) {
     const list = c.rollCall[ds.id] || [];
     if (!list.length) continue;
+    if (!first) await wait(pause.betweenDatasets);
+    first = false;
     await nurro(ds.intro);
     const line = `unlocked:${ds.id}`, text = `unlocked ${ds.name}`;
     for (const p of list) {
@@ -186,9 +192,10 @@ async function postDatasetsCeremony() {
       if ((await rest(`chat_messages?user_id=eq.${p.userId}&dataset=eq.${encodeURIComponent(line)}&select=id&limit=1`)).length) continue;
       const u = (await rest(`users?id=eq.${p.userId}&select=username,display_name&limit=1`))[0];
       await insertChat({ user_id: p.userId, name: (u && (u.username || u.display_name)) || p.name, rank: 'achievement', text, dataset: line });
-      await new Promise(r => setTimeout(r, 1200));
+      await wait(pause.betweenPlayers);
     }
   }
+  await wait(pause.betweenDatasets);
   await nurro(c.outro);
   return true;
 }

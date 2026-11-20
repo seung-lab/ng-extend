@@ -1,28 +1,33 @@
 {
   "about": "The Datasets Unlocked ceremony, 10 am Eastern on Nov 20 2026 (Ames 2026-11-19). Nurro runs it in chat at 'at' (UTC), on its own clock (scripts/post-due-chat-announcements.mjs). Players with edit access in CAVE on 2026-11-19; the team and lab are left out of the roll call but still get their emblems on the profile.",
   "at": "2026-11-20T15:00:00Z",
+  "pauseMs": {
+    "afterNurro": 6000,
+    "betweenPlayers": 3500,
+    "betweenDatasets": 10000
+  },
   "intro": "Welcome to the Datasets Unlocked version of Pyr! Starting today, every dataset you have unlocked shows on your profile with its own emblem. Let's celebrate the players who unlocked each one.",
   "outro": "Congratulations to everyone! Thank you for all you have contributed to science. We look forward to many more datasets together!",
   "datasets": [
     {
-      "id": "stroeh_mouse_retina",
-      "name": "the Retina",
-      "intro": "First, the Retina. These players unlocked it:"
-    },
-    {
-      "id": "pni_mec",
-      "name": "MEC",
-      "intro": "Next, the Medial Entorhinal Cortex, MEC for short:"
-    },
-    {
       "id": "flywire_fafb_production",
       "name": "FlyWire",
-      "intro": "FlyWire, the whole brain of a fruit fly. These players helped map it:"
+      "intro": "We start with FlyWire, the whole brain of a fruit fly. A special nod to these players, who braved Neuroglancer to help map it ;)"
     },
     {
       "id": "banc",
       "name": "BANC",
-      "intro": "And BANC, the fly's brain and nerve cord together:"
+      "intro": "Next, BANC, the fly's brain and nerve cord together. More Neuroglancer bravery:"
+    },
+    {
+      "id": "stroeh_mouse_retina",
+      "name": "the Retina",
+      "intro": "Now the Retina. These players unlocked it:"
+    },
+    {
+      "id": "pni_mec",
+      "name": "MEC",
+      "intro": "And the Medial Entorhinal Cortex, MEC for short:"
     }
   ],
   "rollCall": {
