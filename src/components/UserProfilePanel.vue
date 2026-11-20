@@ -54,6 +54,26 @@ import silverYearAward from '../../static/images/champions/silver-year-award.png
 import bronzeYearAward from '../../static/images/champions/bronze-year-award.png';
 import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
 import { vArtGlow } from '../util/art_color';
+import { getToolbarIconDef } from '../data/toolbar-icons';
+import neuronTrophyArt from '../../static/images/champions/platinum-neuron-trophy.png';
+// The tabs carry Pyr's own icons, never emoji (Ames 2026-11-20: emoji there
+// were "hideous"; "can we use our own icons? like the neuron trophy for
+// trophy"). Toolbar icons where the top bar has one for the same thing;
+// the rest drawn to match them (16 grid, 1.3 strokes).
+const TAB_LINE = (paths: string, color: string) =>
+  `<svg viewBox="0 0 16 16" fill="none" style="width:1em;height:1em;vertical-align:middle;color:${color}">${paths}</svg>`;
+const TAB_ICONS = {
+  cells: getToolbarIconDef('cells')?.svg ?? '',
+  datasetStats: getToolbarIconDef('datasetStats')?.svg ?? '',
+  recap: getToolbarIconDef('recap')?.svg ?? '',
+  settings: getToolbarIconDef('settings')?.svg ?? '',
+  // a volume: one block of tissue, its three faces
+  datasets: TAB_LINE('<path d="M8 1.8l5.6 3.1v6.2L8 14.2l-5.6-3.1V4.9z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.6 5L8 8l5.4-3M8 8v6" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>', '#8fd3ff'),
+  // a shield with a check
+  admin: TAB_LINE('<path d="M8 1.7l5 1.9v4c0 3.2-2.2 5.6-5 6.7-2.8-1.1-5-3.5-5-6.7v-4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.6 8.1l1.7 1.7 3.2-3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>', '#f0c46a'),
+  // a pen nib
+  blog: TAB_LINE('<path d="M3 13l1.2-4.4L10.6 2.2a1.4 1.4 0 0 1 2 0l1.2 1.2a1.4 1.4 0 0 1 0 2L7.4 11.8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.4 3.4l3.2 3.2M3 13l3-.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>', '#c9a8ff'),
+};
 import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 
@@ -1906,17 +1926,17 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
-        >Trophy Case</button>
+        ><img class="nge-profile-tab-ic nge-profile-tab-ic--img" :src="neuronTrophyArt" alt="" aria-hidden="true" />Trophy Case</button>
         <button
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'myCells' }"
           @click="activeTab = 'myCells'"
-        >{{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.cells"></span>{{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
         <button
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
           @click="activeTab = 'datasets'"
-        >Datasets</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.datasets"></span>Datasets</button>
         <!-- The whole dataset, not this person (Ames 2026-10-06). Phones use
              the narrow panel instead, from the Datasets tab or the leaderboard. -->
         <button
@@ -1924,7 +1944,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasetStats' }"
           @click="activeTab = 'datasetStats'"
-        >Dataset Stats</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.datasetStats"></span>Dataset Stats</button>
         <!-- Hidden by default (Amy 2026-08-11): the tab button only appears
              while you're ON it, i.e. arrived via the toolbar Week icon or a
              recap notification deep-link. -->
@@ -1933,25 +1953,25 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': true }"
           @click="openWeekInScience()"
-        >My Week in Science</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.recap"></span>My Week in Science</button>
         <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'settings' }"
           @click="activeTab = 'settings'"
-        >Settings</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.settings"></span>Settings</button>
         <button
           v-if="!viewingOtherUser && backendStore.showAdminUi"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"
-        >Admin Hub</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.admin"></span>Admin Hub</button>
         <button
           v-if="!viewingOtherUser && backendStore.isBlogAuthor"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'blog' }"
           @click="activeTab = 'blog'"
-        >Blog</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.blog"></span>Blog</button>
         <button class="nge-profile-exit nge-profile-exit--tabs" title="Close" aria-label="Close the profile" @click="handleClose">×</button>
       </div>
 
@@ -4734,6 +4754,9 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   flex-shrink: 0;
 }
 
+/* the tab's icon, Pyr's own (see TAB_ICONS) */
+.nge-profile-tab-ic { display: inline-flex; align-items: center; font-size: 1.15em; line-height: 1; margin-right: 6px; vertical-align: -0.14em; }
+.nge-profile-tab-ic--img { width: 1.3em; height: 1.3em; object-fit: contain; margin-right: 5px; vertical-align: -0.3em; }
 .nge-profile-tab {
   background: none;
   border: none;
