@@ -1492,7 +1492,37 @@ function nurroFlyAway() {
   nurroFlew = true;
   void flyNurroFrom(panelEl.value?.getBoundingClientRect() || null);
 }
-watch(() => chatMessages.value.length, () => {
+// Datasets Unlocked day (Ames 2026-11-20: "can he periodically fly across
+// the screen like once an hour today?"): on Nov 20, US Eastern, Nurro flies
+// out of the chat box once an hour, on the hour, and once soon after Pyr opens
+// if this browser has not seen him in the last hour. Only while the tab is in
+// front. Nothing runs on any other day.
+const FLY_DAY = '2026-11-20';
+const FLY_SEEN_KEY = 'nge-nurro-flyby-at';
+const etDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+function hourlyFly() {
+  if (etDay() !== FLY_DAY || document.hidden) return;
+  try { localStorage.setItem(FLY_SEEN_KEY, String(Date.now())); } catch { /* private window */ }
+  void flyNurroFrom(panelEl.value?.getBoundingClientRect() || null);
+}
+let flyTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleHourlyFly() {
+  if (etDay() > FLY_DAY) return;
+  const now = new Date();
+  const next = new Date(now); next.setMinutes(60, 0, 0);
+  flyTimer = setTimeout(() => { hourlyFly(); scheduleHourlyFly(); }, next.getTime() - now.getTime() + 500);
+}
+onMounted(() => {
+  if (etDay() > FLY_DAY) return;
+  scheduleHourlyFly();
+  let seen = 0;
+  try { seen = Number(localStorage.getItem(FLY_SEEN_KEY)) || 0; } catch { /* private window */ }
+  if (Date.now() - seen > 60 * 60 * 1000) setTimeout(hourlyFly, 8000);
+});
+onUnmounted(() => { if (flyTimer) clearTimeout(flyTimer); });
+// The ceremony's last line: by the newest message, not the count, which stays
+// put once chat holds as many lines as it keeps.
+watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
   if (nurroFlew) return;
   for (const m of chatMessages.value.slice(-5)) {
     const text = m.parts.map(p => p.text || '').join('');
