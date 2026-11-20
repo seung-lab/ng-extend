@@ -38,7 +38,7 @@ import retinaEmblemArt from '../images/datasets/retina.png';
 import mecEmblemArt from '../images/datasets/mec.png';
 import flywireEmblemArt from '../images/datasets/flywire.png';
 import bancEmblemArt from '../images/datasets/banc.png';
-import nurroFlying from '../../static/nurro/nurro-super-v2.png';
+import { flyNurroFrom } from '../util/nurro_fly';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
 // (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
@@ -1481,27 +1481,7 @@ let nurroFlew = false;
 function nurroFlyAway() {
   if (nurroFlew) return;
   nurroFlew = true;
-  try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch { /* fly */ }
-  const box = panelEl.value?.getBoundingClientRect();
-  const size = Math.min(180, Math.max(110, window.innerWidth * 0.1));
-  const x0 = box && box.width ? box.left + box.width / 2 - size / 2 : 40;
-  const y0 = box && box.height ? box.top + box.height / 2 - size / 2 : window.innerHeight - size - 80;
-  const img = document.createElement('img');
-  img.src = nurroFlying; img.alt = ''; img.setAttribute('aria-hidden', 'true');
-  Object.assign(img.style, { position: 'fixed', left: '0', top: '0', width: size + 'px', height: size + 'px', zIndex: '99999', pointerEvents: 'none',
-    transform: `translate(${x0}px, ${y0}px) scale(0.2)`, opacity: '0', filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.45))' });
-  document.body.appendChild(img);
-  const dx = window.innerWidth + size - x0, rise = Math.max(y0 + size, window.innerHeight * 0.6);
-  const at = (f: number, s = 1, r = 0) => `translate(${x0 + dx * f * f}px, ${y0 - rise * (f < 0.25 ? f * 0.4 : 0.1 + (f - 0.25) * 1.2)}px) rotate(${r}deg) scale(${s})`;
-  const anim = img.animate([
-    { transform: `translate(${x0}px, ${y0}px) scale(0.2)`, opacity: 0, offset: 0 },
-    { transform: `translate(${x0}px, ${y0 - 30}px) rotate(-6deg) scale(1.1)`, opacity: 1, offset: 0.15 },
-    { transform: `translate(${x0 + 10}px, ${y0 - 40}px) rotate(-4deg) scale(1)`, opacity: 1, offset: 0.28 },
-    { transform: at(0.55, 1, -12), opacity: 1, offset: 0.6 },
-    { transform: at(1, 0.9, -22), opacity: 1, offset: 1 },
-  ], { duration: 3800, easing: 'ease-in', fill: 'forwards' });
-  anim.onfinish = () => img.remove();
-  setTimeout(() => img.remove(), 6000);
+  void flyNurroFrom(panelEl.value?.getBoundingClientRect() || null);
 }
 watch(() => chatMessages.value.length, () => {
   if (nurroFlew) return;
