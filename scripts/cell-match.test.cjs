@@ -576,7 +576,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     // The X closes the box and Pyr's Play button comes back to open it
     // (Ames 2026-11-14: "it's not clear how to get back bc the play button is gone").
     await page.evaluate(() => { document.querySelector('.introductionStep')?.remove(); document.querySelector('#nge-cell-match .nge-cm-x').click(); });
-    await page.waitForTimeout(1000);
+    // Play stays away 4 s after a tutorial was on screen (7d9fbacc).
+    await page.waitForTimeout(5000);
     const folded = await page.evaluate(() => { const p = document.querySelector('.nge-play-btn'); return { card: !!document.getElementById('nge-cell-match'), chip: !!document.getElementById('nge-cell-match-open'), play: !!p && p.getBoundingClientRect().width > 0 && p.textContent.trim(), row: !document.body.classList.contains('nge-cm-owns') }; });
     check('X closes the box: no Match button, the Play button is back, the Cell Library row returns', !folded.card && !folded.chip && folded.play === 'Play' && folded.row, folded);
     await shot('cell-match-closed.png');
