@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T17:42:00Z",
+      "title": "Profile glows and tabs",
+      "items": [
+        "The glow behind each Achievement on a profile now matches its art: purple for Days helping science, gold for Edits.",
+        "The profile's tabs show Pyr's own icons instead of emoji, with the neuron trophy for the Trophy Case."
+      ]
+    },
+    {
       "at": "2026-11-20T17:38:00Z",
       "title": "Fold the Cell Library tabs",
       "items": [
