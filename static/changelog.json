@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T02:50:00Z",
+      "title": "A bigger streak flame, and a faster Mine list",
+      "items": [
+        "Your streak in the top bar is now a bigger flame with the number of days inside it in gold. The flame grows as the number gets longer.",
+        "The Mine list in the Cell Library no longer freezes the page for a few seconds when you have finished many cells."
+      ]
+    },
+    {
       "at": "2026-11-20T00:46:00Z",
       "title": "Datasets Unlocked on your profile",
       "items": [
