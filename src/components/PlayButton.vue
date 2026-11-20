@@ -62,7 +62,6 @@ function readScreen() {
 const showDock = computed(() => signedIn.value && !hidden.value && !tutorialOnScreen.value
   && (!play.on || (onSandbox.value && boxClosed.value)));
 
-const SUB = 'Pyr teleports you to a neuron.';
 const MAP_LINES = [
   "<b>You</b> fix the cell's 3D shape where the AI got it wrong.",
   '<b>Tools</b> Merge to add missing pieces, Cut to remove wrong ones.',
@@ -185,7 +184,6 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
           </button>
         </div>
         <div class="nge-intro-title">What would you like to do?</div>
-        <EditableText text-key="play.sub" :original="SUB" text-class="nge-play-sub" notify label="Play card: the line under the title" />
 
         <div v-if="!hub" class="nge-play-options" role="radiogroup" aria-label="Kind of task">
           <div role="radio" tabindex="0" class="nge-play-opt nge-play-opt--map" :class="{ 'nge-play-opt--on': picked === 'cells' }"
@@ -194,7 +192,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
             <span class="nge-play-opt-kind">Mapping</span>
             <span class="nge-play-opt-name">Map a neuron</span>
             <span class="nge-play-opt-where">{{ where }}</span>
-            <EditableText text-key="play.mapping" :original="MAP_LINES" list-class="nge-play-opt-lines" notify label="Play card: Mapping" />
+            <EditableText text-key="play.mapping" :original="MAP_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Mapping" />
           </div>
           <div role="radio" :tabindex="questsOk ? 0 : -1" class="nge-play-opt nge-play-opt--note"
                :class="{ 'nge-play-opt--on': picked === 'quests', 'nge-play-opt--off': !questsOk }"
@@ -203,7 +201,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
             <span class="nge-play-opt-kind">Annotation</span>
             <span class="nge-play-opt-name">Cilia Quest</span>
             <span class="nge-play-opt-where">Starburst cells on Retina</span>
-            <EditableText text-key="play.quests" :original="QUEST_LINES" list-class="nge-play-opt-lines" notify label="Play card: Cilia Quest" />
+            <EditableText text-key="play.quests" :original="QUEST_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Cilia Quest" />
             <span v-if="!questsOk" class="nge-play-opt-lock">Unlocks with edit access on Retina</span>
           </div>
         </div>
@@ -216,7 +214,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
                @click="pick('cells')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('cells')">
             <span class="nge-play-opt-name">BC Challenge</span>
             <span class="nge-play-opt-where">{{ where }}</span>
-            <EditableText text-key="play.mapping" :original="MAP_LINES" list-class="nge-play-opt-lines" notify label="Play card: Mapping" />
+            <EditableText text-key="play.mapping" :original="MAP_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Mapping" />
           </div>
           <div role="radio" :tabindex="questsOk ? 0 : -1" class="nge-play-opt nge-play-opt--map" style="grid-column: 1; grid-row: 3"
                :class="{ 'nge-play-opt--on': picked === 'fragments', 'nge-play-opt--off': !questsOk }"
@@ -224,7 +222,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
                @click="pick('fragments')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('fragments')">
             <span class="nge-play-opt-name">Lost Fragments</span>
             <span class="nge-play-opt-where">Untraced pieces of Retina</span>
-            <EditableText text-key="play.fragments" :original="FRAG_LINES" list-class="nge-play-opt-lines" notify label="Play card: Lost Fragments" />
+            <EditableText text-key="play.fragments" :original="FRAG_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Lost Fragments" />
             <span v-if="!questsOk" class="nge-play-opt-lock">Unlocks with edit access on Retina</span>
           </div>
           <div role="radio" :tabindex="questsOk ? 0 : -1" class="nge-play-opt nge-play-opt--note" style="grid-column: 2; grid-row: 2"
@@ -233,7 +231,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
                @click="pick('quests')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('quests')">
             <span class="nge-play-opt-name">Cilia Quest</span>
             <span class="nge-play-opt-where">Starburst cells on Retina</span>
-            <EditableText text-key="play.quests" :original="QUEST_LINES" list-class="nge-play-opt-lines" notify label="Play card: Cilia Quest" />
+            <EditableText text-key="play.quests" :original="QUEST_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Cilia Quest" />
             <span v-if="!questsOk" class="nge-play-opt-lock">Unlocks with edit access on Retina</span>
           </div>
           <div role="radio" :tabindex="okFor('glia') ? 0 : -1" class="nge-play-opt nge-play-opt--note" style="grid-column: 2; grid-row: 3"
@@ -242,7 +240,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
                @click="pick('glia')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('glia')">
             <span class="nge-play-opt-name">Glia Quest</span>
             <span class="nge-play-opt-where">Muller glia on Retina</span>
-            <EditableText text-key="play.glia" :original="GLIA_LINES" list-class="nge-play-opt-lines" notify label="Play card: Glia Quest" />
+            <EditableText text-key="play.glia" :original="GLIA_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Glia Quest" />
             <span v-if="!GLIA_HERE" class="nge-play-opt-lock">Coming soon</span>
             <span v-else-if="!glia1Ok" class="nge-play-opt-lock">Unlocks with view access on Retina</span>
             <span v-else-if="!questsOk" class="nge-play-opt-note">Stage 1 is open to you. Stage 2 unlocks with edit access.</span>
