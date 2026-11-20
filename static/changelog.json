@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T16:47:00Z",
+      "title": "See the 3D shape update, and server status",
+      "items": [
+        "After a cut or merge, a small note shows while the new 3D shape loads. Your edit is already saved. You can drag the note anywhere.",
+        "Profile, Datasets now has Server status: whether the lab servers for Retina, the Sandbox and MEC are OK, slow or down.",
+        "Nurro keeps his answers shorter."
+      ]
+    },
+    {
       "at": "2026-11-20T16:45:00Z",
       "title": "The Training Sim box powers on",
       "items": [
