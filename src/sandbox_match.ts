@@ -1718,7 +1718,7 @@ function endJumpSearch() {
 }
 /** A button's circuit edge, drawn to its size (see "Circuit edges" above).
  *  Keyed: the right end is the slash before the bulb key. */
-export function frameSvg(w: number, h: number, keyed: boolean): string {
+function frameSvg(w: number, h: number, keyed: boolean): string {
   // A chip on a board (Ames 2026-11-20: "PCB microchip type thing in the
   // border", "it's small, so keep it as simple as you can"): the package
   // outline with cut corners, a few pins on its top and bottom edges, two
