@@ -1696,12 +1696,20 @@ watch(() => (scopedCompletionRows.value ?? [])
 // ── 14-day activity chart data ───────────────────────────────────────────────
 const last14Days = computed(() => {
   const days: Array<{ date: string; label: string; edits: number; completions: number; total: number }> = [];
+  // Someone else's profile: their own days, the ones their curves draw from
+  // (synapse123, report 599: it showed the reader's own activity).
+  const other = viewingOtherUser.value;
+  const by = (list: EffortDay[] | null) => new Map((list ?? []).map(x => [x.date, x.n]));
+  const editsOn = other ? by(scopedEditDays.value) : null, cellsOn = other ? by(scopedCellDays.value) : null;
+  const local = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const log = statsStore.dailyLog;
   for (let i = 13; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().slice(0, 10);
-    const entry = log.find((e: {date: string}) => e.date === dateStr);
+    const entry = other
+      ? { edits: editsOn!.get(local(d)) ?? 0, cellsCompleted: cellsOn!.get(local(d)) ?? 0 }
+      : log.find((e: {date: string}) => e.date === dateStr);
     const dayLabel = d.toLocaleDateString('en-US', { weekday: 'narrow' });
     days.push({
       date: dateStr,
