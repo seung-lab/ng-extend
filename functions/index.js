@@ -3117,7 +3117,9 @@ exports.ewSheetSync = onRequest(
     if(listing) {
       const rows=await questList(input.quest,admin.applicationDefault());
       await mirrorQuestRows(sb,input.quest,rows);
-      return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows});
+      // Only the open cells at the top, this player's own rows and counts
+      // (sheet-policy questListFor): ~2000 rows were ~375 KB on every read.
+      return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),...require('./sheet-policy').questListFor(rows,me)});
     }
     // The sheet knows a row's owner by name alone, so the name has to be this
     // player's and nobody else's (name-owner.js; security review 2026-11-13).
