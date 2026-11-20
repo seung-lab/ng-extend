@@ -66,6 +66,12 @@ interface OrphanSave {
 }
 /** Fragments someone else has answered: Play skips them. */
 const taken = reactive(new Set<string>());
+/** Fragments another player is playing (their claim): Play skips them too.
+ *  Ames 2026-11-20: "play mode on a fragment should claim it as mine until I
+ *  skip it". Claims stay in Supabase only, never the sheet. */
+const held = reactive(new Set<string>());
+/** The fragment this player holds, from the server: Play goes back to it. */
+const myClaim = ref<string | null>(null);
 /** The server answered: answers go to the lab. */
 const serverOn = ref(false);
 const sending = ref(false);
@@ -94,6 +100,7 @@ function resetForm(s?: OrphanSave) {
   form.pointMsg = s?.point ? `Saved at ${s.point.join(', ')}.` : '';
   form.nucId = s?.nucId ?? ''; form.noNucleus = s?.noNucleus ?? false; form.note = s?.note ?? '';
   form.saved = !!s;
+  nucMsg.value = '';
 }
 
 // The fragment open and its unsent answers, for this tab's session: the
@@ -166,33 +173,69 @@ function nextUndone(): { g: GroupKey; row: OrphanSeg } | null {
   for (let k = 0; k < GROUPS.length; k++) {
     const g = GROUPS[(start + k) % GROUPS.length];
     const from = k === 0 && active.value ? g.rows.findIndex(r => r.id === active.value!.id) + 1 : 0;
-    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && r.id !== active.value?.id);
+    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && !held.has(r.id) && r.id !== active.value?.id);
     if (row) return { g: g.key, row };
   }
   return null;
 }
 const allDone = ref(false);
+/** Play landed here: hold it for this player. If someone got there first,
+ *  move on to the next one. Without the server, play on unclaimed. */
+async function claimHere(row: OrphanSeg) {
+  try {
+    const res = await secureWrite<{ claimed: boolean; reason?: string }>('fragments.claim', { fragmentId: row.id });
+    if (res && res.claimed) { myClaim.value = row.id; return; }
+    // Only a plain "someone has it" moves Play on; anything else plays on.
+    if (!res || res.claimed !== false || (res.reason !== 'done' && res.reason !== 'held')) return;
+    (res.reason === 'done' ? taken : held).add(row.id);
+    if (active.value?.id === row.id && playing.value && !saves[row.id]) playNext();
+  } catch { /* the server can't say; keep playing */ }
+}
 function playNext() {
   const n = nextUndone();
   if (!n) { allDone.value = true; return; }
   allDone.value = false;
   group.value = n.g;
   void open(n.row);
+  void claimHere(n.row);
   document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + short(n.row.id) } }));
+}
+/** Skip: give the fragment back, then the next one. */
+function skip() {
+  const a = active.value;
+  if (a && !saves[a.id]) {
+    if (myClaim.value === a.id) myClaim.value = null;
+    void secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
+  }
+  playNext();
+}
+function findRow(id: string): { g: GroupKey; row: OrphanSeg } | null {
+  for (const g of GROUPS) { const row = g.rows.find(r => r.id === id); if (row) return { g: g.key, row }; }
+  return null;
 }
 // Pressing Play while a fragment is open and not yet submitted stays on it
 // (Ames 2026-11-19: Play took her from Smaller back to Large, losing her note).
 function playResume() {
   const a = active.value;
   if (a && !saves[a.id]) {
+    void claimHere(a);
     document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + a.id } }));
+    return;
+  }
+  // The fragment this player holds, from another computer or an earlier visit.
+  const mine = myClaim.value ? findRow(myClaim.value) : null;
+  if (mine && !saves[mine.row.id]) {
+    group.value = mine.g;
+    void open(mine.row);
+    void claimHere(mine.row);
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + short(mine.row.id) } }));
     return;
   }
   playNext();
 }
 watch(() => props.playTick, t => { if (t) playResume(); });
 onMounted(() => { restoreDraft(); if (props.playTick) playResume(); });
-const onSkip = () => playNext();
+const onSkip = () => skip();
 onMounted(() => document.addEventListener('nge:play-skip-fragment', onSkip));
 onUnmounted(() => document.removeEventListener('nge:play-skip-fragment', onSkip));
 const playing = computed(() => play.on === 'fragments');
@@ -252,13 +295,28 @@ async function usePoint() {
   } finally { form.checking = false; }
 }
 
+const nucChecking = ref(false);
+const nucMsg = ref('');
+/** The nucleus under the crosshairs: its own segment, not the fragment. */
+async function useNucleus() {
+  nucChecking.value = true; nucMsg.value = '';
+  try {
+    const at = await cellAtCrosshair();
+    if (!at.root) { nucMsg.value = at.problem || 'Could not read the crosshairs.'; return; }
+    const mine = new Set([shownRoot.value, active.value?.id].filter(Boolean) as string[]);
+    if (mine.has(at.root)) { form.nucId = ''; nucMsg.value = 'The crosshairs are in the fragment itself. Move them onto the nucleus inside the soma.'; return; }
+    form.nucId = at.root;
+    nucMsg.value = `Nucleus ${short(at.root)} saved. Check it sits inside this soma.`;
+  } finally { nucChecking.value = false; }
+}
+const completeLabel = computed(() => form.saved ? 'Send again' : playing.value ? 'Complete and next' : 'Complete');
 const canSubmit = computed(() => form.fixed && form.ends && form.pointOk && !!form.point && (form.noNucleus || form.where === 'dendrite' || !!form.nucId.trim()));
 const missing = computed(() => {
   const m: string[] = [];
   if (!form.fixed) m.push('fix the splits and merges');
   if (!form.ends) m.push('check the ends');
   if (!form.pointOk) m.push(`put a point in the ${form.where === 'soma' ? 'soma' : 'major dendrite'}`);
-  if (form.where === 'soma' && !form.noNucleus && !form.nucId.trim()) m.push('add the nucleus ID, or tick No nucleus');
+  if (form.where === 'soma' && !form.noNucleus && !form.nucId.trim()) m.push('read the nucleus with the crosshairs, or tick No nucleus');
   return m;
 });
 /** Counts the fragment as a completed cell: the same row a Complete logs. */
@@ -296,6 +354,7 @@ async function submit() {
     };
     persist();
     if (res && res.first) countCompleted(root, pt, row.id);
+    if (myClaim.value === row.id) myClaim.value = null;
     lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
     if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
   } catch (e: any) {
@@ -312,7 +371,7 @@ async function submit() {
  *  Answers whose CAVE point did not go in are sent again here. */
 async function loadAnswers() {
   try {
-    const res = await secureWrite<{ mine: any[]; others: string[] }>('fragments.list');
+    const res = await secureWrite<{ mine: any[]; others: string[]; held?: string[]; myClaim?: string | null }>('fragments.list');
     serverOn.value = true;
     for (const k of Object.keys(saves)) delete saves[k];
     for (const m of res.mine || []) {
@@ -326,6 +385,9 @@ async function loadAnswers() {
     persist();
     taken.clear();
     for (const id of res.others || []) taken.add(id);
+    held.clear();
+    for (const id of res.held || []) held.add(id);
+    myClaim.value = res.myClaim ?? null;
     if (active.value && saves[active.value.id] && !finishing.value) resetForm(saves[active.value.id]);
     for (const m of res.mine || []) {
       if (m.cave_annotation_id != null || !Array.isArray(m.pt)) continue;
@@ -375,23 +437,20 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
     <!-- The slim bar's header (Ames 2026-11-19: "needs a header"). -->
     <!-- Slim: one row, like the BC Challenge slim row (Ames 2026-11-19: "make
          it styled ACTUALLY slim"); Complete opens the checklist under it. -->
-    <div v-if="slim && active" class="nge-orph-slimrow">
+    <!-- Ames 2026-11-20: no group menu, ID, Playing chip or previous and next
+         here; Skip moves on, and the full view has the rest. -->
+    <div v-if="slim && active" class="nge-orph-slimrow" :data-id="shownRoot || active.id">
       <div class="nge-orph-slimid">
-        <div class="nge-orph-slimtop"><span class="nge-orph-slimlabel">Lost Fragments</span><span v-if="playing" class="nge-orph-slimplaying">Playing</span></div>
-        <button class="nge-orph-slimseg" :data-id="shownRoot || active.id" :title="copied ? 'Copied' : `${shownRoot || active.id}: click to copy`" @click="copyId(shownRoot || active.id)">{{ copied ? 'Copied' : short(shownRoot || active.id) }}</button>
-        <div class="nge-orph-slimmeta">
-          <select class="nge-orph-groupsel" :value="group" :style="{ color: cur.color }" aria-label="Fragment group" title="Switch group" @change="onGroupChange">
-            <option v-for="g in GROUPS" :key="g.key" :value="g.key">{{ g.label }}</option>
-          </select> {{ place + 1 }} of {{ cur.rows.length }}
-        </div>
+        <div class="nge-orph-slimtop"><span class="nge-orph-slimlabel">Lost Fragments</span></div>
+        <div class="nge-orph-slimmeta"><span :style="{ color: cur.color }">{{ cur.label }}</span> {{ place + 1 }} of {{ cur.rows.length }}</div>
       </div>
       <div class="nge-orph-slimbtns">
-        <button class="nge-orph-btn" @click="step(-1)" title="Previous fragment">&lsaquo;</button>
-        <button class="nge-orph-btn" @click="step(1)" title="Next fragment">&rsaquo;</button>
-        <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
         <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
-        <button v-if="playing" class="nge-orph-btn" @click="playNext" title="Leave this one and go to the next fragment">Skip</button>
-        <button class="nge-orph-btn nge-orph-complete" :class="{ on: finishing }" @click="finishing = !finishing" :title="finishing ? 'Fold the checklist away' : 'Done with this fragment? Open the checklist and Submit.'">{{ form.saved ? 'Submitted' : 'Complete' }}</button>
+        <button v-if="playing" class="nge-orph-btn" @click="skip" title="Give this one back and go to the next fragment">Skip</button>
+        <!-- One button (Ames 2026-11-20: "we have one complete and next
+             button"): Complete opens the checklist, then sends it. -->
+        <button v-if="!finishing" class="nge-orph-btn nge-orph-complete" @click="finishing = true" title="Done with this fragment? Open the checklist.">{{ form.saved ? 'Completed' : 'Complete' }}</button>
+        <button v-else class="nge-orph-btn nge-orph-complete on" :disabled="!canSubmit || sending" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : 'Send it to the lab'" @click="submit">{{ sending ? 'Sending…' : completeLabel }}</button>
       </div>
     </div>
     <div v-if="active && (!slim || finishing)" class="nge-orph-task">
@@ -416,7 +475,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <button class="nge-orph-btn" @click="step(1)" title="Next fragment"><template v-if="!slim">Next </template>&rsaquo;</button>
         <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
         <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
-        <button v-if="playing" class="nge-orph-btn" @click="playNext" title="Leave this one and go to the next fragment">Skip</button>
+        <button v-if="playing" class="nge-orph-btn" @click="skip" title="Give this one back and go to the next fragment">Skip</button>
         <button v-else class="nge-orph-btn nge-orph-playbtn" @click="startPlay('fragments')" title="Play: after Submit, the next fragment opens by itself">&#9654; Play</button>
         <button class="nge-orph-help-btn" :class="{ on: helpOpen }" :aria-expanded="helpOpen ? 'true' : 'false'" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button>
         <button v-if="playing" class="nge-orph-link nge-orph-stop" @click="stopPlay" title="Stop playing: Submit stays on this fragment">Stop</button>
@@ -426,10 +485,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <p><b>1. Fix splits and merges.</b> Cut off anything that belongs to another cell, and merge in pieces that are missing.</p>
         <p><b>2. Check every end.</b> Follow each branch to its tip and extend it where it was cut short.</p>
         <p><b>3. Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.</p>
-        <p><b>4. Nucleus ID</b> (soma only). In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
-        <p><b>Recenter</b> flies the view back to the fragment. <b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
+        <p><b>4. Nucleus</b> (soma only). In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs: Pyr reads its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
+        <p><b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
       </div>
-      <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you submit</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button></div>
+      <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
       <ol class="nge-orph-check">
         <li :class="{ done: form.fixed }">
@@ -451,28 +510,30 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           </div>
         </li>
         <li v-if="form.where === 'soma'" :class="{ done: form.noNucleus || !!form.nucId.trim() }">
-          <div class="nge-orph-row" title="In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its segment ID here, so the lab can match the soma to its nucleus.">
-            <b>Nucleus ID</b>
-            <input v-model="form.nucId" class="nge-orph-input" :disabled="form.noNucleus" inputmode="numeric" placeholder="the nucleus segment's ID" aria-label="Nucleus ID" />
+          <div class="nge-orph-row" title="In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs.">
+            <b>Nucleus</b>
+            <button class="nge-orph-btn" :disabled="form.noNucleus || nucChecking" @click="useNucleus">{{ nucChecking ? 'Reading…' : 'Use crosshairs' }}</button>
+            <span v-if="form.nucId && !form.noNucleus" class="nge-orph-nucid" :title="form.nucId">{{ short(form.nucId) }}</span>
             <label class="nge-orph-sub"><input type="checkbox" v-model="form.noNucleus" /> No nucleus</label>
           </div>
+          <div v-if="nucMsg && !form.noNucleus" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.nucId }">{{ nucMsg }}</span></div>
         </li>
       </ol>
       <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
 
       <div class="nge-orph-row">
-        <button class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit || sending" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : ''" @click="submit">{{ form.saved ? 'Submit again' : playing ? 'Submit and next' : 'Submit' }}</button>
+        <button v-if="!slim" class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit || sending" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : ''" @click="submit">{{ sending ? 'Sending…' : completeLabel }}</button>
         <button v-if="form.saved" class="nge-orph-btn" @click="step(1)">Next segment &rsaquo;</button>
         <button v-if="!noteOpen && !form.note" class="nge-orph-link" @click="noteOpen = true">Add a note</button>
       </div>
       <div v-if="sendError" class="nge-orph-note nge-orph-note--err">{{ sendError }}</div>
-      <div v-else-if="form.saved" class="nge-orph-note nge-orph-note--ok">{{ lastSent || 'Sent to the lab. Submit again to change your answer.' }}</div>
-      <div v-else-if="missing.length && !slim" class="nge-orph-note">Still to do: {{ missing.join(', ') }}.</div>
+      <div v-else-if="form.saved" class="nge-orph-note nge-orph-note--ok">{{ lastSent || 'Sent to the lab. Send again to change your answer.' }}</div>
+      <div v-else-if="missing.length" class="nge-orph-note">Still to do: {{ missing.join(', ') }}.</div>
       </template>
     </div>
 
     <div v-if="!slim" class="nge-orph-list">
-      <button v-for="(r, i) in cur.rows" :key="r.id" class="nge-orph-item" :class="{ 'nge-orph-item--on': active?.id === r.id, 'nge-orph-item--done': !!saves[r.id] }"
+      <button v-for="(r, i) in cur.rows" :key="r.id" class="nge-orph-item" :class="{ 'nge-orph-item--on': active?.id === r.id, 'nge-orph-item--done': !!saves[r.id], 'nge-orph-item--held': !saves[r.id] && (held.has(r.id) || taken.has(r.id)) }"
               @click="open(r)" :title="`Jump to segment ${r.id}`">
         <span class="nge-orph-item-i">{{ i + 1 }}</span>
         <span class="nge-orph-item-id">{{ r.id }}</span>
@@ -503,15 +564,13 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-slimid { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 auto; }
 .nge-orph-slimtop { display: flex; align-items: center; gap: 6px; }
 .nge-orph-slimlabel { font: 700 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #9fd0ff; }
-.nge-orph-slimseg { all: unset; cursor: pointer; font: 700 15px 'Inter', sans-serif; color: #fff; white-space: nowrap; }
-.nge-orph-slimseg:hover { color: #9fd0ff; }
 .nge-orph-slimmeta { font-size: 12px; color: #a9b8cc; white-space: nowrap; }
 .nge-orph-slimbtns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
 .nge-orph-slimrow .nge-orph-btn { padding: 6px 11px; font-size: 13px; }
 .nge-orph-complete { color: #c8fbea !important; border-color: rgba(62, 236, 190, 0.6) !important; background: rgba(20, 90, 70, 0.35) !important; }
 .nge-orph-complete.on { background: rgba(20, 110, 85, 0.6) !important; }
-.nge-orph-finishhead { justify-content: space-between; font-size: 13px; color: #eef; }
-.nge-orph-slimplaying { font: 600 10.5px 'Inter', sans-serif; font-style: normal; color: #9ff5da; border: 1px solid rgba(62, 236, 190, 0.55); border-radius: 999px; padding: 1px 8px; background: rgba(8, 40, 36, 0.7); }
+.nge-orph-finishhead { justify-content: flex-start; font-size: 13px; color: #eef; }
+.nge-orph-finishhead > button:first-of-type { margin-left: auto; }
 .nge-orph-complete { padding: 4px 14px; }
 .nge-orph-playbtn { color: #9ff5da; border-color: rgba(62, 236, 190, 0.5); }
 .nge-orph-help-btn { width: 24px; height: 24px; border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.45); background: transparent; color: #9fd0ff; font: 700 13px 'Inter', sans-serif; cursor: pointer; padding: 0; }
@@ -577,6 +636,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-list { display: flex; flex-direction: column; padding: 0 6px 8px; }
 .nge-orph-item { display: grid; grid-template-columns: 22px 1fr auto auto 14px; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: #cfdcef; cursor: pointer; text-align: left; font: 13px 'Inter', sans-serif; }
 .nge-orph-item:hover { background: rgba(74, 158, 255, 0.08); }
+.nge-orph-item--held { opacity: 0.45; }
+.nge-orph-nucid { font: 600 12px 'JetBrains Mono', ui-monospace, monospace; color: #cfe6ff; }
 .nge-orph-item--on { background: rgba(74, 158, 255, 0.14); border-color: rgba(126, 202, 255, 0.35); }
 .nge-orph-item-i { color: #6c7a90; font-variant-numeric: tabular-nums; text-align: right; }
 .nge-orph-item-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #eef; overflow: hidden; text-overflow: ellipsis; }
