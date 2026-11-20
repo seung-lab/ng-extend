@@ -1,7 +1,7 @@
 {
   "about": "The Datasets Unlocked ceremony, 10 am Eastern on Nov 20 2026 (Ames 2026-11-19). Nurro runs it in chat at 'at' (UTC), on its own clock (scripts/post-due-chat-announcements.mjs). Players with edit access in CAVE on 2026-11-19; the team and lab are left out of the roll call but still get their emblems on the profile.",
   "at": "2026-11-20T15:00:00Z",
-  "intro": "Welcome to the Datasets Unlocked ceremony! Starting today, every dataset you have unlocked shows on your profile with its own emblem. Let's celebrate the players who unlocked each one.",
+  "intro": "Welcome to the Datasets Unlocked version of Pyr! Starting today, every dataset you have unlocked shows on your profile with its own emblem. Let's celebrate the players who unlocked each one.",
   "outro": "Congratulations to everyone! Thank you for all you have contributed to science. We look forward to many more datasets together!",
   "datasets": [
     {
