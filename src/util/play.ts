@@ -115,7 +115,15 @@ export function canViewRetina(): boolean {
 /** The Retina hub (Ames 2026-11-19: one "Start playing" card with BC
  *  Challenge, Lost Fragments, Cilia Quest and Glia Quest): every test site,
  *  and admins on live ("Admins only" while saves stay in the browser). */
-export function retinaHub(): boolean { return ON_TEST_SITE || isAdmin(); }
+export function retinaHub(): boolean { return ON_TEST_SITE || isAdmin() || fragmentTester(); }
+/** Players let into the Lost Fragments preview on live, beside admins, by
+ *  Pyr user id (Ames 2026-11-19: "open up Lost Fragments to Jan Lause"). */
+const FRAGMENT_TESTERS = new Set<string>([
+  '5bb0310a-b42d-4d13-937f-eab620794949',  // Jan Lause (jan_lause)
+]);
+export function fragmentTester(): boolean {
+  try { return FRAGMENT_TESTERS.has(String(useProofreadingBackendStore().userId || '')); } catch { return false; }
+}
 
 /** Where mapping happens for this player: the dataset on screen when it has
  *  cells to claim and they may edit it (MEC, say), else Retina's bipolar
