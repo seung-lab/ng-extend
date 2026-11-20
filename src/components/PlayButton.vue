@@ -32,8 +32,9 @@ const picked = ref<HubPick>('cells');
 const questsOk = computed(() => canQuest());
 const hub = computed(() => retinaHub());
 const glia1Ok = computed(() => canViewRetina());
-/** Glia Quest is on its own branch (claude/muller-glia-quest) until merged here. */
-const GLIA_HERE = false;
+/** The Müller Glia Quest is here (src/components/MullerGliaQuest.vue,
+ *  server ewMullerGlia, deployed 2026-11-20). */
+const GLIA_HERE = true;
 const okFor = (k: HubPick) => k === 'cells' ? true : k === 'glia' ? glia1Ok.value && GLIA_HERE : questsOk.value;
 const where = computed(() => mappingWhere());
 const busy = ref(false);
@@ -84,7 +85,7 @@ const FRAG_LINES = [
   '<b>Finish</b> by marking its main dendrite or soma, then Submit.',
 ];
 const GLIA_LINES = [
-  '<b>Stage 1</b> Is it a Muller glia? Yes or no.',
+  '<b>Stage 1</b> Is it a Müller glia? Yes or no.',
   '<b>Stage 2</b> Two glia stuck together: Cut them apart.',
 ];
 const QUEST_LINES = [
@@ -127,9 +128,13 @@ async function go() {
   const k = picked.value;
   if (k === 'glia') {
     play.choosing = false;
+    // The Quests tab opens on the Müller Glia Quest (CellLibraryPanel.vue).
+    document.dispatchEvent(new CustomEvent('nge:quest-pick', { detail: 'muller' }));
     document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
     return;
   }
+  // Cilia Quest shares the Quests tab with the Müller Glia Quest: show Cilia.
+  if (k === 'quests') document.dispatchEvent(new CustomEvent('nge:quest-pick', { detail: 'cilia' }));
   busy.value = true;
   try { await startPlay(k); } finally { busy.value = false; }
 }
@@ -276,9 +281,9 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
                :class="{ 'nge-play-opt--on': picked === 'glia', 'nge-play-opt--off': !okFor('glia') }"
                :aria-disabled="!okFor('glia') ? 'true' : undefined" :aria-checked="picked === 'glia' ? 'true' : 'false'"
                @click="pick('glia')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('glia')">
-            <span class="nge-play-opt-name">Glia Quest</span>
-            <span class="nge-play-opt-where">Muller glia on Retina</span>
-            <EditableText text-key="play.glia" :original="GLIA_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Glia Quest" />
+            <span class="nge-play-opt-name">Müller Glia Quest</span>
+            <span class="nge-play-opt-where">Müller glia on Retina</span>
+            <EditableText text-key="play.glia" :original="GLIA_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Müller Glia Quest" />
             <span v-if="!GLIA_HERE" class="nge-play-opt-lock">Coming soon</span>
             <span v-else-if="!glia1Ok" class="nge-play-opt-lock">Unlocks with view access on Retina</span>
             <span v-else-if="!questsOk" class="nge-play-opt-note">Stage 1 is open to you. Stage 2 unlocks with edit access.</span>

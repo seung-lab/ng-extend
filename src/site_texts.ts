@@ -61,9 +61,11 @@ const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 export function textToHtml(line: string): string {
   let h = escapeHtml(line);
   h = h.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  h = h.replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+|#examples)\)/g, (_m, words: string, url: string) =>
-    url === '#examples'
-      ? `<a href="#" data-nge-action="examples">${words}</a>`
+  // [words](#name) is an in-game action link (data-nge-action), like
+  // #examples or #glia-example; [words](https://...) opens a page.
+  h = h.replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+|#[\w-]+)\)/g, (_m, words: string, url: string) =>
+    url.startsWith('#')
+      ? `<a href="#" data-nge-action="${url.slice(1)}">${words}</a>`
       : `<a href="${url}" target="_blank" rel="noopener">${words}</a>`);
   return h;
 }
@@ -76,7 +78,9 @@ export function textToSteps(body: string): string[] {
 /** The code's HTML back into the editor's marks, for a first edit. */
 export function htmlToText(html: string): string {
   return html
-    .replace(/<a [^>]*data-nge-action="examples"[^>]*>(.*?)<\/a>/g, '[$1](#examples)')
+    // Any action link keeps its action (Ames 2026-11-20: Show this glia
+    // came back as [Show this glia](#), a dead link, after an edit).
+    .replace(/<a [^>]*data-nge-action="([\w-]+)"[^>]*>(.*?)<\/a>/g, '[$2](#$1)')
     .replace(/<a [^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g, '[$2]($1)')
     .replace(/<\/?(b|strong)>/g, '**')
     .replace(/<[^>]+>/g, '')

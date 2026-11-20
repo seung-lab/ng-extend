@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * MullerGliaQuest.vue: the Muller Glia Quest in the Quests tab (Ames
+ * MullerGliaQuest.vue: the Müller Glia Quest in the Quests tab (Ames
  * 2026-11-19). "The first section is confirming that it's a glia with a yes
  * or no. The second stage has users split two glia together that are merged."
  *
@@ -42,18 +42,20 @@ const pairOpen = ref('');
 const checking = ref('');
 const pairNote = ref<Record<string, string>>({});
 
-/** "What is a Muller glia?" (Ames 2026-11-19: "link to a glia here and have
- *  an image in a popup"): the game's instructions box, with a Muller glia the
+/** "What is a Müller glia?" (Ames 2026-11-19: "link to a glia here and have
+ *  an image in a popup"): the game's instructions box, with a Müller glia the
  *  lab proofread (Ames's example, 720575940572199198) and a link that shows it.
  *  Admins can edit the words and the picture (edit notes reach Ames). */
-const EXAMPLE_GLIA = { segmentId: '720575940572199198', at: '43037,55535,1018' };
-const WHAT_LEAD = "Muller glia are the retina's support cells. Each one spans the whole retina, from its foot at the inner surface to the photoreceptors, and holds the neurons around it in place.";
+/** Nseraf's proofread Müller glia (Ames 2026-11-20); `at` is a point on it
+ *  (its largest level 2 piece). */
+const EXAMPLE_GLIA = { segmentId: '720575940558455015', at: '39354,56597,1453' };
+const WHAT_LEAD = "Müller glia are the retina's support cells. Each one spans the whole retina, from its foot at the inner surface to the photoreceptors, and holds the neurons around it in place.";
 const WHAT_STEPS: string[] = [
   'A long column through the full depth of the retina.',
   'Its soma sits in the inner nuclear layer, among the bipolar cells.',
   'A wide end foot on the ganglion cell side (at the bottom of the picture), and fine sheets wrapped around its neighbors.',
   "No axon, and no tidy dendritic tree like a neuron's.",
-  '<a href="#" data-nge-action="glia-example">Show this glia</a> in the viewer: a proofread Muller glia.',
+  '<a href="#" data-nge-action="glia-example">Show this glia</a> in the viewer: a Müller glia proofread by Nseraf.',
 ];
 /** Stage 2's steps (Ames 2026-11-19: fused glia usually touch in more than
  *  one place; Find Path shows where). Editable by admins. */
@@ -68,7 +70,7 @@ function onWhatAction(name: string) {
   if (name !== 'glia-example') return;
   showHow.value = false;
   show(EXAMPLE_GLIA.segmentId, EXAMPLE_GLIA.at);
-  message.value = 'This is a proofread Muller glia. Turn it in 3D to see the whole column.';
+  message.value = 'This Müller glia was proofread by Nseraf. Turn it in 3D to see the whole column.';
 }
 
 const label = (a: GliaAnswer) => (a === 'yes' ? 'Yes' : a === 'no' ? 'No' : 'Not sure');
@@ -184,17 +186,17 @@ async function check(p: GliaPair) {
   <div class="nge-mg">
     <div class="nge-mg-head">
       <div class="nge-mg-titlerow">
-        <div class="nge-mg-title">Muller Glia Quest</div>
-        <button class="nge-mg-btn" :class="{ on: showHow }" @click="showHow = !showHow">What is a Muller glia?</button>
+        <div class="nge-mg-title">Müller Glia Quest</div>
+        <button class="nge-mg-btn" :class="{ on: showHow }" @click="showHow = !showHow">What is a Müller glia?</button>
       </div>
-      <div class="nge-mg-lead">Muller glia are the retina's support cells. Each one spans the whole retina, from its foot at the inner surface to the photoreceptors, and holds the neurons around it in place. Help us find every one of them.</div>
-      <QuestInstructions v-if="showHow" kicker="Muller Glia Quest" title="What is a Muller glia?"
+      <div class="nge-mg-lead">Müller glia are the retina's support cells. Each one spans the whole retina, from its foot at the inner surface to the photoreceptors, and holds the neurons around it in place. Help us find every one of them.</div>
+      <QuestInstructions v-if="showHow" kicker="Müller Glia Quest" title="What is a Müller glia?"
         :lead="WHAT_LEAD" :steps="WHAT_STEPS" lead-key="quest.muller_glia.lead" steps-key="quest.muller_glia.what"
-        image-key="quest.muller_glia.image" :image="imgMullerGlia" image-alt="A Muller glia from the Retina dataset in 3D: a long column with a wide end foot at the bottom"
+        image-key="quest.muller_glia.image" :image="imgMullerGlia" image-alt="A Müller glia from the Retina dataset in 3D: a long column with a wide end foot at the bottom"
         :legend="[]" @close="showHow = false" @action="onWhatAction" />
       <div v-if="status?.installed" class="nge-mg-stages">
         <button class="nge-mg-stage" :class="{ on: stage === 1 }" @click="stage = 1">
-          <span class="nge-mg-stage-n">1</span> Is it a Muller glia?
+          <span class="nge-mg-stage-n">1</span> Is it a Müller glia?
           <span class="nge-mg-stage-c">{{ status.answered }} answered</span>
         </button>
         <button class="nge-mg-stage" :class="{ on: stage === 2, locked: !status.unlocked }" @click="openStage2">
@@ -206,14 +208,14 @@ async function check(p: GliaPair) {
 
     <div v-if="!backend.userId" class="nge-mg-empty">Sign in to take a quest.</div>
     <div v-else-if="loading && !status" class="nge-mg-empty">Reading the quest…</div>
-    <div v-else-if="status && !status.installed" class="nge-mg-empty">The Muller Glia Quest is not open yet.</div>
+    <div v-else-if="status && !status.installed" class="nge-mg-empty">The Müller Glia Quest is not open yet.</div>
     <template v-else-if="status">
       <div v-if="error" class="nge-mg-msg nge-mg-msg--bad">{{ error }}</div>
       <div v-else-if="message" class="nge-mg-msg">{{ message }}</div>
 
       <!-- Stage 1 -->
       <template v-if="stage === 1">
-        <div class="nge-mg-sub">Look at the cell in 3D. Is it a Muller glia? One answer per cell, then the next one opens.</div>
+        <div class="nge-mg-sub">Look at the cell in 3D. Is it a Müller glia? One answer per cell, then the next one opens.</div>
         <div v-if="current" class="nge-mg-card">
           <div class="nge-mg-card-top">
             <div>
@@ -242,7 +244,7 @@ async function check(p: GliaPair) {
             </span>
           </div>
         </template>
-        <div class="nge-mg-foot">Three Yes answers confirm a Muller glia. Two No answers send it to the lab for a closer look. So far: {{ status.confirmed }} confirmed, {{ status.flagged }} sent to the lab.</div>
+        <div class="nge-mg-foot">Three Yes answers confirm a Müller glia. Two No answers send it to the lab for a closer look. So far: {{ status.confirmed }} confirmed, {{ status.flagged }} sent to the lab.</div>
       </template>
 
       <!-- Stage 2 -->
@@ -253,7 +255,7 @@ async function check(p: GliaPair) {
         </div>
         <div v-if="!status.unlocked" class="nge-mg-empty">Stage 2 opens after {{ status.unlockAfter }} answers in Stage 1. You have {{ status.answered }}.</div>
         <template v-else>
-          <div class="nge-mg-sub">Each of these is one segment holding two or more Muller glia that grew together. Cut them apart so each soma has its own cell.</div>
+          <div class="nge-mg-sub">Each of these is one segment holding two or more Müller glia that grew together. Cut them apart so each soma has its own cell.</div>
           <EditableText text-key="quest.muller_glia.split_steps" :original="SPLIT_STEPS" list-class="nge-mg-steps" />
           <div class="nge-mg-section">Merged glia <span class="nge-mg-count">{{ pairs.length }}</span></div>
           <div v-if="pairsLoaded && !pairs.length" class="nge-mg-empty">Every merged pair is split. Thank you!</div>

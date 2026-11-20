@@ -102,7 +102,19 @@ const RETINA_LAYERS = [
     const single = /pgrst\.object/.test(String(input.accept || ''));
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(single ? (rows[0] || null) : rows) }));
   });
-  await context.route(/supabase\.co/, r => r.request().method() !== 'GET' ? r.fulfill(json([])) : r.fulfill(json([])));
+  // Ames's own saved wording of the popup (site_texts, 2026-11-20), whose link
+  // an edit once broke: it must come back as a working action link.
+  const SAVED_WHAT = [
+    'A long column through the full depth of the retina.',
+    'Its soma sits in the inner nuclear layer, among the bipolar cells.',
+    'A wide end foot on the ganglion cell side (at the bottom of the picture), and fine sheets wrapped around its neighbors.',
+    "No axon, and no tidy dendritic tree like a neuron's.",
+    '[Show this glia](#glia-example) in the viewer: a Müller glia proofread by Nseraf.',
+  ].join('\n\n');
+  await context.route(/supabase\.co/, r => {
+    if (r.request().method() === 'GET' && /site_texts/.test(r.request().url())) return r.fulfill(json([{ key: 'quest.muller_glia.what', body: SAVED_WHAT, updated_by_name: 'Amy R. Sterling', updated_at: '2026-11-20T15:35:11Z' }]));
+    return r.fulfill(json([]));
+  });
   // State servers: the start link's state (loaded on Take) and the share link (minted on Submit).
   await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json({ dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d', selectedLayer: { layer: 'Basal body', visible: true }, selection: { visible: true } })));
   await context.route(/global\.brain-wire-test\.org\/nglstate\/api\/v1\/post/, r => { calls.push({ action: 'mint', method: r.request().method() }); return r.fulfill(json('https://global.brain-wire-test.org/nglstate/api/v1/4242')); });
@@ -174,15 +186,17 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(400);
     ok(await page.locator('.nge-mg').count() === 1, 'Muller Glia Quest opens');
     await shot('1-stage1');
-    await page.evaluate(() => [...document.querySelectorAll('.nge-mg-btn')].find(b => /What is a Muller glia/.test(b.textContent)).click());
+    await page.evaluate(() => [...document.querySelectorAll('.nge-mg-btn')].find(b => /What is a M[uü]ller glia/.test(b.textContent)).click());
     await page.waitForTimeout(800);
     const pop = await page.evaluate(() => { const q = document.querySelector('.nge-qi'); const img = q && q.querySelector('img'); return q ? { title: q.querySelector('.nge-qi-title').innerText, img: !!img && img.naturalWidth > 0, items: q.querySelectorAll('li').length } : null; });
-    ok(pop && /What is a Muller glia/.test(pop.title) && pop.img && pop.items === 5, 'popup: title, picture loaded, five lines ' + JSON.stringify(pop));
+    ok(pop && /What is a M[uü]ller glia/.test(pop.title) && pop.img && pop.items === 5, 'popup: title, picture loaded, five lines ' + JSON.stringify(pop));
+    const said = await page.evaluate(() => document.querySelector('.nge-qi').innerText);
+    ok(/proofread by Nseraf/.test(said) && !/\]\(#/.test(said), 'the saved wording shows, with no raw link marks ' + JSON.stringify(said.slice(-90)));
     await page.screenshot({ path: path.join(OUT, '0-popup.png') });
     await page.evaluate(() => document.querySelector('.nge-qi a[data-nge-action="glia-example"]').click());
     await page.waitForTimeout(500);
     const ex = await page.evaluate(() => { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); return { vis: [...g.layer.displayState.segmentationGroupState.value.visibleSegments].map(String), open: !!document.querySelector('.nge-qi') }; });
-    ok(ex.vis.join() === '720575940572199198' && !ex.open, 'Show this glia loads the lab example and closes the popup');
+    ok(ex.vis.join() === '720575940558455015' && !ex.open, "Show this glia, from Ames's saved wording, loads Nseraf's glia and closes the popup");
     const first = (await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg-card-name')).trim();
     await page.evaluate(() => document.querySelector('.nge-mg-card .nge-mg-btn').click());
     await page.waitForTimeout(300);

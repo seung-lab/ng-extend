@@ -1777,7 +1777,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
           </div>
         </li>
         <!-- Glia Split Training (src/tutorial-glia-split.ts): Stage 2 of the
-             Muller Glia Quest, practiced on a real fused pair without cutting. -->
+             Müller Glia Quest, practiced on a real fused pair without cutting. -->
         <li>
           <div class="logoutButton button nge-menu-item" @click="startTutorial(16); closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">✂️</span><span>Glia Split Training</span><span v-if="tutorialsDone.has(16)" class="nge-menu-done" title="Finished">✓</span>

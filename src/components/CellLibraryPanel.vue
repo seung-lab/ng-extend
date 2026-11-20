@@ -168,10 +168,10 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-/** Quests tab: which quest is shown (Muller glia mockup, Ames 2026-11-19). */
+/** Quests tab: which quest is shown (Müller glia mockup, Ames 2026-11-19). */
 const questPick = ref<'cilia' | 'muller'>((() => { try { return localStorage.getItem('nge_quest_pick_v1') === 'muller' ? 'muller' : 'cilia'; } catch { return 'cilia'; } })());
 function pickQuest(q: 'cilia' | 'muller') { questPick.value = q; try { localStorage.setItem('nge_quest_pick_v1', q); } catch {} }
-// Glia Split Training's last button opens the Muller Glia Quest (tutorial-glia-split.ts).
+// Glia Split Training's last button opens the Müller Glia Quest (tutorial-glia-split.ts).
 document.addEventListener('nge:quest-pick', (e: Event) => { const q = (e as CustomEvent).detail; if (q === 'cilia' || q === 'muller') pickQuest(q); });
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast' | 'orphans'>(
   // A tab asked for by whoever opened the library, else the one the player
@@ -4297,7 +4297,7 @@ onBeforeUnmount(() => {
         <div v-else-if="filter === 'quests'" class="nge-cl-list">
           <div v-if="questsHere && !slimQuest" class="nge-cl-questpick">
             <button :class="{ on: questPick === 'cilia' }" @click="pickQuest('cilia')">Cilia Quest</button>
-            <button :class="{ on: questPick === 'muller' }" @click="pickQuest('muller')">Muller Glia Quest <span class="nge-cl-questpick-new">New</span></button>
+            <button :class="{ on: questPick === 'muller' }" @click="pickQuest('muller')">Müller Glia Quest <span class="nge-cl-questpick-new">New</span></button>
           </div>
           <muller-glia-quest v-if="questsHere && questPick === 'muller' && !slimQuest" />
           <annotation-quests-tab v-else-if="questsHere" :slim="slimQuest" :play-enter="questPlay" />

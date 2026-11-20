@@ -1,11 +1,11 @@
 /**
  * Tutorial 16 : Glia Split Training
  * --------------------------------------------------------------
- * How to split two Muller glia the AI fused into one segment, for Stage 2 of
- * the Muller Glia Quest (Ames 2026-11-19: "fused glia usually have multiple
+ * How to split two Müller glia the AI fused into one segment, for Stage 2 of
+ * the Müller Glia Quest (Ames 2026-11-19: "fused glia usually have multiple
  * points where the meshes are fused - use find path to find origin - could
  * we make a tutorial for this?"). The plan Ames approved ("Go, build it"):
- *   1. glia or neuron: a Muller glia proofread by Nseraf (Ames 2026-11-20:
+ *   1. glia or neuron: a Müller glia proofread by Nseraf (Ames 2026-11-20:
  *      "give him a shout out if we use this"), then a rod bipolar cell from
  *      the Meet the cells gallery (Ames: "you can also utilize the Retina
  *      cell gallery"; the gallery has no glia of its own). They sit 250
@@ -22,7 +22,7 @@
  * was finished, and gives no Achievement.
  *
  * Started from the Training button in the quest's Stage 2 and the What is a
- * Muller glia box, by `nge:tutorial-start` with id 16 (startGliaSplitTutorial).
+ * Müller glia box, by `nge:tutorial-start` with id 16 (startGliaSplitTutorial).
  */
 import { Step, useTutorialStore } from './store-pyr';
 import { findDatasetByCanonical } from './datasets';
@@ -38,7 +38,7 @@ export function startGliaSplitTutorial() {
 }
 
 // ── The cells ────────────────────────────────────────────────────────────
-/** A Muller glia proofread by Nseraf (current on 2026-11-20). Its middle
+/** A Müller glia proofread by Nseraf (current on 2026-11-20). Its middle
  *  and depth, in voxels, from its level 2 pieces. */
 const NSERAF_GLIA = '720575940558455015';
 const NSERAF_AT = [39416, 56319, 1150];
@@ -256,7 +256,7 @@ const BOX_W = '400px';
 /** Beside a lone cell in the middle of the 3D view, not over it. */
 const RIGHT = { element: 'body', x: 0.8, y: 0.12 };
 const chip = (name: string, color: string) => `<span class="nge-hud-chip" style="border-color:${color};color:${color}">${name}</span>`;
-const GLIA = chip('Muller glia', COLORS.glia), BC = chip('Bipolar cell', COLORS.bipolar);
+const GLIA = chip('Müller glia', COLORS.glia), BC = chip('Bipolar cell', COLORS.bipolar);
 const A = `<span class="nge-hud-chip nge-cq-go" data-nge-gs-go="a" title="Go to soma A" style="border-color:${COLORS.a};color:${COLORS.a}">Soma A</span>`;
 const B = `<span class="nge-hud-chip nge-cq-go" data-nge-gs-go="b" title="Go to soma B" style="border-color:${COLORS.b};color:${COLORS.b}">Soma B</span>`;
 
@@ -268,14 +268,14 @@ export const steps: Step[] = [
     modal: true,
     position: MIDDLE,
     width: '560px',
-    text: `The AI sometimes fuses two **Muller glia** into one segment. In Stage 2 of the Muller Glia Quest you split them apart.
+    text: `The AI sometimes fuses two **Müller glia** into one segment. In Stage 2 of the Müller Glia Quest you split them apart.
 
 This training shows you how on a real fused pair, but **nothing you do here is sent**: you practice every step and see the result without cutting. It takes about five minutes.`,
     nextLabel: 'Start',
   },
   {
     part: 'Glia or neuron',
-    title: 'A Muller glia',
+    title: 'A Müller glia',
     get state() { return gliaState(); },
     position: RIGHT,
     width: BOX_W,
@@ -304,7 +304,7 @@ This training shows you how on a real fused pair, but **nothing you do here is s
     get state() { return pairState(); },
     position: OVER_3D,
     width: BOX_W,
-    html: `This segment is two Muller glia. In 3D you can see <strong>two columns</strong> and <strong>two end feet</strong>, joined near the top.
+    html: `This segment is two Müller glia. In 3D you can see <strong>two columns</strong> and <strong>two end feet</strong>, joined near the top.
 <p>Each glia has its own soma: ${A} and ${B}. Click one to go there in the 2D view.</p>
 <p>Fused glia usually join in <strong>more than one place</strong>, and the joins are hard to spot by eye. Find Path finds them for you.</p>`,
   } as Step,
@@ -369,7 +369,7 @@ This training shows you how on a real fused pair, but **nothing you do here is s
 </ol>
 <p>Your cuts in the quest are real edits, so take your time.</p>`,
     onEnter: clearTools,
-    nextLabel: 'Open Muller Glia Quest',
+    nextLabel: 'Open Müller Glia Quest',
     notNowLabel: 'Not now',
   },
 ];

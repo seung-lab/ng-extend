@@ -1,5 +1,5 @@
 /**
- * Muller Glia Quest client (Ames 2026-11-19). Every read and write goes
+ * Müller Glia Quest client (Ames 2026-11-19). Every read and write goes
  * through ewMullerGlia (functions/muller-glia.js), which knows the player from
  * their CAVE token; the tables are supabase-muller-glia.sql.
  */
@@ -22,9 +22,9 @@ async function call<T = any>(action: string, body: Record<string, unknown> = {})
     });
   } catch {
     // Not reachable at all ("Failed to fetch"): the server is not open yet, or the connection dropped.
-    throw new Error('The Muller Glia Quest could not be reached. It may not be open yet: try again later.');
+    throw new Error('The Müller Glia Quest could not be reached. It may not be open yet: try again later.');
   }
-  if (response.status === 404) throw new Error('The Muller Glia Quest is not open yet. Try again later.');
+  if (response.status === 404) throw new Error('The Müller Glia Quest is not open yet. Try again later.');
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'The quest could not be reached. Try again in a moment.');
   return result.data as T;

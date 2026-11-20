@@ -64,7 +64,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   let b = await box(); check('the training opens', /Glia Split Training/.test(b?.text || ''), b?.title); await shot('0-intro');
   await next(); await wait(30000);
   const shownNow = () => page.evaluate(() => { const l = window.viewer.layerManager.managedLayers.find(x => x.layer?.constructor?.type === 'segmentation'); return [...l.layer.displayState.segmentationGroupState.value.visibleSegments].map(String); });
-  b = await box(); check('the glia box thanks Nseraf', /A Muller glia/.test(b?.text || '') && /Nseraf/.test(b?.text || ''));
+  b = await box(); check('the glia box thanks Nseraf', /A M[uü]ller glia/.test(b?.text || '') && /Nseraf/.test(b?.text || ''));
   check("Nseraf's glia is shown", (await shownNow()).join() === '720575940558455015', (await shownNow()).join(' '));
   await shot('1-glia');
   await next(); await wait(30000);
