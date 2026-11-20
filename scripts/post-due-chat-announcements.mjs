@@ -151,7 +151,51 @@ async function postMonthlyChampions(n) {
   return true;
 }
 
+/**
+ * The Datasets Unlocked ceremony (Ames 2026-11-19: "Nurro can run the
+ * ceremony"): when its notification goes out, Nurro welcomes everyone, then
+ * for each dataset says a line and each player on the roll call gets a line
+ * with that dataset's emblem (dataset "unlocked:<id>", drawn by ChatPanel).
+ * The roll call is scripts/datasets-unlocked-ceremony.json, from CAVE. Each
+ * line goes once, so a re-run picks up where a failed one stopped.
+ */
+async function postDatasetsCeremony() {
+  const fs = await import('node:fs');
+  const file = new URL('./datasets-unlocked-ceremony.json', import.meta.url);
+  const c = JSON.parse(fs.readFileSync(file, 'utf8'));
+  // On its own clock, not the notification's chat post (an admin's open game
+  // can claim that one), and only on its day.
+  const at = Date.parse(c.at), now = Date.now();
+  if (!(now >= at && now < at + 24 * 3600 * 1000)) return false;
+  // Done once: the outro is the last line it says.
+  if (!dryRun && (await rest(`chat_messages?name=eq.Nurro&text=eq.${encodeURIComponent(c.outro)}&select=id&limit=1`)).length) return false;
+  const nurro = async (text) => {
+    if (dryRun) { console.log(`[chat-announce] DRY-RUN Nurro: ${text}`); return; }
+    if ((await rest(`chat_messages?name=eq.Nurro&text=eq.${encodeURIComponent(text)}&select=id&limit=1`)).length) return;
+    await insertChat({ name: 'Nurro', rank: 'bot', text });
+    await new Promise(r => setTimeout(r, 2000));
+  };
+  await nurro(c.intro);
+  for (const ds of c.datasets) {
+    const list = c.rollCall[ds.id] || [];
+    if (!list.length) continue;
+    await nurro(ds.intro);
+    const line = `unlocked:${ds.id}`, text = `unlocked ${ds.name}`;
+    for (const p of list) {
+      if (dryRun) { console.log(`[chat-announce] DRY-RUN ${p.name} ${text}`); continue; }
+      if ((await rest(`chat_messages?user_id=eq.${p.userId}&dataset=eq.${encodeURIComponent(line)}&select=id&limit=1`)).length) continue;
+      const u = (await rest(`users?id=eq.${p.userId}&select=username,display_name&limit=1`))[0];
+      await insertChat({ user_id: p.userId, name: (u && (u.username || u.display_name)) || p.name, rank: 'achievement', text, dataset: line });
+      await new Promise(r => setTimeout(r, 1200));
+    }
+  }
+  await nurro(c.outro);
+  return true;
+}
+
 (async () => {
+  try { if (await postDatasetsCeremony()) console.log('[chat-announce] Datasets Unlocked ceremony posted'); }
+  catch (e) { console.error('[chat-announce] ceremony failed:', e.message); process.exitCode = 1; }
   const due = await fetchDue();
   if (!due.length) { console.log('[chat-announce] nothing due'); return; }
   console.log(`[chat-announce] ${due.length} due`);

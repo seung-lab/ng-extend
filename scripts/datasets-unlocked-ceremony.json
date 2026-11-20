@@ -1,0 +1,214 @@
+{
+  "about": "The Datasets Unlocked ceremony, 10 am Eastern on Nov 20 2026 (Ames 2026-11-19). Nurro runs it in chat at 'at' (UTC), on its own clock (scripts/post-due-chat-announcements.mjs). Players with edit access in CAVE on 2026-11-19; the team and lab are left out of the roll call but still get their emblems on the profile.",
+  "at": "2026-11-20T15:00:00Z",
+  "intro": "Welcome to the Datasets Unlocked ceremony! Starting today, every dataset you have unlocked shows on your profile with its own emblem. Let's celebrate the players who unlocked each one.",
+  "outro": "Congratulations to everyone! Thank you for all you have contributed to science. We look forward to many more datasets together!",
+  "datasets": [
+    {
+      "id": "stroeh_mouse_retina",
+      "name": "the Retina",
+      "intro": "First, the Retina. These players unlocked it:"
+    },
+    {
+      "id": "pni_mec",
+      "name": "MEC",
+      "intro": "Next, the Medial Entorhinal Cortex, MEC for short:"
+    },
+    {
+      "id": "flywire_fafb_production",
+      "name": "FlyWire",
+      "intro": "FlyWire, the whole brain of a fruit fly. These players helped map it:"
+    },
+    {
+      "id": "banc",
+      "name": "BANC",
+      "intro": "And BANC, the fly's brain and nerve cord together:"
+    }
+  ],
+  "rollCall": {
+    "stroeh_mouse_retina": [
+      {
+        "userId": "12217b7f-ae52-4be4-a849-dbd173bf3504",
+        "name": "KrzysztofKruk"
+      },
+      {
+        "userId": "6529df88-b220-47c5-98f5-d7300e1a9b38",
+        "name": "a5hm0r"
+      },
+      {
+        "userId": "9fb08e4e-e5d5-44cf-9800-eca511dce73d",
+        "name": "azurejay"
+      },
+      {
+        "userId": "28def8d0-aad7-4c4d-af76-bf71b32c35be",
+        "name": "Annkri"
+      },
+      {
+        "userId": "89f71f8a-b282-482b-8d5b-199af2f59235",
+        "name": "kfay"
+      },
+      {
+        "userId": "bac99d1c-1850-4e60-9135-a50cfc41ca6f",
+        "name": "dhyang24"
+      },
+      {
+        "userId": "5a5d0078-a44d-49f0-900d-02a64f68693d",
+        "name": "st0ck53y"
+      },
+      {
+        "userId": "6d3db4d2-6b75-4e06-b6d5-3cbcef377b70",
+        "name": "Nseraf"
+      },
+      {
+        "userId": "07c3596d-e15d-45ec-8946-0600da635a9e",
+        "name": "andrearwen"
+      },
+      {
+        "userId": "ed84ca1e-35c7-484e-bb22-3d372681eec2",
+        "name": "toknow"
+      },
+      {
+        "userId": "6c9fb3c3-58c5-4821-892d-1ea9eb829d1b",
+        "name": "hi529"
+      },
+      {
+        "userId": "af6044e1-9a94-446d-a551-b5aae02c9cfc",
+        "name": "GTrakimas"
+      },
+      {
+        "userId": "1232eb8a-fe96-49ff-ab78-53c8c6ddaa98",
+        "name": "wolfryder101"
+      },
+      {
+        "userId": "b8b840d1-b613-42eb-a15f-691982fbe985",
+        "name": "Kim_OZ"
+      },
+      {
+        "userId": "be46df13-8cff-43f7-8916-091b8fe1b70c",
+        "name": "synapse123"
+      },
+      {
+        "userId": "abf92307-ae97-4838-af4d-7ad959eaa0cd",
+        "name": "Rumkin"
+      }
+    ],
+    "pni_mec": [
+      {
+        "userId": "12217b7f-ae52-4be4-a849-dbd173bf3504",
+        "name": "KrzysztofKruk"
+      },
+      {
+        "userId": "6529df88-b220-47c5-98f5-d7300e1a9b38",
+        "name": "a5hm0r"
+      },
+      {
+        "userId": "9fb08e4e-e5d5-44cf-9800-eca511dce73d",
+        "name": "azurejay"
+      },
+      {
+        "userId": "28def8d0-aad7-4c4d-af76-bf71b32c35be",
+        "name": "Annkri"
+      },
+      {
+        "userId": "89f71f8a-b282-482b-8d5b-199af2f59235",
+        "name": "kfay"
+      },
+      {
+        "userId": "bac99d1c-1850-4e60-9135-a50cfc41ca6f",
+        "name": "dhyang24"
+      },
+      {
+        "userId": "5a5d0078-a44d-49f0-900d-02a64f68693d",
+        "name": "st0ck53y"
+      },
+      {
+        "userId": "6d3db4d2-6b75-4e06-b6d5-3cbcef377b70",
+        "name": "Nseraf"
+      },
+      {
+        "userId": "07c3596d-e15d-45ec-8946-0600da635a9e",
+        "name": "andrearwen"
+      },
+      {
+        "userId": "ed84ca1e-35c7-484e-bb22-3d372681eec2",
+        "name": "toknow"
+      },
+      {
+        "userId": "6c9fb3c3-58c5-4821-892d-1ea9eb829d1b",
+        "name": "hi529"
+      },
+      {
+        "userId": "1232eb8a-fe96-49ff-ab78-53c8c6ddaa98",
+        "name": "wolfryder101"
+      }
+    ],
+    "flywire_fafb_production": [
+      {
+        "userId": "12217b7f-ae52-4be4-a849-dbd173bf3504",
+        "name": "KrzysztofKruk"
+      },
+      {
+        "userId": "6529df88-b220-47c5-98f5-d7300e1a9b38",
+        "name": "a5hm0r"
+      },
+      {
+        "userId": "9fb08e4e-e5d5-44cf-9800-eca511dce73d",
+        "name": "azurejay"
+      },
+      {
+        "userId": "13120871-2499-4930-96bd-f546debe5f1b",
+        "name": "Manfred Wiecken"
+      },
+      {
+        "userId": "28def8d0-aad7-4c4d-af76-bf71b32c35be",
+        "name": "Annkri"
+      },
+      {
+        "userId": "89f71f8a-b282-482b-8d5b-199af2f59235",
+        "name": "kfay"
+      },
+      {
+        "userId": "5a5d0078-a44d-49f0-900d-02a64f68693d",
+        "name": "st0ck53y"
+      },
+      {
+        "userId": "6d3db4d2-6b75-4e06-b6d5-3cbcef377b70",
+        "name": "Nseraf"
+      },
+      {
+        "userId": "07c3596d-e15d-45ec-8946-0600da635a9e",
+        "name": "andrearwen"
+      }
+    ],
+    "banc": [
+      {
+        "userId": "12217b7f-ae52-4be4-a849-dbd173bf3504",
+        "name": "KrzysztofKruk"
+      },
+      {
+        "userId": "6529df88-b220-47c5-98f5-d7300e1a9b38",
+        "name": "a5hm0r"
+      },
+      {
+        "userId": "9fb08e4e-e5d5-44cf-9800-eca511dce73d",
+        "name": "azurejay"
+      },
+      {
+        "userId": "28def8d0-aad7-4c4d-af76-bf71b32c35be",
+        "name": "Annkri"
+      },
+      {
+        "userId": "89f71f8a-b282-482b-8d5b-199af2f59235",
+        "name": "kfay"
+      },
+      {
+        "userId": "5a5d0078-a44d-49f0-900d-02a64f68693d",
+        "name": "st0ck53y"
+      },
+      {
+        "userId": "6d3db4d2-6b75-4e06-b6d5-3cbcef377b70",
+        "name": "Nseraf"
+      }
+    ]
+  }
+}
