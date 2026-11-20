@@ -287,7 +287,11 @@ async function check(a, io) {
       await io.sentPosts.set(post.id, { state: 'sent', broadcast: id, sentAt: new Date().toISOString() });
       sent.push(post.slug);
     } catch (e) {
-      await io.sentPosts.set(post.id, { state: 'failed', error: String(e && e.message).slice(0, 300) });
+      // Over Resend's limit (429): no try used up, and the next check (every
+      // 15 minutes) sends it once the limit lifts (Ames 2026-11-19).
+      const limit = e && e.status === 429;
+      await io.sentPosts.set(post.id, { state: 'failed', error: String(e && e.message).slice(0, 300), ...(limit ? { tries: (mark && mark.tries) || 0 } : {}) });
+      if (limit) break;
       throw e;
     }
   }
@@ -390,7 +394,11 @@ async function sendNotes(io, live) {
       await io.sentPosts.set(id, { state: 'sent', done: to.length, sentAt: new Date().toISOString() });
       return [post.slug];
     } catch (e) {
-      await io.sentPosts.set(id, { state: 'failed', error: String(e && e.message).slice(0, 300) });
+      // Over Resend's limit: no try used up; the next check goes on from the
+      // people it had not reached (Ames 2026-11-19).
+      const limit = e && e.status === 429;
+      await io.sentPosts.set(id, { state: 'failed', error: String(e && e.message).slice(0, 300), ...(limit ? { tries: (mark && mark.tries) || 0 } : {}) });
+      if (limit) return [];
       throw e;
     }
   }

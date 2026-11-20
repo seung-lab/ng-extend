@@ -751,6 +751,8 @@ const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // connectome.quest"). Letting someone in sends them this, from
 // welcome@connectome.quest, replies to support@eyewire.org (Ames 2026-11-12). Once per address:
 // a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
+// Over the sending limit it is queued and goes later by itself, and counts as
+// sent here (email-queue.js, Ames 2026-11-19).
 // Support gets a blind copy of every welcome (Ames 2026-11-06: "copy
 // support@eyewire.org"), and Ames's Gmail (2026-11-10: "add my Gmail"), so
 // the player never sees it.
@@ -772,8 +774,9 @@ async function welcomeEmail(a, io) {
   if (io.welcomeSent && await io.welcomeSent.get(email)) return {sent: false, reason: 'already sent'};
   const r = await io.sendEmail(welcomeMessage(name, email));
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in.`);
-  if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
-  return {sent: true};
+  const q = r.queued ? {queued: true} : {};
+  if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || '', ...q});
+  return {sent: true, ...q};
 }
 // ── Asking for their EyeWire name (Ames 2026-11-12: "an email that we can
 // send automatically via a button on this page (that also has an edit
@@ -828,8 +831,9 @@ async function askEmail(a, io) {
   const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), subject, text});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
   const at = new Date().toISOString();
-  if (io.askSent) await io.askSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || ''});
-  return {sent: true, at};
+  const q = r.queued ? {queued: true} : {};
+  if (io.askSent) await io.askSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || '', ...q});
+  return {sent: true, at, ...q};
 }
 // How many we emailed an invite (Ames 2026-11-12: "how many ppl we have
 // invited via email ... in stats up top"): rows in access_invites, one per
@@ -988,8 +992,9 @@ async function waitlistEmail(a, io) {
   const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), ...draft});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
   const at = new Date().toISOString();
-  if (io.waitlistSent) await io.waitlistSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || '', n: place.n});
-  return {sent: true, at, n: place.n};
+  const q = r.queued ? {queued: true} : {};
+  if (io.waitlistSent) await io.waitlistSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || '', n: place.n, ...q});
+  return {sent: true, at, n: place.n, ...q};
 }
 async function waitlistSentAll(a, io) {
   needAdmin(io.isAdmin);
@@ -1363,7 +1368,7 @@ async function grantEmailAction(a, io) {
   const copies = WELCOME_COPY_TO.filter(c => c !== to);
   const r = await io.sendEmail({from: ASK_FROM, to: [to], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), ...draft});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in, and their notification went.`);
-  return {sent: true, to};
+  return {sent: true, to, ...(r.queued ? {queued: true} : {})};
 }
 
 // ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
