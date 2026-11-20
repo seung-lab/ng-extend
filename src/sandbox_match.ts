@@ -653,9 +653,23 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-finish-left[hidden]{display:none}
 #${CARD_ID} .nge-cm-finish-left-count{margin:0 0 3px}
 #${CARD_ID} .nge-cm-left-red{color:#ff6b8a;font-weight:600}
-#${CARD_ID} .nge-cm-finish-actions{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
-#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{padding:8px 12px !important;margin-left:5px}
-#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto;margin-right:5px}
+/* One line always, even in a narrow box (Ames 2026-11-20: "make them smaller
+   and slimmer so they always fit on one line"): slim chips, and the long
+   labels give way with an ellipsis before the row would wrap. */
+#${CARD_ID} .nge-cm-finish-actions{display:flex;flex-wrap:nowrap;gap:7px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{flex:0 1 auto;min-width:0;white-space:nowrap}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{padding:6px 9px !important;font-size:12px !important;margin-left:0}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back{flex:0 0 auto}
+/* The side pads hang into the box's own padding, so the row needs no margin for them. */
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto;margin-right:0}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-glabel{display:block;overflow:hidden;text-overflow:ellipsis}
+#${CARD_ID} .nge-cm-finish-actions{container-type:inline-size}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-check,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-jump{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;padding:6px 8px;font-size:12px}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-check[hidden],#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-jump[hidden]{display:none}
+/* Narrow, the two extras shrink to their icons; the main two keep their words. */
+@container (max-width:380px){#${CARD_ID} .nge-cm-finish-actions .nge-cm-flabel{display:none}#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-check,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-jump{padding:5px}}
+@container (max-width:300px){#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{padding:6px 7px !important;font-size:11px !important}#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-check,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-jump{padding:5px 4px}}
+#${CARD_ID} .nge-cm-finish-actions:has(.nge-cm-finish-check:not([hidden])),#${CARD_ID} .nge-cm-finish-actions:has(.nge-cm-finish-jump:not([hidden])){gap:4px}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
 #${CARD_ID} .nge-cm-row[data-row="merge"]{margin-top:2px;border-top:1px solid rgba(127,190,255,.18);padding-top:7px}
@@ -890,8 +904,8 @@ const FINISH_HTML = '<div class="nge-cm-finish" hidden>'
   + '<p class="nge-cm-finish-gate" hidden></p>'
   + '<div class="nge-cm-finish-actions">'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-back">Keep working</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-finish-check" hidden>Check again</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-finish-jump" hidden>Jump to it</button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-finish-check" hidden title="Check again" aria-label="Check again"><svg class="nge-cm-ficon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg><span class="nge-cm-flabel">Check again</span></button>'
+  + '<button type="button" class="nge-cm-btn nge-cm-finish-jump" hidden title="Jump to it" aria-label="Jump to it"><svg class="nge-cm-ficon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h12"/><path d="M12 5l7 7-7 7"/></svg><span class="nge-cm-flabel">Jump to it</span></button>'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-go"><span class="nge-cm-glabel">Complete and Review</span></button></div></div>';
 
 function card(): HTMLElement {
