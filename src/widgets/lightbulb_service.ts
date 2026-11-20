@@ -542,6 +542,30 @@ function annotationBaseUrl(caveServer: string, table: string, alignedVolume?: st
 }
 
 /**
+ * A Lost Fragments answer in CAVE (Ames 2026-11-19: "a special lost fragment
+ * tag in our cave table"): one point in Retina's cell status table, tagged
+ * lost_fragment, at the point the player recorded inside the fragment, with
+ * their own sign in. The game's status reads only look for "complete", so it
+ * marks nothing done. Returns the new row's ID, or null when CAVE could not
+ * take it (the answer is kept and the point is sent again later).
+ */
+export async function postLostFragmentPoint(pt: [number, number, number]): Promise<number | null> {
+  const cfg = getDatasetCaveConfig('stroeh_mouse_retina');
+  if (!cfg.caveServer || !cfg.cellStatusTable) return null;
+  const url = annotationBaseUrl(cfg.caveServer, cfg.cellStatusTable, cfg.alignedVolume);
+  const res = await fetch(url, {
+    method: 'POST', headers: authHeaders(cfg.caveServer),
+    body: JSON.stringify({ annotations: [{ pt: { position: pt }, tag: 'lost_fragment' }] }),
+  }).catch(() => null);
+  if (!res) return null;
+  if (res.status === 401) { handleCaveAuthExpired(cfg.caveServer, parseAuthRealmHost(res)); return null; }
+  if (!res.ok) { reportWriteFailure('cave_write', `lost fragment point ${res.status} on ${cfg.cellStatusTable}`, ''); return null; }
+  const ids = await res.json().catch(() => null);
+  const id = Array.isArray(ids) ? Number(ids[0]) : NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/**
  * Authenticated fetch through neuroglancer's middleauth pipeline.
  * This bypasses CORS issues by routing through the credentials provider.
  */

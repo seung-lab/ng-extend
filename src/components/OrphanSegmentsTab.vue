@@ -9,8 +9,13 @@ import bannerImg from '../images/lost-fragments-banner.jpg';
  * work the checklist (splits and merges, ends, a point in the major dendrite
  * or soma, NucID if there is one), Submit.
  *
- * Nothing leaves this browser: Submit saves to localStorage only. Test sites
- * share the live Supabase and functions, so no bells, chat, stats or claims.
+ * Submit (Ames 2026-11-19, "build everything you need to get it working"):
+ * a point in CAVE tagged lost_fragment (lightbulb_service postLostFragmentPoint,
+ * the player's own sign in), then the server (functions/lost-fragments.js)
+ * keeps the answer in ew_lost_fragments and writes the researchers' sheet.
+ * The first Submit of a fragment counts as a completed cell, the same
+ * mark_complete row a Complete logs. Test sites share live data: a Submit
+ * there is real.
  *
  * Players read it as "Lost Fragments" (Ames 2026-11-19), ORPHAN_NAME.
  */
@@ -19,7 +24,9 @@ import { play, stopPlay, startPlay } from '../util/play';
 import { ON_TEST_SITE } from '../hunt';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
-import { useCellHistoryStore } from '../store';
+import { useCellHistoryStore, useProofreadingBackendStore, useUserStatsStore } from '../store';
+import { secureWrite } from '../secure_write';
+import { postLostFragmentPoint } from '../widgets/lightbulb_service';
 import { cellAtCrosshair, supervoxelAtPlace } from '../util/crosshair_cell';
 import { getRootFromSupervoxel } from '../widgets/pcg_service';
 import {
@@ -47,14 +54,23 @@ const poolTotal = ORPHAN_POOL.n + ORPHAN_POOL.s + ORPHAN_POOL.sg + ORPHAN_POOL.g
 const group = ref<GroupKey>('large');
 const cur = computed(() => GROUPS.find(g => g.key === group.value)!);
 
-// ── Local saves (mockup) ─────────────────────────────────────────────
-const SAVE_KEY = 'nge_orphan_mock_v1';
+// ── Answers: the server's copy, kept in this browser between loads ──────
+const SAVE_KEY = 'nge_orphan_saves_v2';
 interface OrphanSave {
   id: string; group: GroupKey; root: string | null;
   fixed: boolean; ends: boolean;
   where: 'dendrite' | 'soma'; point: [number, number, number] | null;
   nucId: string; noNucleus: boolean; note: string; at: number;
+  /** The CAVE row; null while CAVE could not take it (sent again on load). */
+  caveId?: number | null;
 }
+/** Fragments someone else has answered: Play skips them. */
+const taken = reactive(new Set<string>());
+/** The server answered: answers go to the lab. */
+const serverOn = ref(false);
+const sending = ref(false);
+const sendError = ref('');
+const lastSent = ref('');
 const saves = reactive<Record<string, OrphanSave>>((() => {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch { return {}; }
 })());
@@ -150,7 +166,7 @@ function nextUndone(): { g: GroupKey; row: OrphanSeg } | null {
   for (let k = 0; k < GROUPS.length; k++) {
     const g = GROUPS[(start + k) % GROUPS.length];
     const from = k === 0 && active.value ? g.rows.findIndex(r => r.id === active.value!.id) + 1 : 0;
-    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && r.id !== active.value?.id);
+    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && r.id !== active.value?.id);
     if (row) return { g: g.key, row };
   }
   return null;
@@ -245,24 +261,82 @@ const missing = computed(() => {
   if (form.where === 'soma' && !form.noNucleus && !form.nucId.trim()) m.push('add the nucleus ID, or tick No nucleus');
   return m;
 });
-function submit() {
-  if (!active.value || !canSubmit.value) return;
-  saves[active.value.id] = {
-    id: active.value.id, group: group.value, root: shownRoot.value,
-    fixed: form.fixed, ends: form.ends, where: form.where, point: form.point,
-    nucId: form.nucId.trim(), noNucleus: form.noNucleus, note: form.note.trim(), at: Date.now(),
-  };
-  persist();
+/** Counts the fragment as a completed cell: the same row a Complete logs. */
+function countCompleted(root: string, pt: [number, number, number], fragmentId: string) {
+  try {
+    const backend = useProofreadingBackendStore();
+    if (!backend.userId) return;
+    backend.logEdit({ operation: 'mark_complete', segment_after: root, coordinates: `${pt[0]}, ${pt[1]}, ${pt[2]}`,
+      metadata: { root_id: root, lost_fragment: fragmentId } });
+    const stats = useUserStatsStore();
+    stats.setStats({ cellsSubmitted: stats.stats.cellsSubmitted + 1 });
+    stats.logDailyCellComplete();
+  } catch { /* the answer is saved either way */ }
+}
+async function submit() {
+  const row = active.value;
+  if (!row || !canSubmit.value || !form.point || sending.value) return;
+  sending.value = true; sendError.value = ''; lastSent.value = '';
+  const pt = [...form.point] as [number, number, number];
+  const root = shownRoot.value || row.id;
+  try {
+    // CAVE first, once per fragment; a resubmit keeps the row it has.
+    let caveId = saves[row.id]?.caveId ?? null;
+    if (caveId == null) caveId = await postLostFragmentPoint(pt);
+    const res = await secureWrite<{ first: boolean; sheet: string }>('fragments.submit', {
+      fragmentId: row.id, group: group.value, rootId: root, labFlag: FLAG_WORDS[row.flag], labUm3: row.um3,
+      fixed: form.fixed, ends: form.ends, pointIn: form.where, pt,
+      nucleusId: form.where === 'soma' && !form.noNucleus ? form.nucId.trim() : '', noNucleus: form.noNucleus,
+      note: form.note.trim(), caveAnnotationId: caveId,
+    });
+    serverOn.value = true;
+    saves[row.id] = {
+      id: row.id, group: group.value, root, fixed: form.fixed, ends: form.ends, where: form.where, point: pt,
+      nucId: form.nucId.trim(), noNucleus: form.noNucleus, note: form.note.trim(), at: Date.now(), caveId,
+    };
+    persist();
+    if (res && res.first) countCompleted(root, pt, row.id);
+    lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
+    if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
+  } catch (e: any) {
+    sendError.value = String((e && e.message) || 'Could not send it. Try again in a moment.');
+    return;
+  } finally { sending.value = false; }
+  if (active.value?.id !== row.id) return;
   form.saved = true;
   finishing.value = false;
   if (playing.value) playNext();
 }
-function forget() {
-  if (!active.value) return;
-  delete saves[active.value.id];
-  persist();
-  resetForm();
+
+/** The server's answers for this player, and fragments others have done.
+ *  Answers whose CAVE point did not go in are sent again here. */
+async function loadAnswers() {
+  try {
+    const res = await secureWrite<{ mine: any[]; others: string[] }>('fragments.list');
+    serverOn.value = true;
+    for (const k of Object.keys(saves)) delete saves[k];
+    for (const m of res.mine || []) {
+      const g = GROUPS.find(x => x.rows.some(r => r.id === m.fragment_id));
+      saves[m.fragment_id] = {
+        id: m.fragment_id, group: (g ? g.key : 'large') as GroupKey, root: m.root_id, fixed: true, ends: true,
+        where: m.point_in, point: m.pt, nucId: m.nucleus_id || '', noNucleus: !!m.no_nucleus, note: m.note || '',
+        at: Date.parse(m.updated_at) || Date.now(), caveId: m.cave_annotation_id ?? null,
+      };
+    }
+    persist();
+    taken.clear();
+    for (const id of res.others || []) taken.add(id);
+    if (active.value && saves[active.value.id] && !finishing.value) resetForm(saves[active.value.id]);
+    for (const m of res.mine || []) {
+      if (m.cave_annotation_id != null || !Array.isArray(m.pt)) continue;
+      const id = await postLostFragmentPoint(m.pt as [number, number, number]);
+      if (id == null) break;  // CAVE still busy: the next load tries again
+      await secureWrite('fragments.caveId', { fragmentId: m.fragment_id, caveAnnotationId: id }).catch(() => undefined);
+      if (saves[m.fragment_id]) { saves[m.fragment_id].caveId = id; persist(); }
+    }
+  } catch { serverOn.value = false; }
 }
+onMounted(() => { void loadAnswers(); });
 
 const short = (id: string) => id.length > 8 ? '…' + id.slice(-6) : id;
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -278,7 +352,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
       <div class="nge-orph-lead">{{ name.lead }}</div>
       <div class="nge-orph-mock">{{ ON_TEST_SITE ? 'Test site preview' : 'Admin preview' }}: {{ GROUPS.reduce((a, g) => a + g.rows.length, 0) }} sample segments
-        of the {{ fmt(poolTotal) }} the lab found. Submit saves on this computer only.</div>
+        of the {{ fmt(poolTotal) }} the lab found. {{ serverOn ? 'Each Submit goes to the lab and counts as a completed cell.' : 'Pyr could not reach the server, so Submit will not save yet.' }}</div>
     </div>
 
     <div v-if="!slim" class="nge-orph-groups">
@@ -387,12 +461,12 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
 
       <div class="nge-orph-row">
-        <button class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : ''" @click="submit">{{ form.saved ? 'Submit again' : playing ? 'Submit and next' : 'Submit' }}</button>
+        <button class="nge-orph-btn nge-orph-submit" :disabled="!canSubmit || sending" :title="missing.length ? `Still to do: ${missing.join(', ')}.` : ''" @click="submit">{{ form.saved ? 'Submit again' : playing ? 'Submit and next' : 'Submit' }}</button>
         <button v-if="form.saved" class="nge-orph-btn" @click="step(1)">Next segment &rsaquo;</button>
-        <button v-if="form.saved" class="nge-orph-link" @click="forget">Clear my answer</button>
         <button v-if="!noteOpen && !form.note" class="nge-orph-link" @click="noteOpen = true">Add a note</button>
       </div>
-      <div v-if="form.saved" class="nge-orph-note nge-orph-note--ok">Saved on this computer. On the real version it goes to the lab.</div>
+      <div v-if="sendError" class="nge-orph-note nge-orph-note--err">{{ sendError }}</div>
+      <div v-else-if="form.saved" class="nge-orph-note nge-orph-note--ok">{{ lastSent || 'Sent to the lab. Submit again to change your answer.' }}</div>
       <div v-else-if="missing.length && !slim" class="nge-orph-note">Still to do: {{ missing.join(', ') }}.</div>
       </template>
     </div>
