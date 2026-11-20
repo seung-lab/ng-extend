@@ -93,7 +93,7 @@ test('check: a new post goes once, to the blog segment, only when its page is li
   assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, ['new-post'], 'old posts never go');
   const b = x.f.calls.find((c) => c.p === '/broadcasts');
   assert.strictEqual(b.body.segment_id, x.f.segments[bm.SEGMENT]);
-  assert.strictEqual(b.body.subject, 'A new post');
+  assert.strictEqual(b.body.subject, 'Pyr Blog: A new post');
   assert.match(b.body.html, /\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/);
   assert.match(b.body.html, /href="https:\/\/connectome\.quest\/blog\/new-post\/"/);
   assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, [], 'never twice');
@@ -256,4 +256,10 @@ test('check: over Resend\'s limit the post waits, uses no try, and goes on a lat
   full = false;
   assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, ['new-post']);
   assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, [], 'only once');
+});
+
+test('subject: blog posts say Pyr Blog; the weekly notes keep their title', () => {
+  const r = (md) => md;
+  assert.strictEqual(bm.postEmail({ slug: 'a-post', title: 'Cilia Status Guide', body: 'Hi.' }, r).subject, 'Pyr Blog: Cilia Status Guide');
+  assert.strictEqual(bm.postEmail({ slug: 'whats-new-in-pyr-2026-11-16', title: "What's new in Pyr: week of November 16", body: 'Hi.' }, r).subject, "What's new in Pyr: week of November 16");
 });
