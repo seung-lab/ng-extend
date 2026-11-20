@@ -3693,7 +3693,10 @@ const panelStyle = computed(() => slimOrphan.value ? {
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
   width: Math.min(orphSlimSize.value.w ?? SLIM_MIN_WIDTH, window.innerWidth - panelPos.value.x - 8) + 'px',
-  ...(orphSlimSize.value.h != null ? { height: orphSlimSize.value.h + 'px', maxHeight: 'none', overflow: 'auto' } : {}),
+  // The height is a floor: the checklist opens below, and the box grows to
+  // show it (Ames 2026-11-20: "it should expand it down so I can fill in the
+  // appropriate boxes").
+  ...(orphSlimSize.value.h != null ? { minHeight: orphSlimSize.value.h + 'px' } : {}),
 } : ({
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
