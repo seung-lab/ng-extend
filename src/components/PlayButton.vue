@@ -16,7 +16,7 @@
  */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, canViewRetina, mappingWhere, retinaHub, type PlayKind } from '../util/play';
-import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
+import { ensureIntroStyle, introFrameSvg, introPending } from '../util/intro_tour';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import EditableText from './EditableText.vue';
 import { canonicalDataset, currentDatasetTag } from '../datasets';
@@ -54,9 +54,19 @@ watch(hidden, off => {
   document.dispatchEvent(new CustomEvent('nge:play-pref'));
 }, { immediate: true });
 let watchTimer: ReturnType<typeof setInterval> | null = null;
+/** When a tutorial or the starship tour was last on screen: the button stays
+ *  away a few seconds more, so it does not flash in between the tour and
+ *  Get Started. */
+let tutorialSeenAt = 0;
 function readScreen() {
   onSandbox.value = canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
-  tutorialOnScreen.value = !!document.querySelector('.introductionStep');
+  // The starship tour counts as a tutorial (Ames 2026-11-19: "We do not want
+  // the play button to appear while new users are in the rocket ship demo"):
+  // Play shows once the player has closed out of the tutorials.
+  const now = !!document.querySelector('.introductionStep, .nge-intro, .nge-tour-loading')
+    || document.body.classList.contains('nge-intro-on') || introPending();
+  if (now) tutorialSeenAt = Date.now();
+  tutorialOnScreen.value = now || Date.now() - tutorialSeenAt < 4000;
   boxClosed.value = document.body.classList.contains('nge-cm-closed');
 }
 const showDock = computed(() => signedIn.value && !hidden.value && !tutorialOnScreen.value
