@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T14:45:00Z",
+      "title": "Steadier merging and scrolling",
+      "items": [
+        "Clear in Merge Mode now also removes a red dot left by a first point placed outside the data.",
+        "The bottom bar and the TODO legend no longer jump up while a cut or merge is being sent.",
+        "With folders, the Segments panel now keeps its place when you switch tabs and come back."
+      ]
+    },
+    {
       "at": "2026-11-20T13:50:00Z",
       "title": "More screenshots in a report",
       "items": [
