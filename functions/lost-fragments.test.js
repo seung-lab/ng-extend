@@ -60,9 +60,11 @@ test('answers are checked before anything is saved', () => {
   assert.equal(cleanAnswer({ ...ANSWER, labFlag: '<b>' }).lab_flag, '');
 });
 
-test('only admins and the testers may send', async () => {
+test('open to every signed in player, and a profile is needed', async () => {
   const { sb } = fakeDb();
-  await assert.rejects(fragmentsAction('fragments.submit', ANSWER, { sb, me: ME, isAdmin: false }), /not open to you/);
+  const { OPEN } = require('./lost-fragments');
+  assert.equal(OPEN, true);
+  await fragmentsAction('fragments.list', {}, { sb, me: ME, isAdmin: false });
   await assert.rejects(fragmentsAction('fragments.list', {}, { sb, me: null, isAdmin: true }), /profile/);
 });
 
