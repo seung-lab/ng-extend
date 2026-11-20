@@ -29,14 +29,17 @@ function measure(img: HTMLImageElement): string | null {
     const R = px[i] / 255, G = px[i + 1] / 255, Bl = px[i + 2] / 255;
     const max = Math.max(R, G, Bl), min = Math.min(R, G, Bl), d = max - min;
     const s = max === 0 ? 0 : d / max;
-    if (s < 0.3 || max < 0.3) continue;
+    if (s < 0.25 || max < 0.3) continue;
     let h = 0;
     if (max === R) h = ((G - Bl) / d) % 6;
     else if (max === G) h = (Bl - R) / d + 2;
     else h = (R - G) / d + 4;
     h = (h * 60 + 360) % 360;
     const k = Math.floor(h / (360 / B)) % B;
-    const weight = s * s * max;
+    // Coverage decides, not how vivid: a pixel counts for how much of the
+    // piece it is, so gold tools with a blue inlay come out gold (Ames
+    // 2026-11-20: "edits should still glow gold they're mostly gold").
+    const weight = max;
     w[k] += weight; r[k] += px[i] * weight; g[k] += px[i + 1] * weight; b[k] += px[i + 2] * weight;
   }
   let best = -1;
@@ -53,7 +56,15 @@ function measure(img: HTMLImageElement): string | null {
   return `${R}, ${G}, ${Bl}`;
 }
 
+/** The Edits track's tools are gold with a blue inlay. Some (the jumper
+ *  wires) have more blue than gold by area, but the set reads as gold and
+ *  glows gold (Ames 2026-11-20: "edits should still glow gold they're mostly
+ *  gold"). */
+const EDITS_GOLD = '255, 196, 92';
+const EDITS_ART = /center-art\/(legacy-)?building\//;
+
 export function artColor(url: string): Promise<string | null> {
+  if (EDITS_ART.test(url)) return Promise.resolve(EDITS_GOLD);
   let p = cache.get(url);
   if (!p) {
     p = new Promise(resolve => {

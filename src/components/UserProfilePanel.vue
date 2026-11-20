@@ -20,9 +20,7 @@ import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import EffortCurve from 'components/EffortCurve.vue';
 import {loadRepoStats, BUILDER_USER_ID, type RepoStats} from '../util/repo_stats';
-import {getToolbarIconDef} from '../data/toolbar-icons';
 // The same drawing the top bar uses for Week in Science (Ames 2026-10-05).
-const recapIconSvg = getToolbarIconDef('recap')?.svg || '';
 import MyCellsTab from 'components/MyCellsTab.vue';
 import { isMobileRef } from '../util/mobile';
 
@@ -1908,17 +1906,17 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
-        >🏆 Trophy Case</button>
+        >Trophy Case</button>
         <button
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'myCells' }"
           @click="activeTab = 'myCells'"
-        >🔬 {{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
+        >{{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
         <button
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
           @click="activeTab = 'datasets'"
-        >🧬 Datasets</button>
+        >Datasets</button>
         <!-- The whole dataset, not this person (Ames 2026-10-06). Phones use
              the narrow panel instead, from the Datasets tab or the leaderboard. -->
         <button
@@ -1926,7 +1924,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasetStats' }"
           @click="activeTab = 'datasetStats'"
-        >📊 Dataset Stats</button>
+        >Dataset Stats</button>
         <!-- Hidden by default (Amy 2026-08-11): the tab button only appears
              while you're ON it, i.e. arrived via the toolbar Week icon or a
              recap notification deep-link. -->
@@ -1935,25 +1933,25 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': true }"
           @click="openWeekInScience()"
-        ><span class="nge-profile-tab-svg" v-html="recapIconSvg"></span> My Week in Science</button>
+        >My Week in Science</button>
         <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'settings' }"
           @click="activeTab = 'settings'"
-        >⚙️ Settings</button>
+        >Settings</button>
         <button
           v-if="!viewingOtherUser && backendStore.showAdminUi"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"
-        >🛠 Admin Hub</button>
+        >Admin Hub</button>
         <button
           v-if="!viewingOtherUser && backendStore.isBlogAuthor"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'blog' }"
           @click="activeTab = 'blog'"
-        >✍️ Blog</button>
+        >Blog</button>
         <button class="nge-profile-exit nge-profile-exit--tabs" title="Close" aria-label="Close the profile" @click="handleClose">×</button>
       </div>
 
@@ -4748,8 +4746,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   transition: color 0.15s, border-color 0.15s;
   letter-spacing: 0.02em;
 }
-.nge-profile-tab-svg { display: inline-block; font-size: 1.25em; line-height: 1; vertical-align: -0.16em; margin-right: 2px; }
-.nge-profile-tab-svg :deep(svg) { color: currentColor !important; }
 .nge-profile-tab:hover {
   color: rgba(200, 220, 255, 0.8);
 }
