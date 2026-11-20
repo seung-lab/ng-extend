@@ -23,6 +23,13 @@
  *                      they Skip it or Submit it (Ames 2026-11-20). One claim
  *                      per player; a claim left alone for CLAIM_DAYS lapses.
  *   fragments.release  Skip: the fragment goes back to everyone.
+ *   fragments.stash    part of a fragment belonged to another cell that is
+ *                      not proofread yet: that cell goes into the Stashed
+ *                      group for anyone to proofread, or the player keeps it
+ *                      to proofread next (Ames 2026-11-20: "stash the other
+ *                      cell for proofreading somehow - or let the player
+ *                      choose to proofread it too"). Stashed cells are played
+ *                      and answered like any fragment, group 'stashed'.
  *
  * Claims live only in ew_lost_fragment_claims, never in the sheet: players
  * skip through many fragments before settling on one, and the lab only
@@ -38,7 +45,9 @@ const TESTERS = new Set(['5bb0310a-b42d-4d13-937f-eab620794949']);  // Jan Lause
 /** Open to every signed in player (Ames 2026-11-20: "let's get the Lost
  *  Fragments deployed!"). Play still asks for edit access on Retina. */
 const OPEN = true;
-const GROUPS = { large: 'Large', smaller: 'Small', glia: 'Glia-like', soma: 'Soma-like' };
+const GROUPS = { large: 'Large', smaller: 'Small', glia: 'Glia-like', soma: 'Soma-like', stashed: 'Stashed' };
+/** What became of the other cell a fragment was attached to. */
+const OTHER = { done: 'already proofread', stashed: 'stashed for later', proofread: 'proofreading it too' };
 const FLAGS = ['no flag', 'soma', 'glia', 'soma, glia'];
 const ID = /^\d{15,20}$/;
 const MAX_L2 = 6000;
@@ -90,8 +99,12 @@ function cleanAnswer(a) {
   const labUm3 = Number.isFinite(Number(a.labUm3)) ? Math.round(Number(a.labUm3) * 100) / 100 : null;
   const cave = a.caveAnnotationId == null ? null : Number(a.caveAnnotationId);
   if (cave !== null && !(Number.isSafeInteger(cave) && cave > 0)) throw bad('Bad CAVE row.');
+  const otherRoot = a.otherRoot == null || a.otherRoot === '' ? null : String(a.otherRoot);
+  if (otherRoot !== null && !ID.test(otherRoot)) throw bad('Not a segment ID for the other cell.');
+  const otherStatus = otherRoot && OTHER[a.otherStatus] ? a.otherStatus : null;
   return { fragment_id: fragmentId, group_key: a.group, root_id: rootId, lab_flag: labFlag, lab_um3: labUm3,
-    fixed: true, ends: true, point_in: a.pointIn, pt, nucleus_id: nucleusId, no_nucleus: noNucleus, note, cave_annotation_id: cave };
+    fixed: true, ends: true, point_in: a.pointIn, pt, nucleus_id: nucleusId, no_nucleus: noNucleus, note, cave_annotation_id: cave,
+    other_root: otherStatus ? otherRoot : null, other_status: otherStatus };
 }
 
 // ── Merges, cuts and volume, read with the player's own CAVE sign in ────────
@@ -145,7 +158,8 @@ function sheetRow(row, playerName) {
   const n = v => (v == null ? '' : v);
   return [at, playerName, GROUPS[row.group_key], "'" + row.fragment_id, row.root_id ? "'" + row.root_id : '', row.lab_flag, n(row.lab_um3),
     yes(row.fixed), yes(row.ends), row.point_in === 'soma' ? 'Soma' : 'Major dendrite', row.pt[0], row.pt[1], row.pt[2],
-    row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus), row.note];
+    row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus),
+    [row.note, row.other_root && OTHER[row.other_status] ? `Part belonged to cell ${row.other_root}, ${OTHER[row.other_status]}.` : ''].filter(Boolean).join(' ')];
 }
 /** Writes the row; returns the sheet row number it is on. */
 // OVERWRITE: a new line goes into the next empty row, which keeps the sheet's
@@ -178,7 +192,8 @@ async function fragmentsAction(action, args, io) {
     const claims = await sb(`ew_lost_fragment_claims?claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,user_id&limit=20000`);
     const myClaim = (claims.find(c => String(c.user_id) === String(me.id)) || {}).fragment_id || null;
     const held = claims.filter(c => String(c.user_id) !== String(me.id)).map(c => c.fragment_id);
-    return { mine, others, held, myClaim };
+    const stash = await sb('ew_lost_fragment_stash?select=root_id,pt,from_fragment_id,player_name,choice,created_at&order=created_at.asc&limit=2000');
+    return { mine, others, held, myClaim, stash };
   }
 
   if (action === 'fragments.claim' || action === 'fragments.release') {
@@ -201,6 +216,26 @@ async function fragmentsAction(action, args, io) {
       return { claimed: false, reason: 'held' };  // someone landed on it a moment before
     }
     return { claimed: true };
+  }
+
+  if (action === 'fragments.stash') {
+    const rootId = String(args && args.rootId || '');
+    if (!ID.test(rootId)) throw bad('Not a segment ID.');
+    const from = String(args && args.fromFragmentId || '');
+    if (!ID.test(from)) throw bad('Not a fragment ID.');
+    const choice = args && args.choice === 'proofread' ? 'proofread' : 'stash';
+    const p = args && args.pt;
+    const pt = Array.isArray(p) && p.length === 3 && p.every(n => Number.isFinite(n) && Math.abs(n) < 1e7) ? p.map(n => Math.round(n)) : null;
+    if (!pt) throw bad('Put the crosshairs in the other cell first.');
+    // Once per cell: a second player finding the same cell changes nothing.
+    await sb('ew_lost_fragment_stash?on_conflict=root_id', { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
+      body: JSON.stringify({ root_id: rootId, pt, from_fragment_id: from, user_id: me.id, player_name: playerName, choice }) });
+    // Proofread it too: it is this player's, as Play's claim would make it.
+    if (choice === 'proofread') {
+      const c = await fragmentsAction('fragments.claim', { fragmentId: rootId }, io);
+      return { stashed: true, claimed: !!c.claimed, reason: c.reason };
+    }
+    return { stashed: true };
   }
 
   if (action === 'fragments.caveId') {
@@ -256,4 +291,4 @@ async function syncSheet({ sb, sheets }) {
   return { waiting: rows.length, written, failed };
 }
 
-module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS };
+module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS, OTHER };

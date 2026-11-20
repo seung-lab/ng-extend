@@ -53,6 +53,7 @@ const HOWTO_LINES = [
   '<b>2. Check every end.</b> Follow each branch to its tip and extend it where it was cut short.',
   '<b>3. Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.',
   '<b>4. Nucleus</b> (soma only). In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs: Pyr reads its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.',
+  '<b>Part of it belongs to another cell?</b> Cut it off and merge it into its own cell. If that cell is already proofread, you are done with it. If not, proofread it too, or stash it for later so anyone can pick it up. Never merge into an unrelated cell to get rid of a piece, and never delete anything.',
   'After 5 fragments, Pyr trusts you on 1 and 2 and stops asking.',
   '<b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.',
 ];
@@ -60,7 +61,10 @@ const HOWTO_LINES = [
 const HIGHLIGHT_ICON = getToolbarIconDef('highlight')?.svg ?? '';
 const name = orphanName();
 
-type GroupKey = 'large' | 'smaller' | 'glia' | 'soma';
+type GroupKey = 'large' | 'smaller' | 'glia' | 'soma' | 'stashed';
+/** Cells players found attached to a fragment and stashed for proofreading
+ *  (Ames 2026-11-20), from the server's list. Played like any fragment. */
+const STASHED = reactive<OrphanSeg[]>([]);
 const GROUPS: { key: GroupKey; label: string; about: string; color: string; rows: OrphanSeg[] }[] = [
   { key: 'large',   label: 'Large',     color: '#7ecaff', rows: ORPHANS_LARGE,
     about: 'Big pieces with no flag. Most are parts of neurons cut off from their cell.' },
@@ -70,7 +74,11 @@ const GROUPS: { key: GroupKey; label: string; about: string; color: string; rows
     about: 'The shape looks like a glial cell. Check it, and look for a soma.' },
   { key: 'soma',    label: 'Soma-like', color: '#c9b6ff', rows: ORPHANS_SOMA,
     about: 'May have a cell body. Put the point in the soma, and add the nucleus ID if there is a nucleus.' },
+  { key: 'stashed', label: 'Stashed', color: '#ffd35a', rows: STASHED,
+    about: 'Cells another player found attached to a fragment and saved for later. Proofread the whole cell.' },
 ];
+/** The groups to show: Stashed only once something is in it. */
+const shownGroups = computed(() => GROUPS.filter(g => g.key !== 'stashed' || STASHED.length > 0));
 const FLAG_WORDS: Record<OrphanFlag, string> = { n: 'no flag', s: 'soma', sg: 'soma, glia', g: 'glia' };
 const poolTotal = ORPHAN_POOL.n + ORPHAN_POOL.s + ORPHAN_POOL.sg + ORPHAN_POOL.g;
 
@@ -125,6 +133,36 @@ const cellTypes = computed(() => currentCellTypes());
 const typeKnown = ref('');
 const typeAnnId = ref<number | undefined>(undefined);
 const typeNote = ref('');
+/** Part of the fragment belonged to another cell (Ames 2026-11-20). The
+ *  player puts the crosshairs in that cell: Pyr says whether it is already
+ *  proofread, and if not, they proofread it too or stash it for later. */
+const other = reactive({ open: false, checking: false, root: '' as string, pt: null as [number, number, number] | null,
+  done: false, choice: '' as '' | 'stashed' | 'proofread', msg: '', err: false });
+function resetOther() { Object.assign(other, { open: false, checking: false, root: '', pt: null, done: false, choice: '', msg: '', err: false }); }
+async function checkOther() {
+  const row = active.value;
+  if (!row || other.checking) return;
+  other.checking = true; other.msg = ''; other.err = false; other.root = ''; other.done = false; other.choice = '';
+  try {
+    const at = await cellAtCrosshair();
+    if (!at.root) { other.msg = at.problem || 'There is no cell under the crosshairs.'; other.err = true; return; }
+    const mineNow = at.root === shownRoot.value || at.root === row.id
+      || !!(await ancestorAmong(at.root, [shownRoot.value, row.id].filter(Boolean) as string[]).catch(() => undefined));
+    if (mineNow) { other.msg = 'The crosshairs are in this fragment. Put them in the other cell.'; other.err = true; return; }
+    other.root = at.root; other.pt = at.position;
+    const server = activeCaveServer();
+    const st = server ? await getCellStatus(server, at.root).catch(() => null) : null;
+    if (active.value?.id !== row.id) return;
+    if (st?.isComplete) {
+      other.done = true;
+      other.msg = 'That cell is already proofread. Merge the piece into it, and that is all.';
+    } else if (st?.unreachable || !st) {
+      other.msg = 'Pyr could not ask whether that cell is proofread. Choose what to do with it.';
+    } else {
+      other.msg = 'That cell is not proofread yet. Proofread it too, or stash it for later?';
+    }
+  } finally { other.checking = false; }
+}
 const typeTitle = (t: string) => explainCellType(t).join(String.fromCharCode(10)) || undefined;
 function fillType(t: string) {
   if (!t || form.cellType || form.cellTypeCustom) return;
@@ -153,6 +191,7 @@ function resetForm(s?: OrphanSave) {
   form.cellType = ''; form.cellTypeCustom = '';
   typeKnown.value = ''; typeAnnId.value = undefined; typeNote.value = '';
   fillType(s?.cellType || '');
+  resetOther();
   nucMsg.value = '';
 }
 
@@ -463,6 +502,25 @@ async function submit() {
     }
     typeKnown.value = type;
   }
+  if (other.root && !other.done && !other.choice) {
+    sendError.value = 'Choose what to do with the other cell: proofread it too, or stash it.';
+    sending.value = false;
+    return;
+  }
+  let proofreadNext = '';
+  if (other.root && other.choice) {
+    try {
+      const st = await secureWrite<{ stashed: boolean; claimed?: boolean }>('fragments.stash',
+        { rootId: other.root, fromFragmentId: row.id, pt: other.pt, choice: other.choice === 'proofread' ? 'proofread' : 'stash' });
+      if (other.choice === 'proofread' && st && st.claimed) proofreadNext = other.root;
+    } catch (e: any) {
+      sendError.value = String((e && e.message) || 'The other cell could not be stashed. Try again in a moment.');
+      sending.value = false;
+      return;
+    }
+  }
+  const otherRoot = other.root && (other.done || other.choice) ? other.root : '';
+  const otherStatus = other.done ? 'done' : other.choice;
   try {
     // CAVE first, once per fragment; a resubmit keeps the row it has.
     let caveId = saves[row.id]?.caveId ?? null;
@@ -472,6 +530,7 @@ async function submit() {
       fixed: fixedOk.value, ends: endsOk.value, pointIn: form.where, pt,
       nucleusId: form.where === 'soma' && !form.noNucleus ? form.nucId.trim() : '', noNucleus: form.noNucleus,
       note: form.note.trim(), caveAnnotationId: caveId,
+      otherRoot, otherStatus,
     });
     serverOn.value = true;
     saves[row.id] = {
@@ -491,14 +550,32 @@ async function submit() {
   if (active.value?.id !== row.id) return;
   form.saved = true;
   finishing.value = false;
+  // Proofread it too: the stashed cell is theirs, and opens next.
+  if (proofreadNext) {
+    await loadAnswers();
+    const next = STASHED.find(x => x.id === proofreadNext);
+    if (next) { group.value = 'stashed'; myClaim.value = next.id; void open(next); return; }
+  }
   if (playing.value) playNext();
 }
 
+/** Who stashed each stashed cell, for its row. */
+const stashBy = reactive<Record<string, string>>({});
+function loadStash(list: any[]) {
+  const rows: OrphanSeg[] = [];
+  for (const x of list) {
+    if (!x || !/^\d{15,20}$/.test(String(x.root_id)) || !Array.isArray(x.pt) || x.pt.length !== 3) continue;
+    rows.push({ id: String(x.root_id), pt: x.pt.map(Number) as [number, number, number], um3: 0, flag: 'n' });
+    stashBy[String(x.root_id)] = String(x.player_name || '');
+  }
+  STASHED.splice(0, STASHED.length, ...rows);
+}
 /** The server's answers for this player, and fragments others have done.
  *  Answers whose CAVE point did not go in are sent again here. */
 async function loadAnswers() {
   try {
-    const res = await secureWrite<{ mine: any[]; others: string[]; held?: string[]; myClaim?: string | null }>('fragments.list');
+    const res = await secureWrite<{ mine: any[]; others: string[]; held?: string[]; myClaim?: string | null; stash?: any[] }>('fragments.list');
+    loadStash(res.stash || []);
     serverOn.value = true;
     for (const k of Object.keys(saves)) delete saves[k];
     for (const m of res.mine || []) {
@@ -550,13 +627,13 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
       <!-- How many are open, in the lead for everyone (Ames 2026-11-20: keep
            saying about 150 of 13,000, "add that to the text up at the top"). -->
-      <div class="nge-orph-lead">{{ name.lead }} {{ fmt(GROUPS.reduce((a, g) => a + g.rows.length, 0)) }} of the {{ fmt(poolTotal) }} the lab found are open to start, and each one counts as a completed cell.</div>
+      <div class="nge-orph-lead">{{ name.lead }} {{ fmt(GROUPS.reduce((a, g) => a + (g.key === 'stashed' ? 0 : g.rows.length), 0)) }} of the {{ fmt(poolTotal) }} the lab found are open to start, and each one counts as a completed cell.</div>
       <div v-if="fragmentsDone != null" class="nge-orph-countdown">Together we have completed <b>{{ fmt(fragmentsDone) }}</b>. <b class="nge-orph-countdown-num">{{ fmt(nextMilestone(fragmentsDone) - fragmentsDone) }}</b> to go until we celebrate {{ fmt(nextMilestone(fragmentsDone)) }}!</div>
       <div v-if="ON_TEST_SITE || !serverOn" class="nge-orph-mock">{{ !serverOn ? 'Pyr could not reach the server, so Complete will not save yet.' : 'Test site: Complete here is real. It goes to the lab and counts as a completed cell.' }}</div>
     </div>
 
     <div v-if="!slim" class="nge-orph-groups">
-      <button v-for="g in GROUPS" :key="g.key" class="nge-orph-group" :class="{ 'nge-orph-group--on': group === g.key }"
+      <button v-for="g in shownGroups" :key="g.key" class="nge-orph-group" :class="{ 'nge-orph-group--on': group === g.key }"
               :style="{ '--g': g.color }" @click="pickGroup(g.key)" :title="g.about">
         <span class="nge-orph-group-name">{{ g.label }}</span>
         <span class="nge-orph-group-n">{{ doneIn(g.key) }} / {{ g.rows.length }}</span>
@@ -602,9 +679,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           <div class="nge-orph-task-meta">
             <select class="nge-orph-groupsel" :value="group" :style="{ color: cur.color }" aria-label="Fragment group"
                     title="Switch group" @change="onGroupChange">
-              <option v-for="g in GROUPS" :key="g.key" :value="g.key">{{ g.label }}</option>
+              <option v-for="g in shownGroups" :key="g.key" :value="g.key">{{ g.label }}</option>
             </select>, {{ place + 1 }} of {{ cur.rows.length }},
-            {{ fmt(active.um3) }} µm³, lab flag: {{ FLAG_WORDS[active.flag] }}
+            <template v-if="group === 'stashed'">stashed by {{ stashBy[active.id] || 'a player' }}</template>
+            <template v-else>{{ fmt(active.um3) }} µm³, lab flag: {{ FLAG_WORDS[active.flag] }}</template>
           </div>
           <div v-if="shownRoot && shownRoot !== active.id" class="nge-orph-note">Edited since the lab's list; showing its current ID.</div>
         </div>
@@ -669,6 +747,24 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           </div>
           <div v-if="typeNote" class="nge-orph-row"><span class="nge-orph-note nge-orph-note--err">{{ typeNote }}</span></div>
         </li>
+        <li class="nge-orph-nonum nge-orph-otherli">
+          <button v-if="!other.open" class="nge-orph-link" @click="other.open = true">Part of it belongs to another cell?</button>
+          <template v-else>
+            <div class="nge-orph-row"><b>Another cell</b> <span class="nge-orph-sub">Cut that part off and merge it into its own cell. Then put the crosshairs in that cell.</span></div>
+            <div class="nge-orph-row">
+              <button class="nge-orph-btn" :disabled="other.checking" @click="checkOther">{{ other.checking ? 'Checking…' : 'Check that cell' }}</button>
+              <span v-if="other.root" class="nge-orph-nucid" :title="other.root">{{ short(other.root) }}</span>
+              <button class="nge-orph-link" @click="resetOther()">No other cell</button>
+            </div>
+            <div v-if="other.msg" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': other.err, 'nge-orph-note--ok': other.done }">{{ other.msg }}</span></div>
+            <div v-if="other.root && !other.done" class="nge-orph-row nge-orph-otherpick">
+              <button class="nge-orph-btn" :class="{ on: other.choice === 'proofread' }" @click="other.choice = 'proofread'"
+                      title="After you submit this fragment, that cell opens next. It counts as a completed cell of its own.">Proofread it too</button>
+              <button class="nge-orph-btn" :class="{ on: other.choice === 'stashed' }" @click="other.choice = 'stashed'"
+                      title="It goes into the Stashed group, for anyone to proofread later.">Stash it for later</button>
+            </div>
+          </template>
+        </li>
       </ol>
       <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
 
@@ -688,8 +784,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
               @click="open(r)" :title="`Jump to segment ${r.id}`">
         <span class="nge-orph-item-i">{{ i + 1 }}</span>
         <span class="nge-orph-item-id">{{ r.id }}</span>
-        <span class="nge-orph-item-flag">{{ FLAG_WORDS[r.flag] }}</span>
-        <span class="nge-orph-item-v">{{ fmt(r.um3) }} µm³</span>
+        <span class="nge-orph-item-flag">{{ group === 'stashed' ? 'stashed' : FLAG_WORDS[r.flag] }}</span>
+        <span class="nge-orph-item-v">{{ group === 'stashed' ? (stashBy[r.id] || '') : fmt(r.um3) + ' µm³' }}</span>
         <span class="nge-orph-item-s">{{ saves[r.id] ? '✓' : '' }}</span>
       </button>
     </div>
@@ -780,6 +876,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 /* The nucleus (part of the soma point) and the optional type carry no
    number (Ames 2026-11-20: "we don't need (4) here"). */
 .nge-orph-check li.nge-orph-nonum { list-style: none; }
+.nge-orph-otherpick .nge-orph-btn.on { border-color: #ffd35a !important; color: #ffe9a6 !important; background: rgba(255, 211, 90, 0.12) !important; }
 .nge-orph-check input[type=checkbox] { accent-color: #4a9eff; vertical-align: -2px; }
 .nge-orph-sub { font-size: 12.5px; color: #93a0b6; }
 .nge-orph-seg { display: inline-flex; margin-left: 4px; border: 1px solid rgba(120, 140, 255, 0.25); border-radius: 5px; overflow: hidden; vertical-align: 1px; }

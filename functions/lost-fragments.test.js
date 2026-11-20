@@ -10,14 +10,14 @@ const ME = { id: 'u-1', display_name: 'Test Player' };
 
 /** A tiny Supabase in memory, answering the REST paths the module uses. */
 function fakeDb() {
-  const tables = { ew_lost_fragments: [], ew_lost_fragment_claims: [] }; let next = 1;
+  const tables = { ew_lost_fragments: [], ew_lost_fragment_claims: [], ew_lost_fragment_stash: [] }; let next = 1;
   const sb = async (path, init = {}) => {
     const [table, q = ''] = path.split('?');
     const rows = tables[table];
     assert.ok(rows, 'unknown table ' + table);
     const p = new URLSearchParams(q);
     const match = r => [...p.entries()].every(([k, v]) => {
-      if (['select', 'limit', 'order'].includes(k)) return true;
+      if (['select', 'limit', 'order', 'on_conflict'].includes(k)) return true;
       if (v === 'is.null') return r[k] == null;
       const [op, ...rest] = v.split('.'); const want = decodeURIComponent(rest.join('.'));
       if (op === 'eq') return String(r[k]) === want;
@@ -29,6 +29,10 @@ function fakeDb() {
     if (!init.method) return rows.filter(match).map(r => ({ ...r }));
     if (init.method === 'POST') {
       const body = JSON.parse(init.body);
+      if (table === 'ew_lost_fragment_stash') {
+        if (rows.some(r => r.root_id === body.root_id)) return [];
+        const r = { created_at: new Date().toISOString(), ...body }; rows.push(r); return [{ ...r }];
+      }
       if (table === 'ew_lost_fragment_claims') {
         if (rows.some(r => r.fragment_id === body.fragment_id)) throw new Error('409 duplicate');
         const r = { claimed_at: new Date().toISOString(), ...body }; rows.push(r); return [{ ...r }];
@@ -165,4 +169,28 @@ test('points beta: big fragments pay more than in proportion; edits, growth and 
   assert.equal(out.points.size, sizePoints(rows[0].lab_um3), 'with no CAVE measure, the lab volume sets the size');
   assert.equal(rows[0].points, out.points.total);
   assert.equal(rows[0]._before, undefined, 'the measure helper field is not stored');
+});
+
+test('stash: another cell goes into Stashed once, and Proofread it too claims it', async () => {
+  const { tables, sb } = fakeDb();
+  const OTHER_ID = '720575940570249357';
+  await assert.rejects(fragmentsAction('fragments.stash', { rootId: OTHER_ID, fromFragmentId: ANSWER.fragmentId }, { sb, me: ME, isAdmin: false }), /crosshairs/);
+  await fragmentsAction('fragments.stash', { rootId: OTHER_ID, fromFragmentId: ANSWER.fragmentId, pt: [1, 2, 3] }, { sb, me: ME, isAdmin: false });
+  const again = await fragmentsAction('fragments.stash', { rootId: OTHER_ID, fromFragmentId: ANSWER.fragmentId, pt: [4, 5, 6], choice: 'proofread' }, { sb, me: ME, isAdmin: false });
+  assert.equal(tables.ew_lost_fragment_stash.length, 1);
+  assert.deepEqual(tables.ew_lost_fragment_stash[0].pt, [1, 2, 3]);
+  assert.equal(again.claimed, true);
+  const list = await fragmentsAction('fragments.list', {}, { sb, me: ME, isAdmin: false });
+  assert.equal(list.stash.length, 1);
+  assert.equal(list.myClaim, OTHER_ID);
+});
+
+test('an answer carries the other cell; the sheet says it in the note column, A to P only', async () => {
+  const a = cleanAnswer({ ...ANSWER, group: 'stashed', otherRoot: '720575940570249357', otherStatus: 'stashed', note: 'odd' });
+  assert.equal(a.group_key, 'stashed');
+  assert.equal(a.other_status, 'stashed');
+  const row = sheetRow({ ...a, updated_at: '2026-11-20T12:00:00Z' }, 'P');
+  assert.equal(row.length, 16);
+  assert.match(row[15], /^odd Part belonged to cell 720575940570249357, stashed for later\.$/);
+  assert.equal(cleanAnswer({ ...ANSWER, otherRoot: '720575940570249357', otherStatus: 'nonsense' }).other_root, null);
 });
