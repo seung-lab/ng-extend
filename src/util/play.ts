@@ -121,7 +121,11 @@ export function retinaHub(): boolean { return ON_TEST_SITE || isAdmin() || fragm
 const FRAGMENT_TESTERS = new Set<string>([
   '5bb0310a-b42d-4d13-937f-eab620794949',  // Jan Lause (jan_lause)
 ]);
+/** Open to every player with edit access on Retina (Ames 2026-11-20: "let's
+ *  get the Lost Fragments deployed!"). */
+const FRAGMENTS_OPEN = true;
 export function fragmentTester(): boolean {
+  if (FRAGMENTS_OPEN && canQuest()) return true;
   try { return FRAGMENT_TESTERS.has(String(useProofreadingBackendStore().userId || '')); } catch { return false; }
 }
 
@@ -142,7 +146,7 @@ export function mappingDataset(): DatasetEntry | undefined {
 /** Hear from CAVE (at most 4 s each) before Play picks the dataset, and ask
  *  again when the cell dataset on screen is not editable by what this page
  *  heard: access may have been granted since (an MEC invite). */
-async function settleAccess() {
+export async function settleAccess() {
   const wait = (p: Promise<void>) => Promise.race([p, new Promise<void>(r => setTimeout(r, 4000))]);
   await wait(loadDatasetPermissions());
   const here = datasetHere();

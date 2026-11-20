@@ -24,7 +24,7 @@ async function run(browser, perms, tag) {
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate/');
     const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: apps };
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
-    try { localStorage.removeItem('nge-play-kind'); localStorage.removeItem('nge_orphan_mock_v1'); localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1'); } catch (e) {}
+    try { localStorage.removeItem('nge-play-kind'); localStorage.removeItem('nge_orphan_mock_v1'); localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1'); localStorage.setItem('nge-lf-howto-seen', '1'); } catch (e) {}
   });
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
@@ -168,7 +168,7 @@ async function run(browser, perms, tag) {
         await fold.click(); await page.waitForTimeout(250);
         const folded = await page.evaluate(() => ({ name: (document.querySelector('.nge-cl-tabshead-name') || {}).textContent || '', rows: !!document.querySelector('.nge-cl-tabgroup') }));
         if (SHOTS) { const p = await page.$('.nge-cl-panel'); if (p) await p.screenshot({ path: `${SHOTS}/library-folded.png` }); }
-        await page.click('.nge-cl-tabshead .nge-cl-tabsfold'); await page.waitForTimeout(250);
+        await page.click('.nge-cl-tabsfold--out'); await page.waitForTimeout(250);
         const open = await page.evaluate(() => !!document.querySelector('.nge-cl-tabgroup'));
         return { folded, open };
       })();
@@ -192,7 +192,7 @@ async function run(browser, perms, tag) {
   check('edit: Play shows the slim bar on Lost Fragments', ed.slimBar, ed.slimBar);
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);
   check('edit: Play here shows in the full view when not playing', ed.playHere, ed.playHere);
-  check('edit: the tab rows fold into a Lost Fragments header and open again', ed.fold && ed.fold.folded && ed.fold.folded.name.trim() === 'Lost Fragments' && !ed.fold.folded.rows && ed.fold.open, ed.fold);
+  check('edit: the tab rows fold away, the title says Cell Library: Lost Fragments, and they open again', ed.fold && ed.fold.folded && ed.fold.folded.name.trim() === 'Lost Fragments' && !ed.fold.folded.rows && ed.fold.open, ed.fold);
   check('edit: the banner shows in the full view', ed.banner && ed.banner.w > 200 && /lost-fragments-banner/.test(ed.banner.bg), ed.banner);
   check('edit: the slim box resizes from its corner and keeps the size', ed.resize && ed.resize.after && ed.resize.before && ed.resize.after[0] < ed.resize.before[0] - 100 && ed.resize.after[1] > ed.resize.before[1] + 80 && !!ed.resize.kept, ed.resize);
   check('edit: slim bar has no group menu, ID, Playing chip, arrows or count', ed.slimLean && ed.slimLean.row && !ed.slimLean.select && !ed.slimLean.chip && !ed.slimLean.arrows && /^(Large|Small|Glia-like|Soma-like)$/.test(ed.slimLean.meta.trim()), ed.slimLean);

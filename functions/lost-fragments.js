@@ -35,6 +35,9 @@ const CG = 'https://minnie.microns-daf.com/segmentation/api/v1/table/stroeh_mous
 const L2 = 'https://minnie.microns-daf.com/l2cache/api/v1/table/stroeh_mouse_retina/attributes';
 /** Players in the preview on live, beside admins (src/util/play.ts FRAGMENT_TESTERS). */
 const TESTERS = new Set(['5bb0310a-b42d-4d13-937f-eab620794949']);  // Jan Lause
+/** Open to every signed in player (Ames 2026-11-20: "let's get the Lost
+ *  Fragments deployed!"). Play still asks for edit access on Retina. */
+const OPEN = true;
 const GROUPS = { large: 'Large', smaller: 'Small', glia: 'Glia-like', soma: 'Soma-like' };
 const FLAGS = ['no flag', 'soma', 'glia', 'soma, glia'];
 const ID = /^\d{15,20}$/;
@@ -165,7 +168,7 @@ async function writeSheet(sheets, row, playerName) {
 async function fragmentsAction(action, args, io) {
   const { sb, me } = io;
   if (!me || !me.id) throw bad('Your Pyr profile is not ready yet. Reload the page, then try again.', 403);
-  if (!io.isAdmin && !TESTERS.has(String(me.id))) throw bad('Lost Fragments is not open to you yet.', 403);
+  if (!OPEN && !io.isAdmin && !TESTERS.has(String(me.id))) throw bad('Lost Fragments is not open to you yet.', 403);
   const playerName = String(me.display_name || me.username || 'Player').slice(0, 80);
 
   if (action === 'fragments.list') {
@@ -253,4 +256,4 @@ async function syncSheet({ sb, sheets }) {
   return { waiting: rows.length, written, failed };
 }
 
-module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, CLAIM_DAYS };
+module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS };

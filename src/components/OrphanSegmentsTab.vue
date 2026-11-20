@@ -24,15 +24,18 @@ import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { play, stopPlay, startPlay } from '../util/play';
 import { ON_TEST_SITE } from '../hunt';
 import { Uint64 } from 'neuroglancer/util/uint64';
-import { currentSegLayer } from '../datasets';
+import { currentSegLayer, currentCellTypes, cellTypeLabel } from '../datasets';
+import { explainCellType } from '../data/cell_type_glossary';
 import { useCellHistoryStore, useProofreadingBackendStore, useUserStatsStore } from '../store';
 import { secureWrite } from '../secure_write';
-import { postLostFragmentPoint } from '../widgets/lightbulb_service';
+import { postLostFragmentPoint, saveCellType, getCellStatus, activeCaveServer, getLastCellTypeProblem } from '../widgets/lightbulb_service';
 import { cellAtCrosshair, supervoxelAtPlace } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
+import QuestInstructions from './QuestInstructions.vue';
+import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
   type OrphanSeg, type OrphanFlag,
@@ -83,6 +86,8 @@ interface OrphanSave {
   nucId: string; noNucleus: boolean; note: string; at: number;
   /** The CAVE row; null while CAVE could not take it (sent again on load). */
   caveId?: number | null;
+  /** The cell type the player chose, if any (Ames 2026-11-20). */
+  cellType?: string;
 }
 /** Fragments someone else has answered: Play skips them. */
 const taken = reactive(new Set<string>());
@@ -110,7 +115,32 @@ const form = reactive({
   fixed: false, ends: false, where: 'dendrite' as 'dendrite' | 'soma',
   point: null as [number, number, number] | null, pointMsg: '', pointOk: false, checking: false,
   nucId: '', noNucleus: false, note: '', saved: false,
+  cellType: '', cellTypeCustom: '',
 });
+/** The cell type, the same list and save as Complete in the Cell Library
+ *  (Ames 2026-11-20: "add a way to label the cell class in Lost Frags? we
+ *  have automated labeling but it's not run on all cells"). Optional. It goes
+ *  to CAVE's cell type table and the game's log, as every type does. */
+const cellTypes = computed(() => currentCellTypes());
+const typeKnown = ref('');
+const typeAnnId = ref<number | undefined>(undefined);
+const typeNote = ref('');
+const typeTitle = (t: string) => explainCellType(t).join(String.fromCharCode(10)) || undefined;
+function fillType(t: string) {
+  if (!t || form.cellType || form.cellTypeCustom) return;
+  if (cellTypes.value.includes(t)) form.cellType = t; else form.cellTypeCustom = t;
+}
+/** What CAVE already has for the fragment's cell, once the checklist opens. */
+async function prefillType() {
+  const root = shownRoot.value || active.value?.id;
+  const server = activeCaveServer();
+  if (!root || !server || !cellTypes.value.length) return;
+  const st = await getCellStatus(server, root).catch(() => null);
+  if (!st || (shownRoot.value || active.value?.id) !== root) return;
+  typeAnnId.value = st.cellTypeAnnotationId;
+  typeKnown.value = st.cellType || '';
+  fillType(typeKnown.value);
+}
 const place = computed(() => active.value ? cur.value.rows.findIndex(r => r.id === active.value!.id) : -1);
 
 function resetForm(s?: OrphanSave) {
@@ -120,6 +150,9 @@ function resetForm(s?: OrphanSave) {
   form.pointMsg = s?.point ? `Saved at ${s.point.join(', ')}.` : '';
   form.nucId = s?.nucId ?? ''; form.noNucleus = s?.noNucleus ?? false; form.note = s?.note ?? '';
   form.saved = !!s;
+  form.cellType = ''; form.cellTypeCustom = '';
+  typeKnown.value = ''; typeAnnId.value = undefined; typeNote.value = '';
+  fillType(s?.cellType || '');
   nucMsg.value = '';
 }
 
@@ -167,6 +200,7 @@ async function open(row: OrphanSeg) {
   resetForm(saves[row.id]);
   history.jumpToCell(row.id, row.pt);
   finishing.value = false;
+  claimMsg.value = '';
   closeSelectionPanel();
   // The listed ID may be old (one in the lab's list already was). The jump
   // point sits inside the segment, so ask what is there now and show that.
@@ -211,6 +245,30 @@ async function claimHere(row: OrphanSeg) {
     if (active.value?.id === row.id && playing.value && !saves[row.id]) playNext();
   } catch { /* the server can't say; keep playing */ }
 }
+/** Claim from the full view, without Play (Ames 2026-11-20: "We do need a
+ *  button for claim"). One claim per player, as with Play: claiming this one
+ *  lets go of the last. */
+const claimMsg = ref('');
+const claiming = ref(false);
+async function claimActive() {
+  const a = active.value;
+  if (!a || claiming.value) return;
+  claiming.value = true; claimMsg.value = '';
+  try {
+    const res = await secureWrite<{ claimed: boolean; reason?: string }>('fragments.claim', { fragmentId: a.id });
+    if (res && res.claimed) { myClaim.value = a.id; held.delete(a.id); claimMsg.value = 'Yours. Nobody else gets it in Play until you skip or complete it.'; return; }
+    if (res && res.claimed === false && res.reason === 'done') { taken.add(a.id); claimMsg.value = 'Someone has already completed this one.'; return; }
+    if (res && res.claimed === false) { held.add(a.id); claimMsg.value = 'Another player is working on this one.'; return; }
+    claimMsg.value = 'Could not claim it. Try again in a moment.';
+  } catch { claimMsg.value = 'Could not claim it. Try again in a moment.'; }
+  finally { claiming.value = false; }
+}
+async function releaseActive() {
+  const a = active.value;
+  if (!a || myClaim.value !== a.id) return;
+  myClaim.value = null; claimMsg.value = 'Let go. Someone else can claim it now.';
+  await secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
+}
 function playNext() {
   const n = nextUndone();
   if (!n) { allDone.value = true; return; }
@@ -218,7 +276,7 @@ function playNext() {
   group.value = n.g;
   void open(n.row);
   void claimHere(n.row);
-  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + short(n.row.id) } }));
+  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Segment ' + short(n.row.id) } }));
 }
 /** Skip: give the fragment back, then the next one. */
 function skip() {
@@ -239,7 +297,7 @@ function playResume() {
   const a = active.value;
   if (a && !saves[a.id]) {
     void claimHere(a);
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + a.id } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Segment ' + a.id } }));
     return;
   }
   // The fragment this player holds, from another computer or an earlier visit.
@@ -248,7 +306,7 @@ function playResume() {
     group.value = mine.g;
     void open(mine.row);
     void claimHere(mine.row);
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + short(mine.row.id) } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Segment ' + short(mine.row.id) } }));
     return;
   }
   playNext();
@@ -269,6 +327,20 @@ const copied = ref(false);
 /** The slim bar keeps the note box closed until asked (Ames 2026-11-19: "this box is too big"). */
 const noteOpen = ref(false);
 const helpOpen = ref(false);
+/** The instructions open by themselves the first time a player comes to
+ *  Lost Fragments, in the same box as the Cilia Quest's (Ames 2026-11-20:
+ *  "We need an instructions pop-up for lost fragments as well"); ? opens
+ *  them again. */
+const HOWTO_SEEN_KEY = 'nge-lf-howto-seen';
+function closeHelp() {
+  helpOpen.value = false;
+  try { localStorage.setItem(HOWTO_SEEN_KEY, '1'); } catch { /* private window */ }
+}
+onMounted(() => {
+  let seen = true;
+  try { seen = localStorage.getItem(HOWTO_SEEN_KEY) === '1'; } catch { /* storage blocked: do not nag */ }
+  if (!seen) helpOpen.value = true;
+});
 async function copyId(id: string) {
   try { await navigator.clipboard.writeText(id); copied.value = true; setTimeout(() => { copied.value = false; }, 1500); } catch { /* clipboard blocked */ }
 }
@@ -379,6 +451,18 @@ async function submit() {
   sending.value = true; sendError.value = ''; lastSent.value = '';
   const pt = [...form.point] as [number, number, number];
   const root = shownRoot.value || row.id;
+  const type = (form.cellTypeCustom.trim() || form.cellType).trim().slice(0, 120);
+  typeNote.value = '';
+  if (type && type !== typeKnown.value) {
+    const server = activeCaveServer();
+    const ok = server ? await saveCellType(server, root, type, typeAnnId.value, true, pt).catch(() => false) : false;
+    if (!ok) {
+      typeNote.value = getLastCellTypeProblem() || 'The cell type could not be saved. Try again, or leave it empty.';
+      sending.value = false;
+      return;
+    }
+    typeKnown.value = type;
+  }
   try {
     // CAVE first, once per fragment; a resubmit keeps the row it has.
     let caveId = saves[row.id]?.caveId ?? null;
@@ -393,9 +477,10 @@ async function submit() {
     saves[row.id] = {
       id: row.id, group: group.value, root, fixed: fixedOk.value, ends: endsOk.value, where: form.where, point: pt,
       nucId: form.nucId.trim(), noNucleus: form.noNucleus, note: form.note.trim(), at: Date.now(), caveId,
+      cellType: type || saves[row.id]?.cellType || '',
     };
     persist();
-    if (res && res.first) countCompleted(root, pt, row.id);
+    if (res && res.first) { countCompleted(root, pt, row.id); addFragmentDone(); }
     if (myClaim.value === row.id) myClaim.value = null;
     lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
     if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
@@ -427,6 +512,7 @@ async function loadAnswers() {
     persist();
     taken.clear();
     for (const id of res.others || []) taken.add(id);
+    setFragmentsDone((res.mine || []).length + (res.others || []).length);
     held.clear();
     for (const id of res.held || []) held.add(id);
     myClaim.value = res.myClaim ?? null;
@@ -441,6 +527,10 @@ async function loadAnswers() {
   } catch { serverOn.value = false; }
 }
 onMounted(() => { void loadAnswers(); });
+// The cell type CAVE already has, when the checklist is on screen for a fragment.
+watch(() => [active.value?.id, shownRoot.value, finishing.value || !props.slim] as const, ([id, , shown]) => {
+  if (id && shown) void prefillType();
+}, { immediate: true });
 
 const short = (id: string) => id.length > 8 ? '…' + id.slice(-6) : id;
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -448,15 +538,21 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 
 <template>
   <div class="nge-orph" :class="{ 'nge-orph--slim': slim }">
+    <QuestInstructions v-if="helpOpen" kicker="Lost Fragments" title="How to rescue a Lost Fragment"
+      :lead="name.lead" lead-key="howto.lost_fragments.lead" :steps="HOWTO_LINES" steps-key="howto.lost_fragments"
+      image-key="howto.lost_fragments.image" :image="bannerImg" image-alt="Blue cubes tumbling apart with gold neuron branches running through them"
+      :legend="[]" @close="closeHelp" />
     <div v-if="!slim" class="nge-orph-head">
       <!-- The banner (Ames 2026-11-19): her render of EyeWire cubes with
            gold branches running through them, the title over it. -->
       <div class="nge-orph-banner" :style="{ backgroundImage: `url(${bannerImg})` }" role="img" aria-label="Blue cubes tumbling apart with gold neuron branches running through them">
         <div class="nge-orph-title">{{ name.title }}</div>
       </div>
-      <div class="nge-orph-lead">{{ name.lead }}</div>
-      <div class="nge-orph-mock">{{ ON_TEST_SITE ? 'Test site preview' : 'Admin preview' }}: {{ GROUPS.reduce((a, g) => a + g.rows.length, 0) }} sample segments
-        of the {{ fmt(poolTotal) }} the lab found. {{ serverOn ? 'Each Submit goes to the lab and counts as a completed cell.' : 'Pyr could not reach the server, so Submit will not save yet.' }}</div>
+      <!-- How many are open, in the lead for everyone (Ames 2026-11-20: keep
+           saying about 150 of 13,000, "add that to the text up at the top"). -->
+      <div class="nge-orph-lead">{{ name.lead }} {{ fmt(GROUPS.reduce((a, g) => a + g.rows.length, 0)) }} of the {{ fmt(poolTotal) }} the lab found are open to start, and each one counts as a completed cell.</div>
+      <div v-if="fragmentsDone != null" class="nge-orph-countdown">Together we have completed <b>{{ fmt(fragmentsDone) }}</b>. <b class="nge-orph-countdown-num">{{ fmt(nextMilestone(fragmentsDone) - fragmentsDone) }}</b> to go until we celebrate {{ fmt(nextMilestone(fragmentsDone)) }}!</div>
+      <div v-if="ON_TEST_SITE || !serverOn" class="nge-orph-mock">{{ !serverOn ? 'Pyr could not reach the server, so Complete will not save yet.' : 'Test site: Complete here is real. It goes to the lab and counts as a completed cell.' }}</div>
     </div>
 
     <div v-if="!slim" class="nge-orph-groups">
@@ -517,16 +613,16 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <button class="nge-orph-btn" @click="step(-1)" title="Previous fragment">&lsaquo;<template v-if="!slim"> Previous</template></button>
         <button class="nge-orph-btn" @click="step(1)" title="Next fragment"><template v-if="!slim">Next </template>&rsaquo;</button>
         <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
-        <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
+        <button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-claimbtn" :class="{ 'nge-orph-claimbtn--mine': myClaim === active.id }" :disabled="claiming"
+                :title="myClaim === active.id ? 'You hold this fragment. Press to let it go.' : 'Hold this fragment for you, so Play does not give it to anyone else'"
+                @click="myClaim === active.id ? releaseActive() : claimActive()">{{ claiming ? 'Claiming…' : myClaim === active.id ? 'Release' : 'Claim' }}</button>
         <button v-if="playing" class="nge-orph-btn" @click="skip" title="Give this one back and go to the next fragment">Skip</button>
         <button v-else class="nge-orph-btn nge-orph-playbtn" @click="startPlay('fragments')" title="Play: after Submit, the next fragment opens by itself">&#9654; Play</button>
         <button class="nge-orph-help-btn" :class="{ on: helpOpen }" :aria-expanded="helpOpen ? 'true' : 'false'" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button>
         <button v-if="playing" class="nge-orph-link nge-orph-stop" @click="stopPlay" title="Stop playing: Submit stays on this fragment">Stop</button>
       </div>
 
-      <div v-if="helpOpen" class="nge-orph-help">
-        <EditableText text-key="howto.lost_fragments" :original="HOWTO_LINES" list-class="nge-orph-help-list" notify label="Lost Fragments how to" />
-      </div>
+      <div v-if="!slim && claimMsg" class="nge-orph-note">{{ claimMsg }}</div>
       <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
       <ol class="nge-orph-check">
@@ -548,7 +644,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             <span v-if="form.pointMsg" class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.pointOk }">{{ form.pointMsg }}</span>
           </div>
         </li>
-        <li v-if="form.where === 'soma'" :class="{ done: form.noNucleus || !!form.nucId.trim() }">
+        <li v-if="form.where === 'soma'" class="nge-orph-nonum" :class="{ done: form.noNucleus || !!form.nucId.trim() }">
           <div class="nge-orph-row" title="In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs.">
             <b>Nucleus</b>
             <button class="nge-orph-btn" :disabled="form.noNucleus || nucChecking" @click="useNucleus">{{ nucChecking ? 'Reading…' : 'Use crosshairs' }}</button>
@@ -556,6 +652,22 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             <label class="nge-orph-sub"><input type="checkbox" v-model="form.noNucleus" /> No nucleus</label>
           </div>
           <div v-if="nucMsg && !form.noNucleus" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.nucId }">{{ nucMsg }}</span></div>
+        </li>
+        <li v-if="cellTypes.length" class="nge-orph-typeli nge-orph-nonum" :class="{ done: !!(form.cellType || form.cellTypeCustom.trim()) }">
+          <div class="nge-orph-row" title="If you can tell what kind of cell this piece is from. Leave it empty if you are not sure.">
+            <b>Cell type</b> <span class="nge-orph-sub">optional</span>
+          </div>
+          <div class="nge-orph-row nge-orph-typerow">
+            <select v-model="form.cellType" class="nge-orph-input nge-orph-type" aria-label="Cell type" @change="form.cellTypeCustom = ''"
+                    @keydown.stop @keyup.stop @keypress.stop>
+              <option value="">Not sure</option>
+              <option v-for="t in cellTypes" :key="t" :value="t" :title="typeTitle(t)">{{ cellTypeLabel(t) }}</option>
+            </select>
+            <input v-model="form.cellTypeCustom" class="nge-orph-input nge-orph-type" placeholder="Or type your own" maxlength="120"
+                   aria-label="Or type your own cell type" @input="form.cellTypeCustom.trim() && (form.cellType = '')"
+                   @keydown.stop @keyup.stop @keypress.stop />
+          </div>
+          <div v-if="typeNote" class="nge-orph-row"><span class="nge-orph-note nge-orph-note--err">{{ typeNote }}</span></div>
         </li>
       </ol>
       <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
@@ -663,6 +775,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-check li::marker { color: #7ecaff; font-weight: 700; }
 .nge-orph-check li.done::marker { color: #6fe0d0; }
 .nge-orph-check b { color: #eef; }
+.nge-orph-typerow { flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.nge-orph .nge-orph-type { flex: 1 1 150px; min-width: 0; width: auto; }
+/* The nucleus (part of the soma point) and the optional type carry no
+   number (Ames 2026-11-20: "we don't need (4) here"). */
+.nge-orph-check li.nge-orph-nonum { list-style: none; }
 .nge-orph-check input[type=checkbox] { accent-color: #4a9eff; vertical-align: -2px; }
 .nge-orph-sub { font-size: 12.5px; color: #93a0b6; }
 .nge-orph-seg { display: inline-flex; margin-left: 4px; border: 1px solid rgba(120, 140, 255, 0.25); border-radius: 5px; overflow: hidden; vertical-align: 1px; }
@@ -679,6 +796,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-item { display: grid; grid-template-columns: 22px 1fr auto auto 14px; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: #cfdcef; cursor: pointer; text-align: left; font: 13px 'Inter', sans-serif; }
 .nge-orph-item:hover { background: rgba(74, 158, 255, 0.08); }
 .nge-orph-item--held { opacity: 0.45; }
+.nge-orph-countdown { margin: 4px 0 8px; font-size: 12.5px; color: #a9c3e0; }
+.nge-orph-countdown b { color: #e6f0ff; }
+.nge-orph-countdown .nge-orph-countdown-num { color: #ffd35a; }
+.nge-orph-claimbtn { color: #9be8b4 !important; border-color: rgba(68, 170, 102, 0.55) !important; }
+.nge-orph-claimbtn--mine { color: #a9c3e0 !important; border-color: rgba(127, 190, 255, 0.3) !important; }
 /* Training Sim's look (Ames 2026-11-20). Quiet buttons: thin edge, soft words. */
 .nge-orph--slim .nge-orph-task .nge-orph-btn { padding: 5px 9px; border: 1px solid rgba(127, 190, 255, 0.22); border-radius: 6px; background: transparent; color: #a9c3e0; font: 500 12px/1 Inter, system-ui, sans-serif; }
 .nge-orph--slim .nge-orph-task .nge-orph-btn:hover:not(:disabled) { border-color: rgba(127, 216, 255, 0.55); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
@@ -696,10 +818,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
    breaks at two pads three quarters across. 3px of headroom above the edge
    holds the pads, which sit half above it. */
 .nge-orph-slimbtns { gap: 10px !important; }
-.nge-orph-slimrow { padding-right: 16px !important; }
+.nge-orph-slimrow { padding-right: 28px !important; }
 .nge-orph-slimrow .nge-orph-btn { --edge: rgba(74, 158, 255, 0.6); --face: #0a1326; --pad: var(--edge);
   position: relative; isolation: isolate; height: 33px; box-sizing: border-box; display: inline-flex; align-items: center;
-  padding: 3px 16px 0 13px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  padding: 1px 16px 0 13px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
   background: linear-gradient(var(--edge), var(--edge)) left bottom / 100% calc(100% - 3px) no-repeat !important;
   clip-path: polygon(0 3px, calc(100% - 9px) 3px, 100% 12px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
   color: #cfe2f7 !important; font: 600 13px/1 Inter, system-ui, sans-serif !important; }
@@ -717,8 +839,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
     radial-gradient(circle at calc(var(--px) - 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
     radial-gradient(circle at calc(var(--px) + 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
     linear-gradient(90deg, transparent calc(var(--px) - 2.6px), var(--face) calc(var(--px) - 2.6px), var(--face) calc(var(--px) + 2.6px), transparent calc(var(--px) + 2.6px)) left 0 top 3px / 100% 1px no-repeat; }
-.nge-orph-slimrow .nge-orph-skip { --edge: #6fc4ff; --pad: #c9f3ff; padding: 3px 16px 0 13px !important; }
-.nge-orph-slimrow .nge-orph-complete { --edge: #3eecbe; --face: #0c3a30; --pad: #b9ffe6; color: #eafff7 !important; padding: 3px 18px 0 14px !important; }
+.nge-orph-slimrow .nge-orph-skip { --edge: #6fc4ff; --pad: #c9f3ff; padding: 1px 16px 0 13px !important; }
+.nge-orph-slimrow .nge-orph-complete { --edge: #3eecbe; --face: #0c3a30; --pad: #b9ffe6; color: #eafff7 !important; padding: 1px 18px 0 14px !important; }
 .nge-orph-slimrow .nge-orph-complete:hover:not(:disabled), .nge-orph-slimrow .nge-orph-complete.on:not(:disabled) { --edge: #8ff7d6; --face: #11503f; }
 .nge-orph-slimrow .nge-orph-btn:disabled { opacity: 0.55; }
 .nge-orph-slimrow .nge-orph-hl { width: 34px; justify-content: center; padding: 3px 3px 0 0 !important; }

@@ -3389,6 +3389,21 @@ const startNoteCell = ref('');
 const startNoteKicker = ref('Teleport complete');
 const startNoteMs = ref(4200);
 const startNoteN = ref(0);
+/** Where the note sits: centered over the 3D view (Ames 2026-11-20: "please
+ *  center it over the 3D"), else the middle of the page. */
+const startNotePos = ref<{ left: string; top: string } | null>(null);
+function placeStartNote() {
+  // The 3D panel: the one with projection parameters (as markers.ts finds it).
+  let el: HTMLElement | null = null;
+  try {
+    const panels: any[] = (window as any).viewer?.display?.panels ? [...(window as any).viewer.display.panels] : [];
+    el = (panels.find(p => p.projectionParameters && p.element)?.element as HTMLElement | undefined) ?? null;
+  } catch { el = null; }
+  const r = el?.getBoundingClientRect();
+  startNotePos.value = r && r.width > 120 && r.height > 80
+    ? { left: `${Math.round(r.left + r.width / 2)}px`, top: `${Math.round(Math.max(96, r.top + 28))}px` }
+    : null;
+}
 let startNoteTimer: ReturnType<typeof setTimeout> | null = null;
 function showStartNote(text: string, ms = 4200, cellName?: string, kicker = 'Teleport complete') {
   startNote.value = text;
@@ -3396,6 +3411,7 @@ function showStartNote(text: string, ms = 4200, cellName?: string, kicker = 'Tel
   startNoteMs.value = ms;
   const c = currentCell();
   startNoteCell.value = cellName ?? (c ? (history.getNickname(c.segId) || c.liveSegId || c.segId) : '');
+  placeStartNote();
   startNoteN.value++;
   if (startNoteTimer) clearTimeout(startNoteTimer);
   startNoteTimer = setTimeout(() => { startNote.value = ''; startNoteTimer = null; }, ms);
@@ -3786,7 +3802,7 @@ onBeforeUnmount(() => {
       <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest || slimOrphan, 'nge-cl-panel--slimorph': slimOrphan, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
-      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
+      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms', ...(startNotePos || {}) }" role="status" aria-live="polite" @click="startNote = ''">
         <span class="nge-cl-newcell-ring" aria-hidden="true"></span>
         <span class="nge-cl-newcell-kicker">{{ startNoteKicker }}</span>
         <span class="nge-cl-newcell-title">{{ startNote }}</span>
@@ -3804,9 +3820,16 @@ onBeforeUnmount(() => {
                   aria-label="Slim view" :aria-pressed="slimMode ? 'true' : 'false'" @mousedown.stop @click="collapseToCurrent">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div class="nge-cl-title">
-            <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
+          <!-- Tabs folded: the title names the tab, "Cell Library: Lost
+               Fragments" (Ames 2026-11-20: "it just says cell library :
+               lost fragments or whatever tab you're in"). -->
+          <div class="nge-cl-title" :class="{ 'nge-cl-title--tab': tabsFolded }">
+            <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY<template v-if="tabsFolded"><span class="nge-cl-title-sep">:</span> <span class="nge-cl-tabshead-name">{{ currentTabName }}</span></template>
           </div>
+          <button v-if="tabsFolded" class="nge-cl-tabsfold nge-cl-tabsfold--out" aria-expanded="false" title="Show all the tabs" @mousedown.stop @click="setTabsFolded(false)">
+            All tabs
+            <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <button v-if="!viewOnlyDataset" class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
           <button class="nge-cl-close" title="Close (Shift+L)" aria-label="Close the Cell Library" @mousedown.stop @click="emit('hide')">×</button>
         </div>
@@ -3841,14 +3864,7 @@ onBeforeUnmount(() => {
         <!-- Filter tabs -->
         <!-- Tabs in three coloured groups: cells (cyan), community (gold),
              yours (violet). AI and Completed live in the gear picker. -->
-        <div v-if="tabsFolded" class="nge-cl-tabshead">
-          <span class="nge-cl-tabshead-name">{{ currentTabName }}</span>
-          <button class="nge-cl-tabsfold" aria-expanded="false" title="Show all the tabs" @click="setTabsFolded(false)">
-            All tabs
-            <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        </div>
-        <div v-else class="nge-cl-filters nge-cl-filters--grouped nge-cl-filters--foldable">
+        <div v-if="!tabsFolded" class="nge-cl-filters nge-cl-filters--grouped nge-cl-filters--foldable">
           <button class="nge-cl-tabsfold nge-cl-tabsfold--in" aria-expanded="true" title="Fold the tabs away: the header shows the tab you are on" aria-label="Fold the tabs away" @click="setTabsFolded(true)">
             <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -6412,7 +6428,10 @@ select.nge-cl-complete-type:hover {
 /* Folding the tabs (Ames 2026-11-20). */
 .nge-cl-filters--foldable { position: relative; padding-right: 40px; }
 .nge-cl-tabshead { display: flex; align-items: center; gap: 10px; padding: 10px 12px 8px; }
-.nge-cl-tabshead-name { font: 700 13px/1.2 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #cfe6ff; }
+.nge-cl-title--tab { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nge-cl-title-sep { color: rgba(127, 190, 255, 0.6); }
+.nge-cl-tabshead-name { color: #8fd6ff; }
+.nge-cl-tabsfold--out { flex: none; margin-left: 0 !important; margin-right: 4px; }
 .nge-cl-filters .nge-cl-tabsfold, .nge-cl-tabsfold { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 4px 9px; min-width: 0;
   border: 1px solid rgba(127, 190, 255, 0.28); border-radius: 6px; background: transparent; color: #a9c3e0; font: 500 12px/1 Inter, system-ui, sans-serif; cursor: pointer; }
 .nge-cl-filters .nge-cl-tabsfold:hover, .nge-cl-tabsfold:hover { border-color: rgba(127, 216, 255, 0.6); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
