@@ -75,10 +75,12 @@ test('subscribe: the bot trap and bad input', async () => {
 const POST = { id: 'p1', slug: 'new-post', title: 'A new post', summary: 'Short.', body: 'Hello there.', published_at: '2026-11-06T10:00:00Z' };
 const LIVE_PAGE = { 'https://connectome.quest/blog/new-post/': '<h1>A new post</h1>' };
 
-test('check: nothing goes while LIVE is off', async () => {
-  assert.strictEqual(bm.LIVE, false, 'the deployed code must stay off until Ames says go');
+test('check: switched on, posts from before LIVE_SINCE never go', async () => {
+  // On since Ames 2026-11-19 ("I def want blog emails on").
+  assert.strictEqual(bm.LIVE, true);
+  assert.ok(Date.parse(bm.LIVE_SINCE) > Date.parse('2026-11-19T00:00:00Z'), 'old posts must not go out');
   const x = io({ posts: [POST], pages: LIVE_PAGE });
-  assert.deepStrictEqual(await bm.handle('check', {}, x), { live: false, sent: [] });
+  assert.deepStrictEqual(await bm.handle('check', {}, x), { live: true, sent: [] });
   assert.strictEqual(x.f.calls.length, 0);
 });
 
@@ -91,7 +93,7 @@ test('check: a new post goes once, to the blog segment, only when its page is li
   assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, ['new-post'], 'old posts never go');
   const b = x.f.calls.find((c) => c.p === '/broadcasts');
   assert.strictEqual(b.body.segment_id, x.f.segments[bm.SEGMENT]);
-  assert.strictEqual(b.body.subject, 'A new post');
+  assert.strictEqual(b.body.subject, 'Pyr Blog: A new post');
   assert.match(b.body.html, /\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/);
   assert.match(b.body.html, /href="https:\/\/connectome\.quest\/blog\/new-post\/"/);
   assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, [], 'never twice');
@@ -238,4 +240,26 @@ test('check: a week that stopped part way goes on to the rest, not again to the 
     assert.strictEqual(sent.length, 149);
     assert.strictEqual(new Set(sent).size, 149, 'nobody twice');
   } finally { Date.now = realNow; }
+});
+
+test('check: over Resend\'s limit the post waits, uses no try, and goes on a later check', async () => {
+  const live = { since: '2026-11-06T00:00:00Z' };
+  const x = io({ posts: [POST], pages: LIVE_PAGE, io: { live } });
+  const real = x.resend;
+  let full = true;
+  x.resend = async (p, init = {}) => {
+    if (full && p === '/broadcasts') { const e = new Error('resend 429 daily_quota_exceeded'); e.status = 429; e.resend = true; throw e; }
+    return real(p, init);
+  };
+  for (let i = 0; i < 5; i++) assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, [], 'no throw, nothing sent');
+  assert.strictEqual(x.marks.p1.tries, 0, 'no tries used up');
+  full = false;
+  assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, ['new-post']);
+  assert.deepStrictEqual((await bm.handle('check', {}, x)).sent, [], 'only once');
+});
+
+test('subject: blog posts say Pyr Blog; the weekly notes keep their title', () => {
+  const r = (md) => md;
+  assert.strictEqual(bm.postEmail({ slug: 'a-post', title: 'Cilia Status Guide', body: 'Hi.' }, r).subject, 'Pyr Blog: Cilia Status Guide');
+  assert.strictEqual(bm.postEmail({ slug: 'whats-new-in-pyr-2026-11-16', title: "What's new in Pyr: week of November 16", body: 'Hi.' }, r).subject, "What's new in Pyr: week of November 16");
 });

@@ -19,6 +19,13 @@ import {computed, onUnmounted, ref, watch} from 'vue';
 
 const props = defineProps<{ current: number; best: number }>();
 
+// The number sits inside a bigger 🔥, in gold, and the flame grows with each
+// digit so the number always fits (Kfay #589).
+const digits = computed(() => String(Math.max(0, props.current)).length);
+const flamePx = computed(() => digits.value <= 1 ? 24 : digits.value === 2 ? 28 : 32);
+const flameScale = computed(() => flamePx.value / 13);   // the fire was drawn for a 13px 🔥
+const countPx = computed(() => Math.round(flamePx.value * (digits.value <= 1 ? 0.5 : digits.value === 2 ? 0.42 : 0.34)));
+
 const chipEl = ref<HTMLElement | null>(null);
 const flameEl = ref<HTMLElement | null>(null);
 const fireCv = ref<HTMLCanvasElement | null>(null);
@@ -136,8 +143,9 @@ function fireFrame(now: number) {
 function wakeFire() {
   if (still() || fireRaf) return;
   const cv = fireCv.value;
-  if (cv && cv.width !== Math.round(FW * dprOf())) {
-    const d = dprOf();
+  // the canvas is scaled up with the flame, so give it the pixels to stay sharp
+  const d = Math.min(5, dprOf() * flameScale.value);
+  if (cv && cv.width !== Math.round(FW * d)) {
     cv.width = Math.round(FW * d); cv.height = Math.round(FH * d);
     cv.getContext('2d')?.setTransform(d, 0, 0, d, 0, 0);
   }
@@ -244,10 +252,11 @@ onUnmounted(() => {
        tabindex="0" role="button" :aria-expanded="open" :aria-label="`Editing streak: ${current} days`"
        @pointerenter="onEnter" @pointerleave="onLeave" @focus="onEnter" @blur="onLeave"
        @click="stoke" @keydown="onKey">
-    <span class="nge-streak-chip-fire">
+    <span class="nge-streak-chip-fire" :style="{ '--flame-px': flamePx + 'px', '--flame-scale': flameScale, '--count-px': countPx + 'px' }">
       <span ref="flameEl" class="nge-streak-chip-flame">🔥</span>
       <canvas ref="fireCv" class="nge-streak-chip-canvas" aria-hidden="true"></canvas>
-    </span>&nbsp;<span class="nge-streak-chip-count">{{ current }}</span>
+      <span class="nge-streak-chip-count">{{ current }}</span>
+    </span>
 
     <!-- The card. v-if, so every opening is an arrival and runs its entrance once. -->
     <div v-if="open" class="nge-streak-tip" role="tooltip">
@@ -291,20 +300,34 @@ onUnmounted(() => {
   -webkit-tap-highlight-color: transparent;
 }
 .nge-streak-chip:focus-visible { box-shadow: inset 0 0 0 1px rgba(245, 166, 35, 0.6); border-radius: 6px; }
-.nge-streak-chip-fire { position: relative; display: inline-block; }
+.nge-streak-chip-fire { position: relative; display: inline-block; line-height: 1; }
 /* inline-block: a transform does nothing on a plain inline span */
-.nge-streak-chip-flame { display: inline-block; transform-origin: 50% 88%; will-change: transform, filter; }
+.nge-streak-chip-flame { display: inline-block; font-size: var(--flame-px, 24px); line-height: 1; transform-origin: 50% 88%; will-change: transform, filter; }
 .nge-streak-chip-canvas {
   position: absolute; left: 50%; top: 50%;
   width: 46px; height: 54px;
   margin: -34px 0 0 -23px;                 /* the fire's root sits at the 🔥's base */
+  /* drawn for a 13px 🔥: grown about the flame's middle, its root lands at the bigger 🔥's base */
+  transform-origin: 23px 34px;
+  transform: scale(var(--flame-scale, 1));
   pointer-events: none;
 }
-/* the count warms with the fire */
+/* the count sits in the belly of the flame in the bar's own dark color, cut
+   out of the fire, with a pale glow behind it so it reads on the orange
+   (report 592: a gold number on a gold flame was not readable) */
 .nge-streak-chip-count {
-  display: inline-block;
-  text-shadow: 0 0 calc(var(--streak-heat) * 10px) rgba(255, 170, 60, calc(var(--streak-heat) * 0.75));
-  color: color-mix(in srgb, #f5a623, #ffe2a6 calc(var(--streak-heat) * 45%));
+  position: absolute; left: 50%; top: 64%;
+  translate: -50% -50%;                     /* translate, not transform: the click's bump owns transform */
+  font-size: var(--count-px, 12px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  pointer-events: none;
+  z-index: 1;
+  font-weight: 900;
+  color: var(--color-dark-bg, #121212);
+  text-shadow:
+    0 0 2px rgba(255, 236, 170, 0.95), 0 0 4px rgba(255, 220, 140, 0.8),
+    0 0 calc(4px + var(--streak-heat) * 6px) rgba(255, 200, 110, calc(0.5 + var(--streak-heat) * 0.4));
 }
 /* the click: the number takes the hit and springs back */
 .nge-streak-chip--stoked .nge-streak-chip-count { animation: nge-streak-bump 520ms cubic-bezier(.2, 1.7, .4, 1) both; }

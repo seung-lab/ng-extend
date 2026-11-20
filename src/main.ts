@@ -1074,19 +1074,23 @@ function observeSplitMergeTools() {
       if (!store.toolActive && !store.pendingClose) return;
       for (const child of Array.from(container.children)) {
         const el = child as HTMLElement;
-        if (shownErrorLines.has(el) || el.style.display === 'none') continue;
+        if (shownErrorLines.has(el)) continue;
         const text = el.textContent?.trim() || '';
         const lower = text.toLowerCase();
-        // Progress lines the bar already says ("Splitting...", "Merged.")
-        // are kept out of sight too: shown, they lifted the bar, the chat and
-        // the side panel's TODO / PROOFREAD legend for a moment (Nseraf,
-        // report 547). They stay in the page for the scan below to read.
-        if (/^splitting \d+ sources? from \d+ sinks?|^merged\b/.test(lower)) el.classList.add('nge-status-taken');
+        // Progress lines the bar already says ("Splitting...", "Merged.",
+        // the root lookup while a merge point is placed) are kept out of
+        // sight too: shown, they lifted the bar, the chat and the side
+        // panel's TODO / PROOFREAD legend for a moment (Nseraf, reports 547
+        // and 553). Marked even while hidden: neuroglancer adds "Splitting"
+        // hidden and shows it a moment later, which this used to miss.
+        if (/^splitting \d+ sources? from \d+ sinks?|^merged\b|^retrieving root for segment/.test(lower)) el.classList.add('nge-status-taken');
+        if (el.style.display === 'none') continue;
         if (!/split|merge|multicut|supervoxel|segment/.test(lower)) continue;
         if (!/failed|error/.test(lower)) continue;
         takeErrorLine(el, text.replace(/\s*dismiss\s*$/i, '').trim());
       }
-    }).observe(container, { childList: true, subtree: true, characterData: true });
+    // style too: a line neuroglancer shows later only changes its style.
+    }).observe(container, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] });
   }
   watchStatusLines();
 

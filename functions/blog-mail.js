@@ -22,7 +22,9 @@
 const crypto = require('crypto');
 
 const SITE = 'https://connectome.quest';
-const FROM = 'Map the Brain <blog@connectome.quest>';
+// Ames 2026-11-19 asked for "Pyr: Map the Brain"; Resend refuses any colon in
+// a From name, even quoted (422), so the sender uses a dot. The header has the colon.
+const FROM = 'Pyr · Map the Brain <blog@connectome.quest>';
 const REPLY_TO = 'support@eyewire.ai';
 const SEGMENT = 'connectome.quest blog';
 const TEST_SEGMENT = 'connectome.quest blog test';
@@ -46,11 +48,11 @@ const NOTES_LIVE_SINCE = '2099-01-01T00:00:00Z';
 const NOTES_SEND_AFTER_MS = (7 * 24 + 14) * 60 * 60 * 1000;
 // Who the Test segment holds (Ames 2026-11-05: a test only to her).
 const TEST_EMAILS = ['amyleerobinson@gmail.com'];
-// Real subscribers get nothing until Ames has seen a test and said go.
-const LIVE = false;
+// On since 2026-11-20T02:57:11Z (Ames 2026-11-19: "I def want blog emails on"), after a test.
+const LIVE = true;
 // Posts published before this are never emailed (set when LIVE turns on), so
 // switching on does not send the old posts.
-const LIVE_SINCE = '2099-01-01T00:00:00Z';
+const LIVE_SINCE = '2026-11-20T02:57:11Z';
 // Long posts: the opening, up to about this many words, then "Read the rest".
 // scripts/release-notes-blog.mjs SLUG_PREFIX.
 const RELEASE_NOTES = /^whats-new-in-pyr-/;
@@ -220,7 +222,7 @@ function postEmail(post, render) {
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(summary || title)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.bg}"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
-<tr><td style="padding:0 4px 14px;font:700 13px/1 ${FONT};letter-spacing:.08em;text-transform:uppercase"><a href="${SITE}/blog/" style="color:${C.teal};text-decoration:none"><img src="${SITE}/assets/images/favicon-pyr.png" width="20" height="20" alt="" style="vertical-align:middle;border:0;border-radius:4px;margin-right:8px" />Map the Brain blog</a></td></tr>
+<tr><td style="padding:0 4px 14px;font:700 13px/1 ${FONT};letter-spacing:.08em;text-transform:uppercase"><a href="${SITE}/blog/" style="color:${C.teal};text-decoration:none"><img src="${SITE}/assets/images/favicon-pyr.png" width="20" height="20" alt="" style="vertical-align:middle;border:0;border-radius:4px;margin-right:8px" />Pyr: Map the Brain</a></td></tr>
 <tr><td style="background:${C.card};border-radius:16px;overflow:hidden">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${cover}
 <tr><td style="padding:28px 28px 8px">
@@ -237,7 +239,10 @@ Seung Lab, Princeton University</td></tr>
 </table></td></tr></table></body></html>`;
   const text = [title, meta.replace(/&[a-z#0-9]+;/g, ''), '', summary, '', `Read it on the blog: ${url}`, '',
     'You\'re getting this because you signed up at connectome.quest.', 'Unsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}'].join('\n');
-  return { subject: title, html, text };
+  // "it should somehow say Blog in the email subject" (Ames 2026-11-20). The
+  // weekly What's new in Pyr keeps its own title, which already says Pyr.
+  const subject = RELEASE_NOTES.test(String(post.slug || '')) ? title : `Pyr Blog: ${title}`;
+  return { subject, html, text };
 }
 
 // ── Sending ───────────────────────────────────────────────────────────────
@@ -287,7 +292,11 @@ async function check(a, io) {
       await io.sentPosts.set(post.id, { state: 'sent', broadcast: id, sentAt: new Date().toISOString() });
       sent.push(post.slug);
     } catch (e) {
-      await io.sentPosts.set(post.id, { state: 'failed', error: String(e && e.message).slice(0, 300) });
+      // Over Resend's limit (429): no try used up, and the next check (every
+      // 15 minutes) sends it once the limit lifts (Ames 2026-11-19).
+      const limit = e && e.status === 429;
+      await io.sentPosts.set(post.id, { state: 'failed', error: String(e && e.message).slice(0, 300), ...(limit ? { tries: (mark && mark.tries) || 0 } : {}) });
+      if (limit) break;
       throw e;
     }
   }
@@ -390,7 +399,11 @@ async function sendNotes(io, live) {
       await io.sentPosts.set(id, { state: 'sent', done: to.length, sentAt: new Date().toISOString() });
       return [post.slug];
     } catch (e) {
-      await io.sentPosts.set(id, { state: 'failed', error: String(e && e.message).slice(0, 300) });
+      // Over Resend's limit: no try used up; the next check goes on from the
+      // people it had not reached (Ames 2026-11-19).
+      const limit = e && e.status === 429;
+      await io.sentPosts.set(id, { state: 'failed', error: String(e && e.message).slice(0, 300), ...(limit ? { tries: (mark && mark.tries) || 0 } : {}) });
+      if (limit) return [];
       throw e;
     }
   }

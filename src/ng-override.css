@@ -1566,6 +1566,16 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .neuroglancer-segment-display-tab { overflow-y: auto !important; }
 .nge-seg-list--folder, .nge-seg-list--pasted { flex: 0 1 auto !important; max-height: 220px !important; }
 .nge-seg-list-group--inview > .neuroglancer-segment-list { flex: 1 1 auto !important; min-height: min(320px, calc(45 * var(--nge-vh, 1vh))); }
+/* Report 583: with In view the only list (no folders, nothing pasted) there
+   is nothing to make room for, so it shrinks to the panel, e.g. when the
+   Selection panel shares the column on a short screen, and only the list
+   scrolls. Before, the panel scrolled too: two scrollbars side by side, and
+   the outer one squeezed the rows into a sideways scrollbar. */
+.neuroglancer-segment-display-tab:not(:has(.nge-seg-list-group--folder, .nge-seg-list-group--pasted:not([style*="none"]))) .nge-seg-list-group--inview > .neuroglancer-segment-list { min-height: 0; }
+/* The panel never scrolls sideways; when it does scroll (folders), the room
+   for its scrollbar is kept so the rows never get narrower. */
+.neuroglancer-segment-display-tab { overflow-x: hidden !important; }
+.neuroglancer-segment-display-tab:has(.nge-seg-list-group--folder, .nge-seg-list-group--pasted:not([style*="none"])) { scrollbar-gutter: stable; }
 
 /* the heading's icons keep their place while hidden, so nothing on the
    heading moves when the pointer comes over it (Ames 2026-10-14) */

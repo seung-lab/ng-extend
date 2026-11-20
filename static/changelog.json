@@ -2,6 +2,53 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T14:45:00Z",
+      "title": "Steadier merging and scrolling",
+      "items": [
+        "Clear in Merge Mode now also removes a red dot left by a first point placed outside the data.",
+        "The bottom bar and the TODO legend no longer jump up while a cut or merge is being sent.",
+        "With folders, the Segments panel now keeps its place when you switch tabs and come back."
+      ]
+    },
+    {
+      "at": "2026-11-20T13:50:00Z",
+      "title": "More screenshots in a report",
+      "items": [
+        "A bug report can now carry up to four screenshots, so you can show what happened before and after."
+      ]
+    },
+    {
+      "at": "2026-11-20T13:08:00Z",
+      "title": "An easier to read streak and a tidier Segments panel",
+      "items": [
+        "The day count in your streak flame is now dark against the fire, so it is easy to read.",
+        "On a short screen, the Segments panel no longer shows two scrollbars side by side or cuts off the edge of the list."
+      ]
+    },
+    {
+      "at": "2026-11-20T03:17:00Z",
+      "title": "A faster Cell Library",
+      "items": [
+        "The Cell Library does much less work when it opens and updates, so it stays quick even with thousands of cells and many of your own claims."
+      ]
+    },
+    {
+      "at": "2026-11-20T03:01:00Z",
+      "title": "Datasets Unlocked arrives Nov 20",
+      "items": [
+        "At 10 am Eastern on Nov 20, your profile shows an emblem for each dataset you have unlocked: the Retina, MEC, FlyWire and BANC.",
+        "Join us in chat then for the Datasets Unlocked ceremony."
+      ]
+    },
+    {
+      "at": "2026-11-20T02:50:00Z",
+      "title": "A bigger streak flame, and a faster Mine list",
+      "items": [
+        "Your streak in the top bar is now a bigger flame with the number of days inside it in gold. The flame grows as the number gets longer.",
+        "The Mine list in the Cell Library no longer freezes the page for a few seconds when you have finished many cells."
+      ]
+    },
+    {
       "at": "2026-11-20T00:46:00Z",
       "title": "Datasets Unlocked on your profile",
       "items": [
