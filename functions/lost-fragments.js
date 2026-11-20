@@ -145,6 +145,8 @@ function sheetRow(row, playerName) {
     row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus), row.note];
 }
 /** Writes the row; returns the sheet row number it is on. */
+// OVERWRITE: a new line goes into the next empty row, which keeps the sheet's
+// own look; inserting a row copied the header's white text (Ames 2026-11-20).
 async function writeSheet(sheets, row, playerName) {
   const values = [sheetRow(row, playerName)];
   if (row.sheet_row) {
@@ -152,7 +154,7 @@ async function writeSheet(sheets, row, playerName) {
       { method: 'PUT', body: JSON.stringify({ values }) });
     return row.sheet_row;
   }
-  const r = await sheets(`${SHEET_ID}/values/${encodeURIComponent(`${SHEET_TAB}!A:P`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+  const r = await sheets(`${SHEET_ID}/values/${encodeURIComponent(`${SHEET_TAB}!A:P`)}:append?valueInputOption=USER_ENTERED&insertDataOption=OVERWRITE`,
     { method: 'POST', body: JSON.stringify({ values }) });
   const m = /![A-Z]+(\d+)/.exec(String((r && r.updates && r.updates.updatedRange) || ''));
   return m ? Number(m[1]) : null;

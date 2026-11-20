@@ -675,28 +675,39 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-seg button { color: #a9c3e0; font: 600 12px/1.3 Inter, system-ui, sans-serif; padding: 4px 9px; }
 .nge-orph-seg button.on { background: rgba(74, 158, 255, 0.3); color: #fff; box-shadow: inset 0 0 0 1px #7fd8ff; }
 .nge-orph-finishhead b { font: 600 12px/1 Orbitron, Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #d6e2f5; }
-/* The layer tab's shape (Ames 2026-11-20: "give them the cool shape and maybe
-   the one circuit. Inspo: layers"): the corner cuts, an edge light that fades
-   toward the foot, a dark face. Complete is green and carries one trace. */
+/* The selected layer tab's border (Ames 2026-11-20: "the top bar of the
+   layers tab that's active has the line with the circle and then the gap and
+   then another circle and then the line continues ... that's the border"):
+   a solid edge all round, no fade, and on Skip and Complete the top edge
+   breaks at two pads three quarters across. 3px of headroom above the edge
+   holds the pads, which sit half above it. */
 .nge-orph-slimbtns { gap: 10px !important; }
 .nge-orph-slimrow { padding-right: 16px !important; }
-.nge-orph-slimrow .nge-orph-btn { --edge: rgba(74, 158, 255, 0.55); --face: #0a1326; --cut: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
-  position: relative; isolation: isolate; height: 30px; box-sizing: border-box; display: inline-flex; align-items: center;
-  padding: 0 16px 0 13px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
-  background: linear-gradient(180deg, var(--edge) 0%, var(--edge) 40%, color-mix(in srgb, var(--edge) 25%, transparent) 100%) !important;
-  clip-path: var(--cut); color: #cfe2f7 !important; font: 600 13px/1 Inter, system-ui, sans-serif !important; transition: filter 0.15s; }
-.nge-orph-slimrow .nge-orph-btn::before { content: ''; position: absolute; inset: 1px; z-index: -1; pointer-events: none; background: var(--face);
-  clip-path: polygon(0 0, calc(100% - 8.6px) 0, 100% 8.6px, 100% 100%, 6.6px 100%, 0 calc(100% - 6.6px)); transition: background 0.15s; }
+.nge-orph-slimrow .nge-orph-btn { --edge: rgba(74, 158, 255, 0.6); --face: #0a1326; --pad: var(--edge);
+  position: relative; isolation: isolate; height: 33px; box-sizing: border-box; display: inline-flex; align-items: center;
+  padding: 3px 16px 0 13px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: linear-gradient(var(--edge), var(--edge)) left bottom / 100% calc(100% - 3px) no-repeat !important;
+  clip-path: polygon(0 3px, calc(100% - 9px) 3px, 100% 12px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+  color: #cfe2f7 !important; font: 600 13px/1 Inter, system-ui, sans-serif !important; }
+.nge-orph-slimrow .nge-orph-btn::before { content: ''; position: absolute; inset: 4px 1px 1px 1px; z-index: -1; pointer-events: none; background: var(--face);
+  clip-path: polygon(0 0, calc(100% - 8.6px) 0, 100% 8.6px, 100% 100%, 6.6px 100%, 0 calc(100% - 6.6px)); }
 .nge-orph-slimrow .nge-orph-btn:hover:not(:disabled) { --edge: #8fd6ff; --face: #0f1d3a; color: #fff !important; }
 .nge-orph-slimrow .nge-orph-btn:focus-visible { outline: none; --edge: #ffffff; }
-.nge-orph-slimrow .nge-orph-complete { --edge: #3eecbe; --face: #0c3a30; color: #eafff7 !important; padding: 0 18px 0 14px !important; }
+/* Skip and Complete: the two pads and the gap in the top edge, three quarters
+   across, or clear of the cut corner on a narrow button. */
+.nge-orph-slimrow .nge-orph-skip, .nge-orph-slimrow .nge-orph-complete { --px: min(75%, calc(100% - 26px));
+  clip-path: polygon(0 3px, calc(var(--px) - 8px) 3px, calc(var(--px) - 8px) 0, calc(var(--px) + 8px) 0, calc(var(--px) + 8px) 3px,
+    calc(100% - 9px) 3px, 100% 12px, 100% 100%, 7px 100%, 0 calc(100% - 7px)); }
+.nge-orph-slimrow .nge-orph-skip::after, .nge-orph-slimrow .nge-orph-complete::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 8px; z-index: 1; pointer-events: none;
+  background:
+    radial-gradient(circle at calc(var(--px) - 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at calc(var(--px) + 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
+    linear-gradient(90deg, transparent calc(var(--px) - 2.6px), var(--face) calc(var(--px) - 2.6px), var(--face) calc(var(--px) + 2.6px), transparent calc(var(--px) + 2.6px)) left 0 top 3px / 100% 1px no-repeat; }
+.nge-orph-slimrow .nge-orph-skip { --edge: #6fc4ff; --pad: #c9f3ff; padding: 3px 16px 0 13px !important; }
+.nge-orph-slimrow .nge-orph-complete { --edge: #3eecbe; --face: #0c3a30; --pad: #b9ffe6; color: #eafff7 !important; padding: 3px 18px 0 14px !important; }
 .nge-orph-slimrow .nge-orph-complete:hover:not(:disabled), .nge-orph-slimrow .nge-orph-complete.on:not(:disabled) { --edge: #8ff7d6; --face: #11503f; }
-/* The one circuit: a trace in along the top that ends on a pad. */
-.nge-orph-slimrow .nge-orph-complete::after { content: ''; position: absolute; left: 4px; right: 12px; top: 3px; height: 5px; pointer-events: none; opacity: 0.85;
-  background: radial-gradient(circle at calc(100% - 3px) 2.5px, var(--face) 0 0.9px, #b9ffe6 1.3px 2.1px, transparent 2.5px),
-    linear-gradient(#b9ffe6, #b9ffe6) left 0 top 2px / calc(100% - 5.6px) 1px no-repeat; }
 .nge-orph-slimrow .nge-orph-btn:disabled { opacity: 0.55; }
-.nge-orph-slimrow .nge-orph-hl { width: 34px; justify-content: center; padding: 0 3px 0 0 !important; }
+.nge-orph-slimrow .nge-orph-hl { width: 34px; justify-content: center; padding: 3px 3px 0 0 !important; }
 .nge-orph-slimrow .nge-orph-hl :deep(svg) { width: 18px !important; height: 18px !important; }
 .nge-orph-nucid { font: 600 12px 'JetBrains Mono', ui-monospace, monospace; color: #cfe6ff; }
 .nge-orph-item--on { background: rgba(74, 158, 255, 0.14); border-color: rgba(126, 202, 255, 0.35); }
