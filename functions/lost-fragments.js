@@ -92,7 +92,8 @@ function cleanAnswer(a) {
   const nucleusId = String(a.nucleusId || '').trim();
   if (nucleusId && !/^\d{1,20}$/.test(nucleusId)) throw bad('A nucleus ID is a number.');
   const noNucleus = a.noNucleus === true;
-  if (a.pointIn === 'soma' && !noNucleus && !nucleusId) throw bad('Add the nucleus ID, or tick No nucleus.');
+  // The nucleus step is gone from the game (Ames 2026-11-20: "get rid of
+  // this!"); an ID sent by an older page is still kept.
   const note = String(a.note || '').trim();
   if (note.length > 2000) throw bad('The note is too long (2,000 characters at most).');
   const labFlag = FLAGS.includes(a.labFlag) ? a.labFlag : '';

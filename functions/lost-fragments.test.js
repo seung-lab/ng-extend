@@ -58,7 +58,7 @@ test('answers are checked before anything is saved', () => {
   assert.throws(() => cleanAnswer({ ...ANSWER, fragmentId: 'x' }), /fragment ID/);
   assert.throws(() => cleanAnswer({ ...ANSWER, fixed: false }), /both checks/);
   assert.throws(() => cleanAnswer({ ...ANSWER, pt: null }), /crosshairs/);
-  assert.throws(() => cleanAnswer({ ...ANSWER, pointIn: 'soma' }), /nucleus ID/);
+  assert.equal(cleanAnswer({ ...ANSWER, pointIn: 'soma' }).point_in, 'soma');  // the nucleus step is gone
   assert.equal(cleanAnswer({ ...ANSWER, pointIn: 'soma', noNucleus: true }).point_in, 'soma');
   assert.throws(() => cleanAnswer({ ...ANSWER, note: 'x'.repeat(2001) }), /too long/);
   assert.equal(cleanAnswer({ ...ANSWER, labFlag: '<b>' }).lab_flag, '');
