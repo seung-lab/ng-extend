@@ -10,7 +10,12 @@
  * small file, timed. Checked when the box opens and every minute while it
  * is open; Check again asks at once.
  */
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+
+/** compact: one line ("All servers OK") that opens by itself when one is not
+ *  (Ames 2026-11-20: at the top of the Datasets tab). */
+const props = defineProps<{ compact?: boolean }>();
+const open = ref(false);
 import { DATASETS } from '../datasets';
 import { authHeaders } from '../widgets/pcg_service';
 
@@ -75,6 +80,19 @@ async function checkAll() {
   } finally { busy = false; }
 }
 
+/** The worst state of all, and what to say about it on the one line. */
+const overall = computed(() => {
+  const all = rows.value.flatMap(r => r.checks.map(c => ({ r, c })));
+  if (all.some(x => x.c.state === 'checking')) return { state: 'checking' as State, text: 'Checking the servers…' };
+  const bad = all.filter(x => x.c.state === 'down' || x.c.state === 'slow');
+  if (!bad.length) return { state: 'ok' as State, text: 'All servers OK' };
+  const worst = bad.some(x => x.c.state === 'down') ? 'down' as State : 'slow' as State;
+  const first = bad[0];
+  const more = bad.length > 1 ? ` and ${bad.length - 1} more` : '';
+  return { state: worst, text: `${first.r.name}: ${first.c.label.toLowerCase()} is ${first.c.state === 'down' ? 'down' : 'slow'}${more}` };
+});
+const showRows = computed(() => !props.compact || open.value || overall.value.state === 'slow' || overall.value.state === 'down');
+
 const WORD: Record<State, string> = { checking: 'Checking…', ok: 'OK', slow: 'Slow', down: 'Down' };
 let timer = 0;
 onMounted(() => { void checkAll(); timer = window.setInterval(() => { if (!document.hidden) void checkAll(); }, 60_000); });
@@ -82,13 +100,19 @@ onUnmounted(() => clearInterval(timer));
 </script>
 
 <template>
-  <section class="nge-srv" aria-label="Server status">
-    <header class="nge-srv-head">
-      <span class="nge-srv-title">Server status</span>
+  <section class="nge-srv" :class="{ 'nge-srv--compact': compact }" aria-label="Server status">
+    <button v-if="compact" type="button" class="nge-srv-line" :aria-expanded="showRows" @click="open = !open">
+      <span class="nge-srv-check" :class="`nge-srv--${overall.state}`"><i aria-hidden="true"></i></span>
+      <span class="nge-srv-line-k">Server status</span>
+      <span class="nge-srv-line-v" :class="`nge-srv-v--${overall.state}`">{{ overall.text }}</span>
+      <span class="nge-srv-caret" aria-hidden="true">{{ showRows ? '▾' : '▸' }}</span>
+    </button>
+    <header v-if="!compact || showRows" class="nge-srv-head">
+      <span v-if="!compact" class="nge-srv-title">Server status</span>
       <span class="nge-srv-sub">Whether the lab's servers are answering, and how fast.<template v-if="checkedAt"> Checked {{ checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }}.</template></span>
       <button type="button" class="nge-srv-again" @click="checkAll">Check again</button>
     </header>
-    <div class="nge-srv-grid">
+    <div v-if="showRows" class="nge-srv-grid">
       <div v-for="r in rows" :key="r.id" class="nge-srv-row">
         <span class="nge-srv-name">{{ r.name }}</span>
         <span v-for="c in r.checks" :key="c.label" class="nge-srv-check" :class="`nge-srv--${c.state}`"
@@ -97,12 +121,20 @@ onUnmounted(() => clearInterval(timer));
         </span>
       </div>
     </div>
-    <p class="nge-srv-foot">Slow or Down usually clears up on its own. If cuts, merges or images fail for a long time, send a bug report.</p>
+    <p v-if="showRows" class="nge-srv-foot">Slow or Down usually clears up on its own. If cuts, merges or images fail for a long time, send a bug report.</p>
   </section>
 </template>
 
 <style>
 .nge-srv { margin: 0 0 14px; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(110,150,220,.25); background: rgba(14,22,40,.75); }
+.nge-srv--compact { padding: 0; }
+.nge-srv--compact > :not(.nge-srv-line) { margin-left: 14px; margin-right: 14px; }
+.nge-srv--compact > :last-child:not(.nge-srv-line) { margin-bottom: 12px; }
+.nge-srv-line { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nge-srv-line-k { color: #93a8c6; font-size: 12.5px; }
+.nge-srv-line-v { color: #dbe6f5; font-size: 13px; font-weight: 600; }
+.nge-srv-v--slow { color: #f5c76a; } .nge-srv-v--down { color: #ff9a9a; }
+.nge-srv-caret { margin-left: auto; color: #93a8c6; }
 .nge-srv-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .nge-srv-title { font-weight: 700; font-size: 15px; color: #eef4ff; }
 .nge-srv-sub { color: #93a8c6; font-size: 12.5px; flex: 1; min-width: 220px; }

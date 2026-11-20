@@ -3160,6 +3160,8 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           {{ viewingOtherUser ? `The datasets ${profileName} has contributed to.` : 'The datasets you have contributed to.' }}
           Click one to switch your viewer to it.
         </div>
+        <!-- Are the lab's servers up? One line at the top, open when one is not (Nseraf, report 554; Ames 2026-11-20). -->
+        <ServerStatus v-if="!viewingOtherUser" compact />
         <div v-if="accessRows.length" class="nge-ds-access">
           <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Edit access</div>
           <div class="nge-ds-access-row">
@@ -3226,8 +3228,6 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
       <!-- More datasets (Ames 2026-10-06): optional, explore only volumes
            each player can add to their own switcher. -->
       <div v-if="activeTab === 'datasets' && !viewingOtherUser" class="nge-profile-body nge-ds-more">
-        <!-- Are the lab's servers up? (Nseraf, report 554) -->
-        <ServerStatus />
         <div class="nge-ds-more-title">More datasets</div>
         <div class="nge-ds-more-intro">Turn on extra datasets to add them to your dataset switcher. These are for exploring: you can look around, colour cells and share views, but there is nothing to proofread or claim in them.</div>
         <label v-for="ds in DATASETS.filter(d => d.optional && !d.hidden)" :key="ds.id" class="nge-ds-more-row">
@@ -6005,7 +6005,7 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-text { display: flex; flex-direction: column; gap: 3px; }
 .nge-ds-access-name { font: 700 14px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; text-shadow: 0 0 8px rgba(var(--c), 0.45); }
 .nge-ds-access-state { font: 600 10px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(var(--c)); }
-.nge-ds-access-tile--edit { --c: 110, 240, 170; }
+.nge-ds-access-tile--edit { --c: 124, 200, 255; } /* blue, not green (Ames 2026-11-20) */
 .nge-ds-access-tile--locked { --c: 150, 170, 200; opacity: 0.7; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(0.6) brightness(0.85); }
 .nge-ds-access-tile--unknown { opacity: 0.55; }
