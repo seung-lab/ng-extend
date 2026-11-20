@@ -8,6 +8,9 @@
 import nurroFlying from '../../static/nurro/nurro-super-v2.png';
 
 const LIFE_MS = 1250;
+/** The art leans nose down by about this much (degrees): turned by the
+ *  heading less this, his body points the way he flies. */
+const ART_LEAN = 12;
 /** The fly-by's climb: tan of 15 degrees. */
 const SLOPE = Math.tan(15 * Math.PI / 180);
 interface Puff { x: number; y: number; vx: number; vy: number; age: number; size: number; }
@@ -18,14 +21,13 @@ interface Puff { x: number; y: number; vx: number; vy: number; age: number; size
 export function flyNurroAcross(src: string = nurroFlying): Promise<void> { return flyNurroFrom(null, src, true); }
 
 interface PathPoint { x: number; y: number; turn: number; heading: number; }
-/** The fly-by's path, sampled: top left corner, the turn of the art (0 is
- *  the art as drawn, flying the base line) and the heading in radians. From
+/** The fly-by's path, sampled: top left corner, the turn of the art (his
+ *  body along the heading) and the heading in radians. From
  *  (x, y) along (dx, dy); a wave or a loop rides on that line. */
 function acrossPath(kind: 'straight' | 'wave' | 'loop', x: number, y: number, dx: number, dy: number, size: number): PathPoint[] {
   const len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
   // "up" from the line: its normal toward the top of the page
   const nx = uy, ny = -ux;
-  const base = Math.atan2(dy, dx);
   const R = size * 1.1, loopAt = len * (0.35 + Math.random() * 0.25);
   const total = kind === 'loop' ? len + 2 * Math.PI * R : len;
   const N = 90, pts: { x: number; y: number }[] = [];
@@ -47,7 +49,7 @@ function acrossPath(kind: 'straight' | 'wave' | 'loop', x: number, y: number, dx
     const a = pts[Math.max(0, i - 1)], b = pts[Math.min(N, i + 1)];
     const heading = Math.atan2(b.y - a.y, b.x - a.x);
     // the turn, unwrapped so the loop turns all the way round, never back
-    let turn = (heading - base) * 180 / Math.PI;
+    let turn = heading * 180 / Math.PI - ART_LEAN;
     while (turn - prevTurn > 180) turn -= 360;
     while (turn - prevTurn < -180) turn += 360;
     prevTurn = turn;
@@ -88,10 +90,13 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
     // at random each time ("sometimes he flies straight, sometimes he does a
     // little loop-de-loop"): straight, a gentle wave, or a loop. His head
     // always points the way he is going, and the contrail streams behind.
+    // Three ways (Ames 2026-11-20): up at 15 degrees, down at 15, or up with
+    // a loop-de-loop. The art is turned to point along the way he goes.
     const climb = (W + 2 * size) * SLOPE;
-    const ay = Math.min(H * 0.66 - size, climb + H * 0.04 + Math.random() * Math.max(0, H * 0.62 - size - climb - H * 0.04));
-    const kind = across ? (['straight', 'wave', 'loop'] as const)[Math.floor(Math.random() * 3)] : 'straight';
-    const path = across ? acrossPath(kind, -size, ay, W + 2 * size, -climb, size) : [];
+    const kind = across ? (['up', 'down', 'loop'] as const)[Math.floor(Math.random() * 3)] : 'up';
+    const room = Math.max(0, H * 0.62 - size - climb - H * 0.04);
+    const ay = kind === 'down' ? H * 0.04 + Math.random() * room : Math.min(H * 0.66 - size, climb + H * 0.04 + Math.random() * room);
+    const path = across ? acrossPath(kind === 'loop' ? 'loop' : 'straight', -size, ay, W + 2 * size, kind === 'down' ? climb : -climb, size) : [];
     const DURATION = across ? (kind === 'loop' ? 6800 : 5200) : 3800;
     const anim = across ? img.animate(path.map((q, i) => ({
       transform: `translate(${q.x}px, ${q.y}px) rotate(${q.turn}deg)`, opacity: 1, offset: i / (path.length - 1),
