@@ -2158,6 +2158,16 @@ exports.ewSecureWrite = onRequest(
             }
             break;
           }
+          // Lost Fragments answers (lost-fragments.js, supabase-lost-fragments.sql):
+          // the table, the fragment's merges, cuts and volume read with the
+          // player's own CAVE sign in, and the researchers' sheet.
+          if (typeof action === "string" && action.startsWith("fragments.")) {
+            const { fragmentsAction } = require("./lost-fragments");
+            const { sheetsApi } = require("./sheet-sync");
+            out = await fragmentsAction(action, args, { sb, me, isAdmin, caveToken: token, caveId: who.caveId,
+              sheets: (path, init) => sheetsApi(admin.applicationDefault(), path, init) });
+            break;
+          }
           // The admins' To do board (supabase-admin-todos.sql, Ames
           // 2026-10-19): every rule is in todos.js. A tag reaches the person
           // twice: the bell in Pyr, and a Slack message that pings them.
