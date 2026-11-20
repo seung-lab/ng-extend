@@ -613,9 +613,9 @@ watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loa
 watch(() => backendStore.userId, () => { if (activeTab.value === 'overview') void loadAccess(); }, { immediate: true });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets' || activeTab.value === 'overview') void loadAccess(); });
 /** Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19):
- *  your own shows every dataset, locked ones dark; someone else's only the
- *  ones they have unlocked, and nothing when they have none. */
-const unlockedRow = computed(() => accessRows.value.filter(r => r.emblem && (!viewingOtherUser.value || r.state === 'edit')));
+ *  only the ones unlocked, on every profile ("we dont want locked datasets
+ *  on profile"), and nothing when there are none. */
+const unlockedRow = computed(() => accessRows.value.filter(r => r.emblem && r.state === 'edit'));
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
