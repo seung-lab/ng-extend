@@ -459,7 +459,7 @@ const CSS = `
 @keyframes nge-cm-load{from{left:-40%}to{left:100%}}
 #${CARD_ID} .nge-cm-score{position:relative}
 #${CARD_ID} .nge-cm-gbolt{position:absolute;z-index:1;pointer-events:none}
-#${CARD_ID}.nge-cm-checking .nge-cm-score.nge-cm-bolting .nge-cm-gauge::after{display:none}
+
 #${CARD_ID}.nge-cm-checking .nge-cm-state::before{content:'';display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px;
   border:1.5px solid rgba(127,216,255,.35);border-top-color:#7fd8ff;border-radius:50%;animation:nge-cm-spin 1.8s linear infinite}
 @keyframes nge-cm-spin{to{transform:rotate(360deg)}}
@@ -1172,52 +1172,31 @@ function removeChip() {
 /** Opening and closing (Ames 2026-11-20: "a cool animation for the box to
  *  open and close"): the box powers on like a screen, a bright line that
  *  opens into the box, its parts arriving in turn; and off the same way. */
-/** While the box checks, Find Path's lightning runs along the score bar, end
- *  to end, and strikes when the reading arrives (Ames 2026-11-20: "Can we use
- *  the same path tracing loading here"). */
-let gaugeBolt: { el: HTMLElement; cv: HTMLCanvasElement; live: Live; ro?: ResizeObserver; ending?: boolean } | null = null;
+/** When the box has finished checking and the new score is in, one bolt of
+ *  Find Path's lightning strikes along the score bar, end to end (Ames
+ *  2026-11-20: "the lightning should only flash on the score bar once it's
+ *  done calculating"). While it checks, the bar keeps its soft sweep. */
+const wasChecking = new WeakMap<HTMLElement, boolean>();
 function syncGaugeBolt(el: HTMLElement) {
-  if (gaugeBolt && (!gaugeBolt.cv.isConnected || gaugeBolt.el !== el)) { endGaugeBolt(); }
-  const on = el.classList.contains('nge-cm-checking') && !el.classList.contains('nge-cm-loading') && !el.classList.contains('nge-cm-reviewing');
+  const checking = el.classList.contains('nge-cm-checking');
+  const was = wasChecking.get(el) ?? false;
+  wasChecking.set(el, checking);
+  if (!was || checking || el.classList.contains('nge-cm-loading') || el.classList.contains('nge-cm-reviewing')) return;
   const g = el.querySelector('.nge-cm-score .nge-cm-gauge') as HTMLElement | null;
   const score = g?.closest('.nge-cm-score') as HTMLElement | null;
-  if (on && !gaugeBolt && g && score && g.offsetWidth) {
-    const cv = document.createElement('canvas');
-    cv.className = 'nge-cm-gbolt';
-    cv.setAttribute('aria-hidden', 'true');
-    score.appendChild(cv);
-    score.classList.add('nge-cm-bolting');
-    const live: Live = { raf: 0, timer: 0 };
-    const b: NonNullable<typeof gaugeBolt> = { el, cv, live };
-    gaugeBolt = b;
-    let fitted = '';
-    const fit = () => {
-      if (gaugeBolt !== b || b.ending || !g.offsetWidth) return;
-      const key = `${g.offsetWidth}x${g.offsetLeft}x${g.offsetTop}`;
-      if (key === fitted) return;
-      fitted = key;
-      cv.style.left = `${g.offsetLeft - 6}px`;
-      cv.style.top = `${g.offsetTop + g.offsetHeight / 2 - 9}px`;
-      cancelAnimationFrame(live.raf);
-      startLoader(cv, live, g.offsetWidth + 12, 18, 6);
-    };
-    fit();
-    try { b.ro = new ResizeObserver(fit); b.ro.observe(g); } catch { /* fitted once */ }
-  } else if (!on && gaugeBolt && !gaugeBolt.ending) {
-    const b = gaugeBolt;
-    b.ending = true;
-    if (b.live.finish && b.cv.isConnected) b.live.finish(() => { if (gaugeBolt === b) endGaugeBolt(); syncGaugeBolt(el); });
-    else endGaugeBolt();
-  }
-}
-function endGaugeBolt() {
-  const b = gaugeBolt;
-  if (!b) return;
-  gaugeBolt = null;
-  b.ro?.disconnect();
-  cancelAnimationFrame(b.live.raf);
-  b.cv.closest('.nge-cm-score')?.classList.remove('nge-cm-bolting');
-  b.cv.remove();
+  if (!g || !score || !g.offsetWidth || score.querySelector('canvas.nge-cm-gbolt')) return;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = document.createElement('canvas');
+  cv.className = 'nge-cm-gbolt';
+  cv.setAttribute('aria-hidden', 'true');
+  cv.style.left = `${g.offsetLeft - 6}px`;
+  cv.style.top = `${g.offsetTop + g.offsetHeight / 2 - 9}px`;
+  score.appendChild(cv);
+  const live: Live = { raf: 0, timer: 0 };
+  startLoader(cv, live, g.offsetWidth + 12, 18, 6);
+  const end = () => { cancelAnimationFrame(live.raf); cv.remove(); };
+  if (live.finish) live.finish(end); else end();
+  window.setTimeout(end, 2500);
 }
 function powerOn(el: HTMLElement) {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
@@ -1574,6 +1553,16 @@ function lookAhead(taskId: number, r: MatchResult) {
   window.setTimeout(() => { if (last.get(taskId)?.root === r.root) askAhead(taskId, r.root, n, 1); }, 1200);
 }
 
+/** Resolves once the box is not checking, or after 25 s. */
+function untilChecked(el: HTMLElement): Promise<void> {
+  if (!el.classList.contains('nge-cm-checking')) return Promise.resolve();
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    const t = window.setInterval(() => {
+      if (!el.isConnected || !el.classList.contains('nge-cm-checking') || Date.now() - t0 > 25000) { clearInterval(t); resolve(); }
+    }, 100);
+  });
+}
 async function pressHint(el: HTMLElement, next = false) {
   const taskId = shownFor;
   if (taskId == null) return;
@@ -1596,6 +1585,12 @@ async function pressHint(el: HTMLElement, next = false) {
   let found = false;
   line.classList.add('nge-cm-finding');
   try {
+    // Pressed while the score is still being worked out (Ames 2026-11-20:
+    // "it takes a really, really long time to jump"): the spot depends on the
+    // cell after the edit, so it waits for that reading (Jump's lightning
+    // runs meanwhile) and then asks once, for the cell as it is now, instead
+    // of a second full reading running alongside the first.
+    await untilChecked(el);
     const root = last.get(taskId)?.root;
     const key = aheadKey(taskId, root, c.n, step);
     const early = ahead.get(key);

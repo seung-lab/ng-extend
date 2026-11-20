@@ -182,8 +182,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await page.waitForTimeout(300);
     const dim = await page.evaluate(() => document.getElementById('nge-cell-match').classList.contains('nge-cm-checking'));
     // Find Path's lightning along the bar, end to end (Ames 2026-11-20).
-    const loading = await page.evaluate(() => { const g = document.querySelector('#nge-cell-match .nge-cm-score .nge-cm-gauge'), cv = document.querySelector('#nge-cell-match .nge-cm-score canvas.nge-cm-gbolt'); if (!cv) return { cv: false }; const a = g.getBoundingClientRect(), b = cv.getBoundingClientRect(); return { cv: true, left: Math.round(b.left + 6 - a.left), right: Math.round(b.right - 6 - a.right), mid: Math.round((b.top + b.bottom) / 2 - (a.top + a.bottom) / 2), sweep: getComputedStyle(g, '::after').display }; });
-    check('while checking, lightning runs along the score bar from end to end', loading.cv && Math.abs(loading.left) <= 1 && Math.abs(loading.right) <= 1 && Math.abs(loading.mid) <= 1 && loading.sweep === 'none', loading);
+    // While checking, the soft sweep; no lightning yet (Ames 2026-11-20).
+    const loading = await page.evaluate(() => { const g = document.querySelector('#nge-cell-match .nge-cm-score .nge-cm-gauge'); return { sweep: getComputedStyle(g, '::after').animationName, bolt: !!document.querySelector('#nge-cell-match canvas.nge-cm-gbolt') }; });
+    check('while checking, a soft light sweeps the score bar, and no lightning yet', loading.sweep === 'nge-cm-load' && !loading.bolt, loading);
     check('an edit dims the numbers at once and says Merge complete', dim && /merge complete/.test(await cardText() || ''), await cardText());
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
@@ -192,9 +193,20 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const updated = await waitText(/39%/, 10000);
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
     check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19\.5 19\.5% 1 edit merge \+39 39% 11 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
-    await page.waitForFunction(() => !document.getElementById('nge-cell-match').classList.contains('nge-cm-checking'), null, { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1800);
-    check('the reading arrives: the lightning strikes and is gone', await page.evaluate(() => !document.querySelector('#nge-cell-match canvas.nge-cm-gbolt')), null);
+    // The reading arrives: one bolt flashes along the bar, end to end, and is gone.
+    const flash = await page.evaluate(async () => {
+      const c = document.getElementById('nge-cell-match');
+      const t0 = performance.now();
+      while (c.classList.contains('nge-cm-checking') && performance.now() - t0 < 15000) await new Promise(r => setTimeout(r, 20));
+      await new Promise(r => requestAnimationFrame(() => r()));
+      const g = c.querySelector('.nge-cm-score .nge-cm-gauge'), cv = c.querySelector('canvas.nge-cm-gbolt');
+      if (!cv) return { cv: false };
+      const a = g.getBoundingClientRect(), b = cv.getBoundingClientRect();
+      return { cv: true, left: Math.round(b.left + 6 - a.left), right: Math.round(b.right - 6 - a.right), mid: Math.round((b.top + b.bottom) / 2 - (a.top + a.bottom) / 2) };
+    });
+    check('the score is in: one bolt flashes along the bar from end to end', flash.cv && Math.abs(flash.left) <= 1 && Math.abs(flash.right) <= 1 && Math.abs(flash.mid) <= 1, flash);
+    await page.waitForTimeout(2000);
+    check('and then it is gone', await page.evaluate(() => !document.querySelector('#nge-cell-match canvas.nge-cm-gbolt')), null);
     await shot('cell-match-after-merge.png');
     // Report 573: 19.9 to 34.9 read +14.999999 in floating point.
     const tenth = await page.evaluate(() => {
@@ -439,6 +451,18 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const inMain = await page.evaluate(() => { const ls = window.viewer.layerManager.managedLayers.filter(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState); return ls.some(l => [...l.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).includes('648518346351009999')); });
     check('Show me: the piece in gold in your own layer (so Ctrl+click merges it), and what to do', /gold piece belongs to your cell\. merge it in\. spot 1 of 2\.$/i.test(hinted.text) && inMain && !hinted.layers.includes('Hint piece') && hinted.layers.includes('Hint spot'), { hinted, inMain });
     check('the two steps were asked in order', hintSteps.join(',') === '1,2', hintSteps);
+    // Jump while the score is still being worked out: it waits for the
+    // reading, then asks once (Ames 2026-11-20: it took a very long time).
+    const hintsBefore = hintSteps.length;
+    await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.classList.add('nge-cm-checking'); c.querySelector('.nge-cm-hbtn').click(); });
+    await page.waitForTimeout(1200);
+    const duringCheck = hintSteps.length - hintsBefore;
+    const searchingMeanwhile = await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').classList.contains('nge-cm-searching'));
+    await page.evaluate(() => document.getElementById('nge-cell-match').classList.remove('nge-cm-checking'));
+    await page.waitForTimeout(1500);
+    const afterCheck = hintSteps.length - hintsBefore;
+    check('Jump pressed while checking: its lightning runs, no hint is asked until the reading is in, then one', duringCheck === 0 && searchingMeanwhile && afterCheck === 1, { duringCheck, searchingMeanwhile, afterCheck });
+    await page.waitForTimeout(2000);
     check('the lab hears: opened, Hint offered (the hint itself is recorded by the server)', events.includes('opened') && events.includes('hint_offered'), events);
     await shot('cell-match-hint-shown.png');
     await edit([answer.root]);

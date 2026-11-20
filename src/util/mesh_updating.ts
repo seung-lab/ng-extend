@@ -16,6 +16,12 @@ const POLL_MS = 250;
 const SHOW_AFTER_MS = 900;     // a quick update never shows the pill
 const HIDE_AFTER_MS = 400;     // nor does it flicker between pieces
 const GIVE_UP_MS = 120_000;    // a view that never settles is not watched forever
+// Some pieces never arrive (one that failed to load, or one neuroglancer keeps
+// asking for), and the pill sat at 98% for the full two minutes (Ames
+// 2026-11-20: "is this stuck? it's been on 98% for some time"). When the count
+// stops moving, the shape is as done as it will get: the pill goes.
+const STALL_NEAR_MS = 3_000;   // no progress for this long at 90% or more
+const STALL_ANY_MS = 15_000;   // or this long anywhere
 const PLACE_KEY = 'nge-mesh-updating-place';
 
 function segProgress(viewer: any): { need: number; have: number } {
@@ -76,6 +82,7 @@ export function startMeshUpdating(viewer: any) {
   let editAt = 0;
   let caughtUpAt = 0;
   let timer = 0;
+  let lastHave = -1, lastNeed = -1, movedAt = 0;
 
   const place = () => {
     if (!el) return false;
@@ -140,7 +147,10 @@ export function startMeshUpdating(viewer: any) {
     if (now > watchUntil) { hide(); clearInterval(timer); timer = 0; return; }
     if (document.hidden) return;
     const p = segProgress(viewer);
-    if (p.need > 0 && p.have < p.need) {
+    if (p.have !== lastHave || p.need !== lastNeed) { lastHave = p.have; lastNeed = p.need; movedAt = now; }
+    const still = now - (movedAt || now);
+    const stalled = p.need > 0 && (still >= STALL_ANY_MS || (still >= STALL_NEAR_MS && p.have / p.need >= 0.9));
+    if (p.need > 0 && p.have < p.need && !stalled) {
       caughtUpAt = 0;
       if (now - editAt >= SHOW_AFTER_MS) show(p);
     } else {
@@ -155,6 +165,7 @@ export function startMeshUpdating(viewer: any) {
     if (kind !== 'merge' && kind !== 'split') return;
     editAt = Date.now();
     caughtUpAt = 0;
+    lastHave = -1; lastNeed = -1; movedAt = editAt;
     watchUntil = editAt + GIVE_UP_MS;
     if (!timer) timer = window.setInterval(tick, POLL_MS);
   }) as EventListener);
