@@ -1238,9 +1238,12 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  /* The sidebar sits right beside the column, the two centered together
+     (Ames 2026-11-20: the gap between them was too wide). */
+  justify-content: center;
 }
 .nge-set-nav {
-  flex: 0 0 200px;
+  flex: 0 0 236px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1259,7 +1262,7 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
   background: rgba(8, 14, 28, 0.8);
   color: #e0e8f5;
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   color-scheme: dark;
 }
 .nge-set-search::placeholder { color: rgba(160, 185, 220, 0.55); }
@@ -1273,8 +1276,8 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
   scrollbar-width: thin;
 }
 .nge-set-nav-cat {
-  margin: 12px 0 4px 8px;
-  font-size: 10.5px;
+  margin: 14px 0 5px 8px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1285,14 +1288,14 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 7px 9px;
   border: 0;
   border-left: 2px solid transparent;
   border-radius: 0 6px 6px 0;
   background: none;
-  color: #9fb3cc;
+  color: #b4c5dc;
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   text-align: left;
   cursor: pointer;
 }
@@ -1301,7 +1304,7 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
 .nge-set-nav-item.is-current,
 .nge-set-nav-item.is-active { border-left-color: #4a9eff; background: rgba(74, 158, 255, 0.14); color: #fff; }
 .nge-set-nav-item:disabled { opacity: 0.45; cursor: default; }
-.nge-set-nav-num { font-size: 10px; color: #4a9eff; min-width: 16px; font-variant-numeric: tabular-nums; }
+.nge-set-nav-num { font-size: 11.5px; color: #4a9eff; min-width: 16px; font-variant-numeric: tabular-nums; }
 .nge-set-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nge-set-nav-count {
   margin-left: auto;
@@ -1310,7 +1313,7 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
   border-radius: 999px;
   background: rgba(74, 158, 255, 0.18);
   color: #cfe3ff;
-  font-size: 11px;
+  font-size: 12.5px;
   text-align: center;
 }
 /* Rows a search or Changed leaves out. */
@@ -1363,10 +1366,12 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
   /* The scrolling region. `min-height: 0` is required: a flex child defaults to
      min-height:auto, which refuses to shrink below its content and would keep
      the panel taller than the viewport no matter the max-height above. */
-  flex: 1 1 auto;
+  flex: 0 1 820px;
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
+  /* All the text a little larger (Ames 2026-11-20: "the text in general is small"). */
+  font-size: 1.12em;
   background:
     radial-gradient(ellipse at 50% 0%, rgba(74, 158, 255, 0.07), transparent 60%),
     repeating-linear-gradient(0deg, rgba(126, 202, 255, 0.025) 0 1px, transparent 1px 28px),
@@ -1376,13 +1381,14 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
 .nge-settings-content > * {
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: 760px;
   margin-left: auto;
   margin-right: auto;
   flex-shrink: 0;
 }
 @media (max-width: 760px) {
-  .nge-settings-content { padding: 14px 12px 10px; }
+  .nge-settings-content { padding: 14px 12px 10px; } 
+  .nge-settings-content { flex: 1 1 auto; }
 }
 
 .nge-settings-section {
@@ -1965,7 +1971,7 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
   cursor: pointer;
 }
 .nge-set-viewas-seg button.is-on { background: rgba(126, 224, 255, 0.22); color: #fff; font-weight: 600; }
-.nge-set-viewas-hint { flex: 1 1 260px; color: #8ea2bd; font-size: 12px; line-height: 1.4; }
+.nge-set-viewas-hint { flex: 1 1 260px; color: #8ea2bd; font-size: 13px; line-height: 1.4; }
 .nge-set-col {
   display: flex;
   flex-direction: column;
