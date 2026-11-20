@@ -38,6 +38,7 @@ import retinaEmblemArt from '../images/datasets/retina.png';
 import mecEmblemArt from '../images/datasets/mec.png';
 import flywireEmblemArt from '../images/datasets/flywire.png';
 import bancEmblemArt from '../images/datasets/banc.png';
+import ca3EmblemArt from '../images/datasets/ca3.png';
 import { flyNurroAcross, flyNurroFrom } from '../util/nurro_fly';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
@@ -1119,7 +1120,7 @@ const ACCESS_LINE_ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/e
 const isAccessLine = (msg: ChatMessage) => msg.type === 'message' && msg.rank === 'achievement' && /^(access|unlocked):[a-z0-9_]+$/.test(String(msg.dataset || ''));
 // The Datasets Unlocked ceremony's roll call (Ames 2026-11-19): each line
 // carries that dataset's emblem. Its own key, so it never dates a grant.
-const UNLOCKED_ART: Record<string, string> = { stroeh_mouse_retina: retinaEmblemArt, pni_mec: mecEmblemArt, flywire_fafb_production: flywireEmblemArt, banc: bancEmblemArt };
+const UNLOCKED_ART: Record<string, string> = { stroeh_mouse_retina: retinaEmblemArt, pni_mec: mecEmblemArt, flywire_fafb_production: flywireEmblemArt, banc: bancEmblemArt, zheng_ca3: ca3EmblemArt };
 const accessLineArt = (msg: ChatMessage) => { const m = /^unlocked:([a-z0-9_]+)$/.exec(String(msg.dataset || '')); return (m && UNLOCKED_ART[m[1]]) || ACCESS_LINE_ART; };
 const achTrack = (msg: ChatMessage) => achievementOf(msg)?.track || '';
 const achArt = (msg: ChatMessage) => achievementOf(msg)?.art || '';
