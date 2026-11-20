@@ -60,6 +60,10 @@ const MIN_PIECE = 50;
 /** Pieces smaller than this (in supervoxels) are optional, see above. */
 const SMALL_PIECE = 500;
 let small = SMALL_PIECE;
+/** An untouched truth object this big or bigger may be a whole neuron nobody
+ *  proofread: it still counts as another cell. */
+const UNPLACED_MAX = 100000;
+let unplacedMax = UNPLACED_MAX;
 /** A cell that starts with less than this share of its true cell is mostly
  *  its nucleus (Ames 2026-11-14: "it keeps taking me to a nucleus"). */
 const NUCLEUS_ONLY = 0.2;
@@ -579,16 +583,18 @@ async function wrongParts(cg, memo, wrong) {
 
 /** Parts the true cells never placed (synapse123 2026-11-19: "it often tells
  *  me that i did a wrong merge even though it looks right"; Ames's 32 wrong
- *  parts on task 16780). pinky_training was proofread around its own cells
- *  only: everything else is still the raw segmentation, cut into objects that
- *  belong to no cell. Of the 32 parts on 16780, 31 were such objects, each
- *  untouched and lying wholly in the player's cell; one was 9,114 supervoxels
- *  of a 760,706 supervoxel cell. An object nobody edited, all of it in the
- *  player's cell, says nothing about whether it belongs there: it is neither
- *  right nor wrong. It is out of the Cut, the parts, the review and Jump, and
- *  merging one in is no change. A part of an edited object (a cell, or a
- *  merger the proofreader cut off), or of one reaching beyond the player's
- *  cell, is wrong as before. `size` is how much of it is in the cell. */
+ *  parts on task 16780; Kfay's "-2.5% on a good merge"). pinky_training was
+ *  proofread around its own cells only: everything else is still the raw
+ *  segmentation, cut into objects nobody looked at. Of the 32 parts on 16780,
+ *  31 were such objects; the one real part was 9,114 supervoxels of a cell
+ *  edited 196 times. Kfay's merge took in 5,774 supervoxels of an untouched
+ *  8,877 supervoxel object. An object nobody edited says nothing about where
+ *  it belongs: it is neither right nor wrong. It is out of the Cut, the parts,
+ *  the review and Jump, and merging some of it in is no change. A part of an
+ *  edited object (a cell, or a merger the proofreader cut off), or of an
+ *  untouched one of UNPLACED_MAX supervoxels or more (a neuron nobody
+ *  proofread), is wrong as before. `size` (how much is in the cell) is unused
+ *  now; kept for the callers. */
 async function unplaced(cg, root, size) {
   let known = placedMemo.get(root);
   if (known === undefined) {
@@ -598,7 +604,7 @@ async function unplaced(cg, root, size) {
     }
     placedMemo.set(root, known);
   }
-  return known !== 'edited' && known <= size;
+  return known !== 'edited' && known < unplacedMax;
 }
 
 /** The most wrong supervoxels this player's cell has held (kept in
@@ -917,6 +923,6 @@ module.exports = {
   mergePercent,
   handle, check, review, hint, event, notes, mine, warmKeys, smallSvs, shownScore, nearestChunkNm, buildKey, keyFor, svPointNm,
   toSet, minus, countMinus, chunksOf, reachShare, matchPercent, scorePercent, partPercent, groupPieces, piecesLeft, cave,
-  _reset({smallPiece = SMALL_PIECE} = {}) { small = smallPiece; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); placedMemo.clear(); attachedMemo.clear(); em._reset(); reviewMemo.clear(); spotMemo.clear(); },
+  _reset({smallPiece = SMALL_PIECE, unplacedBig = UNPLACED_MAX} = {}) { small = smallPiece; unplacedMax = unplacedBig; truthSets.clear(); truthChunkSets.clear(); lastResult.clear(); building.clear(); optionalSets.clear(); cellSets.clear(); partsMemo.clear(); placedMemo.clear(); attachedMemo.clear(); em._reset(); reviewMemo.clear(); spotMemo.clear(); },
   SANDBOX, TRUTH, KEY_VERSION, NUCLEUS_REACH, MIN_PIECE, partCutOff, SAMPLES, FOUND_SHARE,
 };

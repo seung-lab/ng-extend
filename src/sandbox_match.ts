@@ -16,6 +16,7 @@
  * which compares the player's cell with the true cell in pinky_training; the
  * answer key never reaches the browser, only what is still wrong after Complete.
  */
+import { startLoader, type Live } from './find_path_status';
 import { fullViewUrl } from './util/local_view';
 import { exitGrapheneTool, activeGrapheneToolKind, activateGrapheneTool } from './widgets/graphene_tool_utils';
 import { highlightStyles, saveHighlightStyles, MAX_HIGHLIGHT_STYLES } from './util/highlight';
@@ -437,13 +438,10 @@ const CSS = `
 /* The Playing box (Ames 2026-11-14). */
 body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !important}
 /* The cell icon leads the top line (Ames 2026-11-14: "put this cell icon on the left"). */
-#${CARD_ID} .nge-cm-cellbtn{order:-1;margin-right:2px;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid rgba(127,190,255,.35);border-radius:6px;background:rgba(127,190,255,.08);color:#bfe6ff}
-/* The light that was a dot is now the icon's box: green playing, blue checking, red when an edit went the wrong way. */
-#${CARD_ID} .nge-cm-cellbtn{border:1.5px solid #59e3a7;box-shadow:0 0 7px rgba(89,227,167,.45),inset 0 0 6px rgba(89,227,167,.15)}
-#${CARD_ID}.nge-cm-checking .nge-cm-cellbtn{border-color:#7fc8ff;box-shadow:0 0 7px rgba(127,200,255,.45)}
-#${CARD_ID}.nge-cm-bad .nge-cm-cellbtn{border-color:#ff6b8a;box-shadow:0 0 8px rgba(255,107,138,.5)}
-#${CARD_ID}.nge-cm-idle .nge-cm-cellbtn{border-color:rgba(127,190,255,.35);box-shadow:none}
-#${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.2);color:#fff}
+/* The icon on its own, no box around it (Ames 2026-11-19: "I don't think we need the green box around this"). */
+#${CARD_ID} .nge-cm-cellbtn{order:-1;margin-right:2px;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;box-shadow:none;color:#bfe6ff}
+#${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.14);color:#fff}
+#${CARD_ID} .nge-cm-cellbtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
 #${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important}
 #${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:nge-cm-hglow 2.6s ease-in-out infinite}
@@ -486,8 +484,16 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-hbtn[hidden]{display:none}
 #${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
 @keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
+/* Jump searches like Find Path (Ames 2026-11-19: "can you use something like
+   the find path loading indicator?"): its explorers run across the button
+   while it looks, and the route lights when the spot is found. */
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn{position:relative}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled){background:rgba(74,158,255,.34) !important;border-color:#a8e4ff !important;color:#fff !important}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-searching:disabled{opacity:1;cursor:progress}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-searching .nge-cm-jlabel{visibility:hidden}
+#${CARD_ID} .nge-cm-jloader{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged,#${CARD_ID} .nge-cm-hbtn.nge-cm-glow1{animation:none}}
-#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
+#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn,#${CARD_ID}.nge-cm-idle .nge-cm-bulb,#${CARD_ID}.nge-cm-reviewing .nge-cm-bulb,#${CARD_ID}.nge-cm-finishing .nge-cm-bulb{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
 #${CARD_ID} .nge-cm-nudge{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
@@ -498,13 +504,18 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 @keyframes nge-cm-find-shine{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after,#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before,#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:none}}
 #${CARD_ID} .nge-cm-nudge[hidden]{display:none}
-/* Folded to one line until the player opens it (Ames 2026-11-19: "this is too big, need a way to collapse"). */
-#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){padding:6px 9px;cursor:pointer}
-#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-btns{display:none}
+/* Folded into a light bulb beside Jump (Ames 2026-11-19: "just a little light
+   bulb we can click to open it as an icon to keep it small and sweet"). */
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){display:none}
 #${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px}
-#${CARD_ID} .nge-cm-nudge-more svg{transition:transform .15s}
-#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open .nge-cm-nudge-more svg{transform:rotate(180deg)}
+#${CARD_ID} .nge-cm-nudge-more svg{transform:rotate(180deg)}
+#${CARD_ID} .nge-cm-jumprow{grid-area:jump;display:flex;gap:5px;min-width:0}
+#${CARD_ID} .nge-cm-jumprow .nge-cm-hbtn{flex:1 1 auto;min-width:0}
+#${CARD_ID} .nge-cm-bulb{flex:0 0 32px;display:grid;place-items:center;padding:0;border:1px solid rgba(127,216,255,.45);border-radius:6px;background:rgba(127,216,255,.08);cursor:pointer;transition:background-color .15s,border-color .15s,box-shadow .15s}
+#${CARD_ID} .nge-cm-bulb[hidden]{display:none}
+#${CARD_ID} .nge-cm-bulb:hover{background:rgba(127,216,255,.2);border-color:#a8e4ff}
+#${CARD_ID} .nge-cm-bulb:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
+#${CARD_ID} .nge-cm-bulb[aria-expanded="true"]{background:rgba(127,216,255,.24);border-color:#7fd8ff;box-shadow:0 0 8px rgba(127,216,255,.45)}
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
 #${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
@@ -729,7 +740,8 @@ const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip Cell</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-marktoggle" aria-expanded="false" title="Mark where you have been">Highlight<svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump to next spot</button>'
+  + '<div class="nge-cm-jumprow"><button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing"><span class="nge-cm-jlabel">Jump to next spot</span></button>'
+  + '<button type="button" class="nge-cm-bulb" hidden aria-expanded="false" aria-label="Show the hint" title="Show the hint">' + BULB_SVG + '</button></div>'
   + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
   + '<div class="nge-cm-viewnote"></div>'
   + MARK_HTML
@@ -1364,6 +1376,8 @@ async function pressHint(el: HTMLElement, next = false) {
   line.hidden = false;
   if (step === 1) { b.hidden = true; text.textContent = 'Finding the next spot…'; }
   b.disabled = true; jump.disabled = true; if (step === 2) b.textContent = 'Finding…';
+  if (next) startJumpSearch(jump);
+  let found = false;
   line.classList.add('nge-cm-finding');
   try {
     const root = last.get(taskId)?.root;
@@ -1381,6 +1395,7 @@ async function pressHint(el: HTMLElement, next = false) {
     if (step === 1 && h.piece) askAhead(taskId, root, c.n, 2);
     if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; return; }
     showHintPiece(h.piece);
+    found = true;
     const where = h.left > 1 ? ` Spot ${(c.n % h.left) + 1} of ${h.left}.` : '';
     // A missing branch can bring part of another cell with it (Ames
     // 2026-11-14: "this missed piece has a huge merger on it").
@@ -1403,7 +1418,7 @@ async function pressHint(el: HTMLElement, next = false) {
     console.debug('[cell-match] no jump', e?.message);
     text.textContent = 'Could not find the next spot right now. Try again in a moment.';
     b.textContent = 'Show me';
-  } finally { b.disabled = false; jump.disabled = false; line.classList.remove('nge-cm-finding'); }
+  } finally { b.disabled = false; jump.disabled = false; if (next) finishJumpSearch(found); line.classList.remove('nge-cm-finding'); }
 }
 let hintPinTimer: number | undefined;
 function showHintPiece(p: HintPiece) {
@@ -1568,20 +1583,59 @@ function keepSize(el: HTMLElement) {
   el.addEventListener('mouseup', save);
   el.addEventListener('pointerup', save);
 }
+/** Jump's search, drawn with Find Path's loader (find_path_status.ts). */
+let jumpSearch: { jump: HTMLElement; cv: HTMLCanvasElement; live: Live } | null = null;
+function endJumpSearch() {
+  const j = jumpSearch;
+  if (!j) return;
+  jumpSearch = null;
+  cancelAnimationFrame(j.live.raf);
+  j.cv.remove();
+  j.jump.classList.remove('nge-cm-searching');
+}
+function startJumpSearch(jump: HTMLElement) {
+  endJumpSearch();
+  const cv = document.createElement('canvas');
+  cv.className = 'nge-cm-jloader';
+  cv.setAttribute('aria-hidden', 'true');
+  jump.appendChild(cv);
+  jump.classList.add('nge-cm-searching');
+  const live: Live = { raf: 0, timer: 0 };
+  jumpSearch = { jump, cv, live };
+  startLoader(cv, live, Math.max(80, Math.min(190, jump.clientWidth - 24)), 20);
+}
+/** Found: the route lights, then the label is back. Not found: it stops. */
+function finishJumpSearch(found: boolean) {
+  const j = jumpSearch;
+  if (!j) return;
+  if (!found || !j.live.finish) { endJumpSearch(); return; }
+  j.live.finish(() => { if (jumpSearch === j) endJumpSearch(); });
+}
 function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
   el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
   el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', e => { e.stopPropagation(); void pressHint(el); });
-  // The hint folds to one line; a click opens it, and Pyr remembers.
+  // The hint folds into a light bulb beside Jump; the bulb opens it, the
+  // arrow folds it, and Pyr remembers. The bulb is there only with a hint,
+  // still when a new one comes (Ames: "we don't need to pulse the hint").
   const hintLine = el.querySelector('.nge-cm-nudge') as HTMLElement;
   const hintMore = el.querySelector('.nge-cm-nudge-more') as HTMLElement;
-  const setHintOpen = (open: boolean) => { hintLine.classList.toggle('nge-cm-nudge-open', open); hintMore.setAttribute('aria-expanded', String(open)); hintMore.setAttribute('aria-label', open ? 'Fold the hint' : 'Show the whole hint'); hintMore.title = hintMore.getAttribute('aria-label')!; };
+  const bulb = el.querySelector('.nge-cm-bulb') as HTMLElement;
+  const setHintOpen = (open: boolean) => {
+    hintLine.classList.toggle('nge-cm-nudge-open', open);
+    hintMore.setAttribute('aria-expanded', String(open)); hintMore.setAttribute('aria-label', 'Fold the hint'); hintMore.title = 'Fold the hint';
+    bulb.setAttribute('aria-expanded', String(open));
+    bulb.setAttribute('aria-label', open ? 'Hide the hint' : 'Show the hint'); bulb.title = bulb.getAttribute('aria-label')!;
+  };
+  const syncBulb = () => { bulb.hidden = hintLine.hidden; };
+  new MutationObserver(syncBulb).observe(hintLine, { attributes: true, attributeFilter: ['hidden'] });
+  syncBulb();
   let hintOpen = false;
   try { hintOpen = localStorage.getItem(HINT_OPEN_KEY) === '1'; } catch { /* folded */ }
   setHintOpen(hintOpen);
   const toggleHint = (open: boolean) => { setHintOpen(open); try { localStorage.setItem(HINT_OPEN_KEY, open ? '1' : '0'); } catch { /* this visit only */ } };
-  hintMore.addEventListener('click', e => { e.stopPropagation(); toggleHint(!hintLine.classList.contains('nge-cm-nudge-open')); });
-  hintLine.addEventListener('click', () => { if (!hintLine.classList.contains('nge-cm-nudge-open')) toggleHint(true); });
+  hintMore.addEventListener('click', e => { e.stopPropagation(); toggleHint(false); });
+  bulb.addEventListener('click', () => toggleHint(!hintLine.classList.contains('nge-cm-nudge-open')));
   for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
   // Highlight folds away (Ames 2026-11-18: "this box is so big"), closed at
   // first; each player's choice is remembered.

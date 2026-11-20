@@ -41,3 +41,27 @@ test('member queries cannot read the invite list or change other users waitlist 
  assert.equal(q.body.user_id,ctx.me.id);
  assert.throws(()=>plan('tutorial_practice_waitlist','POST',{kind:'cut'},'on_conflict=kind'),/conflict/);
 });
+
+test('a tester cannot choose many rows, or remove what another player made',()=>{
+ for(const table of ['help_requests','issue_tags','segment_tags']) {
+  for(const q of ['id=not.is.null','id=gt.0','id=in.(1,2)','id=eq.1&id=eq.2','id=neq.1','id=eq.1,2'])
+   assert.throws(()=>plan(table,'DELETE',null,q),/single row/,table+' '+q);
+  assert.throws(()=>plan(table,'PATCH',{note:'x',notes:'x'},'id=like.*'),/single row/);
+  assert.throws(()=>plan(table,'DELETE',null,'id=not.is.null',{...ctx,isAdmin:true}),/single row/);
+ }
+ assert.equal(plan('help_requests','DELETE',null).query.get('and'),'(user_id.eq.'+ctx.me.id+')');
+ assert.equal(plan('issue_tags','DELETE',null).query.get('and'),'(user_id.eq.'+ctx.me.id+')');
+ assert.equal(plan('segment_tags','DELETE',null).query.get('and'),'(created_by.eq.'+ctx.me.id+',or(source.is.null,source.neq.spreadsheet_import))');
+ assert.equal(plan('help_requests','DELETE',null,'id=eq.1&and=(id.gt.0)').query.get('and'),'(user_id.eq.'+ctx.me.id+')');
+ assert.equal(plan('help_requests','DELETE',null,'id=eq.11111111-1111-4111-8111-111111111111',{...ctx,isAdmin:true}).query.get('and'),null);
+});
+test('anyone may mark help solved; only the author rewrites it; imported labels are an admin\'s',()=>{
+ assert.equal(plan('help_requests','PATCH',{resolved:true,resolved_by:'x'}).query.get('and'),null);
+ assert.equal(plan('issue_tags','PATCH',{status:'resolved'}).query.get('and'),null);
+ assert.equal(plan('help_requests','PATCH',{resolved:true,note:'rewritten'}).query.get('and'),'(user_id.eq.'+ctx.me.id+')');
+ assert.equal(plan('help_requests','PATCH',{resolved:false}).query.get('and'),'(user_id.eq.'+ctx.me.id+')');
+ assert.equal(plan('issue_tags','PATCH',{note:'rewritten'}).query.get('and'),'(user_id.eq.'+ctx.me.id+')');
+ const tag=plan('segment_tags','PATCH',{tag:'Glia',source:'spreadsheet_import'});
+ assert.equal(tag.query.get('and'),'(or(source.is.null,source.neq.spreadsheet_import))');assert.equal(tag.body.source,undefined);
+ assert.equal(plan('segment_tags','PATCH',{tag:'Glia'},'id=eq.1',{...ctx,isAdmin:true}).query.get('and'),null);
+});

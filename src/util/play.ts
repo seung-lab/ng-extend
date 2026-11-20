@@ -8,6 +8,7 @@
  *   cells   mapping: proofread a cell's shape (bipolar cells on Retina, or a
  *           Sandbox cell before edit access), Complete to finish it.
  *   quests  annotating: the Cilia Quest, Submit to finish it.
+ *   fragments  Lost Fragments (Retina, test sites for now): Submit, then the next one.
  *
  * Where it starts: the Play button at the top left of the view (PlayButton),
  * "Play here" on the Cell Library's Available and Quests tabs, and the
@@ -27,8 +28,11 @@ import { skipNextViewRestoreOffer } from './view_autosave';
 import { QUEST_DATASET } from '../annotation_quests';
 import { useProofreadingBackendStore } from '../store';
 import { trainingLeft, openTraining } from './play_training';
+import { ON_TEST_SITE } from '../hunt';
 
-export type PlayKind = 'cells' | 'quests';
+export type PlayKind = 'cells' | 'quests' | 'fragments';
+const KINDS: PlayKind[] = ['cells', 'quests', 'fragments'];
+const isKind = (v: unknown): v is PlayKind => KINDS.includes(v as PlayKind);
 
 const KIND_KEY = 'nge-play-kind';
 const ON_KEY = 'nge_play_on';
@@ -38,7 +42,7 @@ const FRESH_MS = 3 * 60_000;  // a dataset switch can reload the page
 function readOn(): PlayKind | null {
   try {
     const v = sessionStorage.getItem(ON_KEY);
-    return v === 'cells' || v === 'quests' ? v : null;
+    return isKind(v) ? v : null;
   } catch { return null; }
 }
 
@@ -52,7 +56,7 @@ export const play = reactive({
 export function savedKind(): PlayKind | null {
   try {
     const v = localStorage.getItem(KIND_KEY);
-    return v === 'cells' || v === 'quests' ? v : null;
+    return isKind(v) ? v : null;
   } catch { return null; }
 }
 function keepKind(k: PlayKind) { try { localStorage.setItem(KIND_KEY, k); } catch { /* private window */ } }
@@ -78,7 +82,7 @@ export function takePlayEnter(): PlayKind | null {
     const w = JSON.parse(sessionStorage.getItem(ENTER_KEY) || 'null');
     sessionStorage.removeItem(ENTER_KEY);
     if (!w || Date.now() - (w.at || 0) > FRESH_MS) return null;
-    return w.kind === 'cells' || w.kind === 'quests' ? w.kind : null;
+    return isKind(w.kind) ? w.kind : null;
   } catch { return null; }
 }
 
@@ -99,6 +103,27 @@ const isQuestDataset = (ds: DatasetEntry | undefined) => !!ds && canonicalDatase
 
 /** Can this player annotate quests? They need edit access on Retina. */
 export function canQuest(): boolean { return canClaimOn(RETINA()); }
+/** Can this player see Retina at all? Glia Quest's first stage (is it a glia,
+ *  yes or no) needs only view access (Ames 2026-11-19). */
+export function canViewRetina(): boolean {
+  const ds = RETINA();
+  if (!ds) return false;
+  if (isAdmin()) return true;
+  const a = datasetAccess(ds.caveDataset);
+  return a === 'edit' || a === 'view';
+}
+/** The Retina hub (Ames 2026-11-19: one "Start playing" card with BC
+ *  Challenge, Lost Fragments, Cilia Quest and Glia Quest): every test site,
+ *  and admins on live ("Admins only" while saves stay in the browser). */
+export function retinaHub(): boolean { return ON_TEST_SITE || isAdmin() || fragmentTester(); }
+/** Players let into the Lost Fragments preview on live, beside admins, by
+ *  Pyr user id (Ames 2026-11-19: "open up Lost Fragments to Jan Lause"). */
+const FRAGMENT_TESTERS = new Set<string>([
+  '5bb0310a-b42d-4d13-937f-eab620794949',  // Jan Lause (jan_lause)
+]);
+export function fragmentTester(): boolean {
+  try { return FRAGMENT_TESTERS.has(String(useProofreadingBackendStore().userId || '')); } catch { return false; }
+}
 
 /** Where mapping happens for this player: the dataset on screen when it has
  *  cells to claim and they may edit it (MEC, say), else Retina's bipolar
@@ -141,9 +166,11 @@ export function mappingWhere(): string {
 export async function startPlay(k: PlayKind, on?: DatasetEntry, justOpen = false): Promise<boolean> {
   play.choosing = false;
   if (!on && k === 'cells') await settleAccess();
-  const target = on ?? (k === 'quests' ? RETINA() : mappingDataset());
+  const onRetina = k === 'quests' || k === 'fragments';
+  const target = on ?? (onRetina ? RETINA() : mappingDataset());
   if (!target) return false;
-  if (k === 'quests' && !canQuest()) return false;
+  if (onRetina && !canQuest()) return false;
+  if (k === 'fragments' && !retinaHub()) return false;
   // Tutorials still to do come first (Ames 2026-11-12): Play carries on the training.
   if (!justOpen) {
     const t = await trainingLeft();
@@ -151,9 +178,9 @@ export async function startPlay(k: PlayKind, on?: DatasetEntry, justOpen = false
   }
   if (!justOpen) { keepKind(k); setOn(k); }
   askEnter(k);
-  const tab = k === 'quests' ? 'quests' : 'available';
+  const tab = k === 'quests' ? 'quests' : k === 'fragments' ? 'orphans' : 'available';
   const here = datasetHere();
-  const already = here && (here.id === target.id || (k === 'quests' && isQuestDataset(here)));
+  const already = here && (here.id === target.id || (onRetina && isQuestDataset(here)));
   if (already) {
     document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab, play: k } }));
     return true;
@@ -187,6 +214,7 @@ export function openMyCell(ds: DatasetEntry): Promise<boolean> { return startPla
 /** What is being played, for the top bar: "BC Challenge", "Cilia Quest". */
 export function playLabel(): string {
   if (play.on === 'quests') return 'Cilia Quest';
+  if (play.on === 'fragments') return 'Lost Fragments';
   const ds = mappingDataset();
   if (ds?.id === 'stroeh_mouse_retina') return 'BC Challenge';
   if (ds?.id === 'pinky_sandbox') return 'Training Sim';
@@ -197,13 +225,17 @@ export function playLabel(): string {
  *  where the quests are, to a player who may do them. On any other dataset
  *  (the Sandbox, MEC) Play just starts mapping there (Ames 2026-11-12: "if I'm
  *  in the sandbox ... it should just start me playing in the sandbox"). */
-export function offersChoice(): boolean { return isQuestDataset(datasetHere()) && canQuest(); }
+export function offersChoice(): boolean {
+  return isQuestDataset(datasetHere()) && (canQuest() || (retinaHub() && canViewRetina()));
+}
 
 /** The Play button: straight in with the kind last chosen, else the card. */
 export function pressPlay(): Promise<boolean> | null {
   if (!offersChoice()) return startPlay('cells');
   const k = savedKind();
-  if (k && (k === 'cells' || canQuest())) return startPlay(k);
+  // A view only player in the hub sees the card: Glia Quest is theirs to play.
+  if (k && canQuest() && (k !== 'fragments' || retinaHub())) return startPlay(k);
+  if (k === 'cells' && !retinaHub()) return startPlay(k);
   play.choosing = true;
   return null;
 }

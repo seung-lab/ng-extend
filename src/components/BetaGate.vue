@@ -15,6 +15,7 @@ import { useLoginStore, useProofreadingBackendStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { runPanelTrace } from '../util/holo_trace';
 import { betaGate } from '../beta_gate';
+import { refreshDatasetPermissions } from '../util/dataset_access';
 
 const SUPPORT = 'support@eyewire.ai';
 const backend = useProofreadingBackendStore();
@@ -91,7 +92,9 @@ async function check(userId: string) {
   if (!userId || askedFor === userId) return;
   askedFor = userId;
   try {
-    const s = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.betaStatus');
+    const s = await secureWrite<{ invited?: boolean; requested?: boolean; viewGranted?: boolean }>('access.betaStatus');
+    // Just added to Retina's view group: read CAVE again so Retina opens.
+    if (s?.viewGranted) void refreshDatasetPermissions();
     // Only a plain "no" from the server shows the popup.
     if (s && s.invited === false) {
       requested.value = !!s.requested;
@@ -158,7 +161,7 @@ async function request() {
 // Use my invite (Ames 2026-11-04: "I don't want them replying with a gmail
 // to me, I want them to use the site"). Invites went to the email on the
 // EyeWire form, which often isn't the Google account they sign in with: the
-// email the invite reached brings this account in at once
+// email the invite reached sends this account to an admin to let in
 // (functions/access-request.js, access.linkInvite).
 const inviteEmail = ref('');
 const inviteBusy = ref(false);
