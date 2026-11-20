@@ -105,7 +105,7 @@ async function questList(questKey,credential,api=(path,init)=>sheetsApi(credenti
   if(hit && hit.expires>Date.now()) return hit.rows;
   const title=await questTabCached(api,questKey,quest);
   const q="'"+title.replace(/'/g,"''")+"'";
-  const grid=(await api(quest.id+'/values/'+encodeURIComponent(q+'!A1:Z2000')+'?valueRenderOption=FORMATTED_VALUE')).values||[];
+  const grid=(await api(quest.id+'/values/'+encodeURIComponent(q+'!A1:Z')+'?valueRenderOption=FORMATTED_VALUE')).values||[];
   const rows=questRows(grid);
   listCache.set(questKey,{rows,expires:Date.now()+300000});
   return rows;
@@ -149,7 +149,7 @@ async function pilotSheetEmails(credential) {
   for(const sheet of meta.sheets||[]) {
     const title=sheet.properties.title;
     const q="'"+title.replace(/'/g,"''")+"'";
-    const rows=(await api(PYR_USERS_SHEET+'/values/'+encodeURIComponent(q+'!A1:AK2000'))).values||[];
+    const rows=(await api(PYR_USERS_SHEET+'/values/'+encodeURIComponent(q+'!A1:AK'))).values||[];
     const cols=(rows[0]||[]).map((h,i)=>EMAIL_HEADER.test(String(h))?i:-1).filter(i=>i>=0);
     for(const row of rows.slice(1)) for(const i of cols) {
       const email=String(row[i]||'').trim().toLowerCase();
