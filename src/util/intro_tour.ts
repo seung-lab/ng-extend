@@ -2429,9 +2429,14 @@ function newPlayerFirstVisit(): boolean {
 }
 /** A new player whose starship tour has not played yet: the Play button
  *  waits (Ames 2026-11-19: no Play during the rocket ship demo). */
-export function introPending(): boolean { return newPlayerFirstVisit(); }
+// A test site is a new address, so every browser is a "new player" there:
+// the rocket would fly on every one (Ames 2026-11-20: "the test sites should
+// not trigger rocket state every time"). There it plays when Pretend I am a
+// new player is on, the rocket is pressed, or ?starship is in the address.
+const QUIET_TEST_SITE = !IS_LIVE_SITE && typeof location !== 'undefined' && !location.hostname.startsWith('claude-starship-intro-dot-');
+export function introPending(): boolean { return newPlayerFirstVisit() && (!QUIET_TEST_SITE || simulating.value); }
 export function startStarshipIntro() {
-  const newPlayer = newPlayerFirstVisit();
+  const newPlayer = newPlayerFirstVisit() && !QUIET_TEST_SITE;
   if (IS_LIVE_SITE && !newPlayer) return;
   // the cell turns slowly from the moment it shows, before anything flies
   setTimeout(startIdleTurn, 1200);

@@ -19,7 +19,8 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
   return new Promise(done => {
     try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; } } catch { /* fly */ }
     const W = window.innerWidth, H = window.innerHeight;
-    const size = Math.min(180, Math.max(110, W * 0.1));
+    // Across the page he is smaller (Ames 2026-11-20: "he should be smaller").
+    const size = across ? Math.min(96, Math.max(64, W * 0.05)) : Math.min(180, Math.max(110, W * 0.1));
     const x0 = box && box.width ? box.left + box.width / 2 - size / 2 : 40;
     const y0 = box && box.height ? box.top + box.height / 2 - size / 2 : H - size - 80;
 
@@ -39,12 +40,11 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
     const dx = W + size - x0, rise = Math.max(y0 + size, H * 0.6);
     const at = (f: number, s = 1, r = 0) => `translate(${x0 + dx * f * f}px, ${y0 - rise * (f < 0.25 ? f * 0.4 : 0.1 + (f - 0.25) * 1.2)}px) rotate(${r}deg) scale(${s})`;
     const DURATION = across ? 5200 : 3800;
-    const ay = H * (0.12 + Math.random() * 0.4), lift = H * 0.08;
+    // Straight across (Ames 2026-11-20), at a height in the top two thirds.
+    const ay = H * (0.1 + Math.random() * 0.5);
     const anim = across ? img.animate([
-      { transform: `translate(${-size}px, ${ay}px) rotate(-4deg) scale(1)`, opacity: 1, offset: 0 },
-      { transform: `translate(${W * 0.3}px, ${ay - lift * 0.8}px) rotate(-7deg) scale(1)`, opacity: 1, offset: 0.33 },
-      { transform: `translate(${W * 0.65}px, ${ay - lift}px) rotate(-3deg) scale(1)`, opacity: 1, offset: 0.66 },
-      { transform: `translate(${W + size}px, ${ay - lift * 1.6}px) rotate(-10deg) scale(0.95)`, opacity: 1, offset: 1 },
+      { transform: `translate(${-size}px, ${ay}px) scale(1)`, opacity: 1, offset: 0 },
+      { transform: `translate(${W + size}px, ${ay}px) scale(1)`, opacity: 1, offset: 1 },
     ], { duration: DURATION, easing: 'linear', fill: 'forwards' }) : img.animate([
       { transform: `translate(${x0}px, ${y0}px) scale(0.2)`, opacity: 0, offset: 0 },
       { transform: `translate(${x0}px, ${y0 - 30}px) rotate(-6deg) scale(1.1)`, opacity: 1, offset: 0.15 },
@@ -66,15 +66,15 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
       const speed = prev ? Math.hypot(tail.x - prev.x, tail.y - prev.y) / Math.max(dt, 0.001) : 0;
       // A thin wisp on the hover, a full contrail once he is moving.
       const power = !across && t < DURATION * 0.12 ? 0 : Math.min(1, 0.15 + speed / 900);
-      debt += dt * 420 * power;
+      debt += dt * (across ? 110 : 420) * power;
       while (debt >= 1 && t < DURATION) {
         debt -= 1;
         const along = Math.random();
         const p = prev ? { x: prev.x + (tail.x - prev.x) * along, y: prev.y + (tail.y - prev.y) * along } : tail;
         const jx = Math.random() - 0.5, jy = Math.random() - 0.5;
         const L = r.width;
-        puffs.push({ x: p.x + jx * L * 0.06, y: p.y + jy * L * 0.06, vx: -L * (0.4 + Math.random() * 0.3) * 0.6 + jx * L * 0.3, vy: L * 0.15 + jy * L * 0.3,
-          age: (1 - along) * dt * 1000, size: L * (0.05 + Math.random() * 0.05) });
+        puffs.push({ x: p.x + jx * L * 0.06, y: p.y + jy * L * 0.06, vx: -L * (0.4 + Math.random() * 0.3) * 0.6 + jx * L * 0.3, vy: (across ? 0 : L * 0.15) + jy * L * (across ? 0.12 : 0.3),
+          age: (1 - along) * dt * 1000, size: L * (across ? 0.03 + Math.random() * 0.03 : 0.05 + Math.random() * 0.05) });
       }
       prev = tail;
       for (const q of puffs) { q.age += dt * 1000; q.x += q.vx * dt; q.y += q.vy * dt; const k = Math.max(0, 1 - dt * 2.2); q.vx *= k; q.vy *= k; }
