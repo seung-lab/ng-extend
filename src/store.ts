@@ -7291,6 +7291,20 @@ export const useChatStore = defineStore('chat', () => {
     try { await secureWrite(id ? 'chat.pin' : 'chat.unpin', id ? { id } : {}); return true; }
     catch (e: any) { console.warn('[chat] pin failed:', e?.message); return false; }
   }
+  /** Admins: "/motd <text>" in the chat box (Ames 2026-11-20, before her
+   *  vacation: a message of the day that greets everyone when chat loads).
+   *  Posts the text as an ordinary message and pins it, so it is the pinned
+   *  line at the top of chat until it is replaced or taken down. */
+  async function postMessageOfTheDay(text: string): Promise<boolean> {
+    const backend = useProofreadingBackendStore();
+    if (!backend.isAdmin || (!connected.value && !polling.value)) return false;
+    const { data, error } = await supabase.from('chat_messages')
+      .insert({ name: backend.chatHandle, rank: 'admin', text, dataset: currentDatasetName() })
+      .select('id').single();
+    if (error || !data) { console.warn('[chat] message of the day not posted:', error?.message); return false; }
+    if (polling.value) void loadMissed();
+    return pinMessage(String((data as any).id));
+  }
   let oldestLoadedAt: string | null = null;
   /** Reactions per message id: emoji to who reacted. */
   const reactions = ref<Record<string, Record<string, Array<{ userId: string; name: string }>>>>({});
@@ -8254,7 +8268,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, startPresence, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, onlinePeople, online,
-    pinned, loadPin, pinMessage,
+    pinned, loadPin, pinMessage, postMessageOfTheDay,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
 });
