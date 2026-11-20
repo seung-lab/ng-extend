@@ -377,6 +377,9 @@ function sheetHolds(s?: string): boolean {
   return /needs?.{0,3}help|\bhelp\b|\bwip\b|work in progress|\bclaimed\b/i.test(s || '');
 }
 
+// Each claim by its id, built once per change of the list: the rows looked
+// their claim up by searching the whole list, for every row (Nseraf #538).
+const taskById = computed(() => new Map(backend.tasks.map(t => [t.id, t] as const)));
 const cells = computed(() => {
   const taskMap = new Map<string, ProofreadingTask>();
   for (const t of backend.tasks) {
@@ -531,7 +534,7 @@ const questOpenHere = computed(() => questCells.value.filter(c => c.status === '
 const QUEST_WARN_DAYS = 7;
 function questEndsSoon(cell: CellRow): string {
   if (!cell.quest || !isMyClaim(cell)) return '';
-  const ends = backend.tasks.find(t => t.id === cell.taskId)?.quest_ends_at;
+  const ends = taskById.value.get(cell.taskId as number)?.quest_ends_at;
   const d = ends ? new Date(ends) : null;
   if (!d || Number.isNaN(d.getTime())) return '';
   const days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
@@ -554,7 +557,7 @@ onMounted(() => watch(() => datasetScopedCells.value.filter(c => c.quest && isMy
 /** Marks' first line: when you started, and for a Super Quest, the day it is yours until. */
 function marksStartLine(cell: CellRow): string {
   const started = claimStartedLabel(cell.taskId);
-  const ends = cell.quest ? backend.tasks.find(t => t.id === cell.taskId)?.quest_ends_at : null;
+  const ends = cell.quest ? taskById.value.get(cell.taskId as number)?.quest_ends_at : null;
   const d = ends ? new Date(ends) : null;
   const until = d && !Number.isNaN(d.getTime()) ? `Yours until ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.` : '';
   return [started && started + '.', until].filter(Boolean).join(' ');
@@ -777,7 +780,7 @@ function setWorkingTask(id: number | null) {
   // An MEC cell opens with the lab's AIS, True End, Can't Fix and Hits Edge
   // layers; a Super Quest with AIS only.
   if (id) {
-    const quest = isQuestTask(backend.tasks.find(t => t.id === id));
+    const quest = isQuestTask(taskById.value.get(id as number));
     ensureMecLayers(quest ? SUPER_QUEST_LAYERS : undefined, quest ? SUPER_QUEST_DROP : undefined);
   }
   try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
@@ -838,7 +841,7 @@ async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
   const onScreen = myOpenClaims.value.filter(c => c.taskId != null && !endedClaims.has(c.taskId) && claimInView(c));
   const id = workingTaskId ?? (onScreen.length === 1 ? onScreen[0].taskId : null);
   if (!id || id === nextTaskId) return true;
-  const t = backend.tasks.find(x => x.id === id);
+  const t = taskById.value.get(id as number);
   if (!t || t.assigned_to !== backend.userId || (t.status !== 'assigned' && t.status !== 'in_progress')) return true;
   const link = await mintShortStateLink();
   if (link && await backend.saveWorkingLink(id, link)) return true;
@@ -858,7 +861,7 @@ const isWorkingClaim = (cell: CellRow) =>
  *  282). A save (by Save view, or the save made when you leave a claim) is
  *  what stamps the claim's updated time once it has a saved view. */
 function savedAtLabel(cell: CellRow): { text: string; title: string } {
-  const t = backend.tasks.find(x => x.id === cell.taskId);
+  const t = taskById.value.get(cell.taskId as number);
   if (!t?.working_link || !t.updated_at) return { text: 'Not saved yet', title: 'No view saved for this claim yet. Save view keeps your layers and camera with it.' };
   return { text: `Saved ${relativeTime(t.updated_at)}`, title: `View last saved ${new Date(t.updated_at).toLocaleString()}` };
 }
@@ -919,7 +922,7 @@ onMounted(() => watch(() => {
     firstSaveTimer = null;
     const c = datasetScopedCells.value.find(x => x.taskId === id && x.segId === jumpedSegId.value);
     if (!c || c.status === 'completed') return;
-    if (backend.tasks.find(x => x.id === id)?.working_link) return;
+    if (taskById.value.get(id as number)?.working_link) return;
     void saveClaimView(c);
   }, 5000);
 }));
@@ -954,7 +957,7 @@ async function switchToClaim(cell: CellRow) {
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
   const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
-  const t = backend.tasks.find(x => x.id === cell.taskId);
+  const t = taskById.value.get(cell.taskId as number);
   // A saved view of another dataset is not this cell's: it took Play on the
   // Sandbox to Retina (Ames 2026-11-13: "when I click Play Sandbox Practice it
   // takes me to retina"). It is passed over and the cell opened instead, as is
@@ -993,7 +996,7 @@ async function checkSavedViewShowsClaim(cell: CellRow) {
   const wrongDataset = !!cell.dataset && !!here && here !== canonicalDataset(cell.dataset)
     && DATASETS.some(ds => canonicalDataset(segLayerName(ds)) === here);
   console.warn('[cell-library] the saved view of claim', cell.taskId, wrongDataset ? `is of ${here}` : 'does not show it', '- opening the cell');
-  const link = backend.tasks.find(x => x.id === cell.taskId)?.working_link;
+  const link = taskById.value.get(cell.taskId as number)?.working_link;
   if (wrongDataset) {
     // Not this view again: the switch reloads the page, and the claim opens
     // there from its soma. Its next save replaces the view.
@@ -1043,7 +1046,7 @@ async function viewIsOnDataset(link: string, dataset: string | undefined): Promi
 async function prepareJump(segId: string): Promise<{ ok: boolean; keep: boolean }> {
   // Settings: jumps add to the view, so nothing is cleared or left behind.
   if (jumpAddsToView()) return { ok: true, keep: true };
-  const t = workingTaskId ? backend.tasks.find(x => x.id === workingTaskId) : null;
+  const t = workingTaskId ? taskById.value.get(workingTaskId as number) : null;
   if (t && String(t.segment_id) === segId) return { ok: true, keep: true };
   // As in switchToClaim: the quest goes before the working claim is saved.
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId } }));
@@ -1238,7 +1241,7 @@ async function batchClaim() {
   // cell, or more of Available when the loaded part has too few.
   if (backend.tasksPaged) {
     const start = batchStart.value;
-    const startTask = start?.taskId != null ? backend.tasks.find(t => t.id === start.taskId) : undefined;
+    const startTask = start?.taskId != null ? taskById.value.get(start.taskId as number) : undefined;
     if (startTask) await backend.loadAvailableAfter(startTask, n);
     else if (!search.value.trim()) {
       for (let i = 0; i < 5 && batchCandidates.value.length < n && !backend.taskPages.available.done; i++) await backend.loadMoreTasks('available');
@@ -3625,7 +3628,7 @@ async function onRowJump(cell: CellRow) {
     // report 308: two pyramids merged showed the merged segment, not the two
     // final ones): its saved view, else its final segment.
     const done = cell.status === 'completed';
-    const view = done ? backend.tasks.find(x => x.id === cell.taskId)?.working_link : null;
+    const view = done ? taskById.value.get(cell.taskId as number)?.working_link : null;
     if (view && openStartLink(view)) jumpedSegId.value = cell.segId;
     else jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep, (done && cell.finalSegId) || cell.liveSegId);
   }

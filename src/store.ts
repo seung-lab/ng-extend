@@ -14,7 +14,7 @@ import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
 import { achievementTestTrack, LOYALTY_BADGES } from './widgets/badge_definitions';
-import {Ref, ref, reactive, computed, watch} from 'vue';
+import {Ref, ref, shallowRef, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
 
@@ -3781,7 +3781,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     username.value = n;
     if (noName) userName.value = n;
   }
-  const tasks = ref<ProofreadingTask[]>([]);
+  // shallowRef: thousands of claim rows made deep reactive cost seconds in
+  // the Cell Library (Nseraf #538 profile). Rows are never changed in place;
+  // a change replaces the array (mergeTasks, patchTask).
+  const tasks = shallowRef<ProofreadingTask[]>([]);
+  /** Change one claim row: a new row and a new array, so the list redraws. */
+  function patchTask(id: number, patch: Partial<ProofreadingTask>) {
+    const i = tasks.value.findIndex(x => x.id === id);
+    if (i < 0) return;
+    const next = tasks.value.slice();
+    next[i] = { ...next[i], ...patch };
+    tasks.value = next;
+  }
   const activeTaskId = ref<number | null>(null);
   const activityFeed = ref<ActivityFeedItem[]>([]);
   const loading = ref(false);
@@ -4029,11 +4040,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!ok.length) return;
     const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
     const next = tasks.value.slice();
-    let added = false;
+    let added = false, changed = false;
     for (const r of ok) {
       const i = byId.get(r.id);
-      if (i === undefined) { byId.set(r.id, next.length); next.push(r); added = true; } else next[i] = r;
+      if (i === undefined) { byId.set(r.id, next.length); next.push(r); added = changed = true; }
+      // A sync always hands back the newest row it has seen: an unchanged row
+      // leaves the list as it is, so nothing redraws for it.
+      else if (JSON.stringify(next[i]) !== JSON.stringify(r)) { next[i] = r; changed = true; }
     }
+    if (!changed) return;
     if (added) next.sort(taskOrder);
     tasks.value = next;
   }
@@ -5232,7 +5247,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       if (upErr) { console.warn('[backend] could not put back the listed ID of claim', t.id, upErr.message); continue; }
       console.info(`[backend] claim ${t.id}: listed ID ${hit} put back (it had been rewritten to ${now})`);
       currentRoots.value = { ...currentRoots.value, [t.id]: now };
-      t.segment_id = hit;
+      patchTask(t.id, { segment_id: hit });
       fixed++;
     }
     return fixed;
@@ -5594,10 +5609,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
     try {
       await taskAction('save_link', { id: taskId, link });
-      const t = tasks.value.find(x => x.id === taskId);
       // The server stamps updated_at on a save; keep the local copy in step so
       // "Saved 2h ago" says "just now" (Ames 2026-11-14).
-      if (t) { t.working_link = link; t.updated_at = new Date().toISOString(); }
+      patchTask(taskId, { working_link: link, updated_at: new Date().toISOString() });
       noteClaimSave(taskId);
       return true;
     } catch (e: any) {
