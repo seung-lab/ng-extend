@@ -576,8 +576,10 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-frame svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 #${CARD_ID} .nge-cm-frame .rim{fill:rgba(var(--cc),.1);stroke:rgba(var(--cc),.72);stroke-width:1;transition:fill .15s,stroke .15s}
 #${CARD_ID} .nge-cm-play .nge-cm-complete .nge-cm-frame .rim{fill:rgba(32,150,110,.28)}
-#${CARD_ID} .nge-cm-frame .tr{fill:none;stroke:rgba(var(--cc),.55);stroke-width:1;stroke-linejoin:round}
+#${CARD_ID} .nge-cm-frame .tr{fill:none;stroke:rgba(var(--cc),.6);stroke-width:1;stroke-linejoin:round;stroke-linecap:round}
 #${CARD_ID} .nge-cm-frame .pad{fill:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-frame .via{fill:#0a1322;stroke:rgba(var(--cc),.85);stroke-width:1}
+#${CARD_ID} .nge-cm-frame .pin{fill:rgba(var(--cc),.7)}
 #${CARD_ID} .nge-cm-frame .side{fill:#0a1322;stroke:rgb(var(--cc));stroke-width:1.4;filter:drop-shadow(0 0 3px rgba(var(--cc),.8))}
 #${CARD_ID} .nge-cm-frame .side-in{fill:rgb(var(--cc))}
 #${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled) .rim{fill:rgba(var(--cc),.2);stroke:rgb(var(--cc))}
@@ -1703,11 +1705,12 @@ function keepSize(el: HTMLElement) {
   el.addEventListener('pointerup', save);
 }
 /** Jump's search, drawn with Find Path's loader (find_path_status.ts). */
-let jumpSearch: { jump: HTMLElement; cv: HTMLCanvasElement; live: Live } | null = null;
+let jumpSearch: { jump: HTMLElement; cv: HTMLCanvasElement; live: Live; ro?: ResizeObserver; ending?: boolean } | null = null;
 function endJumpSearch() {
   const j = jumpSearch;
   if (!j) return;
   jumpSearch = null;
+  j.ro?.disconnect();
   cancelAnimationFrame(j.live.raf);
   j.cv.remove();
   j.jump.classList.remove('nge-cm-searching');
@@ -1715,21 +1718,39 @@ function endJumpSearch() {
 /** A button's circuit edge, drawn to its size (see "Circuit edges" above).
  *  Keyed: the right end is the slash before the bulb key. */
 function frameSvg(w: number, h: number, keyed: boolean): string {
+  // A chip on a board (Ames 2026-11-20: "PCB microchip type thing in the
+  // border", "it's small, so keep it as simple as you can"): the package
+  // outline with cut corners, a few pins on its top and bottom edges, two
+  // traces stepping in at 45 degrees to vias in two corners, and a ring pad
+  // at the middle of each side. The middle stays clear for the words.
   const c = 7, f = (n: number) => n.toFixed(1);
   const R = w - 0.5, B = h - 0.5, m = h / 2;
   const rim = keyed
     ? `M${c} .5H${f(R)}L${f(w - 10.5)} ${f(B)}H.5V${c}Z`
     : `M${c} .5H${f(R)}V${f(h - c)}L${f(w - c)} ${f(B)}H.5V${c}Z`;
-  const L = Math.min(26, w * 0.12);
-  // Top, from the right: leaves the rim, steps in, runs left to a pad.
-  const tx = w - (keyed ? 22 : 14);
-  // Bottom, from the left: the same, running right.
-  const bx = 12;
-  const tr = `M${f(tx)} .5l-3 3h${f(-L)}` + ` M${bx} ${f(B)}l3 -3h${f(L)}`;
-  const pads = `<circle class="pad" cx="${f(tx - 3 - L)}" cy="3.5" r="1.6"/><circle class="pad" cx="${f(bx + 3 + L)}" cy="${f(h - 3.5)}" r="1.6"/>`;
+  let tr = '', vias = '', pins = '';
+  const via = (x: number, y: number) => { vias += `<circle class="via" cx="${f(x)}" cy="${f(y)}" r="1.35"/>`; };
+  const span = Math.min(1, w / 260);
+  // Top right: two traces leave the top edge, step in, run left to vias.
+  const tx = w - (keyed ? 24 : 15);
+  for (let k = 0; k < 2; k++) {
+    const x0 = tx - 4 * k, y = 3.5 + 3 * k, L = (28 - 10 * k) * span;
+    tr += `M${f(x0)} .5L${f(x0 - y + 0.5)} ${f(y)}H${f(x0 - y + 0.5 - L)}`;
+    via(x0 - y + 0.5 - L - 1.4, y);
+  }
+  // Bottom left: the same, running right.
+  for (let k = 0; k < 2; k++) {
+    const x0 = 15 + 4 * k, y = h - 3.5 - 3 * k, L = (28 - 10 * k) * span;
+    tr += `M${f(x0)} ${f(B)}L${f(x0 + (B - y))} ${f(y)}H${f(x0 + (B - y) + L)}`;
+    via(x0 + (B - y) + L + 1.4, y);
+  }
+  // Pins: four legs on the top edge at the left, four on the bottom at the right.
+  const legs = (x0: number, y: number) => { for (let i = 0; i < 4; i++) pins += `<rect class="pin" x="${f(x0 + i * 4.5)}" y="${f(y)}" width="1.8" height="2.6" rx=".4"/>`; };
+  legs(c + 14, -2.4);
+  legs(w - (keyed ? 30 : 22) - 18, h - 0.2);
   const rx = keyed ? w - 5.5 : R;
   const side = (x: number) => `<circle class="side" cx="${f(x)}" cy="${f(m)}" r="3.6"/><circle class="side-in" cx="${f(x)}" cy="${f(m)}" r="1.3"/>`;
-  return `<svg viewBox="0 0 ${f(w)} ${f(h)}" aria-hidden="true"><path class="rim" d="${rim}"/><path class="tr" d="${tr}"/>${pads}${side(0.5)}${side(rx)}</svg>`;
+  return `<svg viewBox="0 0 ${f(w)} ${f(h)}" aria-hidden="true">${pins}<path class="rim" d="${rim}"/><path class="tr" d="${tr}"/>${vias}${side(0.5)}${side(rx)}</svg>`;
 }
 function frameButton(btn: HTMLElement) {
   const host = document.createElement('span');
@@ -1757,19 +1778,39 @@ function startJumpSearch(jump: HTMLElement) {
   jump.appendChild(cv);
   jump.classList.add('nge-cm-searching');
   const live: Live = { raf: 0, timer: 0 };
-  jumpSearch = { jump, cv, live };
+  const j: NonNullable<typeof jumpSearch> = { jump, cv, live };
+  jumpSearch = j;
   // From the pad on one edge to the pad on the other (Ames 2026-11-20: "have
   // the lightning bolts originate from there"). The canvas reaches 6 px past
   // each edge so the end dots sit on the pads.
   // With the bulb beside it, the right pad sits on Jump's slash, 4 px in.
-  const keyed = !!jump.parentElement?.querySelector('.nge-cm-bulb:not([hidden])');
-  startLoader(cv, live, jump.offsetWidth + (keyed ? 7 : 12), 20, 6);
+  // The bulb can show while Jump searches (the hint arrives), and Jump
+  // narrows: the lightning is fitted again, so it never runs into the bulb.
+  let fitted = '';
+  // Mid strike it is not restarted (that would lose the strike); the
+  // canvas is cut at the slash instead, in pixels, from Jump's size now.
+  const fit = () => {
+    const Wj = jump.offsetWidth, hj = jump.offsetHeight || 31;
+    if (jumpSearch !== j || !Wj) return;
+    const keyed = !!jump.parentElement?.querySelector('.nge-cm-bulb:not([hidden])');
+    const key = `${Wj}${keyed}`;
+    if (key === fitted) return;
+    fitted = key;
+    if (!j.ending) { cancelAnimationFrame(live.raf); startLoader(cv, live, Wj + (keyed ? 7 : 12), 20, 6); }
+    cv.classList.toggle('nge-cm-jloader-keyed', keyed);
+    if (!keyed) { cv.style.clipPath = ''; return; }
+    const t0 = (hj - 20) / 2, sx = (y: number) => (Wj + 6 - 10 * ((t0 + y) / hj)).toFixed(1), pad = (Wj + 6 - 5 + 3.5).toFixed(1);
+    cv.style.clipPath = `polygon(0 0,${sx(0)}px 0,${sx(7)}px 7px,${pad}px 7px,${pad}px 13px,${sx(13)}px 13px,${sx(20)}px 20px,0 20px)`;
+  };
+  fit();
+  try { j.ro = new ResizeObserver(fit); j.ro.observe(jump); } catch { /* fitted once */ }
 }
 /** Found: the route lights, then the label is back. Not found: it stops. */
 function finishJumpSearch(found: boolean) {
   const j = jumpSearch;
   if (!j) return;
   if (!found || !j.live.finish) { endJumpSearch(); return; }
+  j.ending = true;
   j.live.finish(() => { if (jumpSearch === j) endJumpSearch(); });
 }
 function wirePlayBox(el: HTMLElement) {
