@@ -5976,20 +5976,13 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(1) brightness(0.5); }
 /* Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19). */
 .nge-ds-unlocked { width: 100%; margin-top: 12px; box-sizing: border-box; }
-.nge-ds-unlocked-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.nge-ds-unlocked-tile {
-  --c: 110, 240, 170;
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 8px; min-width: 0;
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  background: linear-gradient(135deg, rgba(var(--c), 0.14), rgba(20, 40, 80, 0.55) 55%, rgba(var(--c), 0.07));
-  box-shadow: inset 0 0 0 1px rgba(var(--c), 0.5), inset 0 0 18px rgba(var(--c), 0.1);
-}
-.nge-ds-unlocked-icon { width: 52px; height: 52px; object-fit: contain; filter: drop-shadow(0 0 8px rgba(var(--c), 0.45)); }
-.nge-ds-unlocked-lock { position: absolute; top: 26px; left: 50%; width: 20px; height: 20px; transform: translateX(-50%); }
-.nge-ds-unlocked-name { font: 700 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; text-shadow: 0 0 8px rgba(var(--c), 0.45); }
-.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(var(--c)); }
-.nge-ds-unlocked-tile--locked { --c: 150, 170, 200; }
-.nge-ds-unlocked-tile--locked .nge-ds-unlocked-icon { filter: grayscale(1) brightness(0.45); opacity: 0.75; }
+/* No box and no glow (Ames 2026-11-19: "Lose the glow and outline around
+   them"); fewer than four sit centered ("If there are only 2, center them"). */
+.nge-ds-unlocked-row { display: flex; justify-content: center; gap: 8px; }
+.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 2px; flex: 0 1 25%; min-width: 0; }
+.nge-ds-unlocked-icon { width: 52px; height: 52px; object-fit: contain; }
+.nge-ds-unlocked-name { font: 700 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; }
+.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(110, 240, 170); }
 .nge-ds-unlocked-tile--unknown { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 
