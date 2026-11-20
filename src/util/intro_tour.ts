@@ -1205,7 +1205,7 @@ function type(el: HTMLElement, marked: string) {
  *  corners whose joints are softly rounded, and circuit traces that run
  *  along the inside of each edge, step in on 45 degree bends with rounded
  *  elbows, and end in small ring pads. Drawn to the box's own size. */
-function frameSvg(w: number, h: number, cut = 14): string {
+export function frameSvg(w: number, h: number, cut = 14): string {
   const c = cut, r = 4;
   // a polyline with each elbow rounded by r
   const soft = (pts: number[][], closed = false): string => {

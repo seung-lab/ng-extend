@@ -91,3 +91,27 @@ select f.user_id, max(f.player_name) as player_name, count(*) as fragments,
   min(f.submitted_at) as first_at, max(f.updated_at) as last_at
 from public.ew_lost_fragments f group by f.user_id;
 revoke all on public.ew_lost_fragment_points from anon, authenticated;
+
+-- Stashed cells (Ames 2026-11-20: "stash the other cell for proofreading
+-- somehow - or let the player choose to proofread it too"). Part of a
+-- fragment belonged to another cell that is not proofread yet: that cell is
+-- kept here, once, and shows in Lost Fragments as the Stashed group. It is
+-- answered like any fragment, with group_key 'stashed'.
+create table if not exists public.ew_lost_fragment_stash (
+  root_id text primary key check (root_id ~ '^[0-9]{15,20}$'),
+  pt integer[] not null,
+  from_fragment_id text not null,
+  user_id uuid not null,
+  player_name text,
+  choice text not null default 'stash' check (choice in ('stash', 'proofread')),
+  created_at timestamptz not null default now()
+);
+alter table public.ew_lost_fragment_stash enable row level security;
+revoke all on public.ew_lost_fragment_stash from public, anon, authenticated;
+-- The other cell, on the fragment's own answer.
+alter table public.ew_lost_fragments
+  add column if not exists other_root text,
+  add column if not exists other_status text check (other_status in ('done', 'stashed', 'proofread'));
+alter table public.ew_lost_fragments drop constraint if exists ew_lost_fragments_group_key_check;
+alter table public.ew_lost_fragments add constraint ew_lost_fragments_group_key_check
+  check (group_key in ('large', 'smaller', 'glia', 'soma', 'stashed'));

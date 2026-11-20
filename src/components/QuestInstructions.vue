@@ -13,7 +13,8 @@
  * 2026-11-06, "add an 'add image'"). Without a picture players see the words
  * across the whole width; admins see the empty slot with Add image.
  */
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { frameSvg } from '../util/intro_tour';
 import EditableText from './EditableText.vue';
 import EditableImage from './EditableImage.vue';
 import { QUEST_TITLE, QUEST_INSTRUCTIONS_IMAGE, QUEST_INSTRUCTIONS_IMAGE_ALT } from '../annotation_quests';
@@ -28,7 +29,13 @@ const props = withDefaults(defineProps<{
   leadKey?: string; stepsKey?: string;
   imageKey?: string; image?: string; imageAlt?: string;
   legend?: { name: string; color: string }[];
+  /** The picture across the top instead of beside the steps, and the
+   *  starship intro's circuit frame around the box (Ames 2026-11-20, Lost
+   *  Fragments: "Put this image across the top ... and use our cool circuit
+   *  UI box from the rocket"). */
+  banner?: boolean; circuit?: boolean;
 }>(), {
+  banner: false, circuit: false,
   lead: '', kicker: QUEST_TITLE, title: 'How to do a Cilia Quest',
   leadKey: 'quest.retina_cilia.lead', stepsKey: 'quest.retina_cilia.steps',
   imageKey: 'quest.retina_cilia.image', image: QUEST_INSTRUCTIONS_IMAGE, imageAlt: QUEST_INSTRUCTIONS_IMAGE_ALT,
@@ -53,12 +60,26 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', onKey, true));
 onUnmounted(() => window.removeEventListener('keydown', onKey, true));
+
+/** The circuit frame, drawn to the box's size and redrawn when it changes. */
+const boxEl = ref<HTMLElement | null>(null);
+const frame = ref('');
+let ro: ResizeObserver | null = null;
+onMounted(async () => {
+  if (!props.circuit) return;
+  await nextTick();
+  const draw = () => { const el = boxEl.value; if (el) frame.value = frameSvg(el.offsetWidth, el.offsetHeight, 18); };
+  draw();
+  if (typeof ResizeObserver !== 'undefined' && boxEl.value) { ro = new ResizeObserver(draw); ro.observe(boxEl.value); }
+});
+onUnmounted(() => { ro?.disconnect(); ro = null; });
 </script>
 
 <template>
   <Teleport to="body">
     <div class="nge-qi-backdrop" @click.self="emit('close')">
-      <div class="nge-qi" :class="{ 'nge-qi--picture': showFigure }" role="dialog" aria-modal="true" aria-labelledby="nge-qi-title">
+      <div ref="boxEl" class="nge-qi" :class="{ 'nge-qi--picture': showFigure && !props.banner, 'nge-qi--banner': props.banner, 'nge-qi--circuit': props.circuit }" role="dialog" aria-modal="true" aria-labelledby="nge-qi-title">
+        <span v-if="props.circuit" class="nge-qi-frame" aria-hidden="true" v-html="frame"></span>
         <span class="nge-qi-bracket nge-qi-bracket--tl" aria-hidden="true"></span>
         <span class="nge-qi-bracket nge-qi-bracket--br" aria-hidden="true"></span>
         <div class="nge-qi-topbar">
@@ -123,6 +144,36 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true));
   animation: nge-qi-in 720ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 .nge-qi--picture { width: min(1120px, calc(94 * var(--nge-vw, 1vw))); }
+/* The picture across the top (banner). */
+.nge-qi--banner { width: min(820px, calc(94 * var(--nge-vw, 1vw))); }
+.nge-qi--banner .nge-qi-layout { flex-direction: column; gap: 18px; }
+.nge-qi--banner .nge-qi-figure { width: 100%; position: static; }
+.nge-qi--banner :deep(.nge-qi-img) { width: 100%; height: 190px; object-fit: cover; object-position: center 35%; }
+/* The starship intro's box: cut corners, a glass plate with scan lines, and
+   the circuit frame (util/intro_tour.ts frameSvg) drawn over the edge. */
+.nge-qi--circuit {
+  border: 0; border-radius: 0; overflow: visible;
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  background: linear-gradient(160deg, rgba(14, 34, 66, 0.96), rgba(6, 12, 28, 0.97) 60%, rgba(22, 14, 48, 0.96));
+  box-shadow: inset 0 0 50px rgba(80, 180, 255, 0.12);
+  filter: drop-shadow(0 0 22px rgba(80, 180, 255, 0.3));
+}
+.nge-qi--circuit::before { display: none; }
+.nge-qi--circuit::after { content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: 0.4;
+  background: repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.05) 0 1px, transparent 1px 3px); }
+.nge-qi--circuit .nge-qi-bracket { display: none; }
+.nge-qi-frame { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.nge-qi-frame :deep(svg) { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.nge-qi-frame :deep(path) { fill: none; stroke: rgba(126, 224, 255, 0.6); stroke-width: 1.2; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1; animation: nge-qi-trace 900ms ease-out both; animation-delay: calc(200ms + var(--i, 0) * 45ms); }
+.nge-qi-frame :deep(.rim) { stroke: rgba(160, 232, 255, 0.95); stroke-width: 1.4; filter: drop-shadow(0 0 3px rgba(126, 224, 255, 0.8)); animation-duration: 1100ms; animation-delay: 100ms; }
+.nge-qi-frame :deep(.spark) { stroke: #e6fbff; stroke-width: 2.2; stroke-dasharray: 0.05 0.95; opacity: 0; filter: drop-shadow(0 0 3px #7ee0ff);
+  animation: nge-qi-spark 6.5s linear infinite; animation-delay: calc(1600ms + var(--i, 0) * 2100ms); }
+.nge-qi-frame :deep(circle) { fill: #9fe9ff; opacity: 0; animation: nge-qi-node 300ms ease-out both; animation-delay: calc(800ms + var(--i, 0) * 45ms); }
+@keyframes nge-qi-trace { to { stroke-dashoffset: 0; } }
+@keyframes nge-qi-node { to { opacity: 1; } }
+@keyframes nge-qi-spark { 0% { stroke-dashoffset: 1; opacity: 1; } 40% { stroke-dashoffset: 0; opacity: 1; } 41%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .nge-qi-frame :deep(path), .nge-qi-frame :deep(circle) { animation: none; stroke-dashoffset: 0; opacity: 1; } .nge-qi-frame :deep(.spark) { display: none; } }
 .nge-qi::before {
   content: ''; position: absolute; left: 8%; right: 8%; top: 0; height: 1px; z-index: 3; pointer-events: none;
   background: linear-gradient(90deg, transparent, rgb(var(--nd-line) / 0.95) 50%, transparent);

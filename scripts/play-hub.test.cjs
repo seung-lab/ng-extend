@@ -92,7 +92,7 @@ async function run(browser, perms, tag) {
       await page.waitForTimeout(1500);
       const seg = () => page.evaluate(() => { const t = document.querySelector('.nge-orph-task-id'); if (t) return t.textContent; const b = document.querySelector('.nge-orph-slimrow'); return b ? b.dataset.id : ''; });
       out.first = await seg();
-      out.playingBar = await page.evaluate(() => !document.querySelector('.nge-orph-play') && !!document.querySelector('.nge-orph-slimrow .nge-orph-hl svg'));
+      out.playingBar = await page.evaluate(() => !document.querySelector('.nge-orph-play') && !document.querySelector('.nge-orph-slimrow .nge-orph-hl'));
       out.chip = await page.evaluate(() => { const c = document.querySelector('.nge-play-chip'); return c ? c.textContent.trim() : null; });
       out.collapsed = await page.evaluate(() => !document.querySelector('.nge-orph-check') && !!document.querySelector('.nge-orph-complete'));
       out.selectionClosed = await page.evaluate(() => { const v = window.viewer.selectionDetailsState?.location?.watchableVisible; return !v || !v.value; });
@@ -185,7 +185,7 @@ async function run(browser, perms, tag) {
   check('edit: four quests on the card', ['BC Challenge', 'Lost Fragments', 'Cilia Quest', 'Glia Quest'].every(n => names.includes(n)), ed.cards || ed);
   check('edit: Lost Fragments and Cilia open', (ed.cards || []).filter(c => /Lost|Cilia/.test(c.name)).every(c => !c.off), ed.cards);
   check('edit: Start playing lands on a fragment, full ID shown', /^\d{15,}$/.test(ed.first || ''), ed.first);
-  check('edit: no Playing box; Highlight shows, and one Complete and next button', ed.playingBar && ed.submitLabel && /Complete and next/.test(ed.submitLabel.bar || '') && !ed.submitLabel.second, ed);
+  check('edit: no Playing box, no Highlight in the slim bar, and one Complete and next button', ed.playingBar && ed.submitLabel && /Complete and next/.test(ed.submitLabel.bar || '') && !ed.submitLabel.second, ed);
   check('edit: slim shows Complete and folds the checklist', ed.collapsed, ed.collapsed);
   check('edit: the Selection panel stays closed', ed.selectionClosed, ed.selectionClosed);
   check('edit: the top bar says Lost Fragments', /Lost Fragments/.test(ed.chip || ''), ed.chip);
