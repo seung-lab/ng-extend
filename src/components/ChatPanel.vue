@@ -2558,11 +2558,11 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 }
 /* Messages meant for you: a cyan hologram, a lit bar at the left and faint
    scan lines, fading out by the middle of the row (Ames 2026-11-05: blue
-   or cyan instead of yellow, and the gradient need not reach so far). */
+   or cyan instead of yellow, and the gradient need not reach so far).
+   Kept faint so the words stay easy to read (Ames 2026-11-20: "this makes
+   it a little too hard to read"): no scan lines, and a lighter band. */
 .nge-chat-msg--forme {
-  background:
-    repeating-linear-gradient(180deg, rgba(150, 235, 255, 0.05) 0 1px, transparent 1px 3px),
-    linear-gradient(90deg, rgba(80, 210, 255, 0.2), rgba(80, 210, 255, 0.06) 30%, transparent 50%);
+  background: linear-gradient(90deg, rgba(80, 210, 255, 0.09), rgba(80, 210, 255, 0.025) 30%, transparent 50%);
   box-shadow: inset 3px 0 0 #5fd8ff, inset 6px 0 8px -4px rgba(95, 216, 255, 0.55);
   border-radius: 4px;
 }
