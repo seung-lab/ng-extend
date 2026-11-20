@@ -595,6 +595,7 @@ const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmbl
  *  dates it (Ames 2026-11-20: the date, not "Unlocked"). */
 const FIRST_EDIT = firstEditDates as Record<string, Record<string, string>>;
 const CONTRIB_ONLY = new Set(['zheng_ca3']);
+const YEAR_ONLY = new Set(['flywire_fafb_production', 'banc']);
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
@@ -634,7 +635,8 @@ const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d
   const state = CONTRIB_ONLY.has(ds.id) ? (first ? 'edit' : 'locked')
     : viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
   const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-  const short = when;
+  // FlyWire and BANC by the year (Ames 2026-11-20: "can use year 2024, 2025").
+  const short = at && YEAR_ONLY.has(ds.id) ? String(new Date(at).getFullYear()) : when;
   return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], emblem: ACCESS_EMBLEMS[ds.id] || '', state, when, short };
 }).filter(r => (!CONTRIB_ONLY.has(r.id) || r.state === 'edit') && (!viewingOtherUser.value || otherEdit.value || r.state === 'edit')));
 
@@ -654,7 +656,33 @@ if (!unlockedOpen.value) {
   const t = setInterval(() => { if (Date.now() >= UNLOCKED_FROM) { unlockedOpen.value = true; clearInterval(t); } }, 30000);
   onUnmounted(() => clearInterval(t));
 }
-const unlockedRow = computed(() => unlockedOpen.value ? accessRows.value.filter(r => r.emblem && r.state === 'edit') : []);
+// In the player's own order (drag to reorder, Ames 2026-11-20), then the rest.
+// Kept in this browser for now: saving it to the profile, for others to see,
+// needs users.dataset_order and the profile write function to take it.
+const DS_ORDER_KEY = 'nge-dataset-order';
+const myDatasetOrder = ref<string[]>((() => { try { const v = JSON.parse(localStorage.getItem(DS_ORDER_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })());
+const unlockedRow = computed(() => {
+  if (!unlockedOpen.value) return [];
+  const rows = accessRows.value.filter(r => r.emblem && r.state === 'edit');
+  const order = viewingOtherUser.value ? [] : myDatasetOrder.value;
+  const at = (id: string) => { const i = order.indexOf(id); return i < 0 ? 1000 + ACCESS_DATASETS.indexOf(id) : i; };
+  return rows.slice().sort((a, b) => at(a.id) - at(b.id));
+});
+let dsDragging = '';
+const dsDragOver = ref('');
+function dsDragStart(id: string, e: DragEvent) {
+  if (viewingOtherUser.value) return;
+  dsDragging = id;
+  try { e.dataTransfer?.setData('text/plain', id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; } catch { /* old browser */ }
+}
+function dsDrop(id: string) {
+  const from = dsDragging; dsDragging = ''; dsDragOver.value = '';
+  if (!from || from === id) return;
+  const ids = unlockedRow.value.map(r => r.id).filter(x => x !== from);
+  ids.splice(ids.indexOf(id), 0, from);
+  myDatasetOrder.value = ids;
+  try { localStorage.setItem(DS_ORDER_KEY, JSON.stringify(ids)); } catch { /* private window */ }
+}
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -2655,8 +2683,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           <div v-if="unlockedRow.length" class="nge-ds-unlocked" aria-label="Datasets unlocked">
             <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Datasets Unlocked</div>
             <div class="nge-ds-unlocked-row">
-              <div v-for="r in unlockedRow" :key="r.id" class="nge-ds-unlocked-tile" :class="'nge-ds-unlocked-tile--' + r.state"
-                   :title="r.state === 'edit' ? `${r.label}: unlocked${r.when ? ` ${r.when}` : ''}` : r.state === 'locked' ? `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.` : `${r.label}: checking…`">
+              <div v-for="r in unlockedRow" :key="r.id" class="nge-ds-unlocked-tile" :class="['nge-ds-unlocked-tile--' + r.state, { 'nge-ds-unlocked-tile--over': dsDragOver === r.id, 'nge-ds-unlocked-tile--drag': !viewingOtherUser }]"
+                   :draggable="!viewingOtherUser" @dragstart="dsDragStart(r.id, $event)" @dragover.prevent="dsDragOver = r.id" @dragleave="dsDragOver === r.id && (dsDragOver = '')" @drop.prevent="dsDrop(r.id)" @dragend="dsDragOver = ''"
+                   :title="r.state === 'edit' ? `${r.label}: unlocked${r.when ? ` ${r.when}` : ''}${viewingOtherUser ? '' : '. Drag to reorder.'}` : r.state === 'locked' ? `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.` : `${r.label}: checking…`">
                 <img :src="r.emblem" class="nge-ds-unlocked-icon" alt="" draggable="false" />
                 <img v-if="r.state === 'locked'" :src="lockIcon" class="nge-ds-unlocked-lock" alt="" draggable="false" />
                 <span class="nge-ds-unlocked-name">{{ r.name }}</span>
@@ -6033,11 +6062,14 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
    them"); fewer than four sit centered ("If there are only 2, center them"). */
 /* Rows of four (Ames 2026-11-20: "how do we handle more than 4?"): a fifth
    starts a second row, the same size, centered. */
-.nge-ds-unlocked-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 8px; }
-.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 2px; flex: 0 0 calc(25% - 6px); min-width: 0; }
+.nge-ds-unlocked-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 8px; padding: 6px 0 4px; }
+.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 2px; min-width: 0; border-radius: 10px; transition: background 0.15s; }
+.nge-ds-unlocked-tile--drag { cursor: grab; }
+.nge-ds-unlocked-tile--drag:active { cursor: grabbing; }
+.nge-ds-unlocked-tile--over { background: rgba(127, 224, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(127, 224, 255, 0.35); }
 .nge-ds-unlocked-icon { width: 52px; height: 52px; object-fit: contain; }
 .nge-ds-unlocked-name { font: 700 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; }
-.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(110, 240, 170); }
+.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(200, 215, 235, 0.55); white-space: nowrap; min-height: 9px; }
 .nge-ds-unlocked-tile--unknown { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 
