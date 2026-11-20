@@ -157,15 +157,18 @@ function outsideClick() { if (done.value || !hasDraft.value) emit('hide'); }
 // annotate it with the pen, uploads the PNG to Supabase Storage
 // (admin-uploads/help-screenshots via backend.uploadHelpScreenshot) and emits
 // the public URL.
-const screenshotUrl = ref('');
+// Several pictures, for before and after (Kfay #584): the first is the
+// report's screenshot as before, the rest ride in the message.
+const MAX_SHOTS = 6;
+const screenshotUrls = ref<string[]>([]);
 const showScreenshotDialog = ref(false);
 function onScreenshotAttached(payload: { url: string }) {
-  screenshotUrl.value = payload.url;
+  if (screenshotUrls.value.length < MAX_SHOTS) screenshotUrls.value = [...screenshotUrls.value, payload.url];
   error.value = '';
   if (settingUp.value) endSetup();
 }
-function clearScreenshot() {
-  screenshotUrl.value = '';
+function clearScreenshot(i: number) {
+  screenshotUrls.value = screenshotUrls.value.filter((_, k) => k !== i);
 }
 // ── Set up the screen first (Celia #446, Ames 2026-11-09) ──
 // The form steps out of the way and a small bar waits at the top of the
@@ -197,7 +200,10 @@ async function submit() {
   const heading = title.value.trim().slice(0, TITLE_MAX);
   const details = detailsOpen.value ? message.value.trim() : '';
   // The report itself: their details, or just the short line when that is all.
-  const text = details || heading;
+  // Pictures after the first ride in the message as "Screenshot 2: <link>"
+  // lines (Kfay #584), so Slack and Admin Hub both get them.
+  const moreShots = screenshotUrls.value.slice(1).map((u, k) => `Screenshot ${k + 2}: ${u}`).join('\n');
+  const text = moreShots ? `${details || heading}\n\n${moreShots}` : (details || heading);
   if (!category.value) { needKind.value = true; error.value = 'Choose Bug, Idea or Other first.'; return; }
   if (!heading || sending.value) {
     if (!heading) error.value = 'Say in a few words what it is.';
@@ -227,7 +233,7 @@ async function submit() {
       const pos = v?.navigationState?.position?.value;
       pageUrl = pos ? spotLinkHref(pos, currentSegLayer()?.name || null) : `${window.location.origin}${window.location.pathname}`;
     }
-    const shot = screenshotUrl.value;
+    const shot = screenshotUrls.value[0] || '';
     // The submitIssue Cloud Function only relays message/category/url/
     // dataset/user to Slack, so the screenshot link rides in the message
     // text to reach #citsci_feedback. `screenshotUrl` is sent too, for when
@@ -321,7 +327,7 @@ async function submit() {
       { k: 'Type', v: category.value },
       { k: 'View', v: shortLink ? 'attached' : 'position only' },
       { k: 'Console', v: consoleLog ? `${recentConsoleCount()} lines` : 'none' },
-      { k: 'Screenshot', v: shot ? 'attached' : 'none' },
+      { k: 'Screenshot', v: screenshotUrls.value.length > 1 ? `${screenshotUrls.value.length} attached` : shot ? 'attached' : 'none' },
     ];
     done.value = true;
     setTimeout(() => emit('hide'), 4200);
@@ -601,8 +607,15 @@ onBeforeUnmount(() => {
         </label>
 
         <div class="nge-fb-shot-row">
+          <div v-for="(u, i) in screenshotUrls" :key="u" class="nge-fb-shot-preview">
+            <a :href="u" target="_blank" rel="noopener" title="Open full size">
+              <img :src="u" :alt="`Attached screenshot ${i + 1}`" />
+            </a>
+            <button class="nge-fb-shot-remove" :disabled="sending" title="Remove screenshot"
+                    aria-label="Remove screenshot" @click="clearScreenshot(i)">×</button>
+          </div>
           <button
-            v-if="!screenshotUrl"
+            v-if="screenshotUrls.length < MAX_SHOTS"
             class="nge-fb-chip nge-fb-shot-btn"
             :disabled="sending"
             title="Capture the current view and mark it up with the pen"
@@ -613,18 +626,11 @@ onBeforeUnmount(() => {
               <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
               <circle cx="12" cy="13.5" r="3.8"/>
             </svg>
-            <span>Screenshot</span>
+            <span>{{ screenshotUrls.length ? 'Add another' : 'Screenshot' }}</span>
           </button>
-          <button v-if="!screenshotUrl" class="nge-fb-setup-link" type="button" :disabled="sending"
+          <button v-if="screenshotUrls.length < MAX_SHOTS" class="nge-fb-setup-link" type="button" :disabled="sending"
                   title="Close this for a moment, open what the picture should show (Profile, Settings...), then take it"
                   @click="startSetup">or set up the screen first</button>
-          <div v-else class="nge-fb-shot-preview">
-            <a :href="screenshotUrl" target="_blank" rel="noopener" title="Open full size">
-              <img :src="screenshotUrl" alt="Attached screenshot" />
-            </a>
-            <button class="nge-fb-shot-remove" :disabled="sending" title="Remove screenshot"
-                    aria-label="Remove screenshot" @click="clearScreenshot">×</button>
-          </div>
         </div>
 
         <div v-if="error" class="nge-fb-err">{{ error }}</div>
@@ -804,6 +810,8 @@ onBeforeUnmount(() => {
 .nge-fb-attach--off input { cursor: default; }
 .nge-fb-shot-row {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
   margin-top: 10px;
 }
@@ -855,8 +863,8 @@ onBeforeUnmount(() => {
 }
 .nge-fb-shot-preview img {
   display: block;
-  max-width: 160px;
-  max-height: 90px;
+  max-width: 120px;
+  max-height: 68px;
   object-fit: contain;
 }
 .nge-fb-shot-remove {
