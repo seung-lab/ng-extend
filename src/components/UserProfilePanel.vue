@@ -15,6 +15,7 @@ import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import QuestTimeTable from 'components/QuestTimeTable.vue';
+import ServerStatus from 'components/ServerStatus.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import EffortCurve from 'components/EffortCurve.vue';
@@ -1093,6 +1094,22 @@ function openFavorite(item: FavItem) {
   if (item.def) { selectedSpecialBadge.value = null; selectedBadge.value = item.def; }
   else { selectedBadge.value = null; selectedSpecialBadge.value = item.award; }
 }
+/** Special Awards' View all: the Trophy Case at the special awards, like the
+ *  other rows' View all, not a separate window (toknow, report 595). */
+function viewAllSpecial() {
+  selectedBadge.value = null;
+  selectedSpecialBadge.value = null;
+  activeTab.value = 'trophyCase';
+  const target = viewingOtherUser.value ? otherOpenSections : ownOpenSections;
+  target.value = new Set([...target.value, 'special', 'competitions']);
+  let tries = 0;
+  const go = () => {
+    const el = document.querySelector('[data-trophy-section="special"], .nge-trophy-section--special') as HTMLElement | null;
+    if (el) { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    if (++tries < 10) setTimeout(go, 150);
+  };
+  void nextTick(() => setTimeout(go, 50));
+}
 function openFavoriteInCase(item: FavItem) {
   openFavorite(item);
   activeTab.value = 'trophyCase';
@@ -2010,8 +2027,8 @@ onUnmounted(() => clearTimeout(stageTimer));
                 <div
                   v-if="showSpecialViewAll"
                   class="nge-profile-badge nge-profile-badge--viewall"
-                  title="View all special awards"
-                  @click="showAllSpecialModal = true"
+                  title="View all special awards in the Trophy Case"
+                  @click="viewAllSpecial"
                 >
                   <div class="nge-profile-badge-img">
                     <svg class="nge-profile-badge-viewall-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -3093,7 +3110,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           </div>
 
           <!-- Special Awards -->
-          <div v-if="plainSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
+          <div v-if="plainSpecialBadges.length > 0" data-trophy-section="special" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
             <div class="nge-trophy-track-label">★ Special Awards
               <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
                 <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
@@ -3209,6 +3226,8 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
       <!-- More datasets (Ames 2026-10-06): optional, explore only volumes
            each player can add to their own switcher. -->
       <div v-if="activeTab === 'datasets' && !viewingOtherUser" class="nge-profile-body nge-ds-more">
+        <!-- Are the lab's servers up? (Nseraf, report 554) -->
+        <ServerStatus />
         <div class="nge-ds-more-title">More datasets</div>
         <div class="nge-ds-more-intro">Turn on extra datasets to add them to your dataset switcher. These are for exploring: you can look around, colour cells and share views, but there is nothing to proofread or claim in them.</div>
         <label v-for="ds in DATASETS.filter(d => d.optional && !d.hidden)" :key="ds.id" class="nge-ds-more-row">
