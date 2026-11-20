@@ -370,15 +370,19 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
     // Jump searches with Find Path's loader, then lights the route and gives
     // its label back (Ames 2026-11-19).
+    await page.locator('#nge-cell-match .nge-cm-play').screenshot({ path: path.join(OUT, 'jump-idle.png') }).catch(() => {});
     const searching = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); h.click(); const cv = h.querySelector('canvas.nge-cm-jloader'); return { on: h.classList.contains('nge-cm-searching'), canvas: !!cv && cv.width > 0, label: getComputedStyle(h.querySelector('.nge-cm-jlabel')).visibility }; });
-    await page.waitForTimeout(2600);
+    await page.waitForTimeout(140);
+    await page.locator('#nge-cell-match .nge-cm-play').screenshot({ path: path.join(OUT, 'jump-searching.png') }).catch(() => {});
+    await page.waitForTimeout(2460);
     const searched = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { on: h.classList.contains('nge-cm-searching'), canvas: !!h.querySelector('canvas'), label: getComputedStyle(h.querySelector('.nge-cm-jlabel')).visibility, text: h.textContent }; });
     check('Jump searches with the Find Path loader, then its label is back', searching.on && searching.canvas && searching.label === 'hidden' && !searched.on && !searched.canvas && searched.label === 'visible' && searched.text === 'Jump to next spot', { searching, searched });
     // Folded to one line at first; a click opens it with Show me (Ames 2026-11-19).
-    const hintFold = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const n = c.querySelector('.nge-cm-nudge'); const b = c.querySelector('.nge-cm-bulb'); const j = c.querySelector('.nge-cm-hbtn').getBoundingClientRect(), bb = b.getBoundingClientRect(); return { open: n.classList.contains('nge-cm-nudge-open'), lineShown: n.offsetParent !== null, bulb: b.offsetParent !== null, beside: Math.abs(bb.top - j.top) < 4 && bb.left > j.right, small: bb.width <= 34 }; });
+    const hintFold = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const n = c.querySelector('.nge-cm-nudge'); const b = c.querySelector('.nge-cm-bulb'); const j = c.querySelector('.nge-cm-hbtn').getBoundingClientRect(), bb = b.getBoundingClientRect(); return { open: n.classList.contains('nge-cm-nudge-open'), lineShown: n.offsetParent !== null, bulb: b.offsetParent !== null, beside: Math.abs(bb.top - j.top) < 4 && bb.left > j.right - 12 && bb.right > j.right + 20, small: bb.width <= 44 }; });
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-bulb').click());
-    const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); const t = n.querySelector('.nge-cm-nudge-text').getBoundingClientRect(), sm = n.querySelector('.nge-cm-hint-btn').getBoundingClientRect(); return { below: sm.top >= t.bottom - 1, wide: t.width > n.getBoundingClientRect().width * 0.7, open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open'), pressed: document.querySelector('#nge-cell-match .nge-cm-bulb').getAttribute('aria-expanded') }; });
-    check('the hint starts folded into a small light bulb beside Jump, and the bulb opens it with Show me, remembered', !hintFold.open && !hintFold.lineShown && hintFold.bulb && hintFold.beside && hintFold.small && unfolded.open && unfolded.showMe && unfolded.saved === '1' && unfolded.pressed === 'true' && unfolded.below && unfolded.wide, { hintFold, unfolded });
+    const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); const t = n.querySelector('.nge-cm-nudge-text').getBoundingClientRect(), sm = n.querySelector('.nge-cm-hint-btn').getBoundingClientRect(); const ca = n.querySelector('.nge-cm-nudge-more').getBoundingClientRect(); return { below: sm.top >= t.bottom - 1, underCaret: Math.abs(sm.right - ca.right) < 4, wide: t.width > n.getBoundingClientRect().width * 0.7, open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open'), pressed: document.querySelector('#nge-cell-match .nge-cm-bulb').getAttribute('aria-expanded') }; });
+    check('the hint starts folded into a small light bulb beside Jump, and the bulb opens it with Show me, remembered', !hintFold.open && !hintFold.lineShown && hintFold.bulb && hintFold.beside && hintFold.small && unfolded.open && unfolded.showMe && unfolded.saved === '1' && unfolded.pressed === 'true' && unfolded.below && unfolded.wide && unfolded.underCaret, { hintFold, unfolded });
+    await page.locator('#nge-cell-match').screenshot({ path: path.join(OUT, 'hint-open.png') }).catch(() => {});
     const place = await hintLayers();
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
@@ -587,8 +591,22 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(3500);
     check('closed stays closed through edits', await page.evaluate(() => !document.getElementById('nge-cell-match') && !!document.querySelector('.nge-play-btn')), null);
-    await page.evaluate(() => document.querySelector('.nge-play-btn').click());
+    // The click itself starts Find Path's lightning on the button (Ames 2026-11-20).
+    const bolt = await page.evaluate(async () => {
+      document.querySelector('.nge-play-btn').click();
+      const at = performance.now();
+      let cv = null;
+      while (!(cv = document.querySelector('.nge-play-btn .nge-play-loader')) && performance.now() - at < 1000) await new Promise(r => setTimeout(r, 16));
+      const seenMs = Math.round(performance.now() - at);
+      await new Promise(r => setTimeout(r, 350));
+      let lit = 0;
+      if (cv) { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) lit++; }
+      const word = document.querySelector('.nge-play-word');
+      return { seenMs, lit, wordHidden: !!word && getComputedStyle(word).visibility === 'hidden', w: cv ? cv.getBoundingClientRect().width : 0 };
+    });
+    check('Play: the lightning starts on the click and draws across the button', bolt.seenMs < 200 && bolt.lit > 20 && bolt.wordHidden && bolt.w > 60, bolt);
     check('Play opens it again', await waitText(/39%/, 10000), await cardText());
+    check('Play: the lightning strikes and the button settles', await page.waitForFunction(() => !document.querySelector('.nge-play-loader'), null, { timeout: 5000 }).then(() => true, () => false), null);
     await page.waitForTimeout(900);
     // Play button off in Settings: no box at all, the Cell Library as before.
     await page.evaluate(() => { const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia; pinia._s.get('userPrefs').prefs.hidePlayButton = true; });

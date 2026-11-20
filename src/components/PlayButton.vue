@@ -157,7 +157,10 @@ function onButton() {
   // Playing already: back to the task in hand.
   if (play.on) { if (!reopened) p = startPlay(play.on); }
   else p = pressPlay();
-  if (!p) return;
+  // Every click shows the lightning, even when there is nothing to fetch.
+  if (!p) p = new Promise(r => setTimeout(r, 700));
+  // The lightning gets a moment to search before it strikes.
+  const shown = new Promise(r => setTimeout(r, 650));
   loading.value = true;
   // The cell is up: the loader's route lights, then the button settles.
   const stop = () => {
@@ -167,13 +170,16 @@ function onButton() {
     if (l?.finish && searching.value) l.finish(() => { cancelAnimationFrame(l.raf); if (seq === launchSeq) loading.value = false; });
     else { if (l) cancelAnimationFrame(l.raf); loading.value = false; }
   };
-  void Promise.race([p.catch(() => false), new Promise(r => setTimeout(r, 20000))]).then(stop);
+  void Promise.all([Promise.race([p.catch(() => false), new Promise(r => setTimeout(r, 20000))]), shown]).then(stop);
 }
 const dockShown = computed(() => showDock.value || launching.value || loading.value);
 // While Pyr fetches the cell, Find Path's loader runs across the button, as
 // Jump's does (Ames 2026-11-19: "can we use this same animation when user
 // clicks play?").
-const searching = computed(() => loading.value && !launching.value);
+// It starts on the click itself (Ames 2026-11-20: "I thought we were going to
+// use the lightning bolt load thing on play button click?"); the key's burst
+// plays alongside it.
+const searching = computed(() => loading.value);
 const loaderCv = ref<HTMLCanvasElement | null>(null);
 let loaderLive: Live | null = null;
 watch(searching, async on => {
@@ -378,6 +384,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-btn.is-loading .nge-play-icon { animation: nge-play-throb 0.8s ease-in-out infinite; }
 .nge-play-btn.is-loading .nge-play-label { letter-spacing: 0.2em; }
 .nge-play-label.is-searching .nge-play-word { visibility: hidden; }
+.nge-play-btn .nge-play-label.is-searching::after { animation: none; transform: scaleX(0); }
+.nge-play-btn.is-launch:has(.is-searching) .nge-play-comet { animation: none; opacity: 0; }
 .nge-play-loader { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 .nge-play-beam { position: absolute; top: 0; bottom: 0; left: -45%; width: 45%; opacity: 0;
   background: linear-gradient(90deg, rgba(94, 240, 198, 0), rgba(94, 240, 198, 0.5), rgba(94, 240, 198, 0)); }

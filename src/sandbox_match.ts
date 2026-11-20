@@ -508,7 +508,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
    bulb we can click to open it as an icon to keep it small and sweet"). */
 #${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){display:none}
 #${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px;align-self:flex-start;order:2}
-/* Open: the words across the top, Show me under them (Ames 2026-11-19: "this layout is weird"). */
+/* Open: the words across the top, Show me under them on the right, below the fold caret (Ames 2026-11-19, 2026-11-20). */
 #${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open{flex-wrap:wrap;align-items:flex-start;row-gap:7px}
 #${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open .nge-cm-nudge-text{flex:1 1 0;min-width:0;order:1}
 #${CARD_ID} .nge-cm-nudge-btns:not(:has(.nge-cm-hint-btn:not([hidden]))){display:none}
@@ -540,10 +540,45 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-go{margin-left:auto;border-color:#3eecbe;background:rgba(20,110,80,.55);color:#eafff7}
 #${CARD_ID} .nge-cm-play .nge-cm-complete:hover,#${CARD_ID} .nge-cm-finish-go:hover:not(:disabled){background:rgba(24,140,100,.7)}
 #${CARD_ID} .nge-cm-btn:disabled{opacity:.5;cursor:default}
+/* Circuit buttons (Ames 2026-11-20: "stylize the jump and complete button to
+   look cooler with circuit"): traces etched in the face and a round pad at the
+   middle of each side edge. Jump's lightning runs from one pad to the other. */
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn,#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:127,216,255;position:relative;overflow:visible;border-radius:4px;border-color:rgba(var(--cc),.75) !important;box-shadow:inset 0 0 10px rgba(var(--cc),.16);text-shadow:0 0 6px rgba(var(--cc),.6);transition:box-shadow .15s,border-color .15s}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.26),rgba(74,158,255,.1)) !important}
+#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:62,236,190;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%233eecbe' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%233eecbe' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(20,120,88,.62),rgba(20,110,80,.38)) !important}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled){background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.4),rgba(74,158,255,.18)) !important}
+#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled){background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%233eecbe' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%233eecbe' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(24,150,108,.75),rgba(24,140,100,.5)) !important}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled),#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled){box-shadow:inset 0 0 12px rgba(var(--cc),.28),0 0 10px rgba(var(--cc),.35)}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn::before,#${CARD_ID} .nge-cm-play .nge-cm-hbtn::after,#${CARD_ID} .nge-cm-play .nge-cm-complete::before,#${CARD_ID} .nge-cm-play .nge-cm-complete::after{content:'';position:absolute;top:50%;z-index:1;box-sizing:border-box;width:9px;height:9px;margin-top:-4.5px;border:1.5px solid rgb(var(--cc));border-radius:50%;background:radial-gradient(circle,rgb(var(--cc)) 0 1.4px,#0a1322 1.9px);box-shadow:0 0 6px rgba(var(--cc),.75);pointer-events:none}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn::before,#${CARD_ID} .nge-cm-play .nge-cm-complete::before{left:-5px}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn::after,#${CARD_ID} .nge-cm-play .nge-cm-complete::after{right:-5px}
+#${CARD_ID} .nge-cm-jloader{z-index:2}
+/* Little vias on traces running out from each pad (Ames 2026-11-20). */
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M0 15h8l5-5h4'/%3E%3Cpath d='M3 15l6 6h6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='19' cy='10' r='1.8'/%3E%3Ccircle cx='17' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='24' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") left center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M30 15h-8l-5-5h-4'/%3E%3Cpath d='M27 15l-6 6h-6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='11' cy='10' r='1.8'/%3E%3Ccircle cx='13' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='6' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") right center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.26),rgba(74,158,255,.1)) !important}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled){background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M0 15h8l5-5h4'/%3E%3Cpath d='M3 15l6 6h6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='19' cy='10' r='1.8'/%3E%3Ccircle cx='17' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='24' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") left center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.6' stroke-width='1'%3E%3Cpath d='M30 15h-8l-5-5h-4'/%3E%3Cpath d='M27 15l-6 6h-6'/%3E%3C/g%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.8' stroke-width='1'%3E%3Ccircle cx='11' cy='10' r='1.8'/%3E%3Ccircle cx='13' cy='21' r='1.8'/%3E%3C/g%3E%3Ccircle cx='6' cy='15' r='1.2' fill='%237fd8ff' fill-opacity='.7'/%3E%3C/svg%3E") right center/30px 30px no-repeat,url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='30'%3E%3Cg fill='none' stroke='%237fd8ff' stroke-opacity='.24' stroke-width='1'%3E%3Cpath d='M0 7h13l6 6h17'/%3E%3Cpath d='M64 23H49l-5-5H31'/%3E%3Cpath d='M23 30v-5l4-4'/%3E%3Cpath d='M44 0v4l-3 3'/%3E%3C/g%3E%3Cg fill='%237fd8ff' fill-opacity='.42'%3E%3Ccircle cx='37' cy='13' r='1.7'/%3E%3Ccircle cx='30' cy='18' r='1.7'/%3E%3Ccircle cx='27' cy='21' r='1.3'/%3E%3Ccircle cx='41' cy='7' r='1.3'/%3E%3C/g%3E%3C/svg%3E") center/64px 30px repeat-x,linear-gradient(180deg,rgba(74,158,255,.4),rgba(74,158,255,.18)) !important}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn .nge-cm-jloader{left:-6.5px;transform:translateY(-50%)}
+/* The bulb is Jump's key, as the play mark is Play's (Ames 2026-11-20: "fit in
+   almost like how the play button has that slash line"): Jump ends in a slash,
+   the key follows it, and Jump's right pad sits on the slash. */
+#${CARD_ID} .nge-cm-jumprow{gap:0;align-items:stretch}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;border-top-right-radius:0 !important;border-bottom-right-radius:0 !important;padding-right:16px !important;
+  clip-path:polygon(-8px 0,100% 0,calc(100% - 3px) calc(50% - 6px),calc(100% + 2px) calc(50% - 6px),calc(100% + 2px) calc(50% + 6px),calc(100% - 7px) calc(50% + 6px),calc(100% - 10px) 100%,-8px 100%)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn::after{right:-.5px}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb{position:relative;overflow:hidden;flex:0 0 42px;margin-left:-7px;padding:0 0 0 6px;border:0;border-radius:0 4px 4px 0;
+  clip-path:polygon(10px 0,100% 0,100% 100%,0 100%);background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%);transition:filter .2s}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb svg{stroke:#06213a;position:relative;z-index:1}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb::after{content:'';position:absolute;top:0;bottom:0;left:-60%;width:40%;pointer-events:none;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.85),rgba(255,255,255,0));transform:skewX(-20deg)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:hover{background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%);filter:brightness(1.1)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:hover::after,#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:focus-visible::after{animation:nge-cm-keyshine .6s ease-out}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:active{filter:brightness(1.35)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb[aria-expanded="true"]{box-shadow:none;background:linear-gradient(135deg,#fff8d6 0%,#ffe27a 45%,#d9a520 100%)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb[aria-expanded="true"] svg{stroke:#2a1d00}
+@keyframes nge-cm-keyshine{to{left:120%}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb::after{animation:none !important}}
 #${CARD_ID}.nge-cm-idle .nge-cm-play,#${CARD_ID}.nge-cm-idle .nge-cm-cellid,#${CARD_ID}.nge-cm-idle .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-play,#${CARD_ID}.nge-cm-reviewing .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-marktoggle,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){height:auto !important;resize:horizontal}
-#${CARD_ID} .nge-cm-nudge-btns{display:flex;gap:5px;order:3;flex:1 0 100%;padding-left:27px}
+#${CARD_ID} .nge-cm-nudge-btns{display:flex;gap:5px;order:3;flex:1 0 100%;justify-content:flex-end;padding-left:0}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
 #${CARD_ID}.nge-cm-finishing .nge-cm-play,#${CARD_ID}.nge-cm-finishing .nge-cm-nudge,#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="cut"]{display:none}
 #${CARD_ID} .nge-cm-viewnote{margin-top:6px;font-size:11.5px;line-height:1.4;color:#8fa6c4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1620,8 +1655,12 @@ function startJumpSearch(jump: HTMLElement) {
   jump.classList.add('nge-cm-searching');
   const live: Live = { raf: 0, timer: 0 };
   jumpSearch = { jump, cv, live };
-  // Near the button's ends (Ames: "why are the dots so far from the edge").
-  startLoader(cv, live, Math.max(80, jump.clientWidth - 4), 20);
+  // From the pad on one edge to the pad on the other (Ames 2026-11-20: "have
+  // the lightning bolts originate from there"). The canvas reaches 6 px past
+  // each edge so the end dots sit on the pads.
+  // With the bulb beside it, the right pad sits on Jump's slash, 4 px in.
+  const keyed = !!jump.parentElement?.querySelector('.nge-cm-bulb:not([hidden])');
+  startLoader(cv, live, jump.clientWidth + (keyed ? 8.5 : 13), 20, 6);
 }
 /** Found: the route lights, then the label is back. Not found: it stops. */
 function finishJumpSearch(found: boolean) {
