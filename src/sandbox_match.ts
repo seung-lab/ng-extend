@@ -569,33 +569,48 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
    the edge: a rim with cut corners, short traces that step in at 45 degrees
    and end on pads, and a ring pad at the middle of each side, where Jump's
    lightning starts and ends. Drawn to size by frameButton(). */
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn,#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:127,216,255;position:relative;isolation:isolate;overflow:visible;border:0 !important;border-radius:0 !important;background:none !important;box-shadow:none !important;
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn,#${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{--cc:127,216,255;position:relative;isolation:isolate;overflow:visible;border:0 !important;border-radius:0 !important;background:none !important;box-shadow:none !important;
   color:#eef8ff !important;font:600 13px/1 Inter,system-ui,sans-serif !important;padding:9px 12px !important;text-shadow:none}
-#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:62,236,190;color:#eafff6 !important}
+#${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{--cc:62,236,190;color:#eafff6 !important}
 #${CARD_ID} .nge-cm-frame{position:absolute;inset:0;z-index:-1;pointer-events:none}
 #${CARD_ID} .nge-cm-frame svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 #${CARD_ID} .nge-cm-frame .rim{fill:rgba(var(--cc),.1);stroke:rgba(var(--cc),.72);stroke-width:1;transition:fill .15s,stroke .15s}
-#${CARD_ID} .nge-cm-play .nge-cm-complete .nge-cm-frame .rim{fill:rgba(32,150,110,.28)}
+#${CARD_ID} .nge-cm-play .nge-cm-complete .nge-cm-frame .rim,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go .nge-cm-frame .rim{fill:rgba(32,150,110,.28)}
 #${CARD_ID} .nge-cm-frame .tr{fill:none;stroke:rgba(var(--cc),.6);stroke-width:1;stroke-linejoin:round;stroke-linecap:round}
 #${CARD_ID} .nge-cm-frame .pad{fill:rgb(var(--cc))}
 #${CARD_ID} .nge-cm-frame .via{fill:#0a1322;stroke:rgba(var(--cc),.85);stroke-width:1}
 #${CARD_ID} .nge-cm-frame .pin{fill:rgba(var(--cc),.7)}
 #${CARD_ID} .nge-cm-frame .side{fill:#0a1322;stroke:rgb(var(--cc));stroke-width:1.4;filter:drop-shadow(0 0 3px rgba(var(--cc),.8))}
 #${CARD_ID} .nge-cm-frame .side-in{fill:rgb(var(--cc))}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled) .rim{fill:rgba(var(--cc),.2);stroke:rgb(var(--cc))}
-#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled) .rim{fill:rgba(36,170,124,.42);stroke:rgb(var(--cc))}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled),#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled){filter:drop-shadow(0 0 6px rgba(var(--cc),.35))}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible{outline:none}
-#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible .rim,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible .rim{stroke:#fff}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled) .rim,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back:hover:not(:disabled) .rim{fill:rgba(var(--cc),.2);stroke:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled) .rim,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go:hover:not(:disabled) .rim{fill:rgba(36,170,124,.42);stroke:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled),#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled),#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back:hover:not(:disabled),#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go:hover:not(:disabled){filter:drop-shadow(0 0 6px rgba(var(--cc),.35))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back:focus-visible,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go:focus-visible{outline:none}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible .rim,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible .rim,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back:focus-visible .rim,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go:focus-visible .rim{stroke:#fff}
 #${CARD_ID} .nge-cm-jlabel{position:relative;z-index:1}
+#${CARD_ID}.nge-cm-on{animation:nge-cm-poweron .42s cubic-bezier(.2,.8,.2,1) both}
+#${CARD_ID}.nge-cm-on>*{animation:nge-cm-partin .32s ease-out both}
+#${CARD_ID}.nge-cm-on>*:nth-child(2){animation-delay:.18s}
+#${CARD_ID}.nge-cm-on>*:nth-child(3){animation-delay:.22s}
+#${CARD_ID}.nge-cm-on>*:nth-child(4){animation-delay:.26s}
+#${CARD_ID}.nge-cm-on>*:nth-child(5){animation-delay:.3s}
+#${CARD_ID}.nge-cm-on>*:nth-child(n+6){animation-delay:.34s}
+#${CARD_ID}.nge-cm-off{animation:nge-cm-poweroff .3s cubic-bezier(.6,0,.8,.4) both;pointer-events:none}
+@keyframes nge-cm-poweron{0%{transform:scale(.55,.02);opacity:.3;filter:brightness(3)}40%{transform:scale(1,.02);opacity:1;filter:brightness(2.4)}100%{transform:none;filter:none}}
+@keyframes nge-cm-poweroff{0%{transform:none;filter:none}55%{transform:scale(1,.02);filter:brightness(2.6)}100%{transform:scale(0,.02);opacity:0;filter:brightness(3)}}
+@keyframes nge-cm-partin{0%,45%{opacity:0;transform:translateY(4px)}100%{opacity:1;transform:none}}
 #${CARD_ID} .nge-cm-jloader{z-index:2}
 #${CARD_ID} .nge-cm-play .nge-cm-hbtn .nge-cm-jloader{left:-6px;transform:translateY(-50%)}
 /* The bulb is Jump's key, as the play mark is Play's (Ames 2026-11-20: "fit in
    almost like how the play button has that slash line"): Jump ends in a slash,
    the key follows it, and Jump's right pad sits on the slash. */
 #${CARD_ID} .nge-cm-jumprow{gap:0;align-items:stretch}
-/* Its words centered on the whole row, so they line up with Complete's (Ames 2026-11-20: "the text is aligned weird"): the bulb takes 35 px, so 35 px more on the left. */
-#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;padding-left:47px !important;padding-right:12px !important}
+/* Optically balanced with the bulb showing (Ames 2026-11-20: centered in
+   Jump looked too far left, centered on the row too far right, "we need
+   something in between"): Jump's words sit halfway, about 9 px left of the
+   row's middle, and Complete's about 4 px left, under them. */
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;padding-left:30px !important;padding-right:12px !important}
+#${CARD_ID} .nge-cm-play:has(.nge-cm-bulb:not([hidden])) .nge-cm-complete{padding-left:12px !important;padding-right:20px !important}
 #${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb{position:relative;overflow:hidden;flex:0 0 42px;margin-left:-7px;padding:0 0 0 6px;border:0;border-radius:0 4px 4px 0;
   clip-path:polygon(10px 0,100% 0,100% 100%,0 100%);background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%);transition:filter .2s}
 #${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb svg{stroke:#06213a;position:relative;z-index:1}
@@ -638,7 +653,9 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-finish-left[hidden]{display:none}
 #${CARD_ID} .nge-cm-finish-left-count{margin:0 0 3px}
 #${CARD_ID} .nge-cm-left-red{color:#ff6b8a;font-weight:600}
-#${CARD_ID} .nge-cm-finish-actions{display:flex;gap:6px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-finish-actions{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-back,#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{padding:8px 12px !important;margin-left:5px}
+#${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto;margin-right:5px}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
 #${CARD_ID} .nge-cm-row[data-row="merge"]{margin-top:2px;border-top:1px solid rgba(127,190,255,.18);padding-top:7px}
@@ -875,7 +892,7 @@ const FINISH_HTML = '<div class="nge-cm-finish" hidden>'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-back">Keep working</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-check" hidden>Check again</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-finish-jump" hidden>Jump to it</button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-finish-go">Complete and Review</button></div></div>';
+  + '<button type="button" class="nge-cm-btn nge-cm-finish-go"><span class="nge-cm-glabel">Complete and Review</span></button></div></div>';
 
 function card(): HTMLElement {
   ensureStyle();
@@ -921,6 +938,7 @@ function card(): HTMLElement {
   keepSize(el);
   setMin(el, store.get(MIN_KEY) === '1', true);
   document.body.appendChild(el);
+  powerOn(el);
   return el;
 }
 
@@ -1125,10 +1143,26 @@ function removeChip() {
   document.getElementById(HINT_ID)?.remove();
 }
 
+/** Opening and closing (Ames 2026-11-20: "a cool animation for the box to
+ *  open and close"): the box powers on like a screen, a bright line that
+ *  opens into the box, its parts arriving in turn; and off the same way. */
+function powerOn(el: HTMLElement) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  el.classList.remove('nge-cm-off');
+  el.classList.add('nge-cm-on');
+  window.setTimeout(() => el.classList.remove('nge-cm-on'), 900);
+}
+function powerOff(el: HTMLElement | null, then: () => void) {
+  if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { then(); return; }
+  if (el.classList.contains('nge-cm-off')) return;
+  el.classList.remove('nge-cm-on');
+  el.classList.add('nge-cm-off');
+  window.setTimeout(then, 300);
+}
 function closeCard() {
   if (reviewing) return;
   store.set(CLOSED_KEY, '1');
-  folded();
+  powerOff(document.getElementById(CARD_ID), folded);
   setTimeout(() => (document.querySelector('.nge-play-btn') as HTMLElement | null)?.focus(), 450);
 }
 
@@ -1657,7 +1691,8 @@ function renderFinish(el: HTMLElement, c: FinishState) {
   (f.querySelector('.nge-cm-finish-check') as HTMLElement).hidden = c.checking || c.ok;
   const go = f.querySelector('.nge-cm-finish-go') as HTMLButtonElement;
   go.disabled = c.submitting || c.checking || c.minting || !c.ok || !c.link || gated();
-  go.textContent = c.submitting ? 'Saving…' : 'Complete and Review';
+  // The label only: the chip edge drawn in the button stays.
+  (go.querySelector('.nge-cm-glabel') ?? go).textContent = c.submitting ? 'Saving…' : 'Complete and Review';
 }
 /** What the Cell Library says about the cell on screen. */
 function onCellState(e: Event) {
@@ -1718,7 +1753,7 @@ function endJumpSearch() {
 }
 /** A button's circuit edge, drawn to its size (see "Circuit edges" above).
  *  Keyed: the right end is the slash before the bulb key. */
-function frameSvg(w: number, h: number, keyed: boolean): string {
+function frameSvg(w: number, h: number, keyed: boolean, balance = false): string {
   // A chip on a board (Ames 2026-11-20: "PCB microchip type thing in the
   // border", "it's small, so keep it as simple as you can"): the package
   // outline with cut corners, a few pins on its top and bottom edges, two
@@ -1734,13 +1769,23 @@ function frameSvg(w: number, h: number, keyed: boolean): string {
   const span = Math.min(1, w / 260);
   // Top right: two traces leave the top edge, step in, run left to vias.
   const tx = w - (keyed ? 24 : 15);
-  for (let k = 0; k < 2; k++) {
+  // A short button keeps its outline, pins and pads; traces would crowd its words.
+  const roomy = w >= 170;
+  for (let k = 0; roomy && k < 2; k++) {
     const x0 = tx - 4 * k, y = 3.5 + 3 * k, L = (28 - 10 * k) * span;
     tr += `M${f(x0)} .5L${f(x0 - y + 0.5)} ${f(y)}H${f(x0 - y + 0.5 - L)}`;
     via(x0 - y + 0.5 - L - 1.4, y);
   }
-  // Bottom left: the same, running right.
-  for (let k = 0; k < 2; k++) {
+  // Bottom left: the same, running right. Balanced under the bulb, these
+  // move to the bottom right instead, running left (Ames 2026-11-20: "add an
+  // extra little PCB circuit thing on the right hand side and remove one
+  // from the left when the light bulb is present").
+  for (let k = 0; roomy && balance && k < 2; k++) {
+    const x0 = w - c - 12 - 4 * k, y = h - 3.5 - 3 * k, L = (28 - 10 * k) * span;
+    tr += `M${f(x0)} ${f(B)}L${f(x0 - (B - y))} ${f(y)}H${f(x0 - (B - y) - L)}`;
+    via(x0 - (B - y) - L - 1.4, y);
+  }
+  for (let k = 0; roomy && !balance && k < 2; k++) {
     const x0 = 15 + 4 * k, y = h - 3.5 - 3 * k, L = (28 - 10 * k) * span;
     tr += `M${f(x0)} ${f(B)}L${f(x0 + (B - y))} ${f(y)}H${f(x0 + (B - y) + L)}`;
     via(x0 + (B - y) + L + 1.4, y);
@@ -1748,7 +1793,8 @@ function frameSvg(w: number, h: number, keyed: boolean): string {
   // Pins: four legs on the top edge at the left, four on the bottom at the right.
   const legs = (x0: number, y: number) => { for (let i = 0; i < 4; i++) pins += `<rect class="pin" x="${f(x0 + i * 4.5)}" y="${f(y)}" width="1.8" height="2.6" rx=".4"/>`; };
   legs(c + 14, -2.4);
-  legs(w - (keyed ? 30 : 22) - 18, h - 0.2);
+  // Balanced, the bottom pins go left, where the traces were.
+  legs(balance ? 15 : w - (keyed ? 30 : 22) - 18, h - 0.2);
   const rx = keyed ? w - 5.5 : R;
   const side = (x: number) => `<circle class="side" cx="${f(x)}" cy="${f(m)}" r="3.6"/><circle class="side-in" cx="${f(x)}" cy="${f(m)}" r="1.3"/>`;
   return `<svg viewBox="0 0 ${f(w)} ${f(h)}" aria-hidden="true">${pins}<path class="rim" d="${rim}"/><path class="tr" d="${tr}"/>${vias}${side(0.5)}${side(rx)}</svg>`;
@@ -1762,13 +1808,20 @@ function frameButton(btn: HTMLElement) {
   const draw = () => {
     const w = btn.offsetWidth, h = btn.offsetHeight;
     if (!w || !h) return;
-    const keyed = !!btn.parentElement?.querySelector('.nge-cm-bulb:not([hidden])') && btn.classList.contains('nge-cm-hbtn');
-    const key = `${w}x${h}${keyed}`;
+    const bulb = btn.closest('.nge-cm-play')?.querySelector('.nge-cm-bulb:not([hidden])');
+    const keyed = !!bulb && btn.classList.contains('nge-cm-hbtn');
+    const balance = !!bulb && btn.classList.contains('nge-cm-complete');
+    const key = `${w}x${h}${keyed}${balance}`;
     if (key === drawn) return;
     drawn = key;
-    host.innerHTML = frameSvg(w, h, keyed);
+    host.innerHTML = frameSvg(w, h, keyed, balance);
   };
   try { new ResizeObserver(draw).observe(btn); } catch { /* drawn once */ }
+  // Complete's width does not change when the bulb comes and goes: watch it.
+  const bulbEl = btn.closest('.nge-cm-play')?.querySelector('.nge-cm-bulb');
+  if (bulbEl && btn.classList.contains('nge-cm-complete')) {
+    try { new MutationObserver(() => requestAnimationFrame(draw)).observe(bulbEl, { attributes: true, attributeFilter: ['hidden'] }); } catch { /* */ }
+  }
   requestAnimationFrame(draw);
 }
 function startJumpSearch(jump: HTMLElement) {
@@ -1885,6 +1938,8 @@ function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-complete')!.addEventListener('click', () => openFinish(el));
   frameButton(el.querySelector('.nge-cm-hbtn') as HTMLElement);
   frameButton(el.querySelector('.nge-cm-complete') as HTMLElement);
+  // The finish screen's two (Ames 2026-11-20: "needs the cool button treatment here").
+  for (const q of ['.nge-cm-finish-back', '.nge-cm-finish-go']) { const b = el.querySelector(q) as HTMLElement | null; if (b) frameButton(b); }
   el.querySelector('.nge-cm-finish-back')!.addEventListener('click', () => { cellAction('complete-cancel'); closeFinish(el); });
   el.querySelector('.nge-cm-finish-check')!.addEventListener('click', () => cellAction('complete-check'));
   el.querySelector('.nge-cm-finish-how')!.addEventListener('click', e => {

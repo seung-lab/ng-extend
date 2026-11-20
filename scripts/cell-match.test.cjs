@@ -117,7 +117,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const backAfterStart = await waitText(/merge 0%/i, 15000);
     check('Stop playing hides the box, and Start playing on the same cell shows it again', afterStop === null && backAfterStart, { afterStop, backAfterStart });
     await page.evaluate(() => sessionStorage.removeItem('nge_play_on'));
+    // Measured once the box has powered on (Ames 2026-11-20: it opens with an animation).
+    await page.waitForFunction(() => !document.querySelector('#nge-cell-match.nge-cm-on'), null, { timeout: 3000 }).catch(() => {});
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+    check('the box powers on when it opens, then sits still', await page.evaluate(() => !document.querySelector('#nge-cell-match.nge-cm-on') && getComputedStyle(document.getElementById('nge-cell-match')).transform === 'none'), null);
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
     // Ames 2026-11-19: resized smaller, the box scrolls.
     const scroll = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.style.height; c.style.height = '200px'; const r = { oy: getComputedStyle(c).overflowY, can: c.scrollHeight > c.clientHeight }; c.style.height = h; return r; });
@@ -292,6 +295,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     });
     check('crosshairs outside: How? shows what to do, and Put them in the soma moves them', how.shown && /red and green lines cross in the 2D view/.test(how.tipText) && how.sent === 'complete-soma', how);
     check('what is left reads in red: the pieces to merge in and the parts to cut off', how.reds.length >= 1 && how.reds.every(r => /to (merge in|cut off)$/.test(r.text) && r.color === 'rgb(255, 107, 138)'), how.reds);
+    // The finish screen's buttons wear the chip too (Ames 2026-11-20).
+    const finChips = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-finish-actions .nge-cm-finish-back, #nge-cell-match .nge-cm-finish-actions .nge-cm-finish-go')].map(b => !!b.querySelector('.nge-cm-frame svg .rim') && getComputedStyle(b).backgroundImage === 'none'));
+    check('Keep working and Complete and Review on the finish screen have the chip edge', finChips.length === 2 && finChips.every(Boolean), finChips);
+    await page.locator('#nge-cell-match .nge-cm-finish-go').locator('xpath=..').screenshot({ path: path.join(OUT, 'finish-actions.png') }).catch(() => {});
     check('pieces left: Complete and Review shows the answers; never in a production dataset', /Press Complete and Review to see the answers\. In a production dataset, you should never complete a cell before it is completely proofread\./.test(how.left), how.left);
     await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match');
@@ -384,8 +391,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); const t = n.querySelector('.nge-cm-nudge-text').getBoundingClientRect(), sm = n.querySelector('.nge-cm-hint-btn').getBoundingClientRect(); const ca = n.querySelector('.nge-cm-nudge-more').getBoundingClientRect(); return { below: sm.top >= t.bottom - 1, underCaret: Math.abs(sm.right - ca.right) < 4, wide: t.width > n.getBoundingClientRect().width * 0.7, open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open'), pressed: document.querySelector('#nge-cell-match .nge-cm-bulb').getAttribute('aria-expanded') }; });
     check('the hint starts folded into a small light bulb beside Jump, and the bulb opens it with Show me, remembered', !hintFold.open && !hintFold.lineShown && hintFold.bulb && hintFold.beside && hintFold.small && unfolded.open && unfolded.showMe && unfolded.saved === '1' && unfolded.pressed === 'true' && unfolded.below && unfolded.wide && unfolded.underCaret, { hintFold, unfolded });
     await page.locator('#nge-cell-match').screenshot({ path: path.join(OUT, 'hint-open.png') }).catch(() => {});
-    const centers = await page.evaluate(() => { const r = q => document.querySelector(q).getBoundingClientRect(); const range = document.createRange(); range.selectNodeContents(document.querySelector('#nge-cell-match .nge-cm-jlabel')); const j = range.getBoundingClientRect(); const c = document.querySelector('#nge-cell-match .nge-cm-complete'); const t = [...c.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()); range.selectNodeContents(t); const k = range.getBoundingClientRect(); return { bulb: r('#nge-cell-match .nge-cm-bulb').width > 0, jump: Math.round(j.left + j.width / 2), complete: Math.round(k.left + k.width / 2) }; });
-    check('with the bulb showing, Jump’s words line up with Complete’s', !centers.bulb || Math.abs(centers.jump - centers.complete) <= 2, centers);
+    const centers = await page.evaluate(() => { const r = q => document.querySelector(q).getBoundingClientRect(); const range = document.createRange(); range.selectNodeContents(document.querySelector('#nge-cell-match .nge-cm-jlabel')); const j = range.getBoundingClientRect(); const c = document.querySelector('#nge-cell-match .nge-cm-complete'); const t = [...c.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()); range.selectNodeContents(t); const k = range.getBoundingClientRect(); const row = r('#nge-cell-match .nge-cm-play'); const cBtn = document.querySelector('#nge-cell-match .nge-cm-complete'); return { bulb: r('#nge-cell-match .nge-cm-bulb').width > 0, jump: Math.round(j.left + j.width / 2), complete: Math.round(k.left + k.width / 2), row: Math.round(row.left + row.width / 2), balanced: [...cBtn.querySelectorAll('.nge-cm-frame .pin')].some(p => Number(p.getAttribute('y')) > 10 && Number(p.getAttribute('x')) < 40) }; });
+    await page.evaluate(() => document.querySelectorAll('.introductionStep, .nge-hero-overlay').forEach(e => { e.style.visibility = 'hidden'; }));
+    await page.locator('#nge-cell-match .nge-cm-play').screenshot({ path: path.join(OUT, 'jump-keyed.png') }).catch(() => {});
+    check('with the bulb showing, the words are optically balanced: Jump’s about 9 px left of the middle, Complete’s about 4, and Complete’s bottom pins move left', !centers.bulb || (centers.row - centers.jump >= 6 && centers.row - centers.jump <= 12 && centers.row - centers.complete >= 2 && centers.row - centers.complete <= 7 && centers.balanced), centers);
     const place = await hintLayers();
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
@@ -571,6 +580,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const sizes = await page.evaluate(() => ({ pieces: parseFloat(getComputedStyle(document.querySelector('#nge-cell-match .nge-cm-pieces')).fontSize), label: parseFloat(getComputedStyle(document.querySelector('#nge-cell-match .nge-cm-label')).fontSize) }));
     check('readable text sizes', sizes.pieces >= 13 && sizes.label >= 11, sizes);
     // Drag and drop by the top line; it stays put; a double click puts it back.
+    await page.waitForFunction(() => !document.querySelector('#nge-cell-match.nge-cm-on'), null, { timeout: 3000 }).catch(() => {});
     const hb = await page.evaluate(() => { const r = document.querySelector('#nge-cell-match .nge-cm-title').getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; });
     // The welcome hero is still over the corner in this headless run; a player has closed it.
     await page.evaluate(() => document.querySelectorAll('.nge-hero-overlay').forEach(e => { e.style.display = 'none'; }));
@@ -584,7 +594,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('double click puts it back', back === 12, back);
     // The X closes the box and Pyr's Play button comes back to open it
     // (Ames 2026-11-14: "it's not clear how to get back bc the play button is gone").
-    await page.evaluate(() => { document.querySelector('.introductionStep')?.remove(); document.querySelector('#nge-cell-match .nge-cm-x').click(); });
+    const off = await page.evaluate(() => { document.querySelector('.introductionStep')?.remove(); document.querySelector('#nge-cell-match .nge-cm-x').click(); const c = document.getElementById('nge-cell-match'); return { there: !!c, powering: !!c && c.classList.contains('nge-cm-off'), anim: c ? getComputedStyle(c).animationName : '' }; });
+    check('X: the box powers off (a short animation) before it goes', off.there && off.powering && off.anim === 'nge-cm-poweroff', off);
     // Play stays away 4 s after a tutorial was on screen (7d9fbacc).
     await page.waitForTimeout(5000);
     const folded = await page.evaluate(() => { const p = document.querySelector('.nge-play-btn'); return { card: !!document.getElementById('nge-cell-match'), chip: !!document.getElementById('nge-cell-match-open'), play: !!p && p.getBoundingClientRect().width > 0 && p.textContent.trim(), row: !document.body.classList.contains('nge-cm-owns') }; });
