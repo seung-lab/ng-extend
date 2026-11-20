@@ -90,6 +90,7 @@ function buildStaticReference(): string {
     "- Server status: one line at the top of Profile > Datasets says whether the lab servers for Retina, the Sandbox and MEC are OK; it opens by itself when one is slow or down.",
     "- Settings: sections are listed on the left (click one to jump there), with a search box and a Changed filter that shows only settings changed from the defaults.",
     "- In the Training Sim, Jump drops a pin, drawn over the cell, on the next spot to fix: blue means look near here, gold means merge this piece in, red means cut here.",
+    "- In the Training Sim only, an 'Updating the 3D shape' pill shows after a cut or merge while the new shape loads; the edit is already saved.",
     "- The merge and cut bars at the bottom are both blue (merge used to be green). The cut bar stays blue the whole time cut mode is on. Which side you are placing shows on the RED and BLUE switch: the side being placed is the solid one. The button beside it, G Place blue (or G Place red), says what pressing G will do.",
     "- Holding the right mouse button still on a cell, in the 3D or a 2D view, for half a second opens that cell's Δ menu, the same menu as the Δ button by its ID in the segment list. A right click or a right drag still moves the view as before.",
     "- Merge points too far apart: the server only joins two points that are close together. Click both pieces right where they touch, zooming in first if needed.",
