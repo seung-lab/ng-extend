@@ -15,6 +15,7 @@ import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import QuestTimeTable from 'components/QuestTimeTable.vue';
+import ServerStatus from 'components/ServerStatus.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import EffortCurve from 'components/EffortCurve.vue';
@@ -3209,6 +3210,8 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
       <!-- More datasets (Ames 2026-10-06): optional, explore only volumes
            each player can add to their own switcher. -->
       <div v-if="activeTab === 'datasets' && !viewingOtherUser" class="nge-profile-body nge-ds-more">
+        <!-- Are the lab's servers up? (Nseraf, report 554) -->
+        <ServerStatus />
         <div class="nge-ds-more-title">More datasets</div>
         <div class="nge-ds-more-intro">Turn on extra datasets to add them to your dataset switcher. These are for exploring: you can look around, colour cells and share views, but there is nothing to proofread or claim in them.</div>
         <label v-for="ds in DATASETS.filter(d => d.optional && !d.hidden)" :key="ds.id" class="nge-ds-more-row">
