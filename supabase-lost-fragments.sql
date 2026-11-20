@@ -74,3 +74,20 @@ alter table public.ew_lost_fragments
   add column if not exists sheet_dirty boolean not null default true;
 update public.ew_lost_fragments f set player_name = coalesce(u.display_name, u.username, 'Player')
   from public.users u where u.id = f.user_id and f.player_name is null;
+
+-- Points, a beta (2026-11-20): worked out on Submit (lost-fragments.js
+-- fragmentPoints). Not in stats, the leaderboard or the sheet.
+alter table public.ew_lost_fragments
+  add column if not exists points integer,
+  add column if not exists points_detail jsonb;
+-- Per player, for the admins' review at the end of Thanksgiving week
+-- (Ames 2026-11-20: check how well the points track what players did).
+create or replace view public.ew_lost_fragment_points with (security_invoker = true) as
+select f.user_id, max(f.player_name) as player_name, count(*) as fragments,
+  sum(f.points) as points, sum((f.points_detail->>'size')::int) as size_points,
+  sum((f.points_detail->>'edits')::int) as edit_points, sum((f.points_detail->>'grown')::int) as grown_points,
+  sum((f.points_detail->>'nucleus')::int) as nucleus_points,
+  sum(f.merges) as merges, sum(f.cuts) as cuts, round(sum(f.lab_um3)::numeric, 1) as lab_um3,
+  min(f.submitted_at) as first_at, max(f.updated_at) as last_at
+from public.ew_lost_fragments f group by f.user_id;
+revoke all on public.ew_lost_fragment_points from anon, authenticated;

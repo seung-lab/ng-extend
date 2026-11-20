@@ -1196,6 +1196,10 @@ function padRank(rank: number): string {
   <div v-show="visible" ref="panelRef" class="nge-notif-panel">
     <div class="nge-notif-topbar">
       <span class="nge-notif-title">🔔 Notifications</span>
+      <!-- Close: in the panel's top right corner, apart from the two feed
+           buttons, with a tooltip (Ames 2026-11-20: "What is this X ... It
+           doesn't have a tooltip"; beside Delete all it read as part of it). -->
+      <button class="nge-notif-close" title="Close notifications" aria-label="Close notifications" @click.stop="emit('hide')">×</button>
       <div class="nge-notif-topbar-actions">
         <!-- With the two admin tabs showing, this marks the tab you are on. -->
         <button
@@ -1215,7 +1219,6 @@ function padRank(rank: number): string {
           @click="confirmDeleteAll = true"
           :title="showFeedTabs ? 'Delete every notification on this tab; triage is kept (only affects your feed)' : 'Delete all notifications (only affects your feed)'"
         >Delete all</button>
-        <button class="nge-notif-close" @click.stop="emit('hide')">×</button>
       </div>
     </div>
 
@@ -1827,7 +1830,9 @@ function padRank(rank: number): string {
 .nge-notif-confirm-no { color: #aab; }
 .nge-notif-confirm-no:hover { background: rgba(255, 255, 255, 0.06); }
 
+.nge-notif-topbar { position: relative; padding-right: 44px; }
 .nge-notif-close {
+  position: absolute; top: 6px; right: 6px;
   background: none; border: none; color: #9aa4b4; font-size: 22px; line-height: 1;
   cursor: pointer; padding: 2px 6px; min-width: 30px; min-height: 30px;
 }

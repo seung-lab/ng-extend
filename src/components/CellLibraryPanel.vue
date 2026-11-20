@@ -3038,6 +3038,15 @@ function startDrag(e: MouseEvent) {
 // Users hide the tabs they never use from the panel's own little settings
 // popover. The active tab and deep-link targets always render.
 const CL_TABS_KEY = 'nge_cell_library_tabs_v1';
+/** The tab rows fold into one header naming the tab you are on (Ames
+ *  2026-11-20: "collapse the top section so that if I'm in lost fragments,
+ *  then I see lost fragments as the header for the cell library"). Kept. */
+const CL_TABS_FOLD_KEY = 'nge_cl_tabs_folded_v1';
+const tabsFolded = ref<boolean>((() => { try { return localStorage.getItem(CL_TABS_FOLD_KEY) === '1'; } catch { return false; } })());
+function setTabsFolded(v: boolean) {
+  tabsFolded.value = v;
+  try { localStorage.setItem(CL_TABS_FOLD_KEY, v ? '1' : '0'); } catch { /* private mode */ }
+}
 const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'mine',      label: 'My Cells' },
   { key: 'available', label: 'Available' },
@@ -3671,11 +3680,23 @@ function onSlimMouseDown(e: MouseEvent) {
 // The slim bar is wider than the full panel can be (Ames 2026-10-20: "this
 // should be wider"), so the cell's ID shows whole beside its buttons.
 const SLIM_MIN_WIDTH = 640;
+/** The tab you are on, by the name its button shows: the folded header. */
+const currentTabName = computed(() => {
+  const f = filter.value;
+  if (f === 'orphans') return orphanTitle;
+  if (f === 'available') return availableLabel.value;
+  if (f === 'hunt') return 'Hunt';
+  if (f === 'giants') return 'Super Quests';
+  return (ALL_CL_TABS.find(t => t.key === f) || { label: 'Cell Library' }).label;
+});
 const panelStyle = computed(() => slimOrphan.value ? {
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
   width: Math.min(orphSlimSize.value.w ?? SLIM_MIN_WIDTH, window.innerWidth - panelPos.value.x - 8) + 'px',
-  ...(orphSlimSize.value.h != null ? { height: orphSlimSize.value.h + 'px', maxHeight: 'none', overflow: 'auto' } : {}),
+  // The height is a floor: the checklist opens below, and the box grows to
+  // show it (Ames 2026-11-20: "it should expand it down so I can fill in the
+  // appropriate boxes").
+  ...(orphSlimSize.value.h != null ? { minHeight: orphSlimSize.value.h + 'px' } : {}),
 } : ({
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
@@ -3820,7 +3841,17 @@ onBeforeUnmount(() => {
         <!-- Filter tabs -->
         <!-- Tabs in three coloured groups: cells (cyan), community (gold),
              yours (violet). AI and Completed live in the gear picker. -->
-        <div class="nge-cl-filters nge-cl-filters--grouped">
+        <div v-if="tabsFolded" class="nge-cl-tabshead">
+          <span class="nge-cl-tabshead-name">{{ currentTabName }}</span>
+          <button class="nge-cl-tabsfold" aria-expanded="false" title="Show all the tabs" @click="setTabsFolded(false)">
+            All tabs
+            <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div v-else class="nge-cl-filters nge-cl-filters--grouped nge-cl-filters--foldable">
+          <button class="nge-cl-tabsfold nge-cl-tabsfold--in" aria-expanded="true" title="Fold the tabs away: the header shows the tab you are on" aria-label="Fold the tabs away" @click="setTabsFolded(true)">
+            <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <div v-if="!viewOnlyDataset" class="nge-cl-tabgroup nge-cl-tabgroup--cells">
             <div class="nge-cl-tabgroup-head">
               <span class="nge-cl-tabgroup-label">Cells</span>
@@ -6378,6 +6409,14 @@ select.nge-cl-complete-type:hover {
 
 /* ── Grouped tab bar ── */
 .nge-cl-filters--grouped { display: flex; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px 8px; background: transparent; }
+/* Folding the tabs (Ames 2026-11-20). */
+.nge-cl-filters--foldable { position: relative; padding-right: 40px; }
+.nge-cl-tabshead { display: flex; align-items: center; gap: 10px; padding: 10px 12px 8px; }
+.nge-cl-tabshead-name { font: 700 13px/1.2 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #cfe6ff; }
+.nge-cl-filters .nge-cl-tabsfold, .nge-cl-tabsfold { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 4px 9px; min-width: 0;
+  border: 1px solid rgba(127, 190, 255, 0.28); border-radius: 6px; background: transparent; color: #a9c3e0; font: 500 12px/1 Inter, system-ui, sans-serif; cursor: pointer; }
+.nge-cl-filters .nge-cl-tabsfold:hover, .nge-cl-tabsfold:hover { border-color: rgba(127, 216, 255, 0.6); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
+.nge-cl-filters .nge-cl-tabsfold--in { position: absolute; top: 10px; right: 12px; padding: 5px 6px; }
 .nge-cl-tabgroup { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .nge-cl-tabgroup--cells { flex: 1 1 100%; }
 .nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }

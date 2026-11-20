@@ -38,6 +38,7 @@ import retinaEmblemArt from '../images/datasets/retina.png';
 import mecEmblemArt from '../images/datasets/mec.png';
 import flywireEmblemArt from '../images/datasets/flywire.png';
 import bancEmblemArt from '../images/datasets/banc.png';
+import ca3EmblemArt from '../images/datasets/ca3.png';
 import { flyNurroAcross, flyNurroFrom } from '../util/nurro_fly';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
@@ -783,6 +784,18 @@ function send() {
     openTips();
     return;
   }
+  // Admins: "/motd <text>" posts and pins a message of the day; "/motd off"
+  // takes the pin down (Ames 2026-11-20). Anyone else's "/motd" goes out as typed.
+  const motd = /^\/motd(?:\s+([\s\S]*))?$/i.exec(messageInput.value.trim());
+  if (motd && backendStore.isAdmin) {
+    const words = (motd[1] || '').trim();
+    if (!words) return;                      // nothing to pin yet
+    messageInput.value = '';
+    emojiOpen.value = false;
+    if (/^(off|none|clear)$/i.test(words)) void chatStore.pinMessage(null);
+    else void chatStore.postMessageOfTheDay(words);
+    return;
+  }
   // New lines are kept, but never a wall of blank ones.
   let text = messageInput.value.trim().replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
   // A view waiting on the message box goes out with the message.
@@ -1119,7 +1132,7 @@ const ACCESS_LINE_ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/e
 const isAccessLine = (msg: ChatMessage) => msg.type === 'message' && msg.rank === 'achievement' && /^(access|unlocked):[a-z0-9_]+$/.test(String(msg.dataset || ''));
 // The Datasets Unlocked ceremony's roll call (Ames 2026-11-19): each line
 // carries that dataset's emblem. Its own key, so it never dates a grant.
-const UNLOCKED_ART: Record<string, string> = { stroeh_mouse_retina: retinaEmblemArt, pni_mec: mecEmblemArt, flywire_fafb_production: flywireEmblemArt, banc: bancEmblemArt };
+const UNLOCKED_ART: Record<string, string> = { stroeh_mouse_retina: retinaEmblemArt, pni_mec: mecEmblemArt, flywire_fafb_production: flywireEmblemArt, banc: bancEmblemArt, zheng_ca3: ca3EmblemArt };
 const accessLineArt = (msg: ChatMessage) => { const m = /^unlocked:([a-z0-9_]+)$/.exec(String(msg.dataset || '')); return (m && UNLOCKED_ART[m[1]]) || ACCESS_LINE_ART; };
 const achTrack = (msg: ChatMessage) => achievementOf(msg)?.track || '';
 const achArt = (msg: ChatMessage) => achievementOf(msg)?.art || '';
@@ -2280,7 +2293,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-new-line { display: flex; align-items: center; gap: 8px; margin: 6px 2px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ff9d8a; }
 .nge-chat-new-line::before, .nge-chat-new-line::after { content: ''; flex: 1; height: 1px; background: rgba(255, 130, 110, 0.55); }
 .nge-chat-float--quiet .nge-chat-new-line { opacity: 0; }
-/* The pinned message: one line above the conversation */
+/* The pinned message: up to three lines above the conversation */
 .nge-chat-pin {
   display: flex; align-items: center; gap: 4px; margin: 0 6px 2px; padding: 3px 4px 3px 8px; border-radius: 7px;
   background: rgba(230, 199, 96, 0.09); border: 1px solid rgba(230, 199, 96, 0.3);
@@ -2288,7 +2301,9 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-float--quiet .nge-chat-pin { opacity: 0; pointer-events: none; }
 .nge-chat-pin-text {
   flex: 1; min-width: 0; padding: 2px 0; border: 0; background: none; cursor: pointer; text-align: left;
-  font: inherit; font-size: 12.5px; color: #f1e3b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font: inherit; font-size: 12.5px; color: #f1e3b0; overflow: hidden;
+  /* up to three lines, so a message of the day reads in full (Ames 2026-11-20) */
+  white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere;
 }
 .nge-chat-pin-text:hover, .nge-chat-pin-text:focus-visible { color: #fff6d6; outline: none; }
 .nge-chat-pin-glyph { margin-right: 6px; }
