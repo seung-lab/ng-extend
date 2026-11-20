@@ -8,24 +8,38 @@ const ANSWER = { fragmentId: '720575940562452709', group: 'smaller', rootId: '72
   fixed: true, ends: true, pointIn: 'dendrite', pt: [20849, 53747, 1111], nucleusId: '', noNucleus: false, note: 'odd tip', caveAnnotationId: 42 };
 const ME = { id: 'u-1', display_name: 'Test Player' };
 
-/** A tiny ew_lost_fragments in memory, answering the REST paths the module uses. */
+/** A tiny Supabase in memory, answering the REST paths the module uses. */
 function fakeDb() {
-  const rows = []; let next = 1;
+  const tables = { ew_lost_fragments: [], ew_lost_fragment_claims: [] }; let next = 1;
   const sb = async (path, init = {}) => {
     const [table, q = ''] = path.split('?');
-    assert.equal(table, 'ew_lost_fragments');
+    const rows = tables[table];
+    assert.ok(rows, 'unknown table ' + table);
     const p = new URLSearchParams(q);
     const match = r => [...p.entries()].every(([k, v]) => {
       if (['select', 'limit'].includes(k)) return true;
       if (v === 'is.null') return r[k] == null;
-      return String(r[k]) === decodeURIComponent(v.replace(/^eq\./, ''));
+      const [op, ...rest] = v.split('.'); const want = decodeURIComponent(rest.join('.'));
+      if (op === 'eq') return String(r[k]) === want;
+      if (op === 'neq') return String(r[k]) !== want;
+      if (op === 'gt') return String(r[k]) > want;
+      if (op === 'lte') return String(r[k]) <= want;
+      throw new Error('op ' + op);
     });
     if (!init.method) return rows.filter(match).map(r => ({ ...r }));
-    if (init.method === 'POST') { const r = { id: next++, sheet_row: null, ...JSON.parse(init.body) }; rows.push(r); return [{ ...r }]; }
+    if (init.method === 'POST') {
+      const body = JSON.parse(init.body);
+      if (table === 'ew_lost_fragment_claims') {
+        if (rows.some(r => r.fragment_id === body.fragment_id)) throw new Error('409 duplicate');
+        const r = { claimed_at: new Date().toISOString(), ...body }; rows.push(r); return [{ ...r }];
+      }
+      const r = { id: next++, sheet_row: null, ...body }; rows.push(r); return [{ ...r }];
+    }
     if (init.method === 'PATCH') { const hit = rows.filter(match); hit.forEach(r => Object.assign(r, JSON.parse(init.body))); return hit.map(r => ({ ...r })); }
+    if (init.method === 'DELETE') { const hit = rows.filter(match); tables[table] = rows.filter(r => !hit.includes(r)); return hit; }
     throw new Error('unexpected ' + init.method);
   };
-  return { rows, sb };
+  return { rows: tables.ew_lost_fragments, tables, sb };
 }
 function fakeSheets() {
   const calls = [];
@@ -95,4 +109,36 @@ test('the sheet line keeps IDs as text and leaves the lab columns alone', () => 
   assert.equal(line[3], "'720575940562452709");
   assert.equal(line[2], 'Smaller');
   assert.equal(line[9], 'Major dendrite');
+});
+
+test('Play claims a fragment until Skip or Submit, one per player, and claims never reach the sheet', async () => {
+  const { tables, sb } = fakeDb();
+  const { calls, sheets } = fakeSheets();
+  const A = { sb, me: ME, isAdmin: true, sheets };
+  const B = { sb, me: { id: 'u-2', display_name: 'Other' }, isAdmin: true, sheets };
+  const F1 = ANSWER.fragmentId, F2 = '720575940557202527';
+  assert.equal((await fragmentsAction('fragments.claim', { fragmentId: F1 }, A)).claimed, true);
+  assert.deepEqual(await fragmentsAction('fragments.claim', { fragmentId: F1 }, B), { claimed: false, reason: 'held' });
+  const seen = await fragmentsAction('fragments.list', {}, B);
+  assert.deepEqual(seen.held, [F1]);
+  assert.equal((await fragmentsAction('fragments.list', {}, A)).myClaim, F1);
+  // Landing on another lets go of the first.
+  await fragmentsAction('fragments.claim', { fragmentId: F2 }, A);
+  assert.deepEqual(tables.ew_lost_fragment_claims.map(c => c.fragment_id), [F2]);
+  // Skip gives it back.
+  await fragmentsAction('fragments.release', { fragmentId: F2 }, A);
+  assert.equal(tables.ew_lost_fragment_claims.length, 0);
+  assert.equal(calls.length, 0, 'claims and skips write nothing to the sheet');
+  // Submit clears the claim, and a done fragment can't be claimed by another.
+  await fragmentsAction('fragments.claim', { fragmentId: F1 }, A);
+  await fragmentsAction('fragments.submit', ANSWER, A);
+  assert.equal(tables.ew_lost_fragment_claims.length, 0);
+  assert.deepEqual(await fragmentsAction('fragments.claim', { fragmentId: F1 }, B), { claimed: false, reason: 'done' });
+});
+
+test('a claim left alone for two weeks lapses', async () => {
+  const { tables, sb } = fakeDb();
+  tables.ew_lost_fragment_claims.push({ fragment_id: ANSWER.fragmentId, user_id: 'u-2', claimed_at: new Date(Date.now() - 15 * 864e5).toISOString() });
+  assert.equal((await fragmentsAction('fragments.claim', { fragmentId: ANSWER.fragmentId }, { sb, me: ME, isAdmin: true })).claimed, true);
+  assert.deepEqual(tables.ew_lost_fragment_claims.map(c => c.user_id), ['u-1']);
 });
