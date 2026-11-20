@@ -10,7 +10,12 @@ import nurroFlying from '../../static/nurro/nurro-super-v2.png';
 const LIFE_MS = 1250;
 interface Puff { x: number; y: number; vx: number; vy: number; age: number; size: number; }
 
-export function flyNurroFrom(box: { left: number; top: number; width: number; height: number } | null, src: string = nurroFlying): Promise<void> {
+/** The hourly fly-by (Ames 2026-11-20: "maybe he could just fly across the
+ *  top 2/3 of the page"): in from the left at a height in the top two thirds,
+ *  a gentle arc, out at the right. */
+export function flyNurroAcross(src: string = nurroFlying): Promise<void> { return flyNurroFrom(null, src, true); }
+
+export function flyNurroFrom(box: { left: number; top: number; width: number; height: number } | null, src: string = nurroFlying, across = false): Promise<void> {
   return new Promise(done => {
     try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; } } catch { /* fly */ }
     const W = window.innerWidth, H = window.innerHeight;
@@ -33,8 +38,14 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
 
     const dx = W + size - x0, rise = Math.max(y0 + size, H * 0.6);
     const at = (f: number, s = 1, r = 0) => `translate(${x0 + dx * f * f}px, ${y0 - rise * (f < 0.25 ? f * 0.4 : 0.1 + (f - 0.25) * 1.2)}px) rotate(${r}deg) scale(${s})`;
-    const DURATION = 3800;
-    const anim = img.animate([
+    const DURATION = across ? 5200 : 3800;
+    const ay = H * (0.12 + Math.random() * 0.4), lift = H * 0.08;
+    const anim = across ? img.animate([
+      { transform: `translate(${-size}px, ${ay}px) rotate(-4deg) scale(1)`, opacity: 1, offset: 0 },
+      { transform: `translate(${W * 0.3}px, ${ay - lift * 0.8}px) rotate(-7deg) scale(1)`, opacity: 1, offset: 0.33 },
+      { transform: `translate(${W * 0.65}px, ${ay - lift}px) rotate(-3deg) scale(1)`, opacity: 1, offset: 0.66 },
+      { transform: `translate(${W + size}px, ${ay - lift * 1.6}px) rotate(-10deg) scale(0.95)`, opacity: 1, offset: 1 },
+    ], { duration: DURATION, easing: 'linear', fill: 'forwards' }) : img.animate([
       { transform: `translate(${x0}px, ${y0}px) scale(0.2)`, opacity: 0, offset: 0 },
       { transform: `translate(${x0}px, ${y0 - 30}px) rotate(-6deg) scale(1.1)`, opacity: 1, offset: 0.15 },
       { transform: `translate(${x0 + 10}px, ${y0 - 40}px) rotate(-4deg) scale(1)`, opacity: 1, offset: 0.28 },
@@ -54,7 +65,7 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
       const tail = { x: r.left + r.width * 0.16, y: r.top + r.height * 0.52 };
       const speed = prev ? Math.hypot(tail.x - prev.x, tail.y - prev.y) / Math.max(dt, 0.001) : 0;
       // A thin wisp on the hover, a full contrail once he is moving.
-      const power = t < DURATION * 0.12 ? 0 : Math.min(1, 0.15 + speed / 900);
+      const power = !across && t < DURATION * 0.12 ? 0 : Math.min(1, 0.15 + speed / 900);
       debt += dt * 420 * power;
       while (debt >= 1 && t < DURATION) {
         debt -= 1;

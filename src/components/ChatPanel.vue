@@ -38,7 +38,7 @@ import retinaEmblemArt from '../images/datasets/retina.png';
 import mecEmblemArt from '../images/datasets/mec.png';
 import flywireEmblemArt from '../images/datasets/flywire.png';
 import bancEmblemArt from '../images/datasets/banc.png';
-import { flyNurroFrom } from '../util/nurro_fly';
+import { flyNurroAcross, flyNurroFrom } from '../util/nurro_fly';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
 // (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
@@ -1494,7 +1494,7 @@ function nurroFlyAway() {
 }
 // Datasets Unlocked day (Ames 2026-11-20: "can he periodically fly across
 // the screen like once an hour today?"): on Nov 20, US Eastern, Nurro flies
-// out of the chat box once an hour, on the hour, and once soon after Pyr opens
+// across the top two thirds of the page once an hour, on the hour, and once soon after Pyr opens
 // if this browser has not seen him in the last hour. Only while the tab is in
 // front. Nothing runs on any other day.
 const FLY_DAY = '2026-11-20';
@@ -1503,7 +1503,7 @@ const etDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_Yo
 function hourlyFly() {
   if (etDay() !== FLY_DAY || document.hidden) return;
   try { localStorage.setItem(FLY_SEEN_KEY, String(Date.now())); } catch { /* private window */ }
-  void flyNurroFrom(panelEl.value?.getBoundingClientRect() || null);
+  void flyNurroAcross();
 }
 let flyTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleHourlyFly() {
