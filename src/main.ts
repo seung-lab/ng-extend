@@ -5,7 +5,6 @@ import { startImageSource } from './util/image_source';
 import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
-import { startMeshUpdating } from './util/mesh_updating';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
@@ -486,7 +485,6 @@ function setupViewer() {
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
   startImageLoadingHint(viewer);
-  startMeshUpdating(viewer);
   startLantern(viewer);
   startSpooky(viewer);
   startPumpkin(viewer);
