@@ -46,11 +46,11 @@ const NOTES_LIVE_SINCE = '2099-01-01T00:00:00Z';
 const NOTES_SEND_AFTER_MS = (7 * 24 + 14) * 60 * 60 * 1000;
 // Who the Test segment holds (Ames 2026-11-05: a test only to her).
 const TEST_EMAILS = ['amyleerobinson@gmail.com'];
-// Real subscribers get nothing until Ames has seen a test and said go.
-const LIVE = false;
+// On since 2026-11-20T02:57:11Z (Ames 2026-11-19: "I def want blog emails on"), after a test.
+const LIVE = true;
 // Posts published before this are never emailed (set when LIVE turns on), so
 // switching on does not send the old posts.
-const LIVE_SINCE = '2099-01-01T00:00:00Z';
+const LIVE_SINCE = '2026-11-20T02:57:11Z';
 // Long posts: the opening, up to about this many words, then "Read the rest".
 // scripts/release-notes-blog.mjs SLUG_PREFIX.
 const RELEASE_NOTES = /^whats-new-in-pyr-/;

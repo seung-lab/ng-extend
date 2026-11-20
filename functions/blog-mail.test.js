@@ -75,10 +75,12 @@ test('subscribe: the bot trap and bad input', async () => {
 const POST = { id: 'p1', slug: 'new-post', title: 'A new post', summary: 'Short.', body: 'Hello there.', published_at: '2026-11-06T10:00:00Z' };
 const LIVE_PAGE = { 'https://connectome.quest/blog/new-post/': '<h1>A new post</h1>' };
 
-test('check: nothing goes while LIVE is off', async () => {
-  assert.strictEqual(bm.LIVE, false, 'the deployed code must stay off until Ames says go');
+test('check: switched on, posts from before LIVE_SINCE never go', async () => {
+  // On since Ames 2026-11-19 ("I def want blog emails on").
+  assert.strictEqual(bm.LIVE, true);
+  assert.ok(Date.parse(bm.LIVE_SINCE) > Date.parse('2026-11-19T00:00:00Z'), 'old posts must not go out');
   const x = io({ posts: [POST], pages: LIVE_PAGE });
-  assert.deepStrictEqual(await bm.handle('check', {}, x), { live: false, sent: [] });
+  assert.deepStrictEqual(await bm.handle('check', {}, x), { live: true, sent: [] });
   assert.strictEqual(x.f.calls.length, 0);
 });
 
