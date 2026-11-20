@@ -383,7 +383,7 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
 }
 
 // ── Who submitted each report (site_issues, admins only via the gateway) ──
-const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string; dataset?: string }>>({});
+const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string; moreShots?: { n: number; href: string }[]; dataset?: string }>>({});
 /** Reports asked for by id at most this many at a time. The gateway refuses a
  *  filter over 4096 characters (functions/community-data.js), and 100 ids
  *  come to about 3700. 150 came to 5554: once more than about 110 reports
@@ -420,7 +420,10 @@ async function loadReporters(rows: TriageRow[]) {
       return /\s/.test(u) ? undefined : u;
     };
     for (const i of data) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
-      url: web(i.url), shot: web(i.screenshot_url), dataset: i.dataset ? datasetDisplayName(String(i.dataset)) : undefined };
+      url: web(i.url), shot: web(i.screenshot_url),
+      // More pictures (Kfay #584) ride in the message as "Screenshot 2: <link>".
+      moreShots: [...String(i.message || '').matchAll(/^Screenshot (\d+): (https:\/\/\S+)$/gm)].map(m => ({ n: Number(m[1]), href: web(m[2]) })).filter(x => x.href) as { n: number; href: string }[],
+      dataset: i.dataset ? datasetDisplayName(String(i.dataset)) : undefined };
     reporters.value = next;
     // Dataset access requests are answered in Access requests, not here
     // (Ames 2026-10-29: "take them out of triage").
@@ -3870,7 +3873,9 @@ function practiceWhen(iso: string | null) {
             <a v-if="reporterOf(row)?.url" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.url" target="_blank" rel="noopener noreferrer" @click.stop
                title="The view they were in when they sent the report">↗ Open their view</a>
             <a v-if="reporterOf(row)?.shot" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.shot" target="_blank" rel="noopener noreferrer" @click.stop
-               title="The screenshot they attached">🖼 Screenshot</a>
+               title="The screenshot they attached">🖼 Screenshot<template v-if="reporterOf(row)?.moreShots?.length"> 1</template></a>
+            <a v-for="s in reporterOf(row)?.moreShots || []" :key="s.n" class="nge-triage-console-btn nge-triage-view-btn" :href="s.href" target="_blank" rel="noopener noreferrer" @click.stop
+               title="Another screenshot they attached">🖼 Screenshot {{ s.n }}</a>
             <button class="nge-triage-console-btn" @click="toggleIssueConsole(row)">
               {{ issueConsole[row.id] === undefined ? '🖥 Console messages' : issueConsoleOpen[row.id] ? '▾ Console messages' : '▸ Console messages' }}
             </button>

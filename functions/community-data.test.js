@@ -91,6 +91,10 @@ test('chat presence identity and time are server-derived',()=>{
  assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{dataset:'stroeh_mouse_retina',name:'X'}).body,{user_id:a,name:'Player',last_seen_at:user.now,dataset:'stroeh_mouse_retina'});
  assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{dataset:'<b>not a tag</b>'}).body,{user_id:a,name:'Player',last_seen_at:user.now});
  assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{dataset:42}).body,{user_id:a,name:'Player',last_seen_at:user.now});
+ // Time in Pyr: an area tag and whether in use; anything else is dropped
+ assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{dataset:'stroeh_mouse_retina',area:'cell_library',active:true}).body,{user_id:a,name:'Player',last_seen_at:user.now,dataset:'stroeh_mouse_retina',area:'cell_library',active:true});
+ assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{area:'viewer',active:'yes'}).body,{user_id:a,name:'Player',last_seen_at:user.now,area:'viewer',active:false});
+ assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{area:'<script>',active:true}).body,{user_id:a,name:'Player',last_seen_at:user.now});
  assert.throws(()=>plan('chat_presence','POST','',{}),/conflict/);
  assert.throws(()=>plan('chat_presence','PATCH','',{}),/heartbeat/);
  assert.throws(()=>plan('chat_presence','POST','on_conflict=user_id',{},anon),/Sign in/);
@@ -257,7 +261,7 @@ test('tutorial step timings: players add their own, admins read', () => {
 });
 test('the Access page views are for admins only, and a player\'s latest edits are read one player at a time', () => {
   const admin = { ...user, isAdmin: true };
-  for (const t of ['access_hub_people', 'access_hub_activity', 'access_hub_recent_edits', 'access_hub_player_datasets', 'access_hub_tutorials']) {
+  for (const t of ['access_hub_people', 'access_hub_activity', 'access_hub_recent_edits', 'access_hub_player_datasets', 'access_hub_tutorials', 'team_time_days']) {
     assert.throws(() => plan(t, 'GET', 'select=*'), /Admins only/);
     assert.throws(() => plan(t, 'GET', 'select=*', undefined, anon), /Admins only|Sign in/);
   }

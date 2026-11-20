@@ -1048,7 +1048,17 @@ export function watchTool(waiting: string, finished: string, offAgain = '') {
     if (token !== practiceWatch) return;
     const p = currentPractice();
     if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); setTimeout(tick, 2000); return; }
-    if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next.'); return; }
+    // Someone else has the cells (often after a reload partway through a
+    // tutorial, report 511): get in line here, not only at the start, and
+    // load the cell when it is our turn.
+    if (p.phase === 'busy') {
+      const kind = PRACTICE_KIND[useTutorialStore().activeTutorial];
+      if (!kind) { practiceStatus('Every practice cell is in use right now. Read along and press next.'); return; }
+      joinWaitlist(kind,
+        () => { if (token === practiceWatch) watchTool(waiting, finished, offAgain); },
+        (pos) => { if (token === practiceWatch) practiceStatus(waitingText(pos)); });
+      return;
+    }
     // Keeps looking after the tool comes on: pressing the key again turns
     // it off, and the box used to go on saying it was on.
     if (toolIsOn()) { wasOn = true; practiceStatus(finished, true); pointAtNext(true); setTimeout(tick, 500); return; }
@@ -1094,9 +1104,17 @@ function waitForCell(kind: PracticeKind, wantMerged: boolean, waiting: string, f
   const token = practiceWatch;
   joinWaitlist(kind,
     () => { if (token === practiceWatch) watchPractice(wantMerged, waiting, finished); },
-    (pos) => { if (token === practiceWatch) practiceStatus(pos <= 1
-      ? 'You are next in line for a practice cell. It becomes yours the moment it is free.'
-      : `Every practice cell is in use. You are number ${pos} in line; this box updates when one is yours. Read along meanwhile.`); });
+    (pos) => { if (token === practiceWatch) practiceStatus(waitingText(pos)); });
+}
+
+/** The status line while in line for a practice cell. Says why the cell on
+ *  screen is not a practice cell yet (report 511: after a reload it took a
+ *  while to see why nothing changed). */
+function waitingText(pos: number): string {
+  const why = 'Someone else is practicing on the tutorial cells right now, so yours has not loaded yet.';
+  return pos <= 1
+    ? `${why} You are next in line, and the cell loads here the moment it is free.`
+    : `${why} You are number ${pos} in line; this box updates when it is your turn. Read along meanwhile.`;
 }
 
 /** A small (i) in the step text. Hover for the tip, click to flash the

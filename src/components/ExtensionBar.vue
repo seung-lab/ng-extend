@@ -160,7 +160,7 @@ function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbo
 // Extension Sandbox (extension-sandbox.ts), the same way.
 const extensionFinished = computed(() => EXTENSION_CELLS.filter(c => extensionDone.value.includes(c.id)).length);
 function startNextExtension() { document.dispatchEvent(new CustomEvent('nge:extsandbox-next')); }
-import { myAccess, loadMyAccess, accessStatusLabel, resumeReview } from '../access_request';
+import { myAccess, loadMyAccess, accessStatusLabel, resumeReview, reviewRequestById } from '../access_request';
 import { datasetAccess } from '../util/dataset_access';
 const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
 // Where the player's request stands, for the menu line: asked once a session
@@ -264,6 +264,8 @@ onMounted(() => {
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
   document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
+  // From the profile's Quests card: the leaderboard, on its Quests tab (it reads the tab from localStorage).
+  document.addEventListener('nge:open-leaderboard', () => { showLeaderboard.value = true; });
   document.addEventListener('nge:open-arcade', () => { if (ARCADE_ENABLED) showArcade.value = true; });
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
@@ -369,25 +371,48 @@ onMounted(() => {
     showProfile.value = true;
   }) as EventListener);
   // Links from the Access page, used once (the address drops them):
-  // "?admin=access" (Review their examples) opens Admin Hub > Access requests;
+  // "?review=<id>" (Review their examples) opens that request in the view;
+  // "?admin=access" opens Admin Hub > Access requests;
   // "?player=<id>" (their Pyr username) opens that player's profile.
-  // Both wait for the admin sign-in to finish, so the panel reads with it.
+  // They wait for the admin sign-in. Kept for this tab a little while, since
+  // a fresh Pyr reloads once to load its start view and that reload lost
+  // them (Ames 2026-11-19: the link "opened" Pyr and nothing else).
   try {
+    const PENDING = 'nge-open-from-link';
     const u = new URL(window.location.href);
     const player = u.searchParams.get('player') || '';
-    const wantAccess = u.searchParams.get('admin') === 'access';
-    const wantPlayer = /^[0-9a-f-]{36}$/i.test(player) ? player : '';
-    if (u.searchParams.has('admin') || u.searchParams.has('player')) {
-      u.searchParams.delete('admin'); u.searchParams.delete('player');
+    const review = /^\d+$/.test(u.searchParams.get('review') || '') ? Number(u.searchParams.get('review')) : 0;
+    const fresh = { review, access: u.searchParams.get('admin') === 'access', player: /^[0-9a-f-]{36}$/i.test(player) ? player : '', at: Date.now() };
+    if (u.searchParams.has('admin') || u.searchParams.has('player') || u.searchParams.has('review')) {
+      u.searchParams.delete('admin'); u.searchParams.delete('player'); u.searchParams.delete('review');
       history.replaceState(history.state, '', u.toString());
+      if (fresh.review || fresh.access || fresh.player) { try { sessionStorage.setItem(PENDING, JSON.stringify(fresh)); } catch { /* used now only */ } }
     }
-    if (wantAccess || wantPlayer) {
+    let want = fresh;
+    if (!(want.review || want.access || want.player)) {
+      try { want = JSON.parse(sessionStorage.getItem(PENDING) || 'null') || want; } catch { /* none */ }
+    }
+    if (Date.now() - (want.at || 0) > 2 * 60 * 1000) { try { sessionStorage.removeItem(PENDING); } catch { /* */ } want = { ...want, review: 0, access: false, player: '' }; }
+    if (want.review || want.access || want.player) {
       const stop = watch(() => backendStore.isAdmin, admin => {
         if (!admin) return;
-        if (wantAccess) { profileUserId.value = null; profileInitialTab.value = 'access'; }
-        else { profileUserId.value = wantPlayer; profileInitialTab.value = undefined; }
-        showProfile.value = true;
         queueMicrotask(() => stop());
+        // Done once this page has stayed up a moment (no reload after it).
+        setTimeout(() => { try { sessionStorage.removeItem(PENDING); } catch { /* */ } }, 20000);
+        // "?review=<id>": straight into that request's examples in the view;
+        // Admin Hub > Access requests if it cannot be found.
+        // After the start view has loaded, so it does not replace theirs.
+        if (want.review) {
+          setTimeout(() => {
+            void reviewRequestById(want.review).catch(() => false).then(ok => {
+              if (!ok) { profileUserId.value = null; profileInitialTab.value = 'access'; showProfile.value = true; }
+            });
+          }, 2500);
+          return;
+        }
+        if (want.access) { profileUserId.value = null; profileInitialTab.value = 'access'; }
+        else { profileUserId.value = want.player; profileInitialTab.value = undefined; }
+        showProfile.value = true;
       }, { immediate: true });
     }
   } catch { /* the link just opens Pyr */ }

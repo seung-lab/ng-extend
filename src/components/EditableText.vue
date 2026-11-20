@@ -29,6 +29,9 @@ const props = defineProps<{
    *  colon ("**Merge**: ...") shows the term as a small heading above its
    *  text (Ames 2026-11-17: "a better hierarchy to these text boxes"). */
   terms?: boolean;
+  /** No Edit button here (Ames 2026-11-19, the Play card: "remove the edit
+   *  buttons, for my own aesthetics"). A note's link can still open the editor. */
+  quiet?: boolean;
 }>();
 const emit = defineEmits<{ (e: 'action', name: string): void }>();
 
@@ -162,7 +165,7 @@ function onClick(e: MouseEvent) {
         </div>
       </div>
       <div v-if="sentNote && backend.showAdminUi" class="nge-edtext-note">{{ sentNote }}</div>
-      <div v-if="backend.showAdminUi" class="nge-edtext-admin">
+      <div v-if="backend.showAdminUi && !quiet" class="nge-edtext-admin">
         <span v-if="savedNote" class="nge-edtext-note">{{ savedNote }}</span>
         <button type="button" class="nge-edtext-btn" :title="approval && !approver ? 'Suggest a change: it shows once it is approved. Admins only.' : 'Change this text for everyone. Admins only.'" @click.stop="startEdit">{{ approval && !approver ? 'Suggest an edit' : 'Edit' }}</button>
       </div>

@@ -34,6 +34,11 @@ import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpki
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
 import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
 import { leavesSeason, toggleLeaves, leavesHidden } from '../util/leaves';
+import retinaEmblemArt from '../images/datasets/retina.png';
+import mecEmblemArt from '../images/datasets/mec.png';
+import flywireEmblemArt from '../images/datasets/flywire.png';
+import bancEmblemArt from '../images/datasets/banc.png';
+import { flyNurroFrom } from '../util/nurro_fly';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
 // (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
@@ -1111,7 +1116,11 @@ const foldedAchievements = computed(() => {
 });
 /** A grant's line (functions/access-request.js): only the server's own rank is drawn this way. */
 const ACCESS_LINE_ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
-const isAccessLine = (msg: ChatMessage) => msg.type === 'message' && msg.rank === 'achievement' && /^access:[a-z0-9_]+$/.test(String(msg.dataset || ''));
+const isAccessLine = (msg: ChatMessage) => msg.type === 'message' && msg.rank === 'achievement' && /^(access|unlocked):[a-z0-9_]+$/.test(String(msg.dataset || ''));
+// The Datasets Unlocked ceremony's roll call (Ames 2026-11-19): each line
+// carries that dataset's emblem. Its own key, so it never dates a grant.
+const UNLOCKED_ART: Record<string, string> = { stroeh_mouse_retina: retinaEmblemArt, pni_mec: mecEmblemArt, flywire_fafb_production: flywireEmblemArt, banc: bancEmblemArt };
+const accessLineArt = (msg: ChatMessage) => { const m = /^unlocked:([a-z0-9_]+)$/.exec(String(msg.dataset || '')); return (m && UNLOCKED_ART[m[1]]) || ACCESS_LINE_ART; };
 const achTrack = (msg: ChatMessage) => achievementOf(msg)?.track || '';
 const achArt = (msg: ChatMessage) => achievementOf(msg)?.art || '';
 const achWhy = (msg: ChatMessage) => achievementOf(msg)?.why || '';
@@ -1463,6 +1472,24 @@ function toggleCollapse() {
     nextTick(() => inputEl.value?.focus());
   }
 }
+
+// ── The Datasets Unlocked ceremony's last line (Ames 2026-11-19: "have Nurro
+// fly out from the chat box and then up off the right hand side of the
+// page"). Once, when that line arrives live; not from an old history load.
+const CEREMONY_END = 'Congratulations to everyone! Thank you for all you have contributed to science.';
+let nurroFlew = false;
+function nurroFlyAway() {
+  if (nurroFlew) return;
+  nurroFlew = true;
+  void flyNurroFrom(panelEl.value?.getBoundingClientRect() || null);
+}
+watch(() => chatMessages.value.length, () => {
+  if (nurroFlew) return;
+  for (const m of chatMessages.value.slice(-5)) {
+    const text = m.parts.map(p => p.text || '').join('');
+    if (m.name === 'Nurro' && text.startsWith(CEREMONY_END) && Date.now() - m.dateTime.getTime() < 3 * 60 * 1000) { nurroFlyAway(); return; }
+  }
+});
 </script>
 
 <template>
@@ -1627,7 +1654,7 @@ function toggleCollapse() {
 
                 <!-- "Nseraf now has edit access to MEC": said when they next come in. -->
                 <div v-else-if="isAccessLine(msg)" class="nge-chat-sys nge-chat-ach nge-chat-ach--access" :class="{ 'nge-chat-fresh': isFresh(msg) }">
-                  <img class="nge-chat-ach-art" :src="ACCESS_LINE_ART" alt="" />
+                  <img class="nge-chat-ach-art" :src="accessLineArt(msg)" alt="" />
                   <span><b>{{ shortName(msg.name) }}</b> {{ msg.parts.map(p => p.text || '').join('') }}</span>
                 </div>
 

@@ -15,16 +15,26 @@
  * admins can Edit them, and Ames gets a note when someone else does.
  */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, mappingWhere, type PlayKind } from '../util/play';
-import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
+import { play, pressPlay, startPlay, stopPlay, savedKind, canQuest, canViewRetina, mappingWhere, retinaHub, type PlayKind } from '../util/play';
+import { ensureIntroStyle, introFrameSvg, introPending } from '../util/intro_tour';
+import { startLoader, type Live } from '../find_path_status';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import EditableText from './EditableText.vue';
 import { canonicalDataset, currentDatasetTag } from '../datasets';
 
 const backend = useProofreadingBackendStore();
 const signedIn = computed(() => !!backend.userId);
-const picked = ref<PlayKind>('cells');
+/** The Retina hub (test sites, Ames 2026-11-19) adds Lost Fragments and
+ *  Glia Quest beside BC Challenge and Cilia Quest. Those two open their Cell
+ *  Library tab; Play's next task loop covers the first two only for now. */
+type HubPick = PlayKind | 'glia';
+const picked = ref<HubPick>('cells');
 const questsOk = computed(() => canQuest());
+const hub = computed(() => retinaHub());
+const glia1Ok = computed(() => canViewRetina());
+/** Glia Quest is on its own branch (claude/muller-glia-quest) until merged here. */
+const GLIA_HERE = false;
+const okFor = (k: HubPick) => k === 'cells' ? true : k === 'glia' ? glia1Ok.value && GLIA_HERE : questsOk.value;
 const where = computed(() => mappingWhere());
 const busy = ref(false);
 /** Settings, Screen: "Show the Play button" (Ames 2026-11-12). */
@@ -45,20 +55,37 @@ watch(hidden, off => {
   document.dispatchEvent(new CustomEvent('nge:play-pref'));
 }, { immediate: true });
 let watchTimer: ReturnType<typeof setInterval> | null = null;
+/** When a tutorial or the starship tour was last on screen: the button stays
+ *  away a few seconds more, so it does not flash in between the tour and
+ *  Get Started. */
+let tutorialSeenAt = 0;
 function readScreen() {
   onSandbox.value = canonicalDataset(currentDatasetTag()) === 'pinky_nf_v2';
-  tutorialOnScreen.value = !!document.querySelector('.introductionStep');
+  // The starship tour counts as a tutorial (Ames 2026-11-19: "We do not want
+  // the play button to appear while new users are in the rocket ship demo"):
+  // Play shows once the player has closed out of the tutorials.
+  const now = !!document.querySelector('.introductionStep, .nge-intro, .nge-tour-loading')
+    || document.body.classList.contains('nge-intro-on') || introPending();
+  if (now) tutorialSeenAt = Date.now();
+  tutorialOnScreen.value = now || Date.now() - tutorialSeenAt < 4000;
   boxClosed.value = document.body.classList.contains('nge-cm-closed');
 }
 const showDock = computed(() => signedIn.value && !hidden.value && !tutorialOnScreen.value
   && (!play.on || (onSandbox.value && boxClosed.value)));
 
-const SUB = 'Pyr teleports you to a neuron.';
 const MAP_LINES = [
   "<b>You</b> fix the cell's 3D shape where the AI got it wrong.",
   '<b>Tools</b> Merge to add missing pieces, Cut to remove wrong ones.',
   '<b>Finish</b> with Complete when the whole cell is right.',
   '<b>Good for</b> players who like fixing shapes and following branches.',
+];
+const FRAG_LINES = [
+  '<b>You</b> tidy up a piece of the retina nobody has traced yet.',
+  '<b>Finish</b> by marking its main dendrite or soma, then Submit.',
+];
+const GLIA_LINES = [
+  '<b>Stage 1</b> Is it a Muller glia? Yes or no.',
+  '<b>Stage 2</b> Two glia stuck together: Cut them apart.',
 ];
 const QUEST_LINES = [
   "<b>You</b> find the cell's cilium, a tiny antenna, and mark it.",
@@ -86,7 +113,7 @@ watch(() => play.choosing, async open => {
   frameObs?.disconnect(); frameObs = null;
   if (!open) return;
   const k = savedKind();
-  picked.value = k === 'quests' && questsOk.value ? 'quests' : 'cells';
+  picked.value = k && k !== 'cells' && questsOk.value ? k : 'cells';
   ensureIntroStyle();
   await nextTick();
   fw = 0; fh = 0;
@@ -94,11 +121,17 @@ watch(() => play.choosing, async open => {
   try { frameObs = new ResizeObserver(drawFrame); if (cardEl.value) frameObs.observe(cardEl.value); } catch { /* drawn once */ }
 });
 
-function pick(k: PlayKind) { if (k === 'quests' && !questsOk.value) return; picked.value = k; }
+function pick(k: HubPick) { if (!okFor(k)) return; picked.value = k; }
 async function go() {
-  if (busy.value) return;
+  if (busy.value || !okFor(picked.value)) return;
+  const k = picked.value;
+  if (k === 'glia') {
+    play.choosing = false;
+    document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+    return;
+  }
   busy.value = true;
-  try { await startPlay(picked.value); } finally { busy.value = false; }
+  try { await startPlay(k); } finally { busy.value = false; }
 }
 // Pressing Play (Ames 2026-11-17: "a very cool animation that plays when you
 // hit it" and a loading one): a launch burst, the key flashing, rings and
@@ -124,12 +157,39 @@ function onButton() {
   // Playing already: back to the task in hand.
   if (play.on) { if (!reopened) p = startPlay(play.on); }
   else p = pressPlay();
-  if (!p) return;
+  // Every click shows the lightning, even when there is nothing to fetch.
+  if (!p) p = new Promise(r => setTimeout(r, 700));
+  // The lightning gets a moment to search before it strikes.
+  const shown = new Promise(r => setTimeout(r, 650));
   loading.value = true;
-  const stop = () => { if (seq === launchSeq) loading.value = false; };
-  void Promise.race([p.catch(() => false), new Promise(r => setTimeout(r, 20000))]).then(stop);
+  // The cell is up: the loader's route lights, then the button settles.
+  const stop = () => {
+    if (seq !== launchSeq) return;
+    const l = loaderLive;
+    loaderLive = null;
+    if (l?.finish && searching.value) l.finish(() => { cancelAnimationFrame(l.raf); if (seq === launchSeq) loading.value = false; });
+    else { if (l) cancelAnimationFrame(l.raf); loading.value = false; }
+  };
+  void Promise.all([Promise.race([p.catch(() => false), new Promise(r => setTimeout(r, 20000))]), shown]).then(stop);
 }
 const dockShown = computed(() => showDock.value || launching.value || loading.value);
+// While Pyr fetches the cell, Find Path's loader runs across the button, as
+// Jump's does (Ames 2026-11-19: "can we use this same animation when user
+// clicks play?").
+// It starts on the click itself (Ames 2026-11-20: "I thought we were going to
+// use the lightning bolt load thing on play button click?"); the key's burst
+// plays alongside it.
+const searching = computed(() => loading.value);
+const loaderCv = ref<HTMLCanvasElement | null>(null);
+let loaderLive: Live | null = null;
+watch(searching, async on => {
+  if (!on) return;
+  await nextTick();
+  const cv = loaderCv.value;
+  if (!cv || !searching.value) return;
+  loaderLive = { raf: 0, timer: 0 };
+  startLoader(cv, loaderLive, Math.max(60, (cv.parentElement?.clientWidth ?? 120) - 4), 20);
+});
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && play.choosing) { e.stopPropagation(); play.choosing = false; } }
 onMounted(() => { document.addEventListener('keydown', onKey, true); readScreen(); watchTimer = setInterval(readScreen, 400); });
 onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameObs?.disconnect(); if (watchTimer) clearInterval(watchTimer); });
@@ -142,7 +202,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
     <button class="nge-play-btn" :class="{ 'is-launch': launching, 'is-loading': loading && !launching }" @click="onButton"
             :aria-busy="loading" title="Play: Pyr teleports you to a neuron to work on. After each one, the next.">
       <span class="nge-play-key" aria-hidden="true"><svg class="nge-play-icon" viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg></span>
-      <span class="nge-play-label"><span class="nge-play-beam" aria-hidden="true"></span><span class="nge-play-word">{{ loading && !launching ? 'Teleporting' : 'Play' }}</span><span v-if="loading && !launching" class="nge-play-dots" aria-hidden="true"><b></b><b></b><b></b></span></span>
+      <span class="nge-play-label" :class="{ 'is-searching': searching }"><span class="nge-play-word">{{ searching ? 'Teleporting' : 'Play' }}</span><canvas v-if="searching" ref="loaderCv" class="nge-play-loader" aria-hidden="true"></canvas></span>
       <span class="nge-play-fx" aria-hidden="true">
         <span class="nge-play-arc"></span>
         <span class="nge-play-ring"></span><span class="nge-play-ring nge-play-ring--2"></span>
@@ -162,16 +222,15 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
           </button>
         </div>
         <div class="nge-intro-title">What would you like to do?</div>
-        <EditableText text-key="play.sub" :original="SUB" text-class="nge-play-sub" notify label="Play card: the line under the title" />
 
-        <div class="nge-play-options" role="radiogroup" aria-label="Kind of task">
+        <div v-if="!hub" class="nge-play-options" role="radiogroup" aria-label="Kind of task">
           <div role="radio" tabindex="0" class="nge-play-opt nge-play-opt--map" :class="{ 'nge-play-opt--on': picked === 'cells' }"
                :aria-checked="picked === 'cells' ? 'true' : 'false'"
                @click="pick('cells')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('cells')">
             <span class="nge-play-opt-kind">Mapping</span>
             <span class="nge-play-opt-name">Map a neuron</span>
             <span class="nge-play-opt-where">{{ where }}</span>
-            <EditableText text-key="play.mapping" :original="MAP_LINES" list-class="nge-play-opt-lines" notify label="Play card: Mapping" />
+            <EditableText text-key="play.mapping" :original="MAP_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Mapping" />
           </div>
           <div role="radio" :tabindex="questsOk ? 0 : -1" class="nge-play-opt nge-play-opt--note"
                :class="{ 'nge-play-opt--on': picked === 'quests', 'nge-play-opt--off': !questsOk }"
@@ -180,8 +239,49 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
             <span class="nge-play-opt-kind">Annotation</span>
             <span class="nge-play-opt-name">Cilia Quest</span>
             <span class="nge-play-opt-where">Starburst cells on Retina</span>
-            <EditableText text-key="play.quests" :original="QUEST_LINES" list-class="nge-play-opt-lines" notify label="Play card: Cilia Quest" />
+            <EditableText text-key="play.quests" :original="QUEST_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Cilia Quest" />
             <span v-if="!questsOk" class="nge-play-opt-lock">Unlocks with edit access on Retina</span>
+          </div>
+        </div>
+
+        <div v-else class="nge-play-hub" role="radiogroup" aria-label="Kind of task">
+          <div class="nge-play-sec nge-play-sec--map" style="grid-column: 1; grid-row: 1">Map neurons</div>
+          <div class="nge-play-sec nge-play-sec--note" style="grid-column: 2; grid-row: 1">Find and label</div>
+          <div role="radio" tabindex="0" class="nge-play-opt nge-play-opt--map" style="grid-column: 1; grid-row: 2"
+               :class="{ 'nge-play-opt--on': picked === 'cells' }" :aria-checked="picked === 'cells' ? 'true' : 'false'"
+               @click="pick('cells')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('cells')">
+            <span class="nge-play-opt-name">BC Challenge</span>
+            <span class="nge-play-opt-where">{{ where }}</span>
+            <EditableText text-key="play.mapping" :original="MAP_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Mapping" />
+          </div>
+          <div role="radio" :tabindex="questsOk ? 0 : -1" class="nge-play-opt nge-play-opt--map" style="grid-column: 1; grid-row: 3"
+               :class="{ 'nge-play-opt--on': picked === 'fragments', 'nge-play-opt--off': !questsOk }"
+               :aria-disabled="!questsOk ? 'true' : undefined" :aria-checked="picked === 'fragments' ? 'true' : 'false'"
+               @click="pick('fragments')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('fragments')">
+            <span class="nge-play-opt-name">Lost Fragments</span>
+            <span class="nge-play-opt-where">Untraced pieces of Retina</span>
+            <EditableText text-key="play.fragments" :original="FRAG_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Lost Fragments" />
+            <span v-if="!questsOk" class="nge-play-opt-lock">Unlocks with edit access on Retina</span>
+          </div>
+          <div role="radio" :tabindex="questsOk ? 0 : -1" class="nge-play-opt nge-play-opt--note" style="grid-column: 2; grid-row: 2"
+               :class="{ 'nge-play-opt--on': picked === 'quests', 'nge-play-opt--off': !questsOk }"
+               :aria-disabled="!questsOk ? 'true' : undefined" :aria-checked="picked === 'quests' ? 'true' : 'false'"
+               @click="pick('quests')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('quests')">
+            <span class="nge-play-opt-name">Cilia Quest</span>
+            <span class="nge-play-opt-where">Starburst cells on Retina</span>
+            <EditableText text-key="play.quests" :original="QUEST_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Cilia Quest" />
+            <span v-if="!questsOk" class="nge-play-opt-lock">Unlocks with edit access on Retina</span>
+          </div>
+          <div role="radio" :tabindex="okFor('glia') ? 0 : -1" class="nge-play-opt nge-play-opt--note" style="grid-column: 2; grid-row: 3"
+               :class="{ 'nge-play-opt--on': picked === 'glia', 'nge-play-opt--off': !okFor('glia') }"
+               :aria-disabled="!okFor('glia') ? 'true' : undefined" :aria-checked="picked === 'glia' ? 'true' : 'false'"
+               @click="pick('glia')" @dblclick="go" @keydown.enter.self="go" @keydown.space.self.prevent="pick('glia')">
+            <span class="nge-play-opt-name">Glia Quest</span>
+            <span class="nge-play-opt-where">Muller glia on Retina</span>
+            <EditableText text-key="play.glia" :original="GLIA_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Glia Quest" />
+            <span v-if="!GLIA_HERE" class="nge-play-opt-lock">Coming soon</span>
+            <span v-else-if="!glia1Ok" class="nge-play-opt-lock">Unlocks with view access on Retina</span>
+            <span v-else-if="!questsOk" class="nge-play-opt-note">Stage 1 is open to you. Stage 2 unlocks with edit access.</span>
           </div>
         </div>
 
@@ -283,6 +383,10 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-btn.is-loading .nge-play-arc { opacity: 1; animation: nge-play-spin 0.8s linear infinite; }
 .nge-play-btn.is-loading .nge-play-icon { animation: nge-play-throb 0.8s ease-in-out infinite; }
 .nge-play-btn.is-loading .nge-play-label { letter-spacing: 0.2em; }
+.nge-play-label.is-searching .nge-play-word { visibility: hidden; }
+.nge-play-btn .nge-play-label.is-searching::after { animation: none; transform: scaleX(0); }
+.nge-play-btn.is-launch:has(.is-searching) .nge-play-comet { animation: none; opacity: 0; }
+.nge-play-loader { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 .nge-play-beam { position: absolute; top: 0; bottom: 0; left: -45%; width: 45%; opacity: 0;
   background: linear-gradient(90deg, rgba(94, 240, 198, 0), rgba(94, 240, 198, 0.5), rgba(94, 240, 198, 0)); }
 .nge-play-btn.is-loading .nge-play-beam { opacity: 1; animation: nge-play-beam 1.1s cubic-bezier(.4,0,.6,1) infinite; }
@@ -348,6 +452,18 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-opt-lines li { font-size: 15px; line-height: 1.45; color: #cfe0f2; }
 .nge-play-opt-lines li b { color: #fff; font-weight: 600; margin-right: 4px; }
 .nge-play-opt-lock { margin-top: 6px; font-size: 14px; color: #ffb38a; }
+/* The Retina hub: Map neurons on the left, Find and label on the right. */
+.nge-play-hub { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+@media (max-width: 620px) { .nge-play-hub { grid-template-columns: 1fr; } .nge-play-hub > * { grid-column: 1 !important; grid-row: auto !important; } }
+.nge-play-sec { font: 600 11.5px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; padding-left: 2px; }
+.nge-play-sec--map { color: #3eecbe; }
+.nge-play-sec--note { color: #7ecaff; }
+.nge-play-hub .nge-play-opt { padding: 11px 14px; gap: 2px; }
+.nge-play-hub .nge-play-opt-name { font-size: 17px; }
+.nge-play-hub .nge-play-opt-where { font-size: 13px; margin-bottom: 4px; }
+.nge-play-hub .nge-play-opt-lines li { font-size: 14px; line-height: 1.4; }
+.nge-play-hub .nge-play-opt--note.nge-play-opt--on { background: rgba(126, 202, 255, 0.09); box-shadow: inset 0 0 0 1.5px #7ecaff, inset 0 0 24px rgba(126, 202, 255, 0.15); }
+.nge-play-opt-note { margin-top: 6px; font-size: 13.5px; color: #9fd6ff; }
 .nge-play-card .nge-edtext-btn { font-size: 12px; }
 .nge-play-actions { margin-top: 18px; flex-wrap: wrap; row-gap: 10px; }
 /* The note on its own line, the two keys together below it on the right (Ames 2026-11-10: they were split across two lines). */

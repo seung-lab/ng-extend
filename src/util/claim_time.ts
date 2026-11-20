@@ -229,6 +229,44 @@ function claimOnScreen(): number | null {
   return mine.find(shown)?.id ?? null;
 }
 
+/**
+ * Why the time is not counting, in the console (Krzysztof, report 576: 15
+ * minutes counted over 22 days of work on a Super Quest). Only while the
+ * player is working: a warning, which a bug report attaches, when they work
+ * on this dataset and none of their timed claims is found on screen, saying
+ * what was looked for; at most once every 5 minutes, and a line when the
+ * counting picks up again.
+ */
+let pauseSaid = 0;
+let pausedNow = false;
+function notePause(id: number | null) {
+  if (id != null) {
+    if (pausedNow) console.info(`[claim time] counting again on claim ${id}`);
+    pausedNow = false;
+    return;
+  }
+  try {
+    const ds = canonicalDataset(currentDatasetTag());
+    const mine = deps!.claims().filter(c => countsTime(c) && canonicalDataset(c.dataset) === ds);
+    if (!mine.length) return;
+    pausedNow = true;
+    const now = Date.now();
+    if (now - pauseSaid < IDLE_MS) return;
+    pauseSaid = now;
+    const ml = currentSegLayer();
+    const vis = ml?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    const why = !ml ? 'no segmentation layer'
+      : ml.visible === false || ml.archived ? `the layer "${ml.name}" is hidden`
+      : !vis ? `the layer "${ml.name}" has no segment list`
+      : `none of the claim's IDs is shown in "${ml.name}" (${vis.size ?? '?'} shown)`;
+    const claims = mine.map(c => {
+      const extra = aliases[c.id] && aliases[c.id].until > now ? aliases[c.id].roots.length : 0;
+      return `claim ${c.id}${c.id === workingId ? ' (working)' : ''}: ${c.roots.length} known IDs [${c.roots.slice(0, 3).join(', ')}${c.roots.length > 3 ? ', …' : ''}], ${extra} from edits this visit`;
+    }).join('; ');
+    console.warn(`[claim time] not counting while you work: ${why}. ${claims}`);
+  } catch { /* the note must never stop the timer */ }
+}
+
 function tick() {
   if (!deps || !deps.signedIn()) { claimTime.running = null; return; }
   const now = Date.now();
@@ -237,6 +275,7 @@ function tick() {
   const active = document.visibilityState === 'visible' && document.hasFocus() && now - lastWork < IDLE_MS;
   const id = active ? claimOnScreen() : null;
   claimTime.running = id;
+  if (active) notePause(id);
   if (id == null) return;
   const b = bucket(id);
   if (b.secs < PENDING_MAX) b.secs++;

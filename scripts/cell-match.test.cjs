@@ -80,6 +80,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
   context.on('page', p => { if (p !== page) p.close().catch(() => {}); });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
+  if (process.env.CM_DEBUG) page.on('console', m => { const t = m.text(); if (/cell-match|outdated|lineage/i.test(t)) console.log('  [page]', t.slice(0, 200)); });
   const cardText = () => page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? c.innerText.replace(/\s+/g, ' ').trim().toLowerCase() : null; });
   const waitText = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.getElementById('nge-cell-match'); return !!c && new RegExp(src, 'i').test(c.innerText.replace(/\s+/g, ' ')); }, re.source, { timeout: ms }).then(() => true, () => false);
   const edit = (roots, kind = 'merge') => page.evaluate(([r, k]) => window.dispatchEvent(new CustomEvent('nge-graph-edit', { detail: { kind: k, roots: r } })), [roots, kind]);
@@ -216,9 +217,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const verdicts = await page.evaluate(() => {
       const j = window.__ngeCellMatch.judgeEdit;
       const a = { scorable: true, merge: 40, cut: null, missing: { left: 10, total: 20 }, extra: { left: 0, total: 0 } };
-      return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text];
+      return [j('merge', a, { ...a, merge: 50, missing: { left: 8, total: 20 } }).text, j('merge', a, { ...a, cut: 0, extra: { left: 0, total: 0 } }).text, j('split', a, a).text,
+        // Ames 2026-11-19: the nucleus merge brought in the cell and a wrong part with it.
+        j('merge', a, { ...a, merge: 90, cut: 0, missing: { left: 1, total: 20 }, extra: { left: 2, total: 2 } }).text,
+        j('split', { ...a, cut: 0, extra: { left: 2, total: 2 } }, { ...a, merge: 30, cut: 50, missing: { left: 12, total: 20 }, extra: { left: 1, total: 2 } }).text];
     });
-    check('a merge that brings in a wrong part is a Wrong merge; nothing moved is No change', verdicts.join('|') === 'Good merge|Wrong merge|No change', verdicts);
+    check('a merge judged by its pieces: one that only brings a wrong part is Wrong; one that brings the cell and a wrong part is Good; a cut that takes real cell is Wrong', verdicts.join('|') === 'Good merge|Wrong merge|No change|Good merge|Wrong cut', verdicts);
     const heads = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-head'); const t = document.querySelector('#nge-cell-match .nge-cm-title'); const st = document.querySelector('#nge-cell-match .nge-cm-state'); const was = st.textContent; st.textContent = 'Merge complete'; const longest = st.scrollWidth > st.clientWidth; st.textContent = was; return { longestCut: longest, head: Math.round(h.getBoundingClientRect().height), title: Math.round(t.getBoundingClientRect().height), state: st.textContent, cut: st.scrollWidth > st.clientWidth }; });
     check('the top line stays one line and a long verdict is not cut off', heads.title <= 16 && !heads.cut && !heads.longestCut, heads);
     const fills = await page.evaluate(() => [...document.querySelectorAll('#nge-cell-match .nge-cm-fill')].map(f => Math.round(f.getBoundingClientRect().width)));
@@ -283,9 +287,11 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       let sent = null; const f = e => { sent = e.detail.action; }; document.addEventListener('nge:cm-cell-action', f);
       c.querySelector('.nge-cm-finish-soma').click();
       document.removeEventListener('nge:cm-cell-action', f);
-      return { shown, tipText, sent, left: c.querySelector('.nge-cm-finish-left').textContent };
+      const reds = [...c.querySelectorAll('.nge-cm-finish-left-count .nge-cm-left-red')].map(b => ({ text: b.textContent, color: getComputedStyle(b).color }));
+      return { shown, tipText, sent, left: c.querySelector('.nge-cm-finish-left').textContent, reds };
     });
     check('crosshairs outside: How? shows what to do, and Put them in the soma moves them', how.shown && /red and green lines cross in the 2D view/.test(how.tipText) && how.sent === 'complete-soma', how);
+    check('what is left reads in red: the pieces to merge in and the parts to cut off', how.reds.length >= 1 && how.reds.every(r => /to (merge in|cut off)$/.test(r.text) && r.color === 'rgb(255, 107, 138)'), how.reds);
     check('pieces left: Complete and Review shows the answers; never in a production dataset', /Press Complete and Review to see the answers\. In a production dataset, you should never complete a cell before it is completely proofread\./.test(how.left), how.left);
     await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match');
@@ -362,8 +368,24 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
     check('collapsed, Jump is still there (Ames 2026-11-16)', minNudge === true, minNudge);
     const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
-    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').click());
-    await page.waitForTimeout(1500);
+    // Jump searches with Find Path's loader, then lights the route and gives
+    // its label back (Ames 2026-11-19).
+    await page.locator('#nge-cell-match .nge-cm-play').screenshot({ path: path.join(OUT, 'jump-idle.png') }).catch(() => {});
+    const searching = await page.evaluate(async () => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); h.click(); const cv = h.querySelector('canvas.nge-cm-jloader'); const bulb = document.querySelector('#nge-cell-match .nge-cm-bulb'); bulb.hidden = false; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))); const cr = cv && cv.getBoundingClientRect(), br = bulb.getBoundingClientRect(), stillCv = !!cv && cv.isConnected; const kclip = cv ? cv.style.clipPath : ''; const m = /,\s*([\d.]+)px 20px/.exec(kclip || ''); bulb.hidden = document.querySelector('#nge-cell-match .nge-cm-nudge').hidden; return { keyedFit: !stillCv || (cv.classList.contains('nge-cm-jloader-keyed') && !!m && cr.left + Number(m[1]) <= br.left + 2), kclip, on: h.classList.contains('nge-cm-searching'), canvas: !!cv && cv.width > 0, label: getComputedStyle(h.querySelector('.nge-cm-jlabel')).visibility, cvL: cr && cr.left, cvR: cr && cr.right, cls: cv && cv.className, clip: cv && getComputedStyle(cv).clipPath, jumpR: h.getBoundingClientRect().right, bulbL: br.left, bulbR: br.right }; });
+    await page.waitForTimeout(140);
+    await page.locator('#nge-cell-match .nge-cm-play').screenshot({ path: path.join(OUT, 'jump-searching.png') }).catch(() => {});
+    await page.waitForTimeout(2460);
+    const searched = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { on: h.classList.contains('nge-cm-searching'), canvas: !!h.querySelector('canvas'), label: getComputedStyle(h.querySelector('.nge-cm-jlabel')).visibility, text: h.textContent }; });
+    check('the bulb showing while Jump searches: the lightning is cut at the slash, not across the bulb', searching.keyedFit, searching);
+    check('Jump searches with the Find Path loader, then its label is back', searching.on && searching.canvas && searching.label === 'hidden' && !searched.on && !searched.canvas && searched.label === 'visible' && searched.text === 'Jump to next spot', { searching, searched });
+    // Folded to one line at first; a click opens it with Show me (Ames 2026-11-19).
+    const hintFold = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const n = c.querySelector('.nge-cm-nudge'); const b = c.querySelector('.nge-cm-bulb'); const j = c.querySelector('.nge-cm-hbtn').getBoundingClientRect(), bb = b.getBoundingClientRect(); return { open: n.classList.contains('nge-cm-nudge-open'), lineShown: n.offsetParent !== null, bulb: b.offsetParent !== null, beside: Math.abs(bb.top - j.top) < 4 && bb.left > j.right - 12 && bb.right > j.right + 20, small: bb.width <= 44 }; });
+    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-bulb').click());
+    const unfolded = await page.evaluate(() => { const n = document.querySelector('#nge-cell-match .nge-cm-nudge'); const t = n.querySelector('.nge-cm-nudge-text').getBoundingClientRect(), sm = n.querySelector('.nge-cm-hint-btn').getBoundingClientRect(); const ca = n.querySelector('.nge-cm-nudge-more').getBoundingClientRect(); return { below: sm.top >= t.bottom - 1, underCaret: Math.abs(sm.right - ca.right) < 4, wide: t.width > n.getBoundingClientRect().width * 0.7, open: n.classList.contains('nge-cm-nudge-open'), showMe: n.querySelector('.nge-cm-hint-btn').offsetParent !== null, saved: localStorage.getItem('nge_sandbox_hint_open'), pressed: document.querySelector('#nge-cell-match .nge-cm-bulb').getAttribute('aria-expanded') }; });
+    check('the hint starts folded into a small light bulb beside Jump, and the bulb opens it with Show me, remembered', !hintFold.open && !hintFold.lineShown && hintFold.bulb && hintFold.beside && hintFold.small && unfolded.open && unfolded.showMe && unfolded.saved === '1' && unfolded.pressed === 'true' && unfolded.below && unfolded.wide && unfolded.underCaret, { hintFold, unfolded });
+    await page.locator('#nge-cell-match').screenshot({ path: path.join(OUT, 'hint-open.png') }).catch(() => {});
+    const centers = await page.evaluate(() => { const r = q => document.querySelector(q).getBoundingClientRect(); const range = document.createRange(); range.selectNodeContents(document.querySelector('#nge-cell-match .nge-cm-jlabel')); const j = range.getBoundingClientRect(); const c = document.querySelector('#nge-cell-match .nge-cm-complete'); const t = [...c.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()); range.selectNodeContents(t); const k = range.getBoundingClientRect(); return { bulb: r('#nge-cell-match .nge-cm-bulb').width > 0, jump: Math.round(j.left + j.width / 2), complete: Math.round(k.left + k.width / 2) }; });
+    check('with the bulb showing, Jump’s words line up with Complete’s', !centers.bulb || Math.abs(centers.jump - centers.complete) <= 2, centers);
     const place = await hintLayers();
     const layout = await page.evaluate(() => JSON.stringify(window.viewer.layout.toJSON()));
     check('Hint opens the 2D view beside the 3D', /xy/.test(layout), layout);
@@ -563,7 +585,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     // The X closes the box and Pyr's Play button comes back to open it
     // (Ames 2026-11-14: "it's not clear how to get back bc the play button is gone").
     await page.evaluate(() => { document.querySelector('.introductionStep')?.remove(); document.querySelector('#nge-cell-match .nge-cm-x').click(); });
-    await page.waitForTimeout(1000);
+    // Play stays away 4 s after a tutorial was on screen (7d9fbacc).
+    await page.waitForTimeout(5000);
     const folded = await page.evaluate(() => { const p = document.querySelector('.nge-play-btn'); return { card: !!document.getElementById('nge-cell-match'), chip: !!document.getElementById('nge-cell-match-open'), play: !!p && p.getBoundingClientRect().width > 0 && p.textContent.trim(), row: !document.body.classList.contains('nge-cm-owns') }; });
     check('X closes the box: no Match button, the Play button is back, the Cell Library row returns', !folded.card && !folded.chip && folded.play === 'Play' && folded.row, folded);
     await shot('cell-match-closed.png');
@@ -571,8 +594,22 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(3500);
     check('closed stays closed through edits', await page.evaluate(() => !document.getElementById('nge-cell-match') && !!document.querySelector('.nge-play-btn')), null);
-    await page.evaluate(() => document.querySelector('.nge-play-btn').click());
+    // The click itself starts Find Path's lightning on the button (Ames 2026-11-20).
+    const bolt = await page.evaluate(async () => {
+      document.querySelector('.nge-play-btn').click();
+      const at = performance.now();
+      let cv = null;
+      while (!(cv = document.querySelector('.nge-play-btn .nge-play-loader')) && performance.now() - at < 1000) await new Promise(r => setTimeout(r, 16));
+      const seenMs = Math.round(performance.now() - at);
+      await new Promise(r => setTimeout(r, 350));
+      let lit = 0;
+      if (cv) { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) lit++; }
+      const word = document.querySelector('.nge-play-word');
+      return { seenMs, lit, wordHidden: !!word && getComputedStyle(word).visibility === 'hidden', w: cv ? cv.getBoundingClientRect().width : 0 };
+    });
+    check('Play: the lightning starts on the click and draws across the button', bolt.seenMs < 200 && bolt.lit > 20 && bolt.wordHidden && bolt.w > 60, bolt);
     check('Play opens it again', await waitText(/39%/, 10000), await cardText());
+    check('Play: the lightning strikes and the button settles', await page.waitForFunction(() => !document.querySelector('.nge-play-loader'), null, { timeout: 5000 }).then(() => true, () => false), null);
     await page.waitForTimeout(900);
     // Play button off in Settings: no box at all, the Cell Library as before.
     await page.evaluate(() => { const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia; pinia._s.get('userPrefs').prefs.hidePlayButton = true; });
@@ -659,6 +696,10 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
       return { sub: c && c.querySelector('.nge-cm-sub').textContent, go: c && c.querySelector('.nge-cm-idle-go') && c.querySelector('.nge-cm-idle-go').textContent };
     });
     check('after a cell is finished: Teleport to a new cell', fresh.sub === 'Ready for your next sim cell' && fresh.go === 'Teleport to a new cell', fresh);
+    // In Play's shape, with a pad at each end (Ames 2026-11-20).
+    const tshape = await page.evaluate(() => { const b = document.querySelector('#nge-cell-match .nge-cm-idle-go'); const k = b.querySelector('.nge-cm-tkey').getBoundingClientRect(), f = b.querySelector('.nge-cm-tlabel').getBoundingClientRect(), r = b.getBoundingClientRect(); return { key: k.width > 30 && k.left - r.left < 2, face: f.left < k.right && f.right > r.right - 2, h: Math.round(r.height), wide: r.width > b.closest('#nge-cell-match').getBoundingClientRect().width * 0.7, pads: getComputedStyle(b, '::after').content !== 'none' }; });
+    check('Teleport to a new cell is a key and a circuit face, full width, a pad at each end', tshape.key && tshape.face && tshape.h >= 34 && tshape.wide && tshape.pads, tshape);
+    await page.locator('#nge-cell-match').screenshot({ path: path.join(OUT, 'teleport-idle.png') }).catch(() => {});
     const ownsIdle = await page.evaluate(() => document.body.classList.contains('nge-cm-owns'));
     check('while the box waits, the Cell Library slim row stays out of the way', ownsIdle === true, ownsIdle);
     const playBox = await page.evaluate(() => { const b = document.querySelector('.nge-play-btn'); return b ? Math.round(b.getBoundingClientRect().height) : null; });
@@ -685,6 +726,33 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
         ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
       });
       await page.waitForTimeout(2500);
+    }
+    // A reload: the saved view holds the cell as it was before the last edit
+    // (Ames 2026-11-19: "I'm already on my cell. I simply refreshed the page").
+    {
+      const NOW = '648518346350788735', STALE = '648518346350788700', SOMA = '73325262829729818';
+      await context.route(new RegExp(`/node/${SOMA}/root`), r => r.fulfill(json({ root_id: NOW })));
+      await context.route(/is_latest_roots/, r => { const ids = (r.request().postData() || '').match(/\d{10,}/g) || []; r.fulfill(json({ is_latest: ids.map(id => id !== STALE) })); });
+      await context.route(/lineage_graph/, r => r.fulfill(json({ nodes: [], links: r.request().url().includes(STALE) ? [{ source: STALE, target: NOW }] : [] })));
+      answer = { ...ANSWERS.merged, root: NOW };
+      await page.evaluate(([stale, soma]) => {
+        window.__ngeCellMatch.withClaims(() => [{ id: 16762, dataset: 'pinky_nf_v2', roots: ['648518346350000002'], anchor: soma }]);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.add(window.__testU64.parseString(stale));
+      }, [STALE, SOMA]);
+      const live = await waitText(/39%/, 25000);
+      await page.waitForTimeout(2500);
+      const shownIds = await page.evaluate(() => { const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived); return [...ml.layer.displayState.segmentationGroupState.value.visibleSegments].map(String); });
+      check('after a reload with the cell as it was before an edit, the box finds it by its soma and shows the current one', live && !/not on screen/.test(await cardText() || '') && shownIds.includes(NOW) && !shownIds.includes(STALE), { text: await cardText(), shownIds });
+      await context.unroute(new RegExp(`/node/${SOMA}/root`)); await context.unroute(/is_latest_roots/); await context.unroute(/lineage_graph/);
+      await page.evaluate(() => {
+        window.__ngeCellMatch.withClaims(() => []);
+        const ml = window.viewer.layerManager.managedLayers.find(l => l.layer && l.layer.displayState && l.layer.displayState.segmentationGroupState && !l.archived);
+        ml.layer.displayState.segmentationGroupState.value.visibleSegments.clear();
+      });
+      await page.waitForTimeout(2500);
+      const idle = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); return c ? [...c.querySelectorAll('.nge-cm-row')].filter(r => r.offsetParent !== null).length : -1; });
+      check('Standby shows no empty rows (Ames 2026-11-19)', idle === 0, idle);
     }
     await shot('play-big.png');
     await shot('cell-match-standby.png');

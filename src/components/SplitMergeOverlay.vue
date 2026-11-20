@@ -221,6 +221,24 @@ function clearPoints() {
 function clearMerges() {
   const icon = document.querySelector('.graphene-merge-segments .neuroglancer-icon[title="Clear pending merges"]') as HTMLElement | null;
   icon?.click();
+  clearStrayMergeDots();
+}
+/** A first merge point placed on nothing (outside the data) or on a hidden
+ *  segment is kept as a red dot but never joins the queue, so neuroglancer's
+ *  Clear, which empties the queue, left it there for good (synapse123,
+ *  report 544). Clear takes away every red dot that is not a merge being
+ *  sent right now. */
+function clearStrayMergeDots() {
+  try {
+    const gc = (currentSegLayer()?.layer as any)?.graphConnection?.value;
+    const source = gc?.mergeAnnotationState?.source;
+    if (!source || typeof source[Symbol.iterator] !== 'function') return;
+    const locked = new Set<string>((gc.state?.mergeState?.merges?.value ?? []).filter((m: any) => m.locked).map((m: any) => m.id));
+    for (const a of [...source] as any[]) {
+      if (locked.has(a.id)) continue;
+      try { source.delete(source.getReference(a.id)); } catch { /* already gone */ }
+    }
+  } catch (e) { console.warn('[merge] could not clear leftover merge points:', e); }
 }
 
 // Retina access (src/access_request.ts): after an example is saved, its

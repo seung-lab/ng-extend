@@ -523,8 +523,29 @@ async function betaRequested(sb, me, io = {}) {
   } catch (e) { /* no triage row: the request stands */ }
   return true;
 }
+// Everyone let into the beta can see Retina (Ames 2026-11-19: "yes access
+// when they're in the beta"): the first time a pilot signs in without view
+// access, Pyr adds them to Eyewire_2_View. Asked once per player per server.
+const RETINA_VIEW_GROUP = 202;
+const viewTried = new Set();
+async function giveRetinaView(io) {
+  const caveId = Number(io.who && io.who.caveId);
+  if (!io.isPilot || !Number.isSafeInteger(caveId) || caveId <= 0 || viewTried.has(caveId)) return false;
+  if (!io.retinaAccess || !io.grantCave) return false;
+  viewTried.add(caveId);
+  const has = await io.retinaAccess();
+  if (has === null || has.includes('view') || has.includes('edit')) return false;
+  const r = await io.grantCave(caveId, RETINA_VIEW_GROUP);
+  if (!r || !r.ok) { viewTried.delete(caveId); return false; }
+  return !r.already;
+}
 async function betaStatus(a, io) {
-  if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
+  if (io.isAdmin) return {invited: true, requested: false};
+  if (io.isPilot) {
+    let viewGranted = false;
+    try { viewGranted = await giveRetinaView(io); } catch (e) { /* they are in either way */ }
+    return {invited: true, requested: false, ...(viewGranted ? {viewGranted: true} : {})};
+  }
   return {invited: false, requested: await betaRequested(io.sb, io.me, io)};
 }
 // What a player types is checked hard (Ames 2026-10-24: "Make sure it's
@@ -601,10 +622,9 @@ async function beta(a, io) {
 // not a Google account, and Pyr signs in with Google. "I don't want them
 // replying with a gmail to me, I want them to use the site": the blocked
 // screen asks for the email the invite reached, and if it is on Pilot
-// testers the Google account they signed in with is added at once. An
-// invite email is not a secret, so each invite brings in one account, only
-// while nobody has joined under the invite itself, and every admin is told.
-// Anything else becomes a Beta request for an admin to look at.
+// testers the request goes to the admins marked as an invited tester on
+// another Google account. An invite email is not a secret, so naming one
+// never lets an account in by itself: an admin adds it.
 //   access.linkInvite  a player not on the list: {email} the invite reached.
 const LINKED_PREFIX = 'Linked to invite: ';
 // Its own category, so no triage card: the player is already in and nothing
@@ -628,31 +648,24 @@ async function linkInvite(a, io) {
     linkedBefore = (await io.sb('site_issues?category=in.' + encodeURIComponent(`("${BETA_CATEGORY}","${INVITE_CATEGORY}")`)
       + '&message=like.' + encodeURIComponent('*' + LINKED_PREFIX + email + '.*') + '&select=id&limit=1')).length > 0;
   } catch (e) { linkedBefore = true; }
-  if (joined || linkedBefore) {
-    const why = joined ? 'Someone already plays Pyr with that invite email.' : 'That invite already brought in another Google account.';
-    const message = [
-      `${name} asks to join the Pyr beta.`,
-      `Email they gave: ${email}`,
-      `Invited as: ${email}, already on Pilot testers. They sign in with another Google account. ${why}`,
-      `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
-    ].join('\n');
-    const title = `Invited tester on another Google account: ${name}`.slice(0, 120);
-    await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
-    const bell = `${mdText(name)} used the invite for ${mdText(email)} from another Google account, ${mdText(signIn)}. ${mdText(why)}\n\n${LET_IN}`;
-    try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
-    await wakeBoard(io);
-    return {invited: false, requested: true, review: true};
-  }
-  await io.sb('pilot_members?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
-    body: JSON.stringify({email: signIn, enabled: true})});
-  // The record: it is how a second use of this invite is caught.
-  const message = `${name} was invited as ${email} and joined as ${signIn}.\n${LINKED_PREFIX}${email}.\nSign in email: ${signIn}. If this isn't them, turn ${signIn} off under Admin Hub, Pilot testers.`;
-  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: INVITE_CATEGORY,
-    title: `Invite used: ${name}`.slice(0, 120), message, user_id: io.me.id, user_name: name}])});
-  // Nothing to do (Ames 2026-11-04: "asks to join" read as a request).
-  const bell = `${mdText(name)} is in. They were invited as ${mdText(email)} and signed in as ${mdText(signIn)}. Nothing to do.\n\nIf this isn't them, turn ${mdText(signIn)} off under Admin Hub, Pilot testers.`;
-  try { await io.notifyAdmins({title: `🔑 Invite used by ${name}`.slice(0, 120), body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
-  return {invited: true, linked: true};
+  // Knowing an invited address is not proof of owning it, so nobody is let in
+  // here: an admin sees the request and adds the account (security review
+  // 2026-11-13, finding 2). Before, the first account to name an unused invite
+  // joined at once.
+  const why = joined ? ' Someone already plays Pyr with that invite email.'
+    : linkedBefore ? ' That invite already brought in another Google account.' : '';
+  const message = [
+    `${name} asks to join the Pyr beta.`,
+    `Email they gave: ${email}`,
+    `Invited as: ${email}, already on Pilot testers. They sign in with another Google account.${why}`,
+    `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+  ].join('\n');
+  const title = `Invited tester on another Google account: ${name}`.slice(0, 120);
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
+  const bell = `${mdText(name)} used the invite for ${mdText(email)} from another Google account, ${mdText(signIn)}.${mdText(why)} Check it is them before letting them in.\n\n${LET_IN}`;
+  try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  await wakeBoard(io);
+  return {invited: false, requested: true, review: true};
 }
 
 /** Is this address on Pilot testers? A failed look up counts as no: the
@@ -759,6 +772,8 @@ const BETA_MARKS = ['listed', 'removed', 'waiting'];
 // connectome.quest"). Letting someone in sends them this, from
 // welcome@connectome.quest, replies to support@eyewire.org (Ames 2026-11-12). Once per address:
 // a second Let in sends nothing (io.welcomeSent, Firestore in index.js).
+// Over the sending limit it is queued and goes later by itself, and counts as
+// sent here (email-queue.js, Ames 2026-11-19).
 // Support gets a blind copy of every welcome (Ames 2026-11-06: "copy
 // support@eyewire.org"), and Ames's Gmail (2026-11-10: "add my Gmail"), so
 // the player never sees it.
@@ -780,8 +795,9 @@ async function welcomeEmail(a, io) {
   if (io.welcomeSent && await io.welcomeSent.get(email)) return {sent: false, reason: 'already sent'};
   const r = await io.sendEmail(welcomeMessage(name, email));
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in.`);
-  if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || ''});
-  return {sent: true};
+  const q = r.queued ? {queued: true} : {};
+  if (io.welcomeSent) await io.welcomeSent.set(email, {at: new Date().toISOString(), by: (io.who && io.who.email) || '', id: r.id || '', ...q});
+  return {sent: true, ...q};
 }
 // ── Asking for their EyeWire name (Ames 2026-11-12: "an email that we can
 // send automatically via a button on this page (that also has an edit
@@ -836,8 +852,9 @@ async function askEmail(a, io) {
   const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), subject, text});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
   const at = new Date().toISOString();
-  if (io.askSent) await io.askSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || ''});
-  return {sent: true, at};
+  const q = r.queued ? {queued: true} : {};
+  if (io.askSent) await io.askSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || '', ...q});
+  return {sent: true, at, ...q};
 }
 // How many we emailed an invite (Ames 2026-11-12: "how many ppl we have
 // invited via email ... in stats up top"): rows in access_invites, one per
@@ -996,8 +1013,9 @@ async function waitlistEmail(a, io) {
   const r = await io.sendEmail({from: ASK_FROM, to: [email], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), ...draft});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}.`);
   const at = new Date().toISOString();
-  if (io.waitlistSent) await io.waitlistSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || '', n: place.n});
-  return {sent: true, at, n: place.n};
+  const q = r.queued ? {queued: true} : {};
+  if (io.waitlistSent) await io.waitlistSent.set(email, {at, by: (io.who && io.who.email) || '', id: r.id || '', n: place.n, ...q});
+  return {sent: true, at, n: place.n, ...q};
 }
 async function waitlistSentAll(a, io) {
   needAdmin(io.isAdmin);
@@ -1371,7 +1389,7 @@ async function grantEmailAction(a, io) {
   const copies = WELCOME_COPY_TO.filter(c => c !== to);
   const r = await io.sendEmail({from: ASK_FROM, to: [to], reply_to: ASK_REPLY_TO, ...(copies.length ? {bcc: copies} : {}), ...draft});
   if (!r || !r.ok) fail(502, `The email did not go${r && r.error ? `: ${r.error}` : ''}. They are still let in, and their notification went.`);
-  return {sent: true, to};
+  return {sent: true, to, ...(r.queued ? {queued: true} : {})};
 }
 
 // ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
@@ -1418,7 +1436,8 @@ async function grantLines(a, io) {
 // earned datasets a player can edit, read from CAVE with the admin token, so
 // it is right for grants of any date. Only these three are told, and only
 // "can edit": nothing else about their account. Kept 10 minutes per player.
-const PROFILE_ACCESS = {'stroeh-mouse-retina': 'stroeh_mouse_retina', HiMC: 'pni_mec', BANC: 'banc'};
+// FlyWire (fafb) in place of BANC on the profile (Ames 2026-11-19).
+const PROFILE_ACCESS = {'stroeh-mouse-retina': 'stroeh_mouse_retina', HiMC: 'pni_mec', fafb: 'flywire_fafb_production', BANC: 'banc'};
 const PROFILE_ACCESS_MS = 10 * 60 * 1000;
 const profileAccessSeen = new Map();
 async function profileAccess(a, io) {

@@ -34,6 +34,11 @@ import {secureWrite} from '../secure_write';
 import {sandboxAccuracy, type Mine} from '../sandbox_match';
 import lockIcon from '../images/lock-icon.png';
 import unlockIcon from '../images/unlock-icon.png';
+// Each dataset's own emblem (Ames 2026-11-19), shown where its edit access is.
+import retinaEmblem from '../images/datasets/retina.png';
+import mecEmblem from '../images/datasets/mec.png';
+import flywireEmblem from '../images/datasets/flywire.png';
+import bancEmblem from '../images/datasets/banc.png';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -109,7 +114,46 @@ async function loadQuestsCompleted(userId?: string | null) {
     questsCompleted.value = ((board.data ?? []) as any[])
       .filter(r => keys.has(questNameKey(r.name)))
       .reduce((n, r) => n + (r.alltime | 0), 0);
-  } catch { questsCompleted.value = null; }
+    // The Quests card (Ames 2026-11-19: "can we do more for Quests?"): today,
+    // this week and all time, and the place on the Quests leaderboard, from
+    // the same rows, added up by name the way the leaderboard does.
+    const byKey = new Map<string, { today: number; week: number; all: number }>();
+    for (const r of (board.data ?? []) as any[]) {
+      const k = questNameKey(r.name);
+      if (!k) continue;
+      const c = byKey.get(k) ?? { today: 0, week: 0, all: 0 };
+      c.today += r.today | 0; c.week += r.week | 0; c.all += r.alltime | 0;
+      byKey.set(k, c);
+    }
+    const mine = { today: 0, week: 0, all: 0 };
+    for (const k of keys) { const c = byKey.get(k as string); if (c) { mine.today += c.today; mine.week += c.week; mine.all += c.all; } }
+    const others = [...byKey.entries()].filter(([k]) => !keys.has(k)).map(([, c]) => c);
+    const place = (f: 'week' | 'all') => mine[f] > 0 ? 1 + others.filter(c => c[f] > mine[f]).length : 0;
+    questStats.value = { ...mine, weekPlace: place('week'), allPlace: place('all'),
+      weekPlayers: others.filter(c => c.week > 0).length + (mine.week > 0 ? 1 : 0),
+      allPlayers: others.filter(c => c.all > 0).length + (mine.all > 0 ? 1 : 0) };
+  } catch { questsCompleted.value = null; questStats.value = null; }
+}
+const questStats = ref<{ today: number; week: number; all: number; weekPlace: number; allPlace: number; weekPlayers: number; allPlayers: number } | null>(null);
+/** Quest milestones for the bar under the Quests card. */
+const QUEST_MILESTONES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+const nextQuestMilestone = computed(() => {
+  const n = questStats.value?.all ?? 0;
+  const i = QUEST_MILESTONES.findIndex(m => m > n);
+  if (i < 0) return null;
+  const from = i ? QUEST_MILESTONES[i - 1] : 0, to = QUEST_MILESTONES[i];
+  return { to, remaining: to - n, frac: (n - from) / (to - from) };
+});
+function placeLabel(n: number) {
+  const t = n % 100, d = n % 10;
+  return n + (t >= 11 && t <= 13 ? 'th' : d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th');
+}
+function openQuestBoard() {
+  try { localStorage.setItem('nge-leaderboard-metric', 'quests'); } catch { /* private mode */ }
+  // The profile closes first: the leaderboard opens beside the site, under it,
+  // and a click elsewhere would put it away again.
+  handleClose();
+  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:open-leaderboard')), 220);
 }
 // Annotations placed: their total, or mine plus what this browser has yet to send.
 const otherAnnotations = ref<number | null>(null);
@@ -516,13 +560,16 @@ async function loadDatasetStats() {
 }
 
 // ── Edit access (Ames 2026-11-02: "should we show accesses unlocked in
-// profile?") ── The datasets that are earned: Retina, MEC and BANC. Your own
+// profile?") ── The datasets that are earned: Retina, MEC and FlyWire. Your own
 // profile asks CAVE, so it is always right, with the date from the grant's
 // chat line when there is one. Someone else's shows only the grants on record
 // (since 2026-10-30): an older one is simply not shown, never "not yet".
-const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'banc'];
+// FlyWire, not BANC (Ames 2026-11-19: "BANC should be FlyWire").
+// And BANC (Ames 2026-11-19: "It should have: Retina, MEC, FlyWire, BANC").
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'flywire_fafb_production', 'banc'];
 /** Short names for the tiles. */
-const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', banc: 'BANC' };
+const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', flywire_fafb_production: 'FlyWire', banc: 'BANC' };
+const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, flywire_fafb_production: flywireEmblem, banc: bancEmblem };
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
@@ -559,11 +606,27 @@ const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d
   const at = accessGrants.value[ds.id];
   const state = viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
   const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-  return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], state, when };
+  const short = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], emblem: ACCESS_EMBLEMS[ds.id] || '', state, when, short };
 }).filter(r => !viewingOtherUser.value || otherEdit.value || r.state === 'edit'));
 
 watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loadAccess(); } });
-watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') void loadAccess(); });
+// The overview's Datasets Unlocked row reads it too, once the player is known.
+watch(() => backendStore.userId, () => { if (activeTab.value === 'overview') void loadAccess(); }, { immediate: true });
+watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets' || activeTab.value === 'overview') void loadAccess(); });
+/** Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19):
+ *  only the ones unlocked, on every profile ("we dont want locked datasets
+ *  on profile"), and nothing when there are none. */
+// Awarded at the ceremony, 10 am Eastern on Nov 20 (Ames 2026-11-19: "award
+// these special achievements then"): hidden until then, then shown without a
+// reload.
+const UNLOCKED_FROM = Date.parse('2026-11-20T15:00:00Z');
+const unlockedOpen = ref(Date.now() >= UNLOCKED_FROM);
+if (!unlockedOpen.value) {
+  const t = setInterval(() => { if (Date.now() >= UNLOCKED_FROM) { unlockedOpen.value = true; clearInterval(t); } }, 30000);
+  onUnmounted(() => clearInterval(t));
+}
+const unlockedRow = computed(() => unlockedOpen.value ? accessRows.value.filter(r => r.emblem && r.state === 'edit') : []);
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -2379,6 +2442,36 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             </template>
           </div>
+          <!-- The Quests card (Ames 2026-11-19: "can we do more for Quests?
+               the retina quests for example"): Cilia Quests today, this week
+               and all time, the place on the Quests leaderboard, and a bar to
+               the next milestone. The Quests column above stays. -->
+          <div v-if="questStats && questStats.all > 0" class="nge-profile-section nge-profile-quests">
+            <div class="nge-pq-head">
+              <div class="nge-profile-section-label" title="Cilia Quests on the Retina: cells whose cilium was marked, or found to have none, and sent to the lab's sheet">▌ Cilia Quests</div>
+              <button class="nge-pq-board" title="Open the Quests leaderboard" @click="openQuestBoard">Quests leaderboard →</button>
+            </div>
+            <div class="nge-pq-grid">
+              <div class="nge-profile-stat-col" title="Today, US Eastern time">
+                <div class="nge-profile-stat-label">Today</div>
+                <div class="nge-profile-stat-val nge-pq-val" :class="{ 'nge-pq-val--zero': !questStats.today }"><RollUp :value="questStats.today" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Since Monday, US Eastern time">
+                <div class="nge-profile-stat-label">This week</div>
+                <div class="nge-profile-stat-val nge-pq-val" :class="{ 'nge-pq-val--zero': !questStats.week }"><RollUp :value="questStats.week" /></div>
+                <div v-if="questStats.weekPlace" class="nge-pq-place" :title="`${placeLabel(questStats.weekPlace)} of ${questStats.weekPlayers} players with Quests this week`">{{ placeLabel(questStats.weekPlace) }} of {{ questStats.weekPlayers }}</div>
+              </div>
+              <div class="nge-profile-stat-col" title="Every Cilia Quest, ever">
+                <div class="nge-profile-stat-label">All time</div>
+                <div class="nge-profile-stat-val nge-pq-val"><RollUp :value="questStats.all" /></div>
+                <div v-if="questStats.allPlace" class="nge-pq-place" :title="`${placeLabel(questStats.allPlace)} of ${questStats.allPlayers} players with Quests`">{{ placeLabel(questStats.allPlace) }} of {{ questStats.allPlayers }}</div>
+              </div>
+            </div>
+            <div v-if="nextQuestMilestone" class="nge-pq-next" :title="`${nextQuestMilestone.remaining.toLocaleString()} more Quests to ${nextQuestMilestone.to.toLocaleString()}`">
+              <div class="nge-pq-bar"><div class="nge-pq-fill" :style="{ width: Math.round(nextQuestMilestone.frac * 100) + '%' }"></div></div>
+              <span class="nge-pq-count">{{ nextQuestMilestone.remaining.toLocaleString() }} to {{ nextQuestMilestone.to.toLocaleString() }}</span>
+            </div>
+          </div>
           <!-- Building Pyr: how much has been built, from GitHub. Only on
                the profile of the person building it (Ames 2026-10-10). Under
                the Scout report since the count of cells identified took its
@@ -2510,6 +2603,19 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <img :src="f.img" :alt="f.name" />
               <span class="nge-trophy-fav-star">★</span>
             </button>
+          </div>
+          <!-- Datasets Unlocked (Ames 2026-11-19: "a row below featured badge") -->
+          <div v-if="unlockedRow.length" class="nge-ds-unlocked" aria-label="Datasets unlocked">
+            <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Datasets Unlocked</div>
+            <div class="nge-ds-unlocked-row">
+              <div v-for="r in unlockedRow" :key="r.id" class="nge-ds-unlocked-tile" :class="'nge-ds-unlocked-tile--' + r.state"
+                   :title="r.state === 'edit' ? `${r.label}: unlocked${r.when ? ` ${r.when}` : ''}` : r.state === 'locked' ? `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.` : `${r.label}: checking…`">
+                <img :src="r.emblem" class="nge-ds-unlocked-icon" alt="" draggable="false" />
+                <img v-if="r.state === 'locked'" :src="lockIcon" class="nge-ds-unlocked-lock" alt="" draggable="false" />
+                <span class="nge-ds-unlocked-name">{{ r.name }}</span>
+                <span class="nge-ds-unlocked-state">{{ r.state === 'edit' ? (r.short || 'Unlocked') : r.state === 'locked' ? 'Locked' : '…' }}</span>
+              </div>
+            </div>
           </div>
 
           <!-- Divider between badge and streak -->
@@ -3024,7 +3130,8 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           <div class="nge-ds-access-row">
             <div v-for="r in accessRows" :key="r.id" class="nge-ds-access-tile" :class="'nge-ds-access-tile--' + r.state"
                  :title="r.state === 'edit' ? `${r.label}: edit access${r.when ? ` since ${r.when}` : ''}` : r.state === 'locked' ? (viewingOtherUser ? `${r.label}: not unlocked yet` : `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.`) : `${r.label}: checking…`">
-              <img :src="r.state === 'edit' ? unlockIcon : lockIcon" class="nge-ds-access-icon" alt="" draggable="false" />
+              <img :src="r.emblem || (r.state === 'edit' ? unlockIcon : lockIcon)" class="nge-ds-access-icon" alt="" draggable="false" />
+              <img v-if="r.emblem && r.state === 'locked'" :src="lockIcon" class="nge-ds-access-lock" alt="" draggable="false" />
               <span class="nge-ds-access-text">
                 <span class="nge-ds-access-name">{{ r.name }}</span>
                 <span class="nge-ds-access-state">{{ r.state === 'edit' ? (r.when ? `Unlocked · ${r.when}` : 'Unlocked') : r.state === 'locked' ? 'Locked' : 'Checking' }}</span>
@@ -5865,6 +5972,18 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-tile--locked { --c: 150, 170, 200; opacity: 0.7; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(0.6) brightness(0.85); }
 .nge-ds-access-tile--unknown { opacity: 0.55; }
+.nge-ds-access-lock { position: absolute; left: 20px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); }
+.nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(1) brightness(0.5); }
+/* Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19). */
+.nge-ds-unlocked { width: 100%; margin-top: 12px; box-sizing: border-box; }
+/* No box and no glow (Ames 2026-11-19: "Lose the glow and outline around
+   them"); fewer than four sit centered ("If there are only 2, center them"). */
+.nge-ds-unlocked-row { display: flex; justify-content: center; gap: 8px; }
+.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 2px; flex: 0 1 25%; min-width: 0; }
+.nge-ds-unlocked-icon { width: 52px; height: 52px; object-fit: contain; }
+.nge-ds-unlocked-name { font: 700 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; }
+.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(110, 240, 170); }
+.nge-ds-unlocked-tile--unknown { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 
 /* ── Laptops (Ames 2026-11-18: "this laptop layout for profile is ABYSMAL
@@ -5926,4 +6045,19 @@ body:not(.nge-mobile) .is-compact .nge-track-row:not(.nge-track-row--rest) > .ng
   body:not(.nge-mobile) .nge-profile-col--right .nge-profile-viz-badge-icon--large { width: min(140px, calc(16 * var(--nge-vh, 1vh))); height: min(140px, calc(16 * var(--nge-vh, 1vh))); }
   body:not(.nge-mobile) .nge-profile-col--right .nge-profile-viz-badge { gap: 6px; padding-top: 8px; }
 }
+/* ── The Quests card (Ames 2026-11-19) ── */
+.nge-profile-quests { margin-top: 4px; padding: 10px 12px; border: 1px solid rgba(127, 224, 255, 0.16); border-radius: 10px;
+  background: linear-gradient(180deg, rgba(127, 224, 255, 0.06), rgba(127, 224, 255, 0.015)); }
+.nge-pq-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.nge-pq-head .nge-profile-section-label { color: #7fe0ff; margin-bottom: 8px; }
+.nge-pq-board { background: none; border: none; padding: 0; cursor: pointer; font: inherit; font-size: 11px; color: rgba(127, 224, 255, 0.75); white-space: nowrap; }
+.nge-pq-board:hover { color: #bff0ff; text-decoration: underline; }
+.nge-pq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 12px; }
+.nge-pq-val { color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35); }
+.nge-pq-val--zero { color: rgba(220, 230, 245, 0.35); text-shadow: none; }
+.nge-pq-place { margin-top: 2px; font-size: 11px; color: rgba(191, 240, 255, 0.7); white-space: nowrap; }
+.nge-pq-next { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.nge-pq-bar { flex: 1; height: 3px; border-radius: 2px; background: rgba(201, 228, 255, 0.14); overflow: hidden; }
+.nge-pq-fill { height: 100%; background: #7fe0ff; box-shadow: 0 0 8px rgba(127, 224, 255, 0.6); }
+.nge-pq-count { font-size: 11px; color: rgba(220, 230, 245, 0.7); white-space: nowrap; }
 </style>

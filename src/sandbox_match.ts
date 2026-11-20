@@ -16,6 +16,7 @@
  * which compares the player's cell with the true cell in pinky_training; the
  * answer key never reaches the browser, only what is still wrong after Complete.
  */
+import { startLoader, type Live } from './find_path_status';
 import { fullViewUrl } from './util/local_view';
 import { exitGrapheneTool, activeGrapheneToolKind, activateGrapheneTool } from './widgets/graphene_tool_utils';
 import { highlightStyles, saveHighlightStyles, MAX_HIGHLIGHT_STYLES } from './util/highlight';
@@ -101,6 +102,29 @@ function standbyNote(): string {
   if (!isPlaying()) return 'Press Play for a sim cell';
   return holdsCell() ? 'Your cell is not on screen' : 'Ready for your next sim cell';
 }
+const BOLT_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4.5 13.5h6L9.5 22l10-12.5h-6.2z" fill="currentColor"/></svg>';
+/** The click sends lightning from the key across the face until the cell is
+ *  up (the card leaves standby), then it strikes; as Play and Jump do. */
+function startTeleportBolt(b: HTMLButtonElement, el: HTMLElement) {
+  const face = b.querySelector('.nge-cm-tlabel') as HTMLElement | null;
+  if (!face || face.querySelector('canvas')) return;
+  const cv = document.createElement('canvas');
+  cv.className = 'nge-cm-tloader';
+  cv.setAttribute('aria-hidden', 'true');
+  face.appendChild(cv);
+  b.classList.add('nge-cm-teleporting');
+  const live: Live = { raf: 0, timer: 0 };
+  startLoader(cv, live, face.clientWidth + 9.5, 22, 6);
+  const t0 = performance.now();
+  const end = () => { cancelAnimationFrame(live.raf); cv.remove(); b.classList.remove('nge-cm-teleporting'); };
+  const watch = window.setInterval(() => {
+    const up = !b.isConnected || !el.classList.contains('nge-cm-idle');
+    const slow = performance.now() - t0 > 20000;
+    if (!up && !slow) return;
+    clearInterval(watch);
+    if (up && live.finish && b.isConnected) live.finish(end); else end();
+  }, 120);
+}
 function standbyAction() {
   const playing = isPlaying();
   const chip = document.querySelector('.nge-play-chip') as HTMLElement | null;
@@ -181,9 +205,18 @@ export function judgeEdit(kind: 'merge' | 'split', prev: MatchResult, now: Match
   const rowMove = (a: number | null | undefined, b: number | null | undefined) =>
     a == null && b != null ? -1 : a != null && b != null ? Math.sign(b - a) : 0;
   const leftMove = (a?: { left: number }, b?: { left: number }) => (a && b ? Math.sign(a.left - b.left) : 0);
-  const moves = [rowMove(prev.merge, now.merge), rowMove(prev.cut, now.cut), leftMove(prev.missing, now.missing), leftMove(prev.extra, now.extra)];
-  if (moves.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
-  if (moves.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
+  // Judged by what the edit is for (Ames 2026-11-19: merging the nucleus
+  // onto the cell said Wrong merge, then right). A merge that brings in
+  // missing pieces is good even when a wrong part comes along; that part is
+  // for a cut. A cut that takes off part of the cell itself is wrong.
+  const mergeMoves = [rowMove(prev.merge, now.merge), leftMove(prev.missing, now.missing)];
+  const cutMoves = [rowMove(prev.cut, now.cut), leftMove(prev.extra, now.extra)];
+  const [ours, other] = kind === 'merge' ? [mergeMoves, cutMoves] : [cutMoves, mergeMoves];
+  if (ours.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (kind === 'split' && other.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (ours.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
+  if (other.some(m => m < 0)) return { text: `Wrong ${word}`, tone: 'bad' };
+  if (other.some(m => m > 0)) return { text: `Good ${word}`, tone: 'good' };
   return { text: 'No change', tone: 'plain' };
 }
 
@@ -276,10 +309,23 @@ async function findCellOnScreen(mine: SandboxClaim[], vis: any) {
     if (!root || !/^\d+$/.test(root)) continue;
     let here = false;
     try { here = vis.has(Uint64.parseString(root)); } catch { /* not an ID */ }
-    if (!here) continue;
-    aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), root]));
-    console.debug('[cell-match] claim', c.id, 'is on screen as', root);
-    return;
+    if (here) {
+      aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), root]));
+      console.debug('[cell-match] claim', c.id, 'is on screen as', root);
+      return;
+    }
+    // A reloaded view can hold the cell as it was before the last edit
+    // (Ames 2026-11-19: "I'm already on my cell. I simply refreshed the
+    // page"). An ID on screen that has since become this root is the cell;
+    // once found, swapOldIds puts the current one in its place.
+    const ids = [...vis].map((v: any) => String(v)).filter(id => /^\d+$/.test(id) && id !== root).slice(0, 12);
+    for (const id of ids) {
+      const now = await currentIdsOf(id).catch(() => null);
+      if (!now || !now.includes(root)) continue;
+      aliases.set(c.id, new Set([...(aliases.get(c.id) ?? []), id]));
+      console.debug('[cell-match] claim', c.id, 'is on screen as an older', id, 'of', root);
+      return;
+    }
   }
 }
 
@@ -360,6 +406,7 @@ const CSS = `
 #${CARD_ID}.nge-cm-idle .nge-cm-pieces{color:#8fb6dc}
 #${CARD_ID} .nge-cm-loader{display:none}
 #${CARD_ID}.nge-cm-loading .nge-cm-loader{display:flex;align-items:center;gap:14px;padding:6px 0 4px}
+#${CARD_ID}.nge-cm-idle:not(.nge-cm-reviewing) .nge-cm-row{display:none !important}
 #${CARD_ID}.nge-cm-loading .nge-cm-score,#${CARD_ID}.nge-cm-loading .nge-cm-row,#${CARD_ID}.nge-cm-loading .nge-cm-sub{display:none !important}
 #${CARD_ID} .nge-cm-ld-scope{flex:0 0 84px;width:84px;height:98px;position:relative;overflow:hidden;border-radius:8px;background:radial-gradient(circle at 50% 42%,rgba(64,208,255,.14),transparent 70%)}
 #${CARD_ID} .nge-cm-ld-glyph{position:absolute;inset:0}
@@ -414,13 +461,10 @@ const CSS = `
 /* The Playing box (Ames 2026-11-14). */
 body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !important}
 /* The cell icon leads the top line (Ames 2026-11-14: "put this cell icon on the left"). */
-#${CARD_ID} .nge-cm-cellbtn{order:-1;margin-right:2px;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid rgba(127,190,255,.35);border-radius:6px;background:rgba(127,190,255,.08);color:#bfe6ff}
-/* The light that was a dot is now the icon's box: green playing, blue checking, red when an edit went the wrong way. */
-#${CARD_ID} .nge-cm-cellbtn{border:1.5px solid #59e3a7;box-shadow:0 0 7px rgba(89,227,167,.45),inset 0 0 6px rgba(89,227,167,.15)}
-#${CARD_ID}.nge-cm-checking .nge-cm-cellbtn{border-color:#7fc8ff;box-shadow:0 0 7px rgba(127,200,255,.45)}
-#${CARD_ID}.nge-cm-bad .nge-cm-cellbtn{border-color:#ff6b8a;box-shadow:0 0 8px rgba(255,107,138,.5)}
-#${CARD_ID}.nge-cm-idle .nge-cm-cellbtn{border-color:rgba(127,190,255,.35);box-shadow:none}
-#${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.2);color:#fff}
+/* The icon on its own, no box around it (Ames 2026-11-19: "I don't think we need the green box around this"). */
+#${CARD_ID} .nge-cm-cellbtn{order:-1;margin-right:2px;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;box-shadow:none;color:#bfe6ff}
+#${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.14);color:#fff}
+#${CARD_ID} .nge-cm-cellbtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
 #${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important}
 #${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:nge-cm-hglow 2.6s ease-in-out infinite}
@@ -439,10 +483,11 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-mode{position:absolute;top:0;left:0;right:0;height:4px;padding:0;margin:0;overflow:hidden;font-size:0;line-height:0;color:transparent;background:transparent;transition:background .2s ease}
 #${CARD_ID}.nge-cm-idle .nge-cm-mode,#${CARD_ID}.nge-cm-reviewing .nge-cm-mode{display:none}
 #${CARD_ID} .nge-cm-mode[data-mode="merge"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);box-shadow:0 0 10px rgba(61,155,255,.7)}
-#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);box-shadow:0 0 10px rgba(255,64,88,.7)}
+/* Cut mode is blue, as the cut bar at the bottom is (Ames 2026-11-19: "keep cut mode blue period"). */
+#${CARD_ID} .nge-cm-mode[data-mode="cut"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);box-shadow:0 0 10px rgba(61,155,255,.7)}
 #${CARD_ID} .nge-cm-mode[data-mode="highlight"]{background:linear-gradient(90deg,#2fe39a,#9dffd0);box-shadow:0 0 10px rgba(61,255,154,.55)}
 #${CARD_ID}[data-mode="merge"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,155,255,.85)}
-#${CARD_ID}[data-mode="cut"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(255,64,88,.8)}
+#${CARD_ID}[data-mode="cut"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,155,255,.85)}
 #${CARD_ID}[data-mode="highlight"]:not(.nge-cm-idle):not(.nge-cm-reviewing){border-color:rgba(61,255,154,.6)}
 #${CARD_ID} .nge-cm-cellnote{margin:-2px 0 8px;padding:7px 9px;border-left:3px solid #7fd8ff;border-radius:4px;background:rgba(127,216,255,.08);font:13px/1.35 Inter,system-ui,sans-serif;color:#d6e2f5}
 #${CARD_ID} .nge-cm-cellnote[hidden],#${CARD_ID} .nge-cm-acc[hidden],#${CARD_ID} .nge-cm-finish-gate[hidden]{display:none}
@@ -462,8 +507,16 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-hbtn[hidden]{display:none}
 #${CARD_ID} .nge-cm-hbtn:hover{background:rgba(74,158,255,.4);color:#fff}
 @keyframes nge-cm-hglow{50%{box-shadow:0 0 10px rgba(127,216,255,.55)}}
+/* Jump searches like Find Path (Ames 2026-11-19: "can you use something like
+   the find path loading indicator?"): its explorers run across the button
+   while it looks, and the route lights when the spot is found. */
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn{position:relative}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled){background:rgba(74,158,255,.34) !important;border-color:#a8e4ff !important;color:#fff !important}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-searching:disabled{opacity:1;cursor:progress}
+#${CARD_ID} .nge-cm-hbtn.nge-cm-searching .nge-cm-jlabel{visibility:hidden}
+#${CARD_ID} .nge-cm-jloader{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged,#${CARD_ID} .nge-cm-hbtn.nge-cm-glow1{animation:none}}
-#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
+#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn,#${CARD_ID}.nge-cm-idle .nge-cm-bulb,#${CARD_ID}.nge-cm-reviewing .nge-cm-bulb,#${CARD_ID}.nge-cm-finishing .nge-cm-bulb{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
 #${CARD_ID} .nge-cm-nudge{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
@@ -474,6 +527,22 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 @keyframes nge-cm-find-shine{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after,#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before,#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:none}}
 #${CARD_ID} .nge-cm-nudge[hidden]{display:none}
+/* Folded into a light bulb beside Jump (Ames 2026-11-19: "just a little light
+   bulb we can click to open it as an icon to keep it small and sweet"). */
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){display:none}
+#${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px;align-self:flex-start;order:2}
+/* Open: the words across the top, Show me under them on the right, below the fold caret (Ames 2026-11-19, 2026-11-20). */
+#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open{flex-wrap:wrap;align-items:flex-start;row-gap:7px}
+#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open .nge-cm-nudge-text{flex:1 1 0;min-width:0;order:1}
+#${CARD_ID} .nge-cm-nudge-btns:not(:has(.nge-cm-hint-btn:not([hidden]))){display:none}
+#${CARD_ID} .nge-cm-nudge-more svg{transform:rotate(180deg)}
+#${CARD_ID} .nge-cm-jumprow{grid-area:jump;display:flex;gap:5px;min-width:0}
+#${CARD_ID} .nge-cm-jumprow .nge-cm-hbtn{flex:1 1 auto;min-width:0}
+#${CARD_ID} .nge-cm-bulb{flex:0 0 32px;display:grid;place-items:center;padding:0;border:1px solid rgba(127,216,255,.45);border-radius:6px;background:rgba(127,216,255,.08);cursor:pointer;transition:background-color .15s,border-color .15s,box-shadow .15s}
+#${CARD_ID} .nge-cm-bulb[hidden]{display:none}
+#${CARD_ID} .nge-cm-bulb:hover{background:rgba(127,216,255,.2);border-color:#a8e4ff}
+#${CARD_ID} .nge-cm-bulb:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
+#${CARD_ID} .nge-cm-bulb[aria-expanded="true"]{background:rgba(127,216,255,.24);border-color:#7fd8ff;box-shadow:0 0 8px rgba(127,216,255,.45)}
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
 #${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
@@ -494,10 +563,54 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-play .nge-cm-complete,#${CARD_ID} .nge-cm-finish-go{margin-left:auto;border-color:#3eecbe;background:rgba(20,110,80,.55);color:#eafff7}
 #${CARD_ID} .nge-cm-play .nge-cm-complete:hover,#${CARD_ID} .nge-cm-finish-go:hover:not(:disabled){background:rgba(24,140,100,.7)}
 #${CARD_ID} .nge-cm-btn:disabled{opacity:.5;cursor:default}
+/* Circuit edges (Ames 2026-11-20: traces in the face were "too hard to read";
+   "draw inspiration from the circuit in the rocket ship border and the borders
+   of the layers"). The face is clean, tinted like the hint box. The circuit is
+   the edge: a rim with cut corners, short traces that step in at 45 degrees
+   and end on pads, and a ring pad at the middle of each side, where Jump's
+   lightning starts and ends. Drawn to size by frameButton(). */
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn,#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:127,216,255;position:relative;isolation:isolate;overflow:visible;border:0 !important;border-radius:0 !important;background:none !important;box-shadow:none !important;
+  color:#eef8ff !important;font:600 13px/1 Inter,system-ui,sans-serif !important;padding:9px 12px !important;text-shadow:none}
+#${CARD_ID} .nge-cm-play .nge-cm-complete{--cc:62,236,190;color:#eafff6 !important}
+#${CARD_ID} .nge-cm-frame{position:absolute;inset:0;z-index:-1;pointer-events:none}
+#${CARD_ID} .nge-cm-frame svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+#${CARD_ID} .nge-cm-frame .rim{fill:rgba(var(--cc),.1);stroke:rgba(var(--cc),.72);stroke-width:1;transition:fill .15s,stroke .15s}
+#${CARD_ID} .nge-cm-play .nge-cm-complete .nge-cm-frame .rim{fill:rgba(32,150,110,.28)}
+#${CARD_ID} .nge-cm-frame .tr{fill:none;stroke:rgba(var(--cc),.6);stroke-width:1;stroke-linejoin:round;stroke-linecap:round}
+#${CARD_ID} .nge-cm-frame .pad{fill:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-frame .via{fill:#0a1322;stroke:rgba(var(--cc),.85);stroke-width:1}
+#${CARD_ID} .nge-cm-frame .pin{fill:rgba(var(--cc),.7)}
+#${CARD_ID} .nge-cm-frame .side{fill:#0a1322;stroke:rgb(var(--cc));stroke-width:1.4;filter:drop-shadow(0 0 3px rgba(var(--cc),.8))}
+#${CARD_ID} .nge-cm-frame .side-in{fill:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled) .rim{fill:rgba(var(--cc),.2);stroke:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled) .rim{fill:rgba(36,170,124,.42);stroke:rgb(var(--cc))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:hover:not(:disabled),#${CARD_ID} .nge-cm-play .nge-cm-complete:hover:not(:disabled){filter:drop-shadow(0 0 6px rgba(var(--cc),.35))}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible{outline:none}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn:focus-visible .rim,#${CARD_ID} .nge-cm-play .nge-cm-complete:focus-visible .rim{stroke:#fff}
+#${CARD_ID} .nge-cm-jlabel{position:relative;z-index:1}
+#${CARD_ID} .nge-cm-jloader{z-index:2}
+#${CARD_ID} .nge-cm-play .nge-cm-hbtn .nge-cm-jloader{left:-6px;transform:translateY(-50%)}
+/* The bulb is Jump's key, as the play mark is Play's (Ames 2026-11-20: "fit in
+   almost like how the play button has that slash line"): Jump ends in a slash,
+   the key follows it, and Jump's right pad sits on the slash. */
+#${CARD_ID} .nge-cm-jumprow{gap:0;align-items:stretch}
+/* Its words centered on the whole row, so they line up with Complete's (Ames 2026-11-20: "the text is aligned weird"): the bulb takes 35 px, so 35 px more on the left. */
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;padding-left:47px !important;padding-right:12px !important}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb{position:relative;overflow:hidden;flex:0 0 42px;margin-left:-7px;padding:0 0 0 6px;border:0;border-radius:0 4px 4px 0;
+  clip-path:polygon(10px 0,100% 0,100% 100%,0 100%);background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%);transition:filter .2s}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb svg{stroke:#06213a;position:relative;z-index:1}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb::after{content:'';position:absolute;top:0;bottom:0;left:-60%;width:40%;pointer-events:none;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.85),rgba(255,255,255,0));transform:skewX(-20deg)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:hover{background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%);filter:brightness(1.1)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:hover::after,#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:focus-visible::after{animation:nge-cm-keyshine .6s ease-out}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb:active{filter:brightness(1.35)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb[aria-expanded="true"]{box-shadow:none;background:linear-gradient(135deg,#fff8d6 0%,#ffe27a 45%,#d9a520 100%)}
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb[aria-expanded="true"] svg{stroke:#2a1d00}
+@keyframes nge-cm-keyshine{to{left:120%}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb::after{animation:none !important}}
 #${CARD_ID}.nge-cm-idle .nge-cm-play,#${CARD_ID}.nge-cm-idle .nge-cm-cellid,#${CARD_ID}.nge-cm-idle .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-play,#${CARD_ID}.nge-cm-reviewing .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-marktoggle,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){height:auto !important;resize:horizontal}
-#${CARD_ID} .nge-cm-nudge-btns{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
+#${CARD_ID} .nge-cm-nudge-btns{display:flex;gap:5px;order:3;flex:1 0 100%;justify-content:flex-end;padding-left:0}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
 #${CARD_ID}.nge-cm-finishing .nge-cm-play,#${CARD_ID}.nge-cm-finishing .nge-cm-nudge,#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="cut"]{display:none}
 #${CARD_ID} .nge-cm-viewnote{margin-top:6px;font-size:11.5px;line-height:1.4;color:#8fa6c4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -524,6 +637,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-finish-left{margin:0;font-size:12.5px;line-height:1.45;color:#a9c3e0}
 #${CARD_ID} .nge-cm-finish-left[hidden]{display:none}
 #${CARD_ID} .nge-cm-finish-left-count{margin:0 0 3px}
+#${CARD_ID} .nge-cm-left-red{color:#ff6b8a;font-weight:600}
 #${CARD_ID} .nge-cm-finish-actions{display:flex;gap:6px;align-items:center;padding-top:8px;border-top:1px solid rgba(127,190,255,.18)}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-btn{margin-left:0}
 #${CARD_ID} .nge-cm-finish-actions .nge-cm-finish-go{margin-left:auto}
@@ -532,13 +646,13 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-gauge,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-gauge{grid-column:1/-1;grid-row:2;height:4px;margin:3px 0 5px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-fill,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-fill{box-shadow:none;opacity:.85}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-label,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-label{font-size:10.5px;letter-spacing:.12em;grid-column:1;grid-row:1}
-#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0;padding:3px 7px 2px;border-radius:6px;line-height:1;cursor:pointer;background:rgba(10,20,36,.6);transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]{border:1px solid rgba(61,155,255,.6);color:#9fd0ff}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]{border:1px solid rgba(255,64,88,.6);color:#ffa3b0}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"]:hover{background:rgba(61,155,255,.18)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"]:hover{background:rgba(255,64,88,.16)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="merge"][aria-pressed="true"]{background:linear-gradient(90deg,#3d9bff,#7fd0ff);border-color:#7fd0ff;color:#04111f;box-shadow:0 0 10px rgba(61,155,255,.7)}
-#${CARD_ID} .nge-cm-modebtn[data-tool="cut"][aria-pressed="true"]{background:linear-gradient(90deg,#ff4058,#ff8a9e);border-color:#ff8a9e;color:#1a0408;box-shadow:0 0 10px rgba(255,64,88,.7)}
+/* Merge and Cut as plain labels, like MATCH SCORE (Ames 2026-11-19: the
+   pills "don't match our UI"). A label is the M or C button; when its mode
+   is on it lights blue, Cut too (Ames: "keep cut mode blue period"). */
+#${CARD_ID} .nge-cm-modebtn{justify-self:start;align-self:center;margin:0 0 0 -6px;padding:4px 6px 3px;border:1px solid transparent;border-radius:5px;line-height:1;cursor:pointer;background:transparent;color:#8fb6dc;transition:background .15s ease,box-shadow .15s ease,color .15s ease,border-color .15s ease}
+#${CARD_ID} .nge-cm-modebtn:hover{color:#e6f0ff;background:rgba(61,155,255,.12);border-color:rgba(127,190,255,.3)}
+#${CARD_ID} .nge-cm-modebtn[aria-pressed="true"]{color:#fff;background:rgba(61,155,255,.32);border-color:rgba(127,208,255,.85);box-shadow:0 0 9px rgba(61,155,255,.55)}
+#${CARD_ID} .nge-cm-row:has(.nge-cm-modebtn[aria-pressed="true"]) .nge-cm-pieces{color:#e6f0ff}
 #${CARD_ID} .nge-cm-modebtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:2px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-pieces,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-pieces{grid-column:2;grid-row:1;font-size:13px}
 #${CARD_ID} .nge-cm-row[data-row="merge"] .nge-cm-read,#${CARD_ID} .nge-cm-row[data-row="cut"] .nge-cm-read{grid-column:3;grid-row:1}
@@ -589,6 +703,39 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 #${CARD_ID} .nge-cm-save{margin-right:auto}
 #${CARD_ID} .nge-cm-go{margin-left:0;padding:8px 14px;border-color:#7fd8ff;background:rgba(127,216,255,.16);color:#fff;box-shadow:0 0 10px rgba(127,216,255,.25)}
+/* Standby (Ames 2026-11-20): a live dot by the line, and the button in
+   Play's shape with a circuit face. */
+#${CARD_ID}.nge-cm-idle .nge-cm-sub{display:flex;align-items:center;gap:8px;color:#cfe6ff}
+#${CARD_ID}.nge-cm-idle .nge-cm-sub::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#7fd8ff;box-shadow:0 0 8px #7fd8ff;animation:nge-cm-standby-dot 1.8s ease-in-out infinite}
+@keyframes nge-cm-standby-dot{50%{opacity:.35;box-shadow:0 0 2px #7fd8ff}}
+#${CARD_ID} .nge-cm-actions:has(.nge-cm-idle-go){justify-content:stretch;margin-top:10px;padding:0 5px 2px 0}
+#${CARD_ID} .nge-cm-idle-go{--cut:6px;position:relative;flex:1 1 auto;display:flex;align-items:stretch;height:38px;margin:0;padding:0;border:0;border-radius:0;background:none !important;box-shadow:none;color:#e8f7ff;
+  filter:drop-shadow(0 0 7px rgba(127,216,255,.32));transition:filter .2s,transform .12s}
+#${CARD_ID} .nge-cm-idle-go:hover{filter:drop-shadow(0 0 11px rgba(127,216,255,.55))}
+#${CARD_ID} .nge-cm-idle-go:active{transform:translateY(1px)}
+#${CARD_ID} .nge-cm-tkey{position:relative;z-index:1;display:grid;place-items:center;flex:0 0 46px;overflow:hidden;color:#06213a;
+  clip-path:polygon(var(--cut) 0,100% 0,calc(100% - 10px) 100%,0 100%,0 var(--cut));background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%)}
+#${CARD_ID} .nge-cm-tkey svg{position:relative;z-index:1;transition:transform .2s}
+#${CARD_ID} .nge-cm-tkey::after{content:'';position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.85),rgba(255,255,255,0));transform:skewX(-20deg)}
+#${CARD_ID} .nge-cm-idle-go:hover .nge-cm-tkey::after,#${CARD_ID} .nge-cm-idle-go:focus-visible .nge-cm-tkey::after{animation:nge-cm-keyshine .6s ease-out}
+#${CARD_ID} .nge-cm-idle-go:hover .nge-cm-tkey svg{transform:scale(1.15) rotate(-6deg)}
+#${CARD_ID} .nge-cm-tlabel{position:relative;flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-width:0;margin-left:-7px;padding:0 16px 0 18px;
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%);
+  background:linear-gradient(180deg,rgba(127,216,255,.16),rgba(127,216,255,.07)),rgba(6,14,28,.92)}
+#${CARD_ID} .nge-cm-tlabel::before{content:'';position:absolute;inset:0;padding:1px;clip-path:inherit;pointer-events:none;
+  background:linear-gradient(90deg,rgba(127,216,255,.95),rgba(127,216,255,.35));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+#${CARD_ID} .nge-cm-tword{position:relative;z-index:1;font:600 13.5px/1 Inter,system-ui,sans-serif;letter-spacing:.02em;color:#f2faff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* A pad on the slash and one at the far end; the lightning runs between them. */
+#${CARD_ID} .nge-cm-idle-go::before,#${CARD_ID} .nge-cm-idle-go::after{content:'';position:absolute;top:50%;z-index:2;box-sizing:border-box;width:9px;height:9px;margin-top:-4.5px;border:1.5px solid #7fd8ff;border-radius:50%;
+  background:radial-gradient(circle,#7fd8ff 0 1.4px,#0a1322 1.9px);box-shadow:0 0 6px rgba(127,216,255,.75);pointer-events:none}
+#${CARD_ID} .nge-cm-idle-go::before{left:37px}
+#${CARD_ID} .nge-cm-idle-go::after{right:-4.5px}
+#${CARD_ID} .nge-cm-tloader{position:absolute;left:-3.5px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none}
+#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting{cursor:progress}
+#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting .nge-cm-tword{visibility:hidden}
+#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting .nge-cm-tkey{animation:nge-cm-tkey-pulse .8s ease-in-out infinite}
+@keyframes nge-cm-tkey-pulse{50%{filter:brightness(1.3)}}
+@media (prefers-reduced-motion:reduce){#${CARD_ID}.nge-cm-idle .nge-cm-sub::before,#${CARD_ID} .nge-cm-tkey::after,#${CARD_ID} .nge-cm-idle-go.nge-cm-teleporting .nge-cm-tkey{animation:none !important}}
 #${CARD_ID} .nge-cm-quiet{margin-left:0;border-color:rgba(127,200,255,.25);background:transparent;color:#8fb6dc}
 #${CARD_ID} .nge-cm-clean{color:#59e3a7;font:600 12px/1.4 Orbitron,Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:2px 0}
 `;
@@ -671,7 +818,9 @@ const BULB_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" st
 const NUDGE_HTML = '<div class="nge-cm-nudge" hidden>' + BULB_SVG
   + '<span class="nge-cm-nudge-text"></span>'
   + '<span class="nge-cm-nudge-btns"><button type="button" class="nge-cm-btn nge-cm-hint-btn" hidden>Show me</button>'
-  + '</span></div>';
+  + '</span><button type="button" class="nge-cm-tool nge-cm-nudge-more" aria-expanded="false" aria-label="Show the whole hint" title="Show the whole hint">'
+  + '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button></div>';
+const HINT_OPEN_KEY = 'nge_sandbox_hint_open';
 // Highlight from the box (Ames 2026-11-14: "a button that opens highlight
 // mode ... with checked and come back pre-filled"; "we can't add highlight
 // points while you are in merge or cut mode"). A chip leaves Merge or Cut and
@@ -696,7 +845,8 @@ const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip Cell</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-marktoggle" aria-expanded="false" title="Mark where you have been">Highlight<svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump to next spot</button>'
+  + '<div class="nge-cm-jumprow"><button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing"><span class="nge-cm-jlabel">Jump to next spot</span></button>'
+  + '<button type="button" class="nge-cm-bulb" hidden aria-expanded="false" aria-label="Show the hint" title="Show the hint">' + BULB_SVG + '</button></div>'
   + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
   + '<div class="nge-cm-viewnote"></div>'
   + MARK_HTML
@@ -862,10 +1012,14 @@ function idle(state: string, note: string, action = false) {
     b = document.createElement('button');
     b.type = 'button';
     b.className = 'nge-cm-btn nge-cm-go nge-cm-idle-go';
-    b.addEventListener('click', standbyAction);
+    // Play's shape (Ames 2026-11-20: "the teleport to a new cell box needs
+    // better styling"): a key, a slash, a circuit face, a pad at each end.
+    b.innerHTML = '<span class="nge-cm-tkey" aria-hidden="true">' + BOLT_SVG + '</span><span class="nge-cm-tlabel"><span class="nge-cm-tword"></span></span>';
+    b.addEventListener('click', () => { startTeleportBolt(b!, el); standbyAction(); });
     extra.firstElementChild!.appendChild(b);
   }
-  if (b && b.textContent !== label) b.textContent = label;
+  const word = b?.querySelector('.nge-cm-tword') as HTMLElement | null;
+  if (word && word.textContent !== label) word.textContent = label;
   place(el);
   shownFor = null;
   tellShown(null);
@@ -1116,6 +1270,12 @@ function show(taskId: number, r: MatchResult | undefined, checking: boolean) {
   tellShown(taskId);
 }
 
+function rootShown(root: string): boolean {
+  try {
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    return !!vis && vis.has(Uint64.parseString(root));
+  } catch { return true; }
+}
 async function ask(taskId: number) {
   const mine = ++asking;
   show(taskId, last.get(taskId), true);
@@ -1123,7 +1283,10 @@ async function ask(taskId: number) {
     const r = await secureWrite<MatchResult>('match.check', { taskId });
     const prev = last.get(taskId);
     noteResult(taskId, r);
-    if (r.root) aliases.delete(taskId);
+    // The other IDs are dropped once the current one is on screen; until then
+    // (a reloaded view with an older ID, before swapOldIds runs) they keep
+    // the cell found.
+    if (r.root && rootShown(r.root)) aliases.delete(taskId);
     if (mine !== asking || onScreen !== taskId) return;
     const kind = editKind;
     editKind = null;
@@ -1216,6 +1379,10 @@ function noteEdit(taskId: number) {
   // After an edit the next Jump starts again with a place, at the same spot in
   // the list: the piece just fixed has left it, so that is the next one.
   if (c) { c.lastEdit = Date.now(); c.offered = false; c.step = 1; c.jumped = false; }
+  // Spots looked up before this edit are stale (Ames 2026-11-19: "I've
+  // already made the merge, and it's still showing me your cell is missing a
+  // branch"): a Jump pressed before the new reading asked the server afresh.
+  for (const k of [...ahead.keys()]) if (k.startsWith(`${taskId}:`)) ahead.delete(k);
   removeHintLayers();
   const el = document.getElementById(CARD_ID);
   if (el) resetNudge(el);
@@ -1318,6 +1485,8 @@ async function pressHint(el: HTMLElement, next = false) {
   line.hidden = false;
   if (step === 1) { b.hidden = true; text.textContent = 'Finding the next spot…'; }
   b.disabled = true; jump.disabled = true; if (step === 2) b.textContent = 'Finding…';
+  if (next) startJumpSearch(jump);
+  let found = false;
   line.classList.add('nge-cm-finding');
   try {
     const root = last.get(taskId)?.root;
@@ -1335,6 +1504,7 @@ async function pressHint(el: HTMLElement, next = false) {
     if (step === 1 && h.piece) askAhead(taskId, root, c.n, 2);
     if (!h.piece) { text.textContent = 'Nothing left to fix. Complete and Review when you are ready.'; b.hidden = true; return; }
     showHintPiece(h.piece);
+    found = true;
     const where = h.left > 1 ? ` Spot ${(c.n % h.left) + 1} of ${h.left}.` : '';
     // A missing branch can bring part of another cell with it (Ames
     // 2026-11-14: "this missed piece has a huge merger on it").
@@ -1357,7 +1527,7 @@ async function pressHint(el: HTMLElement, next = false) {
     console.debug('[cell-match] no jump', e?.message);
     text.textContent = 'Could not find the next spot right now. Try again in a moment.';
     b.textContent = 'Show me';
-  } finally { b.disabled = false; jump.disabled = false; line.classList.remove('nge-cm-finding'); }
+  } finally { b.disabled = false; jump.disabled = false; if (next) finishJumpSearch(found); line.classList.remove('nge-cm-finding'); }
 }
 let hintPinTimer: number | undefined;
 function showHintPiece(p: HintPiece) {
@@ -1432,7 +1602,20 @@ function openFinish(el: HTMLElement) {
   if (cutLeft > 0) parts.push(`${plural(cutLeft, 'part')} to cut off`);
   // Ames 2026-11-16: practice only; a real cell is never completed half done.
   // The advice after the count is admin editable (LEFT_KEY).
-  (left.querySelector('.nge-cm-finish-left-count') as HTMLElement).textContent = parts.length ? `You still have ${parts.join(' and ')}.` : '';
+  // The pieces and parts left in red (Ames 2026-11-19).
+  const count = left.querySelector('.nge-cm-finish-left-count') as HTMLElement;
+  count.textContent = '';
+  if (parts.length) {
+    count.append('You still have ');
+    parts.forEach((part, i) => {
+      if (i) count.append(' and ');
+      const b = document.createElement('b');
+      b.className = 'nge-cm-left-red';
+      b.textContent = part;
+      count.append(b);
+    });
+    count.append('.');
+  }
   left.hidden = !parts.length;
   showGate(el);
   renderFinish(el, { checking: true, ok: false, message: '', minting: true, submitting: false, link: false });
@@ -1522,10 +1705,140 @@ function keepSize(el: HTMLElement) {
   el.addEventListener('mouseup', save);
   el.addEventListener('pointerup', save);
 }
+/** Jump's search, drawn with Find Path's loader (find_path_status.ts). */
+let jumpSearch: { jump: HTMLElement; cv: HTMLCanvasElement; live: Live; ro?: ResizeObserver; ending?: boolean } | null = null;
+function endJumpSearch() {
+  const j = jumpSearch;
+  if (!j) return;
+  jumpSearch = null;
+  j.ro?.disconnect();
+  cancelAnimationFrame(j.live.raf);
+  j.cv.remove();
+  j.jump.classList.remove('nge-cm-searching');
+}
+/** A button's circuit edge, drawn to its size (see "Circuit edges" above).
+ *  Keyed: the right end is the slash before the bulb key. */
+function frameSvg(w: number, h: number, keyed: boolean): string {
+  // A chip on a board (Ames 2026-11-20: "PCB microchip type thing in the
+  // border", "it's small, so keep it as simple as you can"): the package
+  // outline with cut corners, a few pins on its top and bottom edges, two
+  // traces stepping in at 45 degrees to vias in two corners, and a ring pad
+  // at the middle of each side. The middle stays clear for the words.
+  const c = 7, f = (n: number) => n.toFixed(1);
+  const R = w - 0.5, B = h - 0.5, m = h / 2;
+  const rim = keyed
+    ? `M${c} .5H${f(R)}L${f(w - 10.5)} ${f(B)}H.5V${c}Z`
+    : `M${c} .5H${f(R)}V${f(h - c)}L${f(w - c)} ${f(B)}H.5V${c}Z`;
+  let tr = '', vias = '', pins = '';
+  const via = (x: number, y: number) => { vias += `<circle class="via" cx="${f(x)}" cy="${f(y)}" r="1.35"/>`; };
+  const span = Math.min(1, w / 260);
+  // Top right: two traces leave the top edge, step in, run left to vias.
+  const tx = w - (keyed ? 24 : 15);
+  for (let k = 0; k < 2; k++) {
+    const x0 = tx - 4 * k, y = 3.5 + 3 * k, L = (28 - 10 * k) * span;
+    tr += `M${f(x0)} .5L${f(x0 - y + 0.5)} ${f(y)}H${f(x0 - y + 0.5 - L)}`;
+    via(x0 - y + 0.5 - L - 1.4, y);
+  }
+  // Bottom left: the same, running right.
+  for (let k = 0; k < 2; k++) {
+    const x0 = 15 + 4 * k, y = h - 3.5 - 3 * k, L = (28 - 10 * k) * span;
+    tr += `M${f(x0)} ${f(B)}L${f(x0 + (B - y))} ${f(y)}H${f(x0 + (B - y) + L)}`;
+    via(x0 + (B - y) + L + 1.4, y);
+  }
+  // Pins: four legs on the top edge at the left, four on the bottom at the right.
+  const legs = (x0: number, y: number) => { for (let i = 0; i < 4; i++) pins += `<rect class="pin" x="${f(x0 + i * 4.5)}" y="${f(y)}" width="1.8" height="2.6" rx=".4"/>`; };
+  legs(c + 14, -2.4);
+  legs(w - (keyed ? 30 : 22) - 18, h - 0.2);
+  const rx = keyed ? w - 5.5 : R;
+  const side = (x: number) => `<circle class="side" cx="${f(x)}" cy="${f(m)}" r="3.6"/><circle class="side-in" cx="${f(x)}" cy="${f(m)}" r="1.3"/>`;
+  return `<svg viewBox="0 0 ${f(w)} ${f(h)}" aria-hidden="true">${pins}<path class="rim" d="${rim}"/><path class="tr" d="${tr}"/>${vias}${side(0.5)}${side(rx)}</svg>`;
+}
+function frameButton(btn: HTMLElement) {
+  const host = document.createElement('span');
+  host.className = 'nge-cm-frame';
+  host.setAttribute('aria-hidden', 'true');
+  btn.prepend(host);
+  let drawn = '';
+  const draw = () => {
+    const w = btn.offsetWidth, h = btn.offsetHeight;
+    if (!w || !h) return;
+    const keyed = !!btn.parentElement?.querySelector('.nge-cm-bulb:not([hidden])') && btn.classList.contains('nge-cm-hbtn');
+    const key = `${w}x${h}${keyed}`;
+    if (key === drawn) return;
+    drawn = key;
+    host.innerHTML = frameSvg(w, h, keyed);
+  };
+  try { new ResizeObserver(draw).observe(btn); } catch { /* drawn once */ }
+  requestAnimationFrame(draw);
+}
+function startJumpSearch(jump: HTMLElement) {
+  endJumpSearch();
+  const cv = document.createElement('canvas');
+  cv.className = 'nge-cm-jloader';
+  cv.setAttribute('aria-hidden', 'true');
+  jump.appendChild(cv);
+  jump.classList.add('nge-cm-searching');
+  const live: Live = { raf: 0, timer: 0 };
+  const j: NonNullable<typeof jumpSearch> = { jump, cv, live };
+  jumpSearch = j;
+  // From the pad on one edge to the pad on the other (Ames 2026-11-20: "have
+  // the lightning bolts originate from there"). The canvas reaches 6 px past
+  // each edge so the end dots sit on the pads.
+  // With the bulb beside it, the right pad sits on Jump's slash, 4 px in.
+  // The bulb can show while Jump searches (the hint arrives), and Jump
+  // narrows: the lightning is fitted again, so it never runs into the bulb.
+  let fitted = '';
+  // Mid strike it is not restarted (that would lose the strike); the
+  // canvas is cut at the slash instead, in pixels, from Jump's size now.
+  const fit = () => {
+    const Wj = jump.offsetWidth, hj = jump.offsetHeight || 31;
+    if (jumpSearch !== j || !Wj) return;
+    const keyed = !!jump.parentElement?.querySelector('.nge-cm-bulb:not([hidden])');
+    const key = `${Wj}${keyed}`;
+    if (key === fitted) return;
+    fitted = key;
+    if (!j.ending) { cancelAnimationFrame(live.raf); startLoader(cv, live, Wj + (keyed ? 7 : 12), 20, 6); }
+    cv.classList.toggle('nge-cm-jloader-keyed', keyed);
+    if (!keyed) { cv.style.clipPath = ''; return; }
+    const t0 = (hj - 20) / 2, sx = (y: number) => (Wj + 6 - 10 * ((t0 + y) / hj)).toFixed(1), pad = (Wj + 6 - 5 + 3.5).toFixed(1);
+    cv.style.clipPath = `polygon(0 0,${sx(0)}px 0,${sx(7)}px 7px,${pad}px 7px,${pad}px 13px,${sx(13)}px 13px,${sx(20)}px 20px,0 20px)`;
+  };
+  fit();
+  try { j.ro = new ResizeObserver(fit); j.ro.observe(jump); } catch { /* fitted once */ }
+}
+/** Found: the route lights, then the label is back. Not found: it stops. */
+function finishJumpSearch(found: boolean) {
+  const j = jumpSearch;
+  if (!j) return;
+  if (!found || !j.live.finish) { endJumpSearch(); return; }
+  j.ending = true;
+  j.live.finish(() => { if (jumpSearch === j) endJumpSearch(); });
+}
 function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
   el.querySelector('.nge-cm-hbtn')!.addEventListener('click', () => void pressHint(el, true));
-  el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', () => void pressHint(el));
+  el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', e => { e.stopPropagation(); void pressHint(el); });
+  // The hint folds into a light bulb beside Jump; the bulb opens it, the
+  // arrow folds it, and Pyr remembers. The bulb is there only with a hint,
+  // still when a new one comes (Ames: "we don't need to pulse the hint").
+  const hintLine = el.querySelector('.nge-cm-nudge') as HTMLElement;
+  const hintMore = el.querySelector('.nge-cm-nudge-more') as HTMLElement;
+  const bulb = el.querySelector('.nge-cm-bulb') as HTMLElement;
+  const setHintOpen = (open: boolean) => {
+    hintLine.classList.toggle('nge-cm-nudge-open', open);
+    hintMore.setAttribute('aria-expanded', String(open)); hintMore.setAttribute('aria-label', 'Fold the hint'); hintMore.title = 'Fold the hint';
+    bulb.setAttribute('aria-expanded', String(open));
+    bulb.setAttribute('aria-label', open ? 'Hide the hint' : 'Show the hint'); bulb.title = bulb.getAttribute('aria-label')!;
+  };
+  const syncBulb = () => { bulb.hidden = hintLine.hidden; };
+  new MutationObserver(syncBulb).observe(hintLine, { attributes: true, attributeFilter: ['hidden'] });
+  syncBulb();
+  let hintOpen = false;
+  try { hintOpen = localStorage.getItem(HINT_OPEN_KEY) === '1'; } catch { /* folded */ }
+  setHintOpen(hintOpen);
+  const toggleHint = (open: boolean) => { setHintOpen(open); try { localStorage.setItem(HINT_OPEN_KEY, open ? '1' : '0'); } catch { /* this visit only */ } };
+  hintMore.addEventListener('click', e => { e.stopPropagation(); toggleHint(false); });
+  bulb.addEventListener('click', () => toggleHint(!hintLine.classList.contains('nge-cm-nudge-open')));
   for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
   // Highlight folds away (Ames 2026-11-18: "this box is so big"), closed at
   // first; each player's choice is remembered.
@@ -1570,6 +1883,8 @@ function wirePlayBox(el: HTMLElement) {
     cellAction('skip');
   });
   el.querySelector('.nge-cm-complete')!.addEventListener('click', () => openFinish(el));
+  frameButton(el.querySelector('.nge-cm-hbtn') as HTMLElement);
+  frameButton(el.querySelector('.nge-cm-complete') as HTMLElement);
   el.querySelector('.nge-cm-finish-back')!.addEventListener('click', () => { cellAction('complete-cancel'); closeFinish(el); });
   el.querySelector('.nge-cm-finish-check')!.addEventListener('click', () => cellAction('complete-check'));
   el.querySelector('.nge-cm-finish-how')!.addEventListener('click', e => {

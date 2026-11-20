@@ -14,6 +14,7 @@ import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRec
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset, DATASETS, switchToDataset } from '../datasets';
 import { refreshDatasetPermissions } from '../util/dataset_access';
+import { reviewRequestByName } from '../access_request';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
@@ -435,6 +436,17 @@ function openDetail(notif: any) {
   // Admins: every access note opens the Access page (Ames 2026-11-12:
   // "clicking an access notif should open the access dash"), at the person
   // when the note names their email.
+  // A Retina request opens their examples in the view, here (Ames
+  // 2026-11-19: "it was supposed to open their access request"); Admin Hub
+  // when it is no longer waiting.
+  const retinaFrom = backend.isAdmin ? (accessTitle.match(/^🔬 Retina access request from (.+?)(?: \(try \d+\))?$/) || [])[1] : '';
+  if (retinaFrom) {
+    emit('hide');
+    // Not waiting any more: Admin Hub > Access requests, in place (a new tab
+    // opened after the lookup would be stopped as a pop up).
+    void reviewRequestByName(retinaFrom).catch(() => false).then(ok => { if (!ok) document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } })); });
+    return;
+  }
   if (backend.isAdmin && (kindOf(notif) === 'access' || accessTitle.startsWith('🔑 Invite used'))) {
     openAccessPage(notif.body, notif.title);
     emit('hide');
@@ -1669,30 +1681,40 @@ function padRank(rank: number): string {
   color: #e0e0e0;
 }
 
-.nge-notif-topbar-actions { display: flex; align-items: center; gap: 8px; }
+.nge-notif-topbar-actions { display: flex; align-items: center; gap: 6px; }
+.nge-notif-topbar { flex-wrap: wrap; row-gap: 6px; }
+.nge-notif-mark-all, .nge-notif-delete-all { white-space: nowrap; }
 
 .nge-notif-mark-all {
-  background: none;
-  border: 1px solid rgba(74, 158, 255, 0.2);
-  color: rgba(74, 158, 255, 0.7);
-  font-size: 0.72em;
-  padding: 2px 8px;
+  background: rgba(74, 158, 255, 0.08);
+  border: 1px solid rgba(74, 158, 255, 0.45);
+  color: #8cc4ff;
+  /* Readable, and big enough to hit (Kfay, report 585: "too small.
+     Unreadable in some case"). */
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 7px 10px;
+  min-height: 30px;
   border-radius: 8px;
   cursor: pointer;
 }
-.nge-notif-mark-all:hover { color: #4a9eff; border-color: rgba(74, 158, 255, 0.4); }
+.nge-notif-mark-all:hover { color: #fff; background: rgba(74, 158, 255, 0.2); border-color: rgba(74, 158, 255, 0.7); }
 
 /* Destructive, so it reads warm rather than in the blue accent. */
 .nge-notif-delete-all {
-  background: none;
-  border: 1px solid rgba(224, 96, 96, 0.22);
-  color: rgba(224, 120, 120, 0.75);
-  font-size: 0.72em;
-  padding: 2px 8px;
+  background: rgba(224, 96, 96, 0.06);
+  border: 1px solid rgba(224, 96, 96, 0.4);
+  color: #f0a0a0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 7px 10px;
+  min-height: 30px;
   border-radius: 8px;
   cursor: pointer;
 }
-.nge-notif-delete-all:hover { color: #e06060; border-color: rgba(224, 96, 96, 0.5); }
+.nge-notif-delete-all:hover { color: #fff; background: rgba(224, 96, 96, 0.22); border-color: rgba(224, 96, 96, 0.7); }
 
 .nge-notif-tabs {
   display: flex; gap: 4px; flex-shrink: 0;
@@ -1806,8 +1828,8 @@ function padRank(rank: number): string {
 .nge-notif-confirm-no:hover { background: rgba(255, 255, 255, 0.06); }
 
 .nge-notif-close {
-  background: none; border: none; color: #666; font-size: 1.2em;
-  cursor: pointer; padding: 0 4px;
+  background: none; border: none; color: #9aa4b4; font-size: 22px; line-height: 1;
+  cursor: pointer; padding: 2px 6px; min-width: 30px; min-height: 30px;
 }
 .nge-notif-close:hover { color: #fff; }
 
@@ -1965,11 +1987,12 @@ function padRank(rank: number): string {
 .nge-notif-dismiss {
   background: none;
   border: none;
-  font-size: 1.1em;
-  color: #556;
+  font-size: 18px;
+  color: #8a94a6;
   cursor: pointer;
-  opacity: 0.45;
-  padding: 2px 4px;
+  opacity: 0.6;
+  padding: 2px 6px;
+  min-width: 26px;
   transition: opacity 0.15s, color 0.15s;
   flex-shrink: 0;
   line-height: 1;

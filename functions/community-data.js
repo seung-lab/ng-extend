@@ -67,13 +67,15 @@ const columns = {
   // Each admin edit of an in-game text, before and after, so Ames's note can put it back
   // (supabase-site-text-edits.sql, Ames 2026-11-09). Admins read; only the server writes.
   site_text_edits: 'id,key,old_body,new_body,editor_name,created_at',
+  // Time in Pyr for team members, a day and an area a row (supabase-team-time.sql). Admins only.
+  team_time_days: 'user_id,name,day,area,dataset,active_min,open_min,last_at',
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,total_annotations,favorite_badges,favorite_badges_bronze,trophy_order',
   working_links: 'title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,updated_at,screenshot_url',
   // Identity and time are set below from the verified sign-in. The one field
   // kept from the client is the dataset it has open, checked there as a tag.
-  chat_presence: 'last_seen_at,dataset',
+  chat_presence: 'last_seen_at,dataset,area,active',
   notification_reads: 'notification_id,dismissed,dismissed_at',
   user_groups: 'name,description,color',
   user_group_members: 'group_id,user_id',
@@ -127,7 +129,7 @@ function authorizeData(input, ctx) {
     } else if (table === 'admins' && !ctx.isAdmin) {
       // Supports the existing maybeSingle admin-status check without exposing addresses.
       scope('id.is.null');
-    } else if (table === 'feedback_triage' || table === 'tutorial_step_events' || table === 'tutorial_step_stats' || table === 'access_hub_people' || table === 'access_hub_activity' || table === 'access_hub_recent_edits' || table === 'access_hub_player_datasets' || table === 'access_hub_tutorials' || table === 'site_text_edits') {
+    } else if (table === 'feedback_triage' || table === 'tutorial_step_events' || table === 'tutorial_step_stats' || table === 'access_hub_people' || table === 'access_hub_activity' || table === 'access_hub_recent_edits' || table === 'access_hub_player_datasets' || table === 'access_hub_tutorials' || table === 'site_text_edits' || table === 'team_time_days') {
       admin();
     } else if (table === 'site_issues' && !ctx.isAdmin) {
       scope('user_id.eq.'+own());
@@ -313,9 +315,14 @@ function authorizeData(input, ctx) {
       // The one thing it may add is which dataset it has open, shown beside
       // the name in the online list (Krzysztof Kruk 2026-10-11): a plain tag.
       const dataset = typeof row.dataset === 'string' && /^[A-Za-z0-9_]{1,48}$/.test(row.dataset) ? row.dataset : null;
+      // Time in Pyr (supabase-team-time.sql): which part of Pyr is on screen
+      // and whether the player used it lately. Plain tags only.
+      const area = typeof row.area === 'string' && /^[a-z_]{1,24}$/.test(row.area) ? row.area : null;
+      const active = row.active === true;
       for (const k of Object.keys(row)) delete row[k];
       row.user_id = own(); row.name = me.username || me.display_name || 'Player'; row.last_seen_at = ctx.now;
       if (dataset) row.dataset = dataset;
+      if (area) { row.area = area; row.active = active; }
     }
     if (table === 'tutorial_step_events') {
       const int = (k, lo, hi) => { const v = Number(row[k]); if (!Number.isInteger(v) || v < lo || v > hi) fail(400, `Invalid ${k}.`); row[k] = v; };

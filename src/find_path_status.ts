@@ -59,14 +59,14 @@ function stop(li: HTMLElement) {
 
 /** Path-search loader: explorers on a biased random walk from S to T.
  *  Exported for Highlight mode's panel, which traces paths the same way. */
-export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
+export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24, inset = 9) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   cv.width = W * dpr; cv.height = H * dpr;
   cv.style.width = `${W}px`; cv.style.height = `${H}px`;
   const ctx = cv.getContext('2d');
   if (!ctx) return;
   ctx.scale(dpr, dpr);
-  const S = { x: 9, y: H / 2 }, T = { x: W - 9, y: H / 2 };
+  const S = { x: inset, y: H / 2 }, T = { x: W - inset, y: H / 2 };
   type Walker = { x: number; y: number; a: number; pts: number[] };
   let walkers: Walker[] = [];
   let found: number[] | null = null, foundAt = 0;

@@ -43,6 +43,7 @@ export type SecureAction =
   | 'reply.ask' | 'reply.send' | 'reply.console' | 'reply.open'
   | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon' | 'test.tries' | 'test.try' | 'test.queueJoin' | 'test.queueLeave' | 'test.queueRemove'
+  | 'fragments.submit' | 'fragments.list' | 'fragments.caveId' | 'fragments.claim' | 'fragments.release'
   | 'access.betaStatus' | 'access.beta' | 'access.welcomeEmail' | 'access.askDraft' | 'access.askEmail' | 'access.askSent' | 'access.inviteCount' | 'access.setEwName' | 'access.readHandledBetaBells' | 'access.linkInvite' | 'access.grantLines' | 'access.profileAccess'
   | 'access.datasetStatus' | 'access.dataset' | 'access.datasetList' | 'access.datasetDecide' | 'access.grantEmail' | 'access.waitlistEmail' | 'access.waitlistSent'
   | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide' | 'access.reset' | 'access.readGrantedBells'

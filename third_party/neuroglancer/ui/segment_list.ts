@@ -1833,12 +1833,45 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
 
 /** nge: where each segment list section was scrolled to, per layer (report 545). */
 const ngeListPlaces = new WeakMap<object, Map<string, {top: number}>>();
+/** nge: where the whole Segments panel was scrolled to, per layer (report 593). */
+const ngePanelPlaces = new WeakMap<object, number>();
 
 export class SegmentDisplayTab extends Tab {
   constructor(public layer: SegmentationUserLayer) {
     super();
     const {element} = this;
     element.classList.add('neuroglancer-segment-display-tab');
+    // nge: with folders the whole panel scrolls too, and that scroll went
+    // back to the top each time the tab was left and opened again (Nseraf,
+    // report 593); only the lists inside kept their place (report 545).
+    {
+      const outerTop = ngePanelPlaces.get(layer) ?? 0;
+      let restoringOuter = outerTop > 0;
+      if (restoringOuter) {
+        const started = Date.now();
+        let held = 0;
+        const putBack = () => {
+          if (this.wasDisposed) return;
+          if (element.isConnected && element.clientHeight > 0 && element.scrollHeight >= outerTop + element.clientHeight) {
+            if (Math.abs(element.scrollTop - outerTop) > 1) element.scrollTop = outerTop;
+            if (++held >= 3) { restoringOuter = false; return; }
+          }
+          if (Date.now() - started > 3000) { restoringOuter = false; return; }
+          outerTimer = window.setTimeout(putBack, 50);
+        };
+        let outerTimer = window.setTimeout(putBack, 0);
+        this.registerDisposer(() => clearTimeout(outerTimer));
+      }
+      let noteOuter = 0;
+      element.addEventListener('scroll', (e) => {
+        if (e.target !== element || restoringOuter) return;
+        clearTimeout(noteOuter);
+        noteOuter = window.setTimeout(() => {
+          if (!this.wasDisposed && element.isConnected && element.clientHeight > 0) ngePanelPlaces.set(layer, element.scrollTop);
+        }, 150);
+      });
+      this.registerDisposer(() => clearTimeout(noteOuter));
+    }
     element.appendChild(
         this.registerDisposer(new DependentViewWidget(
                                   layer.displayState.segmentationGroupState.value.graph,

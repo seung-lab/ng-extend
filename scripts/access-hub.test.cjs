@@ -114,6 +114,7 @@ const TUTS = [{ user_id: UID(11), tutorial: 3, last_step: 2, last_left: 'next', 
       if (a === 'access.datasetDecide') return r.fulfill(ok(DS));
       // Retina requests waiting on us (Ames 2026-11-17): Jo Kim's second try, and
       // someone not on the list.
+      if (a === 'access.decide') return r.fulfill(ok({ id: input.requestId, status: 'invited', cave_granted: true, pilot_added: true, redos: 0 }));
       if (a === 'access.list') return r.fulfill(ok({ requests: input.status === 'submitted' ? RETINA : [] }));
       if (a === 'access.grantEmail') return r.fulfill(ok(input.preview ? { to: 'lou@example.org', subject: 'You can now edit MEC in Pyr', text: "Hi Lou, congratulations!" } : { sent: true, to: 'lou@example.org' }));
       if (a === 'test.tries') return r.fulfill(ok({ kept: true, test: null, key: null, line: [], tries: TRIES }));
@@ -260,7 +261,9 @@ Amy Sterling and the Pyr Team at Princeton` }));
     const rqHref = await page.getAttribute('.ah-panel .ah-ds a.ah-btn', 'href').catch(() => '');
     const pyrLink = await page.$eval('.ah-panel .ah-pyr-link', e => [e.textContent.trim(), e.getAttribute('href')]).catch(() => []);
     check('their Pyr username opens their profile in Pyr', /\?player=00000000-0000-4000-8000-000000000012$/.test(pyrLink[1] || ''), pyrLink);
-    check('the Retina panel shows the request and links to Access requests in Pyr', /The Retina/.test(rqPanel) && /try 2/.test(rqPanel) && /EyeWire jokim/.test(rqPanel) && /Fixed the two merges/.test(rqPanel) && /\?admin=access$/.test(rqHref || ''), { rqPanel, rqHref });
+    check('the Retina panel shows the request and links to their examples in Pyr', /The Retina/.test(rqPanel) && /try 2/.test(rqPanel) && /EyeWire jokim/.test(rqPanel) && /Fixed the two merges/.test(rqPanel) && /\?review=7$/.test(rqHref || ''), { rqPanel, rqHref });
+    // Grant from the Access page (Ames 2026-11-19).
+    check('the Retina panel has Grant', (await page.$$('.ah-panel .ah-grant button:has-text("Grant Retina access")')).length === 1);
     await page.click('.ah-col:has(.ah-col-title:text-is("Asked for the Retina")) .ah-card:has-text("Jo Kim")');
     const summary = await page.textContent('.ah-sum');
     check('the head counts what waits on us, and Later', /3 Beta requests, 1 dataset request and 2 Retina requests waiting on us, 1 for later/.test(summary), summary);
@@ -458,6 +461,18 @@ Amy Sterling and the Pyr Team at Princeton` }));
       check(`a notification link opens their card (${q})`, h === want && !/who=|person=/.test(p3.url()), [h, p3.url()]);
       await p3.close();
     }
+
+    // Grant Retina access from the Access page (Ames 2026-11-19).
+    await page.click('.ah-col:has(.ah-col-title:text-is("Asked for the Retina")) .ah-card:has-text("Jo Kim")');
+    await page.waitForSelector('.ah-panel .ah-grant', { timeout: 3000 }).catch(() => {});
+    let grantAsk = '';
+    page.once('dialog', d => { grantAsk = d.message(); d.accept(); });
+    await page.click('.ah-panel .ah-grant button:has-text("Grant Retina access")');
+    await page.waitForSelector('.ah-grant-said', { timeout: 5000 }).catch(() => {});
+    const grantSaid = await page.textContent('.ah-grant-said').catch(() => '');
+    const dec = calls.find(c => c.action === 'access.decide');
+    check('Grant asks first, grants request 7, emails them, and moves Jo on', /Grant Jo Kim Retina edit access/.test(grantAsk) && dec?.args.requestId === 7 && dec?.args.outcome === 'invited'
+      && /Granted: Jo Kim is in Eyewire_2_Edit/.test(grantSaid) && /Email sent/.test(grantSaid) && !(await page.$$('.ah-col:has(.ah-col-title:text-is("Asked for the Retina")) .ah-card:has-text("Jo Kim")')).length, { grantAsk, dec, grantSaid });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
