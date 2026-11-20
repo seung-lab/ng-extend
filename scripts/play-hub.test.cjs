@@ -92,7 +92,7 @@ async function run(browser, perms, tag) {
       await page.waitForTimeout(1500);
       const seg = () => page.evaluate(() => { const t = document.querySelector('.nge-orph-task-id'); if (t) return t.textContent; const b = document.querySelector('.nge-orph-slimrow'); return b ? b.dataset.id : ''; });
       out.first = await seg();
-      out.playingBar = await page.evaluate(() => !document.querySelector('.nge-orph-play') && !![...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Highlight'));
+      out.playingBar = await page.evaluate(() => !document.querySelector('.nge-orph-play') && !!document.querySelector('.nge-orph-slimrow .nge-orph-hl svg'));
       out.chip = await page.evaluate(() => { const c = document.querySelector('.nge-play-chip'); return c ? c.textContent.trim() : null; });
       out.collapsed = await page.evaluate(() => !document.querySelector('.nge-orph-check') && !!document.querySelector('.nge-orph-complete'));
       out.selectionClosed = await page.evaluate(() => { const v = window.viewer.selectionDetailsState?.location?.watchableVisible; return !v || !v.value; });
@@ -100,6 +100,25 @@ async function run(browser, perms, tag) {
       await page.waitForTimeout(300);
       out.submitLabel = await page.evaluate(() => ({ bar: (document.querySelector('.nge-orph-slimrow .nge-orph-complete') || {}).textContent, second: !!document.querySelector('.nge-orph-submit') }));
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fragments-playing.png` });
+      // The slim box resizes from its corner (Ames 2026-11-20), and keeps its size.
+      out.resize = await (async () => {
+        const box = () => page.evaluate(() => { const p = document.querySelector('.nge-cl-panel'); return p ? [p.offsetWidth, p.offsetHeight] : null; });
+        const before = await box();
+        const h = await page.$('.nge-cl-panel .nge-cl-resize');
+        const r = h && await h.boundingBox();
+        if (!r) return { before, handle: false };
+        await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(r.x - 150, r.y + 120, { steps: 6 });
+        await page.mouse.up();
+        await page.waitForTimeout(200);
+        const after = await box();
+        const kept = await page.evaluate(() => localStorage.getItem('nge_orph_slim_size_v1'));
+        if (SHOTS) await page.screenshot({ path: `${SHOTS}/fragments-resized.png` });
+        // Back to its own size for the checks after this one.
+        await page.evaluate(() => localStorage.removeItem('nge_orph_slim_size_v1'));
+        return { before, after, kept };
+      })();
       await page.evaluate(() => [...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Skip').click());
       await page.waitForTimeout(1200);
       out.afterSkip = await seg();
@@ -163,7 +182,8 @@ async function run(browser, perms, tag) {
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);
   check('edit: Play here shows in the full view when not playing', ed.playHere, ed.playHere);
   check('edit: the banner shows in the full view', ed.banner && ed.banner.w > 200 && /lost-fragments-banner/.test(ed.banner.bg), ed.banner);
-  check('edit: slim bar has no group menu, ID, Playing chip or arrows', ed.slimLean && ed.slimLean.row && !ed.slimLean.select && !ed.slimLean.chip && !ed.slimLean.arrows && /\d+ of \d+/.test(ed.slimLean.meta), ed.slimLean);
+  check('edit: the slim box resizes from its corner and keeps the size', ed.resize && ed.resize.after && ed.resize.before && ed.resize.after[0] < ed.resize.before[0] - 100 && ed.resize.after[1] > ed.resize.before[1] + 80 && !!ed.resize.kept, ed.resize);
+  check('edit: slim bar has no group menu, ID, Playing chip, arrows or count', ed.slimLean && ed.slimLean.row && !ed.slimLean.select && !ed.slimLean.chip && !ed.slimLean.arrows && /^(Large|Small|Glia-like|Soma-like)$/.test(ed.slimLean.meta.trim()), ed.slimLean);
   check('edit: reopening keeps the fragment and the note', ed.beforeClose && ed.afterReopen === ed.beforeClose && ed.noteKept === 'kept note', [ed.beforeClose, ed.afterReopen, ed.noteKept]);
   check('edit: Play again stays on the open fragment', ed.afterReplay === ed.beforeClose, [ed.beforeClose, ed.afterReplay, ed.replayDbg]);
   check('edit: Skip goes to another fragment', ed.afterSkip && ed.afterSkip !== ed.first, [ed.first, ed.afterSkip]);
