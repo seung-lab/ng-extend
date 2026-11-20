@@ -3389,6 +3389,21 @@ const startNoteCell = ref('');
 const startNoteKicker = ref('Teleport complete');
 const startNoteMs = ref(4200);
 const startNoteN = ref(0);
+/** Where the note sits: centered over the 3D view (Ames 2026-11-20: "please
+ *  center it over the 3D"), else the middle of the page. */
+const startNotePos = ref<{ left: string; top: string } | null>(null);
+function placeStartNote() {
+  // The 3D panel: the one with projection parameters (as markers.ts finds it).
+  let el: HTMLElement | null = null;
+  try {
+    const panels: any[] = (window as any).viewer?.display?.panels ? [...(window as any).viewer.display.panels] : [];
+    el = (panels.find(p => p.projectionParameters && p.element)?.element as HTMLElement | undefined) ?? null;
+  } catch { el = null; }
+  const r = el?.getBoundingClientRect();
+  startNotePos.value = r && r.width > 120 && r.height > 80
+    ? { left: `${Math.round(r.left + r.width / 2)}px`, top: `${Math.round(Math.max(96, r.top + 28))}px` }
+    : null;
+}
 let startNoteTimer: ReturnType<typeof setTimeout> | null = null;
 function showStartNote(text: string, ms = 4200, cellName?: string, kicker = 'Teleport complete') {
   startNote.value = text;
@@ -3396,6 +3411,7 @@ function showStartNote(text: string, ms = 4200, cellName?: string, kicker = 'Tel
   startNoteMs.value = ms;
   const c = currentCell();
   startNoteCell.value = cellName ?? (c ? (history.getNickname(c.segId) || c.liveSegId || c.segId) : '');
+  placeStartNote();
   startNoteN.value++;
   if (startNoteTimer) clearTimeout(startNoteTimer);
   startNoteTimer = setTimeout(() => { startNote.value = ''; startNoteTimer = null; }, ms);
@@ -3786,7 +3802,7 @@ onBeforeUnmount(() => {
       <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest || slimOrphan, 'nge-cl-panel--slimorph': slimOrphan, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
-      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
+      <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms', ...(startNotePos || {}) }" role="status" aria-live="polite" @click="startNote = ''">
         <span class="nge-cl-newcell-ring" aria-hidden="true"></span>
         <span class="nge-cl-newcell-kicker">{{ startNoteKicker }}</span>
         <span class="nge-cl-newcell-title">{{ startNote }}</span>

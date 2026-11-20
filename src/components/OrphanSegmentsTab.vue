@@ -34,6 +34,7 @@ import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
+import QuestInstructions from './QuestInstructions.vue';
 import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
@@ -275,7 +276,7 @@ function playNext() {
   group.value = n.g;
   void open(n.row);
   void claimHere(n.row);
-  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + short(n.row.id) } }));
+  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Segment ' + short(n.row.id) } }));
 }
 /** Skip: give the fragment back, then the next one. */
 function skip() {
@@ -296,7 +297,7 @@ function playResume() {
   const a = active.value;
   if (a && !saves[a.id]) {
     void claimHere(a);
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + a.id } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Segment ' + a.id } }));
     return;
   }
   // The fragment this player holds, from another computer or an earlier visit.
@@ -305,7 +306,7 @@ function playResume() {
     group.value = mine.g;
     void open(mine.row);
     void claimHere(mine.row);
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Fragment', cell: 'Segment ' + short(mine.row.id) } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Segment ' + short(mine.row.id) } }));
     return;
   }
   playNext();
@@ -326,6 +327,20 @@ const copied = ref(false);
 /** The slim bar keeps the note box closed until asked (Ames 2026-11-19: "this box is too big"). */
 const noteOpen = ref(false);
 const helpOpen = ref(false);
+/** The instructions open by themselves the first time a player comes to
+ *  Lost Fragments, in the same box as the Cilia Quest's (Ames 2026-11-20:
+ *  "We need an instructions pop-up for lost fragments as well"); ? opens
+ *  them again. */
+const HOWTO_SEEN_KEY = 'nge-lf-howto-seen';
+function closeHelp() {
+  helpOpen.value = false;
+  try { localStorage.setItem(HOWTO_SEEN_KEY, '1'); } catch { /* private window */ }
+}
+onMounted(() => {
+  let seen = true;
+  try { seen = localStorage.getItem(HOWTO_SEEN_KEY) === '1'; } catch { /* storage blocked: do not nag */ }
+  if (!seen) helpOpen.value = true;
+});
 async function copyId(id: string) {
   try { await navigator.clipboard.writeText(id); copied.value = true; setTimeout(() => { copied.value = false; }, 1500); } catch { /* clipboard blocked */ }
 }
@@ -523,6 +538,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 
 <template>
   <div class="nge-orph" :class="{ 'nge-orph--slim': slim }">
+    <QuestInstructions v-if="helpOpen" kicker="Lost Fragments" title="How to rescue a Lost Fragment"
+      :lead="name.lead" lead-key="howto.lost_fragments.lead" :steps="HOWTO_LINES" steps-key="howto.lost_fragments"
+      image-key="howto.lost_fragments.image" :image="bannerImg" image-alt="Blue cubes tumbling apart with gold neuron branches running through them"
+      :legend="[]" @close="closeHelp" />
     <div v-if="!slim" class="nge-orph-head">
       <!-- The banner (Ames 2026-11-19): her render of EyeWire cubes with
            gold branches running through them, the title over it. -->
@@ -604,9 +623,6 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
 
       <div v-if="!slim && claimMsg" class="nge-orph-note">{{ claimMsg }}</div>
-      <div v-if="helpOpen" class="nge-orph-help">
-        <EditableText text-key="howto.lost_fragments" :original="HOWTO_LINES" list-class="nge-orph-help-list" notify label="Lost Fragments how to" />
-      </div>
       <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
       <ol class="nge-orph-check">

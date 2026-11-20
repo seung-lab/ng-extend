@@ -24,7 +24,7 @@ async function run(browser, perms, tag) {
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate/');
     const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: apps };
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
-    try { localStorage.removeItem('nge-play-kind'); localStorage.removeItem('nge_orphan_mock_v1'); localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1'); } catch (e) {}
+    try { localStorage.removeItem('nge-play-kind'); localStorage.removeItem('nge_orphan_mock_v1'); localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1'); localStorage.setItem('nge-lf-howto-seen', '1'); } catch (e) {}
   });
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
