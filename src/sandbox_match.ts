@@ -500,7 +500,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID} .nge-cm-hbtn.nge-cm-landed{animation:nge-cm-landed .65s ease-out 1}
 @keyframes nge-cm-landed{0%{filter:brightness(1.7);box-shadow:0 0 0 0 rgba(127,216,255,.75)}100%{filter:none;box-shadow:0 0 0 11px rgba(127,216,255,0)}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-hbtn.nge-cm-nudged,#${CARD_ID} .nge-cm-hbtn.nge-cm-glow1,#${CARD_ID} .nge-cm-hbtn.nge-cm-landed,#${CARD_ID} .nge-cm-hbtn.nge-cm-going::after{animation:none}#${CARD_ID} .nge-cm-ripple{display:none}#${CARD_ID} .nge-cm-play .nge-cm-hbtn:active:not(:disabled){transform:none}}
-#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn{display:none}
+#${CARD_ID}.nge-cm-idle .nge-cm-hbtn,#${CARD_ID}.nge-cm-reviewing .nge-cm-hbtn,#${CARD_ID}.nge-cm-finishing .nge-cm-hbtn,#${CARD_ID}.nge-cm-idle .nge-cm-bulb,#${CARD_ID}.nge-cm-reviewing .nge-cm-bulb,#${CARD_ID}.nge-cm-finishing .nge-cm-bulb{display:none}
 #${CARD_ID} .nge-cm-cellimg{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(79,207,255,.5))}
 #${CARD_ID} .nge-cm-cellid{margin:-4px 0 8px;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#a9c3e0}
 #${CARD_ID} .nge-cm-nudge{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;margin:2px 0 9px;padding:8px 9px;border:1px solid rgba(127,216,255,.55);border-radius:8px;background:rgba(127,216,255,.08);box-shadow:0 0 14px rgba(127,216,255,.16)}
@@ -511,13 +511,20 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 @keyframes nge-cm-find-shine{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-nudge.nge-cm-finding::after,#${CARD_ID} .nge-cm-nudge.nge-cm-finding::before,#${CARD_ID} .nge-cm-nudge.nge-cm-finding svg{animation:none}}
 #${CARD_ID} .nge-cm-nudge[hidden]{display:none}
-/* Folded to one line until the player opens it (Ames 2026-11-19: "this is too big, need a way to collapse"). */
-#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){padding:6px 9px;cursor:pointer}
-#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open) .nge-cm-nudge-btns{display:none}
+/* Folded into a light bulb beside Jump (Ames 2026-11-19: "just a little light
+   bulb we can click to open it as an icon to keep it small and sweet"). */
+#${CARD_ID} .nge-cm-nudge:not(.nge-cm-nudge-open){display:none}
 #${CARD_ID} .nge-cm-nudge-more{flex:0 0 22px;width:22px;height:22px;margin-left:-2px}
-#${CARD_ID} .nge-cm-nudge-more svg{transition:transform .15s}
-#${CARD_ID} .nge-cm-nudge.nge-cm-nudge-open .nge-cm-nudge-more svg{transform:rotate(180deg)}
+#${CARD_ID} .nge-cm-nudge-more svg{transform:rotate(180deg)}
+#${CARD_ID} .nge-cm-jumprow{grid-area:jump;display:flex;gap:5px;min-width:0}
+#${CARD_ID} .nge-cm-jumprow .nge-cm-hbtn{flex:1 1 auto;min-width:0}
+#${CARD_ID} .nge-cm-bulb{flex:0 0 32px;display:grid;place-items:center;padding:0;border:1px solid rgba(127,216,255,.45);border-radius:6px;background:rgba(127,216,255,.08);cursor:pointer;transition:background-color .15s,border-color .15s,box-shadow .15s}
+#${CARD_ID} .nge-cm-bulb[hidden]{display:none}
+#${CARD_ID} .nge-cm-bulb:hover{background:rgba(127,216,255,.2);border-color:#a8e4ff}
+#${CARD_ID} .nge-cm-bulb:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
+#${CARD_ID} .nge-cm-bulb[aria-expanded="true"]{background:rgba(127,216,255,.24);border-color:#7fd8ff;box-shadow:0 0 8px rgba(127,216,255,.45)}
+#${CARD_ID} .nge-cm-bulb.nge-cm-bulb-new{animation:nge-cm-hglow 1.3s ease-in-out 3}
+@media (prefers-reduced-motion:reduce){#${CARD_ID} .nge-cm-bulb.nge-cm-bulb-new{animation:none;border-color:#7fd8ff}}
 #${CARD_ID} .nge-cm-nudge svg{flex:0 0 auto}
 #${CARD_ID} .nge-cm-nudge-text{flex:1 1 auto;font-size:13px;line-height:1.35;color:#d6e2f5}
 #${CARD_ID} .nge-cm-nudge .nge-cm-btn{margin-left:0;flex:0 0 auto;border-color:#7fd8ff;background:rgba(74,158,255,.3);color:#fff}
@@ -742,7 +749,8 @@ const PLAY_HTML = '<div class="nge-cm-play">'
   + '<button type="button" class="nge-cm-btn nge-cm-saveview" title="Save your current view (annotations, layers, camera) to this cell">Save</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-skipcell" title="Not this one: it goes back for someone else, and Pyr takes you to your next cell">Skip Cell</button>'
   + '<button type="button" class="nge-cm-btn nge-cm-marktoggle" aria-expanded="false" title="Mark where you have been">Highlight<svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>'
-  + '<button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump to next spot</button>'
+  + '<div class="nge-cm-jumprow"><button type="button" class="nge-cm-btn nge-cm-hbtn" title="Go to the next spot on your cell that needs fixing">Jump to next spot</button>'
+  + '<button type="button" class="nge-cm-bulb" hidden aria-expanded="false" aria-label="Show the hint" title="Show the hint">' + BULB_SVG + '</button></div>'
   + '<button type="button" class="nge-cm-btn nge-cm-complete">Complete and Review</button></div>'
   + '<div class="nge-cm-viewnote"></div>'
   + MARK_HTML
@@ -1608,16 +1616,36 @@ function wirePlayBox(el: HTMLElement) {
   el.querySelector('.nge-cm-cellbtn')!.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } })));
   el.querySelector('.nge-cm-hbtn')!.addEventListener('click', e => { jumpRipple(e as MouseEvent); void pressHint(el, true); });
   el.querySelector('.nge-cm-hint-btn')!.addEventListener('click', e => { e.stopPropagation(); void pressHint(el); });
-  // The hint folds to one line; a click opens it, and Pyr remembers.
+  // The hint folds into a light bulb beside Jump; the bulb opens it, the
+  // arrow folds it, and Pyr remembers. The bulb is there only with a hint,
+  // and glows when a new one comes while it is folded.
   const hintLine = el.querySelector('.nge-cm-nudge') as HTMLElement;
   const hintMore = el.querySelector('.nge-cm-nudge-more') as HTMLElement;
-  const setHintOpen = (open: boolean) => { hintLine.classList.toggle('nge-cm-nudge-open', open); hintMore.setAttribute('aria-expanded', String(open)); hintMore.setAttribute('aria-label', open ? 'Fold the hint' : 'Show the whole hint'); hintMore.title = hintMore.getAttribute('aria-label')!; };
+  const bulb = el.querySelector('.nge-cm-bulb') as HTMLElement;
+  const setHintOpen = (open: boolean) => {
+    hintLine.classList.toggle('nge-cm-nudge-open', open);
+    hintMore.setAttribute('aria-expanded', String(open)); hintMore.setAttribute('aria-label', 'Fold the hint'); hintMore.title = 'Fold the hint';
+    bulb.setAttribute('aria-expanded', String(open));
+    bulb.setAttribute('aria-label', open ? 'Hide the hint' : 'Show the hint'); bulb.title = bulb.getAttribute('aria-label')!;
+    if (open) bulb.classList.remove('nge-cm-bulb-new');
+  };
+  const syncBulb = () => { bulb.hidden = hintLine.hidden; };
+  new MutationObserver(syncBulb).observe(hintLine, { attributes: true, attributeFilter: ['hidden'] });
+  syncBulb();
+  const hintWords = hintLine.querySelector('.nge-cm-nudge-text') as HTMLElement;
+  let bulbTimer: number | undefined;
+  new MutationObserver(() => {
+    const t = hintWords.textContent || '';
+    if (!t || /^Finding/.test(t) || hintLine.classList.contains('nge-cm-nudge-open')) return;
+    bulb.classList.remove('nge-cm-bulb-new'); void bulb.offsetWidth; bulb.classList.add('nge-cm-bulb-new');
+    clearTimeout(bulbTimer); bulbTimer = window.setTimeout(() => bulb.classList.remove('nge-cm-bulb-new'), 4000);
+  }).observe(hintWords, { childList: true, characterData: true, subtree: true });
   let hintOpen = false;
   try { hintOpen = localStorage.getItem(HINT_OPEN_KEY) === '1'; } catch { /* folded */ }
   setHintOpen(hintOpen);
   const toggleHint = (open: boolean) => { setHintOpen(open); try { localStorage.setItem(HINT_OPEN_KEY, open ? '1' : '0'); } catch { /* this visit only */ } };
-  hintMore.addEventListener('click', e => { e.stopPropagation(); toggleHint(!hintLine.classList.contains('nge-cm-nudge-open')); });
-  hintLine.addEventListener('click', () => { if (!hintLine.classList.contains('nge-cm-nudge-open')) toggleHint(true); });
+  hintMore.addEventListener('click', e => { e.stopPropagation(); toggleHint(false); });
+  bulb.addEventListener('click', () => toggleHint(!hintLine.classList.contains('nge-cm-nudge-open')));
   for (const chip of el.querySelectorAll<HTMLElement>('.nge-cm-chip')) chip.addEventListener('click', () => startMarking(chip.dataset.mark || 'checked'));
   // Highlight folds away (Ames 2026-11-18: "this box is so big"), closed at
   // first; each player's choice is remembered.
