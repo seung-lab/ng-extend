@@ -76,7 +76,7 @@ const since = computed(() => rows.value.reduce((a, r) => (!a || r.day < a ? r.da
 onMounted(async () => {
   const from = dayList.value[0];
   const { data, error: e } = await supabase.from('team_time_days')
-    .select('user_id,name,day,area,dataset,active_min,open_min,last_at').gte('day', from).limit(5000);
+    .select('user_id,name,day,area,dataset,active_min,open_min,last_at').gte('day', from).order('day', { ascending: false }).limit(500);
   loading.value = false;
   if (e) { error.value = /does not exist|relation|schema cache/i.test(e.message) ? 'Time in Pyr is not set up on the database yet.' : e.message; return; }
   rows.value = (data ?? []) as Row[];

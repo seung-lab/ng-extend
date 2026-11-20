@@ -862,8 +862,6 @@ const opName = (e: RecentEdit) => {
     </div>
     <p v-if="error" class="ah-error" role="alert">{{ error }}</p>
     <p v-if="loading && !people.length" class="ah-quiet">Reading everyone…</p>
-    <!-- The team's time in Pyr (Ames 2026-11-19) -->
-    <TeamTime />
 
     <div class="ah-main" :class="{ 'ah-main--open': open }">
       <section class="ah-boards" aria-label="People by step">
@@ -1225,6 +1223,8 @@ const opName = (e: RecentEdit) => {
         </template>
       </div>
     </section>
+    <!-- The team's time in Pyr (Ames 2026-11-19), at the bottom (Ames 2026-11-20) -->
+    <TeamTime />
   </div>
 </template>
 
