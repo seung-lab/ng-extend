@@ -26,6 +26,8 @@ import thumbMaol from '../static/images/datasets/maol.jpg';
 import { useLayersStore, useUserPreferencesStore, useProofreadingBackendStore } from './store';
 import { StatusMessage } from 'neuroglancer/status';
 import { datasetAccess } from './util/dataset_access';
+// hunt.ts imports this file too: ON_TEST_SITE is read only inside functions.
+import { ON_TEST_SITE } from './hunt';
 import { getDatasetCaveConfig, cellTypesForDataset, cellTypeLabel } from './config';
 export { cellTypeLabel };
 import { openSegPanel } from './widgets/widget_utils';
@@ -759,6 +761,10 @@ export function datasetLocked(ds: DatasetEntry | undefined): boolean {
   if (!ds || ds.id !== 'stroeh_mouse_retina') return false;
   const access = datasetAccess(ds.caveDataset);
   if (access === 'edit' || access === 'unknown') return false;
+  // Beta players with view access may look at Retina, for Glia Quest's first
+  // stage (Ames 2026-11-19: "Yes, unlock to view"). Test sites only for now,
+  // with the Retina hub (util/play.ts retinaHub).
+  if (access === 'view' && ON_TEST_SITE) return false;
   try { if (useProofreadingBackendStore().isAdmin) return false; } catch { /* store not ready */ }
   return true;
 }

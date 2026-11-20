@@ -21,6 +21,8 @@ jobs:
     outputs:
       count: ${{ steps.pending.outputs.count }}
       code_sha: ${{ steps.code.outputs.sha }}
+      seal_pub: ${{ steps.seal.outputs.pub }}
+      seal_key: ${{ steps.seal.outputs.key }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -34,11 +36,30 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ISSUE_IDS: ${{ inputs.issue_ids }}
         run: node scripts/triage-loop.mjs pending
+      # Reports hold players' words and email addresses, and this repository's
+      # artifacts can be downloaded by anyone signed in to GitHub. So nothing
+      # readable is uploaded: the request is encrypted with a key only this
+      # workflow holds, and the model job gets a one-run public key to seal
+      # its answer with (security review 2026-11-13, finding 4).
+      - name: Seal the request
+        id: seal
+        env:
+          TRIAGE_SEAL_SECRET: ${{ secrets.TRIAGE_ARTIFACT_KEY || secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$TRIAGE_SEAL_SECRET"
+          keys="$RUNNER_TEMP/seal"; mkdir -p "$keys" sealed .triage
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$keys/run.key" 2>/dev/null
+          openssl pkey -in "$keys/run.key" -pubout -out "$keys/run.pub"
+          echo "pub=$(base64 -w0 "$keys/run.pub")" >> "$GITHUB_OUTPUT"
+          echo "key=$(openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -a -A -pass env:TRIAGE_SEAL_SECRET -in "$keys/run.key")" >> "$GITHUB_OUTPUT"
+          tar -C .triage -cf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:TRIAGE_SEAL_SECRET -out sealed/input.tar.enc
+          rm -rf "$keys"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: proposal-input
-          path: .triage/
-          include-hidden-files: true
+          path: sealed/input.tar.enc
           retention-days: 1
   model:
     needs: prepare
@@ -53,7 +74,20 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: proposal-input
-          path: .triage
+          path: sealed
+      - name: Open the sealed request
+        env:
+          TRIAGE_SEAL_SECRET: ${{ secrets.TRIAGE_ARTIFACT_KEY || secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p .triage
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:TRIAGE_SEAL_SECRET -in sealed/input.tar.enc | tar -C .triage -xf - --no-same-owner
+          rm -rf sealed
+      - name: Note the time before the model starts
+        run: |
+          touch "$RUNNER_TEMP/triage-before"
+          sleep 2
       - uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -65,11 +99,28 @@ jobs:
             --max-turns 60
             --tools "Read,Write,Glob,Grep"
             --allowedTools "Read,Write,Glob,Grep"
+      # From here on nothing in this checkout is run: the model could have
+      # rewritten any file in it. These steps hold no secret, only pack files
+      # as data, and seal them with this run's public key. A later job that
+      # the model never touched opens and checks them (security review
+      # 2026-11-13, finding 5).
+      - name: Pack the result as sealed, inert data
+        env:
+          SEAL_PUB: ${{ needs.prepare.outputs.seal_pub }}
+        run: |
+          set -euo pipefail
+          umask 077
+          out="$RUNNER_TEMP/triage-out"; rm -rf "$out" model-output; mkdir -p "$out/pack" model-output
+          cp -P .triage/triage-proposals.json "$out/pack/triage-proposals.json"
+          openssl rand -hex 32 > "$out/pass"
+          tar -C "$out/pack" -cf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 10000 -salt -pass "file:$out/pass" -out model-output/result.tar.enc
+          printf '%s' "$SEAL_PUB" | base64 -d > "$out/run.pub"
+          openssl pkeyutl -encrypt -pubin -inkey "$out/run.pub" -pkeyopt rsa_padding_mode:oaep -in "$out/pass" -out model-output/result.key.enc
+          rm -rf "$out"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: proposal-result
-          path: .triage/triage-proposals.json
-          include-hidden-files: true
+          path: model-output/
           retention-days: 1
   save:
     needs: [prepare, model]
@@ -82,15 +133,38 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: proposal-input
-          path: .triage
+          path: sealed
+      - name: Open the sealed request
+        env:
+          TRIAGE_SEAL_SECRET: ${{ secrets.TRIAGE_ARTIFACT_KEY || secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p .triage
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:TRIAGE_SEAL_SECRET -in sealed/input.tar.enc | tar -C .triage -xf - --no-same-owner
+          rm -rf sealed
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: proposal-result
-          path: model-output
+          path: sealed-result
+      - name: Open the model's sealed result
+        env:
+          TRIAGE_SEAL_SECRET: ${{ secrets.TRIAGE_ARTIFACT_KEY || secrets.ANTHROPIC_API_KEY }}
+          SEAL_KEY: ${{ needs.prepare.outputs.seal_key }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keys="$RUNNER_TEMP/open"; tree="$RUNNER_TEMP/model-tree"; rm -rf "$keys" "$tree"; mkdir -p "$keys" "$tree/pack" "$tree/files"
+          printf '%s' "$SEAL_KEY" | openssl enc -d -a -A -aes-256-cbc -pbkdf2 -iter 200000 -pass env:TRIAGE_SEAL_SECRET -out "$keys/run.key"
+          openssl pkeyutl -decrypt -inkey "$keys/run.key" -pkeyopt rsa_padding_mode:oaep -in sealed-result/result.key.enc -out "$keys/pass"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 -pass "file:$keys/pass" -in sealed-result/result.tar.enc | tar -C "$tree/pack" -xf - --no-same-owner --no-same-permissions
+          rm -rf "$keys" sealed-result
+          # Files and folders only: no links, devices or pipes leave the pack.
+          if [ -n "$(find "$tree" ! -type f ! -type d -print -quit)" ]; then echo "The model's pack holds something that is not a plain file"; exit 1; fi
+          cp "$tree/pack/triage-proposals.json" .triage/triage-proposals.json
+          rm -rf "$tree"
       - name: Validate and save proposals using trusted code
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          cp model-output/triage-proposals.json .triage/triage-proposals.json
-          node scripts/triage-loop.mjs insert-proposals
+        run: node scripts/triage-loop.mjs insert-proposals

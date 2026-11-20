@@ -91,6 +91,8 @@ function buildStaticReference(): string {
     "- The merge and cut bars at the bottom are both blue (merge used to be green). The cut bar stays blue the whole time cut mode is on. Which side you are placing shows on the RED and BLUE switch: the side being placed is the solid one. The button beside it, G Place blue (or G Place red), says what pressing G will do.",
     "- Holding the right mouse button still on a cell, in the 3D or a 2D view, for half a second opens that cell's Δ menu, the same menu as the Δ button by its ID in the segment list. A right click or a right drag still moves the view as before.",
     "- Merge points too far apart: the server only joins two points that are close together. Click both pieces right where they touch, zooming in first if needed.",
+    "- A red merge dot that will not go away: Clear in Merge mode now removes every leftover dot, including one from a merge that never made it into the queue.",
+    "- Merge and Cut tutorials take one learner at a time. If someone else has the practice cells (for example after a reload partway through), the tutorial box puts the player in line and shows their place; the cell loads by itself when it is their turn.",
     "- Removing a segment that has marks on it asks whether to delete its marks too. The box shows the removed segment's id in its own color, and Show takes the view to the marks before deciding.",
     "- In the Merge and Cut tutorials and the Merger Sandbox, the 'Help me' button in the tutorial box shows red and blue gems where the points go. 'Still need help?' offers chat and this guide.",
     "- If a cut goes through but the box still waits, the cut was not at the join: the two neurons are still one segment. Cut again where they touch.",

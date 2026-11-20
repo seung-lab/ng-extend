@@ -2427,6 +2427,9 @@ function newPlayerFirstVisit(): boolean {
     return (active === null || active === '1') && (step === null || step === '0');
   } catch { return false; }
 }
+/** A new player whose starship tour has not played yet: the Play button
+ *  waits (Ames 2026-11-19: no Play during the rocket ship demo). */
+export function introPending(): boolean { return newPlayerFirstVisit(); }
 export function startStarshipIntro() {
   const newPlayer = newPlayerFirstVisit();
   if (IS_LIVE_SITE && !newPlayer) return;

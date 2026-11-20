@@ -47,6 +47,10 @@ import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
+// Orphan segments MOCKUP (Ames 2026-11-19): Retina, test sites only.
+import OrphanSegmentsTab from './OrphanSegmentsTab.vue';
+import { ON_TEST_SITE } from '../hunt';
+import { orphanName, ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA } from '../data/orphan-segments';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
@@ -163,11 +167,18 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast' | 'orphans'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
-  (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
+  // Lost Fragments open when the library closed (or being played) opens it
+  // again there (Ames 2026-11-19: reopening took her to My Cells).
+  (props.initialTab as any) || (orphansWereOpen() ? 'orphans' : '') || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
 );
+function orphansWereOpen(): boolean {
+  if (play.on === 'fragments') return true;
+  try { return sessionStorage.getItem('nge_cl_orphans_open') === '1'; } catch { return false; }
+}
+watch(filter, f => { try { if (f === 'orphans') sessionStorage.setItem('nge_cl_orphans_open', '1'); else sessionStorage.removeItem('nge_cl_orphans_open'); } catch { /* */ } });
 const search = ref('');
 const claimError = ref('');
 let claimErrorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1651,7 +1662,7 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
-import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, type PlayKind } from '../util/play';
+import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, fragmentTester, type PlayKind } from '../util/play';
 import { hasReview, startReview, showReview } from '../sandbox_match';
 import OrbitDot from './OrbitDot.vue';
 import { useOrbitTick } from '../util/orbit_tick';
@@ -1749,6 +1760,8 @@ function onAxonStatusChanged() {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+/** A claim of yours still being worked on. */
+function mineInHand(cell: CellRow) { return isMyClaim(cell) && (cell.status === 'assigned' || cell.status === 'in_progress'); }
 function statusLabel(status: string) {
   switch (status) {
     case 'pending': return 'available';
@@ -2469,6 +2482,13 @@ const questsHere = computed(() => canonicalDataset(activeDataset.value || getCur
 /** The cast of the retina (Ames 2026-10-24): one example of each cell type,
  *  on the Retina only. */
 const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
+/** Orphan segments mockup: Retina, and never on the live site until Ames says so. */
+// Lost Fragments: test sites, and admins on live (Ames 2026-11-19: "Admins only").
+const orphansHere = computed(() => (ON_TEST_SITE || backend.isAdmin || fragmentTester()) && castHere.value);
+// Off Retina (or the live game) there is no Lost Fragments tab to stay on.
+watch(orphansHere, here => { if (!here && filter.value === 'orphans') filter.value = 'mine'; });
+const orphanTitle = orphanName().title;
+const orphanCount = ORPHANS_LARGE.length + ORPHANS_SMALLER.length + ORPHANS_GLIA.length + ORPHANS_SOMA.length;
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
 /** No access to the quests' dataset: this button was a way around the lock
  *  on the dataset switcher (양동호, report 304). */
@@ -3186,12 +3206,17 @@ if ((window as any).__ngeCmQuietLibrary) { (window as any).__ngeCmQuietLibrary =
  *  report 288: "show current Quest cell in slim Cell Library when I select
  *  Quests tab"). */
 const slimQuest = ref(false);
-const slim = computed(() => slimCell.value !== null || slimEmpty.value || slimQuest.value);
+/** Slim on Lost Fragments (Ames 2026-11-19: the caret took her out of it and
+ *  into My Cells): the bar keeps the fragment you are on. */
+const slimOrphan = ref(false);
+const slim = computed(() => slimCell.value !== null || slimEmpty.value || slimQuest.value || slimOrphan.value);
 // With slim view on, opening the Quests tab while a quest is under way goes
 // straight to that cell's slim bar (toknow, report 288).
 watch(filter, f => {
   if (f === 'quests' && slimMode.value && questWork.active) { slimQuest.value = true; void nextTick(clampPanelPos); }
   else if (f !== 'quests') slimQuest.value = false;
+  if (f === 'orphans' && slimMode.value) { slimOrphan.value = true; void nextTick(clampPanelPos); }
+  else if (f !== 'orphans') slimOrphan.value = false;
 });
 /** The rows the cell list draws: one in the slim view, none on the empty bar. */
 // Slim with no cell of its own draws none: never the whole tab on the bar
@@ -3219,6 +3244,13 @@ function setSlimMode(on: boolean) {
 }
 function collapseToCurrent() {
   setSlimMode(true);
+  if (filter.value === 'orphans') {
+    showTabSettings.value = false;
+    showHowTo.value = false;
+    slimOrphan.value = true;
+    void nextTick(clampPanelPos);
+    return;
+  }
   if (filter.value === 'quests') {
     showTabSettings.value = false;
     showHowTo.value = false;
@@ -3233,6 +3265,7 @@ function collapseToCurrent() {
 // slim once the claims are in. Opened to a given tab, or to complete a cell,
 // it stays full, since it was opened for that.
 onMounted(() => {
+  if (slimMode.value && filter.value === 'orphans') { slimOrphan.value = true; void nextTick(clampPanelPos); return; }
   if (!slimMode.value || props.initialTab) return;
   const go = () => {
     if (slim.value || pendingCompleteRequest.value || !CELL_TABS.includes(filter.value)) return;
@@ -3283,6 +3316,7 @@ async function claimNewCell() {
       jumpedSegId.value = cell.segId;
       slimEmpty.value = false;
       slimQuest.value = false;
+      slimOrphan.value = false;
       slimSeg.value = cell.segId;
       await nextTick();
       clampPanelPos();
@@ -3344,9 +3378,14 @@ function playOpened() {
   playOpening.value = false;
   if (playOpeningTimer) { clearTimeout(playOpeningTimer); playOpeningTimer = null; }
 }
+/** Play on Lost Fragments: the tab opens the next one at each tick. */
+const fragmentPlay = ref(0);
 function playIfAsked() {
   const k = takePlayEnter();
   if (!k) return;
+  // Lost Fragments plays in its own tab, full size, not the slim row.
+  // Play shows the slim bar, as for cells and quests (Ames 2026-11-13).
+  if (k === 'fragments') { setSlimMode(true); filter.value = 'orphans'; slimOrphan.value = true; fragmentPlay.value++; void nextTick(clampPanelPos); return; }
   playOpening.value = true;
   if (playOpeningTimer) clearTimeout(playOpeningTimer);
   playOpeningTimer = setTimeout(playOpened, 20000);
@@ -3401,6 +3440,7 @@ const skipping = ref(false);
 async function playSkip(which?: CellRow) {
   if (skipping.value) return;
   if (play.on === 'quests') { document.dispatchEvent(new CustomEvent('nge:play-skip-quest')); return; }
+  if (play.on === 'fragments') { document.dispatchEvent(new CustomEvent('nge:play-skip-fragment')); return; }
   const cell = which ?? currentCell();
   if (!cell || !isMyClaim(cell) || cell.status === 'completed') { await claimNewCell(); return; }
   skipping.value = true;
@@ -3532,6 +3572,7 @@ async function collapseTo(cell: CellRow | null) {
   slimSeg.value = cell ? cell.segId : null;
   slimEmpty.value = !cell;
   slimQuest.value = false;
+  slimOrphan.value = false;
   await nextTick();
   clampPanelPos();
   if (!ghost || !el) return;
@@ -3544,7 +3585,7 @@ async function collapseTo(cell: CellRow | null) {
   morphIntoSlim(ghost, el, parts);
 }
 function expandFull() {
-  if (!slimSeg.value && !slimEmpty.value && !slimQuest.value) return;
+  if (!slimSeg.value && !slimEmpty.value && !slimQuest.value && !slimOrphan.value) return;
   // Hide the slim row before the full list renders (a long list takes a
   // moment), so the panel never flashes open ahead of the beam.
   if (panelEl.value && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -3553,6 +3594,7 @@ function expandFull() {
   slimSeg.value = null;
   slimEmpty.value = false;
   slimQuest.value = false;
+  slimOrphan.value = false;
   void nextTick(() => {
     clampPanelPos();
     // revealWithBeam waits for the panel to settle (the clamp above moves it
@@ -3679,7 +3721,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest || slimOrphan, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
       <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
@@ -3787,6 +3829,10 @@ onBeforeUnmount(() => {
                       title="One example cell of each retinal type, to turn in 3D, alone or all together">
                 Meet the cells <b>{{ CAST.length }}</b>
               </button>
+              <button v-if="orphansHere" :class="{ active: filter === 'orphans', 'nge-cl-orphans-tab': true }" @click="filter = 'orphans'"
+                      title="Lost Fragments: pieces of the retina nobody has traced yet. Tidy one up and record what it is (test site preview)">
+                {{ orphanTitle }} <b>{{ orphanCount }}</b>
+              </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
               </button>
@@ -3831,7 +3877,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
-        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams' && filter !== 'cast'" class="nge-cl-search">
+        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams' && filter !== 'cast' && filter !== 'orphans'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
@@ -4249,6 +4295,14 @@ onBeforeUnmount(() => {
         <!-- ═══ CAST TAB (one example of each retinal cell type) ═══ -->
         <div v-else-if="filter === 'cast' && castHere" class="nge-cl-list">
           <retina-cast-tab />
+        </div>
+
+        <!-- ═══ ORPHAN SEGMENTS (mockup, test sites only) ═══ -->
+        <div v-else-if="filter === 'orphans' && orphansHere" class="nge-cl-list">
+          <orphan-segments-tab :play-tick="fragmentPlay" :slim="slimOrphan" />
+          <button v-if="slimOrphan" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
@@ -4700,8 +4754,9 @@ onBeforeUnmount(() => {
                 <div class="nge-cl-row-meta">
                   <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
                   <span class="nge-cl-badge" :class="statusClass(cell.status)"
-                        :title="isAxonComplete(cell) ? 'Axon complete: the axon is proofread to every end. The whole cell can still be completed.' : undefined">{{ isAxonComplete(cell) ? 'axon complete' : statusLabel(cell.status) }}</span>
-                  <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
+                        :title="isAxonComplete(cell) ? 'Axon complete: the axon is proofread to every end. The whole cell can still be completed.' : undefined">{{ isAxonComplete(cell) ? 'axon complete' : mineInHand(cell) ? 'my cell' : statusLabel(cell.status) }}</span>
+                  <!-- Your own claim says "My cell", not "Claimed" and "You" (Ames 2026-11-19). -->
+                  <span v-if="cell.assignedTo && !mineInHand(cell)" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
                   <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, for up to 2 months, and Pyr counts your active time on it.">Super Quest</span>
@@ -4761,7 +4816,7 @@ onBeforeUnmount(() => {
                 class="nge-cl-btn nge-cl-btn--annot"
                 @click="addAnnotationLayers(cell)"
                 title="Add the annotation layers to this cell: Soma, True End, Can't Fix, Hits Edge and Notes. To have them on every Retina claim, turn them on in Settings, Jumping and views."
-              >+ Annotation layers</button>
+              >+ Annotation</button>
 
               <button
                 v-if="isMyClaim(cell) && !(play.on === 'cells' && cell.status !== 'completed')"
@@ -7104,6 +7159,8 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 /* !important: the slim bar's pull-left rule (many :not()s) outranks a plain selector. */
 .nge-cl-panel--slim.nge-cl-panel--slimquest .nge-cl-list > :not(.nge-cl-slim-expand) { margin-left: 0 !important; }
 .nge-cl-panel--slimquest .nge-cl-list:not(:has(.nge-aq-form)) > .nge-cl-slim-expand { top: 50%; transform: translateY(-50%); }
+/* Lost Fragments slim: the caret stays at the top, beside the row, when Complete opens the checklist. */
+.nge-cl-panel--slimquest .nge-cl-list:has(.nge-orph--slim) > .nge-cl-slim-expand { top: 16px; transform: none; }
 /* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
 .nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
 .nge-cl-panel--slim .nge-cl-row .nge-cl-pip { display: none; }

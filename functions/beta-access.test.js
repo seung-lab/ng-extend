@@ -107,24 +107,21 @@ test('invited under another address: the request says so, and the sign in email 
   assert.doesNotMatch(w2.issues[0].message, /Invited as/);
 });
 
-test('use my invite: the sign in account joins Pilot testers at once, and every admin is told', async () => {
+test('use my invite: naming an invited address lets nobody in; an admin decides', async () => {
   const w = world();
   const out = await handle('access.linkInvite', {email: ' Invited@Hotmail.example '}, w.io());
-  assert.deepStrictEqual(out, {invited: true, linked: true});
-  assert.ok(w.pilots.includes('signin@example.org'));
+  assert.deepStrictEqual(out, {invited: false, requested: true, review: true});
+  assert.ok(!w.pilots.includes('signin@example.org'));
   assert.strictEqual(w.issues.length, 1);
-  assert.match(w.issues[0].message, /was invited as invited@hotmail\.example and joined as signin@example\.org/);
-  // Not a Beta request: no triage card, and the bell says nothing is needed.
-  assert.strictEqual(w.issues[0].category, 'Invite used');
-  assert.ok(w.told[0].body.includes('Nothing to do.'), w.told[0].body);
-  assert.doesNotMatch(w.told[0].body + w.told[0].title, /asks to join/);
+  assert.strictEqual(w.issues[0].category, 'Beta access');
+  assert.match(w.issues[0].message, /Invited as: invited@hotmail\.example, already on Pilot testers\. They sign in with another Google account\.\n/);
+  assert.match(w.issues[0].message, /Sign in email: signin@example\.org\. To let them in/);
   assert.strictEqual(w.told.length, 1);
-  assert.ok(w.told[0].body.includes(String.raw`turn signin\@example\.org off`), w.told[0].body);
-  // The same invite from a second Google account goes to an admin instead.
+  assert.ok(w.told[0].body.includes('Check it is them before letting them in.'), w.told[0].body);
+  // A second Google account naming the same invite is no different.
   const again = await handle('access.linkInvite', {email: 'invited@hotmail.example'}, w.io({who: {email: 'other@example.org'}, me: {id: 'u-other', display_name: 'Other'}}));
   assert.deepStrictEqual(again, {invited: false, requested: true, review: true});
   assert.ok(!w.pilots.includes('other@example.org'));
-  assert.match(w.issues[1].message, /already brought in another Google account/);
 });
 
 test('use my invite: not invited, own address, or someone already plays under it', async () => {
