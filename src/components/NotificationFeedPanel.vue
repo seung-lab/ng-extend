@@ -384,8 +384,23 @@ function isBadgeNotification(notif: any): boolean {
   return isAwardTitle(notif?.title);
 }
 
+/** A community milestone's notification (supabase-community-milestones.sql)
+ *  carries #nge-milestone=cells:5000: it brings the banner back, without the
+ *  confetti (Ames 2026-11-20). */
+function milestoneFrom(text: string): { track: string; value: number } | null {
+  const m = String(text || '').match(/#nge-milestone=(cells|edits|players|fragments):(\d{1,9})/);
+  return m ? { track: m[1], value: Number(m[2]) } : null;
+}
+function openMilestone(ms: { track: string; value: number }) {
+  document.dispatchEvent(new CustomEvent('nge:milestone', { detail: ms }));
+  closeDetail();
+  emit('hide');
+}
+
 function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
+  const ms = milestoneFrom(notif.body);
+  if (ms) { openMilestone(ms); return; }
   // A hunter's report: the reports queue, the oldest open one first, already there (HuntReportCard).
   const rep = kindOf(notif) === 'hunt' ? String(notif.body || '').match(/#nge-hunt-report=(\d+)/) : null;
   if (rep) {
@@ -543,6 +558,8 @@ async function onDetailBodyClick(e: MouseEvent) {
   // "[Play Lost Fragments](#nge-play=lost-fragments)" in a notification: a big
   // button that starts Lost Fragments play, with Nurro flying ahead (Ames
   // 2026-11-20: "make the notification awesome and take them to Nugget play mode"; the name stayed Lost Fragments).
+  const msLink = milestoneFrom(a?.getAttribute('href') || '');
+  if (msLink) { e.preventDefault(); openMilestone(msLink); return; }
   if (a?.getAttribute('href') === '#nge-play=lost-fragments') {
     e.preventDefault();
     // Lost Fragments needs edit access on Retina. Without it, say so here and
@@ -1317,7 +1334,7 @@ function padRank(rank: number): string {
         v-for="notif in shownNotes"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--streak': (notif.title || '').startsWith('🔥'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨') }"
+        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--streak': (notif.title || '').startsWith('🔥'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨'), 'nge-notif-card--milestone': (notif.title || '').startsWith('🎊') }"
         @click="openDetail(notif)"
       >
         <div class="nge-notif-card-row">
@@ -1892,6 +1909,13 @@ function padRank(rank: number): string {
   color: #ff8d8d;
 }
 .nge-notif-triage-who { color: #8cc4ff; }
+/* A community milestone (title starts with 🎊): starship blue with a gold
+   edge. A click brings its banner back. */
+.nge-notif-card--milestone {
+  border-left: 3px solid #ffd35a;
+  background: linear-gradient(90deg, rgba(74, 158, 255, 0.16), rgba(95, 212, 255, 0.05));
+}
+.nge-notif-card--milestone .nge-notif-card-title { color: #aeeaff; }
 /* "Fixed!" cards (title starts with 🎉): a report shipped. Happy mint and gold. */
 .nge-notif-card--fixed {
   border-left: 3px solid #5ee8a8;

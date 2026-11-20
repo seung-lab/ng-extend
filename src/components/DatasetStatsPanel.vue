@@ -20,12 +20,16 @@ import { datasetKey } from '../util/completion_rule';
 import { datasetsWithStats, loadDatasetStats, statsKey, weeklySeries, type DatasetStats } from '../util/dataset_stats';
 import { useProofreadingBackendStore } from '../store';
 import { isBugReportClick } from '../util/bug_report_click';
+import { nearestMilestone, TRACK_NAME } from '../util/community_milestones';
 
 const emit = defineEmits({ hide: null });
 /** Peek (desktop): no dim, the site stays usable, a click elsewhere puts it away.
  *  Embedded: the profile's Dataset Stats tab. No window of its own, and the
  *  parts sit side by side across the profile's width. */
 const props = defineProps<{ peek?: boolean; embedded?: boolean; person?: StatsPerson | null }>();
+/** The next community milestone, everyone together (Ames 2026-11-20), from
+ *  util/community_milestones.ts. Not shown in a player's own stats. */
+const nextCommunity = computed(() => props.person ? null : nearestMilestone());
 /**
  * Whose part the amber strip shows. In someone else's profile it is that
  * person, not the reader (a player opened Ames's profile and saw their own
@@ -211,6 +215,10 @@ onUnmounted(() => {
         >{{ ds.shortLabel }}</button>
       </div>
 
+      <div v-if="nextCommunity" class="nge-dsp-milestone">
+        Next Pyr milestone: <b>{{ nextCommunity.next.toLocaleString('en-US') }} {{ TRACK_NAME[nextCommunity.track] }}</b>, everyone together.
+        <span class="nge-dsp-milestone-num">{{ nextCommunity.toGo.toLocaleString('en-US') }}</span> to go.
+      </div>
       <div v-if="props.embedded && active" class="nge-dsp-wide-title">{{ active.label }}</div>
       <div class="nge-dsp-content">
         <!-- Whole panel states -->
@@ -487,6 +495,10 @@ onUnmounted(() => {
 }
 
 /* ── Dataset tabs ── */
+.nge-dsp-milestone { padding: 2px 14px 6px; text-align: center; font: 500 12.5px 'Inter', sans-serif; color: #8fb6d8; }
+.nge-dsp-milestone b { color: #dff4ff; font-weight: 600; }
+.nge-dsp-milestone-num { font: 700 13px 'Orbitron', 'Inter', sans-serif; color: #ffd35a; }
+.nge-dsp-shell--wide .nge-dsp-milestone { text-align: left; padding: 4px 22px 2px; }
 .nge-dsp-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 6px; flex-shrink: 0; justify-content: center; }
 .nge-dsp-tab {
   position: relative; padding: 7px 14px;

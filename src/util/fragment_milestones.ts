@@ -8,44 +8,30 @@
  * fragment anyone has completed, read from the server's fragments.list (this
  * player's own answers plus everyone else's). Each milestone celebrates once
  * per browser: a player away when it was crossed sees it on their next visit.
+ * The banner is the shared community one (util/community_milestones.ts).
  */
 import { ref } from 'vue';
+import { celebrate, milestoneAt, nextMilestoneAfter } from './community_milestones';
 
 export const FIRST_MILESTONE = 500;
 export const MILESTONE_STEP = 1000;
 
 /** Fragments completed by everyone, once the server has said; null before. */
 export const fragmentsDone = ref<number | null>(null);
-/** The milestone to celebrate now, or null. */
-export const milestoneToShow = ref<number | null>(null);
 
 /** The highest milestone at or below n, or 0 for none yet. */
-export function milestoneReached(n: number): number {
-  if (n < FIRST_MILESTONE) return 0;
-  if (n < MILESTONE_STEP) return FIRST_MILESTONE;
-  return Math.floor(n / MILESTONE_STEP) * MILESTONE_STEP;
-}
+export function milestoneReached(n: number): number { return milestoneAt('fragments', n); }
 /** The next milestone above n. */
-export function nextMilestone(n: number): number {
-  if (n < FIRST_MILESTONE) return FIRST_MILESTONE;
-  return (Math.floor(n / MILESTONE_STEP) + 1) * MILESTONE_STEP;
-}
-
-const SEEN_KEY = 'nge_lf_milestone_seen_v1';
-function seen(): number {
-  try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch { return 0; }
-}
-export function markMilestoneSeen(m: number) {
-  try { if (m > seen()) localStorage.setItem(SEEN_KEY, String(m)); } catch { /* private mode */ }
-}
+export function nextMilestone(n: number): number { return nextMilestoneAfter('fragments', n); }
 
 /** The server's count. A milestone this browser has not celebrated yet comes
- *  up, only the latest one when several were crossed while away. */
+ *  up in the community banner (components/CommunityMilestone.vue), only the
+ *  latest one when several were crossed while away. */
 export function setFragmentsDone(n: number) {
   if (!Number.isFinite(n) || n < 0) return;
   fragmentsDone.value = n;
   const m = milestoneReached(n);
-  if (m > 0 && m > seen()) milestoneToShow.value = m;
+  if (m > 0) celebrate('fragments', m);
 }
 /** One more fragment done in this browser, before the server is asked again. */
 export function addFragmentDone() {
