@@ -167,6 +167,7 @@ async function open(row: OrphanSeg) {
   resetForm(saves[row.id]);
   history.jumpToCell(row.id, row.pt);
   finishing.value = false;
+  claimMsg.value = '';
   closeSelectionPanel();
   // The listed ID may be old (one in the lab's list already was). The jump
   // point sits inside the segment, so ask what is there now and show that.
@@ -210,6 +211,30 @@ async function claimHere(row: OrphanSeg) {
     (res.reason === 'done' ? taken : held).add(row.id);
     if (active.value?.id === row.id && playing.value && !saves[row.id]) playNext();
   } catch { /* the server can't say; keep playing */ }
+}
+/** Claim from the full view, without Play (Ames 2026-11-20: "We do need a
+ *  button for claim"). One claim per player, as with Play: claiming this one
+ *  lets go of the last. */
+const claimMsg = ref('');
+const claiming = ref(false);
+async function claimActive() {
+  const a = active.value;
+  if (!a || claiming.value) return;
+  claiming.value = true; claimMsg.value = '';
+  try {
+    const res = await secureWrite<{ claimed: boolean; reason?: string }>('fragments.claim', { fragmentId: a.id });
+    if (res && res.claimed) { myClaim.value = a.id; held.delete(a.id); claimMsg.value = 'Yours. Nobody else gets it in Play until you skip or complete it.'; return; }
+    if (res && res.claimed === false && res.reason === 'done') { taken.add(a.id); claimMsg.value = 'Someone has already completed this one.'; return; }
+    if (res && res.claimed === false) { held.add(a.id); claimMsg.value = 'Another player is working on this one.'; return; }
+    claimMsg.value = 'Could not claim it. Try again in a moment.';
+  } catch { claimMsg.value = 'Could not claim it. Try again in a moment.'; }
+  finally { claiming.value = false; }
+}
+async function releaseActive() {
+  const a = active.value;
+  if (!a || myClaim.value !== a.id) return;
+  myClaim.value = null; claimMsg.value = 'Let go. Someone else can claim it now.';
+  await secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
 }
 function playNext() {
   const n = nextUndone();
@@ -454,9 +479,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div class="nge-orph-banner" :style="{ backgroundImage: `url(${bannerImg})` }" role="img" aria-label="Blue cubes tumbling apart with gold neuron branches running through them">
         <div class="nge-orph-title">{{ name.title }}</div>
       </div>
-      <div class="nge-orph-lead">{{ name.lead }}</div>
-      <div class="nge-orph-mock">{{ ON_TEST_SITE ? 'Test site preview' : 'Admin preview' }}: {{ GROUPS.reduce((a, g) => a + g.rows.length, 0) }} sample segments
-        of the {{ fmt(poolTotal) }} the lab found. {{ serverOn ? 'Each Submit goes to the lab and counts as a completed cell.' : 'Pyr could not reach the server, so Submit will not save yet.' }}</div>
+      <!-- How many are open, in the lead for everyone (Ames 2026-11-20: keep
+           saying about 150 of 13,000, "add that to the text up at the top"). -->
+      <div class="nge-orph-lead">{{ name.lead }} {{ fmt(GROUPS.reduce((a, g) => a + g.rows.length, 0)) }} of the {{ fmt(poolTotal) }} the lab found are open to start, and each one counts as a completed cell.</div>
+      <div v-if="ON_TEST_SITE || !serverOn" class="nge-orph-mock">{{ !serverOn ? 'Pyr could not reach the server, so Complete will not save yet.' : 'Test site: Complete here is real. It goes to the lab and counts as a completed cell.' }}</div>
     </div>
 
     <div v-if="!slim" class="nge-orph-groups">
@@ -517,13 +543,16 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <button class="nge-orph-btn" @click="step(-1)" title="Previous fragment">&lsaquo;<template v-if="!slim"> Previous</template></button>
         <button class="nge-orph-btn" @click="step(1)" title="Next fragment"><template v-if="!slim">Next </template>&rsaquo;</button>
         <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
-        <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
+        <button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-claimbtn" :class="{ 'nge-orph-claimbtn--mine': myClaim === active.id }" :disabled="claiming"
+                :title="myClaim === active.id ? 'You hold this fragment. Press to let it go.' : 'Hold this fragment for you, so Play does not give it to anyone else'"
+                @click="myClaim === active.id ? releaseActive() : claimActive()">{{ claiming ? 'Claiming…' : myClaim === active.id ? 'Release' : 'Claim' }}</button>
         <button v-if="playing" class="nge-orph-btn" @click="skip" title="Give this one back and go to the next fragment">Skip</button>
         <button v-else class="nge-orph-btn nge-orph-playbtn" @click="startPlay('fragments')" title="Play: after Submit, the next fragment opens by itself">&#9654; Play</button>
         <button class="nge-orph-help-btn" :class="{ on: helpOpen }" :aria-expanded="helpOpen ? 'true' : 'false'" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button>
         <button v-if="playing" class="nge-orph-link nge-orph-stop" @click="stopPlay" title="Stop playing: Submit stays on this fragment">Stop</button>
       </div>
 
+      <div v-if="!slim && claimMsg" class="nge-orph-note">{{ claimMsg }}</div>
       <div v-if="helpOpen" class="nge-orph-help">
         <EditableText text-key="howto.lost_fragments" :original="HOWTO_LINES" list-class="nge-orph-help-list" notify label="Lost Fragments how to" />
       </div>
@@ -679,6 +708,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-item { display: grid; grid-template-columns: 22px 1fr auto auto 14px; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: #cfdcef; cursor: pointer; text-align: left; font: 13px 'Inter', sans-serif; }
 .nge-orph-item:hover { background: rgba(74, 158, 255, 0.08); }
 .nge-orph-item--held { opacity: 0.45; }
+.nge-orph-claimbtn { color: #9be8b4 !important; border-color: rgba(68, 170, 102, 0.55) !important; }
+.nge-orph-claimbtn--mine { color: #a9c3e0 !important; border-color: rgba(127, 190, 255, 0.3) !important; }
 /* Training Sim's look (Ames 2026-11-20). Quiet buttons: thin edge, soft words. */
 .nge-orph--slim .nge-orph-task .nge-orph-btn { padding: 5px 9px; border: 1px solid rgba(127, 190, 255, 0.22); border-radius: 6px; background: transparent; color: #a9c3e0; font: 500 12px/1 Inter, system-ui, sans-serif; }
 .nge-orph--slim .nge-orph-task .nge-orph-btn:hover:not(:disabled) { border-color: rgba(127, 216, 255, 0.55); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
@@ -696,10 +727,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
    breaks at two pads three quarters across. 3px of headroom above the edge
    holds the pads, which sit half above it. */
 .nge-orph-slimbtns { gap: 10px !important; }
-.nge-orph-slimrow { padding-right: 16px !important; }
+.nge-orph-slimrow { padding-right: 28px !important; }
 .nge-orph-slimrow .nge-orph-btn { --edge: rgba(74, 158, 255, 0.6); --face: #0a1326; --pad: var(--edge);
   position: relative; isolation: isolate; height: 33px; box-sizing: border-box; display: inline-flex; align-items: center;
-  padding: 3px 16px 0 13px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  padding: 1px 16px 0 13px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
   background: linear-gradient(var(--edge), var(--edge)) left bottom / 100% calc(100% - 3px) no-repeat !important;
   clip-path: polygon(0 3px, calc(100% - 9px) 3px, 100% 12px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
   color: #cfe2f7 !important; font: 600 13px/1 Inter, system-ui, sans-serif !important; }
@@ -717,8 +748,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
     radial-gradient(circle at calc(var(--px) - 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
     radial-gradient(circle at calc(var(--px) + 4.5px) 3.5px, var(--face) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
     linear-gradient(90deg, transparent calc(var(--px) - 2.6px), var(--face) calc(var(--px) - 2.6px), var(--face) calc(var(--px) + 2.6px), transparent calc(var(--px) + 2.6px)) left 0 top 3px / 100% 1px no-repeat; }
-.nge-orph-slimrow .nge-orph-skip { --edge: #6fc4ff; --pad: #c9f3ff; padding: 3px 16px 0 13px !important; }
-.nge-orph-slimrow .nge-orph-complete { --edge: #3eecbe; --face: #0c3a30; --pad: #b9ffe6; color: #eafff7 !important; padding: 3px 18px 0 14px !important; }
+.nge-orph-slimrow .nge-orph-skip { --edge: #6fc4ff; --pad: #c9f3ff; padding: 1px 16px 0 13px !important; }
+.nge-orph-slimrow .nge-orph-complete { --edge: #3eecbe; --face: #0c3a30; --pad: #b9ffe6; color: #eafff7 !important; padding: 1px 18px 0 14px !important; }
 .nge-orph-slimrow .nge-orph-complete:hover:not(:disabled), .nge-orph-slimrow .nge-orph-complete.on:not(:disabled) { --edge: #8ff7d6; --face: #11503f; }
 .nge-orph-slimrow .nge-orph-btn:disabled { opacity: 0.55; }
 .nge-orph-slimrow .nge-orph-hl { width: 34px; justify-content: center; padding: 3px 3px 0 0 !important; }
