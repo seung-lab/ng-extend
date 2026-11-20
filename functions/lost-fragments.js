@@ -42,6 +42,26 @@ const MAX_L2 = 6000;
 const CLAIM_DAYS = 14;
 const claimCutoff = () => new Date(Date.now() - CLAIM_DAYS * 864e5).toISOString();  // a fragment past this is not sized (a whole cell merged in)
 
+// ── Points, a beta (Ames 2026-11-20: "we want players to start with larger
+// segs even though small ones would be easier"). Size pays more than in
+// proportion; edits and what you grow it by add to that. Kept in step with
+// src/util/fragment_points.ts, the estimate players see before they pick.
+// Saved with the answer only: not in stats, the leaderboard or the sheet.
+const POINTS = { sizeScale: 2, sizePower: 0.75, maxUm3: 3000, merge: 10, cut: 5, maxEdits: 50, perUm3Grown: 1, maxGrown: 500, nucleus: 50 };
+function sizePoints(um3) {
+  const v = Math.min(Math.max(Number(um3) || 0, 0), POINTS.maxUm3);
+  return Math.round(POINTS.sizeScale * Math.pow(v, POINTS.sizePower));
+}
+function fragmentPoints({ um3, merges, cuts, um3Added, nucleus }) {
+  const size = sizePoints(um3);
+  const m = Math.min(Math.max(Number(merges) || 0, 0), POINTS.maxEdits);
+  const c = Math.min(Math.max(Number(cuts) || 0, 0), POINTS.maxEdits - m);
+  const edits = m * POINTS.merge + c * POINTS.cut;
+  const grown = Math.round(Math.min(Math.max(Number(um3Added) || 0, 0), POINTS.maxGrown) * POINTS.perUm3Grown);
+  const nuc = nucleus ? POINTS.nucleus : 0;
+  return { size, edits, grown, nucleus: nuc, total: size + edits + grown + nuc };
+}
+
 function bad(message, status = 400) { const e = new Error(message); e.status = status; return e; }
 const eq = v => 'eq.' + encodeURIComponent(String(v));
 
@@ -92,7 +112,7 @@ async function volume(token, root) {
  *  since the lab listed it. The size change is net: a fragment that gained
  *  10 and lost 40 shows 30 removed. Any failure leaves the numbers empty. */
 async function measure(token, caveId, fragmentId, rootId) {
-  const out = { merges: null, cuts: null, um3_added: null, um3_removed: null };
+  const out = { merges: null, cuts: null, um3_added: null, um3_removed: null, _before: null };
   if (!token || !rootId) return out;
   try {
     const log = await cg(token, `${CG}/root/${rootId}/change_log`);
@@ -103,6 +123,7 @@ async function measure(token, caveId, fragmentId, rootId) {
   try {
     const [before, after] = await Promise.all([volume(token, fragmentId), rootId === fragmentId ? null : volume(token, rootId)]);
     if (before != null) {
+      out._before = before;
       const now = rootId === fragmentId ? before : after;
       if (now != null) {
         const d = Math.round((now - before) * 100) / 100;
@@ -146,7 +167,7 @@ async function fragmentsAction(action, args, io) {
   const playerName = String(me.display_name || me.username || 'Player').slice(0, 80);
 
   if (action === 'fragments.list') {
-    const mine = await sb(`ew_lost_fragments?user_id=${eq(me.id)}&select=fragment_id,group_key,root_id,point_in,pt,nucleus_id,no_nucleus,note,cave_annotation_id,submitted_at,updated_at&limit=2000`);
+    const mine = await sb(`ew_lost_fragments?user_id=${eq(me.id)}&select=fragment_id,group_key,root_id,point_in,pt,nucleus_id,no_nucleus,note,cave_annotation_id,submitted_at,updated_at,points&limit=2000`);
     const all = await sb('ew_lost_fragments?select=fragment_id&limit=20000');
     const others = [...new Set(all.map(r => r.fragment_id))].filter(id => !mine.some(m => m.fragment_id === id));
     const claims = await sb(`ew_lost_fragment_claims?claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,user_id&limit=20000`);
@@ -189,18 +210,22 @@ async function fragmentsAction(action, args, io) {
   if (action === 'fragments.submit') {
     const answer = cleanAnswer(args);
     const had = (await sb(`ew_lost_fragments?user_id=${eq(me.id)}&fragment_id=${eq(answer.fragment_id)}&select=id,sheet_row,cave_annotation_id&limit=1`))[0];
-    const counts = await measure(io.caveToken, io.caveId, answer.fragment_id, answer.root_id || answer.fragment_id);
+    const { _before, ...counts } = await measure(io.caveToken, io.caveId, answer.fragment_id, answer.root_id || answer.fragment_id);
+    // Size from the server's own measure of the fragment as the lab listed it;
+    // the lab's number only when the L2 cache can't say (capped either way).
+    const points = fragmentPoints({ um3: _before ?? answer.lab_um3, merges: counts.merges, cuts: counts.cuts, um3Added: counts.um3_added,
+      nucleus: answer.point_in === 'soma' && !answer.no_nucleus && !!answer.nucleus_id });
     const now = new Date().toISOString();
     // The sheet line is written by ewLostFragmentsSheet (syncSheet below),
     // which runs as the sheet identity; this function can't (Ames 2026-11-20:
     // "I don't see my lost fragment completions" in the sheet, a 403).
-    const fields = { ...answer, ...counts, updated_at: now, player_name: playerName, sheet_dirty: true,
+    const fields = { ...answer, ...counts, updated_at: now, player_name: playerName, sheet_dirty: true, points: points.total, points_detail: points,
       cave_annotation_id: answer.cave_annotation_id ?? (had ? had.cave_annotation_id : null) };
     let row;
     if (had) row = (await sb(`ew_lost_fragments?id=eq.${had.id}`, { method: 'PATCH', body: JSON.stringify(fields) }))[0];
     else row = (await sb('ew_lost_fragments', { method: 'POST', body: JSON.stringify({ user_id: me.id, ...fields, submitted_at: now }) }))[0];
     await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(answer.fragment_id)}`, { method: 'DELETE' }).catch(() => undefined);
-    return { saved: true, first: !had, sheet: row ? 'queued' : 'failed', merges: counts.merges, cuts: counts.cuts, um3Added: counts.um3_added, um3Removed: counts.um3_removed };
+    return { saved: true, first: !had, points, sheet: row ? 'queued' : 'failed', merges: counts.merges, cuts: counts.cuts, um3Added: counts.um3_added, um3Removed: counts.um3_removed };
   }
 
   throw bad(`unknown action ${action}`);
@@ -226,4 +251,4 @@ async function syncSheet({ sb, sheets }) {
   return { waiting: rows.length, written, failed };
 }
 
-module.exports = { syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, CLAIM_DAYS };
+module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, CLAIM_DAYS };
