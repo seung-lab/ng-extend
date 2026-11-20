@@ -709,6 +709,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-slimrow .nge-orph-btn:disabled { opacity: 0.55; }
 .nge-orph-slimrow .nge-orph-hl { width: 34px; justify-content: center; padding: 3px 3px 0 0 !important; }
 .nge-orph-slimrow .nge-orph-hl :deep(svg) { width: 18px !important; height: 18px !important; }
+/* Highlight: the icon alone, no outline (Ames 2026-11-20). */
+.nge-orph-slimrow .nge-orph-hl { background: none !important; clip-path: none; border-radius: 6px !important; padding: 0 !important; height: 30px; }
+.nge-orph-slimrow .nge-orph-hl::before { display: none; }
+.nge-orph-slimrow .nge-orph-hl:hover:not(:disabled) { background: rgba(74, 158, 255, 0.14) !important; }
+.nge-orph-slimrow .nge-orph-hl:focus-visible { outline: 2px solid #7fd8ff; outline-offset: 1px; }
 .nge-orph-nucid { font: 600 12px 'JetBrains Mono', ui-monospace, monospace; color: #cfe6ff; }
 .nge-orph-item--on { background: rgba(74, 158, 255, 0.14); border-color: rgba(126, 202, 255, 0.35); }
 .nge-orph-item-i { color: #6c7a90; font-variant-numeric: tabular-nums; text-align: right; }
