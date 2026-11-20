@@ -55,6 +55,7 @@ import goldYearAward from '../../static/images/champions/gold-year-award.png';
 import silverYearAward from '../../static/images/champions/silver-year-award.png';
 import bronzeYearAward from '../../static/images/champions/bronze-year-award.png';
 import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
+import { vArtGlow } from '../util/art_color';
 import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 
@@ -2043,7 +2044,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                   @click="onSpecialBadgeClick(award)"
                 >
                   <div class="nge-profile-badge-img">
-                    <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
+                    <img v-art-glow :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
                 </div>
@@ -2058,7 +2059,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                   @click="onMedalClick(m)"
                 >
                   <div class="nge-profile-badge-img">
-                    <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
+                    <img v-art-glow :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
                     <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
                   </div>
                   <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
@@ -2163,7 +2164,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                  <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -2281,7 +2282,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                  <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -2365,7 +2366,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                  <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -2576,7 +2577,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
 
             <!-- Special badge detail view -->
             <div v-if="selectedSpecialBadge" key="special" class="nge-profile-viz-panel nge-profile-viz-badge nge-profile-viz-badge--detail">
-              <img
+              <img v-art-glow
                 :src="selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url"
                 :alt="selectedSpecialBadge.badge?.name"
                 class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
@@ -2596,7 +2597,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             <div v-else-if="!selectedBadge" key="latest" class="nge-profile-viz-panel nge-profile-viz-badge">
               <template v-if="favoriteBadge">
                 <div class="nge-profile-viz-title">⭐ Favorite Achievement</div>
-                <img
+                <img v-art-glow
                   :src="getBadgeUrl(favoriteBadge.imageKey)"
                   :alt="favoriteBadge.name"
                   class="nge-profile-viz-badge-icon"
@@ -2610,7 +2611,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               </template>
               <template v-else-if="favoriteSpecialBadge">
                 <div class="nge-profile-viz-title">⭐ Favorite Achievement</div>
-                <img
+                <img v-art-glow
                   :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
                   :alt="favoriteSpecialBadge.badge?.name"
                   class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
@@ -2623,7 +2624,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               </template>
               <template v-else-if="latestEarnedBadge">
                 <div class="nge-profile-viz-title">▌ Latest Achievement</div>
-                <img
+                <img v-art-glow
                   :src="getBadgeUrl(latestEarnedBadge.imageKey)"
                   :alt="latestEarnedBadge.name"
                   class="nge-profile-viz-badge-icon"
@@ -2645,7 +2646,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
 
             <!-- Badge detail view (when a badge is clicked) -->
             <div v-else key="badge" class="nge-profile-viz-panel nge-profile-viz-badge nge-profile-viz-badge--detail">
-              <img
+              <img v-art-glow
                 :src="getBadgeUrl(selectedBadge.imageKey)"
                 :alt="selectedBadge.name"
                 class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
@@ -2816,7 +2817,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span v-for="i in 12" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
-            <img
+            <img v-art-glow
               :src="selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url"
               :alt="selectedSpecialBadge.badge?.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
@@ -2849,7 +2850,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span v-for="i in 12" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
-            <img
+            <img v-art-glow
               :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
               :alt="favoriteSpecialBadge.badge?.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
@@ -2880,7 +2881,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span v-for="i in 12" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
-            <img
+            <img v-art-glow
               :src="getBadgeUrl(featuredBadge.imageKey)"
               :alt="featuredBadge.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
@@ -2970,7 +2971,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onBadgeClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
@@ -3008,7 +3009,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onBadgeClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
@@ -3046,7 +3047,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onBadgeClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days of science</div>
               </div>
@@ -3079,7 +3080,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 @click="onMedalClick(m)"
               >
                 <span class="nge-trophy-medal-img">
-                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
+                  <img v-art-glow :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
                   <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
                 </span>
                 <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
@@ -3113,7 +3114,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onLegacyClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
@@ -3137,7 +3138,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onLegacyClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
@@ -3169,7 +3170,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 :title="specialBadgeTooltip(award)"
                 @click="onSpecialBadgeClick(award)"
               >
-                <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
+                <img v-art-glow :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
               </div>
               <button v-if="hiddenTrophies('special', plainSpecialBadges).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${plainSpecialBadges.length}`" :aria-expanded="false" @click="toggleTrophySection('special')">
@@ -3321,7 +3322,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               :title="specialBadgeTooltip(award)"
               @click="onSpecialBadgeClick(award); showAllSpecialModal = false;"
             >
-              <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-special-modal-icon" />
+              <img v-art-glow :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-special-modal-icon" />
               <div class="nge-special-modal-name">{{ award.badge?.name || 'Award' }}</div>
               <div v-if="award.reason" class="nge-special-modal-reason">{{ award.reason }}</div>
             </div>
@@ -3338,7 +3339,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
         <div v-if="badgeZoom" class="nge-badge-zoom" @click="badgeZoom = null">
           <div class="nge-badge-zoom-halo"></div>
           <div class="nge-badge-zoom-ring"></div>
-          <img :src="badgeZoom.img" :alt="badgeZoom.name" class="nge-badge-zoom-img" />
+          <img v-art-glow :src="badgeZoom.img" :alt="badgeZoom.name" class="nge-badge-zoom-img" />
           <div class="nge-badge-zoom-name">{{ badgeZoom.name }}</div>
           <div v-if="badgeZoom.desc" class="nge-badge-zoom-desc">{{ badgeZoom.desc }}</div>
           <div v-if="badgeZoom.meta" class="nge-badge-zoom-meta">{{ badgeZoom.meta }}</div>
@@ -4272,29 +4273,33 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-badge:not(.nge-profile-badge--locked) { cursor: pointer; }
 .nge-profile-badge:not(.nge-profile-badge--locked):hover { transform: scale(1.1); }
 /* Exploration badges: blue highlight (default) */
+/* Every glow and highlight takes the art's own main color, --art, which
+   v-art-glow (src/util/art_color.ts) reads from the picture (Ames 2026-11-20:
+   "match the primary color of the item in all cases"). The old colors stay
+   as the fallback while the art loads. */
 .nge-profile-badge--selected {
-  background: rgba(74, 158, 255, 0.1);
-  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.3) inset;
+  background: rgba(var(--art, 74, 158, 255), 0.1);
+  box-shadow: 0 0 0 1px rgba(var(--art, 74, 158, 255), 0.35) inset;
 }
 .nge-profile-badge--selected .nge-profile-badge-img {
-  filter: drop-shadow(0 0 6px rgba(100, 180, 255, 0.75));
+  filter: drop-shadow(0 0 6px rgba(var(--art, 100, 180, 255), 0.75));
 }
 .nge-profile-badge--latest .nge-profile-badge-img {
-  filter: drop-shadow(0 0 8px rgba(100, 180, 255, 0.6));
+  filter: drop-shadow(0 0 8px rgba(var(--art, 100, 180, 255), 0.6));
 }
 .nge-profile-badge--latest .nge-profile-badge-name {
   color: #8ac8ff;
 }
 /* Building badges: subtle golden highlight */
 .nge-profile-badge--building.nge-profile-badge--selected {
-  background: rgba(245, 166, 35, 0.06);
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.2) inset;
+  background: rgba(var(--art, 245, 166, 35), 0.08);
+  box-shadow: 0 0 0 1px rgba(var(--art, 245, 166, 35), 0.3) inset;
 }
 .nge-profile-badge--building.nge-profile-badge--selected .nge-profile-badge-img {
-  filter: drop-shadow(0 0 3px rgba(255, 200, 80, 0.35));
+  filter: drop-shadow(0 0 4px rgba(var(--art, 255, 200, 80), 0.45));
 }
 .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-img {
-  filter: drop-shadow(0 0 4px rgba(255, 200, 80, 0.3));
+  filter: drop-shadow(0 0 4px rgba(var(--art, 255, 200, 80), 0.35));
 }
 .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-name {
   color: #ffd08a;
@@ -4470,7 +4475,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 /* max-width guards: the right column is 360px, and anything wider walked
    off its right edge (Amy's clipped Favorite Badge report, 2026-08-17). */
-.nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
+.nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(var(--art, 74, 158, 255), 0.4)); }
 .nge-profile-viz-badge-icon--large { width: 240px; height: 240px; max-width: 100%; }
 /* Sized to the window, so the silver favorites and the streak chart fit under it. */
 .nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, calc(25 * var(--nge-vh, 1vh))); height: min(220px, calc(25 * var(--nge-vh, 1vh))); }
@@ -4855,18 +4860,18 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 }
 .nge-trophy-badge:hover {
   transform: scale(1.05);
-  background: rgba(74, 158, 255, 0.06);
-  border-color: rgba(74, 158, 255, 0.15);
+  background: rgba(var(--art, 74, 158, 255), 0.06);
+  border-color: rgba(var(--art, 74, 158, 255), 0.18);
 }
 .nge-trophy-badge--selected {
-  background: rgba(74, 158, 255, 0.1) !important;
-  border-color: rgba(74, 158, 255, 0.3) !important;
-  box-shadow: 0 0 12px rgba(74, 158, 255, 0.15);
+  background: rgba(var(--art, 74, 158, 255), 0.1) !important;
+  border-color: rgba(var(--art, 74, 158, 255), 0.35) !important;
+  box-shadow: 0 0 12px rgba(var(--art, 74, 158, 255), 0.18);
 }
 .nge-trophy-badge--building.nge-trophy-badge--selected {
-  background: rgba(245, 166, 35, 0.08) !important;
-  border-color: rgba(245, 166, 35, 0.25) !important;
-  box-shadow: 0 0 12px rgba(245, 166, 35, 0.1);
+  background: rgba(var(--art, 245, 166, 35), 0.08) !important;
+  border-color: rgba(var(--art, 245, 166, 35), 0.3) !important;
+  box-shadow: 0 0 12px rgba(var(--art, 245, 166, 35), 0.14);
 }
 
 .nge-trophy-badge--locked {
@@ -4884,7 +4889,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   height: 56px;
   object-fit: contain;
   margin-bottom: 6px;
-  filter: drop-shadow(0 0 4px rgba(100, 180, 255, 0.2));
+  filter: drop-shadow(0 0 4px rgba(var(--art, 100, 180, 255), 0.25));
 }
 
 /* In the Trophy Case grid the art is the card: bigger, and the name and
@@ -4953,7 +4958,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   height: 350px;
   object-fit: contain;
   flex-shrink: 0;
-  filter: drop-shadow(0 0 20px rgba(100, 180, 255, 0.4));
+  filter: drop-shadow(0 0 20px rgba(var(--art, 100, 180, 255), 0.4));
 }
 .nge-trophy-featured-info {
   flex: 1;
@@ -5458,7 +5463,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   height: min(calc(64 * var(--nge-vw, 1vw)), 300px);
   object-fit: contain;
   margin-bottom: 6px;
-  filter: drop-shadow(0 0 24px rgba(100, 180, 255, 0.55));
+  filter: drop-shadow(0 0 24px rgba(var(--art, 100, 180, 255), 0.55));
   animation: nge-bz-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .nge-badge-zoom-name {
