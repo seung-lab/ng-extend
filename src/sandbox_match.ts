@@ -129,6 +129,10 @@ function standbyAction() {
   const playing = isPlaying();
   const chip = document.querySelector('.nge-play-chip') as HTMLElement | null;
   const btn = document.querySelector('.nge-play-btn') as HTMLElement | null;
+  // Pressed from the box: Play's own dock stays out of sight while it loads
+  // (Ames 2026-11-20: its lightning showed over the Training Sim box); the
+  // box runs its own lightning.
+  (window as any).__ngePlayFromBox = Date.now();
   (playing ? (chip ?? btn) : (btn ?? chip))?.click();
 }
 const store = {
@@ -453,6 +457,9 @@ const CSS = `
 #${CARD_ID}.nge-cm-checking .nge-cm-score .nge-cm-gauge::after{content:'';position:absolute;top:0;bottom:0;left:-40%;width:40%;
   background:linear-gradient(90deg,transparent,rgba(190,240,255,.45),transparent);animation:nge-cm-load 2.8s ease-in-out infinite}
 @keyframes nge-cm-load{from{left:-40%}to{left:100%}}
+#${CARD_ID} .nge-cm-score{position:relative}
+#${CARD_ID} .nge-cm-gbolt{position:absolute;z-index:1;pointer-events:none}
+#${CARD_ID}.nge-cm-checking .nge-cm-score.nge-cm-bolting .nge-cm-gauge::after{display:none}
 #${CARD_ID}.nge-cm-checking .nge-cm-state::before{content:'';display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px;
   border:1.5px solid rgba(127,216,255,.35);border-top-color:#7fd8ff;border-radius:50%;animation:nge-cm-spin 1.8s linear infinite}
 @keyframes nge-cm-spin{to{transform:rotate(360deg)}}
@@ -625,6 +632,7 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
 #${CARD_ID}.nge-cm-idle .nge-cm-play,#${CARD_ID}.nge-cm-idle .nge-cm-cellid,#${CARD_ID}.nge-cm-idle .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-play,#${CARD_ID}.nge-cm-reviewing .nge-cm-nudge,#${CARD_ID}.nge-cm-reviewing .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-saveview,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-skipcell,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-marktoggle,#${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-cellid{display:none}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing){height:auto !important;resize:horizontal}
+#${CARD_ID}{height:auto !important;max-height:calc(100vh - 80px);resize:horizontal}
 #${CARD_ID} .nge-cm-nudge-btns{display:flex;gap:5px;order:3;flex:1 0 100%;justify-content:flex-end;padding-left:0}
 #${CARD_ID}.nge-cm-min:not(.nge-cm-reviewing) .nge-cm-play{margin-top:6px;padding-top:7px}
 #${CARD_ID}.nge-cm-finishing .nge-cm-play,#${CARD_ID}.nge-cm-finishing .nge-cm-nudge,#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="merge"],#${CARD_ID}.nge-cm-finishing .nge-cm-row[data-row="cut"]{display:none}
@@ -953,12 +961,16 @@ function card(): HTMLElement {
   setMin(el, store.get(MIN_KEY) === '1', true);
   document.body.appendChild(el);
   powerOn(el);
+  try { new MutationObserver(() => syncGaugeBolt(el)).observe(el, { attributes: true, attributeFilter: ['class'] }); } catch { /* the sweep stays */ }
+  syncGaugeBolt(el);
   return el;
 }
 
 /** Collapsed: the title and the two bars only (Ames 2026-11-13). */
 function setMin(el: HTMLElement, min: boolean, quiet = false) {
+  const was = el.classList.contains('nge-cm-min');
   el.classList.toggle('nge-cm-min', min);
+  if (was !== min) applySavedWidth(el);
   if (min) { el.classList.remove('nge-cm-showinfo'); el.querySelector('.nge-cm-i')?.setAttribute('aria-pressed', 'false'); }
   const b = el.querySelector('.nge-cm-min-btn') as HTMLElement | null;
   if (b) {
@@ -1160,6 +1172,53 @@ function removeChip() {
 /** Opening and closing (Ames 2026-11-20: "a cool animation for the box to
  *  open and close"): the box powers on like a screen, a bright line that
  *  opens into the box, its parts arriving in turn; and off the same way. */
+/** While the box checks, Find Path's lightning runs along the score bar, end
+ *  to end, and strikes when the reading arrives (Ames 2026-11-20: "Can we use
+ *  the same path tracing loading here"). */
+let gaugeBolt: { el: HTMLElement; cv: HTMLCanvasElement; live: Live; ro?: ResizeObserver; ending?: boolean } | null = null;
+function syncGaugeBolt(el: HTMLElement) {
+  if (gaugeBolt && (!gaugeBolt.cv.isConnected || gaugeBolt.el !== el)) { endGaugeBolt(); }
+  const on = el.classList.contains('nge-cm-checking') && !el.classList.contains('nge-cm-loading') && !el.classList.contains('nge-cm-reviewing');
+  const g = el.querySelector('.nge-cm-score .nge-cm-gauge') as HTMLElement | null;
+  const score = g?.closest('.nge-cm-score') as HTMLElement | null;
+  if (on && !gaugeBolt && g && score && g.offsetWidth) {
+    const cv = document.createElement('canvas');
+    cv.className = 'nge-cm-gbolt';
+    cv.setAttribute('aria-hidden', 'true');
+    score.appendChild(cv);
+    score.classList.add('nge-cm-bolting');
+    const live: Live = { raf: 0, timer: 0 };
+    const b: NonNullable<typeof gaugeBolt> = { el, cv, live };
+    gaugeBolt = b;
+    let fitted = '';
+    const fit = () => {
+      if (gaugeBolt !== b || b.ending || !g.offsetWidth) return;
+      const key = `${g.offsetWidth}x${g.offsetLeft}x${g.offsetTop}`;
+      if (key === fitted) return;
+      fitted = key;
+      cv.style.left = `${g.offsetLeft - 6}px`;
+      cv.style.top = `${g.offsetTop + g.offsetHeight / 2 - 9}px`;
+      cancelAnimationFrame(live.raf);
+      startLoader(cv, live, g.offsetWidth + 12, 18, 6);
+    };
+    fit();
+    try { b.ro = new ResizeObserver(fit); b.ro.observe(g); } catch { /* fitted once */ }
+  } else if (!on && gaugeBolt && !gaugeBolt.ending) {
+    const b = gaugeBolt;
+    b.ending = true;
+    if (b.live.finish && b.cv.isConnected) b.live.finish(() => { if (gaugeBolt === b) endGaugeBolt(); syncGaugeBolt(el); });
+    else endGaugeBolt();
+  }
+}
+function endGaugeBolt() {
+  const b = gaugeBolt;
+  if (!b) return;
+  gaugeBolt = null;
+  b.ro?.disconnect();
+  cancelAnimationFrame(b.live.raf);
+  b.cv.closest('.nge-cm-score')?.classList.remove('nge-cm-bolting');
+  b.cv.remove();
+}
 function powerOn(el: HTMLElement) {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   el.classList.remove('nge-cm-off');
@@ -1738,18 +1797,28 @@ function openFinishShown(el: HTMLElement) {
 /** Drag the bottom right corner to resize the box (Ames 2026-11-14); the size
  *  stays, in this browser. Collapsed it keeps its width only. */
 const SIZE_KEY = 'nge-cell-match-size';
+/** Slim and expanded each keep the width the player gave them, and the
+ *  height always fits what is in the box, so it grows when Highlight opens
+ *  and shrinks after (Ames 2026-11-20: "a different saved state for my
+ *  preferred size on slim versus expanded", "can we have it like
+ *  automatically resize?"). */
+const SIZE_KEY_SLIM = 'nge-cell-match-size-slim';
+function sizeKey(el: HTMLElement) { return el.classList.contains('nge-cm-min') ? SIZE_KEY_SLIM : SIZE_KEY; }
+function applySavedWidth(el: HTMLElement) {
+  el.style.height = '';
+  let w = 0;
+  try { w = Number(JSON.parse(store.get(sizeKey(el)) || 'null')?.w) || 0; } catch { /* the default width */ }
+  el.style.width = w >= 300 ? `${Math.min(w, window.innerWidth - 24)}px` : '';
+}
 function keepSize(el: HTMLElement) {
-  try {
-    const s = JSON.parse(store.get(SIZE_KEY) || 'null');
-    if (s && s.w >= 300) el.style.width = `${Math.min(s.w, window.innerWidth - 24)}px`;
-    if (s && s.h >= 120) el.style.height = `${Math.min(s.h, window.innerHeight - 80)}px`;
-  } catch { /* the default size */ }
-  let at = '';
+  applySavedWidth(el);
   const save = () => {
-    // Only a size the player set: the corner writes width and height inline.
-    if (!el.style.width && !el.style.height) return;
-    const v = JSON.stringify({ w: Math.round(el.offsetWidth), h: el.style.height ? Math.round(el.offsetHeight) : 0 });
-    if (v !== at) { at = v; store.set(SIZE_KEY, v); }
+    // Only a width the player set: the corner writes it inline.
+    el.style.height = '';
+    if (!el.style.width) return;
+    const key = sizeKey(el);
+    const v = JSON.stringify({ w: Math.round(el.offsetWidth) });
+    if (store.get(key) !== v) store.set(key, v);
   };
   el.addEventListener('mouseup', save);
   el.addEventListener('pointerup', save);

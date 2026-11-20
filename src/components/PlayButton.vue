@@ -140,11 +140,14 @@ async function go() {
 // label. The button stays on screen until the cell is up.
 const launching = ref(false);
 const loading = ref(false);
+/** Pressed by the Training Sim box: the dock is not brought back for it. */
+const fromBox = ref(false);
 let launchSeq = 0;
 const SPARKS = Array.from({ length: 12 }, (_, i) => ({ a: `${i * 30 + (i % 2 ? 9 : -6)}deg`, d: `${34 + (i % 3) * 12}px`, t: `${(i % 4) * 25}ms` }));
 function onButton() {
   if (launching.value || loading.value) return;
   const seq = ++launchSeq;
+  fromBox.value = Date.now() - ((window as any).__ngePlayFromBox || 0) < 500;
   launching.value = true;
   setTimeout(() => { if (seq === launchSeq) launching.value = false; }, 800);
   let p: Promise<unknown> | null = null;
@@ -172,7 +175,7 @@ function onButton() {
   };
   void Promise.all([Promise.race([p.catch(() => false), new Promise(r => setTimeout(r, 20000))]), shown]).then(stop);
 }
-const dockShown = computed(() => showDock.value || launching.value || loading.value);
+const dockShown = computed(() => showDock.value || ((launching.value || loading.value) && !fromBox.value));
 // While Pyr fetches the cell, Find Path's loader runs across the button, as
 // Jump's does (Ames 2026-11-19: "can we use this same animation when user
 // clicks play?").

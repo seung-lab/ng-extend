@@ -122,9 +122,25 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const box = await page.evaluate(() => { const r = document.getElementById('nge-cell-match').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     check('the box powers on when it opens, then sits still', await page.evaluate(() => !document.querySelector('#nge-cell-match.nge-cm-on') && getComputedStyle(document.getElementById('nge-cell-match')).transform === 'none'), null);
     check('small, at the top left', box.x < 40 && box.y < 160 && box.w <= 355 && box.h < 380, box);
-    // Ames 2026-11-19: resized smaller, the box scrolls.
-    const scroll = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const h = c.style.height; c.style.height = '200px'; const r = { oy: getComputedStyle(c).overflowY, can: c.scrollHeight > c.clientHeight }; c.style.height = h; return r; });
-    check('resized smaller, the box scrolls', scroll.oy === 'auto' && scroll.can, scroll);
+    // Ames 2026-11-20: the height always fits what is in the box (it grows when
+    // more opens), capped at the screen, where it scrolls; slim and expanded
+    // each keep their own width.
+    const fitBox = await page.evaluate(async () => {
+      const c = document.getElementById('nge-cell-match'); const raf = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      c.style.height = '200px'; await raf(); const fits = c.scrollHeight <= c.clientHeight + 1; const h0 = c.getBoundingClientRect().height;
+      const i = c.querySelector('.nge-cm-i'); i && i.click(); await raf(); const h1 = c.getBoundingClientRect().height; i && i.click(); await raf();
+      const cs = getComputedStyle(c);
+      const minBtn = c.querySelector('.nge-cm-min-btn');
+      c.style.width = '420px'; c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); const expandedW = c.offsetWidth;
+      minBtn.click(); await raf(); const slimFirst = c.offsetWidth;
+      c.style.width = '330px'; c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      minBtn.click(); await raf(); const backExpanded = c.offsetWidth;
+      minBtn.click(); await raf(); const backSlim = c.offsetWidth; minBtn.click(); await raf();
+      return { fits, grew: h1 > h0 + 10, h0: Math.round(h0), h1: Math.round(h1), oy: cs.overflowY, cap: cs.maxHeight, expandedW, slimFirst, backExpanded, backSlim };
+    });
+    check('the box height fits what is in it, and grows when more opens', fitBox.fits && fitBox.grew, fitBox);
+    check('capped at the screen, where it scrolls', fitBox.oy === 'auto' && /calc|px/.test(fitBox.cap), fitBox);
+    check('slim and expanded each keep their own width', fitBox.expandedW === 420 && fitBox.slimFirst !== 420 && fitBox.backExpanded === 420 && fitBox.backSlim === 330, fitBox);
     // Clear of the Play button in the same corner.
     const clash = await page.evaluate(() => {
       const c = document.getElementById('nge-cell-match').getBoundingClientRect();
@@ -165,8 +181,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(300);
     const dim = await page.evaluate(() => document.getElementById('nge-cell-match').classList.contains('nge-cm-checking'));
-    const loading = await page.evaluate(() => { const g = document.querySelector('#nge-cell-match .nge-cm-score .nge-cm-gauge'); return getComputedStyle(g, '::after').animationName; });
-    check('while checking, a light runs along the score bar', loading === 'nge-cm-load', loading);
+    // Find Path's lightning along the bar, end to end (Ames 2026-11-20).
+    const loading = await page.evaluate(() => { const g = document.querySelector('#nge-cell-match .nge-cm-score .nge-cm-gauge'), cv = document.querySelector('#nge-cell-match .nge-cm-score canvas.nge-cm-gbolt'); if (!cv) return { cv: false }; const a = g.getBoundingClientRect(), b = cv.getBoundingClientRect(); return { cv: true, left: Math.round(b.left + 6 - a.left), right: Math.round(b.right - 6 - a.right), mid: Math.round((b.top + b.bottom) / 2 - (a.top + a.bottom) / 2), sweep: getComputedStyle(g, '::after').display }; });
+    check('while checking, lightning runs along the score bar from end to end', loading.cv && Math.abs(loading.left) <= 1 && Math.abs(loading.right) <= 1 && Math.abs(loading.mid) <= 1 && loading.sweep === 'none', loading);
     check('an edit dims the numbers at once and says Merge complete', dim && /merge complete/.test(await cardText() || ''), await cardText());
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
     await page.waitForTimeout(800); await edit([ANSWERS.merged.root]);
@@ -175,6 +192,9 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const updated = await waitText(/39%/, 10000);
     check('after the burst, one ask and the new Merge number', updated && asks.length === before + 1, { text: await cardText(), asks: asks.length - before });
     check('the change shows beside the row that moved, and only there', /match score [a-z ]*\+19\.5 19\.5% 1 edit merge \+39 39% 11 of 28 pieces added cut 0% 0 of 3 parts cut off/.test(await cardText() || ''), await cardText());
+    await page.waitForFunction(() => !document.getElementById('nge-cell-match').classList.contains('nge-cm-checking'), null, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1800);
+    check('the reading arrives: the lightning strikes and is gone', await page.evaluate(() => !document.querySelector('#nge-cell-match canvas.nge-cm-gbolt')), null);
     await shot('cell-match-after-merge.png');
     // Report 573: 19.9 to 34.9 read +14.999999 in floating point.
     const tenth = await page.evaluate(() => {
@@ -429,7 +449,7 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     check('an edit puts Hint away and clears its piece', after.nudge && after.layers.length === 0 && !after.inMain && after.glow === false, after);
     // Resize by the corner (Ames 2026-11-14), kept.
     const sized = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const cs = getComputedStyle(c); c.style.width = '440px'; c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); return { resize: cs.resize, w: Math.round(c.getBoundingClientRect().width), kept: localStorage.getItem('nge-cell-match-size') }; });
-    check('the box resizes from its corner, and keeps the size', sized.resize === 'both' && sized.w === 440 && /"w":440/.test(sized.kept || ''), sized);
+    check('the box resizes its width from its corner (the height fits itself), and keeps it', sized.resize === 'horizontal' && sized.w === 440 && /"w":440/.test(sized.kept || ''), sized);
     await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.style.width = ''; c.style.height = ''; localStorage.removeItem('nge-cell-match-size'); });
     const copy = (await cardText() || '').replace(/−3/, '');
     check('no dashes in the card', !/[\u2013\u2014]|\s-\s/.test(copy), copy);
