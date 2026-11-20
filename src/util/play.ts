@@ -121,7 +121,11 @@ export function retinaHub(): boolean { return ON_TEST_SITE || isAdmin() || fragm
 const FRAGMENT_TESTERS = new Set<string>([
   '5bb0310a-b42d-4d13-937f-eab620794949',  // Jan Lause (jan_lause)
 ]);
+/** Open to every player with edit access on Retina (Ames 2026-11-20: "let's
+ *  get the Lost Fragments deployed!"). */
+const FRAGMENTS_OPEN = true;
 export function fragmentTester(): boolean {
+  if (FRAGMENTS_OPEN && canQuest()) return true;
   try { return FRAGMENT_TESTERS.has(String(useProofreadingBackendStore().userId || '')); } catch { return false; }
 }
 
