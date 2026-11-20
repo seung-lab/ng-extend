@@ -1096,6 +1096,9 @@ function openFavorite(item: FavItem) {
 function openFavoriteInCase(item: FavItem) {
   openFavorite(item);
   activeTab.value = 'trophyCase';
+  // Straight to its place in the Trophy Case, its group unfolded, a special
+  // Achievement the same as any other (toknow, report 595).
+  revealSelectedTrophy(item.def ? ['cells', 'editor', 'loyalty', 'legacy-cells', 'legacy-edits'] : ['special', 'competitions']);
 }
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
