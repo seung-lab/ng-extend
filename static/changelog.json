@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T17:50:00Z",
+      "title": "Quicker Jump, no stuck 3D pill",
+      "items": [
+        "The Training Sim score bar flashes with one bolt of lightning when your new score is in.",
+        "Pressing Jump to next spot while your score is still being worked out no longer takes ages: it waits for the score, then finds the spot.",
+        "Updating the 3D shape no longer sits at 98% when a last piece never arrives. It goes once loading stops."
+      ]
+    },
+    {
       "at": "2026-11-20T17:42:00Z",
       "title": "Profile glows and tabs",
       "items": [
