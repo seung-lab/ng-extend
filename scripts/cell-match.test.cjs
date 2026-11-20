@@ -366,8 +366,12 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
     const minNudge = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); c.querySelector('.nge-cm-min-btn').click(); const shown = c.querySelector('.nge-cm-hbtn').offsetParent !== null; c.querySelector('.nge-cm-min-btn').click(); return shown; });
     check('collapsed, Jump is still there (Ames 2026-11-16)', minNudge === true, minNudge);
     const hintLayers = () => page.evaluate(() => ({ text: document.querySelector('#nge-cell-match .nge-cm-nudge').innerText.replace(/\s+/g, ' '), layers: (window.viewer.layerManager.managedLayers || []).map(l => l.name).filter(n => /^Hint/.test(n)) }));
-    await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-hbtn').click());
-    await page.waitForTimeout(1500);
+    // Jump searches with Find Path's loader, then lights the route and gives
+    // its label back (Ames 2026-11-19).
+    const searching = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); h.click(); const cv = h.querySelector('canvas.nge-cm-jloader'); return { on: h.classList.contains('nge-cm-searching'), canvas: !!cv && cv.width > 0, label: getComputedStyle(h.querySelector('.nge-cm-jlabel')).visibility }; });
+    await page.waitForTimeout(2600);
+    const searched = await page.evaluate(() => { const h = document.querySelector('#nge-cell-match .nge-cm-hbtn'); return { on: h.classList.contains('nge-cm-searching'), canvas: !!h.querySelector('canvas'), label: getComputedStyle(h.querySelector('.nge-cm-jlabel')).visibility, text: h.textContent }; });
+    check('Jump searches with the Find Path loader, then its label is back', searching.on && searching.canvas && searching.label === 'hidden' && !searched.on && !searched.canvas && searched.label === 'visible' && searched.text === 'Jump to next spot', { searching, searched });
     // Folded to one line at first; a click opens it with Show me (Ames 2026-11-19).
     const hintFold = await page.evaluate(() => { const c = document.getElementById('nge-cell-match'); const n = c.querySelector('.nge-cm-nudge'); const b = c.querySelector('.nge-cm-bulb'); const j = c.querySelector('.nge-cm-hbtn').getBoundingClientRect(), bb = b.getBoundingClientRect(); return { open: n.classList.contains('nge-cm-nudge-open'), lineShown: n.offsetParent !== null, bulb: b.offsetParent !== null, beside: Math.abs(bb.top - j.top) < 4 && bb.left > j.right, small: bb.width <= 34 }; });
     await page.evaluate(() => document.querySelector('#nge-cell-match .nge-cm-bulb').click());
