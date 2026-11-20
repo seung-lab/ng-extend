@@ -5022,7 +5022,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // ── Quests board: Cilia Quests on the Retina (Ames 2026-11-05) ────────
   /** One row per annotator on the quest sheet: quests submitted today (US
    *  Eastern day, the sheet's Date column), in the last 7 days and all time.
-   *  Counted the way the profile counts them (cilium annotated or no cilium),
+   *  Counted the way the profile counts them (cilium annotated, no cilium or skipped),
    *  by the annotator's name, from the table (ew_quest_board), not the sheet. */
   const questBoard: Ref<any[]> = ref([]);
   const questBoardState: Ref<'loading' | 'ok' | 'unavailable'> = ref('loading');

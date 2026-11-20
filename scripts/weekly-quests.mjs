@@ -14,7 +14,7 @@
 export const QUEST = 'retina_cilia';
 
 /** Keep in step with questCounts in src/annotation_quests.ts. */
-export const questCounts = (status) => /^\s*(cilium annotated|no cilium)/i.test(String(status ?? ''));
+export const questCounts = (status) => /^\s*(cilium annotated|no cilium|skipped)/i.test(String(status ?? ''));
 /** Keep in step with nameKey in src/annotation_quests.ts. */
 export const nameKey = (v) => String(v ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 

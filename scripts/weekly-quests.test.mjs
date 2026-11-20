@@ -19,7 +19,7 @@ test('the rule matches the leaderboard and profile', () => {
   assert.equal(questCounts('Cilium annotated'), true);
   assert.equal(questCounts('No cilium (one centriole)'), true);
   assert.equal(questCounts('Need help: One centriole missing'), false);
-  assert.equal(questCounts('Skipped (low quality)'), false);
+  assert.equal(questCounts('Skipped (low quality)'), true);
   assert.equal(sheetDay('11/2/2026'), '2026-11-02');
   assert.equal(sheetDay('2026-11-02'), null);
 });
