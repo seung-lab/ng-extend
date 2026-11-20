@@ -8,6 +8,8 @@
 import nurroFlying from '../../static/nurro/nurro-super-v2.png';
 
 const LIFE_MS = 1250;
+/** The art's lean, nose down: tan of about 15 degrees. */
+const SLOPE = Math.tan(15 * Math.PI / 180);
 interface Puff { x: number; y: number; vx: number; vy: number; age: number; size: number; }
 
 /** The hourly fly-by (Ames 2026-11-20: "maybe he could just fly across the
@@ -40,11 +42,15 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
     const dx = W + size - x0, rise = Math.max(y0 + size, H * 0.6);
     const at = (f: number, s = 1, r = 0) => `translate(${x0 + dx * f * f}px, ${y0 - rise * (f < 0.25 ? f * 0.4 : 0.1 + (f - 0.25) * 1.2)}px) rotate(${r}deg) scale(${s})`;
     const DURATION = across ? 5200 : 3800;
-    // Straight across (Ames 2026-11-20), at a height in the top two thirds.
-    const ay = H * (0.1 + Math.random() * 0.5);
+    // Straight across (Ames 2026-11-20), along the line the art leans on
+    // ("he should fly at that angle and the contrail at that angle"): about
+    // 15 degrees, nose down, so he runs gently downhill to the right. He
+    // starts high enough to stay in the top two thirds.
+    const drop = (W + 2 * size) * SLOPE;
+    const ay = Math.max(H * 0.02, H * 0.04 + Math.random() * Math.max(0, H * 0.62 - drop - H * 0.04));
     const anim = across ? img.animate([
       { transform: `translate(${-size}px, ${ay}px) scale(1)`, opacity: 1, offset: 0 },
-      { transform: `translate(${W + size}px, ${ay}px) scale(1)`, opacity: 1, offset: 1 },
+      { transform: `translate(${W + size}px, ${ay + drop}px) scale(1)`, opacity: 1, offset: 1 },
     ], { duration: DURATION, easing: 'linear', fill: 'forwards' }) : img.animate([
       { transform: `translate(${x0}px, ${y0}px) scale(0.2)`, opacity: 0, offset: 0 },
       { transform: `translate(${x0}px, ${y0 - 30}px) rotate(-6deg) scale(1.1)`, opacity: 1, offset: 0.15 },
@@ -62,7 +68,7 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
       const t = Number(anim.currentTime || 0);
       const r = img.getBoundingClientRect();
       // His back, where the cape streams from (he faces right).
-      const tail = { x: r.left + r.width * 0.16, y: r.top + r.height * 0.52 };
+      const tail = across ? { x: r.left + r.width * 0.1, y: r.top + r.height * 0.45 } : { x: r.left + r.width * 0.16, y: r.top + r.height * 0.52 };
       const speed = prev ? Math.hypot(tail.x - prev.x, tail.y - prev.y) / Math.max(dt, 0.001) : 0;
       // A thin wisp on the hover, a full contrail once he is moving.
       const power = !across && t < DURATION * 0.12 ? 0 : Math.min(1, 0.15 + speed / 900);
@@ -73,7 +79,9 @@ export function flyNurroFrom(box: { left: number; top: number; width: number; he
         const p = prev ? { x: prev.x + (tail.x - prev.x) * along, y: prev.y + (tail.y - prev.y) * along } : tail;
         const jx = Math.random() - 0.5, jy = Math.random() - 0.5;
         const L = r.width;
-        puffs.push({ x: p.x + jx * L * 0.06, y: p.y + jy * L * 0.06, vx: -L * (0.4 + Math.random() * 0.3) * 0.6 + jx * L * 0.3, vy: (across ? 0 : L * 0.15) + jy * L * (across ? 0.12 : 0.3),
+        // Across, the puffs drift back up the line he flies (up and left).
+        const back = -L * (0.4 + Math.random() * 0.3) * 0.6;
+        puffs.push({ x: p.x + jx * L * 0.06, y: p.y + jy * L * 0.06, vx: back + jx * L * (across ? 0.12 : 0.3), vy: across ? back * SLOPE + jy * L * 0.12 : L * 0.15 + jy * L * 0.3,
           age: (1 - along) * dt * 1000, size: L * (across ? 0.03 + Math.random() * 0.03 : 0.05 + Math.random() * 0.05) });
       }
       prev = tail;
