@@ -95,7 +95,7 @@ async function call(action: string, body: Record<string, unknown> = {}): Promise
 
 /** The last list read, shared by the Quests tab, the Cell Library's tab
  *  count and the profile, so one read serves all three. */
-export const questState = reactive({ rows: [] as QuestRow[], you: '', loaded: false });
+export const questState = reactive({ rows: [] as QuestRow[], you: '', loaded: false, counts: null as QuestCounts | null });
 /** The rows, and `you`: the name the sheet carries for this player (the
  *  server writes it, so it is the one to match rows against).
  *
@@ -106,7 +106,14 @@ export const questState = reactive({ rows: [] as QuestRow[], you: '', loaded: fa
  *  that finished within the last three seconds answers the next caller (the
  *  tab mounting just after the library's own read). A write starts the next
  *  read afresh, and only the newest read sets the shared state. */
-type QuestList = { rows: QuestRow[]; you: string };
+/** The rest of the tab, counted (Ames 2026-11-20): the server sends only the
+ *  first open cells and the player's own rows, so these say how many there are
+ *  in all. `taken` and `done` are other players' cells. Null from a server
+ *  that still sends every row: the rows are then the whole tab. */
+export interface QuestCounts { open: number; taken: number; done: number; total: number }
+type QuestList = { rows: QuestRow[]; you: string; counts: QuestCounts | null };
+const countsFrom = (c: any): QuestCounts | null => c && typeof c === 'object' && ['open', 'taken', 'done', 'total'].every(k => Number.isFinite(c[k]))
+  ? { open: c.open, taken: c.taken, done: c.done, total: c.total } : null;
 let listing: Promise<QuestList> | null = null;
 let listSeq = 0;
 let lastList: { at: number; value: QuestList } | null = null;
@@ -117,10 +124,11 @@ export function listQuests(): Promise<QuestList> {
   const seq = ++listSeq;
   const mine: Promise<QuestList> = (async () => {
     const r = await call('quest_list');
-    const out = { rows: Array.isArray(r.rows) ? r.rows : [], you: typeof r.you === 'string' ? r.you : '' };
+    const out = { rows: Array.isArray(r.rows) ? r.rows : [], you: typeof r.you === 'string' ? r.you : '', counts: countsFrom(r.counts) };
     if (seq === listSeq) {
       questState.rows = out.rows;
       questState.you = out.you;
+      questState.counts = out.counts;
       questState.loaded = true;
       lastList = { at: Date.now(), value: out };
     }
@@ -138,7 +146,7 @@ async function writing<T>(write: Promise<T>): Promise<T> {
 }
 /** Cells nobody holds and nobody has completed: what there is to claim. */
 export function questOpenCount(): number {
-  return questState.rows.filter(r => !r.annotator && !r.status).length;
+  return questState.counts?.open ?? questState.rows.filter(r => !r.annotator && !r.status).length;
 }
 export async function claimQuest(segmentId: string) { return writing(call('quest_claim', { segmentId })); }
 export async function releaseQuest(segmentId: string) { return writing(call('quest_release', { segmentId })); }

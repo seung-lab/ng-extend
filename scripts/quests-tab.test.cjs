@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
 
-const BASE = 'http://localhost:3488/';
+const BASE = process.env.QUEST_BASE || 'http://localhost:3488/';
 const CHROME = 'C:/Users/amyle/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe';
 const OUT = process.argv[2] || path.join(__dirname, 'shots5');
 fs.mkdirSync(OUT, { recursive: true });
@@ -25,6 +25,14 @@ const ROWS = [
   row('A40', '720575940553016515', 'ON SAC', { annotator: 'Celia D', status: 'No cilium', date: '10/11/2026', link: 'https://x.test/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/9' }),
 ];
 const calls = [];
+// The list as the server sends it (functions/sheet-policy.js questListFor,
+// 2026-11-20): the open cells, the player's own rows and counts. QUEST_SHAPE=old
+// answers with every row, as the server did before; the tab reads both.
+const OLD_SHAPE = process.env.QUEST_SHAPE === 'old';
+const { questListFor } = require(path.join(__dirname, '..', 'functions', 'sheet-policy.js'));
+const listAnswer = () => OLD_SHAPE ? { rows: ROWS } : questListFor(ROWS, { display_name: 'Test R. Player' });
+const failures = [];
+const check = (what, ok, got) => { console.log((ok ? 'ok   ' : 'FAIL ') + what + (ok ? '' : ' got ' + JSON.stringify(got))); if (!ok) failures.push(what); };
 const json = (body, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
 const RETINA_LAYERS = [
   { type: 'image', source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2', name: 'em' },
@@ -48,6 +56,8 @@ const RETINA_LAYERS = [
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) {
       try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {}
     }
+    // Cilia Quest Training plays by itself on a first visit and covers the tab.
+    try { localStorage.setItem('nge-cilia-training-autoplayed', '1'); } catch (e) {}
   });
   // Nothing with the fake token may reach a real middleauth server: one 401
   // makes the provider wait for a login for good. Registered first, so every
@@ -72,7 +82,7 @@ const RETINA_LAYERS = [
       const hit = ROWS.find(x => x.segmentId === String(input.segmentId));
       if (input.quest !== 'retina_cilia') return r.fulfill(json({ error: 'There is no such quest.' }, 400));
       // `you`: the sheet's spelling of the player's name, which differs from the game's.
-      if (input.action === 'quest_list') return r.fulfill(json({ ok: true, you: 'Test R. Player', rows: ROWS }));
+      if (input.action === 'quest_list') return r.fulfill(json({ ok: true, you: 'Test R. Player', ...listAnswer() }));
       if (!hit) return r.fulfill(json({ error: 'This cell is not in the quest sheet.' }, 409));
       if (input.action === 'quest_claim') { if (hit.annotator && hit.annotator !== 'Test R. Player') return r.fulfill(json({ error: 'Someone else has this cell.' }, 409)); hit.annotator = 'Test R. Player'; return r.fulfill(json({ ok: true, updated: 1 })); }
       if (input.action === 'quest_release') { hit.annotator = ''; return r.fulfill(json({ ok: true, updated: 1 })); }
@@ -87,15 +97,16 @@ const RETINA_LAYERS = [
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(single ? (rows[0] || null) : rows) }));
   });
   await context.route(/supabase\.co/, r => r.request().method() !== 'GET' ? r.fulfill(json([])) : r.fulfill(json([])));
-  // State servers: the start link's state (loaded on Take) and the share link (minted on Submit).
-  await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json({ dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d', selectedLayer: { layer: 'Basal body', visible: true }, selection: { visible: true } })));
+  // State servers: the retina's default view (config.ts defaultStateUrl), the
+  // start link's state (loaded on Take) and the share link (minted on Submit).
+  await context.route(/global\.(daf-apis\.com|brain-wire-test\.org)\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json({ dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d', selectedLayer: { layer: 'Basal body', visible: true }, selection: { visible: true } })));
   await context.route(/global\.brain-wire-test\.org\/nglstate\/api\/v1\/post/, r => { calls.push({ action: 'mint', method: r.request().method() }); return r.fulfill(json('https://global.brain-wire-test.org/nglstate/api/v1/4242')); });
 
   const page = await context.newPage();
   // A sign-in popup, should one open, is closed: the test never signs in.
   context.on('page', p => { if (p !== page) p.close().catch(() => {}); });
   const errors = [];
-  page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
+  page.on('pageerror', e => errors.push(String(e).slice(0, 200) + ' @ ' + String(e.stack || '').split('\n').slice(1, 3).join(' ').slice(0, 200)));
   page.on('console', m => { if (m.type() === 'error' && /quest|Quest|aq-/.test(m.text())) errors.push('console: ' + m.text().slice(0, 200)); if (/middleauth|MiddleAuth|state_link|nglstate|UnverifiedApp/i.test(m.text())) console.log('  console[' + m.type() + '] ' + m.text().slice(0, 220)); });
   page.on('request', r => { if (/daf-apis|brain-wire-test|auth_info/.test(r.url())) console.log('  req ' + r.method() + ' ' + r.url().slice(0, 120)); });
   page.on('requestfailed', r => { if (/daf-apis|brain-wire-test/.test(r.url())) console.log('  FAILED ' + r.url().slice(0, 120) + ' ' + (r.failure() || {}).errorText); });
@@ -107,7 +118,8 @@ const RETINA_LAYERS = [
   };
   const tabText = () => page.evaluate(() => (document.querySelector('.nge-aq') || {}).innerText || '');
   try {
-    await page.goto(BASE, { waitUntil: 'load' });
+    // Opened on the retina's view itself: the bare address may open another dataset.
+    await page.goto(BASE + '#!' + encodeURIComponent(JSON.stringify({ dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS.slice(0, 2), layout: 'xy-3d' })), { waitUntil: 'load' });
     await page.waitForFunction(() => { const a = document.querySelector('#app'); return !!(a && a.__vue_app__ && window.viewer); }, null, { timeout: 90000 });
     await page.evaluate((css) => {
       const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia;
@@ -138,12 +150,21 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(1200);
     console.log('list calls: ' + JSON.stringify(calls));
     console.log('tab text: ' + JSON.stringify((await tabText()).slice(0, 700)));
+    { const t = await tabText();
+      console.log('shape: ' + (OLD_SHAPE ? 'old, every row' : 'new, open and own rows with counts'));
+      // Section titles show in capitals (CSS), and innerText carries them so.
+      check('the list shows two open cells', /Open\s*2(?!\d)/i.test(t) && (t.match(/Soma at/g) || []).length === 2, t);
+      check('a cell taken by another player is counted, not named', /Taken by other players\s*1(?!\d)/i.test(t) && !/Nseraf/.test(t), t);
+      check('another player\'s submitted cell is counted, not listed', /Submitted\s*1(?!\d)/i.test(t) && /1 by other players/.test(t) && !/Celia D/.test(t), t);
+      check('the tallies show', /Submitted by you:\s*0/.test(t) && /Holding\s*0\s*of 3/.test(t), t);
+      check('the library tab counts two open', (await page.evaluate(() => (document.querySelector('.nge-cl-quests-tab b') || {}).textContent || '')).trim() === '2', await page.evaluate(() => (document.querySelector('.nge-cl-quests-tab') || {}).textContent)); }
     await shot('quests-list');
     // First visit: a few seconds in, the Instructions button is lit once.
     const nudged = await page.waitForSelector('.nge-aq-info--nudge', { timeout: 6000 }).then(() => true).catch(() => false);
-    console.log('instructions nudge: ' + nudged + ' seen flag: ' + await page.evaluate(() => localStorage.getItem('nge-cilia-quest-intro-seen')) + ' button: ' + JSON.stringify(await page.evaluate(() => document.querySelector('.nge-aq-info').innerText.replace(/\s+/g, ' ').trim())));
+    console.log('instructions nudge: ' + nudged + ' seen flag: ' + await page.evaluate(() => localStorage.getItem('nge-cilia-quest-intro-seen')) + ' button: ' + JSON.stringify(await page.evaluate(() => document.querySelector('.nge-aq-info--nudge, .nge-aq-info:last-of-type').innerText.replace(/\s+/g, ' ').trim())));
     await shot('quests-nudge');
-    await page.click('.nge-aq-info');
+    // The Instructions button, not Training (the first .nge-aq-info since 2026-11-10).
+    await page.click('.nge-aq-info:has-text("Instructions")');
     await page.waitForTimeout(300);
     console.log('help box: ' + JSON.stringify(await page.evaluate(() => { const h = document.querySelector('.nge-qi'); return h ? { steps: h.querySelectorAll('li').length, head: h.querySelector('.nge-qi-title').innerText.trim(), size: getComputedStyle(h.querySelector('.nge-qi-steps')).fontSize } : 'none'; })));
     console.log('help links: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-qi a')].map(x => [x.textContent.trim(), x.href.slice(0, 60), x.target]))));
@@ -232,6 +253,10 @@ const RETINA_LAYERS = [
     console.log('after submit, status bar: ' + JSON.stringify((await statusText()).slice(0, 300)));
     console.log('calls: ' + JSON.stringify(calls.filter(c => c.action !== 'quest_list')));
     console.log('after submit, text: ' + JSON.stringify((await tabText()).slice(0, 600)));
+    { const t = await tabText();
+      check('after submit, yours is listed with the others counted', /Submitted by you:\s*1/.test(t) && /Submitted\s*2(?!\d)/i.test(t) && /Yours are below\. 1 more by other players/.test(t) && /, you,/.test(t), t);
+      // The next cell was claimed and opened after Submit: none is open now.
+      check('after submit, the next cell is held and none is open', /Holding\s*1\s*of 3/.test(t) && /Open\s*0(?!\d)/i.test(t) && /Every cell is taken or done/.test(t), t); }
     await shot('quests-submitted');
     // The profile: the Quests count in the Scout report.
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: {} })));
@@ -245,4 +270,6 @@ const RETINA_LAYERS = [
     await browser.close();
   }
   console.log('page errors: ' + errors.length + (errors.length ? ' ' + JSON.stringify(errors.slice(0, 4)) : ''));
+  console.log(failures.length ? `${failures.length} check(s) failed` : 'every check passed');
+  if (failures.length) process.exitCode = 1;
 })().catch(e => { console.error('FAILED', e); process.exit(1); });
