@@ -5991,7 +5991,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
       current.sort((a: any, b: any) => String(b.send_at || b.created_at).localeCompare(String(a.send_at || a.created_at)));
     }
-    notifications.value = current;
+    // Community milestones: only the newest stays in the feed (Ames
+    // 2026-11-20: "keep the most recent milestone in their notifications").
+    // The list is newest first, so the first one found is kept.
+    let milestoneKept = false;
+    const isMilestone = (n: Notification) => /#nge-milestone=/.test(String(n.body || ''));
+    notifications.value = current.filter(n => !isMilestone(n) || (milestoneKept ? false : (milestoneKept = true)));
 
     // Everything in the feed now counts as delivered from here on.
     const before = prefsStore.prefs.notifDelivered || [];

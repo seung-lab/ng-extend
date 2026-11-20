@@ -2,8 +2,9 @@
 /**
  * The community milestone celebration (Ames 2026-11-20): when everyone together
  * passes a big milestone, the banner drops in at the top with confetti and
- * Nurro flies across, once per browser. A click on the X closes it; the
- * milestone's notification brings it back, quietly. Lost Fragments milestones
+ * Nurro flies across, once per browser, for players here within 7 days of
+ * it. A click on the X closes it; the milestone's notification plays it again
+ * (only the newest milestone notification stays in the feed). Nothing queues. Lost Fragments milestones
  * use it too. See util/community_milestones.ts for what counts and when.
  *
  * The box is the starship intro's hologram callout (util/intro_tour.ts
@@ -107,7 +108,7 @@ function close() {
   celebration.value = null;
 }
 
-/** From a notification: #nge-milestone=cells:5000. */
+/** From a notification: #nge-milestone=cells:5000. Plays it, Nurro too. */
 function onReopen(e: Event) {
   const d = (e as CustomEvent<{ track?: string; value?: number }>).detail || {};
   const t = d.track as Track;

@@ -6,7 +6,10 @@
 //   a fresh cells 5,000 milestone (banner true) shows the banner once, with
 //     CONGRATS!, the line, the countdown from the live count, and Nurro flying;
 //   the X closes it and it does not come back on reload;
-//   its notification brings it back, with no Nurro;
+//   its notification plays it again when clicked, Nurro too; only the newest
+//     milestone notification stays in the feed;
+//   a milestone over 7 days old does not play by itself;
+//   two recent milestones never queue: one plays, closing it brings no other;
 //   a milestone with banner false (inside the week) never pops up;
 //   a Lost Fragments count over 500 shows the same banner for Lost Fragments;
 //   Dataset Stats shows the next milestone.
@@ -22,6 +25,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
 
 const now = () => new Date().toISOString();
 const PROGRESS = [{ track: 'cells', count: 5012 }, { track: 'edits', count: 61234 }, { track: 'players', count: 58 }];
+const OLD_NOTE = { id: 990000, title: '🎊 Together we are 100 players strong', target_type: 'all', target_id: null, image_url: null, thumbnail_url: null,
+  body: 'Congrats! Together we are now 100 players strong. A Pyr community milestone.\n\n[See the celebration again](#nge-milestone=players:100)' };
 const NOTE = { id: 990001, title: '🎊 Together we completed 5,000 cells', target_type: 'all', target_id: null, image_url: null, thumbnail_url: null,
   body: 'Congrats! Together we just completed 5,000 cells. A Pyr community milestone. 4,988 to go until 10,000.\n\n[See the celebration again](#nge-milestone=cells:5000)' };
 
@@ -75,7 +80,7 @@ async function run(browser, opts) {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     // Lost Fragments' count: 512 done by everyone.
     if (input.action === 'fragments.list') return r.fulfill(json({ ok: true, data: { mine: [], others: Array.from({ length: opts.fragments || 0 }, (_, i) => 'f' + i) } }));
-    if (input.table === 'notifications' && opts.notes) return r.fulfill(json({ status: 200, ok: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts.notes.map(n => ({ ...n, send_at: now(), created_at: now() }))) }));
+    if (input.table === 'notifications' && opts.notes) return r.fulfill(json({ status: 200, ok: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts.notes.map((n, i) => ({ ...n, send_at: new Date(Date.now() - i * 3600e3).toISOString(), created_at: now() }))) }));
     const rows = input.table === 'users' ? [{ id: 'test-user', display_name: 'Test Player', username: 'testplayer', middleauth_email: 't@example.org' }] : [];
     return r.fulfill(json({ status: 200, ok: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(/pgrst\.object/.test(String(input.accept || '')) ? (rows[0] || null) : rows), data: { invited: true } }));
   });
@@ -96,7 +101,7 @@ async function run(browser, opts) {
   try {
     // ── 1. A fresh milestone with its banner ──
     {
-      const { context, page, asked } = await run(browser, { milestones: [{ track: 'cells', value: 5000, reached_at: now(), banner: true }], notes: [NOTE] });
+      const { context, page, asked } = await run(browser, { milestones: [{ track: 'cells', value: 5000, reached_at: now(), banner: true }], notes: [NOTE, OLD_NOTE] });
       await open(context, page);
       await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
       const nurro0 = await page.evaluate(() => window.__nurro);
@@ -141,13 +146,15 @@ async function run(browser, opts) {
       console.log('  notes in store', await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend').notifications.length));
       const card = await page.evaluate(() => { const c = [...document.querySelectorAll('.nge-notif-card')].find(c => /5,000 cells/.test(c.textContent)); return c ? { milestone: c.classList.contains('nge-notif-card--milestone'), text: c.textContent.replace(/\s+/g, ' ').trim() } : null; });
       check('notification card, milestone style', card && card.milestone, card);
+      const msCards = await page.evaluate(() => [...document.querySelectorAll('.nge-notif-card')].filter(c => /Together we/.test(c.textContent)).length);
+      check('only the newest milestone notification is kept', msCards === 1, msCards);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-notification.png` });
       await page.evaluate(() => [...document.querySelectorAll('.nge-notif-card')].find(c => /5,000 cells/.test(c.textContent)).click());
-      await page.waitForTimeout(3400);
+      await page.waitForTimeout(3600);
       const back = await banner(page);
       check('notification brings it back', back && back.sub === 'Together we just completed 5,000 cells.', back);
       check('panel closed behind it', await page.evaluate(() => { const p = document.querySelector('.nge-notif-panel'); return !p || p.offsetParent === null; }));
-      check('no Nurro the second time', (await page.evaluate(() => window.__nurro)) === nurroBefore);
+      check('clicking it plays it, Nurro too', (await page.evaluate(() => window.__nurro)) === nurroBefore + 1, await page.evaluate(() => window.__nurro));
       await page.click('.nge-cm-close');
       await page.waitForTimeout(500);
 
@@ -155,6 +162,34 @@ async function run(browser, opts) {
       await open(context, page);
       await page.waitForTimeout(3000);
       check('not again after reload', !(await banner(page)));
+      await context.close();
+    }
+    // ── 1b. Over 7 days old: waits in the notification, does not play ──
+    {
+      const { context, page } = await run(browser, { milestones: [{ track: 'cells', value: 5000, reached_at: new Date(Date.now() - 8 * 864e5).toISOString(), banner: true }] });
+      // The real table is asked for the last 7 days only; answer what it would.
+      await context.route(/\/community_milestones/, r => { const u = decodeURIComponent(r.request().url()); const since = (u.match(/reached_at=gte\.([^&]+)/) || [])[1]; return r.fulfill(json(since && new Date(since) > new Date(Date.now() - 8 * 864e5) ? [] : [{ track: 'cells', value: 5000, reached_at: new Date(Date.now() - 8 * 864e5).toISOString(), banner: true }])); });
+      await open(context, page);
+      await page.waitForTimeout(5000);
+      check('over 7 days old does not play by itself', !(await banner(page)), await banner(page));
+      await context.close();
+    }
+    // ── 1c. Two recent ones: one plays, nothing queues behind it ──
+    {
+      const { context, page } = await run(browser, { milestones: [
+        { track: 'edits', value: 100000, reached_at: now(), banner: true },
+        { track: 'cells', value: 5000, reached_at: new Date(Date.now() - 3 * 864e5).toISOString(), banner: true }] });
+      await open(context, page);
+      await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      const first = await banner(page);
+      check('the newest plays', first && first.sub === 'Together we just made 100,000 edits.', first && first.sub);
+      await page.click('.nge-cm-close');
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      // Read the tables again, as the 20 minute timer does.
+      await open(context, page);
+      await page.waitForTimeout(4000);
+      check('the older one does not queue up after', !(await banner(page)));
       await context.close();
     }
     // ── 2. A milestone inside the week (banner false): notification only ──

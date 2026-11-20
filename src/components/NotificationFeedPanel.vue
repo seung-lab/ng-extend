@@ -385,8 +385,8 @@ function isBadgeNotification(notif: any): boolean {
 }
 
 /** A community milestone's notification (supabase-community-milestones.sql)
- *  carries #nge-milestone=cells:5000: it brings the banner back, without the
- *  confetti (Ames 2026-11-20). */
+ *  carries #nge-milestone=cells:5000: a click plays the celebration again
+ *  (Ames 2026-11-20). */
 function milestoneFrom(text: string): { track: string; value: number } | null {
   const m = String(text || '').match(/#nge-milestone=(cells|edits|players|fragments):(\d{1,9})/);
   return m ? { track: m[1], value: Number(m[2]) } : null;

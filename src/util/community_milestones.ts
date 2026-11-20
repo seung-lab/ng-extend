@@ -75,21 +75,26 @@ export function markSeen(track: Track, value: number) {
   } catch { /* private mode */ }
 }
 
-/** Ask for a celebration with confetti, unless this browser has had it or
- *  another is up. */
+/** Play a celebration on its own, unless this browser has had it. Nothing
+ *  queues (Ames 2026-11-20: "we don't want them to queue up"): one that comes
+ *  while another is up counts as seen and waits in its notification. */
 export function celebrate(track: Track, value: number) {
-  if (value <= 0 || value <= seenUpTo(track) || celebration.value) return;
+  if (value <= 0 || value <= seenUpTo(track)) return;
+  if (celebration.value) { markSeen(track, value); return; }
   celebration.value = { track, value, confetti: true };
 }
-/** Bring one back from its notification: no confetti, no Nurro. */
+/** Play one from its notification, the whole celebration (Ames 2026-11-20:
+ *  "If they click it, then it should play"). */
 export function reopen(track: Track, value: number) {
-  celebration.value = { track, value, confetti: false };
+  celebration.value = { track, value, confetti: true };
 }
 
 // ── Reading the server ──────────────────────────────────────────────────────
-/** A milestone older than this is not celebrated on a first visit; its
- *  notification is still there. */
-const FRESH_MS = 14 * 24 * 3600 * 1000;
+/** A milestone plays by itself only for players here within 7 days of it;
+ *  after that it waits in their notifications and plays when clicked (Ames
+ *  2026-11-20: "it should not autoplay ... they need to be on the site within
+ *  7 days of the most recent notification"). */
+const FRESH_MS = 7 * 24 * 3600 * 1000;
 interface MilestoneRow { track: string; value: number; reached_at: string; banner: boolean; }
 
 export async function loadCommunityMilestones(): Promise<void> {
@@ -107,12 +112,15 @@ export async function loadCommunityMilestones(): Promise<void> {
     communityCounts.value = next;
   }
   if (!ms.error && ms.data) {
-    // The newest one with a banner this browser has not had.
-    for (const r of ms.data as MilestoneRow[]) {
-      const t = r.track as Track;
-      if (!r.banner || !['cells', 'edits', 'players'].includes(t)) continue;
-      if (r.value > seenUpTo(t)) { celebrate(t, r.value); break; }
-    }
+    // Only the newest one with a banner plays by itself, and only if this
+    // browser has not had it. Every other recent one counts as seen, so none
+    // queue up behind it; their notification is still there.
+    const rows = (ms.data as MilestoneRow[]).filter(r => ['cells', 'edits', 'players'].includes(r.track));
+    // The one that plays counts as seen when its X is clicked, so a reload
+    // before that shows it again.
+    const newest = rows.find(r => r.banner);
+    for (const r of rows) if (r !== newest && !(newest && r.track === newest.track && r.value >= newest.value)) markSeen(r.track as Track, r.value);
+    if (newest) celebrate(newest.track as Track, newest.value);
   }
 }
 
