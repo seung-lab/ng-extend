@@ -1410,7 +1410,8 @@ async function grantLines(a, io) {
 // earned datasets a player can edit, read from CAVE with the admin token, so
 // it is right for grants of any date. Only these three are told, and only
 // "can edit": nothing else about their account. Kept 10 minutes per player.
-const PROFILE_ACCESS = {'stroeh-mouse-retina': 'stroeh_mouse_retina', HiMC: 'pni_mec', BANC: 'banc'};
+// FlyWire (fafb) in place of BANC on the profile (Ames 2026-11-19).
+const PROFILE_ACCESS = {'stroeh-mouse-retina': 'stroeh_mouse_retina', HiMC: 'pni_mec', fafb: 'flywire_fafb_production', BANC: 'banc'};
 const PROFILE_ACCESS_MS = 10 * 60 * 1000;
 const profileAccessSeen = new Map();
 async function profileAccess(a, io) {

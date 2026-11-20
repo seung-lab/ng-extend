@@ -37,6 +37,7 @@ import unlockIcon from '../images/unlock-icon.png';
 // Each dataset's own emblem (Ames 2026-11-19), shown where its edit access is.
 import retinaEmblem from '../images/datasets/retina.png';
 import mecEmblem from '../images/datasets/mec.png';
+import flywireEmblem from '../images/datasets/flywire.png';
 import bancEmblem from '../images/datasets/banc.png';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
@@ -559,14 +560,16 @@ async function loadDatasetStats() {
 }
 
 // ── Edit access (Ames 2026-11-02: "should we show accesses unlocked in
-// profile?") ── The datasets that are earned: Retina, MEC and BANC. Your own
+// profile?") ── The datasets that are earned: Retina, MEC and FlyWire. Your own
 // profile asks CAVE, so it is always right, with the date from the grant's
 // chat line when there is one. Someone else's shows only the grants on record
 // (since 2026-10-30): an older one is simply not shown, never "not yet".
-const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'banc'];
+// FlyWire, not BANC (Ames 2026-11-19: "BANC should be FlyWire").
+// And BANC (Ames 2026-11-19: "It should have: Retina, MEC, FlyWire, BANC").
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'flywire_fafb_production', 'banc'];
 /** Short names for the tiles. */
-const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', banc: 'BANC' };
-const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, banc: bancEmblem };
+const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', flywire_fafb_production: 'FlyWire', banc: 'BANC' };
+const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, flywire_fafb_production: flywireEmblem, banc: bancEmblem };
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
@@ -612,9 +615,18 @@ watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loa
 watch(() => backendStore.userId, () => { if (activeTab.value === 'overview') void loadAccess(); }, { immediate: true });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets' || activeTab.value === 'overview') void loadAccess(); });
 /** Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19):
- *  your own shows every dataset, locked ones dark; someone else's only the
- *  ones they have unlocked, and nothing when they have none. */
-const unlockedRow = computed(() => accessRows.value.filter(r => r.emblem && (!viewingOtherUser.value || r.state === 'edit')));
+ *  only the ones unlocked, on every profile ("we dont want locked datasets
+ *  on profile"), and nothing when there are none. */
+// Awarded at the ceremony, 10 am Eastern on Nov 20 (Ames 2026-11-19: "award
+// these special achievements then"): hidden until then, then shown without a
+// reload.
+const UNLOCKED_FROM = Date.parse('2026-11-20T15:00:00Z');
+const unlockedOpen = ref(Date.now() >= UNLOCKED_FROM);
+if (!unlockedOpen.value) {
+  const t = setInterval(() => { if (Date.now() >= UNLOCKED_FROM) { unlockedOpen.value = true; clearInterval(t); } }, 30000);
+  onUnmounted(() => clearInterval(t));
+}
+const unlockedRow = computed(() => unlockedOpen.value ? accessRows.value.filter(r => r.emblem && r.state === 'edit') : []);
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -5964,20 +5976,13 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(1) brightness(0.5); }
 /* Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19). */
 .nge-ds-unlocked { width: 100%; margin-top: 12px; box-sizing: border-box; }
-.nge-ds-unlocked-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.nge-ds-unlocked-tile {
-  --c: 110, 240, 170;
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 8px; min-width: 0;
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  background: linear-gradient(135deg, rgba(var(--c), 0.14), rgba(20, 40, 80, 0.55) 55%, rgba(var(--c), 0.07));
-  box-shadow: inset 0 0 0 1px rgba(var(--c), 0.5), inset 0 0 18px rgba(var(--c), 0.1);
-}
-.nge-ds-unlocked-icon { width: 56px; height: 56px; object-fit: contain; filter: drop-shadow(0 0 8px rgba(var(--c), 0.45)); }
-.nge-ds-unlocked-lock { position: absolute; top: 26px; left: 50%; width: 20px; height: 20px; transform: translateX(-50%); }
-.nge-ds-unlocked-name { font: 700 12px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; text-shadow: 0 0 8px rgba(var(--c), 0.45); }
-.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(var(--c)); }
-.nge-ds-unlocked-tile--locked { --c: 150, 170, 200; }
-.nge-ds-unlocked-tile--locked .nge-ds-unlocked-icon { filter: grayscale(1) brightness(0.45); opacity: 0.75; }
+/* No box and no glow (Ames 2026-11-19: "Lose the glow and outline around
+   them"); fewer than four sit centered ("If there are only 2, center them"). */
+.nge-ds-unlocked-row { display: flex; justify-content: center; gap: 8px; }
+.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 2px; flex: 0 1 25%; min-width: 0; }
+.nge-ds-unlocked-icon { width: 52px; height: 52px; object-fit: contain; }
+.nge-ds-unlocked-name { font: 700 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; }
+.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(110, 240, 170); }
 .nge-ds-unlocked-tile--unknown { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 
