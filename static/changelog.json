@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T20:38:00Z",
+      "title": "Lost Fragments are here",
+      "items": [
+        "Lost Fragments is open to everyone who can edit Retina: pieces of the retina nobody has traced yet, in the Cell Library and on the Play card.",
+        "Pick one, fix its splits and merges, check every end, and put the crosshairs inside it. Each one counts as a completed cell.",
+        "Claim a fragment to hold it for you, and fold the Cell Library tabs away to see more of the list.",
+        "When we complete 500 Lost Fragments together, there is a party. The tab counts down how many to go."
+      ]
+    },
+    {
       "at": "2026-11-20T20:34:00Z",
       "title": "Other players' activity, no 3D note",
       "items": [
