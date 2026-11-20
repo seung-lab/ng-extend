@@ -2,7 +2,7 @@
 // node --test functions/lost-fragments.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { fragmentsAction, cleanAnswer, sheetRow } = require('./lost-fragments');
+const { fragmentsAction, cleanAnswer, sheetRow, syncSheet } = require('./lost-fragments');
 
 const ANSWER = { fragmentId: '720575940562452709', group: 'smaller', rootId: '720575940565514656', labFlag: 'no flag', labUm3: 153.37,
   fixed: true, ends: true, pointIn: 'dendrite', pt: [20849, 53747, 1111], nucleusId: '', noNucleus: false, note: 'odd tip', caveAnnotationId: 42 };
@@ -17,7 +17,7 @@ function fakeDb() {
     assert.ok(rows, 'unknown table ' + table);
     const p = new URLSearchParams(q);
     const match = r => [...p.entries()].every(([k, v]) => {
-      if (['select', 'limit'].includes(k)) return true;
+      if (['select', 'limit', 'order'].includes(k)) return true;
       if (v === 'is.null') return r[k] == null;
       const [op, ...rest] = v.split('.'); const want = decodeURIComponent(rest.join('.'));
       if (op === 'eq') return String(r[k]) === want;
@@ -66,30 +66,38 @@ test('only admins and the testers may send', async () => {
   await assert.rejects(fragmentsAction('fragments.list', {}, { sb, me: null, isAdmin: true }), /profile/);
 });
 
-test('the first Submit counts, a second updates the same row and sheet line', async () => {
+test('the first Submit counts, a second updates the same row; the sheet job writes then rewrites its line', async () => {
   const { rows, sb } = fakeDb();
   const { calls, sheets } = fakeSheets();
-  const io = { sb, me: ME, isAdmin: true, caveToken: '', caveId: 9, sheets };
+  const io = { sb, me: ME, isAdmin: true, caveToken: '', caveId: 9 };
   const a = await fragmentsAction('fragments.submit', ANSWER, io);
   assert.equal(a.first, true);
-  assert.equal(a.sheet, 'saved');
+  assert.equal(a.sheet, 'queued');
   assert.equal(rows.length, 1);
+  assert.equal(rows[0].sheet_dirty, true);
+  assert.equal(calls.length, 0, 'Submit itself never touches the sheet');
+  assert.deepEqual(await syncSheet({ sb, sheets }), { waiting: 1, written: 1, failed: 0 });
   assert.equal(rows[0].sheet_row, 7);
+  assert.equal(rows[0].sheet_dirty, false);
   assert.match(calls[0].path, /Results!A%3AP|Results!A:P|Results%21A%3AP/);
+  assert.equal(calls[0].values[0][1], rows[0].player_name, 'the player is named on the line');
+  assert.deepEqual(await syncSheet({ sb, sheets }), { waiting: 0, written: 0, failed: 0 }, 'nothing written twice');
   const b = await fragmentsAction('fragments.submit', { ...ANSWER, note: 'changed', caveAnnotationId: null }, io);
   assert.equal(b.first, false);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].note, 'changed');
   assert.equal(rows[0].cave_annotation_id, 42, 'a resubmit keeps the CAVE row');
+  await syncSheet({ sb, sheets });
   assert.match(decodeURIComponent(calls[1].path), /Results!A7:P7/);
   assert.equal(calls[1].init.method, 'PUT');
 });
 
-test('a sheet failure keeps the answer', async () => {
+test('a sheet failure keeps the answer waiting for the next run', async () => {
   const { rows, sb } = fakeDb();
-  const out = await fragmentsAction('fragments.submit', ANSWER, { sb, me: ME, isAdmin: true, sheets: async () => { throw new Error('403'); } });
-  assert.equal(out.sheet, 'failed');
-  assert.equal(rows.length, 1);
+  await fragmentsAction('fragments.submit', ANSWER, { sb, me: ME, isAdmin: true });
+  const out = await syncSheet({ sb, sheets: async () => { throw new Error('403'); } });
+  assert.deepEqual(out, { waiting: 1, written: 0, failed: 1 });
+  assert.equal(rows[0].sheet_dirty, true);
 });
 
 test('list gives my answers and the fragments others have', async () => {
@@ -107,7 +115,7 @@ test('the sheet line keeps IDs as text and leaves the lab columns alone', () => 
   assert.equal(line.length, 16, 'A to P only');
   assert.equal(line[15], 'odd tip', 'the note is the last column');
   assert.equal(line[3], "'720575940562452709");
-  assert.equal(line[2], 'Smaller');
+  assert.equal(line[2], 'Small');
   assert.equal(line[9], 'Major dendrite');
 });
 

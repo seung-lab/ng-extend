@@ -3162,11 +3162,38 @@ function persistSize() {
   } catch { /* quota or private mode */ }
 }
 
+/** The slim Lost Fragments box's own size (Ames 2026-11-20: "I want to be
+ *  able to resize this box, period"). Kept apart from the full panel's. */
+const ORPH_SLIM_KEY = 'nge_orph_slim_size_v1';
+const ORPH_SLIM_MIN_W = 360, ORPH_SLIM_MIN_H = 56;
+const orphSlimSize = ref<{ w: number | null; h: number | null }>((() => {
+  try { const v = JSON.parse(localStorage.getItem(ORPH_SLIM_KEY) || 'null'); if (v) return { w: Number(v.w) || null, h: v.h == null ? null : Number(v.h) || null }; } catch { /* none kept */ }
+  return { w: null, h: null };
+})());
+
 function startResize(e: MouseEvent) {
   e.stopPropagation();
   e.preventDefault();
   const startX = e.clientX;
   const startY = e.clientY;
+  if (slimOrphan.value) {
+    const box = (e.currentTarget as HTMLElement).closest('.nge-cl-panel') as HTMLElement | null;
+    const w0 = box?.offsetWidth ?? SLIM_MIN_WIDTH, h0 = box?.offsetHeight ?? 80;
+    const moveO = (ev: MouseEvent) => {
+      orphSlimSize.value = {
+        w: Math.max(ORPH_SLIM_MIN_W, Math.min(window.innerWidth - panelPos.value.x - 8, w0 + (ev.clientX - startX))),
+        h: Math.max(ORPH_SLIM_MIN_H, Math.min(window.innerHeight - panelPos.value.y - 8, h0 + (ev.clientY - startY))),
+      };
+    };
+    const upO = () => {
+      window.removeEventListener('mousemove', moveO);
+      window.removeEventListener('mouseup', upO);
+      try { localStorage.setItem(ORPH_SLIM_KEY, JSON.stringify(orphSlimSize.value)); } catch { /* private mode */ }
+    };
+    window.addEventListener('mousemove', moveO);
+    window.addEventListener('mouseup', upO);
+    return;
+  }
   const startW = panelWidth.value;
   const panelEl = (e.currentTarget as HTMLElement).closest('.nge-cl-panel') as HTMLElement | null;
   const startH = resizedHeight.value ?? panelEl?.offsetHeight ?? 420;
@@ -3644,7 +3671,12 @@ function onSlimMouseDown(e: MouseEvent) {
 // The slim bar is wider than the full panel can be (Ames 2026-10-20: "this
 // should be wider"), so the cell's ID shows whole beside its buttons.
 const SLIM_MIN_WIDTH = 640;
-const panelStyle = computed(() => ({
+const panelStyle = computed(() => slimOrphan.value ? {
+  left: panelPos.value.x + 'px',
+  top: panelPos.value.y + 'px',
+  width: Math.min(orphSlimSize.value.w ?? SLIM_MIN_WIDTH, window.innerWidth - panelPos.value.x - 8) + 'px',
+  ...(orphSlimSize.value.h != null ? { height: orphSlimSize.value.h + 'px', maxHeight: 'none', overflow: 'auto' } : {}),
+} : ({
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
   width: (slim.value
@@ -3730,7 +3762,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest || slimOrphan, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim, 'nge-cl-panel--slimquest': slimQuest || slimOrphan, 'nge-cl-panel--slimorph': slimOrphan, 'nge-cl-panel--opening': playOpening && !slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
     <!-- "Your new cell" (showStartNote): over the view, for a moment. -->
     <Teleport to="body">
       <div v-if="startNote" :key="startNoteN" class="nge-cl-newcell" :style="{ animationDuration: startNoteMs + 'ms' }" role="status" aria-live="polite" @click="startNote = ''">
@@ -7111,6 +7143,8 @@ body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: no
 .nge-cl-caret { margin-right: 10px; }
 .nge-cl-panel--slim { max-height: calc(100 * var(--nge-vh, 1vh) - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list):not(.nge-cl-play-bar):not(.nge-cl-start-note) { display: none !important; }
+/* The slim Lost Fragments box keeps its resize corner (Ames 2026-11-20: "I want to be able to resize this box, period"). */
+.nge-cl-panel.nge-cl-panel--slim.nge-cl-panel--slimorph > .nge-cl-resize.nge-cl-resize { display: flex !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
   /* The expand arrow on the left, where the full panel keeps its shrink

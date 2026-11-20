@@ -38,7 +38,7 @@ import retinaEmblemArt from '../images/datasets/retina.png';
 import mecEmblemArt from '../images/datasets/mec.png';
 import flywireEmblemArt from '../images/datasets/flywire.png';
 import bancEmblemArt from '../images/datasets/banc.png';
-import { flyNurroFrom } from '../util/nurro_fly';
+import { flyNurroAcross, flyNurroFrom } from '../util/nurro_fly';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
 // (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
@@ -1132,6 +1132,15 @@ function openAchievement(msg: ChatMessage) {
   setTimeout(() => document.dispatchEvent(new CustomEvent('nge:profile-show-achievement', { detail: { slug: def.slug, specialId: def.specialId } })), 350);
 }
 
+// A dataset line (the Datasets Unlocked ceremony, or a grant) opens that
+// player's profile on its Datasets Unlocked row (Ames 2026-11-20: "the
+// achievements aren't clickable").
+function openUnlocked(msg: ChatMessage) {
+  if (!msg.userId) return;
+  document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: msg.userId } }));
+  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:profile-show-unlocked')), 350);
+}
+
 function reactionsOf(msg: ChatMessage) {
   return msg.id != null ? chatStore.reactions[String(msg.id)] || {} : {};
 }
@@ -1483,7 +1492,37 @@ function nurroFlyAway() {
   nurroFlew = true;
   void flyNurroFrom(panelEl.value?.getBoundingClientRect() || null);
 }
-watch(() => chatMessages.value.length, () => {
+// Datasets Unlocked day (Ames 2026-11-20: "can he periodically fly across
+// the screen like once an hour today?"): on Nov 20, US Eastern, Nurro flies
+// across the top two thirds of the page once an hour, on the hour, and once soon after Pyr opens
+// if this browser has not seen him in the last hour. Only while the tab is in
+// front. Nothing runs on any other day.
+const FLY_DAY = '2026-11-20';
+const FLY_SEEN_KEY = 'nge-nurro-flyby-at';
+const etDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+function hourlyFly() {
+  if (etDay() !== FLY_DAY || document.hidden) return;
+  try { localStorage.setItem(FLY_SEEN_KEY, String(Date.now())); } catch { /* private window */ }
+  void flyNurroAcross();
+}
+let flyTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleHourlyFly() {
+  if (etDay() > FLY_DAY) return;
+  const now = new Date();
+  const next = new Date(now); next.setMinutes(60, 0, 0);
+  flyTimer = setTimeout(() => { hourlyFly(); scheduleHourlyFly(); }, next.getTime() - now.getTime() + 500);
+}
+onMounted(() => {
+  if (etDay() > FLY_DAY) return;
+  scheduleHourlyFly();
+  let seen = 0;
+  try { seen = Number(localStorage.getItem(FLY_SEEN_KEY)) || 0; } catch { /* private window */ }
+  if (Date.now() - seen > 60 * 60 * 1000) setTimeout(hourlyFly, 8000);
+});
+onUnmounted(() => { if (flyTimer) clearTimeout(flyTimer); });
+// The ceremony's last line: by the newest message, not the count, which stays
+// put once chat holds as many lines as it keeps.
+watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
   if (nurroFlew) return;
   for (const m of chatMessages.value.slice(-5)) {
     const text = m.parts.map(p => p.text || '').join('');
@@ -1653,7 +1692,9 @@ watch(() => chatMessages.value.length, () => {
                 </div>
 
                 <!-- "Nseraf now has edit access to MEC": said when they next come in. -->
-                <div v-else-if="isAccessLine(msg)" class="nge-chat-sys nge-chat-ach nge-chat-ach--access" :class="{ 'nge-chat-fresh': isFresh(msg) }">
+                <div v-else-if="isAccessLine(msg)" class="nge-chat-sys nge-chat-ach nge-chat-ach--access" :class="{ 'nge-chat-fresh': isFresh(msg) }"
+                     role="button" tabindex="0" :title="'See the datasets ' + msg.name + ' has unlocked'"
+                     @click="openUnlocked(msg)" @keydown.enter="openUnlocked(msg)">
                   <img class="nge-chat-ach-art" :src="accessLineArt(msg)" alt="" />
                   <span><b>{{ shortName(msg.name) }}</b> {{ msg.parts.map(p => p.text || '').join('') }}</span>
                 </div>
