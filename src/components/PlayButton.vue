@@ -128,7 +128,10 @@ async function go() {
   const k = picked.value;
   if (k === 'glia') {
     play.choosing = false;
-    // The Quests tab opens on the Müller Glia Quest (CellLibraryPanel.vue).
+    // The Quests tab opens on the Müller Glia Quest, as the slim yes/no bar
+    // (Ames 2026-11-20: "utilize the Lost Fragments slim mode for the yes/no
+    // vote"). The library takes the note when it opens (CellLibraryPanel.vue).
+    try { localStorage.setItem('nge_quest_pick_v1', 'muller'); sessionStorage.setItem('nge_glia_slim', String(Date.now())); } catch { /* opens full */ }
     document.dispatchEvent(new CustomEvent('nge:quest-pick', { detail: 'muller' }));
     document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
     return;

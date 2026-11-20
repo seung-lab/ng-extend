@@ -11,7 +11,7 @@
  * the cell at every soma (src/muller_glia.ts, functions/muller-glia.js).
  * No bells, chat, Achievements or stats.
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
 import { useProofreadingBackendStore } from '../store';
@@ -22,6 +22,10 @@ import { startGliaSplitTutorial } from '../tutorial-glia-split';
 import { gliaStatus, gliaNext, gliaAnswer, gliaUndo, gliaMine, gliaPairs, gliaCheck,
   type GliaCell, type GliaPair, type GliaStatus, type GliaAnswer } from '../muller_glia';
 
+/** slim: the Cell Library's one-row bar, the way Lost Fragments plays (Ames
+ *  2026-11-20: "utilize the Lost Fragments slim mode for the yes/no vote"):
+ *  the cell opens by itself, Yes, No, Not sure or Skip, and the next opens. */
+const props = defineProps<{ slim?: boolean }>();
 const backend = useProofreadingBackendStore();
 const status = ref<GliaStatus | null>(null);
 const loading = ref(false);
@@ -114,6 +118,12 @@ async function refill() {
 }
 
 function openCell(c: GliaCell) { onScreen.value = c.id; show(c.segmentId, c.soma); }
+// On the slim bar the cell to answer is always on screen.
+watch(() => [props.slim, current.value?.id] as const, ([slim], before) => {
+  const c = current.value;
+  // Also when the bar opens: the view may show another cell by then.
+  if (slim && c && (onScreen.value !== c.id || !before?.[0])) openCell(c);
+}, { immediate: true });
 
 async function answer(a: GliaAnswer) {
   const c = current.value;
@@ -183,7 +193,27 @@ async function check(p: GliaPair) {
 </script>
 
 <template>
-  <div class="nge-mg">
+  <div v-if="slim" class="nge-mg nge-mg--slim">
+    <div class="nge-mg-slimrow">
+      <div class="nge-mg-slimid">
+        <div class="nge-mg-slimlabel">Müller Glia Quest</div>
+        <div class="nge-mg-slimmeta">
+          <template v-if="current">Is {{ current.index }} a Müller glia?</template>
+          <template v-else-if="loading || !status">Reading the quest…</template>
+          <template v-else>No cells waiting for you. Thank you!</template>
+          <span v-if="status?.installed" class="nge-mg-slimcount">{{ status.answered }} answered</span>
+        </div>
+      </div>
+      <div v-if="current" class="nge-mg-slimbtns">
+        <button class="nge-mg-ans nge-mg-ans--yes" :disabled="busy" @click="answer('yes')" title="Yes, it is a Müller glia">Yes</button>
+        <button class="nge-mg-ans nge-mg-ans--no" :disabled="busy" @click="answer('no')" title="No, it is not a Müller glia">No</button>
+        <button class="nge-mg-ans" :disabled="busy" @click="answer('unsure')" title="Not sure: someone else will look too">Not sure</button>
+        <button v-if="queue.length > 1" class="nge-mg-btn nge-mg-btn--sm" :disabled="busy" @click="skip" title="Look at another cell first">Skip</button>
+      </div>
+    </div>
+    <div v-if="error" class="nge-mg-msg nge-mg-msg--bad nge-mg-msg--in">{{ error }}</div>
+  </div>
+  <div v-else class="nge-mg">
     <div class="nge-mg-head">
       <div class="nge-mg-titlerow">
         <div class="nge-mg-title">Müller Glia Quest</div>
@@ -305,6 +335,13 @@ async function check(p: GliaPair) {
 .nge-mg-ans:hover:not(:disabled) { background: rgba(74, 158, 255, 0.12); }
 .nge-mg-ans:disabled { opacity: 0.5; cursor: default; }
 .nge-mg-ans--yes { border-color: rgba(80, 220, 170, 0.55); color: #a6ffd6; }
+.nge-mg-slimrow { display: flex; align-items: center; gap: 10px; padding: 8px 6px 8px 2px; }
+.nge-mg-slimid { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 auto; }
+.nge-mg-slimlabel { font: 700 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #9fd0ff; }
+.nge-mg-slimmeta { font-size: 12px; color: #a9b8cc; white-space: nowrap; }
+.nge-mg-slimcount { margin-left: 6px; color: #7f93ad; }
+.nge-mg-slimbtns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
+.nge-mg-slimbtns .nge-mg-ans { padding: 6px 12px; font-size: 13px; }
 .nge-mg-ans--no { border-color: rgba(206, 147, 216, 0.55); color: #e4c1ec; }
 .nge-mg-section { padding: 12px 12px 4px; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(100, 200, 255, 0.8); display: flex; gap: 6px; align-items: center; }
 .nge-mg-count { font-family: 'Inter', sans-serif; letter-spacing: 0; font-size: 13px; color: #8bf; }

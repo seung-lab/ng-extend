@@ -233,6 +233,26 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(800);
     ok(/Split! F560 and E758 are two cells now/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg')) && s.splits.length === 1, 'Check: split recorded');
     await shot('4-split');
+    // Play on the Müller card: the slim yes/no bar (Ames 2026-11-20).
+    const answersBefore = calls.filter(c => c.glia === 'glia.answer').length;
+    await page.evaluate(() => {
+      try { localStorage.setItem('nge_quest_pick_v1', 'muller'); sessionStorage.setItem('nge_glia_slim', String(Date.now())); } catch (e) {}
+      document.dispatchEvent(new CustomEvent('nge:quest-pick', { detail: 'muller' }));
+      document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'quests' } }));
+    });
+    await page.waitForTimeout(1500);
+    const slimBar = await page.evaluate(() => { const b = document.querySelector('.nge-mg--slim'); return b ? { text: b.innerText.replace(/\s+/g, ' '), full: !!document.querySelector('.nge-mg-head'), slimPanel: !!document.querySelector('.nge-cl-panel--slim') } : null; });
+    ok(slimBar && /Is F\d+ a Müller glia\?/.test(slimBar.text) && !slimBar.full && slimBar.slimPanel, 'Play opens the slim yes/no bar ' + JSON.stringify(slimBar));
+    const asked = await page.evaluate(() => (document.querySelector('.nge-mg-slimmeta')?.innerText.match(/F\d+/) || [''])[0]);
+    const onView = await page.evaluate(() => { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); return [...g.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).join(); });
+    const askedSeg = String(720575940559811933n + BigInt(Number(asked.slice(1)) - 100));
+    ok(onView === askedSeg, `the cell asked about is the one on screen (${asked}: ${askedSeg}, view ${onView})`);
+    const shownBefore = await page.evaluate(() => { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); return [...g.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).join(); });
+    await page.screenshot({ path: path.join(OUT, '5-slim.png') });
+    await page.evaluate(() => document.querySelector('.nge-mg--slim .nge-mg-ans--no').click());
+    await page.waitForTimeout(1000);
+    const shownAfter = await page.evaluate(() => { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); return [...g.layer.displayState.segmentationGroupState.value.visibleSegments].map(String).join(); });
+    ok(calls.filter(c => c.glia === 'glia.answer').length === answersBefore + 1 && shownAfter && shownAfter !== shownBefore, `No on the slim bar is sent and the next cell opens (${shownBefore} then ${shownAfter})`);
     const other = calls.filter(c => c.action && c.action !== 'quest_list');
     ok(other.length === 0, 'nothing else written');
     console.log(errors.length ? 'page errors: ' + errors.join(' | ') : 'no page errors');

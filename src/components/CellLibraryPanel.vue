@@ -173,6 +173,19 @@ const questPick = ref<'cilia' | 'muller'>((() => { try { return localStorage.get
 function pickQuest(q: 'cilia' | 'muller') { questPick.value = q; try { localStorage.setItem('nge_quest_pick_v1', q); } catch {} }
 // Glia Split Training's last button opens the Müller Glia Quest (tutorial-glia-split.ts).
 document.addEventListener('nge:quest-pick', (e: Event) => { const q = (e as CustomEvent).detail; if (q === 'cilia' || q === 'muller') pickQuest(q); });
+const gliaSlimAsked = () => { try { return Date.now() - Number(sessionStorage.getItem('nge_glia_slim') || 0) < 15000; } catch { return false; } };
+/** Play on the Müller Glia Quest: the Quests tab as the slim yes/no bar, as
+ *  Lost Fragments plays (PlayButton.vue leaves the note). */
+function gliaSlimIfAsked() {
+  let at = 0;
+  try { at = Number(sessionStorage.getItem('nge_glia_slim') || 0); sessionStorage.removeItem('nge_glia_slim'); } catch { return; }
+  if (!at || Date.now() - at > 15000) return;
+  pickQuest('muller');
+  setSlimMode(true);
+  filter.value = 'quests';
+  slimQuest.value = true;
+  void nextTick(clampPanelPos);
+}
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast' | 'orphans'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
@@ -2394,9 +2407,10 @@ function onOpenAsked(e: Event) {
     filter.value = tab;
     // Asked for a tab while slim: show the full library on it (the tab list
     // was out of sight, Ames 2026-11-13).
-    if (slim.value) expandFull();
+    if (slim.value && !gliaSlimAsked()) expandFull();
   }
   playIfAsked();
+  gliaSlimIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
@@ -3228,7 +3242,7 @@ const slim = computed(() => slimCell.value !== null || slimEmpty.value || slimQu
 // With slim view on, opening the Quests tab while a quest is under way goes
 // straight to that cell's slim bar (toknow, report 288).
 watch(filter, f => {
-  if (f === 'quests' && slimMode.value && questWork.active) { slimQuest.value = true; void nextTick(clampPanelPos); }
+  if (f === 'quests' && slimMode.value && (questWork.active || questPick.value === 'muller')) { slimQuest.value = true; void nextTick(clampPanelPos); }
   else if (f !== 'quests') slimQuest.value = false;
   if (f === 'orphans' && slimMode.value) { slimOrphan.value = true; void nextTick(clampPanelPos); }
   else if (f !== 'orphans') slimOrphan.value = false;
@@ -3444,6 +3458,7 @@ function playIfAsked() {
   const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); void go(); } });
 }
 onMounted(playIfAsked);
+onMounted(gliaSlimIfAsked);
 /** Cilia Quest lands you on a cell too: the same flash (AnnotationQuestsTab). */
 const onPlayLanded = (e: Event) => { const d = (e as CustomEvent).detail || {}; showStartNote(d.title || 'Your quest cell', 4200, d.cell || ''); };
 onMounted(() => document.addEventListener('nge:play-landed', onPlayLanded));
@@ -4299,7 +4314,7 @@ onBeforeUnmount(() => {
             <button :class="{ on: questPick === 'cilia' }" @click="pickQuest('cilia')">Cilia Quest</button>
             <button :class="{ on: questPick === 'muller' }" @click="pickQuest('muller')">Müller Glia Quest <span class="nge-cl-questpick-new">New</span></button>
           </div>
-          <muller-glia-quest v-if="questsHere && questPick === 'muller' && !slimQuest" />
+          <muller-glia-quest v-if="questsHere && questPick === 'muller'" :slim="slimQuest" />
           <annotation-quests-tab v-else-if="questsHere" :slim="slimQuest" :play-enter="questPlay" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
             <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
