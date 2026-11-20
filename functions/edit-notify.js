@@ -39,6 +39,10 @@ const NAMED = {
   'quest.retina_cilia.lead': 'Cilia Quest instructions, the intro',
   'quest.retina_cilia.steps': 'Cilia Quest instructions, the steps',
   'quest.retina_cilia.image': 'Cilia Quest instructions, the picture',
+  'quest.muller_glia.lead': 'Muller Glia Quest, What is a Muller glia, the intro',
+  'quest.muller_glia.what': 'Muller Glia Quest, What is a Muller glia, the list',
+  'quest.muller_glia.image': 'Muller Glia Quest, What is a Muller glia, the picture',
+  'quest.muller_glia.split_steps': 'Muller Glia Quest, Stage 2 steps',
   'howto.retina': 'Cell Library how-to, Retina',
   'sandbox.match_info': 'Sandbox Match card, the i text',
 };

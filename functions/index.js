@@ -3216,6 +3216,49 @@ exports.ewMentor = onRequest(
     }
   }
 );
+// ── Muller Glia Quest (Ames 2026-11-19) ───────────────────────────────────
+// Stage 1 yes/no on the lab's All Glia cells, Stage 2 split merged pairs.
+// Every rule is in muller-glia.js; tables in supabase-muller-glia.sql; client
+// src/muller_glia.ts. The split check reads the cell at each soma itself (the
+// public segmentation chunk, then the chunked graph with the CAVE token), so a
+// player cannot claim a split that did not happen. No bells, chat, Achievements
+// or stats: a branch test site shares this data.
+//   firebase deploy --only functions:ewMullerGlia --project eyewire-ii-e4d52
+const EW_GLIA_CODE_VERSION = "2026-11-19-muller-glia";
+exports.ewMullerGlia = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 8000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      let tables = true;
+      try { await probe("muller_glia_cells?select=id&limit=1"); await probe("muller_glia_answers?select=cell_id&limit=1"); await probe("muller_glia_splits?select=pair_segment&limit=1"); } catch (e) { tables = false; }
+      res.json({ ok: true, tables, code: EW_GLIA_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("glia.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    const key = ewServiceKey.value().trim();
+    const sb = ewSb(key);
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
+      if (!me) throw ewErr(403, "No Pyr profile.");
+      const { gliaAction, restDb, makeSomaRoots } = require("./muller-glia");
+      const data = await gliaAction(action, args, { db: restDb(sb, ewRpc(key)), me, isAdmin,
+        somaRoots: makeSomaRoots({ caveToken: ewCaveToken.value().trim() }) });
+      res.json({ ok: true, data });
+    } catch (e) {
+      if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "glia.status") { res.json({ ok: true, data: { installed: false } }); return; }
+      console.warn("[ewMullerGlia]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That could not be done. Try again in a moment." });
+    }
+  }
+);
 // ── Quest reviews (Celia and Ames 2026-11-05): a function of its own ──────
 // A reviewer's feedback on a Cilia Quest cell reaches the player's bell, and
 // the player's updated link and notes go back to the sheet. Every rule is in
