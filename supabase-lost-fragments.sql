@@ -46,3 +46,22 @@ REVOKE ALL ON public.ew_lost_fragments FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON SEQUENCE public.ew_lost_fragments_id_seq FROM PUBLIC, anon, authenticated;
 
 COMMIT;
+
+-- ============================================================================
+-- Claims (Ames 2026-11-20: "play mode on a fragment should claim it as mine
+-- until I skip it"). One row per fragment in play; a player holds one at a
+-- time. Skip or Submit deletes it; one older than 14 days has lapsed
+-- (functions/lost-fragments.js CLAIM_DAYS). Never copied to the sheet.
+-- ============================================================================
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS public.ew_lost_fragment_claims (
+  fragment_id text PRIMARY KEY,
+  user_id     uuid NOT NULL,
+  claimed_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ew_lost_fragment_claims_user ON public.ew_lost_fragment_claims (user_id);
+ALTER TABLE public.ew_lost_fragment_claims ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.ew_lost_fragment_claims FROM PUBLIC, anon, authenticated;
+
+COMMIT;

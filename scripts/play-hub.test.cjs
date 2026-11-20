@@ -24,7 +24,7 @@ async function run(browser, perms, tag) {
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate/');
     const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: apps };
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
-    try { localStorage.removeItem('nge-play-kind'); localStorage.removeItem('nge_orphan_mock_v1'); localStorage.setItem('nge-cilia-training-autoplayed', '1'); } catch (e) {}
+    try { localStorage.removeItem('nge-play-kind'); localStorage.removeItem('nge_orphan_mock_v1'); localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1'); } catch (e) {}
   });
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
@@ -90,7 +90,7 @@ async function run(browser, perms, tag) {
       await page.evaluate(() => [...document.querySelectorAll('.nge-play-card .nge-go')].find(b => /Start playing/.test(b.textContent)).click());
       await page.waitForSelector('.nge-orph-task, .nge-orph-slimrow', { timeout: 20000 });
       await page.waitForTimeout(1500);
-      const seg = () => page.evaluate(() => { const t = document.querySelector('.nge-orph-task-id'); if (t) return t.textContent; const b = document.querySelector('.nge-orph-slimseg'); return b ? b.dataset.id : ''; });
+      const seg = () => page.evaluate(() => { const t = document.querySelector('.nge-orph-task-id'); if (t) return t.textContent; const b = document.querySelector('.nge-orph-slimrow'); return b ? b.dataset.id : ''; });
       out.first = await seg();
       out.playingBar = await page.evaluate(() => !document.querySelector('.nge-orph-play') && !![...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Highlight'));
       out.chip = await page.evaluate(() => { const c = document.querySelector('.nge-play-chip'); return c ? c.textContent.trim() : null; });
@@ -98,16 +98,18 @@ async function run(browser, perms, tag) {
       out.selectionClosed = await page.evaluate(() => { const v = window.viewer.selectionDetailsState?.location?.watchableVisible; return !v || !v.value; });
       await page.evaluate(() => document.querySelector('.nge-orph-complete').click());
       await page.waitForTimeout(300);
-      out.submitLabel = await page.evaluate(() => [...document.querySelectorAll('.nge-orph-submit')].map(b => b.textContent.trim()).find(t => /Submit/.test(t)) || '');
+      out.submitLabel = await page.evaluate(() => ({ bar: (document.querySelector('.nge-orph-slimrow .nge-orph-complete') || {}).textContent, second: !!document.querySelector('.nge-orph-submit') }));
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/fragments-playing.png` });
       await page.evaluate(() => [...document.querySelectorAll('.nge-orph-btn')].find(b => b.textContent.trim() === 'Skip').click());
       await page.waitForTimeout(1200);
       out.afterSkip = await seg();
-      // Switch group from the fragment line, while playing.
-      out.groupBefore = await page.evaluate(() => document.querySelector('.nge-orph-groupsel').value);
-      await page.evaluate(() => { const sel = document.querySelector('.nge-orph-groupsel'); sel.value = 'soma'; sel.dispatchEvent(new Event('change')); });
-      await page.waitForTimeout(1200);
-      out.groupAfter = await page.evaluate(() => [document.querySelector('.nge-orph-groupsel').value, (document.querySelector('.nge-orph-task-meta, .nge-orph-slimmeta') || {}).textContent || '']);
+      // The slim bar is only the label, the group and place, and the buttons (Ames 2026-11-20).
+      out.slimLean = await page.evaluate(() => {
+        const row = document.querySelector('.nge-orph-slimrow');
+        const btns = row ? [...row.querySelectorAll('button')].map(b => b.textContent.trim()) : [];
+        return { row: !!row, select: !!(row && row.querySelector('select')), chip: /Playing/.test(row ? row.textContent : ''),
+          arrows: btns.some(t => t === '\u2039' || t === '\u203a'), meta: (row && row.querySelector('.nge-orph-slimmeta') || {}).textContent || '', btns };
+      });
       out.slimBar = await page.evaluate(() => !!document.querySelector('.nge-orph--slim'));
       // Close the library and open it again: still on Lost Fragments (Ames 2026-11-19).
       out.beforeClose = await seg();
@@ -153,7 +155,7 @@ async function run(browser, perms, tag) {
   check('edit: four quests on the card', ['BC Challenge', 'Lost Fragments', 'Cilia Quest', 'Glia Quest'].every(n => names.includes(n)), ed.cards || ed);
   check('edit: Lost Fragments and Cilia open', (ed.cards || []).filter(c => /Lost|Cilia/.test(c.name)).every(c => !c.off), ed.cards);
   check('edit: Start playing lands on a fragment, full ID shown', /^\d{15,}$/.test(ed.first || ''), ed.first);
-  check('edit: no Playing box; Highlight and Submit and next show', ed.playingBar && /Submit and next/.test(ed.submitLabel || ''), ed);
+  check('edit: no Playing box; Highlight shows, and one Complete and next button', ed.playingBar && ed.submitLabel && /Complete and next/.test(ed.submitLabel.bar || '') && !ed.submitLabel.second, ed);
   check('edit: slim shows Complete and folds the checklist', ed.collapsed, ed.collapsed);
   check('edit: the Selection panel stays closed', ed.selectionClosed, ed.selectionClosed);
   check('edit: the top bar says Lost Fragments', /Lost Fragments/.test(ed.chip || ''), ed.chip);
@@ -161,7 +163,7 @@ async function run(browser, perms, tag) {
   check('edit: reopening the library stays on Lost Fragments', ed.reopened, ed.reopened);
   check('edit: Play here shows in the full view when not playing', ed.playHere, ed.playHere);
   check('edit: the banner shows in the full view', ed.banner && ed.banner.w > 200 && /lost-fragments-banner/.test(ed.banner.bg), ed.banner);
-  check('edit: the group menu switches to Soma-like', ed.groupBefore === 'large' && ed.groupAfter && ed.groupAfter[0] === 'soma' && /1 of/.test(ed.groupAfter[1]), [ed.groupBefore, ed.groupAfter]);
+  check('edit: slim bar has no group menu, ID, Playing chip or arrows', ed.slimLean && ed.slimLean.row && !ed.slimLean.select && !ed.slimLean.chip && !ed.slimLean.arrows && /\d+ of \d+/.test(ed.slimLean.meta), ed.slimLean);
   check('edit: reopening keeps the fragment and the note', ed.beforeClose && ed.afterReopen === ed.beforeClose && ed.noteKept === 'kept note', [ed.beforeClose, ed.afterReopen, ed.noteKept]);
   check('edit: Play again stays on the open fragment', ed.afterReplay === ed.beforeClose, [ed.beforeClose, ed.afterReplay, ed.replayDbg]);
   check('edit: Skip goes to another fragment', ed.afterSkip && ed.afterSkip !== ed.first, [ed.first, ed.afterSkip]);

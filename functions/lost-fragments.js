@@ -19,6 +19,14 @@
  *                      completed cell only once
  *   fragments.list     this player's answers, and which fragments anyone has
  *   fragments.caveId   the CAVE row for an answer saved while CAVE was down
+ *   fragments.claim    Play landed on a fragment: it is this player's until
+ *                      they Skip it or Submit it (Ames 2026-11-20). One claim
+ *                      per player; a claim left alone for CLAIM_DAYS lapses.
+ *   fragments.release  Skip: the fragment goes back to everyone.
+ *
+ * Claims live only in ew_lost_fragment_claims, never in the sheet: players
+ * skip through many fragments before settling on one, and the lab only
+ * wants answers.
  */
 
 const SHEET_ID = '1Ut0-X4ilf65enHs0SaLJf7CvZCs5wqVIZ5rmhgNGNi8';
@@ -30,7 +38,9 @@ const TESTERS = new Set(['5bb0310a-b42d-4d13-937f-eab620794949']);  // Jan Lause
 const GROUPS = { large: 'Large', smaller: 'Smaller', glia: 'Glia-like', soma: 'Soma-like' };
 const FLAGS = ['no flag', 'soma', 'glia', 'soma, glia'];
 const ID = /^\d{15,20}$/;
-const MAX_L2 = 6000;  // a fragment past this is not sized (a whole cell merged in)
+const MAX_L2 = 6000;
+const CLAIM_DAYS = 14;
+const claimCutoff = () => new Date(Date.now() - CLAIM_DAYS * 864e5).toISOString();  // a fragment past this is not sized (a whole cell merged in)
 
 function bad(message, status = 400) { const e = new Error(message); e.status = status; return e; }
 const eq = v => 'eq.' + encodeURIComponent(String(v));
@@ -139,7 +149,32 @@ async function fragmentsAction(action, args, io) {
     const mine = await sb(`ew_lost_fragments?user_id=${eq(me.id)}&select=fragment_id,group_key,root_id,point_in,pt,nucleus_id,no_nucleus,note,cave_annotation_id,submitted_at,updated_at&limit=2000`);
     const all = await sb('ew_lost_fragments?select=fragment_id&limit=20000');
     const others = [...new Set(all.map(r => r.fragment_id))].filter(id => !mine.some(m => m.fragment_id === id));
-    return { mine, others };
+    const claims = await sb(`ew_lost_fragment_claims?claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,user_id&limit=20000`);
+    const myClaim = (claims.find(c => String(c.user_id) === String(me.id)) || {}).fragment_id || null;
+    const held = claims.filter(c => String(c.user_id) !== String(me.id)).map(c => c.fragment_id);
+    return { mine, others, held, myClaim };
+  }
+
+  if (action === 'fragments.claim' || action === 'fragments.release') {
+    const fragmentId = String(args && args.fragmentId || '');
+    if (!ID.test(fragmentId)) throw bad('Not a fragment ID.');
+    if (action === 'fragments.release') {
+      await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}`, { method: 'DELETE' });
+      return { released: true };
+    }
+    const done = await sb(`ew_lost_fragments?fragment_id=${eq(fragmentId)}&user_id=neq.${encodeURIComponent(me.id)}&select=id&limit=1`);
+    if (done.length) return { claimed: false, reason: 'done' };
+    const holder = (await sb(`ew_lost_fragment_claims?fragment_id=${eq(fragmentId)}&select=user_id,claimed_at&limit=1`))[0];
+    if (holder && String(holder.user_id) !== String(me.id) && holder.claimed_at > claimCutoff()) return { claimed: false, reason: 'held' };
+    // One claim per player: landing on this one lets go of the last.
+    await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}`, { method: 'DELETE' });
+    if (holder && String(holder.user_id) !== String(me.id)) await sb(`ew_lost_fragment_claims?fragment_id=${eq(fragmentId)}&claimed_at=lte.${encodeURIComponent(claimCutoff())}`, { method: 'DELETE' });
+    try {
+      await sb('ew_lost_fragment_claims', { method: 'POST', body: JSON.stringify({ fragment_id: fragmentId, user_id: me.id }) });
+    } catch (e) {
+      return { claimed: false, reason: 'held' };  // someone landed on it a moment before
+    }
+    return { claimed: true };
   }
 
   if (action === 'fragments.caveId') {
@@ -161,6 +196,7 @@ async function fragmentsAction(action, args, io) {
     let row;
     if (had) row = (await sb(`ew_lost_fragments?id=eq.${had.id}`, { method: 'PATCH', body: JSON.stringify(fields) }))[0];
     else row = (await sb('ew_lost_fragments', { method: 'POST', body: JSON.stringify({ user_id: me.id, ...fields, submitted_at: now }) }))[0];
+    await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(answer.fragment_id)}`, { method: 'DELETE' }).catch(() => undefined);
     let sheet = 'saved';
     try {
       const at = await writeSheet(io.sheets, row, playerName);
@@ -175,4 +211,4 @@ async function fragmentsAction(action, args, io) {
   throw bad(`unknown action ${action}`);
 }
 
-module.exports = { fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS };
+module.exports = { fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, CLAIM_DAYS };
