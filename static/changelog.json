@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T22:09:00Z",
+      "title": "Resize the 2D and 3D views",
+      "items": [
+        "Drag the line between the 2D and 3D views to give either one more room. Double click the line to split them evenly again. Pyr remembers your split."
+      ]
+    },
+    {
       "at": "2026-11-20T22:01:00Z",
       "title": "Community milestones",
       "items": [
