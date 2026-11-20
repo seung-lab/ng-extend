@@ -3,6 +3,16 @@
   "entries": [
     {
       "at": "2026-11-20T00:36:00Z",
+      "title": "A lighter Training Sim box",
+      "items": [
+        "Jump to next spot shows a little search running across the button while it looks, and lights up when it finds the spot.",
+        "The hint folds into a small light bulb beside Jump. Click the bulb to read the hint and use Show me.",
+        "The Training Sim icon no longer has a box around it.",
+        "More pieces that the finished cell never checked now count as neither right nor wrong, so fewer good merges are called wrong."
+      ]
+    },
+    {
+      "at": "2026-11-20T00:36:00Z",
       "title": "Play waits for the tour",
       "items": [
         "New players see the Play button once they have finished the starship tour and closed the tutorials, so it no longer appears in the middle of the tour."
