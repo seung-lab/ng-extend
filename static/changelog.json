@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T15:26:00Z",
+      "title": "Training Sim buttons line up",
+      "items": [
+        "With the light bulb showing, Jump to next spot sits centered over Complete and Review."
+      ]
+    },
+    {
       "at": "2026-11-20T14:53:00Z",
       "title": "A sharper Training Sim box",
       "items": [
