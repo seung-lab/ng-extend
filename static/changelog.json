@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T17:26:00Z",
+      "title": "A Training Sim box that fits",
+      "items": [
+        "While the Training Sim checks your edits, lightning runs along the score bar and strikes when your new score is in.",
+        "The box fits its contents as they change, so it grows when Highlight opens and shrinks back after.",
+        "Slim and expanded each remember the width you give them.",
+        "Teleport to a new cell no longer brings the Play button up over the box."
+      ]
+    },
+    {
       "at": "2026-11-20T17:12:00Z",
       "title": "A new Settings layout",
       "items": [
