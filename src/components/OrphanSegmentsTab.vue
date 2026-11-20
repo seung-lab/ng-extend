@@ -24,10 +24,11 @@ import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { play, stopPlay, startPlay } from '../util/play';
 import { ON_TEST_SITE } from '../hunt';
 import { Uint64 } from 'neuroglancer/util/uint64';
-import { currentSegLayer } from '../datasets';
+import { currentSegLayer, currentCellTypes, cellTypeLabel } from '../datasets';
+import { explainCellType } from '../data/cell_type_glossary';
 import { useCellHistoryStore, useProofreadingBackendStore, useUserStatsStore } from '../store';
 import { secureWrite } from '../secure_write';
-import { postLostFragmentPoint } from '../widgets/lightbulb_service';
+import { postLostFragmentPoint, saveCellType, getCellStatus, activeCaveServer, getLastCellTypeProblem } from '../widgets/lightbulb_service';
 import { cellAtCrosshair, supervoxelAtPlace } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { NURRO_IMAGES } from '../widgets/lightbulb_service';
@@ -84,6 +85,8 @@ interface OrphanSave {
   nucId: string; noNucleus: boolean; note: string; at: number;
   /** The CAVE row; null while CAVE could not take it (sent again on load). */
   caveId?: number | null;
+  /** The cell type the player chose, if any (Ames 2026-11-20). */
+  cellType?: string;
 }
 /** Fragments someone else has answered: Play skips them. */
 const taken = reactive(new Set<string>());
@@ -111,7 +114,32 @@ const form = reactive({
   fixed: false, ends: false, where: 'dendrite' as 'dendrite' | 'soma',
   point: null as [number, number, number] | null, pointMsg: '', pointOk: false, checking: false,
   nucId: '', noNucleus: false, note: '', saved: false,
+  cellType: '', cellTypeCustom: '',
 });
+/** The cell type, the same list and save as Complete in the Cell Library
+ *  (Ames 2026-11-20: "add a way to label the cell class in Lost Frags? we
+ *  have automated labeling but it's not run on all cells"). Optional. It goes
+ *  to CAVE's cell type table and the game's log, as every type does. */
+const cellTypes = computed(() => currentCellTypes());
+const typeKnown = ref('');
+const typeAnnId = ref<number | undefined>(undefined);
+const typeNote = ref('');
+const typeTitle = (t: string) => explainCellType(t).join(String.fromCharCode(10)) || undefined;
+function fillType(t: string) {
+  if (!t || form.cellType || form.cellTypeCustom) return;
+  if (cellTypes.value.includes(t)) form.cellType = t; else form.cellTypeCustom = t;
+}
+/** What CAVE already has for the fragment's cell, once the checklist opens. */
+async function prefillType() {
+  const root = shownRoot.value || active.value?.id;
+  const server = activeCaveServer();
+  if (!root || !server || !cellTypes.value.length) return;
+  const st = await getCellStatus(server, root).catch(() => null);
+  if (!st || (shownRoot.value || active.value?.id) !== root) return;
+  typeAnnId.value = st.cellTypeAnnotationId;
+  typeKnown.value = st.cellType || '';
+  fillType(typeKnown.value);
+}
 const place = computed(() => active.value ? cur.value.rows.findIndex(r => r.id === active.value!.id) : -1);
 
 function resetForm(s?: OrphanSave) {
@@ -121,6 +149,9 @@ function resetForm(s?: OrphanSave) {
   form.pointMsg = s?.point ? `Saved at ${s.point.join(', ')}.` : '';
   form.nucId = s?.nucId ?? ''; form.noNucleus = s?.noNucleus ?? false; form.note = s?.note ?? '';
   form.saved = !!s;
+  form.cellType = ''; form.cellTypeCustom = '';
+  typeKnown.value = ''; typeAnnId.value = undefined; typeNote.value = '';
+  fillType(s?.cellType || '');
   nucMsg.value = '';
 }
 
@@ -405,6 +436,18 @@ async function submit() {
   sending.value = true; sendError.value = ''; lastSent.value = '';
   const pt = [...form.point] as [number, number, number];
   const root = shownRoot.value || row.id;
+  const type = (form.cellTypeCustom.trim() || form.cellType).trim().slice(0, 120);
+  typeNote.value = '';
+  if (type && type !== typeKnown.value) {
+    const server = activeCaveServer();
+    const ok = server ? await saveCellType(server, root, type, typeAnnId.value, true, pt).catch(() => false) : false;
+    if (!ok) {
+      typeNote.value = getLastCellTypeProblem() || 'The cell type could not be saved. Try again, or leave it empty.';
+      sending.value = false;
+      return;
+    }
+    typeKnown.value = type;
+  }
   try {
     // CAVE first, once per fragment; a resubmit keeps the row it has.
     let caveId = saves[row.id]?.caveId ?? null;
@@ -419,6 +462,7 @@ async function submit() {
     saves[row.id] = {
       id: row.id, group: group.value, root, fixed: fixedOk.value, ends: endsOk.value, where: form.where, point: pt,
       nucId: form.nucId.trim(), noNucleus: form.noNucleus, note: form.note.trim(), at: Date.now(), caveId,
+      cellType: type || saves[row.id]?.cellType || '',
     };
     persist();
     if (res && res.first) { countCompleted(root, pt, row.id); addFragmentDone(); }
@@ -468,6 +512,10 @@ async function loadAnswers() {
   } catch { serverOn.value = false; }
 }
 onMounted(() => { void loadAnswers(); });
+// The cell type CAVE already has, when the checklist is on screen for a fragment.
+watch(() => [active.value?.id, shownRoot.value, finishing.value || !props.slim] as const, ([id, , shown]) => {
+  if (id && shown) void prefillType();
+}, { immediate: true });
 
 const short = (id: string) => id.length > 8 ? '…' + id.slice(-6) : id;
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -580,7 +628,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             <span v-if="form.pointMsg" class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.pointOk }">{{ form.pointMsg }}</span>
           </div>
         </li>
-        <li v-if="form.where === 'soma'" :class="{ done: form.noNucleus || !!form.nucId.trim() }">
+        <li v-if="form.where === 'soma'" class="nge-orph-nonum" :class="{ done: form.noNucleus || !!form.nucId.trim() }">
           <div class="nge-orph-row" title="In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs.">
             <b>Nucleus</b>
             <button class="nge-orph-btn" :disabled="form.noNucleus || nucChecking" @click="useNucleus">{{ nucChecking ? 'Reading…' : 'Use crosshairs' }}</button>
@@ -588,6 +636,22 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             <label class="nge-orph-sub"><input type="checkbox" v-model="form.noNucleus" /> No nucleus</label>
           </div>
           <div v-if="nucMsg && !form.noNucleus" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.nucId }">{{ nucMsg }}</span></div>
+        </li>
+        <li v-if="cellTypes.length" class="nge-orph-typeli nge-orph-nonum" :class="{ done: !!(form.cellType || form.cellTypeCustom.trim()) }">
+          <div class="nge-orph-row" title="If you can tell what kind of cell this piece is from. Leave it empty if you are not sure.">
+            <b>Cell type</b> <span class="nge-orph-sub">optional</span>
+          </div>
+          <div class="nge-orph-row nge-orph-typerow">
+            <select v-model="form.cellType" class="nge-orph-input nge-orph-type" aria-label="Cell type" @change="form.cellTypeCustom = ''"
+                    @keydown.stop @keyup.stop @keypress.stop>
+              <option value="">Not sure</option>
+              <option v-for="t in cellTypes" :key="t" :value="t" :title="typeTitle(t)">{{ cellTypeLabel(t) }}</option>
+            </select>
+            <input v-model="form.cellTypeCustom" class="nge-orph-input nge-orph-type" placeholder="Or type your own" maxlength="120"
+                   aria-label="Or type your own cell type" @input="form.cellTypeCustom.trim() && (form.cellType = '')"
+                   @keydown.stop @keyup.stop @keypress.stop />
+          </div>
+          <div v-if="typeNote" class="nge-orph-row"><span class="nge-orph-note nge-orph-note--err">{{ typeNote }}</span></div>
         </li>
       </ol>
       <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
@@ -695,6 +759,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-check li::marker { color: #7ecaff; font-weight: 700; }
 .nge-orph-check li.done::marker { color: #6fe0d0; }
 .nge-orph-check b { color: #eef; }
+.nge-orph-typerow { flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.nge-orph .nge-orph-type { flex: 1 1 150px; min-width: 0; width: auto; }
+/* The nucleus (part of the soma point) and the optional type carry no
+   number (Ames 2026-11-20: "we don't need (4) here"). */
+.nge-orph-check li.nge-orph-nonum { list-style: none; }
 .nge-orph-check input[type=checkbox] { accent-color: #4a9eff; vertical-align: -2px; }
 .nge-orph-sub { font-size: 12.5px; color: #93a0b6; }
 .nge-orph-seg { display: inline-flex; margin-left: 4px; border: 1px solid rgba(120, 140, 255, 0.25); border-radius: 5px; overflow: hidden; vertical-align: 1px; }

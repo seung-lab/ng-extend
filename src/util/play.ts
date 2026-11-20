@@ -146,7 +146,7 @@ export function mappingDataset(): DatasetEntry | undefined {
 /** Hear from CAVE (at most 4 s each) before Play picks the dataset, and ask
  *  again when the cell dataset on screen is not editable by what this page
  *  heard: access may have been granted since (an MEC invite). */
-async function settleAccess() {
+export async function settleAccess() {
   const wait = (p: Promise<void>) => Promise.race([p, new Promise<void>(r => setTimeout(r, 4000))]);
   await wait(loadDatasetPermissions());
   const here = datasetHere();

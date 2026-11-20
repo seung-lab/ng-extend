@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
-import { startPlay } from '../util/play';
+import { startPlay, canQuest, settleAccess } from '../util/play';
 import { flyNurroAcross } from '../util/nurro_fly';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, accessSort, type NotifKind } from '../util/notif_kinds';
@@ -529,6 +529,15 @@ function closeDetail() {
 // (functions/help-reminder.js). That link marks the request solved here,
 // instead of going anywhere.
 const helpSolvedNote = ref('');
+/** Play Lost Fragments was pressed without edit access on Retina. */
+const playBlocked = ref(false);
+watch(openNotif, () => { playBlocked.value = false; });
+function openAccessForm() {
+  playBlocked.value = false;
+  closeDetail();
+  emit('hide');
+  document.dispatchEvent(new CustomEvent('nge:access-open'));
+}
 async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
   // "[Play Lost Fragments](#nge-play=lost-fragments)" in a notification: a big
@@ -536,6 +545,12 @@ async function onDetailBodyClick(e: MouseEvent) {
   // 2026-11-20: "make the notification awesome and take them to Nugget play mode"; the name stayed Lost Fragments).
   if (a?.getAttribute('href') === '#nge-play=lost-fragments') {
     e.preventDefault();
+    // Lost Fragments needs edit access on Retina. Without it, say so here and
+    // point to the access form (Ames 2026-11-20: "if someone receives the
+    // notification and they don't have [Retina] access, it should have a
+    // follow-up pop-up").
+    if (!canQuest()) { await settleAccess().catch(() => undefined); }
+    if (!canQuest()) { playBlocked.value = true; return; }
     closeDetail();
     emit('hide');
     void flyNurroAcross();
@@ -1497,6 +1512,14 @@ function padRank(rank: number): string {
                     v-html="withVideoEmbeds(renderMarkdown(cleanCopy(detailBody)))"
                     @click="onDetailBodyClick"
                   ></div>
+                  <div v-if="playBlocked" class="nge-notif-blocked" role="alert">
+                    <b>Lost Fragments is open to players with edit access on Retina.</b>
+                    <span>To get it, send your test edits through the Dataset Access form. A reviewer checks them, and Retina opens for you.</span>
+                    <div class="nge-notif-blocked-row">
+                      <button type="button" class="nge-notif-blocked-go" @click="openAccessForm">Open the access form</button>
+                      <button type="button" class="nge-notif-blocked-no" @click="playBlocked = false">Not now</button>
+                    </div>
+                  </div>
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
                 </template>
                 <!-- A reply the team asked for: one per request, with what a report carries. -->
@@ -2418,6 +2441,13 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-body :deep(.nge-notif-video iframe),
 .nge-notif-detail-body :deep(.nge-notif-video video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .nge-notif-detail-body :deep(p:last-child) { margin-bottom: 0; }
+.nge-notif-blocked { margin-top: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; border-radius: 10px;
+  border: 1px solid rgba(126, 202, 255, 0.45); background: rgba(74, 158, 255, 0.1); color: #cfe4fa; font-size: 14px; line-height: 1.45; }
+.nge-notif-blocked b { color: #fff; }
+.nge-notif-blocked-row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.nge-notif-blocked-go { padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(143, 214, 255, 0.7); background: rgba(74, 158, 255, 0.25); color: #fff; font: 600 13px Inter, sans-serif; cursor: pointer; }
+.nge-notif-blocked-go:hover { background: rgba(74, 158, 255, 0.4); }
+.nge-notif-blocked-no { padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(127, 190, 255, 0.28); background: transparent; color: #a9c3e0; font: 500 13px Inter, sans-serif; cursor: pointer; }
 /* The Play Lost Fragments link, drawn as a big gold button. */
 .nge-notif-detail-body :deep(a[href="#nge-play=lost-fragments"]) { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; padding: 11px 22px;
   border-radius: 10px; border: 1px solid rgba(255, 211, 90, 0.8); background: linear-gradient(180deg, #ffd35a, #e6a91f);
