@@ -31,7 +31,7 @@ function fakeSheets() {
   const calls = [];
   const sheets = async (path, init) => {
     calls.push({ path, init, values: JSON.parse(init.body).values });
-    return /:append/.test(path) ? { updates: { updatedRange: 'Results!A7:T7' } } : {};
+    return /:append/.test(path) ? { updates: { updatedRange: 'Results!A7:P7' } } : {};
   };
   return { calls, sheets };
 }
@@ -61,13 +61,13 @@ test('the first Submit counts, a second updates the same row and sheet line', as
   assert.equal(a.sheet, 'saved');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].sheet_row, 7);
-  assert.match(calls[0].path, /Results!A%3AT|Results!A:T|Results%21A%3AT/);
+  assert.match(calls[0].path, /Results!A%3AP|Results!A:P|Results%21A%3AP/);
   const b = await fragmentsAction('fragments.submit', { ...ANSWER, note: 'changed', caveAnnotationId: null }, io);
   assert.equal(b.first, false);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].note, 'changed');
   assert.equal(rows[0].cave_annotation_id, 42, 'a resubmit keeps the CAVE row');
-  assert.match(decodeURIComponent(calls[1].path), /Results!A7:T7/);
+  assert.match(decodeURIComponent(calls[1].path), /Results!A7:P7/);
   assert.equal(calls[1].init.method, 'PUT');
 });
 
@@ -90,7 +90,8 @@ test('list gives my answers and the fragments others have', async () => {
 test('the sheet line keeps IDs as text and leaves the lab columns alone', () => {
   const row = { ...cleanAnswer(ANSWER), merges: 2, cuts: 1, um3_added: 1.4, um3_removed: 0, updated_at: '2026-11-19T22:41:00Z' };
   const line = sheetRow(row, 'Test Player');
-  assert.equal(line.length, 20, 'A to T only');
+  assert.equal(line.length, 16, 'A to P only');
+  assert.equal(line[15], 'odd tip', 'the note is the last column');
   assert.equal(line[3], "'720575940562452709");
   assert.equal(line[2], 'Smaller');
   assert.equal(line[9], 'Major dendrite');

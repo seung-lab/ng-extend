@@ -12,7 +12,8 @@
  *   - reads the fragment's change log with the player's own CAVE sign in for
  *     their merges and cuts, and its size before and after for the volume;
  *   - writes the row to the researchers' sheet, "Pyr Lost Fragments results",
- *     columns A to T only (the lab's U to Y are never touched).
+ *     columns A to P only (the lab's Q to U are never touched). Merges,
+ *     cuts and volume stay in Supabase only, for points (Ames 2026-11-20).
  *
  *   fragments.submit   the answer; returns {first} so the game counts a
  *                      completed cell only once
@@ -110,17 +111,17 @@ function sheetRow(row, playerName) {
   const n = v => (v == null ? '' : v);
   return [at, playerName, GROUPS[row.group_key], "'" + row.fragment_id, row.root_id ? "'" + row.root_id : '', row.lab_flag, n(row.lab_um3),
     yes(row.fixed), yes(row.ends), row.point_in === 'soma' ? 'Soma' : 'Major dendrite', row.pt[0], row.pt[1], row.pt[2],
-    row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus), n(row.merges), n(row.cuts), n(row.um3_added), n(row.um3_removed), row.note];
+    row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus), row.note];
 }
 /** Writes the row; returns the sheet row number it is on. */
 async function writeSheet(sheets, row, playerName) {
   const values = [sheetRow(row, playerName)];
   if (row.sheet_row) {
-    await sheets(`${SHEET_ID}/values/${encodeURIComponent(`${SHEET_TAB}!A${row.sheet_row}:T${row.sheet_row}`)}?valueInputOption=USER_ENTERED`,
+    await sheets(`${SHEET_ID}/values/${encodeURIComponent(`${SHEET_TAB}!A${row.sheet_row}:P${row.sheet_row}`)}?valueInputOption=USER_ENTERED`,
       { method: 'PUT', body: JSON.stringify({ values }) });
     return row.sheet_row;
   }
-  const r = await sheets(`${SHEET_ID}/values/${encodeURIComponent(`${SHEET_TAB}!A:T`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+  const r = await sheets(`${SHEET_ID}/values/${encodeURIComponent(`${SHEET_TAB}!A:P`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     { method: 'POST', body: JSON.stringify({ values }) });
   const m = /![A-Z]+(\d+)/.exec(String((r && r.updates && r.updates.updatedRange) || ''));
   return m ? Number(m[1]) : null;
