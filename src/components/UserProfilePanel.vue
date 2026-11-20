@@ -40,6 +40,8 @@ import retinaEmblem from '../images/datasets/retina.png';
 import mecEmblem from '../images/datasets/mec.png';
 import flywireEmblem from '../images/datasets/flywire.png';
 import bancEmblem from '../images/datasets/banc.png';
+import ca3Emblem from '../images/datasets/ca3.png';
+import firstEditDates from '../data/first-edit-dates.json';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -582,10 +584,17 @@ async function loadDatasetStats() {
 // (since 2026-10-30): an older one is simply not shown, never "not yet".
 // FlyWire, not BANC (Ames 2026-11-19: "BANC should be FlyWire").
 // And BANC (Ames 2026-11-19: "It should have: Retina, MEC, FlyWire, BANC").
-const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'flywire_fafb_production', 'banc'];
+// And CA3 (Ames 2026-11-20), for everyone who edited it: it is not unlocked
+// by a test, so its tile is only for its contributors, from CAVE's edits.
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'flywire_fafb_production', 'banc', 'zheng_ca3'];
 /** Short names for the tiles. */
-const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', flywire_fafb_production: 'FlyWire', banc: 'BANC' };
-const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, flywire_fafb_production: flywireEmblem, banc: bancEmblem };
+const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', flywire_fafb_production: 'FlyWire', banc: 'BANC', zheng_ca3: 'CA3' };
+const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, flywire_fafb_production: flywireEmblem, banc: bancEmblem, zheng_ca3: ca3Emblem };
+/** Each player's first edit on each dataset, from CAVE's edit logs (Pyr
+ *  user id to YYYY-MM-DD). The date under an emblem when no grant in Pyr
+ *  dates it (Ames 2026-11-20: the date, not "Unlocked"). */
+const FIRST_EDIT = firstEditDates as Record<string, Record<string, string>>;
+const CONTRIB_ONLY = new Set(['zheng_ca3']);
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
@@ -619,12 +628,15 @@ async function loadAccess() {
   otherEdit.value = got.edit;
 }
 const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d.id === id)).filter((d): d is DatasetEntry => !!d).map(ds => {
-  const at = accessGrants.value[ds.id];
-  const state = viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
+  const uid = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
+  const first = FIRST_EDIT[ds.id]?.[uid];
+  const at = accessGrants.value[ds.id] || (first ? `${first}T12:00:00Z` : '');
+  const state = CONTRIB_ONLY.has(ds.id) ? (first ? 'edit' : 'locked')
+    : viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
   const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-  const short = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  const short = when;
   return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], emblem: ACCESS_EMBLEMS[ds.id] || '', state, when, short };
-}).filter(r => !viewingOtherUser.value || otherEdit.value || r.state === 'edit'));
+}).filter(r => (!CONTRIB_ONLY.has(r.id) || r.state === 'edit') && (!viewingOtherUser.value || otherEdit.value || r.state === 'edit')));
 
 watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loadAccess(); } });
 // The overview's Datasets Unlocked row reads it too, once the player is known.
@@ -2648,7 +2660,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <img :src="r.emblem" class="nge-ds-unlocked-icon" alt="" draggable="false" />
                 <img v-if="r.state === 'locked'" :src="lockIcon" class="nge-ds-unlocked-lock" alt="" draggable="false" />
                 <span class="nge-ds-unlocked-name">{{ r.name }}</span>
-                <span class="nge-ds-unlocked-state">{{ r.state === 'edit' ? (r.short || 'Unlocked') : r.state === 'locked' ? 'Locked' : '…' }}</span>
+                <span class="nge-ds-unlocked-state">{{ r.state === 'edit' ? r.short : r.state === 'locked' ? 'Locked' : '…' }}</span>
               </div>
             </div>
           </div>
@@ -6019,8 +6031,10 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-unlocked--flash { animation: none; outline: 2px solid rgba(127, 224, 255, 0.7); } }
 /* No box and no glow (Ames 2026-11-19: "Lose the glow and outline around
    them"); fewer than four sit centered ("If there are only 2, center them"). */
-.nge-ds-unlocked-row { display: flex; justify-content: center; gap: 8px; }
-.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 2px; flex: 0 1 25%; min-width: 0; }
+/* Rows of four (Ames 2026-11-20: "how do we handle more than 4?"): a fifth
+   starts a second row, the same size, centered. */
+.nge-ds-unlocked-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 8px; }
+.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 2px; flex: 0 0 calc(25% - 6px); min-width: 0; }
 .nge-ds-unlocked-icon { width: 52px; height: 52px; object-fit: contain; }
 .nge-ds-unlocked-name { font: 700 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; }
 .nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(110, 240, 170); }
