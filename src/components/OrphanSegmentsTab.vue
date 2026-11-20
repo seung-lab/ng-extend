@@ -33,6 +33,7 @@ import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
+import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
   type OrphanSeg, type OrphanFlag,
@@ -420,7 +421,7 @@ async function submit() {
       nucId: form.nucId.trim(), noNucleus: form.noNucleus, note: form.note.trim(), at: Date.now(), caveId,
     };
     persist();
-    if (res && res.first) countCompleted(root, pt, row.id);
+    if (res && res.first) { countCompleted(root, pt, row.id); addFragmentDone(); }
     if (myClaim.value === row.id) myClaim.value = null;
     lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
     if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
@@ -452,6 +453,7 @@ async function loadAnswers() {
     persist();
     taken.clear();
     for (const id of res.others || []) taken.add(id);
+    setFragmentsDone((res.mine || []).length + (res.others || []).length);
     held.clear();
     for (const id of res.held || []) held.add(id);
     myClaim.value = res.myClaim ?? null;
@@ -482,6 +484,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <!-- How many are open, in the lead for everyone (Ames 2026-11-20: keep
            saying about 150 of 13,000, "add that to the text up at the top"). -->
       <div class="nge-orph-lead">{{ name.lead }} {{ fmt(GROUPS.reduce((a, g) => a + g.rows.length, 0)) }} of the {{ fmt(poolTotal) }} the lab found are open to start, and each one counts as a completed cell.</div>
+      <div v-if="fragmentsDone != null" class="nge-orph-countdown">Together we have completed <b>{{ fmt(fragmentsDone) }}</b>. <b class="nge-orph-countdown-num">{{ fmt(nextMilestone(fragmentsDone) - fragmentsDone) }}</b> to go until we celebrate {{ fmt(nextMilestone(fragmentsDone)) }}!</div>
       <div v-if="ON_TEST_SITE || !serverOn" class="nge-orph-mock">{{ !serverOn ? 'Pyr could not reach the server, so Complete will not save yet.' : 'Test site: Complete here is real. It goes to the lab and counts as a completed cell.' }}</div>
     </div>
 
@@ -708,6 +711,9 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-item { display: grid; grid-template-columns: 22px 1fr auto auto 14px; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: #cfdcef; cursor: pointer; text-align: left; font: 13px 'Inter', sans-serif; }
 .nge-orph-item:hover { background: rgba(74, 158, 255, 0.08); }
 .nge-orph-item--held { opacity: 0.45; }
+.nge-orph-countdown { margin: 4px 0 8px; font-size: 12.5px; color: #a9c3e0; }
+.nge-orph-countdown b { color: #e6f0ff; }
+.nge-orph-countdown .nge-orph-countdown-num { color: #ffd35a; }
 .nge-orph-claimbtn { color: #9be8b4 !important; border-color: rgba(68, 170, 102, 0.55) !important; }
 .nge-orph-claimbtn--mine { color: #a9c3e0 !important; border-color: rgba(127, 190, 255, 0.3) !important; }
 /* Training Sim's look (Ames 2026-11-20). Quiet buttons: thin edge, soft words. */
