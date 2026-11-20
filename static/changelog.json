@@ -2,13 +2,20 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-20T16:15:00Z",
+      "at": "2026-11-20T16:45:00Z",
       "title": "The Training Sim box powers on",
       "items": [
         "The Training Sim box powers on like a screen when it opens, and powers off when you close it.",
         "Keep working and Complete and Review on the finish screen have the same circuit chip edge as Jump.",
         "With the light bulb showing, Jump and Complete are balanced so the row looks even.",
         "The finish screen buttons stay on one line, even on a small screen."
+      ]
+    },
+    {
+      "at": "2026-11-20T16:36:00Z",
+      "title": "Favorites open in the Trophy Case",
+      "items": [
+        "Clicking a favorite Achievement in your profile, special ones included, now opens the Trophy Case right at it."
       ]
     },
     {

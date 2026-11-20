@@ -573,6 +573,12 @@ async function wrongParts(cg, memo, wrong) {
     const ids = Array.from(wrong, String);
     const roots = await cg.roots(TRUTH, ids, TRUTH.at);
     parts = groupPieces(ids, roots, {seed: ids[0], min: 1});
+    // Each part's own supervoxels, for where it joins the cell (Kfay, report
+    // 591: the red pin went to a random spot along a long merger, not to
+    // where it is fused on). Not enumerable: the parts are copied elsewhere.
+    const byRoot = new Map();
+    for (let i = 0; i < ids.length; i++) { const r = String(roots[i]); let l = byRoot.get(r); if (!l) byRoot.set(r, l = []); l.push(ids[i]); }
+    for (const p of parts) Object.defineProperty(p, 'svs', {value: byRoot.get(p.root) || [], enumerable: false});
     for (let i = 0; i < parts.length; i += 6) {
       await Promise.all(parts.slice(i, i + 6).map(async p => { if (await unplaced(cg, p.root, p.size)) p.unknown = true; }));
     }
@@ -700,7 +706,7 @@ async function review(io, {taskId, me, isAdmin, withSamples = false}) {
   // stub left by a cut, nor a crumb under MIN_PIECE.
   const still = attachedMemo.get(`${me.id}:${result.taskId}:${cell}`);
   const parts = (partsMemo.get(`${result.taskId}:${cell}`) || []).filter(p => !p.unknown && (still ? still.has(p.root) : p.size >= MIN_PIECE));
-  const mergers = parts.map(p => ({size: p.size, pointNm: svPointNm(p.samples[0]), ...(withSamples ? {samples: p.samples} : {})}));
+  const mergers = parts.map(p => ({size: p.size, pointNm: svPointNm(p.samples[0]), ...(withSamples ? {samples: p.samples, partRoot: p.root} : {})}));
   const out = {missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
   // Each pin on a section with an image there, as Jump's spots. Jump asks with
   // samples and moves only the one spot it gives (Ames 2026-11-18: "it really
@@ -745,7 +751,7 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs, prefetch = fals
   if (!r.scorable) return {taskId: r.taskId, scorable: false};
   const all = [
     ...(r.missed || []).map(p => ({kind: 'merge', root: p.root, size: p.size, pointNm: p.pointNm, samples: p.samples})),
-    ...(r.mergers || []).map(p => ({kind: 'cut', size: p.size, pointNm: p.pointNm, samples: p.samples})),
+    ...(r.mergers || []).map(p => ({kind: 'cut', size: p.size, pointNm: p.pointNm, samples: p.samples, partRoot: p.partRoot})),
   ].filter(p => p.pointNm).sort((a, b) => b.size - a.size);
   const i = all.length ? (Math.max(0, Math.floor(Number(n) || 0)) % all.length) : -1;
   const reveal = Number(step) === 2;
@@ -778,7 +784,12 @@ async function hint(io, {taskId, me, isAdmin, n, step, idleSecs, prefetch = fals
       if (p.kind === 'merge') at = await contact.meetingNm({fetchImpl: io.fetch, cell, piece: minus(truth, cell), near: pieceTrue && pieceTrue.length ? pieceTrue : (p.samples || [])});
       else {
         const wrong = minus(cell, truth);
-        at = await contact.meetingNm({fetchImpl: io.fetch, cell: minus(cell, wrong), piece: wrong, near: p.samples || []});
+        // Where THIS part is fused on: its own supervoxels, all of them, so
+        // the place is where it touches the true cell, not near five random
+        // samples along it (Kfay, report 591).
+        const part = p.partRoot ? (partsMemo.get(`${r.taskId}:${r.root}`) || []).find(q => q.root === p.partRoot) : null;
+        const own = part && part.svs && part.svs.length ? toSet(part.svs) : null;
+        at = await contact.meetingNm({fetchImpl: io.fetch, cell: minus(cell, wrong), piece: own || wrong, near: own || p.samples || []});
       }
       spotMemo.set(spotKey, {at, bringsMerger: !!p.bringsMerger});
     } catch (e) { console.warn('[sandbox-match] hint place', e.message); }
