@@ -20,9 +20,7 @@ import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import EffortCurve from 'components/EffortCurve.vue';
 import {loadRepoStats, BUILDER_USER_ID, type RepoStats} from '../util/repo_stats';
-import {getToolbarIconDef} from '../data/toolbar-icons';
 // The same drawing the top bar uses for Week in Science (Ames 2026-10-05).
-const recapIconSvg = getToolbarIconDef('recap')?.svg || '';
 import MyCellsTab from 'components/MyCellsTab.vue';
 import { isMobileRef } from '../util/mobile';
 
@@ -40,6 +38,8 @@ import retinaEmblem from '../images/datasets/retina.png';
 import mecEmblem from '../images/datasets/mec.png';
 import flywireEmblem from '../images/datasets/flywire.png';
 import bancEmblem from '../images/datasets/banc.png';
+import ca3Emblem from '../images/datasets/ca3.png';
+import firstEditDates from '../data/first-edit-dates.json';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -53,6 +53,27 @@ import goldYearAward from '../../static/images/champions/gold-year-award.png';
 import silverYearAward from '../../static/images/champions/silver-year-award.png';
 import bronzeYearAward from '../../static/images/champions/bronze-year-award.png';
 import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
+import { vArtGlow } from '../util/art_color';
+import { getToolbarIconDef } from '../data/toolbar-icons';
+import neuronTrophyArt from '../../static/images/champions/platinum-neuron-trophy.png';
+// The tabs carry Pyr's own icons, never emoji (Ames 2026-11-20: emoji there
+// were "hideous"; "can we use our own icons? like the neuron trophy for
+// trophy"). Toolbar icons where the top bar has one for the same thing;
+// the rest drawn to match them (16 grid, 1.3 strokes).
+const TAB_LINE = (paths: string, color: string) =>
+  `<svg viewBox="0 0 16 16" fill="none" style="width:1em;height:1em;vertical-align:middle;color:${color}">${paths}</svg>`;
+const TAB_ICONS = {
+  cells: getToolbarIconDef('cells')?.svg ?? '',
+  datasetStats: getToolbarIconDef('datasetStats')?.svg ?? '',
+  recap: getToolbarIconDef('recap')?.svg ?? '',
+  settings: getToolbarIconDef('settings')?.svg ?? '',
+  // a volume: one block of tissue, its three faces
+  datasets: TAB_LINE('<path d="M8 1.8l5.6 3.1v6.2L8 14.2l-5.6-3.1V4.9z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.6 5L8 8l5.4-3M8 8v6" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>', '#8fd3ff'),
+  // a shield with a check
+  admin: TAB_LINE('<path d="M8 1.7l5 1.9v4c0 3.2-2.2 5.6-5 6.7-2.8-1.1-5-3.5-5-6.7v-4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.6 8.1l1.7 1.7 3.2-3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>', '#f0c46a'),
+  // a pen nib
+  blog: TAB_LINE('<path d="M3 13l1.2-4.4L10.6 2.2a1.4 1.4 0 0 1 2 0l1.2 1.2a1.4 1.4 0 0 1 0 2L7.4 11.8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.4 3.4l3.2 3.2M3 13l3-.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>', '#c9a8ff'),
+};
 import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 
@@ -582,10 +603,18 @@ async function loadDatasetStats() {
 // (since 2026-10-30): an older one is simply not shown, never "not yet".
 // FlyWire, not BANC (Ames 2026-11-19: "BANC should be FlyWire").
 // And BANC (Ames 2026-11-19: "It should have: Retina, MEC, FlyWire, BANC").
-const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'flywire_fafb_production', 'banc'];
+// And CA3 (Ames 2026-11-20), for everyone who edited it: it is not unlocked
+// by a test, so its tile is only for its contributors, from CAVE's edits.
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'flywire_fafb_production', 'banc', 'zheng_ca3'];
 /** Short names for the tiles. */
-const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', flywire_fafb_production: 'FlyWire', banc: 'BANC' };
-const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, flywire_fafb_production: flywireEmblem, banc: bancEmblem };
+const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', flywire_fafb_production: 'FlyWire', banc: 'BANC', zheng_ca3: 'CA3' };
+const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmblem, pni_mec: mecEmblem, flywire_fafb_production: flywireEmblem, banc: bancEmblem, zheng_ca3: ca3Emblem };
+/** Each player's first edit on each dataset, from CAVE's edit logs (Pyr
+ *  user id to YYYY-MM-DD). The date under an emblem when no grant in Pyr
+ *  dates it (Ames 2026-11-20: the date, not "Unlocked"). */
+const FIRST_EDIT = firstEditDates as Record<string, Record<string, string>>;
+const CONTRIB_ONLY = new Set(['zheng_ca3']);
+const YEAR_ONLY = new Set(['flywire_fafb_production', 'banc']);
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
@@ -619,12 +648,16 @@ async function loadAccess() {
   otherEdit.value = got.edit;
 }
 const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d.id === id)).filter((d): d is DatasetEntry => !!d).map(ds => {
-  const at = accessGrants.value[ds.id];
-  const state = viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
+  const uid = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
+  const first = FIRST_EDIT[ds.id]?.[uid];
+  const at = accessGrants.value[ds.id] || (first ? `${first}T12:00:00Z` : '');
+  const state = CONTRIB_ONLY.has(ds.id) ? (first ? 'edit' : 'locked')
+    : viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
   const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-  const short = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  // FlyWire and BANC by the year (Ames 2026-11-20: "can use year 2024, 2025").
+  const short = at && YEAR_ONLY.has(ds.id) ? String(new Date(at).getFullYear()) : when;
   return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], emblem: ACCESS_EMBLEMS[ds.id] || '', state, when, short };
-}).filter(r => !viewingOtherUser.value || otherEdit.value || r.state === 'edit'));
+}).filter(r => (!CONTRIB_ONLY.has(r.id) || r.state === 'edit') && (!viewingOtherUser.value || otherEdit.value || r.state === 'edit')));
 
 watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loadAccess(); } });
 // The overview's Datasets Unlocked row reads it too, once the player is known.
@@ -642,7 +675,33 @@ if (!unlockedOpen.value) {
   const t = setInterval(() => { if (Date.now() >= UNLOCKED_FROM) { unlockedOpen.value = true; clearInterval(t); } }, 30000);
   onUnmounted(() => clearInterval(t));
 }
-const unlockedRow = computed(() => unlockedOpen.value ? accessRows.value.filter(r => r.emblem && r.state === 'edit') : []);
+// In the player's own order (drag to reorder, Ames 2026-11-20), then the rest.
+// Kept in this browser for now: saving it to the profile, for others to see,
+// needs users.dataset_order and the profile write function to take it.
+const DS_ORDER_KEY = 'nge-dataset-order';
+const myDatasetOrder = ref<string[]>((() => { try { const v = JSON.parse(localStorage.getItem(DS_ORDER_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })());
+const unlockedRow = computed(() => {
+  if (!unlockedOpen.value) return [];
+  const rows = accessRows.value.filter(r => r.emblem && r.state === 'edit');
+  const order = viewingOtherUser.value ? [] : myDatasetOrder.value;
+  const at = (id: string) => { const i = order.indexOf(id); return i < 0 ? 1000 + ACCESS_DATASETS.indexOf(id) : i; };
+  return rows.slice().sort((a, b) => at(a.id) - at(b.id));
+});
+let dsDragging = '';
+const dsDragOver = ref('');
+function dsDragStart(id: string, e: DragEvent) {
+  if (viewingOtherUser.value) return;
+  dsDragging = id;
+  try { e.dataTransfer?.setData('text/plain', id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; } catch { /* old browser */ }
+}
+function dsDrop(id: string) {
+  const from = dsDragging; dsDragging = ''; dsDragOver.value = '';
+  if (!from || from === id) return;
+  const ids = unlockedRow.value.map(r => r.id).filter(x => x !== from);
+  ids.splice(ids.indexOf(id), 0, from);
+  myDatasetOrder.value = ids;
+  try { localStorage.setItem(DS_ORDER_KEY, JSON.stringify(ids)); } catch { /* private window */ }
+}
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -1867,17 +1926,17 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
-        >🏆 Trophy Case</button>
+        ><img class="nge-profile-tab-ic nge-profile-tab-ic--img" :src="neuronTrophyArt" alt="" aria-hidden="true" />Trophy Case</button>
         <button
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'myCells' }"
           @click="activeTab = 'myCells'"
-        >🔬 {{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.cells"></span>{{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
         <button
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
           @click="activeTab = 'datasets'"
-        >🧬 Datasets</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.datasets"></span>Datasets</button>
         <!-- The whole dataset, not this person (Ames 2026-10-06). Phones use
              the narrow panel instead, from the Datasets tab or the leaderboard. -->
         <button
@@ -1885,7 +1944,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasetStats' }"
           @click="activeTab = 'datasetStats'"
-        >📊 Dataset Stats</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.datasetStats"></span>Dataset Stats</button>
         <!-- Hidden by default (Amy 2026-08-11): the tab button only appears
              while you're ON it, i.e. arrived via the toolbar Week icon or a
              recap notification deep-link. -->
@@ -1894,25 +1953,25 @@ onUnmounted(() => clearTimeout(stageTimer));
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': true }"
           @click="openWeekInScience()"
-        ><span class="nge-profile-tab-svg" v-html="recapIconSvg"></span> My Week in Science</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.recap"></span>My Week in Science</button>
         <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'settings' }"
           @click="activeTab = 'settings'"
-        >⚙️ Settings</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.settings"></span>Settings</button>
         <button
           v-if="!viewingOtherUser && backendStore.showAdminUi"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"
-        >🛠 Admin Hub</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.admin"></span>Admin Hub</button>
         <button
           v-if="!viewingOtherUser && backendStore.isBlogAuthor"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'blog' }"
           @click="activeTab = 'blog'"
-        >✍️ Blog</button>
+        ><span class="nge-profile-tab-ic" aria-hidden="true" v-html="TAB_ICONS.blog"></span>Blog</button>
         <button class="nge-profile-exit nge-profile-exit--tabs" title="Close" aria-label="Close the profile" @click="handleClose">×</button>
       </div>
 
@@ -2003,7 +2062,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                   @click="onSpecialBadgeClick(award)"
                 >
                   <div class="nge-profile-badge-img">
-                    <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
+                    <img v-art-glow :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
                 </div>
@@ -2018,7 +2077,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                   @click="onMedalClick(m)"
                 >
                   <div class="nge-profile-badge-img">
-                    <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
+                    <img v-art-glow :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
                     <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
                   </div>
                   <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
@@ -2123,7 +2182,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                  <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -2241,7 +2300,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                  <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -2325,7 +2384,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                  <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -2536,7 +2595,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
 
             <!-- Special badge detail view -->
             <div v-if="selectedSpecialBadge" key="special" class="nge-profile-viz-panel nge-profile-viz-badge nge-profile-viz-badge--detail">
-              <img
+              <img v-art-glow
                 :src="selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url"
                 :alt="selectedSpecialBadge.badge?.name"
                 class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
@@ -2556,7 +2615,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             <div v-else-if="!selectedBadge" key="latest" class="nge-profile-viz-panel nge-profile-viz-badge">
               <template v-if="favoriteBadge">
                 <div class="nge-profile-viz-title">⭐ Favorite Achievement</div>
-                <img
+                <img v-art-glow
                   :src="getBadgeUrl(favoriteBadge.imageKey)"
                   :alt="favoriteBadge.name"
                   class="nge-profile-viz-badge-icon"
@@ -2570,7 +2629,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               </template>
               <template v-else-if="favoriteSpecialBadge">
                 <div class="nge-profile-viz-title">⭐ Favorite Achievement</div>
-                <img
+                <img v-art-glow
                   :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
                   :alt="favoriteSpecialBadge.badge?.name"
                   class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
@@ -2583,7 +2642,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               </template>
               <template v-else-if="latestEarnedBadge">
                 <div class="nge-profile-viz-title">▌ Latest Achievement</div>
-                <img
+                <img v-art-glow
                   :src="getBadgeUrl(latestEarnedBadge.imageKey)"
                   :alt="latestEarnedBadge.name"
                   class="nge-profile-viz-badge-icon"
@@ -2605,7 +2664,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
 
             <!-- Badge detail view (when a badge is clicked) -->
             <div v-else key="badge" class="nge-profile-viz-panel nge-profile-viz-badge nge-profile-viz-badge--detail">
-              <img
+              <img v-art-glow
                 :src="getBadgeUrl(selectedBadge.imageKey)"
                 :alt="selectedBadge.name"
                 class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
@@ -2643,12 +2702,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           <div v-if="unlockedRow.length" class="nge-ds-unlocked" aria-label="Datasets unlocked">
             <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Datasets Unlocked</div>
             <div class="nge-ds-unlocked-row">
-              <div v-for="r in unlockedRow" :key="r.id" class="nge-ds-unlocked-tile" :class="'nge-ds-unlocked-tile--' + r.state"
-                   :title="r.state === 'edit' ? `${r.label}: unlocked${r.when ? ` ${r.when}` : ''}` : r.state === 'locked' ? `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.` : `${r.label}: checking…`">
+              <div v-for="r in unlockedRow" :key="r.id" class="nge-ds-unlocked-tile" :class="['nge-ds-unlocked-tile--' + r.state, { 'nge-ds-unlocked-tile--over': dsDragOver === r.id, 'nge-ds-unlocked-tile--drag': !viewingOtherUser }]"
+                   :draggable="!viewingOtherUser" @dragstart="dsDragStart(r.id, $event)" @dragover.prevent="dsDragOver = r.id" @dragleave="dsDragOver === r.id && (dsDragOver = '')" @drop.prevent="dsDrop(r.id)" @dragend="dsDragOver = ''"
+                   :title="r.state === 'edit' ? `${r.label}: unlocked${r.when ? ` ${r.when}` : ''}${viewingOtherUser ? '' : '. Drag to reorder.'}` : r.state === 'locked' ? `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.` : `${r.label}: checking…`">
                 <img :src="r.emblem" class="nge-ds-unlocked-icon" alt="" draggable="false" />
                 <img v-if="r.state === 'locked'" :src="lockIcon" class="nge-ds-unlocked-lock" alt="" draggable="false" />
                 <span class="nge-ds-unlocked-name">{{ r.name }}</span>
-                <span class="nge-ds-unlocked-state">{{ r.state === 'edit' ? (r.short || 'Unlocked') : r.state === 'locked' ? 'Locked' : '…' }}</span>
+                <span class="nge-ds-unlocked-state">{{ r.state === 'edit' ? r.short : r.state === 'locked' ? 'Locked' : '…' }}</span>
               </div>
             </div>
           </div>
@@ -2775,7 +2835,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span v-for="i in 12" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
-            <img
+            <img v-art-glow
               :src="selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url"
               :alt="selectedSpecialBadge.badge?.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
@@ -2808,7 +2868,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span v-for="i in 12" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
-            <img
+            <img v-art-glow
               :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
               :alt="favoriteSpecialBadge.badge?.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
@@ -2839,7 +2899,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span v-for="i in 12" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
-            <img
+            <img v-art-glow
               :src="getBadgeUrl(featuredBadge.imageKey)"
               :alt="featuredBadge.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
@@ -2929,7 +2989,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onBadgeClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
@@ -2967,7 +3027,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onBadgeClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
@@ -3005,7 +3065,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onBadgeClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days of science</div>
               </div>
@@ -3038,7 +3098,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 @click="onMedalClick(m)"
               >
                 <span class="nge-trophy-medal-img">
-                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
+                  <img v-art-glow :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
                   <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
                 </span>
                 <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
@@ -3072,7 +3132,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onLegacyClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
@@ -3096,7 +3156,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 }"
                 @click="onLegacyClick(badge)"
               >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <img v-art-glow :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
@@ -3128,7 +3188,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 :title="specialBadgeTooltip(award)"
                 @click="onSpecialBadgeClick(award)"
               >
-                <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
+                <img v-art-glow :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
               </div>
               <button v-if="hiddenTrophies('special', plainSpecialBadges).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${plainSpecialBadges.length}`" :aria-expanded="false" @click="toggleTrophySection('special')">
@@ -3280,7 +3340,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               :title="specialBadgeTooltip(award)"
               @click="onSpecialBadgeClick(award); showAllSpecialModal = false;"
             >
-              <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-special-modal-icon" />
+              <img v-art-glow :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-special-modal-icon" />
               <div class="nge-special-modal-name">{{ award.badge?.name || 'Award' }}</div>
               <div v-if="award.reason" class="nge-special-modal-reason">{{ award.reason }}</div>
             </div>
@@ -3297,7 +3357,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
         <div v-if="badgeZoom" class="nge-badge-zoom" @click="badgeZoom = null">
           <div class="nge-badge-zoom-halo"></div>
           <div class="nge-badge-zoom-ring"></div>
-          <img :src="badgeZoom.img" :alt="badgeZoom.name" class="nge-badge-zoom-img" />
+          <img v-art-glow :src="badgeZoom.img" :alt="badgeZoom.name" class="nge-badge-zoom-img" />
           <div class="nge-badge-zoom-name">{{ badgeZoom.name }}</div>
           <div v-if="badgeZoom.desc" class="nge-badge-zoom-desc">{{ badgeZoom.desc }}</div>
           <div v-if="badgeZoom.meta" class="nge-badge-zoom-meta">{{ badgeZoom.meta }}</div>
@@ -4231,29 +4291,33 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-badge:not(.nge-profile-badge--locked) { cursor: pointer; }
 .nge-profile-badge:not(.nge-profile-badge--locked):hover { transform: scale(1.1); }
 /* Exploration badges: blue highlight (default) */
+/* Every glow and highlight takes the art's own main color, --art, which
+   v-art-glow (src/util/art_color.ts) reads from the picture (Ames 2026-11-20:
+   "match the primary color of the item in all cases"). The old colors stay
+   as the fallback while the art loads. */
 .nge-profile-badge--selected {
-  background: rgba(74, 158, 255, 0.1);
-  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.3) inset;
+  background: rgba(var(--art, 74, 158, 255), 0.1);
+  box-shadow: 0 0 0 1px rgba(var(--art, 74, 158, 255), 0.35) inset;
 }
 .nge-profile-badge--selected .nge-profile-badge-img {
-  filter: drop-shadow(0 0 6px rgba(100, 180, 255, 0.75));
+  filter: drop-shadow(0 0 6px rgba(var(--art, 100, 180, 255), 0.75));
 }
 .nge-profile-badge--latest .nge-profile-badge-img {
-  filter: drop-shadow(0 0 8px rgba(100, 180, 255, 0.6));
+  filter: drop-shadow(0 0 8px rgba(var(--art, 100, 180, 255), 0.6));
 }
 .nge-profile-badge--latest .nge-profile-badge-name {
   color: #8ac8ff;
 }
 /* Building badges: subtle golden highlight */
 .nge-profile-badge--building.nge-profile-badge--selected {
-  background: rgba(245, 166, 35, 0.06);
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.2) inset;
+  background: rgba(var(--art, 245, 166, 35), 0.08);
+  box-shadow: 0 0 0 1px rgba(var(--art, 245, 166, 35), 0.3) inset;
 }
 .nge-profile-badge--building.nge-profile-badge--selected .nge-profile-badge-img {
-  filter: drop-shadow(0 0 3px rgba(255, 200, 80, 0.35));
+  filter: drop-shadow(0 0 4px rgba(var(--art, 255, 200, 80), 0.45));
 }
 .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-img {
-  filter: drop-shadow(0 0 4px rgba(255, 200, 80, 0.3));
+  filter: drop-shadow(0 0 4px rgba(var(--art, 255, 200, 80), 0.35));
 }
 .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-name {
   color: #ffd08a;
@@ -4429,7 +4493,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 /* max-width guards: the right column is 360px, and anything wider walked
    off its right edge (Amy's clipped Favorite Badge report, 2026-08-17). */
-.nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
+.nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(var(--art, 74, 158, 255), 0.4)); }
 .nge-profile-viz-badge-icon--large { width: 240px; height: 240px; max-width: 100%; }
 /* Sized to the window, so the silver favorites and the streak chart fit under it. */
 .nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, calc(25 * var(--nge-vh, 1vh))); height: min(220px, calc(25 * var(--nge-vh, 1vh))); }
@@ -4690,6 +4754,9 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   flex-shrink: 0;
 }
 
+/* the tab's icon, Pyr's own (see TAB_ICONS) */
+.nge-profile-tab-ic { display: inline-flex; align-items: center; font-size: 1.15em; line-height: 1; margin-right: 6px; vertical-align: -0.14em; }
+.nge-profile-tab-ic--img { width: 1.3em; height: 1.3em; object-fit: contain; margin-right: 5px; vertical-align: -0.3em; }
 .nge-profile-tab {
   background: none;
   border: none;
@@ -4702,8 +4769,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   transition: color 0.15s, border-color 0.15s;
   letter-spacing: 0.02em;
 }
-.nge-profile-tab-svg { display: inline-block; font-size: 1.25em; line-height: 1; vertical-align: -0.16em; margin-right: 2px; }
-.nge-profile-tab-svg :deep(svg) { color: currentColor !important; }
 .nge-profile-tab:hover {
   color: rgba(200, 220, 255, 0.8);
 }
@@ -4814,18 +4879,18 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 }
 .nge-trophy-badge:hover {
   transform: scale(1.05);
-  background: rgba(74, 158, 255, 0.06);
-  border-color: rgba(74, 158, 255, 0.15);
+  background: rgba(var(--art, 74, 158, 255), 0.06);
+  border-color: rgba(var(--art, 74, 158, 255), 0.18);
 }
 .nge-trophy-badge--selected {
-  background: rgba(74, 158, 255, 0.1) !important;
-  border-color: rgba(74, 158, 255, 0.3) !important;
-  box-shadow: 0 0 12px rgba(74, 158, 255, 0.15);
+  background: rgba(var(--art, 74, 158, 255), 0.1) !important;
+  border-color: rgba(var(--art, 74, 158, 255), 0.35) !important;
+  box-shadow: 0 0 12px rgba(var(--art, 74, 158, 255), 0.18);
 }
 .nge-trophy-badge--building.nge-trophy-badge--selected {
-  background: rgba(245, 166, 35, 0.08) !important;
-  border-color: rgba(245, 166, 35, 0.25) !important;
-  box-shadow: 0 0 12px rgba(245, 166, 35, 0.1);
+  background: rgba(var(--art, 245, 166, 35), 0.08) !important;
+  border-color: rgba(var(--art, 245, 166, 35), 0.3) !important;
+  box-shadow: 0 0 12px rgba(var(--art, 245, 166, 35), 0.14);
 }
 
 .nge-trophy-badge--locked {
@@ -4843,7 +4908,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   height: 56px;
   object-fit: contain;
   margin-bottom: 6px;
-  filter: drop-shadow(0 0 4px rgba(100, 180, 255, 0.2));
+  filter: drop-shadow(0 0 4px rgba(var(--art, 100, 180, 255), 0.25));
 }
 
 /* In the Trophy Case grid the art is the card: bigger, and the name and
@@ -4912,7 +4977,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   height: 350px;
   object-fit: contain;
   flex-shrink: 0;
-  filter: drop-shadow(0 0 20px rgba(100, 180, 255, 0.4));
+  filter: drop-shadow(0 0 20px rgba(var(--art, 100, 180, 255), 0.4));
 }
 .nge-trophy-featured-info {
   flex: 1;
@@ -5417,7 +5482,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   height: min(calc(64 * var(--nge-vw, 1vw)), 300px);
   object-fit: contain;
   margin-bottom: 6px;
-  filter: drop-shadow(0 0 24px rgba(100, 180, 255, 0.55));
+  filter: drop-shadow(0 0 24px rgba(var(--art, 100, 180, 255), 0.55));
   animation: nge-bz-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .nge-badge-zoom-name {
@@ -6019,11 +6084,16 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-unlocked--flash { animation: none; outline: 2px solid rgba(127, 224, 255, 0.7); } }
 /* No box and no glow (Ames 2026-11-19: "Lose the glow and outline around
    them"); fewer than four sit centered ("If there are only 2, center them"). */
-.nge-ds-unlocked-row { display: flex; justify-content: center; gap: 8px; }
-.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 2px; flex: 0 1 25%; min-width: 0; }
+/* Rows of four (Ames 2026-11-20: "how do we handle more than 4?"): a fifth
+   starts a second row, the same size, centered. */
+.nge-ds-unlocked-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 8px; padding: 6px 0 4px; }
+.nge-ds-unlocked-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 2px; min-width: 0; border-radius: 10px; transition: background 0.15s; }
+.nge-ds-unlocked-tile--drag { cursor: grab; }
+.nge-ds-unlocked-tile--drag:active { cursor: grabbing; }
+.nge-ds-unlocked-tile--over { background: rgba(127, 224, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(127, 224, 255, 0.35); }
 .nge-ds-unlocked-icon { width: 52px; height: 52px; object-fit: contain; }
 .nge-ds-unlocked-name { font: 700 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; }
-.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(110, 240, 170); }
+.nge-ds-unlocked-state { font: 600 9px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(200, 215, 235, 0.55); white-space: nowrap; min-height: 9px; }
 .nge-ds-unlocked-tile--unknown { opacity: 0.55; }
 @media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 

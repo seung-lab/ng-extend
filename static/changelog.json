@@ -2,6 +2,30 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T17:42:00Z",
+      "title": "Profile glows and tabs",
+      "items": [
+        "The glow behind each Achievement on a profile now matches its art: purple for Days helping science, gold for Edits.",
+        "The profile's tabs show Pyr's own icons instead of emoji, with the neuron trophy for the Trophy Case."
+      ]
+    },
+    {
+      "at": "2026-11-20T17:38:00Z",
+      "title": "Fold the Cell Library tabs",
+      "items": [
+        "An arrow at the top of the Cell Library's tabs folds them away, so the header just names the tab you are on. Press All tabs to bring them back."
+      ]
+    },
+    {
+      "at": "2026-11-20T17:36:00Z",
+      "title": "Datasets Unlocked, dated",
+      "items": [
+        "Under each emblem in Datasets Unlocked is the date you unlocked it, or the year for FlyWire and BANC.",
+        "Everyone who helped proofread CA3, the mouse hippocampus, has a CA3 emblem.",
+        "Drag the emblems to put them in the order you like."
+      ]
+    },
+    {
       "at": "2026-11-20T17:26:00Z",
       "title": "A Training Sim box that fits",
       "items": [

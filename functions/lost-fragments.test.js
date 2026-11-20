@@ -2,7 +2,7 @@
 // node --test functions/lost-fragments.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { fragmentsAction, cleanAnswer, sheetRow, syncSheet } = require('./lost-fragments');
+const { fragmentsAction, cleanAnswer, sheetRow, syncSheet, fragmentPoints, sizePoints } = require('./lost-fragments');
 
 const ANSWER = { fragmentId: '720575940562452709', group: 'smaller', rootId: '720575940565514656', labFlag: 'no flag', labUm3: 153.37,
   fixed: true, ends: true, pointIn: 'dendrite', pt: [20849, 53747, 1111], nucleusId: '', noNucleus: false, note: 'odd tip', caveAnnotationId: 42 };
@@ -149,4 +149,18 @@ test('a claim left alone for two weeks lapses', async () => {
   tables.ew_lost_fragment_claims.push({ fragment_id: ANSWER.fragmentId, user_id: 'u-2', claimed_at: new Date(Date.now() - 15 * 864e5).toISOString() });
   assert.equal((await fragmentsAction('fragments.claim', { fragmentId: ANSWER.fragmentId }, { sb, me: ME, isAdmin: true })).claimed, true);
   assert.deepEqual(tables.ew_lost_fragment_claims.map(c => c.user_id), ['u-1']);
+});
+
+test('points beta: big fragments pay more than in proportion; edits, growth and the nucleus add', async () => {
+  assert.deepEqual([153.29, 400, 1054.57, 1592.08].map(sizePoints), [87, 179, 370, 504]);
+  assert.equal(sizePoints(1e9), sizePoints(3000), 'size is capped');
+  assert.deepEqual(fragmentPoints({ um3: 400, merges: 3, cuts: 2, um3Added: 12.4, nucleus: true }),
+    { size: 179, edits: 40, grown: 12, nucleus: 50, total: 281 });
+  assert.equal(fragmentPoints({ um3: 0, merges: 500, cuts: 500 }).edits, 500, 'at most 50 edits count');
+  assert.equal(fragmentPoints({ um3: 0, um3Added: 1e6 }).grown, 500, 'growth is capped');
+  const { rows, sb } = fakeDb();
+  const out = await fragmentsAction('fragments.submit', ANSWER, { sb, me: ME, isAdmin: true });
+  assert.equal(out.points.size, sizePoints(rows[0].lab_um3), 'with no CAVE measure, the lab volume sets the size');
+  assert.equal(rows[0].points, out.points.total);
+  assert.equal(rows[0]._before, undefined, 'the measure helper field is not stored');
 });
