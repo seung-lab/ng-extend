@@ -317,6 +317,64 @@ export class FourPanelLayout extends RefCounted {
   }
 }
 
+/**
+ * nge: a divider between the 2D and the 3D panel that drags to resize them
+ * (Nseraf, report 601: "more 2D or 3D space (w/o clicking 2/3D only) ... with
+ * maybe a shortcut for easy reset"). Double click puts them back to half and
+ * half. The split is remembered in this browser, one for side by side and one
+ * for stacked.
+ */
+const SPLIT_KEY = 'nge-panel-split-';
+function addPanelSplitter(owner: RefCounted, root: HTMLElement, direction: 'row'|'column') {
+  const [first, second] = Array.from(root.children) as HTMLElement[];
+  if (!first || !second) return;
+  const key = SPLIT_KEY + direction;
+  const apply = (fraction: number) => {
+    first.style.flex = `${fraction} 1 0`;
+    second.style.flex = `${1 - fraction} 1 0`;
+  };
+  const clamp = (f: number) => Math.min(0.85, Math.max(0.15, f));
+  try {
+    const saved = Number(localStorage.getItem(key));
+    if (saved > 0 && saved < 1) apply(clamp(saved));
+  } catch { /* private window */ }
+
+  const splitter = document.createElement('div');
+  splitter.className = `nge-panel-splitter nge-panel-splitter-${direction}`;
+  splitter.title = 'Drag to give the 2D or 3D view more room. Double click to split evenly.';
+  root.insertBefore(splitter, second);
+  owner.registerDisposer(() => removeFromParent(splitter));
+
+  splitter.addEventListener('pointerdown', (event: PointerEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    splitter.setPointerCapture(event.pointerId);
+    splitter.classList.add('nge-panel-splitter-active');
+    let fraction = 0.5;
+    const move = (e: PointerEvent) => {
+      const a = first.getBoundingClientRect(), b = second.getBoundingClientRect();
+      fraction = clamp(direction === 'row' ? (e.clientX - a.left) / (b.right - a.left)
+                                           : (e.clientY - a.top) / (b.bottom - a.top));
+      apply(fraction);
+    };
+    const up = () => {
+      splitter.removeEventListener('pointermove', move);
+      splitter.removeEventListener('pointerup', up);
+      splitter.removeEventListener('pointercancel', up);
+      splitter.classList.remove('nge-panel-splitter-active');
+      try { localStorage.setItem(key, String(Math.round(fraction * 1000) / 1000)); } catch { /* */ }
+    };
+    splitter.addEventListener('pointermove', move);
+    splitter.addEventListener('pointerup', up);
+    splitter.addEventListener('pointercancel', up);
+  });
+  splitter.addEventListener('dblclick', () => {
+    apply(0.5);
+    try { localStorage.removeItem(key); } catch { /* */ }
+  });
+}
+
 export class SliceViewPerspectiveTwoPanelLayout extends RefCounted {
   constructor(
       public container: DataPanelLayoutContainer, public rootElement: HTMLElement,
@@ -358,6 +416,7 @@ export class SliceViewPerspectiveTwoPanelLayout extends RefCounted {
             registerRelatedLayouts(this, panel, ['3d', '4panel']);
           }),
     ]))(rootElement);
+    addPanelSplitter(this, rootElement, direction);
   }
 
   disposed() {

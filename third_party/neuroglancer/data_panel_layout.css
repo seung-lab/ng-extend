@@ -49,3 +49,25 @@
 .neuroglancer-data-panel-layout-controls > button:hover {
   color: #6ff;
 }
+
+/* nge: the 2D / 3D divider (report 601). A thin line with a wider grab area. */
+.nge-panel-splitter {
+  position: relative;
+  flex: 0 0 4px;
+  z-index: 5;
+  background: rgba(120, 150, 200, 0.18);
+  transition: background 0.12s;
+}
+.nge-panel-splitter::after {
+  content: '';
+  position: absolute;
+}
+.nge-panel-splitter-row { cursor: col-resize; }
+.nge-panel-splitter-row::after { top: 0; bottom: 0; left: -5px; right: -5px; }
+.nge-panel-splitter-column { cursor: row-resize; }
+.nge-panel-splitter-column::after { left: 0; right: 0; top: -5px; bottom: -5px; }
+.nge-panel-splitter:hover,
+.nge-panel-splitter-active {
+  background: rgba(110, 190, 255, 0.75);
+}
+body.nge-photo-mode .nge-panel-splitter { display: none; }
