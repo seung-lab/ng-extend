@@ -159,7 +159,7 @@ function outsideClick() { if (done.value || !hasDraft.value) emit('hide'); }
 // the public URL.
 // Several pictures, for before and after (Kfay #584): the first is the
 // report's screenshot as before, the rest ride in the message.
-const MAX_SHOTS = 6;
+const MAX_SHOTS = 4;
 const screenshotUrls = ref<string[]>([]);
 const showScreenshotDialog = ref(false);
 function onScreenshotAttached(payload: { url: string }) {
