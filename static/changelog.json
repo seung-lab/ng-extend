@@ -2,6 +2,18 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T14:53:00Z",
+      "title": "A sharper Training Sim box",
+      "items": [
+        "Play shows a lightning search across the button the moment you click it, and it strikes when your cell is up.",
+        "Jump to next spot and Complete and Review have clean faces with a small circuit chip around their edges.",
+        "Jump's lightning runs from pad to pad and stops at the light bulb, which now sits in Jump like a key.",
+        "The open hint has its words across the top, with Show me on the right under the fold arrow.",
+        "What you still have to merge in and cut off reads in red.",
+        "Teleport to a new cell has the same shape as Play, with lightning on click."
+      ]
+    },
+    {
       "at": "2026-11-20T14:45:00Z",
       "title": "Steadier merging and scrolling",
       "items": [
