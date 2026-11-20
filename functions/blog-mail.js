@@ -22,8 +22,9 @@
 const crypto = require('crypto');
 
 const SITE = 'https://connectome.quest';
-// The colon needs the quotes in an email From (Ames 2026-11-19: "Pyr: Map the Brain").
-const FROM = '"Pyr: Map the Brain" <blog@connectome.quest>';
+// Ames 2026-11-19 asked for "Pyr: Map the Brain"; Resend refuses any colon in
+// a From name, even quoted (422), so the sender uses a dot. The header has the colon.
+const FROM = 'Pyr · Map the Brain <blog@connectome.quest>';
 const REPLY_TO = 'support@eyewire.ai';
 const SEGMENT = 'connectome.quest blog';
 const TEST_SEGMENT = 'connectome.quest blog test';
