@@ -594,7 +594,8 @@ body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !importan
    almost like how the play button has that slash line"): Jump ends in a slash,
    the key follows it, and Jump's right pad sits on the slash. */
 #${CARD_ID} .nge-cm-jumprow{gap:0;align-items:stretch}
-#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;padding-right:18px !important}
+/* Its words centered on the whole row, so they line up with Complete's (Ames 2026-11-20: "the text is aligned weird"): the bulb takes 35 px, so 35 px more on the left. */
+#${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-hbtn{z-index:1;padding-left:47px !important;padding-right:12px !important}
 #${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb{position:relative;overflow:hidden;flex:0 0 42px;margin-left:-7px;padding:0 0 0 6px;border:0;border-radius:0 4px 4px 0;
   clip-path:polygon(10px 0,100% 0,100% 100%,0 100%);background:linear-gradient(135deg,#e2f6ff 0%,#7fd8ff 45%,#3b86d8 100%);transition:filter .2s}
 #${CARD_ID} .nge-cm-jumprow:has(.nge-cm-bulb:not([hidden])) .nge-cm-bulb svg{stroke:#06213a;position:relative;z-index:1}
