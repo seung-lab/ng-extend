@@ -2158,6 +2158,16 @@ exports.ewSecureWrite = onRequest(
             }
             break;
           }
+          // Lost Fragments answers (lost-fragments.js, supabase-lost-fragments.sql):
+          // the table, the fragment's merges, cuts and volume read with the
+          // player's own CAVE sign in, and the researchers' sheet.
+          if (typeof action === "string" && action.startsWith("fragments.")) {
+            const { fragmentsAction } = require("./lost-fragments");
+            const { sheetsApi } = require("./sheet-sync");
+            out = await fragmentsAction(action, args, { sb, me, isAdmin, caveToken: token, caveId: who.caveId,
+              sheets: (path, init) => sheetsApi(admin.applicationDefault(), path, init) });
+            break;
+          }
           // The admins' To do board (supabase-admin-todos.sql, Ames
           // 2026-10-19): every rule is in todos.js. A tag reaches the person
           // twice: the bell in Pyr, and a Slack message that pings them.
@@ -2354,7 +2364,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-11-12-news-optin-1";
+const EW_ACCESS_CODE_VERSION = "2026-11-19-retina-view-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2592,6 +2602,17 @@ exports.ewAccessRequest = onRequest(
             const u = await r.json();
             const perms = [...((u.permissions_v2 || {})["stroeh-mouse-retina"] || []), ...((u.permissions_v2_ignore_tos || {})["stroeh-mouse-retina"] || [])];
             return perms.includes("edit");
+          } catch (e) { return null; }
+        },
+        // What this player may do on Retina, from CAVE with their own sign
+        // in: a list such as ["view"], or null when CAVE can't say.
+        retinaAccess: async () => {
+          try {
+            const r = await fetch("https://global.daf-apis.com/auth/api/v1/user/cache", {
+              headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return null;
+            const u = await r.json();
+            return [...((u.permissions_v2 || {})["stroeh-mouse-retina"] || []), ...((u.permissions_v2_ignore_tos || {})["stroeh-mouse-retina"] || [])];
           } catch (e) { return null; }
         },
         // Beta access requests post like any report (Ames 2026-10-24).

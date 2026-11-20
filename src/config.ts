@@ -17,7 +17,7 @@ import { MEC_CELL_TYPES_STATE } from './data/mec_cell_types_state';
 const RETINA_HOWTO: string[] = [
   'New here? Watch <a href="https://youtu.be/QNMfmlJIfWs" target="_blank" rel="noopener">Claiming and Completing a cell in Eyewire II</a>, a short video of the steps below.',
   'Click <b>BC Challenge</b> and jump around until you find a cell you want. These are all bipolar cells (BCs).',
-  '<b>Claim</b> it. You can hold up to 10 cells at a time. Claiming opens the cell with a Checked Highlight layer to mark with; press <b>+ Annotation layers</b> on its row if you prefer annotations.',
+  '<b>Claim</b> it. You can hold up to 10 cells at a time. Claiming opens the cell with a Checked Highlight layer to mark with; press <b>+ Annotation</b> on its row if you prefer annotations.',
   'Start mapping! Add the annotations described in <a href="https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=508214135#gid=508214135" target="_blank" rel="noopener">the annotation guide</a>.',
   'When the cell is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID in the side panel. That records it in the spreadsheet and in our database.',
   'Questions or problems? Use the <b>(!)</b> button in the top bar.',
