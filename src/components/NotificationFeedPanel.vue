@@ -2,6 +2,8 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
+import { startPlay } from '../util/play';
+import { flyNurroAcross } from '../util/nurro_fly';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, accessSort, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore, useCellHistoryStore } from '../store';
@@ -529,6 +531,17 @@ function closeDetail() {
 const helpSolvedNote = ref('');
 async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
+  // "[Play Lost Fragments](#nge-play=lost-fragments)" in a notification: a big
+  // button that starts Lost Fragments play, with Nurro flying ahead (Ames
+  // 2026-11-20: "make the notification awesome and take them to Nugget play mode"; the name stayed Lost Fragments).
+  if (a?.getAttribute('href') === '#nge-play=lost-fragments') {
+    e.preventDefault();
+    closeDetail();
+    emit('hide');
+    void flyNurroAcross();
+    void startPlay('fragments');
+    return;
+  }
   // A tutorial edit to approve: its before and after show here, and this
   // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
   if (a?.getAttribute('href') === ACCESS_LIST_LINK || a?.getAttribute('href') === BETA_LIST_LINK) {
@@ -2405,6 +2418,12 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-body :deep(.nge-notif-video iframe),
 .nge-notif-detail-body :deep(.nge-notif-video video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .nge-notif-detail-body :deep(p:last-child) { margin-bottom: 0; }
+/* The Play Lost Fragments link, drawn as a big gold button. */
+.nge-notif-detail-body :deep(a[href="#nge-play=lost-fragments"]) { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; padding: 11px 22px;
+  border-radius: 10px; border: 1px solid rgba(255, 211, 90, 0.8); background: linear-gradient(180deg, #ffd35a, #e6a91f);
+  color: #1a1203 !important; font: 700 15px/1 Inter, system-ui, sans-serif; letter-spacing: 0.02em; text-decoration: none !important;
+  box-shadow: 0 0 0 3px rgba(255, 211, 90, 0.15), 0 6px 22px rgba(255, 190, 40, 0.35); cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.nge-notif-detail-body :deep(a[href="#nge-play=lost-fragments"]):hover { transform: translateY(-1px); box-shadow: 0 0 0 4px rgba(255, 211, 90, 0.25), 0 8px 28px rgba(255, 190, 40, 0.5); }
 .nge-notif-detail-body :deep(strong) { color: #eef4fb; font-weight: 650; }
 /* No thin italic on a dark background: emphasis reads as colour instead. */
 .nge-notif-detail-body :deep(em) { font-style: normal; font-weight: 500; color: rgb(var(--nd-cyan) / 0.9); }
