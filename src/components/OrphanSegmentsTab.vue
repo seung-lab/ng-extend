@@ -29,7 +29,7 @@ import { useCellHistoryStore, useProofreadingBackendStore, useUserStatsStore } f
 import { secureWrite } from '../secure_write';
 import { postLostFragmentPoint } from '../widgets/lightbulb_service';
 import { cellAtCrosshair, supervoxelAtPlace } from '../util/crosshair_cell';
-import { getRootFromSupervoxel } from '../widgets/pcg_service';
+import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
@@ -296,6 +296,20 @@ async function usePoint() {
     // may not have yet (Ames 2026-11-19: the check failed on her edited
     // fragment). Ask what the fragment's own start point belongs to now.
     const row = active.value;
+    // Its edit history: the cell under the crosshairs grew out of this
+    // fragment (Ames 2026-11-20: "Crosshair check is failing"; the start
+    // point read below can't read Retina's segmentation, so it never matched).
+    if (!inShown && row) {
+      const from = await ancestorAmong(at.root, [shownRoot.value, row.id].filter(Boolean) as string[]).catch(() => undefined);
+      if (from && active.value?.id === row.id) {
+        inShown = true;
+        try {
+          if (shownRoot.value && shownRoot.value !== at.root) visible?.delete(Uint64.parseString(shownRoot.value));
+          visible?.add(Uint64.parseString(at.root));
+        } catch { /* layer went away */ }
+        shownRoot.value = at.root;
+      }
+    }
     if (!inShown && row) {
       const sv = await supervoxelAtPlace(row.pt).catch(() => null);
       const now = sv && sv !== '0' ? await getRootFromSupervoxel(sv).catch(() => null) : null;
