@@ -3,7 +3,7 @@ import { pumpkinSeason } from '../util/pumpkin';
 import { turkeySeason } from '../util/turkey';
 import { leavesSeason } from '../util/leaves';
 import { isMac } from '../util/platform';
-import {ref, onMounted, onUnmounted, computed} from 'vue';
+import {ref, onMounted, onUnmounted, computed, watch, nextTick} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession, datasetSwitchOpens, type DatasetSwitchOpens} from '../store';
 import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
@@ -364,6 +364,9 @@ onMounted(() => { document.addEventListener('click', closeNgInfo, true); documen
 // Another window can point at one card: it opens unfolded, scrolled to, and
 // glows a moment (the Retina question's "10 Jumping and views", Ames 2026-11-08).
 function focusCard(key: string) {
+  // A search or Changed could be hiding it.
+  query.value = '';
+  onlyChanged.value = false;
   if (isFolded(key)) toggleFold(key);
   setTimeout(() => {
     const el = document.querySelector(`.nge-set-card--${key}`) as HTMLElement | null;
@@ -442,6 +445,153 @@ const emit = defineEmits({hide: null});
 // wrapper plus the ×/Cancel affordances — the profile owns closing.
 // Same pattern as WeeklyRecapPanel.
 const props = defineProps<{ embedded?: boolean }>();
+
+// ── Layout: a sidebar of sections, search, and Changed (player report #594) ──
+// One column of every box on one scrolling page, with the list of boxes on the
+// left. Layout only: every control below works and saves exactly as before.
+const NAV = (() => {
+  const groups: { title: string; items: [string, string][] }[] = [
+    { title: 'Identity', items: [['username', 'Username'], ['flag', 'Country / Flag'], ['bio', 'Bio'], ['notif', 'Chat and notifications'], ['datasets', 'Switching datasets']] },
+    { title: 'Display', items: [['toolbar', 'Toolbar Icons'], ['look', '3D looks'], ['screen', 'Screen']] },
+    { title: 'Viewer', items: [['editing', 'Merging'], ['jump', 'Jumping and views'], ['images', '2D images'], ['classic', 'Neuroglancer']] },
+  ];
+  // Numbered as the boxes are (RetinaModePrompt.vue points at "10 Jumping and views").
+  let n = 0;
+  return groups.map(g => ({ title: g.title, items: g.items.map(([key, label]) => ({ key, label, num: String(++n).padStart(2, '0') })) }));
+})();
+const NAV_KEYS = NAV.flatMap(g => g.items.map(i => i.key));
+
+const contentEl = ref<HTMLElement | null>(null);
+const query = ref('');
+const onlyChanged = ref(false);
+const activeKey = ref(NAV_KEYS[0]);
+const hiddenCards = ref(new Set<string>());
+const noMatches = ref(false);
+
+/** Settings that differ from how Pyr starts (the values a reset gives, read
+ *  the same way onMounted reads them). Shown values, so unsaved changes count.
+ *  Username, flag and bio are the profile, not settings; 3D Hover's starting
+ *  look depends on when the player first came, so it is left out. */
+const changedKeys = computed(() => {
+  const c = new Set<string>();
+  const differs: [string, boolean][] = [
+    ['chatMuted', draftChatMuted.value], ['chatFadeAway', !draftChatFade.value], ['chatMarkMine', !draftChatMarkMine.value],
+    ['helpMuted', draftHelpMuted.value], ['undeleteCounter', draftUndeleteCounter.value],
+    ['datasetSwitchOpens', draftSwitchOpens.value !== 'resume'], ['extraDatasets', draftExtra.value.length > 0],
+    ['datasetStartViews', Object.keys(draftStartViews.value).length > 0],
+    ['toolbarIcons', (() => { const d = DEFAULT_ORDER.filter(id => iconArrived(id)); return d.length !== draftToolbar.value.length || d.some(id => !draftToolbar.value.includes(id)); })()],
+    ['autoTurn', !draftAutoTurn.value], ['pulseColor', draftPulseColor.value !== ''], ['colorFamilies', draftColorFamilies.value.length > 0],
+    ['hidePumpkin', !draftPumpkin.value], ['cellCelebration', !draftCellCelebration.value], ['achievementCelebration', !draftAchievementCelebration.value],
+    ['notifCategories', draftNotifCategories.value], ['showDailyDigest', !draftDailyDigest.value], ['pointParticles', !draftParticles.value],
+    ['hideTurkey', !draftTurkey.value], ['hideLeaves', !draftLeaves.value], ['calmScreen', draftCalm.value], ['cursorXL', draftCursorXL.value],
+    ['largeText', draftLargeText.value], ['hideTopBar', draftHideTopBar.value], ['segShowId', draftSegShowId.value],
+    ['hideRadio', !draftShowRadio.value], ['hidePlayButton', !draftShowPlay.value],
+    ['quickMergeKey', draftQuickMerge.value], ['newLayerKey', draftNewLayerKey.value !== 'shift'],
+    ['jumpAddsToView', draftJumpAdds.value], ['retinaAnnotationLayers', draftRetinaAnnot.value], ['keepDisplayOnJump', !draftKeepDisplay.value],
+    ['offerViewRestore', !draftOfferRestore.value], ['cellLibraryStartTab', draftLibraryTab.value !== 'mine'],
+    ['imageDetail', draftImageDetail.value !== 1], ['imageSource', draftImageSource.value !== 'auto'],
+    ['annotationGems', !draftAnnotationGems.value], ['classicLayerClicks', draftClassicLayers.value], ['layerHideButton', draftLayerHide.value],
+    ['imageLayerPanel', draftImageLayerPanel.value], ['showAnnotationSetupTabs', draftAnnotationSetupTabs.value],
+    ['showSegSetupTabs', draftSegSetupTabs.value], ['showNgControlsButton', draftShowNgControls.value], ['showXyzCorner', draftShowXyz.value],
+  ];
+  for (const [k, d] of differs) if (d) c.add(k);
+  return c;
+});
+/** Taken when Changed is switched on, so a row does not vanish under the
+ *  mouse the moment it is set back. */
+let changedSnapshot = new Set<string>();
+function toggleChanged() {
+  onlyChanged.value = !onlyChanged.value;
+  if (onlyChanged.value) changedSnapshot = new Set(changedKeys.value);
+}
+
+function cardKeyOf(el: Element): string {
+  const c = [...el.classList].find(x => x.startsWith('nge-set-card--') && x !== 'nge-set-card--flash');
+  return c ? c.slice('nge-set-card--'.length) : '';
+}
+/** Everything a row says: its words, hover notes, menu options and swatch names. */
+function rowText(el: Element): string {
+  let s = (el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || '');
+  el.querySelectorAll('[title], [aria-label]').forEach(x => { s += ' ' + (x.getAttribute('title') || '') + ' ' + (x.getAttribute('aria-label') || ''); });
+  return s.toLowerCase();
+}
+function hide(el: HTMLElement, h: boolean) { if (h) el.dataset.ngeHide = '1'; else delete el.dataset.ngeHide; }
+
+/** Hide the rows that do not match the search (or Changed), and the boxes and
+ *  headings left empty. A data attribute, which Vue leaves alone. */
+function applyFilter() {
+  const root = contentEl.value;
+  if (!root) return;
+  const q = query.value.trim().toLowerCase();
+  const changedOnly = onlyChanged.value;
+  const filtering = !!q || changedOnly;
+  const hiddenNow = new Set<string>();
+  const isChangedRow = (row: Element) => [row, ...row.querySelectorAll('[data-set]')].some(x => { const k = (x as HTMLElement).dataset?.set; return !!k && changedSnapshot.has(k); });
+  root.querySelectorAll<HTMLElement>('.nge-settings-section').forEach(card => {
+    const kids = [...card.children] as HTMLElement[];
+    const title = kids[0];
+    if (!filtering) { kids.forEach(k => hide(k, false)); hide(card, false); return; }
+    // The box's title or its one-line summary matching shows the whole box.
+    const summary = card.querySelector(':scope > p.nge-settings-hint');
+    const titleHit = !!q && (rowText(title) + ' ' + (summary ? rowText(summary) : '')).includes(q);
+    let shown = 0;
+    for (const row of kids.slice(1)) {
+      const ok = (!changedOnly || isChangedRow(row)) && (!q || titleHit || rowText(row).includes(q));
+      hide(row, !ok);
+      if (ok) shown++;
+    }
+    hide(title, false);
+    hide(card, shown === 0);
+    if (shown === 0) hiddenNow.add(cardKeyOf(card));
+  });
+  root.querySelectorAll<HTMLElement>('.nge-set-col').forEach(col => {
+    hide(col, filtering && !col.querySelector('.nge-settings-section:not([data-nge-hide])'));
+  });
+  const viewas = root.querySelector<HTMLElement>('.nge-set-viewas');
+  if (viewas) hide(viewas, filtering && (changedOnly || !rowText(viewas).includes(q)));
+  hiddenCards.value = hiddenNow;
+  noMatches.value = filtering && hiddenNow.size === NAV_KEYS.length;
+}
+watch([query, onlyChanged], () => nextTick(applyFilter));
+
+function onSearchKey(e: KeyboardEvent) {
+  // Typing here must not reach the viewer's own keys (M, N, P...).
+  e.stopPropagation();
+  if (e.key === 'Escape' && (query.value || onlyChanged.value)) {
+    e.preventDefault();
+    query.value = '';
+    onlyChanged.value = false;
+  }
+}
+
+/** Scroll the page to a box, inside the settings only (not the window around them). */
+let navLockUntil = 0;
+function goTo(key: string) {
+  const root = contentEl.value;
+  const el = root?.querySelector(`.nge-set-card--${key}`) as HTMLElement | null;
+  if (!root || !el) return;
+  activeKey.value = key;
+  navLockUntil = Date.now() + 900;
+  const top = root.scrollTop + el.getBoundingClientRect().top - root.getBoundingClientRect().top - 12;
+  root.scrollTo({ top, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  document.querySelector(`.nge-set-nav-item--${key}`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+}
+
+// The sidebar marks the box in view: the first one in the top part of the page.
+let navObserver: IntersectionObserver | null = null;
+const inView = new Set<string>();
+onMounted(() => {
+  const root = contentEl.value;
+  if (!root || typeof IntersectionObserver === 'undefined') return;
+  navObserver = new IntersectionObserver(entries => {
+    for (const en of entries) { const k = cardKeyOf(en.target); if (en.isIntersecting) inView.add(k); else inView.delete(k); }
+    if (Date.now() < navLockUntil) return;
+    const first = NAV_KEYS.find(k => inView.has(k));
+    if (first) activeKey.value = first;
+  }, { root, rootMargin: '0px 0px -55% 0px' });
+  root.querySelectorAll('.nge-settings-section').forEach(el => navObserver!.observe(el));
+});
+onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
 </script>
 
 <template>
@@ -458,8 +608,53 @@ const props = defineProps<{ embedded?: boolean }>();
         <button class="nge-settings-exit" @click="emit('hide')">×</button>
       </div>
 
+      <!-- A sidebar of sections beside one scrolling column (player report #594).
+           On a phone the sidebar becomes a row of chips above the column. -->
+      <div class="nge-settings-body">
+      <nav class="nge-set-nav" aria-label="Settings sections">
+        <input
+          v-model="query"
+          type="search"
+          class="nge-set-search"
+          placeholder="Search settings"
+          aria-label="Search settings"
+          autocomplete="off"
+          spellcheck="false"
+          @keydown="onSearchKey"
+          @keyup.stop
+        />
+        <div class="nge-set-nav-list">
+          <button
+            type="button"
+            class="nge-set-nav-item nge-set-nav-changed"
+            :class="{ 'is-active': onlyChanged }"
+            :aria-pressed="onlyChanged"
+            :disabled="!onlyChanged && changedKeys.size === 0"
+            :title="changedKeys.size ? 'Show only the settings you have changed from how Pyr starts' : 'All your settings are as Pyr starts'"
+            @click="toggleChanged"
+          >Changed<span class="nge-set-nav-count">{{ changedKeys.size }}</span></button>
+          <template v-for="sec in NAV" :key="sec.title">
+            <div v-show="!sec.items.every(i => hiddenCards.has(i.key))" class="nge-set-nav-cat">{{ sec.title }}</div>
+            <button
+              v-for="it in sec.items"
+              v-show="!hiddenCards.has(it.key)"
+              :key="it.key"
+              type="button"
+              class="nge-set-nav-item"
+              :class="['nge-set-nav-item--' + it.key, { 'is-current': activeKey === it.key }]"
+              :aria-current="activeKey === it.key ? 'true' : undefined"
+              @click="goTo(it.key)"
+            ><span class="nge-set-nav-num">{{ it.num }}</span><span class="nge-set-nav-label">{{ it.label }}</span></button>
+          </template>
+        </div>
+      </nav>
+
       <!-- Settings content -->
-      <div class="nge-settings-content">
+      <div ref="contentEl" class="nge-settings-content" :class="{ 'is-filtering': !!query.trim() || onlyChanged }">
+        <p v-if="noMatches" class="nge-set-nomatch">
+          {{ query.trim() ? `No settings match “${query.trim()}”.` : 'None of your settings differ from how Pyr starts.' }}
+          <button type="button" class="nge-set-nomatch-clear" @click="query = ''; onlyChanged = false">Show all settings</button>
+        </p>
         <!-- Admins: see the game as a player does (Ames 2026-10-25). Display
              only and instant, so no Save: admin powers stay, and the
              "Player view" chip in the top bar switches back. -->
@@ -471,9 +666,8 @@ const props = defineProps<{ embedded?: boolean }>();
           </div>
           <span class="nge-set-viewas-hint">Player view hides admin buttons and tabs, so you see Pyr as players do. It works straight away, with no Save, and your admin powers stay. Waiting admin notifications show as a red dot on the Player view label in the top bar; click that label to come back.</span>
         </div>
-        <!-- Three columns in the profile (Ames 2026-09-29: "larger, full profile
-             size, a cool layout, keep it scifi"). In the stand-alone window
-             the column wrappers are display: contents, so it stays one list. -->
+        <!-- Three groups of boxes, one after another in a single column, each
+             with its heading (player report #594; was three columns). -->
         <div class="nge-set-col nge-set-col--identity">
           <div class="nge-set-col-head"><span class="nge-set-col-title">Identity</span><span class="nge-set-col-sub">who you are</span></div>
           <!-- Username lives at the bottom and is deliberately NOT an always-live
@@ -550,23 +744,23 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--notif" :class="{ 'nge-set-folded': isFolded('notif') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('notif')" title="Fold or unfold this box" @click.prevent="toggleFold('notif')" @keydown.enter.prevent="toggleFold('notif')" @keydown.space.prevent="toggleFold('notif')">Chat and notifications<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Chat, help requests and the counts on your top bar icons.</p>
-            <label class="nge-settings-toggle">
+            <label data-set="chatMuted" class="nge-settings-toggle">
               <input type="checkbox" v-model="draftChatMuted" />
               <span class="nge-settings-toggle-label">Mute the chat unread count</span>
             </label>
-            <label class="nge-settings-toggle">
+            <label data-set="chatFadeAway" class="nge-settings-toggle">
               <input type="checkbox" v-model="draftChatFade" />
               <span class="nge-settings-toggle-label">Fade chat when I click away</span>
             </label>
-            <label class="nge-settings-toggle" title="A thin bar marks your own messages in chat, so they are easy to find when you scroll back. Switch off to hide it.">
+            <label data-set="chatMarkMine" class="nge-settings-toggle" title="A thin bar marks your own messages in chat, so they are easy to find when you scroll back. Switch off to hide it.">
               <input type="checkbox" v-model="draftChatMarkMine" />
               <span class="nge-settings-toggle-label">Mark my own messages in chat</span>
             </label>
-            <label class="nge-settings-toggle">
+            <label data-set="helpMuted" class="nge-settings-toggle">
               <input type="checkbox" v-model="draftHelpMuted" />
               <span class="nge-settings-toggle-label">Mute help requests</span>
             </label>
-            <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
+            <label data-set="undeleteCounter" class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
               <input type="checkbox" v-model="draftUndeleteCounter" />
               <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
             </label>
@@ -576,7 +770,7 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--datasets" :class="{ 'nge-set-folded': isFolded('datasets') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('datasets')" title="Fold or unfold this box" @click.prevent="toggleFold('datasets')" @keydown.enter.prevent="toggleFold('datasets')" @keydown.space.prevent="toggleFold('datasets')">Switching datasets<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
-            <label class="nge-settings-toggle nge-settings-pick" title="Where you left off: the last view you had there, from this browser or your account, whichever is newer. Opening a cell from chat, the Cell Library or a quest still goes straight to that cell.">
+            <label data-set="datasetSwitchOpens" class="nge-settings-toggle nge-settings-pick" title="Where you left off: the last view you had there, from this browser or your account, whichever is newer. Opening a cell from chat, the Cell Library or a quest still goes straight to that cell.">
               <span class="nge-settings-toggle-label">Switching to a dataset opens</span>
               <select v-model="draftSwitchOpens" class="nge-sv-select">
                 <option value="resume">Where I left off</option>
@@ -584,23 +778,23 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="bare">The dataset without starter cells (loads faster)</option>
               </select>
             </label>
-            <p class="nge-settings-hint nge-sv-hint">Show in the dataset selector: extra datasets to explore. There is nothing to proofread or claim in them.</p>
-          <label v-for="ds in OPTIONAL_DATASETS" :key="ds.id" class="nge-settings-toggle nge-sv-extra">
+            <p data-set="extraDatasets" class="nge-settings-hint nge-sv-hint">Show in the dataset selector: extra datasets to explore. There is nothing to proofread or claim in them.</p>
+          <label v-for="ds in OPTIONAL_DATASETS" data-set="extraDatasets" :key="ds.id" class="nge-settings-toggle nge-sv-extra">
             <input type="checkbox" :checked="draftExtra.includes(ds.id)" @change="toggleDraftExtra(ds.id, $event)" />
             <span class="nge-settings-toggle-label">{{ ds.label }}</span>
           </label>
-          <p class="nge-settings-hint nge-sv-hint">Your own starting view: pick a dataset and paste a share link made in it. It takes the place of that dataset's starting view.</p>
-            <div class="nge-sv-row">
+          <p data-set="datasetStartViews" class="nge-settings-hint nge-sv-hint">Your own starting view: pick a dataset and paste a share link made in it. It takes the place of that dataset's starting view.</p>
+            <div data-set="datasetStartViews" class="nge-sv-row">
               <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
                 <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
               </select>
             </div>
-            <div class="nge-sv-row">
+            <div data-set="datasetStartViews" class="nge-sv-row">
               <input v-model="svLink" class="nge-sv-input" type="url" placeholder="Paste a share link" @keydown.stop @keyup.stop />
               <button class="nge-sv-btn" type="button" @click="setStartView">Use this view</button>
             </div>
-            <p v-if="svError" class="nge-sv-error">{{ svError }}</p>
-            <ul v-if="Object.keys(draftStartViews).length" class="nge-sv-list">
+            <p v-if="svError" data-set="datasetStartViews" class="nge-sv-error">{{ svError }}</p>
+            <ul v-if="Object.keys(draftStartViews).length" data-set="datasetStartViews" class="nge-sv-list">
               <li v-for="(link, seg) in draftStartViews" :key="seg">
                 <span class="nge-sv-name">{{ labelFor(String(seg)) }}</span>
                 <span class="nge-sv-link" :title="link">{{ link }}</span>
@@ -615,7 +809,7 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--toolbar" :class="{ 'nge-set-folded': isFolded('toolbar') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('toolbar')" title="Fold or unfold this box" @click.prevent="toggleFold('toolbar')" @keydown.enter.prevent="toggleFold('toolbar')" @keydown.space.prevent="toggleFold('toolbar')">Toolbar Icons<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
-            <div class="nge-settings-toolbar-grid">
+            <div data-set="toolbarIcons" class="nge-settings-toolbar-grid">
               <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" :title="opt.label" @click="toggleToolbarIcon(opt.id)">
                 <span v-if="opt.svg" class="nge-settings-toolbar-emoji" v-html="opt.svg"></span>
                 <img v-else-if="opt.img" :src="opt.img" class="nge-settings-toolbar-icon-img" :alt="opt.label" />
@@ -623,7 +817,7 @@ const props = defineProps<{ embedded?: boolean }>();
                 <span class="nge-settings-toolbar-label">{{ pillName(opt.label) }}</span>
               </button>
             </div>
-            <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
+            <button data-set="toolbarIcons" class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
           </div>
 
           <!-- The old User Interface card, split into small cards by topic
@@ -645,11 +839,11 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="none">None</option>
               </select>
             </label>
-            <label class="nge-settings-toggle" title="The 3D view turns slowly by itself, so you can see a cell from every side. It stops as soon as you turn the view yourself.">
+            <label data-set="autoTurn" class="nge-settings-toggle" title="The 3D view turns slowly by itself, so you can see a cell from every side. It stops as soon as you turn the view yourself.">
               <input type="checkbox" v-model="draftAutoTurn" />
               <span class="nge-settings-toggle-label">Turn cells slowly</span>
             </label>
-            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="The color of the light that runs along the cell, with the Pulse look and with the P key.">
+            <div data-set="pulseColor" class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="The color of the light that runs along the cell, with the Pulse look and with the P key.">
               <span class="nge-settings-toggle-label">Pulse color</span>
               <div class="nge-pulse-swatches">
                 <button v-for="c in PULSE_COLORS" :key="c.value" type="button" class="nge-pulse-swatch"
@@ -662,10 +856,10 @@ const props = defineProps<{ embedded?: boolean }>();
                 </label>
               </div>
             </div>
-            <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
+            <p data-set="pulseColor" class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
             <!-- Preferred colour families (Nseraf, report 359): cells only take
                  colours from the families switched on (util/color_families.ts). -->
-            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="Cells take their colors only from the families you switch on, so annotations in other colors stay easy to see. L picks new colors within them. None selected: all the colors.">
+            <div data-set="colorFamilies" class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="Cells take their colors only from the families you switch on, so annotations in other colors stay easy to see. L picks new colors within them. None selected: all the colors.">
               <span class="nge-settings-toggle-label">Cell colors</span>
               <div class="nge-pulse-swatches">
                 <button v-for="f in COLOR_FAMILIES" :key="f.id" type="button" class="nge-pulse-swatch nge-family-swatch"
@@ -674,8 +868,8 @@ const props = defineProps<{ embedded?: boolean }>();
                         :aria-pressed="draftColorFamilies.includes(f.id)" @click="toggleFamily(f.id)"></button>
               </div>
             </div>
-            <p class="nge-settings-hint nge-pulse-hint">{{ draftColorFamilies.length ? 'Cells only take colors from the families switched on. L picks again within them.' : 'Switch on the color families you like, and cells only take those colors. None selected: all the colors.' }}</p>
-            <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
+            <p data-set="colorFamilies" class="nge-settings-hint nge-pulse-hint">{{ draftColorFamilies.length ? 'Cells only take colors from the families switched on. L picks again within them.' : 'Switch on the color families you like, and cells only take those colors. None selected: all the colors.' }}</p>
+            <label data-set="hidePumpkin" v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
               <input type="checkbox" v-model="draftPumpkin" />
               <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
             </label>
@@ -684,59 +878,59 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--screen" :class="{ 'nge-set-folded': isFolded('screen') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('screen')" title="Fold or unfold this box" @click.prevent="toggleFold('screen')" @keydown.enter.prevent="toggleFold('screen')" @keydown.space.prevent="toggleFold('screen')">Screen<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Celebrations, motion, and what else shows on screen.</p>
-            <label class="nge-settings-toggle" title="On: completing a cell or submitting a Quest brings up the congratulations, with confetti. Off: nothing comes up; the cell still shows as Proofread in its menu and in the segment list, and a Quest still counts.">
+            <label data-set="cellCelebration" class="nge-settings-toggle" title="On: completing a cell or submitting a Quest brings up the congratulations, with confetti. Off: nothing comes up; the cell still shows as Proofread in its menu and in the segment list, and a Quest still counts.">
               <input type="checkbox" v-model="draftCellCelebration" />
               <span class="nge-settings-toggle-label">Cell &amp; Quest celebration</span>
             </label>
-            <label class="nge-settings-toggle" title="On: an achievement you earn comes up as a card in the middle of the screen, with confetti. Off: nothing comes up; it is still in your Trophy Case and in the bell.">
+            <label data-set="achievementCelebration" class="nge-settings-toggle" title="On: an achievement you earn comes up as a card in the middle of the screen, with confetti. Off: nothing comes up; it is still in your Trophy Case and in the bell.">
               <input type="checkbox" v-model="draftAchievementCelebration" />
               <span class="nge-settings-toggle-label">Achievement celebration</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: every notification in one list. On: tabs in the bell, My Pyr for what was sent to you and Pyr Updates for what went to everyone (and Admin, for admins).">
+            <label data-set="notifCategories" class="nge-settings-toggle" title="Off: every notification in one list. On: tabs in the bell, My Pyr for what was sent to you and Pyr Updates for what went to everyone (and Admin, for admins).">
               <input type="checkbox" v-model="draftNotifCategories" />
               <span class="nge-settings-toggle-label">Organize my notifications into categories</span>
             </label>
-            <label class="nge-settings-toggle" title="Today in Pyr is the short note each afternoon on what changed in Pyr that day. Off: it no longer comes to your bell. Other announcements still do.">
+            <label data-set="showDailyDigest" class="nge-settings-toggle" title="Today in Pyr is the short note each afternoon on what changed in Pyr that day. Off: it no longer comes to your bell. Other announcements still do.">
               <input type="checkbox" v-model="draftDailyDigest" />
               <span class="nge-settings-toggle-label">Show Today in Pyr daily updates</span>
             </label>
-            <label class="nge-settings-toggle" title="On: a small burst of particles where your point lands, when you place a Highlight, Tag, cut, merge or Find Path point. Off: the points go down with no particles.">
+            <label data-set="pointParticles" class="nge-settings-toggle" title="On: a small burst of particles where your point lands, when you place a Highlight, Tag, cut, merge or Find Path point. Off: the points go down with no particles.">
               <input type="checkbox" v-model="draftParticles" />
               <span class="nge-settings-toggle-label">Particles</span>
             </label>
-            <label v-if="turkeySeason()" class="nge-settings-toggle" title="For Thanksgiving week, now and then a turkey walks along the bottom of the screen, stops to gobble, and walks off. Click it to make it hop. Off: no turkey. The turkey button by the chat box turns him off and on too. Calm screen keeps him away.">
+            <label data-set="hideTurkey" v-if="turkeySeason()" class="nge-settings-toggle" title="For Thanksgiving week, now and then a turkey walks along the bottom of the screen, stops to gobble, and walks off. Click it to make it hop. Off: no turkey. The turkey button by the chat box turns him off and on too. Calm screen keeps him away.">
               <input type="checkbox" v-model="draftTurkey" />
               <span class="nge-settings-toggle-label">Show the Thanksgiving turkey</span>
             </label>
-            <label v-if="leavesSeason()" class="nge-settings-toggle" title="In the fall, now and then a few autumn leaves drift down from the top of the screen. They never block a click. Off: no leaves. The leaf button by the chat box turns them off and on too. Calm screen keeps them away.">
+            <label data-set="hideLeaves" v-if="leavesSeason()" class="nge-settings-toggle" title="In the fall, now and then a few autumn leaves drift down from the top of the screen. They never block a click. Off: no leaves. The leaf button by the chat box turns them off and on too. Calm screen keeps them away.">
               <input type="checkbox" v-model="draftLeaves" />
               <span class="nge-settings-toggle-label">Falling leaves</span>
             </label>
-            <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
+            <label data-set="calmScreen" class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
-            <label class="nge-settings-toggle" title="A bigger target cursor over the 2D and 3D views, easier to find on a large screen.">
+            <label data-set="cursorXL" class="nge-settings-toggle" title="A bigger target cursor over the 2D and 3D views, easier to find on a large screen.">
               <input type="checkbox" v-model="draftCursorXL" />
               <span class="nge-settings-toggle-label">Extra large cursor</span>
             </label>
-            <label class="nge-settings-toggle" title="Makes the text in Pyr's windows (your profile, Settings, the Cell Library, the bell, the leaderboard) and in the layer side panel a fifth bigger, with everything around it, so it is easier to read. The 2D and 3D views stay as they are.">
+            <label data-set="largeText" class="nge-settings-toggle" title="Makes the text in Pyr's windows (your profile, Settings, the Cell Library, the bell, the leaderboard) and in the layer side panel a fifth bigger, with everything around it, so it is easier to read. The 2D and 3D views stay as they are.">
               <input type="checkbox" v-model="draftLargeText" />
               <span class="nge-settings-toggle-label">Large text</span>
             </label>
-            <label class="nge-settings-toggle" title="The top bar tucks away, so the views get the whole window. Move the mouse to the top edge to bring it back, or press the \ key. Your unread notifications show as a small bell in the corner of the 3D view. It stays put on a touch screen, during a tutorial, and while new icons are still arriving.">
+            <label data-set="hideTopBar" class="nge-settings-toggle" title="The top bar tucks away, so the views get the whole window. Move the mouse to the top edge to bring it back, or press the \ key. Your unread notifications show as a small bell in the corner of the 3D view. It stays put on a touch screen, during a tutorial, and while new icons are still arriving.">
               <input type="checkbox" v-model="draftHideTopBar" />
               <span class="nge-settings-toggle-label">Magic Top Bar</span>
             </label>
-            <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
+            <label data-set="segShowId" class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
               <input type="checkbox" v-model="draftSegShowId" />
               <span class="nge-settings-toggle-label">Show the segment ID under a cell's label</span>
             </label>
-            <label class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
+            <label data-set="hideRadio" class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
               <input type="checkbox" v-model="draftShowRadio" />
               <span class="nge-settings-toggle-label">Show the sound icon (EyeWire Radio)</span>
             </label>
-            <label class="nge-settings-toggle" title="The Play button at the top left of the 2D view: Pyr teleports you to a cell to work on. Off: the 2D view stays clear, and you start playing from the Cell Library instead.">
+            <label data-set="hidePlayButton" class="nge-settings-toggle" title="The Play button at the top left of the 2D view: Pyr teleports you to a cell to work on. Off: the 2D view stays clear, and you start playing from the Cell Library instead.">
               <input type="checkbox" v-model="draftShowPlay" />
               <span class="nge-settings-toggle-label">Play button on the 2D view</span>
             </label>
@@ -750,13 +944,13 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--editing" :class="{ 'nge-set-folded': isFolded('editing') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('editing')" title="Fold or unfold this box" @click.prevent="toggleFold('editing')" @keydown.enter.prevent="toggleFold('editing')" @keydown.space.prevent="toggleFold('editing')">Merging<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">How the M key merges, and which key adds a layer.</p>
-            <label class="nge-settings-toggle" title="Point at one piece and press M, then point at the other piece and press M: the two are merged where you pointed. Works in 2D and 3D. M on empty space sends any merges waiting, or closes merge. Off: M only opens and closes merge.">
+            <label data-set="quickMergeKey" class="nge-settings-toggle" title="Point at one piece and press M, then point at the other piece and press M: the two are merged where you pointed. Works in 2D and 3D. M on empty space sends any merges waiting, or closes merge. Off: M only opens and closes merge.">
               <input type="checkbox" v-model="draftQuickMerge" />
               <span class="nge-settings-toggle-label">Quick merge: point at two pieces and press M on each</span>
             </label>
             <!-- Nseraf, report 516: N sits next to M and kept adding layers. -->
-            <label class="nge-settings-hint" for="nge-new-layer-key" style="display:block;margin-top:10px">The key that adds a new layer.</label>
-            <select id="nge-new-layer-key" v-model="draftNewLayerKey" class="nge-sv-select" title="Ctrl+N opens a new browser window, so it cannot be used here.">
+            <label data-set="newLayerKey" class="nge-settings-hint" for="nge-new-layer-key" style="display:block;margin-top:10px">The key that adds a new layer.</label>
+            <select id="nge-new-layer-key" data-set="newLayerKey" v-model="draftNewLayerKey" class="nge-sv-select" title="Ctrl+N opens a new browser window, so it cannot be used here.">
               <option value="shift">Shift+N</option>
               <option value="n">N</option>
               <option value="alt">{{ isMacKeys ? 'Option+N' : 'Alt+N' }}</option>
@@ -767,24 +961,24 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--jump" :class="{ 'nge-set-folded': isFolded('jump') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('jump')" title="Fold or unfold this box" @click.prevent="toggleFold('jump')" @keydown.enter.prevent="toggleFold('jump')" @keydown.space.prevent="toggleFold('jump')">Jumping and views<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">What happens when you jump to a cell or come back.</p>
-            <label class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
+            <label data-set="jumpAddsToView" class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
               <input type="checkbox" v-model="draftJumpAdds" />
               <span class="nge-settings-toggle-label">Jumping to a cell adds it to my view (off: it replaces my view)</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: a Retina cell you claim opens with one Checked Highlight layer, and the Annotation layers button in the Cell Library adds the rest. On: every Retina claim opens with all of them.">
+            <label data-set="retinaAnnotationLayers" class="nge-settings-toggle" title="Off: a Retina cell you claim opens with one Checked Highlight layer, and the Annotation layers button in the Cell Library adds the rest. On: every Retina claim opens with all of them.">
               <input type="checkbox" v-model="draftRetinaAnnot" />
               <span class="nge-settings-toggle-label">Claiming a Retina cell adds the annotation layers (Soma, True End, Can't Fix, Hits Edge, Notes). Cilia Quests always have their annotations.</span>
             </label>
-            <button type="button" class="nge-set-retina-ask" @click="askRetinaAgain">Show the Retina question again</button>
-            <label class="nge-settings-toggle">
+            <button type="button" data-set="retinaAnnotationLayers" class="nge-set-retina-ask" @click="askRetinaAgain">Show the Retina question again</button>
+            <label data-set="keepDisplayOnJump" class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
             </label>
-            <label class="nge-settings-toggle" title="Your view is saved as you work. When a dataset opens, a small bar offers to bring it back. Never shown on the Sandbox.">
+            <label data-set="offerViewRestore" class="nge-settings-toggle" title="Your view is saved as you work. When a dataset opens, a small bar offers to bring it back. Never shown on the Sandbox.">
               <input type="checkbox" v-model="draftOfferRestore" />
               <span class="nge-settings-toggle-label">Offer to pick up where I left off when a dataset opens</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
+            <label data-set="cellLibraryStartTab" class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
               <span class="nge-settings-toggle-label">Cell Library opens on</span>
               <select v-model="draftLibraryTab" class="nge-sv-select">
                 <option value="mine">My Cells</option>
@@ -800,7 +994,7 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--images" :class="{ 'nge-set-folded': isFolded('images') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('images')" title="Fold or unfold this box" @click.prevent="toggleFold('images')" @keydown.enter.prevent="toggleFold('images')" @keydown.space.prevent="toggleFold('images')">2D images<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">How sharp the 2D images are, and where they load from.</p>
-            <label class="nge-settings-toggle nge-settings-pick" title="How sharp the 2D images are drawn. Half loads about a quarter of the data and Quarter about a sixteenth, so they load much faster on a slow connection, but the images stay that blurry until you set Full again.">
+            <label data-set="imageDetail" class="nge-settings-toggle nge-settings-pick" title="How sharp the 2D images are drawn. Half loads about a quarter of the data and Quarter about a sixteenth, so they load much faster on a slow connection, but the images stay that blurry until you set Full again.">
               <span class="nge-settings-toggle-label">2D image detail</span>
               <select v-model.number="draftImageDetail" class="nge-sv-select">
                 <option :value="1">Full (sharpest)</option>
@@ -808,7 +1002,7 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option :value="4">Quarter (fastest, blurry)</option>
               </select>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="Where the 2D images come from. Copies hosted in Asia exist for EyeWire II Retina, MEC and the Sandbox; other datasets always load from the Americas. Automatic times both copies once and uses the faster one for you. Shared links and saved views open on your choice.">
+            <label data-set="imageSource" class="nge-settings-toggle nge-settings-pick" title="Where the 2D images come from. Copies hosted in Asia exist for EyeWire II Retina, MEC and the Sandbox; other datasets always load from the Americas. Automatic times both copies once and uses the faster one for you. Shared links and saved views open on your choice.">
               <span class="nge-settings-toggle-label">2D images load from</span>
               <select v-model="draftImageSource" class="nge-sv-select">
                 <option value="auto">Automatic ({{ autoImageRegion }})</option>
@@ -831,35 +1025,35 @@ const props = defineProps<{ embedded?: boolean }>();
               <p>Settings here bring back its original, and dare we say unintuitive, user interface elements. This section brings back legacy neuroglancer elements and advanced settings.</p>
             </div>
             <p class="nge-settings-hint">Neuroglancer's own controls and panels.</p>
-            <label class="nge-settings-toggle">
+            <label data-set="annotationGems" class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationGems" />
               <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer, and Shift + the number makes it the active layer.">
+            <label data-set="classicLayerClicks" class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer, and Shift + the number makes it the active layer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: a layer tab has one x, which closes the layer (Ctrl+Z brings it back). On: neuroglancer's two buttons, an x that hides the layer in the side panel's layer list, and a bin that deletes it.">
+            <label data-set="layerHideButton" class="nge-settings-toggle" title="Off: a layer tab has one x, which closes the layer (Ctrl+Z brings it back). On: neuroglancer's two buttons, an x that hides the layer in the side panel's layer list, and a bin that deletes it.">
               <input type="checkbox" v-model="draftLayerHide" />
               <span class="nge-settings-toggle-label">Classic layer tab buttons (x hides to the side panel, bin deletes)</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: clicking the 2D EM layer's tab shows or hides the 2D view. On: it opens the layer's side panel (Source, Rendering, Annotations), as in neuroglancer.">
+            <label data-set="imageLayerPanel" class="nge-settings-toggle" title="Off: clicking the 2D EM layer's tab shows or hides the 2D view. On: it opens the layer's side panel (Source, Rendering, Annotations), as in neuroglancer.">
               <input type="checkbox" v-model="draftImageLayerPanel" />
               <span class="nge-settings-toggle-label">Clicking the 2D image layer opens its side panel</span>
             </label>
-            <label class="nge-settings-toggle">
+            <label data-set="showAnnotationSetupTabs" class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationSetupTabs" />
               <span class="nge-settings-toggle-label">Show Source and Rendering tabs on annotation layers</span>
             </label>
-            <label class="nge-settings-toggle" title="Segmentation layers open on Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
+            <label data-set="showSegSetupTabs" class="nge-settings-toggle" title="Segmentation layers open on Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
               <input type="checkbox" v-model="draftSegSetupTabs" />
               <span class="nge-settings-toggle-label">Show Source and Graph tabs on segmentation layers</span>
             </label>
-            <label class="nge-settings-toggle" title="The round (?) button at the top right of the viewer opens neuroglancer's own list of keyboard and mouse controls. Many of them are out of date and do not match Pyr. For Pyr's own keys, open Keyboard shortcuts in the menu at the top right, or press Ctrl+K and type keys.">
+            <label data-set="showNgControlsButton" class="nge-settings-toggle" title="The round (?) button at the top right of the viewer opens neuroglancer's own list of keyboard and mouse controls. Many of them are out of date and do not match Pyr. For Pyr's own keys, open Keyboard shortcuts in the menu at the top right, or press Ctrl+K and type keys.">
               <input type="checkbox" v-model="draftShowNgControls" />
               <span class="nge-settings-toggle-label">Show the neuroglancer controls button (?)</span>
             </label>
-            <label class="nge-settings-toggle" title="The x y z letters in the top left of each view. Point at them for neuroglancer's scale and depth panel.">
+            <label data-set="showXyzCorner" class="nge-settings-toggle" title="The x y z letters in the top left of each view. Point at them for neuroglancer's scale and depth panel.">
               <input type="checkbox" v-model="draftShowXyz" />
               <span class="nge-settings-toggle-label">xyz top left</span>
             </label>
@@ -885,6 +1079,7 @@ const props = defineProps<{ embedded?: boolean }>();
 
         </div>
 
+      </div>
       </div>
 
       <!-- Pinned footer: moved OUT of .nge-settings-content so Save stays
@@ -983,7 +1178,10 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-settings-shell {
   display: flex;
   flex-direction: column;
-  width: 460px;
+  /* Room for the sidebar beside the column (player report #594). A fixed
+     height, so the window does not jump in size while a search narrows it. */
+  width: 1000px;
+  height: 820px;
   /* Never exceed the viewport. Without this the panel grew to its natural
      height and simply ran off the bottom of a small laptop screen, taking the
      Save button with it. */
@@ -1001,6 +1199,7 @@ const props = defineProps<{ embedded?: boolean }>();
 }
 .nge-settings-shell--embedded {
   width: auto;
+  height: auto;
   max-width: none;
   max-height: none;
   flex: 1;
@@ -1034,18 +1233,162 @@ const props = defineProps<{ embedded?: boolean }>();
 
 .nge-settings-exit:hover { color: #fff; }
 
+/* ── Body: the sidebar beside the scrolling column (player report #594) ── */
+.nge-settings-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* The sidebar sits right beside the column, the two centered together
+     (Ames 2026-11-20: the gap between them was too wide). */
+  justify-content: center;
+}
+.nge-set-nav {
+  flex: 0 0 236px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 16px 10px 12px 14px;
+  border-right: 1px solid rgba(126, 202, 255, 0.14);
+  background: rgba(6, 10, 22, 0.35);
+}
+.nge-set-search {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  background: rgba(8, 14, 28, 0.8);
+  color: #e0e8f5;
+  font: inherit;
+  font-size: 15px;
+  color-scheme: dark;
+}
+.nge-set-search::placeholder { color: rgba(160, 185, 220, 0.55); }
+.nge-set-search:focus { outline: none; border-color: rgba(74, 158, 255, 0.65); }
+.nge-set-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.nge-set-nav-cat {
+  margin: 14px 0 5px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(126, 232, 255, 0.75);
+}
+.nge-set-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 6px 6px 0;
+  background: none;
+  color: #b4c5dc;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.nge-set-nav-item:hover:not(:disabled) { background: rgba(74, 158, 255, 0.08); color: #dce8f8; }
+.nge-set-nav-item:focus-visible { outline: 1px solid rgba(74, 158, 255, 0.7); outline-offset: -1px; }
+.nge-set-nav-item.is-current,
+.nge-set-nav-item.is-active { border-left-color: #4a9eff; background: rgba(74, 158, 255, 0.14); color: #fff; }
+.nge-set-nav-item:disabled { opacity: 0.45; cursor: default; }
+.nge-set-nav-num { font-size: 11.5px; color: #4a9eff; min-width: 16px; font-variant-numeric: tabular-nums; }
+.nge-set-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-set-nav-count {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(74, 158, 255, 0.18);
+  color: #cfe3ff;
+  font-size: 12.5px;
+  text-align: center;
+}
+/* Rows a search or Changed leaves out. */
+.nge-settings-content [data-nge-hide] { display: none !important; }
+.nge-set-nomatch { color: #9fb3cc; font-size: 14px; text-align: center; margin: 40px auto 0; }
+.nge-set-nomatch-clear {
+  display: block; margin: 10px auto 0; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid rgba(74, 158, 255, 0.4); background: rgba(74, 158, 255, 0.1); color: #cfe3ff; font: inherit; font-size: 13px;
+}
+.nge-set-nomatch-clear:hover { background: rgba(74, 158, 255, 0.2); }
+
+/* Phones: the sidebar becomes a row of chips above the column. */
+@media (max-width: 760px) {
+  .nge-settings-body { flex-direction: column; }
+  .nge-set-nav {
+    flex: 0 0 auto;
+    padding: 10px 12px 8px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(126, 202, 255, 0.14);
+  }
+  .nge-set-nav-list {
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+  }
+  .nge-set-nav-cat { display: none !important; }
+  .nge-set-nav-item {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 5px 11px;
+    border: 1px solid rgba(74, 158, 255, 0.25);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .nge-set-nav-item.is-current,
+  .nge-set-nav-item.is-active { border-color: #4a9eff; }
+  .nge-set-nav-num { display: none; }
+  .nge-set-nav-count { margin-left: 4px; }
+}
+
 /* ── Content ── */
 .nge-settings-content {
   padding: 20px 22px 12px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  counter-reset: nge-set-card;
   /* The scrolling region. `min-height: 0` is required: a flex child defaults to
      min-height:auto, which refuses to shrink below its content and would keep
      the panel taller than the viewport no matter the max-height above. */
-  flex: 1 1 auto;
+  flex: 0 1 820px;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  /* All the text a little larger (Ames 2026-11-20: "the text in general is small"). */
+  font-size: 1.12em;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(74, 158, 255, 0.07), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(126, 202, 255, 0.025) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, rgba(126, 202, 255, 0.025) 0 1px, transparent 1px 28px);
+}
+/* One column, centered in the space beside the sidebar. */
+.nge-settings-content > * {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .nge-settings-content { padding: 14px 12px 10px; } 
+  .nge-settings-content { flex: 1 1 auto; }
 }
 
 .nge-settings-section {
@@ -1602,34 +1945,11 @@ const props = defineProps<{ embedded?: boolean }>();
 }
 
 
-/* ══ Settings in the profile: three sci-fi columns (Ames 2026-09-29) ════════
-   In the stand-alone window the column wrappers vanish (display: contents)
-   and everything below stays exactly as before. */
-.nge-set-col { display: contents; }
-.nge-set-col-head { display: none; }
-
-.nge-settings-shell--embedded .nge-settings-content {
-  display: grid;
-  grid-template-columns: minmax(250px, 0.9fr) minmax(320px, 1.2fr) minmax(260px, 1fr);
-  gap: 16px;
-  align-items: start;
-  padding: 18px 20px 14px;
-  counter-reset: nge-set-card;
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(74, 158, 255, 0.07), transparent 60%),
-    repeating-linear-gradient(0deg, rgba(126, 202, 255, 0.025) 0 1px, transparent 1px 28px),
-    repeating-linear-gradient(90deg, rgba(126, 202, 255, 0.025) 0 1px, transparent 1px 28px);
-}
-@media (max-width: 1000px) {
-  .nge-settings-shell--embedded .nge-settings-content { grid-template-columns: 1fr 1fr; }
-  .nge-settings-shell--embedded .nge-set-col--viewer { grid-column: 1 / -1; }
-}
-@media (max-width: 680px) {
-  .nge-settings-shell--embedded .nge-settings-content { grid-template-columns: 1fr; }
-}
+/* ══ Settings: one column of sci-fi boxes in three groups ════════════════════
+   (Ames 2026-09-29: "keep it scifi"; one column since player report #594).
+   The same look in the profile and in the stand-alone window. */
 /* See the game as (admins only): a strip across the top. */
 .nge-set-viewas {
-  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1651,30 +1971,32 @@ const props = defineProps<{ embedded?: boolean }>();
   cursor: pointer;
 }
 .nge-set-viewas-seg button.is-on { background: rgba(126, 224, 255, 0.22); color: #fff; font-weight: 600; }
-.nge-set-viewas-hint { flex: 1 1 260px; color: #8ea2bd; font-size: 12px; line-height: 1.4; }
-.nge-settings-shell--embedded .nge-set-col {
+.nge-set-viewas-hint { flex: 1 1 260px; color: #8ea2bd; font-size: 13px; line-height: 1.4; }
+.nge-set-col {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
 }
-.nge-settings-shell--embedded .nge-set-col-head {
+/* Each group opens with a bold heading over a divider. */
+.nge-set-col-head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 0 2px 6px;
-  border-bottom: 1px solid rgba(126, 202, 255, 0.16);
+  gap: 10px;
+  margin-top: 6px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid rgba(126, 202, 255, 0.22);
 }
-.nge-settings-shell--embedded .nge-set-col-title {
+.nge-set-col-title {
   font-family: 'Orbitron', 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #7ee8ff;
   text-shadow: 0 0 10px rgba(126, 232, 255, 0.35);
 }
-.nge-settings-shell--embedded .nge-set-col-sub {
+.nge-set-col-sub {
   font-size: 10.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1682,7 +2004,7 @@ const props = defineProps<{ embedded?: boolean }>();
 }
 
 /* Each setting is a holo panel with corner brackets and a numbered label. */
-.nge-settings-shell--embedded .nge-settings-section {
+.nge-settings-shell .nge-settings-section {
   position: relative;
   counter-increment: nge-set-card;
   padding: 13px 14px 12px;
@@ -1692,12 +2014,12 @@ const props = defineProps<{ embedded?: boolean }>();
   box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.05), 0 6px 18px rgba(0, 0, 0, 0.25);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.nge-settings-shell--embedded .nge-settings-section:hover {
+.nge-settings-shell .nge-settings-section:hover {
   border-color: rgba(74, 158, 255, 0.34);
   box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.07), 0 0 18px rgba(74, 158, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.25);
 }
-.nge-settings-shell--embedded .nge-settings-section::before,
-.nge-settings-shell--embedded .nge-settings-section::after {
+.nge-settings-shell .nge-settings-section::before,
+.nge-settings-shell .nge-settings-section::after {
   content: '';
   position: absolute;
   width: 10px;
@@ -1705,17 +2027,17 @@ const props = defineProps<{ embedded?: boolean }>();
   pointer-events: none;
   opacity: 0.8;
 }
-.nge-settings-shell--embedded .nge-settings-section::before {
+.nge-settings-shell .nge-settings-section::before {
   top: -1px; left: -1px;
   border-top: 2px solid #4a9eff; border-left: 2px solid #4a9eff;
   border-top-left-radius: 10px;
 }
-.nge-settings-shell--embedded .nge-settings-section::after {
+.nge-settings-shell .nge-settings-section::after {
   bottom: -1px; right: -1px;
   border-bottom: 2px solid #4a9eff; border-right: 2px solid #4a9eff;
   border-bottom-right-radius: 10px;
 }
-.nge-settings-shell--embedded .nge-settings-label {
+.nge-settings-shell .nge-settings-label {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1723,7 +2045,7 @@ const props = defineProps<{ embedded?: boolean }>();
   letter-spacing: 0.16em;
   color: #cfe0ff;
 }
-.nge-settings-shell--embedded .nge-settings-label::before {
+.nge-settings-shell .nge-settings-label::before {
   content: counter(nge-set-card, decimal-leading-zero);
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 9.5px;
@@ -1734,7 +2056,7 @@ const props = defineProps<{ embedded?: boolean }>();
   border-radius: 3px;
   background: rgba(74, 158, 255, 0.08);
 }
-.nge-settings-shell--embedded .nge-settings-hint { color: #7f93ad; }
+.nge-settings-shell .nge-settings-hint { color: #7f93ad; }
 
 /* A box folds shut from its title: only the title stays (Ames 2026-10-21). */
 .nge-set-fold { cursor: pointer; user-select: none; }
@@ -1763,21 +2085,22 @@ const props = defineProps<{ embedded?: boolean }>();
   color: #8fa6c6; background: none; border: 0; cursor: pointer;
 }
 .nge-set-info-x:hover { color: #fff; }
-.nge-set-folded > :not(.nge-settings-label) { display: none !important; }
-.nge-settings-shell--embedded .nge-set-folded { padding-bottom: 13px; }
+/* A search or Changed opens folded boxes, so their matching rows show. */
+.nge-settings-content:not(.is-filtering) .nge-set-folded > :not(.nge-settings-label) { display: none !important; }
+.nge-settings-shell .nge-set-folded { padding-bottom: 13px; }
 
 /* The toolbar picker gets the room it needs in the middle column. */
-.nge-settings-shell--embedded .nge-set-card--toolbar .nge-settings-toolbar-grid { gap: 7px; }
+.nge-settings-shell .nge-set-card--toolbar .nge-settings-toolbar-grid { gap: 7px; }
 
 /* Save rides along the bottom like a console command bar. */
-.nge-settings-shell--embedded .nge-settings-actions {
+.nge-settings-shell .nge-settings-actions {
   justify-content: flex-end;
   align-items: center;
   padding: 10px 20px 14px;
   border-top: 1px solid rgba(126, 202, 255, 0.14);
   background: linear-gradient(0deg, rgba(8, 14, 28, 0.95), rgba(8, 14, 28, 0.75));
 }
-.nge-settings-shell--embedded .nge-settings-actions::before {
+.nge-settings-shell .nge-settings-actions::before {
   content: 'Changes apply when you save';
   margin-right: auto;
   font-size: 11px;
@@ -1785,7 +2108,7 @@ const props = defineProps<{ embedded?: boolean }>();
   text-transform: uppercase;
   color: rgba(160, 190, 225, 0.5);
 }
-.nge-settings-shell--embedded .nge-settings-save {
+.nge-settings-shell .nge-settings-save {
   flex: 0 0 auto;
   min-width: 190px;
   padding: 9px 22px;

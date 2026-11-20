@@ -15,6 +15,7 @@ import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import QuestTimeTable from 'components/QuestTimeTable.vue';
+import ServerStatus from 'components/ServerStatus.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import EffortCurve from 'components/EffortCurve.vue';
@@ -1093,6 +1094,22 @@ function openFavorite(item: FavItem) {
   if (item.def) { selectedSpecialBadge.value = null; selectedBadge.value = item.def; }
   else { selectedBadge.value = null; selectedSpecialBadge.value = item.award; }
 }
+/** Special Awards' View all: the Trophy Case at the special awards, like the
+ *  other rows' View all, not a separate window (toknow, report 595). */
+function viewAllSpecial() {
+  selectedBadge.value = null;
+  selectedSpecialBadge.value = null;
+  activeTab.value = 'trophyCase';
+  const target = viewingOtherUser.value ? otherOpenSections : ownOpenSections;
+  target.value = new Set([...target.value, 'special', 'competitions']);
+  let tries = 0;
+  const go = () => {
+    const el = document.querySelector('[data-trophy-section="special"], .nge-trophy-section--special') as HTMLElement | null;
+    if (el) { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    if (++tries < 10) setTimeout(go, 150);
+  };
+  void nextTick(() => setTimeout(go, 50));
+}
 function openFavoriteInCase(item: FavItem) {
   openFavorite(item);
   activeTab.value = 'trophyCase';
@@ -2010,8 +2027,8 @@ onUnmounted(() => clearTimeout(stageTimer));
                 <div
                   v-if="showSpecialViewAll"
                   class="nge-profile-badge nge-profile-badge--viewall"
-                  title="View all special awards"
-                  @click="showAllSpecialModal = true"
+                  title="View all special awards in the Trophy Case"
+                  @click="viewAllSpecial"
                 >
                   <div class="nge-profile-badge-img">
                     <svg class="nge-profile-badge-viewall-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -3093,7 +3110,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           </div>
 
           <!-- Special Awards -->
-          <div v-if="plainSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
+          <div v-if="plainSpecialBadges.length > 0" data-trophy-section="special" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
             <div class="nge-trophy-track-label">★ Special Awards
               <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
                 <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
@@ -3143,6 +3160,8 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           {{ viewingOtherUser ? `The datasets ${profileName} has contributed to.` : 'The datasets you have contributed to.' }}
           Click one to switch your viewer to it.
         </div>
+        <!-- Are the lab's servers up? One line at the top, open when one is not (Nseraf, report 554; Ames 2026-11-20). -->
+        <ServerStatus v-if="!viewingOtherUser" compact />
         <div v-if="accessRows.length" class="nge-ds-access">
           <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Edit access</div>
           <div class="nge-ds-access-row">
@@ -5986,7 +6005,7 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-text { display: flex; flex-direction: column; gap: 3px; }
 .nge-ds-access-name { font: 700 14px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; text-shadow: 0 0 8px rgba(var(--c), 0.45); }
 .nge-ds-access-state { font: 600 10px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(var(--c)); }
-.nge-ds-access-tile--edit { --c: 110, 240, 170; }
+.nge-ds-access-tile--edit { --c: 124, 200, 255; } /* blue, not green (Ames 2026-11-20) */
 .nge-ds-access-tile--locked { --c: 150, 170, 200; opacity: 0.7; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(0.6) brightness(0.85); }
 .nge-ds-access-tile--unknown { opacity: 0.55; }

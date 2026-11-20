@@ -2,6 +2,25 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T17:12:00Z",
+      "title": "A new Settings layout",
+      "items": [
+        "Settings is now one easy column, with a list of sections on the left, a search box, and a Changed filter that shows only what you have changed.",
+        "The text in Settings is larger.",
+        "Server status is now one line at the top of Profile, Datasets, and opens by itself if a server is slow or down."
+      ]
+    },
+    {
+      "at": "2026-11-20T16:47:00Z",
+      "title": "See the 3D shape update, and server status",
+      "items": [
+        "After a cut or merge, a small note shows while the new 3D shape loads. Your edit is already saved. You can drag the note anywhere.",
+        "Profile, Datasets now has Server status: whether the lab servers for Retina, the Sandbox and MEC are OK, slow or down.",
+        "View all on Special Awards in your profile now opens the Trophy Case, like the other rows.",
+        "Nurro keeps his answers shorter."
+      ]
+    },
+    {
       "at": "2026-11-20T16:45:00Z",
       "title": "The Training Sim box powers on",
       "items": [
