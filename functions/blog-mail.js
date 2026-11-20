@@ -22,7 +22,8 @@
 const crypto = require('crypto');
 
 const SITE = 'https://connectome.quest';
-const FROM = 'Map the Brain <blog@connectome.quest>';
+// The colon needs the quotes in an email From (Ames 2026-11-19: "Pyr: Map the Brain").
+const FROM = '"Pyr: Map the Brain" <blog@connectome.quest>';
 const REPLY_TO = 'support@eyewire.ai';
 const SEGMENT = 'connectome.quest blog';
 const TEST_SEGMENT = 'connectome.quest blog test';
@@ -220,7 +221,7 @@ function postEmail(post, render) {
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(summary || title)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.bg}"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
-<tr><td style="padding:0 4px 14px;font:700 13px/1 ${FONT};letter-spacing:.08em;text-transform:uppercase"><a href="${SITE}/blog/" style="color:${C.teal};text-decoration:none"><img src="${SITE}/assets/images/favicon-pyr.png" width="20" height="20" alt="" style="vertical-align:middle;border:0;border-radius:4px;margin-right:8px" />Map the Brain blog</a></td></tr>
+<tr><td style="padding:0 4px 14px;font:700 13px/1 ${FONT};letter-spacing:.08em;text-transform:uppercase"><a href="${SITE}/blog/" style="color:${C.teal};text-decoration:none"><img src="${SITE}/assets/images/favicon-pyr.png" width="20" height="20" alt="" style="vertical-align:middle;border:0;border-radius:4px;margin-right:8px" />Pyr: Map the Brain</a></td></tr>
 <tr><td style="background:${C.card};border-radius:16px;overflow:hidden">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${cover}
 <tr><td style="padding:28px 28px 8px">
