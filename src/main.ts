@@ -23,7 +23,6 @@ import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
 import { startLockedLayers } from './util/locked_layers';
 import { startSandboxZoom } from './util/sandbox_zoom';
-import { startMeshUpdating } from './util/mesh_updating';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startPointParticles } from './util/point_particles';
@@ -486,7 +485,6 @@ function setupViewer() {
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
   startImageLoadingHint(viewer);
-  startMeshUpdating(viewer);
   startLantern(viewer);
   startSpooky(viewer);
   startPumpkin(viewer);
