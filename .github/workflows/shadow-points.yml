@@ -1,0 +1,41 @@
+name: Shadow Points (hidden)
+
+# The hidden shadow points tally (Ames 2026-11-20, review Monday 2026-11-30).
+# Each night: checks in CAVE which in game edits stayed, and sizes completed
+# cells, into the admin only ew_shadow_* tables. The view
+# ew_shadow_points_week turns that into points. Players see nothing.
+# The script lives on main beside this file (supabase-shadow-points.sql too).
+
+on:
+  schedule:
+    - cron: '15 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Check CAVE but write nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  tally:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check edits and size cells
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+        run: node scripts/shadow-points.mjs ${{ inputs.dry_run && '--dry-run' || '' }}
