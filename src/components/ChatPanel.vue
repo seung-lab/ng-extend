@@ -1132,6 +1132,15 @@ function openAchievement(msg: ChatMessage) {
   setTimeout(() => document.dispatchEvent(new CustomEvent('nge:profile-show-achievement', { detail: { slug: def.slug, specialId: def.specialId } })), 350);
 }
 
+// A dataset line (the Datasets Unlocked ceremony, or a grant) opens that
+// player's profile on its Datasets Unlocked row (Ames 2026-11-20: "the
+// achievements aren't clickable").
+function openUnlocked(msg: ChatMessage) {
+  if (!msg.userId) return;
+  document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: msg.userId } }));
+  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:profile-show-unlocked')), 350);
+}
+
 function reactionsOf(msg: ChatMessage) {
   return msg.id != null ? chatStore.reactions[String(msg.id)] || {} : {};
 }
@@ -1653,7 +1662,9 @@ watch(() => chatMessages.value.length, () => {
                 </div>
 
                 <!-- "Nseraf now has edit access to MEC": said when they next come in. -->
-                <div v-else-if="isAccessLine(msg)" class="nge-chat-sys nge-chat-ach nge-chat-ach--access" :class="{ 'nge-chat-fresh': isFresh(msg) }">
+                <div v-else-if="isAccessLine(msg)" class="nge-chat-sys nge-chat-ach nge-chat-ach--access" :class="{ 'nge-chat-fresh': isFresh(msg) }"
+                     role="button" tabindex="0" :title="'See the datasets ' + msg.name + ' has unlocked'"
+                     @click="openUnlocked(msg)" @keydown.enter="openUnlocked(msg)">
                   <img class="nge-chat-ach-art" :src="accessLineArt(msg)" alt="" />
                   <span><b>{{ shortName(msg.name) }}</b> {{ msg.parts.map(p => p.text || '').join('') }}</span>
                 </div>

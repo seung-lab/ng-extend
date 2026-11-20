@@ -509,6 +509,21 @@ function revealSelectedTrophy(sections: string[]) {
   };
   void nextTick(() => setTimeout(scroll, 50));
 }
+// From a Datasets Unlocked line in chat: the Overview, its Datasets Unlocked
+// row in view, lit up for a moment.
+function onShowUnlocked() {
+  activeTab.value = 'overview';
+  let tries = 0;
+  const go = () => {
+    const row = document.querySelector('.nge-ds-unlocked') as HTMLElement | null;
+    if (!row) { if (++tries < 20) setTimeout(go, 150); return; }
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.remove('nge-ds-unlocked--flash'); void row.offsetWidth; row.classList.add('nge-ds-unlocked--flash');
+  };
+  void nextTick(() => setTimeout(go, 50));
+}
+onMounted(() => document.addEventListener('nge:profile-show-unlocked', onShowUnlocked));
+onUnmounted(() => document.removeEventListener('nge:profile-show-unlocked', onShowUnlocked));
 onMounted(() => document.addEventListener('nge:profile-show-achievement', onShowAchievement));
 onUnmounted(() => document.removeEventListener('nge:profile-show-achievement', onShowAchievement));
 
@@ -5976,6 +5991,10 @@ body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 .nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(1) brightness(0.5); }
 /* Datasets Unlocked, under the favorite Achievement (Ames 2026-11-19). */
 .nge-ds-unlocked { width: 100%; margin-top: 12px; box-sizing: border-box; }
+.nge-ds-unlocked { border-radius: 10px; }
+.nge-ds-unlocked--flash { animation: nge-ds-unlocked-flash 1.6s ease-out 2; }
+@keyframes nge-ds-unlocked-flash { 0% { box-shadow: 0 0 0 0 rgba(127, 224, 255, 0); background: transparent; } 25% { box-shadow: 0 0 0 2px rgba(127, 224, 255, 0.7), 0 0 24px rgba(127, 224, 255, 0.45); background: rgba(127, 224, 255, 0.08); } 100% { box-shadow: 0 0 0 0 rgba(127, 224, 255, 0); background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .nge-ds-unlocked--flash { animation: none; outline: 2px solid rgba(127, 224, 255, 0.7); } }
 /* No box and no glow (Ames 2026-11-19: "Lose the glow and outline around
    them"); fewer than four sit centered ("If there are only 2, center them"). */
 .nge-ds-unlocked-row { display: flex; justify-content: center; gap: 8px; }
