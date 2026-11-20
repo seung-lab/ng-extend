@@ -21,6 +21,7 @@ import { boxLink, PRACTICE_TUTORIALS } from '../tutorial_box_jump';
 import { updateUsersSheet, readCanEdit, USERS_SHEET_URL } from '../quest_review';
 import { TUTORIAL_NAMES } from '../tutorial_edits';
 import { outcomeWord, type TestTry, type TestTriesList } from '../proofreading-test-review';
+import TeamTime from './TeamTime.vue';
 
 interface Person {
   email: string; user_id: string | null; name: string | null; username: string | null;
@@ -861,6 +862,8 @@ const opName = (e: RecentEdit) => {
     </div>
     <p v-if="error" class="ah-error" role="alert">{{ error }}</p>
     <p v-if="loading && !people.length" class="ah-quiet">Reading everyone…</p>
+    <!-- The team's time in Pyr (Ames 2026-11-19) -->
+    <TeamTime />
 
     <div class="ah-main" :class="{ 'ah-main--open': open }">
       <section class="ah-boards" aria-label="People by step">

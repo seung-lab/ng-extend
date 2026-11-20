@@ -27,6 +27,7 @@ import {responseJson} from 'neuroglancer/util/http_request';
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {isMobileRef} from './util/mobile';
 import {currentDatasetTag, canonicalDataset, currentSegLayer, currentSegLayerName, segLayerName, DATASETS, findDatasetBySegName} from './datasets';
+import {activeNow, currentArea} from './util/time_area';
 import {editsAny} from './util/dataset_access';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
@@ -7566,7 +7567,7 @@ export const useChatStore = defineStore('chat', () => {
     if (document.hidden && Date.now() - lastBeatAt > BEAT_GONE_MS) return;
     lastBeatAt = Date.now();
     if (presenceTakesDataset()) {
-      const { error } = await supabase.from('chat_presence').upsert({ dataset: currentDatasetTag() }, { onConflict: 'user_id' });
+      const { error } = await supabase.from('chat_presence').upsert({ dataset: currentDatasetTag(), area: currentArea(), active: activeNow() }, { onConflict: 'user_id' });
       if (!error) return;
       presenceWithoutDataset();
     }
