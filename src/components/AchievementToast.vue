@@ -16,6 +16,7 @@ import { useUserStatsStore, useProofreadingQueueStore, useProofreadingBackendSto
 import { BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, LOYALTY_TEST_ONLY, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { streakMilestonesBetween } from '../util/streak_milestones';
+import { isFlameTierDay } from '../util/streak_tiers';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
 import { runPanelTrace } from '../util/holo_trace';
 import { celebrationCellCounts } from '../util/dataset_contribution';
@@ -276,7 +277,9 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   // by the largest milestone passed.
   const passed = streakMilestonesBetween(prevStreak, newStreak);
   // A Days Achievement card for the same visit brings its own confetti.
-  if (passed.length && Date.now() - daysCardAt > 15000) badgeConfetti(passed[passed.length - 1] >= 30 ? 2 : 1);
+  // A new flame tier brings its own level up on the streak chip instead
+  // (StreakChip.vue), so no confetti on those days.
+  if (passed.length && !passed.some(isFlameTierDay) && Date.now() - daysCardAt > 15000) badgeConfetti(passed[passed.length - 1] >= 30 ? 2 : 1);
   prevStreak = newStreak;
 });
 
