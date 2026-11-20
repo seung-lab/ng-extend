@@ -100,6 +100,7 @@ function resetForm(s?: OrphanSave) {
   form.pointMsg = s?.point ? `Saved at ${s.point.join(', ')}.` : '';
   form.nucId = s?.nucId ?? ''; form.noNucleus = s?.noNucleus ?? false; form.note = s?.note ?? '';
   form.saved = !!s;
+  nucMsg.value = '';
 }
 
 // The fragment open and its unsent answers, for this tab's session: the
@@ -294,6 +295,20 @@ async function usePoint() {
   } finally { form.checking = false; }
 }
 
+const nucChecking = ref(false);
+const nucMsg = ref('');
+/** The nucleus under the crosshairs: its own segment, not the fragment. */
+async function useNucleus() {
+  nucChecking.value = true; nucMsg.value = '';
+  try {
+    const at = await cellAtCrosshair();
+    if (!at.root) { nucMsg.value = at.problem || 'Could not read the crosshairs.'; return; }
+    const mine = new Set([shownRoot.value, active.value?.id].filter(Boolean) as string[]);
+    if (mine.has(at.root)) { form.nucId = ''; nucMsg.value = 'The crosshairs are in the fragment itself. Move them onto the nucleus inside the soma.'; return; }
+    form.nucId = at.root;
+    nucMsg.value = `Nucleus ${short(at.root)} saved. Check it sits inside this soma.`;
+  } finally { nucChecking.value = false; }
+}
 const completeLabel = computed(() => form.saved ? 'Send again' : playing.value ? 'Complete and next' : 'Complete');
 const canSubmit = computed(() => form.fixed && form.ends && form.pointOk && !!form.point && (form.noNucleus || form.where === 'dendrite' || !!form.nucId.trim()));
 const missing = computed(() => {
@@ -301,7 +316,7 @@ const missing = computed(() => {
   if (!form.fixed) m.push('fix the splits and merges');
   if (!form.ends) m.push('check the ends');
   if (!form.pointOk) m.push(`put a point in the ${form.where === 'soma' ? 'soma' : 'major dendrite'}`);
-  if (form.where === 'soma' && !form.noNucleus && !form.nucId.trim()) m.push('add the nucleus ID, or tick No nucleus');
+  if (form.where === 'soma' && !form.noNucleus && !form.nucId.trim()) m.push('read the nucleus with the crosshairs, or tick No nucleus');
   return m;
 });
 /** Counts the fragment as a completed cell: the same row a Complete logs. */
@@ -430,7 +445,6 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <div class="nge-orph-slimmeta"><span :style="{ color: cur.color }">{{ cur.label }}</span> {{ place + 1 }} of {{ cur.rows.length }}</div>
       </div>
       <div class="nge-orph-slimbtns">
-        <button class="nge-orph-btn" @click="open(active)" title="Fly the view back to this fragment, if you moved away">Recenter</button>
         <button class="nge-orph-btn" @click="openHighlight" title="Highlight mode (H): mark what you have checked. With Merge or Cut open, Ctrl+click goes to them; hold H and click to highlight.">Highlight</button>
         <button v-if="playing" class="nge-orph-btn" @click="skip" title="Give this one back and go to the next fragment">Skip</button>
         <!-- One button (Ames 2026-11-20: "we have one complete and next
@@ -471,8 +485,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <p><b>1. Fix splits and merges.</b> Cut off anything that belongs to another cell, and merge in pieces that are missing.</p>
         <p><b>2. Check every end.</b> Follow each branch to its tip and extend it where it was cut short.</p>
         <p><b>3. Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.</p>
-        <p><b>4. Nucleus ID</b> (soma only). In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
-        <p><b>Recenter</b> flies the view back to the fragment. <b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
+        <p><b>4. Nucleus</b> (soma only). In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs: Pyr reads its ID, so the lab can match the soma to its nucleus. No nucleus? Tick No nucleus.</p>
+        <p><b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.</p>
       </div>
       <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
@@ -496,11 +510,13 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           </div>
         </li>
         <li v-if="form.where === 'soma'" :class="{ done: form.noNucleus || !!form.nucId.trim() }">
-          <div class="nge-orph-row" title="In Retina each nucleus is its own segment. Click the nucleus inside the soma and paste its segment ID here, so the lab can match the soma to its nucleus.">
-            <b>Nucleus ID</b>
-            <input v-model="form.nucId" class="nge-orph-input" :disabled="form.noNucleus" inputmode="numeric" placeholder="the nucleus segment's ID" aria-label="Nucleus ID" />
+          <div class="nge-orph-row" title="In Retina each nucleus is its own segment. Put the crosshairs on the nucleus inside the soma and press Use crosshairs.">
+            <b>Nucleus</b>
+            <button class="nge-orph-btn" :disabled="form.noNucleus || nucChecking" @click="useNucleus">{{ nucChecking ? 'Reading…' : 'Use crosshairs' }}</button>
+            <span v-if="form.nucId && !form.noNucleus" class="nge-orph-nucid" :title="form.nucId">{{ short(form.nucId) }}</span>
             <label class="nge-orph-sub"><input type="checkbox" v-model="form.noNucleus" /> No nucleus</label>
           </div>
+          <div v-if="nucMsg && !form.noNucleus" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.nucId }">{{ nucMsg }}</span></div>
         </li>
       </ol>
       <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
@@ -621,6 +637,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-item { display: grid; grid-template-columns: 22px 1fr auto auto 14px; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: #cfdcef; cursor: pointer; text-align: left; font: 13px 'Inter', sans-serif; }
 .nge-orph-item:hover { background: rgba(74, 158, 255, 0.08); }
 .nge-orph-item--held { opacity: 0.45; }
+.nge-orph-nucid { font: 600 12px 'JetBrains Mono', ui-monospace, monospace; color: #cfe6ff; }
 .nge-orph-item--on { background: rgba(74, 158, 255, 0.14); border-color: rgba(126, 202, 255, 0.35); }
 .nge-orph-item-i { color: #6c7a90; font-variant-numeric: tabular-nums; text-align: right; }
 .nge-orph-item-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: #eef; overflow: hidden; text-overflow: ellipsis; }
