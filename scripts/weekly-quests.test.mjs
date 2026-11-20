@@ -10,7 +10,7 @@ const rows = [
   { annotator: 'Marissa Pratt', status: 'Cilium annotated (fixation artifact)', quest_date: '11/4/2026' },
   { annotator: 'Marissa Pratt', status: 'Cilium annotated', quest_date: '11/9/2026' },      // next week
   { annotator: 'Lab Person', status: 'No cilium', quest_date: '11/1/2026' },                // last week
-  { annotator: 'Lab Person', status: 'Skipped (low quality)', quest_date: '11/5/2026' },
+  { annotator: 'Lab Person', status: 'Need help: One centriole missing', quest_date: '11/5/2026' },
   { annotator: '', status: 'Cilium annotated', quest_date: '11/5/2026' },                   // no name
   { annotator: 'Nobody', status: 'Cilium annotated', quest_date: '' },                      // no date
 ];
