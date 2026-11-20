@@ -438,13 +438,10 @@ const CSS = `
 /* The Playing box (Ames 2026-11-14). */
 body.nge-cm-owns:not(.nge-cm-guiding) .nge-cl-panel--slim{display:none !important}
 /* The cell icon leads the top line (Ames 2026-11-14: "put this cell icon on the left"). */
-#${CARD_ID} .nge-cm-cellbtn{order:-1;margin-right:2px;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid rgba(127,190,255,.35);border-radius:6px;background:rgba(127,190,255,.08);color:#bfe6ff}
-/* The light that was a dot is now the icon's box: green playing, blue checking, red when an edit went the wrong way. */
-#${CARD_ID} .nge-cm-cellbtn{border:1.5px solid #59e3a7;box-shadow:0 0 7px rgba(89,227,167,.45),inset 0 0 6px rgba(89,227,167,.15)}
-#${CARD_ID}.nge-cm-checking .nge-cm-cellbtn{border-color:#7fc8ff;box-shadow:0 0 7px rgba(127,200,255,.45)}
-#${CARD_ID}.nge-cm-bad .nge-cm-cellbtn{border-color:#ff6b8a;box-shadow:0 0 8px rgba(255,107,138,.5)}
-#${CARD_ID}.nge-cm-idle .nge-cm-cellbtn{border-color:rgba(127,190,255,.35);box-shadow:none}
-#${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.2);color:#fff}
+/* The icon on its own, no box around it (Ames 2026-11-19: "I don't think we need the green box around this"). */
+#${CARD_ID} .nge-cm-cellbtn{order:-1;margin-right:2px;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;box-shadow:none;color:#bfe6ff}
+#${CARD_ID} .nge-cm-cellbtn:hover{background:rgba(127,190,255,.14);color:#fff}
+#${CARD_ID} .nge-cm-cellbtn:focus-visible{outline:2px solid #7fd8ff;outline-offset:1px}
 /* Hint, as a small H (Ames 2026-11-14: "a little H button ... if I hover says click for a Hint"). */
 #${CARD_ID} .nge-cm-hbtn{border-color:rgba(127,216,255,.6) !important;background:rgba(74,158,255,.18) !important;color:#bfeaff !important}
 #${CARD_ID} .nge-cm-hbtn.nge-cm-nudged{animation:nge-cm-hglow 2.6s ease-in-out infinite}
