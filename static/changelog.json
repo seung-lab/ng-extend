@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T14:40:00Z",
+      "title": "Nicknames for your cells",
+      "items": [
+        "Give a cell your own nickname, like \"cell I merged a branch into\". It is not a cell type, and only you see it.",
+        "There is a Nickname box in the Lost Fragments checklist and in the Complete form. It saves as you type, to your account.",
+        "Your nickname shows instead of the ID in the Segments list, in My Cells and in the side panel, and it stays with the cell after merges and cuts."
+      ]
+    },
+    {
       "at": "2026-11-21T13:39:00Z",
       "title": "Smoother slice, steadier cut bar, 2D detail per dataset",
       "items": [
