@@ -504,7 +504,7 @@ function nextUndone(): { g: GroupKey; row: OrphanSeg } | null {
   for (let k = 0; k < GROUPS.length; k++) {
     const g = GROUPS[(start + k) % GROUPS.length];
     const from = k === 0 && active.value ? g.rows.findIndex(r => r.id === active.value!.id) + 1 : 0;
-    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && !held.has(r.id) && r.id !== active.value?.id);
+    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && !held.has(r.id) && !keptFragmentIds.value.includes(r.id) && r.id !== active.value?.id);
     if (row) return { g: g.key, row };
   }
   return null;
@@ -603,6 +603,38 @@ function playNext() {
   void open(n.row);
   void claimHere(n.row);
   document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + idNow(n.row.id) } }));
+}
+/** Later (Ames 2026-11-21: "come back later and get another cell to be
+ *  working on multiple cells at a time"; in the full view): this one stays
+ *  yours, a started fragment in My Cells with its view saved, and you get the
+ *  next. Up to FRAGMENT_LIMIT at once, as with any started fragment. */
+const laterBusy = ref(false);
+async function later() {
+  const a = active.value;
+  if (!a || saves[a.id] || laterBusy.value) return;
+  laterBusy.value = true; claimMsg.value = '';
+  try {
+    if (!keptFragmentIds.value.includes(a.id)) {
+      const res = await secureWrite<{ kept: boolean; reason?: string }>('fragments.keep', { fragmentId: a.id }).catch(() => null);
+      if (!res || !res.kept) {
+        claimMsg.value = res && res.reason === 'full'
+          ? `You have ${FRAGMENT_LIMIT} Lost Fragments started. Complete or skip one first: they are in My Cells.`
+          : res && res.reason === 'held' ? 'Another player is working on this one.'
+          : 'Could not keep it for later. Try again in a moment.';
+        return;
+      }
+      markKept(a.id);
+      if (!myClaim.value) myClaim.value = a.id;
+    }
+    await flushProgress();
+    // The view is saved as you leave it (open), and Play hands you the next.
+    if (playing.value) { playNext(); return; }
+    const n = nextUndone();
+    if (!n) { allDone.value = true; return; }
+    group.value = n.g;
+    await open(n.row);
+    void claimHere(n.row);
+  } finally { laterBusy.value = false; }
 }
 /** Skip: give the fragment back, then the next one. */
 function skip() {
@@ -1053,6 +1085,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-claimbtn" :class="{ 'nge-orph-claimbtn--mine': myClaim === active.id }" :disabled="claiming"
                 :title="myClaim === active.id ? 'You hold this fragment. Press to let it go.' : 'Hold this fragment for you, so Play does not give it to anyone else'"
                 @click="myClaim === active.id ? releaseActive() : claimActive()">{{ claiming ? 'Claiming…' : myClaim === active.id ? 'Release' : 'Claim' }}</button>
+        <button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-later" :disabled="laterBusy" @click="later"
+                :title="`Keep this one in My Cells and play another. Up to ${FRAGMENT_LIMIT} at a time.`">{{ laterBusy ? 'Keeping…' : 'Later' }}</button>
         <button v-if="playing" class="nge-orph-btn" @click="skip" title="Give this one back and go to the next fragment">Skip</button>
         <button v-else class="nge-orph-btn nge-orph-playbtn" @click="startPlay('fragments')" title="Play: after Submit, the next fragment opens by itself">&#9654; Play</button>
         <button class="nge-orph-help-btn" :class="{ on: helpOpen }" :aria-expanded="helpOpen ? 'true' : 'false'" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button>
