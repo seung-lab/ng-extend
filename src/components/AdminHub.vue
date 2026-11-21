@@ -489,8 +489,8 @@ const shortDate = (iso: string) => {
 // ── Board: open work on top, finished and dismissed folded away ───────────
 // Slack and this tab write the same rows, so a dismiss, stop or "good" in a
 // Slack thread moves the card here too (after Refresh).
-type TriageGroupKey = 'decide' | 'progress' | 'todo' | 'later' | 'done' | 'dismissed';
-const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, todo: false, later: false, done: false, dismissed: false });
+type TriageGroupKey = 'decide' | 'progress' | 'todo' | 'holiday' | 'later' | 'done' | 'dismissed';
+const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, todo: false, holiday: false, later: false, done: false, dismissed: false });
 
 // The card you are working on stays marked, and stays in view when the list
 // reloads after an action (Ames 2026-10-05: sending an update reloaded the
@@ -577,6 +577,7 @@ function triageGroupOf(r: TriageRow): TriageGroupKey {
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
   if (r.status === 'proposed') return 'decide';
   if (isTodo(r)) return 'todo';
+  if (isHoliday(r)) return 'holiday';
   if (isLater(r)) return 'later';
   return 'progress';
 }
@@ -585,6 +586,7 @@ const triageGroups = computed(() => {
     { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Triage zero. Nicely done.', closed: false },
     { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
     { key: 'todo', icon: '☑', title: 'On the To do board', hint: 'Reports planned there', empty: 'No reports on the To do board.', closed: true },
+    { key: 'holiday', icon: '🦃', title: 'After Thanksgiving', hint: 'Put by for after the break', empty: 'Nothing waiting for after Thanksgiving.', closed: true },
     { key: 'later', icon: '💡', title: 'Ideas for later', hint: 'Good ideas, not now', empty: 'No ideas put by.', closed: true },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
@@ -943,7 +945,7 @@ function cheerFor(row: TriageRow) {
 // v4: the To do column became "On the To do board", folded (2026-10-19).
 const TRIAGE_FOLD_KEY = 'nge_triage_folded_v4';
 const triageFolded = ref<Record<TriageGroupKey, boolean>>((() => {
-  const start = { decide: false, progress: false, todo: true, later: true, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
+  const start = { decide: false, progress: false, todo: true, holiday: true, later: true, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
   try { return { ...start, ...(JSON.parse(localStorage.getItem(TRIAGE_FOLD_KEY) || '{}') || {}) }; } catch { return start; }
 })());
 function toggleFold(key: TriageGroupKey) {
@@ -1051,6 +1053,11 @@ const isByHand = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (
  *  scripts/slack-triage-bridge.mjs looks for the same word. */
 const LATER_NOTE = 'Later';
 const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(LATER_NOTE);
+/** Put by until after the Thanksgiving break (Ames 2026-11-21, going on
+ *  vacation). Kept as Later, so the robot and the Slack bridge leave it
+ *  alone, but in its own column so it comes back as a pile to go through. */
+const HOLIDAY_NOTE = 'Later: after Thanksgiving';
+const isHoliday = (r: TriageRow) => isLater(r) && (r.approver_note || '').startsWith(HOLIDAY_NOTE);
 /** On the To do board (Ames 2026-10-19: "I want this to live in ToDo, not in
  *  the bug report world"). A report sent there gets a card on the admins'
  *  own To do board (TodoBoard.vue, functions/todos.js) and is kept like
@@ -1072,8 +1079,8 @@ async function readReportNotes(row: TriageRow) {
   try { await backend.markReportNotesRead(row.id, row.source_excerpt); }
   catch { /* the card moved; the notes just stay unread */ }
 }
-async function markInProgress(row: TriageRow, later = false) {
-  if (triageActing.value) return;
+async function markInProgress(row: TriageRow, later = false, holiday = false, quiet = false) {
+  if (triageActing.value && !quiet) return;
   triageActing.value = row.id;
   try {
     const who = backend.userName || backend.userEmail || 'admin';
@@ -1082,7 +1089,9 @@ async function markInProgress(row: TriageRow, later = false) {
       status: 'approved',
       // A build the robot had waiting is taken off its list.
       impl_state: null,
-      approver_note: later
+      approver_note: holiday
+        ? `${HOLIDAY_NOTE}: put by until after the break.${comment ? ' ' + comment : ''}`
+        : later
         ? `${LATER_NOTE}: a good idea kept for later, not being built now.${comment ? ' ' + comment : ''}`
         : `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
       reviewed_by: who,
@@ -1091,15 +1100,32 @@ async function markInProgress(row: TriageRow, later = false) {
       // the card on the board after Later (Ames 2026-11-02).
       ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
     } });
-    if (later) { await loadTriage(); return; }
+    if (quiet) return;
+    if (later || holiday) { await loadTriage(); return; }
     void readReportNotes(row);
     triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
   } finally {
-    triageActing.value = null;
+    if (!quiet) triageActing.value = null;
   }
+}
+/** Open reports from the same player as this one that are not put by yet. */
+function openFromSameReporter(row: TriageRow): TriageRow[] {
+  const who = reporterOf(row)?.name;
+  if (!who) return [];
+  return triageRows.value.filter(r => reporterOf(r)?.name === who && !isHoliday(r)
+    && ['decide', 'progress', 'todo', 'later'].includes(triageGroupOf(r)) && !r.impl_state);
+}
+/** Every open report from this player, put by until after Thanksgiving. */
+async function holidayAllFrom(row: TriageRow) {
+  if (triageActing.value) return;
+  const rows = openFromSameReporter(row);
+  if (!rows.length || !window.confirm(`Put all ${rows.length} open reports from ${reporterOf(row)?.name} under After Thanksgiving?`)) return;
+  triageActing.value = row.id;
+  try { for (const r of rows) await markInProgress(r, false, true, true); }
+  finally { triageActing.value = null; await loadTriage(); }
 }
 /** A card on the To do board for this report, at the bottom of To do. The
  *  server also puts the report on To do here, so the robot never builds it,
@@ -3987,6 +4013,12 @@ function practiceWhen(iso: string | null) {
             <button v-if="row.status === 'proposed' || isByHand(row) || isTodo(row)" class="nge-admin-action-btn nge-triage-later-btn" :disabled="triageActing === row.id"
                     title="A good idea, but not now. Moves the card to Ideas for later. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row, true)">💡 Later</button>
+            <button v-if="(row.status === 'proposed' || isByHand(row) || isTodo(row) || isLater(row)) && !isHoliday(row)" class="nge-admin-action-btn nge-triage-later-btn" :disabled="triageActing === row.id"
+                    title="Not until after the Thanksgiving break. Moves the card to After Thanksgiving. The robot does not build it and nothing is sent to the reporter."
+                    @click="markInProgress(row, false, true)">🦃 After Thanksgiving</button>
+            <button v-if="!isHoliday(row) && openFromSameReporter(row).length > 1" class="nge-admin-action-btn nge-triage-later-btn" :disabled="!!triageActing"
+                    :title="`Moves every open report from ${reporterOf(row)?.name} to After Thanksgiving. Nothing is sent to them.`"
+                    @click="holidayAllFrom(row)">🦃 All {{ openFromSameReporter(row).length }} from {{ reporterOf(row)?.name }}</button>
             <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
