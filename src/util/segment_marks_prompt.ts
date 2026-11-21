@@ -9,6 +9,7 @@
  * with no click or key behind it.
  */
 import { reactive } from 'vue';
+import { takeTurn } from './popup_queue';
 import { currentSegLayer } from '../datasets';
 import { marksNowOn, removeTrackedMarks, type TrackedMark } from './highlight';
 import { getPcgInfo, authHeaders } from '../widgets/pcg_service';
@@ -111,6 +112,8 @@ async function decide() {
   if (!marks.length) return;
   const counts = new Map<string, number>();
   for (const m of marks) counts.set(m.label, (counts.get(m.label) ?? 0) + 1);
+  // One popup at a time (popup_queue.ts); after a minute the question is stale.
+  if (!(await takeTurn('segment-marks', () => segmentMarksPrompt.counts.length > 0, { priority: 9, maxWaitMs: 60_000 }))) return;
   found = marks;
   segmentMarksPrompt.segments = roots.map(id => ({ id, color: colorOf(id) }));
   segmentMarksPrompt.at = marks.find(m => m.at)?.at ?? null;

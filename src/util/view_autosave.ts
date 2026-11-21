@@ -12,6 +12,7 @@
  * A link someone opened on purpose (a shared view) is never interrupted.
  */
 import { supabase } from '../supabase';
+import { takeTurn } from './popup_queue';
 import { bootHash, viewHasCells } from './local_view';
 import { currentSegLayerName, findDatasetBySegName, switchToDataset, datasetAbbrev } from '../datasets';
 import { getDatasetCaveConfig } from '../config';
@@ -162,6 +163,11 @@ function ago(iso: string): string {
 }
 
 function showBar(dataset: string, updatedAt: string, onRestore: () => void, text?: string, button = 'Restore') {
+  // One popup at a time (popup_queue.ts); an offer older than 30 s is stale.
+  void takeTurn('view-restore', () => !!document.querySelector('.nge-view-restore'), { maxWaitMs: 30_000 })
+    .then(ok => { if (ok) showBarNow(dataset, updatedAt, onRestore, text, button); });
+}
+function showBarNow(dataset: string, updatedAt: string, onRestore: () => void, text?: string, button = 'Restore') {
   document.querySelector('.nge-view-restore')?.remove();
   const label = findDatasetBySegName(dataset)?.shortLabel || dataset;
   const bar = document.createElement('div');

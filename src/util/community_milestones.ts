@@ -13,6 +13,7 @@
  * notification brings it back (#nge-milestone=cells:5000), with no confetti.
  */
 import { ref } from 'vue';
+import { takeTurn } from './popup_queue';
 
 export type Track = 'cells' | 'edits' | 'players' | 'fragments';
 
@@ -79,7 +80,9 @@ export function markSeen(track: Track, value: number) {
  *  another is up. */
 export function celebrate(track: Track, value: number) {
   if (value <= 0 || value <= seenUpTo(track) || celebration.value) return;
-  celebration.value = { track, value, confetti: true };
+  // One popup at a time (popup_queue.ts).
+  void takeTurn('community-milestone', () => !!celebration.value && celebration.value.track === track && celebration.value.value === value)
+    .then(ok => { if (ok && !celebration.value && value > seenUpTo(track)) celebration.value = { track, value, confetti: true }; });
 }
 /** Bring one back from its notification: no confetti, no Nurro. */
 export function reopen(track: Track, value: number) {

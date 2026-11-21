@@ -7,6 +7,7 @@
  * reduced motion get the banner still, with no falling gems.
  */
 import { computed, onUnmounted, ref, watch } from 'vue';
+import { takeTurn } from '../util/popup_queue';
 import { huntState, featuredHunt, phaseNow, type HuntInfo } from '../hunt';
 
 const emit = defineEmits<{ (e: 'open', id: number): void }>();
@@ -25,9 +26,13 @@ const live = computed(() => {
 watch(() => live.value?.id, (id) => {
   if (!id || showing.value || seen(id)) return;
   try { localStorage.setItem(key(id), '1'); } catch { /* shown anyway */ }
-  showing.value = live.value;
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(close, 4200);
+  // One popup at a time (popup_queue.ts); a hunt start is old news after 2 minutes.
+  void takeTurn('hunt-begins', () => showing.value?.id === id, { priority: 7, maxWaitMs: 120_000 }).then(ok => {
+    if (!ok || showing.value || live.value?.id !== id) return;
+    showing.value = live.value;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(close, 4200);
+  });
 }, { immediate: true });
 
 function close() {

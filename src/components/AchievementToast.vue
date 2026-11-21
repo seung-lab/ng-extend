@@ -22,6 +22,7 @@ import { celebrationCellCounts } from '../util/dataset_contribution';
 import { sandboxAccuracy, sandboxOnScreen } from '../sandbox_match';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { isAwardTitle } from '../util/award_title';
+import { takeTurn } from '../util/popup_queue';
 
 const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
@@ -31,8 +32,12 @@ const confettiRef = ref<InstanceType<typeof ConfettiCelebration> | null>(null);
 /** Fire confetti with configurable palette and intensity, from a point on
  *  screen when one is given (otherwise from the usual place). */
 function fireConfetti(palette = 'default', intensity = 1, origin?: { x: number; y: number }) {
+  // Confetti asked for right after a popup goes with that popup, when it shows.
+  if (collectingFx) { const fx = collectingFx; fx.push(() => confettiRef.value?.trigger(palette, intensity, origin)); return; }
   confettiRef.value?.trigger(palette, intensity, origin);
 }
+/** While set, confetti joins the popup just queued (see addToast). */
+let collectingFx: (() => void)[] | null = null;
 
 interface Toast {
   id: number;
@@ -72,15 +77,23 @@ function addToast(toast: Omit<Toast, 'id' | 'leaving'>) {
   const t: Toast = { ...toast, id: ++toastId, leaving: false };
   // Celebration off: nothing on screen; it is still in the Trophy Case and the bell.
   if (toast.type === 'badge' && !achievementCelebration()) return;
-  // Badge unlocks get hero treatment
-  if (toast.type === 'badge') {
-    heroBadge.value = t;
-    // No auto-dismiss — stays until user clicks
-    return;
-  }
-  toasts.value.push(t);
-  // Auto-dismiss after 5s (a quest's counts get a little longer to be read)
-  setTimeout(() => dismiss(t.id), toast.type === 'quest' ? 8000 : 5000);
+  // One popup at a time: this waits its turn, and the confetti asked for in
+  // the same moment waits with it.
+  const fx: (() => void)[] = [];
+  collectingFx = fx;
+  queueMicrotask(() => { if (collectingFx === fx) collectingFx = null; });
+  const isBadge = toast.type === 'badge';
+  void takeTurn(isBadge ? 'achievement' : 'toast',
+    isBadge ? () => heroBadge.value?.id === t.id : () => toasts.value.some(x => x.id === t.id),
+    { priority: isBadge ? 5 : 1 }).then(ok => {
+    if (!ok) return;
+    fx.forEach(f => f());
+    // Badge unlocks get hero treatment. No auto-dismiss: stays until clicked.
+    if (isBadge) { heroBadge.value = t; return; }
+    toasts.value.push(t);
+    // Auto-dismiss after 5s (a quest's counts get a little longer to be read)
+    setTimeout(() => dismiss(t.id), toast.type === 'quest' ? 8000 : 5000);
+  });
 }
 
 function dismiss(id: number) {
@@ -361,7 +374,11 @@ function closeQuestCard() { questCard.value = null; if (questCardTimer) { clearT
 function onQuestComplete(e: Event) {
   const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number };
   if (messagePref('cellCompleteMessage') === 'off') return;
-  questCard.value = { index: String(d.index || ''), points: Math.max(0, Number(d.points) || 0), done: Math.max(0, Number(d.done) || 0) };
+  const card = { index: String(d.index || ''), points: Math.max(0, Number(d.points) || 0), done: Math.max(0, Number(d.done) || 0) };
+  void takeTurn('quest-card', () => !!questCard.value && questCard.value.index === card.index && questCard.value.done === card.done, { priority: 8 }).then(ok => { if (ok) showQuestCard(card); });
+}
+function showQuestCard(card: { index: string; points: number; done: number }) {
+  questCard.value = card;
   if (questCardTimer) clearTimeout(questCardTimer);
   questCardTimer = setTimeout(closeQuestCard, 7000);
   nextTick(() => { try { if (questCardEl.value) runPanelTrace(questCardEl.value); } catch { /* the trace is decoration */ } });
@@ -507,9 +524,9 @@ function cellMessagePref(): 'full' | 'small' | 'off' {
   } catch { return 'full'; }
 }
 
-watch(() => backend.pendingCellCelebration, (pending) => {
+watch(() => backend.pendingCellCelebration, async (pending) => {
   if (!pending) return;
-  const mode = cellMessageMode.value = cellMessagePref();
+  const mode = cellMessagePref();
   if (mode === 'off') {
     // Nothing on screen: the cell's menu and its row say Proofread.
     backend.pendingCellCelebration = null;
@@ -517,8 +534,13 @@ watch(() => backend.pendingCellCelebration, (pending) => {
     return;
   }
   const shown = { ...pending };
-  cellCelebration.value = shown;
   backend.pendingCellCelebration = null;
+  // One popup at a time; a completed cell goes first in line.
+  const ok = await takeTurn('cell-complete', () => !!cellCelebration.value
+    && cellCelebration.value.segId === shown.segId && cellCelebration.value.imageUrl === shown.imageUrl, { priority: 10 });
+  if (!ok) return;
+  cellMessageMode.value = mode;
+  cellCelebration.value = shown;
   // Cells on THIS dataset (Amy 2026-09-28) and on all of them, both counted
   // from the same list so they can not contradict each other. The completion
   // is logged a moment before this shows; look again once if the list has not

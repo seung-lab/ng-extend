@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
+import { takeTurn } from '../util/popup_queue';
 import { QUIET_TEST_HOST } from '../util/test_host';
 import { playIntro } from '../util/intro_tour';
 import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice, stopPlay } from '../util/play';
@@ -518,8 +519,12 @@ function maybeOpenLeaderboardOnArrival() {
   if (document.body.classList.contains('nge-mobile')) return;
   if (document.querySelector('.introductionStep, .nge-overlay-blocker')) return;
   try { sessionStorage.setItem('nge-lb-greeted', '1'); } catch { /* private mode */ }
-  leaderboardPeek.value = true;
-  showLeaderboard.value = true;
+  // One popup at a time (popup_queue.ts); a greeting a minute late is skipped.
+  void takeTurn('leaderboard-peek', () => leaderboardPeek.value && showLeaderboard.value, { maxWaitMs: 60_000 }).then(ok => {
+    if (!ok || showLeaderboard.value || showDatasetStats.value) return;
+    leaderboardPeek.value = true;
+    showLeaderboard.value = true;
+  });
 }
 // Dataset Stats: what has been done on a dataset. It is a tab of the profile
 // (toolbar icon, Switch Dataset panel, command list). This is the narrow
@@ -740,7 +745,8 @@ function exploreWithoutLogin() {
     if (localStorage.getItem(MOBILE_TOUR_SEEN_KEY) === '1') return;
     localStorage.setItem(MOBILE_TOUR_SEEN_KEY, '1');
   } catch { /* private mode: run it, better than a silent blank */ }
-  setTimeout(() => { showMobileTour.value = true; }, 900);
+  // One popup at a time (popup_queue.ts).
+  setTimeout(() => { void takeTurn('mobile-tour', () => showMobileTour.value).then(ok => { if (ok) showMobileTour.value = true; }); }, 900);
 }
 
 const MOBILE_TOUR_SEEN_KEY = 'nge_mobile_tour_seen_v1';

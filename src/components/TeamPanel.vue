@@ -10,6 +10,7 @@ import { useProofreadingBackendStore } from '../store';
 import { team, startTeamInbox, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow, sendTeamChat, TEAM_CHAT_MAX } from '../util/team_session';
 import { findDatasetByCanonical } from '../datasets';
 import { teamsState, startTeams, teamSeen, type SavedTeam } from '../util/teams';
+import { takeTurn } from '../util/popup_queue';
 
 const backend = useProofreadingBackendStore();
 // Signed in: listen for invitations (and rejoin a session a reload interrupted).
@@ -42,6 +43,26 @@ async function inviteUser(u: { id: string; display_name: string; username: strin
 // this player was away. It shows once, to each member (Ames 2026-10-07:
 // "offline player gets notif and special cell complete celebration for team").
 const celebrating = computed<SavedTeam | null>(() => teamsState.teams.find(t => t.status === 'completed' && t.celebrate) || null);
+// One popup at a time (popup_queue.ts): invitations and the team party each
+// wait for their turn, then stay while they are up.
+const invitesTurn = ref(false);
+const partyTurn = ref(false);
+let invitesAsked = false;
+let partyAsked = false;
+watch(() => team.invites.length > 0, has => {
+  if (!has) { invitesTurn.value = false; return; }
+  if (invitesTurn.value || invitesAsked) return;
+  invitesAsked = true;
+  void takeTurn('team-invite', () => invitesTurn.value && team.invites.length > 0, { priority: 6 })
+    .then(ok => { invitesAsked = false; invitesTurn.value = ok && team.invites.length > 0; });
+}, { immediate: true });
+watch(() => !!celebrating.value, has => {
+  if (!has) { partyTurn.value = false; return; }
+  if (partyTurn.value || partyAsked) return;
+  partyAsked = true;
+  void takeTurn('team-party', () => partyTurn.value && !!celebrating.value, { priority: 9 })
+    .then(ok => { partyAsked = false; partyTurn.value = ok && !!celebrating.value; });
+}, { immediate: true });
 const celebrationMates = computed(() => (celebrating.value?.members || []).filter(m => m.state === 'joined'));
 const iCompletedIt = computed(() => !!celebrating.value && celebrating.value.completedBy === myId.value);
 const completerName = computed(() => celebrationMates.value.find(m => m.id === celebrating.value?.completedBy)?.name || 'A teammate');
@@ -75,7 +96,7 @@ document.addEventListener('nge:team-start', (async () => {
 <template>
   <Teleport to="body">
     <!-- An invitation waiting for an answer. -->
-    <div v-if="team.invites.length" class="nge-team-invites" role="alertdialog" aria-label="Session invitations">
+    <div v-if="team.invites.length && invitesTurn" class="nge-team-invites" role="alertdialog" aria-label="Session invitations">
       <div v-for="inv in team.invites" :key="inv.room + inv.from.id" class="nge-team-invite">
         <div class="nge-team-invite-title">{{ inv.mode === 'mentor' ? 'Offer of help' : 'Team invitation' }}</div>
         <div class="nge-team-invite-text">
@@ -94,7 +115,7 @@ document.addEventListener('nge:team-start', (async () => {
     </div>
 
     <!-- A saved team finished its cell. -->
-    <div v-if="celebrating" class="nge-team-party" role="alertdialog" aria-label="Team cell complete" @keydown.esc="closeCelebration">
+    <div v-if="celebrating && partyTurn" class="nge-team-party" role="alertdialog" aria-label="Team cell complete" @keydown.esc="closeCelebration">
       <div class="nge-team-party-card">
         <div class="nge-team-party-burst" aria-hidden="true"><i v-for="n in 14" :key="n" :style="{ '--i': n }"></i></div>
         <div class="nge-team-party-kicker">Team cell complete</div>

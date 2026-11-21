@@ -12,6 +12,7 @@
 import { nextTick, ref, watch } from 'vue';
 import { version, startVersionWatch, reloadForUpdate, readChanges, type ChangeEntry } from '../util/version_watch';
 import { runPanelTrace } from '../util/holo_trace';
+import { takeTurn } from '../util/popup_queue';
 
 startVersionWatch();
 
@@ -46,6 +47,12 @@ watch(() => version.newer, async (now, was) => {
     const { since } = await readChanges();
     if (!since.length) { folded.value = true; return; }
   } catch { /* open it as before */ }
+  // One popup at a time (popup_queue.ts): the chip waits in the bar until
+  // the panel's turn, then the panel opens.
+  folded.value = true;
+  if (!(await takeTurn('version', () => !!version.newer && !folded.value))) return;
+  if (!version.newer) return;
+  folded.value = false;
   await nextTick();
   if (panelEl.value) runPanelTrace(panelEl.value);
   panelEl.value?.querySelector<HTMLButtonElement>('.nge-ver-go')?.focus({ preventScroll: true });

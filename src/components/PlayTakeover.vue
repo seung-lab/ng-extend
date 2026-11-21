@@ -11,6 +11,7 @@
  * Without edit access on Retina it says so and points to the access form.
  */
 import { computed, ref, watch } from 'vue';
+import { takeTurn } from '../util/popup_queue';
 import { useProofreadingBackendStore } from '../store';
 import { startPlay, canQuest, settleAccess } from '../util/play';
 import { flyNurroAcross } from '../util/nurro_fly';
@@ -35,8 +36,15 @@ const waiting = computed(() => {
   return (backend.notifications as any[]).find(n => n && n.id != null && (n.image_url || n.thumbnail_url)
     && String(n.body || '').includes(PLAY_LINK) && !backend.notifRead(n) && !seen.has(n.id)) || null;
 });
+// One popup at a time (popup_queue.ts): it waits for its turn.
+let queued: any = null;
 watch(waiting, n => {
-  if (n && !current.value) { current.value = n; blocked.value = false; markShown(n.id); }
+  if (!n || current.value || queued) return;
+  queued = n;
+  void takeTurn('play-takeover', () => current.value === n || (current.value?.id != null && current.value.id === n.id)).then(ok => {
+    queued = null;
+    if (ok && !current.value && waiting.value?.id === n.id) { current.value = n; blocked.value = false; markShown(n.id); }
+  });
 }, { immediate: true });
 
 /** The words above the button: the body without its play link line. */
