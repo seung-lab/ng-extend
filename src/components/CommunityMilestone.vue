@@ -238,16 +238,16 @@ onUnmounted(() => {
 .nge-cm-kicker { display: flex; justify-content: center; align-items: center; gap: 8px; font: 600 10.5px 'Orbitron', Inter, sans-serif; letter-spacing: 0.32em; text-transform: uppercase; color: #9fdcff; }
 .nge-cm-kicker i { width: 8px; height: 8px; border-radius: 50%; background: #ffd35a; box-shadow: 0 0 10px #ffd35a; }
 
-/* CONGRATS! Each letter springs up in turn, a light sweeps across, then a gentle bob. */
+/* CONGRATS! Each letter springs up in turn, then a light sweeps across, and it
+   holds still (Ames 2026-11-20: no bob after). */
 .nge-cm-congrats { position: relative; display: inline-block; margin-top: 6px; font: 900 clamp(34px, 9vw, 52px)/1.05 'Orbitron', Inter, sans-serif; letter-spacing: 0.06em; }
 .nge-cm-congrats span { display: inline-block; opacity: 0;
   background: linear-gradient(180deg, #ffffff 0%, #c9f6ff 35%, #5fd4ff 70%, #3a8cff 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 0 10px rgba(95, 212, 255, 0.65));
-  animation: nge-cm-pop 620ms cubic-bezier(.3,1.7,.5,1) both, nge-cm-bob 2.4s ease-in-out infinite;
-  animation-delay: calc(700ms + var(--i) * 70ms), calc(1500ms + var(--i) * 90ms); }
+  animation: nge-cm-pop 620ms cubic-bezier(.3,1.7,.5,1) both;
+  animation-delay: calc(700ms + var(--i) * 70ms); }
 .nge-cm-congrats span.nge-cm-bang { background: linear-gradient(180deg, #fff6c8, #ffd35a 60%, #f5b82a); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 12px rgba(255, 211, 90, 0.7)); }
 @keyframes nge-cm-pop { 0% { opacity: 0; transform: translateY(26px) scale(0.4) rotate(-8deg); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
-@keyframes nge-cm-bob { 0%, 100% { transform: none; } 50% { transform: translateY(-3px); } }
 .nge-cm-congrats::after { content: ''; position: absolute; inset: -6px -20px; pointer-events: none; transform: translateX(-120%);
   background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.75) 50%, transparent 65%); mix-blend-mode: overlay;
   animation: nge-cm-sweep 1100ms 1500ms ease-in-out both; }
