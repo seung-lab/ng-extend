@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T13:36:00Z",
+      "title": "Lost Fragments save your whole view",
+      "items": [
+        "Each Lost Fragment you hold keeps its own view, with your annotations, Highlight marks, layers and camera. It saves by itself as you work, and comes back when you open the fragment again.",
+        "Your Lost Fragments show in My Cells as rows like your claimed cells, with Save view, Release and Complete.",
+        "The next fragment starts clean, without the last one's marks.",
+        "Instructions in the Lost Fragments tab now opens the Lost Fragments how to."
+      ]
+    },
+    {
       "at": "2026-11-21T13:19:00Z",
       "title": "Pinned messages stay until you close them",
       "items": [
