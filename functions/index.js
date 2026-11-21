@@ -2162,6 +2162,13 @@ exports.ewSecureWrite = onRequest(
           // Lost Fragments answers (lost-fragments.js, supabase-lost-fragments.sql):
           // the table, the fragment's merges, cuts and volume read with the
           // player's own CAVE sign in, and the researchers' sheet.
+          // Nicknames (nicknames.js, supabase-nicknames.sql): a player's own
+          // name for a cell, seen only by them, following it through edits.
+          if (typeof action === "string" && action.startsWith("nicknames.")) {
+            const { nicknamesAction } = require("./nicknames");
+            out = await nicknamesAction(action, args, { sb, me });
+            break;
+          }
           if (typeof action === "string" && action.startsWith("fragments.")) {
             const { fragmentsAction } = require("./lost-fragments");
             out = await fragmentsAction(action, args, { sb, me, isAdmin, caveToken: token, caveId: who.caveId });

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import QuestInstructions from './QuestInstructions.vue';
+import NicknameField from './NicknameField.vue';
+import { nicknameOf } from '../util/nicknames';
 import imgRetinaBipolar from '../images/retina-bipolar-cell.jpg';
 import { datasetAccess } from '../util/dataset_access';
 import { reportWriteFailure } from '../util/error_reporting';
@@ -4032,8 +4034,8 @@ onBeforeUnmount(() => {
             <div class="nge-cl-row-left">
               <span class="nge-cl-pip nge-cl-pip--frag"></span>
               <div class="nge-cl-row-info">
-                <div class="nge-cl-row-name" @click="copyId(bestRoot(f))" :title="bestRoot(f) !== f.id ? `Click to copy. Updated after edits; it started as ${f.id}` : 'Click to copy ' + f.id">
-                  <span>{{ bestRoot(f) }}</span>
+                <div class="nge-cl-row-name" @click="copyId(bestRoot(f))" :title="bestRoot(f) !== f.id ? `Click to copy ${bestRoot(f)}. Updated after edits; it started as ${f.id}` : 'Click to copy ' + f.id">
+                  <span>{{ nicknameOf(f.id) || bestRoot(f) }}</span>
                   <span v-if="copiedId === bestRoot(f)" class="nge-cl-copied">copied</span>
                   <span v-if="activeFragment.id === f.id" class="nge-cl-active-pill" title="The Lost Fragment you are working on. Save view saves your view to it.">Active</span>
                 </div>
@@ -5050,6 +5052,9 @@ onBeforeUnmount(() => {
               </template>
               <div v-if="completing.typeNote" class="nge-cl-complete-msg nge-cl-complete-msg--bad">{{ completing.typeNote }}</div>
             </template>
+            <!-- Your own name for the cell, not a cell type (Nseraf, report 602). -->
+            <NicknameField look="cl" :seg-key="cell.segId" :ids="[cell.liveSegId, completing.check?.root]"
+                           :anchor="cell.svId ? String(cell.svId) : completing.check?.supervoxel || null" :dataset="cell.dataset" />
             <label class="nge-cl-complete-label">Link to your finished cell</label>
             <div class="nge-cl-complete-linkrow">
               <input

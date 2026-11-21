@@ -1808,7 +1808,7 @@ function handleJumpToCell(segId: string) {
 function promptNickname(segId: string) {
   const cell = cellHistory.value.find(c => c.segId === segId);
   const current = cell?.nickname ?? '';
-  const name = window.prompt('Name this cell:', current);
+  const name = window.prompt('Nickname this cell (only you see it):', current);
   if (name !== null) {
     historyStore.setNickname(segId, name);
   }

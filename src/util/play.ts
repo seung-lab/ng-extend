@@ -235,6 +235,12 @@ export function offersChoice(): boolean {
 
 /** The Play button: straight in with the kind last chosen, else the card. */
 export function pressPlay(): Promise<boolean> | null {
+  // Just after a page load the player's access is not known yet: wait for it,
+  // or Lost Fragments and Cilia Quest fell back to BC Challenge (Ames 2026-11-21).
+  const was = savedKind();
+  if (was && was !== 'cells' && !canQuest() && !accessSettled) {
+    return settleAccess().then(() => { accessSettled = true; return pressPlay() ?? false; });
+  }
   if (!offersChoice()) return startPlay('cells');
   const k = savedKind();
   // A view only player in the hub sees the card: Glia Quest is theirs to play.
@@ -244,6 +250,7 @@ export function pressPlay(): Promise<boolean> | null {
   return null;
 }
 /** Open the choice card to change the kind; off Retina, just play here. */
+let accessSettled = false;
 export function choosePlay() {
   if (!offersChoice()) { void startPlay('cells'); return; }
   play.choosing = true;

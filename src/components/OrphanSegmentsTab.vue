@@ -35,6 +35,8 @@ import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
+import NicknameField from './NicknameField.vue';
+import { nicknameOf } from '../util/nicknames';
 import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft, activeFragment, bestLink, autosaveFragmentView, firstViewSave, markViewSaved } from '../util/my_fragments';
 import { openStartLink } from '../util/start_link';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
@@ -502,7 +504,7 @@ function nextUndone(): { g: GroupKey; row: OrphanSeg } | null {
   for (let k = 0; k < GROUPS.length; k++) {
     const g = GROUPS[(start + k) % GROUPS.length];
     const from = k === 0 && active.value ? g.rows.findIndex(r => r.id === active.value!.id) + 1 : 0;
-    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && !held.has(r.id) && r.id !== active.value?.id);
+    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && !held.has(r.id) && !keptFragmentIds.value.includes(r.id) && r.id !== active.value?.id);
     if (row) return { g: g.key, row };
   }
   return null;
@@ -601,6 +603,38 @@ function playNext() {
   void open(n.row);
   void claimHere(n.row);
   document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + idNow(n.row.id) } }));
+}
+/** Later (Ames 2026-11-21: "come back later and get another cell to be
+ *  working on multiple cells at a time"; in the full view): this one stays
+ *  yours, a started fragment in My Cells with its view saved, and you get the
+ *  next. Up to FRAGMENT_LIMIT at once, as with any started fragment. */
+const laterBusy = ref(false);
+async function later() {
+  const a = active.value;
+  if (!a || saves[a.id] || laterBusy.value) return;
+  laterBusy.value = true; claimMsg.value = '';
+  try {
+    if (!keptFragmentIds.value.includes(a.id)) {
+      const res = await secureWrite<{ kept: boolean; reason?: string }>('fragments.keep', { fragmentId: a.id }).catch(() => null);
+      if (!res || !res.kept) {
+        claimMsg.value = res && res.reason === 'full'
+          ? `You have ${FRAGMENT_LIMIT} Lost Fragments started. Complete or skip one first: they are in My Cells.`
+          : res && res.reason === 'held' ? 'Another player is working on this one.'
+          : 'Could not keep it for later. Try again in a moment.';
+        return;
+      }
+      markKept(a.id);
+      if (!myClaim.value) myClaim.value = a.id;
+    }
+    await flushProgress();
+    // The view is saved as you leave it (open), and Play hands you the next.
+    if (playing.value) { playNext(); return; }
+    const n = nextUndone();
+    if (!n) { allDone.value = true; return; }
+    group.value = n.g;
+    await open(n.row);
+    void claimHere(n.row);
+  } finally { laterBusy.value = false; }
 }
 /** Skip: give the fragment back, then the next one. */
 function skip() {
@@ -1030,7 +1064,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div v-if="!slim" class="nge-orph-task-top">
         <div>
           <div class="nge-orph-task-name">
-            <span class="nge-orph-task-id">{{ shownRoot || active.id }}</span>
+            <span class="nge-orph-task-id" :title="nicknameOf(active.id) ? `Your nickname. Its ID is ${shownRoot || active.id}` : undefined">{{ nicknameOf(active.id) || shownRoot || active.id }}</span>
             <button class="nge-orph-copy" :title="copied ? 'Copied' : 'Copy the segment ID'" @click="copyId(shownRoot || active.id)">{{ copied ? 'Copied' : 'Copy' }}</button>
           </div>
           <div class="nge-orph-task-meta">
@@ -1051,6 +1085,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-claimbtn" :class="{ 'nge-orph-claimbtn--mine': myClaim === active.id }" :disabled="claiming"
                 :title="myClaim === active.id ? 'You hold this fragment. Press to let it go.' : 'Hold this fragment for you, so Play does not give it to anyone else'"
                 @click="myClaim === active.id ? releaseActive() : claimActive()">{{ claiming ? 'Claiming…' : myClaim === active.id ? 'Release' : 'Claim' }}</button>
+        <button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-later" :disabled="laterBusy" @click="later"
+                :title="`Keep this one in My Cells and play another. Up to ${FRAGMENT_LIMIT} at a time.`">{{ laterBusy ? 'Keeping…' : 'Later' }}</button>
         <button v-if="playing" class="nge-orph-btn" @click="skip" title="Give this one back and go to the next fragment">Skip</button>
         <button v-else class="nge-orph-btn nge-orph-playbtn" @click="startPlay('fragments')" title="Play: after Submit, the next fragment opens by itself">&#9654; Play</button>
         <button class="nge-orph-help-btn" :class="{ on: helpOpen }" :aria-expanded="helpOpen ? 'true' : 'false'" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button>
@@ -1060,7 +1096,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div v-if="!slim && claimMsg" class="nge-orph-note">{{ claimMsg }}</div>
       <div v-if="progressNote && !form.saved && (!slim || finishing)" class="nge-orph-note nge-orph-progress">{{ progressNote }}</div>
       <div v-if="fullNote && playing" class="nge-orph-note">{{ fullNote }}</div>
-      <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
+      <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-later nge-orph-later--slim" :disabled="laterBusy" @click="later" :title="`Not done yet? Keep this one in My Cells and play another. Up to ${FRAGMENT_LIMIT} at a time.`">{{ laterBusy ? 'Keeping…' : 'Later' }}</button><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
       <ol class="nge-orph-check">
         <li v-if="!veteran" :class="{ done: form.fixed }">
@@ -1109,6 +1145,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
                    @keydown.stop @keyup.stop @keypress.stop />
           </div>
           <div v-if="typeNote" class="nge-orph-row"><span class="nge-orph-note nge-orph-note--err">{{ typeNote }}</span></div>
+          <!-- Your own name for it, not a cell type (Nseraf, report 602). -->
+          <NicknameField look="orph" :seg-key="active.id" :ids="[shownRoot]" :anchor="anchors[active.id]" dataset="stroeh_mouse_retina" />
         </li>
         <li class="nge-orph-nonum nge-orph-otherli">
           <button v-if="!other.open" class="nge-orph-link" @click="other.open = true">Part of it belongs to another cell?</button>
@@ -1194,6 +1232,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-stop { margin-left: auto; align-self: center; }
 .nge-orph-groupsel { font: inherit; font-weight: 600; background: rgba(10, 18, 32, 0.9); border: 1px solid rgba(126, 202, 255, 0.35); border-radius: 5px; padding: 0 2px; cursor: pointer; }
 .nge-orph-groupsel option { color: #dce6f5; background: #0b1220; }
+.nge-orph-later--slim { margin-left: auto; padding: 3px 12px; font-size: 12px; }
+.nge-orph-finishhead .nge-orph-later--slim + .nge-orph-help-btn { margin-left: 6px; }
 .nge-orph-playhere-row { display: flex; align-items: center; gap: 10px; margin: 2px 12px 8px; flex-wrap: wrap; }
 .nge-orph-playhere { display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px; border-radius: 999px; cursor: pointer;
   border: 1px solid rgba(62, 236, 190, 0.7); background: linear-gradient(135deg, rgba(8, 72, 64, 0.94), rgba(10, 48, 66, 0.94));

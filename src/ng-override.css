@@ -2221,3 +2221,9 @@ label.perspective-panel-show-slice-views:hover input.nge-slice-opacity,
 label.perspective-panel-show-slice-views:has(input:focus-visible) input.nge-slice-opacity,
 label.perspective-panel-show-slice-views input.nge-slice-opacity:active { opacity: 1; pointer-events: auto; }
 label.perspective-panel-show-slice-views:has(input.nge-slice-opacity:not([style*="none"])):hover { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+/* Your nickname in the chip (Nseraf, report 602): marked so it is never
+   mistaken for the lab's cell type. */
+.neuroglancer-segment-list-entry.nge-seg-labelled .neuroglancer-segment-list-entry-id.nge-id-nick::after {
+  content: '\2726  ' attr(data-nge-label);
+}
