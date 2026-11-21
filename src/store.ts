@@ -5779,15 +5779,37 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** kind 'axon': an MEC cell completed as Axon complete (its own wording). */
   const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; kind?: 'axon' } | null>(null);
 
-  /** Read, or a Pyr Update (sent to everyone) more than 5 days old: those
-   *  count as read, so the daily updates do not pile up as unread (Ames
-   *  2026-10-25). Nothing is saved for them. */
+  /** Read, or an automatic Pyr Update (sent to everyone by the game, with
+   *  no sender) more than 5 days old: those count as read, so the daily
+   *  updates do not pile up as unread (Ames 2026-10-25). Nothing is saved for
+   *  them. One the team sent (it has a sender) stays unread until it is read
+   *  or stops (Ames 2026-11-20: "They might miss real updates"). */
   const UPDATE_STALE_MS = 5 * 24 * 60 * 60 * 1000;
   function notifRead(n: Notification): boolean {
     if (notificationReads.value.has(n.id)) return true;
     if (n.target_type === 'user') return false;
+    if (awayDigestIds.value.has(n.id)) return true;
+    if ((n as any).created_by) return false;
     const at = Date.parse(String((n as any).send_at || (n as any).created_at || ''));
     return Number.isFinite(at) && Date.now() - at > UPDATE_STALE_MS;
+  }
+  /** While you were away (Ames 2026-11-20): three or more Today in Pyr
+   *  updates unread from the last two weeks fold into one entry at the top of
+   *  the bell, with a link to the week on the blog. They count as one unread
+   *  and stay in the list, looking read; opening the entry marks them read. */
+  const AWAY_DIGESTS_MIN = 3;
+  const AWAY_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+  const isDailyDigest = (n: Notification) => n.target_type !== 'user' && /^Today in Pyr/.test(String(n.title || ''));
+  const awayDigests = computed<Notification[]>(() => {
+    const now = Date.now();
+    const list = notifications.value.filter(n => isDailyDigest(n) && !notificationReads.value.has(n.id)
+      && now - Date.parse(String((n as any).send_at || (n as any).created_at || '')) < AWAY_WINDOW_MS);
+    return list.length >= AWAY_DIGESTS_MIN ? list : [];
+  });
+  const awayDigestIds = computed(() => new Set(awayDigests.value.map(n => n.id)));
+  async function markAwayDigestsRead() {
+    const ids = awayDigests.value.map(n => n.id);
+    if (ids.length) await markAllNotificationsRead(ids);
   }
   /** Whether Hunt reports count right now: only during a Hunt or its
    *  preparation (NotificationFeedPanel keeps this in step with the Hunts;
@@ -5795,7 +5817,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const huntReportsShown = ref(true);
   const counted = (n: { title?: string | null }) => huntReportsShown.value || notifKind(n.title, isAdmin.value) !== 'hunt';
   const unreadNotificationCount = computed(() =>
-    notifications.value.filter(n => !notifRead(n) && counted(n)).length
+    notifications.value.filter(n => !notifRead(n) && counted(n)).length + (awayDigests.value.length ? 1 : 0)
   );
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
@@ -6986,7 +7008,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, notifRead, markNotificationsUnread, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, awayDigests, markAwayDigestsRead, markNotificationsUnread, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead, markReportNotesRead, markReportsNotesRead,

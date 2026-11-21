@@ -295,6 +295,20 @@ const shownNotes = computed(() => !showFeedTabs.value ? (backend.showAdminUi ? b
   : isAdminSide(feedTab.value) && backend.showAdminUi ? sideNotes(feedTab.value)
   : !splitMain.value ? mainNotes.value
   : feedTab.value === 'updates' ? updateNotes.value : mineNotes.value);
+/** While you were away (Ames 2026-11-20): three or more Today in Pyr
+ *  updates missed fold into one card at the top (store: awayDigests). */
+const awayDays = computed(() => backend.awayDigests.length);
+const showAway = computed(() => awayDays.value > 0
+  && !(showFeedTabs.value && isAdminSide(feedTab.value) && backend.showAdminUi)
+  && !(showFeedTabs.value && splitMain.value && feedTab.value === 'mine'));
+const awayRange = computed(() => {
+  const ts = backend.awayDigests.map((n: any) => Date.parse(String(n.send_at || n.created_at || ''))).filter(Number.isFinite);
+  if (!ts.length) return '';
+  const fmt = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${fmt(Math.min(...ts))} to ${fmt(Math.max(...ts))}`;
+});
+const AWAY_BLOG_URL = 'https://connectome.quest/blog/whats-new/';
+function closeAway() { void backend.markAwayDigestsRead(); }
 /** Opening the bell: the tab with the newest unread notification, or the
  *  tab used last when nothing is unread. It never moves while open. */
 watch(() => props.visible, open => {
@@ -1337,6 +1351,15 @@ function padRank(rank: number): string {
         Upgrade<b v-if="unreadIn(accessUpgradeNotes) > 0">{{ unreadIn(accessUpgradeNotes) }}</b>
       </button>
     </div>
+    <div v-if="showAway" class="nge-notif-away" role="note">
+      <img :src="pyrIcon" class="nge-notif-thumb-sm" alt="" />
+      <div class="nge-notif-away-text">
+        <div class="nge-notif-away-title"><span class="nge-notif-unread-dot"></span>While you were away: {{ awayDays }} days in Pyr</div>
+        <div class="nge-notif-away-sub">Every update from {{ awayRange }} is in one place on the blog. The daily notes are below, marked read.</div>
+        <a class="nge-notif-away-link" :href="AWAY_BLOG_URL" target="_blank" rel="noopener noreferrer" @click="closeAway">Read what's new</a>
+      </div>
+      <button type="button" class="nge-notif-dismiss" title="Got it" aria-label="Got it" @click.stop="closeAway">×</button>
+    </div>
     <div class="nge-notif-list" v-if="shownNotes.length > 0">
       <div
         v-for="notif in shownNotes"
@@ -1695,7 +1718,14 @@ function padRank(rank: number): string {
 <style scoped>
 /* Dragged taller or shorter by the grip at the bottom (Ames 2026-10-20). */
 .nge-notif-panel.nge-notif-panel--sized { height: var(--nge-notif-h); max-height: calc(100 * var(--nge-vh, 1vh) - 50px); }
-.nge-notif-panel--sized .nge-notif-list { max-height: none; flex: 1 1 auto; min-height: 0; }
+.nge-notif-panel--sized .nge-notif-away { display: flex; gap: 10px; align-items: flex-start; margin: 8px 10px 4px; padding: 10px 12px;
+  border: 1px solid rgba(110, 190, 255, 0.45); border-radius: 10px; background: rgba(40, 90, 140, 0.22); }
+.nge-notif-away-text { flex: 1 1 auto; min-width: 0; }
+.nge-notif-away-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #e8f4ff; }
+.nge-notif-away-sub { margin-top: 3px; font-size: 12px; color: #a9bcd2; }
+.nge-notif-away-link { display: inline-block; margin-top: 6px; font-size: 12.5px; color: #8fd0ff; text-decoration: underline; }
+.nge-notif-away-link:hover { color: #c7e8ff; }
+.nge-notif-list { max-height: none; flex: 1 1 auto; min-height: 0; }
 .nge-notif-grip {
   flex: 0 0 auto; height: 10px; cursor: row-resize; position: relative; touch-action: none;
   border-radius: 0 0 10px 10px;
