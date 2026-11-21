@@ -766,6 +766,8 @@ const statRows = computed(() => {
     { name: 'Other notes', n: s.other },
   ].filter(x => x.n > 0);
 });
+/** Every report together, above the kinds (Ames 2026-11-20). */
+const totalReports = computed(() => statRows.value.reduce((a, x) => a + (Number(x.n) || 0), 0));
 /** And what came of them: bugs fixed, features added, updates shipped. */
 const builtRows = computed(() => {
   const s = reportStats.value;
@@ -1696,6 +1698,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
                 <p class="nge-chat-pinpop-text">{{ pinBody }}</p>
                 <template v-if="statRows.length">
                   <div class="nge-chat-pinpop-stathead">What you have sent us since Sept 28</div>
+                  <div class="nge-chat-pinpop-total"><span class="nge-chat-pinpop-total-n">{{ fmtN(totalReports) }}</span> reports in all</div>
                   <div class="nge-chat-pinpop-stats">
                     <div v-for="x in statRows" :key="x.name" class="nge-chat-pinpop-stat">
                       <span class="nge-chat-pinpop-stat-n">{{ fmtN(x.n) }}</span>
@@ -1708,7 +1711,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
                       <li v-for="x in builtRows" :key="x.name"><b>{{ fmtN(x.n) }}</b> {{ x.name }}</li>
                     </ul>
                   </template>
-                  <div class="nge-chat-pinpop-thanks">Thank you. Every report makes Pyr better.</div>
+                  <div class="nge-chat-pinpop-thanks">Thank you for contributing to the development of Pyr. For Science!<span class="nge-chat-pinpop-sig">Amy</span></div>
                 </template>
                 <div class="nge-chat-pinpop-row">
                   <button type="button" class="nge-chat-pinpop-btn" @click="pinOpen = false">Got it</button>
@@ -2414,13 +2417,16 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-pinpop-text { margin: 12px 0 0; font-size: 15.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: #f2f6fc; }
 .nge-chat-pinpop-stathead { margin-top: 16px; font: 600 10.5px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #8fd6ff; }
 .nge-chat-pinpop-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.nge-chat-pinpop-total { margin-top: 8px; display: flex; align-items: baseline; gap: 10px; font-size: 14px; color: #cfe4fa; }
+.nge-chat-pinpop-total-n { font: 800 34px/1 'Orbitron', Inter, sans-serif; color: #fff; text-shadow: 0 0 16px rgba(126, 210, 255, 0.45); }
+.nge-chat-pinpop-sig { display: block; margin-top: 4px; font: 600 14px Inter, sans-serif; color: #f6e3a6; }
 .nge-chat-pinpop-built { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; font-size: 13.5px; color: #cfe4fa; }
 .nge-chat-pinpop-built b { font: 800 16px 'Orbitron', Inter, sans-serif; color: #ffd35a; margin-right: 4px; }
 @media (max-width: 560px) { .nge-chat-pinpop-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .nge-chat-pinpop-built { grid-template-columns: 1fr; } }
 .nge-chat-pinpop-stat { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 9px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(127, 190, 255, 0.2); }
 .nge-chat-pinpop-stat-n { font: 800 22px/1 'Orbitron', Inter, sans-serif; color: #fff; }
 .nge-chat-pinpop-stat-name { font-size: 12px; color: #a9c3e0; }
-.nge-chat-pinpop-thanks { margin-top: 10px; font-size: 13px; color: #cfe4fa; }
+.nge-chat-pinpop-thanks { margin-top: 14px; font-size: 14px; line-height: 1.5; color: #e6eefa; }
 .nge-chat-pinpop-row { display: flex; justify-content: flex-end; margin-top: 14px; }
 .nge-chat-pinpop-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid rgba(143, 214, 255, 0.6); background: rgba(74, 158, 255, 0.2); color: #fff; font: 600 13px Inter, sans-serif; cursor: pointer; }
 .nge-chat-pinpop-btn:hover { background: rgba(74, 158, 255, 0.34); }
