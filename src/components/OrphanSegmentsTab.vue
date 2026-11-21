@@ -930,6 +930,7 @@ const GLIA_FUSED: { key: 'one' | 'several'; label: string }[] = [
   { key: 'several', label: 'Several cells fused together' },
 ];
 const gliaLabel = computed(() => GLIA_FUSED.find(g => g.key === glia.fused)?.label || 'One glia, or several fused?');
+watch(() => glia.fused, f => { if (f && glia.on && !form.pointOk && !form.checking) void usePoint(); });
 function resetGlia() { Object.assign(glia, { on: false, fused: '', count: '', open: false, info: false }); }
 const gliaBox = ref<HTMLElement | null>(null);
 const gliaListPos = ref<Record<string, string>>({});
@@ -964,6 +965,10 @@ function showGliaExample(which: 'one' | 'fused') {
 async function submitGlia() {
   const row = active.value;
   if (!row || !glia.fused || sending.value) return;
+  if (!form.pointOk) {
+    await usePoint();
+    if (!form.pointOk || active.value?.id !== row.id) return;   // the note under the point says why
+  }
   sending.value = true; sendError.value = ''; lastSent.value = '';
   const count = glia.fused === 'several' ? parseInt(glia.count, 10) : NaN;
   try {
@@ -997,12 +1002,12 @@ async function submitGlia() {
 }
 const completeLabel = computed(() => glia.on && !form.saved ? (playing.value ? 'Submit glia and next' : 'Submit glia')
   : form.saved ? 'Send again' : playing.value ? 'Complete and next' : 'Complete');
-const canSubmit = computed(() => glia.on ? !!glia.fused && form.pointOk && !!form.point : fixedOk.value && endsOk.value && form.pointOk && !!form.point);
+const canSubmit = computed(() => glia.on ? !!glia.fused && !form.checking : fixedOk.value && endsOk.value && form.pointOk && !!form.point);
 const missing = computed(() => {
   const m: string[] = [];
   if (glia.on) {
     if (!glia.fused) m.push('say whether it is one glia or several cells fused together');
-    if (!form.pointOk) m.push('put the crosshairs in a trunk');
+    else if (!form.pointOk) m.push('put the crosshairs in a trunk (Submit glia reads them)');
     return m;
   }
   if (!fixedOk.value) m.push('fix the splits and merges');
@@ -1348,7 +1353,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         <template v-if="glia.fused">
           <div class="nge-orph-row">
             <span><b>{{ glia.fused === 'one' ? 'Crosshairs in its main trunk' : 'Crosshairs in one trunk' }}</b></span>
-            <button class="nge-orph-btn" :disabled="form.checking" @click="usePoint" title="Put the crosshairs inside a trunk, the column a glia rises up, then press this.">{{ form.checking ? 'Checking…' : 'Use crosshairs' }}</button>
+            <button class="nge-orph-btn" :disabled="form.checking" @click="usePoint" title="Pyr reads the crosshairs by itself. To change the point, put them inside a trunk, the column a glia rises up, and press this.">{{ form.checking ? 'Checking…' : form.pointOk ? 'Read again' : 'Use crosshairs' }}</button>
           </div>
           <div v-if="form.pointMsg" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.pointOk }">{{ form.pointMsg }}</span></div>
         </template>
