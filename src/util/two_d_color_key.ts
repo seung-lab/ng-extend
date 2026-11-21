@@ -1,10 +1,11 @@
 /**
- * The D key: hide the cell colors in 2D, to see the EM underneath, and D
- * again to bring them back (cognaso 2026-11-20: "is there a key that hides
- * highlights in 2D like in eyewire"). Only the 2D fill changes; 3D stays.
- * Not while typing, and not with Ctrl, Alt or Cmd (Ctrl+D is taken).
+ * Hold D: the cell colors in 2D go away while the key is down, to see the EM
+ * underneath, and come back when it is let go (cognaso 2026-11-20: "is there
+ * a key that hides highlights in 2D like in eyewire"; Ames: "hold D"). Only
+ * the 2D fill changes; 3D stays. Not while typing, and not with Ctrl, Alt or
+ * Cmd (Ctrl+D is taken).
  */
-const before = new WeakMap<object, number>();
+const before = new Map<any, number>();
 
 function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -20,26 +21,29 @@ function segLayers(): any[] {
     .filter((l: any) => l?.displayState?.selectedAlpha && String(l.type || '').startsWith('segmentation'));
 }
 
-/** Hide the 2D colors if any show; otherwise bring them back. */
-export function toggleTwoDColor(): void {
-  const layers = segLayers();
-  if (!layers.length) return;
-  const showing = layers.some(l => l.displayState.selectedAlpha.value > 0);
-  for (const l of layers) {
+function hide() {
+  if (before.size) return;
+  for (const l of segLayers()) {
     const a = l.displayState.selectedAlpha;
-    if (showing) {
-      if (a.value > 0) { before.set(l, a.value); a.value = 0; }
-    } else {
-      a.value = before.get(l) ?? 0.5;
-      before.delete(l);
-    }
+    if (a.value > 0) { before.set(l, a.value); a.value = 0; }
   }
+}
+
+function show() {
+  for (const [l, v] of before) {
+    try { if (l.displayState.selectedAlpha.value === 0) l.displayState.selectedAlpha.value = v; } catch { /* layer gone */ }
+  }
+  before.clear();
 }
 
 export function startTwoDColorKey(): void {
   window.addEventListener('keydown', e => {
     if (e.key !== 'd' && e.key !== 'D') return;
-    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.repeat || typing(e.target)) return;
-    toggleTwoDColor();
+    if (e.ctrlKey || e.altKey || e.metaKey || e.repeat || typing(e.target)) return;
+    hide();
   });
+  window.addEventListener('keyup', e => { if (e.key === 'd' || e.key === 'D') show(); });
+  // Let go while the window lost focus: never leave the colors off.
+  window.addEventListener('blur', show);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) show(); });
 }
