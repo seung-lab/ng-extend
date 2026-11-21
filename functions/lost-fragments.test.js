@@ -317,6 +317,12 @@ test('a glia is labelled, not proofread: an answer of kind glia, and a Glia Ques
   assert.equal(tables.muller_glia_cells.length, 1);
   assert.equal(tables.muller_glia_answers.length, 1);
   assert.equal(tables.ew_lost_fragments.length, 1);
+  // One glia with a point in its trunk: the sheet says so.
+  await fragmentsAction('fragments.glia', { fragmentId: F, group: 'glia', fused: 'one', trunk: true, pt: [11, 21, 31] }, io);
+  const one = tables.ew_lost_fragments[0];
+  assert.equal(one.glia_trunk, true);
+  assert.deepEqual(one.pt, [11, 21, 31]);
+  assert.match(sheetRow({ ...one, updated_at: '2026-11-21T12:00:00Z' }, 'P')[15], /^Glia: one cell, the point is in its main trunk\.$/);
 });
 
 test('the lab list plays from the centre outward, past done, held and edited fragments', async () => {

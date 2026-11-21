@@ -271,3 +271,10 @@ test('the Access page views are for admins only, and a player\'s latest edits ar
   assert.throws(() => plan('access_hub_people', 'GET', 'select=last_chat_at', undefined, admin), /Unsupported projection/);
   assert.throws(() => plan('access_hub_people', 'GET', 'select=email&limit=5000', undefined, admin), /Invalid limit/);
 });
+
+test('a researcher from the labs posts in chat as researcher (a gold name), without admin powers', () => {
+  const { RESEARCHERS } = require('./community-data');
+  const jan = { ...user, me: { ...user.me, id: [...RESEARCHERS][0] }, production: true, isAdmin: false };
+  assert.equal(authorizeData({ table: 'chat_messages', method: 'POST', query: '', body: { text: 'hi', rank: 'admin' } }, jan).body.rank, 'researcher');
+  assert.throws(() => authorizeData({ table: 'chat_messages', method: 'POST', query: '', body: { text: 'hi', notification_id: 5 } }, jan), /admin/);
+});

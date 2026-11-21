@@ -242,7 +242,7 @@ function sheetRow(row, playerName) {
   return [at, playerName, GROUPS[row.group_key], "'" + row.fragment_id, row.root_id ? "'" + row.root_id : '', row.lab_flag, n(row.lab_um3),
     yes(row.fixed), yes(row.ends), row.point_in === 'soma' ? 'Soma' : row.point_in === 'glia' ? 'Glia' : 'Major dendrite', row.pt[0], row.pt[1], row.pt[2],
     row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus),
-    [row.kind === 'glia' ? (row.glia_fused === 'several' ? `Glia: several cells fused together${row.glia_count ? `, about ${row.glia_count}` : ''}.` : 'Glia: one cell.') : '',
+    [row.kind === 'glia' ? (row.glia_fused === 'several' ? `Glia: several cells fused together${row.glia_count ? `, about ${row.glia_count}` : ''}.` : row.glia_trunk ? 'Glia: one cell, the point is in its main trunk.' : 'Glia: one cell.') : '',
       row.note, row.other_root && OTHER[row.other_status] ? `Part belonged to cell ${row.other_root}, ${OTHER[row.other_status]}.` : ''].filter(Boolean).join(' ')];
 }
 /** Writes the row; returns the sheet row number it is on. */
@@ -440,7 +440,7 @@ async function fragmentsAction(action, args, io) {
     const fields = { fragment_id: fragmentId, group_key: args.group, root_id: rootId, lab_flag: FLAGS.includes(args.labFlag) ? args.labFlag : '',
       lab_um3: Number.isFinite(Number(args.labUm3)) ? Math.round(Number(args.labUm3) * 100) / 100 : null,
       fixed: false, ends: false, point_in: 'glia', pt, nucleus_id: '', no_nucleus: false, note,
-      kind: 'glia', glia_fused: fused, glia_count: count, points: null, points_detail: null,
+      kind: 'glia', glia_fused: fused, glia_count: count, glia_trunk: fused === 'one' && args.trunk === true, points: null, points_detail: null,
       updated_at: now, player_name: playerName, sheet_dirty: true };
     if (had) await sb(`ew_lost_fragments?id=eq.${had.id}`, { method: 'PATCH', body: JSON.stringify(fields) });
     else await sb('ew_lost_fragments', { method: 'POST', body: JSON.stringify({ user_id: me.id, ...fields, submitted_at: now }) });

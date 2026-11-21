@@ -15,6 +15,12 @@ const REACTION_EMOJI = new Set([
   '👋', '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈',
 ]);
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
+/** Researchers from the labs (Ames 2026-11-21: "Make Jan's account gold - he
+ *  is with a research lab"): a gold name in chat, rank 'researcher', with no
+ *  admin powers. Kept in step with src/util/researchers.ts. */
+const RESEARCHERS = new Set([
+  '5bb0310a-b42d-4d13-937f-eab620794949',  // Jan Lause (jan_lause)
+]);
 // users.last_edit_date and users.total_days are never writable from a browser:
 // the database decides when a new day starts (supabase-days-need-action.sql),
 // and a browser that could set the date back could count one day many times.
@@ -296,7 +302,7 @@ function authorizeData(input, ctx) {
       if (row.reply_to != null && (typeof row.reply_to !== 'string' || !UUID.test(row.reply_to))) fail(400,'Unknown message to reply to.');
       row.name=me.username || me.display_name || 'Player'; // The rank is the server's: 'admin'; 'eyewirer' with production access;
       // 'explorer' when CAVE says there is none; 'player' when it is not known.
-      row.rank=ctx.isAdmin?'admin':ctx.production===true?'eyewirer':ctx.production===false?'explorer':'player'; row.user_id=own();
+      row.rank=ctx.isAdmin?'admin':RESEARCHERS.has(String(me && me.id).toLowerCase())?'researcher':ctx.production===true?'eyewirer':ctx.production===false?'explorer':'player'; row.user_id=own();
       row.dataset=typeof row.dataset==='string'?row.dataset.slice(0,128):null;
     }
     if (table === 'working_links' && row.shared_group_id != null && !ctx.isAdmin && !groups.includes(String(row.shared_group_id))) fail(403, 'You are not a member of that group.');
@@ -357,4 +363,4 @@ function isPersonalProfileEdit(input) {
   return rows.length === 1 && rows[0] && typeof rows[0] === 'object'
     && Object.keys(rows[0]).length > 0 && Object.keys(rows[0]).every(k => PERSONAL_PROFILE_FIELDS.has(k));
 }
-module.exports={authorizeData,isPersonalProfileEdit,PUBLIC_USER_COLUMNS};
+module.exports={authorizeData,isPersonalProfileEdit,PUBLIC_USER_COLUMNS,RESEARCHERS};

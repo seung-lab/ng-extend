@@ -459,6 +459,8 @@ function shortName(name: string): string {
 function rankColor(rank: string): string {
   switch (rank) {
     case 'admin': return '#E6C760';
+    // A researcher from the labs: gold as an admin, without admin powers (Ames 2026-11-21).
+    case 'researcher': return '#E6C760';
     case 'explorer': return '#5fd38d';
     default: return '#7cc8ff';
   }
@@ -469,7 +471,7 @@ const knownRank = computed(() => {
   return by;
 });
 function nameColor(msg: { name: string; rank: string }): string {
-  return rankColor(msg.rank === 'admin' ? 'admin' : knownRank.value[msg.name] || msg.rank);
+  return rankColor(msg.rank === 'admin' || msg.rank === 'researcher' ? msg.rank : knownRank.value[msg.name] || msg.rank);
 }
 
 // ── Who is online: the "2 online" label opens the list ──────────────────

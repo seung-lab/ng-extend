@@ -12,6 +12,7 @@ import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
 import { nicknameOf, setNickname as saveNickname, ensureNicknames } from './util/nicknames';
+import { isResearcher } from './util/researchers';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
 import { achievementTestTrack, LOYALTY_BADGES } from './widgets/badge_definitions';
@@ -8194,7 +8195,7 @@ export const useChatStore = defineStore('chat', () => {
     // 'eyewirer' with production access, 'explorer' without, 'player' while
     // it is not known. The saved message gets the server's own answer.
     const production = editsAny(DATASETS.filter(d => d.section === 'production').map(d => d.caveDataset));
-    const rank = backend.isAdmin ? 'admin' : production === true ? 'eyewirer' : production === false ? 'explorer' : 'player';
+    const rank = backend.isAdmin ? 'admin' : isResearcher(backend.userId) ? 'researcher' : production === true ? 'eyewirer' : production === false ? 'explorer' : 'player';
     // The box blocks long messages too; this holds the limit if it is bypassed.
     // Announcements carry a notification title and are not capped.
     if (notificationId == null && chatTextLength(text) > CHAT_MAX_CHARS) return;

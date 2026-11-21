@@ -160,6 +160,7 @@ function clueOf(row: OrphanSeg): string {
 
 const group = ref<GroupKey>('easy');
 const cur = computed(() => GROUPS.find(g => g.key === group.value) || GROUPS[0]);
+const oldGroupLabel = computed(() => OLD_GROUPS.find(g => g.key === group.value)?.label || 'Lost Fragment');
 const curPool = computed<PoolKey | null>(() => isPool(group.value) ? group.value : null);
 
 // ── Answers: the server's copy, kept in this browser between loads ──────
@@ -968,7 +969,9 @@ async function submitGlia() {
   try {
     const res = await secureWrite<{ saved: boolean; first: boolean; quest: boolean }>('fragments.glia', {
       fragmentId: row.id, group: group.value, rootId: shownRoot.value || row.id, fused: glia.fused,
-      count: Number.isInteger(count) ? count : undefined, pt: form.point || row.pt,
+      count: Number.isInteger(count) ? count : undefined,
+      // One glia: the player's point in its main trunk when they placed one (Ames 2026-11-21).
+      pt: glia.fused === 'one' && form.pointOk && form.point ? form.point : row.pt, trunk: glia.fused === 'one' && form.pointOk && !!form.point,
       labFlag: labFlagOf(row), labUm3: row.um3, note: form.note.trim(),
     });
     serverOn.value = true;
@@ -1266,7 +1269,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             <button class="nge-orph-copy" :title="copied ? 'Copied' : 'Copy the segment ID'" @click="copyId(shownRoot || active.id)">{{ copied ? 'Copied' : 'Copy' }}</button>
           </div>
           <div class="nge-orph-task-meta">
-            <select class="nge-orph-groupsel" :value="group" :style="{ color: cur.color }" aria-label="Fragment group"
+            <span v-if="!GROUPS.some(g => g.key === group)" class="nge-orph-sub">{{ oldGroupLabel }}</span>
+            <select v-else class="nge-orph-groupsel" :value="group" :style="{ color: cur.color }" aria-label="Fragment group"
                     title="Switch group" @change="onGroupChange">
               <option v-for="g in shownGroups" :key="g.key" :value="g.key">{{ g.label }}</option>
             </select>,
@@ -1327,6 +1331,14 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           <input v-if="glia.fused === 'several'" v-model="glia.count" class="nge-orph-input nge-orph-type nge-orph-gliacount" inputmode="numeric" maxlength="2"
                  placeholder="How many columns? (optional)" aria-label="How many glia, one per column" @keydown.stop @keyup.stop @keypress.stop />
         </div>
+        <!-- One glia: a point in its main trunk, optional (Ames 2026-11-21: "players could already place a coordinate inside the main trunk of the cell"). -->
+        <template v-if="glia.fused === 'one'">
+          <div class="nge-orph-row">
+            <span><b>Crosshairs in the main trunk</b> <span class="nge-orph-sub">optional</span></span>
+            <button class="nge-orph-btn" :disabled="form.checking" @click="usePoint" title="Put the crosshairs inside the glia's main trunk, the column it rises up, then press this.">{{ form.checking ? 'Checking…' : 'Use crosshairs' }}</button>
+          </div>
+          <div v-if="form.pointMsg" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.pointOk }">{{ form.pointMsg }}</span></div>
+        </template>
         <div class="nge-orph-row nge-orph-gliaex">
           <span class="nge-orph-sub">Not sure?</span>
           <button class="nge-orph-link" @click="showGliaExample('one')" title="Opens a Müller glia in a new tab">See a glia</button>
