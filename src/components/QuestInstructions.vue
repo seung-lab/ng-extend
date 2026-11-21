@@ -109,6 +109,10 @@ onUnmounted(() => { ro?.disconnect(); ro = null; });
             </div>
           </div>
         </div>
+        <!-- A Close at the bottom right too, where the reading ends (toknow, report 603). -->
+        <div class="nge-qi-foot">
+          <button class="nge-qi-done" @click="emit('close')">Close</button>
+        </div>
       </div>
       <div v-if="zoomed" class="nge-qi-lightbox" title="Click to close" @click="zoomed = ''">
         <img :src="zoomed" :alt="props.imageAlt" class="nge-qi-lightbox-img" />
@@ -217,6 +221,17 @@ onUnmounted(() => { ro?.disconnect(); ro = null; });
   scrollbar-width: thin; scrollbar-color: rgb(var(--nd-accent) / 0.2) transparent;
 }
 .nge-qi-layout { display: flex; gap: 24px; align-items: flex-start; }
+.nge-qi-foot { display: flex; justify-content: flex-end; flex-shrink: 0; padding: 10px 24px 16px; border-top: 1px solid rgb(var(--nd-accent) / 0.14); }
+.nge-qi-done {
+  padding: 6px 18px; border-radius: 6px; cursor: pointer;
+  font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgb(var(--nd-ink)); background: rgb(var(--nd-accent) / 0.16); border: 1px solid rgb(var(--nd-cyan) / 0.45);
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.nge-qi-done:hover, .nge-qi-done:focus-visible {
+  color: #fff; border-color: rgb(var(--nd-cyan) / 0.8); background: rgb(var(--nd-cyan) / 0.16);
+  box-shadow: 0 0 14px rgb(var(--nd-cyan) / 0.3); outline: none;
+}
 /* The picture stays put while the words scroll past it, as in a notification. */
 .nge-qi-figure { margin: 0; width: 46%; flex-shrink: 0; position: sticky; top: 0; }
 :deep(.nge-qi-img) {
