@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T17:46:00Z",
+      "title": "It's a glia, in Lost Fragments",
+      "items": [
+        "Found a glia in Lost Fragments? Press It's a glia instead of proofreading it. Say whether it is one glia or several cells fused together, then Submit glia.",
+        "Labelling a glia counts as a Quest, like Cilia Quest, and the glia is saved for splitting later.",
+        "Each glia is one column rising up, covered in little barb-like projections. The box links to examples of a glia and of glia fused together.",
+        "Skip in Lost Fragments no longer leaves the 3D view empty."
+      ]
+    },
+    {
       "at": "2026-11-21T17:42:00Z",
       "title": "No more replayed achievements",
       "items": [
