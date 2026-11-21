@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T18:24:00Z",
+      "title": "Lost Fragments: the lab's full list",
+      "items": [
+        "Lost Fragments now has the lab's full list: 11,605 pieces of the retina nobody has traced yet.",
+        "They come in Easy, Medium and Hard. Easy ones probably have a cell body, and Hard ones are the smallest pieces.",
+        "Play takes you from the center of the retina outward, and passes over any piece someone else has already started.",
+        "Some pieces were cut off a cell in the lab's sheets, or may already be one. The fragment tells you which cell, so you can check."
+      ]
+    },
+    {
       "at": "2026-11-21T17:46:00Z",
       "title": "It's a glia, in Lost Fragments",
       "items": [

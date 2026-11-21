@@ -92,7 +92,10 @@ export function saveLocalDraft(id: string, v: { draft?: FragmentDraft; root?: st
 export function dropLocalDraft(id: string) {
   try { const all = localDrafts(); delete all[id]; localStorage.setItem(LOCAL_KEY, JSON.stringify(all)); } catch { /* */ }
 }
-export const fragmentGroup = (id: string) => GROUP_OF.get(id) || 'Stashed';
+/** Groups of fragments from the lab's list, as the tab learns them. */
+const LEARNED = reactive<Record<string, string>>({});
+export function noteFragmentGroup(id: string, label: string) { if (label) LEARNED[id] = label; }
+export const fragmentGroup = (id: string) => LEARNED[id] || GROUP_OF.get(id) || 'Lost Fragment';
 
 /** Open a held fragment in the Lost Fragments tab. The tab takes it when it
  *  opens (OrphanSegmentsTab reads pendingFragment) or at once if open. */

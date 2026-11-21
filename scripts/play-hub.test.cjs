@@ -34,6 +34,27 @@ async function run(browser, perms, tag) {
   await context.route(/docs\.google\.com/, r => r.fulfill({ status: 200, contentType: 'text/csv', body: 'Segment ID\n' }));
   await context.route(/cloudfunctions\.net|run\.app/, r => {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
+    // The lab's Lost Fragments list (fragments.pool / next / get), a few rows.
+    const POOL = [
+      { id: '720575940579154473', rank: 1, difficulty: 'medium', cls: 'orphan', splitFrom: '', sheetIndex: '', soma: false, um3: 479.17, distUm: 11.2, pt: [36459, 30391, 1116] },
+      { id: '720575940566809701', rank: 2, difficulty: 'easy', cls: 'orphan', splitFrom: '', sheetIndex: '', soma: true, um3: 383.91, distUm: 11.5, pt: [36431, 41252, 1911] },
+      { id: '720575940570052036', rank: 3, difficulty: 'hard', cls: 'orphan', splitFrom: '', sheetIndex: '', soma: false, um3: 181.16, distUm: 11.6, pt: [36505, 41287, 711] },
+      { id: '720575940560316561', rank: 5, difficulty: 'easy', cls: 'uncertain_orphan', splitFrom: '', sheetIndex: 'I4269', soma: true, um3: 300, distUm: 13, pt: [36000, 41000, 1000] },
+      { id: '720575940567079844', rank: 7, difficulty: 'easy', cls: 'split_off_orphan', splitFrom: 'I6226', sheetIndex: '', soma: true, um3: 354.06, distUm: 14, pt: [37131, 41717, 734] },
+    ];
+    if (input.action === 'fragments.pool') {
+      const rows = POOL.filter(x => x.difficulty === input.difficulty);
+      return r.fulfill(json({ ok: true, data: { rows, counts: { easy: { total: 2735, done: 0 }, medium: { total: 5273, done: 0 }, hard: { total: 3597, done: 0 } } } }));
+    }
+    if (input.action === 'fragments.next') {
+      const a = input; const skip = new Set(a.skip || []); const ds = [...(a.difficulties || []), 'easy', 'medium', 'hard'];
+      for (const d of ds) { const row = POOL.filter(x => x.difficulty === d && !skip.has(x.id)).sort((x, y) => x.rank - y.rank)[0]; if (row) return r.fulfill(json({ ok: true, data: { row } })); }
+      return r.fulfill(json({ ok: true, data: { row: null } }));
+    }
+    if (input.action === 'fragments.get') {
+      const ids = new Set(input.ids || []);
+      return r.fulfill(json({ ok: true, data: { rows: POOL.filter(x => ids.has(x.id)) } }));
+    }
     const rows = input.table === 'users' ? [{ id: 'test-user', display_name: 'Test Player', username: 'testplayer', middleauth_email: 't@example.org' }] : [];
     return r.fulfill(json({ status: 200, ok: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(/pgrst\.object/.test(String(input.accept || '')) ? (rows[0] || null) : rows), data: { invited: true } }));
   });
@@ -195,7 +216,7 @@ async function run(browser, perms, tag) {
   check('edit: the tab rows fold away, the title says Cell Library: Lost Fragments, and they open again', ed.fold && ed.fold.folded && ed.fold.folded.name.trim() === 'Lost Fragments' && !ed.fold.folded.rows && ed.fold.open, ed.fold);
   check('edit: the banner shows in the full view', ed.banner && ed.banner.w > 200 && /lost-fragments-banner/.test(ed.banner.bg), ed.banner);
   check('edit: the slim box resizes from its corner and keeps the size', ed.resize && ed.resize.after && ed.resize.before && ed.resize.after[0] < ed.resize.before[0] - 100 && ed.resize.after[1] > ed.resize.before[1] + 80 && !!ed.resize.kept, ed.resize);
-  check('edit: slim bar has no group menu, ID, Playing chip, arrows or count', ed.slimLean && ed.slimLean.row && !ed.slimLean.select && !ed.slimLean.chip && !ed.slimLean.arrows && /^(Large|Small|Glia-like|Soma-like)$/.test(ed.slimLean.meta.trim()), ed.slimLean);
+  check('edit: slim bar has no group menu, ID, Playing chip, arrows or count', ed.slimLean && ed.slimLean.row && !ed.slimLean.select && !ed.slimLean.chip && !ed.slimLean.arrows && /^(Easy|Medium|Hard|Stashed)$/.test(ed.slimLean.meta.trim()), ed.slimLean);
   check('edit: reopening keeps the fragment and the note', ed.beforeClose && ed.afterReopen === ed.beforeClose && ed.noteKept === 'kept note', [ed.beforeClose, ed.afterReopen, ed.noteKept]);
   check('edit: Play again stays on the open fragment', ed.afterReplay === ed.beforeClose, [ed.beforeClose, ed.afterReplay, ed.replayDbg]);
   check('edit: Skip goes to another fragment', ed.afterSkip && ed.afterSkip !== ed.first, [ed.first, ed.afterSkip]);

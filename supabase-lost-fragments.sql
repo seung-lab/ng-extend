@@ -133,3 +133,8 @@ alter table public.ew_lost_fragment_claims add column if not exists draft_at tim
 -- The fragment's saved view, as a claimed cell's working link (Ames 2026-11-21).
 alter table public.ew_lost_fragment_claims add column if not exists working_link text;
 alter table public.ew_lost_fragment_claims add column if not exists view_at timestamptz;
+
+-- The lab's hand-out list (orphans_handout.csv, HANDOVER-GAME.md, 2026-11-21),
+-- replacing the first samples: ew_lost_fragment_pool, filled by
+-- scripts/lost-fragments-import.py; lost_fragment_next / lost_fragment_counts
+-- (applied as migrations lost_fragment_pool and lost_fragment_next).

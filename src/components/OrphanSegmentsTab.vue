@@ -42,9 +42,10 @@ import { openStartLink } from '../util/start_link';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
-  ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
+  ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, orphanName,
   type OrphanSeg, type OrphanFlag,
 } from '../data/orphan-segments';
+import { noteFragmentGroup } from '../util/my_fragments';
 
 const props = defineProps<{ playTick?: number; slim?: boolean }>();
 
@@ -66,29 +67,100 @@ const HOWTO_LINES = [
 const HIGHLIGHT_ICON = getToolbarIconDef('highlight')?.svg ?? '';
 const name = orphanName();
 
-type GroupKey = 'large' | 'smaller' | 'glia' | 'soma' | 'stashed';
+type PoolKey = 'easy' | 'medium' | 'hard';
+type GroupKey = PoolKey | 'large' | 'smaller' | 'glia' | 'soma' | 'stashed';
+const POOL_KEYS: PoolKey[] = ['easy', 'medium', 'hard'];
+const isPool = (g: GroupKey): g is PoolKey => (POOL_KEYS as string[]).includes(g);
 /** Cells players found attached to a fragment and stashed for proofreading
  *  (Ames 2026-11-20), from the server's list. Played like any fragment. */
 const STASHED = reactive<OrphanSeg[]>([]);
+/** The lab's hand-out list (Ames 2026-11-21: "This replaces the old list";
+ *  "You want to work from the center of the volume outward"), in pages from
+ *  the server (fragments.pool), most central first. */
+const POOL_ROWS = { easy: reactive<OrphanSeg[]>([]), medium: reactive<OrphanSeg[]>([]), hard: reactive<OrphanSeg[]>([]) };
 const GROUPS: { key: GroupKey; label: string; about: string; color: string; rows: OrphanSeg[] }[] = [
-  { key: 'large',   label: 'Large',     color: '#7ecaff', rows: ORPHANS_LARGE,
-    about: 'Big pieces with no flag. Most are parts of neurons cut off from their cell.' },
-  { key: 'smaller', label: 'Small',   color: '#9fb4ff', rows: ORPHANS_SMALLER,
-    about: 'The smallest of each kind. Fewer clues, so they can be harder to place.' },
-  { key: 'glia',    label: 'Glia-like', color: '#6fe0d0', rows: ORPHANS_GLIA,
-    about: 'The shape looks like a glial cell. Check it, and look for a soma.' },
-  { key: 'soma',    label: 'Soma-like', color: '#c9b6ff', rows: ORPHANS_SOMA,
-    about: 'May have a cell body. Put the point in the soma.' },
+  { key: 'easy',   label: 'Easy',   color: '#7ecaff', rows: POOL_ROWS.easy,
+    about: 'Each probably has a cell body, which makes the cell easy to recognise and complete.' },
+  { key: 'medium', label: 'Medium', color: '#9fb4ff', rows: POOL_ROWS.medium,
+    about: 'Large pieces of neurite with no cell body.' },
+  { key: 'hard',   label: 'Hard',   color: '#b9c7ff', rows: POOL_ROWS.hard,
+    about: 'The smallest pieces, with no cell body. Fewer clues, so they can be harder to place.' },
   { key: 'stashed', label: 'Stashed', color: '#ffd35a', rows: STASHED,
     about: 'Cells another player found attached to a fragment and saved for later. Proofread the whole cell.' },
 ];
+/** The first sample list (2026-11-19), replaced: kept only so fragments
+ *  players already hold still open. Never shown as groups. */
+const OLD_GROUPS: { key: GroupKey; label: string; rows: OrphanSeg[] }[] = [
+  { key: 'large', label: 'Large', rows: ORPHANS_LARGE }, { key: 'smaller', label: 'Small', rows: ORPHANS_SMALLER },
+  { key: 'glia', label: 'Glia-like', rows: ORPHANS_GLIA }, { key: 'soma', label: 'Soma-like', rows: ORPHANS_SOMA },
+];
+/** Every fragment this page has seen, by ID. */
+const ROWS = new Map<string, { g: GroupKey; row: OrphanSeg }>();
+function remember(g: GroupKey, row: OrphanSeg) {
+  ROWS.set(row.id, { g, row });
+  noteFragmentGroup(row.id, GROUPS.find(x => x.key === g)?.label || OLD_GROUPS.find(x => x.key === g)?.label || '');
+}
+for (const og of OLD_GROUPS) for (const row of og.rows) if (!ROWS.has(row.id)) ROWS.set(row.id, { g: og.key, row });
+/** The server's row as the tab's. */
+function fromPool(p: any): OrphanSeg {
+  return { id: String(p.id), pt: p.pt, um3: Number(p.um3) || 0, flag: p.soma ? 's' : 'n', rank: p.rank, difficulty: p.difficulty,
+    cls: p.cls, splitFrom: p.splitFrom || '', sheetIndex: p.sheetIndex || '', soma: !!p.soma, distUm: Number(p.distUm) || 0 };
+}
+const pool = reactive({
+  counts: {} as Record<string, { total: number; done: number }>,
+  more: { easy: true, medium: true, hard: true } as Record<PoolKey, boolean>,
+  loading: { easy: false, medium: false, hard: false } as Record<PoolKey, boolean>,
+});
+async function loadPage(g: PoolKey): Promise<void> {
+  if (pool.loading[g] || !pool.more[g]) return;
+  pool.loading[g] = true;
+  try {
+    const rows = POOL_ROWS[g];
+    const after = rows.length ? rows[rows.length - 1].rank || 0 : 0;
+    const res = await secureWrite<{ rows: any[]; counts?: Record<string, { total: number; done: number }> }>('fragments.pool', { difficulty: g, after, n: 50 });
+    if (res?.counts) pool.counts = res.counts;
+    const add = (res?.rows || []).map(fromPool).filter(x => !rows.some(y => y.id === x.id));
+    for (const row of add) { rows.push(row); remember(g, row); }
+    if ((res?.rows || []).length < 50) pool.more[g] = false;
+  } catch { /* the server can't say: the list stays as it is */ }
+  finally { pool.loading[g] = false; }
+}
+/** A fragment by ID, from this page or the server (My Cells, a reload). */
+async function ensureRow(id: string): Promise<{ g: GroupKey; row: OrphanSeg } | null> {
+  const have = findRow(id);
+  if (have) return have;
+  try {
+    const res = await secureWrite<{ rows: any[] }>('fragments.get', { ids: [id] });
+    const p = (res?.rows || [])[0];
+    if (!p) return null;
+    const row = fromPool(p);
+    remember(p.difficulty as PoolKey, row);
+    return { g: p.difficulty as PoolKey, row };
+  } catch { return null; }
+}
 /** The groups to show: Stashed only once something is in it. */
 const shownGroups = computed(() => GROUPS.filter(g => g.key !== 'stashed' || STASHED.length > 0));
 const FLAG_WORDS: Record<OrphanFlag, string> = { n: 'no flag', s: 'soma', sg: 'soma, glia', g: 'glia' };
-const poolTotal = ORPHAN_POOL.n + ORPHAN_POOL.s + ORPHAN_POOL.sg + ORPHAN_POOL.g;
+/** What the lab says of it, for the sheet's flag column. */
+const labFlagOf = (row: OrphanSeg) => row.cls || FLAG_WORDS[row.flag];
+const poolTotal = computed(() => POOL_KEYS.reduce((a, k) => a + (pool.counts[k]?.total || 0), 0));
+const poolOpen = computed(() => POOL_KEYS.reduce((a, k) => a + Math.max(0, (pool.counts[k]?.total || 0) - (pool.counts[k]?.done || 0)), 0));
+/** The lab's clue for this fragment (HANDOVER-GAME.md): a cell it may belong to. */
+function clueOf(row: OrphanSeg): string {
+  if (row.cls === 'split_off_orphan' && row.splitFrom) return `It was cut off cell ${row.splitFrom.split(';').join(', ')} in the lab's sheets: it may belong to that cell.`;
+  if (row.cls === 'split_off_orphan') return 'It was cut off a cell in the lab\'s sheets: it may belong to that cell.';
+  if (row.cls === 'uncertain_orphan' && row.sheetIndex) {
+    const ids = row.sheetIndex.split(';').filter(x => x && x !== 'None');
+    return ids.length ? `It may already be ${ids.length > 1 ? 'one of cells ' + ids.join(', ') : 'cell ' + ids[0]} in the lab's sheets. Check before you redo it.`
+      : 'It may already be a cell in the lab\'s sheets. Check before you redo it.';
+  }
+  if (row.cls === 'uncertain_orphan') return 'It may be part of a cell already in the lab\'s sheets.';
+  return '';
+}
 
-const group = ref<GroupKey>('large');
-const cur = computed(() => GROUPS.find(g => g.key === group.value)!);
+const group = ref<GroupKey>('easy');
+const cur = computed(() => GROUPS.find(g => g.key === group.value) || GROUPS[0]);
+const curPool = computed<PoolKey | null>(() => isPool(group.value) ? group.value : null);
 
 // ── Answers: the server's copy, kept in this browser between loads ──────
 const SAVE_KEY = 'nge_orphan_saves_v2';
@@ -119,7 +191,8 @@ const saves = reactive<Record<string, OrphanSave>>((() => {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch { return {}; }
 })());
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(saves)); } catch { /* private window */ } }
-const doneIn = (g: GroupKey) => GROUPS.find(x => x.key === g)!.rows.filter(r => saves[r.id]).length;
+const doneIn = (g: GroupKey) => isPool(g) ? (pool.counts[g]?.done || 0) : GROUPS.find(x => x.key === g)!.rows.filter(r => saves[r.id]).length;
+const totalIn = (g: GroupKey) => isPool(g) ? (pool.counts[g]?.total || GROUPS.find(x => x.key === g)!.rows.length) : GROUPS.find(x => x.key === g)!.rows.length;
 
 // ── The one being worked on ──────────────────────────────────────────
 const active = ref<OrphanSeg | null>(null);
@@ -242,13 +315,15 @@ function saveDraft() {
         pointMsg: form.pointMsg, nucId: form.nucId, noNucleus: form.noNucleus, note: form.note } : null }));
   } catch { /* private window */ }
 }
-function restoreDraft() {
+async function restoreDraft() {
   try {
     const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
-    if (!d || !GROUPS.some(g => g.key === d.group)) return;
-    group.value = d.group;
-    const row = d.id ? GROUPS.find(g => g.key === d.group)!.rows.find(r => r.id === d.id) : null;
-    if (!row) return;
+    if (!d) return;
+    if (GROUPS.some(g => g.key === d.group)) group.value = d.group;
+    const f = d.id ? await ensureRow(d.id) : null;
+    if (!f || active.value) return;
+    group.value = f.g;
+    const row = f.row;
     active.value = row;
     shownRoot.value = d.root || row.id;
     resetForm(saves[row.id]);
@@ -503,21 +578,37 @@ async function sendProgress(id: string, body: { draft?: FragmentDraft; anchorSv?
 watch(() => [form.fixed, form.ends, form.where, form.point, form.pointOk, form.note, form.cellType, form.cellTypeCustom], queueProgress);
 onMounted(() => window.addEventListener('pagehide', flushProgress));
 onUnmounted(() => { window.removeEventListener('pagehide', flushProgress); void flushProgress(); });
-function step(d: number) {
+async function step(d: number) {
+  const g = group.value;
   const rows = cur.value.rows;
+  if (d > 0 && isPool(g) && place.value >= rows.length - 1 && pool.more[g]) await loadPage(g);
+  if (!rows.length) return;
   const i = place.value < 0 ? (d > 0 ? 0 : rows.length - 1) : (place.value + d + rows.length) % rows.length;
   void open(rows[i]);
 }
 // ── Play (util/play.ts): Submit, then the next one not yet done ─────
-/** The next fragment with no answer, from this group on, then the others. */
-function nextUndone(): { g: GroupKey; row: OrphanSeg } | null {
-  const start = GROUPS.findIndex(x => x.key === group.value);
-  for (let k = 0; k < GROUPS.length; k++) {
-    const g = GROUPS[(start + k) % GROUPS.length];
-    const from = k === 0 && active.value ? g.rows.findIndex(r => r.id === active.value!.id) + 1 : 0;
-    const row = [...g.rows.slice(from), ...(k === 0 ? g.rows.slice(0, from) : [])].find(r => !saves[r.id] && !taken.has(r.id) && !held.has(r.id) && !keptFragmentIds.value.includes(r.id) && r.id !== active.value?.id);
-    if (row) return { g: g.key, row };
-  }
+/** Fragments skipped on this page: Play does not hand them back. */
+const skippedHere = new Set<string>();
+/** The next fragment: a stashed one first when playing Stashed, else the
+ *  server's most central one not done, held or edited, from this difficulty
+ *  on (fragments.next). */
+async function nextUndone(): Promise<{ g: GroupKey; row: OrphanSeg } | null> {
+  const free = (r: OrphanSeg) => !saves[r.id] && !taken.has(r.id) && !held.has(r.id) && !keptFragmentIds.value.includes(r.id) && r.id !== active.value?.id && !skippedHere.has(r.id);
+  if (group.value === 'stashed') { const row = STASHED.find(free); if (row) return { g: 'stashed', row }; }
+  try {
+    const res = await secureWrite<{ row: any }>('fragments.next', {
+      difficulties: isPool(group.value) ? [group.value] : [],
+      skip: [...skippedHere, ...(active.value ? [active.value.id] : []), ...held, ...taken].slice(-400),
+    });
+    if (res?.row) {
+      const row = fromPool(res.row);
+      const g = res.row.difficulty as PoolKey;
+      const rows = POOL_ROWS[g];
+      if (!rows.some(x => x.id === row.id)) { rows.push(row); rows.sort((a, b) => (a.rank || 0) - (b.rank || 0)); }
+      remember(g, rows.find(x => x.id === row.id)!);
+      return { g, row: rows.find(x => x.id === row.id)! };
+    }
+  } catch { /* the server can't say */ }
   return null;
 }
 const allDone = ref(false);
@@ -595,7 +686,7 @@ function nextKept(): { g: GroupKey; row: OrphanSeg } | null {
   return null;
 }
 const fullNote = ref('');
-function playNext() {
+async function playNext() {
   const kept = nextKept();
   if (kept) {
     allDone.value = false;
@@ -607,7 +698,7 @@ function playNext() {
     return;
   }
   fullNote.value = '';
-  const n = nextUndone();
+  const n = await nextUndone();
   if (!n) { allDone.value = true; return; }
   allDone.value = false;
   group.value = n.g;
@@ -639,8 +730,8 @@ async function later() {
     }
     await flushProgress();
     // The view is saved as you leave it (open), and Play hands you the next.
-    if (playing.value) { playNext(); return; }
-    const n = nextUndone();
+    if (playing.value) { await playNext(); return; }
+    const n = await nextUndone();
     if (!n) { allDone.value = true; return; }
     group.value = n.g;
     await open(n.row);
@@ -655,14 +746,16 @@ function skip() {
     if (pending?.id === a.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(a.id);
     freshNext = true;
+    skippedHere.add(a.id);
     void secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
   }
-  playNext();
+  void playNext();
 }
 const idNow = (id: string) => (active.value?.id === id && shownRoot.value) || heldOf(id)?.root || localDrafts()[id]?.root || id;
 function findRow(id: string): { g: GroupKey; row: OrphanSeg } | null {
-  for (const g of GROUPS) { const row = g.rows.find(r => r.id === id); if (row) return { g: g.key, row }; }
-  return null;
+  const st = STASHED.find(r => r.id === id);
+  if (st) return { g: 'stashed', row: st };
+  return ROWS.get(id) || null;
 }
 // Pressing Play while a fragment is open and not yet submitted stays on it
 // (Ames 2026-11-19: Play took her from Smaller back to Large, losing her note).
@@ -678,6 +771,7 @@ const resumeId = computed(() => {
 });
 let listLoad: Promise<void> | null = null;
 async function playResume() {
+  if (restoring) await restoring;
   // After a reload the server's list says which fragment was yours: wait for it.
   if (!heldFragments.loaded && !active.value) {
     listLoad = listLoad || loadAnswers();
@@ -700,8 +794,10 @@ async function playResume() {
   }
   playNext();
 }
-watch(() => props.playTick, t => { if (t) void playResume(); });
-onMounted(() => { restoreDraft(); if (props.playTick) void playResume(); });
+watch(() => props.playTick, t => { if (t && restoring) void playResume(); });
+/** The fragment open before the library closed comes back first; Play waits for it. */
+let restoring: Promise<void> | null = null;
+onMounted(() => { restoring = restoreDraft(); void restoring.then(() => { if (props.playTick) void playResume(); }); });
 const onSkip = () => skip();
 onMounted(() => document.addEventListener('nge:play-skip-fragment', onSkip));
 onUnmounted(() => document.removeEventListener('nge:play-skip-fragment', onSkip));
@@ -746,8 +842,10 @@ function switchGroup(g: GroupKey) {
 }
 function pickGroup(g: GroupKey) {
   group.value = g;
-  if (active.value && !GROUPS.find(x => x.key === g)!.rows.some(r => r.id === active.value!.id)) active.value = null;
+  if (isPool(g) && !POOL_ROWS[g].length) void loadPage(g);
+  if (active.value && !playing.value && !GROUPS.find(x => x.key === g)!.rows.some(r => r.id === active.value!.id)) active.value = null;
 }
+onMounted(() => { const g = group.value; if (isPool(g)) void loadPage(g); });
 
 /** Complete opens the checklist and reads the crosshairs straight away, so
  *  the point is filled in if they already sit in the fragment (Ames
@@ -871,7 +969,7 @@ async function submitGlia() {
     const res = await secureWrite<{ saved: boolean; first: boolean; quest: boolean }>('fragments.glia', {
       fragmentId: row.id, group: group.value, rootId: shownRoot.value || row.id, fused: glia.fused,
       count: Number.isInteger(count) ? count : undefined, pt: form.point || row.pt,
-      labFlag: FLAG_WORDS[row.flag], labUm3: row.um3, note: form.note.trim(),
+      labFlag: labFlagOf(row), labUm3: row.um3, note: form.note.trim(),
     });
     serverOn.value = true;
     saves[row.id] = {
@@ -965,7 +1063,7 @@ async function submit() {
     let caveId = saves[row.id]?.caveId ?? null;
     if (caveId == null) caveId = await postLostFragmentPoint(pt);
     const res = await secureWrite<{ first: boolean; sheet: string }>('fragments.submit', {
-      fragmentId: row.id, group: group.value, rootId: root, labFlag: FLAG_WORDS[row.flag], labUm3: row.um3,
+      fragmentId: row.id, group: group.value, rootId: root, labFlag: labFlagOf(row), labUm3: row.um3,
       fixed: fixedOk.value, ends: endsOk.value, pointIn: form.where, pt,
       nucleusId: form.where === 'soma' && !form.noNucleus ? form.nucId.trim() : '', noNucleus: form.noNucleus,
       note: form.note.trim(), caveAnnotationId: caveId,
@@ -1021,15 +1119,22 @@ async function loadAnswers() {
     setHeldFragments((res as any).myClaims || []);
     serverOn.value = true;
     {
+      const want = heldFragments.list.map(f => f.id).filter(id => !findRow(id));
+      if (want.length) {
+        const got = await secureWrite<{ rows: any[] }>('fragments.get', { ids: want }).catch(() => null);
+        for (const p of got?.rows || []) remember(p.difficulty as PoolKey, fromPool(p));
+      }
+    }
+    {
       const a = active.value;
       if (a && !saves[a.id] && !draftWork(currentDraft())) applyDraft(a.id);
       if (a && heldOf(a.id)?.anchor && !anchors[a.id]) void followRoot(a);
     }
     for (const k of Object.keys(saves)) delete saves[k];
     for (const m of res.mine || []) {
-      const g = GROUPS.find(x => x.rows.some(r => r.id === m.fragment_id));
+      const g = findRow(m.fragment_id);
       saves[m.fragment_id] = {
-        id: m.fragment_id, group: (g ? g.key : 'large') as GroupKey, root: m.root_id, fixed: true, ends: true,
+        id: m.fragment_id, group: (g ? g.g : (m.group_key || 'easy')) as GroupKey, root: m.root_id, fixed: true, ends: true,
         where: m.point_in, point: m.pt, nucId: m.nucleus_id || '', noNucleus: !!m.no_nucleus, note: m.note || '',
         at: Date.parse(m.updated_at) || Date.now(), caveId: m.cave_annotation_id ?? null,
       };
@@ -1072,11 +1177,11 @@ function onEditLogged(e: Event) {
 onMounted(() => document.addEventListener('nge:edit-logged', onEditLogged));
 onUnmounted(() => document.removeEventListener('nge:edit-logged', onEditLogged));
 /** "Open" on a fragment in My Cells (util/my_fragments.ts). */
-function openPending() {
+async function openPending() {
   const id = pendingFragment.id;
   if (!id) return;
-  const f = findRow(id);
-  if (!f) return;   // the Stashed list may not be loaded yet; tried again after it is
+  const f = await ensureRow(id);
+  if (!f || pendingFragment.id !== id) return;   // the Stashed list may not be loaded yet; tried again after it is
   pendingFragment.id = null;
   const finish = !!pendingFragment.finish;
   pendingFragment.finish = false;
@@ -1084,7 +1189,7 @@ function openPending() {
   void open(f.row).then(() => { if (finish && active.value?.id === f.row.id) openFinish(); });
   void claimHere(f.row);
 }
-watch(() => [pendingFragment.id, STASHED.length], () => openPending(), { immediate: true });
+watch(() => [pendingFragment.id, STASHED.length], () => void openPending(), { immediate: true });
 // The cell type CAVE already has, when the checklist is on screen for a fragment.
 watch(() => [active.value?.id, shownRoot.value, finishing.value || !props.slim] as const, ([id, , shown]) => {
   if (id && shown) void prefillType();
@@ -1108,7 +1213,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
       <!-- How many are open, in the lead for everyone (Ames 2026-11-20: keep
            saying about 150 of 13,000, "add that to the text up at the top"). -->
-      <div class="nge-orph-lead">{{ name.lead }} {{ fmt(GROUPS.reduce((a, g) => a + (g.key === 'stashed' ? 0 : g.rows.length), 0)) }} of the {{ fmt(poolTotal) }} the lab found are open to start, and each one counts as a completed cell.</div>
+      <div class="nge-orph-lead">{{ name.lead }} <template v-if="poolTotal">{{ fmt(poolOpen) }} of the {{ fmt(poolTotal) }} the lab found are still to do, from the center of the retina outward, and each one counts as a completed cell.</template></div>
       <div v-if="fragmentsDone != null" class="nge-orph-countdown">Together we have completed <b>{{ fmt(fragmentsDone) }}</b>. <b class="nge-orph-countdown-num">{{ fmt(nextMilestone(fragmentsDone) - fragmentsDone) }}</b> to go until we celebrate {{ fmt(nextMilestone(fragmentsDone)) }}!</div>
       <div v-if="ON_TEST_SITE || !serverOn" class="nge-orph-mock">{{ !serverOn ? 'Pyr could not reach the server, so Complete will not save yet.' : 'Test site: Complete here is real. It goes to the lab and counts as a completed cell.' }}</div>
     </div>
@@ -1117,7 +1222,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <button v-for="g in shownGroups" :key="g.key" class="nge-orph-group" :class="{ 'nge-orph-group--on': group === g.key }"
               :style="{ '--g': g.color }" @click="pickGroup(g.key)" :title="g.about">
         <span class="nge-orph-group-name">{{ g.label }}</span>
-        <span class="nge-orph-group-n">{{ doneIn(g.key) }} / {{ g.rows.length }}</span>
+        <span class="nge-orph-group-n">{{ fmt(doneIn(g.key)) }} / {{ fmt(totalIn(g.key)) }}</span>
       </button>
     </div>
     <div v-if="!slim" class="nge-orph-about">{{ cur.about }}</div>
@@ -1164,10 +1269,12 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             <select class="nge-orph-groupsel" :value="group" :style="{ color: cur.color }" aria-label="Fragment group"
                     title="Switch group" @change="onGroupChange">
               <option v-for="g in shownGroups" :key="g.key" :value="g.key">{{ g.label }}</option>
-            </select>, {{ place + 1 }} of {{ cur.rows.length }},
-            <template v-if="group === 'stashed'">stashed by {{ stashBy[active.id] || 'a player' }}</template>
+            </select>,
+            <template v-if="group === 'stashed'">{{ place + 1 }} of {{ cur.rows.length }}, stashed by {{ stashBy[active.id] || 'a player' }}</template>
+            <template v-else-if="active.rank">{{ fmt(active.um3) }} µm³<template v-if="active.soma">, has a cell body</template>, {{ fmt(active.distUm || 0) }} µm from the center</template>
             <template v-else>{{ fmt(active.um3) }} µm³, lab flag: {{ FLAG_WORDS[active.flag] }}</template>
           </div>
+          <div v-if="clueOf(active)" class="nge-orph-note nge-orph-clue">{{ clueOf(active) }}</div>
           <div v-if="shownRoot && shownRoot !== active.id" class="nge-orph-note">Merges and cuts gave it this new ID. Pyr follows it for you; it started as {{ active.id }}.</div>
         </div>
       </div>
@@ -1313,10 +1420,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
               @click="open(r)" :title="`Jump to segment ${r.id}`">
         <span class="nge-orph-item-i">{{ i + 1 }}</span>
         <span class="nge-orph-item-id">{{ r.id }}</span>
-        <span class="nge-orph-item-flag">{{ group === 'stashed' ? 'stashed' : FLAG_WORDS[r.flag] }}</span>
+        <span class="nge-orph-item-flag">{{ group === 'stashed' ? 'stashed' : r.soma ? 'cell body' : r.cls === 'split_off_orphan' ? 'cut off a cell' : r.cls === 'uncertain_orphan' ? 'maybe listed' : '' }}</span>
         <span class="nge-orph-item-v">{{ group === 'stashed' ? (stashBy[r.id] || '') : fmt(r.um3) + ' µm³' }}</span>
         <span class="nge-orph-item-s">{{ saves[r.id] ? '✓' : '' }}</span>
       </button>
+      <button v-if="curPool && pool.more[curPool]" class="nge-orph-link nge-orph-more" :disabled="pool.loading[curPool]" @click="loadPage(curPool)">{{ pool.loading[curPool] ? 'Loading…' : 'Show 50 more' }}</button>
     </div>
   </div>
 </template>
@@ -1361,6 +1469,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-groupsel { font: inherit; font-weight: 600; background: rgba(10, 18, 32, 0.9); border: 1px solid rgba(126, 202, 255, 0.35); border-radius: 5px; padding: 0 2px; cursor: pointer; }
 .nge-orph-groupsel option { color: #dce6f5; background: #0b1220; }
 .nge-orph-gliaswitch { margin-bottom: 4px; }
+.nge-orph-clue { color: #ffe19a; }
+.nge-orph-more { display: block; margin: 8px auto 4px; }
 .nge-orph-glia { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; padding: 10px 12px; border-radius: 9px;
   border: 1px solid rgba(111, 224, 208, 0.35); background: rgba(111, 224, 208, 0.06); }
 .nge-orph-glia .nge-orph-sub { line-height: 1.4; }

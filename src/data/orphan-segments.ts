@@ -14,7 +14,12 @@ export const ORPHAN_NAME = {
 };
 export const orphanName = () => ORPHAN_NAME;
 export type OrphanFlag = 'n' | 's' | 'sg' | 'g';
-export interface OrphanSeg { id: string; pt: [number, number, number]; um3: number; flag: OrphanFlag }
+export interface OrphanSeg {
+  id: string; pt: [number, number, number]; um3: number; flag: OrphanFlag;
+  /** The lab's hand-out list (2026-11-21, ew_lost_fragment_pool): rank from
+   *  the centre outward, difficulty, kind, and the sheet cell it may be. */
+  rank?: number; difficulty?: 'easy' | 'medium' | 'hard'; cls?: string; splitFrom?: string; sheetIndex?: string; soma?: boolean; distUm?: number;
+}
 /** How many untracked segments the lab counted in each flag (all sizes). */
 export const ORPHAN_POOL = { n: 8929, s: 2761, sg: 1736, g: 21 } as const;
 export const ORPHANS_LARGE: OrphanSeg[] = [

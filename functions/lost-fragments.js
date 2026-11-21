@@ -62,10 +62,30 @@ const TESTERS = new Set(['5bb0310a-b42d-4d13-937f-eab620794949']);  // Jan Lause
 /** Open to every signed in player (Ames 2026-11-20: "let's get the Lost
  *  Fragments deployed!"). Play still asks for edit access on Retina. */
 const OPEN = true;
-const GROUPS = { large: 'Large', smaller: 'Small', glia: 'Glia-like', soma: 'Soma-like', stashed: 'Stashed' };
+const GROUPS = { easy: 'Easy', medium: 'Medium', hard: 'Hard', large: 'Large', smaller: 'Small', glia: 'Glia-like', soma: 'Soma-like', stashed: 'Stashed' };
+/** The lab's hand-out list (Ames 2026-11-21: "This replaces the old list"),
+ *  in ew_lost_fragment_pool (scripts/lost-fragments-import.py): played from
+ *  the centre of the volume outward ("You want to work from the center of the
+ *  volume outward"). */
+const DIFFICULTIES = ['easy', 'medium', 'hard'];
+const POOL_COLS = 'fragment_id,rank,difficulty,cls,split_from,sheet_index,likely_soma,vol_ipl_um3,vol_total_um3,dist_um,anchor';
+function poolRow(p) {
+  return { id: p.fragment_id, rank: p.rank, difficulty: p.difficulty, cls: p.cls, splitFrom: p.split_from || '', sheetIndex: p.sheet_index || '',
+    soma: !!p.likely_soma, um3: Number(p.vol_total_um3) || 0, iplUm3: Number(p.vol_ipl_um3) || 0, distUm: Number(p.dist_um) || 0, pt: p.anchor };
+}
+/** Which of these IDs are still current, by the player's own CAVE sign in;
+ *  null when the graph can't say (they are all played then). */
+async function latest(token, ids) {
+  if (!token || !ids.length) return null;
+  try {
+    const r = await cg(token, `${CG}/is_latest_roots?int64_as_str=1`, { method: 'POST', body: JSON.stringify({ node_ids: ids }) });
+    const flags = r && (r.is_latest || r);
+    return Array.isArray(flags) && flags.length === ids.length ? flags.map(Boolean) : null;
+  } catch (e) { console.warn('[fragments] is_latest_roots:', e && e.message); return null; }
+}
 /** What became of the other cell a fragment was attached to. */
 const OTHER = { done: 'already proofread', stashed: 'stashed for later', proofread: 'proofreading it too' };
-const FLAGS = ['no flag', 'soma', 'glia', 'soma, glia'];
+const FLAGS = ['no flag', 'soma', 'glia', 'soma, glia', 'orphan', 'split_off_orphan', 'uncertain_orphan'];
 const ID = /^\d{15,20}$/;
 const MAX_L2 = 6000;
 const CLAIM_DAYS = 14;
@@ -272,6 +292,50 @@ async function fragmentsAction(action, args, io) {
     return { mine, others, held, myClaim, myClaims, keepLimit: KEEP_LIMIT, stash };
   }
 
+  // ── The lab's list ──────────────────────────────────────────────────────
+  if (action === 'fragments.pool') {
+    const d = DIFFICULTIES.includes(args && args.difficulty) ? args.difficulty : 'easy';
+    const after = Math.max(0, parseInt(args && args.after, 10) || 0);
+    const n = Math.min(Math.max(parseInt(args && args.n, 10) || 50, 1), 100);
+    const rows = await sb(`ew_lost_fragment_pool?difficulty=eq.${d}&rank=gt.${after}&order=rank.asc&limit=${n}&select=${POOL_COLS}`);
+    const out = { rows: rows.map(poolRow) };
+    if (!after) {
+      const counts = await sb('rpc/lost_fragment_counts', { method: 'POST', body: '{}' }).catch(() => []);
+      out.counts = Object.fromEntries((counts || []).map(c => [c.difficulty, { total: c.total, done: c.done }]));
+    }
+    return out;
+  }
+  if (action === 'fragments.get') {
+    const ids = (Array.isArray(args && args.ids) ? args.ids : [args && args.fragmentId]).map(String).filter(x => ID.test(x)).slice(0, 50);
+    if (!ids.length) return { rows: [] };
+    const rows = await sb(`ew_lost_fragment_pool?fragment_id=in.(${ids.join(',')})&select=${POOL_COLS}`);
+    return { rows: rows.map(poolRow) };
+  }
+  if (action === 'fragments.next') {
+    // The next fragment from the centre outward: not done, not anyone's, and
+    // still as the lab listed it (an edited one has a new ID: someone has
+    // started on it, so it is marked and passed over, HANDOVER-GAME.md).
+    const order = (Array.isArray(args && args.difficulties) ? args.difficulties : []).filter(d => DIFFICULTIES.includes(d));
+    const ds = order.length ? [...new Set([...order, ...DIFFICULTIES])] : DIFFICULTIES;
+    const after = Math.max(0, parseInt(args && args.after, 10) || 0);
+    const skip = new Set((Array.isArray(args && args.skip) ? args.skip : []).map(String));
+    for (const [k, d] of ds.entries()) {
+      let from = k === 0 ? after : 0;
+      for (let tries = 0; tries < 4; tries++) {
+        const cands = (await sb('rpc/lost_fragment_next', { method: 'POST', body: JSON.stringify({ p_user: me.id, p_difficulty: d, p_after: from, p_n: 8 }) })) || [];
+        if (!cands.length) break;
+        const fresh = cands.filter(c => !skip.has(c.fragment_id));
+        const ok = await latest(io.caveToken, fresh.map(c => c.fragment_id));
+        const stale = ok ? fresh.filter((c, i) => !ok[i]).map(c => c.fragment_id) : [];
+        if (stale.length) await sb(`ew_lost_fragment_pool?fragment_id=in.(${stale.join(',')})`, { method: 'PATCH', body: JSON.stringify({ stale: true }) }).catch(() => undefined);
+        const pick = fresh.find((c, i) => !ok || ok[i]);
+        if (pick) return { row: poolRow(pick) };
+        from = cands[cands.length - 1].rank;
+      }
+    }
+    return { row: null };
+  }
+
   if (action === 'fragments.keep') {
     const fragmentId = String(args && args.fragmentId || '');
     if (!ID.test(fragmentId)) throw bad('Not a fragment ID.');
@@ -454,4 +518,4 @@ async function syncSheet({ sb, sheets }) {
   return { waiting: rows.length, written, failed };
 }
 
-module.exports = { cleanProgress, fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS, OTHER, KEEP_LIMIT };
+module.exports = { poolRow, DIFFICULTIES, cleanProgress, fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS, OTHER, KEEP_LIMIT };

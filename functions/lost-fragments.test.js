@@ -10,9 +10,22 @@ const ME = { id: 'u-1', display_name: 'Test Player' };
 
 /** A tiny Supabase in memory, answering the REST paths the module uses. */
 function fakeDb() {
-  const tables = { ew_lost_fragments: [], ew_lost_fragment_claims: [], ew_lost_fragment_stash: [], muller_glia_cells: [], muller_glia_answers: [] }; let next = 1;
+  const tables = { ew_lost_fragments: [], ew_lost_fragment_claims: [], ew_lost_fragment_stash: [], muller_glia_cells: [], muller_glia_answers: [], ew_lost_fragment_pool: [] }; let next = 1;
   const sb = async (path, init = {}) => {
     const [table, q = ''] = path.split('?');
+    if (table === 'rpc/lost_fragment_next') {
+      const b = JSON.parse(init.body);
+      const cut = new Date(Date.now() - 14 * 864e5).toISOString();
+      return tables.ew_lost_fragment_pool.filter(p => p.difficulty === b.p_difficulty && p.rank > (b.p_after || 0) && !p.stale
+        && !tables.ew_lost_fragments.some(f => f.fragment_id === p.fragment_id)
+        && !tables.ew_lost_fragment_claims.some(c => c.fragment_id === p.fragment_id && c.claimed_at > cut && (String(c.user_id) !== String(b.p_user) || c.kept)))
+        .sort((x, y) => x.rank - y.rank).slice(0, b.p_n || 5).map(p => ({ ...p }));
+    }
+    if (table === 'rpc/lost_fragment_counts') {
+      const by = {};
+      for (const p of tables.ew_lost_fragment_pool) { by[p.difficulty] = by[p.difficulty] || { difficulty: p.difficulty, total: 0, done: 0 }; by[p.difficulty].total++; if (tables.ew_lost_fragments.some(f => f.fragment_id === p.fragment_id)) by[p.difficulty].done++; }
+      return Object.values(by);
+    }
     const rows = tables[table];
     assert.ok(rows, 'unknown table ' + table);
     const p = new URLSearchParams(q);
@@ -23,11 +36,16 @@ function fakeDb() {
       if (op === 'eq') return String(r[k]) === want;
       if (op === 'neq') return String(r[k]) !== want;
       if (op === 'eq' && (want === 'true' || want === 'false')) return String(!!r[k]) === want;
-      if (op === 'gt') return String(r[k]) > want;
+      if (op === 'gt') return typeof r[k] === 'number' ? r[k] > Number(want) : String(r[k]) > want;
+      if (op === 'in') return want.replace(/^\(|\)$/g, '').split(',').includes(String(r[k]));
       if (op === 'lte') return String(r[k]) <= want;
       throw new Error('op ' + op);
     });
-    if (!init.method) return rows.filter(match).map(r => ({ ...r }));
+    if (!init.method) {
+      const hit = rows.filter(match).map(r => ({ ...r }));
+      if (p.get('order') === 'rank.asc') hit.sort((x, y) => x.rank - y.rank);
+      return hit;
+    }
     if (init.method === 'POST') {
       const body = JSON.parse(init.body);
       if (table === 'ew_lost_fragment_stash') {
@@ -299,4 +317,32 @@ test('a glia is labelled, not proofread: an answer of kind glia, and a Glia Ques
   assert.equal(tables.muller_glia_cells.length, 1);
   assert.equal(tables.muller_glia_answers.length, 1);
   assert.equal(tables.ew_lost_fragments.length, 1);
+});
+
+test('the lab list plays from the centre outward, past done, held and edited fragments', async () => {
+  const { tables, sb } = fakeDb();
+  const mk = (id, rank, difficulty) => ({ fragment_id: id, rank, difficulty, cls: 'orphan', split_from: rank === 2 ? 'I6226' : '', sheet_index: '', likely_soma: difficulty === 'easy',
+    vol_ipl_um3: 100, vol_total_um3: 300, dist_um: rank * 10, anchor: [1, 2, rank], stale: false });
+  tables.ew_lost_fragment_pool.push(mk('720575940500000101', 5, 'easy'), mk('720575940500000102', 2, 'easy'), mk('720575940500000103', 9, 'easy'), mk('720575940500000104', 1, 'medium'));
+  const io = { sb, me: ME, isAdmin: false };
+  // Page: by rank, with counts.
+  const page = await fragmentsAction('fragments.pool', { difficulty: 'easy' }, io);
+  assert.deepEqual(page.rows.map(r => r.rank), [2, 5, 9]);
+  assert.equal(page.rows[0].splitFrom, 'I6226');
+  assert.deepEqual(page.counts.easy, { total: 3, done: 0 });
+  // Next: the most central one.
+  assert.equal((await fragmentsAction('fragments.next', { difficulties: ['easy'] }, io)).row.rank, 2);
+  // Someone else holds rank 2; rank 5 was edited (not current): rank 9.
+  tables.ew_lost_fragment_claims.push({ fragment_id: '720575940500000102', user_id: 'u-2', kept: false, claimed_at: new Date().toISOString() });
+  const graph = global.fetch;
+  global.fetch = async (url, init) => ({ ok: true, json: async () => ({ is_latest: JSON.parse(init.body).node_ids.map(id => id !== '720575940500000101') }) });
+  try {
+    const next = await fragmentsAction('fragments.next', { difficulties: ['easy'] }, { ...io, caveToken: 't' });
+    assert.equal(next.row.rank, 9);
+    assert.equal(tables.ew_lost_fragment_pool.find(p => p.fragment_id === '720575940500000101').stale, true);
+  } finally { global.fetch = graph; }
+  // Easy all used up: Medium next.
+  tables.ew_lost_fragments.push({ fragment_id: '720575940500000103', user_id: 'u-3' });
+  assert.equal((await fragmentsAction('fragments.next', { difficulties: ['easy'] }, io)).row.difficulty, 'medium');
+  assert.equal((await fragmentsAction('fragments.get', { ids: ['720575940500000104'] }, io)).rows[0].rank, 1);
 });
