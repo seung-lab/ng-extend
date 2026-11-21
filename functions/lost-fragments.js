@@ -32,6 +32,14 @@
  *                      type, note), its anchor supervoxel and current ID, as
  *                      the player goes (Ames 2026-11-21: treat it like a
  *                      claimed cell). Any work makes it a started (kept) one.
+ *   fragments.glia     the fragment is a glia (Ames 2026-11-21: "If your cell is
+ *                      a glia, mark it glia and do not proofread"): one glia,
+ *                      or several cells fused together. Saved as an answer of
+ *                      kind 'glia' (the lab's sheet says so), and the cell joins
+ *                      the Muller Glia Quest's Stage 1 with this player's "yes":
+ *                      that vote counts as a Quest, not a completed cell ("Glia
+ *                      counts as a Quest"), and the cell waits there for the
+ *                      quest's other players and, if fused, for splitting later.
  *   fragments.stash    part of a fragment belonged to another cell that is
  *                      not proofread yet: that cell goes into the Stashed
  *                      group for anyone to proofread, or the player keeps it
@@ -212,9 +220,10 @@ function sheetRow(row, playerName) {
   const at = new Date(row.updated_at || Date.now()).toISOString().replace('T', ' ').slice(0, 16);
   const n = v => (v == null ? '' : v);
   return [at, playerName, GROUPS[row.group_key], "'" + row.fragment_id, row.root_id ? "'" + row.root_id : '', row.lab_flag, n(row.lab_um3),
-    yes(row.fixed), yes(row.ends), row.point_in === 'soma' ? 'Soma' : 'Major dendrite', row.pt[0], row.pt[1], row.pt[2],
+    yes(row.fixed), yes(row.ends), row.point_in === 'soma' ? 'Soma' : row.point_in === 'glia' ? 'Glia' : 'Major dendrite', row.pt[0], row.pt[1], row.pt[2],
     row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus),
-    [row.note, row.other_root && OTHER[row.other_status] ? `Part belonged to cell ${row.other_root}, ${OTHER[row.other_status]}.` : ''].filter(Boolean).join(' ')];
+    [row.kind === 'glia' ? (row.glia_fused === 'several' ? `Glia: several cells fused together${row.glia_count ? `, about ${row.glia_count}` : ''}.` : 'Glia: one cell.') : '',
+      row.note, row.other_root && OTHER[row.other_status] ? `Part belonged to cell ${row.other_root}, ${OTHER[row.other_status]}.` : ''].filter(Boolean).join(' ')];
 }
 /** Writes the row; returns the sheet row number it is on. */
 // OVERWRITE: a new line goes into the next empty row, which keeps the sheet's
@@ -348,6 +357,48 @@ async function fragmentsAction(action, args, io) {
       return { stashed: true, claimed: !!c.claimed, reason: c.reason };
     }
     return { stashed: true };
+  }
+
+  if (action === 'fragments.glia') {
+    const fragmentId = String(args && args.fragmentId || '');
+    if (!ID.test(fragmentId)) throw bad('Not a fragment ID.');
+    if (!GROUPS[args.group]) throw bad('Unknown fragment group.');
+    const fused = args.fused === 'several' ? 'several' : args.fused === 'one' ? 'one' : null;
+    if (!fused) throw bad('Is it one glia, or several cells fused together?');
+    const count = fused === 'several' && Number.isInteger(args.count) && args.count >= 2 && args.count <= 50 ? args.count : null;
+    const rootId = args.rootId && ID.test(String(args.rootId)) ? String(args.rootId) : fragmentId;
+    const p = args.pt;
+    const pt = Array.isArray(p) && p.length === 3 && p.every(n => Number.isFinite(n) && Math.abs(n) < 1e7) ? p.map(n => Math.round(n)) : null;
+    if (!pt) throw bad('No place for this fragment.');
+    const note = String(args.note || '').trim().slice(0, 2000);
+    const had = (await sb(`ew_lost_fragments?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}&select=id&limit=1`))[0];
+    const now = new Date().toISOString();
+    const fields = { fragment_id: fragmentId, group_key: args.group, root_id: rootId, lab_flag: FLAGS.includes(args.labFlag) ? args.labFlag : '',
+      lab_um3: Number.isFinite(Number(args.labUm3)) ? Math.round(Number(args.labUm3) * 100) / 100 : null,
+      fixed: false, ends: false, point_in: 'glia', pt, nucleus_id: '', no_nucleus: false, note,
+      kind: 'glia', glia_fused: fused, glia_count: count, points: null, points_detail: null,
+      updated_at: now, player_name: playerName, sheet_dirty: true };
+    if (had) await sb(`ew_lost_fragments?id=eq.${had.id}`, { method: 'PATCH', body: JSON.stringify(fields) });
+    else await sb('ew_lost_fragments', { method: 'POST', body: JSON.stringify({ user_id: me.id, ...fields, submitted_at: now }) });
+    await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}`, { method: 'DELETE' }).catch(() => undefined);
+    // Into the Glia Quest: the cell it already has for this segment, or a new
+    // Stage 1 cell; this player's "yes" is a vote there, and a Quest.
+    let quest = false;
+    try {
+      let cell = (await sb(`muller_glia_cells?segment_id=${eq(rootId)}&stage=eq.1&select=id&limit=1`))[0];
+      if (!cell) {
+        const made = await sb('muller_glia_cells?on_conflict=sheet_index', { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
+          body: JSON.stringify({ sheet_index: `LF-${fragmentId}`, segment_id: rootId, soma_coords: pt.join(','), stage: 1,
+            guess: fused === 'several' ? 'Lost Fragments: several cells fused' : 'Lost Fragments: one glia' }) });
+        cell = (made && made[0]) || (await sb(`muller_glia_cells?sheet_index=${eq(`LF-${fragmentId}`)}&select=id&limit=1`))[0];
+      }
+      if (cell) {
+        await sb('muller_glia_answers?on_conflict=cell_id,user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ cell_id: cell.id, user_id: me.id, answer: 'yes', answered_at: now }) });
+        quest = true;
+      }
+    } catch (e) { console.warn('[fragments] glia quest:', e && e.message); }
+    return { saved: true, first: !had, quest };
   }
 
   if (action === 'fragments.caveId') {

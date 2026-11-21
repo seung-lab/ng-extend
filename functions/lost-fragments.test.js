@@ -10,7 +10,7 @@ const ME = { id: 'u-1', display_name: 'Test Player' };
 
 /** A tiny Supabase in memory, answering the REST paths the module uses. */
 function fakeDb() {
-  const tables = { ew_lost_fragments: [], ew_lost_fragment_claims: [], ew_lost_fragment_stash: [] }; let next = 1;
+  const tables = { ew_lost_fragments: [], ew_lost_fragment_claims: [], ew_lost_fragment_stash: [], muller_glia_cells: [], muller_glia_answers: [] }; let next = 1;
   const sb = async (path, init = {}) => {
     const [table, q = ''] = path.split('?');
     const rows = tables[table];
@@ -33,6 +33,14 @@ function fakeDb() {
       if (table === 'ew_lost_fragment_stash') {
         if (rows.some(r => r.root_id === body.root_id)) return [];
         const r = { created_at: new Date().toISOString(), ...body }; rows.push(r); return [{ ...r }];
+      }
+      if (table === 'muller_glia_cells') {
+        if (rows.some(r => r.sheet_index === body.sheet_index)) return [];
+        const r = { id: next++, ...body }; rows.push(r); return [{ ...r }];
+      }
+      if (table === 'muller_glia_answers') {
+        const i = rows.findIndex(r => r.cell_id === body.cell_id && r.user_id === body.user_id);
+        if (i >= 0) rows[i] = body; else rows.push(body); return [];
       }
       if (table === 'ew_lost_fragment_claims') {
         if (rows.some(r => r.fragment_id === body.fragment_id)) throw new Error('409 duplicate');
@@ -264,4 +272,31 @@ test('the fragment view saves on the claim like a claimed cell', async () => {
   const { cleanProgress } = require('./lost-fragments');
   assert.throws(() => cleanProgress({ workingLink: 'javascript:alert(1)' }), /view link/);
   assert.throws(() => cleanProgress({ workingLink: 'https://x.org/no-state' }), /view link/);
+});
+
+test('a glia is labelled, not proofread: an answer of kind glia, and a Glia Quest vote', async () => {
+  const { tables, sb } = fakeDb();
+  tables.muller_glia_cells = []; tables.muller_glia_answers = [];
+  const io = { sb, me: ME, isAdmin: false };
+  const F = '720575940500000041';
+  await assert.rejects(fragmentsAction('fragments.glia', { fragmentId: F, group: 'glia', pt: [1, 2, 3] }, io), /one glia/);
+  const r = await fragmentsAction('fragments.glia', { fragmentId: F, group: 'glia', rootId: '720575940599999941', fused: 'several', count: 3, pt: [10, 20, 30], labFlag: 'glia' }, io);
+  assert.deepEqual(r, { saved: true, first: true, quest: true });
+  const row = tables.ew_lost_fragments[0];
+  assert.equal(row.kind, 'glia');
+  assert.equal(row.point_in, 'glia');
+  assert.equal(row.glia_fused, 'several');
+  assert.equal(row.glia_count, 3);
+  assert.equal(row.points, null);
+  assert.equal(tables.muller_glia_cells[0].segment_id, '720575940599999941');
+  assert.equal(tables.muller_glia_cells[0].stage, 1);
+  assert.equal(tables.muller_glia_answers[0].answer, 'yes');
+  const sheet = sheetRow({ ...row, updated_at: '2026-11-21T12:00:00Z' }, 'P');
+  assert.equal(sheet[9], 'Glia');
+  assert.match(sheet[15], /^Glia: several cells fused together, about 3\.$/);
+  // Again: the same cell and vote, not a second.
+  await fragmentsAction('fragments.glia', { fragmentId: F, group: 'glia', rootId: '720575940599999941', fused: 'one', pt: [10, 20, 30] }, io);
+  assert.equal(tables.muller_glia_cells.length, 1);
+  assert.equal(tables.muller_glia_answers.length, 1);
+  assert.equal(tables.ew_lost_fragments.length, 1);
 });
