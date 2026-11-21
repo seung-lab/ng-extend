@@ -10,7 +10,7 @@
  * plays; closing it marks it read. It stays in the bell like any other.
  * Without edit access on Retina it says so and points to the access form.
  */
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 import { startPlay, canQuest, settleAccess } from '../util/play';
 import { flyNurroAcross } from '../util/nurro_fly';
@@ -35,6 +35,13 @@ const waiting = computed(() => {
   return (backend.notifications as any[]).find(n => n && n.id != null && (n.image_url || n.thumbnail_url)
     && String(n.body || '').includes(PLAY_LINK) && !backend.notifRead(n) && !seen.has(n.id)) || null;
 });
+// From the bell: open it again, full screen.
+function onAsk(e: Event) {
+  const n = (e as CustomEvent).detail?.notif;
+  if (n) { current.value = n; blocked.value = false; }
+}
+onMounted(() => document.addEventListener('nge:play-takeover', onAsk));
+onUnmounted(() => document.removeEventListener('nge:play-takeover', onAsk));
 watch(waiting, n => {
   if (n && !current.value) { current.value = n; blocked.value = false; markShown(n.id); }
 }, { immediate: true });

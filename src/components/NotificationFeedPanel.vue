@@ -401,6 +401,14 @@ function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
   const ms = milestoneFrom(notif.body);
   if (ms) { openMilestone(ms); return; }
+  // A Play announcement with a picture opens full screen, as it did on
+  // arrival (PlayTakeover.vue; Ames 2026-11-20: "no notification that has
+  // the really cool pop-up").
+  if ((notif.image_url || notif.thumbnail_url) && String(notif.body || '').includes('#nge-play=lost-fragments')) {
+    document.dispatchEvent(new CustomEvent('nge:play-takeover', { detail: { notif } }));
+    emit('hide');
+    return;
+  }
   // A hunter's report: the reports queue, the oldest open one first, already there (HuntReportCard).
   const rep = kindOf(notif) === 'hunt' ? String(notif.body || '').match(/#nge-hunt-report=(\d+)/) : null;
   if (rep) {
