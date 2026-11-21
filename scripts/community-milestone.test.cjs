@@ -68,7 +68,16 @@ async function run(browser, opts) {
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate/');
     const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: apps };
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
-    try { localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1'); } catch (e) {}
+    try { localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1');
+      // The Datasets Unlocked day flyby (ChatPanel, Nov 20 only) would count as a second Nurro.
+      localStorage.setItem('nge-nurro-flyby-at', String(Date.now())); } catch (e) {}
+    // When the banner first shows and when each Nurro flies, from page start.
+    window.__nurroAt = []; window.__cmAt = null;
+    new MutationObserver(() => {
+      if (window.__cmAt == null && document.querySelector('.nge-cm')) window.__cmAt = performance.now();
+    }).observe(document, { childList: true, subtree: true });
+    new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.tagName === 'IMG' && n.style && n.style.zIndex === '99999') window.__nurroAt.push(performance.now()); })
+      .observe(document, { childList: true, subtree: true });
   });
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
@@ -104,11 +113,9 @@ async function run(browser, opts) {
       const { context, page, asked } = await run(browser, { milestones: [{ track: 'cells', value: 5000, reached_at: now(), banner: true }], notes: [NOTE, OLD_NOTE] });
       await open(context, page);
       await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
-      const nurro0 = await page.evaluate(() => window.__nurro);
       check('server tables read', asked.progress > 0 && asked.milestones > 0, asked);
-      // Nurro waits for CONGRATS! to finish building in.
+      // Nurro waits for CONGRATS! to finish building in (2.7 s after the banner).
       await page.waitForTimeout(1800);
-      check('Nurro not before CONGRATS! is in', (await page.evaluate(() => window.__nurro)) === nurro0, await page.evaluate(() => window.__nurro));
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-building.png` });
       await page.waitForTimeout(1600);
       const b = await banner(page);
@@ -118,7 +125,9 @@ async function run(browser, opts) {
       check('countdown from the live count', b && b.next === '4,988 to go until 10,000.', b && b.next);
       check('hologram frame drawn', b && b.frame);
       check('centered on the screen', b && Math.abs(b.center - b.vw / 2) <= 2, b && [b.center, b.vw]);
-      check('Nurro flew across after it', (await page.evaluate(() => window.__nurro)) === nurro0 + 1, await page.evaluate(() => window.__nurro));
+      const fl = await page.evaluate(() => ({ at: window.__cmAt, nurro: window.__nurroAt.map(t => Math.round(t - window.__cmAt)) }));
+      check('Nurro not before CONGRATS! is in', fl.at != null && fl.nurro.every(d => d >= 2400), fl);
+      check('Nurro flew across after it, once', fl.nurro.filter(d => d >= 2400 && d <= 4500).length === 1, fl);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-banner.png` });
       await page.click('.nge-cm-close');
       await page.waitForTimeout(1000);

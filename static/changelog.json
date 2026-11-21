@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T00:37:00Z",
+      "title": "Community milestones, gentler",
+      "items": [
+        "A community milestone celebration now plays by itself only if you are on Pyr within a week of it, and only once.",
+        "If two milestones arrive close together, you see the newest one, with no line of celebrations waiting behind it.",
+        "Click the milestone in your notifications to play the whole celebration again, confetti and Nurro included. Only the newest milestone stays there."
+      ]
+    },
+    {
       "at": "2026-11-20T23:58:00Z",
       "title": "Lost Fragments: stash a cell, cleaner checklist",
       "items": [
