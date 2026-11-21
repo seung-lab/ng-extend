@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T04:02:00Z",
+      "title": "Your emblem order, for everyone",
+      "items": [
+        "The order you drag your Datasets Unlocked emblems into is saved to your profile, so other players see them that way too.",
+        "FlyWire shows 2024 and BANC 2025 under their emblems."
+      ]
+    },
+    {
       "at": "2026-11-20T17:38:00Z",
       "title": "Fold the Cell Library tabs",
       "items": [

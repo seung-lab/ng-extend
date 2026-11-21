@@ -191,6 +191,9 @@ test('silver favorites: a short list of badge slugs, nothing else',()=>{
  assert.equal(JSON.stringify((x=>x.body??x.rows)(plan('users','PATCH',`id=eq.${a}`,{trophy_order:['special','cells','editor','loyalty']}))).includes('"trophy_order":["special","cells","editor","loyalty"]'),true);
  assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{trophy_order:['cells','cells']}),/Invalid order/);
  assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{trophy_order:['nope']}),/Invalid order/);
+ assert.equal(JSON.stringify((x=>x.body??x.rows)(plan('users','PATCH',`id=eq.${a}`,{dataset_order:['banc','zheng_ca3']}))).includes('"dataset_order":["banc","zheng_ca3"]'),true);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{dataset_order:['banc','banc']}),/Invalid order/);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{dataset_order:['<x>']}),/Invalid order/);
  assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{trophy_order:'cells'}),/Invalid order/);
 });
 test('blog: public reads published only; only listed authors write',()=>{

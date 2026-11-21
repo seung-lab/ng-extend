@@ -6951,6 +6951,19 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch (e: any) { console.warn('[backend] saveTrophyOrder error:', e.message); }
   }
 
+  // The order a player keeps their Datasets Unlocked emblems in (Ames
+  // 2026-11-20: "Let players drag to reorder"). users.dataset_order.
+  const datasetOrder: Ref<string[]> = ref([]);
+  const loadDatasetOrder = (id: string | null) => loadUserList(id, 'dataset_order', 20);
+  async function saveDatasetOrder(list: string[]) {
+    datasetOrder.value = list.slice(0, 20);
+    if (!userId.value) return;
+    try {
+      const { error } = await supabase.from('users').update({ dataset_order: datasetOrder.value }).eq('id', userId.value);
+      if (error) console.warn('[backend] saveDatasetOrder failed:', error.message);
+    } catch (e: any) { console.warn('[backend] saveDatasetOrder error:', e.message); }
+  }
+
   async function saveFavoriteBadge(slug: string) {
     favoriteBadgeSlug.value = slug;
     if (!userId.value) return;
@@ -7005,6 +7018,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     silverBadgeSlugs, loadSilverBadges, saveSilverBadges, MAX_SILVER_BADGES,
     bronzeBadgeSlugs, loadBronzeBadges, saveBronzeBadges, MAX_BRONZE_BADGES,
     trophyOrder, loadTrophyOrder, saveTrophyOrder,
+    datasetOrder, loadDatasetOrder, saveDatasetOrder,
   };
 });
 

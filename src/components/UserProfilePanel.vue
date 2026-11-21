@@ -595,7 +595,9 @@ const ACCESS_EMBLEMS: Record<string, string> = { stroeh_mouse_retina: retinaEmbl
  *  dates it (Ames 2026-11-20: the date, not "Unlocked"). */
 const FIRST_EDIT = firstEditDates as Record<string, Record<string, string>>;
 const CONTRIB_ONLY = new Set(['zheng_ca3']);
-const YEAR_ONLY = new Set(['flywire_fafb_production', 'banc']);
+// FlyWire and BANC show one year for everyone (Ames 2026-11-20: "use the
+// same year for everyone in those datasets").
+const DATASET_YEAR: Record<string, string> = { flywire_fafb_production: '2024', banc: '2025' };
 const accessGrants = ref<Record<string, string>>({});
 /** Someone else's edit access as CAVE has it (functions/access-request.js,
  *  access.profileAccess); null until it answers, or when it cannot say. */
@@ -634,9 +636,8 @@ const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d
   const at = accessGrants.value[ds.id] || (first ? `${first}T12:00:00Z` : '');
   const state = CONTRIB_ONLY.has(ds.id) ? (first ? 'edit' : 'locked')
     : viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
-  const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-  // FlyWire and BANC by the year (Ames 2026-11-20: "can use year 2024, 2025").
-  const short = at && YEAR_ONLY.has(ds.id) ? String(new Date(at).getFullYear()) : when;
+  const when = DATASET_YEAR[ds.id] || (at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+  const short = when;
   return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], emblem: ACCESS_EMBLEMS[ds.id] || '', state, when, short };
 }).filter(r => (!CONTRIB_ONLY.has(r.id) || r.state === 'edit') && (!viewingOtherUser.value || otherEdit.value || r.state === 'edit')));
 
@@ -657,17 +658,23 @@ if (!unlockedOpen.value) {
   onUnmounted(() => clearInterval(t));
 }
 // In the player's own order (drag to reorder, Ames 2026-11-20), then the rest.
-// Kept in this browser for now: saving it to the profile, for others to see,
-// needs users.dataset_order and the profile write function to take it.
+// Saved to the profile (users.dataset_order), so everyone sees it; this
+// browser keeps a copy too, for until the profile can be read.
 const DS_ORDER_KEY = 'nge-dataset-order';
-const myDatasetOrder = ref<string[]>((() => { try { const v = JSON.parse(localStorage.getItem(DS_ORDER_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })());
+const localDatasetOrder = ref<string[]>((() => { try { const v = JSON.parse(localStorage.getItem(DS_ORDER_KEY) || '[]'); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; } catch { return []; } })());
+const otherDatasetOrder = ref<string[]>([]);
 const unlockedRow = computed(() => {
   if (!unlockedOpen.value) return [];
   const rows = accessRows.value.filter(r => r.emblem && r.state === 'edit');
-  const order = viewingOtherUser.value ? [] : myDatasetOrder.value;
+  const mine = backendStore.datasetOrder.length ? backendStore.datasetOrder : localDatasetOrder.value;
+  const order = viewingOtherUser.value ? otherDatasetOrder.value : mine;
   const at = (id: string) => { const i = order.indexOf(id); return i < 0 ? 1000 + ACCESS_DATASETS.indexOf(id) : i; };
   return rows.slice().sort((a, b) => at(a.id) - at(b.id));
 });
+watch(() => [viewingOtherUser.value, props.viewUserId, backendStore.userId] as const, ([other, vid, me]) => {
+  if (other) { otherDatasetOrder.value = []; void backendStore.loadDatasetOrder(vid || null).then(l => { if (props.viewUserId === vid) otherDatasetOrder.value = l; }); }
+  else if (me) void backendStore.loadDatasetOrder(me).then(l => { if (l.length) backendStore.datasetOrder = l; });
+}, { immediate: true });
 let dsDragging = '';
 const dsDragOver = ref('');
 function dsDragStart(id: string, e: DragEvent) {
@@ -680,8 +687,9 @@ function dsDrop(id: string) {
   if (!from || from === id) return;
   const ids = unlockedRow.value.map(r => r.id).filter(x => x !== from);
   ids.splice(ids.indexOf(id), 0, from);
-  myDatasetOrder.value = ids;
+  localDatasetOrder.value = ids;
   try { localStorage.setItem(DS_ORDER_KEY, JSON.stringify(ids)); } catch { /* private window */ }
+  void backendStore.saveDatasetOrder(ids);
 }
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
