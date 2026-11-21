@@ -1096,7 +1096,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div v-if="!slim && claimMsg" class="nge-orph-note">{{ claimMsg }}</div>
       <div v-if="progressNote && !form.saved && (!slim || finishing)" class="nge-orph-note nge-orph-progress">{{ progressNote }}</div>
       <div v-if="fullNote && playing" class="nge-orph-note">{{ fullNote }}</div>
-      <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
+      <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button v-if="!saves[active.id]" class="nge-orph-btn nge-orph-later nge-orph-later--slim" :disabled="laterBusy" @click="later" :title="`Not done yet? Keep this one in My Cells and play another. Up to ${FRAGMENT_LIMIT} at a time.`">{{ laterBusy ? 'Keeping…' : 'Later' }}</button><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
       <ol class="nge-orph-check">
         <li v-if="!veteran" :class="{ done: form.fixed }">
@@ -1232,6 +1232,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-stop { margin-left: auto; align-self: center; }
 .nge-orph-groupsel { font: inherit; font-weight: 600; background: rgba(10, 18, 32, 0.9); border: 1px solid rgba(126, 202, 255, 0.35); border-radius: 5px; padding: 0 2px; cursor: pointer; }
 .nge-orph-groupsel option { color: #dce6f5; background: #0b1220; }
+.nge-orph-later--slim { margin-left: auto; padding: 3px 12px; font-size: 12px; }
+.nge-orph-finishhead .nge-orph-later--slim + .nge-orph-help-btn { margin-left: 6px; }
 .nge-orph-playhere-row { display: flex; align-items: center; gap: 10px; margin: 2px 12px 8px; flex-wrap: wrap; }
 .nge-orph-playhere { display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px; border-radius: 999px; cursor: pointer;
   border: 1px solid rgba(62, 236, 190, 0.7); background: linear-gradient(135deg, rgba(8, 72, 64, 0.94), rgba(10, 48, 66, 0.94));

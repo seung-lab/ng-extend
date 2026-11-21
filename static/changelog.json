@@ -2,11 +2,12 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-21T15:54:00Z",
+      "at": "2026-11-21T15:58:00Z",
       "title": "Later, for Lost Fragments",
       "items": [
-        "Later, in the full Lost Fragments view, keeps the fragment you are on in My Cells with your work saved, and gives you a new one. You can hold up to 5 at a time.",
-        "Play never hands you one of your own started fragments as the next one."
+        "Later keeps the Lost Fragment you are on in My Cells with your work saved, and gives you a new one. It is in the Before you complete box while you play, and in the full view. You can hold up to 5 at a time.",
+        "Play never hands you one of your own started fragments as the next one.",
+        "Play remembers that you were playing Lost Fragments, instead of going back to BC Challenge."
       ]
     },
     {

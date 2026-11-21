@@ -15,7 +15,7 @@ import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests'
 import { useProofreadingBackendStore } from '../store';
 import { skipNextViewRestoreOffer } from '../util/view_autosave';
 import { basicsDone } from '../util/start_playing';
-import { startPlay, openMyCell, savedKind } from '../util/play';
+import { startPlay, openMyCell, savedKind, retinaHub } from '../util/play';
 import RequestAccessButton from './RequestAccessButton.vue';
 import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
@@ -56,10 +56,13 @@ onMounted(() => { loadDatasetPermissions(); });
  *  Sandbox cell of their own to edit (util/start_playing.ts). Before, it is
  *  "Start here", the tutorial they are on. */
 const playing = computed(() => basicsDone());
-/** A card's Start playing: mapping here, or Cilia Quest on Retina when that is what was played last. */
+/** A card's Start playing: mapping here, or on Retina what was played last,
+ *  Cilia Quest or Lost Fragments (Ames 2026-11-21: "Even though I was most
+ *  recently playing Lost Fragments, it still keeps defaulting me to BC Challenge"). */
 function playOn(ds: DatasetEntry) {
   emit('hide');
-  void startPlay(hasQuests(ds) && savedKind() === 'quests' ? 'quests' : 'cells', ds);
+  const k = savedKind();
+  void startPlay(hasQuests(ds) && (k === 'quests' || (k === 'fragments' && retinaHub())) ? k : 'cells', ds);
 }
 function openActive(ds: DatasetEntry) {
   emit('hide');
