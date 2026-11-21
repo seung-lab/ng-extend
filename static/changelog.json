@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-20T23:58:00Z",
+      "title": "Lost Fragments: stash a cell, cleaner checklist",
+      "items": [
+        "If part of a Lost Fragment belongs to another cell, say so: Pyr tells you whether that cell is already proofread, and if not you can proofread it too or stash it for later.",
+        "Stashed cells show up in a new Stashed group in Lost Fragments, for anyone to proofread.",
+        "Complete now reads the crosshairs straight away, and the Nucleus step is gone.",
+        "The cell type list matches the rest of Pyr, and the Lost Fragments instructions have a new look.",
+        "Some announcements now open full screen. Click the picture to jump straight in."
+      ]
+    },
+    {
       "at": "2026-11-20T22:09:00Z",
       "title": "Resize the 2D and 3D views",
       "items": [
