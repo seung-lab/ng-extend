@@ -35,6 +35,8 @@ function unindex(key: string) {
 }
 function persist() {
   try { localStorage.setItem(LOCAL_KEY, JSON.stringify(Object.values(byKey))); } catch { /* private window */ }
+  // The segments list shows nicknames (button_service applyRowLabel).
+  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:nicknames-changed')), 0);
 }
 (function loadLocal() {
   try {

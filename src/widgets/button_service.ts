@@ -10,12 +10,60 @@ import {openCellHistory} from '../util/cell_history';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes, cellTypeLabel} from '../datasets';
+import {nicknameOf, ensureNicknames} from '../util/nicknames';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
 import {completeStatusesFor, CANT_COMPLETE, AXON_COMPLETE, marksProofread} from '../sheet_sync';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer, labelAxonComplete} from './lightbulb_service';
 
 /** The name Pyr shows for a cell: its type, with its classification. */
+/** What a segment row's ID chip shows: your nickname (Nseraf, report 602:
+ *  it replaces the ID, as a cell type does), else the cell's type, else the
+ *  ID. The ID stays in the tooltip, on the copy button, and under the name
+ *  with "Show the segment ID under a cell's label". Returns the label. */
+export function applyRowLabel(row: HTMLElement): string {
+  const idEl = row.querySelector('.neuroglancer-segment-list-entry-id') as HTMLElement|null;
+  if (!idEl) return '';
+  const badge = row.querySelector('.nge-label-badge') as HTMLElement|null;
+  const segId = (idEl.textContent || '').trim();
+  const type = idEl.dataset.ngeType || '';
+  ensureNicknames();
+  const nick = nicknameOf(segId) || '';
+  const label = nick || type;
+  const NL = String.fromCharCode(10);
+  if (label) {
+    idEl.dataset.ngeLabel = label;
+    idEl.title = nick
+      ? [`${nick} (your nickname, only you see it)`, ...(type ? ['', type, ...explainCellType(type)] : []), '', `ID ${segId} (copy button on the left)`].join(NL)
+      // Abbreviations written out (Ames: "hover tips to write out acronyms").
+      : [type, ...explainCellType(type), '', `ID ${segId} (copy button on the left)`].join(NL);
+    idEl.classList.toggle('nge-id-nick', !!nick);
+    // Drawn under the label only with "Show the segment ID under a cell's
+    // label" on (body.nge-seg-show-id, ng-override.css).
+    if (badge) badge.dataset.segId = segId;
+  } else {
+    if (badge) delete badge.dataset.segId;
+    delete idEl.dataset.ngeLabel;
+    idEl.classList.remove('nge-id-nick');
+    idEl.removeAttribute('title');
+  }
+  const wasLabelled = row.classList.contains('nge-seg-labelled');
+  row.classList.toggle('nge-seg-labelled', !!label);
+  // With the segment ID shown under the label, a row that gains or loses
+  // its label changes height: tell its virtual list (move_to_segment_patch.ts).
+  if (wasLabelled !== !!label && document.body.classList.contains('nge-seg-show-id')) {
+    for (let el = row.parentElement; el; el = el.parentElement) {
+      const vl = (el as any).__nge_virtualList;
+      if (vl) { vl.remeasureItem?.(row); break; }
+    }
+  }
+  return label;
+}
+// A nickname set, changed or cleared: the rows on screen show it at once.
+document.addEventListener('nge:nicknames-changed', () => {
+  document.querySelectorAll<HTMLElement>('.neuroglancer-segment-list-entry').forEach(row => { applyRowLabel(row); });
+});
+
 function cellLabel(status: CellStatus|null|undefined): string {
   return status?.cellType
     ? (status.classificationSystem ? `${status.classificationSystem} - ${status.cellType}` : status.cellType)
@@ -373,36 +421,15 @@ export class ButtonService {
     // (Ames 2026-09-29); the id stays in the tooltip and on the row's copy
     // button. CSS draws data-nge-label over the chip (ng-override.css).
     const idEl = row.querySelector('.neuroglancer-segment-list-entry-id') as HTMLElement|null;
-    const label = cellLabel(status);
+    const typeLabel = cellLabel(status);
     if (idEl) {
       const segId = (idEl.textContent || '').trim();
       // The Seg panel's box finds cells by this name.
       inLabelScope();
-      if (label) segmentLabels.set(segId, label); else segmentLabels.delete(segId);
-      if (label) {
-        idEl.dataset.ngeLabel = label;
-        // Abbreviations written out (Ames: "hover tips to write out acronyms").
-        const spelled = explainCellType(label);
-        idEl.title = [label, ...spelled, '', `ID ${segId} (copy button on the left)`].join(String.fromCharCode(10));
-        // Drawn under the label only with "Show the segment ID under a cell's
-        // label" on (body.nge-seg-show-id, ng-override.css).
-        badge.dataset.segId = segId;
-      } else {
-        delete badge.dataset.segId;
-        delete idEl.dataset.ngeLabel;
-        idEl.removeAttribute('title');
-      }
+      if (typeLabel) segmentLabels.set(segId, typeLabel); else segmentLabels.delete(segId);
+      if (typeLabel) idEl.dataset.ngeType = typeLabel; else delete idEl.dataset.ngeType;
     }
-    const wasLabelled = row.classList.contains('nge-seg-labelled');
-    row.classList.toggle('nge-seg-labelled', !!label);
-    // With the segment ID shown under the label, a row that gains or loses
-    // its label changes height: tell its virtual list (move_to_segment_patch.ts).
-    if (wasLabelled !== !!label && document.body.classList.contains('nge-seg-show-id')) {
-      for (let el = row.parentElement; el; el = el.parentElement) {
-        const vl = (el as any).__nge_virtualList;
-        if (vl) { vl.remeasureItem?.(row); break; }
-      }
-    }
+    const label = applyRowLabel(row);
 
     if (!status) {
       badge.className = 'nge-label-badge';
