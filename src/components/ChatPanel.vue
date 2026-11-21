@@ -736,22 +736,45 @@ const pinFrom = computed(() => { const b = String(shownPin.value?.by || '').trim
  *  categories, numbers fixed"). Counts only, from pyr_report_stats. */
 type ReportStats = { bugs: number; bugs_fixed: number; ideas: number; ideas_built: number; other: number; other_done: number; help: number; help_answered: number };
 const reportStats = ref<ReportStats | null>(null);
+/** Updates shipped since Sept 28: the player changelog's entries, one per deploy players can notice. */
+const shipped = ref<number | null>(null);
+const STATS_SINCE = '2026-09-28T00:00:00Z';
 watch(pinOpen, async o => {
-  if (!o || reportStats.value) return;
-  try {
-    const { data, error } = await supabase.rpc('pyr_report_stats', { since: '2026-09-28T00:00:00Z' });
-    if (!error && data) reportStats.value = data as ReportStats;
-  } catch { /* the box shows without them */ }
+  if (!o) return;
+  if (!reportStats.value) {
+    try {
+      const { data, error } = await supabase.rpc('pyr_report_stats', { since: STATS_SINCE });
+      if (!error && data) reportStats.value = data as ReportStats;
+    } catch { /* the box shows without them */ }
+  }
+  if (shipped.value == null) {
+    try {
+      const res = await fetch(`/changelog.json?t=${Date.now()}`, { cache: 'no-store' });
+      const j = await res.json();
+      shipped.value = (Array.isArray(j?.entries) ? j.entries : []).filter((e: any) => String(e?.at || '') >= STATS_SINCE).length || null;
+    } catch { /* left out */ }
+  }
 });
+/** What players sent: one number each (Ames 2026-11-20: "Just give the # for each category"). */
 const statRows = computed(() => {
   const s = reportStats.value;
   if (!s) return [];
   return [
-    { name: 'Bug reports', n: s.bugs, done: s.bugs_fixed, word: 'fixed' },
-    { name: 'Ideas', n: s.ideas, done: s.ideas_built, word: 'built' },
-    { name: 'Help requests', n: s.help, done: s.help_answered, word: 'answered' },
-    { name: 'Other notes', n: s.other, done: s.other_done, word: 'done' },
+    { name: 'Bug reports', n: s.bugs },
+    { name: 'Ideas', n: s.ideas },
+    { name: 'Help requests', n: s.help },
+    { name: 'Other notes', n: s.other },
   ].filter(x => x.n > 0);
+});
+/** And what came of them: bugs fixed, features added, updates shipped. */
+const builtRows = computed(() => {
+  const s = reportStats.value;
+  const out: { n: number; name: string }[] = [];
+  if (s?.bugs_fixed) out.push({ n: s.bugs_fixed, name: 'bugs fixed' });
+  if (s?.ideas_built) out.push({ n: s.ideas_built, name: 'new features added' });
+  if (shipped.value) out.push({ n: shipped.value, name: 'updates shipped' });
+  if (s?.help_answered) out.push({ n: s.help_answered, name: 'help requests answered' });
+  return out;
 });
 const fmtN = (n: number) => Number(n || 0).toLocaleString('en-US');
 /** The message without a leading "amy: ", which the chip already says. */
@@ -1664,7 +1687,6 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
               <button type="button" class="nge-chat-pinpop-x" aria-label="Close" @click="pinOpen = false">×</button>
               <figure class="nge-chat-pinpop-fig">
                 <img :src="pinPicture" class="nge-chat-pinpop-pic" alt="Pyramidal neurons up close, in blues and violets" />
-                <figcaption class="nge-chat-pinpop-cap">"The moment I saw our first connectomics Nature cover." Amy</figcaption>
               </figure>
               <div class="nge-chat-pinpop-body">
                 <span class="nge-chat-pinpop-chip">
@@ -1678,9 +1700,14 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
                     <div v-for="x in statRows" :key="x.name" class="nge-chat-pinpop-stat">
                       <span class="nge-chat-pinpop-stat-n">{{ fmtN(x.n) }}</span>
                       <span class="nge-chat-pinpop-stat-name">{{ x.name }}</span>
-                      <span class="nge-chat-pinpop-stat-done"><b>{{ fmtN(x.done) }}</b> {{ x.word }}</span>
                     </div>
                   </div>
+                  <template v-if="builtRows.length">
+                    <div class="nge-chat-pinpop-stathead">What we built from them</div>
+                    <ul class="nge-chat-pinpop-built">
+                      <li v-for="x in builtRows" :key="x.name"><b>{{ fmtN(x.n) }}</b> {{ x.name }}</li>
+                    </ul>
+                  </template>
                   <div class="nge-chat-pinpop-thanks">Thank you. Every report makes Pyr better.</div>
                 </template>
                 <div class="nge-chat-pinpop-row">
@@ -2378,7 +2405,6 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-pinpop-pic { display: block; width: 100%; height: 210px; object-fit: cover; object-position: center 45%; border-radius: 14px 14px 0 0; }
 .nge-chat-pinpop-fig::after { content: ''; position: absolute; inset: 0; border-radius: 14px 14px 0 0; pointer-events: none;
   background: linear-gradient(to bottom, rgba(7, 13, 30, 0) 45%, rgba(7, 13, 30, 0.88) 100%); }
-.nge-chat-pinpop-cap { position: absolute; left: 16px; right: 16px; bottom: 10px; z-index: 1; line-height: 1.4; font: 500 13px Inter, sans-serif; color: #e6eefa; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
 .nge-chat-pinpop-body { padding: 16px 22px 18px; }
 .nge-chat-pinpop-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px;
   background: rgba(230, 199, 96, 0.14); border: 1px solid rgba(230, 199, 96, 0.55); color: #f6e3a6; font: 600 12.5px/1 Inter, sans-serif; }
@@ -2387,12 +2413,13 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-pinpop-x:hover { color: #fff; border-color: rgba(143, 214, 255, 0.8); }
 .nge-chat-pinpop-text { margin: 12px 0 0; font-size: 15.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: #f2f6fc; }
 .nge-chat-pinpop-stathead { margin-top: 16px; font: 600 10.5px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #8fd6ff; }
-.nge-chat-pinpop-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.nge-chat-pinpop-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.nge-chat-pinpop-built { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; font-size: 13.5px; color: #cfe4fa; }
+.nge-chat-pinpop-built b { font: 800 16px 'Orbitron', Inter, sans-serif; color: #ffd35a; margin-right: 4px; }
+@media (max-width: 560px) { .nge-chat-pinpop-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .nge-chat-pinpop-built { grid-template-columns: 1fr; } }
 .nge-chat-pinpop-stat { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 9px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(127, 190, 255, 0.2); }
 .nge-chat-pinpop-stat-n { font: 800 22px/1 'Orbitron', Inter, sans-serif; color: #fff; }
 .nge-chat-pinpop-stat-name { font-size: 12px; color: #a9c3e0; }
-.nge-chat-pinpop-stat-done { font-size: 12.5px; color: #cfe4fa; }
-.nge-chat-pinpop-stat-done b { color: #ffd35a; font-weight: 700; }
 .nge-chat-pinpop-thanks { margin-top: 10px; font-size: 13px; color: #cfe4fa; }
 .nge-chat-pinpop-row { display: flex; justify-content: flex-end; margin-top: 14px; }
 .nge-chat-pinpop-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid rgba(143, 214, 255, 0.6); background: rgba(74, 158, 255, 0.2); color: #fff; font: 600 13px Inter, sans-serif; cursor: pointer; }
