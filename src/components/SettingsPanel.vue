@@ -8,7 +8,7 @@ import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession, datasetSwitchOpens, type DatasetSwitchOpens} from '../store';
 import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
-import { DATASETS, segLayerName } from '../datasets';
+import { DATASETS, segLayerName, canonicalDataset, currentSegLayerName, findDatasetBySegName } from '../datasets';
 import { startViewHash } from '../util/start_view';
 import { automaticRegion, imageRegionLabel } from '../util/image_source';
 import { ngePointGem } from 'neuroglancer/annotation/point';
@@ -83,6 +83,16 @@ function onPulseColorPick(e: Event) {
   draftPulseColor.value = (e.target as HTMLInputElement).value;
 }
 const draftImageDetail = ref<1 | 2 | 4>(1);
+/** 2D detail for the dataset on screen only; 0 = the general one (AzureJay #604). */
+const draftDetailHere = ref<0 | 1 | 2 | 4>(0);
+const hereDataset = () => canonicalDataset(currentSegLayerName());
+const hereDatasetLabel = ref('this dataset');
+function detailByDatasetToSave(): Record<string, 1 | 2 | 4> | undefined {
+  const all = { ...(useUserPreferencesStore().prefs.imageDetailByDataset || {}) };
+  const ds = hereDataset();
+  if (ds) { if (draftDetailHere.value) all[ds] = draftDetailHere.value; else delete all[ds]; }
+  return Object.keys(all).length ? all : undefined;
+}
 const draftImageSource = ref<'auto' | 'americas' | 'asia'>('auto');
 /** What Automatic means on this computer right now, shown in its option. */
 const autoImageRegion = computed(() => imageRegionLabel(automaticRegion()));
@@ -169,6 +179,8 @@ onMounted(() => {
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftColorFamilies.value = [...(prefsStore.prefs.colorFamilies ?? [])];
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
+  { const own = prefsStore.prefs.imageDetailByDataset?.[hereDataset()]; draftDetailHere.value = own === 1 || own === 2 || own === 4 ? own : 0; }
+  hereDatasetLabel.value = findDatasetBySegName(currentSegLayerName())?.label || 'this dataset';
   draftImageSource.value = prefsStore.prefs.imageSource === 'americas' || prefsStore.prefs.imageSource === 'asia' ? prefsStore.prefs.imageSource : 'auto';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
@@ -260,7 +272,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, newLayerKey: draftNewLayerKey.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageDetailByDataset: detailByDatasetToSave(), imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, newLayerKey: draftNewLayerKey.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetSwitchOpens: draftSwitchOpens.value, datasetBareSwitch: draftSwitchOpens.value === 'bare', datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
@@ -489,7 +501,7 @@ const changedKeys = computed(() => {
     ['quickMergeKey', draftQuickMerge.value], ['newLayerKey', draftNewLayerKey.value !== 'shift'],
     ['jumpAddsToView', draftJumpAdds.value], ['retinaAnnotationLayers', draftRetinaAnnot.value], ['keepDisplayOnJump', !draftKeepDisplay.value],
     ['offerViewRestore', !draftOfferRestore.value], ['cellLibraryStartTab', draftLibraryTab.value !== 'mine'],
-    ['imageDetail', draftImageDetail.value !== 1], ['imageSource', draftImageSource.value !== 'auto'],
+    ['imageDetail', draftImageDetail.value !== 1 || draftDetailHere.value !== 0], ['imageSource', draftImageSource.value !== 'auto'],
     ['annotationGems', !draftAnnotationGems.value], ['classicLayerClicks', draftClassicLayers.value], ['layerHideButton', draftLayerHide.value],
     ['imageLayerPanel', draftImageLayerPanel.value], ['showAnnotationSetupTabs', draftAnnotationSetupTabs.value],
     ['showSegSetupTabs', draftSegSetupTabs.value], ['showNgControlsButton', draftShowNgControls.value], ['showXyzCorner', draftShowXyz.value],
@@ -997,6 +1009,15 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
             <label data-set="imageDetail" class="nge-settings-toggle nge-settings-pick" title="How sharp the 2D images are drawn. Half loads about a quarter of the data and Quarter about a sixteenth, so they load much faster on a slow connection, but the images stay that blurry until you set Full again.">
               <span class="nge-settings-toggle-label">2D image detail</span>
               <select v-model.number="draftImageDetail" class="nge-sv-select">
+                <option :value="1">Full (sharpest)</option>
+                <option :value="2">Half (faster loading)</option>
+                <option :value="4">Quarter (fastest, blurry)</option>
+              </select>
+            </label>
+            <label v-if="hereDataset()" data-set="imageDetail" class="nge-settings-toggle nge-settings-pick" title="A different 2D detail just for the dataset you are on. It switches by itself when you change datasets, for example Half on a big dataset and Full on another.">
+              <span class="nge-settings-toggle-label">On {{ hereDatasetLabel }}</span>
+              <select v-model.number="draftDetailHere" class="nge-sv-select">
+                <option :value="0">Same as above</option>
                 <option :value="1">Full (sharpest)</option>
                 <option :value="2">Half (faster loading)</option>
                 <option :value="4">Quarter (fastest, blurry)</option>

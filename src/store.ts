@@ -465,7 +465,12 @@ export const useLayersStore = defineStore('layers', () => {
     // 2026-10-15): then every image layer is held at THAT value instead, and
     // still no saved view can choose for them.
     const chosenDetail = (): number => {
-      try { const d = useUserPreferencesStore().prefs.imageDetail; return d === 2 || d === 4 ? d : 1; } catch { return 1; }
+      try {
+        // The dataset's own choice first (AzureJay #604), else the general one.
+        const p = useUserPreferencesStore().prefs;
+        const d = p.imageDetailByDataset?.[canonicalDataset(currentSegLayerName())] ?? p.imageDetail;
+        return d === 2 || d === 4 ? d : 1;
+      } catch { return 1; }
     };
     const hookedManaged = new WeakSet<object>();
     const clampedTargets = new WeakSet<object>();
@@ -1079,6 +1084,9 @@ export interface UserPreferences {
    *  render scale target for image layers. Coarser loads far less on a slow
    *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
   imageDetail?: 1 | 2 | 4;
+  /** The same, for one dataset (canonicalDataset key), over imageDetail
+   *  (AzureJay #604: half on MEC, full on Cilia). */
+  imageDetailByDataset?: Record<string, 1 | 2 | 4>;
   /** Where the 2D images load from (Ames 2026-10-22): 'auto' (the default)
    *  times both copies once and uses the faster, or the player picks the
    *  Americas or Asia. See src/util/image_source.ts. */
@@ -1266,7 +1274,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetSwitchOpens', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageDetailByDataset', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetSwitchOpens', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'autoTurn', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest', 'retinaAnnotationLayers', 'retinaModeAsked'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
