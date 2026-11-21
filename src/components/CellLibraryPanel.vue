@@ -1672,7 +1672,7 @@ import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, fragmentTester, type PlayKind } from '../util/play';
-import { heldFragments, keptFragmentIds, FRAGMENT_LIMIT, refreshHeldFragments, fragmentGroup, openHeldFragment, releaseHeldFragment } from '../util/my_fragments';
+import { heldFragments, keptFragmentIds, FRAGMENT_LIMIT, refreshHeldFragments, fragmentGroup, openHeldFragment, releaseHeldFragment, draftSteps, bestDraft, bestRoot } from '../util/my_fragments';
 import { hasReview, startReview, showReview } from '../sandbox_match';
 import OrbitDot from './OrbitDot.vue';
 import { useOrbitTick } from '../util/orbit_tick';
@@ -2385,7 +2385,8 @@ function onOpenAsked(e: Event) {
   // Opened out of sight by the Sandbox Playing box, to run its buttons.
   if ((e as CustomEvent).detail?.quiet) return;
   const tab = (e as CustomEvent).detail?.tab;
-  if (tab && ALL_CL_TABS.some(t => t.key === tab)) {
+  // Lost Fragments is its own tab outside the list (Retina only).
+  if (tab && (ALL_CL_TABS.some(t => t.key === tab) || (tab === 'orphans' && orphansHere.value))) {
     filter.value = tab;
     // Asked for a tab while slim: show the full library on it (the tab list
     // was out of sight, Ames 2026-11-13).
@@ -4012,8 +4013,8 @@ onBeforeUnmount(() => {
           </div>
           <div v-for="f in heldShown" :key="f.id" class="nge-cl-frag">
             <div class="nge-cl-frag-main">
-              <span class="nge-cl-frag-id">{{ f.id }}</span>
-              <span class="nge-cl-frag-meta"><span class="nge-cl-frag-chip">LOST FRAGMENT</span> {{ fragmentGroup(f.id) }}<template v-if="f.kept">, started</template></span>
+              <span class="nge-cl-frag-id" :title="bestRoot(f) !== f.id ? `Started as ${f.id}` : undefined">{{ bestRoot(f) }}</span>
+              <span class="nge-cl-frag-meta"><span class="nge-cl-frag-chip">LOST FRAGMENT</span> {{ fragmentGroup(f.id) }}<template v-if="f.kept">, started</template><template v-if="draftSteps(bestDraft(f))">, {{ draftSteps(bestDraft(f)) }} of 3 steps done</template></span>
             </div>
             <button class="nge-cl-btn" title="Open it in Lost Fragments" @click="openHeldFragment(f.id)">Open</button>
             <button class="nge-cl-btn nge-cl-btn--release" title="Give it back for anyone to do. Your edits stay in the cell." @click="releaseHeldFragment(f.id)">Skip</button>

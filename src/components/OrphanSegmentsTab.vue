@@ -35,7 +35,7 @@ import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
-import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment } from '../util/my_fragments';
+import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft } from '../util/my_fragments';
 import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
@@ -247,6 +247,8 @@ function restoreDraft() {
     shownRoot.value = d.root || row.id;
     resetForm(saves[row.id]);
     if (d.form && !saves[row.id]) Object.assign(form, d.form);
+    else if (!saves[row.id]) applyDraft(row.id);
+    lastSnap.set(row.id, JSON.stringify(currentDraft()));
   } catch { /* nothing kept */ }
 }
 watch([group, active, shownRoot, () => ({ ...form })], saveDraft, { deep: true });
@@ -264,26 +266,165 @@ function closeSelectionPanel() {
  *  then the rest of it folds down"). */
 const finishing = ref(false);
 async function open(row: OrphanSeg) {
+  void flushProgress();
   active.value = row;
   shownRoot.value = row.id;
   resetForm(saves[row.id]);
+  if (!saves[row.id]) applyDraft(row.id);
   history.jumpToCell(row.id, row.pt);
   finishing.value = false;
   claimMsg.value = '';
+  progressNote.value = '';
   closeSelectionPanel();
-  // The listed ID may be old (one in the lab's list already was). The jump
-  // point sits inside the segment, so ask what is there now and show that.
-  const sv = await supervoxelAtPlace(row.pt).catch(() => null);
-  if (!sv || sv === '0' || active.value?.id !== row.id) return;
-  const root = await getRootFromSupervoxel(sv).catch(() => null);
-  if (!root || root === row.id || active.value?.id !== row.id) return;
+  await followRoot(row);
+}
+
+// ── A fragment is tracked like a claimed cell (Ames 2026-11-21: "a lost
+// fragment is essentially a cell so you need to track the ID from the initial
+// coordinates"). Its anchor is a supervoxel at the spot the lab listed it;
+// that supervoxel's root is the fragment's ID now, after anyone's merges and
+// cuts. The anchor and the ID are kept on the claim (fragments.progress).
+const anchors: Record<string, string> = {};
+/** The supervoxel at a place, from the stored volume or, failing that, from
+ *  the chunks on screen once they load (as a cell claim's anchor is read). */
+function loadedSupervoxelAt(pt: [number, number, number]): string | null {
+  try {
+    const v: any = (window as any).viewer;
+    const p = Float32Array.from(pt);
+    for (const ml of v?.layerManager?.managedLayers ?? []) {
+      if (ml.archived || !ml.layer?.displayState?.segmentSelectionState) continue;
+      for (const rl of ml.layer.renderLayers ?? []) {
+        const got = rl.getValueAt?.(p);
+        const sv = got == null ? '' : String(Array.isArray(got) ? got[0] : got);
+        if (sv && sv !== '0' && Math.floor(Number(sv) / 2 ** 56) === 1) return sv;
+      }
+    }
+  } catch { /* viewer not ready */ }
+  return null;
+}
+async function anchorAt(row: OrphanSeg): Promise<string | null> {
+  const direct = await supervoxelAtPlace(row.pt).catch(() => null);
+  if (direct && direct !== '0') return direct;
+  for (let i = 0; i < 14 && active.value?.id === row.id; i++) {
+    const sv = loadedSupervoxelAt(row.pt);
+    if (sv) return sv;
+    await new Promise(res => setTimeout(res, 500));
+  }
+  return null;
+}
+function showRoot(row: OrphanSeg, root: string) {
+  if (active.value?.id !== row.id || root === shownRoot.value) return;
   try {
     const visible = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
-    visible?.delete(Uint64.parseString(row.id));
+    for (const old of [shownRoot.value, row.id]) if (old && old !== root) visible?.delete(Uint64.parseString(old));
     visible?.add(Uint64.parseString(root));
-    shownRoot.value = root;
   } catch { /* layer went away */ }
+  shownRoot.value = root;
 }
+/** Find the fragment's current ID and show it. Returns it, or null. */
+async function followRoot(row: OrphanSeg): Promise<string | null> {
+  const h = heldOf(row.id), loc = localDrafts()[row.id];
+  let anchor = anchors[row.id] || h?.anchor || loc?.anchor || null;
+  // The ID saved on the claim, at once, while the anchor is looked up.
+  if (h?.root || loc?.root) showRoot(row, (h?.root || loc?.root)!);
+  let root: string | null = null;
+  if (anchor) root = await getRootFromSupervoxel(anchor).catch(() => null);
+  if (!root) {
+    const sv = await anchorAt(row);
+    if (!sv || active.value?.id !== row.id) return null;
+    root = await getRootFromSupervoxel(sv).catch(() => null);
+    if (!root) return null;
+    // A new anchor only when that spot is still this fragment (or what it became).
+    const ours = root === row.id || !!(await ancestorAmong(root, [row.id]).catch(() => undefined));
+    if (ours) anchor = sv;
+  }
+  if (active.value?.id !== row.id) return root;
+  if (anchor) anchors[row.id] = anchor;
+  showRoot(row, root);
+  const known = h?.root || loc?.root || row.id;
+  saveLocalDraft(row.id, { root, anchor });
+  // Kept on the claim when it is this player's, so another computer finds it too.
+  if (isMine(row.id) && (anchor !== (h?.anchor || null) || root !== known)) {
+    void sendProgress(row.id, { anchorSv: anchor || undefined, rootId: root });
+  }
+  return root;
+}
+const isMine = (id: string) => myClaim.value === id || !!heldOf(id);
+
+// ── The work so far, saved as the player goes: ticks, point, type and note
+// come back after a reload, on another computer, and from My Cells.
+const progressNote = ref('');
+function currentDraft(): FragmentDraft {
+  return { fixed: form.fixed, ends: form.ends, where: form.where, point: form.point ? [...form.point] as [number, number, number] : null,
+    pointOk: form.pointOk, note: form.note, cellType: form.cellType, cellTypeCustom: form.cellTypeCustom };
+}
+const lastSnap = new Map<string, string>();
+const draftWork = (d: FragmentDraft) => d.fixed || d.ends || !!d.point || !!d.note.trim() || !!d.cellType || !!d.cellTypeCustom.trim();
+/** The newest saved work for a fragment, from the server's claim or this browser. */
+function applyDraft(id: string) {
+  const h = heldOf(id), loc = localDrafts()[id];
+  const d = (loc?.draft && (loc.at || 0) > (h?.draftAt || 0)) ? loc.draft : (h?.draft || loc?.draft || null);
+  if (d) {
+    Object.assign(form, { fixed: !!d.fixed, ends: !!d.ends, where: d.where === 'soma' ? 'soma' : 'dendrite',
+      point: d.point || null, pointOk: !!(d.point && d.pointOk), note: d.note || '',
+      cellType: d.cellType || '', cellTypeCustom: d.cellTypeCustom || '' });
+    form.pointMsg = d.point ? `Saved at ${d.point.join(', ')}.` : '';
+  }
+  lastSnap.set(id, JSON.stringify(currentDraft()));
+}
+let pending: { id: string; draft: FragmentDraft } | null = null;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+function queueProgress() {
+  const a = active.value;
+  if (!a || saves[a.id] || form.saved) return;
+  const d = currentDraft();
+  const snap = JSON.stringify(d);
+  if (snap === lastSnap.get(a.id)) return;
+  lastSnap.set(a.id, snap);
+  saveLocalDraft(a.id, { draft: d });   // this browser at once
+  const h = heldOf(a.id);
+  if (h) { h.draft = d; h.draftAt = Date.now(); }
+  if (!draftWork(d) && !isMine(a.id)) return;
+  pending = { id: a.id, draft: d };
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => void flushProgress(), 1200);
+}
+async function flushProgress() {
+  clearTimeout(saveTimer);
+  const p = pending; pending = null;
+  if (!p) return;
+  await sendProgress(p.id, { draft: p.draft, anchorSv: anchors[p.id], rootId: active.value?.id === p.id && shownRoot.value !== p.id ? shownRoot.value || undefined : undefined });
+}
+/** Saves on the claim; working on a fragment claims it, as Play would. */
+async function sendProgress(id: string, body: { draft?: FragmentDraft; anchorSv?: string; rootId?: string | null }) {
+  try {
+    const res = await secureWrite<{ saved: boolean; kept?: boolean; reason?: string; keptIds?: string[] }>('fragments.progress', { fragmentId: id, ...body });
+    if (res && res.saved) {
+      if (!heldOf(id)) heldFragments.list.push({ id, kept: !!res.kept, at: new Date().toISOString() });
+      const h = heldOf(id)!;
+      if (res.kept) markKept(id);
+      if (body.draft) { h.draft = body.draft; h.draftAt = Date.now(); }
+      if (body.anchorSv) h.anchor = body.anchorSv;
+      if (body.rootId) h.root = body.rootId;
+      if (active.value?.id === id) { progressNote.value = 'Progress saved.'; if (!myClaim.value) myClaim.value = id; }
+      return;
+    }
+    if (active.value?.id !== id) return;
+    progressNote.value = res && res.reason === 'full'
+      ? `Saved in this browser only: you have ${FRAGMENT_LIMIT} Lost Fragments started. Complete or skip one in My Cells.`
+      : res && res.reason === 'held' ? 'Saved in this browser only: another player is working on this one.'
+      : res && res.reason === 'done' ? 'Someone has already completed this one.' : '';
+  } catch {
+    // A server without fragments.progress yet: an edit still keeps it (fragments.keep).
+    if (body.rootId || (body.draft && draftWork(body.draft))) {
+      void secureWrite<{ kept: boolean }>('fragments.keep', { fragmentId: id }).then(res => { if (res && res.kept) markKept(id); }).catch(() => undefined);
+    }
+    if (active.value?.id === id) progressNote.value = 'Saved in this browser.';
+  }
+}
+watch(() => [form.fixed, form.ends, form.where, form.point, form.pointOk, form.note, form.cellType, form.cellTypeCustom], queueProgress);
+onMounted(() => window.addEventListener('pagehide', flushProgress));
+onUnmounted(() => { window.removeEventListener('pagehide', flushProgress); void flushProgress(); });
 function step(d: number) {
   const rows = cur.value.rows;
   const i = place.value < 0 ? (d > 0 ? 0 : rows.length - 1) : (place.value + d + rows.length) % rows.length;
@@ -312,6 +453,10 @@ async function claimHere(row: OrphanSeg) {
       // Landing here let go of the last one, unless it was kept.
       heldFragments.list = heldFragments.list.filter(f => f.kept || f.id === row.id);
       if (!heldFragments.list.some(f => f.id === row.id)) heldFragments.list.push({ id: row.id, kept: false, at: new Date().toISOString() });
+      const h = heldOf(row.id)!;
+      if (anchors[row.id] && h.anchor !== anchors[row.id]) {
+        void sendProgress(row.id, { anchorSv: anchors[row.id], rootId: active.value?.id === row.id && shownRoot.value !== row.id ? shownRoot.value : undefined });
+      }
       return;
     }
     // Five started already: back to those.
@@ -337,7 +482,12 @@ async function claimActive() {
   claiming.value = true; claimMsg.value = '';
   try {
     const res = await secureWrite<{ claimed: boolean; reason?: string }>('fragments.claim', { fragmentId: a.id });
-    if (res && res.claimed) { myClaim.value = a.id; held.delete(a.id); claimMsg.value = 'Yours. Nobody else gets it in Play until you skip or complete it.'; return; }
+    if (res && res.claimed) {
+      myClaim.value = a.id; held.delete(a.id); claimMsg.value = 'Yours. Your progress saves as you go, until you skip or complete it.';
+      if (!heldOf(a.id)) heldFragments.list.push({ id: a.id, kept: false, at: new Date().toISOString() });
+      void sendProgress(a.id, { anchorSv: anchors[a.id], rootId: shownRoot.value !== a.id ? shownRoot.value : undefined, draft: currentDraft() });
+      return;
+    }
     if (res && res.claimed === false && res.reason === 'done') { taken.add(a.id); claimMsg.value = 'Someone has already completed this one.'; return; }
     if (res && res.claimed === false && res.reason === 'full') { claimMsg.value = `You have ${FRAGMENT_LIMIT} Lost Fragments started. Complete or skip one first: they are in My Cells.`; return; }
     if (res && res.claimed === false) { held.add(a.id); claimMsg.value = 'Another player is working on this one.'; return; }
@@ -349,6 +499,8 @@ async function releaseActive() {
   const a = active.value;
   if (!a || myClaim.value !== a.id) return;
   myClaim.value = null; claimMsg.value = 'Let go. Someone else can claim it now.';
+  pending = null; clearTimeout(saveTimer);
+  dropHeld(a.id);
   await secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
 }
 /** With FRAGMENT_LIMIT started, Play takes you to those, one after another,
@@ -372,7 +524,7 @@ function playNext() {
     group.value = kept.g;
     void open(kept.row);
     void claimHere(kept.row);
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Finish this one first', cell: 'Cell ID: ' + kept.row.id } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Finish this one first', cell: 'Cell ID: ' + idNow(kept.row.id) } }));
     return;
   }
   fullNote.value = '';
@@ -382,29 +534,47 @@ function playNext() {
   group.value = n.g;
   void open(n.row);
   void claimHere(n.row);
-  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + n.row.id } }));
+  document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + idNow(n.row.id) } }));
 }
 /** Skip: give the fragment back, then the next one. */
 function skip() {
   const a = active.value;
   if (a && !saves[a.id]) {
     if (myClaim.value === a.id) myClaim.value = null;
+    if (pending?.id === a.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(a.id);
     void secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
   }
   playNext();
 }
+const idNow = (id: string) => (active.value?.id === id && shownRoot.value) || heldOf(id)?.root || localDrafts()[id]?.root || id;
 function findRow(id: string): { g: GroupKey; row: OrphanSeg } | null {
   for (const g of GROUPS) { const row = g.rows.find(r => r.id === id); if (row) return { g: g.key, row }; }
   return null;
 }
 // Pressing Play while a fragment is open and not yet submitted stays on it
 // (Ames 2026-11-19: Play took her from Smaller back to Large, losing her note).
-function playResume() {
+/** Where Start playing takes you back to (Ames 2026-11-21: "launch players
+ *  back where they were"): the fragment open now if it is not sent, else the
+ *  one you last worked on (the server's newest claim; saving work renews it),
+ *  else none. */
+const resumeId = computed(() => {
+  const a = active.value;
+  if (a && !saves[a.id]) return a.id;
+  const m = myClaim.value;
+  return m && !saves[m] && findRow(m) ? m : null;
+});
+let listLoad: Promise<void> | null = null;
+async function playResume() {
+  // After a reload the server's list says which fragment was yours: wait for it.
+  if (!heldFragments.loaded && !active.value) {
+    listLoad = listLoad || loadAnswers();
+    await Promise.race([listLoad, new Promise(res => setTimeout(res, 6000))]);
+  }
   const a = active.value;
   if (a && !saves[a.id]) {
     void claimHere(a);
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + a.id } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + idNow(a.id) } }));
     return;
   }
   // The fragment this player holds, from another computer or an earlier visit.
@@ -413,13 +583,13 @@ function playResume() {
     group.value = mine.g;
     void open(mine.row);
     void claimHere(mine.row);
-    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + mine.row.id } }));
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Your Cell', cell: 'Cell ID: ' + idNow(mine.row.id) } }));
     return;
   }
   playNext();
 }
-watch(() => props.playTick, t => { if (t) playResume(); });
-onMounted(() => { restoreDraft(); if (props.playTick) playResume(); });
+watch(() => props.playTick, t => { if (t) void playResume(); });
+onMounted(() => { restoreDraft(); if (props.playTick) void playResume(); });
 const onSkip = () => skip();
 onMounted(() => document.addEventListener('nge:play-skip-fragment', onSkip));
 onUnmounted(() => document.removeEventListener('nge:play-skip-fragment', onSkip));
@@ -616,6 +786,7 @@ async function submit() {
     persist();
     if (res && res.first) { countCompleted(root, pt, row.id); addFragmentDone(); }
     if (myClaim.value === row.id) myClaim.value = null;
+    if (pending?.id === row.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(row.id);
     lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
     if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
@@ -654,6 +825,11 @@ async function loadAnswers() {
     loadStash(res.stash || []);
     setHeldFragments((res as any).myClaims || []);
     serverOn.value = true;
+    {
+      const a = active.value;
+      if (a && !saves[a.id] && !draftWork(currentDraft())) applyDraft(a.id);
+      if (a && heldOf(a.id)?.anchor && !anchors[a.id]) void followRoot(a);
+    }
     for (const k of Object.keys(saves)) delete saves[k];
     for (const m of res.mine || []) {
       const g = GROUPS.find(x => x.rows.some(r => r.id === m.fragment_id));
@@ -680,21 +856,22 @@ async function loadAnswers() {
     }
   } catch { serverOn.value = false; }
 }
-onMounted(() => { void loadAnswers(); });
+onMounted(() => { listLoad = listLoad || loadAnswers(); });
 
 /** A merge or cut while a fragment is open and not yet sent: it stays yours
  *  when Play hands you the next one (Ames 2026-11-21). */
-const keepAsked = new Set<string>();
 function onEditLogged(e: Event) {
   const op = (e as CustomEvent).detail?.operation;
   const a = active.value;
   if (!a || saves[a.id] || (op !== 'merge' && op !== 'split')) return;
-  if (keptFragmentIds.value.includes(a.id) || keepAsked.has(a.id)) return;
-  keepAsked.add(a.id);
-  void secureWrite<{ kept: boolean; reason?: string }>('fragments.keep', { fragmentId: a.id }).then(res => {
-    if (res && res.kept) markKept(a.id);
-    else keepAsked.delete(a.id);
-  }).catch(() => keepAsked.delete(a.id));
+  // Its new ID, from the anchor, once the graph has the edit.
+  setTimeout(async () => {
+    if (active.value?.id !== a.id) return;
+    const before = shownRoot.value;
+    const root = await followRoot(a);
+    // followRoot saved a changed ID; an edit that left the ID as it was still makes it started.
+    if (!root || root === before) void sendProgress(a.id, { anchorSv: anchors[a.id], rootId: root || before || undefined });
+  }, 1500);
 }
 onMounted(() => document.addEventListener('nge:edit-logged', onEditLogged));
 onUnmounted(() => document.removeEventListener('nge:edit-logged', onEditLogged));
@@ -746,11 +923,15 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </button>
     </div>
     <div v-if="!slim" class="nge-orph-about">{{ cur.about }}</div>
-    <div v-if="!slim && !playing" class="nge-orph-playhere-row">
-      <button class="nge-orph-playhere" @click="startPlay('fragments')" title="Play: opens the next fragment you haven't answered. After Submit, the next one.">
-        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
+    <!-- Start playing, always here (Ames 2026-11-21: "we need the start
+         playing button back in lost frags that will launch players back where
+         they were"). -->
+    <div v-if="!slim" class="nge-orph-playhere-row">
+      <button class="nge-orph-playhere" @click="startPlay('fragments')"
+              :title="resumeId ? 'Back to the fragment you were working on, with your progress' : 'Opens the next fragment you have not done. After Complete, the next one.'">
+        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Start playing
       </button>
-      <span class="nge-orph-playhere-hint">Opens the next fragment, then the next one after each Submit.</span>
+      <span class="nge-orph-playhere-hint">{{ resumeId ? `Takes you back to ${idNow(resumeId)}, where you left off.` : 'Opens the next fragment, then the next one after each Complete.' }}</span>
     </div>
     <div v-if="slim && !active" class="nge-orph-note nge-orph-slim-empty">No fragment open. Open the full view to pick one.</div>
 
@@ -789,7 +970,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             <template v-if="group === 'stashed'">stashed by {{ stashBy[active.id] || 'a player' }}</template>
             <template v-else>{{ fmt(active.um3) }} µm³, lab flag: {{ FLAG_WORDS[active.flag] }}</template>
           </div>
-          <div v-if="shownRoot && shownRoot !== active.id" class="nge-orph-note">Edited since the lab's list; showing its current ID.</div>
+          <div v-if="shownRoot && shownRoot !== active.id" class="nge-orph-note">Merges and cuts gave it this new ID. Pyr follows it for you; it started as {{ active.id }}.</div>
         </div>
       </div>
       <div v-if="!slim" class="nge-orph-controls">
@@ -806,6 +987,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
 
       <div v-if="!slim && claimMsg" class="nge-orph-note">{{ claimMsg }}</div>
+      <div v-if="progressNote && !form.saved && (!slim || finishing)" class="nge-orph-note nge-orph-progress">{{ progressNote }}</div>
       <div v-if="fullNote && playing" class="nge-orph-note">{{ fullNote }}</div>
       <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">

@@ -28,6 +28,10 @@
  *                      edited fragment went back to the pool). At most
  *                      KEEP_LIMIT at once; with that many, no new claims
  *                      until one is completed or skipped.
+ *   fragments.progress the work so far on a claimed fragment (ticks, point,
+ *                      type, note), its anchor supervoxel and current ID, as
+ *                      the player goes (Ames 2026-11-21: treat it like a
+ *                      claimed cell). Any work makes it a started (kept) one.
  *   fragments.stash    part of a fragment belonged to another cell that is
  *                      not proofread yet: that cell goes into the Stashed
  *                      group for anyone to proofread, or the player keeps it
@@ -115,6 +119,40 @@ function cleanAnswer(a) {
     other_root: otherStatus ? otherRoot : null, other_status: otherStatus };
 }
 
+/** The work on a claimed fragment so far, saved as the player goes (Ames
+ *  2026-11-21: a player closed Chrome and lost the ticks, point and note; "a
+ *  lost fragment is essentially a cell", so it is tracked like a claimed
+ *  cell). anchor_sv is a supervoxel inside the fragment where it was listed:
+ *  its root is the fragment's current ID, whatever merges and cuts did.
+ *  Only the fields sent are changed. */
+function cleanProgress(a) {
+  a = a && typeof a === 'object' ? a : {};
+  const out = {};
+  if (a.anchorSv != null && a.anchorSv !== '') {
+    if (!/^\d{1,20}$/.test(String(a.anchorSv))) throw bad('Bad supervoxel.');
+    out.anchor_sv = String(a.anchorSv);
+  }
+  if (a.rootId != null && a.rootId !== '') {
+    if (!ID.test(String(a.rootId))) throw bad('Not a segment ID.');
+    out.root_id = String(a.rootId);
+  }
+  if (a.draft && typeof a.draft === 'object') {
+    const d = a.draft;
+    const pt = Array.isArray(d.point) && d.point.length === 3 && d.point.every(n => Number.isFinite(n) && Math.abs(n) < 1e7) ? d.point.map(n => Math.round(n)) : null;
+    out.draft = {
+      fixed: d.fixed === true, ends: d.ends === true,
+      where: d.where === 'soma' ? 'soma' : 'dendrite',
+      point: pt, pointOk: !!pt && d.pointOk === true,
+      note: String(d.note || '').slice(0, 2000),
+      cellType: String(d.cellType || '').slice(0, 120),
+      cellTypeCustom: String(d.cellTypeCustom || '').slice(0, 120),
+    };
+    out.draft_at = new Date().toISOString();
+  }
+  return out;
+}
+const draftHasWork = d => !!(d && (d.fixed || d.ends || d.point || d.note.trim() || d.cellType || d.cellTypeCustom.trim()));
+
 // ── Merges, cuts and volume, read with the player's own CAVE sign in ────────
 async function cg(token, path, init = {}) {
   const r = await fetch(path, { ...init, redirect: 'error', signal: AbortSignal.timeout(12000),
@@ -200,7 +238,16 @@ async function fragmentsAction(action, args, io) {
     const claims = await sb(`ew_lost_fragment_claims?claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,user_id,kept,claimed_at&order=claimed_at.desc&limit=20000`);
     const mineClaims = claims.filter(c => String(c.user_id) === String(me.id));
     const myClaim = (mineClaims[0] || {}).fragment_id || null;
-    const myClaims = mineClaims.map(c => ({ fragment_id: c.fragment_id, kept: !!c.kept, claimed_at: c.claimed_at }));
+    // The progress columns are read for this player's claims only.
+    const progress = mineClaims.length
+      ? await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&select=fragment_id,anchor_sv,root_id,draft,draft_at`).catch(() => [])
+      : [];
+    const byId = new Map(progress.map(p => [p.fragment_id, p]));
+    const myClaims = mineClaims.map(c => {
+      const p = byId.get(c.fragment_id) || {};
+      return { fragment_id: c.fragment_id, kept: !!c.kept, claimed_at: c.claimed_at,
+        anchor_sv: p.anchor_sv || null, root_id: p.root_id || null, draft: p.draft || null, draft_at: p.draft_at || null };
+    });
     const held = claims.filter(c => String(c.user_id) !== String(me.id)).map(c => c.fragment_id);
     const stash = await sb('ew_lost_fragment_stash?select=root_id,pt,from_fragment_id,player_name,choice,created_at&order=created_at.asc&limit=2000');
     return { mine, others, held, myClaim, myClaims, keepLimit: KEEP_LIMIT, stash };
@@ -221,6 +268,28 @@ async function fragmentsAction(action, args, io) {
     if (!c.claimed) return { kept: false, reason: c.reason };
     await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}`, { method: 'PATCH', body: JSON.stringify({ kept: true }) });
     return { kept: true };
+  }
+
+  if (action === 'fragments.progress') {
+    const fragmentId = String(args && args.fragmentId || '');
+    if (!ID.test(fragmentId)) throw bad('Not a fragment ID.');
+    const fields = cleanProgress(args);
+    // The work so far makes it a started fragment, like an edit does.
+    const started = !!(fields.root_id && fields.root_id !== fragmentId) || draftHasWork(fields.draft);
+    const mineNow = (await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}&select=fragment_id,kept`))[0];
+    let kept = !!(mineNow && mineNow.kept);
+    if (!mineNow) {
+      const c = started ? await fragmentsAction('fragments.keep', { fragmentId }, io) : await fragmentsAction('fragments.claim', { fragmentId }, io);
+      if (started ? !c.kept : !c.claimed) return { saved: false, reason: c.reason, keptIds: c.keptIds };
+      kept = started;
+    } else if (started && !kept) {
+      const c = await fragmentsAction('fragments.keep', { fragmentId }, io);
+      kept = !!c.kept;
+    }
+    // Working on it keeps it yours: the claim lapses CLAIM_DAYS after the last save.
+    await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}`,
+      { method: 'PATCH', body: JSON.stringify({ ...fields, claimed_at: new Date().toISOString() }) });
+    return { saved: true, kept };
   }
 
   if (action === 'fragments.claim' || action === 'fragments.release') {
@@ -324,4 +393,4 @@ async function syncSheet({ sb, sheets }) {
   return { waiting: rows.length, written, failed };
 }
 
-module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS, OTHER, KEEP_LIMIT };
+module.exports = { cleanProgress, fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS, OTHER, KEEP_LIMIT };

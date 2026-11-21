@@ -708,18 +708,11 @@ const firstNewMsg = computed<ChatMessage | null>(() => {
 const PIN_HIDDEN_KEY = 'nge-chat-pin-hidden';
 const hiddenPin = ref('');
 try { hiddenPin.value = localStorage.getItem(PIN_HIDDEN_KEY) || ''; } catch { /* shown */ }
-// A pin shows on the visit it is first seen, and not again after a refresh
-// (Ames 2026-11-20: "it should not come back every refresh"). A new pin
-// shows once the same way. The message itself stays in the conversation.
-const PIN_SEEN_KEY = 'nge-chat-pin-seen';
-let seenBeforeThisVisit = '';
-try { seenBeforeThisVisit = localStorage.getItem(PIN_SEEN_KEY) || ''; } catch { /* shown */ }
+// A pin stays at the top until the player clicks its × (Ames 2026-11-21:
+// "Player needs to hit X to hide it"). It no longer goes away on refresh.
 const shownPin = computed(() => {
   const pin = chatStore.pinned;
-  return pin && pin.rowId !== hiddenPin.value && pin.rowId !== seenBeforeThisVisit ? pin : null;
-});
-watch(() => (!collapsed.value && !isQuiet.value && shownPin.value ? shownPin.value.rowId : ''), id => {
-  if (id) try { localStorage.setItem(PIN_SEEN_KEY, id); } catch { /* shown again next visit */ }
+  return pin && pin.rowId !== hiddenPin.value ? pin : null;
 });
 function hidePin() {
   const pin = chatStore.pinned;
@@ -1744,7 +1737,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
               <li><code>/me waves</code> shows a grey line, like <i>Nseraf waves</i>.</li>
               <li><code>*bold*</code> and <code>_underline_</code>. Shift+Enter for a new line.</li>
               <li>Point at a message to react (the Pyr gem too) or reply with ↩.</li>
-              <li>A new pinned message from the team shows at the top until you refresh. Click it to read it in full, or × to hide it sooner.</li>
+              <li>A new pinned message from the team shows at the top until you click its ×. Click it to read it in full.</li>
               <li>🔍 searches. Try <code>from:name</code>, <code>on:10/8</code>, <code>-word</code>, <code>"two words"</code>.</li>
               <li>The bell sends notifications while Pyr is in the background. To hide the unread count, use Settings, Mute the chat unread count.</li>
               <li>📍 shares your view, with a screenshot if you like. 🙂 adds an emoji.</li>
