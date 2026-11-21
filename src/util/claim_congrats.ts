@@ -6,6 +6,7 @@
  * so it shows with the Cell Library closed. Click to close; it goes by itself.
  */
 import { onClaimMilestone, type ClaimMilestone } from './claim_time';
+import { takeTurn } from './popup_queue';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
 
 function words(m: ClaimMilestone): { title: string; sub: string } {
@@ -42,7 +43,12 @@ body.nge-calm .nge-congrats, body.nge-calm .nge-congrats--out { animation: none;
 export function showClaimCongrats(m: ClaimMilestone) { showClaimNotice(words(m)); }
 
 /** The same card, for any short notice about a claim (a Super Quest ending soon). */
-export function showClaimNotice({ title, sub, image = true }: { title: string; sub: string; image?: boolean }) {
+export function showClaimNotice(notice: { title: string; sub: string; image?: boolean }) {
+  // One popup at a time (popup_queue.ts).
+  let box: HTMLElement | null = null;
+  void takeTurn('claim-notice', () => !!box && box.isConnected).then(ok => { if (ok) box = showNow(notice); });
+}
+function showNow({ title, sub, image = true }: { title: string; sub: string; image?: boolean }): HTMLElement | null {
   try {
     addStyles();
     const box = document.createElement('div');
@@ -65,7 +71,8 @@ export function showClaimNotice({ title, sub, image = true }: { title: string; s
     box.addEventListener('click', close);
     document.body.appendChild(box);
     setTimeout(close, 9000);
-  } catch { /* no page */ }
+    return box;
+  } catch { return null; /* no page */ }
 }
 
 onClaimMilestone(m => {

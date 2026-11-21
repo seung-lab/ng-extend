@@ -31,6 +31,7 @@
  * too, so a tutorial can be played through as a new player would.
  */
 import { reactive, ref, shallowRef, watch } from 'vue';
+import { takeTurn } from './popup_queue';
 import { getActivePinia } from 'pinia';
 import { supabase } from '../supabase';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
@@ -216,7 +217,11 @@ export function reveal(ids: string[], line?: string, label?: string, settingsBut
   save(s);
   for (const id of added) freshIcons.add(id);
   setTimeout(() => { for (const id of added) freshIcons.delete(id); }, 9000);
-  if (line) announcement.value = { text: line, icons: added, at: Date.now(), settingsButton };
+  if (line) {
+    // One popup at a time (popup_queue.ts): Nurro's card waits its turn.
+    const card = { text: line, icons: added, at: Date.now(), settingsButton };
+    void takeTurn('staging-announcement', () => announcement.value?.at === card.at, { skipOnLoad: true }).then(ok => { if (ok) announcement.value = card; });
+  }
   return added;
 }
 

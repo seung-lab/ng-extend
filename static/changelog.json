@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T04:03:00Z",
+      "title": "One popup at a time, and a calmer bell",
+      "items": [
+        "Achievements, celebrations and questions now take turns, so only one popup is on screen at a time.",
+        "When you open Pyr you get at most one greeting: a new Achievement, a question you need to answer, or the leaderboard. Community milestones always get their turn.",
+        "Opening Pyr from its plain address brings back where you left off in that dataset, with no bar asking first.",
+        "Missed three or more days? The daily updates fold into one While you were away note with a link to the week on the blog.",
+        "News from the team stays unread until you read it, and the red counts stop at 9+."
+      ]
+    },
+    {
       "at": "2026-11-21T02:54:00Z",
       "title": "Lost Fragments you started stay yours",
       "items": [

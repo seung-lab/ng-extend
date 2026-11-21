@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
+import { takeTurn, quietArrival } from '../util/popup_queue';
 import { QUIET_TEST_HOST } from '../util/test_host';
 import { playIntro } from '../util/intro_tour';
 import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice, stopPlay } from '../util/play';
@@ -518,8 +519,15 @@ function maybeOpenLeaderboardOnArrival() {
   if (document.body.classList.contains('nge-mobile')) return;
   if (document.querySelector('.introductionStep, .nge-overlay-blocker')) return;
   try { sessionStorage.setItem('nge-lb-greeted', '1'); } catch { /* private mode */ }
-  leaderboardPeek.value = true;
-  showLeaderboard.value = true;
+  // The default greeting on arrival (popup_queue.ts): it opens only when
+  // nothing else popped up or waits (a new Achievement, the username or
+  // Retina question show instead). It is a side panel, so it never holds
+  // the line for the others. A few seconds' wait lets those arrive first.
+  setTimeout(() => {
+    if (!quietArrival() || showLeaderboard.value || showDatasetStats.value) return;
+    leaderboardPeek.value = true;
+    showLeaderboard.value = true;
+  }, 4000);
 }
 // Dataset Stats: what has been done on a dataset. It is a tab of the profile
 // (toolbar icon, Switch Dataset panel, command list). This is the narrow
@@ -740,7 +748,8 @@ function exploreWithoutLogin() {
     if (localStorage.getItem(MOBILE_TOUR_SEEN_KEY) === '1') return;
     localStorage.setItem(MOBILE_TOUR_SEEN_KEY, '1');
   } catch { /* private mode: run it, better than a silent blank */ }
-  setTimeout(() => { showMobileTour.value = true; }, 900);
+  // One popup at a time (popup_queue.ts).
+  setTimeout(() => { void takeTurn('mobile-tour', () => showMobileTour.value).then(ok => { if (ok) showMobileTour.value = true; }); }, 900);
 }
 
 const MOBILE_TOUR_SEEN_KEY = 'nge_mobile_tour_seen_v1';
@@ -1110,6 +1119,9 @@ const toolbarActions: Record<string, ToolbarAction> = {
 };
 
 /** The phone bell's count: in player view, without admin and triage notes. */
+/** A red count reads 9+ past nine, so a player back after a while is not
+ *  greeted by a big number (Ames 2026-11-20). */
+const capCount = (n: number): string => (n > 9 ? '9+' : String(n));
 const mobileNotifCount = computed(() => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? 0 : backendStore.unreadStaffNotificationCount));
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => {
@@ -1357,7 +1369,7 @@ function placeNotifDot() {
   }
   const bell = toolbarDefs.value.find(d => d.id === 'notif')?.svg ?? '';
   // Only rewritten when it says something new: this runs every second.
-  const html = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
+  const html = `<span class="nge-notif-dot-icon">${bell}</span><span>${capCount(n)}</span>`;
   if (notifDotHtml !== html) {
     notifDotHtml = html;
     notifDot.innerHTML = html;
@@ -1666,7 +1678,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         @dragleave="onIconDragLeave(icon.id)"
         @drop="onIconDrop($event, icon.id)"
         @click="icon.action()"
-      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ icon.badge() }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
+      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ capCount(icon.badge()) }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
     </div>
 
     <!-- Player view (Ames 2026-10-25): an admin seeing the game as players do.
@@ -1862,7 +1874,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     <button :class="{ 'nge-mnav--active': showNotifications }" data-mnav="alerts" @click="showNotifications = !showNotifications">
       <span class="nge-mnav-icon">🔔</span>
       <span class="nge-mnav-label">Notifs</span>
-      <span v-if="mobileNotifCount > 0" class="nge-mnav-badge">{{ mobileNotifCount }}</span>
+      <span v-if="mobileNotifCount > 0" class="nge-mnav-badge">{{ capCount(mobileNotifCount) }}</span>
     </button>
     <button :class="{ 'nge-mnav--active': showMobileWelcome }" data-mnav="guide" @click="showMobileWelcome = true">
       <span class="nge-mnav-icon">✨</span>

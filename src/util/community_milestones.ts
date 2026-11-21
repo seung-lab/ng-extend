@@ -13,6 +13,7 @@
  * notification brings it back (#nge-milestone=cells:5000), with no confetti.
  */
 import { ref } from 'vue';
+import { takeTurn } from './popup_queue';
 
 export type Track = 'cells' | 'edits' | 'players' | 'fragments' | 'summary';
 /** 'summary' is a one-off: everything Pyr has done so far, sent once as a
@@ -92,9 +93,21 @@ export function markSeen(track: Track, value: number) {
  *  while another is up counts as seen and waits in its notification. */
 export function celebrate(track: Track, value: number) {
   if (value <= 0 || value <= seenUpTo(track)) return;
-  if (celebration.value) { markSeen(track, value); return; }
-  celebration.value = { track, value, confetti: true };
+  // Another milestone is up: this one counts as seen and waits in its
+  // notification, so milestones never pile up behind each other (Ames:
+  // "we don't want them to queue up"). Anything else on screen, it waits
+  // for, so nobody misses it (Ames 2026-11-20: "I don't want ppl to miss the
+  // banner!"): one popup at a time (popup_queue.ts), on arrival too.
+  if (celebration.value || pendingMilestone) { markSeen(track, value); return; }
+  pendingMilestone = true;
+  void takeTurn('community-milestone', () => !!celebration.value && celebration.value.track === track && celebration.value.value === value, { priority: 4 })
+    .then(ok => {
+      pendingMilestone = false;
+      if (ok && !celebration.value) celebration.value = { track, value, confetti: true };
+      else markSeen(track, value);
+    });
 }
+let pendingMilestone = false;
 /** Play one from its notification, the whole celebration (Ames 2026-11-20:
  *  "If they click it, then it should play"). */
 export function reopen(track: Track, value: number) {

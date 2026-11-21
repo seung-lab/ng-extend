@@ -8,6 +8,7 @@
 // Shown once per browser; "Got it", Escape, or leaving 4 panel dismisses it.
 
 import {QUIET_TEST_HOST} from './util/test_host';
+import { takeTurn } from './util/popup_queue';
 
 const SEEN_KEY = 'nge_tip_split_screen_v1';
 const TARGET_CLASS = 'nge-split-tip-target';
@@ -180,7 +181,12 @@ function onLayoutChanged(viewer: any) {
   if (layoutName(viewer) === '4panel') {
     if (seen() || tipEl || showTimer !== null) return;
     // Let neuroglancer build the panels and their corner buttons first.
-    showTimer = window.setTimeout(() => { showTimer = null; showTip(); }, 700);
+    // One popup at a time (popup_queue.ts); stale after 20 s.
+    showTimer = window.setTimeout(async () => {
+      const ok = await takeTurn('split-tip', () => !!tipEl, { maxWaitMs: 20_000 });
+      showTimer = null;
+      if (ok && !tipEl && !seen() && layoutName(viewer) === '4panel') showTip();
+    }, 700);
   } else {
     // Left 4 panel (via the button or Shift + Space): they know the way now.
     hideTip(true);

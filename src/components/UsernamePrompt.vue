@@ -12,6 +12,7 @@
  * display name, they're just harder to @mention.
  */
 import { ref } from 'vue';
+import { takeTurn } from '../util/popup_queue';
 import { useProofreadingBackendStore } from '../store';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -85,6 +86,8 @@ async function maybeOpen(e?: Event) {
   if (localStorage.getItem(DISMISS_KEY) === '1') return;     // asked and declined
   mode.value = 'claim';
   await waitForCelebration();
+  // One popup at a time (popup_queue.ts).
+  if (!(await takeTurn('username', () => visible.value))) return;
   if (backend.username) return;                              // set in the meantime
   visible.value = true;
   // Pre-fill something we've already confirmed is free, so the common path is

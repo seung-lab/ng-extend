@@ -15,6 +15,7 @@ const ASK_FROM_ADDRESS = typeof location !== 'undefined' && location.href.includ
  * retinaModeAsked keeps it from asking again, on any computer.
  */
 import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { takeTurn } from '../util/popup_queue';
 import { supabase } from '../supabase';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { RETINA_DATASET } from '../util/retina_layers';
@@ -51,7 +52,10 @@ watch(() => [backend.userId, prefs.accountLoaded] as const, async ([uid, loaded]
     if (!(await hasRetinaCell(uid))) return;
   } catch { checkedFor = ''; return; }
   // Let the game finish opening first.
-  setTimeout(() => {
+  setTimeout(async () => {
+    if (prefs.prefs.retinaModeAsked) return;
+    // One popup at a time (popup_queue.ts).
+    if (!(await takeTurn('retina-mode', () => show.value))) return;
     if (prefs.prefs.retinaModeAsked) return;
     annotations.value = prefs.prefs.retinaAnnotationLayers === true;
     show.value = true;

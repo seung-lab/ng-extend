@@ -13,7 +13,7 @@
  */
 import { supabase } from '../supabase';
 import { bootHash, viewHasCells } from './local_view';
-import { currentSegLayerName, findDatasetBySegName, switchToDataset, datasetAbbrev } from '../datasets';
+import { currentSegLayerName, findDatasetBySegName } from '../datasets';
 import { getDatasetCaveConfig } from '../config';
 import { getCachedJson } from 'neuroglancer/util/trackable';
 
@@ -92,16 +92,12 @@ async function saveNow(viewer: any) {
   else { lastSaved = text; lastSeenGen = gen; lastSeenDataset = dataset; }
 }
 
-let viewerRef: any = null;
 
 /** Called by the dataset switcher. A switch that reloads the page offers the
  *  saved view on the next load; one that does not, a few seconds from now. */
 export function offerViewRestoreAfterSwitch() {
-  try { sessionStorage.setItem(OFFER_KEY, '1'); } catch { /* private mode */ }
-  setTimeout(() => {
-    try { if (sessionStorage.getItem(OFFER_KEY) !== '1') return; sessionStorage.removeItem(OFFER_KEY); } catch { return; }
-    if (viewerRef && userIdOf()) void offerRestore(viewerRef);
-  }, 4000);
+  // A switch opens where you left off by itself now (Settings, Switching
+  // datasets); no bar offers it afterwards (Ames 2026-11-20).
 }
 
 /** The next offer is not wanted: the player switched datasets to go straight
@@ -133,7 +129,7 @@ function offerEnabled(): boolean {
   try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').offerViewRestore !== false; } catch { return true; }
 }
 
-async function offerRestore(viewer: any) {
+async function offerRestore(viewer: any, stale: () => boolean = () => false) {
   const dataset = datasetKey();
   if (!dataset) return;
   // Never on the Sandbox (practice data, nothing to pick up), and not when
@@ -147,42 +143,9 @@ async function offerRestore(viewer: any) {
   let now = '';
   try { now = JSON.stringify(viewer.state.toJSON()); } catch { /* */ }
   if (JSON.stringify(data.state) === now) return;
-  showBar(dataset, String(data.updated_at || ''), () => {
-    try { viewer.state.restoreState(data.state); } catch (e) { console.warn('[views] restore failed:', e); }
-  });
-}
-
-function ago(iso: string): string {
-  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
-  if (!isFinite(s)) return '';
-  if (s < 90) return 'just now';
-  if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
-  if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
-  return `${Math.round(s / 86400)} days ago`;
-}
-
-function showBar(dataset: string, updatedAt: string, onRestore: () => void, text?: string, button = 'Restore') {
-  document.querySelector('.nge-view-restore')?.remove();
-  const label = findDatasetBySegName(dataset)?.shortLabel || dataset;
-  const bar = document.createElement('div');
-  bar.className = 'nge-view-restore';
-  bar.setAttribute('role', 'status');
-  bar.innerHTML = `<span class="nge-vr-text"></span>`
-    + `<button type="button" class="nge-vr-yes"></button>`
-    + `<button type="button" class="nge-vr-no" aria-label="Dismiss">×</button>`;
-  (bar.querySelector('.nge-vr-text') as HTMLElement).textContent =
-    text ?? `Pick up where you left off in ${label}? Saved ${ago(updatedAt)}.`;
-  (bar.querySelector('.nge-vr-yes') as HTMLElement).textContent = button;
-  const close = () => bar.remove();
-  bar.querySelector('.nge-vr-yes')!.addEventListener('click', () => { onRestore(); close(); });
-  bar.querySelector('.nge-vr-no')!.addEventListener('click', close);
-  document.body.appendChild(bar);
-  // Gone by itself after a few seconds unless the pointer is on it (it was
-  // 30 s, long enough to feel stuck there).
-  const SHOW_MS = 8000;
-  let hide = setTimeout(close, SHOW_MS);
-  bar.addEventListener('mouseenter', () => { clearTimeout(hide); bar.classList.add('nge-view-restore--held'); });
-  bar.addEventListener('mouseleave', () => { bar.classList.remove('nge-view-restore--held'); hide = setTimeout(close, 3000); });
+  // Not over a tour or tutorial, and not once the player has started.
+  if (stale() || document.body.classList.contains('nge-intro-on') || document.querySelector('.introductionStep')) return;
+  try { viewer.state.restoreState(data.state); } catch (e) { console.warn('[views] restore failed:', e); }
 }
 
 const CSS = `
@@ -206,7 +169,6 @@ const CSS = `
 /** Call once the viewer exists. userId() returns the signed in player's id. */
 export function startViewAutosave(viewer: any, userId: () => string | null) {
   userIdOf = userId;
-  viewerRef = viewer;
   const hashAtLoad = bootHash();
   // The bar comes once per browser, the first time a switch picks up where
   // the player left off; after that Settings is the place to change it (Ames
@@ -214,14 +176,15 @@ export function startViewAutosave(viewer: any, userId: () => string | null) {
   const resumed = takeResumed();
   let firstResume = false;
   try { firstResume = !localStorage.getItem(RESUME_TOLD_KEY); if (resumed) localStorage.setItem(RESUME_TOLD_KEY, '1'); } catch { /* */ }
-  if (resumed && firstResume) {
-    const ds = findDatasetBySegName(resumed);
-    const label = datasetAbbrev(resumed) || ds?.shortLabel || resumed;
-    setTimeout(() => showBar(resumed, '', () => { if (ds) void switchToDataset(ds, { startingView: true }); },
-      `Back where you left off in ${label}. You can change this in Settings.`, 'Starting view'), 1500);
-  }
-  let switched = false;
-  try { switched = sessionStorage.getItem(OFFER_KEY) === '1'; sessionStorage.removeItem(OFFER_KEY); } catch { /* */ }
+  // The one-time "Back where you left off" note is gone (Ames 2026-11-20:
+  // "We don't need that bar"): a switch just opens where you were.
+  void firstResume;
+  try { sessionStorage.removeItem(OFFER_KEY); } catch { /* */ }
+  // Opening the plain address brings back your view of the dataset by
+  // itself, as a switch does, unless you have started working already.
+  let touched = false;
+  const touch = () => { touched = true; };
+  for (const t of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(t, touch, { capture: true, once: true });
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -237,7 +200,7 @@ export function startViewAutosave(viewer: any, userId: () => string | null) {
     tries++;
     if (userIdOf() && datasetKey()) {
       clearInterval(wait);
-      if (switched || withoutOwnView(hashAtLoad)) void offerRestore(viewer);
+      if (withoutOwnView(hashAtLoad) && !touched) void offerRestore(viewer, () => touched);
     } else if (tries > 120) clearInterval(wait);
   }, 1000);
 }
