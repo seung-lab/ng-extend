@@ -1087,6 +1087,20 @@ function observeSplitMergeTools() {
         // hidden and shows it a moment later, which this used to miss.
         if (/^splitting \d+ sources? from \d+ sinks?|^merged\b|^retrieving root for segment/.test(lower)) el.classList.add('nge-status-taken');
         if (el.style.display === 'none') continue;
+        // Short notes while points are placed ("Supervoxel ... has already
+        // been selected", a point on another cell) show where errors do, for
+        // as long as neuroglancer would have shown them: under the cut bar
+        // they lifted it and the TODO / PROOFREAD legend for a moment (Nseraf,
+        // report 553 reply: "make them appear like the errors do").
+        const note = /has already been selected/.test(lower) ? 7000
+          : /but the supervoxels already selected have root/.test(lower) ? 12000 : 0;
+        if (note) {
+          shownErrorLines.add(el);
+          store.showResult('error', text.replace(/\s*dismiss\s*$/i, '').trim(), note);
+          el.classList.add('nge-status-taken');
+          el.style.display = 'none';
+          continue;
+        }
         if (!/split|merge|multicut|supervoxel|segment/.test(lower)) continue;
         if (!/failed|error/.test(lower)) continue;
         takeErrorLine(el, text.replace(/\s*dismiss\s*$/i, '').trim());

@@ -523,6 +523,11 @@ vec4 sampledColor = texture(uSampler, vTexCoord);
 if (sampledColor.a == 0.0) {
   sampledColor = uBackgroundColor;
 }
+// nge: a see-through slice in 3D (uColorFactor.a < 1) is as solid as the
+// slider says. The slice's own stored alpha is low, and multiplying by it
+// left the slice almost invisible until the slider reached the very top
+// (Ames 2026-11-21). At 1 nothing changes: it is drawn without blending.
+if (uColorFactor.a < 1.0) sampledColor.a = 1.0;
 emit(sampledColor * uColorFactor, 0u);
 `);
     builder.addAttribute('vec4', 'aVertexPosition');
