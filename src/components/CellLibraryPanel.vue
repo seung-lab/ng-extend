@@ -245,6 +245,13 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** Instructions follow the tab you are on (Ames 2026-11-21: in Lost Fragments
+ *  it opened the bipolar cell how to). Lost Fragments has its own, the same
+ *  box its ? opens. */
+function openHowTo() {
+  if (filter.value === 'orphans') { showHowTo.value = false; document.dispatchEvent(new CustomEvent('nge:fragments-howto')); return; }
+  showHowTo.value = !showHowTo.value;
+}
 /** The Available tab's name here: "BC Challenge" on the Retina, where every
  *  cell left to map is a bipolar cell (Ames 2026-11-09). Only a registered
  *  dataset's own config counts; the unregistered fallback is the Retina's. */
@@ -1672,7 +1679,7 @@ import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, fragmentTester, type PlayKind } from '../util/play';
-import { heldFragments, keptFragmentIds, FRAGMENT_LIMIT, refreshHeldFragments, fragmentGroup, openHeldFragment, releaseHeldFragment, draftSteps, bestDraft, bestRoot } from '../util/my_fragments';
+import { heldFragments, keptFragmentIds, FRAGMENT_LIMIT, refreshHeldFragments, fragmentGroup, openHeldFragment, releaseHeldFragment, draftSteps, bestDraft, bestRoot, bestLink, activeFragment, autosaveFragmentView } from '../util/my_fragments';
 import { hasReview, startReview, showReview } from '../sandbox_match';
 import OrbitDot from './OrbitDot.vue';
 import { useOrbitTick } from '../util/orbit_tick';
@@ -2502,6 +2509,18 @@ const castHere = computed(() => canonicalDataset(activeDataset.value || getCurre
 // Lost Fragments: test sites, and admins on live (Ames 2026-11-19: "Admins only").
 /** Your Lost Fragments in My Cells (Ames 2026-11-21: the one she had edited
  *  "was nowhere"): the one open now, and the ones you edited and kept. */
+const fragViewSaving = ref<string | null>(null);
+const fragViewSaved = ref<string | null>(null);
+/** Save view on the fragment you are working on, as on a claimed cell. */
+async function saveFragView(id: string) {
+  if (fragViewSaving.value) return;
+  fragViewSaving.value = id;
+  try {
+    const ok = await autosaveFragmentView(id);
+    if (ok) { fragViewSaved.value = id; setTimeout(() => { if (fragViewSaved.value === id) fragViewSaved.value = null; }, 2500); }
+    else claimError.value = 'Could not save this view. Open the fragment first, then try again.';
+  } finally { fragViewSaving.value = null; }
+}
 const heldShown = computed(() => orphansHere.value && filter.value === 'mine' && !slim.value ? heldFragments.list : []);
 const orphansHere = computed(() => (ON_TEST_SITE || backend.isAdmin || fragmentTester()) && castHere.value);
 watch(() => orphansHere.value && filter.value === 'mine', on => { if (on) void refreshHeldFragments(); }, { immediate: true });
@@ -3885,8 +3904,8 @@ onBeforeUnmount(() => {
               <span v-if="datasetHowTo || datasetInstructionsUrl || datasetCellTypesState || datasetTour" class="nge-cl-headlinks">
               <a v-if="datasetTour" class="nge-cl-howto" href="#" @click.prevent="startDatasetTour(activeDataset)"
                  title="Replay the guided tour of this dataset's cell types">tour</a>
-              <a v-if="datasetHowTo" class="nge-cl-howto" :class="{ 'nge-cl-howto--open': showHowTo }" href="#" @click.prevent="showHowTo = !showHowTo"
-                 title="How to proofread cells in this dataset">instructions</a>
+              <a v-if="datasetHowTo" class="nge-cl-howto" :class="{ 'nge-cl-howto--open': showHowTo }" href="#" @click.prevent="openHowTo"
+                 :title="filter === 'orphans' ? 'How to rescue a Lost Fragment' : 'How to proofread cells in this dataset'">instructions</a>
               <a v-else-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
                  title="How to proofread cells in this dataset (opens in a new tab)">instructions</a>
               <a v-if="datasetCellTypesState" class="nge-cl-howto" href="#" @click.prevent="openCellTypes"
@@ -3906,7 +3925,7 @@ onBeforeUnmount(() => {
               </button>
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
                       title="Cells you have claimed, and cells you completed">
-                My Cells <b>{{ myClaimCount }}</b>
+                My Cells <b>{{ myClaimCount + (orphansHere ? heldFragments.list.length : 0) }}</b>
               </button>
               <button v-if="tabShown('available')" :class="{ active: filter === 'available' }" @click="filter = 'available'"
                       :title="availableIsChallenge ? 'Bipolar cells (BCs) nobody has claimed yet: pick one and map it' : 'Cells nobody has claimed yet'">
@@ -4004,20 +4023,37 @@ onBeforeUnmount(() => {
 
 
         <!-- ═══ HELP TAB ═══ -->
-        <!-- Your Lost Fragments, above My Cells' list (Ames 2026-11-21). -->
-        <div v-if="heldShown.length" class="nge-cl-frags">
-          <div class="nge-cl-frags-head">
-            <span>Lost Fragments</span>
-            <span class="nge-cl-frags-n" :class="{ full: keptFragmentIds.length >= FRAGMENT_LIMIT }"
-                  :title="`You can have ${FRAGMENT_LIMIT} started at once. Complete or skip one to start another.`">{{ keptFragmentIds.length }} of {{ FRAGMENT_LIMIT }} started</span>
-          </div>
-          <div v-for="f in heldShown" :key="f.id" class="nge-cl-frag">
-            <div class="nge-cl-frag-main">
-              <span class="nge-cl-frag-id" :title="bestRoot(f) !== f.id ? `Started as ${f.id}` : undefined">{{ bestRoot(f) }}</span>
-              <span class="nge-cl-frag-meta"><span class="nge-cl-frag-chip">LOST FRAGMENT</span> {{ fragmentGroup(f.id) }}<template v-if="f.kept">, started</template><template v-if="draftSteps(bestDraft(f))">, {{ draftSteps(bestDraft(f)) }} of 3 steps done</template></span>
+        <div v-if="heldShown.length" class="nge-cl-list nge-cl-frag-rows">
+          <!-- Your Lost Fragments, as rows like your claimed cells (Ames
+               2026-11-21: "You need an indicator for lost fragments in my
+               cells", and they save the same way). -->
+          <div v-for="f in heldShown" :key="'frag-' + f.id" class="nge-cl-row nge-cl-row--mine nge-cl-row--frag"
+               :class="{ 'nge-cl-row--current': activeFragment.id === f.id }">
+            <div class="nge-cl-row-left">
+              <span class="nge-cl-pip nge-cl-pip--frag"></span>
+              <div class="nge-cl-row-info">
+                <div class="nge-cl-row-name" @click="copyId(bestRoot(f))" :title="bestRoot(f) !== f.id ? `Click to copy. Updated after edits; it started as ${f.id}` : 'Click to copy ' + f.id">
+                  <span>{{ bestRoot(f) }}</span>
+                  <span v-if="copiedId === bestRoot(f)" class="nge-cl-copied">copied</span>
+                  <span v-if="activeFragment.id === f.id" class="nge-cl-active-pill" title="The Lost Fragment you are working on. Save view saves your view to it.">Active</span>
+                </div>
+                <div class="nge-cl-row-meta">
+                  <span class="nge-cl-badge nge-cl-badge--frag" :title="`A Lost Fragment you hold. You can have ${FRAGMENT_LIMIT} started at once; you have ${keptFragmentIds.length}.`">lost fragment</span>
+                  <span class="nge-cl-claimer nge-cl-frag-group">{{ fragmentGroup(f.id) }}<template v-if="draftSteps(bestDraft(f))"> · {{ draftSteps(bestDraft(f)) }} of 3 steps</template></span>
+                </div>
+              </div>
             </div>
-            <button class="nge-cl-btn" title="Open it in Lost Fragments" @click="openHeldFragment(f.id)">Open</button>
-            <button class="nge-cl-btn nge-cl-btn--release" title="Give it back for anyone to do. Your edits stay in the cell." @click="releaseHeldFragment(f.id)">Skip</button>
+            <div class="nge-cl-row-actions">
+              <button v-if="activeFragment.id === f.id" class="nge-cl-btn nge-cl-btn--saveview" :class="{ 'nge-cl-btn--saved': fragViewSaved === f.id }"
+                      :disabled="fragViewSaving === f.id" @click="saveFragView(f.id)"
+                      title="Save your current view (annotations, Highlight marks, layers, camera) to this fragment. It also saves by itself as you work.">
+                <span v-if="fragViewSaving === f.id" class="nge-cl-spin" />{{ fragViewSaving === f.id ? 'Saving…' : fragViewSaved === f.id ? 'Saved ✓' : 'Save view' }}</button>
+              <span v-else class="nge-cl-saved-at" :title="bestLink(f).at ? `View last saved ${new Date(bestLink(f).at).toLocaleString()}` : 'No view saved yet. It saves by itself a few seconds after you open it.'">{{ bestLink(f).at ? `Saved ${relativeTime(new Date(bestLink(f).at).toISOString())}` : 'Not saved yet' }}</span>
+              <button class="nge-cl-btn nge-cl-btn--jump" :class="{ 'nge-cl-btn--jump-active': activeFragment.id === f.id }" @click="openHeldFragment(f.id)"
+                      :title="activeFragment.id === f.id ? 'Fly back to it' : 'Open it in Lost Fragments, with its saved view'">↗</button>
+              <button class="nge-cl-btn nge-cl-btn--release" @click="releaseHeldFragment(f.id)" title="Give it back for anyone to do. Your edits stay in the cell.">Release</button>
+              <button class="nge-cl-btn nge-cl-btn--complete" @click="openHeldFragment(f.id, true)" title="Open its checklist to complete it">Complete</button>
+            </div>
           </div>
         </div>
         <div v-if="filter === 'help'" class="nge-cl-list">
@@ -4803,7 +4839,7 @@ onBeforeUnmount(() => {
             <span class="nge-cl-error-dismiss">×</span>
           </div>
           <div v-if="backend.loading && filter !== 'mine'" class="nge-cl-more"><span><span class="nge-cl-spin" /> Loading the rest of the cells...</span></div>
-          <div v-if="filteredCells.length === 0 && filter === 'mine' && !slim" class="nge-cl-no-results">
+          <div v-if="filteredCells.length === 0 && filter === 'mine' && !slim && !heldShown.length" class="nge-cl-no-results">
             No claimed cells yet. Claim cells from the All or {{ availableLabel }} tabs!
           </div>
           <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim() && !backend.loading && !slim" class="nge-cl-no-results">
@@ -6452,7 +6488,11 @@ select.nge-cl-complete-type:hover {
 
 /* ── Grouped tab bar ── */
 .nge-cl-filters--grouped { display: flex; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px 8px; background: transparent; }
-/* Your Lost Fragments in My Cells (Ames 2026-11-21). */
+/* Your Lost Fragments in My Cells, as rows like your claims (Ames 2026-11-21). */
+.nge-cl-badge--frag { background: rgba(255, 211, 90, 0.14); border: 1px solid rgba(255, 211, 90, 0.45); color: #ffd35a; }
+.nge-cl-pip--frag { background: #ffd35a; box-shadow: 0 0 6px rgba(255, 211, 90, 0.6); }
+.nge-cl-frag-group { color: #a9c3e0; }
+.nge-cl-frag-rows { flex: none; overflow: visible; padding-bottom: 0; }
 .nge-cl-frags { margin: 4px 8px 8px; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(127, 190, 255, 0.25); background: rgba(74, 158, 255, 0.06); }
 .nge-cl-frags-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font: 600 11px 'Orbitron', Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #8fd6ff; }
 .nge-cl-frags-n { font: 500 12px Inter, sans-serif; letter-spacing: 0; text-transform: none; color: #a9c3e0; }

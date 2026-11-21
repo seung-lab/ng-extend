@@ -129,3 +129,7 @@ alter table public.ew_lost_fragment_claims add column if not exists anchor_sv te
 alter table public.ew_lost_fragment_claims add column if not exists root_id text;
 alter table public.ew_lost_fragment_claims add column if not exists draft jsonb;
 alter table public.ew_lost_fragment_claims add column if not exists draft_at timestamptz;
+
+-- The fragment's saved view, as a claimed cell's working link (Ames 2026-11-21).
+alter table public.ew_lost_fragment_claims add column if not exists working_link text;
+alter table public.ew_lost_fragment_claims add column if not exists view_at timestamptz;
