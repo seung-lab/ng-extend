@@ -49,15 +49,19 @@ async function sb(path, init = {}) {
   return text ? JSON.parse(text) : null;
 }
 
-/** All rows of a query, by keyset on a numeric or text key (never offset). */
-async function all(table, select, filters, key = 'id') {
-  const out = []; let after = null;
+/** All rows of a query, by keyset on a sort key (never offset). The key need
+ *  not be unique (operation ids repeat across datasets, marks share a ts): each
+ *  page starts AT the last key seen and repeated rows are dropped. */
+async function all(table, select, filters, key) {
+  const out = []; const seen = new Set(); let from = null;
   for (;;) {
-    const past = after === null ? '' : `&${key}=gt.${encodeURIComponent(after)}`;
+    const past = from === null ? '' : `&${key}=gte.${encodeURIComponent(from)}`;
     const page = await sb(`${table}?select=${key},${select}&${filters}${past}&order=${key}.asc&limit=1000`);
-    out.push(...page);
+    for (const row of page) { const k = JSON.stringify(row); if (!seen.has(k)) { seen.add(k); out.push(row); } }
     if (page.length < 1000) return out;
-    after = page[page.length - 1][key];
+    const last = page[page.length - 1][key];
+    if (page[0][key] === last) throw new Error(`${table}: over 1000 rows share ${key}=${last}`);
+    from = last;
   }
 }
 
@@ -108,7 +112,7 @@ const pairs = v => Array.isArray(v) ? v.map(e => [String(e[0]), String(e[1])]) :
 async function checkOps() {
   const frozenBefore = new Date(Date.now() - RECHECK_DAYS * 864e5).toISOString();
   const logged = await all('edit_log', 'user_id,operation,dataset,timestamp,op:metadata->>operation_id',
-    `operation=in.(merge,split)&dataset=in.(${Object.keys(GRAPHS).join(',')})&timestamp=gte.${START}`);
+    `operation=in.(merge,split)&dataset=in.(${Object.keys(GRAPHS).join(',')})&timestamp=gte.${START}`, 'id');
   const done = await all('ew_shadow_ops', 'dataset', `ts=lt.${frozenBefore}&stayed=not.is.null`, 'operation_id');
   const frozen = new Set(done.map(d => `${d.dataset}|${d.operation_id}`));
   const todo = logged.filter(e => e.op && /^\d+$/.test(e.op) && !frozen.has(`${e.dataset}|${e.op}`));
@@ -155,8 +159,8 @@ async function checkOps() {
 }
 
 async function sizeCells() {
-  const marks = await all('ew_cell_marks', 'dataset,rid,ts',
-    `operation=neq.unmark_complete&dataset=in.(${Object.keys(GRAPHS).join(',')})&ts=gte.${START}`);
+  const marks = await all('ew_cell_marks', 'user_id,cell,dataset,rid',
+    `operation=neq.unmark_complete&dataset=in.(${Object.keys(GRAPHS).join(',')})&ts=gte.${START}`, 'ts');
   const have = new Set((await all('ew_shadow_cell_sizes', 'dataset', `done_at=gte.${START}`, 'root_id')).map(r => `${r.dataset}|${r.root_id}`));
   const want = new Map();
   for (const m of marks) {
