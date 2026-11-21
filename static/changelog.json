@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T17:34:00Z",
+      "title": "2D detail for every dataset",
+      "items": [
+        "In Settings, under 2D images, the new Set it for other datasets list lets you choose the image detail for each dataset without switching to it first."
+      ]
+    },
+    {
       "at": "2026-11-21T15:58:00Z",
       "title": "Later, for Lost Fragments",
       "items": [
