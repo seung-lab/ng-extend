@@ -83,6 +83,7 @@ const RETINA_LAYERS = [
     }
     const u = r.request().url();
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
+    if (/ewSecureWrite/.test(u)) calls.push({ secure: input.action, row: input.row });
     if (/ewSheetSync/.test(u)) {
       calls.push({ action: input.action, quest: input.quest, segmentId: input.segmentId, status: input.status, splitMerged: input.splitMerged, link: input.link, notes: input.notes, hasToken: !!input.token });
       const hit = ROWS.find(x => x.segmentId === String(input.segmentId));
@@ -227,11 +228,17 @@ const RETINA_LAYERS = [
     await page.evaluate(() => document.querySelector('.nge-mg-btn--go').click());
     await page.waitForTimeout(800);
     ok(/still in one cell/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg-pair')), 'Check: still merged');
+    const marks = () => calls.filter(c => c.secure === 'activity.log' && c.row && c.row.operation === 'mark_complete');
+    ok(marks().length === 0, 'a Check that finds it still merged counts nothing');
     await shot('3-stage2');
     gliaRoots = {'40856,35011,2024': '720575940000000001', '39650,34032,421': '720575940000000002'};
     await page.evaluate(() => document.querySelector('.nge-mg-btn--go').click());
     await page.waitForTimeout(800);
     ok(/Split! F560 and E758 are two cells now/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg')) && s.splits.length === 1, 'Check: split recorded');
+    const m = marks();
+    ok(m.length === 1 && m[0].row.metadata.root_id === '720575940000000001' && m[0].row.segment_after === '720575940000000001' && m[0].row.metadata.muller_glia_split && m[0].row.dataset === 'stroeh_mouse_retina',
+      'the split counts as one completed cell ' + JSON.stringify(m.map(x => x.row)));
+    ok(/counts as a completed cell/.test(await page.evaluate(sel => (document.querySelector(sel) || {}).innerText || '', '.nge-mg')), 'the player is told it counts');
     await shot('4-split');
     // Play on the Müller card: the slim yes/no bar (Ames 2026-11-20).
     const answersBefore = calls.filter(c => c.glia === 'glia.answer').length;

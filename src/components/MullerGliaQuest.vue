@@ -14,7 +14,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { currentSegLayer } from '../datasets';
-import { useProofreadingBackendStore } from '../store';
+import { useProofreadingBackendStore, useUserStatsStore } from '../store';
 import QuestInstructions from './QuestInstructions.vue';
 import EditableText from './EditableText.vue';
 import imgMullerGlia from '../images/muller-glia.jpg';
@@ -171,6 +171,22 @@ async function openStage2() {
   catch (e: any) { error.value = e?.message || String(e); }
 }
 function openPair(p: GliaPair, i = 0) { pairOpen.value = p.segmentId; show(p.segmentId, p.glia[i].at); }
+/** A checked split counts as one completed cell (Ames 2026-11-21: "splitting
+ *  glia should count as a cell complete"): the same mark_complete row Lost
+ *  Fragments' Complete logs, on the first glia's new root. Only the player
+ *  whose Check found it split first. */
+function countCompleted(p: GliaPair, roots: (string | null)[]) {
+  try {
+    const root = roots[0];
+    if (!root || !backend.userId) return;
+    const at = p.glia[0].at.split(',').map(v => v.trim()).join(', ');
+    backend.logEdit({ operation: 'mark_complete', segment_after: root, coordinates: at,
+      metadata: { root_id: root, muller_glia_split: p.segmentId } });
+    const stats = useUserStatsStore();
+    stats.setStats({ cellsSubmitted: stats.stats.cellsSubmitted + 1 });
+    stats.logDailyCellComplete();
+  } catch { /* the split is saved either way */ }
+}
 async function check(p: GliaPair) {
   checking.value = p.segmentId; error.value = ''; message.value = ''; pairNote.value[p.segmentId] = '';
   try {
@@ -178,9 +194,10 @@ async function check(p: GliaPair) {
     if (r.split) {
       pairs.value = pairs.value.filter(x => x.segmentId !== p.segmentId);
       pairOpen.value = '';
+      if (!r.already) countCompleted(p, r.roots);
       if (!r.already && status.value) { status.value.split += 1; status.value.splitAll += 1; }
       message.value = r.already ? `Someone already split ${p.glia.map(g => g.index).join(' + ')}. On to the next one!`
-        : `Split! ${p.glia.map(g => g.index).join(' and ')} are ${p.glia.length === 2 ? 'two' : 'separate'} cells now.`;
+        : `Split! ${p.glia.map(g => g.index).join(' and ')} are ${p.glia.length === 2 ? 'two' : 'separate'} cells now. That counts as a completed cell.`;
     } else if (r.unreadable) {
       pairNote.value[p.segmentId] = 'Could not read the cell at one of the somas. Try again in a moment.';
     } else {
@@ -285,7 +302,7 @@ async function check(p: GliaPair) {
         </div>
         <div v-if="!status.unlocked" class="nge-mg-empty">Stage 2 opens after {{ status.unlockAfter }} answers in Stage 1. You have {{ status.answered }}.</div>
         <template v-else>
-          <div class="nge-mg-sub">Each of these is one segment holding two or more Müller glia that grew together. Cut them apart so each soma has its own cell.</div>
+          <div class="nge-mg-sub">Each of these is one segment holding two or more Müller glia that grew together. Cut them apart so each soma has its own cell. Each split you finish counts as a completed cell.</div>
           <EditableText text-key="quest.muller_glia.split_steps" :original="SPLIT_STEPS" list-class="nge-mg-steps" />
           <div class="nge-mg-section">Merged glia <span class="nge-mg-count">{{ pairs.length }}</span></div>
           <div v-if="pairsLoaded && !pairs.length" class="nge-mg-empty">Every merged pair is split. Thank you!</div>
