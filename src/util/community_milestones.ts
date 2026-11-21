@@ -13,9 +13,11 @@
  * notification brings it back (#nge-milestone=cells:5000), with no confetti.
  */
 import { ref } from 'vue';
-import { takeTurn } from './popup_queue';
+import { popupBusy, takeTurn } from './popup_queue';
 
-export type Track = 'cells' | 'edits' | 'players' | 'fragments';
+export type Track = 'cells' | 'edits' | 'players' | 'fragments' | 'summary';
+/** 'summary' is a one-off: everything Pyr has done so far, sent once as a
+ *  test of the celebration (Ames 2026-11-20). Its value is just an id. */
 
 /** The highest milestone at or below n, or 0 for none yet. Matches
  *  ew_community_milestone_at in the SQL. */
@@ -34,19 +36,29 @@ export function nextMilestoneAfter(track: Track, n: number): number {
 }
 
 const fmt = (n: number) => n.toLocaleString('en-US');
+/** The Pyr so far summary: the three community counts, as read. */
+export function summaryStats(): { n: number; label: string }[] {
+  const c = communityCounts.value, out: { n: number; label: string }[] = [];
+  if (c.cells != null) out.push({ n: c.cells, label: 'cells completed' });
+  if (c.edits != null) out.push({ n: c.edits, label: 'edits' });
+  if (c.players != null) out.push({ n: c.players, label: 'players' });
+  return out;
+}
 /** The line under CONGRATS! The server's notification uses the same words. */
 export function milestoneLine(track: Track, m: number): string {
   if (track === 'cells') return `Together we just completed ${fmt(m)} cells.`;
   if (track === 'edits') return `Together we just made ${fmt(m)} edits.`;
   if (track === 'players') return `Together we are now ${fmt(m)} players strong.`;
+  if (track === 'summary') return 'Everything Pyr has done so far, together.';
   return `Together we just completed ${fmt(m)} Lost Fragments.`;
 }
 /** The line split around the number, for the banner to light it up. */
 export function milestoneParts(track: Track, m: number): [string, string, string] {
   const line = milestoneLine(track, m), num = fmt(m), at = line.indexOf(num);
+  if (track === 'summary' || at < 0) return [line, '', ''];
   return [line.slice(0, at), num, line.slice(at + num.length)];
 }
-export const TRACK_NAME: Record<Track, string> = { cells: 'cells', edits: 'edits', players: 'players', fragments: 'Lost Fragments' };
+export const TRACK_NAME: Record<Track, string> = { cells: 'cells', edits: 'edits', players: 'players', fragments: 'Lost Fragments', summary: 'Pyr so far' };
 
 /** Counts per track, once read. */
 export const communityCounts = ref<Partial<Record<Track, number>>>({});
@@ -76,24 +88,46 @@ export function markSeen(track: Track, value: number) {
   } catch { /* private mode */ }
 }
 
-/** Ask for a celebration with confetti, unless this browser has had it or
- *  another is up. */
+/** Play a celebration on its own, unless this browser has had it. Nothing
+ *  queues (Ames 2026-11-20: "we don't want them to queue up"): one that comes
+ *  while another is up counts as seen and waits in its notification. */
 export function celebrate(track: Track, value: number) {
-  if (value <= 0 || value <= seenUpTo(track) || celebration.value) return;
-  // One popup at a time (popup_queue.ts).
-  void takeTurn('community-milestone', () => !!celebration.value && celebration.value.track === track && celebration.value.value === value)
-    .then(ok => { if (ok && !celebration.value && value > seenUpTo(track)) celebration.value = { track, value, confetti: true }; });
+  if (value <= 0 || value <= seenUpTo(track)) return;
+  // Something else is up (a milestone, or any other popup: popup_queue.ts):
+  // this one counts as seen and waits in its notification, never in line.
+  if (celebration.value || popupBusy()) { markSeen(track, value); return; }
+  void takeTurn('community-milestone', () => !!celebration.value && celebration.value.track === track && celebration.value.value === value, { maxWaitMs: 3000 })
+    .then(ok => {
+      if (ok && !celebration.value) celebration.value = { track, value, confetti: true };
+      else markSeen(track, value);
+    });
 }
-/** Bring one back from its notification: no confetti, no Nurro. */
+/** Play one from its notification, the whole celebration (Ames 2026-11-20:
+ *  "If they click it, then it should play"). */
 export function reopen(track: Track, value: number) {
-  celebration.value = { track, value, confetti: false };
+  celebration.value = { track, value, confetti: true };
 }
 
 // ── Reading the server ──────────────────────────────────────────────────────
-/** A milestone older than this is not celebrated on a first visit; its
- *  notification is still there. */
-const FRESH_MS = 14 * 24 * 3600 * 1000;
+/** A milestone plays by itself only for players here within 7 days of it;
+ *  after that it waits in their notifications and plays when clicked (Ames
+ *  2026-11-20: "it should not autoplay ... they need to be on the site within
+ *  7 days of the most recent notification"). */
+const FRESH_MS = 7 * 24 * 3600 * 1000;
 interface MilestoneRow { track: string; value: number; reached_at: string; banner: boolean; }
+
+/** Just the counts, signed in or not (community_progress is readable by
+ *  anyone), for the Pyr so far summary when it shows before sign-in. */
+export async function loadCommunityCounts(): Promise<void> {
+  const { supabase } = await import('../supabase');
+  const prog = await supabase.from('community_progress').select('track,count');
+  if (prog.error || !prog.data) return;
+  const next = { ...communityCounts.value };
+  for (const r of prog.data as { track: string; count: number }[]) {
+    if (r.track === 'cells' || r.track === 'edits' || r.track === 'players') next[r.track] = r.count;
+  }
+  communityCounts.value = next;
+}
 
 export async function loadCommunityMilestones(): Promise<void> {
   const { supabase } = await import('../supabase');
@@ -110,12 +144,15 @@ export async function loadCommunityMilestones(): Promise<void> {
     communityCounts.value = next;
   }
   if (!ms.error && ms.data) {
-    // The newest one with a banner this browser has not had.
-    for (const r of ms.data as MilestoneRow[]) {
-      const t = r.track as Track;
-      if (!r.banner || !['cells', 'edits', 'players'].includes(t)) continue;
-      if (r.value > seenUpTo(t)) { celebrate(t, r.value); break; }
-    }
+    // Only the newest one with a banner plays by itself, and only if this
+    // browser has not had it. Every other recent one counts as seen, so none
+    // queue up behind it; their notification is still there.
+    const rows = (ms.data as MilestoneRow[]).filter(r => ['cells', 'edits', 'players', 'summary'].includes(r.track));
+    // The one that plays counts as seen when its X is clicked, so a reload
+    // before that shows it again.
+    const newest = rows.find(r => r.banner);
+    for (const r of rows) if (r !== newest && !(newest && r.track === newest.track && r.value >= newest.value)) markSeen(r.track as Track, r.value);
+    if (newest) celebrate(newest.track as Track, newest.value);
   }
 }
 

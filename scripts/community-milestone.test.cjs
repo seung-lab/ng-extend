@@ -6,7 +6,10 @@
 //   a fresh cells 5,000 milestone (banner true) shows the banner once, with
 //     CONGRATS!, the line, the countdown from the live count, and Nurro flying;
 //   the X closes it and it does not come back on reload;
-//   its notification brings it back, with no Nurro;
+//   its notification plays it again when clicked, Nurro too; only the newest
+//     milestone notification stays in the feed;
+//   a milestone over 7 days old does not play by itself;
+//   two recent milestones never queue: one plays, closing it brings no other;
 //   a milestone with banner false (inside the week) never pops up;
 //   a Lost Fragments count over 500 shows the same banner for Lost Fragments;
 //   Dataset Stats shows the next milestone.
@@ -22,6 +25,8 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
 
 const now = () => new Date().toISOString();
 const PROGRESS = [{ track: 'cells', count: 5012 }, { track: 'edits', count: 61234 }, { track: 'players', count: 58 }];
+const OLD_NOTE = { id: 990000, title: '🎊 Together we are 100 players strong', target_type: 'all', target_id: null, image_url: null, thumbnail_url: null,
+  body: 'Congrats! Together we are now 100 players strong. A Pyr community milestone.\n\n[See the celebration again](#nge-milestone=players:100)' };
 const NOTE = { id: 990001, title: '🎊 Together we completed 5,000 cells', target_type: 'all', target_id: null, image_url: null, thumbnail_url: null,
   body: 'Congrats! Together we just completed 5,000 cells. A Pyr community milestone. 4,988 to go until 10,000.\n\n[See the celebration again](#nge-milestone=cells:5000)' };
 
@@ -63,7 +68,16 @@ async function run(browser, opts) {
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate/');
     const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: apps };
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
-    try { localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1'); } catch (e) {}
+    try { localStorage.setItem('nge-cilia-training-autoplayed', '1'); localStorage.setItem('pyr-intro-seen', '1');
+      // The Datasets Unlocked day flyby (ChatPanel, Nov 20 only) would count as a second Nurro.
+      localStorage.setItem('nge-nurro-flyby-at', String(Date.now())); } catch (e) {}
+    // When the banner first shows and when each Nurro flies, from page start.
+    window.__nurroAt = []; window.__cmAt = null;
+    new MutationObserver(() => {
+      if (window.__cmAt == null && document.querySelector('.nge-cm')) window.__cmAt = performance.now();
+    }).observe(document, { childList: true, subtree: true });
+    new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.tagName === 'IMG' && n.style && n.style.zIndex === '99999') window.__nurroAt.push(performance.now()); })
+      .observe(document, { childList: true, subtree: true });
   });
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
@@ -75,7 +89,7 @@ async function run(browser, opts) {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     // Lost Fragments' count: 512 done by everyone.
     if (input.action === 'fragments.list') return r.fulfill(json({ ok: true, data: { mine: [], others: Array.from({ length: opts.fragments || 0 }, (_, i) => 'f' + i) } }));
-    if (input.table === 'notifications' && opts.notes) return r.fulfill(json({ status: 200, ok: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts.notes.map(n => ({ ...n, send_at: now(), created_at: now() }))) }));
+    if (input.table === 'notifications' && opts.notes) return r.fulfill(json({ status: 200, ok: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts.notes.map((n, i) => ({ ...n, send_at: new Date(Date.now() - i * 3600e3).toISOString(), created_at: now() }))) }));
     const rows = input.table === 'users' ? [{ id: 'test-user', display_name: 'Test Player', username: 'testplayer', middleauth_email: 't@example.org' }] : [];
     return r.fulfill(json({ status: 200, ok: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(/pgrst\.object/.test(String(input.accept || '')) ? (rows[0] || null) : rows), data: { invited: true } }));
   });
@@ -96,14 +110,12 @@ async function run(browser, opts) {
   try {
     // ── 1. A fresh milestone with its banner ──
     {
-      const { context, page, asked } = await run(browser, { milestones: [{ track: 'cells', value: 5000, reached_at: now(), banner: true }], notes: [NOTE] });
+      const { context, page, asked } = await run(browser, { milestones: [{ track: 'cells', value: 5000, reached_at: now(), banner: true }], notes: [NOTE, OLD_NOTE] });
       await open(context, page);
       await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
-      const nurro0 = await page.evaluate(() => window.__nurro);
       check('server tables read', asked.progress > 0 && asked.milestones > 0, asked);
-      // Nurro waits for CONGRATS! to finish building in.
+      // Nurro waits for CONGRATS! to finish building in (2.7 s after the banner).
       await page.waitForTimeout(1800);
-      check('Nurro not before CONGRATS! is in', (await page.evaluate(() => window.__nurro)) === nurro0, await page.evaluate(() => window.__nurro));
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-building.png` });
       await page.waitForTimeout(1600);
       const b = await banner(page);
@@ -113,7 +125,9 @@ async function run(browser, opts) {
       check('countdown from the live count', b && b.next === '4,988 to go until 10,000.', b && b.next);
       check('hologram frame drawn', b && b.frame);
       check('centered on the screen', b && Math.abs(b.center - b.vw / 2) <= 2, b && [b.center, b.vw]);
-      check('Nurro flew across after it', (await page.evaluate(() => window.__nurro)) === nurro0 + 1, await page.evaluate(() => window.__nurro));
+      const fl = await page.evaluate(() => ({ at: window.__cmAt, nurro: window.__nurroAt.map(t => Math.round(t - window.__cmAt)) }));
+      check('Nurro not before CONGRATS! is in', fl.at != null && fl.nurro.every(d => d >= 2400), fl);
+      check('Nurro flew across after it, once', fl.nurro.filter(d => d >= 2400 && d <= 4500).length === 1, fl);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-banner.png` });
       await page.click('.nge-cm-close');
       await page.waitForTimeout(1000);
@@ -141,13 +155,15 @@ async function run(browser, opts) {
       console.log('  notes in store', await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend').notifications.length));
       const card = await page.evaluate(() => { const c = [...document.querySelectorAll('.nge-notif-card')].find(c => /5,000 cells/.test(c.textContent)); return c ? { milestone: c.classList.contains('nge-notif-card--milestone'), text: c.textContent.replace(/\s+/g, ' ').trim() } : null; });
       check('notification card, milestone style', card && card.milestone, card);
+      const msCards = await page.evaluate(() => [...document.querySelectorAll('.nge-notif-card')].filter(c => /Together we/.test(c.textContent)).length);
+      check('only the newest milestone notification is kept', msCards === 1, msCards);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-notification.png` });
       await page.evaluate(() => [...document.querySelectorAll('.nge-notif-card')].find(c => /5,000 cells/.test(c.textContent)).click());
-      await page.waitForTimeout(3400);
+      await page.waitForTimeout(3600);
       const back = await banner(page);
       check('notification brings it back', back && back.sub === 'Together we just completed 5,000 cells.', back);
       check('panel closed behind it', await page.evaluate(() => { const p = document.querySelector('.nge-notif-panel'); return !p || p.offsetParent === null; }));
-      check('no Nurro the second time', (await page.evaluate(() => window.__nurro)) === nurroBefore);
+      check('clicking it plays it, Nurro too', (await page.evaluate(() => window.__nurro)) === nurroBefore + 1, await page.evaluate(() => window.__nurro));
       await page.click('.nge-cm-close');
       await page.waitForTimeout(500);
 
@@ -155,6 +171,34 @@ async function run(browser, opts) {
       await open(context, page);
       await page.waitForTimeout(3000);
       check('not again after reload', !(await banner(page)));
+      await context.close();
+    }
+    // ── 1b. Over 7 days old: waits in the notification, does not play ──
+    {
+      const { context, page } = await run(browser, { milestones: [{ track: 'cells', value: 5000, reached_at: new Date(Date.now() - 8 * 864e5).toISOString(), banner: true }] });
+      // The real table is asked for the last 7 days only; answer what it would.
+      await context.route(/\/community_milestones/, r => { const u = decodeURIComponent(r.request().url()); const since = (u.match(/reached_at=gte\.([^&]+)/) || [])[1]; return r.fulfill(json(since && new Date(since) > new Date(Date.now() - 8 * 864e5) ? [] : [{ track: 'cells', value: 5000, reached_at: new Date(Date.now() - 8 * 864e5).toISOString(), banner: true }])); });
+      await open(context, page);
+      await page.waitForTimeout(5000);
+      check('over 7 days old does not play by itself', !(await banner(page)), await banner(page));
+      await context.close();
+    }
+    // ── 1c. Two recent ones: one plays, nothing queues behind it ──
+    {
+      const { context, page } = await run(browser, { milestones: [
+        { track: 'edits', value: 100000, reached_at: now(), banner: true },
+        { track: 'cells', value: 5000, reached_at: new Date(Date.now() - 3 * 864e5).toISOString(), banner: true }] });
+      await open(context, page);
+      await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      const first = await banner(page);
+      check('the newest plays', first && first.sub === 'Together we just made 100,000 edits.', first && first.sub);
+      await page.click('.nge-cm-close');
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      // Read the tables again, as the 20 minute timer does.
+      await open(context, page);
+      await page.waitForTimeout(4000);
+      check('the older one does not queue up after', !(await banner(page)));
       await context.close();
     }
     // ── 2. A milestone inside the week (banner false): notification only ──
@@ -187,6 +231,46 @@ async function run(browser, opts) {
       check('fits a phone', fit && fit.l >= 0 && fit.r <= fit.vw && fit.cl >= fit.l && fit.cr <= fit.r, fit);
       check('players line', fit && fit.sub === 'Together we are now 100 players strong.', fit && fit.sub);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-phone.png` });
+      await context.close();
+    }
+    // ── 5. The one-off Pyr so far summary, sent as a test ──
+    for (const width of [1400, 390]) {
+      const SUM = { id: 990002, title: '🎊 Pyr so far: thank you, everyone', target_type: 'all', target_id: null, image_url: null, thumbnail_url: null,
+        body: 'Congrats!\n\n[See the celebration again](#nge-milestone=summary:1)' };
+      const { context, page } = await run(browser, { milestones: [{ track: 'summary', value: 1, reached_at: now(), banner: true }], notes: [SUM, NOTE] });
+      await page.setViewportSize({ width, height: 800 });
+      await open(context, page);
+      await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(3600);
+      const sm = await page.evaluate(() => { const b = document.querySelector('.nge-cm'); if (!b) return null; const r = b.getBoundingClientRect();
+        return { sub: b.querySelector('.nge-cm-sofar').textContent.trim(), stats: [...b.querySelectorAll('.nge-cm-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+          note: (b.querySelector('.nge-cm-note') || {}).textContent, bars: b.querySelectorAll('.nge-cm-bar').length, l: r.left, r: r.right, vw: innerWidth,
+          over: [...b.querySelectorAll('.nge-cm-stat')].some(e => e.scrollWidth > e.clientWidth + 1) }; });
+      check(`summary shows (${width})`, sm && sm.sub === 'So far, together', sm);
+      check(`summary numbers (${width})`, sm && sm.stats.join('|') === '5,012cells completed|61,234edits|58players', sm && sm.stats);
+      check(`summary says it is a test (${width})`, sm && sm.note === 'Test Celebration. More confetti is coming as we reach new community milestones!' && sm.bars === 0, sm && sm.note);
+      check(`summary fits (${width})`, sm && sm.l >= 0 && sm.r <= sm.vw && !sm.over, sm);
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-summary-${width}.png` });
+      if (width === 1400) {
+        await page.click('.nge-cm-close');
+        await page.waitForTimeout(800);
+        check('summary closes, seen', !(await banner(page)) && JSON.parse(await page.evaluate(() => localStorage.getItem('nge_community_milestones_seen_v1')) || '{}').summary === 1);
+        const before = await page.evaluate(() => window.__nurroAt.length);
+        await page.evaluate(async () => {
+          const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend');
+          await pb.loadNotifications();
+          document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: {} }));
+        });
+        await page.waitForTimeout(1500);
+        const cards = await page.evaluate(() => [...document.querySelectorAll('.nge-notif-card')].filter(c => /#|Pyr so far|Together we/.test(c.textContent)).map(c => c.textContent.replace(/\s+/g, ' ').trim().slice(0, 60)));
+        check('summary is the one milestone notification kept', cards.length === 1 && /Pyr so far/.test(cards[0]), cards);
+        await page.evaluate(() => { const c = [...document.querySelectorAll('.nge-notif-card')].find(c => /Pyr so far/.test(c.textContent)); c && c.click(); });
+        await page.waitForTimeout(800);
+        await page.evaluate(() => { const a = [...document.querySelectorAll('a')].find(a => /nge-milestone=summary/.test(a.getAttribute('href') || '')); a && a.click(); });
+        await page.waitForTimeout(3600);
+        const again = await page.evaluate(() => { const b = document.querySelector('.nge-cm'); return b ? b.querySelectorAll('.nge-cm-stat').length : 0; });
+        check('clicking it plays the summary again, Nurro too', again === 3 && (await page.evaluate(() => window.__nurroAt.length)) === before + 1, again);
+      }
       await context.close();
     }
   } finally {

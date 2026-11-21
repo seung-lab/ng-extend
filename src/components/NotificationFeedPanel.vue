@@ -385,10 +385,10 @@ function isBadgeNotification(notif: any): boolean {
 }
 
 /** A community milestone's notification (supabase-community-milestones.sql)
- *  carries #nge-milestone=cells:5000: it brings the banner back, without the
- *  confetti (Ames 2026-11-20). */
+ *  carries #nge-milestone=cells:5000: a click plays the celebration again
+ *  (Ames 2026-11-20). */
 function milestoneFrom(text: string): { track: string; value: number } | null {
-  const m = String(text || '').match(/#nge-milestone=(cells|edits|players|fragments):(\d{1,9})/);
+  const m = String(text || '').match(/#nge-milestone=(cells|edits|players|fragments|summary):(\d{1,9})/);
   return m ? { track: m[1], value: Number(m[2]) } : null;
 }
 function openMilestone(ms: { track: string; value: number }) {
@@ -401,6 +401,14 @@ function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
   const ms = milestoneFrom(notif.body);
   if (ms) { openMilestone(ms); return; }
+  // A Play announcement with a picture opens full screen, as it did on
+  // arrival (PlayTakeover.vue; Ames 2026-11-20: "no notification that has
+  // the really cool pop-up").
+  if ((notif.image_url || notif.thumbnail_url) && String(notif.body || '').includes('#nge-play=lost-fragments')) {
+    document.dispatchEvent(new CustomEvent('nge:play-takeover', { detail: { notif } }));
+    emit('hide');
+    return;
+  }
   // A hunter's report: the reports queue, the oldest open one first, already there (HuntReportCard).
   const rep = kindOf(notif) === 'hunt' ? String(notif.body || '').match(/#nge-hunt-report=(\d+)/) : null;
   if (rep) {

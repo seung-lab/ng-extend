@@ -17,7 +17,9 @@ import { AUTUMN, leafShapes, pick } from '../util/leaf_shapes';
 
 /** inline: stay where it is placed instead of covering the whole page, so a
  *  panel can sit in front of it (the Champions cards, Ames 2026-10-26). */
-const props = defineProps<{ inline?: boolean }>();
+const props = defineProps<{ inline?: boolean; behind?: boolean }>();
+/* behind: just under the community milestone banner (z 10600), so a burst
+   from its middle comes out from behind the box (Ames 2026-11-20). */
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
 let animFrame = 0;
@@ -61,6 +63,11 @@ interface Particle {
   fadeRate: number;
   shape: 'rect' | 'circle' | 'star' | 'leaf';
   leaf?: Path2D;
+  /** Fireworks: a rocket climbs to its height and bursts into sparks. */
+  kind?: 'rocket' | 'spark';
+  px?: number; py?: number;
+  burstY?: number;
+  colors?: string[];
 }
 
 /** Shades of one colour, drawn fresh each time: a random hue, then seven
@@ -123,6 +130,44 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
   }
   ctx.closePath();
   ctx.fill();
+}
+
+// ── Fireworks (Ames 2026-11-20: "make it have like fireworks") ─────────────
+function launchRocket(x: number, burstY: number, colors: string[]) {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  const y = canvas.height + 10;
+  // Fast enough to reach burstY: v^2 = 2 g h, with a little to spare.
+  const g = 0.16, vy = -Math.sqrt(2 * g * Math.max(80, y - burstY)) * 1.04;
+  particles.push({ kind: 'rocket', x, y, px: x, py: y, vx: (Math.random() - 0.5) * 1.2, vy, w: 3, h: 3,
+    color: '#fff4c8', rotation: 0, rotSpeed: 0, gravity: g, drag: 1, opacity: 1, fadeRate: 0, shape: 'circle', burstY, colors });
+}
+function burst(x: number, y: number, colors: string[]) {
+  const n = 46 + Math.floor(Math.random() * 18);
+  const ring = Math.random() < 0.4;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.15;
+    const sp = ring ? 4.6 + Math.random() * 0.6 : 1.5 + Math.random() * 4.5;
+    particles.push({ kind: 'spark', x, y, px: x, py: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, w: 2.4, h: 2.4,
+      color: colors[Math.floor(Math.random() * colors.length)], rotation: 0, rotSpeed: 0,
+      gravity: 0.045, drag: 0.965, opacity: 1, fadeRate: 0.011 + Math.random() * 0.008, shape: 'circle' });
+  }
+}
+/**
+ * Fireworks: rockets climb from the bottom of the screen and burst.
+ * @param shots - where each one bursts (CSS pixels) and when (ms from now)
+ */
+function fireworks(palette: string = 'champions', shots: { x: number; y: number; at?: number }[] = []) {
+  if (isCalm()) return;
+  resizeCanvas();
+  underUI.value = false;
+  const colors = PALETTES[palette] || PALETTES.default;
+  for (const s of shots) {
+    setTimeout(() => {
+      launchRocket(s.x, s.y, colors);
+      if (!animFrame) animFrame = requestAnimationFrame(animateSparkles);
+    }, s.at || 0);
+  }
 }
 
 /* animate() removed — animateSparkles() handles both confetti and sparkles */
@@ -244,9 +289,41 @@ function animateSparkles() {
   }
 
   // Also render confetti particles if any
+  const born: Particle[] = [];
   for (const p of particles) {
     if (p.opacity <= 0) continue;
     alive = true;
+    if (p.kind) {
+      p.px = p.x; p.py = p.y;
+      p.vy += p.gravity; p.vx *= p.drag; p.vy *= p.drag;
+      p.x += p.vx; p.y += p.vy;
+      if (p.kind === 'rocket') {
+        // At the top of its climb, it bursts.
+        if (p.vy >= -0.6 || p.y <= (p.burstY ?? 0)) {
+          p.opacity = 0;
+          const keep = particles; particles = born; burst(p.x, p.y, p.colors || PALETTES.champions); particles = keep;
+          continue;
+        }
+      } else {
+        p.opacity -= p.fadeRate;
+      }
+      const a = Math.max(0, p.opacity);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = p.kind === 'rocket' ? 2 : 1.6;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = p.kind === 'rocket' ? 10 : 6;
+      // A short tail behind it.
+      const k = p.kind === 'rocket' ? 3 : 2.2;
+      ctx.beginPath(); ctx.moveTo(p.x - (p.x - p.px!) * k, p.y - (p.y - p.py!) * k); ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = a * 0.9;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.kind === 'rocket' ? 1.8 : 1.1, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      continue;
+    }
     p.vy += p.gravity;
     p.vx *= p.drag;
     p.vy *= p.drag;
@@ -273,6 +350,9 @@ function animateSparkles() {
     ctx.restore();
   }
 
+  if (born.length) { particles.push(...born); alive = true; }
+  // Drop the finished ones, so a long show does not slow down.
+  if (particles.length > 400) particles = particles.filter(p => p.opacity > 0);
   if (alive) {
     animFrame = requestAnimationFrame(animateSparkles);
   } else {
@@ -340,7 +420,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', resizeCanvas);
 });
 
-defineExpose({ trigger, sparkle });
+defineExpose({ trigger, sparkle, fireworks });
 </script>
 
 <template>
@@ -348,7 +428,7 @@ defineExpose({ trigger, sparkle });
     <canvas
       ref="canvasRef"
       class="nge-confetti-canvas"
-      :class="{ 'nge-confetti-canvas--under': underUI, 'nge-confetti-canvas--inline': props.inline }"
+      :class="{ 'nge-confetti-canvas--under': underUI, 'nge-confetti-canvas--inline': props.inline, 'nge-confetti-canvas--behind': props.behind }"
     />
   </Teleport>
 </template>
@@ -364,6 +444,8 @@ defineExpose({ trigger, sparkle });
 }
 /* Sparkle-only runs: below the mobile welcome sheet (10500), above the rest. */
 .nge-confetti-canvas--under { z-index: 10400; }
+/* Behind the community milestone banner (10600). */
+.nge-confetti-canvas--behind { z-index: 10590; }
 /* Inline: the bottom layer of whatever holds it. */
 .nge-confetti-canvas--inline { z-index: 0; }
 </style>

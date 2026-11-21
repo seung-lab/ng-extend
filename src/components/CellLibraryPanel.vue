@@ -1672,6 +1672,7 @@ import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import { play, takePlayEnter, askEnter, startPlay, stopPlay, choosePlay, datasetHere, fragmentTester, type PlayKind } from '../util/play';
+import { heldFragments, keptFragmentIds, FRAGMENT_LIMIT, refreshHeldFragments, fragmentGroup, openHeldFragment, releaseHeldFragment } from '../util/my_fragments';
 import { hasReview, startReview, showReview } from '../sandbox_match';
 import OrbitDot from './OrbitDot.vue';
 import { useOrbitTick } from '../util/orbit_tick';
@@ -2393,6 +2394,11 @@ function onOpenAsked(e: Event) {
   playIfAsked();
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
+/** Open on a Lost Fragment in My Cells: to the Lost Fragments tab, which
+ *  opens it (util/my_fragments.ts pendingFragment). */
+function onOpenFragment() { filter.value = 'orphans'; if (slim.value) expandFull(); }
+onMounted(() => document.addEventListener('nge:open-fragment', onOpenFragment));
+onBeforeUnmount(() => document.removeEventListener('nge:open-fragment', onOpenFragment));
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
 function isOnDataset(raw: string | undefined | null): boolean {
   return !raw || canonicalDataset(raw) === canonicalDataset(getCurrentDatasetName() || activeDataset.value);
@@ -2493,7 +2499,11 @@ const questsHere = computed(() => canonicalDataset(activeDataset.value || getCur
 const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 /** Orphan segments mockup: Retina, and never on the live site until Ames says so. */
 // Lost Fragments: test sites, and admins on live (Ames 2026-11-19: "Admins only").
+/** Your Lost Fragments in My Cells (Ames 2026-11-21: the one she had edited
+ *  "was nowhere"): the one open now, and the ones you edited and kept. */
+const heldShown = computed(() => orphansHere.value && filter.value === 'mine' && !slim.value ? heldFragments.list : []);
 const orphansHere = computed(() => (ON_TEST_SITE || backend.isAdmin || fragmentTester()) && castHere.value);
+watch(() => orphansHere.value && filter.value === 'mine', on => { if (on) void refreshHeldFragments(); }, { immediate: true });
 // Off Retina (or the live game) there is no Lost Fragments tab to stay on.
 watch(orphansHere, here => { if (!here && filter.value === 'orphans') filter.value = 'mine'; });
 const orphanTitle = orphanName().title;
@@ -3993,6 +4003,22 @@ onBeforeUnmount(() => {
 
 
         <!-- ═══ HELP TAB ═══ -->
+        <!-- Your Lost Fragments, above My Cells' list (Ames 2026-11-21). -->
+        <div v-if="heldShown.length" class="nge-cl-frags">
+          <div class="nge-cl-frags-head">
+            <span>Lost Fragments</span>
+            <span class="nge-cl-frags-n" :class="{ full: keptFragmentIds.length >= FRAGMENT_LIMIT }"
+                  :title="`You can have ${FRAGMENT_LIMIT} started at once. Complete or skip one to start another.`">{{ keptFragmentIds.length }} of {{ FRAGMENT_LIMIT }} started</span>
+          </div>
+          <div v-for="f in heldShown" :key="f.id" class="nge-cl-frag">
+            <div class="nge-cl-frag-main">
+              <span class="nge-cl-frag-id">{{ f.id }}</span>
+              <span class="nge-cl-frag-meta"><span class="nge-cl-frag-chip">LOST FRAGMENT</span> {{ fragmentGroup(f.id) }}<template v-if="f.kept">, started</template></span>
+            </div>
+            <button class="nge-cl-btn" title="Open it in Lost Fragments" @click="openHeldFragment(f.id)">Open</button>
+            <button class="nge-cl-btn nge-cl-btn--release" title="Give it back for anyone to do. Your edits stay in the cell." @click="releaseHeldFragment(f.id)">Skip</button>
+          </div>
+        </div>
         <div v-if="filter === 'help'" class="nge-cl-list">
 
           <!-- Team mode: two or more players on one cell, live. -->
@@ -6425,6 +6451,17 @@ select.nge-cl-complete-type:hover {
 
 /* ── Grouped tab bar ── */
 .nge-cl-filters--grouped { display: flex; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px 8px; background: transparent; }
+/* Your Lost Fragments in My Cells (Ames 2026-11-21). */
+.nge-cl-frags { margin: 4px 8px 8px; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(127, 190, 255, 0.25); background: rgba(74, 158, 255, 0.06); }
+.nge-cl-frags-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font: 600 11px 'Orbitron', Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #8fd6ff; }
+.nge-cl-frags-n { font: 500 12px Inter, sans-serif; letter-spacing: 0; text-transform: none; color: #a9c3e0; }
+.nge-cl-frags-n.full { color: #ffd35a; font-weight: 600; }
+.nge-cl-frag { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid rgba(127, 190, 255, 0.12); }
+.nge-cl-frag:first-of-type { border-top: 0; }
+.nge-cl-frag-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.nge-cl-frag-id { font: 600 13px 'JetBrains Mono', ui-monospace, monospace; color: #e6f0ff; }
+.nge-cl-frag-meta { font-size: 12px; color: #a9c3e0; }
+.nge-cl-frag-chip { display: inline-block; padding: 1px 6px; margin-right: 4px; border-radius: 4px; background: rgba(255, 211, 90, 0.14); border: 1px solid rgba(255, 211, 90, 0.45); color: #ffd35a; font: 700 10px Inter, sans-serif; letter-spacing: 0.06em; }
 /* Folding the tabs (Ames 2026-11-20). */
 .nge-cl-filters--foldable { position: relative; padding-right: 40px; }
 .nge-cl-tabshead { display: flex; align-items: center; gap: 10px; padding: 10px 12px 8px; }

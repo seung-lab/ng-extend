@@ -16,6 +16,7 @@ import pyrGemUrl from '../../static/badges/pyr/pyr-icon.png';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
+import pinPicture from '../../static/images/neurons/pyramidal-neurons.jpg';
 import nurroAvatar from '../../static/nurro/nurro-original.png';
 
 const DAILY_MEDALS = ['🥇', '🥈', '🥉'];
@@ -730,6 +731,70 @@ const isPinRow = (m: ChatMessage) => m.type === 'message' && m.rank === 'pin';
 const pinRowSays = (m: ChatMessage) => (String(m.dataset || '') === 'pin:none' ? 'took the pinned message down' : 'pinned a message');
 const isPinnedMsg = (m: ChatMessage) => m.id != null && chatStore.pinned?.messageId === String(m.id);
 const pinBusy = ref(false);
+/** The pinned message in full, in a box of its own (Ames 2026-11-20: "make
+ *  this message like a popup that I can click vs the message that is cut off
+ *  and when clicked scrolls way up in chat"). Go to it in the chat from there. */
+const pinOpen = ref(false);
+function onPinKey(e: KeyboardEvent) { if (e.key === 'Escape' && pinOpen.value) { e.stopPropagation(); pinOpen.value = false; } }
+watch(pinOpen, o => { if (o) window.addEventListener('keydown', onPinKey, true); else window.removeEventListener('keydown', onPinKey, true); });
+watch(shownPin, p => { if (!p) pinOpen.value = false; });
+/** Who pinned it, as a name: "amy" reads "Amy". */
+const pinFrom = computed(() => { const b = String(shownPin.value?.by || '').trim(); return b ? b[0].toUpperCase() + b.slice(1) : 'the team'; });
+/** What players have sent since Sept 28 and what came of it (Ames
+ *  2026-11-20: "add some stats like # of bug reports given since Sept 28 in
+ *  categories, numbers fixed"). Counts only, from pyr_report_stats. */
+type ReportStats = { bugs: number; bugs_fixed: number; ideas: number; ideas_built: number; other: number; other_done: number; help: number; help_answered: number };
+const reportStats = ref<ReportStats | null>(null);
+/** Updates shipped since Sept 28: the player changelog's entries, one per deploy players can notice. */
+const shipped = ref<number | null>(null);
+const STATS_SINCE = '2026-09-28T00:00:00Z';
+watch(pinOpen, async o => {
+  if (!o) return;
+  if (!reportStats.value) {
+    try {
+      const { data, error } = await supabase.rpc('pyr_report_stats', { since: STATS_SINCE });
+      if (!error && data) reportStats.value = data as ReportStats;
+    } catch { /* the box shows without them */ }
+  }
+  if (shipped.value == null) {
+    try {
+      const res = await fetch(`/changelog.json?t=${Date.now()}`, { cache: 'no-store' });
+      const j = await res.json();
+      shipped.value = (Array.isArray(j?.entries) ? j.entries : []).filter((e: any) => String(e?.at || '') >= STATS_SINCE).length || null;
+    } catch { /* left out */ }
+  }
+});
+/** What players sent: one number each (Ames 2026-11-20: "Just give the # for each category"). */
+const statRows = computed(() => {
+  const s = reportStats.value;
+  if (!s) return [];
+  return [
+    { name: 'Bug reports', n: s.bugs },
+    { name: 'Ideas', n: s.ideas },
+    { name: 'Help requests', n: s.help },
+    { name: 'Other notes', n: s.other },
+  ].filter(x => x.n > 0);
+});
+/** Every report together, above the kinds (Ames 2026-11-20). */
+const totalReports = computed(() => statRows.value.reduce((a, x) => a + (Number(x.n) || 0), 0));
+/** And what came of them: bugs fixed, features added, updates shipped. */
+const builtRows = computed(() => {
+  const s = reportStats.value;
+  const out: { n: number; name: string }[] = [];
+  if (s?.bugs_fixed) out.push({ n: s.bugs_fixed, name: 'bugs fixed' });
+  if (s?.ideas_built) out.push({ n: s.ideas_built, name: 'new features added' });
+  if (shipped.value) out.push({ n: shipped.value, name: 'updates shipped' });
+  if (s?.help_answered) out.push({ n: s.help_answered, name: 'help requests answered' });
+  return out;
+});
+const fmtN = (n: number) => Number(n || 0).toLocaleString('en-US');
+/** The message without a leading "amy: ", which the chip already says. */
+const pinBody = computed(() => {
+  const t = plainChatText(shownPin.value?.text || '');
+  const by = String(shownPin.value?.by || '').trim();
+  const body = by && t.toLowerCase().startsWith(by.toLowerCase() + ':') ? t.slice(by.length + 1).trim() : t;
+  return body ? body[0].toUpperCase() + body.slice(1) : body;
+});
 // How an admin pins: right click the React button on a message, then Pin.
 // There is no pin button on the messages themselves.
 const pinMenuFor = ref<string | null>(null);
@@ -1622,11 +1687,50 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
       <template v-if="!collapsed">
         <!-- Message area with top fade -->
         <div v-if="shownPin && !searchOpen" class="nge-chat-pin" role="note">
-          <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to go to the message.'"
-                  @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></span>{{ plainChatText(shownPin.text) }}</button>
+          <!-- A chip, not the text cut off: the message opens in its box (Ames
+               2026-11-20: "make it like ~ a pinned message from Amy ~ like a chip"). -->
+          <button type="button" class="nge-chat-pin-text nge-chat-pin-chip" :title="plainChatText(shownPin.text)"
+                  @click.stop="pinOpen = true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg>A pinned message from {{ pinFrom }}<span class="nge-chat-pin-read">Read</span></button>
           <button v-if="backendStore.showAdminUi" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
           <button type="button" class="nge-chat-pin-x" title="Hide this pin for me" aria-label="Hide this pin for me" @click.stop="hidePin">×</button>
         </div>
+        <Teleport to="body">
+          <div v-if="pinOpen && shownPin" class="nge-chat-pinpop-back" @click.self="pinOpen = false">
+            <div class="nge-chat-pinpop" role="dialog" aria-modal="true" aria-label="Pinned message">
+              <button type="button" class="nge-chat-pinpop-x" aria-label="Close" @click="pinOpen = false">×</button>
+              <figure class="nge-chat-pinpop-fig">
+                <img :src="pinPicture" class="nge-chat-pinpop-pic" alt="Pyramidal neurons up close, in blues and violets" />
+              </figure>
+              <div class="nge-chat-pinpop-body">
+                <span class="nge-chat-pinpop-chip">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg>
+                  A pinned message from {{ pinFrom }}
+                </span>
+                <p class="nge-chat-pinpop-text">{{ pinBody }}</p>
+                <template v-if="statRows.length">
+                  <div class="nge-chat-pinpop-stathead">What you have sent us since Sept 28</div>
+                  <div class="nge-chat-pinpop-total"><span class="nge-chat-pinpop-total-n">{{ fmtN(totalReports) }}</span> reports in all</div>
+                  <div class="nge-chat-pinpop-stats">
+                    <div v-for="x in statRows" :key="x.name" class="nge-chat-pinpop-stat">
+                      <span class="nge-chat-pinpop-stat-n">{{ fmtN(x.n) }}</span>
+                      <span class="nge-chat-pinpop-stat-name">{{ x.name }}</span>
+                    </div>
+                  </div>
+                  <template v-if="builtRows.length">
+                    <div class="nge-chat-pinpop-stathead">What we built from them</div>
+                    <ul class="nge-chat-pinpop-built">
+                      <li v-for="x in builtRows" :key="x.name"><b>{{ fmtN(x.n) }}</b> {{ x.name }}</li>
+                    </ul>
+                  </template>
+                  <div class="nge-chat-pinpop-thanks">Thank you for contributing to the development of Pyr. For Science!<span class="nge-chat-pinpop-sig">Amy</span></div>
+                </template>
+                <div class="nge-chat-pinpop-row">
+                  <button type="button" class="nge-chat-pinpop-btn" @click="pinOpen = false">Got it</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Teleport>
         <div class="nge-chat-messages-wrap">
           <div class="nge-chat-fade"></div>
           <div v-if="tipsOpen" class="nge-chat-tips" role="dialog" aria-label="Chat tips" @click.stop>
@@ -1640,7 +1744,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
               <li><code>/me waves</code> shows a grey line, like <i>Nseraf waves</i>.</li>
               <li><code>*bold*</code> and <code>_underline_</code>. Shift+Enter for a new line.</li>
               <li>Point at a message to react (the Pyr gem too) or reply with ↩.</li>
-              <li>A new pinned message from the team shows at the top until you refresh. Click it to jump there, or × to hide it sooner.</li>
+              <li>A new pinned message from the team shows at the top until you refresh. Click it to read it in full, or × to hide it sooner.</li>
               <li>🔍 searches. Try <code>from:name</code>, <code>on:10/8</code>, <code>-word</code>, <code>"two words"</code>.</li>
               <li>The bell sends notifications while Pyr is in the background. To hide the unread count, use Settings, Mute the chat unread count.</li>
               <li>📍 shares your view, with a screenshot if you like. 🙂 adds an emoji.</li>
@@ -2302,6 +2406,42 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-new-line { display: flex; align-items: center; gap: 8px; margin: 6px 2px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ff9d8a; }
 .nge-chat-new-line::before, .nge-chat-new-line::after { content: ''; flex: 1; height: 1px; background: rgba(255, 130, 110, 0.55); }
 .nge-chat-float--quiet .nge-chat-new-line { opacity: 0; }
+/* The pinned message in full (Ames 2026-11-20): a chip saying who pinned
+   it, the message, what players have sent since Sept 28, and Nurro. */
+.nge-chat-pinpop-back { position: fixed; inset: 0; z-index: 12000; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(2, 6, 16, 0.62); backdrop-filter: blur(3px); }
+.nge-chat-pinpop { position: relative; width: min(600px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; display: flex; flex-direction: column; padding: 0; border-radius: 14px;
+  background: radial-gradient(120% 70% at 0% 0%, rgba(74, 158, 255, 0.14), transparent 60%), linear-gradient(160deg, rgba(14, 30, 62, 0.98), rgba(7, 13, 30, 0.98));
+  border: 1px solid rgba(127, 190, 255, 0.4); box-shadow: 0 18px 54px rgba(0, 0, 0, 0.6), 0 0 30px rgba(74, 158, 255, 0.16);
+  color: #e6eefa; font-family: Inter, system-ui, sans-serif; animation: nge-chat-pinpop-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes nge-chat-pinpop-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+.nge-chat-pinpop-fig { position: relative; margin: 0; line-height: 0; }
+.nge-chat-pinpop-pic { display: block; width: 100%; height: 210px; object-fit: cover; object-position: center 45%; border-radius: 14px 14px 0 0; }
+.nge-chat-pinpop-fig::after { content: ''; position: absolute; inset: 0; border-radius: 14px 14px 0 0; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(7, 13, 30, 0) 45%, rgba(7, 13, 30, 0.88) 100%); }
+.nge-chat-pinpop-body { padding: 16px 22px 18px; }
+.nge-chat-pinpop-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px;
+  background: rgba(230, 199, 96, 0.14); border: 1px solid rgba(230, 199, 96, 0.55); color: #f6e3a6; font: 600 12.5px/1 Inter, sans-serif; }
+.nge-chat-pinpop-x { position: absolute; top: 10px; right: 10px; z-index: 2; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(127, 190, 255, 0.35);
+  background: rgba(8, 16, 34, 0.6); color: #cfe4fa; cursor: pointer; font-size: 16px; line-height: 1; }
+.nge-chat-pinpop-x:hover { color: #fff; border-color: rgba(143, 214, 255, 0.8); }
+.nge-chat-pinpop-text { margin: 12px 0 0; font-size: 15.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: #f2f6fc; }
+.nge-chat-pinpop-stathead { margin-top: 16px; font: 600 10.5px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #8fd6ff; }
+.nge-chat-pinpop-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.nge-chat-pinpop-total { margin-top: 8px; display: flex; align-items: baseline; gap: 10px; font-size: 14px; color: #cfe4fa; }
+.nge-chat-pinpop-total-n { font: 800 34px/1 'Orbitron', Inter, sans-serif; color: #fff; text-shadow: 0 0 16px rgba(126, 210, 255, 0.45); }
+.nge-chat-pinpop-sig { display: block; margin-top: 4px; font: 600 14px Inter, sans-serif; color: #f6e3a6; }
+.nge-chat-pinpop-built { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; font-size: 13.5px; color: #cfe4fa; }
+.nge-chat-pinpop-built b { font: 800 16px 'Orbitron', Inter, sans-serif; color: #ffd35a; margin-right: 4px; }
+@media (max-width: 560px) { .nge-chat-pinpop-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .nge-chat-pinpop-built { grid-template-columns: 1fr; } }
+.nge-chat-pinpop-stat { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 9px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(127, 190, 255, 0.2); }
+.nge-chat-pinpop-stat-n { font: 800 22px/1 'Orbitron', Inter, sans-serif; color: #fff; }
+.nge-chat-pinpop-stat-name { font-size: 12px; color: #a9c3e0; }
+.nge-chat-pinpop-thanks { margin-top: 14px; font-size: 14px; line-height: 1.5; color: #e6eefa; }
+.nge-chat-pinpop-row { display: flex; justify-content: flex-end; margin-top: 14px; }
+.nge-chat-pinpop-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid rgba(143, 214, 255, 0.6); background: rgba(74, 158, 255, 0.2); color: #fff; font: 600 13px Inter, sans-serif; cursor: pointer; }
+.nge-chat-pinpop-btn:hover { background: rgba(74, 158, 255, 0.34); }
+@media (max-width: 560px) { .nge-chat-pinpop-pic { height: 150px; } }
 /* The pinned message: up to six lines above the conversation */
 .nge-chat-pin {
   display: flex; align-items: center; gap: 4px; margin: 0 6px 2px; padding: 3px 4px 3px 8px; border-radius: 7px;
@@ -2315,6 +2455,11 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
   white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow-wrap: anywhere;
 }
 .nge-chat-pin-text:hover, .nge-chat-pin-text:focus-visible { color: #fff6d6; outline: none; }
+.nge-chat-pin-text.nge-chat-pin-chip { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px; border-radius: 999px;
+  background: rgba(230, 199, 96, 0.14); border: 1px solid rgba(230, 199, 96, 0.55); color: #f6e3a6; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; -webkit-line-clamp: unset; line-clamp: unset; }
+.nge-chat-pin-text.nge-chat-pin-chip:hover, .nge-chat-pin-text.nge-chat-pin-chip:focus-visible { background: rgba(230, 199, 96, 0.24); color: #fff6d6; }
+.nge-chat-pin-read { font-weight: 500; color: rgba(246, 227, 166, 0.75); text-decoration: underline; text-underline-offset: 2px; }
+.nge-chat-pin:has(.nge-chat-pin-chip) { background: none; border-color: transparent; padding-left: 2px; }
 .nge-chat-pin-glyph { margin-right: 6px; }
 .nge-chat-pin-x { flex: 0 0 auto; padding: 1px 6px; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer; font: inherit; font-size: 11.5px; color: rgba(241, 227, 176, 0.75); }
 .nge-chat-pin-x:hover:not(:disabled), .nge-chat-pin-x:focus-visible { color: #fff6d6; border-color: rgba(230, 199, 96, 0.5); outline: none; }

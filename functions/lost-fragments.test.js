@@ -22,6 +22,7 @@ function fakeDb() {
       const [op, ...rest] = v.split('.'); const want = decodeURIComponent(rest.join('.'));
       if (op === 'eq') return String(r[k]) === want;
       if (op === 'neq') return String(r[k]) !== want;
+      if (op === 'eq' && (want === 'true' || want === 'false')) return String(!!r[k]) === want;
       if (op === 'gt') return String(r[k]) > want;
       if (op === 'lte') return String(r[k]) <= want;
       throw new Error('op ' + op);
@@ -35,7 +36,7 @@ function fakeDb() {
       }
       if (table === 'ew_lost_fragment_claims') {
         if (rows.some(r => r.fragment_id === body.fragment_id)) throw new Error('409 duplicate');
-        const r = { claimed_at: new Date().toISOString(), ...body }; rows.push(r); return [{ ...r }];
+        const r = { claimed_at: new Date().toISOString(), kept: false, ...body }; rows.push(r); return [{ ...r }];
       }
       const r = { id: next++, sheet_row: null, ...body }; rows.push(r); return [{ ...r }];
     }
@@ -193,4 +194,26 @@ test('an answer carries the other cell; the sheet says it in the note column, A 
   assert.equal(row.length, 16);
   assert.match(row[15], /^odd Part belonged to cell 720575940570249357, stashed for later\.$/);
   assert.equal(cleanAnswer({ ...ANSWER, otherRoot: '720575940570249357', otherStatus: 'nonsense' }).other_root, null);
+});
+
+test('an edited fragment stays yours when you land on the next; five at most, then finish or skip one', async () => {
+  const { tables, sb } = fakeDb();
+  const io = { sb, me: ME, isAdmin: false };
+  const ids = ['720575940500000001', '720575940500000002', '720575940500000003', '720575940500000004', '720575940500000005', '720575940500000006'];
+  for (const id of ids.slice(0, 5)) {
+    assert.equal((await fragmentsAction('fragments.claim', { fragmentId: id }, io)).claimed, true);
+    assert.equal((await fragmentsAction('fragments.keep', { fragmentId: id }, io)).kept, true);
+  }
+  assert.equal(tables.ew_lost_fragment_claims.length, 5);
+  const full = await fragmentsAction('fragments.claim', { fragmentId: ids[5] }, io);
+  assert.equal(full.claimed, false);
+  assert.equal(full.reason, 'full');
+  // One of your own: fine, and nothing is let go.
+  assert.equal((await fragmentsAction('fragments.claim', { fragmentId: ids[2] }, io)).claimed, true);
+  assert.equal(tables.ew_lost_fragment_claims.length, 5);
+  await fragmentsAction('fragments.release', { fragmentId: ids[0] }, io);
+  assert.equal((await fragmentsAction('fragments.claim', { fragmentId: ids[5] }, io)).claimed, true);
+  const list = await fragmentsAction('fragments.list', {}, io);
+  assert.equal(list.myClaims.length, 5);
+  assert.equal(list.keepLimit, 5);
 });

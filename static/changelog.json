@@ -2,6 +2,40 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-21T02:54:00Z",
+      "title": "Lost Fragments you started stay yours",
+      "items": [
+        "Once you make a merge or a cut on a Lost Fragment, it stays yours when Play gives you the next one.",
+        "You can have five started at once. With five, Play takes you back to them until you complete or skip one.",
+        "Your Lost Fragments now show in My Cells, with Open and Skip."
+      ]
+    },
+    {
+      "at": "2026-11-21T02:03:00Z",
+      "title": "Fireworks for the Pyr community",
+      "items": [
+        "Community celebrations now have fireworks, and the confetti bursts out from behind the banner.",
+        "A test celebration shows everything we have done in Pyr so far, together: cells completed, edits and players. More confetti is coming as we reach new community milestones!"
+      ]
+    },
+    {
+      "at": "2026-11-21T01:43:00Z",
+      "title": "Pinned messages and announcements",
+      "items": [
+        "A pinned message in chat is now a small chip. Click it to read the whole message, with what players have sent us since Sept 28 and what we built from it.",
+        "Clicking the Lost Fragments announcement in your notifications opens it full screen again, with its Play button."
+      ]
+    },
+    {
+      "at": "2026-11-21T01:12:00Z",
+      "title": "Community milestone celebrations",
+      "items": [
+        "A community milestone celebration now plays by itself only if you are on Pyr within a week of it, and only once.",
+        "If two milestones arrive close together, you see the newest one, with no line of celebrations waiting behind it.",
+        "Click the milestone in your notifications to play the whole celebration again, confetti and Nurro included. Only the newest milestone stays there."
+      ]
+    },
+    {
       "at": "2026-11-21T01:04:00Z",
       "title": "Hold D to see under the colors",
       "items": [
