@@ -84,13 +84,33 @@ function onPulseColorPick(e: Event) {
 }
 const draftImageDetail = ref<1 | 2 | 4>(1);
 /** 2D detail for the dataset on screen only; 0 = the general one (AzureJay #604). */
-const draftDetailHere = ref<0 | 1 | 2 | 4>(0);
 const hereDataset = () => canonicalDataset(currentSegLayerName());
 const hereDatasetLabel = ref('this dataset');
+/** Every dataset's own 2D detail, set from anywhere (Ames 2026-11-21: not
+ *  only the one on screen). 0 = the general one. One row per dataset key. */
+const draftDetailBy = ref<Record<string, 0 | 1 | 2 | 4>>({});
+const detailOthersOpen = ref(false);
+const DETAIL_DATASETS = (() => {
+  const seen = new Set<string>();
+  const rows: { key: string; label: string }[] = [];
+  for (const d of DATASETS) {
+    if (d.hidden) continue;
+    const key = canonicalDataset(segLayerName(d));
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ key, label: d.label });
+  }
+  return rows;
+})();
+const otherDetailDatasets = computed(() => DETAIL_DATASETS.filter(r => r.key !== hereDataset()));
+const detailsSetElsewhere = computed(() => otherDetailDatasets.value.filter(r => draftDetailBy.value[r.key]).length);
+function setDetailFor(key: string, e: Event) {
+  const v = Number((e.target as HTMLSelectElement).value);
+  draftDetailBy.value = { ...draftDetailBy.value, [key]: v === 1 || v === 2 || v === 4 ? v : 0 };
+}
 function detailByDatasetToSave(): Record<string, 1 | 2 | 4> | undefined {
-  const all = { ...(useUserPreferencesStore().prefs.imageDetailByDataset || {}) };
-  const ds = hereDataset();
-  if (ds) { if (draftDetailHere.value) all[ds] = draftDetailHere.value; else delete all[ds]; }
+  const all: Record<string, 1 | 2 | 4> = {};
+  for (const [k, v] of Object.entries(draftDetailBy.value)) if (v === 1 || v === 2 || v === 4) all[k] = v;
   return Object.keys(all).length ? all : undefined;
 }
 const draftImageSource = ref<'auto' | 'americas' | 'asia'>('auto');
@@ -179,7 +199,8 @@ onMounted(() => {
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftColorFamilies.value = [...(prefsStore.prefs.colorFamilies ?? [])];
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
-  { const own = prefsStore.prefs.imageDetailByDataset?.[hereDataset()]; draftDetailHere.value = own === 1 || own === 2 || own === 4 ? own : 0; }
+  draftDetailBy.value = { ...(prefsStore.prefs.imageDetailByDataset || {}) };
+  if (hereDataset() && !(hereDataset() in draftDetailBy.value)) draftDetailBy.value[hereDataset()] = 0;
   hereDatasetLabel.value = findDatasetBySegName(currentSegLayerName())?.label || 'this dataset';
   draftImageSource.value = prefsStore.prefs.imageSource === 'americas' || prefsStore.prefs.imageSource === 'asia' ? prefsStore.prefs.imageSource : 'auto';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
@@ -501,7 +522,7 @@ const changedKeys = computed(() => {
     ['quickMergeKey', draftQuickMerge.value], ['newLayerKey', draftNewLayerKey.value !== 'shift'],
     ['jumpAddsToView', draftJumpAdds.value], ['retinaAnnotationLayers', draftRetinaAnnot.value], ['keepDisplayOnJump', !draftKeepDisplay.value],
     ['offerViewRestore', !draftOfferRestore.value], ['cellLibraryStartTab', draftLibraryTab.value !== 'mine'],
-    ['imageDetail', draftImageDetail.value !== 1 || draftDetailHere.value !== 0], ['imageSource', draftImageSource.value !== 'auto'],
+    ['imageDetail', draftImageDetail.value !== 1 || Object.values(draftDetailBy.value).some(v => v)], ['imageSource', draftImageSource.value !== 'auto'],
     ['annotationGems', !draftAnnotationGems.value], ['classicLayerClicks', draftClassicLayers.value], ['layerHideButton', draftLayerHide.value],
     ['imageLayerPanel', draftImageLayerPanel.value], ['showAnnotationSetupTabs', draftAnnotationSetupTabs.value],
     ['showSegSetupTabs', draftSegSetupTabs.value], ['showNgControlsButton', draftShowNgControls.value], ['showXyzCorner', draftShowXyz.value],
@@ -1014,15 +1035,29 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
                 <option :value="4">Quarter (fastest, blurry)</option>
               </select>
             </label>
-            <label v-if="hereDataset()" data-set="imageDetail" class="nge-settings-toggle nge-settings-pick" title="A different 2D detail just for the dataset you are on. It switches by itself when you change datasets, for example Half on a big dataset and Full on another.">
+            <label v-if="hereDataset()" data-set="imageDetail" class="nge-settings-toggle nge-settings-pick" title="A different 2D detail just for this dataset. It switches by itself when you change datasets, for example Half on a big dataset and Full on another. Set it for other datasets below.">
               <span class="nge-settings-toggle-label">On {{ hereDatasetLabel }}</span>
-              <select v-model.number="draftDetailHere" class="nge-sv-select">
+              <select v-model.number="draftDetailBy[hereDataset()]" class="nge-sv-select">
                 <option :value="0">Same as above</option>
                 <option :value="1">Full (sharpest)</option>
                 <option :value="2">Half (faster loading)</option>
                 <option :value="4">Quarter (fastest, blurry)</option>
               </select>
             </label>
+            <button type="button" class="nge-settings-link nge-detail-others-btn" :aria-expanded="detailOthersOpen ? 'true' : 'false'" @click="detailOthersOpen = !detailOthersOpen">
+              {{ detailOthersOpen ? 'Hide other datasets' : 'Set it for other datasets' }}<template v-if="!detailOthersOpen && detailsSetElsewhere"> ({{ detailsSetElsewhere }} set)</template> {{ detailOthersOpen ? '▴' : '▾' }}
+            </button>
+            <div v-if="detailOthersOpen" class="nge-detail-others">
+              <label v-for="r in otherDetailDatasets" :key="r.key" data-set="imageDetail" class="nge-settings-toggle nge-settings-pick">
+                <span class="nge-settings-toggle-label">{{ r.label }}</span>
+                <select :value="draftDetailBy[r.key] || 0" class="nge-sv-select" @change="setDetailFor(r.key, $event)">
+                  <option :value="0">Same as above</option>
+                  <option :value="1">Full (sharpest)</option>
+                  <option :value="2">Half (faster loading)</option>
+                  <option :value="4">Quarter (fastest, blurry)</option>
+                </select>
+              </label>
+            </div>
             <label data-set="imageSource" class="nge-settings-toggle nge-settings-pick" title="Where the 2D images come from. Copies hosted in Asia exist for EyeWire II Retina, MEC and the Sandbox; other datasets always load from the Americas. Automatic times both copies once and uses the faster one for you. Shared links and saved views open on your choice.">
               <span class="nge-settings-toggle-label">2D images load from</span>
               <select v-model="draftImageSource" class="nge-sv-select">
@@ -1149,6 +1184,11 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
 </template>
 
 <style scoped>
+/* 2D detail for each dataset (Ames 2026-11-21) */
+.nge-detail-others-btn { display: block; margin: 2px 0 6px; padding: 2px 0; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 0.9em; color: #7fd4ff; text-decoration: underline; text-underline-offset: 2px; }
+.nge-detail-others-btn:hover { color: #a9e3ff; }
+.nge-detail-others { margin: 0 0 8px 10px; padding-left: 10px; border-left: 2px solid rgba(127, 212, 255, 0.25); }
 .nge-settings-modal {
   font-size: 0.9em;
 }

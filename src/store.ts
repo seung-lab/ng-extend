@@ -6518,8 +6518,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     let refreshing = false;
     let checks = 0;
     // A new achievement in the feed opens its celebration, in every tab.
-    const celebrateNew = (existing: Set<number>) => {
-      const row = notifications.value.find(n => !existing.has(n.id) &&
+    // Only one newer than everything this tab had already read: when the
+    // feed's first load came through this check (the page opened before the
+    // sign in finished), the newest old achievement played again (Nseraf
+    // #607: Test Pilot, the Reaper before it).
+    const celebrateNew = (existing: Set<number>, maxBefore: number) => {
+      if (!maxBefore) return;
+      const row = notifications.value.find(n => !existing.has(n.id) && Number(n.id) > maxBefore &&
         n.title?.includes('New Achievement') && n.target_type !== 'group' &&
         (!n.target_id || n.target_id === userId.value));
       if (row) pendingBadgeCelebration.value = {
@@ -6533,9 +6538,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       refreshing = true;
       checks++;
       const existing = new Set(notifications.value.map(n => n.id));
+      const maxBefore = notifMaxId;
       try {
         await loadNotifications({ newOnly: checks % 10 !== 0, share: true });
-        celebrateNew(existing);
+        celebrateNew(existing, maxBefore);
       } catch { /* retry on the next refresh */ }
       finally { refreshing = false; }
     };
@@ -6544,7 +6550,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       stopStanding,
       onSharedResult<SharedNotifs>('notifications', async shared => {
         const existing = new Set(notifications.value.map(n => n.id));
-        try { await loadNotifications({ shared }); celebrateNew(existing); } catch { /* the next one */ }
+        const maxBefore = notifMaxId;
+        try { await loadNotifications({ shared }); celebrateNew(existing, maxBefore); } catch { /* the next one */ }
       }),
       // The leader closed and this tab took over: its check is due now.
       notifLeader.onChange((leader, takeover) => { if (leader && takeover) void check(); }),
