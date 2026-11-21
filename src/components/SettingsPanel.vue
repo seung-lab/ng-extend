@@ -974,9 +974,9 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
             </label>
-            <label data-set="offerViewRestore" class="nge-settings-toggle" title="Your view is saved as you work. When a dataset opens, a small bar offers to bring it back. Never shown on the Sandbox.">
+            <label data-set="offerViewRestore" class="nge-settings-toggle" title="Your view is saved as you work. Opening Pyr from its plain address brings it back by itself. Off: Pyr opens on the dataset's starting view. Never on the Sandbox.">
               <input type="checkbox" v-model="draftOfferRestore" />
-              <span class="nge-settings-toggle-label">Offer to pick up where I left off when a dataset opens</span>
+              <span class="nge-settings-toggle-label">Open where I left off when I open Pyr</span>
             </label>
             <label data-set="cellLibraryStartTab" class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
               <span class="nge-settings-toggle-label">Cell Library opens on</span>

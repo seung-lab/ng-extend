@@ -96,7 +96,7 @@ export function celebrate(track: Track, value: number) {
   // Something else is up (a milestone, or any other popup: popup_queue.ts):
   // this one counts as seen and waits in its notification, never in line.
   if (celebration.value || popupBusy()) { markSeen(track, value); return; }
-  void takeTurn('community-milestone', () => !!celebration.value && celebration.value.track === track && celebration.value.value === value, { maxWaitMs: 3000 })
+  void takeTurn('community-milestone', () => !!celebration.value && celebration.value.track === track && celebration.value.value === value, { maxWaitMs: 3000, skipOnLoad: true })
     .then(ok => {
       if (ok && !celebration.value) celebration.value = { track, value, confetti: true };
       else markSeen(track, value);

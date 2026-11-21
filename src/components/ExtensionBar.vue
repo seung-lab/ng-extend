@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
-import { takeTurn } from '../util/popup_queue';
+import { takeTurn, quietArrival } from '../util/popup_queue';
 import { QUIET_TEST_HOST } from '../util/test_host';
 import { playIntro } from '../util/intro_tour';
 import { play, playLabel, choosePlay, startPlay, pressPlay, offersChoice, stopPlay } from '../util/play';
@@ -519,12 +519,15 @@ function maybeOpenLeaderboardOnArrival() {
   if (document.body.classList.contains('nge-mobile')) return;
   if (document.querySelector('.introductionStep, .nge-overlay-blocker')) return;
   try { sessionStorage.setItem('nge-lb-greeted', '1'); } catch { /* private mode */ }
-  // One popup at a time (popup_queue.ts); a greeting a minute late is skipped.
-  void takeTurn('leaderboard-peek', () => leaderboardPeek.value && showLeaderboard.value, { maxWaitMs: 60_000 }).then(ok => {
-    if (!ok || showLeaderboard.value || showDatasetStats.value) return;
+  // The default greeting on arrival (popup_queue.ts): it opens only when
+  // nothing else popped up or waits (a new Achievement, the username or
+  // Retina question show instead). It is a side panel, so it never holds
+  // the line for the others. A few seconds' wait lets those arrive first.
+  setTimeout(() => {
+    if (!quietArrival() || showLeaderboard.value || showDatasetStats.value) return;
     leaderboardPeek.value = true;
     showLeaderboard.value = true;
-  });
+  }, 4000);
 }
 // Dataset Stats: what has been done on a dataset. It is a tab of the profile
 // (toolbar icon, Switch Dataset panel, command list). This is the narrow

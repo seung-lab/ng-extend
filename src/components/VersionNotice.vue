@@ -50,7 +50,7 @@ watch(() => version.newer, async (now, was) => {
   // One popup at a time (popup_queue.ts): the chip waits in the bar until
   // the panel's turn, then the panel opens.
   folded.value = true;
-  if (!(await takeTurn('version', () => !!version.newer && !folded.value))) return;
+  if (!(await takeTurn('version', () => !!version.newer && !folded.value, { skipOnLoad: true }))) return;
   if (!version.newer) return;
   folded.value = false;
   await nextTick();

@@ -19,6 +19,19 @@
  */
 import { ref } from 'vue';
 
+/** A quiet arrival (Ames 2026-11-20: "Im mostly concerned with opening the
+ *  page and getting like 5 popups"): for the first two minutes, news that can
+ *  wait (skipOnLoad) skips its popup; it stays in the bell or its chip. What
+ *  the player earned or must answer still shows, one at a time, and the
+ *  leaderboard greets only when nothing else did (quietArrival). */
+const pageStart = Date.now();
+const LOAD_QUIET_MS = 120_000;
+let shownSinceLoad = 0;
+/** True while nothing has popped up since the page opened and nothing waits. */
+export function quietArrival(): boolean { return shownSinceLoad === 0 && !current && waiting.length === 0; }
+/** True in the first two minutes after the page opened. */
+export function justArrived(): boolean { return Date.now() - pageStart < LOAD_QUIET_MS; }
+
 interface Waiter { id: string; priority: number; since: number; maxWaitMs: number; isOpen: () => boolean; resolve: (ok: boolean) => void }
 
 /** The popup on screen now, or null. */
@@ -74,6 +87,7 @@ function tick() {
   current = next;
   openedAt = now;
   activePopup.value = next.id;
+  shownSinceLoad++;
   next.resolve(true);
 }
 
@@ -84,7 +98,8 @@ function ensureTimer() { if (!timer) timer = setInterval(tick, 250); }
  * turn ends when it returns false. Higher priority goes first; equal
  * priority goes in the order asked.
  */
-export function takeTurn(id: string, isOpen: () => boolean, opts: { priority?: number; maxWaitMs?: number } = {}): Promise<boolean> {
+export function takeTurn(id: string, isOpen: () => boolean, opts: { priority?: number; maxWaitMs?: number; skipOnLoad?: boolean } = {}): Promise<boolean> {
+  if (opts.skipOnLoad && justArrived()) return Promise.resolve(false);
   return new Promise(resolve => {
     waiting.push({ id, priority: opts.priority ?? 0, since: Date.now(), maxWaitMs: opts.maxWaitMs ?? 30 * 60_000, isOpen, resolve });
     ensureTimer();

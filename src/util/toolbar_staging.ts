@@ -220,7 +220,7 @@ export function reveal(ids: string[], line?: string, label?: string, settingsBut
   if (line) {
     // One popup at a time (popup_queue.ts): Nurro's card waits its turn.
     const card = { text: line, icons: added, at: Date.now(), settingsButton };
-    void takeTurn('staging-announcement', () => announcement.value?.at === card.at).then(ok => { if (ok) announcement.value = card; });
+    void takeTurn('staging-announcement', () => announcement.value?.at === card.at, { skipOnLoad: true }).then(ok => { if (ok) announcement.value = card; });
   }
   return added;
 }
