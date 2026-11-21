@@ -120,3 +120,12 @@ alter table public.ew_lost_fragments add constraint ew_lost_fragments_group_key_
 -- edited is kept when Play hands them the next one, five at most
 -- (lost-fragments.js KEEP_LIMIT).
 alter table public.ew_lost_fragment_claims add column if not exists kept boolean not null default false;
+
+-- A fragment is tracked like a claimed cell (Ames 2026-11-21): the anchor
+-- supervoxel where it was listed (its root is the fragment's current ID),
+-- that ID, and the unfinished answer, saved as the player goes
+-- (lost-fragments.js fragments.progress).
+alter table public.ew_lost_fragment_claims add column if not exists anchor_sv text;
+alter table public.ew_lost_fragment_claims add column if not exists root_id text;
+alter table public.ew_lost_fragment_claims add column if not exists draft jsonb;
+alter table public.ew_lost_fragment_claims add column if not exists draft_at timestamptz;

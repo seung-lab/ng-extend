@@ -217,3 +217,35 @@ test('an edited fragment stays yours when you land on the next; five at most, th
   assert.equal(list.myClaims.length, 5);
   assert.equal(list.keepLimit, 5);
 });
+
+test('progress is saved on the claim like a claimed cell, and work makes it a started one', async () => {
+  const { tables, sb } = fakeDb();
+  const io = { sb, me: ME, isAdmin: false };
+  const F = '720575940500000011', G = '720575940500000012';
+  // Only an anchor: claimed, not started.
+  let r = await fragmentsAction('fragments.progress', { fragmentId: F, anchorSv: '88123456789012345' }, io);
+  assert.deepEqual(r, { saved: true, kept: false });
+  assert.equal(tables.ew_lost_fragment_claims[0].anchor_sv, '88123456789012345');
+  // A tick: started, and the draft is kept, cleaned.
+  r = await fragmentsAction('fragments.progress', { fragmentId: F, draft: { fixed: true, ends: 'yes', point: [1.4, 2, 3], pointOk: true, note: 'tip', where: 'x' } }, io);
+  assert.deepEqual(r, { saved: true, kept: true });
+  const row = tables.ew_lost_fragment_claims.find(c => c.fragment_id === F);
+  assert.equal(row.anchor_sv, '88123456789012345');
+  assert.deepEqual(row.draft, { fixed: true, ends: false, where: 'dendrite', point: [1, 2, 3], pointOk: true, note: 'tip', cellType: '', cellTypeCustom: '' });
+  // A new ID from a merge: saved too.
+  await fragmentsAction('fragments.progress', { fragmentId: F, rootId: '720575940599999999' }, io);
+  assert.equal(row.root_id, '720575940599999999');
+  // Landing on the next one keeps it.
+  assert.equal((await fragmentsAction('fragments.claim', { fragmentId: G }, io)).claimed, true);
+  const list = await fragmentsAction('fragments.list', {}, io);
+  const mine = list.myClaims.find(c => c.fragment_id === F);
+  assert.equal(mine.kept, true);
+  assert.equal(mine.root_id, '720575940599999999');
+  assert.equal(mine.draft.note, 'tip');
+  // Someone else's fragment: not saved.
+  const B = { sb, me: { id: 'u-2', display_name: 'B' }, isAdmin: false };
+  r = await fragmentsAction('fragments.progress', { fragmentId: F, draft: { fixed: true } }, B);
+  assert.equal(r.saved, false);
+  assert.equal(r.reason, 'held');
+  assert.throws(() => require('./lost-fragments').cleanProgress({ rootId: 'nope' }), /segment ID/);
+});
