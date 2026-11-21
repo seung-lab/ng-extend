@@ -196,9 +196,22 @@ function currentDataset(): string {
   return '';
 }
 
+/** The first sentence of the details, cut at a word to fit the title. */
+function shortTitleOf(text: string): string {
+  const plain = text.replace(/[*_#>]/g, '').replace(/\s+/g, ' ').trim();
+  const first = plain.split(/(?<=[.!?])\s/)[0] || plain;
+  if (first.length <= TITLE_MAX) return first;
+  const cut = first.slice(0, TITLE_MAX - 1);
+  const sp = cut.lastIndexOf(' ');
+  return (sp > 20 ? cut.slice(0, sp) : cut) + '…';
+}
+
 async function submit() {
-  const heading = title.value.trim().slice(0, TITLE_MAX);
   const details = detailsOpen.value ? message.value.trim() : '';
+  // Only the details box filled in: its first words become the title, so
+  // the report still goes (player report 2026-11-21: it kept asking for
+  // a few words and would not send).
+  const heading = (title.value.trim() || shortTitleOf(details)).slice(0, TITLE_MAX);
   // The report itself: their details, or just the short line when that is all.
   // Pictures after the first ride in the message as "Screenshot 2: <link>"
   // lines (Kfay #584), so Slack and Admin Hub both get them.
@@ -206,7 +219,7 @@ async function submit() {
   const text = moreShots ? `${details || heading}\n\n${moreShots}` : (details || heading);
   if (!category.value) { needKind.value = true; error.value = 'Choose Bug, Idea or Other first.'; return; }
   if (!heading || sending.value) {
-    if (!heading) error.value = 'Say in a few words what it is.';
+    if (!heading) error.value = 'Write a few words about it first.';
     return;
   }
   sending.value = true;
