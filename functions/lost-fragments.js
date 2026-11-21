@@ -23,6 +23,11 @@
  *                      they Skip it or Submit it (Ames 2026-11-20). One claim
  *                      per player; a claim left alone for CLAIM_DAYS lapses.
  *   fragments.release  Skip: the fragment goes back to everyone.
+ *   fragments.keep     the player edited the fragment: it stays theirs when
+ *                      Play hands them the next one (Ames 2026-11-21: her
+ *                      edited fragment went back to the pool). At most
+ *                      KEEP_LIMIT at once; with that many, no new claims
+ *                      until one is completed or skipped.
  *   fragments.stash    part of a fragment belonged to another cell that is
  *                      not proofread yet: that cell goes into the Stashed
  *                      group for anyone to proofread, or the player keeps it
@@ -52,6 +57,8 @@ const FLAGS = ['no flag', 'soma', 'glia', 'soma, glia'];
 const ID = /^\d{15,20}$/;
 const MAX_L2 = 6000;
 const CLAIM_DAYS = 14;
+/** Started fragments a player may hold at once (Ames 2026-11-21: "it should force me to complete or skip them after say 5 fragments"). */
+const KEEP_LIMIT = 5;
 const claimCutoff = () => new Date(Date.now() - CLAIM_DAYS * 864e5).toISOString();  // a fragment past this is not sized (a whole cell merged in)
 
 // ── Points, a beta (Ames 2026-11-20: "we want players to start with larger
@@ -190,11 +197,30 @@ async function fragmentsAction(action, args, io) {
     const mine = await sb(`ew_lost_fragments?user_id=${eq(me.id)}&select=fragment_id,group_key,root_id,point_in,pt,nucleus_id,no_nucleus,note,cave_annotation_id,submitted_at,updated_at,points&limit=2000`);
     const all = await sb('ew_lost_fragments?select=fragment_id&limit=20000');
     const others = [...new Set(all.map(r => r.fragment_id))].filter(id => !mine.some(m => m.fragment_id === id));
-    const claims = await sb(`ew_lost_fragment_claims?claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,user_id&limit=20000`);
-    const myClaim = (claims.find(c => String(c.user_id) === String(me.id)) || {}).fragment_id || null;
+    const claims = await sb(`ew_lost_fragment_claims?claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,user_id,kept,claimed_at&order=claimed_at.desc&limit=20000`);
+    const mineClaims = claims.filter(c => String(c.user_id) === String(me.id));
+    const myClaim = (mineClaims[0] || {}).fragment_id || null;
+    const myClaims = mineClaims.map(c => ({ fragment_id: c.fragment_id, kept: !!c.kept, claimed_at: c.claimed_at }));
     const held = claims.filter(c => String(c.user_id) !== String(me.id)).map(c => c.fragment_id);
     const stash = await sb('ew_lost_fragment_stash?select=root_id,pt,from_fragment_id,player_name,choice,created_at&order=created_at.asc&limit=2000');
-    return { mine, others, held, myClaim, stash };
+    return { mine, others, held, myClaim, myClaims, keepLimit: KEEP_LIMIT, stash };
+  }
+
+  if (action === 'fragments.keep') {
+    const fragmentId = String(args && args.fragmentId || '');
+    if (!ID.test(fragmentId)) throw bad('Not a fragment ID.');
+    const mineNow = await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,kept`);
+    if (mineNow.some(c => c.fragment_id === fragmentId && c.kept)) return { kept: true };
+    const kept = mineNow.filter(c => c.kept).map(c => c.fragment_id);
+    if (kept.length >= KEEP_LIMIT) return { kept: false, reason: 'full', keptIds: kept };
+    if (mineNow.some(c => c.fragment_id === fragmentId)) {
+      await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}`, { method: 'PATCH', body: JSON.stringify({ kept: true }) });
+      return { kept: true };
+    }
+    const c = await fragmentsAction('fragments.claim', { fragmentId }, io);
+    if (!c.claimed) return { kept: false, reason: c.reason };
+    await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}`, { method: 'PATCH', body: JSON.stringify({ kept: true }) });
+    return { kept: true };
   }
 
   if (action === 'fragments.claim' || action === 'fragments.release') {
@@ -208,8 +234,14 @@ async function fragmentsAction(action, args, io) {
     if (done.length) return { claimed: false, reason: 'done' };
     const holder = (await sb(`ew_lost_fragment_claims?fragment_id=${eq(fragmentId)}&select=user_id,claimed_at&limit=1`))[0];
     if (holder && String(holder.user_id) !== String(me.id) && holder.claimed_at > claimCutoff()) return { claimed: false, reason: 'held' };
-    // One claim per player: landing on this one lets go of the last.
-    await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}`, { method: 'DELETE' });
+    // Landing on a new one lets go of the last, unless that one was edited
+    // (kept). With KEEP_LIMIT kept, finish or skip one first.
+    const keptIds = (await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&kept=eq.true&claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id`))
+      .map(c => c.fragment_id).filter(id => id !== fragmentId);
+    const mineAlready = holder && String(holder.user_id) === String(me.id);
+    if (!mineAlready && keptIds.length >= KEEP_LIMIT) return { claimed: false, reason: 'full', keptIds };
+    await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&kept=eq.false&fragment_id=neq.${encodeURIComponent(fragmentId)}`, { method: 'DELETE' });
+    if (mineAlready) return { claimed: true };
     if (holder && String(holder.user_id) !== String(me.id)) await sb(`ew_lost_fragment_claims?fragment_id=${eq(fragmentId)}&claimed_at=lte.${encodeURIComponent(claimCutoff())}`, { method: 'DELETE' });
     try {
       await sb('ew_lost_fragment_claims', { method: 'POST', body: JSON.stringify({ fragment_id: fragmentId, user_id: me.id }) });
@@ -292,4 +324,4 @@ async function syncSheet({ sb, sheets }) {
   return { waiting: rows.length, written, failed };
 }
 
-module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS, OTHER };
+module.exports = { fragmentPoints, sizePoints, POINTS, syncSheet, fragmentsAction, cleanAnswer, sheetRow, measure, TESTERS, OPEN, CLAIM_DAYS, OTHER, KEEP_LIMIT };

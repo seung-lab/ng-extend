@@ -115,3 +115,8 @@ alter table public.ew_lost_fragments
 alter table public.ew_lost_fragments drop constraint if exists ew_lost_fragments_group_key_check;
 alter table public.ew_lost_fragments add constraint ew_lost_fragments_group_key_check
   check (group_key in ('large', 'smaller', 'glia', 'soma', 'stashed'));
+
+-- Started fragments stay yours (Ames 2026-11-21): a claim the player has
+-- edited is kept when Play hands them the next one, five at most
+-- (lost-fragments.js KEEP_LIMIT).
+alter table public.ew_lost_fragment_claims add column if not exists kept boolean not null default false;
