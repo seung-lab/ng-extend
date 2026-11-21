@@ -282,7 +282,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
             <span class="nge-play-opt-name">Glia Quest</span>
             <span class="nge-play-opt-where">Muller glia on Retina</span>
             <EditableText text-key="play.glia" :original="GLIA_LINES" list-class="nge-play-opt-lines" notify quiet label="Play card: Glia Quest" />
-            <span v-if="!GLIA_HERE" class="nge-play-opt-lock">Coming soon</span>
+            <span v-if="!GLIA_HERE" class="nge-play-opt-lock">Early December</span>
             <span v-else-if="!glia1Ok" class="nge-play-opt-lock">Unlocks with view access on Retina</span>
             <span v-else-if="!questsOk" class="nge-play-opt-note">Stage 1 is open to you. Stage 2 unlocks with edit access.</span>
           </div>

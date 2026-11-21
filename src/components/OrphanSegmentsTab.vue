@@ -982,7 +982,7 @@ async function submitGlia() {
     if (pending?.id === row.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(row.id);
     freshNext = true;
-    lastSent.value = res && res.quest ? 'Labelled glia. It counts as a Quest, and it is saved for splitting later.' : 'Labelled glia. Sent to the lab.';
+    lastSent.value = res && res.quest ? 'Labeled glia. It counts as a Quest, and it is stashed away for the Glia Quest in early December.' : 'Labeled glia. Sent to the lab.';
   } catch (e: any) {
     sendError.value = String((e && e.message) || 'Could not send it. Try again in a moment.');
     return;
@@ -1302,11 +1302,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div v-if="!form.saved" class="nge-orph-row nge-orph-gliaswitch">
         <span class="nge-orph-seg">
           <button :class="{ on: !glia.on }" @click="glia.on = false" title="Proofread the fragment">Proofread it</button>
-          <button :class="{ on: glia.on }" @click="glia.on = true" title="A glia is not proofread here: label it, and it is saved for splitting later">It's a glia</button>
+          <button :class="{ on: glia.on }" @click="glia.on = true" title="A glia is not proofread here: label it, and it is stashed away for the Glia Quest, launching in early December">It's a glia</button>
         </span>
       </div>
       <div v-if="glia.on && !form.saved" class="nge-orph-glia">
-        <div class="nge-orph-row nge-orph-sub">No proofreading for a glia. Each glia is one column rising up, covered in little barb-like projections: count the columns. Then submit. It counts as a Quest, and the glia is saved for splitting later.</div>
+        <div class="nge-orph-row nge-orph-sub">No proofreading for a glia. Each glia is one column rising up, covered in little barb-like projections: count the columns. Then submit. It counts as a Quest, and we stash it away for the Glia Quest, launching in early December.</div>
         <div class="nge-orph-row nge-orph-typerow">
           <div ref="gliaBox" class="nge-orph-typepick" :class="{ open: glia.open }">
             <button type="button" class="nge-orph-input nge-orph-type nge-orph-typebtn" aria-label="One glia or several fused" aria-haspopup="listbox" :aria-expanded="glia.open ? 'true' : 'false'"
