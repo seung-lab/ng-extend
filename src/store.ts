@@ -11,6 +11,7 @@ import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
+import { nicknameOf, setNickname as saveNickname, ensureNicknames } from './util/nicknames';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
 import { achievementTestTrack, LOYALTY_BADGES } from './widgets/badge_definitions';
@@ -1524,13 +1525,15 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
     }
   }
 
-  /** Set a nickname for a cell. */
+  /** Set a nickname for a cell: kept on the server and follows the cell
+   *  through edits (util/nicknames.ts, Nseraf report 602). */
   function setNickname(segId: string, name: string) {
     const cell = cells.value.find(c => c.segId === segId);
     if (cell) {
       cell.nickname = name.trim() || undefined;
       persist();
     }
+    void saveNickname(segId, name, { dataset: cell?.dataset });
   }
 
   /** Stamp `dataset` on every entry that has none (entries saved before cells
@@ -1546,6 +1549,9 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
 
   /** Lookup a nickname by segment ID (used globally to replace segID display). */
   function getNickname(segId: string): string | undefined {
+    ensureNicknames();
+    const own = nicknameOf(segId);
+    if (own) return own;
     const cell = cells.value.find(c => c.segId === segId);
     return cell?.nickname;
   }

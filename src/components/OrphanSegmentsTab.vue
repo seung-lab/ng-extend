@@ -35,6 +35,8 @@ import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
+import NicknameField from './NicknameField.vue';
+import { nicknameOf } from '../util/nicknames';
 import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft, activeFragment, bestLink, autosaveFragmentView, firstViewSave, markViewSaved } from '../util/my_fragments';
 import { openStartLink } from '../util/start_link';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
@@ -1030,7 +1032,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <div v-if="!slim" class="nge-orph-task-top">
         <div>
           <div class="nge-orph-task-name">
-            <span class="nge-orph-task-id">{{ shownRoot || active.id }}</span>
+            <span class="nge-orph-task-id" :title="nicknameOf(active.id) ? `Your nickname. Its ID is ${shownRoot || active.id}` : undefined">{{ nicknameOf(active.id) || shownRoot || active.id }}</span>
             <button class="nge-orph-copy" :title="copied ? 'Copied' : 'Copy the segment ID'" @click="copyId(shownRoot || active.id)">{{ copied ? 'Copied' : 'Copy' }}</button>
           </div>
           <div class="nge-orph-task-meta">
@@ -1109,6 +1111,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
                    @keydown.stop @keyup.stop @keypress.stop />
           </div>
           <div v-if="typeNote" class="nge-orph-row"><span class="nge-orph-note nge-orph-note--err">{{ typeNote }}</span></div>
+          <!-- Your own name for it, not a cell type (Nseraf, report 602). -->
+          <NicknameField look="orph" :seg-key="active.id" :ids="[shownRoot]" :anchor="anchors[active.id]" dataset="stroeh_mouse_retina" />
         </li>
         <li class="nge-orph-nonum nge-orph-otherli">
           <button v-if="!other.open" class="nge-orph-link" @click="other.open = true">Part of it belongs to another cell?</button>
