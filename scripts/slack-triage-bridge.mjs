@@ -798,6 +798,8 @@ async function echoAppDecisions() {
     const note = row.approver_note ? ` with the note "${row.approver_note}"` : '';
     const posted = await say(row, todo
       ? `Put on the To do board in the Admin Hub by ${row.reviewed_by}. The robot is not building it. 📋`
+      : later && /^Later: after Thanksgiving/.test(row.approver_note || '')
+      ? `Put by until after Thanksgiving in the Admin Hub by ${row.reviewed_by}. The robot is not building it. 🦃`
       : later
       ? `Kept as an idea for later in the Admin Hub by ${row.reviewed_by}. The robot is not building it. 💡`
       : byHand
