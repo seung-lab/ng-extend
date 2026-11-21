@@ -35,6 +35,7 @@ import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
+import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment } from '../util/my_fragments';
 import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
@@ -306,7 +307,19 @@ const allDone = ref(false);
 async function claimHere(row: OrphanSeg) {
   try {
     const res = await secureWrite<{ claimed: boolean; reason?: string }>('fragments.claim', { fragmentId: row.id });
-    if (res && res.claimed) { myClaim.value = row.id; return; }
+    if (res && res.claimed) {
+      myClaim.value = row.id;
+      // Landing here let go of the last one, unless it was kept.
+      heldFragments.list = heldFragments.list.filter(f => f.kept || f.id === row.id);
+      if (!heldFragments.list.some(f => f.id === row.id)) heldFragments.list.push({ id: row.id, kept: false, at: new Date().toISOString() });
+      return;
+    }
+    // Five started already: back to those.
+    if (res && res.claimed === false && res.reason === 'full') {
+      setHeldFragments(((res as any).keptIds || []).map((id: string) => ({ fragment_id: id, kept: true })));
+      if (active.value?.id === row.id && playing.value) playNext();
+      return;
+    }
     // Only a plain "someone has it" moves Play on; anything else plays on.
     if (!res || res.claimed !== false || (res.reason !== 'done' && res.reason !== 'held')) return;
     (res.reason === 'done' ? taken : held).add(row.id);
@@ -326,6 +339,7 @@ async function claimActive() {
     const res = await secureWrite<{ claimed: boolean; reason?: string }>('fragments.claim', { fragmentId: a.id });
     if (res && res.claimed) { myClaim.value = a.id; held.delete(a.id); claimMsg.value = 'Yours. Nobody else gets it in Play until you skip or complete it.'; return; }
     if (res && res.claimed === false && res.reason === 'done') { taken.add(a.id); claimMsg.value = 'Someone has already completed this one.'; return; }
+    if (res && res.claimed === false && res.reason === 'full') { claimMsg.value = `You have ${FRAGMENT_LIMIT} Lost Fragments started. Complete or skip one first: they are in My Cells.`; return; }
     if (res && res.claimed === false) { held.add(a.id); claimMsg.value = 'Another player is working on this one.'; return; }
     claimMsg.value = 'Could not claim it. Try again in a moment.';
   } catch { claimMsg.value = 'Could not claim it. Try again in a moment.'; }
@@ -337,7 +351,31 @@ async function releaseActive() {
   myClaim.value = null; claimMsg.value = 'Let go. Someone else can claim it now.';
   await secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
 }
+/** With FRAGMENT_LIMIT started, Play takes you to those, one after another,
+ *  until one is completed or skipped (Ames 2026-11-21). */
+function nextKept(): { g: GroupKey; row: OrphanSeg } | null {
+  const ids = keptFragmentIds.value.filter(id => !saves[id]);
+  if (ids.length < FRAGMENT_LIMIT) return null;
+  const at = active.value ? ids.indexOf(active.value.id) : -1;
+  for (let k = 1; k <= ids.length; k++) {
+    const f = findRow(ids[(at + k + ids.length) % ids.length]);
+    if (f && f.row.id !== active.value?.id) return f;
+  }
+  return null;
+}
+const fullNote = ref('');
 function playNext() {
+  const kept = nextKept();
+  if (kept) {
+    allDone.value = false;
+    fullNote.value = `You have ${FRAGMENT_LIMIT} Lost Fragments started. Complete or skip one, and Play gives you new ones again.`;
+    group.value = kept.g;
+    void open(kept.row);
+    void claimHere(kept.row);
+    document.dispatchEvent(new CustomEvent('nge:play-landed', { detail: { title: 'Finish this one first', cell: 'Cell ID: ' + kept.row.id } }));
+    return;
+  }
+  fullNote.value = '';
   const n = nextUndone();
   if (!n) { allDone.value = true; return; }
   allDone.value = false;
@@ -351,6 +389,7 @@ function skip() {
   const a = active.value;
   if (a && !saves[a.id]) {
     if (myClaim.value === a.id) myClaim.value = null;
+    dropHeld(a.id);
     void secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
   }
   playNext();
@@ -577,6 +616,7 @@ async function submit() {
     persist();
     if (res && res.first) { countCompleted(root, pt, row.id); addFragmentDone(); }
     if (myClaim.value === row.id) myClaim.value = null;
+    dropHeld(row.id);
     lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
     if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
   } catch (e: any) {
@@ -612,6 +652,7 @@ async function loadAnswers() {
   try {
     const res = await secureWrite<{ mine: any[]; others: string[]; held?: string[]; myClaim?: string | null; stash?: any[] }>('fragments.list');
     loadStash(res.stash || []);
+    setHeldFragments((res as any).myClaims || []);
     serverOn.value = true;
     for (const k of Object.keys(saves)) delete saves[k];
     for (const m of res.mine || []) {
@@ -640,6 +681,35 @@ async function loadAnswers() {
   } catch { serverOn.value = false; }
 }
 onMounted(() => { void loadAnswers(); });
+
+/** A merge or cut while a fragment is open and not yet sent: it stays yours
+ *  when Play hands you the next one (Ames 2026-11-21). */
+const keepAsked = new Set<string>();
+function onEditLogged(e: Event) {
+  const op = (e as CustomEvent).detail?.operation;
+  const a = active.value;
+  if (!a || saves[a.id] || (op !== 'merge' && op !== 'split')) return;
+  if (keptFragmentIds.value.includes(a.id) || keepAsked.has(a.id)) return;
+  keepAsked.add(a.id);
+  void secureWrite<{ kept: boolean; reason?: string }>('fragments.keep', { fragmentId: a.id }).then(res => {
+    if (res && res.kept) markKept(a.id);
+    else keepAsked.delete(a.id);
+  }).catch(() => keepAsked.delete(a.id));
+}
+onMounted(() => document.addEventListener('nge:edit-logged', onEditLogged));
+onUnmounted(() => document.removeEventListener('nge:edit-logged', onEditLogged));
+/** "Open" on a fragment in My Cells (util/my_fragments.ts). */
+function openPending() {
+  const id = pendingFragment.id;
+  if (!id) return;
+  const f = findRow(id);
+  if (!f) return;   // the Stashed list may not be loaded yet; tried again after it is
+  pendingFragment.id = null;
+  group.value = f.g;
+  void open(f.row);
+  void claimHere(f.row);
+}
+watch(() => [pendingFragment.id, STASHED.length], () => openPending(), { immediate: true });
 // The cell type CAVE already has, when the checklist is on screen for a fragment.
 watch(() => [active.value?.id, shownRoot.value, finishing.value || !props.slim] as const, ([id, , shown]) => {
   if (id && shown) void prefillType();
@@ -736,6 +806,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </div>
 
       <div v-if="!slim && claimMsg" class="nge-orph-note">{{ claimMsg }}</div>
+      <div v-if="fullNote && playing" class="nge-orph-note">{{ fullNote }}</div>
       <div v-if="slim" class="nge-orph-row nge-orph-finishhead"><b>Before you complete</b><button class="nge-orph-help-btn" :class="{ on: helpOpen }" title="How to do a fragment" @click="helpOpen = !helpOpen">?</button><button class="nge-orph-help-btn nge-orph-fold" title="Fold the checklist away" aria-label="Fold the checklist away" @click="finishing = false">&times;</button></div>
       <template v-if="!slim || finishing">
       <ol class="nge-orph-check">
