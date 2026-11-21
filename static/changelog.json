@@ -2,12 +2,27 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-21T00:37:00Z",
+      "at": "2026-11-21T01:12:00Z",
       "title": "Community milestones, gentler",
       "items": [
         "A community milestone celebration now plays by itself only if you are on Pyr within a week of it, and only once.",
         "If two milestones arrive close together, you see the newest one, with no line of celebrations waiting behind it.",
         "Click the milestone in your notifications to play the whole celebration again, confetti and Nurro included. Only the newest milestone stays there."
+      ]
+    },
+    {
+      "at": "2026-11-21T01:04:00Z",
+      "title": "Hold D to see under the colors",
+      "items": [
+        "Hold D to hide the cell colors in 2D and see the image underneath. Let go and they come back."
+      ]
+    },
+    {
+      "at": "2026-11-21T00:52:00Z",
+      "title": "Pinned messages show once",
+      "items": [
+        "A new pinned message from the team shows at the top until you close it or refresh, and it does not come back after that.",
+        "Longer pinned messages now show in full, up to six lines."
       ]
     },
     {

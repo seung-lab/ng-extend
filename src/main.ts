@@ -33,6 +33,7 @@ import { showOutageBanner } from './util/outage_banner';
 import { startPanelFront } from './util/panel_front';
 import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
+import { startTwoDColorKey } from './util/two_d_color_key';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
 import { startRightHoldDelta } from './util/right_hold_delta';
@@ -227,6 +228,7 @@ window.addEventListener('DOMContentLoaded', () => {
   startContextLostNotice();
   // P over a cell in 3D: it sends a ring of light along itself.
   startPulseKey();
+  startTwoDColorKey();
   app.use(pinia);
   const {initializeWithViewer} = useLayersStore();
   const {loadVolumes} = useVolumesStore();

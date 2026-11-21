@@ -707,9 +707,18 @@ const firstNewMsg = computed<ChatMessage | null>(() => {
 const PIN_HIDDEN_KEY = 'nge-chat-pin-hidden';
 const hiddenPin = ref('');
 try { hiddenPin.value = localStorage.getItem(PIN_HIDDEN_KEY) || ''; } catch { /* shown */ }
+// A pin shows on the visit it is first seen, and not again after a refresh
+// (Ames 2026-11-20: "it should not come back every refresh"). A new pin
+// shows once the same way. The message itself stays in the conversation.
+const PIN_SEEN_KEY = 'nge-chat-pin-seen';
+let seenBeforeThisVisit = '';
+try { seenBeforeThisVisit = localStorage.getItem(PIN_SEEN_KEY) || ''; } catch { /* shown */ }
 const shownPin = computed(() => {
   const pin = chatStore.pinned;
-  return pin && pin.rowId !== hiddenPin.value ? pin : null;
+  return pin && pin.rowId !== hiddenPin.value && pin.rowId !== seenBeforeThisVisit ? pin : null;
+});
+watch(() => (!collapsed.value && !isQuiet.value && shownPin.value ? shownPin.value.rowId : ''), id => {
+  if (id) try { localStorage.setItem(PIN_SEEN_KEY, id); } catch { /* shown again next visit */ }
 });
 function hidePin() {
   const pin = chatStore.pinned;
@@ -1631,7 +1640,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
               <li><code>/me waves</code> shows a grey line, like <i>Nseraf waves</i>.</li>
               <li><code>*bold*</code> and <code>_underline_</code>. Shift+Enter for a new line.</li>
               <li>Point at a message to react (the Pyr gem too) or reply with ↩.</li>
-              <li>A pinned message from the team sits at the top. Click it to jump there, or × to hide it.</li>
+              <li>A new pinned message from the team shows at the top until you refresh. Click it to jump there, or × to hide it sooner.</li>
               <li>🔍 searches. Try <code>from:name</code>, <code>on:10/8</code>, <code>-word</code>, <code>"two words"</code>.</li>
               <li>The bell sends notifications while Pyr is in the background. To hide the unread count, use Settings, Mute the chat unread count.</li>
               <li>📍 shares your view, with a screenshot if you like. 🙂 adds an emoji.</li>
@@ -2293,7 +2302,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-new-line { display: flex; align-items: center; gap: 8px; margin: 6px 2px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ff9d8a; }
 .nge-chat-new-line::before, .nge-chat-new-line::after { content: ''; flex: 1; height: 1px; background: rgba(255, 130, 110, 0.55); }
 .nge-chat-float--quiet .nge-chat-new-line { opacity: 0; }
-/* The pinned message: up to three lines above the conversation */
+/* The pinned message: up to six lines above the conversation */
 .nge-chat-pin {
   display: flex; align-items: center; gap: 4px; margin: 0 6px 2px; padding: 3px 4px 3px 8px; border-radius: 7px;
   background: rgba(230, 199, 96, 0.09); border: 1px solid rgba(230, 199, 96, 0.3);
@@ -2302,8 +2311,8 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-pin-text {
   flex: 1; min-width: 0; padding: 2px 0; border: 0; background: none; cursor: pointer; text-align: left;
   font: inherit; font-size: 12.5px; color: #f1e3b0; overflow: hidden;
-  /* up to three lines, so a message of the day reads in full (Ames 2026-11-20) */
-  white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere;
+  /* up to six lines, so a message of the day reads in full (Ames 2026-11-20) */
+  white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow-wrap: anywhere;
 }
 .nge-chat-pin-text:hover, .nge-chat-pin-text:focus-visible { color: #fff6d6; outline: none; }
 .nge-chat-pin-glyph { margin-right: 6px; }
