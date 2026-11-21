@@ -16,6 +16,7 @@ import ProofreadingQueuePanel from "components/ProofreadingQueuePanel.vue";
 import CommandPalette from "components/CommandPalette.vue";
 import AchievementToast from "components/AchievementToast.vue";
 import CommunityMilestone from "components/CommunityMilestone.vue";
+import PlayTakeover from "components/PlayTakeover.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
@@ -1386,6 +1387,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- <annotation-panel /> --> <!-- Hidden: users pick cells from Cell Library instead -->
   <achievement-toast />
   <community-milestone />
+  <play-takeover />
   <staging-announcement />
   <!-- Test sites only (util/toolbar_staging.ts). -->
   <staging-test-panel v-if="STAGING_TEST_AVAILABLE" />
