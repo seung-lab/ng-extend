@@ -24,7 +24,7 @@ import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { play, stopPlay, startPlay } from '../util/play';
 import { ON_TEST_SITE } from '../hunt';
 import { Uint64 } from 'neuroglancer/util/uint64';
-import { currentSegLayer, currentCellTypes, cellTypeLabel } from '../datasets';
+import { currentSegLayer, currentCellTypes, cellTypeLabel, findDatasetBySegName, currentSegLayerName } from '../datasets';
 import { explainCellType } from '../data/cell_type_glossary';
 import { useCellHistoryStore, useProofreadingBackendStore, useUserStatsStore } from '../store';
 import { secureWrite } from '../secure_write';
@@ -35,7 +35,9 @@ import { NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { getToolbarIconDef } from '../data/toolbar-icons';
 import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
-import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft } from '../util/my_fragments';
+import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft, activeFragment, bestLink, autosaveFragmentView, firstViewSave, markViewSaved } from '../util/my_fragments';
+import { openStartLink } from '../util/start_link';
+import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, ORPHAN_POOL, orphanName,
@@ -267,17 +269,80 @@ function closeSelectionPanel() {
 const finishing = ref(false);
 async function open(row: OrphanSeg) {
   void flushProgress();
+  // Recenter, or the one already open: only fly back to it. Its saved view
+  // would throw away what was done since (as a claimed cell, report 325).
+  if ((active.value?.id ?? activeFragment.id) === row.id) {
+    if (active.value?.id !== row.id) {   // the tab opened again on the one you are working on
+      active.value = row;
+      resetForm(saves[row.id]);
+      if (!saves[row.id]) applyDraft(row.id);
+    }
+    history.jumpToCell(shownRoot.value || row.id, row.pt);
+    closeSelectionPanel();
+    await followRoot(row);
+    return;
+  }
+  // Leaving one of yours: its view is saved first, as a claimed cell's is.
+  const leftId = active.value?.id ?? activeFragment.id;
+  const leftMine = !!leftId && !saves[leftId] && isMine(leftId);
+  if (leftId && leftMine) await autosaveFragmentView(leftId);
+  const fresh = leftMine || freshNext;
+  freshNext = false;
   active.value = row;
   shownRoot.value = row.id;
   resetForm(saves[row.id]);
   if (!saves[row.id]) applyDraft(row.id);
-  history.jumpToCell(row.id, row.pt);
   finishing.value = false;
   claimMsg.value = '';
   progressNote.value = '';
+  // Its own saved view (layers, annotations, Highlight marks, camera), or a
+  // fresh start: the last fragment's marks are not this one's.
+  const h = heldOf(row.id);
+  const saved = !saves[row.id] && h ? bestLink(h).link : (!saves[row.id] ? localDrafts()[row.id]?.link || null : null);
+  const opened = !!saved && openStartLink(saved);
+  activeFragment.id = row.id;
+  if (opened) {
+    await new Promise(res => setTimeout(res, 1500));   // the view's layers load
+    if (active.value?.id !== row.id) return;
+  } else {
+    if (fresh) freshLayers();
+    history.jumpToCell(row.id, row.pt);
+  }
   closeSelectionPanel();
+  if (isMine(row.id) || saved) firstViewSave(row.id, !!saved);
+  else setTimeout(() => { if (activeFragment.id === row.id && isMine(row.id)) firstViewSave(row.id, false); }, 1500);
   await followRoot(row);
 }
+/** Skip, Release or Complete: the next fragment starts without this one's marks. */
+let freshNext = false;
+/** The dataset's own layers, keeping the player's display settings, as a
+ *  claimed cell with no view of its own starts (CellLibraryPanel freshLayersForClaim). */
+function freshLayers() {
+  try {
+    const ds = findDatasetBySegName(currentSegLayerName());
+    const viewer: any = (window as any).viewer;
+    if (!ds?.layers?.length || !viewer?.layerSpecification) return;
+    const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
+    viewer.layerSpecification.restoreState(ds.layers);
+    restoreDisplayAfterLoad(snap);
+  } catch (e) { console.warn('[fragments] could not start with fresh layers:', e); }
+}
+
+
+const onHowTo = () => { helpOpen.value = true; };
+onMounted(() => document.addEventListener('nge:fragments-howto', onHowTo));
+onUnmounted(() => document.removeEventListener('nge:fragments-howto', onHowTo));
+/** Released from My Cells: no longer yours here either. */
+function onReleased(e: Event) {
+  const id = (e as CustomEvent).detail?.id;
+  if (!id) return;
+  if (myClaim.value === id) myClaim.value = null;
+  if (pending?.id === id) { pending = null; clearTimeout(saveTimer); }
+  if (active.value?.id === id) freshNext = true;
+}
+onMounted(() => document.addEventListener('nge:fragment-released', onReleased));
+onUnmounted(() => document.removeEventListener('nge:fragment-released', onReleased));
+
 
 // ── A fragment is tracked like a claimed cell (Ames 2026-11-21: "a lost
 // fragment is essentially a cell so you need to track the ID from the initial
@@ -501,6 +566,7 @@ async function releaseActive() {
   myClaim.value = null; claimMsg.value = 'Let go. Someone else can claim it now.';
   pending = null; clearTimeout(saveTimer);
   dropHeld(a.id);
+  freshNext = true;
   await secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
 }
 /** With FRAGMENT_LIMIT started, Play takes you to those, one after another,
@@ -543,6 +609,7 @@ function skip() {
     if (myClaim.value === a.id) myClaim.value = null;
     if (pending?.id === a.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(a.id);
+    freshNext = true;
     void secureWrite('fragments.release', { fragmentId: a.id }).catch(() => undefined);
   }
   playNext();
@@ -788,6 +855,7 @@ async function submit() {
     if (myClaim.value === row.id) myClaim.value = null;
     if (pending?.id === row.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(row.id);
+    freshNext = true;
     lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
     if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
   } catch (e: any) {
@@ -871,6 +939,7 @@ function onEditLogged(e: Event) {
     const root = await followRoot(a);
     // followRoot saved a changed ID; an edit that left the ID as it was still makes it started.
     if (!root || root === before) void sendProgress(a.id, { anchorSv: anchors[a.id], rootId: root || before || undefined });
+    setTimeout(() => { if (activeFragment.id === a.id) void autosaveFragmentView(a.id, true); }, 6000);
   }, 1500);
 }
 onMounted(() => document.addEventListener('nge:edit-logged', onEditLogged));
@@ -882,8 +951,10 @@ function openPending() {
   const f = findRow(id);
   if (!f) return;   // the Stashed list may not be loaded yet; tried again after it is
   pendingFragment.id = null;
+  const finish = !!pendingFragment.finish;
+  pendingFragment.finish = false;
   group.value = f.g;
-  void open(f.row);
+  void open(f.row).then(() => { if (finish && active.value?.id === f.row.id) openFinish(); });
   void claimHere(f.row);
 }
 watch(() => [pendingFragment.id, STASHED.length], () => openPending(), { immediate: true });

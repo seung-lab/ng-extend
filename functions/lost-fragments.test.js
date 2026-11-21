@@ -249,3 +249,19 @@ test('progress is saved on the claim like a claimed cell, and work makes it a st
   assert.equal(r.reason, 'held');
   assert.throws(() => require('./lost-fragments').cleanProgress({ rootId: 'nope' }), /segment ID/);
 });
+
+test('the fragment view saves on the claim like a claimed cell', async () => {
+  const { tables, sb } = fakeDb();
+  const io = { sb, me: ME, isAdmin: false };
+  const F = '720575940500000021';
+  const link = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/123';
+  const r = await fragmentsAction('fragments.progress', { fragmentId: F, workingLink: link }, io);
+  assert.deepEqual(r, { saved: true, kept: false });
+  assert.equal(tables.ew_lost_fragment_claims[0].working_link, link);
+  const mine = (await fragmentsAction('fragments.list', {}, io)).myClaims[0];
+  assert.equal(mine.working_link, link);
+  assert.ok(mine.view_at);
+  const { cleanProgress } = require('./lost-fragments');
+  assert.throws(() => cleanProgress({ workingLink: 'javascript:alert(1)' }), /view link/);
+  assert.throws(() => cleanProgress({ workingLink: 'https://x.org/no-state' }), /view link/);
+});

@@ -136,6 +136,15 @@ function cleanProgress(a) {
     if (!ID.test(String(a.rootId))) throw bad('Not a segment ID.');
     out.root_id = String(a.rootId);
   }
+  // The view, as a claimed cell's Save view keeps it (Ames 2026-11-21: "saving
+  // my cell is supposed to also include highlighter annotation points"): a
+  // short state link with the layers, annotations, marks and camera.
+  if (a.workingLink != null && a.workingLink !== '') {
+    const link = String(a.workingLink);
+    if (link.length > 1000 || !/^https:\/\/[^\s]+#!\S+$/.test(link)) throw bad('Bad view link.');
+    out.working_link = link;
+    out.view_at = new Date().toISOString();
+  }
   if (a.draft && typeof a.draft === 'object') {
     const d = a.draft;
     const pt = Array.isArray(d.point) && d.point.length === 3 && d.point.every(n => Number.isFinite(n) && Math.abs(n) < 1e7) ? d.point.map(n => Math.round(n)) : null;
@@ -240,13 +249,14 @@ async function fragmentsAction(action, args, io) {
     const myClaim = (mineClaims[0] || {}).fragment_id || null;
     // The progress columns are read for this player's claims only.
     const progress = mineClaims.length
-      ? await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&select=fragment_id,anchor_sv,root_id,draft,draft_at`).catch(() => [])
+      ? await sb(`ew_lost_fragment_claims?user_id=${eq(me.id)}&select=fragment_id,anchor_sv,root_id,draft,draft_at,working_link,view_at`).catch(() => [])
       : [];
     const byId = new Map(progress.map(p => [p.fragment_id, p]));
     const myClaims = mineClaims.map(c => {
       const p = byId.get(c.fragment_id) || {};
       return { fragment_id: c.fragment_id, kept: !!c.kept, claimed_at: c.claimed_at,
-        anchor_sv: p.anchor_sv || null, root_id: p.root_id || null, draft: p.draft || null, draft_at: p.draft_at || null };
+        anchor_sv: p.anchor_sv || null, root_id: p.root_id || null, draft: p.draft || null, draft_at: p.draft_at || null,
+        working_link: p.working_link || null, view_at: p.view_at || null };
     });
     const held = claims.filter(c => String(c.user_id) !== String(me.id)).map(c => c.fragment_id);
     const stash = await sb('ew_lost_fragment_stash?select=root_id,pt,from_fragment_id,player_name,choice,created_at&order=created_at.asc&limit=2000');
