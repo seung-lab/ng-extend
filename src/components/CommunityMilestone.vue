@@ -28,7 +28,7 @@ import { fragmentTester } from '../util/play';
 import { flyNurroAcross } from '../util/nurro_fly';
 import { fragmentsDone, setFragmentsDone } from '../util/fragment_milestones';
 import {
-  celebration, communityCounts, loadCommunityMilestones, markSeen, milestoneParts,
+  celebration, communityCounts, loadCommunityCounts, loadCommunityMilestones, markSeen, milestoneParts,
   nextMilestoneAfter, reopen, summaryStats, type Track,
 } from '../util/community_milestones';
 
@@ -47,6 +47,8 @@ const shown = computed(() => celebration.value);
 /** The one-off Pyr so far summary, sent as a test (Ames 2026-11-20). */
 const isSummary = computed(() => shown.value?.track === 'summary');
 const stats = computed(() => summaryStats());
+// The summary needs the counts; read them if they are not in yet.
+watch(isSummary, on => { if (on && !stats.value.length) void loadCommunityCounts().catch(() => undefined); }, { immediate: true });
 const parts = computed(() => shown.value ? milestoneParts(shown.value.track, shown.value.value) : ['', '', '']);
 const done = computed(() => {
   const c = shown.value;
@@ -97,14 +99,33 @@ watch(celebration, async (c, old) => {
   if (!c || (old && old.track === c.track && old.value === c.value)) return;
   await nextTick();
   if (!c.confetti) return;
-  // Two bursts, then a third from the banner. Nurro flies across once
+  // Nurro flies across once
   // CONGRATS! has built in and its light has swept by, about 2.7 s (Ames:
   // "Nurro should always fly across when there is a celebration", then
   // "congrats it builds in and after the animation finishes then Nurro flies by").
-  setTimeout(() => confetti.value?.trigger('champions', 1.4), 150);
+  // The confetti bursts out from behind the box, then fireworks go up
+  // around it (Ames 2026-11-20: "the confetti sort of comes from behind the
+  // box, or make it have like fireworks").
+  const mid = () => {
+    const r = boxEl.value?.getBoundingClientRect();
+    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2, r } : { x: window.innerWidth / 2, y: 180, r: null };
+  };
+  setTimeout(() => confetti.value?.trigger('champions', 1.6, mid()), 650);
+  setTimeout(() => confetti.value?.trigger('cyan', 1.1, mid()), 1250);
   setTimeout(() => { if (celebration.value === c) void flyNurroAcross(); }, NURRO_AFTER_MS);
-  setTimeout(() => confetti.value?.trigger('cyan', 1), 900);
-  setTimeout(() => confetti.value?.trigger('champions', 0.8, { x: window.innerWidth / 2, y: 110 }), 1800);
+  const W = window.innerWidth, H = window.innerHeight, m = mid();
+  const below = m.r ? m.r.bottom : 300;
+  const side = Math.max(60, Math.min(W * 0.22, (m.r ? m.r.left : W / 2) - 40));
+  const lo = Math.min(H - 80, below + 60), hi = Math.min(H - 80, below + H * 0.22);
+  confetti.value?.fireworks('champions', [
+    { x: side, y: lo, at: 900 },
+    { x: W - side, y: hi, at: 1150 },
+    { x: W * 0.5 + (Math.random() - 0.5) * 120, y: Math.min(H - 60, below + H * 0.3), at: 1600 },
+    { x: side * 0.7, y: hi, at: 2100 },
+    { x: W - side * 0.7, y: lo, at: 2350 },
+    { x: W * 0.32, y: Math.min(H - 60, below + H * 0.12), at: 3300 },
+    { x: W * 0.68, y: Math.min(H - 60, below + H * 0.16), at: 3550 },
+  ]);
 });
 function close() {
   const c = celebration.value;
@@ -170,7 +191,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ConfettiCelebration ref="confetti" />
+  <ConfettiCelebration ref="confetti" behind />
   <transition name="nge-cm" type="transition">
     <div v-if="shown" :key="shown.track + shown.value" ref="boxEl" class="nge-cm" role="status" aria-live="polite"
          :aria-label="'Congrats! ' + (isSummary ? 'Pyr so far: ' + stats.map(s => fmt(s.n) + ' ' + s.label).join(', ') : parts.join(''))">
@@ -179,11 +200,11 @@ onUnmounted(() => {
       <div class="nge-cm-congrats" aria-hidden="true"><span
         v-for="(ch, i) in LETTERS" :key="i" :class="{ 'nge-cm-bang': ch === '!' }" :style="{ '--i': i }">{{ ch }}</span></div>
       <template v-if="isSummary">
-        <div class="nge-cm-sub">So far, together:</div>
+        <div class="nge-cm-sofar"><i></i>So far, together<i></i></div>
         <div class="nge-cm-stats">
           <div v-for="(s, i) in stats" :key="s.label" class="nge-cm-stat" :style="{ '--i': i }"><b>{{ fmt(s.n) }}</b><span>{{ s.label }}</span></div>
         </div>
-        <div class="nge-cm-next nge-cm-note">This one is a test. More celebrations are coming as we reach new community milestones.</div>
+        <div class="nge-cm-next nge-cm-note"><span><b>Test Celebration.</b> More confetti is coming as we reach new community milestones!</span></div>
       </template>
       <div v-else class="nge-cm-sub">{{ parts[0] }}<b>{{ parts[1] }}</b>{{ parts[2] }}</div>
       <div v-if="!isSummary" class="nge-cm-next">
@@ -237,6 +258,12 @@ onUnmounted(() => {
 @keyframes nge-cm-rise { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
 
 /* Pyr so far: three numbers side by side, rising in turn. */
+.nge-cm-sofar { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px;
+  font: 700 14px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #9fe9ff;
+  text-shadow: 0 0 10px rgba(95, 212, 255, 0.55); animation: nge-cm-rise 500ms 1350ms ease-out both; }
+.nge-cm-sofar i { flex: 0 1 46px; height: 1px; background: linear-gradient(90deg, transparent, #ffd35a); }
+.nge-cm-sofar i:last-child { background: linear-gradient(90deg, #ffd35a, transparent); }
+.nge-cm-note b { color: #ffd35a; font-weight: 700; }
 .nge-cm-stats { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
 .nge-cm-stat { flex: 1; min-width: 0; padding: 8px 4px 7px; border: 1px solid rgba(126, 224, 255, 0.25); background: rgba(126, 224, 255, 0.06);
   clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);

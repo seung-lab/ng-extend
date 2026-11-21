@@ -109,6 +109,19 @@ export function reopen(track: Track, value: number) {
 const FRESH_MS = 7 * 24 * 3600 * 1000;
 interface MilestoneRow { track: string; value: number; reached_at: string; banner: boolean; }
 
+/** Just the counts, signed in or not (community_progress is readable by
+ *  anyone), for the Pyr so far summary when it shows before sign-in. */
+export async function loadCommunityCounts(): Promise<void> {
+  const { supabase } = await import('../supabase');
+  const prog = await supabase.from('community_progress').select('track,count');
+  if (prog.error || !prog.data) return;
+  const next = { ...communityCounts.value };
+  for (const r of prog.data as { track: string; count: number }[]) {
+    if (r.track === 'cells' || r.track === 'edits' || r.track === 'players') next[r.track] = r.count;
+  }
+  communityCounts.value = next;
+}
+
 export async function loadCommunityMilestones(): Promise<void> {
   const { supabase } = await import('../supabase');
   const since = new Date(Date.now() - FRESH_MS).toISOString();

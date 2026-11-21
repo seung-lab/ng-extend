@@ -243,12 +243,12 @@ async function run(browser, opts) {
       await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
       await page.waitForTimeout(3600);
       const sm = await page.evaluate(() => { const b = document.querySelector('.nge-cm'); if (!b) return null; const r = b.getBoundingClientRect();
-        return { sub: b.querySelector('.nge-cm-sub').textContent.trim(), stats: [...b.querySelectorAll('.nge-cm-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+        return { sub: b.querySelector('.nge-cm-sofar').textContent.trim(), stats: [...b.querySelectorAll('.nge-cm-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
           note: (b.querySelector('.nge-cm-note') || {}).textContent, bars: b.querySelectorAll('.nge-cm-bar').length, l: r.left, r: r.right, vw: innerWidth,
           over: [...b.querySelectorAll('.nge-cm-stat')].some(e => e.scrollWidth > e.clientWidth + 1) }; });
-      check(`summary shows (${width})`, sm && sm.sub === 'So far, together:', sm);
+      check(`summary shows (${width})`, sm && sm.sub === 'So far, together', sm);
       check(`summary numbers (${width})`, sm && sm.stats.join('|') === '5,012cells completed|61,234edits|58players', sm && sm.stats);
-      check(`summary says it is a test (${width})`, sm && sm.note === 'This one is a test. More celebrations are coming as we reach new community milestones.' && sm.bars === 0, sm && sm.note);
+      check(`summary says it is a test (${width})`, sm && sm.note === 'Test Celebration. More confetti is coming as we reach new community milestones!' && sm.bars === 0, sm && sm.note);
       check(`summary fits (${width})`, sm && sm.l >= 0 && sm.r <= sm.vw && !sm.over, sm);
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-summary-${width}.png` });
       if (width === 1400) {
