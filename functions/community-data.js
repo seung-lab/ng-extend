@@ -20,6 +20,7 @@ const fail = (status, message) => { throw Object.assign(new Error(message), {sta
  *  admin powers. Kept in step with src/util/researchers.ts. */
 const RESEARCHERS = new Set([
   '5bb0310a-b42d-4d13-937f-eab620794949',  // Jan Lause (jan_lause)
+  '29d6ef4d-ba1c-44ef-aeeb-edfff3fda0b7',  // Eric Hammerschmith
 ]);
 // users.last_edit_date and users.total_days are never writable from a browser:
 // the database decides when a new day starts (supabase-days-need-action.sql),

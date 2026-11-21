@@ -55,7 +55,7 @@ const props = defineProps<{ playTick?: number; slim?: boolean }>();
 const VETERAN_AT = 5;
 /** The how-to, admins edit it in the game (EditableText, key howto.lost_fragments). */
 const HOWTO_LINES = [
-  'If your cell is a glia, press <b>It\'s a glia</b> and do not proofread it. Each glia is one column rising up, covered in little barb-like projections. <a href="#" data-nge-action="see-glia">See a glia</a>, or <a href="#" data-nge-action="see-glia-fused">glia fused together</a>.',
+  'If your cell is a glia, press <b>It\'s a glia</b> and do not proofread it. Each glia is one column rising up, covered in little barb-like projections. Put the crosshairs in a trunk. <a href="#" data-nge-action="see-glia">See a glia</a>, or <a href="#" data-nge-action="see-glia-fused">glia fused together</a>.',
   '<b>Fix splits and merges.</b> Cut off anything that belongs to another cell, and merge in pieces that are missing.',
   '<b>Check every end.</b> Follow each branch to its tip and extend it where it was cut short.',
   '<b>Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.',
@@ -924,13 +924,13 @@ const endsOk = computed(() => form.ends || veteran.value);
  *  of complete, it should be submit"; "a drop down for multiple cells fused
  *  together versus one"). It counts as a Quest and goes to the Glia Quest
  *  (functions/lost-fragments.js fragments.glia). */
-const glia = reactive({ on: false, fused: '' as '' | 'one' | 'several', count: '', open: false });
+const glia = reactive({ on: false, fused: '' as '' | 'one' | 'several', count: '', open: false, info: false });
 const GLIA_FUSED: { key: 'one' | 'several'; label: string }[] = [
   { key: 'one', label: 'One glia' },
   { key: 'several', label: 'Several cells fused together' },
 ];
 const gliaLabel = computed(() => GLIA_FUSED.find(g => g.key === glia.fused)?.label || 'One glia, or several fused?');
-function resetGlia() { Object.assign(glia, { on: false, fused: '', count: '', open: false }); }
+function resetGlia() { Object.assign(glia, { on: false, fused: '', count: '', open: false, info: false }); }
 const gliaBox = ref<HTMLElement | null>(null);
 const gliaListPos = ref<Record<string, string>>({});
 watch(() => glia.open, open => {
@@ -971,7 +971,7 @@ async function submitGlia() {
       fragmentId: row.id, group: group.value, rootId: shownRoot.value || row.id, fused: glia.fused,
       count: Number.isInteger(count) ? count : undefined,
       // One glia: the player's point in its main trunk when they placed one (Ames 2026-11-21).
-      pt: glia.fused === 'one' && form.pointOk && form.point ? form.point : row.pt, trunk: glia.fused === 'one' && form.pointOk && !!form.point,
+      pt: form.pointOk && form.point ? form.point : row.pt, trunk: form.pointOk && !!form.point,
       labFlag: labFlagOf(row), labUm3: row.um3, note: form.note.trim(),
     });
     serverOn.value = true;
@@ -997,10 +997,14 @@ async function submitGlia() {
 }
 const completeLabel = computed(() => glia.on && !form.saved ? (playing.value ? 'Submit glia and next' : 'Submit glia')
   : form.saved ? 'Send again' : playing.value ? 'Complete and next' : 'Complete');
-const canSubmit = computed(() => glia.on ? !!glia.fused : fixedOk.value && endsOk.value && form.pointOk && !!form.point);
+const canSubmit = computed(() => glia.on ? !!glia.fused && form.pointOk && !!form.point : fixedOk.value && endsOk.value && form.pointOk && !!form.point);
 const missing = computed(() => {
   const m: string[] = [];
-  if (glia.on) { if (!glia.fused) m.push('say whether it is one glia or several cells fused together'); return m; }
+  if (glia.on) {
+    if (!glia.fused) m.push('say whether it is one glia or several cells fused together');
+    if (!form.pointOk) m.push('put the crosshairs in a trunk');
+    return m;
+  }
   if (!fixedOk.value) m.push('fix the splits and merges');
   if (!endsOk.value) m.push('check the ends');
   if (!form.pointOk) m.push(`put a point in the ${form.where === 'soma' ? 'soma' : 'major dendrite'}`);
@@ -1310,7 +1314,15 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
         </span>
       </div>
       <div v-if="glia.on && !form.saved" class="nge-orph-glia">
-        <div class="nge-orph-row nge-orph-sub">No proofreading for a glia. Each glia is one column rising up, covered in little barb-like projections: count the columns. Then submit. It counts as a Quest, and we stash it away for the Glia Quest, launching in early December.</div>
+        <div class="nge-orph-row nge-orph-gliahead">
+          <span class="nge-orph-sub">No proofreading. Label it, then submit.</span>
+          <button class="nge-orph-help-btn nge-orph-info" :class="{ on: glia.info }" :aria-expanded="glia.info ? 'true' : 'false'" title="About glia" @click="glia.info = !glia.info">i</button>
+        </div>
+        <div v-if="glia.info" class="nge-orph-row nge-orph-sub nge-orph-gliainfo">
+          <span>Each glia is one column rising up, covered in little barb-like projections. It counts as a Quest, and we stash it for the Glia Quest in early December.
+            <button class="nge-orph-link" @click="showGliaExample('one')" title="Opens a Müller glia in a new tab">See a glia</button>
+            <button class="nge-orph-link" @click="showGliaExample('fused')" title="Opens Müller glia fused together, in a new tab">See glia fused together</button></span>
+        </div>
         <div class="nge-orph-row nge-orph-typerow">
           <div ref="gliaBox" class="nge-orph-typepick" :class="{ open: glia.open }">
             <button type="button" class="nge-orph-input nge-orph-type nge-orph-typebtn" aria-label="One glia or several fused" aria-haspopup="listbox" :aria-expanded="glia.open ? 'true' : 'false'"
@@ -1331,19 +1343,15 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           <input v-if="glia.fused === 'several'" v-model="glia.count" class="nge-orph-input nge-orph-type nge-orph-gliacount" inputmode="numeric" maxlength="2"
                  placeholder="How many columns? (optional)" aria-label="How many glia, one per column" @keydown.stop @keyup.stop @keypress.stop />
         </div>
-        <!-- One glia: a point in its main trunk, optional (Ames 2026-11-21: "players could already place a coordinate inside the main trunk of the cell"). -->
-        <template v-if="glia.fused === 'one'">
+        <!-- A point in the trunk, required (Ames 2026-11-21: "Crosshairs not optional"; Jan: the lab's own
+             coordinate can be anywhere in the cell, even a part cut off later). -->
+        <template v-if="glia.fused">
           <div class="nge-orph-row">
-            <span><b>Crosshairs in the main trunk</b> <span class="nge-orph-sub">optional</span></span>
-            <button class="nge-orph-btn" :disabled="form.checking" @click="usePoint" title="Put the crosshairs inside the glia's main trunk, the column it rises up, then press this.">{{ form.checking ? 'Checking…' : 'Use crosshairs' }}</button>
+            <span><b>{{ glia.fused === 'one' ? 'Crosshairs in its main trunk' : 'Crosshairs in one trunk' }}</b></span>
+            <button class="nge-orph-btn" :disabled="form.checking" @click="usePoint" title="Put the crosshairs inside a trunk, the column a glia rises up, then press this.">{{ form.checking ? 'Checking…' : 'Use crosshairs' }}</button>
           </div>
           <div v-if="form.pointMsg" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': !form.pointOk }">{{ form.pointMsg }}</span></div>
         </template>
-        <div class="nge-orph-row nge-orph-gliaex">
-          <span class="nge-orph-sub">Not sure?</span>
-          <button class="nge-orph-link" @click="showGliaExample('one')" title="Opens a Müller glia in a new tab">See a glia</button>
-          <button class="nge-orph-link" @click="showGliaExample('fused')" title="Opens Müller glia fused together, in a new tab">See glia fused together</button>
-        </div>
       </div>
       <ol v-if="!glia.on || form.saved" class="nge-orph-check">
         <li v-if="!veteran" :class="{ done: form.fixed }">
@@ -1487,7 +1495,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
   border: 1px solid rgba(111, 224, 208, 0.35); background: rgba(111, 224, 208, 0.06); }
 .nge-orph-glia .nge-orph-sub { line-height: 1.4; }
 .nge-orph-gliacount { max-width: 210px; }
-.nge-orph-gliaex { gap: 12px; align-items: baseline; }
+.nge-orph-gliahead { justify-content: space-between; }
+.nge-orph-info { font-style: normal; font-weight: 700; }
+.nge-orph-gliainfo { line-height: 1.45; }
+.nge-orph-gliainfo .nge-orph-link { margin-left: 8px; }
 .nge-orph-later--slim { margin-left: auto; padding: 3px 12px; font-size: 12px; }
 .nge-orph-finishhead .nge-orph-later--slim + .nge-orph-help-btn { margin-left: 6px; }
 .nge-orph-playhere-row { display: flex; align-items: center; gap: 10px; margin: 2px 12px 8px; flex-wrap: wrap; }
