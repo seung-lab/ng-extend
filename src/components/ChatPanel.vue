@@ -16,7 +16,7 @@ import pyrGemUrl from '../../static/badges/pyr/pyr-icon.png';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
-import nurroAtHome from '../../static/nurro/nurro-at-home.png';
+import pinPicture from '../../static/images/neurons/pyramidal-neurons.jpg';
 import nurroAvatar from '../../static/nurro/nurro-original.png';
 
 const DAILY_MEDALS = ['🥇', '🥈', '🥉'];
@@ -1662,7 +1662,10 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
           <div v-if="pinOpen && shownPin" class="nge-chat-pinpop-back" @click.self="pinOpen = false">
             <div class="nge-chat-pinpop" role="dialog" aria-modal="true" aria-label="Pinned message">
               <button type="button" class="nge-chat-pinpop-x" aria-label="Close" @click="pinOpen = false">×</button>
-              <img :src="nurroAtHome" class="nge-chat-pinpop-pic" alt="Nurro the cat at a laptop under a blanket, with a mug of something warm" />
+              <figure class="nge-chat-pinpop-fig">
+                <img :src="pinPicture" class="nge-chat-pinpop-pic" alt="Pyramidal neurons up close, in blues and violets" />
+                <figcaption class="nge-chat-pinpop-cap">"The moment I saw our first connectomics Nature cover." Amy</figcaption>
+              </figure>
               <div class="nge-chat-pinpop-body">
                 <span class="nge-chat-pinpop-chip">
                   <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg>
@@ -2366,19 +2369,23 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
    it, the message, what players have sent since Sept 28, and Nurro. */
 .nge-chat-pinpop-back { position: fixed; inset: 0; z-index: 12000; display: flex; align-items: center; justify-content: center; padding: 16px;
   background: rgba(2, 6, 16, 0.62); backdrop-filter: blur(3px); }
-.nge-chat-pinpop { position: relative; width: min(640px, 100%); box-sizing: border-box; display: flex; gap: 18px; align-items: flex-start; padding: 20px 22px 20px 16px; border-radius: 14px;
+.nge-chat-pinpop { position: relative; width: min(600px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; display: flex; flex-direction: column; padding: 0; border-radius: 14px;
   background: radial-gradient(120% 70% at 0% 0%, rgba(74, 158, 255, 0.14), transparent 60%), linear-gradient(160deg, rgba(14, 30, 62, 0.98), rgba(7, 13, 30, 0.98));
   border: 1px solid rgba(127, 190, 255, 0.4); box-shadow: 0 18px 54px rgba(0, 0, 0, 0.6), 0 0 30px rgba(74, 158, 255, 0.16);
   color: #e6eefa; font-family: Inter, system-ui, sans-serif; animation: nge-chat-pinpop-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 @keyframes nge-chat-pinpop-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
-.nge-chat-pinpop-pic { flex: none; width: 150px; height: 150px; object-fit: contain; margin-top: 6px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45)); }
-.nge-chat-pinpop-body { flex: 1; min-width: 0; }
+.nge-chat-pinpop-fig { position: relative; margin: 0; line-height: 0; }
+.nge-chat-pinpop-pic { display: block; width: 100%; height: 210px; object-fit: cover; object-position: center 45%; border-radius: 14px 14px 0 0; }
+.nge-chat-pinpop-fig::after { content: ''; position: absolute; inset: 0; border-radius: 14px 14px 0 0; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(7, 13, 30, 0) 45%, rgba(7, 13, 30, 0.88) 100%); }
+.nge-chat-pinpop-cap { position: absolute; left: 16px; right: 16px; bottom: 10px; z-index: 1; line-height: 1.4; font: 500 13px Inter, sans-serif; color: #e6eefa; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
+.nge-chat-pinpop-body { padding: 16px 22px 18px; }
 .nge-chat-pinpop-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px;
   background: rgba(230, 199, 96, 0.14); border: 1px solid rgba(230, 199, 96, 0.55); color: #f6e3a6; font: 600 12.5px/1 Inter, sans-serif; }
-.nge-chat-pinpop-x { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(127, 190, 255, 0.35);
+.nge-chat-pinpop-x { position: absolute; top: 10px; right: 10px; z-index: 2; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(127, 190, 255, 0.35);
   background: rgba(8, 16, 34, 0.6); color: #cfe4fa; cursor: pointer; font-size: 16px; line-height: 1; }
 .nge-chat-pinpop-x:hover { color: #fff; border-color: rgba(143, 214, 255, 0.8); }
-.nge-chat-pinpop-text { margin: 12px 28px 0 0; font-size: 15.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: #f2f6fc; }
+.nge-chat-pinpop-text { margin: 12px 0 0; font-size: 15.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: #f2f6fc; }
 .nge-chat-pinpop-stathead { margin-top: 16px; font: 600 10.5px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #8fd6ff; }
 .nge-chat-pinpop-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .nge-chat-pinpop-stat { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 9px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(127, 190, 255, 0.2); }
@@ -2390,7 +2397,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-pinpop-row { display: flex; justify-content: flex-end; margin-top: 14px; }
 .nge-chat-pinpop-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid rgba(143, 214, 255, 0.6); background: rgba(74, 158, 255, 0.2); color: #fff; font: 600 13px Inter, sans-serif; cursor: pointer; }
 .nge-chat-pinpop-btn:hover { background: rgba(74, 158, 255, 0.34); }
-@media (max-width: 560px) { .nge-chat-pinpop { flex-direction: column; align-items: center; } .nge-chat-pinpop-pic { width: 110px; height: 110px; } }
+@media (max-width: 560px) { .nge-chat-pinpop-pic { height: 150px; } }
 /* The pinned message: up to three lines above the conversation */
 .nge-chat-pin {
   display: flex; align-items: center; gap: 4px; margin: 0 6px 2px; padding: 3px 4px 3px 8px; border-radius: 7px;
