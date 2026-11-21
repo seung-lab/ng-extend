@@ -233,6 +233,46 @@ async function run(browser, opts) {
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-phone.png` });
       await context.close();
     }
+    // ── 5. The one-off Pyr so far summary, sent as a test ──
+    for (const width of [1400, 390]) {
+      const SUM = { id: 990002, title: '🎊 Pyr so far: thank you, everyone', target_type: 'all', target_id: null, image_url: null, thumbnail_url: null,
+        body: 'Congrats!\n\n[See the celebration again](#nge-milestone=summary:1)' };
+      const { context, page } = await run(browser, { milestones: [{ track: 'summary', value: 1, reached_at: now(), banner: true }], notes: [SUM, NOTE] });
+      await page.setViewportSize({ width, height: 800 });
+      await open(context, page);
+      await page.waitForSelector('.nge-cm', { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(3600);
+      const sm = await page.evaluate(() => { const b = document.querySelector('.nge-cm'); if (!b) return null; const r = b.getBoundingClientRect();
+        return { sub: b.querySelector('.nge-cm-sub').textContent.trim(), stats: [...b.querySelectorAll('.nge-cm-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+          note: (b.querySelector('.nge-cm-note') || {}).textContent, bars: b.querySelectorAll('.nge-cm-bar').length, l: r.left, r: r.right, vw: innerWidth,
+          over: [...b.querySelectorAll('.nge-cm-stat')].some(e => e.scrollWidth > e.clientWidth + 1) }; });
+      check(`summary shows (${width})`, sm && sm.sub === 'So far, together:', sm);
+      check(`summary numbers (${width})`, sm && sm.stats.join('|') === '5,012cells completed|61,234edits|58players', sm && sm.stats);
+      check(`summary says it is a test (${width})`, sm && sm.note === 'This one is a test. More celebrations are coming as we reach new community milestones.' && sm.bars === 0, sm && sm.note);
+      check(`summary fits (${width})`, sm && sm.l >= 0 && sm.r <= sm.vw && !sm.over, sm);
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/cm-summary-${width}.png` });
+      if (width === 1400) {
+        await page.click('.nge-cm-close');
+        await page.waitForTimeout(800);
+        check('summary closes, seen', !(await banner(page)) && JSON.parse(await page.evaluate(() => localStorage.getItem('nge_community_milestones_seen_v1')) || '{}').summary === 1);
+        const before = await page.evaluate(() => window.__nurroAt.length);
+        await page.evaluate(async () => {
+          const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend');
+          await pb.loadNotifications();
+          document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: {} }));
+        });
+        await page.waitForTimeout(1500);
+        const cards = await page.evaluate(() => [...document.querySelectorAll('.nge-notif-card')].filter(c => /#|Pyr so far|Together we/.test(c.textContent)).map(c => c.textContent.replace(/\s+/g, ' ').trim().slice(0, 60)));
+        check('summary is the one milestone notification kept', cards.length === 1 && /Pyr so far/.test(cards[0]), cards);
+        await page.evaluate(() => { const c = [...document.querySelectorAll('.nge-notif-card')].find(c => /Pyr so far/.test(c.textContent)); c && c.click(); });
+        await page.waitForTimeout(800);
+        await page.evaluate(() => { const a = [...document.querySelectorAll('a')].find(a => /nge-milestone=summary/.test(a.getAttribute('href') || '')); a && a.click(); });
+        await page.waitForTimeout(3600);
+        const again = await page.evaluate(() => { const b = document.querySelector('.nge-cm'); return b ? b.querySelectorAll('.nge-cm-stat').length : 0; });
+        check('clicking it plays the summary again, Nurro too', again === 3 && (await page.evaluate(() => window.__nurroAt.length)) === before + 1, again);
+      }
+      await context.close();
+    }
   } finally {
     await browser.close();
   }

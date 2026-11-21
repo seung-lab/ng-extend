@@ -15,7 +15,8 @@
  * and a fun text animation! and then the countdown thing at the bottom is
  * more a secondary element").
  *
- * On a test site, ?cmMilestone=cells:5000 (edits, players, fragments too)
+ * On a test site, ?cmMilestone=cells:5000 (edits, players, fragments, and
+ * summary:1 for the Pyr so far summary)
  * shows it, to look at; ?lfMilestone=500 still shows a Lost Fragments one.
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -28,7 +29,7 @@ import { flyNurroAcross } from '../util/nurro_fly';
 import { fragmentsDone, setFragmentsDone } from '../util/fragment_milestones';
 import {
   celebration, communityCounts, loadCommunityMilestones, markSeen, milestoneParts,
-  nextMilestoneAfter, reopen, type Track,
+  nextMilestoneAfter, reopen, summaryStats, type Track,
 } from '../util/community_milestones';
 
 const backend = useProofreadingBackendStore();
@@ -43,6 +44,9 @@ const LETTERS = [...'CONGRATS!'];
  *  the light's sweep ends at 2,600 ms (the CSS below). */
 const NURRO_AFTER_MS = 2700;
 const shown = computed(() => celebration.value);
+/** The one-off Pyr so far summary, sent as a test (Ames 2026-11-20). */
+const isSummary = computed(() => shown.value?.track === 'summary');
+const stats = computed(() => summaryStats());
 const parts = computed(() => shown.value ? milestoneParts(shown.value.track, shown.value.value) : ['', '', '']);
 const done = computed(() => {
   const c = shown.value;
@@ -50,7 +54,7 @@ const done = computed(() => {
   const n = c.track === 'fragments' ? fragmentsDone.value : communityCounts.value[c.track];
   return Math.max(n ?? 0, c.value);
 });
-const next = computed(() => shown.value ? nextMilestoneAfter(shown.value.track, done.value) : 0);
+const next = computed(() => shown.value && !isSummary.value ? nextMilestoneAfter(shown.value.track, done.value) : 0);
 const toGo = computed(() => Math.max(0, next.value - done.value));
 /** How far along to the next milestone. */
 const progress = computed(() => next.value > 0 ? Math.min(1, done.value / next.value) : 0);
@@ -112,7 +116,7 @@ function close() {
 function onReopen(e: Event) {
   const d = (e as CustomEvent<{ track?: string; value?: number }>).detail || {};
   const t = d.track as Track;
-  if (!['cells', 'edits', 'players', 'fragments'].includes(t) || !(Number(d.value) > 0)) return;
+  if (!['cells', 'edits', 'players', 'fragments', 'summary'].includes(t) || !(Number(d.value) > 0)) return;
   reopen(t, Number(d.value));
 }
 
@@ -148,7 +152,7 @@ onMounted(() => {
   timer = window.setInterval(loadCommunity, 20 * 60 * 1000);
   if (ON_TEST_SITE) {
     const q = new URLSearchParams(location.search);
-    const cm = (q.get('cmMilestone') || '').match(/^(cells|edits|players|fragments):(\d+)$/);
+    const cm = (q.get('cmMilestone') || '').match(/^(cells|edits|players|fragments|summary):(\d+)$/);
     const lf = Number(q.get('lfMilestone'));
     const pick: [Track, number] | null = cm ? [cm[1] as Track, Number(cm[2])] : lf > 0 ? ['fragments', lf] : null;
     if (pick && pick[1] > 0) {
@@ -169,13 +173,20 @@ onUnmounted(() => {
   <ConfettiCelebration ref="confetti" />
   <transition name="nge-cm" type="transition">
     <div v-if="shown" :key="shown.track + shown.value" ref="boxEl" class="nge-cm" role="status" aria-live="polite"
-         :aria-label="'Congrats! ' + parts.join('')">
+         :aria-label="'Congrats! ' + (isSummary ? 'Pyr so far: ' + stats.map(s => fmt(s.n) + ' ' + s.label).join(', ') : parts.join(''))">
       <span class="nge-cm-frame" v-html="frame"></span>
       <div class="nge-cm-kicker"><i></i>Pyr community<i></i></div>
       <div class="nge-cm-congrats" aria-hidden="true"><span
         v-for="(ch, i) in LETTERS" :key="i" :class="{ 'nge-cm-bang': ch === '!' }" :style="{ '--i': i }">{{ ch }}</span></div>
-      <div class="nge-cm-sub">{{ parts[0] }}<b>{{ parts[1] }}</b>{{ parts[2] }}</div>
-      <div class="nge-cm-next">
+      <template v-if="isSummary">
+        <div class="nge-cm-sub">So far, together:</div>
+        <div class="nge-cm-stats">
+          <div v-for="(s, i) in stats" :key="s.label" class="nge-cm-stat" :style="{ '--i': i }"><b>{{ fmt(s.n) }}</b><span>{{ s.label }}</span></div>
+        </div>
+        <div class="nge-cm-next nge-cm-note">This one is a test. More celebrations are coming as we reach new community milestones.</div>
+      </template>
+      <div v-else class="nge-cm-sub">{{ parts[0] }}<b>{{ parts[1] }}</b>{{ parts[2] }}</div>
+      <div v-if="!isSummary" class="nge-cm-next">
         <span>{{ fmt(toGo) }} to go until {{ fmt(next) }}.</span>
         <div class="nge-cm-bar" aria-hidden="true"><div class="nge-cm-fill" :style="{ '--w': (progress * 100).toFixed(1) + '%' }" /></div>
       </div>
@@ -224,6 +235,15 @@ onUnmounted(() => {
 .nge-cm-sub { margin-top: 8px; font: 500 17px/1.35 Inter, sans-serif; color: #dff4ff; animation: nge-cm-rise 500ms 1350ms ease-out both; }
 .nge-cm-sub b { font: 700 19px Orbitron, Inter, sans-serif; color: #ffd35a; text-shadow: 0 0 10px rgba(255, 211, 90, 0.4); }
 @keyframes nge-cm-rise { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* Pyr so far: three numbers side by side, rising in turn. */
+.nge-cm-stats { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+.nge-cm-stat { flex: 1; min-width: 0; padding: 8px 4px 7px; border: 1px solid rgba(126, 224, 255, 0.25); background: rgba(126, 224, 255, 0.06);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  animation: nge-cm-rise 500ms ease-out both; animation-delay: calc(1500ms + var(--i) * 160ms); }
+.nge-cm-stat b { display: block; font: 700 clamp(17px, 4.6vw, 22px) Orbitron, Inter, sans-serif; color: #ffd35a; text-shadow: 0 0 10px rgba(255, 211, 90, 0.4); }
+.nge-cm-stat span { display: block; margin-top: 2px; font: 500 12px Inter, sans-serif; color: #b9dcf5; }
+.nge-cm-next.nge-cm-note { justify-content: center; text-align: center; animation-delay: 2100ms; }
 
 /* The countdown: small and quiet, at the bottom. */
 .nge-cm-next { display: flex; align-items: center; gap: 10px; margin: 14px -22px 0; padding-top: 9px; border-top: 1px solid rgba(126, 224, 255, 0.2);

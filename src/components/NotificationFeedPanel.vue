@@ -388,7 +388,7 @@ function isBadgeNotification(notif: any): boolean {
  *  carries #nge-milestone=cells:5000: a click plays the celebration again
  *  (Ames 2026-11-20). */
 function milestoneFrom(text: string): { track: string; value: number } | null {
-  const m = String(text || '').match(/#nge-milestone=(cells|edits|players|fragments):(\d{1,9})/);
+  const m = String(text || '').match(/#nge-milestone=(cells|edits|players|fragments|summary):(\d{1,9})/);
   return m ? { track: m[1], value: Number(m[2]) } : null;
 }
 function openMilestone(ms: { track: string; value: number }) {
