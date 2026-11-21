@@ -721,6 +721,18 @@ const isPinRow = (m: ChatMessage) => m.type === 'message' && m.rank === 'pin';
 const pinRowSays = (m: ChatMessage) => (String(m.dataset || '') === 'pin:none' ? 'took the pinned message down' : 'pinned a message');
 const isPinnedMsg = (m: ChatMessage) => m.id != null && chatStore.pinned?.messageId === String(m.id);
 const pinBusy = ref(false);
+/** The pinned message in full, in a box of its own (Ames 2026-11-20: "make
+ *  this message like a popup that I can click vs the message that is cut off
+ *  and when clicked scrolls way up in chat"). Go to it in the chat from there. */
+const pinOpen = ref(false);
+function onPinKey(e: KeyboardEvent) { if (e.key === 'Escape' && pinOpen.value) { e.stopPropagation(); pinOpen.value = false; } }
+watch(pinOpen, o => { if (o) window.addEventListener('keydown', onPinKey, true); else window.removeEventListener('keydown', onPinKey, true); });
+watch(shownPin, p => { if (!p) pinOpen.value = false; });
+function pinGoTo() {
+  const id = shownPin.value?.messageId;
+  pinOpen.value = false;
+  if (id) goToMessage(id);
+}
 // How an admin pins: right click the React button on a message, then Pin.
 // There is no pin button on the messages themselves.
 const pinMenuFor = ref<string | null>(null);
@@ -1613,11 +1625,27 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
       <template v-if="!collapsed">
         <!-- Message area with top fade -->
         <div v-if="shownPin && !searchOpen" class="nge-chat-pin" role="note">
-          <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to go to the message.'"
-                  @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></span>{{ plainChatText(shownPin.text) }}</button>
+          <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to read it in full.'"
+                  @click.stop="pinOpen = true"><span class="nge-chat-pin-glyph" aria-hidden="true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></span>{{ plainChatText(shownPin.text) }}</button>
           <button v-if="backendStore.showAdminUi" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
           <button type="button" class="nge-chat-pin-x" title="Hide this pin for me" aria-label="Hide this pin for me" @click.stop="hidePin">×</button>
         </div>
+        <Teleport to="body">
+          <div v-if="pinOpen && shownPin" class="nge-chat-pinpop-back" @click.self="pinOpen = false">
+            <div class="nge-chat-pinpop" role="dialog" aria-modal="true" aria-label="Pinned message">
+              <div class="nge-chat-pinpop-head">
+                <span class="nge-chat-pinpop-kicker"><span class="nge-chat-pinpop-dot" aria-hidden="true"></span>Pinned in chat</span>
+                <span class="nge-chat-pinpop-by">by {{ shownPin.by }}</span>
+                <button type="button" class="nge-chat-pinpop-x" aria-label="Close" @click="pinOpen = false">×</button>
+              </div>
+              <p class="nge-chat-pinpop-text">{{ plainChatText(shownPin.text) }}</p>
+              <div class="nge-chat-pinpop-row">
+                <button type="button" class="nge-chat-pinpop-btn" @click="pinGoTo">Show it in the chat</button>
+                <button type="button" class="nge-chat-pinpop-btn nge-chat-pinpop-btn--quiet" @click="pinOpen = false">Close</button>
+              </div>
+            </div>
+          </div>
+        </Teleport>
         <div class="nge-chat-messages-wrap">
           <div class="nge-chat-fade"></div>
           <div v-if="tipsOpen" class="nge-chat-tips" role="dialog" aria-label="Chat tips" @click.stop>
@@ -1631,7 +1659,7 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
               <li><code>/me waves</code> shows a grey line, like <i>Nseraf waves</i>.</li>
               <li><code>*bold*</code> and <code>_underline_</code>. Shift+Enter for a new line.</li>
               <li>Point at a message to react (the Pyr gem too) or reply with ↩.</li>
-              <li>A pinned message from the team sits at the top. Click it to jump there, or × to hide it.</li>
+              <li>A pinned message from the team sits at the top. Click it to read it in full, or × to hide it.</li>
               <li>🔍 searches. Try <code>from:name</code>, <code>on:10/8</code>, <code>-word</code>, <code>"two words"</code>.</li>
               <li>The bell sends notifications while Pyr is in the background. To hide the unread count, use Settings, Mute the chat unread count.</li>
               <li>📍 shares your view, with a screenshot if you like. 🙂 adds an emoji.</li>
@@ -2293,6 +2321,25 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-new-line { display: flex; align-items: center; gap: 8px; margin: 6px 2px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ff9d8a; }
 .nge-chat-new-line::before, .nge-chat-new-line::after { content: ''; flex: 1; height: 1px; background: rgba(255, 130, 110, 0.55); }
 .nge-chat-float--quiet .nge-chat-new-line { opacity: 0; }
+/* The pinned message in full (Ames 2026-11-20). */
+.nge-chat-pinpop-back { position: fixed; inset: 0; z-index: 12000; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(2, 6, 16, 0.6); backdrop-filter: blur(3px); }
+.nge-chat-pinpop { width: min(520px, 100%); box-sizing: border-box; padding: 16px 18px 16px; border-radius: 12px;
+  background: linear-gradient(160deg, rgba(14, 30, 62, 0.98), rgba(7, 13, 30, 0.98)); border: 1px solid rgba(230, 199, 96, 0.45);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6), 0 0 26px rgba(230, 199, 96, 0.12); color: #e6eefa; font-family: Inter, system-ui, sans-serif;
+  animation: nge-chat-pinpop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes nge-chat-pinpop-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+.nge-chat-pinpop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.nge-chat-pinpop-kicker { display: inline-flex; align-items: center; gap: 7px; font: 600 11px 'Orbitron', Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #f1d27a; }
+.nge-chat-pinpop-dot { width: 7px; height: 7px; border-radius: 50%; background: #f1d27a; box-shadow: 0 0 8px #f1d27a; }
+.nge-chat-pinpop-by { font-size: 12px; color: #9fb0c8; }
+.nge-chat-pinpop-x { margin-left: auto; width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(230, 199, 96, 0.35); background: none; color: #f1e3b0; cursor: pointer; font-size: 15px; line-height: 1; }
+.nge-chat-pinpop-x:hover { color: #fff; border-color: rgba(230, 199, 96, 0.7); }
+.nge-chat-pinpop-text { margin: 0; font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: #f4ecd2; }
+.nge-chat-pinpop-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.nge-chat-pinpop-btn { padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(230, 199, 96, 0.6); background: rgba(230, 199, 96, 0.14); color: #fff6d6; font: 600 13px Inter, sans-serif; cursor: pointer; }
+.nge-chat-pinpop-btn:hover { background: rgba(230, 199, 96, 0.26); }
+.nge-chat-pinpop-btn--quiet { border-color: rgba(127, 190, 255, 0.3); background: none; color: #a9c3e0; }
 /* The pinned message: up to three lines above the conversation */
 .nge-chat-pin {
   display: flex; align-items: center; gap: 4px; margin: 0 6px 2px; padding: 3px 4px 3px 8px; border-radius: 7px;
