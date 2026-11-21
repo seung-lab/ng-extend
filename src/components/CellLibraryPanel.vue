@@ -2385,7 +2385,8 @@ function onOpenAsked(e: Event) {
   // Opened out of sight by the Sandbox Playing box, to run its buttons.
   if ((e as CustomEvent).detail?.quiet) return;
   const tab = (e as CustomEvent).detail?.tab;
-  if (tab && ALL_CL_TABS.some(t => t.key === tab)) {
+  // Lost Fragments is its own tab outside the list (Retina only).
+  if (tab && (ALL_CL_TABS.some(t => t.key === tab) || (tab === 'orphans' && orphansHere.value))) {
     filter.value = tab;
     // Asked for a tab while slim: show the full library on it (the tab list
     // was out of sight, Ames 2026-11-13).

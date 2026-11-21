@@ -554,7 +554,23 @@ function findRow(id: string): { g: GroupKey; row: OrphanSeg } | null {
 }
 // Pressing Play while a fragment is open and not yet submitted stays on it
 // (Ames 2026-11-19: Play took her from Smaller back to Large, losing her note).
-function playResume() {
+/** Where Start playing takes you back to (Ames 2026-11-21: "launch players
+ *  back where they were"): the fragment open now if it is not sent, else the
+ *  one you last worked on (the server's newest claim; saving work renews it),
+ *  else none. */
+const resumeId = computed(() => {
+  const a = active.value;
+  if (a && !saves[a.id]) return a.id;
+  const m = myClaim.value;
+  return m && !saves[m] && findRow(m) ? m : null;
+});
+let listLoad: Promise<void> | null = null;
+async function playResume() {
+  // After a reload the server's list says which fragment was yours: wait for it.
+  if (!heldFragments.loaded && !active.value) {
+    listLoad = listLoad || loadAnswers();
+    await Promise.race([listLoad, new Promise(res => setTimeout(res, 6000))]);
+  }
   const a = active.value;
   if (a && !saves[a.id]) {
     void claimHere(a);
@@ -572,8 +588,8 @@ function playResume() {
   }
   playNext();
 }
-watch(() => props.playTick, t => { if (t) playResume(); });
-onMounted(() => { restoreDraft(); if (props.playTick) playResume(); });
+watch(() => props.playTick, t => { if (t) void playResume(); });
+onMounted(() => { restoreDraft(); if (props.playTick) void playResume(); });
 const onSkip = () => skip();
 onMounted(() => document.addEventListener('nge:play-skip-fragment', onSkip));
 onUnmounted(() => document.removeEventListener('nge:play-skip-fragment', onSkip));
@@ -840,7 +856,7 @@ async function loadAnswers() {
     }
   } catch { serverOn.value = false; }
 }
-onMounted(() => { void loadAnswers(); });
+onMounted(() => { listLoad = listLoad || loadAnswers(); });
 
 /** A merge or cut while a fragment is open and not yet sent: it stays yours
  *  when Play hands you the next one (Ames 2026-11-21). */
@@ -907,11 +923,15 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       </button>
     </div>
     <div v-if="!slim" class="nge-orph-about">{{ cur.about }}</div>
-    <div v-if="!slim && !playing" class="nge-orph-playhere-row">
-      <button class="nge-orph-playhere" @click="startPlay('fragments')" title="Play: opens the next fragment you haven't answered. After Submit, the next one.">
-        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
+    <!-- Start playing, always here (Ames 2026-11-21: "we need the start
+         playing button back in lost frags that will launch players back where
+         they were"). -->
+    <div v-if="!slim" class="nge-orph-playhere-row">
+      <button class="nge-orph-playhere" @click="startPlay('fragments')"
+              :title="resumeId ? 'Back to the fragment you were working on, with your progress' : 'Opens the next fragment you have not done. After Complete, the next one.'">
+        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Start playing
       </button>
-      <span class="nge-orph-playhere-hint">Opens the next fragment, then the next one after each Submit.</span>
+      <span class="nge-orph-playhere-hint">{{ resumeId ? `Takes you back to ${idNow(resumeId)}, where you left off.` : 'Opens the next fragment, then the next one after each Complete.' }}</span>
     </div>
     <div v-if="slim && !active" class="nge-orph-note nge-orph-slim-empty">No fragment open. Open the full view to pick one.</div>
 
