@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-22T17:33:00Z",
+      "title": "Lost Fragments that split into several cells",
+      "items": [
+        "When a fragment comes apart into several finished cells, press It split into several cells? in the Complete box.",
+        "Put the crosshairs in each cell and press Add. Each one gets its own point for the lab and its own cell type, picked from the list or typed.",
+        "They all count as the one fragment. Thanks to Nseraf for the idea."
+      ]
+    },
+    {
       "at": "2026-11-22T16:39:00Z",
       "title": "Glia read the crosshairs by themselves",
       "items": [
