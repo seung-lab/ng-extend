@@ -352,3 +352,20 @@ test('the lab list plays from the centre outward, past done, held and edited fra
   assert.equal((await fragmentsAction('fragments.next', { difficulties: ['easy'] }, io)).row.difficulty, 'medium');
   assert.equal((await fragmentsAction('fragments.get', { ids: ['720575940500000104'] }, io)).rows[0].rank, 1);
 });
+
+test('split pieces: cleaned, deduped, and written to the sheet note (report 614)', () => {
+  const { cleanAnswer, sheetRow } = require('./lost-fragments.js');
+  const base = { fragmentId: '720575940600000001', group: 'easy', rootId: '720575940600000002', fixed: true, ends: true, pointIn: 'dendrite', pt: [1, 2, 3] };
+  const a = cleanAnswer({ ...base, pieces: [
+    { root: '720575940600000003', pt: [10.4, 20, 30], type: 'Müller glia', cave: 7 },
+    { root: '720575940600000003', pt: [1, 1, 1] },
+    { root: '720575940600000002', pt: [1, 1, 1] },
+    { root: '720575940600000004', pt: [4, 5, 6] }] });
+  assert.equal(a.pieces.length, 2);
+  assert.deepEqual(a.pieces[0], { root: '720575940600000003', pt: [10, 20, 30], type: 'Müller glia', cave: 7 });
+  assert.equal(cleanAnswer(base).pieces, null);
+  assert.throws(() => cleanAnswer({ ...base, pieces: [{ root: 'x', pt: [1, 2, 3] }] }));
+  assert.throws(() => cleanAnswer({ ...base, pieces: [{ root: '720575940600000005' }] }));
+  const note = sheetRow({ ...a, updated_at: '2026-11-22T00:00:00Z' }, 'p').at(-1);
+  assert.match(note, /Also split into 2 more finished cells: 720575940600000003 \(Müller glia\) at 10, 20, 30; 720575940600000004 at 4, 5, 6\./);
+});

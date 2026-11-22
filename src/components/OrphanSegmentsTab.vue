@@ -20,7 +20,7 @@ import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
  *
  * Players read it as "Lost Fragments" (Ames 2026-11-19), ORPHAN_NAME.
  */
-import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, reactive, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { play, stopPlay, startPlay } from '../util/play';
 import { ON_TEST_SITE } from '../hunt';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -37,7 +37,7 @@ import EditableText from './EditableText.vue';
 import QuestInstructions from './QuestInstructions.vue';
 import NicknameField from './NicknameField.vue';
 import { nicknameOf } from '../util/nicknames';
-import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft, activeFragment, bestLink, autosaveFragmentView, firstViewSave, markViewSaved } from '../util/my_fragments';
+import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft, type FragmentPiece, activeFragment, bestLink, autosaveFragmentView, firstViewSave, markViewSaved } from '../util/my_fragments';
 import { openStartLink } from '../util/start_link';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
@@ -174,6 +174,8 @@ interface OrphanSave {
   caveId?: number | null;
   /** The cell type the player chose, if any (Ames 2026-11-20). */
   cellType?: string;
+  /** Other finished cells it split into, with their CAVE rows (report 614). */
+  pieces?: (FragmentPiece & { caveId?: number | null })[];
 }
 /** Fragments someone else has answered: Play skips them. */
 const taken = reactive(new Set<string>());
@@ -243,8 +245,61 @@ async function checkOther() {
   } finally { other.checking = false; }
 }
 const typeTitle = (t: string) => explainCellType(t).join(String.fromCharCode(10)) || undefined;
+/** The fragment came apart into several whole cells (Nseraf, report 614,
+ *  Ames 2026-11-22 "614 ok", "They need option to type those additional
+ *  segs"): each one gets its own point and its own cell type, and they all
+ *  count as this one fragment. */
+const PIECE_MAX = 20;
+const pieces = reactive({ open: false, info: false, checking: false, msg: '', err: false, list: [] as FragmentPiece[] });
+function resetPieces(list: FragmentPiece[] = []) {
+  Object.assign(pieces, { open: list.length > 0, info: false, checking: false, msg: '', err: false, list: list.map(p => ({ ...p })) });
+}
+async function addPiece() {
+  const row = active.value;
+  if (!row || pieces.checking) return;
+  if (pieces.list.length >= PIECE_MAX) { pieces.msg = `${PIECE_MAX} cells at most. Say the rest in a note.`; pieces.err = true; return; }
+  pieces.checking = true; pieces.msg = ''; pieces.err = false;
+  try {
+    const at = await cellAtCrosshair();
+    if (active.value?.id !== row.id) return;
+    if (!at.root) { pieces.msg = at.problem || 'There is no cell under the crosshairs.'; pieces.err = true; return; }
+    const mineNow = at.root === shownRoot.value || at.root === row.id
+      || !!(await ancestorAmong(at.root, [shownRoot.value, row.id].filter(Boolean) as string[]).catch(() => undefined));
+    if (active.value?.id !== row.id) return;
+    if (mineNow) { pieces.msg = 'The crosshairs are in the fragment itself. Put them in one of the other cells.'; pieces.err = true; return; }
+    if (pieces.list.some(p => p.root === at.root)) { pieces.msg = 'That cell is already on the list.'; pieces.err = true; return; }
+    const p: FragmentPiece = { root: at.root, pt: at.position, cellType: '', cellTypeCustom: '' };
+    pieces.list.push(p);
+    pieces.msg = `Added. ${pieces.list.length} other ${pieces.list.length === 1 ? 'cell' : 'cells'}.`;
+    // What CAVE already says it is, as for the fragment.
+    const server = activeCaveServer();
+    const st = server && cellTypes.value.length ? await getCellStatus(server, at.root).catch(() => null) : null;
+    const got = pieces.list.find(x => x.root === at.root);
+    if (st?.cellType && got && !got.cellType && !got.cellTypeCustom) {
+      if (cellTypes.value.includes(st.cellType)) got.cellType = st.cellType; else got.cellTypeCustom = st.cellType;
+    }
+  } finally { pieces.checking = false; }
+}
+function dropPiece(i: number) {
+  if (typeOpen.value && typeFor.value === i) typeOpen.value = false;
+  pieces.list.splice(i, 1);
+  pieces.msg = ''; pieces.err = false;
+}
+const pieceType = (p: FragmentPiece) => (p.cellTypeCustom.trim() || p.cellType).trim().slice(0, 120);
+
 const typeOpen = ref(false);
+/** Whose type the list sets: -1 the fragment, else that piece. */
+const typeFor = ref(-1);
 const typeBox = ref<HTMLElement | null>(null);
+const typeTarget = () => (typeFor.value >= 0 && pieces.list[typeFor.value]) || form;
+const typeShown = computed(() => typeTarget().cellType);
+function toggleType(i: number, e: Event) {
+  const box = (e.currentTarget as HTMLElement).parentElement;
+  if (typeOpen.value && typeFor.value === i) { typeOpen.value = false; return; }
+  typeOpen.value = false;
+  typeFor.value = i; typeBox.value = box;
+  void nextTick(() => { typeOpen.value = true; });
+}
 const typeList = ref<HTMLElement | null>(null);
 /** The list floats over the page (the slim box would cut it off), under the
  *  button, or above it when there is no room below. */
@@ -258,15 +313,16 @@ watch(typeOpen, open => {
     ? { top: `${Math.round(r.bottom + 4)}px`, left: `${Math.round(r.left)}px`, width: `${Math.round(Math.max(r.width, 220))}px`, maxHeight: `${Math.round(h)}px` }
     : { bottom: `${Math.round(window.innerHeight - r.top + 4)}px`, left: `${Math.round(r.left)}px`, width: `${Math.round(Math.max(r.width, 220))}px`, maxHeight: `${Math.round(h)}px` };
 });
-function pickType(t: string) { form.cellType = t; form.cellTypeCustom = ''; typeOpen.value = false; }
-function onTypeKey(e: KeyboardEvent) {
+function pickType(t: string) { const o = typeTarget(); o.cellType = t; o.cellTypeCustom = ''; typeOpen.value = false; }
+function onTypeKey(e: KeyboardEvent, who = -1) {
   if (e.key === 'Escape') { typeOpen.value = false; return; }
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   e.preventDefault();
+  const o = (who >= 0 && pieces.list[who]) || form;
   const list = ['', ...cellTypes.value];
-  const i = list.indexOf(form.cellType);
-  form.cellType = list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length];
-  form.cellTypeCustom = '';
+  const i = list.indexOf(o.cellType);
+  o.cellType = list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length];
+  o.cellTypeCustom = '';
 }
 function onTypeOutside(e: PointerEvent) {
   if (typeOpen.value && typeBox.value && !typeBox.value.contains(e.target as Node) && !typeList.value?.contains(e.target as Node)) typeOpen.value = false;
@@ -301,6 +357,7 @@ function resetForm(s?: OrphanSave) {
   typeKnown.value = ''; typeAnnId.value = undefined; typeNote.value = '';
   fillType(s?.cellType || '');
   resetOther();
+  resetPieces(s?.pieces || []);
   resetGlia();
   nucMsg.value = '';
 }
@@ -510,10 +567,11 @@ const isMine = (id: string) => myClaim.value === id || !!heldOf(id);
 const progressNote = ref('');
 function currentDraft(): FragmentDraft {
   return { fixed: form.fixed, ends: form.ends, where: form.where, point: form.point ? [...form.point] as [number, number, number] : null,
-    pointOk: form.pointOk, note: form.note, cellType: form.cellType, cellTypeCustom: form.cellTypeCustom };
+    pointOk: form.pointOk, note: form.note, cellType: form.cellType, cellTypeCustom: form.cellTypeCustom,
+    pieces: pieces.list.map(p => ({ root: p.root, pt: [...p.pt] as [number, number, number], cellType: p.cellType, cellTypeCustom: p.cellTypeCustom })) };
 }
 const lastSnap = new Map<string, string>();
-const draftWork = (d: FragmentDraft) => d.fixed || d.ends || !!d.point || !!d.note.trim() || !!d.cellType || !!d.cellTypeCustom.trim();
+const draftWork = (d: FragmentDraft) => d.fixed || d.ends || !!d.point || !!d.note.trim() || !!d.cellType || !!d.cellTypeCustom.trim() || !!d.pieces?.length;
 /** The newest saved work for a fragment, from the server's claim or this browser. */
 function applyDraft(id: string) {
   const h = heldOf(id), loc = localDrafts()[id];
@@ -522,6 +580,7 @@ function applyDraft(id: string) {
     Object.assign(form, { fixed: !!d.fixed, ends: !!d.ends, where: d.where === 'soma' ? 'soma' : 'dendrite',
       point: d.point || null, pointOk: !!(d.point && d.pointOk), note: d.note || '',
       cellType: d.cellType || '', cellTypeCustom: d.cellTypeCustom || '' });
+    resetPieces(Array.isArray(d.pieces) ? d.pieces : []);
     form.pointMsg = d.point ? `Saved at ${d.point.join(', ')}.` : '';
   }
   lastSnap.set(id, JSON.stringify(currentDraft()));
@@ -576,7 +635,8 @@ async function sendProgress(id: string, body: { draft?: FragmentDraft; anchorSv?
     if (active.value?.id === id) progressNote.value = 'Saved in this browser.';
   }
 }
-watch(() => [form.fixed, form.ends, form.where, form.point, form.pointOk, form.note, form.cellType, form.cellTypeCustom], queueProgress);
+watch(() => [form.fixed, form.ends, form.where, form.point, form.pointOk, form.note, form.cellType, form.cellTypeCustom,
+  pieces.list.map(p => `${p.root}|${p.cellType}|${p.cellTypeCustom}`).join(',')], queueProgress);
 onMounted(() => window.addEventListener('pagehide', flushProgress));
 onUnmounted(() => { window.removeEventListener('pagehide', flushProgress); void flushProgress(); });
 async function step(d: number) {
@@ -1070,6 +1130,24 @@ async function submit() {
   }
   const otherRoot = other.root && (other.done || other.choice) ? other.root : '';
   const otherStatus = other.done ? 'done' : other.choice;
+  // The other finished cells: a type in CAVE when one is given, and a point each.
+  const sentPieces: { root: string; pt: [number, number, number]; type: string; cave: number | null }[] = [];
+  const before = saves[row.id]?.pieces || [];
+  for (const p of pieces.list) {
+    const t = pieceType(p);
+    const old = before.find(b => b.root === p.root);
+    if (t && t !== (old ? pieceType(old) : '')) {
+      const server = activeCaveServer();
+      const ok = server ? await saveCellType(server, p.root, t, undefined, true, p.pt).catch(() => false) : false;
+      if (!ok) {
+        typeNote.value = `The cell type for ${short(p.root)} could not be saved. ${getLastCellTypeProblem() || 'Try again, or leave it empty.'}`;
+        sending.value = false;
+        return;
+      }
+    }
+    const cave = old?.caveId ?? await postLostFragmentPoint(p.pt);
+    sentPieces.push({ root: p.root, pt: [...p.pt] as [number, number, number], type: t, cave });
+  }
   try {
     // CAVE first, once per fragment; a resubmit keeps the row it has.
     let caveId = saves[row.id]?.caveId ?? null;
@@ -1080,12 +1158,15 @@ async function submit() {
       nucleusId: form.where === 'soma' && !form.noNucleus ? form.nucId.trim() : '', noNucleus: form.noNucleus,
       note: form.note.trim(), caveAnnotationId: caveId,
       otherRoot, otherStatus,
+      pieces: sentPieces,
     });
     serverOn.value = true;
     saves[row.id] = {
       id: row.id, group: group.value, root, fixed: fixedOk.value, ends: endsOk.value, where: form.where, point: pt,
       nucId: form.nucId.trim(), noNucleus: form.noNucleus, note: form.note.trim(), at: Date.now(), caveId,
       cellType: type || saves[row.id]?.cellType || '',
+      pieces: sentPieces.map(p => ({ root: p.root, pt: p.pt, cellType: pieces.list.find(x => x.root === p.root)?.cellType || '',
+        cellTypeCustom: pieces.list.find(x => x.root === p.root)?.cellTypeCustom || '', caveId: p.cave })),
     };
     persist();
     if (res && res.first) { countCompleted(root, pt, row.id); addFragmentDone(); }
@@ -1094,7 +1175,8 @@ async function submit() {
     dropHeld(row.id);
     freshNext = true;
     lastSent.value = res && res.sheet === 'failed' ? 'Sent to the lab. The sheet will catch up.' : 'Sent to the lab.';
-    if (caveId == null) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
+    if (sentPieces.length) lastSent.value += ` With ${sentPieces.length} other finished ${sentPieces.length === 1 ? 'cell' : 'cells'}.`;
+    if (caveId == null || sentPieces.some(p => p.cave == null)) lastSent.value += ' CAVE was busy, so Pyr sends the point again later.';
   } catch (e: any) {
     sendError.value = String((e && e.message) || 'Could not send it. Try again in a moment.');
     return;
@@ -1149,6 +1231,11 @@ async function loadAnswers() {
         id: m.fragment_id, group: (g ? g.g : (m.group_key || 'easy')) as GroupKey, root: m.root_id, fixed: true, ends: true,
         where: m.point_in, point: m.pt, nucId: m.nucleus_id || '', noNucleus: !!m.no_nucleus, note: m.note || '',
         at: Date.parse(m.updated_at) || Date.now(), caveId: m.cave_annotation_id ?? null,
+        cellType: saves[m.fragment_id]?.cellType || '',
+        pieces: Array.isArray(m.pieces) ? m.pieces.map((p: any) => {
+          const t = String(p.type || '');
+          return { root: String(p.root), pt: p.pt, cellType: cellTypes.value.includes(t) ? t : '', cellTypeCustom: cellTypes.value.includes(t) ? '' : t, caveId: p.cave ?? null };
+        }) : undefined,
       };
     }
     persist();
@@ -1165,6 +1252,17 @@ async function loadAnswers() {
       if (id == null) break;  // CAVE still busy: the next load tries again
       await secureWrite('fragments.caveId', { fragmentId: m.fragment_id, caveAnnotationId: id }).catch(() => undefined);
       if (saves[m.fragment_id]) { saves[m.fragment_id].caveId = id; persist(); }
+    }
+    // The split pieces' points, the same way (report 614).
+    outer: for (const m of res.mine || []) {
+      for (const p of Array.isArray(m.pieces) ? m.pieces : []) {
+        if (p.cave != null || !Array.isArray(p.pt)) continue;
+        const id = await postLostFragmentPoint(p.pt as [number, number, number]);
+        if (id == null) break outer;
+        await secureWrite('fragments.pieceCave', { fragmentId: m.fragment_id, root: p.root, caveAnnotationId: id }).catch(() => undefined);
+        const s = saves[m.fragment_id]?.pieces?.find(x => x.root === p.root);
+        if (s) { s.caveId = id; persist(); }
+      }
     }
   } catch { serverOn.value = false; }
 }
@@ -1383,22 +1481,12 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
           </div>
           <div class="nge-orph-row nge-orph-typerow">
             <!-- A Pyr list, not the browser's grey one (Ames 2026-11-20: "Stylize this dropdown"). -->
-            <div ref="typeBox" class="nge-orph-typepick" :class="{ open: typeOpen }">
-              <button type="button" class="nge-orph-input nge-orph-type nge-orph-typebtn" aria-label="Cell type" aria-haspopup="listbox" :aria-expanded="typeOpen ? 'true' : 'false'"
-                      @click="typeOpen = !typeOpen" @keydown.stop="onTypeKey" @keyup.stop @keypress.stop>
+            <div class="nge-orph-typepick" :class="{ open: typeOpen && typeFor < 0 }">
+              <button type="button" class="nge-orph-input nge-orph-type nge-orph-typebtn" aria-label="Cell type" aria-haspopup="listbox" :aria-expanded="typeOpen && typeFor < 0 ? 'true' : 'false'"
+                      @click="toggleType(-1, $event)" @keydown.stop="onTypeKey($event)" @keyup.stop @keypress.stop>
                 <span :class="{ 'nge-orph-typeph': !form.cellType }">{{ form.cellType ? cellTypeLabel(form.cellType) : 'Not sure' }}</span>
                 <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
-              <Teleport to="body">
-              <div v-if="typeOpen" ref="typeList" class="nge-orph-typelist" :style="typeListPos" role="listbox" aria-label="Cell type">
-                <button v-for="t in ['', ...cellTypes]" :key="t || 'none'" type="button" role="option" class="nge-orph-typeopt"
-                        :class="{ on: form.cellType === t, dim: !t }" :aria-selected="form.cellType === t ? 'true' : 'false'" :title="t ? typeTitle(t) : undefined"
-                        @click="pickType(t)">
-                  <span>{{ t ? cellTypeLabel(t) : 'Not sure' }}</span>
-                  <svg v-if="form.cellType === t" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 5 8.6l4.5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-              </div>
-              </Teleport>
             </div>
             <input v-model="form.cellTypeCustom" class="nge-orph-input nge-orph-type" placeholder="Or type your own" maxlength="120"
                    aria-label="Or type your own cell type" @input="form.cellTypeCustom.trim() && (form.cellType = '')"
@@ -1426,7 +1514,49 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
             </div>
           </template>
         </li>
+        <li class="nge-orph-nonum nge-orph-piecesli">
+          <button v-if="!pieces.open" class="nge-orph-link" @click="pieces.open = true">It split into several cells?</button>
+          <template v-else>
+            <div class="nge-orph-row nge-orph-gliahead">
+              <span><b>Other finished cells</b> <span class="nge-orph-sub">crosshairs in each, then Add</span></span>
+              <button class="nge-orph-help-btn nge-orph-info" :class="{ on: pieces.info }" :aria-expanded="pieces.info ? 'true' : 'false'" title="About split cells" @click="pieces.info = !pieces.info">i</button>
+            </div>
+            <div v-if="pieces.info" class="nge-orph-row nge-orph-sub nge-orph-gliainfo">
+              <span>When this fragment comes apart into several whole cells, add each one here. Each gets its own point for the lab and its own cell type if you know it. They all count as this one fragment.</span>
+            </div>
+            <div v-for="(p, i) in pieces.list" :key="p.root" class="nge-orph-row nge-orph-piece">
+              <span class="nge-orph-nucid" :title="`${p.root} at ${p.pt.join(', ')}`">{{ short(p.root) }}</span>
+              <div v-if="cellTypes.length" class="nge-orph-typepick" :class="{ open: typeOpen && typeFor === i }">
+                <button type="button" class="nge-orph-input nge-orph-type nge-orph-typebtn" :aria-label="`Cell type of ${p.root}`" aria-haspopup="listbox" :aria-expanded="typeOpen && typeFor === i ? 'true' : 'false'"
+                        @click="toggleType(i, $event)" @keydown.stop="onTypeKey($event, i)" @keyup.stop @keypress.stop>
+                  <span :class="{ 'nge-orph-typeph': !p.cellType }">{{ p.cellType ? cellTypeLabel(p.cellType) : 'Not sure' }}</span>
+                  <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+              <input v-model="p.cellTypeCustom" class="nge-orph-input nge-orph-type" :placeholder="cellTypes.length ? 'Or type your own' : 'Cell type, if you know it'" maxlength="120"
+                     :aria-label="`Type your own cell type for ${p.root}`" @input="p.cellTypeCustom.trim() && (p.cellType = '')"
+                     @keydown.stop @keyup.stop @keypress.stop />
+              <button class="nge-orph-link nge-orph-piecex" :title="`Take ${short(p.root)} off the list`" :aria-label="`Remove ${p.root}`" @click="dropPiece(i)">✕</button>
+            </div>
+            <div class="nge-orph-row">
+              <button class="nge-orph-btn" :disabled="pieces.checking" @click="addPiece" title="Put the crosshairs inside one of the other cells, then press this.">{{ pieces.checking ? 'Checking…' : 'Add the cell at the crosshairs' }}</button>
+              <button v-if="!pieces.list.length" class="nge-orph-link" @click="resetPieces()">No other cells</button>
+            </div>
+            <div v-if="pieces.msg" class="nge-orph-row"><span class="nge-orph-note" :class="{ 'nge-orph-note--err': pieces.err }">{{ pieces.msg }}</span></div>
+          </template>
+        </li>
       </ol>
+      <!-- One cell type list for the fragment and every piece: it floats over the page. -->
+      <Teleport to="body">
+      <div v-if="typeOpen" ref="typeList" class="nge-orph-typelist" :style="typeListPos" role="listbox" aria-label="Cell type">
+        <button v-for="t in ['', ...cellTypes]" :key="t || 'none'" type="button" role="option" class="nge-orph-typeopt"
+                :class="{ on: typeShown === t, dim: !t }" :aria-selected="typeShown === t ? 'true' : 'false'" :title="t ? typeTitle(t) : undefined"
+                @click="pickType(t)">
+          <span>{{ t ? cellTypeLabel(t) : 'Not sure' }}</span>
+          <svg v-if="typeShown === t" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 5 8.6l4.5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      </Teleport>
       <textarea v-if="noteOpen || form.note" v-model="form.note" class="nge-orph-input nge-orph-notes" :rows="slim ? 1 : 2" placeholder="Notes for the lab (optional): what you think it is, anything odd"></textarea>
 
       <div class="nge-orph-row">
@@ -1501,6 +1631,11 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 .nge-orph-glia .nge-orph-sub { line-height: 1.4; }
 .nge-orph-gliacount { max-width: 210px; }
 .nge-orph-gliahead { justify-content: space-between; }
+.nge-orph-piece { gap: 6px; align-items: center; flex-wrap: nowrap; }
+.nge-orph-piece .nge-orph-typepick { min-width: 0; flex: 1.5 1 0; }
+.nge-orph-piece .nge-orph-typepick .nge-orph-type { width: 100%; }
+.nge-orph-piece > .nge-orph-type { min-width: 0; flex: 1 1 0; }
+.nge-orph-piecex { flex: none; padding: 0 4px; }
 .nge-orph-info { font-style: normal; font-weight: 700; }
 .nge-orph-gliainfo { line-height: 1.45; }
 .nge-orph-gliainfo .nge-orph-link { margin-left: 8px; }

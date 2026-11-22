@@ -19,7 +19,10 @@ export interface FragmentDraft {
   fixed: boolean; ends: boolean; where: 'dendrite' | 'soma';
   point: [number, number, number] | null; pointOk: boolean;
   note: string; cellType: string; cellTypeCustom: string;
+  /** Other finished cells it split into (Nseraf, report 614). */
+  pieces?: FragmentPiece[];
 }
+export interface FragmentPiece { root: string; pt: [number, number, number]; cellType: string; cellTypeCustom: string }
 /** Like a claimed cell (Ames 2026-11-21): anchor is a supervoxel inside the
  *  fragment where the lab listed it, root its current ID. */
 export interface HeldFragment { id: string; kept: boolean; at: string; anchor?: string | null; root?: string | null; draft?: FragmentDraft | null; draftAt?: number;

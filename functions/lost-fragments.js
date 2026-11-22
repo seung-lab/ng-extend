@@ -142,9 +142,32 @@ function cleanAnswer(a) {
   const otherRoot = a.otherRoot == null || a.otherRoot === '' ? null : String(a.otherRoot);
   if (otherRoot !== null && !ID.test(otherRoot)) throw bad('Not a segment ID for the other cell.');
   const otherStatus = otherRoot && OTHER[a.otherStatus] ? a.otherStatus : null;
+  const pieces = cleanPieces(a.pieces, [fragmentId, rootId, otherRoot]);
   return { fragment_id: fragmentId, group_key: a.group, root_id: rootId, lab_flag: labFlag, lab_um3: labUm3,
     fixed: true, ends: true, point_in: a.pointIn, pt, nucleus_id: nucleusId, no_nucleus: noNucleus, note, cave_annotation_id: cave,
-    other_root: otherStatus ? otherRoot : null, other_status: otherStatus };
+    other_root: otherStatus ? otherRoot : null, other_status: otherStatus, pieces: pieces.length ? pieces : null };
+}
+/** Other finished cells the fragment split into (Nseraf, report 614): each
+ *  its own root, point and cell type. They count as the one fragment. */
+const PIECE_MAX = 20;
+const okPt = p => Array.isArray(p) && p.length === 3 && p.every(n => Number.isFinite(n) && Math.abs(n) < 1e7);
+function cleanPieces(list, not = []) {
+  if (list == null) return [];
+  if (!Array.isArray(list)) throw bad('Bad list of other cells.');
+  if (list.length > PIECE_MAX) throw bad(`${PIECE_MAX} other cells at most. Say the rest in a note.`);
+  const seen = new Set(not.filter(Boolean).map(String));
+  const out = [];
+  for (const p of list) {
+    const root = String((p && p.root) || '');
+    if (!ID.test(root)) throw bad('Not a segment ID for one of the other cells.');
+    if (seen.has(root)) continue;
+    if (!okPt(p.pt)) throw bad(`No point for cell ${root}.`);
+    const cave = p.cave == null ? null : Number(p.cave);
+    seen.add(root);
+    out.push({ root, pt: p.pt.map(n => Math.round(n)), type: String(p.type || '').trim().slice(0, 120),
+      cave: Number.isSafeInteger(cave) && cave > 0 ? cave : null });
+  }
+  return out;
 }
 
 /** The work on a claimed fragment so far, saved as the player goes (Ames
@@ -184,11 +207,16 @@ function cleanProgress(a) {
       cellType: String(d.cellType || '').slice(0, 120),
       cellTypeCustom: String(d.cellTypeCustom || '').slice(0, 120),
     };
+    if (Array.isArray(d.pieces) && d.pieces.length) {
+      out.draft.pieces = d.pieces.slice(0, PIECE_MAX).filter(p => p && ID.test(String(p.root)) && okPt(p.pt)).map(p => ({
+        root: String(p.root), pt: p.pt.map(n => Math.round(n)),
+        cellType: String(p.cellType || '').slice(0, 120), cellTypeCustom: String(p.cellTypeCustom || '').slice(0, 120) }));
+    }
     out.draft_at = new Date().toISOString();
   }
   return out;
 }
-const draftHasWork = d => !!(d && (d.fixed || d.ends || d.point || d.note.trim() || d.cellType || d.cellTypeCustom.trim()));
+const draftHasWork = d => !!(d && (d.fixed || d.ends || d.point || d.note.trim() || d.cellType || d.cellTypeCustom.trim() || (d.pieces && d.pieces.length)));
 
 // ── Merges, cuts and volume, read with the player's own CAVE sign in ────────
 async function cg(token, path, init = {}) {
@@ -243,7 +271,13 @@ function sheetRow(row, playerName) {
     yes(row.fixed), yes(row.ends), row.point_in === 'soma' ? 'Soma' : row.point_in === 'glia' ? 'Glia' : 'Major dendrite', row.pt[0], row.pt[1], row.pt[2],
     row.nucleus_id ? "'" + row.nucleus_id : '', yes(row.no_nucleus),
     [row.kind === 'glia' ? (row.glia_fused === 'several' ? `Glia: several cells fused together${row.glia_count ? `, about ${row.glia_count}` : ''}${row.glia_trunk ? ', the point is in one of the trunks' : ''}.` : row.glia_trunk ? 'Glia: one cell, the point is in its main trunk.' : 'Glia: one cell.') : '',
-      row.note, row.other_root && OTHER[row.other_status] ? `Part belonged to cell ${row.other_root}, ${OTHER[row.other_status]}.` : ''].filter(Boolean).join(' ')];
+      row.note, row.other_root && OTHER[row.other_status] ? `Part belonged to cell ${row.other_root}, ${OTHER[row.other_status]}.` : '',
+      piecesNote(row.pieces)].filter(Boolean).join(' ')];
+}
+function piecesNote(list) {
+  if (!Array.isArray(list) || !list.length) return '';
+  const one = p => `${p.root}${p.type ? ` (${p.type})` : ''} at ${p.pt.join(', ')}`;
+  return `Also split into ${list.length} more finished ${list.length === 1 ? 'cell' : 'cells'}: ${list.map(one).join('; ')}.`;
 }
 /** Writes the row; returns the sheet row number it is on. */
 // OVERWRITE: a new line goes into the next empty row, which keeps the sheet's
@@ -270,7 +304,7 @@ async function fragmentsAction(action, args, io) {
   const playerName = String(me.display_name || me.username || 'Player').slice(0, 80);
 
   if (action === 'fragments.list') {
-    const mine = await sb(`ew_lost_fragments?user_id=${eq(me.id)}&select=fragment_id,group_key,root_id,point_in,pt,nucleus_id,no_nucleus,note,cave_annotation_id,submitted_at,updated_at,points&limit=2000`);
+    const mine = await sb(`ew_lost_fragments?user_id=${eq(me.id)}&select=fragment_id,group_key,root_id,point_in,pt,nucleus_id,no_nucleus,note,cave_annotation_id,pieces,submitted_at,updated_at,points&limit=2000`);
     const all = await sb('ew_lost_fragments?select=fragment_id&limit=20000');
     const others = [...new Set(all.map(r => r.fragment_id))].filter(id => !mine.some(m => m.fragment_id === id));
     const claims = await sb(`ew_lost_fragment_claims?claimed_at=gt.${encodeURIComponent(claimCutoff())}&select=fragment_id,user_id,kept,claimed_at&order=claimed_at.desc&limit=20000`);
@@ -471,6 +505,21 @@ async function fragmentsAction(action, args, io) {
     if (!ID.test(fragmentId) || !(Number.isSafeInteger(cave) && cave > 0)) throw bad('Bad CAVE row.');
     await sb(`ew_lost_fragments?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}&cave_annotation_id=is.null`,
       { method: 'PATCH', body: JSON.stringify({ cave_annotation_id: cave }) });
+    return { saved: true };
+  }
+
+  // A split piece's CAVE row, for an answer saved while CAVE was down.
+  if (action === 'fragments.pieceCave') {
+    const fragmentId = String(args && args.fragmentId || '');
+    const root = String(args && args.root || '');
+    const cave = Number(args && args.caveAnnotationId);
+    if (!ID.test(fragmentId) || !ID.test(root) || !(Number.isSafeInteger(cave) && cave > 0)) throw bad('Bad CAVE row.');
+    const row = (await sb(`ew_lost_fragments?user_id=${eq(me.id)}&fragment_id=${eq(fragmentId)}&select=id,pieces&limit=1`))[0];
+    const list = row && Array.isArray(row.pieces) ? row.pieces : [];
+    const p = list.find(x => x && x.root === root && x.cave == null);
+    if (!p) return { saved: false };
+    p.cave = cave;
+    await sb(`ew_lost_fragments?id=${eq(row.id)}`, { method: 'PATCH', body: JSON.stringify({ pieces: list }) });
     return { saved: true };
   }
 
