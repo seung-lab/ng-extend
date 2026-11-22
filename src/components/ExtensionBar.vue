@@ -46,6 +46,7 @@ import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import PhotoMode from "components/PhotoMode.vue";
 import PyrArcade from "components/PyrArcade.vue";
+import LabMeetingShow from "components/LabMeetingShow.vue";
 import {celebrateSpecialDay} from "../util/special_days";
 import { ARCADE_ENABLED } from "../util/arcade";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
@@ -267,6 +268,7 @@ onMounted(() => {
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
   document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
+  document.addEventListener('nge:lab-meeting', () => { if (backendStore.isAdmin) showLabMeeting.value = true; });
   // From the profile's Quests card: the leaderboard, on its Quests tab (it reads the tab from localStorage).
   document.addEventListener('nge:open-leaderboard', () => { showLeaderboard.value = true; });
   document.addEventListener('nge:open-arcade', () => { if (ARCADE_ENABLED) showArcade.value = true; });
@@ -698,6 +700,8 @@ function sprayHighlightIcon() {
 const showFlightMode = ref(false);
 // Photo mode (Ames 2026-10-20): from the Share toast and the palette.
 const showPhotoMode = ref(false);
+// The lab meeting preview (Ames 2026-11-22): admins only, from the menu.
+const showLabMeeting = ref(false);
 // The Pyr Arcade (Ames 2026-10-20): from the menu and the palette. Held back
 // for now (Ames: "remind me to add it at a later time for like new years"):
 // set ARCADE_ENABLED to true, with a changelog entry, to open it to players.
@@ -1438,6 +1442,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <flight-mode v-if="showFlightMode" @hide="showFlightMode = false" />
   <photo-mode v-if="showPhotoMode" @hide="showPhotoMode = false" />
   <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
+  <lab-meeting-show v-if="showLabMeeting" @hide="showLabMeeting = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
@@ -1713,6 +1718,12 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         <li>
           <div class="logoutButton button nge-menu-item" @click="closeHamburger(); playIntro()">
             <span class="nge-menu-num nge-menu-num--icon">🚀</span><span>Starship Tour</span>
+          </div>
+        </li>
+        <!-- The lab meeting preview (Ames 2026-11-22), for admins. -->
+        <li v-if="backendStore.isAdmin">
+          <div class="logoutButton button nge-menu-item" @click="closeHamburger(); showLabMeeting = true">
+            <span class="nge-menu-num nge-menu-num--icon">🎬</span><span>Lab meeting preview</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Tutorials</li>
