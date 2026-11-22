@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-22T16:11:00Z",
+      "title": "Your streak flame levels up",
+      "items": [
+        "Your streak flame now changes as your streak grows: Kindled at 7 days, Blue Core at 14, Plasma at 30, Starfire at 50, Nova at 100 and Solar at 365.",
+        "The first time you reach a new flame, it flares up with a shower of sparks in its new color.",
+        "Hover your streak to see which flame you have and how many days until the next one.",
+        "If your streak breaks, your flame starts again as a Spark."
+      ]
+    },
+    {
       "at": "2026-11-21T19:35:00Z",
       "title": "Glia get a trunk point, and the Glia Quest has a date",
       "items": [
