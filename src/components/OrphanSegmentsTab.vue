@@ -273,10 +273,10 @@ async function addPiece() {
     const at = await cellAtCrosshair();
     if (active.value?.id !== row.id) return;
     if (!at.root) { pieces.msg = at.problem || 'There is no cell under the crosshairs.'; pieces.err = true; return; }
-    const mineNow = at.root === shownRoot.value || at.root === row.id
-      || !!(await ancestorAmong(at.root, [shownRoot.value, row.id].filter(Boolean) as string[]).catch(() => undefined));
-    if (active.value?.id !== row.id) return;
-    if (mineNow) { pieces.msg = 'The crosshairs are in the fragment itself. Put them in one of the other cells.'; pieces.err = true; return; }
+    // Only the main cell is refused. Every piece of a split grew out of the
+    // fragment, so its edit history can't tell them apart (report 614 again,
+    // 2026-11-22: every Add was refused).
+    if (at.root === (shownRoot.value || row.id)) { pieces.msg = 'The crosshairs are in the main cell. Put them in one of the other cells.'; pieces.err = true; return; }
     if (pieces.list.some(p => p.root === at.root)) { pieces.msg = 'That cell is already on the list.'; pieces.err = true; return; }
     const p: FragmentPiece = { root: at.root, pt: at.position, cellType: '', cellTypeCustom: '' };
     pieces.list.push(p);
@@ -931,6 +931,9 @@ async function usePoint() {
   try {
     const at = await cellAtCrosshair();
     if (!at.root) { form.pointOk = false; form.pointMsg = at.problem || 'Could not read the crosshairs.'; return; }
+    if (pieces.list.some(p => p.root === at.root)) {
+      form.pointOk = false; form.pointMsg = 'That cell is on the list of other cells. Put the crosshairs in the main one, or take it off the list.'; return;
+    }
     form.point = at.position;
     const visible = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
     let inShown = false;
