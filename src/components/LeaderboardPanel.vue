@@ -530,11 +530,11 @@ onUnmounted(() => {
           <button
             class="nge-lb-metric"
             :class="{ 'nge-lb-metric--active': metric === 'quests' }"
-            title="Cilia Quests finished on the Retina"
+            title="For now, only Cilia Quests finished on the Retina"
             @click="setMetric('quests')"
           >Quests</button>
         </div>
-        <div v-if="isQuests" class="nge-lb-quest-lead">Cilia Quests finished on the Retina. Days are US Eastern time.</div>
+        <div v-if="isQuests" class="nge-lb-quest-lead">For now this counts only Cilia Quests on the Retina, not MEC quests or Lost Fragments. Days are US Eastern time.</div>
 
         <div ref="contentEl" class="nge-lb-content">
           <div v-if="boardNote" class="nge-lb-note" role="status">{{ boardNote }}</div>

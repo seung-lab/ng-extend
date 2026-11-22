@@ -52,7 +52,9 @@ import RetinaCastTab from './RetinaCastTab.vue';
 // Orphan segments MOCKUP (Ames 2026-11-19): Retina, test sites only.
 import OrphanSegmentsTab from './OrphanSegmentsTab.vue';
 import { ON_TEST_SITE } from '../hunt';
-import { orphanName, ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA } from '../data/orphan-segments';
+import { orphanName } from '../data/orphan-segments';
+import { fragmentsToDo } from '../util/fragment_milestones';
+import { secureWrite as fragmentsWrite } from '../secure_write';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
@@ -2529,7 +2531,18 @@ watch(() => orphansHere.value && filter.value === 'mine', on => { if (on) void r
 // Off Retina (or the live game) there is no Lost Fragments tab to stay on.
 watch(orphansHere, here => { if (!here && filter.value === 'orphans') filter.value = 'mine'; });
 const orphanTitle = orphanName().title;
-const orphanCount = ORPHANS_LARGE.length + ORPHANS_SMALLER.length + ORPHANS_GLIA.length + ORPHANS_SOMA.length;
+/** The lab's fragments still to do (toknow #610: it showed the first sample
+ *  list's 151). Asked once when the tab is here; the tab keeps it current. */
+const orphanCount = computed(() => fragmentsToDo.value == null ? '' : fragmentsToDo.value.toLocaleString());
+let orphanCountAsked = false;
+watch(orphansHere, here => {
+  if (!here || orphanCountAsked || fragmentsToDo.value != null) return;
+  orphanCountAsked = true;
+  fragmentsWrite<{ counts?: Record<string, { total: number; done: number }> }>('fragments.pool', { difficulty: 'easy', n: 1 }).then(res => {
+    if (!res?.counts || fragmentsToDo.value != null) return;
+    fragmentsToDo.value = Object.values(res.counts).reduce((a, c) => a + Math.max(0, (c.total || 0) - (c.done || 0)), 0);
+  }).catch(() => { orphanCountAsked = false; });
+}, { immediate: true });
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
 /** No access to the quests' dataset: this button was a way around the lock
  *  on the dataset switcher (양동호, report 304). */
@@ -3951,7 +3964,7 @@ onBeforeUnmount(() => {
               </button>
               <button v-if="orphansHere" :class="{ active: filter === 'orphans', 'nge-cl-orphans-tab': true }" @click="filter = 'orphans'"
                       title="Lost Fragments: pieces of the retina nobody has traced yet. Tidy one up and record what it is (test site preview)">
-                {{ orphanTitle }} <b>{{ orphanCount }}</b>
+                {{ orphanTitle }} <b v-if="orphanCount" title="Still to do">{{ orphanCount }}</b>
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>

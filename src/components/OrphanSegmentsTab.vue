@@ -40,7 +40,7 @@ import { nicknameOf } from '../util/nicknames';
 import { FRAGMENT_LIMIT, keptFragmentIds, setHeldFragments, markKept, dropHeld, heldFragments, pendingFragment, heldOf, localDrafts, saveLocalDraft, type FragmentDraft, type FragmentPiece, activeFragment, bestLink, autosaveFragmentView, firstViewSave, markViewSaved } from '../util/my_fragments';
 import { openStartLink } from '../util/start_link';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { fragmentsDone, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
+import { fragmentsDone, fragmentsToDo, nextMilestone, setFragmentsDone, addFragmentDone } from '../util/fragment_milestones';
 import {
   ORPHANS_LARGE, ORPHANS_SMALLER, ORPHANS_GLIA, ORPHANS_SOMA, orphanName,
   type OrphanSeg, type OrphanFlag,
@@ -145,6 +145,16 @@ const FLAG_WORDS: Record<OrphanFlag, string> = { n: 'no flag', s: 'soma', sg: 's
 const labFlagOf = (row: OrphanSeg) => row.cls || FLAG_WORDS[row.flag];
 const poolTotal = computed(() => POOL_KEYS.reduce((a, k) => a + (pool.counts[k]?.total || 0), 0));
 const poolOpen = computed(() => POOL_KEYS.reduce((a, k) => a + Math.max(0, (pool.counts[k]?.total || 0) - (pool.counts[k]?.done || 0)), 0));
+/** Done from the lab's list; the countdown also counts the first sample list. */
+const poolDone = computed(() => POOL_KEYS.reduce((a, k) => a + (pool.counts[k]?.done || 0), 0));
+watch(poolOpen, n => { if (poolTotal.value) fragmentsToDo.value = n; }, { immediate: true });
+/** Done counts move as soon as one is finished here (toknow #610: they waited
+ *  for the next time the list was read). */
+function countPoolDone(g: GroupKey) {
+  if (!isPool(g)) return;
+  const c = pool.counts[g];
+  if (c) pool.counts = { ...pool.counts, [g]: { ...c, done: Math.min(c.total, c.done + 1) } };
+}
 /** The lab's clue for this fragment (HANDOVER-GAME.md): a cell it may belong to. */
 function clueOf(row: OrphanSeg): string {
   if (row.cls === 'split_off_orphan' && row.splitFrom) return `It was cut off cell ${row.splitFrom.split(';').join(', ')} in the lab's sheets: it may belong to that cell.`;
@@ -1045,7 +1055,7 @@ async function submitGlia() {
       point: (form.point || row.pt) as [number, number, number], nucId: '', noNucleus: false, note: form.note.trim(), at: Date.now(),
     };
     persist();
-    if (res && res.first) addFragmentDone();
+    if (res && res.first) { countPoolDone(group.value); addFragmentDone(); }
     if (myClaim.value === row.id) myClaim.value = null;
     if (pending?.id === row.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(row.id);
@@ -1169,7 +1179,7 @@ async function submit() {
         cellTypeCustom: pieces.list.find(x => x.root === p.root)?.cellTypeCustom || '', caveId: p.cave })),
     };
     persist();
-    if (res && res.first) { countCompleted(root, pt, row.id); addFragmentDone(); }
+    if (res && res.first) { countCompleted(root, pt, row.id); countPoolDone(group.value); addFragmentDone(); }
     if (myClaim.value === row.id) myClaim.value = null;
     if (pending?.id === row.id) { pending = null; clearTimeout(saveTimer); }
     dropHeld(row.id);
@@ -1324,7 +1334,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
       <!-- How many are open, in the lead for everyone (Ames 2026-11-20: keep
            saying about 150 of 13,000, "add that to the text up at the top"). -->
       <div class="nge-orph-lead">{{ name.lead }} <template v-if="poolTotal">{{ fmt(poolOpen) }} of the {{ fmt(poolTotal) }} the lab found are still to do, from the center of the retina outward, and each one counts as a completed cell.</template></div>
-      <div v-if="fragmentsDone != null" class="nge-orph-countdown">Together we have completed <b>{{ fmt(fragmentsDone) }}</b>. <b class="nge-orph-countdown-num">{{ fmt(nextMilestone(fragmentsDone) - fragmentsDone) }}</b> to go until we celebrate {{ fmt(nextMilestone(fragmentsDone)) }}!</div>
+      <div v-if="fragmentsDone != null" class="nge-orph-countdown">Together we have completed <b>{{ fmt(fragmentsDone) }}</b><template v-if="poolTotal && fragmentsDone > poolDone">, counting {{ fmt(fragmentsDone - poolDone) }} from the first sample list</template>. <b class="nge-orph-countdown-num">{{ fmt(nextMilestone(fragmentsDone) - fragmentsDone) }}</b> to go until we celebrate {{ fmt(nextMilestone(fragmentsDone)) }}!</div>
       <div v-if="ON_TEST_SITE || !serverOn" class="nge-orph-mock">{{ !serverOn ? 'Pyr could not reach the server, so Complete will not save yet.' : 'Test site: Complete here is real. It goes to the lab and counts as a completed cell.' }}</div>
     </div>
 

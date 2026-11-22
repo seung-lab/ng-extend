@@ -16,6 +16,10 @@ import { celebrate, milestoneAt, nextMilestoneAfter } from './community_mileston
 export const FIRST_MILESTONE = 500;
 export const MILESTONE_STEP = 1000;
 
+/** The lab's fragments still to do, for the Cell Library's tab (toknow #610:
+ *  it showed the size of the first sample list, 151). Null until known. */
+export const fragmentsToDo = ref<number | null>(null);
+
 /** Fragments completed by everyone, once the server has said; null before. */
 export const fragmentsDone = ref<number | null>(null);
 

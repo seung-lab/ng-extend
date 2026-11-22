@@ -2,6 +2,34 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-22T16:39:00Z",
+      "title": "Glia read the crosshairs by themselves",
+      "items": [
+        "When you tag a glia in Lost Fragments, Pyr reads where the crosshairs are as soon as you choose one glia or several, and again when you submit.",
+        "To change the spot, move the crosshairs into a trunk and press Read again."
+      ]
+    },
+    {
+      "at": "2026-11-22T16:34:00Z",
+      "title": "Lost Fragments counts that keep up",
+      "items": [
+        "In Lost Fragments, the Easy, Medium and Hard counts and the number still to do go up as soon as you finish one.",
+        "The Lost Fragments tab in the Cell Library now shows how many fragments are still to do.",
+        "The Quests leaderboard says that for now it counts only Cilia Quests on the Retina.",
+        "Claiming, releasing or submitting a Cilia Quest cell now reaches your own scripts, like any other cell."
+      ]
+    },
+    {
+      "at": "2026-11-22T16:11:00Z",
+      "title": "Your streak flame levels up",
+      "items": [
+        "Your streak flame now changes as your streak grows: Kindled at 7 days, Blue Core at 14, Plasma at 30, Starfire at 50, Nova at 100 and Solar at 365.",
+        "The first time you reach a new flame, it flares up with a shower of sparks in its new color.",
+        "Hover your streak to see which flame you have and how many days until the next one.",
+        "If your streak breaks, your flame starts again as a Spark."
+      ]
+    },
+    {
       "at": "2026-11-21T19:35:00Z",
       "title": "Glia get a trunk point, and the Glia Quest has a date",
       "items": [
