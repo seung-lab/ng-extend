@@ -24,6 +24,7 @@ import embFly from '../images/datasets/flywire.png';
 import embBanc from '../images/datasets/banc.png';
 import embCa3 from '../images/datasets/ca3.png';
 import { LabStats, SNAPSHOT, THEN_MONTH, loadLabStats, thenTotals } from '../util/lab_meeting_stats';
+import { createNeuronLayer, type NeuronLayer } from '../util/lab_neuron';
 
 const emit = defineEmits<{ (e: 'hide'): void }>();
 
@@ -222,6 +223,12 @@ const tiles = computed(() => {
 
 // ── The sky: stars, nebula, the Starship and sparks, on one canvas ─────────
 const sky = ref<HTMLCanvasElement | null>(null);
+/** A real MICrONS neuron turning behind everything (Ames: "Need a neuron rotating in the background"). */
+const neuronCv = ref<HTMLCanvasElement | null>(null);
+let neuron: NeuronLayer | null = null, neuronAng = 0.4, neuronIn = 0;
+/** Brighter on the title and the finale, fainter behind charts so they read. */
+const NEURON_GLOW: Record<string, number> = { intro: 0.75, players: 0.45, tutorials: 0.35, edits: 0.3, cells: 0.35, datasets: 0.5, community: 0.4, finale: 0.7 };
+let neuronGlow = 0.6;
 const root = ref<HTMLElement | null>(null);
 let raf = 0, warp = 1, W = 0, H = 0, dpr = 1;
 interface Star { x: number; y: number; z: number; px: number; py: number; }
@@ -241,6 +248,7 @@ function resize() {
   dpr = Math.min(2, devicePixelRatio || 1);
   W = innerWidth; H = innerHeight;
   cv.width = W * dpr; cv.height = H * dpr;
+  neuron?.resize();
 }
 function newStar(far = false): Star {
   return { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2, z: far ? 1 : Math.random(), px: NaN, py: NaN };
@@ -317,6 +325,14 @@ function frame(nowMs: number) {
     ctx.fillStyle = gr;
     ctx.fillRect(0, 0, W, H);
   });
+  // The neuron, turning; it spins up with the warp at each scene change.
+  if (neuron) {
+    neuronIn = Math.min(1, neuronIn + dt / 2.5);
+    if (!reduced) neuronAng += dt * ((paused.value ? 0.03 : 0.14) + warp * warp * 2.2);
+    const lift = (c: [number, number, number]) => c.map(v => v * 0.75 + 70) as [number, number, number];
+    neuronGlow += ((NEURON_GLOW[scene.value.id] ?? 0.5) - neuronGlow) * Math.min(1, dt * 1.2);
+    neuron.draw(neuronAng, lift(hue[1]), lift(hue[0]), neuronGlow * neuronIn);
+  }
   // Stars flying toward us; a warp on every scene change.
   warp = Math.max(0, warp - dt * 1.1);
   const speed = reduced ? 0 : (paused.value ? 0.02 : 0.06) + warp * warp * 1.6;
@@ -446,9 +462,11 @@ onMounted(() => {
   poke();
   raf = requestAnimationFrame(frame);
   void loadLabStats().then(s => { stats.value = s; });
+  if (neuronCv.value) void createNeuronLayer(neuronCv.value).then(l => { neuron = l; }, () => { /* no neuron: the sky alone */ });
 });
 onUnmounted(() => {
   cancelAnimationFrame(raf);
+  neuron?.dispose(); neuron = null;
   removeEventListener('resize', resize);
   removeEventListener('keydown', onKey, true);
   clearTimeout(hudTimer);
@@ -458,6 +476,7 @@ onUnmounted(() => {
 <template>
   <div ref="root" class="lm-root" :class="{ 'lm-reduced': reduced }" @mousemove="poke" @click="poke">
     <canvas ref="sky" class="lm-sky" aria-hidden="true" />
+    <canvas ref="neuronCv" class="lm-neuron" aria-hidden="true" />
 
     <transition name="lm-scene" mode="out-in">
       <!-- 1. Hello -->
@@ -634,6 +653,7 @@ onUnmounted(() => {
   font-family: Inter, system-ui, sans-serif; user-select: none;
 }
 .lm-sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lm-neuron { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: screen; }
 
 /* Scenes */
 .lm-scene { position: absolute; inset: 0 0 210px; display: flex; padding: 6vh 7vw 0; box-sizing: border-box; }

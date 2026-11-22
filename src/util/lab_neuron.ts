@@ -1,0 +1,122 @@
+/**
+ * A real neuron turning slowly behind the lab meeting preview (Ames
+ * 2026-11-22: "Need a neuron rotating in the background").
+ *
+ * The cell is the MICrONS pyramidal cell the tutorial's mini volume already
+ * ships (static/mini-volume: cell.bin, meta.json), drawn as a glowing
+ * hologram: the edges of each branch light up in the scene's colors, the
+ * insides stay faint, and overlapping branches add up. WebGL 1, one draw call.
+ */
+export interface NeuronLayer {
+  /** angle in radians; colors 0..255; alpha 0..1. */
+  draw(angle: number, a: [number, number, number], b: [number, number, number], alpha: number): void;
+  resize(): void;
+  dispose(): void;
+}
+
+const VS = `
+attribute vec3 aPos; attribute vec3 aNrm;
+uniform float uAng; uniform float uAspect; uniform float uScale;
+varying vec3 vN; varying float vY;
+void main() {
+  float c = cos(uAng), s = sin(uAng);
+  // Turn about the cell's long axis, then tip it a little toward us.
+  vec3 p = vec3(c * aPos.x + s * aPos.z, aPos.y, -s * aPos.x + c * aPos.z);
+  vec3 n = vec3(c * aNrm.x + s * aNrm.z, aNrm.y, -s * aNrm.x + c * aNrm.z);
+  float t = 0.18, ct = cos(t), st = sin(t);
+  p = vec3(p.x, ct * p.y - st * p.z, st * p.y + ct * p.z);
+  n = vec3(n.x, ct * n.y - st * n.z, st * n.y + ct * n.z);
+  vN = n; vY = p.y;
+  float persp = 1.0 / (1.0 + p.z * 0.35);
+  gl_Position = vec4(p.x * uScale * persp / uAspect, p.y * uScale * persp, 0.0, 1.0);
+}`;
+const FS = `
+precision mediump float;
+uniform vec3 uA; uniform vec3 uB; uniform float uAlpha;
+varying vec3 vN; varying float vY;
+void main() {
+  vec3 n = normalize(vN);
+  float rim = 1.0 - abs(n.z);
+  float glow = 0.08 + pow(rim, 2.2) * 0.9;
+  vec3 col = mix(uA, uB, clamp(vY * 0.9 + 0.5, 0.0, 1.0));
+  col = mix(col, vec3(1.0), pow(rim, 6.0) * 0.35);
+  gl_FragColor = vec4(col * glow * uAlpha, 1.0);
+}`;
+
+export async function createNeuronLayer(cv: HTMLCanvasElement): Promise<NeuronLayer | null> {
+  const gl = cv.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true });
+  if (!gl) return null;
+  const [meta, bin] = await Promise.all([
+    fetch('mini-volume/meta.json').then(r => r.json()),
+    fetch('mini-volume/cell.bin').then(r => { if (!r.ok) throw new Error(`cell ${r.status}`); return r.arrayBuffer(); }),
+  ]);
+  const nv: number = meta.cell.verts, nf: number = meta.cell.faces;
+  const lo: number[] = meta.cell.lo, hi: number[] = meta.cell.hi;
+  const q = new Uint16Array(bin, 0, nv * 3);
+  const idx = new Uint16Array(bin.slice(nv * 6, nv * 6 + nf * 6));
+  // Micrometers, centered on the cell's middle, y flipped so the pia is up,
+  // scaled so the cell's tallest side spans -1..1.
+  const span = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+  const mid = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+  const k = 2 / Math.max(...span);
+  const pos = new Float32Array(nv * 3);
+  for (let i = 0; i < nv; i++) {
+    pos[i * 3] = (lo[0] + q[i * 3] / 65535 * span[0] - mid[0]) * k;
+    pos[i * 3 + 1] = -(lo[1] + q[i * 3 + 1] / 65535 * span[1] - mid[1]) * k;
+    pos[i * 3 + 2] = (lo[2] + q[i * 3 + 2] / 65535 * span[2] - mid[2]) * k;
+  }
+  const nrm = new Float32Array(nv * 3);
+  for (let f = 0; f < nf; f++) {
+    const a = idx[f * 3] * 3, b = idx[f * 3 + 1] * 3, c = idx[f * 3 + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const j of [a, b, c]) { nrm[j] += nx; nrm[j + 1] += ny; nrm[j + 2] += nz; }
+  }
+
+  const shader = (type: number, src: string) => {
+    const s = gl.createShader(type)!;
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader');
+    return s;
+  };
+  const prog = gl.createProgram()!;
+  gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'link');
+  gl.useProgram(prog);
+  const attr = (name: string, data: Float32Array) => {
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const l = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 0, 0);
+  };
+  attr('aPos', pos); attr('aNrm', nrm);
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+  const U = (n: string) => gl.getUniformLocation(prog, n);
+  const uAng = U('uAng'), uAspect = U('uAspect'), uScale = U('uScale'), uA = U('uA'), uB = U('uB'), uAlpha = U('uAlpha');
+  gl.disable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);
+
+  const layer: NeuronLayer = {
+    resize() {
+      const dpr = Math.min(1.5, devicePixelRatio || 1);
+      cv.width = Math.round(cv.clientWidth * dpr); cv.height = Math.round(cv.clientHeight * dpr);
+      gl.viewport(0, 0, cv.width, cv.height);
+    },
+    draw(angle, a, b, alpha) {
+      gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+      if (alpha <= 0.001) return;
+      gl.uniform1f(uAng, angle);
+      gl.uniform1f(uAspect, cv.width / Math.max(1, cv.height));
+      gl.uniform1f(uScale, 0.92);
+      gl.uniform3f(uA, a[0] / 255, a[1] / 255, a[2] / 255);
+      gl.uniform3f(uB, b[0] / 255, b[1] / 255, b[2] / 255);
+      gl.uniform1f(uAlpha, alpha);
+      gl.drawElements(gl.TRIANGLES, nf * 3, gl.UNSIGNED_SHORT, 0);
+    },
+    dispose() { gl.getExtension('WEBGL_lose_context')?.loseContext(); },
+  };
+  layer.resize();
+  return layer;
+}
